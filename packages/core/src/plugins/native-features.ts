@@ -22,10 +22,14 @@ import {
 	fetchDocumentFromUrl,
 	isYouTubeUrl,
 } from "../features/documents/index";
-import { trajectoriesPlugin } from "../features/trajectories/index";
+import {
+	TrajectoriesService,
+	trajectoriesPlugin,
+} from "../features/trajectories/index";
 import { FollowUpService } from "../services/followUp";
 import { RelationshipsService } from "../services/relationships";
 import type { Plugin } from "../types/plugin";
+import type { ServiceTypeName } from "../types/service";
 
 // advancedPlanning/advancedMemory are core-compiled feature plugins gated by a
 // character flag; they live in the native-feature registry (default off) rather
@@ -110,6 +114,38 @@ export const nativeRuntimeFeatureDefaults: Record<
 	advancedPlanning: false,
 	advancedMemory: false,
 };
+
+export const nativeRuntimeFeatureServiceTypes: Record<
+	NativeRuntimeFeature,
+	ServiceTypeName[]
+> = {
+	documents: [DocumentService.serviceType],
+	relationships: [
+		RelationshipsService.serviceType,
+		FollowUpService.serviceType,
+	],
+	trajectories: [TrajectoriesService.serviceType],
+	advancedPlanning: [],
+	advancedMemory: [],
+};
+
+export function resolveNativeRuntimeFeatureFromServiceType(
+	serviceType: ServiceTypeName | string,
+): NativeRuntimeFeature | null {
+	for (const feature of Object.keys(
+		nativeRuntimeFeatureServiceTypes,
+	) as NativeRuntimeFeature[]) {
+		if (
+			nativeRuntimeFeatureServiceTypes[feature].some(
+				(candidate) => candidate === serviceType,
+			)
+		) {
+			return feature;
+		}
+	}
+
+	return null;
+}
 
 export function resolveNativeRuntimeFeatureFromPluginName(
 	pluginName: string | null | undefined,

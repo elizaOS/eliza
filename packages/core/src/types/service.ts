@@ -42,6 +42,10 @@ export interface ServiceTypeRegistry {
 	COMMANDS: "commands";
 	MOBILE_DEVICE_BRIDGE: "mobile_device_bridge";
 	SCREEN_CAPTURE: "screen_capture";
+	DOCUMENTS: "documents";
+	RELATIONSHIPS: "relationships";
+	FOLLOW_UP: "follow_up";
+	TRAJECTORIES: "trajectories";
 	UNKNOWN: "unknown";
 }
 
@@ -69,6 +73,7 @@ export type IsValidServiceType<T extends string> = T extends ServiceTypeName
 export type TypedServiceClass<T extends ServiceTypeName> = {
 	new (runtime?: IAgentRuntime): Service;
 	serviceType: T;
+	allowsMultiple?: boolean;
 	start(runtime: IAgentRuntime): Promise<Service>;
 };
 
@@ -140,6 +145,10 @@ export const ServiceType = {
 	COMMANDS: "commands",
 	MOBILE_DEVICE_BRIDGE: "mobile_device_bridge",
 	SCREEN_CAPTURE: "screen_capture",
+	DOCUMENTS: "documents",
+	RELATIONSHIPS: "relationships",
+	FOLLOW_UP: "follow_up",
+	TRAJECTORIES: "trajectories",
 	UNKNOWN: "unknown",
 } as const;
 
@@ -160,6 +169,9 @@ export abstract class Service {
 
 	/** Service type */
 	static serviceType: string;
+
+	/** True when multiple implementations may intentionally share this service type. */
+	static allowsMultiple?: boolean;
 
 	/** Service name */
 	abstract capabilityDescription: string;

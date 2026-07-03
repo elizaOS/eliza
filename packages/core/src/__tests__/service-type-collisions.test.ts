@@ -195,6 +195,34 @@ class CollisionTestServiceB extends Service {
 	async stop(): Promise<void> {}
 }
 
+class MultiTestServiceA extends Service {
+	static override serviceType = "multi-test";
+	static override allowsMultiple = true;
+	capabilityDescription = "multi test service A";
+
+	static override async start(
+		runtime: IAgentRuntime,
+	): Promise<MultiTestServiceA> {
+		return new MultiTestServiceA(runtime);
+	}
+
+	async stop(): Promise<void> {}
+}
+
+class MultiTestServiceB extends Service {
+	static override serviceType = "multi-test";
+	static override allowsMultiple = true;
+	capabilityDescription = "multi test service B";
+
+	static override async start(
+		runtime: IAgentRuntime,
+	): Promise<MultiTestServiceB> {
+		return new MultiTestServiceB(runtime);
+	}
+
+	async stop(): Promise<void> {}
+}
+
 function toRelativePath(filePath: string): string {
 	return path.relative(repoRoot, filePath).split(path.sep).join("/");
 }
@@ -529,6 +557,24 @@ describe("serviceType collision guardrails", () => {
 				plugin: "collision-test-plugin",
 				serviceType: "collision-test",
 				serviceClass: "CollisionTestServiceB",
+			}),
+			expect.stringContaining("Duplicate serviceType registration"),
+		);
+		warnSpy.mockRestore();
+	});
+
+	it("does not warn when service classes declare allowsMultiple", async () => {
+		const runtime = new AgentRuntime({ logLevel: "fatal" });
+		const warnSpy = vi
+			.spyOn(runtime.logger, "warn")
+			.mockImplementation(() => undefined);
+
+		await runtime.registerService(MultiTestServiceA);
+		await runtime.registerService(MultiTestServiceB);
+
+		expect(warnSpy).not.toHaveBeenCalledWith(
+			expect.objectContaining({
+				serviceType: "multi-test",
 			}),
 			expect.stringContaining("Duplicate serviceType registration"),
 		);

@@ -1,4 +1,5 @@
 import { roleRank } from "./runtime/context-gates";
+import type { ContextRegistry } from "./runtime/context-registry";
 import type { AgentContext, RoleGate, RoleGateRole } from "./types/contexts";
 import type { RegisteredEvaluator } from "./types/evaluator";
 import type {
@@ -165,12 +166,6 @@ const pluginRegistrationContext =
 const pluginServiceStartContext =
 	createAsyncContextStorage<RuntimePluginServiceStartCapture>();
 const serviceClassOwners = new WeakMap<RuntimeServiceClass, string>();
-const INTENTIONAL_MULTI_SERVICE_TYPES = new Set<string>([
-	"wallet",
-	"lp_pool",
-	"token_data",
-	"trajectories",
-]);
 
 function getServiceClassLabel(serviceClass: RuntimeServiceClass): string {
 	return (
@@ -189,7 +184,8 @@ function warnOnDuplicateServiceTypeRegistration(
 ): void {
 	if (
 		existingServiceClasses.length === 0 ||
-		INTENTIONAL_MULTI_SERVICE_TYPES.has(String(serviceType))
+		serviceClass.allowsMultiple === true ||
+		existingServiceClasses.some((existing) => existing.allowsMultiple === true)
 	) {
 		return;
 	}
@@ -286,19 +282,19 @@ function applyEffectiveActionContexts(
 /**
  * Derive an action's effective role gate from the role gates declared by the
  * contexts it is tagged with. Resolution goes through the PER-RUNTIME context
- * registry (`runtime.contexts`) so contexts registered at runtime by plugins
+ * registry so contexts registered at runtime by plugins
  * via `runtime.contexts.register(...)` participate — not just the first-party
  * defaults. (Previously this read a module-level snapshot of the default
  * contexts, so a plugin-registered context declaring `minRole: OWNER` was
  * invisible and the gate silently collapsed to USER — a permission bypass.)
  */
 function roleGateForActionContexts(
-	runtime: IAgentRuntime,
 	contexts: readonly AgentContext[] | undefined,
+	contextRegistry: ContextRegistry,
 ): RoleGate {
 	let minRole: RoleGateRole = "USER";
 	for (const context of contexts ?? []) {
-		const contextRole = runtime.contexts.get(context)?.roleGate?.minRole;
+		const contextRole = contextRegistry.get(context)?.roleGate?.minRole;
 		if (contextRole && roleRank(contextRole) > roleRank(minRole)) {
 			minRole = contextRole;
 		}
@@ -307,21 +303,21 @@ function roleGateForActionContexts(
 }
 
 function applyEffectiveActionAccess(
-	runtime: IAgentRuntime,
 	action: RuntimeAction,
 	pluginContexts: Plugin["contexts"] | undefined,
+	contextRegistry: ContextRegistry,
 ): RuntimeAction {
 	const withContexts = applyEffectiveActionContexts(action, pluginContexts);
 	const roleGate =
 		withContexts.roleGate ??
-		roleGateForActionContexts(runtime, withContexts.contexts);
+		roleGateForActionContexts(withContexts.contexts, contextRegistry);
 	const subActions = withContexts.subActions?.map((subAction) =>
 		typeof subAction === "string"
 			? subAction
 			: applyEffectiveActionAccess(
-					runtime,
 					subAction as RuntimeAction,
 					undefined,
+					contextRegistry,
 				),
 	);
 
@@ -780,9 +776,9 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 		const actionsBefore = runtimeWithLifecycle.actions.length;
 		originalRegisterAction(
 			applyEffectiveActionAccess(
-				runtimeWithLifecycle,
 				action,
 				capture?.ownership.plugin.contexts,
+				runtimeWithLifecycle.contexts,
 			),
 		);
 		if (!capture || runtimeWithLifecycle.actions.length <= actionsBefore)

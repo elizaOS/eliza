@@ -28,6 +28,7 @@ import {
 	nativeRuntimeFeatureDefaults,
 	nativeRuntimeFeaturePluginNames,
 	resolveNativeRuntimeFeatureFromPluginName,
+	resolveNativeRuntimeFeatureFromServiceType,
 } from "./plugins/native-features";
 import {
 	executeChainWithFallback,
@@ -313,12 +314,6 @@ const STRUCTURED_CODE_FENCE_PATTERN = /```([^\n`]*)\r?\n?([\s\S]*?)```/g;
 const JSON_OBJECT_KEY_PATTERN =
 	/(?:["'][^"'\n]+["']|[A-Za-z_][A-Za-z0-9_-]*)\s*:/;
 const WEB_SEARCH_SERVICE_TYPE = "web_search";
-const INTENTIONAL_MULTI_SERVICE_TYPES = new Set<string>([
-	"wallet",
-	"lp_pool",
-	"token_data",
-	"trajectories",
-]);
 
 /**
  * Thrown by `AgentRuntime.useModel` when a text-generation model is requested
@@ -1156,7 +1151,10 @@ export class AgentRuntime implements IAgentRuntime {
 	): void {
 		if (
 			existingServiceClasses.length === 0 ||
-			INTENTIONAL_MULTI_SERVICE_TYPES.has(String(serviceType))
+			serviceClass.allowsMultiple === true ||
+			existingServiceClasses.some(
+				(existing) => existing.allowsMultiple === true,
+			)
 		) {
 			return;
 		}
@@ -1350,16 +1348,7 @@ export class AgentRuntime implements IAgentRuntime {
 	private resolveNativeFeatureForServiceType(
 		serviceType: ServiceTypeName | string,
 	): NativeRuntimeFeature | null {
-		switch (serviceType) {
-			case "documents":
-				return "documents";
-			case "relationships":
-				return "relationships";
-			case "trajectories":
-				return "trajectories";
-			default:
-				return null;
-		}
+		return resolveNativeRuntimeFeatureFromServiceType(serviceType);
 	}
 
 	private isNativeFeatureServiceEnabled(

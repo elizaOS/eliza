@@ -128,6 +128,7 @@ export interface IMessageBusService extends Service {
 
 export abstract class ITokenDataService extends Service {
 	static override readonly serviceType = ServiceType.TOKEN_DATA;
+	static override readonly allowsMultiple = true;
 	public readonly capabilityDescription =
 		"Provides standardized access to token market data.";
 
@@ -156,6 +157,7 @@ export abstract class ITokenDataService extends Service {
 
 export abstract class IWalletService extends Service {
 	static override readonly serviceType = ServiceType.WALLET;
+	static override readonly allowsMultiple = true;
 
 	public readonly capabilityDescription =
 		"Provides standardized access to wallet balances and portfolios.";
@@ -177,6 +179,7 @@ export abstract class IWalletService extends Service {
 
 export abstract class ILpService extends Service {
 	static override readonly serviceType = "lp_pool";
+	static override readonly allowsMultiple = true;
 
 	public readonly capabilityDescription =
 		"Provides standardized access to DEX liquidity pools.";

@@ -1206,6 +1206,7 @@ export async function flushTrajectoryWrites(
  */
 export class DatabaseTrajectoryLogger extends Service {
   static serviceType = "trajectories";
+  static override readonly allowsMultiple = true;
   capabilityDescription =
     "Database-backed trajectory logging service for LLM call persistence";
 

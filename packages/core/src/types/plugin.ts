@@ -25,6 +25,8 @@ import type { ViewKind } from "./view-kind";
 export interface ServiceClass {
 	/** The service type identifier */
 	serviceType: string;
+	/** True when multiple implementations may intentionally share this service type. */
+	allowsMultiple?: boolean;
 	/** Factory method to create and start the service */
 	start(runtime: IAgentRuntime): Promise<Service>;
 	/** Stop service for a runtime - optional as not all services implement this */
