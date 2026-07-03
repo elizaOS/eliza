@@ -196,6 +196,7 @@ import {
 	type TargetInfo,
 	type Task,
 	type TaskWorker,
+	TEXT_GENERATION_MODEL_TYPES,
 	type TextGenerationModelType,
 	type TextStreamResult,
 	type ThreadHandle,
@@ -369,18 +370,8 @@ export class EmbeddingDimensionProbeError extends Error {
 	}
 }
 
-const TEXT_GENERATION_MODEL_KEYS: readonly string[] = [
-	ModelType.TEXT_NANO,
-	ModelType.TEXT_SMALL,
-	ModelType.TEXT_MEDIUM,
-	ModelType.TEXT_LARGE,
-	ModelType.TEXT_MEGA,
-	ModelType.RESPONSE_HANDLER,
-	ModelType.ACTION_PLANNER,
-	ModelType.TEXT_REASONING_SMALL,
-	ModelType.TEXT_REASONING_LARGE,
-	ModelType.TEXT_COMPLETION,
-];
+const TEXT_GENERATION_MODEL_KEYS: readonly string[] =
+	TEXT_GENERATION_MODEL_TYPES;
 
 type StructuredResponseFormat = "JSON" | "TOON";
 

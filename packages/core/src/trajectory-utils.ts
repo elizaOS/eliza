@@ -12,6 +12,7 @@ import {
 	runWithTrajectoryContext,
 } from "./trajectory-context";
 import type { ContextEvent, ContextObject } from "./types/context-object";
+import { isTextGenerationModelType } from "./types/model";
 import type { IAgentRuntime } from "./types/runtime";
 
 export type TrajectoryFinalStatus =
@@ -486,11 +487,8 @@ export function isLlmGenerationModelType(modelType: unknown): boolean {
 	}
 
 	return (
-		normalized.startsWith("TEXT_") ||
-		normalized.startsWith("REASONING_") ||
+		isTextGenerationModelType(normalized) ||
 		normalized.startsWith("OBJECT_") ||
-		normalized === "RESPONSE_HANDLER" ||
-		normalized === "ACTION_PLANNER" ||
 		normalized === "RESEARCH"
 	);
 }

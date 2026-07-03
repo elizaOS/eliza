@@ -102,6 +102,32 @@ export type TextGenerationModelType =
 	| typeof ModelType.TEXT_REASONING_LARGE
 	| typeof ModelType.TEXT_COMPLETION;
 
+export const TEXT_GENERATION_MODEL_TYPES = [
+	ModelType.TEXT_NANO,
+	ModelType.TEXT_SMALL,
+	ModelType.TEXT_MEDIUM,
+	ModelType.TEXT_LARGE,
+	ModelType.TEXT_MEGA,
+	ModelType.RESPONSE_HANDLER,
+	ModelType.ACTION_PLANNER,
+	ModelType.TEXT_REASONING_SMALL,
+	ModelType.TEXT_REASONING_LARGE,
+	ModelType.TEXT_COMPLETION,
+] as const satisfies readonly TextGenerationModelType[];
+
+const TEXT_GENERATION_MODEL_TYPE_SET: ReadonlySet<string> = new Set(
+	TEXT_GENERATION_MODEL_TYPES,
+);
+
+export function isTextGenerationModelType(
+	modelType: unknown,
+): modelType is TextGenerationModelType {
+	const normalized = String(modelType ?? "")
+		.trim()
+		.toUpperCase();
+	return TEXT_GENERATION_MODEL_TYPE_SET.has(normalized);
+}
+
 /**
  * Model configuration setting keys used in character settings.
  * These constants define the keys for accessing model parameters
@@ -1343,18 +1369,9 @@ export type PluginModelResult<K extends keyof ModelResultMap> =
 /**
  * Type guard to check if a model type supports streaming.
  */
-const STREAMABLE_MODEL_TYPES: ReadonlySet<string> = new Set([
-	ModelType.TEXT_NANO,
-	ModelType.TEXT_SMALL,
-	ModelType.TEXT_MEDIUM,
-	ModelType.TEXT_LARGE,
-	ModelType.TEXT_MEGA,
-	ModelType.RESPONSE_HANDLER,
-	ModelType.ACTION_PLANNER,
-	ModelType.TEXT_REASONING_SMALL,
-	ModelType.TEXT_REASONING_LARGE,
-	ModelType.TEXT_COMPLETION,
-]);
+const STREAMABLE_MODEL_TYPES: ReadonlySet<string> = new Set(
+	TEXT_GENERATION_MODEL_TYPES,
+);
 
 const MODEL_FALLBACK_CHAINS: Readonly<Record<string, readonly string[]>> = {
 	[ModelType.TEXT_NANO]: [ModelType.TEXT_NANO, ModelType.TEXT_SMALL],
