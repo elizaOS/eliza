@@ -1,11 +1,16 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, setSystemTime, test } from "bun:test";
 import { type IAgentRuntime, type Memory, ModelType, ServiceType } from "@elizaos/core";
 import { CloudMediaGenerationService } from "../services/cloud-media-generation-service";
 import { generateMediaAction } from "./media-generation";
 
+const GENERATED_IMAGE_URL = "https://cdn.example.com/generated.png";
+const HEALTH_RECHECK_COOLDOWN_MS = 5 * 60 * 1000;
+
 interface RuntimeOptions {
   cloudKey?: string | null;
   imageModelRegistered?: boolean;
+  /** Controls what the IMAGE model does when `generateMedia` runs. */
+  useModel?: () => Promise<unknown>;
 }
 
 /**
@@ -24,6 +29,7 @@ function createRuntime(options: RuntimeOptions): {
     getSetting: (key: string) => (key === "ELIZAOS_CLOUD_API_KEY" ? cloudKey : null),
     getModel: (modelType: string) =>
       modelType === ModelType.IMAGE && imageModelRegistered ? async () => [] : undefined,
+    useModel: options.useModel ?? (async () => [GENERATED_IMAGE_URL]),
   } as unknown as IAgentRuntime & {
     getService: (serviceType: string) => CloudMediaGenerationService | null;
   };
@@ -94,5 +100,82 @@ describe("GENERATE_MEDIA validate honesty gate (#11953)", () => {
   test("withholds the tool when no IMAGE model handler is registered", async () => {
     const { runtime } = createRuntime({ cloudKey: "sk-live-key", imageModelRegistered: false });
     expect(await runValidate(runtime, imageMessage())).toBe(false);
+  });
+});
+
+/**
+ * The key-presence gate above proves a key is CONFIGURED — not that it is VALID.
+ * A present-but-invalid/expired key (the literal #11953 title) passes the
+ * presence check yet 401s on every call. The health breaker catches that at call
+ * time so the action still drops from the catalog instead of promising-then-
+ * failing, and self-heals once the key is rotated.
+ */
+describe("CloudMediaGenerationService health breaker — present-but-invalid key (#11953)", () => {
+  afterEach(() => setSystemTime()); // reset any faked clock
+
+  test("opens after an invalid/expired-key failure so a keyed-but-dead provider drops from the catalog", async () => {
+    const { service } = createRuntime({
+      cloudKey: "sk-live-but-revoked",
+      useModel: async () => {
+        throw new Error("Media generation failed: Invalid or expired API key");
+      },
+    });
+    expect(service.canGenerateMedia({ mediaType: "image" })).toBe(true); // key present → optimistic
+
+    await expect(service.generateMedia({ mediaType: "image", prompt: "a cat" })).rejects.toThrow(
+      /Invalid or expired API key/,
+    );
+
+    expect(service.canGenerateMedia({ mediaType: "image" })).toBe(false); // breaker open
+  });
+
+  test("does NOT open on a per-request (content-policy) failure — the tool stays available", async () => {
+    const { service } = createRuntime({
+      cloudKey: "sk-live-key",
+      useModel: async () => {
+        throw new Error("Your prompt was rejected by the content policy");
+      },
+    });
+    await expect(service.generateMedia({ mediaType: "image", prompt: "x" })).rejects.toThrow();
+    expect(service.canGenerateMedia({ mediaType: "image" })).toBe(true);
+  });
+
+  test("half-opens after the cooldown to allow a re-probe", async () => {
+    const base = Date.parse("2026-07-03T00:00:00Z");
+    setSystemTime(new Date(base));
+    const { service } = createRuntime({
+      cloudKey: "sk-live-but-revoked",
+      useModel: async () => {
+        throw new Error("401 Unauthorized");
+      },
+    });
+
+    await expect(service.generateMedia({ mediaType: "image", prompt: "x" })).rejects.toThrow();
+    expect(service.canGenerateMedia({ mediaType: "image" })).toBe(false);
+
+    setSystemTime(new Date(base + HEALTH_RECHECK_COOLDOWN_MS - 1000));
+    expect(service.canGenerateMedia({ mediaType: "image" })).toBe(false); // still cooling down
+
+    setSystemTime(new Date(base + HEALTH_RECHECK_COOLDOWN_MS));
+    expect(service.canGenerateMedia({ mediaType: "image" })).toBe(true); // half-open re-probe
+  });
+
+  test("closes the breaker after a successful generation (self-heals once the key is rotated)", async () => {
+    let keyDead = true;
+    const { service } = createRuntime({
+      cloudKey: "sk-live-key",
+      useModel: async () => {
+        if (keyDead) throw new Error("Invalid or expired API key");
+        return [GENERATED_IMAGE_URL];
+      },
+    });
+
+    await expect(service.generateMedia({ mediaType: "image", prompt: "x" })).rejects.toThrow();
+    expect(service.canGenerateMedia({ mediaType: "image" })).toBe(false);
+
+    keyDead = false; // operator rotated the key
+    const res = await service.generateMedia({ mediaType: "image", prompt: "x" });
+    expect(res.url).toBe(GENERATED_IMAGE_URL);
+    expect(service.canGenerateMedia({ mediaType: "image" })).toBe(true);
   });
 });
