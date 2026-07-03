@@ -17,8 +17,8 @@
  * ASR-side VAD that lives in the pipeline layer) before forwarding to the sink.
  */
 
-import type { Page } from "playwright-core";
 import { logger } from "@elizaos/core";
+import type { Page } from "playwright-core";
 import { MEETING_AUDIO_SAMPLE_RATE } from "../types.js";
 
 /** Binding name the browser script calls with (streamIndex, Float32 payload). */
@@ -95,7 +95,11 @@ export async function startSpeakerAudioCapture(
       if (!emit) throw new Error("speaker audio binding is not registered");
 
       const liveAudioElements = (): HTMLMediaElement[] =>
-        (Array.from(document.querySelectorAll("audio, video")) as HTMLMediaElement[]).filter((el) => {
+        (
+          Array.from(
+            document.querySelectorAll("audio, video"),
+          ) as HTMLMediaElement[]
+        ).filter((el) => {
           const src = (el as HTMLMediaElement).srcObject;
           if (!(src instanceof MediaStream)) return false;
           if (el.paused) return false;
@@ -135,7 +139,9 @@ export async function startSpeakerAudioCapture(
 
         connectedStreamIds.add(stream.id);
         const track = stream.getAudioTracks()[0];
-        track.addEventListener("ended", () => connectedStreamIds.delete(stream.id));
+        track.addEventListener("ended", () =>
+          connectedStreamIds.delete(stream.id),
+        );
         return true;
       };
 
@@ -151,9 +157,10 @@ export async function startSpeakerAudioCapture(
         // Single mixed element (Teams): always stream index 0.
         if (elements.length > 0) connect(elements[0], 0);
       } else {
-        for (let i = 0; i < elements.length; i++) if (connect(elements[i], i)) {
-          // index tracked via loop position
-        }
+        for (let i = 0; i < elements.length; i++)
+          if (connect(elements[i], i)) {
+            // index tracked via loop position
+          }
         nextStreamIndex = elements.length;
       }
 
@@ -171,7 +178,10 @@ export async function startSpeakerAudioCapture(
         }
       }, rescanMs);
 
-      w.__elizaMeetCaptureIntervals = [...(w.__elizaMeetCaptureIntervals ?? []), rescan];
+      w.__elizaMeetCaptureIntervals = [
+        ...(w.__elizaMeetCaptureIntervals ?? []),
+        rescan,
+      ];
     },
     {
       bufferSize: BUFFER_SIZE,
@@ -190,7 +200,8 @@ export async function startSpeakerAudioCapture(
       try {
         await page.evaluate(() => {
           const w = window as CaptureWindow;
-          for (const id of w.__elizaMeetCaptureIntervals ?? []) clearInterval(id);
+          for (const id of w.__elizaMeetCaptureIntervals ?? [])
+            clearInterval(id);
           w.__elizaMeetCaptureIntervals = [];
         });
       } catch (err) {
