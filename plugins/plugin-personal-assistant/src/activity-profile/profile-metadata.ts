@@ -1,5 +1,15 @@
 import type { ActivityProfile } from "./types.js";
 
+/**
+ * Name + tags of the `PROACTIVE_AGENT` runtime task, in whose metadata the
+ * persisted {@link ActivityProfile} lives. Defined in this lightweight module
+ * (rather than `proactive-worker.ts`) so consumers that only need to locate the
+ * profile — the activity provider, the scheduled-task gate readers — can import
+ * them without pulling the proactive worker's heavy dependency graph.
+ */
+export const PROACTIVE_TASK_NAME = "PROACTIVE_AGENT" as const;
+export const PROACTIVE_TASK_TAGS = ["queue", "repeat", "proactive"] as const;
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }

@@ -37,6 +37,10 @@ import { enqueueIfSensitive } from "../lifeops/background-planner-dispatch.js";
 import { resolveDefaultTimeZone } from "../lifeops/defaults.js";
 import { ensureRuntimeAgentRecord } from "../lifeops/runtime.js";
 import {
+  PROACTIVE_TASK_NAME,
+  PROACTIVE_TASK_TAGS,
+} from "./profile-metadata.js";
+import {
   buildActivityProfile,
   profileNeedsRebuild,
   readProfileFromMetadata,
@@ -46,8 +50,9 @@ import {
 import type { ActivityProfile } from "./types.js";
 import { learnRhythmWindows } from "./window-learning-writer.js";
 
-export const PROACTIVE_TASK_NAME = "PROACTIVE_AGENT" as const;
-export const PROACTIVE_TASK_TAGS = ["queue", "repeat", "proactive"] as const;
+// Re-exported for API stability; canonical definitions live in
+// `profile-metadata.ts` so lightweight consumers can import them directly.
+export { PROACTIVE_TASK_NAME, PROACTIVE_TASK_TAGS };
 export const PROACTIVE_TASK_INTERVAL_MS = 60_000;
 
 const TASK_DESCRIPTION =

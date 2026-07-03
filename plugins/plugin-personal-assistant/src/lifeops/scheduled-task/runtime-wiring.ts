@@ -46,6 +46,11 @@ import {
   type ScheduledTaskRunnerHandle,
   type ScheduledTaskStore,
 } from "@elizaos/plugin-scheduling";
+import {
+  behaviouralBaselineFromProfile,
+  readActivityProfile,
+  registerActivityProfileGates,
+} from "./activity-gates.js";
 import { getChannelRegistry } from "../channels/index.js";
 import type { DispatchResult } from "../connectors/contract.js";
 import { decideDispatchPolicy } from "../connectors/dispatch-policy.js";
@@ -194,11 +199,25 @@ function defaultOwnerFactsProvider(
         local,
         cloud,
       });
-      const sampleCount = effective?.baseline?.sampleCount;
-      if (typeof sampleCount === "number" && Number.isFinite(sampleCount)) {
+      const healthSampleCount = effective?.baseline?.sampleCount;
+      // Behavioural baseline from the observed rhythm (plan D.2.3). Feeds the
+      // same personalBaseline surface so `personal_baseline_sufficient` fires
+      // once EITHER a health baseline OR enough observed behaviour exists —
+      // avoids starving persona packs that have no health baseline on day one.
+      const behavioural = behaviouralBaselineFromProfile(
+        await readActivityProfile(runtime),
+      );
+      const sampleCount = Math.max(
+        typeof healthSampleCount === "number" && Number.isFinite(healthSampleCount)
+          ? healthSampleCount
+          : 0,
+        behavioural?.sampleCount ?? 0,
+      );
+      if (sampleCount > 0) {
         view.personalBaseline = {
           sampleCount,
-          windowDays: effective?.baseline?.windowDays,
+          windowDays:
+            effective?.baseline?.windowDays ?? behavioural?.windowDays,
         };
       }
     } catch (error) {
@@ -538,6 +557,12 @@ function buildLifeOpsRunnerDeps(
   const stores = makeRepositoryBackedStores(opts.runtime, opts.agentId);
 
   const gates = createTaskGateRegistry();
+  // Register the real ActivityProfile-backed readers for circadian_state_in and
+  // no_recent_user_message_in BEFORE the built-ins. registerBuiltInGates is
+  // first-wins, so these production readers take precedence over the generic
+  // fallbacks (which stay resolvable when PA is absent, e.g. plugin-health
+  // standalone tests).
+  registerActivityProfileGates(opts.runtime, gates);
   registerBuiltInGates(gates);
 
   const completionChecks = createCompletionCheckRegistry();
