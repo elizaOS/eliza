@@ -899,12 +899,32 @@ export function isAgentSelf(
 	return context.message.entityId === context.runtime.agentId;
 }
 
+/**
+ * Injectable role-resolution seam for {@link hasRoleAccess} (#12087 Item 18).
+ * Lets callers (e.g. plugin-manager/security.ts wrappers, and tests) substitute
+ * the sender-role check / canonical-owner resolution without monkey-patching the
+ * module.
+ */
+export type RoleAccessDeps = {
+	checkSenderRole?: (
+		runtime: IAgentRuntime,
+		message: Memory,
+	) => Promise<RoleCheckResult | null>;
+	resolveCanonicalOwnerIdForMessage?: (
+		runtime: IAgentRuntime,
+		message: Memory,
+	) => Promise<string | null | undefined>;
+};
+
 async function isCanonicalOwner(
 	runtime: IAgentRuntime,
 	message: Memory,
+	resolveFn: NonNullable<
+		RoleAccessDeps["resolveCanonicalOwnerIdForMessage"]
+	> = resolveCanonicalOwnerIdForMessage,
 ): Promise<boolean> {
 	try {
-		const ownerId = await resolveCanonicalOwnerIdForMessage(runtime, message);
+		const ownerId = await resolveFn(runtime, message);
 		return typeof ownerId === "string" && ownerId === message.entityId;
 	} catch {
 		return false;
@@ -924,6 +944,7 @@ export async function hasRoleAccess(
 	runtime: IAgentRuntime | undefined,
 	message: Memory | undefined,
 	requiredRole: RoleName,
+	deps: RoleAccessDeps = {},
 ): Promise<boolean> {
 	if (requiredRole === "GUEST") {
 		return true;
@@ -938,12 +959,19 @@ export async function hasRoleAccess(
 		return true;
 	}
 
-	if (await isCanonicalOwner(context.runtime, context.message)) {
+	if (
+		await isCanonicalOwner(
+			context.runtime,
+			context.message,
+			deps.resolveCanonicalOwnerIdForMessage,
+		)
+	) {
 		return true;
 	}
 
+	const checkRoleFn = deps.checkSenderRole ?? checkSenderRole;
 	try {
-		const result = await checkSenderRole(context.runtime, context.message);
+		const result = await checkRoleFn(context.runtime, context.message);
 		if (!result) {
 			// Fail CLOSED. When the sender's role cannot be resolved (missing or
 			// inaccessible world, no world id on the message), treat them as USER —
