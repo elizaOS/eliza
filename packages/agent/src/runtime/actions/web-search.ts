@@ -167,6 +167,8 @@ export const webSearch: Action & Record<string, unknown> = {
   // whether Stage-1 labeled the turn "web" or "simple", with no keyword list.
   contexts: [],
   suppressInitialMessage: true,
+  routingHint:
+    "external/open-web or current real-world info (prices, news, weather, public facts about people/places/products, 'latest on...', recommendations) -> WEB_SEARCH; a specific URL you can already name -> WEB_FETCH; do NOT use for the user's own notes/memories/private data -> MEMORY (action=search); for messages already in a channel -> MESSAGE (action=search); for the skill catalog -> SKILL",
   description:
     "Search the open web and answer from the results. " +
     "Use this for any question that needs current, real-world, or external information — prices, exchange rates, weather, sports scores, stock/crypto values, news, current events, recommendations ('best X', 'top Y'), facts about people, places, products, or companies, 'what/who/where/when is …', 'latest on …', 'how to …'. " +

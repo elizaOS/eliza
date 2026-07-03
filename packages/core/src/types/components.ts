@@ -336,6 +336,21 @@ export interface Action {
 	 *   - VOICE_CALL:  "explicit call/phone/dial a person/business -> VOICE_CALL first; calendar/email secondary"
 	 * Surfaced into the planner prompt via {{actionRoutingHints}} so each
 	 * action carries its own routing rule alongside its description.
+	 *
+	 * CANONICAL "when to use / when NOT to use" carrier. Prefer this field over
+	 * burying disambiguation in `description`: `routingHint` is prepended
+	 * VERBATIM to the planner tool description (see `actions/to-tool.ts`) — it is
+	 * NOT run through `compressPromptDescription`, so it is never abbreviated or
+	 * truncated at the 160-char description cap, and it is captured in recorded
+	 * trajectories via the planner stage's `model.tools`. Any action that shares
+	 * a noun or simile with a sibling (e.g. TASKS vs SCHEDULED_TASKS, WEB_SEARCH
+	 * vs MEMORY search) should state its boundary here, and name the sibling to
+	 * route to, e.g.:
+	 *   "coding/software delegation -> TASKS; reminders/check-ins/recurring
+	 *    personal items -> SCHEDULED_TASKS/OWNER_REMINDERS (NOT this action)".
+	 * Reference an UPPER_SNAKE_CASE sibling action name explicitly — those tokens
+	 * also survive description compression, so the cross-reference stays intact
+	 * even in the compressed form.
 	 */
 	routingHint?: string;
 

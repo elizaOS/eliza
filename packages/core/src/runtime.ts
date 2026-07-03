@@ -3169,9 +3169,9 @@ export class AgentRuntime implements IAgentRuntime {
 	registerProvider(provider: Provider) {
 		const canonical = withCanonicalProviderDocs(provider);
 		if (this.providers.find((p) => p.name === canonical.name)) {
-			this.logger.debug(
+			this.logger.warn(
 				{ src: "agent", agentId: this.agentId, provider: canonical.name },
-				"Provider already registered, skipping",
+				"[AgentRuntime] Provider name collision: a provider with this name is already registered; keeping the first and skipping this one. The context the agent sees for this name is load-order-dependent — give the two providers distinct names.",
 			);
 			return;
 		}
@@ -3186,9 +3186,9 @@ export class AgentRuntime implements IAgentRuntime {
 		const canonical = withCanonicalActionDocs(action);
 		Object.assign(action, canonical);
 		if (this.actions.find((a) => a.name === action.name)) {
-			this.logger.debug(
+			this.logger.warn(
 				{ src: "agent", agentId: this.agentId, action: action.name },
-				"Action already registered, skipping",
+				"[AgentRuntime] Action name collision: an action with this name is already registered; keeping the first and skipping this one. Which handler/role-gate wins is load-order-dependent — rename one of the colliding actions to disambiguate.",
 			);
 		} else {
 			this.actions.push(action);

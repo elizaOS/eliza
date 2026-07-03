@@ -136,7 +136,7 @@ export const UNIVERSAL_ACTIONS = new Set(["REPLY", "NONE", "IGNORE"]);
  */
 export const INTENT_ACTION_MAP: Record<string, Set<string>> = {
   coding: new Set(["TASKS"]),
-  terminal: new Set(["SHELL", "RUNTIME"]),
+  terminal: new Set(["SHELL", "TERMINAL_SHELL", "RUNTIME"]),
   issues: new Set(["TASKS"]),
   plugin_ui: new Set(["RUNTIME"]),
   wallet: new Set(),
