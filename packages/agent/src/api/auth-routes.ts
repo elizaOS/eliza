@@ -8,7 +8,11 @@ import {
   PostAuthPairRequestSchema,
   resolveApiToken,
 } from "@elizaos/shared";
-import { isAuthorized, isTrustedLocalRequest } from "./server-helpers-auth.ts";
+import {
+  isAuthorized,
+  isTrustedLocalRequest,
+  resolveBoundaryRole,
+} from "./server-helpers-auth.ts";
 
 function getConfiguredApiToken(): string | undefined {
   return resolveApiToken(process.env) ?? undefined;
@@ -60,8 +64,9 @@ export async function handleAuthRoutes(
             mode: localAccess ? "local" : "remote",
             passwordConfigured: Boolean(getConfiguredApiToken()),
             ownerConfigured: false,
-            // #9948: server-authoritative boundary role. Unauthenticated → GUEST.
-            role: "GUEST",
+            // #9948 / #12087 Item 13: server-authoritative boundary role from the
+            // single resolveBoundaryRole helper (unauthenticated → GUEST here).
+            role: resolveBoundaryRole(req),
           },
         },
         401,
@@ -84,10 +89,10 @@ export async function handleAuthRoutes(
         mode: localAccess ? "local" : "bearer",
         passwordConfigured: !localAccess && Boolean(getConfiguredApiToken()),
         ownerConfigured: false,
-        // #9948: an authorized caller (trusted loopback owner or a valid API
-        // token) is the OWNER principal — the same tier resolveBoundaryRole
-        // computes at the app-core boundary. The UI consumes this via useRole.
-        role: "OWNER",
+        // #9948 / #12087 Item 13: an authorized caller (trusted loopback owner or
+        // a valid API token) is the OWNER principal, via the single
+        // resolveBoundaryRole helper. The UI consumes this via useRole.
+        role: resolveBoundaryRole(req),
       },
     });
     return true;

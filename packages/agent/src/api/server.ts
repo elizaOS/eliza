@@ -1632,6 +1632,7 @@ import {
   pairingEnabled as _pairingEnabled,
   rateLimitPairing as _rateLimitPairing,
   rejectWebSocketUpgrade as _rejectWebSocketUpgrade,
+  resolveBoundaryRole as _resolveBoundaryRole,
   resolveTerminalRunClientId as _resolveTerminalRunClientId,
   resolveTerminalRunRejection as _resolveTerminalRunRejection,
   resolveWebSocketUpgradeRejection as _resolveWebSocketUpgradeRejection,
@@ -1655,6 +1656,7 @@ export {
 const isAllowedHost = _isAllowedHost;
 const applyCors = _applyCors;
 const isAuthorized = _isAuthorized;
+const resolveBoundaryRole = _resolveBoundaryRole;
 const isTrustedLocalRequest = _isTrustedLocalRequest;
 const isWaifuChatAuthorized = _isWaifuChatAuthorized;
 const ensureApiTokenForBindHost = _ensureApiTokenForBindHost;
@@ -3259,9 +3261,8 @@ async function handleRequest(
     const appManager = ctx?.getAppManager
       ? await ctx.getAppManager()
       : (state.appManager as AppManagerLike);
-    const appActorRole: AppsRouteActorRole = isAuthorized(req)
-      ? "OWNER"
-      : "GUEST";
+    // #12087 Item 13: single boundary-role collapse (no inline OWNER/GUEST ternary).
+    const appActorRole: AppsRouteActorRole = resolveBoundaryRole(req);
     if (
       await handleAppsRoutes({
         req,

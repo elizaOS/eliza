@@ -25,6 +25,9 @@ import {
   createMessageMemory,
   logger,
   type Memory,
+  type RolesWorldMetadata,
+  recordOwnerGrant,
+  recordRoleGrant,
   stringToUuid,
   type UUID,
   validateUuid,
@@ -630,18 +633,20 @@ async function ensureWorldOwnershipAndRoles(
     world.metadata.ownership = { ownerId };
     needsUpdate = true;
   }
-  const metadataWithRoles = world.metadata as {
-    roles?: Record<string, string>;
-  };
-  const roles = metadataWithRoles.roles ?? {};
-  if (roles[ownerId] !== "OWNER") {
-    roles[ownerId] = "OWNER";
-    metadataWithRoles.roles = roles;
+  // #12087 Item 11: route role writes through the auditable grant helpers so each
+  // grant pairs roles[id] with a roleSources[id] entry (the #9948 invariant),
+  // instead of mutating metadata.roles directly with raw literals. The owner grant
+  // is recorded as source "owner"; the caller's connector-derived role is recorded
+  // as "connector_admin" (revocable/demotable), and never overwrites the owner's
+  // grant when the caller IS the owner.
+  const metadata = world.metadata as RolesWorldMetadata;
+  if (recordOwnerGrant(metadata, ownerId)) {
     needsUpdate = true;
   }
-  if (roles[callerId] !== callerRole) {
-    roles[callerId] = callerRole;
-    metadataWithRoles.roles = roles;
+  if (
+    callerId !== ownerId &&
+    recordRoleGrant(metadata, callerId, callerRole, "connector_admin")
+  ) {
     needsUpdate = true;
   }
   if (needsUpdate) {

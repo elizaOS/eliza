@@ -560,6 +560,22 @@ export function isAuthorized(req: http.IncomingMessage): boolean {
   return tokenMatches(expected, provided);
 }
 
+/** The canonical role at the agent HTTP boundary (#9948 / #12087 Item 13). */
+export type BoundaryRole = "OWNER" | "GUEST";
+
+/**
+ * #12087 Item 13: the single token→role collapse for agent HTTP routes. An
+ * authorized caller (trusted loopback owner or a valid API token) is the OWNER
+ * principal; everyone else is GUEST — the server-authoritative unauthenticated
+ * tier (#9948). Routes must use this instead of re-deriving `isAuthorized(req) ?
+ * "OWNER" : "GUEST"` inline (which drifted to NONE elsewhere). app-core's
+ * resolveBoundaryRole is deliberately not importable from the agent, so this is
+ * the agent-local equivalent with the same OWNER/GUEST vocabulary.
+ */
+export function resolveBoundaryRole(req: http.IncomingMessage): BoundaryRole {
+  return isAuthorized(req) ? "OWNER" : "GUEST";
+}
+
 export function ensureApiTokenForBindHost(host: string): void {
   const { disableAutoApiToken } = resolveApiSecurityConfig(process.env);
 

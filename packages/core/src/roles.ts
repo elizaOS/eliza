@@ -1022,6 +1022,39 @@ export function recordOwnerGrant(
 	return changed;
 }
 
+/**
+ * Record an explicit, auditable role grant on a world's metadata: pairs
+ * `roles[entityId] = role` with `roleSources[entityId] = source` (GUEST clears the
+ * source, matching {@link setEntityRole}). Use when you hold the metadata but not
+ * a Memory — {@link setEntityRole} needs a message and {@link recordOwnerGrant}
+ * only records the canonical OWNER. Pure + idempotent: mutates `metadata` in place
+ * and returns `true` iff it changed something (#12087 Item 11).
+ */
+export function recordRoleGrant(
+	metadata: RolesWorldMetadata,
+	entityId: string,
+	role: RoleName,
+	source: RoleGrantSource = "manual",
+): boolean {
+	metadata.roles ??= {};
+	metadata.roleSources ??= {};
+	let changed = false;
+	if (metadata.roles[entityId] !== role) {
+		metadata.roles[entityId] = role;
+		changed = true;
+	}
+	if (role === "GUEST") {
+		if (metadata.roleSources[entityId] !== undefined) {
+			delete metadata.roleSources[entityId];
+			changed = true;
+		}
+	} else if (metadata.roleSources[entityId] !== source) {
+		metadata.roleSources[entityId] = source;
+		changed = true;
+	}
+	return changed;
+}
+
 export async function setEntityRole(
 	runtime: IAgentRuntime,
 	message: Memory,

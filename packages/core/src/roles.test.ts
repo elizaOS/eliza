@@ -11,6 +11,7 @@ import {
 	normalizeRole,
 	ROLE_RANK,
 	recordOwnerGrant,
+	recordRoleGrant,
 } from "./roles.ts";
 import {
 	roleRank as gateRoleRank,
@@ -262,6 +263,44 @@ describe("role gate rejects unknown tiers (#9948)", () => {
 			satisfiesRoleGate(["SUPERUSER" as never], { minRole: "GUEST" }),
 		).toBe(false);
 		expect(satisfiesRoleGate(["OWNER"], { minRole: "GUEST" })).toBe(true);
+	});
+});
+
+describe("recordRoleGrant (#12087 Item 11 generic auditable grant)", () => {
+	it("pairs a non-owner role with its grant source", () => {
+		const metadata: {
+			roles?: Record<string, string>;
+			roleSources?: Record<string, string>;
+		} = {};
+		const changed = recordRoleGrant(
+			metadata as never,
+			"user-1",
+			"USER",
+			"connector_admin",
+		);
+		expect(changed).toBe(true);
+		expect(metadata.roles?.["user-1"]).toBe("USER");
+		expect(metadata.roleSources?.["user-1"]).toBe("connector_admin");
+	});
+
+	it("clears the grant source for a GUEST role (mirrors setEntityRole)", () => {
+		const metadata = {
+			roles: { "u-1": "USER" },
+			roleSources: { "u-1": "connector_admin" },
+		} as never;
+		expect(recordRoleGrant(metadata, "u-1", "GUEST")).toBe(true);
+		const md = metadata as {
+			roles: Record<string, string>;
+			roleSources: Record<string, string>;
+		};
+		expect(md.roles["u-1"]).toBe("GUEST");
+		expect(md.roleSources["u-1"]).toBeUndefined();
+	});
+
+	it("is idempotent", () => {
+		const metadata = {} as never;
+		recordRoleGrant(metadata, "user-1", "USER", "manual");
+		expect(recordRoleGrant(metadata, "user-1", "USER", "manual")).toBe(false);
 	});
 });
 

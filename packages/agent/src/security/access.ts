@@ -1,11 +1,15 @@
-import type { IAgentRuntime, Memory } from "@elizaos/core";
+import type { IAgentRuntime, Memory, RoleName } from "@elizaos/core";
 import {
   checkSenderPrivateAccess,
   hasRoleAccess as coreHasRoleAccess,
 } from "@elizaos/core";
 
-/** Role names matching the elizaOS role hierarchy. */
-export type RequiredRole = "OWNER" | "ADMIN" | "USER" | "GUEST";
+/**
+ * Role names matching the elizaOS role hierarchy. #12087 Item 28: aliases the
+ * canonical core union instead of re-declaring the string literals, so the two
+ * cannot drift.
+ */
+export type RequiredRole = RoleName;
 
 /**
  * Re-export the single core role primitive. This module no longer defines its
