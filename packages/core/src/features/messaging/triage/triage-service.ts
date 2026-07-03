@@ -103,6 +103,11 @@ export class TriageService {
 	/**
 	 * Fetch messages from every requested (and registered) source, score
 	 * them, persist them in the store, and return the ranked list.
+	 *
+	 * Per-source failures are isolated: one broken/unimplemented adapter must
+	 * not abort the sweep across the other connectors. When failures leave
+	 * zero results overall, the first error is rethrown so the caller never
+	 * mistakes a broken sweep for a genuinely empty inbox.
 	 */
 	async triage(
 		runtime: IAgentRuntime,
@@ -110,6 +115,7 @@ export class TriageService {
 	): Promise<MessageRef[]> {
 		const requested = opts.sources ?? this.listRegisteredSources();
 		const all: MessageRef[] = [];
+		const failures: Array<{ source: MessageSource; error: unknown }> = [];
 		for (const source of requested) {
 			const adapter = this.adapters.get(source);
 			if (!adapter) {
@@ -118,16 +124,33 @@ export class TriageService {
 				);
 				continue;
 			}
-			const batch = await adapter.listMessages(runtime, {
-				sinceMs: opts.sinceMs,
-				limit: opts.limit,
-				worldIds: opts.worldIds,
-				channelIds: opts.channelIds,
-			});
+			let batch: MessageRef[];
+			try {
+				batch = await adapter.listMessages(runtime, {
+					sinceMs: opts.sinceMs,
+					limit: opts.limit,
+					worldIds: opts.worldIds,
+					channelIds: opts.channelIds,
+				});
+			} catch (error) {
+				// error-policy:J4 one broken adapter degrades to a warned partial
+				// sweep across the other connectors; rethrown below when failures
+				// leave zero results so a broken sweep never reads as an empty inbox
+				failures.push({ source, error });
+				logger.warn(
+					`[TriageService] ${source} listMessages failed; continuing with other sources: ${
+						error instanceof Error ? error.message : String(error)
+					}`,
+				);
+				continue;
+			}
 			for (const ref of batch) {
 				this.trackAdapterForMessage(ref.source, ref.id);
 			}
 			all.push(...batch);
+		}
+		if (all.length === 0 && failures.length > 0) {
+			throw failures[0].error;
 		}
 
 		const scored = await scoreMessages(runtime, all, { nowMs: opts.nowMs });
@@ -146,26 +169,42 @@ export class TriageService {
 	): Promise<MessageRef[]> {
 		const requested = filters.sources ?? this.listRegisteredSources();
 		const merged: MessageRef[] = [];
+		const failures: Array<{ source: MessageSource; error: unknown }> = [];
 		for (const source of requested) {
 			const adapter = this.adapters.get(source);
 			if (!adapter) continue;
 			if (!adapter.isAvailable(runtime)) continue;
-			const hits =
-				adapter.searchMessages != null
-					? await adapter.searchMessages(runtime, filters)
-					: filterInMemory(
-							await adapter.listMessages(runtime, {
-								sinceMs: filters.sinceMs,
-								limit: filters.limit,
-								worldIds: filters.worldIds,
-								channelIds: filters.channelIds,
-							}),
-							filters,
-						);
+			let hits: MessageRef[];
+			try {
+				hits =
+					adapter.searchMessages != null
+						? await adapter.searchMessages(runtime, filters)
+						: filterInMemory(
+								await adapter.listMessages(runtime, {
+									sinceMs: filters.sinceMs,
+									limit: filters.limit,
+									worldIds: filters.worldIds,
+									channelIds: filters.channelIds,
+								}),
+								filters,
+							);
+			} catch (error) {
+				// error-policy:J4 same partial-degrade contract as triage() above
+				failures.push({ source, error });
+				logger.warn(
+					`[TriageService] ${source} search failed; continuing with other sources: ${
+						error instanceof Error ? error.message : String(error)
+					}`,
+				);
+				continue;
+			}
 			for (const ref of hits) {
 				this.trackAdapterForMessage(ref.source, ref.id);
 			}
 			merged.push(...hits);
+		}
+		if (merged.length === 0 && failures.length > 0) {
+			throw failures[0].error;
 		}
 		this.store.saveMessages(merged);
 		merged.sort((a, b) => b.receivedAtMs - a.receivedAtMs);

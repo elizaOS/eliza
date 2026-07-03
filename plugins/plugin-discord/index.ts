@@ -338,6 +338,8 @@ export {
 export type { DiscordService as IDiscordService } from "./service";
 export { DiscordService } from "./service";
 export { discordSetupRoutes } from "./setup-routes";
+// Message-triage adapter (registered at init; exported for tests/consumers)
+export { DiscordTriageAdapter, mapDiscordMemoryToRef } from "./triage-adapter";
 export type {
 	AuditInfo,
 	ChannelPermissionsChangedPayload,
