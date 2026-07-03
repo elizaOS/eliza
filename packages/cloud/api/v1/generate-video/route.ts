@@ -178,6 +178,13 @@ app.post("/", async (c) => {
 
     const generated = await provider.generate({
       ...request,
+      // Bill-what-you-deliver: the org is charged for the RESOLVED duration
+      // (request.durationSeconds ?? the catalog default), but the raw request
+      // spread would forward an undefined durationSeconds when the client omits
+      // it — the provider then renders its OWN default (potentially longer),
+      // so the platform pays for a longer clip than it billed. Forward the
+      // resolved value so the generated duration matches the charge.
+      durationSeconds,
       apiKeys,
     });
     if (generated.hasNsfwConcepts?.some(Boolean)) {

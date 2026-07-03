@@ -252,6 +252,49 @@ describe("generate-video — pre-settle failure still refunds", () => {
   });
 });
 
+describe("generate-video — bills what it delivers (#11862 finding 2)", () => {
+  test("when the client omits durationSeconds, the RESOLVED billing default is forwarded to the provider (not undefined)", async () => {
+    const ledger = makeLedgerReservation(100, COST);
+    reserve.mockResolvedValue(ledger.reservation);
+    subscribe.mockResolvedValue(validResult);
+    generationsCreate.mockResolvedValue({ id: "gen-1" });
+
+    // No durationSeconds in the request → billing resolves it to the catalog
+    // default (8, per the getDefaultVideoBillingDimensions mock above).
+    const res = await post({ model: MODEL, prompt: "a cat" });
+
+    expect(res.status).toBe(200);
+    // The provider (fal) maps durationSeconds → input.duration. Before the fix
+    // the raw request spread forwarded an undefined durationSeconds, so the
+    // provider rendered its OWN default while we billed 8s → undercharge.
+    expect(subscribe).toHaveBeenCalledTimes(1);
+    const falInput = (
+      subscribe.mock.calls[0]?.[1] as { input?: Record<string, unknown> }
+    )?.input;
+    expect(falInput?.duration).toBe(8);
+    expect(falInput?.duration_seconds).toBe(8);
+  });
+
+  test("an explicit client durationSeconds is still forwarded unchanged", async () => {
+    const ledger = makeLedgerReservation(100, COST);
+    reserve.mockResolvedValue(ledger.reservation);
+    subscribe.mockResolvedValue(validResult);
+    generationsCreate.mockResolvedValue({ id: "gen-1" });
+
+    const res = await post({
+      model: MODEL,
+      prompt: "a cat",
+      durationSeconds: 5,
+    });
+
+    expect(res.status).toBe(200);
+    const falInput = (
+      subscribe.mock.calls[0]?.[1] as { input?: Record<string, unknown> }
+    )?.input;
+    expect(falInput?.duration).toBe(5);
+  });
+});
+
 describe("generate-video — clean success settles once", () => {
   test("success path reconciles exactly once to totalCost", async () => {
     const ledger = makeLedgerReservation(100, COST);
