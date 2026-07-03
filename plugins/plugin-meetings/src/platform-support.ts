@@ -23,7 +23,7 @@ import { existsSync } from "node:fs";
 export type BrowserChannel = "chrome" | "msedge";
 
 /** How Chromium was resolved — for logging and the capability report. */
-export type ChromiumSource = "override" | "bundled" | "channel";
+export type ChromiumSource = "override" | "system" | "bundled" | "channel";
 
 /** A resolved Chromium target: either an explicit binary or a system channel. */
 export interface ResolvedChromium {
@@ -47,16 +47,68 @@ export interface MeetingRuntimeSupport {
 }
 
 /**
+ * Known install locations for a system Chrome/Chromium, by platform. The bots
+ * drive the browser the user already has rather than downloading a separate one.
+ */
+const SYSTEM_CHROME_PATHS: Partial<Record<NodeJS.Platform, readonly string[]>> = {
+  darwin: [
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+    "/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary",
+    "/Applications/Chromium.app/Contents/MacOS/Chromium",
+    "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser",
+  ],
+  linux: [
+    "/usr/bin/google-chrome-stable",
+    "/usr/bin/google-chrome",
+    "/usr/bin/chromium-browser",
+    "/usr/bin/chromium",
+    "/snap/bin/chromium",
+    "/usr/bin/brave-browser",
+  ],
+  win32: [
+    "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+    "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
+  ],
+};
+
+/** Known install locations for a system Microsoft Edge, by platform. */
+const SYSTEM_EDGE_PATHS: Partial<Record<NodeJS.Platform, readonly string[]>> = {
+  darwin: ["/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge"],
+  linux: ["/usr/bin/microsoft-edge-stable", "/usr/bin/microsoft-edge"],
+  win32: [
+    "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
+    "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
+  ],
+};
+
+/**
+ * First existing system-browser binary on this host, honoring the caller's
+ * channel preference (Teams prefers Edge; Meet/Zoom prefer Chrome). Returns
+ * `null` when the user has no Chrome/Edge/Chromium installed.
+ */
+export function detectSystemBrowser(
+  prefer: BrowserChannel = "chrome",
+  platform: NodeJS.Platform = process.platform,
+): string | null {
+  const chrome = SYSTEM_CHROME_PATHS[platform] ?? [];
+  const edge = SYSTEM_EDGE_PATHS[platform] ?? [];
+  const ordered =
+    prefer === "msedge" ? [...edge, ...chrome] : [...chrome, ...edge];
+  for (const candidate of ordered) {
+    if (existsSync(candidate)) return candidate;
+  }
+  return null;
+}
+
+/**
  * Resolve which Chromium executable (or system channel) the bots would launch,
  * per the documented precedence:
  *   1. `ELIZA_MEETINGS_CHROMIUM_PATH` — explicit override (must exist).
- *   2. Playwright's bundled Chromium — when the browser download is installed.
- *   3. System channel fallback ("chrome" / "msedge").
- *
- * Returns `null` only when NO binary is resolvable AND no system channel is a
- * plausible fallback — i.e. the host genuinely has no Chromium. The channel
- * fallback is always plausible on desktop; callers that need certainty about a
- * concrete binary should inspect `source`/`executablePath`.
+ *   2. The system Chrome/Edge already installed on the machine — the bots drive
+ *      the user's own browser, never a separate download.
+ *   3. Playwright's bundled Chromium — only if a download happens to be present
+ *      (e.g. a headless server image that ran `playwright install`).
+ *   4. System channel fallback ("chrome" / "msedge") for playwright to resolve.
  *
  * @throws when the override path is set but does not exist — a misconfiguration
  *   the operator must fix, not something to silently downgrade.
@@ -64,6 +116,7 @@ export interface MeetingRuntimeSupport {
 export function chromiumExecutable(
   channel: BrowserChannel = "chrome",
   env: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform,
 ): ResolvedChromium {
   const override = env.ELIZA_MEETINGS_CHROMIUM_PATH?.trim();
   if (override) {
@@ -75,7 +128,14 @@ export function chromiumExecutable(
     return { source: "override", executablePath: override };
   }
 
-  // Playwright's bundled Chromium — executablePath() throws if not installed.
+  // Prefer the Chrome/Edge already on the machine — no separate download.
+  const system = detectSystemBrowser(channel, platform);
+  if (system) {
+    return { source: "system", executablePath: system };
+  }
+
+  // Only when no system browser exists: playwright's bundled Chromium, if a
+  // download is present. executablePath() throws when it is not installed.
   try {
     const bundled = chromium.executablePath();
     if (bundled && existsSync(bundled)) {
@@ -170,7 +230,7 @@ export function resolveMeetingRuntimeSupport(
 
   let resolved: ResolvedChromium;
   try {
-    resolved = chromiumExecutable("chrome", env);
+    resolved = chromiumExecutable("chrome", env, platform);
   } catch (error) {
     return {
       supported: false,

@@ -61,28 +61,54 @@ describe("resolveHeadlessMode", () => {
 
 describe("chromiumExecutable", () => {
   it("prefers ELIZA_MEETINGS_CHROMIUM_PATH override when it exists", () => {
-    const r = chromiumExecutable("chrome", { ELIZA_MEETINGS_CHROMIUM_PATH: "/opt/chrome" });
+    const r = chromiumExecutable(
+      "chrome",
+      { ELIZA_MEETINGS_CHROMIUM_PATH: "/opt/chrome" },
+      "darwin",
+    );
     expect(r).toEqual({ source: "override", executablePath: "/opt/chrome" });
   });
 
   it("throws when the override path does not exist", () => {
     vi.mocked(existsSync).mockReturnValue(false);
-    expect(() => chromiumExecutable("chrome", { ELIZA_MEETINGS_CHROMIUM_PATH: "/nope" })).toThrow(
-      /does not exist/,
-    );
+    expect(() =>
+      chromiumExecutable("chrome", { ELIZA_MEETINGS_CHROMIUM_PATH: "/nope" }, "darwin"),
+    ).toThrow(/does not exist/);
   });
 
-  it("uses bundled Chromium when playwright has one installed", () => {
+  it("prefers the system Chrome the user already has over a download", () => {
+    // existsSync defaults to true → the first system path is 'installed'.
+    const r = chromiumExecutable("chrome", {}, "darwin");
+    expect(r).toEqual({
+      source: "system",
+      executablePath: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+    });
+  });
+
+  it("prefers system Edge first when the caller wants the Edge channel", () => {
+    const r = chromiumExecutable("msedge", {}, "darwin");
+    expect(r).toEqual({
+      source: "system",
+      executablePath: "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+    });
+  });
+
+  it("uses bundled Chromium only when no system browser is installed", () => {
+    vi.mocked(existsSync).mockImplementation((p) => String(p) === "/pw/chromium");
     vi.spyOn(chromium, "executablePath").mockReturnValue("/pw/chromium");
-    const r = chromiumExecutable("chrome", {});
+    const r = chromiumExecutable("chrome", {}, "linux");
     expect(r).toEqual({ source: "bundled", executablePath: "/pw/chromium" });
   });
 
-  it("falls back to the system channel when no bundled browser exists", () => {
+  it("falls back to the system channel when nothing is resolvable", () => {
+    vi.mocked(existsSync).mockReturnValue(false);
     vi.spyOn(chromium, "executablePath").mockImplementation(() => {
       throw new Error("not installed");
     });
-    expect(chromiumExecutable("msedge", {})).toEqual({ source: "channel", channel: "msedge" });
+    expect(chromiumExecutable("msedge", {}, "linux")).toEqual({
+      source: "channel",
+      channel: "msedge",
+    });
   });
 });
 
@@ -97,15 +123,23 @@ describe("resolveMeetingRuntimeSupport", () => {
     expect(r.reason).toMatch(/cannot run on a mobile/);
   });
 
-  it("is supported on desktop with a bundled browser and reports the path", () => {
+  it("is supported on desktop via the user's system browser and reports its path", () => {
+    const r = resolveMeetingRuntimeSupport(runtime, { DISPLAY: ":0" }, "linux");
+    expect(r.supported).toBe(true);
+    expect(r.chromiumPath).toBe("/usr/bin/google-chrome-stable");
+    expect(r.headless).toBe(false);
+  });
+
+  it("is supported via a bundled browser when no system browser exists", () => {
+    vi.mocked(existsSync).mockImplementation((p) => String(p) === "/pw/chromium");
     vi.spyOn(chromium, "executablePath").mockReturnValue("/pw/chromium");
     const r = resolveMeetingRuntimeSupport(runtime, { DISPLAY: ":0" }, "linux");
     expect(r.supported).toBe(true);
     expect(r.chromiumPath).toBe("/pw/chromium");
-    expect(r.headless).toBe(false);
   });
 
   it("is supported on desktop via the system channel fallback", () => {
+    vi.mocked(existsSync).mockReturnValue(false);
     vi.spyOn(chromium, "executablePath").mockImplementation(() => {
       throw new Error("none");
     });

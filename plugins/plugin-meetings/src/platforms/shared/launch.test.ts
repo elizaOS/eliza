@@ -31,6 +31,8 @@ afterEach(() => {
 
 describe("launchMeetingBrowser headless + executable wiring", () => {
   it("passes an explicit headless option straight through to chromium.launch", async () => {
+    // No system browser installed → falls through to playwright's bundled one.
+    vi.mocked(existsSync).mockImplementation((p) => String(p) === "/pw/chromium");
     const launch = vi.spyOn(chromium, "launch").mockResolvedValue(stubBrowser());
     vi.spyOn(chromium, "executablePath").mockReturnValue("/pw/chromium");
 
@@ -40,6 +42,22 @@ describe("launchMeetingBrowser headless + executable wiring", () => {
     const arg = launch.mock.calls[0][0];
     expect(arg?.headless).toBe(true);
     expect(arg?.executablePath).toBe("/pw/chromium");
+  });
+
+  it("drives the user's already-installed system browser by default (no download)", async () => {
+    // existsSync defaults to true → a system Chrome/Edge is 'installed', and is
+    // preferred over playwright's bundled Chromium.
+    const launch = vi.spyOn(chromium, "launch").mockResolvedValue(stubBrowser());
+    vi.spyOn(chromium, "executablePath").mockReturnValue("/pw/chromium");
+
+    await launchMeetingBrowser({ headless: true });
+
+    const arg = launch.mock.calls[0][0];
+    // A concrete system-browser binary path is passed — not the bundled download,
+    // and no channel is needed when we have a real path.
+    expect(typeof arg?.executablePath).toBe("string");
+    expect(arg?.executablePath).not.toBe("/pw/chromium");
+    expect(arg?.channel).toBeUndefined();
   });
 
   it("resolves headless from ELIZA_MEETINGS_HEADLESS when no option is given", async () => {

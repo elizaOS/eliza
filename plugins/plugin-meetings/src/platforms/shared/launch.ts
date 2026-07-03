@@ -5,8 +5,10 @@
  * (`resolveHeadlessMode`) both live in ../../platform-support.ts so the launcher
  * and the capability probe agree on the exact binary + mode. Resolution order:
  *   1. env ELIZA_MEETINGS_CHROMIUM_PATH — explicit override.
- *   2. Playwright's bundled Chromium (if the browser download is installed).
- *   3. System channel fallback ("chrome" / "msedge"). Teams prefers Edge via
+ *   2. The system Chrome/Edge already on the machine — the bots drive the
+ *      browser the user already has; no separate Chromium download.
+ *   3. Playwright's bundled Chromium (only if a download happens to be present).
+ *   4. System channel fallback ("chrome" / "msedge"). Teams prefers Edge via
  *      the `channel` param; Meet/Zoom use Chrome.
  *
  * Headless mode: explicit `ELIZA_MEETINGS_HEADLESS` wins, else headed only when

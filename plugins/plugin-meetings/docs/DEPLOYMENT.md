@@ -43,11 +43,11 @@ on XTEST-grade input. Pick pure headless only for a Teams/Zoom-only deployment.
 
 macOS / Windows / a Linux desktop with a session. Turn on the `meetings` feature
 in your agent config (`features.meetings`) — no env flag needed. A display is
-always present, so the plugin auto-selects **headed**, and the system Chrome/Edge
-channel is used if no bundled browser is installed.
+always present, so the plugin auto-selects **headed**, and it **drives the Chrome
+or Edge you already have installed** — no separate Chromium download.
 
 ```bash
-# optional: pin a specific browser binary instead of the system channel
+# optional: pin a specific browser binary (otherwise your system Chrome/Edge is used)
 # export ELIZA_MEETINGS_CHROMIUM_PATH="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 ```
 
