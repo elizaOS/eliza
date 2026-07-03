@@ -87,6 +87,9 @@ describe("parseRequestBody", () => {
       parseRequestBody(JSON.stringify({ scope: "page-wallet" })).scope,
     ).toBe("page-wallet");
     expect(
+      parseRequestBody(JSON.stringify({ scope: "page-admin" })).scope,
+    ).toBeUndefined();
+    expect(
       parseRequestBody(JSON.stringify({ scope: "wallet" })).scope,
     ).toBeUndefined(); // missing page- prefix
     expect(

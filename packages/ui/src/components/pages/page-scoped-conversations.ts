@@ -1,31 +1,11 @@
+import type { PageScope } from "@elizaos/shared/contracts";
 import { client } from "../../api";
 import type {
   Conversation,
   ConversationMetadata,
 } from "../../api/client-types-chat";
 
-export type PageScope =
-  | "page-browser"
-  | "page-character"
-  | "page-automations"
-  | "page-apps"
-  | "page-connectors"
-  | "page-phone"
-  | "page-plugins"
-  | "page-settings"
-  | "page-wallet";
-
-export const PAGE_SCOPES: readonly PageScope[] = [
-  "page-browser",
-  "page-character",
-  "page-automations",
-  "page-apps",
-  "page-connectors",
-  "page-phone",
-  "page-plugins",
-  "page-settings",
-  "page-wallet",
-] as const;
+export { PAGE_SCOPES, type PageScope } from "@elizaos/shared/contracts";
 
 const PAGE_SCOPE_ROUTING_CONTEXTS: Record<
   PageScope,

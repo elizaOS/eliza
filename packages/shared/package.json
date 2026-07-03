@@ -128,6 +128,16 @@
       "import": "./dist/events/index.js",
       "default": "./dist/events/index.js"
     },
+    "./contracts": {
+      "types": "./dist/contracts/index.d.ts",
+      "eliza-source": {
+        "types": "./src/contracts/index.ts",
+        "import": "./src/contracts/index.ts",
+        "default": "./src/contracts/index.ts"
+      },
+      "import": "./dist/contracts/index.js",
+      "default": "./dist/contracts/index.js"
+    },
     "./utils/permission-deep-links": {
       "types": "./dist/utils/permission-deep-links.d.ts",
       "eliza-source": {
