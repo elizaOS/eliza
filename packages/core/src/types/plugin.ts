@@ -17,6 +17,8 @@ import type { ShortcutDefinition } from "./shortcut";
 import type { TestSuite } from "./testing";
 import type { ViewKind } from "./view-kind";
 
+export type RouteRuntimeMode = "local" | "local-only" | "cloud" | "remote";
+
 /**
  * Type for a service class constructor.
  * This is more flexible than `typeof Service` to allow for:
@@ -134,6 +136,13 @@ interface BaseRoute {
 	 * Use for legacy API paths that must remain stable (e.g. `/api/telegram-setup/status`).
 	 */
 	rawPath?: boolean;
+	/**
+	 * Runtime modes where this route is visible. Hosts that support runtime modes
+	 * hide routes outside this list with 404 before handler logic runs.
+	 */
+	modes?: ReadonlyArray<RouteRuntimeMode>;
+	/** Free-form one-liner documenting why the route is scoped to those modes. */
+	modeReason?: string;
 	/** x402 micropayment gate: object, or `true` to use `character.settings.x402` defaults */
 	x402?: X402Config | true;
 	/** Runs before payment; invalid → 402 with accepts payload */

@@ -229,6 +229,8 @@ const cloudRoutes: Route[] = [
     type: "POST",
     path: "/api/tts/cloud",
     rawPath: true,
+    modes: ["local", "cloud", "remote"],
+    modeReason: "cloud TTS preview — hidden in local-only",
     handler: cloudTtsPreviewHandler,
   },
   ...(["GET", "POST", "PUT", "PATCH", "DELETE"] as const).map((type) => ({

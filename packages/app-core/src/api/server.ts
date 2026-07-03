@@ -674,7 +674,7 @@ async function handleCompatRouteInner(
   // AGENTS.md §1: cloud mode hides /api/local-inference/*, local-only mode
   // hides /api/cloud/*. Hidden = 404 (not 403) so callers cannot probe
   // mode state.
-  const gate = applyRouteModeGuard(req, res);
+  const gate = applyRouteModeGuard(req, res, state.current);
   if (gate.handled) return true;
 
   // ── Remote-mode forward ───────────────────────────────────────────────

@@ -1,10 +1,11 @@
 /**
  * Mode-visibility matrix for HTTP API routes.
  *
- * Every route declares which runtime mode(s) it is reachable in. The route
- * dispatcher consults this matrix BEFORE the handler logic runs. A request
- * to a route that does not include the active mode returns 404 (hidden,
- * not forbidden).
+ * Legacy fallback matrix for host-owned HTTP API routes that cannot yet carry
+ * mode visibility on their route declaration. Plugin-owned routes should set
+ * `Route.modes`; the route-mode guard consults registered runtime routes
+ * before this table. A request to a route that does not include the active
+ * mode returns 404 (hidden, not forbidden).
  *
  * Rules:
  *   - Modes are matched against `getRuntimeMode()` (see runtime-mode.ts).
@@ -98,13 +99,6 @@ export const ROUTE_MODE_MATRIX: ReadonlyArray<RouteModeRule> = [
       "Eliza Cloud connection state (status/login/disconnect) — hidden in local-only",
   },
 
-  // ── /api/tts/cloud — cloud-routed TTS preview ─────────────────────────
-  {
-    path: "/api/tts/cloud",
-    method: "POST",
-    modes: ["local", "cloud", "remote"],
-    reason: "cloud TTS preview — hidden in local-only",
-  },
   {
     path: "/api/tts/local-inference",
     method: "POST",

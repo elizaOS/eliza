@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vitest";
+import { findRegisteredRouteModeRule } from "./route-mode-guard";
 import { findRouteModeRule, isRouteVisible } from "./route-mode-matrix";
 import { resolveRuntimeMode, validateRemoteApiBase } from "./runtime-mode";
 
@@ -138,14 +139,30 @@ describe("route-mode matrix", () => {
     ).toBe(true);
   });
 
-  test("/api/tts/cloud is hidden in local-only mode", () => {
-    expect(
-      isRouteVisible({
-        pathname: "/api/tts/cloud",
-        method: "POST",
-        mode: "local-only",
-      }),
-    ).toBe(false);
+  test("/api/tts/cloud visibility is owned by the plugin route declaration", () => {
+    expect(findRouteModeRule("/api/tts/cloud", "POST")).toBeNull();
+    const rule = findRegisteredRouteModeRule({
+      runtime: {
+        routes: [
+          {
+            type: "POST",
+            path: "/api/tts/cloud",
+            rawPath: true,
+            modes: ["local", "cloud", "remote"],
+            modeReason: "cloud TTS preview fixture",
+          },
+        ],
+      },
+      pathname: "/api/tts/cloud",
+      method: "POST",
+    });
+
+    expect(rule).toMatchObject({
+      path: "/api/tts/cloud",
+      method: "POST",
+      modes: ["local", "cloud", "remote"],
+    });
+    expect(rule?.modes.includes("local-only")).toBe(false);
   });
 
   test("local-inference audio routes are hidden outside local runtimes", () => {
