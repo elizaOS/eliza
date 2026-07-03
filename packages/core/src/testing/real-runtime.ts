@@ -51,6 +51,22 @@ export interface RealTestRuntimeOptions {
 	pgliteDir?: string;
 	/** Remove PGLite dir on cleanup. Defaults to true when dir is auto-created. */
 	removePgliteDirOnCleanup?: boolean;
+	/**
+	 * Host-injected configure step for the local-embedding plugin (the agent's
+	 * `configureLocalEmbeddingPlugin`). Injected so this core `./testing` export
+	 * never imports `@elizaos/agent` src (a reverse dependency edge that silently
+	 * degrades outside the monorepo checkout). Only consulted on the `withLLM`
+	 * fallback path when no live provider is available; when omitted the embedding
+	 * plugin is registered as-is.
+	 */
+	configureEmbeddingPlugin?: (plugin: Plugin) => void;
+	/**
+	 * Host-injected trajectory-write flush (the agent's `flushTrajectoryWrites`),
+	 * awaited during cleanup before the runtime stops. Injected for the same
+	 * reason as {@link configureEmbeddingPlugin}; when omitted, cleanup relies on
+	 * draining the trajectories service's own write queues.
+	 */
+	flushTrajectoryWrites?: (runtime: AgentRuntime) => Promise<void>;
 }
 
 export interface RealTestRuntimeResult {
@@ -81,14 +97,6 @@ type TrajectoryWriteService = {
 	writeQueues?: Map<string, Promise<void>>;
 };
 
-type TrajectoryStorageModule = {
-	flushTrajectoryWrites?: (runtime: AgentRuntime) => Promise<void>;
-};
-
-type AgentRuntimeModule = {
-	configureLocalEmbeddingPlugin?: (plugin: Plugin) => void;
-};
-
 type RuntimePluginModule = {
 	default?: Plugin;
 	elizaPlugin?: Plugin;
@@ -96,15 +104,10 @@ type RuntimePluginModule = {
 
 async function flushPendingTrajectoryWrites(
 	runtime: AgentRuntime,
+	flushTrajectoryWrites?: (runtime: AgentRuntime) => Promise<void>,
 ): Promise<void> {
-	try {
-		const modulePath = "../../../agent/src/runtime/trajectory-storage";
-		const { flushTrajectoryWrites } = (await import(
-			modulePath
-		)) as TrajectoryStorageModule;
-		await flushTrajectoryWrites?.(runtime);
-	} catch {
-		// Best effort only. Some test runtimes do not register this helper.
+	if (flushTrajectoryWrites) {
+		await flushTrajectoryWrites(runtime);
 	}
 
 	for (let attempt = 0; attempt < 3; attempt += 1) {
@@ -211,11 +214,7 @@ export async function createRealTestRuntime(
 			)) as RuntimePluginModule;
 			const plugin = pluginModule.default ?? pluginModule.elizaPlugin;
 			if (plugin) {
-				const modulePath = "../../../agent/src/runtime/eliza";
-				const agentRuntimeModule = (await import(
-					modulePath
-				)) as AgentRuntimeModule;
-				agentRuntimeModule.configureLocalEmbeddingPlugin?.(plugin);
+				options?.configureEmbeddingPlugin?.(plugin);
 				await runtime.registerPlugin(plugin as RegisterablePlugin);
 				logger.info(
 					"[real-runtime] Registered local embedding plugin for TEXT_EMBEDDING",
@@ -269,7 +268,10 @@ export async function createRealTestRuntime(
 
 	const cleanup = async () => {
 		try {
-			await flushPendingTrajectoryWrites(runtime);
+			await flushPendingTrajectoryWrites(
+				runtime,
+				options?.flushTrajectoryWrites,
+			);
 		} catch (err) {
 			logger.debug(`[real-runtime] trajectory flush error: ${err}`);
 		}
@@ -279,7 +281,10 @@ export async function createRealTestRuntime(
 			logger.debug(`[real-runtime] runtime.stop() error: ${err}`);
 		}
 		try {
-			await flushPendingTrajectoryWrites(runtime);
+			await flushPendingTrajectoryWrites(
+				runtime,
+				options?.flushTrajectoryWrites,
+			);
 		} catch (err) {
 			logger.debug(`[real-runtime] post-stop trajectory flush error: ${err}`);
 		}
