@@ -19,8 +19,28 @@
 
 import type http from "node:http";
 import type { AgentRuntime } from "@elizaos/core";
-import { getCatalogCommands } from "@elizaos/plugin-commands";
+import { STATIC_ELIZA_PLUGINS } from "../runtime/plugin-types.ts";
 import { getCurrentViewState } from "./views-routes.js";
+
+type PluginCommandsModule = {
+  getCatalogCommands: (
+    surface: "gui" | "tui" | "discord" | "telegram",
+    options: { activeViewId: string | null; agentId?: string },
+  ) => unknown[];
+};
+
+let pluginCommandsPromise: Promise<PluginCommandsModule> | null = null;
+function getPluginCommands(): Promise<PluginCommandsModule> {
+  const staticModule = STATIC_ELIZA_PLUGINS["@elizaos/plugin-commands"];
+  if (staticModule) {
+    return Promise.resolve(staticModule as PluginCommandsModule);
+  }
+  const moduleSpecifier = ["@elizaos", "plugin-commands"].join("/");
+  pluginCommandsPromise ??= import(
+    /* @vite-ignore */ moduleSpecifier
+  ) as Promise<PluginCommandsModule>;
+  return pluginCommandsPromise;
+}
 
 const VALID_SURFACES: ReadonlySet<string> = new Set([
   "gui",
@@ -66,10 +86,16 @@ export async function handleCommandsRoutes(
 
   // Absent `?surface=` defaults to the web composer's surface (its historical
   // consumer); an explicit surface filters to exactly that surface's commands.
-  const commands = getCatalogCommands(surface ?? "gui", {
-    activeViewId,
-    agentId: runtime?.agentId ?? null,
-  });
+  let commands: unknown[] = [];
+  try {
+    const { getCatalogCommands } = await getPluginCommands();
+    commands = getCatalogCommands(surface ?? "gui", {
+      activeViewId,
+      agentId: runtime?.agentId ?? undefined,
+    });
+  } catch {
+    commands = [];
+  }
   json(res, {
     commands,
     surface,

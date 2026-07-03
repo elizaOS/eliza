@@ -84,7 +84,8 @@ let x402PluginModulePromise: Promise<X402PluginModule | null> | null = null;
 // node_modules on demand. Mirrors the variable-specifier bundle loader further
 // down this file.
 function importOptionalPlugin<T = unknown>(specifier: string): Promise<T> {
-  return import(/* @vite-ignore */ specifier) as Promise<T>;
+  const runtimeSpecifier = [specifier].join("");
+  return import(/* @vite-ignore */ runtimeSpecifier) as Promise<T>;
 }
 
 async function getBrowserPlugin(): Promise<BrowserPluginModule> {
@@ -154,7 +155,8 @@ async function getX402Plugin(): Promise<X402PluginModule | null> {
 const optionalPluginImports = {
   capacitor: () => importOptionalPlugin("@elizaos/plugin-capacitor-bridge"),
   computerUse: () => importOptionalPlugin("@elizaos/plugin-computeruse"),
-  cloud: () => importOptionalPlugin("@elizaos/plugin-elizacloud"),
+  cloud: () =>
+    importOptionalPlugin(["@elizaos", "plugin-elizacloud"].join("/")),
   imessage: () => importOptionalPlugin("@elizaos/plugin-imessage"),
   mcp: () => importOptionalPlugin("@elizaos/plugin-mcp"),
   signal: () => importOptionalPlugin("@elizaos/plugin-signal"),
@@ -302,9 +304,10 @@ let walletApiPromise:
   | Promise<typeof import("@elizaos/plugin-wallet")>
   | undefined;
 function getWalletApi(): Promise<typeof import("@elizaos/plugin-wallet")> {
+  const moduleSpecifier = ["@elizaos", "plugin-wallet"].join("/");
   walletApiPromise ??= importOptionalPlugin<
     typeof import("@elizaos/plugin-wallet")
-  >("@elizaos/plugin-wallet").catch((err) => {
+  >(moduleSpecifier).catch((err) => {
     // plugin-wallet is desktop/cloud-only; on mobile it is not in the bundle so
     // this import REJECTS. Cache a no-op proxy so /api/wallet/* falls through to
     // 404 instead of 500ing on every renderer poll. Desktop imports succeed, so

@@ -22,8 +22,9 @@ type ElizaCloudRoutesModule = {
 };
 
 async function loadElizaCloudRoutes(): Promise<ElizaCloudRoutesModule> {
+  const moduleSpecifier = ["@elizaos", "plugin-elizacloud"].join("/");
   return import(
-    "@elizaos/plugin-elizacloud"
+    /* @vite-ignore */ moduleSpecifier
   ) as Promise<ElizaCloudRoutesModule>;
 }
 

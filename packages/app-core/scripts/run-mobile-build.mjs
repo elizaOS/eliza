@@ -300,6 +300,7 @@ const IOS_BUN_ENGINE_REQUIRED_SYMBOLS = [
 const IOS_BUN_ENGINE_EXECUTION_PROFILE = appStoreExecutionProfile;
 export const IOS_AGENT_RUNTIME_ASSETS = [
   "agent-bundle.js",
+  "agent-deferred.js",
   "pglite.wasm",
   "initdb.wasm",
   "pglite.data",

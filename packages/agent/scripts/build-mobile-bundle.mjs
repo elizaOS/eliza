@@ -99,6 +99,12 @@ const OUT_DIRS = {
 const outDir = path.join(agentRoot, OUT_DIRS[TARGET]);
 const stubsDir = path.join(here, "mobile-stubs");
 const entry = path.join(agentRoot, "src", "bin.ts");
+const deferredEntry = path.join(
+  agentRoot,
+  "src",
+  "runtime",
+  "deferred-core-static-plugins.ts",
+);
 
 console.log("[build-mobile] target:", TARGET);
 console.log("[build-mobile] agent root:", agentRoot);
@@ -1527,11 +1533,84 @@ if (!buildResult.success) {
   process.exit(1);
 }
 
+console.log("[build-mobile] starting deferred Bun.build...");
+const deferredBuildResult = await Bun.build({
+  entrypoints: [deferredEntry],
+  outdir: outDir,
+  naming: "[dir]/[name].[ext]",
+  target: bunBuildTarget,
+  format: "esm",
+  ...(iosJscExternals ? { external: iosJscExternals } : {}),
+  tsconfig: bundlerTsconfig,
+  minify:
+    TARGET === "ios"
+      ? {
+          syntax: true,
+          whitespace: true,
+          identifiers: false,
+        }
+      : false,
+  define: {
+    "process.env.ELIZA_PLATFORM": JSON.stringify(platformDefineValue),
+    "process.env.ELIZA_DISABLE_DIRECT_RUN": JSON.stringify("1"),
+    "globalThis.__ELIZA_MOBILE_BUNDLE__": JSON.stringify(true),
+    ...(TARGET === "ios-jsc"
+      ? {
+          "process.env.ELIZA_RUNTIME": JSON.stringify("ios-jsc"),
+          "globalThis.__ELIZA_IOS_JSC__": JSON.stringify(true),
+          "globalThis.__ELIZA_BRIDGE_VERSION_REQUIRED__": JSON.stringify("v1"),
+        }
+      : {}),
+  },
+  plugins: [
+    iosFsSandboxPlugin,
+    coreTestingStripPlugin,
+    zodCjsResolverPlugin,
+    ethersCjsResolverPlugin,
+    viemCjsResolverPlugin,
+    stubCssPlugin,
+    dedupePlugin,
+    nativeCapacitorPlugin,
+    exactMobileStubPlugin,
+    capabilityRouterStubPlugin,
+    stubResolverPlugin,
+    localInferenceDedupePlugin,
+    workspaceSrcFallbackPlugin,
+    stripStaleJsArtifactsPlugin,
+    ...(TARGET === "ios-jsc"
+      ? [
+          {
+            name: "ios-jsc-node-externals",
+            setup(build) {
+              const externalSet = new Set(iosJscExternals ?? []);
+              build.onResolve({ filter: /.*/ }, (args) => {
+                if (externalSet.has(args.path)) {
+                  return { path: args.path, external: true };
+                }
+                return undefined;
+              });
+            },
+          },
+        ]
+      : []),
+  ],
+});
+
+if (!deferredBuildResult.success) {
+  console.error("[build-mobile] deferred Bun.build failed:");
+  for (const log of deferredBuildResult.logs) {
+    console.error("  ", log.level, log.message, log.position);
+  }
+  process.exit(1);
+}
+
 // ios-jsc ships the bundle as `agent-bundle-ios.js` (matches the iOS
 // app's loader expectation); android + ios-bun stay on `agent-bundle.js`.
 const bundleFilename =
   TARGET === "ios-jsc" ? "agent-bundle-ios.js" : "agent-bundle.js";
+const deferredBundleFilename = "agent-deferred.js";
 const bundlePath = path.join(outDir, bundleFilename);
+const deferredBundlePath = path.join(outDir, deferredBundleFilename);
 const defaultEntryPath = path.join(outDir, "bin.js");
 if (!existsSync(bundlePath) && existsSync(defaultEntryPath)) {
   await rename(defaultEntryPath, bundlePath);
@@ -1544,6 +1623,24 @@ if (!existsSync(bundlePath)) {
   console.error(
     "[build-mobile] outputs reported:",
     buildResult.outputs.map((o) => o.path),
+  );
+  process.exit(1);
+}
+const defaultDeferredEntryPath = path.join(
+  outDir,
+  "deferred-core-static-plugins.js",
+);
+if (!existsSync(deferredBundlePath) && existsSync(defaultDeferredEntryPath)) {
+  await rename(defaultDeferredEntryPath, deferredBundlePath);
+}
+if (!existsSync(deferredBundlePath)) {
+  console.error(
+    `[build-mobile] FATAL: ${deferredBundleFilename} not produced at`,
+    deferredBundlePath,
+  );
+  console.error(
+    "[build-mobile] deferred outputs reported:",
+    deferredBuildResult.outputs.map((o) => o.path),
   );
   process.exit(1);
 }
@@ -1808,6 +1905,53 @@ if (bundleSrc.startsWith("#!")) {
 }
 await Bun.write(bundlePath, prefixed);
 
+let deferredBundleSrc = await Bun.file(deferredBundlePath).text();
+const deferredShebangStripped = deferredBundleSrc.replace(
+  /^#![^\n]*\r?\n/m,
+  "",
+);
+if (deferredShebangStripped !== deferredBundleSrc) {
+  console.log("[build-mobile] stripped embedded shebang from deferred bundle");
+  deferredBundleSrc = deferredShebangStripped;
+}
+const deferredRenames = scanUndeclaredRenames(deferredBundleSrc);
+const deferredPolyfillLines = [
+  "// auto-injected polyfills for Bun.build identifier-resolution gaps",
+  "var default10 = () => globalThis.crypto.randomUUID();",
+  "var applyWhatsAppQrOverride3 = () => {};",
+  "var applySignalQrOverride3 = () => {};",
+  "var AutonomyService2 = class AutonomyServicePolyfill {\n" +
+    "  static serviceType = 'AUTONOMY';\n" +
+    "  static async start(_runtime) { return null; }\n" +
+    "  async stop() {}\n" +
+    "};",
+];
+for (const name of deferredRenames.undeclaredDefaults) {
+  if (SKIP_DEFAULTS.has(name)) continue;
+  deferredPolyfillLines.push(
+    `var ${name} = () => globalThis.crypto.randomUUID();`,
+  );
+}
+for (const name of deferredRenames.undeclaredApplies) {
+  if (SKIP_APPLIES.has(name)) continue;
+  deferredPolyfillLines.push(`var ${name} = () => {};`);
+}
+for (const name of deferredRenames.undeclaredServices) {
+  if (SKIP_SERVICES.has(name)) continue;
+  deferredPolyfillLines.push(
+    `var ${name} = class ${name}Polyfill { static async start(_runtime) { return null; } async stop() {} };`,
+  );
+}
+console.log(
+  `[build-mobile] deferred polyfill: ${deferredRenames.undeclaredDefaults.size} default*, ` +
+    `${deferredRenames.undeclaredApplies.size} apply*, ` +
+    `${deferredRenames.undeclaredServices.size} *Service* identifiers covered`,
+);
+await Bun.write(
+  deferredBundlePath,
+  `${deferredPolyfillLines.join("\n")}\n${deferredBundleSrc}`,
+);
+
 const nativeNodeOutputs = (await readdir(outDir)).filter((file) =>
   file.endsWith(".node"),
 );
@@ -1823,8 +1967,12 @@ if (nativeNodeOutputs.length > 0) {
 }
 
 const bundleSize = (await stat(bundlePath)).size;
+const deferredBundleSize = (await stat(deferredBundlePath)).size;
 console.log(
   `[build-mobile] bundle size: ${(bundleSize / 1024 / 1024).toFixed(2)} MB (with polyfill prefix)`,
+);
+console.log(
+  `[build-mobile] deferred bundle size: ${(deferredBundleSize / 1024 / 1024).toFixed(2)} MB`,
 );
 
 // Copy PGlite assets next to the bundle. The bundle's `import.meta.url` will
@@ -1875,6 +2023,7 @@ const manifest = {
   claim_boundary:
     "mobile_agent_bundle_manifest_only_not_android_boot_or_runtime_execution_evidence",
   bundle: bundleFilename,
+  deferredBundle: deferredBundleFilename,
   bunTarget: bunBuildTarget,
   platform: TARGET,
   pglite: {
@@ -1989,6 +2138,7 @@ if (TARGET === "android" && process.env.ELIZA_SKIP_BUNDLE_LOAD_SMOKE !== "1") {
   );
   const smokeEval =
     `await import(${JSON.stringify(bundlePath)}); ` +
+    `await import(${JSON.stringify(deferredBundlePath)}); ` +
     'console.log("BUNDLE_LOAD_SMOKE_OK"); process.exit(0);';
   const smoke = spawnSync("bun", ["-e", smokeEval], {
     stdio: ["ignore", "pipe", "pipe"],
@@ -2007,7 +2157,7 @@ if (TARGET === "android" && process.env.ELIZA_SKIP_BUNDLE_LOAD_SMOKE !== "1") {
     console.error(smokeOutput.slice(-6000));
     console.error(
       "[build-mobile] FATAL: agent-bundle.js failed the module-load smoke " +
-        `(exit ${smoke.status}). A load-time eval error in the bundle bricks ` +
+        `(exit ${smoke.status}). A load-time eval error in the bundle pair bricks ` +
         "the on-device agent before /api/health can bind.",
     );
     process.exit(1);
