@@ -41,7 +41,10 @@
   },
   "elizaos": {
     "app": {
-      "heroImage": "assets/hero.png"
+      "heroImage": "assets/hero.png",
+      "catalogSection": "finance",
+      "defaultHidden": true,
+      "scope": "wallet"
     },
     "appRegister": "register"
   },

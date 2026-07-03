@@ -58,22 +58,27 @@ const APPS_VIEW_HIDDEN_APP_NAME_SET = new Set<string>(
   APPS_VIEW_HIDDEN_APP_NAMES,
 );
 
-const FEATURED_APP_NAMES = new Set<string>([
-  "@elizaos/plugin-personal-assistant",
+/**
+ * Catalog sections an app may declare in `package.json` →
+ * `elizaos.app.catalogSection`. The dynamic `featured` / `favorites` sections
+ * are computed (from the `featured` flag and the user's starred apps) and are
+ * never declarable.
+ */
+const DECLARABLE_APP_CATALOG_SECTIONS = new Set<AppCatalogSectionKey>([
+  "games",
+  "developerUtilities",
+  "finance",
+  "other",
 ]);
 
-const DEFAULT_VISIBLE_GAME_APP_NAMES = new Set<string>([]);
-
-const DEFAULT_HIDDEN_APP_NAMES = new Set<string>([
-  "@elizaos/plugin-hyperliquid",
-  "@elizaos/plugin-polymarket",
-  "@elizaos/plugin-shopify",
-]);
-
-const WALLET_SCOPED_APP_NAMES = new Set<string>([
-  "@elizaos/plugin-hyperliquid",
-  "@elizaos/plugin-polymarket",
-]);
+function isDeclarableCatalogSection(
+  value: string | undefined,
+): value is AppCatalogSectionKey {
+  return (
+    value !== undefined &&
+    (DECLARABLE_APP_CATALOG_SECTIONS as ReadonlySet<string>).has(value)
+  );
+}
 
 const APP_CATALOG_SECTION_ORDER: readonly AppCatalogSectionKey[] = [
   "featured",
@@ -92,10 +97,10 @@ function getConfiguredDefaultAppNames(): ReadonlySet<string> {
   );
 }
 
-function isFeaturedAppName(name: string): boolean {
-  return (
-    FEATURED_APP_NAMES.has(name) || getConfiguredDefaultAppNames().has(name)
-  );
+function isFeaturedApp(
+  app: Pick<RegistryAppInfo, "name" | "featured">,
+): boolean {
+  return app.featured === true || getConfiguredDefaultAppNames().has(app.name);
 }
 
 export interface AppCatalogSection {
@@ -163,7 +168,10 @@ export function isCuratedGameApp(
 }
 
 export function shouldShowAppInAppsView(
-  app: Pick<RegistryAppInfo, "category" | "name">,
+  app: Pick<
+    RegistryAppInfo,
+    "category" | "name" | "catalogSection" | "featured" | "defaultHidden" | "scope"
+  >,
   options: {
     isProd?: boolean;
     showAllApps?: boolean;
@@ -202,11 +210,13 @@ export function shouldShowAppInAppsView(
     category: app.category,
     displayName: "",
     description: "",
+    catalogSection: app.catalogSection,
+    featured: app.featured,
   });
 
   if (
-    DEFAULT_HIDDEN_APP_NAMES.has(canonicalName) &&
-    !(walletEnabled && WALLET_SCOPED_APP_NAMES.has(canonicalName)) &&
+    app.defaultHidden === true &&
+    !(walletEnabled && app.scope === "wallet") &&
     !configuredDefaultAppNames.has(app.name) &&
     !configuredDefaultAppNames.has(canonicalName)
   ) {
@@ -215,7 +225,7 @@ export function shouldShowAppInAppsView(
 
   if (sectionKey === "games") {
     return (
-      DEFAULT_VISIBLE_GAME_APP_NAMES.has(canonicalName) ||
+      app.defaultHidden === false ||
       configuredDefaultAppNames.has(app.name) ||
       configuredDefaultAppNames.has(canonicalName)
     );
@@ -320,10 +330,10 @@ export function getDefaultAppsCatalogSelection(
 export function getAppCatalogSectionKey(
   app: Pick<
     RegistryAppInfo,
-    "name" | "displayName" | "description" | "category"
+    "name" | "displayName" | "description" | "category" | "catalogSection" | "featured"
   >,
 ): AppCatalogSectionKey {
-  if (isFeaturedAppName(app.name)) {
+  if (isFeaturedApp(app)) {
     return "featured";
   }
 
@@ -331,14 +341,8 @@ export function getAppCatalogSectionKey(
     return "developerUtilities";
   }
 
-  const canonicalName = normalizeElizaCuratedAppName(app.name) ?? app.name;
-  switch (canonicalName) {
-    case "@elizaos/plugin-shopify":
-    case "@elizaos/plugin-hyperliquid":
-    case "@elizaos/plugin-polymarket":
-      return "finance";
-    case "@elizaos/plugin-feed":
-      return "games";
+  if (isDeclarableCatalogSection(app.catalogSection)) {
+    return app.catalogSection;
   }
 
   const normalizedCategory = app.category.trim().toLowerCase();
@@ -388,7 +392,7 @@ export function getAppCatalogSectionKey(
 export function getAppCatalogSectionLabel(
   app: Pick<
     RegistryAppInfo,
-    "name" | "displayName" | "description" | "category"
+    "name" | "displayName" | "description" | "category" | "catalogSection" | "featured"
   >,
 ): string {
   return APP_CATALOG_SECTION_LABELS[getAppCatalogSectionKey(app)];
@@ -419,7 +423,7 @@ export function groupAppsForCatalog(
   }
 
   const featuredApps = apps.filter(
-    (app) => isFeaturedAppName(app.name) && !favoriteAppNames.has(app.name),
+    (app) => isFeaturedApp(app) && !favoriteAppNames.has(app.name),
   );
   if (featuredApps.length > 0) {
     sections.push({

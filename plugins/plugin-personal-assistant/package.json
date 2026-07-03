@@ -120,6 +120,7 @@
   "elizaos": {
     "app": {
       "heroImage": "assets/hero.png",
+      "featured": true,
       "permissions": [
         "reminders",
         "calendar",

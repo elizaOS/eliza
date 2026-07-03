@@ -201,6 +201,32 @@ export interface RegistryAppInfo {
    * to compute the shell's landing tab at boot.
    */
   mainTab?: boolean;
+  /**
+   * Declared home section for the app catalog, sourced from `package.json` →
+   * `elizaos.app.catalogSection`. One of the concrete catalog sections
+   * (`games` | `developerUtilities` | `finance` | `other`). When absent, the
+   * section is derived from `category` and keyword heuristics. The dynamic
+   * `featured` / `favorites` sections are never declared here (they are
+   * computed from `featured` and the user's starred apps).
+   */
+  catalogSection?: string;
+  /**
+   * If true, the app is promoted into the Featured catalog section. Sourced
+   * from `elizaos.app.featured`. Featured is presentational only — it does not
+   * make an otherwise-hidden app appear.
+   */
+  featured?: boolean;
+  /**
+   * If true, the app is hidden from the catalog by default and only surfaces
+   * when explicitly configured as a default app, or — for `scope: "wallet"`
+   * apps — when the wallet is enabled. Sourced from `elizaos.app.defaultHidden`.
+   */
+  defaultHidden?: boolean;
+  /**
+   * Capability scope that gates default visibility. `"wallet"` apps are
+   * revealed when the wallet is enabled. Sourced from `elizaos.app.scope`.
+   */
+  scope?: string;
 }
 
 export interface AppSessionState {

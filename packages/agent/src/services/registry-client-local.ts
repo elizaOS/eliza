@@ -48,6 +48,10 @@ interface LocalPackageAppMeta {
    * landing tab at boot.
    */
   mainTab?: boolean;
+  catalogSection?: string;
+  featured?: boolean;
+  defaultHidden?: boolean;
+  scope?: string;
 }
 
 interface LocalPackageElizaConfig {
@@ -259,6 +263,10 @@ function toLocalAppMeta(
     developerOnly: app?.developerOnly,
     visibleInAppStore: app?.visibleInAppStore,
     mainTab: app?.mainTab,
+    catalogSection: app?.catalogSection,
+    featured: app?.featured,
+    defaultHidden: app?.defaultHidden,
+    scope: app?.scope,
   };
 }
 

@@ -207,6 +207,10 @@ export function toAppInfo(
     developerOnly: meta?.developerOnly,
     visibleInAppStore: meta?.visibleInAppStore,
     mainTab: meta?.mainTab,
+    catalogSection: meta?.catalogSection,
+    featured: meta?.featured,
+    defaultHidden: meta?.defaultHidden,
+    scope: meta?.scope,
   };
 }
 

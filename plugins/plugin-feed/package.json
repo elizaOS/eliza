@@ -49,6 +49,7 @@
     "app": {
       "displayName": "Feed",
       "category": "game",
+      "catalogSection": "games",
       "heroImage": "assets/hero.png",
       "launchType": "url",
       "launchUrl": "{FEED_CLIENT_URL}",
