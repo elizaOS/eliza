@@ -64,6 +64,12 @@ describe("Eliza-1 runtime quant metadata", () => {
       expect(entry?.runtime?.optimizations?.requiresKernel).not.toContain(
         "polarquant",
       );
+      // Gemma-aware RAM defaults (#9033 / llama.cpp#21690): the Gemma-4 KV
+      // context-checkpoint ring is bounded to 1 and decode is single-slot
+      // (-np 1) so server KV cannot grow unbounded on the single-user
+      // on-device runtime.
+      expect(entry?.runtime?.optimizations?.ctxCheckpoints).toBe(1);
+      expect(entry?.runtime?.optimizations?.parallel).toBe(1);
       if (hostedMtpTiers.has(id)) {
         expect(entry?.runtime?.mtp?.specType).toBe("draft-mtp");
       } else {

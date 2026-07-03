@@ -638,14 +638,27 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
     // there). Real devices report isSimulator=false and keep Metal.
     const nativeGpuEnabled =
       resolveNativeGpuEnabled(options.useGpu) && !(await this.isIosSimulator());
+    const isEmbedding = looksLikeEmbeddingModelPath(options.modelPath);
     const params: NativeContextParams & Record<string, unknown> = {
       model: options.modelPath,
       n_ctx: options.contextSize ?? 4096,
       n_gpu_layers: nativeGpuEnabled ? 99 : 0,
       n_threads: options.maxThreads ?? 0,
+      // Never force `--no-mmap` for Gemma (epic #9033 lever 3): the Gemma-4
+      // Per-Layer Embeddings tensor (`per_layer_tok_embd`, ~2.8B params on
+      // E2B) is paged from disk by the OS when mmap is on, instead of being
+      // resident. `--no-mmap` would fault it all into RAM at load.
       use_mmap: true,
       flash_attn: nativeGpuEnabled,
-      embedding: looksLikeEmbeddingModelPath(options.modelPath),
+      // Windowed SWA KV (epic #9033 lever 2): keep `swa_full=false` so the
+      // interleaved sliding-window layers size their KV to `n_swa + n_ubatch`
+      // rather than the full context — the dominant KV saving on Gemma-4's
+      // mostly-SWA attention stack. This is llama.cpp's default; we pin it
+      // explicitly on the text path so a runtime/binding default flip can't
+      // silently regress Gemma RAM. Embedding contexts (non-Gemma, no SWA)
+      // are left untouched.
+      ...(isEmbedding ? {} : { swa_full: false }),
+      embedding: isEmbedding,
       n_batch: options.mobileSpeculative ? 128 : 512,
       n_ubatch: options.mobileSpeculative ? 64 : 512,
       ...(options.draftModelPath

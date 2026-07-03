@@ -475,7 +475,14 @@ class LocalAIManager {
 			model: modelPath,
 			n_ctx: spec.contextSize,
 			n_gpu_layers: 999,
+			// Gemma-aware RAM defaults (epic #9033): keep mmap on so the Gemma-4
+			// Per-Layer-Embeddings tensor pages from disk (never `--no-mmap`),
+			// and pin windowed SWA KV (`swa_full=false`, the dominant KV saving
+			// on Gemma's mostly-sliding-window attention). Both are the current
+			// effective defaults; setting them explicitly keeps a binding
+			// default flip from silently regressing Gemma RAM.
 			use_mmap: true,
+			swa_full: false,
 		});
 		const entry: ContextEntry = { ctx, systemPrompt };
 		if (slot === "medium") this.mediumCtx = entry;

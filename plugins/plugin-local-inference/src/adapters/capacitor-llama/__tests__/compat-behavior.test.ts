@@ -157,6 +157,18 @@ describe("local-ai compat adapter behavior", () => {
 		expect(onStreamChunk.mock.calls.map(([chunk]) => chunk).join("")).toBe(
 			"hello",
 		);
+
+		// Gemma-aware RAM defaults (#9033): this is the first text-context load,
+		// so the fresh initCapacitorLlama call carries the pinned defaults —
+		// mmap on (lever 3: PLE pages from disk) and windowed SWA KV
+		// (lever 2: swa_full=false, the dominant KV saving on Gemma-4).
+		expect(mocks.initCapacitorLlama).toHaveBeenCalled();
+		const initParams = mocks.initCapacitorLlama.mock.calls[0]?.[0] as {
+			use_mmap?: boolean;
+			swa_full?: boolean;
+		};
+		expect(initParams.use_mmap).toBe(true);
+		expect(initParams.swa_full).toBe(false);
 	});
 
 	it("sends a desktop-safe prompt and forwards sampler controls", async () => {

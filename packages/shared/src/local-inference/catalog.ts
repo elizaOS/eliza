@@ -437,14 +437,21 @@ function runtimeForTier(
   const runtime: CatalogModel["runtime"] = {
     preferredBackend: "llama-cpp",
     optimizations: {
-      parallel: 4,
+      // Gemma-aware RAM defaults (epic #9033). Eliza-1 is Gemma-4-based and
+      // hits llama.cpp/#21690: the server KV context-checkpoint ring grows
+      // unbounded on Gemma (a handful of ~16K-prompt turns filled ~64 GB in
+      // the upstream repro). The on-device Eliza-1 runtime is single-user, so
+      // pin single-slot decode (`-np 1`) and bound the checkpoint ring to 1 —
+      // this is pure config, not a kernel change, and only touches the
+      // Gemma-4 Eliza-1 tiers built here (never other models).
+      parallel: 1,
       flashAttention: true,
       requiresKernel,
       // OpenVINO is the right backend for ASR/Whisper on Intel hosts but
       // never for autoregressive text. The text path uses optimized
       // llama.cpp kernels plus native MTP heads.
       unsupportedKernels: ["openvino"],
-      ctxCheckpoints: 4,
+      ctxCheckpoints: 1,
       ctxCheckpointInterval: 4096,
     },
   };

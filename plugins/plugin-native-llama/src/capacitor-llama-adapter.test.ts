@@ -244,6 +244,40 @@ describe("CapacitorLlamaAdapter context-id allocation (issue #7681)", () => {
     expect(state.initContextCalls[0].params.flash_attn).toBe(false);
   });
 
+  it("applies Gemma-aware RAM defaults on a text (Eliza-1) load: mmap on, windowed SWA KV (#9033)", async () => {
+    vi.resetModules();
+    const state = installMockPlugin();
+    const { CapacitorLlamaAdapter } = await import("./capacitor-llama-adapter");
+
+    const adapter = new CapacitorLlamaAdapter();
+    await adapter.load({ modelPath: "/tmp/eliza-1-2b-128k.gguf" });
+
+    expect(state.initContextCalls).toHaveLength(1);
+    const params = state.initContextCalls[0].params;
+    // Lever 3: never force --no-mmap for Gemma (PLE pages from disk).
+    expect(params.use_mmap).toBe(true);
+    // Lever 2: windowed SWA KV is the dominant KV saving on Gemma-4.
+    expect(params.swa_full).toBe(false);
+  });
+
+  it("does NOT pin swa_full on an embedding (non-Gemma) load", async () => {
+    vi.resetModules();
+    const state = installMockPlugin();
+    const { CapacitorLlamaAdapter } = await import("./capacitor-llama-adapter");
+
+    const adapter = new CapacitorLlamaAdapter();
+    await adapter.load({ modelPath: "/tmp/bge-small-en-v1.5.gguf" });
+
+    expect(state.initContextCalls).toHaveLength(1);
+    const params = state.initContextCalls[0].params;
+    expect(params.embedding).toBe(true);
+    // Gemma-only lever; embedding contexts have no SWA layers, so the knob
+    // is left at the binding default rather than pinned.
+    expect(params.swa_full).toBeUndefined();
+    // mmap-on is safe/universal and stays on.
+    expect(params.use_mmap).toBe(true);
+  });
+
   it("allows Android callers to opt into GPU params explicitly", async () => {
     vi.resetModules();
     const state = installMockPlugin();
