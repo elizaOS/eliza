@@ -136,7 +136,10 @@ export function extractPlannerAction(text: string): string | null {
     const first = parsed.toolCalls[0];
     if (first && typeof first === "object") {
       const record = first as Record<string, unknown>;
-      const name = record.name ?? record.action ?? record.actionName;
+      // `toolName` is the shape emitted by harvested gpt-5.5 trajectories'
+      // native-export rows; keep the older name/action/actionName aliases too.
+      const name =
+        record.toolName ?? record.name ?? record.action ?? record.actionName;
       if (typeof name === "string" && name.trim().length > 0) {
         return name.trim().toUpperCase();
       }
