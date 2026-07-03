@@ -160,7 +160,8 @@ const optionalPluginImports = {
   imessage: () => importOptionalPlugin("@elizaos/plugin-imessage"),
   mcp: () => importOptionalPlugin("@elizaos/plugin-mcp"),
   signal: () => importOptionalPlugin("@elizaos/plugin-signal"),
-  streaming: () => importOptionalPlugin("@elizaos/plugin-streaming"),
+  streaming: () =>
+    importOptionalPlugin(["@elizaos", "plugin-streaming"].join("/")),
   whatsapp: () => importOptionalPlugin("@elizaos/plugin-whatsapp"),
   workflow: () => importOptionalPlugin("@elizaos/plugin-workflow"),
 };
@@ -282,9 +283,10 @@ let agentSkillsApiPromise:
 function getAgentSkillsApi(): Promise<
   typeof import("@elizaos/plugin-agent-skills")
 > {
-  agentSkillsApiPromise ??= import(
-    /* @vite-ignore */ "@elizaos/plugin-agent-skills"
-  );
+  const moduleSpecifier = ["@elizaos", "plugin-agent-skills"].join("/");
+  agentSkillsApiPromise ??= importOptionalPlugin<
+    typeof import("@elizaos/plugin-agent-skills")
+  >(moduleSpecifier);
   return agentSkillsApiPromise;
 }
 
@@ -294,9 +296,10 @@ let appManagerApiPromise:
 function getAppManagerApi(): Promise<
   typeof import("@elizaos/plugin-app-manager")
 > {
-  appManagerApiPromise ??= import(
-    /* @vite-ignore */ "@elizaos/plugin-app-manager"
-  );
+  const moduleSpecifier = ["@elizaos", "plugin-app-manager"].join("/");
+  appManagerApiPromise ??= importOptionalPlugin<
+    typeof import("@elizaos/plugin-app-manager")
+  >(moduleSpecifier);
   return appManagerApiPromise;
 }
 
@@ -4493,9 +4496,9 @@ export async function startApiServer(opts?: {
         return;
       }
       try {
-        const streamRoutes = await import(
-          /* @vite-ignore */ "@elizaos/plugin-streaming"
-        );
+        const streamRoutes = await importOptionalPlugin<
+          typeof import("@elizaos/plugin-streaming")
+        >(STREAMING_PLUGIN_MODULE_ID);
         const handleStreamRoute =
           typeof streamRoutes.handleStreamRoute === "function"
             ? streamRoutes.handleStreamRoute

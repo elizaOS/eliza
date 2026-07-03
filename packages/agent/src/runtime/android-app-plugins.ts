@@ -10,9 +10,9 @@ const [
   { phoneCallLogProvider, appPhonePlugin: rawPhonePlugin },
   { appWifiPlugin: rawWifiPlugin, wifiNetworksProvider },
 ] = await Promise.all([
-  import(/* @vite-ignore */ "@elizaos/plugin-contacts"),
-  import(/* @vite-ignore */ "@elizaos/plugin-phone"),
-  import(/* @vite-ignore */ "@elizaos/plugin-wifi"),
+  import(/* @vite-ignore */ "@elizaos/plugin-contacts/plugin"),
+  import(/* @vite-ignore */ "@elizaos/plugin-phone/plugin"),
+  import(/* @vite-ignore */ "@elizaos/plugin-wifi/plugin"),
 ]);
 
 export const appWifiPlugin = gatePluginSessionForHostedApp(

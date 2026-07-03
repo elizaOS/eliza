@@ -16,7 +16,6 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
-import { sanitizeCompletionRelay } from "@elizaos/plugin-agent-orchestrator";
 import { generateChatResponse as generateChatResponseFromChatRoutes } from "./chat-routes.ts";
 import { resolveClientChatAdminEntityId } from "./client-chat-admin.ts";
 import { beginDelivery } from "./delivery-dedupe.ts";
@@ -119,6 +118,36 @@ const SYNTHESIS_ATTACHMENT_INPUT_DIRS = new Set([
   "reference",
   "references",
 ]);
+const DEFAULT_MAX_RELAY_CHARS = 2000;
+
+function stripToolTranscript(text: string): string {
+  if (!text) return "";
+  return text
+    .replace(/\[tool output:[^\]]*\][\s\S]*?\[\/tool output\]/g, "")
+    .replace(/\[tool output:[\s\S]*$/g, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function elideLongBlocks(
+  text: string,
+  maxChars: number = DEFAULT_MAX_RELAY_CHARS,
+): string {
+  if (!text) return "";
+  if (text.length <= maxChars) return text;
+  const marker = `… [output truncated — ${text.length} chars total]`;
+  const headBudget = maxChars - marker.length - 1;
+  if (headBudget <= 0) return marker;
+  return `${text.slice(0, headBudget).trimEnd()}\n${marker}`;
+}
+
+function sanitizeCompletionRelay(
+  text: string | undefined | null,
+  maxChars: number = DEFAULT_MAX_RELAY_CHARS,
+): string {
+  if (!text) return "";
+  return elideLongBlocks(stripToolTranscript(text), maxChars);
+}
 
 export async function routeAutonomyTextToUser(
   state: ServerState,
