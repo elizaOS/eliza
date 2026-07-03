@@ -191,11 +191,13 @@ describe("plugin-health default packs through the real scheduled-task runner (#8
     }
   });
 
-  it("REGRESSION GUARD: dropping personal_baseline_sufficient makes sleep-recap skip on the unknown gate", async () => {
+  it("REGRESSION GUARD: dropping personal_baseline_sufficient rejects sleep-recap at schedule()", async () => {
     // Build the registry the way develop shipped BEFORE #9563: every
-    // built-in gate EXCEPT the one sleep-recap depends on. The real runner
-    // must surface the unregistered gate as a skip — proving the test above
-    // is load-bearing and would have caught the original bug.
+    // built-in gate EXCEPT the one sleep-recap depends on. Since #11791 the
+    // runner refuses to even persist a task referencing an unregistered gate
+    // (fail-closed at schedule time, earlier than the fire-time skip this
+    // guard originally pinned) — proving the fire test above is load-bearing
+    // and would have caught the original bug before any task existed.
     const fullGates = createTaskGateRegistry();
     registerBuiltInGates(fullGates);
     const partialGates = createTaskGateRegistry();
@@ -209,14 +211,9 @@ describe("plugin-health default packs through the real scheduled-task runner (#8
     const record = sleepRecapDefaultPack.records[0];
     if (!record) throw new Error("sleepRecapDefaultPack should ship a record");
 
-    const result = await fireFirstRecord(runner, record);
-
-    expect(result.kind).toBe("skipped");
-    if (result.kind !== "skipped") {
-      throw new Error("expected the unregistered gate to skip the fire");
-    }
-    expect(result.reason).toContain(
-      "unknown gate kind: personal_baseline_sufficient",
+    await expect(fireFirstRecord(runner, record)).rejects.toThrow(
+      /shouldFire\.gates\[\d+\]\.kind "personal_baseline_sufficient" is not registered/,
     );
+    expect(await runner.list()).toHaveLength(0);
   });
 });

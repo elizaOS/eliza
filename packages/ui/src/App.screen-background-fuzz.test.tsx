@@ -163,7 +163,12 @@ vi.mock("./hooks", () => ({
   useRenderGuard: vi.fn(),
   useIntervalWhenDocumentVisible: () => {},
 }));
-vi.mock("./state", () => {
+vi.mock("./state", async () => {
+  // Pure static constants pass through from the real leaf module (side-effect
+  // free by design) so the mock never drifts from product preset data.
+  const { ACCENT_PRESETS } = await vi.importActual<
+    typeof import("./state/ui-preferences")
+  >("./state/ui-preferences");
   const getAppValue = () => ({
     actionNotice: null,
     activeGameViewerUrl: null,
@@ -206,6 +211,7 @@ vi.mock("./state", () => {
     uiThemeMode: "system",
   });
   return {
+    ACCENT_PRESETS,
     useApp: () => getAppValue(),
     useAppSelector: <T,>(
       selector: (s: ReturnType<typeof getAppValue>) => T,

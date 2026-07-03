@@ -20,9 +20,10 @@
  */
 
 import type { IncomingMessage, ServerResponse } from "node:http";
-import type {
-  ScheduledTask,
-  ScheduledTaskRunnerHandle,
+import {
+  ChannelKeyError,
+  type ScheduledTask,
+  type ScheduledTaskRunnerHandle,
 } from "../scheduled-task/index.js";
 import {
   scheduledTaskFilterSchema,
@@ -223,7 +224,10 @@ export function makeScheduledTasksRouteHandler(
         );
         json(res, { task }, 201);
       } catch (err) {
-        if (err instanceof ScheduledTaskValidationError) {
+        if (
+          err instanceof ScheduledTaskValidationError ||
+          err instanceof ChannelKeyError
+        ) {
           error(res, err.message, 400);
           return true;
         }

@@ -4,7 +4,7 @@
  * Measures the production frontend bundle in `packages/app/dist`:
  *  - raw + brotli size of every JS/CSS asset
  *  - the initial entry chunk (what index.html loads eagerly)
- *  - duplicate chunks (same logical name emitted once per entry point)
+ *  - duplicate chunks (the same compiled content emitted more than once)
  *  - heavy-library spread (e.g. three.js shipped as three.module + three.webgpu + vendor-three)
  *  - per-chunk offenders over the warn budget
  *
@@ -13,6 +13,8 @@
  *
  * Usage: node packages/benchmarks/loadperf/bundle-kpi.mjs [--json]
  */
+
+import { createHash } from "node:crypto";
 
 import {
   APP_DIST,
@@ -162,17 +164,29 @@ function main() {
   const totalRaw = assets.reduce((s, a) => s + a.raw, 0);
   const totalBrotli = assets.reduce((s, a) => s + a.brotli, 0);
 
-  // Duplicate logical chunks (same name emitted N times — usually one per entry point).
-  const byLogical = new Map();
+  // Duplicate chunks: the same compiled content emitted more than once (e.g.
+  // one copy per HTML entry point). Copies must be matched by CONTENT — with
+  // rollup content hashes stripped, so two copies that differ only in the
+  // hashed filenames of the sibling chunks they reference still match — never
+  // by chunk basename: dozens of unrelated modules legitimately share generic
+  // basenames (`index` for every npm package entry, `register-terminal-view`
+  // once per view, …), so a basename group says nothing about shipped bytes.
+  const ROLLUP_HASH_REF = /-[A-Za-z0-9_-]{8}\.(js|css)\b/g;
+  const byContent = new Map();
   for (const a of assets) {
-    const arr = byLogical.get(a.logical) ?? [];
+    const src = readFileSync(join(APP_DIST, a.path), "utf8");
+    const key = createHash("sha256")
+      .update(src.replace(ROLLUP_HASH_REF, ".$1"))
+      .digest("hex");
+    const arr = byContent.get(key) ?? [];
     arr.push(a);
-    byLogical.set(a.logical, arr);
+    byContent.set(key, arr);
   }
-  const duplicates = [...byLogical.entries()]
-    .filter(([, arr]) => arr.length > 1)
-    .map(([name, arr]) => ({
-      logical: name,
+  const duplicates = [...byContent.values()]
+    .filter((arr) => arr.length > 1)
+    .map((arr) => ({
+      logical: arr[0].logical,
+      files: arr.map((a) => a.name),
       copies: arr.length,
       eachBrotli: arr[0].brotli,
       wastedBrotli: arr.slice(1).reduce((s, a) => s + a.brotli, 0),
@@ -324,7 +338,7 @@ function print(r, file) {
       `largest chunk:     ${s.largestChunk.name}  ${kb(s.largestChunk.brotli)} brotli / ${mb(s.largestChunk.raw)} raw`,
     );
   console.log(
-    `dup waste:         ${mb(s.duplicateWastedBrotli)} brotli (same chunk emitted per entry point)`,
+    `dup waste:         ${mb(s.duplicateWastedBrotli)} brotli (identical chunk content emitted more than once)`,
   );
 
   console.log("\n-- top 12 chunks by brotli  (E=eager / lazy) --");
@@ -335,9 +349,10 @@ function print(r, file) {
   }
 
   console.log("\n-- duplicate chunks (wasted = extra copies) --");
+  if (r.duplicates.length === 0) console.log("  none");
   for (const d of r.duplicates.slice(0, 10)) {
     console.log(
-      `  ${d.copies}x  ${kb(d.wastedBrotli).padStart(11)} wasted  ${d.logical} (each ${kb(d.eachBrotli)})`,
+      `  ${d.copies}x  ${kb(d.wastedBrotli).padStart(11)} wasted  ${d.logical} (each ${kb(d.eachBrotli)}): ${d.files.join(", ")}`,
     );
   }
 

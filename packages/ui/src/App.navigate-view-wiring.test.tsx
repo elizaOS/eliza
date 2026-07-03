@@ -199,7 +199,12 @@ vi.mock("./hooks", () => ({
   useRenderGuard: vi.fn(),
 }));
 
-vi.mock("./state", () => {
+vi.mock("./state", async () => {
+  // Pure static constants pass through from the real leaf module (side-effect
+  // free by design) so the mock never drifts from product preset data.
+  const { ACCENT_PRESETS } = await vi.importActual<
+    typeof import("./state/ui-preferences")
+  >("./state/ui-preferences");
   // Rebuilt on each access so `appState.tab`/`setTab` are read LIVE — the
   // navigation tests mutate appState between renders, and useApp / the selector
   // hooks must reflect that (mirrors the original fresh-object-per-call mock).
@@ -244,6 +249,7 @@ vi.mock("./state", () => {
     uiThemeMode: "system",
   });
   return {
+    ACCENT_PRESETS,
     useApp: () => getAppValue(),
     useAppSelector: <T,>(
       selector: (s: ReturnType<typeof getAppValue>) => T,

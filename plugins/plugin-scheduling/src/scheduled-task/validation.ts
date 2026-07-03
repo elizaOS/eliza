@@ -29,7 +29,6 @@ export interface ScheduledTaskValidationDeps {
   gates: TaskGateRegistry;
   completionChecks: CompletionCheckRegistry;
   ladders: EscalationLadderRegistry;
-  channelKeys?: () => ReadonlySet<string>;
 }
 
 const TERMINAL_STATES = new Set([
@@ -428,7 +427,6 @@ export function validateScheduledTaskInput(
         if (!Array.isArray(steps)) {
           issues.push(`${path}.escalation.steps must be an array`);
         } else {
-          const registeredChannels = deps.channelKeys?.();
           steps.forEach((step, index) => {
             const stepPath = `${path}.escalation.steps[${index}]`;
             if (!isRecord(step)) {
@@ -440,18 +438,17 @@ export function validateScheduledTaskInput(
                 `${stepPath}.delayMinutes must be a non-negative integer`,
               );
             }
+            // Shape only. channelKey REGISTRATION is owned by the A11 check in
+            // `runner.schedule()` (typed `ChannelKeyError` with the offending
+            // key + registered set) — the same contract used at dispatch-time
+            // channel resolve. Registration is a time-of-schedule property, so
+            // nested pipeline children are checked when they are scheduled,
+            // not against today's registry.
             if (
               typeof step.channelKey !== "string" ||
               step.channelKey.trim().length === 0
             ) {
               issues.push(`${stepPath}.channelKey must be a non-empty string`);
-            } else if (
-              registeredChannels &&
-              !registeredChannels.has(step.channelKey)
-            ) {
-              issues.push(
-                `${stepPath}.channelKey "${step.channelKey}" is not registered`,
-              );
             }
             if (
               step.intensity !== undefined &&
