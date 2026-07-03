@@ -1,15 +1,19 @@
 import {
 	type AudioStreamResult,
+	applyBackgroundInferenceBudget,
 	EventType,
 	type GenerateTextParams,
+	getInferencePriorityGate,
 	type IAgentRuntime,
 	type ImageDescriptionParams,
 	type ImageDescriptionResult,
 	type ImageGenerationParams,
 	type ImageGenerationResult,
+	inferenceRamClassFromEnv,
 	logger,
 	ModelType,
 	type Plugin,
+	resolveBackgroundInferenceBudget,
 	type TextEmbeddingParams,
 	type TextToSpeechParams,
 	type TranscriptionParams,
@@ -543,14 +547,48 @@ function createTextHandler(modelType: string) {
 		params: GenerateTextParams,
 	): Promise<string> => {
 		const service = requireService(runtime, modelType);
-		if (typeof service.generate !== "function") {
+		const generate = service.generate;
+		if (typeof generate !== "function") {
 			throw unavailable(
 				modelType,
 				"capability_unavailable",
 				`[local-inference] Active local backend does not implement ${modelType} generation`,
 			);
 		}
-		return service.generate(textGenerationArgsFromParams(params));
+		// The runtime loader services (bionic host / AOSP adapter / device
+		// bridge) decode one request at a time on a shared resident model, so
+		// route through the process-wide interactive-over-background lane
+		// (#11914): interactive turns dispatch first; background jobs wait a
+		// bounded time and take the device-class budget clamps.
+		const args = textGenerationArgsFromParams(params);
+		const priority = params.priority ?? "interactive";
+		let lockWaitMs: number | undefined;
+		if (priority === "background") {
+			const budget = resolveBackgroundInferenceBudget(
+				inferenceRamClassFromEnv() ?? "standard",
+			);
+			const clamped = applyBackgroundInferenceBudget(
+				{ prompt: args.prompt, maxTokens: args.maxTokens },
+				budget,
+			);
+			if (clamped.clamped.length > 0) {
+				logger.info(
+					`[local-inference] background generate clamped to the device-class budget: ${clamped.clamped.join(", ")} (#11914)`,
+				);
+			}
+			args.prompt = clamped.prompt;
+			args.maxTokens = clamped.maxTokens;
+			lockWaitMs = budget.lockWaitMs;
+		}
+		return getInferencePriorityGate().runExclusive(
+			{
+				priority,
+				label: `${modelType} local-service (${args.prompt.length} chars)`,
+				...(lockWaitMs !== undefined ? { waitMs: lockWaitMs } : {}),
+				...(params.signal ? { signal: params.signal } : {}),
+			},
+			() => generate.call(service, args),
+		);
 	};
 }
 

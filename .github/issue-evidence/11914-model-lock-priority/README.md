@@ -12,7 +12,10 @@ evidence optional").
    - AOSP fused text handlers (`plugins/plugin-aosp-local-inference`,
      `generateOnPriorityLane`),
    - the bionic-host / device-bridge loader branch
-     (`plugins/plugin-local-inference` `ensure-local-inference-handler.ts`),
+     (`plugins/plugin-local-inference` `ensure-local-inference-handler.ts`)
+     and the static plugin-object text handlers that hit the same loader
+     services (`plugins/plugin-local-inference/src/provider.ts`
+     `createTextHandler`),
    - the mobile device-bridge handlers (`plugins/plugin-capacitor-bridge`
      `makeGenerateHandler`, both the bionic UDS and renderer-bridge paths).
    Interactive turns dispatch ahead of queued background jobs; background jobs
