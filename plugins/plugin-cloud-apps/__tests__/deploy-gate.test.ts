@@ -326,6 +326,36 @@ describe("runDeployGate — poll robustness (transient errors + per-request time
     expect(pollAttempts).toEqual([1, 2, 3]);
   });
 
+  it("fast-fails permanent Cloud API poll errors instead of timing out as still building", async () => {
+    const pollError = Object.assign(new Error("Forbidden"), {
+      name: "CloudApiError",
+      statusCode: 403,
+      errorBody: { success: false, error: "Forbidden" },
+    });
+    const pollAttempts: number[] = [];
+    const deps: DeployGateDeps = {
+      getStatus: () => Promise.reject(pollError),
+      getApp: () => Promise.resolve(appRes("https://acme.elizacloud.ai")),
+      probe: () => Promise.resolve({ ok: true, status: 200 }),
+      sleep: () => Promise.resolve(),
+      onPollError: (_error, attempt) => pollAttempts.push(attempt),
+    };
+
+    const result = await runDeployGate(deps, {
+      ...FAST_CONFIG,
+      maxAttempts: 3,
+    });
+
+    expect(result).toEqual({
+      phase: "error",
+      url: null,
+      status: "",
+      attempts: 1,
+      error: "Forbidden",
+    });
+    expect(pollAttempts).toEqual([]);
+  });
+
   it("a stalled app re-read after READY falls back to the status vercelUrl instead of hanging", async () => {
     const deps: DeployGateDeps = {
       getStatus: () =>

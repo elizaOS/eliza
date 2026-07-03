@@ -110,6 +110,7 @@ export const DEFAULT_DEPLOY_GATE_CONFIG: DeployGateConfig = {
 
 const TERMINAL_SUCCESS = new Set(["READY", "DEPLOYED"]);
 const TERMINAL_ERROR = new Set(["ERROR", "FAILED"]);
+const NON_RETRIABLE_POLL_ERROR_STATUSES = new Set([401, 403, 404]);
 
 type StatusClass = "success" | "error" | "pending";
 
@@ -135,6 +136,30 @@ function normalizeUrl(value: string | null | undefined): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
+}
+
+function cloudApiStatusCode(err: unknown): number | null {
+  if (typeof err !== "object" || err === null) return null;
+  const value = (err as Record<string, unknown>).statusCode;
+  return typeof value === "number" ? value : null;
+}
+
+function isNonRetriablePollError(err: unknown): boolean {
+  const status = cloudApiStatusCode(err);
+  return status !== null && NON_RETRIABLE_POLL_ERROR_STATUSES.has(status);
+}
+
+function pollErrorMessage(err: unknown): string {
+  if (typeof err === "object" && err !== null) {
+    const body = (err as Record<string, unknown>).errorBody;
+    if (typeof body === "object" && body !== null) {
+      const bodyError = (body as Record<string, unknown>).error;
+      if (typeof bodyError === "string" && bodyError.trim().length > 0) {
+        return bodyError;
+      }
+    }
+  }
+  return err instanceof Error ? err.message : String(err ?? "unknown error");
 }
 
 /**
@@ -185,6 +210,15 @@ export async function runDeployGate(
         "deploy status poll",
       );
     } catch (err) {
+      if (isNonRetriablePollError(err)) {
+        return {
+          phase: "error",
+          url: null,
+          status: lastStatus,
+          attempts: attempt,
+          error: pollErrorMessage(err),
+        };
+      }
       // A transient poll failure must NOT abort the gate — the deploy is
       // already running server-side. Log it and keep polling until the
       // overall attempt budget runs out (which reports "still building",
