@@ -109,6 +109,8 @@ packages/cloud/sdk/src/**/*.js
 packages/cloud/sdk/src/**/*.js.map
 packages/cloud/sdk/src/**/*.d.ts
 packages/cloud/sdk/src/**/*.d.ts.map
+packages/auth/src/**/*.d.ts
+packages/auth/src/**/*.d.ts.map
 packages/plugin-remote-manifest/src/**/*.js
 packages/plugin-remote-manifest/src/**/*.js.map
 packages/plugin-remote-manifest/src/**/*.d.ts
