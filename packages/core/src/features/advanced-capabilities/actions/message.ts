@@ -3673,7 +3673,6 @@ export const messageAction: Action = {
 		"DIRECT_MESSAGE",
 		"CHAT",
 		"CHANNEL",
-		"ROOM",
 		// PRD action-catalog aliases. These resolve to MESSAGE subactions via
 		// handler argument routing; see packages/docs/action-prd-map.md.
 		"INBOX_LIST_UNREAD",
@@ -3700,6 +3699,8 @@ export const messageAction: Action = {
 	],
 	description: MESSAGE_DESCRIPTION,
 	descriptionCompressed: MESSAGE_COMPRESSED,
+	routingHint:
+		"send/read/search/triage messages on a connector or channel, or manage the inbox/drafts -> MESSAGE; do NOT use to reply in the CURRENT chat/thread -> REPLY, to join/mute/follow a channel -> ROOM, or to publish to a public feed/timeline -> POST",
 	contexts: MESSAGE_CONTEXTS,
 	roleGate: { minRole: "ADMIN" },
 	parameters: MESSAGE_PARAMETERS,

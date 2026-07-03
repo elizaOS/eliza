@@ -376,26 +376,21 @@ export const mcpAction: Action = {
     "USE_MCP",
     "CALL_MCP_TOOL",
     "CALL_TOOL",
-    "USE_TOOL",
     "USE_MCP_TOOL",
-    "EXECUTE_TOOL",
     "EXECUTE_MCP_TOOL",
-    "RUN_TOOL",
     "RUN_MCP_TOOL",
-    "INVOKE_TOOL",
     "INVOKE_MCP_TOOL",
     "READ_MCP_RESOURCE",
     "READ_RESOURCE",
-    "GET_RESOURCE",
     "GET_MCP_RESOURCE",
-    "FETCH_RESOURCE",
     "FETCH_MCP_RESOURCE",
-    "ACCESS_RESOURCE",
     "ACCESS_MCP_RESOURCE",
   ],
   description:
     "Single MCP entry point. Use action=call_tool to invoke an MCP tool, action=read_resource to read an MCP resource. Cloud runtimes also accept action=search_actions and action=list_connections.",
   descriptionCompressed: "MCP call_tool read_resource search_actions list_connections",
+  routingHint:
+    "call a tool or read a resource on a connected external MCP server -> MCP; do NOT use to invoke an agent skill -> USE_SKILL, or to run a local shell command / edit files -> BASH / FILE",
   parameters: [
     {
       name: "action",

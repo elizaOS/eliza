@@ -327,6 +327,8 @@ export const memoryAction: Action = {
     "Manage agent memory records. op:create stores a new memory; op:search filters by type/entityId/roomId/query; op:update edits text and re-embeds (requires confirm:true); op:delete removes a memory (requires confirm:true).",
   descriptionCompressed:
     "manage agent memory create search update delete; update/delete require confirm:true",
+  routingHint:
+    "store/search/edit the agent's OWN memory records about the user or conversation -> MEMORY; do NOT use for open-web lookups -> WEB_SEARCH, for reading messages already in a channel -> MESSAGE (action=search), or for the skill catalog -> SKILL",
   validate: async () => true,
   handler: async (
     runtime: IAgentRuntime,
