@@ -154,6 +154,12 @@ jobs:
       - name: Credentials e2e
         run: bun run --cwd packages/ui test:credentials-e2e
 
+      # Cloud-surface unification (#11341): real mock cloud stack; every legacy
+      # /dashboard/* deep link redirects to /settings#<section>, and each
+      # canonical Settings section renders real data, desktop + mobile.
+      - name: Cloud settings surface (slop-removal) e2e
+        run: bun run --cwd packages/ui test:slop-removal-e2e
+
       - name: Upload UI fixture e2e artifacts
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -176,5 +182,6 @@ jobs:
             packages/ui/src/components/pages/__e2e__/output-suggestions
             packages/ui/src/cloud/applications/__e2e__/output-frontend-hosting
             packages/ui/src/cloud/organization/__e2e__/output-credentials
+            packages/ui/src/cloud/__e2e__/output-slop-removal
           retention-days: 14
           if-no-files-found: ignore
