@@ -65,25 +65,31 @@ export function createMobileLifecycle(ctx: MobileLifecycleContext) {
   async function initializeKeyboard(): Promise<void> {
     if (keyboardListenersRegistered) return;
 
-    if (ctx.isIOS) {
-      await Keyboard.setResizeMode({ mode: KeyboardResize.None });
-      await Keyboard.setScroll({ isDisabled: true });
-      await Keyboard.setAccessoryBarVisible({ isVisible: true });
+    // A Keyboard-bridge throw (pod/plugin skew) must not reject and strand the
+    // rest of lifecycle wiring — guard it like the sibling initializeStatusBar.
+    try {
+      if (ctx.isIOS) {
+        await Keyboard.setResizeMode({ mode: KeyboardResize.None });
+        await Keyboard.setScroll({ isDisabled: true });
+        await Keyboard.setAccessoryBarVisible({ isVisible: true });
+      }
+
+      keyboardListenersRegistered = true;
+      Keyboard.addListener("keyboardWillShow", (info) => {
+        document.body.style.setProperty(
+          "--keyboard-height",
+          `${info.keyboardHeight}px`,
+        );
+        document.body.classList.add("keyboard-open");
+      });
+
+      Keyboard.addListener("keyboardWillHide", () => {
+        document.body.style.setProperty("--keyboard-height", "0px");
+        document.body.classList.remove("keyboard-open");
+      });
+    } catch (error) {
+      logNativePluginUnavailable("Keyboard", error);
     }
-
-    keyboardListenersRegistered = true;
-    Keyboard.addListener("keyboardWillShow", (info) => {
-      document.body.style.setProperty(
-        "--keyboard-height",
-        `${info.keyboardHeight}px`,
-      );
-      document.body.classList.add("keyboard-open");
-    });
-
-    Keyboard.addListener("keyboardWillHide", () => {
-      document.body.style.setProperty("--keyboard-height", "0px");
-      document.body.classList.remove("keyboard-open");
-    });
   }
 
   function initializeAppLifecycle(): void {
