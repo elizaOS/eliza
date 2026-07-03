@@ -4474,7 +4474,7 @@ export function ContinuousChatOverlay({
                   // Gated during onboarding so a swipe can't leave the seeded
                   // first-run transcript.
                   {...(sheetOpen && !firstRunOpen ? conversationSwipe : {})}
-                  className="relative flex h-full w-full touch-pan-y flex-col overflow-y-auto px-5 [scrollbar-width:none]  [&::-webkit-scrollbar]:hidden"
+                  className="relative flex h-full w-full touch-pan-y flex-col overflow-y-auto overscroll-contain px-5 [scrollbar-width:none]  [&::-webkit-scrollbar]:hidden"
                   style={{ opacity: threadContentOpacity }}
                 >
                   {/* Empty-thread loading: a fresh/cleared chat awaiting its
