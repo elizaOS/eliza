@@ -21,6 +21,7 @@ public struct BridgeKit {
     public let log: LogBridge
     public let process: ProcessBridge
     public let ui: UIBridge
+    public let keepAwake: KeepAwakeBridge
 }
 
 public enum BridgeInstaller {
@@ -69,6 +70,9 @@ public enum BridgeInstaller {
         let ui = UIBridge(plugin: plugin.value)
         ui.install(into: ctx)
 
+        let keepAwake = KeepAwakeBridge()
+        keepAwake.install(into: ctx)
+
         return BridgeKit(
             fs: fs,
             paths: pathsBridge,
@@ -78,7 +82,8 @@ public enum BridgeInstaller {
             llama: llama,
             log: log,
             process: process,
-            ui: ui
+            ui: ui,
+            keepAwake: keepAwake
         )
     }
 }

@@ -400,6 +400,13 @@ final class FullBunEngineHost {
                 return handleTtsSynthesize(payload)
             case "eliza_asr_transcribe":
                 return handleAsrTranscribe(payload)
+            case "keep_awake_set":
+                // Hold the iOS idle timer open while an in-process model
+                // download is active so auto-lock cannot suspend the runtime
+                // mid-transfer (#11841). Reference-counted natively.
+                let enabled = boolValue(payload, "enabled") ?? false
+                KeepAwakeBridge.shared.setEnabled(enabled)
+                return encodeHostEnvelope(ok: true, result: ["enabled": NSNumber(value: enabled)])
             default:
                 return encodeHostEnvelope(
                     ok: false,

@@ -535,6 +535,7 @@ async function startIosBridgeBackend(): Promise<IosBridgeBackend> {
 
 	const runtime = await bootRuntimeWithRetry(bootElizaRuntime);
 	installIosNativeLlamaHandlers(runtime);
+	installKeepAwakeBridge();
 
 	maybeAutoRunModelGrind();
 
@@ -1957,6 +1958,30 @@ function makeIosNativeGenerateHandler(slot: string): GenerateTextHandler {
 			await params.onStreamChunk(cleanedText, crypto.randomUUID(), cleanedText);
 		}
 		return cleanedText;
+	};
+}
+
+/**
+ * Expose `__ELIZA_BRIDGE__.keep_awake_set` on the full-Bun engine's Bun global
+ * so the in-process model downloader can hold the iOS idle timer open for the
+ * duration of a multi-GB transfer (#11841). The native handler (`keep_awake_set`
+ * in FullBunEngineHost) reference-counts the hold and toggles
+ * `UIApplication.shared.isIdleTimerDisabled`. Fire-and-forget: the downloader
+ * calls this synchronously and ignores the result, so a host-call failure can
+ * never affect the download. Only defines the function when the engine has not
+ * already installed one.
+ */
+function installKeepAwakeBridge(): void {
+	const g = globalThis as typeof globalThis & {
+		__ELIZA_BRIDGE__?: Record<string, unknown>;
+	};
+	g.__ELIZA_BRIDGE__ = g.__ELIZA_BRIDGE__ ?? {};
+	if (typeof g.__ELIZA_BRIDGE__.keep_awake_set === "function") return;
+	g.__ELIZA_BRIDGE__.keep_awake_set = (enabled: unknown): boolean => {
+		void callIosHost("keep_awake_set", { enabled: Boolean(enabled) }).catch(
+			() => undefined,
+		);
+		return true;
 	};
 }
 

@@ -1238,3 +1238,141 @@ describe("local inference downloader stale-content robustness", () => {
 		expect(fs.existsSync(`${textPart}.expected`)).toBe(false);
 	});
 });
+
+describe("local inference downloader keep-awake (idle-timer) wiring (#11841)", () => {
+	type KeepAwakeGlobal = {
+		__ELIZA_BRIDGE__?: { keep_awake_set?: (on: boolean) => unknown };
+	};
+
+	/**
+	 * Stand in for the native `keep_awake_set` bridge the iOS/Android runtime
+	 * installs on `globalThis.__ELIZA_BRIDGE__`. Records every acquire/release
+	 * edge and restores whatever bridge (usually none, in node) was there before.
+	 */
+	function installKeepAwakeSpy(impl?: (on: boolean) => void): {
+		calls: boolean[];
+		restore: () => void;
+	} {
+		const calls: boolean[] = [];
+		const g = globalThis as KeepAwakeGlobal;
+		const hadBridge = "__ELIZA_BRIDGE__" in g;
+		const priorBridge = g.__ELIZA_BRIDGE__;
+		g.__ELIZA_BRIDGE__ = {
+			...(priorBridge ?? {}),
+			keep_awake_set: (on: boolean) => {
+				calls.push(on);
+				impl?.(on);
+			},
+		};
+		return {
+			calls,
+			restore: () => {
+				if (hadBridge) g.__ELIZA_BRIDGE__ = priorBridge;
+				else delete g.__ELIZA_BRIDGE__;
+			},
+		};
+	}
+
+	/**
+	 * `start()` fires `runJob` background (`void this.runJob(...)`) and the job
+	 * emits its terminal (`completed`/`failed`) event from inside its own body —
+	 * the keep-awake release runs one tick later in the `finally`. Wait
+	 * (bounded) for every acquire to be matched by a release before asserting.
+	 */
+	async function settleReleases(calls: boolean[]): Promise<void> {
+		for (let i = 0; i < 200; i++) {
+			const acquires = calls.filter((on) => on).length;
+			const releases = calls.filter((on) => !on).length;
+			if (acquires > 0 && acquires === releases) return;
+			await new Promise((resolve) => setTimeout(resolve, 5));
+		}
+	}
+
+	it("holds the screen awake for the transfer and releases it once the job completes", async () => {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-download-test-"));
+		process.env.ELIZA_STATE_DIR = root;
+		const model = findCatalogModel("eliza-1-2b");
+		if (!model) throw new Error("missing test catalog model");
+		installFetchFixture(freshBundleFixtureFiles());
+		const spy = installKeepAwakeSpy();
+		try {
+			const downloader = new Downloader({
+				probeDeviceCaps: async () => cpuOnlyCaps,
+			});
+			const completed = waitForTerminal(downloader, model.id);
+			await downloader.start(model.id);
+			const job = await completed;
+			await settleReleases(spy.calls);
+
+			expect(job.state).toBe("completed");
+			// The idle timer was disabled for the transfer and re-enabled after.
+			expect(spy.calls).toContain(true);
+			expect(spy.calls.at(-1)).toBe(false);
+			// Every acquire is matched by a release — the finally never leaks a hold.
+			const acquires = spy.calls.filter((on) => on).length;
+			const releases = spy.calls.filter((on) => !on).length;
+			expect(acquires).toBe(releases);
+		} finally {
+			spy.restore();
+		}
+	});
+
+	it("releases the screen-awake hold even when the download fails mid-transfer", async () => {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-download-test-"));
+		process.env.ELIZA_STATE_DIR = root;
+		const model = findCatalogModel("eliza-1-2b");
+		if (!model) throw new Error("missing test catalog model");
+		// Serve the manifest but 404 the text weight so the job fails after the
+		// keep-awake hold has already been acquired.
+		const files = freshBundleFixtureFiles();
+		files.delete(eliza1BundleRemotePath("text/eliza-1-2b-128k.gguf"));
+		installFetchFixture(files);
+		const spy = installKeepAwakeSpy();
+		try {
+			const downloader = new Downloader({
+				probeDeviceCaps: async () => cpuOnlyCaps,
+			});
+			const completed = waitForTerminal(downloader, model.id);
+			await downloader.start(model.id);
+			await expect(completed).rejects.toThrow();
+			await settleReleases(spy.calls);
+
+			expect(spy.calls).toContain(true);
+			expect(spy.calls.at(-1)).toBe(false);
+			const acquires = spy.calls.filter((on) => on).length;
+			const releases = spy.calls.filter((on) => !on).length;
+			expect(acquires).toBe(releases);
+		} finally {
+			spy.restore();
+		}
+	});
+
+	it("never lets a throwing keep-awake bridge break the download", async () => {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-download-test-"));
+		process.env.ELIZA_STATE_DIR = root;
+		const model = findCatalogModel("eliza-1-2b");
+		if (!model) throw new Error("missing test catalog model");
+		installFetchFixture(freshBundleFixtureFiles());
+		const spy = installKeepAwakeSpy(() => {
+			throw new Error("bridge exploded");
+		});
+		try {
+			const downloader = new Downloader({
+				probeDeviceCaps: async () => cpuOnlyCaps,
+			});
+			const completed = waitForTerminal(downloader, model.id);
+			await downloader.start(model.id);
+			const job = await completed;
+			await settleReleases(spy.calls);
+
+			// The download still succeeds — a keep-awake failure is swallowed and
+			// must never take the transfer down with it.
+			expect(job.state).toBe("completed");
+			// Both edges were still attempted despite each throwing.
+			expect(spy.calls).toContain(true);
+			expect(spy.calls).toContain(false);
+		} finally {
+			spy.restore();
+		}
+	});
+});
