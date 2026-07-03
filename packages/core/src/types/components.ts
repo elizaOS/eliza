@@ -340,9 +340,9 @@ export interface Action {
 	 * CANONICAL "when to use / when NOT to use" carrier. Prefer this field over
 	 * burying disambiguation in `description`: `routingHint` is prepended
 	 * VERBATIM to the planner tool description (see `actions/to-tool.ts`) — it is
-	 * NOT run through `compressPromptDescription`, so it is never abbreviated or
-	 * truncated at the 160-char description cap, and it is captured in recorded
-	 * trajectories via the planner stage's `model.tools`. Any action that shares
+	 * NOT run through `compressPromptDescription`, so it is never abbreviated and
+	 * is captured in recorded trajectories via the planner stage's `model.tools`.
+	 * Any action that shares
 	 * a noun or simile with a sibling (e.g. TASKS vs SCHEDULED_TASKS, WEB_SEARCH
 	 * vs MEMORY search) should state its boundary here, and name the sibling to
 	 * route to, e.g.:

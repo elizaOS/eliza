@@ -1,5 +1,5 @@
 /**
- * SHELL action — runs a shell command on the server.
+ * TERMINAL_SHELL action — runs one explicit shell command on the server.
  *
  * When triggered the action:
  *   1. Extracts the command from parameters or MCP-style JSON
