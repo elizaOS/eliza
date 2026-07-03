@@ -795,7 +795,7 @@ export async function expectChatFirstOnboarding(page: Page): Promise<Locator> {
   await expect(composer).toBeDisabled();
   await expect(composer).toHaveAttribute(
     "placeholder",
-    "Tap a highlighted option above to continue",
+    "Pick an option to continue",
   );
   await expect(chatOverlay).toHaveAttribute("data-open", "true");
   await page.keyboard.press("Escape");
