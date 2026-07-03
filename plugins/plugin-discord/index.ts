@@ -182,6 +182,23 @@ export {
 	shouldEmitDiscordReactionNotification,
 	validateMessageAllowed,
 } from "./allowlist";
+export {
+	DEFAULT_DISCORD_AUDIO_LANES,
+	DISCORD_AUDIO_LANE_AMBIENT,
+	DISCORD_AUDIO_LANE_MUSIC,
+	DISCORD_AUDIO_LANE_SFX,
+	DISCORD_AUDIO_LANE_TTS,
+	type DiscordAudioLane,
+	type DiscordAudioLaneConfig,
+	getDiscordAudioLaneConfig,
+	normalizeDiscordAudioLane,
+} from "./audio-lanes";
+export type {
+	DiscordAudioPlaybackHandle,
+	DiscordAudioSinkPlayOptions,
+	DiscordAudioSinkStatus,
+	IDiscordAudioSink,
+} from "./audio-sink";
 // Channel configuration types (comprehensive config schema)
 // Re-export config types that were in accounts.ts for backward compatibility
 export type {
@@ -334,3 +351,8 @@ export {
 	searchDiscordMessages,
 	sendDiscordViaDesktopCdp,
 } from "./user-account-scraper";
+export type {
+	DiscordVoicePlaybackOptions,
+	DiscordVoiceTarget,
+	DiscordVoiceTargetRegistration,
+} from "./voice-target-registry";
