@@ -777,21 +777,6 @@ async function handleCompatRouteInner(
   }
   if (await handleAutomationsCompatRoutes(req, res, state)) return true;
 
-  if (method === "POST" && url.pathname === "/api/tts/cloud") {
-    if (!(await ensureRouteAuthorized(req, res, state))) return true;
-    const { handleCloudTtsPreviewRoute } = await import(
-      "@elizaos/plugin-elizacloud"
-    );
-    return handleCloudTtsPreviewRoute(req, res);
-  }
-
-  if (method === "POST" && url.pathname === "/api/tts/elevenlabs") {
-    // Intentional passthrough: ElevenLabs TTS is handled by the upstream
-    // Eliza server handler, not by the app API layer. Returning false
-    // lets the request fall through to the next handler in the chain.
-    return false;
-  }
-
   // Workbench todos CRUD is owned by @elizaos/plugin-workflow and served on the
   // runtime plugin route system (`/api/workbench/todos*`).
 

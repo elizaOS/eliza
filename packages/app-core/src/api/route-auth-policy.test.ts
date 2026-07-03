@@ -71,6 +71,15 @@ describe("compat route auth policy table", () => {
     expect(
       resolveCompatRouteAuthPolicy("GET", "/api/database/tables/foo/rows"),
     ).toMatchObject({ id: "database.rows", tier: "OWNER" });
+    expect(
+      resolveCompatRouteAuthPolicy("POST", "/api/tts/cloud"),
+    ).toMatchObject({ id: "tts.cloud", tier: "session" });
+    expect(
+      resolveCompatRouteAuthPolicy("POST", "/api/tts/elevenlabs"),
+    ).toMatchObject({
+      id: "tts.elevenlabs-passthrough",
+      tier: "public",
+    });
   });
 
   it("fails closed for undeclared app-core-managed routes", async () => {
