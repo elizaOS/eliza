@@ -1,0 +1,31 @@
+{
+  "schema": "eliza_scenario_native_export",
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-03T18:59:50.093Z",
+  "runDir": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/evidence-lifeops-live/.github/issue-evidence/10721-pa-live/run",
+  "trajectoriesDir": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/evidence-lifeops-live/.github/issue-evidence/10721-pa-live/run/trajectories",
+  "jsonlPath": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/evidence-lifeops-live/.github/issue-evidence/10721-pa-live/pa-native.jsonl",
+  "manifestPath": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/evidence-lifeops-live/.github/issue-evidence/10721-pa-live/pa-native.manifest.json",
+  "counts": {
+    "trajectoryFiles": 6,
+    "parsedTrajectories": 6,
+    "skippedFiles": 0,
+    "rows": 26,
+    "passedRows": 0,
+    "failedRows": 26,
+    "skippedScenarioRows": 0,
+    "unknownOutcomeRows": 0
+  },
+  "runIds": [
+    "b1bf248a-d1b4-48c4-8a91-1d8ca7cd077f"
+  ],
+  "scenarioIds": [
+    "approval-queue-resolve-outcome",
+    "email-reply-draft-outcome",
+    "inbox-triage-classification-outcome",
+    "reminder-lifecycle-ack-complete"
+  ],
+  "agentIds": [
+    "546ac3ab-0468-01a2-9d5b-52dfa34bf9cc"
+  ]
+}

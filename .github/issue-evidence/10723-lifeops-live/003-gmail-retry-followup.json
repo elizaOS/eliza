@@ -1,0 +1,214 @@
+{
+  "id": "gmail-retry-followup",
+  "title": "Gmail retry and refinement actually re-query the Gmail API",
+  "domain": "gmail",
+  "tags": [
+    "lifeops",
+    "gmail",
+    "executive-assistant",
+    "outcome"
+  ],
+  "status": "failed",
+  "durationMs": 21880,
+  "turns": [
+    {
+      "name": "gmail initial search",
+      "kind": "message",
+      "text": "find emails from sarah",
+      "responseText": "I’m unable to access your Gmail account right now, so I can’t search for emails from Sarah. Let me know if there’s another way I can help.",
+      "actionsCalled": [
+        {
+          "actionName": "MESSAGE",
+          "parameters": {
+            "parameters": {
+              "action": "search_inbox",
+              "source": "gmail",
+              "query": "from:sarah"
+            },
+            "actionContext": {
+              "previousResults": []
+            }
+          },
+          "error": {
+            "message": "Google account default was not found in connector account storage."
+          },
+          "result": {
+            "success": false
+          }
+        }
+      ],
+      "durationMs": 5686,
+      "failedAssertions": [
+        "plannerIncludesAll: expected planner trace to include gmail_action, saw \"MESSAGE {\\\"parameters\\\":{\\\"action\\\":\\\"search_inbox\\\",\\\"source\\\":\\\"gmail\\\",\\\"query\\\":\\\"from:sarah\\\"},\\\"actionContext\\\":{\\\"previousResults\\\":[]}}\""
+      ]
+    },
+    {
+      "name": "gmail retry follow-up",
+      "kind": "message",
+      "text": "can you try that sarah search again?",
+      "responseText": "I’m unable to search your Gmail inbox right now because the Gmail connector isn’t set up. Let me know if you’d like me to help connect your Gmail account so I can perform the search.",
+      "actionsCalled": [
+        {
+          "actionName": "MESSAGE",
+          "parameters": {
+            "parameters": {
+              "action": "search_inbox",
+              "source": "gmail",
+              "query": "from:sarah"
+            },
+            "actionContext": {
+              "previousResults": []
+            }
+          },
+          "error": {
+            "message": "Google account default was not found in connector account storage."
+          },
+          "result": {
+            "success": false
+          }
+        }
+      ],
+      "durationMs": 7101,
+      "failedAssertions": []
+    },
+    {
+      "name": "gmail unread refinement",
+      "kind": "message",
+      "text": "what about unread ones?",
+      "responseText": "Sorry, something went wrong. Please try your request again.",
+      "actionsCalled": [
+        {
+          "actionName": "MESSAGE",
+          "parameters": {
+            "parameters": {
+              "action": "search_inbox",
+              "source": "gmail",
+              "query": "from:sarah is:unread"
+            },
+            "actionContext": {
+              "previousResults": []
+            }
+          },
+          "error": {
+            "message": "Google account default was not found in connector account storage."
+          },
+          "result": {
+            "success": false
+          }
+        }
+      ],
+      "durationMs": 8878,
+      "failedAssertions": [
+        "plannerIncludesAll: expected planner trace to include gmail_action, saw \"MESSAGE {\\\"parameters\\\":{\\\"action\\\":\\\"search_inbox\\\",\\\"source\\\":\\\"gmail\\\",\\\"query\\\":\\\"from:sarah is:unread\\\"},\\\"actionContext\\\":{\\\"previousResults\\\":[]}}\""
+      ]
+    }
+  ],
+  "finalChecks": [
+    {
+      "label": "search and retry both hit the Gmail list endpoint",
+      "type": "gmailMockRequest",
+      "status": "passed",
+      "detail": "3 Gmail mock request(s) matched"
+    },
+    {
+      "label": "no email was sent by a search flow",
+      "type": "gmailMessageSent",
+      "status": "passed",
+      "detail": "gmailMessageSent=false"
+    },
+    {
+      "label": "no real gmail write occurred",
+      "type": "gmailNoRealWrite",
+      "status": "passed",
+      "detail": "Gmail writes are constrained to the loopback mock base"
+    },
+    {
+      "label": "memoryWriteOccurred",
+      "type": "memoryWriteOccurred",
+      "status": "passed",
+      "detail": "5 write(s) to [messages]"
+    },
+    {
+      "label": "gmail-retry-end-to-end",
+      "type": "judgeRubric",
+      "status": "failed",
+      "detail": "score 0.00 < 0.7: All API calls failed due to account storage errors; no successful searches were executed.",
+      "score": 0
+    }
+  ],
+  "actionsCalled": [
+    {
+      "actionName": "MESSAGE",
+      "parameters": {
+        "parameters": {
+          "action": "search_inbox",
+          "source": "gmail",
+          "query": "from:sarah"
+        },
+        "actionContext": {
+          "previousResults": []
+        }
+      },
+      "error": {
+        "message": "Google account default was not found in connector account storage."
+      },
+      "result": {
+        "success": false
+      }
+    },
+    {
+      "actionName": "MESSAGE",
+      "parameters": {
+        "parameters": {
+          "action": "search_inbox",
+          "source": "gmail",
+          "query": "from:sarah"
+        },
+        "actionContext": {
+          "previousResults": []
+        }
+      },
+      "error": {
+        "message": "Google account default was not found in connector account storage."
+      },
+      "result": {
+        "success": false
+      }
+    },
+    {
+      "actionName": "MESSAGE",
+      "parameters": {
+        "parameters": {
+          "action": "search_inbox",
+          "source": "gmail",
+          "query": "from:sarah is:unread"
+        },
+        "actionContext": {
+          "previousResults": []
+        }
+      },
+      "error": {
+        "message": "Google account default was not found in connector account storage."
+      },
+      "result": {
+        "success": false
+      }
+    }
+  ],
+  "failedAssertions": [
+    {
+      "label": "gmail initial search",
+      "detail": "plannerIncludesAll: expected planner trace to include gmail_action, saw \"MESSAGE {\\\"parameters\\\":{\\\"action\\\":\\\"search_inbox\\\",\\\"source\\\":\\\"gmail\\\",\\\"query\\\":\\\"from:sarah\\\"},\\\"actionContext\\\":{\\\"previousResults\\\":[]}}\""
+    },
+    {
+      "label": "gmail unread refinement",
+      "detail": "plannerIncludesAll: expected planner trace to include gmail_action, saw \"MESSAGE {\\\"parameters\\\":{\\\"action\\\":\\\"search_inbox\\\",\\\"source\\\":\\\"gmail\\\",\\\"query\\\":\\\"from:sarah is:unread\\\"},\\\"actionContext\\\":{\\\"previousResults\\\":[]}}\""
+    },
+    {
+      "label": "gmail-retry-end-to-end",
+      "detail": "score 0.00 < 0.7: All API calls failed due to account storage errors; no successful searches were executed."
+    }
+  ],
+  "providerName": "openai",
+  "judgeScore": 0
+}
