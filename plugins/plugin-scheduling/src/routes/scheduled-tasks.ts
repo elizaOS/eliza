@@ -80,7 +80,9 @@ function matchTaskVerb(pathname: string): { id: string; verb: string } | null {
 }
 
 function matchTaskFire(pathname: string): { id: string } | null {
-  const m = /^\/api\/lifeops\/scheduled-tasks\/([^/]+)\/fire\/?$/.exec(pathname);
+  const m = /^\/api\/lifeops\/scheduled-tasks\/([^/]+)\/fire\/?$/.exec(
+    pathname,
+  );
   if (!m) return null;
   return { id: decodeURIComponent(m[1] ?? "") };
 }
