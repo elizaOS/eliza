@@ -407,6 +407,22 @@ app.post("/", async (c) => {
       throw new Error("[Embeddings] credit reservation missing");
     }
     settleReservation = createCreditReservationSettler(reservation);
+    // #12017 residual (leg 2, missed by #12047's reserve fix): a view of the
+    // reservation whose reconcile routes through the SAME first-call-wins
+    // settler, handed to billUsage so the #11976 collected-earnings clamp is
+    // live on this path too — the affiliate is paid from the COLLECTED markup
+    // only (0 on an `uncollected_overage`), even when the actual token count
+    // blows past the estimated reserve (estimateTokens is chars/4; CJK/emoji
+    // inputs tokenize at >1.5x that, defeating the buffered hold). The settler
+    // stays the single reconcile owner (#10557): billUsage settles through it,
+    // and the explicit settle in settleBilling below becomes an idempotent
+    // no-op.
+    const settleOwner = settleReservation;
+    const settlerBackedReservation = {
+      ...reservation,
+      reconcile: async (actualCost: number) =>
+        (await settleOwner(actualCost)) ?? undefined,
+    };
 
     logger.info("[Embeddings] Request", {
       model,
@@ -443,16 +459,14 @@ app.post("/", async (c) => {
     // prevents double-settlement inside the task.
     const settleBilling = async () => {
       try {
-        // #10557: bill WITHOUT handing billUsage the reservation, then settle
-        // explicitly below — making `settleReservation` the SINGLE idempotent
-        // reconcile owner (mirrors /v1/messages and /v1/chat/completions).
-        // Previously billUsage was given the reservation and reconciled it at the
-        // very END, AFTER two unguarded awaits (calculateCost + the affiliate-code
-        // lookup). If either threw, that internal reconcile never ran and the
-        // ~1.5x upfront hold leaked permanently (the outer catch is gated by
-        // `billed`, and this deferred task only logged its failure). Settling via
-        // the first-call-wins settler lets the catch release the hold without any
-        // double-refund risk.
+        // #10557: `settleReservation` is the SINGLE idempotent reconcile owner
+        // (mirrors /v1/messages and /v1/chat/completions). billUsage is handed
+        // the settler-backed reservation VIEW (never the raw reservation), so
+        // its internal reconcile also flows through the first-call-wins settler
+        // — no double-settlement is possible with the explicit settle below or
+        // with the catch's settleReservation(0). Routing the reconcile through
+        // billUsage (before its affiliate-earnings write) is what arms the
+        // #11976 collected-earnings clamp on this path (#12017 leg 2).
         const billing = await billUsage(
           {
             organizationId: user.organization_id,
@@ -461,16 +475,22 @@ app.post("/", async (c) => {
             model,
             provider,
             billingSource,
+            // #11588: the server-generated requestId keys the affiliate
+            // earnings dedupe sourceId (`ai_billing:usage:<requestId>`);
+            // without it billUsage falls back to a legacy-random sourceId and
+            // the dedupe can never fire.
+            requestId,
             // Affiliate revenue-share: when the calling app sets X-Affiliate-Code,
             // activate the existing billUsage affiliate branch (same as /v1/messages).
             affiliateCode,
           },
           { inputTokens: actualTokens, outputTokens: 0 },
+          settlerBackedReservation,
         );
 
-        // Single reconcile site. The settler is first-call-wins idempotent, so
-        // this actual-cost charge can never be double-applied with the catch's
-        // settleReservation(0).
+        // Safety-net settle: billUsage already reconciled the actual cost
+        // through the settler, so this is an idempotent no-op that only fires
+        // if billUsage ever returns without reconciling.
         await settleReservation?.(billing.totalCost);
 
         logger.info("[Embeddings] Complete", {
