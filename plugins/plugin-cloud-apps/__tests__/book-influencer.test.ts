@@ -158,6 +158,69 @@ describe("BOOK_INFLUENCER (two-phase money confirm)", () => {
     expect(captured?.idempotencyKey).toMatch(/^influencer-confirm-.+/);
   });
 
+  it("a transport failure keeps the pending so a retry reuses the SAME escrow idempotency key (#11844)", async () => {
+    const runtime = keyedRuntime();
+    const keys: string[] = [];
+    let n = 0;
+    setCreateBooking((i) => {
+      keys.push(i.idempotencyKey ?? "");
+      n += 1;
+      // First fund attempt: a transport-level failure (thrown, no response).
+      if (n === 1) return Promise.reject(new Error("network down"));
+      return Promise.resolve({
+        success: true,
+        booking: {
+          id: "bk",
+          advertiser_org_id: "o",
+          influencer_profile_id: i.profileId,
+          amount: String(i.amount),
+          status: "offered",
+          brief: i.brief,
+        },
+      });
+    });
+
+    // Phase 1 — ask persists a pending (the sole holder of the idempotency key).
+    await bookInfluencerAction.handler(
+      runtime,
+      makeMessage("hire Nova to promote my app for $200"),
+      undefined,
+      {
+        profileId: "inf_1",
+        influencer: "Nova",
+        amount: 200,
+        brief: "post about us",
+      },
+      captureCallback().callback,
+    );
+
+    // Phase 2 — confirm; the fund call THROWS. Must fail WITHOUT losing the pending.
+    const first = await bookInfluencerAction.handler(
+      runtime,
+      makeMessage("yes confirm"),
+      undefined,
+      { confirm: true },
+      captureCallback().callback,
+    );
+    expect(first.success).toBe(false);
+
+    // Retry the bare confirm — the pending survived, so the fund runs again with
+    // the SAME idempotency key (the escrow service dedups the crash-repair).
+    // Before the fix the pending was deleted BEFORE the throw, so this retry
+    // would find no pending (no_pending_confirmation) and never re-fund.
+    const second = await bookInfluencerAction.handler(
+      runtime,
+      makeMessage("yes confirm"),
+      undefined,
+      { confirm: true },
+      captureCallback().callback,
+    );
+    expect(second.success).toBe(true);
+    expect(keys.length).toBe(2);
+    expect(keys[0]).toMatch(/^influencer-confirm-.+/);
+    expect(keys[1]).toBe(keys[0]);
+  });
+
   it("cancel: no booking", async () => {
     const runtime = keyedRuntime();
     let calls = 0;

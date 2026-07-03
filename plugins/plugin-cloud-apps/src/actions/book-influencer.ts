@@ -204,8 +204,9 @@ export const bookInfluencerAction: Action = {
           data: { reason: "no_pending_confirmation" },
         };
       }
-      await deleteCloudAppConfirmation(runtime, pending.taskId);
       if (confirmation === false) {
+        // No fund happens on cancel — safe to consume the pending now.
+        await deleteCloudAppConfirmation(runtime, pending.taskId);
         await callback?.({
           text: CANCELED_MESSAGE,
           actions: ["BOOK_INFLUENCER"],
@@ -219,6 +220,8 @@ export const bookInfluencerAction: Action = {
         };
       }
       if (pendingExpired(pending)) {
+        // No fund happens on expiry — safe to consume the pending now.
+        await deleteCloudAppConfirmation(runtime, pending.taskId);
         const msg =
           `That booking request for ${pending.metadata.appName} is more than ${Math.round(CONFIRM_TTL_MS / 60000)} minutes old, so I didn't fund anything. ` +
           `Ask me to book ${pending.metadata.appName} again and I'll re-confirm the details.`;
@@ -252,6 +255,14 @@ export const bookInfluencerAction: Action = {
             data: { reason: "error" },
           };
         }
+        // Fund SUCCEEDED — the escrow hold is placed, so consume the pending
+        // (the sole holder of the `influencer-confirm-<taskId>` idempotency key)
+        // now. On ANY failure — a returned {success:false} OR a thrown transport
+        // error (catch below) — we deliberately KEEP the pending so the user's
+        // retry reuses the SAME key and the escrow service dedups the crash-
+        // repair, instead of a lost response causing a double escrow-hold or a
+        // stranded, user-unrecoverable `funding` debit (#11844).
+        await deleteCloudAppConfirmation(runtime, pending.taskId);
         const reply = `Booked ${pending.metadata.appName} for ${usd(pending.metadata.amount)} — the budget is held in escrow and released when you approve their deliverable.`;
         await callback?.({ text: reply, actions: ["BOOK_INFLUENCER"] });
         return {
