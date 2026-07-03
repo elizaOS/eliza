@@ -1,33 +1,78 @@
 name: Actions Zombie Janitor
 
-# Reap zombie `in_progress` workflow runs whose runners died mid-run.
+# Reap zombie workflow runs (dead-runner `in_progress` + wedged `queued`) that
+# freeze org concurrency.
 #
 # WHY: when a self-hosted runner box dies, its runs stay `in_progress` until
-# GitHub's 6h timeout — and each one keeps holding org concurrency slots. With
-# enough zombies, NO new job can start repo-wide, including GitHub-hosted ones
-# (observed 2026-07-01 ~21:33–22:30 UTC: ~40 zombies from a 17:4x runner death
-# froze every queue — PR checks, gitleaks, and the production deploy
-# dispatches; see #10839 updates 9–12 and #11045). Cancelling QUEUED runs does
-# not help — the slots are held by the dead in-progress runs.
+# the job timeout (6h default, up to 12h here) — and each one keeps holding
+# org concurrency slots. With enough zombies, NO new job can start repo-wide,
+# including GitHub-hosted ones (observed 2026-07-01 ~21:33–22:30 UTC: ~40
+# zombies from a 17:4x runner death froze every queue — PR checks, gitleaks,
+# and the production deploy dispatches; see #10839 updates 9–12 and #11045).
+# Cancelling QUEUED runs does not free slots — the slots are held by the dead
+# in-progress runs — but a WEDGED queued run is still poison: it holds its
+# concurrency group and GitHub replaces-and-cancels every newer pending run in
+# that group.
 #
-# WHAT COUNTS AS A ZOMBIE — both must hold:
-#   1. the run is older than MAX_AGE_HOURS (default 4), AND
-#   2. none of its jobs started OR completed within IDLE_MINUTES (default 90).
+# WHY THE JANITOR ITSELF MUST BE FREEZE-PROOF (2026-07-02/03 incident): the
+# previous single-lane design (one ubuntu-latest job + one shared concurrency
+# group) had zero successful executions from 2026-07-02 14:15 UTC through
+# 2026-07-03 while a fresh zombie batch (born 07-02 23:31–23:50, hetzner-robot
+# death) froze the queues ~3x in 24h and ~34 runs had to be force-cancelled BY
+# HAND. Two failure modes compounded:
+#   1. SLOT STARVATION — the janitor needs a runner slot from the very pool
+#      the zombies exhaust, so during a full freeze its scheduled runs starve
+#      in `queued` and never execute.
+#   2. CONCURRENCY-GROUP SELF-BRICK — one wedged queued janitor run (e.g.
+#      28635685728, live-verified `queued` for 13+ hours while other
+#      ubuntu-latest jobs started fine) held the shared group forever; GitHub
+#      then replaced-and-cancelled every newer pending tick (10 consecutive
+#      janitor runs cancelled unexecuted, 28628876713…28666171315).
+# Fixes here:
+#   - TWO INDEPENDENT LANES (matrix): a GitHub-hosted job and a self-hosted
+#     robot-fleet job. A freeze that exhausts one pool leaves the other lane
+#     runnable; either lane alone fully reaps. Lanes never touch each other.
+#   - NO CONCURRENCY GROUP. Overlapping janitors are harmless (cancels are
+#     idempotent; every candidate is re-verified live), and any queued backlog
+#     purges itself: each lane cancels superseded queued janitor ticks.
+#   - Wedged-queued reaping: own ticks queued >60 min, anything queued >12 h.
+#   - actions/github-script instead of gh/jq — self-hosted boxes only need
+#     the runner-bundled Node.
+#
+# WHAT COUNTS AS A ZOMBIE `in_progress` RUN — both must hold:
+#   1. the current attempt is older than MAX_AGE_MINUTES (default 120), AND
+#   2. no job OR STEP of the run started or completed within IDLE_MINUTES
+#      (default 90).
 # The idle check is load-bearing: right after a freeze clears, hours-old runs
 # legitimately start executing their backlogged jobs — age alone would kill
 # healthy recovering runs; age+idle reaps only runs nothing is working on.
-# (A real job that runs >90 min without finishing keeps its run alive via its
-# own started_at only until 90 min pass — so IDLE_MINUTES must stay above the
-# longest legitimately-silent job stretch; 90 min clears every current suite.)
+# Step timestamps (new) keep long multi-step jobs alive while their steps
+# progress; a dead runner freezes job AND step timestamps, so zombies still
+# trip the check. IDLE_MINUTES must stay above the longest legitimately-silent
+# single-step stretch; 90 min clears every current suite. The two 12h KVM/AOSP
+# suites run single steps silent for longer than any sane threshold, so they
+# are exempt by name (their zombies fall to their own job timeout).
 #
 # Tuning (repo variables, no code change needed):
-#   ACTIONS_JANITOR_DISABLED=true    — kill switch
-#   ACTIONS_JANITOR_MAX_AGE_HOURS    — default 4
-#   ACTIONS_JANITOR_IDLE_MINUTES     — default 90
+#   ACTIONS_JANITOR_DISABLED=true          — kill switch (both lanes)
+#   ACTIONS_JANITOR_ROBOT_LANE_DISABLED    — =true remaps the robot lane onto
+#     ubuntu-latest (a harmless idempotent duplicate; `matrix` is not a legal
+#     context in a job-level `if`, so the lane is disabled by re-homing it)
+#   ACTIONS_JANITOR_ROBOT_RUNNER_JSON      — robot lane runs-on JSON array
+#   ACTIONS_JANITOR_MAX_AGE_MINUTES        — default 120
+#     (legacy ACTIONS_JANITOR_MAX_AGE_HOURS honored if the minutes var is unset)
+#   ACTIONS_JANITOR_IDLE_MINUTES           — default 90
+#   ACTIONS_JANITOR_QUEUED_MAX_AGE_HOURS   — default 24 (wedged-queued reap;
+#     deliberately at GitHub's own queued-job expiry so the sweep only catches
+#     runs GitHub failed to fail — hours-old queued runs can be legitimate
+#     freeze backlog that still executes once slots free, and cancelling a
+#     required PR check strands the PR red; tune down mid-incident if needed)
+#   ACTIONS_JANITOR_SELF_QUEUED_MINUTES    — default 60 (own stale ticks)
+#   ACTIONS_JANITOR_EXEMPT_WORKFLOWS      — comma-separated workflow names
 
 on:
   schedule:
-    - cron: "*/30 * * * *"
+    - cron: "*/15 * * * *"
   workflow_dispatch:
     inputs:
       dry_run:
@@ -39,88 +84,216 @@ on:
 permissions:
   actions: write
 
-concurrency:
-  group: actions-zombie-janitor
-  cancel-in-progress: false
-
 jobs:
   reap:
-    name: Reap zombie runs
-    runs-on: ubuntu-latest
+    name: Reap zombie runs (${{ matrix.lane }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - lane: github-hosted
+            runner: '["ubuntu-latest"]'
+          - lane: robot-fleet
+            runner: ${{ vars.ACTIONS_JANITOR_ROBOT_LANE_DISABLED == 'true' && '["ubuntu-latest"]' || vars.ACTIONS_JANITOR_ROBOT_RUNNER_JSON || '["self-hosted","Linux","X64","hetzner-robot"]' }}
+    runs-on: ${{ fromJSON(matrix.runner) }}
     if: github.repository == 'elizaOS/eliza' && vars.ACTIONS_JANITOR_DISABLED != 'true'
     timeout-minutes: 10
-    env:
-      GH_TOKEN: ${{ github.token }}
-      GH_REPO: ${{ github.repository }}
-      MAX_AGE_HOURS: ${{ vars.ACTIONS_JANITOR_MAX_AGE_HOURS || '4' }}
-      IDLE_MINUTES: ${{ vars.ACTIONS_JANITOR_IDLE_MINUTES || '90' }}
-      DRY_RUN: ${{ inputs.dry_run == true && 'true' || 'false' }}
-      SELF_RUN_ID: ${{ github.run_id }}
     steps:
-      - name: Cancel old+idle in_progress runs
-        run: |
-          set -euo pipefail
-          now=$(date -u +%s)
-          {
-            echo "## Zombie janitor — $(date -u +%FT%TZ)"
-            echo ""
-            echo "| run | workflow | age (h) | idle (min) | action |"
-            echo "|---|---|---|---|---|"
-          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Cancel zombie in_progress + wedged queued runs
+        uses: actions/github-script@v7
+        env:
+          MAX_AGE_MINUTES: ${{ vars.ACTIONS_JANITOR_MAX_AGE_MINUTES || '' }}
+          LEGACY_MAX_AGE_HOURS: ${{ vars.ACTIONS_JANITOR_MAX_AGE_HOURS || '' }}
+          IDLE_MINUTES: ${{ vars.ACTIONS_JANITOR_IDLE_MINUTES || '90' }}
+          QUEUED_MAX_AGE_HOURS: ${{ vars.ACTIONS_JANITOR_QUEUED_MAX_AGE_HOURS || '24' }}
+          SELF_QUEUED_MINUTES: ${{ vars.ACTIONS_JANITOR_SELF_QUEUED_MINUTES || '60' }}
+          EXEMPT_WORKFLOWS: ${{ vars.ACTIONS_JANITOR_EXEMPT_WORKFLOWS || 'ElizaOS Cuttlefish,ElizaOS OpenAgent E1 (RISC-V AI SoC)' }}
+          DRY_RUN: ${{ inputs.dry_run == true && 'true' || 'false' }}
+          LANE: ${{ matrix.lane }}
+        with:
+          script: |
+            const cfg = {
+              maxAgeMin:
+                Number(process.env.MAX_AGE_MINUTES) ||
+                Number(process.env.LEGACY_MAX_AGE_HOURS) * 60 ||
+                120,
+              idleMin: Number(process.env.IDLE_MINUTES) || 90,
+              queuedMaxAgeMin: (Number(process.env.QUEUED_MAX_AGE_HOURS) || 24) * 60,
+              selfQueuedMin: Number(process.env.SELF_QUEUED_MINUTES) || 60,
+              // Janitor lane jobs have timeout-minutes:10; an own-workflow run
+              // in_progress far past that means its runner died mid-reap.
+              selfInProgressMin: 60,
+              exempt: (process.env.EXEMPT_WORKFLOWS || '')
+                .split(',')
+                .map((s) => s.trim())
+                .filter(Boolean),
+              dryRun: process.env.DRY_RUN === 'true',
+              lane: process.env.LANE || 'unknown',
+            };
+            const { owner, repo } = context.repo;
+            const now = Date.now();
+            const minutesSince = (iso) => Math.floor((now - Date.parse(iso)) / 60000);
+            const rows = [];
 
-          gh run list --repo "$GH_REPO" --status in_progress --limit 100 \
-            --json databaseId,createdAt,workflowName \
-            --jq '.[] | "\(.databaseId)\t\(.createdAt)\t\(.workflowName)"' |
-          while IFS=$'\t' read -r id created name; do
-            [ "$id" = "$SELF_RUN_ID" ] && continue
-            # The list endpoint serves STALE entries for force-killed runs —
-            # re-verify each candidate individually before judging it.
-            live_status=$(gh run view "$id" --repo "$GH_REPO" --json status --jq .status 2>/dev/null || echo "")
-            if [ "$live_status" != "in_progress" ]; then
-              echo "skip (list-stale, actually '$live_status'): $id $name"
-              continue
-            fi
-            created_s=$(date -u -d "$created" +%s)
-            age_h=$(( (now - created_s) / 3600 ))
-            if [ "$age_h" -lt "$MAX_AGE_HOURS" ]; then
-              continue
-            fi
+            const reap = async (run, ageMin, idleMin, why) => {
+              const label = `${run.id} ${run.name} (age ${ageMin}m, idle ${idleMin}m, ${why})`;
+              if (cfg.dryRun) {
+                core.info(`would cancel: ${label}`);
+                rows.push([`${run.id}`, run.name, `${ageMin}`, `${idleMin}`, `would cancel (dry run) — ${why}`]);
+                return;
+              }
+              // FORCE-cancel: a plain cancel silently fails to reap runs whose
+              // runner died (they sit in cancel-requested limbo until the job
+              // timeout — exactly the runs this janitor exists for). The
+              // force-cancel endpoint kills them immediately; fall back to the
+              // polite cancel for anything the force path rejects.
+              try {
+                await github.request('POST /repos/{owner}/{repo}/actions/runs/{run_id}/force-cancel', {
+                  owner, repo, run_id: run.id,
+                });
+                core.info(`force-cancelled: ${label}`);
+                rows.push([`${run.id}`, run.name, `${ageMin}`, `${idleMin}`, `force-cancelled — ${why}`]);
+              } catch (e) {
+                try {
+                  await github.rest.actions.cancelWorkflowRun({ owner, repo, run_id: run.id });
+                  core.info(`cancelled: ${label}`);
+                  rows.push([`${run.id}`, run.name, `${ageMin}`, `${idleMin}`, `cancelled — ${why}`]);
+                } catch (e2) {
+                  core.info(`cancel failed (likely already completed / raced with sibling lane): ${label}: ${e2.status ?? e2.message}`);
+                }
+              }
+            };
 
-            # Newest job activity (start or finish) across up to 100 jobs; a
-            # run with no job timestamps at all idles from its creation time.
-            latest=$(gh api "repos/$GH_REPO/actions/runs/$id/jobs?per_page=100" \
-              --jq '[.jobs[] | (.started_at // empty), (.completed_at // empty)] | max // ""')
-            if [ -n "$latest" ]; then
-              latest_s=$(date -u -d "$latest" +%s)
-            else
-              latest_s=$created_s
-            fi
-            idle_min=$(( (now - latest_s) / 60 ))
-            if [ "$idle_min" -lt "$IDLE_MINUTES" ]; then
-              echo "alive: $id $name (age ${age_h}h, idle ${idle_min}m)"
-              continue
-            fi
+            // The list endpoint serves STALE entries for force-killed runs —
+            // re-verify each candidate individually before judging it.
+            const liveStatus = async (runId) => {
+              try {
+                return (await github.rest.actions.getWorkflowRun({ owner, repo, run_id: runId })).data.status;
+              } catch {
+                return null;
+              }
+            };
 
-            if [ "$DRY_RUN" = "true" ]; then
-              echo "would cancel: $id $name (age ${age_h}h, idle ${idle_min}m)"
-              echo "| $id | $name | $age_h | $idle_min | would cancel (dry run) |" >> "$GITHUB_STEP_SUMMARY"
-              continue
-            fi
-            # FORCE-cancel: a plain `gh run cancel` silently fails to reap runs
-            # whose runner died (they sit in cancel-requested limbo until the
-            # 6h timeout — exactly the runs this janitor exists for). The
-            # force-cancel endpoint kills them immediately; fall back to the
-            # polite cancel for anything the force path rejects.
-            if gh api -X POST "repos/$GH_REPO/actions/runs/$id/force-cancel" >/dev/null 2>&1; then
-              echo "force-cancelled zombie: $id $name (age ${age_h}h, idle ${idle_min}m)"
-              echo "| $id | $name | $age_h | $idle_min | force-cancelled |" >> "$GITHUB_STEP_SUMMARY"
-            elif gh run cancel "$id" --repo "$GH_REPO"; then
-              echo "cancelled zombie: $id $name (age ${age_h}h, idle ${idle_min}m)"
-              echo "| $id | $name | $age_h | $idle_min | cancelled |" >> "$GITHUB_STEP_SUMMARY"
-            else
-              echo "cancel failed (likely already completed): $id $name"
-            fi
-          done
+            // Both listings are pre-filtered server-side to runs CREATED before
+            // the smallest relevant threshold: the previous `--limit 100`
+            // newest-first listing could drop the oldest zombies — the exact
+            // runs to reap — once the queue saturated (observed: >1000 queued
+            // runs during the 2026-07-03 freeze put the 13h-wedged run beyond
+            // any sane pagination depth). A run created recently cannot have
+            // started earlier, so nothing eligible is ever excluded; re-run
+            // attempts (old created_at, fresh run_started_at) stay listed and
+            // are age-gated per attempt below.
+            const createdBefore = (minutes) =>
+              `<${new Date(now - minutes * 60000).toISOString()}`;
 
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "Done." >> "$GITHUB_STEP_SUMMARY"
+            // ---- 1. zombie in_progress runs (these hold the concurrency slots) ----
+            const inProgress = await github.paginate(github.rest.actions.listWorkflowRunsForRepo, {
+              owner, repo, status: 'in_progress', per_page: 100,
+              created: createdBefore(Math.min(cfg.maxAgeMin, cfg.selfInProgressMin)),
+            });
+            inProgress.sort(
+              (a, b) => Date.parse(a.run_started_at || a.created_at) - Date.parse(b.run_started_at || b.created_at),
+            );
+            core.info(`[${cfg.lane}] in_progress listed: ${inProgress.length}`);
+            for (const run of inProgress) {
+              if (run.id === context.runId) continue;
+              // Age of the CURRENT attempt (run_started_at resets on re-run);
+              // created_at would overstate the age of re-run attempts.
+              const ageMin = minutesSince(run.run_started_at || run.created_at);
+              if (run.name === context.workflow) {
+                // Never touch the live sibling lane; only reap a janitor run
+                // whose own runner died mid-reap.
+                if (ageMin < cfg.selfInProgressMin) continue;
+                if ((await liveStatus(run.id)) !== 'in_progress') continue;
+                await reap(run, ageMin, ageMin, 'dead janitor run');
+                continue;
+              }
+              if (cfg.exempt.includes(run.name)) {
+                core.info(`exempt: ${run.id} ${run.name}`);
+                continue;
+              }
+              if (ageMin < cfg.maxAgeMin) continue;
+              const status = await liveStatus(run.id);
+              if (status !== 'in_progress') {
+                core.info(`skip (list-stale, actually '${status}'): ${run.id} ${run.name}`);
+                continue;
+              }
+              // Newest job OR step activity across up to 100 jobs; a run with
+              // no timestamps at all idles from its attempt start.
+              let latest = 0;
+              try {
+                const jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRun, {
+                  owner, repo, run_id: run.id, filter: 'latest', per_page: 100,
+                });
+                for (const j of jobs) {
+                  for (const t of [j.started_at, j.completed_at]) {
+                    if (t) latest = Math.max(latest, Date.parse(t));
+                  }
+                  for (const s of j.steps ?? []) {
+                    for (const t of [s.started_at, s.completed_at]) {
+                      if (t) latest = Math.max(latest, Date.parse(t));
+                    }
+                  }
+                }
+              } catch (e) {
+                core.warning(`jobs fetch failed for ${run.id}: ${e.status ?? e.message}`);
+              }
+              const idleMin = latest ? Math.floor((now - latest) / 60000) : ageMin;
+              if (idleMin < cfg.idleMin) {
+                core.info(`alive: ${run.id} ${run.name} (age ${ageMin}m, idle ${idleMin}m)`);
+                continue;
+              }
+              await reap(run, ageMin, idleMin, 'zombie in_progress');
+            }
+
+            // ---- 2. wedged queued runs (these brick concurrency groups) ----
+            // Cancelling queued runs does not free slots, but a run stuck in
+            // `queued` for hours holds its concurrency group and gets every
+            // newer pending run of that group replaced-and-cancelled (this is
+            // what bricked the janitor itself on 2026-07-03). Own ticks are
+            // superseded after selfQueuedMin (a later tick reaps strictly
+            // better). Other workflows only past queuedMaxAgeMin (24h —
+            // GitHub's own queued expiry): an hours-old queued run can be
+            // legitimate freeze backlog that still executes once slots free,
+            // and cancelling a required PR check strands the PR red.
+            // Two tightly-scoped listings instead of one walk of the whole
+            // queued backlog (which exceeds 1000 runs mid-freeze and would eat
+            // the API budget): own ticks via the workflow-scoped endpoint, and
+            // a repo-wide sweep only past the (12h) wedge threshold.
+            const selfQueued = await github.paginate(github.rest.actions.listWorkflowRuns, {
+              owner, repo, workflow_id: 'actions-zombie-janitor.yml', status: 'queued', per_page: 100,
+              created: createdBefore(cfg.selfQueuedMin),
+            });
+            const wedgedQueued = await github.paginate(github.rest.actions.listWorkflowRunsForRepo, {
+              owner, repo, status: 'queued', per_page: 100,
+              created: createdBefore(cfg.queuedMaxAgeMin),
+            });
+            const queued = new Map();
+            for (const run of [...selfQueued, ...wedgedQueued]) queued.set(run.id, run);
+            core.info(`[${cfg.lane}] stale queued listed: ${queued.size} (self ${selfQueued.length}, wedged ${wedgedQueued.length})`);
+            for (const run of queued.values()) {
+              if (run.id === context.runId) continue;
+              const ageMin = minutesSince(run.created_at);
+              const isSelf = run.name === context.workflow;
+              if (ageMin < (isSelf ? cfg.selfQueuedMin : cfg.queuedMaxAgeMin)) continue;
+              if ((await liveStatus(run.id)) !== 'queued') continue;
+              await reap(run, ageMin, ageMin, isSelf ? 'superseded janitor tick' : 'wedged queued');
+            }
+
+            // ---- summary ----
+            core.summary.addHeading(`Zombie janitor [${cfg.lane}] — ${new Date(now).toISOString()}`, 2);
+            if (rows.length === 0) {
+              core.summary.addRaw('No zombies found.', true);
+            } else {
+              core.summary.addTable([
+                [
+                  { data: 'run', header: true },
+                  { data: 'workflow', header: true },
+                  { data: 'age (min)', header: true },
+                  { data: 'idle (min)', header: true },
+                  { data: 'action', header: true },
+                ],
+                ...rows,
+              ]);
+            }
+            await core.summary.write();
