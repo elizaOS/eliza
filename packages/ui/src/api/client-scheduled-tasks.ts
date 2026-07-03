@@ -69,6 +69,17 @@ declare module "./client-base" {
      * uses) and returns the typed outcome. Routes to the LifeOps runner.
      */
     fireScheduledTask(taskId: string): Promise<{ fire: ScheduledTaskFireResult }>;
+
+    /**
+     * Run a one-click LifeOps live-validation probe
+     * (`POST /api/lifeops/scheduled-tasks/test-probe`). Seeds a due-now
+     * reminder (default) or check-in and fires it in the same call, returning
+     * the seeded task and the typed fire outcome — the "click and it runs"
+     * entry point for the HITL test surface.
+     */
+    runLifeOpsTestProbe(
+      kind?: "reminder" | "checkin",
+    ): Promise<{ task: ScheduledTaskView; fire: ScheduledTaskFireResult }>;
   }
 }
 
@@ -120,6 +131,20 @@ ElizaClient.prototype.fireScheduledTask = async function (
       method: "POST",
       headers: { "content-type": "application/json" },
       body: "{}",
+    },
+  );
+};
+
+ElizaClient.prototype.runLifeOpsTestProbe = async function (
+  this: ElizaClient,
+  kind?: "reminder" | "checkin",
+): Promise<{ task: ScheduledTaskView; fire: ScheduledTaskFireResult }> {
+  return this.fetch<{ task: ScheduledTaskView; fire: ScheduledTaskFireResult }>(
+    "/api/lifeops/scheduled-tasks/test-probe",
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(kind ? { kind } : {}),
     },
   );
 };
