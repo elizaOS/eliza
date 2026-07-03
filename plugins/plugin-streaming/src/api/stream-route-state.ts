@@ -1,3 +1,4 @@
+import type { IScreenCaptureService } from "@elizaos/core";
 import type { StreamingDestination } from "./streaming-types.js";
 
 export interface StreamRouteState {
@@ -24,16 +25,7 @@ export interface StreamRouteState {
   };
   port?: number;
   captureUrl?: string;
-  screenCapture?: {
-    isFrameCaptureActive(): boolean;
-    startFrameCapture(opts: {
-      fps?: number;
-      quality?: number;
-      endpoint?: string;
-      gameUrl?: string;
-    }): Promise<void>;
-    stopFrameCapture?(): void;
-  };
+  screenCapture?: IScreenCaptureService;
   destinations: Map<string, StreamingDestination>;
   activeDestinationId?: string;
   activeStreamSource: {

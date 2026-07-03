@@ -27,6 +27,7 @@ import path from "node:path";
 import {
   type AgentRuntime,
   type IAgentRuntime,
+  type IScreenCaptureService,
   isStreamingDestinationConfigured,
   logger,
   NotificationService,
@@ -4376,18 +4377,13 @@ export async function startApiServer(opts?: {
             "[eliza-api] @elizaos/plugin-streaming did not export handleStreamRoute; skipping streaming route registration.",
           );
         }
-        // Screen capture manager is injected by the desktop host via globalThis
-        const screenCapture = (globalThis as Record<string, unknown>)
-          .__elizaScreenCapture as
-          | {
-              isFrameCaptureActive(): boolean;
-              startFrameCapture(opts: {
-                fps?: number;
-                quality?: number;
-                endpoint?: string;
-              }): Promise<void>;
-            }
-          | undefined;
+        // Desktop screen-capture bridge, resolved via the runtime service the
+        // desktop host registers (never a globalThis bridge). Absent on
+        // mobile/web/cloud → streaming falls back to another capture mode.
+        const screenCapture =
+          state.runtime?.getService<IScreenCaptureService>(
+            ServiceType.SCREEN_CAPTURE,
+          ) ?? undefined;
 
         // Build destination registry — all configured destinations
         const _connectors = state.config.connectors ?? {};

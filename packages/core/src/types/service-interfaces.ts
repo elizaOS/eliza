@@ -354,6 +354,36 @@ export abstract class IMediaGenerationService extends Service {
 // Browser Interfaces
 // ============================================================================
 
+/** Options for {@link IScreenCaptureService.startFrameCapture}. */
+export interface ScreenCaptureFrameOptions {
+	fps?: number;
+	quality?: number;
+	/** Agent HTTP endpoint the captured JPEG frames are POSTed to. */
+	endpoint?: string;
+	/** When set, capture a game/canvas URL instead of the app window. */
+	gameUrl?: string;
+}
+
+/**
+ * Desktop screen-capture bridge. The desktop host registers a working
+ * implementation via `runtime.registerService`; server + streaming route code
+ * resolves it with `runtime.getService(ServiceType.SCREEN_CAPTURE)` instead of a
+ * `globalThis` bridge. Absent (e.g. mobile/web) → capture falls back to another
+ * mode.
+ */
+export abstract class IScreenCaptureService extends Service {
+	static override readonly serviceType = ServiceType.SCREEN_CAPTURE;
+
+	public readonly capabilityDescription =
+		"Desktop screen/frame capture for live streaming";
+
+	abstract isFrameCaptureActive(): boolean;
+
+	abstract startFrameCapture(options: ScreenCaptureFrameOptions): Promise<void>;
+
+	abstract stopFrameCapture(): void;
+}
+
 export abstract class IBrowserService extends Service {
 	static override readonly serviceType = ServiceType.BROWSER;
 

@@ -41,6 +41,7 @@ export interface ServiceTypeRegistry {
 	CHANNEL_TOPICS: "channel_topics";
 	COMMANDS: "commands";
 	MOBILE_DEVICE_BRIDGE: "mobile_device_bridge";
+	SCREEN_CAPTURE: "screen_capture";
 	UNKNOWN: "unknown";
 }
 
@@ -138,6 +139,7 @@ export const ServiceType = {
 	CHANNEL_TOPICS: "channel_topics",
 	COMMANDS: "commands",
 	MOBILE_DEVICE_BRIDGE: "mobile_device_bridge",
+	SCREEN_CAPTURE: "screen_capture",
 	UNKNOWN: "unknown",
 } as const;
 
