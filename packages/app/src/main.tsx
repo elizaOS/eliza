@@ -1006,7 +1006,7 @@ async function runIosFullBunSmokeIfRequested(): Promise<boolean> {
       phase: "running",
       step: "bridge-installed",
       hasNativeRequest:
-        typeof window.__ELIZA_IOS_LOCAL_AGENT_REQUEST__ === "function",
+        typeof window.__ELIZA_BRIDGE__?.iosLocalAgentRequest === "function",
     });
 
     const { ElizaBunRuntime } = await import("@elizaos/capacitor-bun-runtime");
@@ -1016,7 +1016,7 @@ async function runIosFullBunSmokeIfRequested(): Promise<boolean> {
       phase: "running",
       step: "plugin-imported",
       hasNativeRequest:
-        typeof window.__ELIZA_IOS_LOCAL_AGENT_REQUEST__ === "function",
+        typeof window.__ELIZA_BRIDGE__?.iosLocalAgentRequest === "function",
     });
 
     const started = await withIosFullBunSmokeTimeout(

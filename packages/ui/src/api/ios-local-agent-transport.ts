@@ -1,4 +1,8 @@
 import { Capacitor, registerPlugin } from "@capacitor/core";
+import {
+  installElizaBridge,
+  registerElizaBridgeCapability,
+} from "../bridge/eliza-window-bridge";
 import { isStoreBuild } from "../build-variant";
 import {
   isMobileLocalAgentUrl as isConfiguredMobileLocalAgentUrl,
@@ -366,9 +370,6 @@ declare global {
   interface Window {
     __ELIZA_API_BASE__?: string;
     __ELIZAOS_API_BASE__?: string;
-    __ELIZA_IOS_LOCAL_AGENT_REQUEST__?: (
-      options: IosLocalAgentNativeRequestOptions,
-    ) => Promise<IosLocalAgentNativeRequestResult>;
   }
 }
 
@@ -996,7 +997,11 @@ export async function handleIosLocalAgentNativeRequest(
 export function installIosLocalAgentNativeRequestBridge(): void {
   if (globalRequestHandlerInstalled) return;
   if (typeof window === "undefined") return;
-  window.__ELIZA_IOS_LOCAL_AGENT_REQUEST__ = handleIosLocalAgentNativeRequest;
+  registerElizaBridgeCapability(
+    "iosLocalAgentRequest",
+    handleIosLocalAgentNativeRequest,
+  );
+  installElizaBridge();
   globalRequestHandlerInstalled = true;
 }
 

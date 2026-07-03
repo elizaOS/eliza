@@ -37,7 +37,7 @@ const SETTINGS_CHAT_OWNER: InteractionOwner = {
 const SHELL_AGENT_BRIDGE_OWNER: InteractionOwner = {
   spec: "packages/app/test/ui-smoke/shell-view-agent-bridge-inventory.spec.ts",
   proves:
-    "Runtime-lists shell view controls through __ELIZA_VIEW_INTERACT__ and proves representative fill/click mutations.",
+    "Runtime-lists shell view controls through window.__ELIZA_BRIDGE__.viewInteract and proves representative fill/click mutations.",
   signals: [
     "shell views expose concrete chat/voice-drivable controls through the agent bridge",
     "Bridge-edited character bio.",

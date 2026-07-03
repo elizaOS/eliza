@@ -30,12 +30,14 @@ type BrowserWorkspaceSmokeSnapshot = {
 
 declare global {
   interface Window {
-    __ELIZA_VIEW_INTERACT__?: (
-      viewId: string,
-      viewType: string,
-      capability: string,
-      params?: Record<string, unknown>,
-    ) => Promise<unknown>;
+    __ELIZA_BRIDGE__?: {
+      readonly viewInteract?: (
+        viewId: string,
+        viewType: string,
+        capability: string,
+        params?: Record<string, unknown>,
+      ) => Promise<unknown>;
+    };
   }
 }
 
@@ -77,7 +79,7 @@ async function waitForAgentBridge(page: Page): Promise<void> {
     .poll(
       () =>
         page.evaluate(
-          () => typeof window.__ELIZA_VIEW_INTERACT__ === "function",
+          () => typeof window.__ELIZA_BRIDGE__?.viewInteract === "function",
         ),
       { timeout: 30_000 },
     )
@@ -92,7 +94,7 @@ async function interact(
 ): Promise<unknown> {
   return page.evaluate(
     async ({ viewId, capability, params }) => {
-      const bridge = window.__ELIZA_VIEW_INTERACT__;
+      const bridge = window.__ELIZA_BRIDGE__?.viewInteract;
       if (!bridge) throw new Error("view-interact bridge not installed");
       return bridge(viewId, "gui", capability, params);
     },

@@ -136,7 +136,7 @@ describe("iOS local agent transport bridge", () => {
     } = await import("./ios-local-agent-transport");
     installIosLocalAgentNativeRequestBridge();
 
-    const handler = window.__ELIZA_IOS_LOCAL_AGENT_REQUEST__;
+    const handler = window.__ELIZA_BRIDGE__?.iosLocalAgentRequest;
     expect(handler).toBe(handleIosLocalAgentNativeRequest);
   });
 

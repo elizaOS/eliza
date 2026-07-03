@@ -9,6 +9,10 @@
 
 import type { AgentViewType } from "../../agent-surface";
 import { client } from "../../api";
+import {
+  installElizaBridge,
+  registerElizaBridgeCapability,
+} from "../../bridge/eliza-window-bridge";
 
 type InteractHandler = (
   capability: string,
@@ -90,8 +94,9 @@ export async function dispatchViewInteract(
 /**
  * Invoke a mounted view's interact handler and RETURN its result — the same path
  * `dispatchViewInteract` runs, minus the WS round-trip. This is what lets the
- * agent (and devtools / e2e) read and drive any view's agent surface directly:
- * `__ELIZA_VIEW_INTERACT__("settings","gui","list-elements",{})`,
+ * agent (and devtools / e2e) read and drive any view's agent surface directly
+ * through the frozen bridge:
+ * `window.__ELIZA_BRIDGE__.viewInteract("settings","gui","list-elements",{})`,
  * `…("agent-fill",{ id, value })`, `…("agent-click",{ id })`.
  */
 export async function invokeViewInteract(
@@ -109,12 +114,5 @@ export async function invokeViewInteract(
   return handler(capability, params);
 }
 
-declare global {
-  interface Window {
-    __ELIZA_VIEW_INTERACT__?: typeof invokeViewInteract;
-  }
-}
-
-if (typeof window !== "undefined") {
-  window.__ELIZA_VIEW_INTERACT__ = invokeViewInteract;
-}
+registerElizaBridgeCapability("viewInteract", invokeViewInteract);
+installElizaBridge();

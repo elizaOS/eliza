@@ -165,6 +165,11 @@
       "import": "./dist/bridge/index.js",
       "default": "./dist/bridge/index.js"
     },
+    "./bridge/*": {
+      "types": "./dist/bridge/*.d.ts",
+      "import": "./dist/bridge/*.js",
+      "default": "./dist/bridge/*.js"
+    },
     "./chat": {
       "types": "./dist/chat/index.d.ts",
       "import": "./dist/chat/index.js",

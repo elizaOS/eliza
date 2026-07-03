@@ -15,6 +15,10 @@ import {
 } from "@elizaos/ui/api/ios-local-agent-transport";
 import { createIttpAgentTransport } from "@elizaos/ui/api/ittp-agent-transport";
 import type { AgentRequestTransport } from "@elizaos/ui/api/transport";
+import {
+  installElizaBridge,
+  registerElizaBridgeCapability,
+} from "@elizaos/ui/bridge/eliza-window-bridge";
 import { isStoreBuild } from "@elizaos/ui/build-variant";
 import {
   isMobileLocalAgentUrl as isConfiguredMobileLocalAgentUrl,
@@ -134,9 +138,6 @@ declare global {
     __ELIZA_API_BASE__?: string;
     __ELIZAOS_API_BASE__?: string;
     [STARTUP_TRACE_ID_WINDOW_KEY]?: string;
-    __ELIZA_IOS_LOCAL_AGENT_REQUEST__?: (
-      options: IosLocalAgentNativeRequestOptions,
-    ) => Promise<IosLocalAgentNativeRequestResult>;
     [IOS_RESTART_LISTENER_WINDOW_KEY]?: boolean;
   }
 }
@@ -882,7 +883,11 @@ export async function handleIosLocalAgentNativeRequest(
 export function installIosLocalAgentNativeRequestBridge(): void {
   if (typeof window === "undefined") return;
   if (!globalRequestHandlerInstalled) {
-    window.__ELIZA_IOS_LOCAL_AGENT_REQUEST__ = handleIosLocalAgentNativeRequest;
+    registerElizaBridgeCapability(
+      "iosLocalAgentRequest",
+      handleIosLocalAgentNativeRequest,
+    );
+    installElizaBridge();
     globalRequestHandlerInstalled = true;
   }
   installIosLocalAgentRestartRequestListener();
