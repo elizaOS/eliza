@@ -744,7 +744,7 @@ export const NOTIFICATIONS_TESTID = "widget-notifications";
 // First-run runtime/provider buttons live in the real chat transcript. The
 // headless conductor seeds the ChoiceWidgets and the chat action channel routes
 // their sentinel values before they hit the server.
-export const RUNTIME_CHOICE = (id: "cloud" | "local" | "other"): string =>
+export const RUNTIME_CHOICE = (id: "cloud" | "local" | "remote"): string =>
   `choice-__first_run__:runtime:${id}`;
 export const PROVIDER_CHOICE = (
   id: "on-device" | "elizacloud" | "other",
@@ -785,7 +785,7 @@ export async function expectChatFirstOnboarding(page: Page): Promise<Locator> {
     timeout: 15_000,
   });
   await expect(page.getByTestId(RUNTIME_CHOICE("local"))).toBeVisible();
-  await expect(page.getByTestId(RUNTIME_CHOICE("other"))).toBeVisible();
+  await expect(page.getByTestId(RUNTIME_CHOICE("remote"))).toBeVisible();
   await expect(page.getByTestId("first-run-runtime-chooser")).toHaveCount(0);
 
   // Onboarding gating: the chat is NON-INTERACTIVE except the choice widgets.
@@ -795,7 +795,7 @@ export async function expectChatFirstOnboarding(page: Page): Promise<Locator> {
   await expect(composer).toBeDisabled();
   await expect(composer).toHaveAttribute(
     "placeholder",
-    "Choose an option to continue",
+    "Tap a highlighted option above to continue",
   );
   await expect(chatOverlay).toHaveAttribute("data-open", "true");
   await page.keyboard.press("Escape");
@@ -1016,9 +1016,12 @@ export async function completeOtherProviderSettingsHandoff(
 
   await expectChatFirstOnboarding(page);
 
-  const otherRuntime = page.getByTestId(RUNTIME_CHOICE("other"));
-  await expect(otherRuntime).toBeVisible({ timeout: 15_000 });
-  await click(otherRuntime);
+  // "Other / configure in Settings" is a PROVIDER sub-choice under the LOCAL
+  // runtime (the old top-level runtime:other was renamed/removed when the
+  // chooser became cloud/local/remote), so reach it via local → provider:other.
+  const localRuntime = page.getByTestId(RUNTIME_CHOICE("local"));
+  await expect(localRuntime).toBeVisible({ timeout: 15_000 });
+  await click(localRuntime);
 
   const otherProvider = page.getByTestId(PROVIDER_CHOICE("other"));
   await expect(otherProvider).toBeVisible({ timeout: 15_000 });
