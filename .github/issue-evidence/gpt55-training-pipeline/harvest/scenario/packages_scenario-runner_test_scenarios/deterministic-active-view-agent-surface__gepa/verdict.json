@@ -1,0 +1,9 @@
+{
+  "item": "deterministic-active-view-agent-surface",
+  "dir": "packages/scenario-runner/test/scenarios",
+  "status": "passed",
+  "rows": 6,
+  "judgeScore": null,
+  "source": "stage3-gepa-flip",
+  "nativePath": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/.github/issue-evidence/gpt55-training-pipeline/harvest/scenario/packages_scenario-runner_test_scenarios/deterministic-active-view-agent-surface__gepa/native.jsonl"
+}
