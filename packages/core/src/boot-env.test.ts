@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { peekAmbientSingleton } from "./ambient-context";
 import {
 	syncAppEnvToEliza,
 	syncBrandEnvToEliza,
@@ -147,5 +148,20 @@ describe("boot config store is write-once", () => {
 
 		expect(process.env.ELIZA_SEED_DST).toBe("seed");
 		expect(slot[STORE_KEY]).toBeDefined();
+	});
+
+	it("stores the singleton through the ambient-context accessor", () => {
+		const slot = globalThis as Slot;
+		slot[WINDOW_KEY] = { envAliases: [["ELIZA_SEED_SRC", "ELIZA_SEED_DST"]] };
+
+		// First access seeds the store via setAmbientSingleton(STORE_KEY, …).
+		syncAppEnvToEliza();
+
+		// The accessor and the raw global slot observe the same instance, proving
+		// the store is read/written through ambient-context.ts, not a hand-rolled
+		// globalThis[Symbol.for(...)] access.
+		const viaAccessor = peekAmbientSingleton(STORE_KEY);
+		expect(viaAccessor).toBeDefined();
+		expect(viaAccessor).toBe(slot[STORE_KEY]);
 	});
 });
