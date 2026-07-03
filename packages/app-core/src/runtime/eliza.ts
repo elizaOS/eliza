@@ -95,15 +95,11 @@ const _require = createRequire(import.meta.url);
 import { invalidateCorsAllowedPorts } from "../api/server-cors.js";
 import { bootLap } from "../boot-profile.js";
 import { isRuntimeAutonomyEnabled } from "./autonomy-policy.js";
-import {
-  ensureTextToSpeechHandler,
-} from "./ensure-text-to-speech-handler.js";
+import { ensureTextToSpeechHandler } from "./ensure-text-to-speech-handler.js";
 import {
   type EmbeddingWarmupPhase,
   updateStartupEmbeddingProgress,
 } from "./startup-overlay.js";
-import { handleTelegramStandaloneMessage } from "./telegram-standalone-handler.js";
-import { shouldStartTelegramStandaloneBot } from "./telegram-standalone-policy.js";
 
 const AUTONOMY_WORLD_ID = stringToUuid("00000000-0000-0000-0000-000000000001");
 const AUTONOMY_ENTITY_ID = stringToUuid("00000000-0000-0000-0000-000000000002");
