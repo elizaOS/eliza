@@ -9,7 +9,11 @@ import {
 	getStreamingContext,
 	runWithStreamingContext,
 } from "../streaming-context";
-import type { ActionResult, ProviderDataRecord } from "../types/components";
+import type {
+	Action,
+	ActionResult,
+	ProviderDataRecord,
+} from "../types/components";
 import type { ContextEvent, ContextObjectTool } from "../types/context-object";
 import {
 	type ChatMessage,
@@ -557,7 +561,12 @@ export async function runPlannerLoop(
 					status: "finished",
 					trajectory,
 					evaluator: terminalEvaluator,
-					finalMessage: userSafeFinalMessage(finalMessage, trajectory),
+					finalMessage: userSafeFinalMessage(
+						codingDrainQueue
+							? codingFinalMessage(trajectory, finalMessage)
+							: finalMessage,
+						trajectory,
+					),
 				};
 			}
 
@@ -2753,13 +2762,13 @@ export function singleVerifiedUserFacingToolResultText(
 }
 
 /**
- * Synthesize a short "here's what I did" summary from the coding tools a turn
- * executed (FILE writes/edits, SHELL runs). Used as the LAST-resort fallback for
- * the eliza-code coding sub-agent so it always relays a result — a weak model can
- * edit files correctly then end the turn with no final text, which would otherwise
- * surface as an EMPTY reply even though the work succeeded (observed: a SWE-bench
- * fix applied perfectly but relayed nothing). Returns undefined when no coding
- * tool ran (so chat turns are unaffected).
+ * Synthesize a short "here's what I did" summary from action-owned result
+ * summaries. Used as the LAST-resort fallback for the eliza-code coding
+ * sub-agent so it always relays a result — a weak model can edit files
+ * correctly then end the turn with no final text, which would otherwise surface
+ * as an EMPTY reply even though the work succeeded (observed: a SWE-bench fix
+ * applied perfectly but relayed nothing). Returns undefined when no action
+ * declared a successful result summary (so chat turns are unaffected).
  */
 function codingActionSummary(
 	trajectory: PlannerTrajectory,
@@ -2767,27 +2776,9 @@ function codingActionSummary(
 	const parts: string[] = [];
 	for (const step of trajectory.steps) {
 		if (step.result?.success === false) continue;
-		const name = step.toolCall?.name?.toUpperCase();
-		const params = (step.toolCall?.params ?? {}) as Record<string, unknown>;
-		if (name === "FILE") {
-			const action = String(params.action ?? "").toLowerCase();
-			const rawPath = params.file_path ?? params.path;
-			const path =
-				typeof rawPath === "string"
-					? (rawPath.split("/").pop() ?? rawPath)
-					: undefined;
-			if (path && (action === "write" || action === "create")) {
-				parts.push(`wrote ${path}`);
-			} else if (path && action === "edit") {
-				parts.push(`edited ${path}`);
-			}
-		} else if (name === "SHELL") {
-			const cmd = params.command;
-			if (typeof cmd === "string" && cmd.trim()) {
-				parts.push(`ran \`${compactText(cmd.trim(), 60)}\``);
-			}
-		} else if (name === "WORKTREE") {
-			parts.push("managed a git worktree");
+		const summary = step.result?.summary?.trim();
+		if (summary) {
+			parts.push(summary);
 		}
 	}
 	if (parts.length === 0) return undefined;
@@ -3302,6 +3293,7 @@ function ensureToolCallId(
  */
 export function actionResultToPlannerToolResult(
 	result: ActionResult,
+	options: { summary?: string } = {},
 ): PlannerToolResult {
 	const data: Record<string, unknown> = {};
 	if (result.data) {
@@ -3310,7 +3302,7 @@ export function actionResultToPlannerToolResult(
 	if (result.values) {
 		data.values = result.values;
 	}
-	return {
+	const plannerResult: PlannerToolResult = {
 		success: result.success,
 		text: result.text,
 		userFacingText: result.userFacingText,
@@ -3319,6 +3311,26 @@ export function actionResultToPlannerToolResult(
 		error: result.error,
 		continueChain: result.continueChain,
 	};
+	if (options.summary) {
+		plannerResult.summary = options.summary;
+	}
+	return plannerResult;
+}
+
+export function summarizeActionResultForPlanner(
+	action: Pick<Action, "summarize"> | undefined,
+	result: ActionResult,
+	params: Record<string, unknown> = {},
+): string | undefined {
+	if (result.success !== true || typeof action?.summarize !== "function") {
+		return undefined;
+	}
+	try {
+		const summary = action.summarize(result, params)?.trim();
+		return summary || undefined;
+	} catch {
+		return undefined;
+	}
 }
 
 function getNonEmptyString(value: unknown): string | undefined {

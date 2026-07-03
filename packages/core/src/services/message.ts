@@ -107,6 +107,7 @@ import {
 	type PlannerToolResult,
 	type PlannerTrajectory,
 	runPlannerLoop,
+	summarizeActionResultForPlanner,
 } from "../runtime/planner-loop";
 import {
 	extractReplyTextFromTranscript,
@@ -5287,7 +5288,13 @@ async function executeV5PlannedToolCall(
 		toolCall,
 		{ ...(args.executorOptions ?? {}), actions: executionActions },
 	);
-	return actionResultToPlannerToolResult(actionResult);
+	return actionResultToPlannerToolResult(actionResult, {
+		summary: summarizeActionResultForPlanner(
+			action,
+			actionResult,
+			toolCall.params,
+		),
+	});
 }
 
 function plannerToolCallHasActionParameter(toolCall: PlannerToolCall): boolean {

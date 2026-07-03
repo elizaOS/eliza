@@ -124,6 +124,12 @@ export interface PlannerToolResult {
 	 * legitimately rephrase or add framing.
 	 */
 	verifiedUserFacing?: boolean;
+	/**
+	 * Owner-declared short summary of a successful action result. Used only for
+	 * synthesized planner fallback replies when the model/evaluator emitted no
+	 * clean final message.
+	 */
+	summary?: string;
 	data?: Record<string, unknown>;
 	error?: unknown;
 	continueChain?: boolean;

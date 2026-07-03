@@ -29,6 +29,7 @@ import {
   SANDBOX_SERVICE,
   SESSION_CWD_SERVICE,
 } from "../types.js";
+import { summarizeShellCommand } from "./summaries.js";
 
 const TIMEOUT_MIN_MS = 100;
 const TIMEOUT_MAX_MS = 600_000;
@@ -1115,6 +1116,8 @@ export const shellAction: Action = {
     },
   ],
   validate: async () => true,
+  summarize: (result, params) =>
+    result?.success === true ? summarizeShellCommand(params) : undefined,
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,

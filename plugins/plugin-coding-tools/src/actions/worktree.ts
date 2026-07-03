@@ -97,6 +97,8 @@ export const worktreeAction: Action = {
     },
   ],
   validate: async () => true,
+  summarize: (result) =>
+    result?.success === true ? "managed a git worktree" : undefined,
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,

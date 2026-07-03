@@ -19,6 +19,7 @@ import { globHandler } from "./glob.js";
 import { grepHandler } from "./grep.js";
 import { lsHandler } from "./ls.js";
 import { readFileHandler } from "./read.js";
+import { summarizeFileOperation } from "./summaries.js";
 import { writeFileHandler } from "./write.js";
 
 const FILE_OPERATIONS = [
@@ -405,6 +406,8 @@ export const fileAction: Action = {
     },
   ],
   validate: async () => true,
+  summarize: (result, params) =>
+    result?.success === true ? summarizeFileOperation(params) : undefined,
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,

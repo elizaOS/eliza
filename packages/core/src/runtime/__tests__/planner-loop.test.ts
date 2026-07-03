@@ -609,6 +609,53 @@ describe("v5 planner loop skeleton", () => {
 		});
 	});
 
+	it("uses owner-declared action summaries for coding fallback replies", async () => {
+		await withCodingRequiredToolDefaults(async () => {
+			const runtime = {
+				useModel: vi
+					.fn()
+					.mockResolvedValueOnce({
+						text: "",
+						toolCalls: [
+							{
+								id: "custom-1",
+								name: "CUSTOM_BUILD_TOOL",
+								arguments: { target: "dice" },
+							},
+						],
+					})
+					.mockResolvedValueOnce(codingReply("reply-1", "None")),
+				logger: { warn: vi.fn() },
+			};
+			const executeToolCall = vi.fn(async (toolCall) =>
+				toolCall.name === "CUSTOM_BUILD_TOOL"
+					? {
+							success: true,
+							text: "custom build tool completed",
+							summary: "assembled dice app",
+						}
+					: {
+							success: true,
+							text: "None",
+							continueChain: false,
+						},
+			);
+
+			const result = await runPlannerLoop({
+				runtime,
+				context: codingPlannerContext,
+				tools: [
+					{ name: "CUSTOM_BUILD_TOOL", description: "Builds something." },
+					{ name: "REPLY", description: "Reply to the user." },
+				],
+				executeToolCall,
+				evaluate: vi.fn(),
+			});
+
+			expect(result.finalMessage).toBe("Done — Assembled dice app.");
+		});
+	});
+
 	it("evaluates terminal-only planner output without executing tools", async () => {
 		const runtime = {
 			useModel: vi.fn(

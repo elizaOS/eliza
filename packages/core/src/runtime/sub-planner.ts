@@ -20,6 +20,7 @@ import {
 	type PlannerRuntime,
 	type PlannerToolCall,
 	runPlannerLoop,
+	summarizeActionResultForPlanner,
 } from "./planner-loop";
 import type { RecordedStage, TrajectoryRecorder } from "./trajectory-recorder";
 
@@ -274,7 +275,8 @@ export async function runSubPlanner(
 				childActionLookup.get(
 					normalizeSubPlannerActionIdentifier(toolCall.name),
 				) ??
-				(childActionNames.has(toolCall.name) ? { name: toolCall.name } : null);
+				childActions.find((action) => action.name === toolCall.name) ??
+				null;
 			if (!resolvedChildAction) {
 				return {
 					success: false,
@@ -291,7 +293,13 @@ export async function runSubPlanner(
 					actions: childActions,
 				},
 			);
-			return actionResultToPlannerToolResult(result);
+			return actionResultToPlannerToolResult(result, {
+				summary: summarizeActionResultForPlanner(
+					resolvedChildAction,
+					result,
+					toolCall.params,
+				),
+			});
 		},
 	});
 }

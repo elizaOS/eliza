@@ -386,6 +386,20 @@ export interface Action {
 	suppressActionResultClipboard?: boolean;
 
 	/**
+	 * Optional owner-declared short summary for planner fallback messages.
+	 *
+	 * The planner uses this only as a last-resort "what I did" projection when a
+	 * successful tool turn has no clean model/evaluator final text. Keep the
+	 * returned text terse and user-facing, e.g. "edited app.ts" or
+	 * "ran `bun test`". Return undefined when the action result should not
+	 * contribute to a synthesized fallback.
+	 */
+	summarize?: (
+		result: ActionResult | undefined,
+		params: Record<string, unknown>,
+	) => string | undefined;
+
+	/**
 	 * Optional input parameters for the action.
 	 * When defined, the LLM will be prompted to extract these parameters from the conversation
 	 * and they will be validated before being passed to the handler via HandlerOptions.parameters.
