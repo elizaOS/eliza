@@ -11,6 +11,9 @@ export * from "./access-context";
 export * from "./agent";
 // Channel configuration types for plugins
 export * from "./channel-config";
+// Chat pre-handler contract (generic pre-action dispatch extension point);
+// the concrete registry lives in ../runtime/chat-pre-handler-registry.
+export * from "./chat-pre-handler";
 // Chat-command contract (CommandDefinition + CommandRegistryService); the
 // concrete registry lives in @elizaos/plugin-commands and re-exports these.
 export * from "./commands";

@@ -2,6 +2,7 @@ import type { AppPackageRouteContext } from "../api/route-helpers";
 import type { ResponseHandlerEvaluator } from "../runtime/response-handler-evaluators";
 import type { ResponseHandlerFieldEvaluator } from "../runtime/response-handler-field-evaluator";
 import type { Character } from "./agent";
+import type { ChatPreHandler } from "./chat-pre-handler";
 import type { Action, AgentContext, Provider } from "./components";
 import type { IDatabaseAdapter } from "./database";
 import type { RegisteredEvaluator } from "./evaluator";
@@ -1146,6 +1147,14 @@ export interface Plugin {
 	 * the first model call. Registered into the runtime's `ShortcutRegistry`.
 	 */
 	shortcuts?: ShortcutDefinition[];
+	/**
+	 * Chat pre-handlers: generic pre-action dispatch hooks drained at the top of
+	 * the chat loop, before normal action processing. A plugin owning a
+	 * deterministic direct-dispatch feature (e.g. a vendor skill family)
+	 * registers its trigger + dispatch here instead of the host hardcoding it.
+	 * Registered into the runtime's `ChatPreHandlerRegistry`.
+	 */
+	chatPreHandlers?: ChatPreHandler[];
 	evaluators?: RegisteredEvaluator[];
 	responseHandlerEvaluators?: ResponseHandlerEvaluator[];
 	/**

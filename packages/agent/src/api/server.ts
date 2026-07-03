@@ -464,13 +464,6 @@ import {
 } from "./ws-event-replay.ts";
 import { runtimeRoutesNeedX402Validation } from "./x402-route-validation.ts";
 
-export {
-  executeFallbackParsedActions,
-  type FallbackParsedAction,
-  maybeHandleDirectBinanceSkillRequest,
-  parseFallbackActionBlocks,
-} from "./binance-skill-helpers.ts";
-
 type FirstRunRouteArg = Parameters<typeof handleFirstRunRoutes>[0];
 type AgentStatusRouteArg = Parameters<typeof handleAgentStatusRoutes>[0];
 type TtsRouteArg = {

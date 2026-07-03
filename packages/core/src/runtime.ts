@@ -42,6 +42,7 @@ import {
 	runWithoutActionRoutingContext,
 } from "./runtime/action-routing-context";
 import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "./runtime/builtin-field-evaluators";
+import { ChatPreHandlerRegistry } from "./runtime/chat-pre-handler-registry";
 import { ContextRegistry } from "./runtime/context-registry";
 import { DEFAULT_CONTEXT_DEFINITIONS } from "./runtime/default-contexts";
 import type { ResponseHandlerEvaluator } from "./runtime/response-handler-evaluators";
@@ -200,6 +201,11 @@ import {
 	type UUID,
 	type World,
 } from "./types";
+import type {
+	ChatPreHandler,
+	ChatPreHandlerContext,
+	ChatPreHandlerResult,
+} from "./types/chat-pre-handler";
 import type { AgentContext } from "./types/contexts";
 import type { IMessageService } from "./types/message-service";
 import {
@@ -829,6 +835,8 @@ export class AgentRuntime implements IAgentRuntime {
 	readonly responseHandlerFieldEvaluators: ResponseHandlerFieldEvaluator[] = [];
 	/** Pre-LLM action shortcuts (#8791), registered from `Plugin.shortcuts`. */
 	readonly shortcutRegistry = new ShortcutRegistry();
+	/** Chat pre-handlers, registered from `Plugin.chatPreHandlers`. */
+	readonly chatPreHandlerRegistry = new ChatPreHandlerRegistry();
 	readonly responseHandlerFieldRegistry = new ResponseHandlerFieldRegistry();
 	readonly turnControllers = new TurnControllerRegistry();
 	readonly roomHandlerQueue = new RoomHandlerQueue();
@@ -1970,6 +1978,9 @@ export class AgentRuntime implements IAgentRuntime {
 		}
 		if (pluginToRegister.shortcuts) {
 			this.registerShortcuts(pluginToRegister.shortcuts);
+		}
+		if (pluginToRegister.chatPreHandlers) {
+			this.registerChatPreHandlers(pluginToRegister.chatPreHandlers);
 		}
 		if (pluginToRegister.responseHandlerEvaluators) {
 			const existingResponseHandlerEvaluatorNames = new Set(
@@ -3232,6 +3243,37 @@ export class AgentRuntime implements IAgentRuntime {
 			{ src: "agent", agentId: this.agentId, shortcut: id },
 			"Shortcut unregistered",
 		);
+	}
+
+	/** Register a chat pre-handler into this runtime's registry. */
+	registerChatPreHandler(handler: ChatPreHandler) {
+		this.chatPreHandlerRegistry.register(handler);
+		this.logger.debug(
+			{ src: "agent", agentId: this.agentId, preHandler: handler.id },
+			"Chat pre-handler registered",
+		);
+	}
+
+	registerChatPreHandlers(handlers: readonly ChatPreHandler[]) {
+		for (const handler of handlers) this.registerChatPreHandler(handler);
+	}
+
+	unregisterChatPreHandler(id: string) {
+		this.chatPreHandlerRegistry.unregister(id);
+		this.logger.debug(
+			{ src: "agent", agentId: this.agentId, preHandler: id },
+			"Chat pre-handler unregistered",
+		);
+	}
+
+	/**
+	 * Drain registered chat pre-handlers by priority before normal action
+	 * processing; the first non-null result short-circuits the turn.
+	 */
+	drainChatPreHandlers(
+		ctx: ChatPreHandlerContext,
+	): Promise<ChatPreHandlerResult | null> {
+		return this.chatPreHandlerRegistry.drain(ctx);
 	}
 
 	registerEvaluator(evaluator: RegisteredEvaluator) {

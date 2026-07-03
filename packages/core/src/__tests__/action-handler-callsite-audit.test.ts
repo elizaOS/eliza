@@ -38,8 +38,8 @@ const allowedCallsites = new Map<string, string>([
 		"direct chat task-dispatch bypass; rewrites callback text with TEXT_SMALL",
 	],
 	[
-		"packages/agent/src/api/binance-skill-helpers.ts",
-		"Binance direct/fallback bypass; rewrites raw output with TEXT_SMALL",
+		"packages/agent/src/api/fallback-action-helpers.ts",
+		"fallback action bypass; rewrites action callback output with TEXT_SMALL",
 	],
 	[
 		"packages/scenario-runner/src/executor.ts",

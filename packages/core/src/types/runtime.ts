@@ -8,6 +8,11 @@ import type { TurnControllerRegistry } from "../runtime/turn-controller";
 import type { PromptBatcher } from "../utils/prompt-batcher";
 import type { Agent, Character } from "./agent";
 import type {
+	ChatPreHandler,
+	ChatPreHandlerContext,
+	ChatPreHandlerResult,
+} from "./chat-pre-handler";
+import type {
 	Action,
 	ActionMode,
 	ActionResult,
@@ -725,6 +730,12 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 	registerShortcut(shortcut: ShortcutDefinition): void;
 	registerShortcuts(shortcuts: readonly ShortcutDefinition[]): void;
 	unregisterShortcut(id: string): void;
+	registerChatPreHandler(handler: ChatPreHandler): void;
+	registerChatPreHandlers(handlers: readonly ChatPreHandler[]): void;
+	unregisterChatPreHandler(id: string): void;
+	drainChatPreHandlers(
+		ctx: ChatPreHandlerContext,
+	): Promise<ChatPreHandlerResult | null>;
 	registerEvaluator(evaluator: RegisteredEvaluator): void;
 	unregisterEvaluator(name: string): boolean;
 	registerResponseHandlerEvaluator(evaluator: ResponseHandlerEvaluator): void;

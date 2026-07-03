@@ -1,19 +1,48 @@
 /**
- * Binance direct-skill request helpers.
+ * Binance direct-skill dispatch.
  *
- * Handles direct dispatch of Binance DeFi skills (meme-rush, trading-signal,
- * token-info, etc.) and fallback action parsing.
+ * Natural-language and explicit triggers for the Binance DeFi skill family
+ * (meme-rush, trading-signal, token-info, token-audit, address-info,
+ * crypto-market-rank). When a chat message matches, this dispatches the
+ * matching skill's script through USE_SKILL and voices the result — resolving
+ * the turn deterministically before the first response model call.
+ *
+ * Registered with the runtime as a chat pre-handler (see `pre-handler.ts`), so
+ * the host chat loop stays vendor-agnostic and pays no Binance-specific parsing
+ * cost unless this plugin is loaded.
  */
 
 import {
-  type Action,
-  type ActionParameters,
-  type AgentRuntime,
   type Content,
-  type createMessageMemory,
+  type IAgentRuntime,
+  type Memory,
   ModelType,
 } from "@elizaos/core";
-import { extractCompatTextContent } from "./compat-utils.ts";
+
+/**
+ * Extract a best-effort text string from a message `Content` (string, array of
+ * `{ type: "text", text }` parts, or an object with a `text` field). Kept local
+ * so this dispatch module has no dependency on the host runtime package.
+ */
+function contentText(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    const chunks: string[] = [];
+    for (const item of content) {
+      if (!item || typeof item !== "object") continue;
+      const obj = item as Record<string, unknown>;
+      const type = typeof obj.type === "string" ? obj.type : "";
+      if (type && type !== "text") continue;
+      if (typeof obj.text === "string" && obj.text) chunks.push(obj.text);
+    }
+    return chunks.join("");
+  }
+  if (content && typeof content === "object") {
+    const text = (content as Record<string, unknown>).text;
+    return typeof text === "string" ? text : "";
+  }
+  return "";
+}
 
 const EXPOSED_BINANCE_SKILL_IDS = new Set([
   "binance-crypto-market-rank",
@@ -28,255 +57,6 @@ function shouldExposeBinanceSkillId(skillId: string): boolean {
   const normalized = skillId.trim();
   if (!normalized.startsWith("binance-")) return true;
   return EXPOSED_BINANCE_SKILL_IDS.has(normalized);
-}
-
-export type FallbackParsedAction = {
-  name: string;
-  parameters?: ActionParameters;
-};
-
-type RuntimeActionLike = Pick<
-  Action,
-  "name" | "similes" | "validate" | "handler"
->;
-
-async function rewriteFallbackActionText(args: {
-  runtime: AgentRuntime;
-  actionName: string;
-  text: string;
-  content?: Content;
-}): Promise<string> {
-  const text = args.text.trim();
-  if (!text) return args.text;
-  const fallback = () => {
-    const error =
-      typeof args.content?.error === "string" && args.content.error.trim()
-        ? ` It reported: ${args.content.error.trim()}`
-        : "";
-    return `I ran ${args.actionName} and got a result, but I couldn't format the details cleanly here.${error}`;
-  };
-  if (typeof args.runtime.useModel !== "function") return fallback();
-
-  try {
-    const raw = await args.runtime.useModel(ModelType.TEXT_SMALL, {
-      prompt: [
-        "Rewrite this fallback action output in the assistant character's user-facing voice.",
-        'Return strict JSON only: {"response":"..."}.',
-        "",
-        "Rules:",
-        "- Preserve status, IDs, names, URLs, counts, errors, warnings, and next steps.",
-        "- Do not expose raw JSON, shell output, schema names, stack traces, or internal action plumbing unless an exact value is necessary.",
-        "- Do not claim success if the payload says failed or pending.",
-        "- Keep it brief and natural.",
-        "",
-        `Character: ${JSON.stringify({
-          name: args.runtime.character?.name,
-          system: args.runtime.character?.system,
-          bio: args.runtime.character?.bio,
-          style: args.runtime.character?.style,
-        })}`,
-        `Action: ${JSON.stringify(args.actionName)}`,
-        `Payload: ${JSON.stringify(text)}`,
-        `Metadata: ${JSON.stringify({
-          source: args.content?.source,
-          actions: args.content?.actions,
-          actionStatus: args.content?.actionStatus,
-          error: args.content?.error,
-        })}`,
-      ].join("\n"),
-      maxTokens: 260,
-      providerOptions: { eliza: { thinking: "off" } },
-    });
-    const parsed = JSON.parse(String(raw).trim()) as { response?: unknown };
-    return typeof parsed.response === "string" && parsed.response.trim()
-      ? parsed.response.trim()
-      : fallback();
-  } catch (err) {
-    args.runtime.logger.debug(
-      {
-        src: "eliza-api",
-        action: args.actionName,
-        err: err instanceof Error ? err.message : String(err),
-      },
-      "[eliza-api] Fallback action voice rewrite failed",
-    );
-    return fallback();
-  }
-}
-
-const LIFEOPS_PUBLIC_MODULE: string = "@elizaos/plugin-personal-assistant";
-
-let ownerBlockFallbackPromise: Promise<RuntimeActionLike | null> | null = null;
-
-async function resolveBuiltInFallbackAction(
-  actionName: string,
-): Promise<RuntimeActionLike | null> {
-  if (actionName !== "BLOCK") {
-    return null;
-  }
-
-  if (!ownerBlockFallbackPromise) {
-    ownerBlockFallbackPromise = import(/* @vite-ignore */ LIFEOPS_PUBLIC_MODULE)
-      .then((mod) => mod as Record<string, RuntimeActionLike | undefined>)
-      .then((mod) => mod.websiteBlockAction ?? null)
-      .catch(() => null);
-  }
-
-  return ownerBlockFallbackPromise;
-}
-
-export function parseFallbackActionBlocks(
-  value: unknown,
-  _responseText?: string,
-): FallbackParsedAction[] {
-  const rawValues: string[] = [];
-  if (typeof value === "string") {
-    rawValues.push(value);
-  } else if (Array.isArray(value)) {
-    for (const entry of value) {
-      if (typeof entry === "string" && entry.trim().length > 0) {
-        rawValues.push(entry);
-      }
-    }
-  }
-
-  const parsed: FallbackParsedAction[] = [];
-  for (const raw of rawValues) {
-    const normalized = raw.trim().toUpperCase();
-    if (/^[A-Z0-9_]+$/.test(normalized)) {
-      parsed.push({ name: normalized, parameters: {} });
-    }
-  }
-
-  return parsed;
-}
-
-export async function executeFallbackParsedActions(
-  runtime: AgentRuntime,
-  message: ReturnType<typeof createMessageMemory>,
-  parsedActions: FallbackParsedAction[],
-  appendIncomingText: (incoming: string) => void,
-  onActionCallback: (actionTag: string, hasText: boolean) => void,
-  options?: {
-    getCurrentText?: () => string;
-    onCallbackText?: (incoming: string) => void;
-  },
-): Promise<void> {
-  const runtimeActions = Array.isArray(
-    (runtime as { actions?: unknown[] }).actions,
-  )
-    ? ((runtime as { actions: unknown[] }).actions as RuntimeActionLike[])
-    : [];
-
-  const lookup = new Map<string, RuntimeActionLike>();
-  for (const action of runtimeActions) {
-    if (typeof action.name === "string")
-      lookup.set(action.name.toUpperCase(), action);
-    if (!Array.isArray(action.similes)) continue;
-    for (const alias of action.similes) {
-      if (typeof alias === "string") lookup.set(alias.toUpperCase(), action);
-    }
-  }
-
-  for (const parsed of parsedActions) {
-    if (
-      parsed.name === "REPLY" ||
-      parsed.name === "NONE" ||
-      parsed.name === "IGNORE"
-    ) {
-      continue;
-    }
-    // Prefer the built-in self-control actions for fallback execution.
-    // The runtime-registered wrappers can gate these too aggressively during
-    // early web-chat ownership bootstrap, while the built-in actions still
-    // enforce the actual self-control OWNER/ADMIN check.
-    const action =
-      (await resolveBuiltInFallbackAction(parsed.name)) ??
-      lookup.get(parsed.name);
-    if (!action || typeof action.handler !== "function") continue;
-
-    if (typeof action.validate === "function") {
-      const valid = await Promise.resolve(
-        action.validate(runtime, message, undefined),
-      );
-      if (!valid) continue;
-    }
-
-    let callbackSeen = false;
-    const actionResult = await Promise.resolve(
-      action.handler(
-        runtime,
-        message,
-        undefined,
-        { parameters: parsed.parameters ?? {} },
-        async (content: unknown) => {
-          const contentRecord =
-            content && typeof content === "object"
-              ? (content as Record<string, unknown>)
-              : {};
-          const actionTag =
-            typeof contentRecord.action === "string"
-              ? contentRecord.action
-              : parsed.name;
-          const chunk =
-            contentRecord && typeof contentRecord === "object"
-              ? extractCompatTextContent(contentRecord as Content)
-              : "";
-          callbackSeen = true;
-          onActionCallback(actionTag, Boolean(chunk));
-          if (chunk) {
-            const voicedChunk = await rewriteFallbackActionText({
-              runtime,
-              actionName: actionTag,
-              text: chunk,
-              content: contentRecord as Content,
-            });
-            (options?.onCallbackText ?? appendIncomingText)(voicedChunk);
-          }
-          return [];
-        },
-        [],
-      ),
-    );
-    if (!callbackSeen) {
-      const currentText = options?.getCurrentText?.() ?? "";
-      const actionSucceeded =
-        actionResult &&
-        typeof actionResult === "object" &&
-        "success" in actionResult
-          ? actionResult.success === true
-          : undefined;
-      const fallbackText =
-        actionResult && typeof actionResult === "object"
-          ? typeof actionResult.text === "string"
-            ? actionResult.text
-            : ""
-          : "";
-      const currentTextLooksLikeCompletedWebsiteBlock =
-        /\b(started|starting|blocked|blocking now|website block is active|block is active)\b/i.test(
-          currentText,
-        );
-      const shouldSuppressSuccessFallbackText =
-        parsed.name === "BLOCK" &&
-        actionSucceeded === true &&
-        currentTextLooksLikeCompletedWebsiteBlock;
-      if (fallbackText) {
-        onActionCallback(parsed.name, !shouldSuppressSuccessFallbackText);
-        if (!shouldSuppressSuccessFallbackText) {
-          const voicedFallbackText = await rewriteFallbackActionText({
-            runtime,
-            actionName: parsed.name,
-            text: fallbackText,
-          });
-          appendIncomingText(
-            currentText.trim().length > 0
-              ? `\n\n${voicedFallbackText}`
-              : voicedFallbackText,
-          );
-        }
-      }
-    }
-  }
 }
 
 /**
@@ -842,7 +622,7 @@ function normalizeDirectBinanceSummaryText(summary: string): string {
 }
 
 async function summarizeDirectBinanceSkillResult(
-  runtime: AgentRuntime,
+  runtime: IAgentRuntime,
   skillSlug: string,
   userText: string,
   rawText: string,
@@ -907,7 +687,7 @@ async function summarizeDirectBinanceSkillResult(
 }
 
 async function rewriteRawDirectBinanceSkillResult(
-  runtime: AgentRuntime,
+  runtime: IAgentRuntime,
   skillSlug: string,
   userText: string,
   rawText: string,
@@ -964,13 +744,19 @@ async function rewriteRawDirectBinanceSkillResult(
   }
 }
 
-export async function maybeHandleDirectBinanceSkillRequest(
-  runtime: AgentRuntime,
-  message: ReturnType<typeof createMessageMemory>,
+/**
+ * Attempt to fully resolve a chat turn as a direct Binance skill dispatch.
+ * Returns the final user-facing text, or `null` to pass through to normal
+ * action processing when the message isn't a Binance trigger (or the skill
+ * isn't loaded / produced no output).
+ */
+export async function runDirectBinanceSkillDispatch(
+  runtime: IAgentRuntime,
+  message: Memory,
   appendIncomingText: (incoming: string) => void,
   replaceText?: (text: string) => void,
 ): Promise<string | null> {
-  const userText = extractCompatTextContent(message.content).trim();
+  const userText = contentText(message.content).trim();
   if (!userText) return null;
 
   const skillSlug = extractDirectBinanceSkillSlug(userText);
@@ -1057,7 +843,7 @@ export async function maybeHandleDirectBinanceSkillRequest(
         async (content: unknown) => {
           const chunk =
             content && typeof content === "object"
-              ? extractCompatTextContent(content as Content)
+              ? contentText(content as Content)
               : "";
           if (!chunk) return [];
           directRunText = chunk;

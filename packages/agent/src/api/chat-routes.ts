@@ -52,11 +52,6 @@ import { startTrajectoryStepInDatabase } from "../runtime/trajectory-storage.ts"
 import { syncCharacterIntoConfig } from "../services/character-persistence.ts";
 import { detectRuntimeModel } from "./agent-model.ts";
 import {
-  executeFallbackParsedActions,
-  maybeHandleDirectBinanceSkillRequest,
-  parseFallbackActionBlocks,
-} from "./binance-skill-helpers.ts";
-import {
   maybeAugmentChatMessageWithDocuments,
   maybeAugmentChatMessageWithLanguage,
 } from "./chat-augmentation.ts";
@@ -75,6 +70,10 @@ import {
   isInsufficientCreditsError,
   isInsufficientCreditsMessage,
 } from "./credit-detection.ts";
+import {
+  executeFallbackParsedActions,
+  parseFallbackActionBlocks,
+} from "./fallback-action-helpers.ts";
 import {
   type LocalInferenceChatMetadata,
   type LocalInferenceCommandIntent,
@@ -2363,25 +2362,27 @@ export async function generateChatResponse(
       withTimeout(
         Promise.resolve(
           runWithTrajectoryContext(trajectoryContext, async () => {
-            // Binance skill direct dispatch
-            const directSkillText = await maybeHandleDirectBinanceSkillRequest(
+            // Plugin-registered chat pre-handlers (generic direct-dispatch
+            // extension point): drained by priority before normal action
+            // processing; the first non-null result resolves the turn.
+            const preHandlerResult = await runtime.drainChatPreHandlers({
               runtime,
               message,
-              replaceCallbackText,
-              emitSnapshot,
-            );
-            if (directSkillText) {
-              const finalText = isClientVisibleNoResponse(directSkillText)
-                ? directSkillText || "(no response)"
-                : directSkillText;
+              appendText: replaceCallbackText,
+              replaceText: emitSnapshot,
+            });
+            if (preHandlerResult) {
+              const directText = preHandlerResult.responseText;
+              const finalText = isClientVisibleNoResponse(directText)
+                ? directText || "(no response)"
+                : directText;
               result = {
                 didRespond: true,
                 responseContent: { text: finalText },
                 responseMessages: [],
               } as typeof result;
               responseText = finalText;
-              forcedWalletExecutionText =
-                isClientVisibleNoResponse(directSkillText);
+              forcedWalletExecutionText = isClientVisibleNoResponse(directText);
               return;
             }
 
