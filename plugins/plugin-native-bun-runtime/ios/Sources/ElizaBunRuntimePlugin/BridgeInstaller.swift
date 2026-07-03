@@ -71,7 +71,7 @@ public enum BridgeInstaller {
         let ui = UIBridge(plugin: plugin.value)
         ui.install(into: ctx)
 
-        let keepAwake = KeepAwakeBridge()
+        let keepAwake = KeepAwakeBridge.shared
         keepAwake.install(into: ctx)
 
         // The shared singleton owns the one background URLSession allowed per

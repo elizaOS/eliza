@@ -39,6 +39,13 @@ public final class KeepAwakeBridge {
         setHolder(enabled)
     }
 
+    /// Acquire (`true`) or release (`false`) an idle-timer hold. This is the
+    /// entry point the full-Bun `host_call` dispatch (`FullBunEngineHost`) uses,
+    /// mirroring the JSContext `keep_awake_set` closure above.
+    public func setEnabled(_ enabled: Bool) {
+        setHolder(enabled)
+    }
+
     /// Force-release the idle-timer hold (call when the runtime tears down so a
     /// stuck holder never pins the screen awake past the runtime's lifetime).
     public func reset() {
