@@ -1,0 +1,202 @@
+{
+  "runId": "75ac4451-a277-4cf6-aff7-7219fc0c53aa",
+  "startedAtIso": "2026-07-03T00:06:38.111Z",
+  "completedAtIso": "2026-07-03T00:07:04.758Z",
+  "providerName": "deterministic-llm-proxy",
+  "scenarios": [
+    {
+      "id": "finances.owner-finances-dashboard",
+      "title": "Finances: OWNER_FINANCES returns the payments dashboard",
+      "domain": "finances",
+      "tags": [
+        "smoke",
+        "finances",
+        "owner-finances",
+        "payments"
+      ],
+      "status": "failed",
+      "durationMs": 1604,
+      "turns": [
+        {
+          "name": "read-finances-dashboard",
+          "kind": "message",
+          "text": "Pull up my finances dashboard for the last 30 days.",
+          "responseText": "Here is your finances dashboard for the last 30 days.",
+          "actionsCalled": [
+            {
+              "actionName": "OWNER_FINANCES",
+              "parameters": {
+                "parameters": {
+                  "action": "dashboard"
+                },
+                "actionContext": {
+                  "previousResults": []
+                }
+              },
+              "result": {
+                "success": true,
+                "data": {
+                  "dashboard": {
+                    "sources": [],
+                    "recurring": [],
+                    "recurringPlaybookHits": [],
+                    "spending": {
+                      "windowDays": 30,
+                      "fromDate": "2026-06-03T00:07:03.942Z",
+                      "toDate": "2026-07-03T00:07:03.943Z",
+                      "totalSpendUsd": 0,
+                      "totalIncomeUsd": 0,
+                      "netUsd": 0,
+                      "transactionCount": 0,
+                      "recurringSpendUsd": 0,
+                      "topCategories": [],
+                      "topMerchants": []
+                    },
+                    "upcomingBills": [],
+                    "gmailSubscriptionAuditId": null,
+                    "generatedAt": "2026-07-03T00:07:03.943Z"
+                  }
+                },
+                "text": "Spent $0.00 in the last 30 days across 0 transactions.\nNo recurring charges detected yet. Import transactions to start tracking.\nNo payment sources connected. Add one (CSV import) to see your spending.",
+                "raw": {
+                  "success": true,
+                  "text": "Spent $0.00 in the last 30 days across 0 transactions.\nNo recurring charges detected yet. Import transactions to start tracking.\nNo payment sources connected. Add one (CSV import) to see your spending.",
+                  "data": {
+                    "dashboard": {
+                      "sources": [],
+                      "recurring": [],
+                      "recurringPlaybookHits": [],
+                      "spending": {
+                        "windowDays": 30,
+                        "fromDate": "2026-06-03T00:07:03.942Z",
+                        "toDate": "2026-07-03T00:07:03.943Z",
+                        "totalSpendUsd": 0,
+                        "totalIncomeUsd": 0,
+                        "netUsd": 0,
+                        "transactionCount": 0,
+                        "recurringSpendUsd": 0,
+                        "topCategories": [],
+                        "topMerchants": []
+                      },
+                      "upcomingBills": [],
+                      "gmailSubscriptionAuditId": null,
+                      "generatedAt": "2026-07-03T00:07:03.943Z"
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "durationMs": 1515,
+          "failedAssertions": []
+        }
+      ],
+      "finalChecks": [
+        {
+          "label": "actionCalled",
+          "type": "actionCalled",
+          "status": "passed",
+          "detail": "OWNER_FINANCES succeeded 1x (1 total call(s))"
+        },
+        {
+          "label": "finances-dashboard-composite-read",
+          "type": "custom",
+          "status": "failed",
+          "detail": "expected dashboard.spending {transactionCount, windowDays} numbers from the app_finances read, saw {\"windowDays\":30,\"fromDate\":\"2026-06-03T00:07:03.942Z\",\"toDate\":\"2026-07-03T00:07:03.943Z\",\"totalSpendUsd\":0,\"totalIncomeUsd\":0,\"netUsd\":0,\"transactionCount\":0,\"recurringSpendUsd\":0,\"topCategories\":[]"
+        }
+      ],
+      "actionsCalled": [
+        {
+          "actionName": "OWNER_FINANCES",
+          "parameters": {
+            "parameters": {
+              "action": "dashboard"
+            },
+            "actionContext": {
+              "previousResults": []
+            }
+          },
+          "result": {
+            "success": true,
+            "data": {
+              "dashboard": {
+                "sources": [],
+                "recurring": [],
+                "recurringPlaybookHits": [],
+                "spending": {
+                  "windowDays": 30,
+                  "fromDate": "2026-06-03T00:07:03.942Z",
+                  "toDate": "2026-07-03T00:07:03.943Z",
+                  "totalSpendUsd": 0,
+                  "totalIncomeUsd": 0,
+                  "netUsd": 0,
+                  "transactionCount": 0,
+                  "recurringSpendUsd": 0,
+                  "topCategories": [],
+                  "topMerchants": []
+                },
+                "upcomingBills": [],
+                "gmailSubscriptionAuditId": null,
+                "generatedAt": "2026-07-03T00:07:03.943Z"
+              }
+            },
+            "text": "Spent $0.00 in the last 30 days across 0 transactions.\nNo recurring charges detected yet. Import transactions to start tracking.\nNo payment sources connected. Add one (CSV import) to see your spending.",
+            "raw": {
+              "success": true,
+              "text": "Spent $0.00 in the last 30 days across 0 transactions.\nNo recurring charges detected yet. Import transactions to start tracking.\nNo payment sources connected. Add one (CSV import) to see your spending.",
+              "data": {
+                "dashboard": {
+                  "sources": [],
+                  "recurring": [],
+                  "recurringPlaybookHits": [],
+                  "spending": {
+                    "windowDays": 30,
+                    "fromDate": "2026-06-03T00:07:03.942Z",
+                    "toDate": "2026-07-03T00:07:03.943Z",
+                    "totalSpendUsd": 0,
+                    "totalIncomeUsd": 0,
+                    "netUsd": 0,
+                    "transactionCount": 0,
+                    "recurringSpendUsd": 0,
+                    "topCategories": [],
+                    "topMerchants": []
+                  },
+                  "upcomingBills": [],
+                  "gmailSubscriptionAuditId": null,
+                  "generatedAt": "2026-07-03T00:07:03.943Z"
+                }
+              }
+            }
+          }
+        }
+      ],
+      "failedAssertions": [
+        {
+          "label": "finances-dashboard-composite-read",
+          "detail": "expected dashboard.spending {transactionCount, windowDays} numbers from the app_finances read, saw {\"windowDays\":30,\"fromDate\":\"2026-06-03T00:07:03.942Z\",\"toDate\":\"2026-07-03T00:07:03.943Z\",\"totalSpendUsd\":0,\"totalIncomeUsd\":0,\"netUsd\":0,\"transactionCount\":0,\"recurringSpendUsd\":0,\"topCategories\":[]"
+        }
+      ],
+      "providerName": "deterministic-llm-proxy"
+    }
+  ],
+  "totals": {
+    "passed": 0,
+    "failed": 1,
+    "skipped": 0,
+    "flakyPassed": 0,
+    "costUsd": 0,
+    "finalChecksSkipped": 0
+  },
+  "totalCount": 1,
+  "passedCount": 0,
+  "failedCount": 1,
+  "skippedCount": 0,
+  "flakyPassedCount": 0,
+  "totalCostUsd": 0,
+  "artifactPaths": {
+    "runDir": "/tmp/claude-1000/-home-shaw-milady-eliza/da253a81-b404-4458-8364-46d9209b4b08/scratchpad/11381-finances-red",
+    "matrixJson": "/tmp/claude-1000/-home-shaw-milady-eliza/da253a81-b404-4458-8364-46d9209b4b08/scratchpad/11381-finances-red/matrix.json",
+    "viewerIndex": "/tmp/claude-1000/-home-shaw-milady-eliza/da253a81-b404-4458-8364-46d9209b4b08/scratchpad/11381-finances-red/viewer/index.html",
+    "viewerData": "/tmp/claude-1000/-home-shaw-milady-eliza/da253a81-b404-4458-8364-46d9209b4b08/scratchpad/11381-finances-red/viewer/data.js"
+  }
+}

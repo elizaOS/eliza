@@ -15,6 +15,7 @@ import type { AgentRuntime } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
 import { scenario } from "@elizaos/scenario-runner/schema";
 import { WebSocketServer } from "ws";
+import { describeCalls } from "../_helpers/effect-assertions.ts";
 
 const AINEX_STAND = "AINEX_STAND";
 type R = AgentRuntime & {
@@ -22,6 +23,14 @@ type R = AgentRuntime & {
     register: (...f: Array<Record<string, unknown>>) => void;
   };
 };
+
+type BridgeCommandFrame = {
+  command?: string;
+  payload?: Record<string, unknown>;
+};
+
+/** Every CommandEnvelope the mock bridge actually received over the wire. */
+const observedBridgeCommands: BridgeCommandFrame[] = [];
 
 export default scenario({
   lane: "pr-deterministic",
@@ -46,10 +55,14 @@ export default scenario({
         // Every CommandEnvelope is answered with an ok ResponseEnvelope keyed
         // back by request_id. `profile.describe` returns no profile, so the
         // service falls back to the hardcoded Hiwonder descriptor (no throw).
+        observedBridgeCommands.length = 0;
         const wss = new WebSocketServer({ host: "127.0.0.1", port: 0 });
         wss.on("connection", (socket) => {
           socket.on("message", (raw: Buffer | string) => {
-            let frame: { type?: string; request_id?: string } = {};
+            let frame: {
+              type?: string;
+              request_id?: string;
+            } & BridgeCommandFrame = {};
             try {
               frame = JSON.parse(
                 typeof raw === "string" ? raw : raw.toString("utf8"),
@@ -62,6 +75,10 @@ export default scenario({
               typeof frame.request_id !== "string"
             )
               return;
+            observedBridgeCommands.push({
+              command: frame.command,
+              payload: frame.payload,
+            });
             socket.send(
               JSON.stringify({
                 type: "response",
@@ -187,6 +204,27 @@ export default scenario({
       actionName: AINEX_STAND,
       status: "success",
       minCount: 1,
+    },
+    {
+      // Effect proof (#11381): AINEX_STAND's whole job is one wire command —
+      // `action.play {name:"stand"}` — to the bridge. The seed records every
+      // CommandEnvelope the mock bridge receives; a handler that "succeeds"
+      // without the envelope crossing the socket (or with the wrong action
+      // group) fails here.
+      type: "custom",
+      name: "stand-command-crossed-the-bridge",
+      predicate: (ctx) => {
+        const hit = observedBridgeCommands.find(
+          (frame) =>
+            frame.command === "action.play" && frame.payload?.name === "stand",
+        );
+        if (!hit) {
+          return (
+            `mock bridge never received action.play {name:"stand"}; got ${JSON.stringify(observedBridgeCommands).slice(0, 300)}; ` +
+            `calls: ${describeCalls(ctx)}`
+          );
+        }
+      },
     },
   ],
 });

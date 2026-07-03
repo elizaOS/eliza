@@ -1,4 +1,9 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
+import {
+  describeCalls,
+  successfulCalls,
+  toRecord,
+} from "../_helpers/effect-assertions.ts";
 
 export default scenario({
   lane: "live-only",
@@ -48,6 +53,38 @@ export default scenario({
       type: "actionCalled",
       actionName: "WEBSITE_BLOCK",
       minCount: 1,
+    },
+    {
+      // Effect proof (#11381): turn 1 must have ACTIVATED the 30-minute
+      // x.com block, and the ambiguous "unblock x" turn must have reached
+      // the unblock path's outcome — a result carrying active:false (either
+      // the removal or the no-active no-op). Routing into a clarifying
+      // question instead of the unblock handler fails here.
+      type: "custom",
+      name: "timed-block-then-unblock-outcome",
+      predicate: (ctx) => {
+        const calls = successfulCalls(ctx, "WEBSITE_BLOCK");
+        const activated = calls.find((call) => {
+          const data = toRecord(call.result?.data);
+          return (
+            data !== null &&
+            data.durationMinutes === 30 &&
+            Array.isArray(data.websites) &&
+            data.websites.join(",").includes("x.com") &&
+            !("active" in data)
+          );
+        });
+        if (!activated) {
+          return `no 30-minute x.com block activation captured; calls: ${describeCalls(ctx)}`;
+        }
+        const unblockOutcome = calls.find((call) => {
+          const data = toRecord(call.result?.data);
+          return data?.active === false;
+        });
+        if (!unblockOutcome) {
+          return `no unblock outcome (result carrying active:false) captured; calls: ${describeCalls(ctx)}`;
+        }
+      },
     },
   ],
   cleanup: [

@@ -17,6 +17,11 @@
 import type { AgentRuntime } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
 import { scenario } from "@elizaos/scenario-runner/schema";
+import {
+  describeCalls,
+  successfulActionData,
+  toRecord,
+} from "../_helpers/effect-assertions.ts";
 
 const FINANCES_INPUT = "Pull up my finances dashboard for the last 30 days.";
 const OWNER_FINANCES = "OWNER_FINANCES";
@@ -159,6 +164,35 @@ export default scenario({
       actionName: OWNER_FINANCES,
       status: "success",
       minCount: 1,
+    },
+    {
+      // Effect proof (#11381): the dashboard contract is the composite
+      // payload assembled off the migrated `app_finances` tables —
+      // `data.dashboard` with a numeric spending rollup plus the recurring
+      // and sources collections. A handler that "succeeds" without actually
+      // reading the back-end (missing/partial composite) fails here.
+      type: "custom",
+      name: "finances-dashboard-composite-read",
+      predicate: (ctx) => {
+        const data = successfulActionData(ctx, OWNER_FINANCES);
+        const dashboard = toRecord(data?.dashboard);
+        if (!dashboard) {
+          return `no ${OWNER_FINANCES} result data.dashboard; calls: ${describeCalls(ctx)}`;
+        }
+        const spending = toRecord(dashboard.spending);
+        if (
+          typeof spending?.transactionCount !== "number" ||
+          typeof spending?.windowDays !== "number"
+        ) {
+          return `expected dashboard.spending {transactionCount, windowDays} numbers from the app_finances read, saw ${JSON.stringify(dashboard.spending).slice(0, 200)}`;
+        }
+        if (
+          !Array.isArray(dashboard.recurring) ||
+          !Array.isArray(dashboard.sources)
+        ) {
+          return `expected dashboard.recurring + dashboard.sources arrays, saw keys ${Object.keys(dashboard).join(",")}`;
+        }
+      },
     },
   ],
 });

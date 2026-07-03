@@ -1,4 +1,9 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
+import {
+  describeCalls,
+  successfulCalls,
+  toRecord,
+} from "../_helpers/effect-assertions.ts";
 
 export default scenario({
   lane: "live-only",
@@ -66,9 +71,37 @@ export default scenario({
       minCount: 1,
     },
     {
-      type: "actionCalled",
-      actionName: "WEBSITE_BLOCK",
-      minCount: 1,
+      // Effect proof (#11381): turn 1 must have ACTIVATED an indefinite
+      // block — a successful result carrying x.com with durationMinutes:null
+      // and no scheduled end — and turn 2 must have actually torn it down
+      // (the unblock result {active:false, canUnblockEarly:true}). Handler
+      // success without those persisted outcomes fails here.
+      type: "custom",
+      name: "manual-block-activated-then-removed",
+      predicate: (ctx) => {
+        const calls = successfulCalls(ctx, "WEBSITE_BLOCK");
+        const activated = calls.find((call) => {
+          const data = toRecord(call.result?.data);
+          return (
+            data !== null &&
+            data.durationMinutes === null &&
+            data.endsAt === null &&
+            Array.isArray(data.websites) &&
+            data.websites.join(",").includes("x.com") &&
+            !("active" in data)
+          );
+        });
+        if (!activated) {
+          return `no indefinite x.com block activation captured; calls: ${describeCalls(ctx)}`;
+        }
+        const removed = calls.find((call) => {
+          const data = toRecord(call.result?.data);
+          return data?.active === false && data?.canUnblockEarly === true;
+        });
+        if (!removed) {
+          return `no unblock effect ({active:false, canUnblockEarly:true}) captured; calls: ${describeCalls(ctx)}`;
+        }
+      },
     },
   ],
   cleanup: [

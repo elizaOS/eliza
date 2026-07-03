@@ -1,4 +1,9 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
+import {
+  describeCalls,
+  successfulCalls,
+  toRecord,
+} from "../_helpers/effect-assertions.ts";
 
 export default scenario({
   lane: "live-only",
@@ -38,6 +43,21 @@ export default scenario({
       type: "actionCalled",
       actionName: "LIST_ACTIVE_BLOCKS",
       minCount: 1,
+    },
+    {
+      // Effect proof (#11381): "checks active block state" means the
+      // list_active handler actually read the live rule store — its result
+      // must carry the rules array (empty on a fresh runtime). A handler
+      // that "succeeds" without the store read fails here.
+      type: "custom",
+      name: "active-blocks-read-before-answering",
+      predicate: (ctx) => {
+        const call = successfulCalls(ctx, "LIST_ACTIVE_BLOCKS")[0];
+        const data = toRecord(call?.result?.data);
+        if (!data || !Array.isArray(data.rules)) {
+          return `expected LIST_ACTIVE_BLOCKS to return the live rules array; calls: ${describeCalls(ctx)}`;
+        }
+      },
     },
   ],
 });

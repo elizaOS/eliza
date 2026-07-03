@@ -1,0 +1,107 @@
+{
+  "runId": "050e3c55-1e4f-45d5-a1c4-15f757218565",
+  "startedAtIso": "2026-07-03T00:04:56.294Z",
+  "completedAtIso": "2026-07-03T00:05:23.094Z",
+  "providerName": "deterministic-llm-proxy",
+  "scenarios": [
+    {
+      "id": "ainex.stand",
+      "title": "AiNex: stand the robot up against a mocked websocket bridge",
+      "domain": "ainex",
+      "tags": [
+        "smoke",
+        "ainex",
+        "connector",
+        "robot"
+      ],
+      "status": "passed",
+      "durationMs": 3507,
+      "turns": [
+        {
+          "name": "stand",
+          "kind": "message",
+          "text": "Stand up, AiNex.",
+          "responseText": "AiNex is standing.",
+          "actionsCalled": [
+            {
+              "actionName": "AINEX_STAND",
+              "parameters": {
+                "actionContext": {
+                  "previousResults": []
+                }
+              },
+              "result": {
+                "success": true,
+                "data": {},
+                "text": "AiNex is standing.",
+                "raw": {
+                  "success": true,
+                  "text": "AiNex is standing.",
+                  "data": {}
+                }
+              }
+            }
+          ],
+          "durationMs": 3298,
+          "failedAssertions": []
+        }
+      ],
+      "finalChecks": [
+        {
+          "label": "actionCalled",
+          "type": "actionCalled",
+          "status": "passed",
+          "detail": "AINEX_STAND succeeded 1x (1 total call(s))"
+        },
+        {
+          "label": "stand-command-crossed-the-bridge",
+          "type": "custom",
+          "status": "passed",
+          "detail": "predicate returned undefined"
+        }
+      ],
+      "actionsCalled": [
+        {
+          "actionName": "AINEX_STAND",
+          "parameters": {
+            "actionContext": {
+              "previousResults": []
+            }
+          },
+          "result": {
+            "success": true,
+            "data": {},
+            "text": "AiNex is standing.",
+            "raw": {
+              "success": true,
+              "text": "AiNex is standing.",
+              "data": {}
+            }
+          }
+        }
+      ],
+      "failedAssertions": [],
+      "providerName": "deterministic-llm-proxy"
+    }
+  ],
+  "totals": {
+    "passed": 1,
+    "failed": 0,
+    "skipped": 0,
+    "flakyPassed": 0,
+    "costUsd": 0,
+    "finalChecksSkipped": 0
+  },
+  "totalCount": 1,
+  "passedCount": 1,
+  "failedCount": 0,
+  "skippedCount": 0,
+  "flakyPassedCount": 0,
+  "totalCostUsd": 0,
+  "artifactPaths": {
+    "runDir": "/tmp/claude-1000/-home-shaw-milady-eliza/da253a81-b404-4458-8364-46d9209b4b08/scratchpad/11381-ainex",
+    "matrixJson": "/tmp/claude-1000/-home-shaw-milady-eliza/da253a81-b404-4458-8364-46d9209b4b08/scratchpad/11381-ainex/matrix.json",
+    "viewerIndex": "/tmp/claude-1000/-home-shaw-milady-eliza/da253a81-b404-4458-8364-46d9209b4b08/scratchpad/11381-ainex/viewer/index.html",
+    "viewerData": "/tmp/claude-1000/-home-shaw-milady-eliza/da253a81-b404-4458-8364-46d9209b4b08/scratchpad/11381-ainex/viewer/data.js"
+  }
+}

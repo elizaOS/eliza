@@ -1,4 +1,5 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
+import { expectNoActionCalled } from "../_helpers/effect-assertions.ts";
 
 export default scenario({
   lane: "live-only",
@@ -47,6 +48,16 @@ export default scenario({
       type: "actionCalled",
       actionName: "REPLY",
       minCount: 1,
+    },
+    {
+      // Effect proof (#11381): the clarification contract is a NEGATIVE
+      // side-effect guarantee — no block of any kind may be enforced
+      // anywhere in the run while the agent is still asking which apps to
+      // include. Turn-level forbiddenActions only guards its own turn.
+      type: "custom",
+      name: "no-block-enforced-while-clarifying",
+      predicate: (ctx) =>
+        expectNoActionCalled(ctx, ["APP_BLOCK", "WEBSITE_BLOCK", "BLOCK"]),
     },
   ],
 });

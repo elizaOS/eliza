@@ -1,4 +1,9 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
+import {
+  describeCalls,
+  successfulCalls,
+  toRecord,
+} from "../_helpers/effect-assertions.ts";
 
 export default scenario({
   lane: "live-only",
@@ -36,6 +41,23 @@ export default scenario({
       type: "actionCalled",
       actionName: "WEBSITE_BLOCK",
       minCount: 1,
+    },
+    {
+      // Effect proof (#11381): the unblock handler must have actually read
+      // the live block state and reported the clean no-op — the result
+      // {active:false, canUnblockEarly:false}. A reply-only "nothing is
+      // blocked" without the state read fails here.
+      type: "custom",
+      name: "unblock-noop-reads-empty-block-state",
+      predicate: (ctx) => {
+        const noop = successfulCalls(ctx, "WEBSITE_BLOCK").find((call) => {
+          const data = toRecord(call.result?.data);
+          return data?.active === false && data?.canUnblockEarly === false;
+        });
+        if (!noop) {
+          return `no clean no-op outcome ({active:false, canUnblockEarly:false}) captured; calls: ${describeCalls(ctx)}`;
+        }
+      },
     },
   ],
   cleanup: [

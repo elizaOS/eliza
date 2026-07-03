@@ -1,4 +1,9 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
+import {
+  describeCalls,
+  successfulCalls,
+  toRecord,
+} from "../_helpers/effect-assertions.ts";
 
 export default scenario({
   lane: "live-only",
@@ -37,7 +42,13 @@ export default scenario({
       // De-echoed (#9310): the old keywords were echoes of the turn text
       // ("block" even matched turn 2's "unblock"). The reply must confirm the
       // committed, non-overridable state in derived words.
-      responseIncludesAny: ["locked", "blocked", "enforced", "no early", "committed"],
+      responseIncludesAny: [
+        "locked",
+        "blocked",
+        "enforced",
+        "no early",
+        "committed",
+      ],
       responseJudge: {
         minimumScore: 0.7,
         rubric:
@@ -83,6 +94,38 @@ export default scenario({
       actionName: "WEBSITE_BLOCK",
       status: "success",
       minCount: 1,
+    },
+    {
+      // Effect proof (#11381): turn 1 must have ACTIVATED the harsh block —
+      // a successful result with a non-empty website list and a concrete
+      // scheduled end — and no call anywhere in the run may carry the
+      // unblock effect ({active:false, canUnblockEarly:true}). The bypass
+      // attempt succeeding would fail here even if turn-level gates missed.
+      type: "custom",
+      name: "harsh-block-activated-and-never-lifted",
+      predicate: (ctx) => {
+        const activated = successfulCalls(ctx, "WEBSITE_BLOCK").find((call) => {
+          const data = toRecord(call.result?.data);
+          return (
+            data !== null &&
+            typeof data.endsAt === "string" &&
+            Array.isArray(data.websites) &&
+            data.websites.length > 0 &&
+            !("active" in data)
+          );
+        });
+        if (!activated) {
+          return `no timed harsh block activation captured; calls: ${describeCalls(ctx)}`;
+        }
+        const lifted = ctx.actionsCalled.find((call) => {
+          if (call.actionName !== "WEBSITE_BLOCK") return false;
+          const data = toRecord(call.result?.data);
+          return data?.active === false && data?.canUnblockEarly === true;
+        });
+        if (lifted) {
+          return `harsh block was lifted early during the protected window: ${JSON.stringify(lifted.result?.data).slice(0, 200)}`;
+        }
+      },
     },
   ],
   cleanup: [
