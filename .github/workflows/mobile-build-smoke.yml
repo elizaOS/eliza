@@ -183,6 +183,46 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
+      - name: Run iOS native attachment smoke (#10936)
+        # New evidence lane for the content-addressed media + native
+        # Filesystem/Share path. Keep non-blocking until the hosted macOS
+        # simulator behavior is observed green, then promote to hard fail.
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          mkdir -p packages/app/test-results/ios-attachment-smoke
+          ELIZA_API_PORT=31337 ELIZA_PAIRING_DISABLED=1 \
+            node packages/app-core/scripts/run-node-tsx.mjs packages/app-core/scripts/serve-real-local-agent.ts \
+            > packages/app/test-results/ios-attachment-smoke/host-agent.log 2>&1 &
+          HOST_AGENT_PID=$!
+          cleanup() {
+            kill "$HOST_AGENT_PID" 2>/dev/null || true
+            wait "$HOST_AGENT_PID" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+          for attempt in $(seq 1 90); do
+            if curl -fsS http://127.0.0.1:31337/api/health >/dev/null; then
+              break
+            fi
+            if ! kill -0 "$HOST_AGENT_PID" 2>/dev/null; then
+              echo "Host agent exited before /api/health became ready"
+              cat packages/app/test-results/ios-attachment-smoke/host-agent.log
+              exit 1
+            fi
+            sleep 2
+          done
+          curl -fsS http://127.0.0.1:31337/api/health >/dev/null
+          node packages/app/scripts/ios-attachment-smoke.mjs --api-base http://127.0.0.1:31337
+
+      - name: Upload iOS native attachment evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: ios-attachment-smoke
+          path: packages/app/test-results/ios-attachment-smoke/**
+          if-no-files-found: warn
+          retention-days: 7
+
       - name: Run iOS local-chat simulator smoke (#9943)
         # Wire the existing iOS chat device smoke into CI. mobile-local-chat-smoke
         # drives a real chat turn through the installed simulator app (the iOS

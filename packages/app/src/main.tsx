@@ -144,6 +144,7 @@ import {
 } from "./deep-link-routing";
 import { runEmbedHandshake } from "./embed-bootstrap";
 import { registerAppHostExternalImporters } from "./host-externals";
+import { runIosAttachmentSmokeIfRequested } from "./ios-attachment-smoke";
 import {
   apiBaseToDeviceBridgeUrl,
   type IosRuntimeConfig,
@@ -1441,6 +1442,16 @@ async function initializePlatform(): Promise<void> {
   initializeCapacitorBridge();
   void runIosFullBunSmokeIfRequested();
   void runIosOnboardingSmokeIfRequested();
+  void runIosAttachmentSmokeIfRequested({
+    isIOS,
+    getApiBaseUrl: () => client.getBaseUrl(),
+    getPreference: boundedPreferenceGet,
+    removePreference: (key) =>
+      boundedPreferenceWrite(() => Preferences.remove({ key })),
+    writeResult: writeIosPreferenceSmokeResult,
+    waitForElement: waitForIosOnboardingElement,
+    readStorageSnapshot: readIosOnboardingSmokeStorageSnapshot,
+  });
 
   if (isIOS || isAndroid) {
     await initializeStatusBar();

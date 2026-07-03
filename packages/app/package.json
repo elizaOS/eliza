@@ -53,6 +53,7 @@
     "test:sim:auth:contract": "node ../../packages/app-core/scripts/mobile-auth-simulator-smoke.mjs --registration-only",
     "test:sim:auth:ios": "node ../../packages/app-core/scripts/mobile-auth-simulator-smoke.mjs --platform ios",
     "capture:ios-sim": "node scripts/capture-ios-sim.mjs",
+    "capture:ios-sim:attachment": "node scripts/ios-attachment-smoke.mjs",
     "capture:android-emu": "node scripts/capture-android-emu.mjs",
     "capture:macos-desktop": "node scripts/capture-macos-desktop.mjs",
     "test:watch": "vitest --config vitest.config.ts",
