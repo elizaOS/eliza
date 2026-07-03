@@ -453,39 +453,55 @@ final class ElizaBionicInferenceServer {
      * reused; each turn only resets the KV+sampler and re-prefills the prompt, so
      * we skip the ~7-8s model reload. Greedy decode (temp=0, top_k=1), all-GPU.
      * Returns the same {ok,tokens,ms,tokS,text} JSON as nativeLlmSelfTest.
+     *
+     * <p>The per-turn {@code maxTokens} cap is enforced per NATIVE CALL via
+     * {@link BionicDecodeLoop}: every {@code nativeLlmStreamNext} is budgeted
+     * {@code min(step, cap - produced)}, so a maxTokens=20 request performs at
+     * most 20 tokens of eval work (#11913 — previously one native call decoded
+     * the full 256-token JNI buffer before the Java cap check ever ran).
      */
     private String generateResident(String bundleDir, String drafterPath, String prompt, int maxTokens)
-            throws org.json.JSONException {
+            throws Exception {
         synchronized (residentLock) {
             ensureResidentCtx(bundleDir);
             final long t0 = android.os.SystemClock.elapsedRealtime();
             resetAndPrefillResident(prompt, drafterPath);
-            final StringBuilder sb = new StringBuilder();
-            int produced = 0;
-            final int cap = maxTokens > 0 ? maxTokens : 32;
-            while (produced < cap) {
-                String stepJson = ElizaVoiceNative.nativeLlmStreamNext(residentStream);
-                if (stepJson == null) break;
-                JSONObject step = new JSONObject(stepJson);
-                sb.append(step.optString("text", ""));
-                int nout = step.optInt("nout", 1);
-                produced += nout > 0 ? nout : 1;
-                if (step.optBoolean("done", false)) break;
-            }
+            // Buffered op: no per-frame consumer, so use the largest step the
+            // JNI buffer allows — the per-turn cap still bounds every call.
+            final BionicDecodeLoop.Result r = BionicDecodeLoop.run(
+                this::residentStreamStep, maxTokens,
+                BionicDecodeLoop.MAX_STEP_TOKENS, null);
             final long ms = android.os.SystemClock.elapsedRealtime() - t0;
-            final double tokS = ms > 0 ? produced * 1000.0 / ms : 0.0;
+            final double tokS = ms > 0 ? r.produced * 1000.0 / ms : 0.0;
+            Log.i(TAG, "GENERATE (resident) eval count: " + r.produced
+                + " tok (maxTokens cap "
+                + (maxTokens > 0 ? maxTokens : BionicDecodeLoop.DEFAULT_CAP_TOKENS)
+                + ") in " + ms + " ms");
             // Refresh under residentLock: a policy tick blocked on this lock
             // must re-read a fresh idle clock, not the pre-turn one.
             lastInferenceAtMs = android.os.SystemClock.elapsedRealtime();
             return new JSONObject()
                 .put("ok", true)
-                .put("tokens", produced)
+                .put("tokens", r.produced)
                 .put("ms", ms)
                 .put("tokS", tokS)
-                .put("text", sb.toString())
+                .put("text", r.text)
                 .put("resident", true)
                 .toString();
         }
+    }
+
+    /** One bounded native decode step on the resident stream, parsed for the loop. */
+    private BionicDecodeLoop.Step residentStreamStep(int stepCap)
+            throws org.json.JSONException {
+        final String stepJson =
+            ElizaVoiceNative.nativeLlmStreamNext(residentStream, stepCap);
+        if (stepJson == null) return null;
+        final JSONObject step = new JSONObject(stepJson);
+        return new BionicDecodeLoop.Step(
+            step.optString("text", ""),
+            step.optInt("nout", 1),
+            step.optBoolean("done", false));
     }
 
     /** Cheap op discriminator without fully consuming the request. */
@@ -504,6 +520,7 @@ final class ElizaBionicInferenceServer {
         String drafterPath = "";
         String prompt = "";
         int maxTokens = 256;
+        int streamStep = 0;
         try {
             JSONObject req = new JSONObject(requestJson);
             bundleDir = req.optString("bundleDir", "");
@@ -513,11 +530,39 @@ final class ElizaBionicInferenceServer {
             drafterPath = req.optString("drafterPath", "");
             prompt = req.optString("prompt", "");
             maxTokens = req.optInt("maxTokens", 256);
+            streamStep = req.optInt("streamStep", 0);
         } catch (org.json.JSONException e) {
             writeFrame(out, errorJson(e.getMessage() == null ? e.toString() : e.getMessage()));
             return;
         }
-        generateStream(bundleDir, drafterPath, prompt, maxTokens, out);
+        generateStream(bundleDir, drafterPath, prompt, maxTokens, streamStep, out);
+    }
+
+    /**
+     * Per-native-call token budget for the STREAMING op — how many tokens each
+     * {@code nativeLlmStreamNext} may decode before its text is flushed as a
+     * token frame. Small enough that the first frame (and every frame after it)
+     * arrives at token cadence instead of after the whole reply; 8 matches the
+     * user-visible streaming knee benchmarked in #9174. Resolution order:
+     * per-request {@code streamStep} → {@code ELIZA_BIONIC_STREAM_STEP} env →
+     * 8; clamped to the JNI token buffer.
+     */
+    private static final int DEFAULT_STREAM_STEP_TOKENS = 8;
+
+    static int resolveStreamStepTokens(int requestValue, String envValue) {
+        int step = requestValue > 0 ? requestValue : parsePositiveInt(envValue);
+        if (step <= 0) step = DEFAULT_STREAM_STEP_TOKENS;
+        return Math.min(step, BionicDecodeLoop.MAX_STEP_TOKENS);
+    }
+
+    private static int parsePositiveInt(String value) {
+        if (value == null || value.trim().isEmpty()) return -1;
+        try {
+            final int parsed = Integer.parseInt(value.trim());
+            return parsed > 0 ? parsed : -1;
+        } catch (NumberFormatException e) {
+            return -1;
+        }
     }
 
     /**
@@ -528,46 +573,48 @@ final class ElizaBionicInferenceServer {
      * tokens as they decode (first paint at the first token instead of after the
      * whole reply) and unblocks phrase-chunked LLM→TTS. The buffered op="generate"
      * is unchanged for non-streaming callers (embed/tts/self-test).
+     *
+     * <p>Each native call is budgeted {@code min(streamStep, cap - produced)}
+     * tokens (#11913): the {@code maxTokens} cap bounds total eval work exactly,
+     * and the small per-call step is what makes the token frames actually
+     * incremental — with the old unbounded call the whole 256-token buffer
+     * decoded inside ONE {@code nativeLlmStreamNext}, so the "stream" was a
+     * single giant frame and TTFT equaled full-turn latency.
      */
     private void generateStream(String bundleDir, String drafterPath, String prompt, int maxTokens,
-                                DataOutputStream out) throws IOException {
+                                int requestedStreamStep, DataOutputStream out) throws IOException {
+        final int streamStep = resolveStreamStepTokens(
+            requestedStreamStep, System.getenv("ELIZA_BIONIC_STREAM_STEP"));
         Log.i(TAG, "GENERATE_STREAM from agent: " + prompt.length() + " prompt chars,"
-            + " maxTokens=" + maxTokens + ", bundle=" + bundleDir
+            + " maxTokens=" + maxTokens + ", streamStep=" + streamStep
+            + ", bundle=" + bundleDir
             + ", drafter=" + (drafterPath.isEmpty() ? "(none)" : drafterPath));
-        final StringBuilder sb = new StringBuilder();
         try {
             synchronized (residentLock) {
                 ensureResidentCtx(bundleDir);
                 final long t0 = android.os.SystemClock.elapsedRealtime();
                 resetAndPrefillResident(prompt, drafterPath);
-                int produced = 0;
-                final int cap = maxTokens > 0 ? maxTokens : 32;
-                while (produced < cap) {
-                    String stepJson = ElizaVoiceNative.nativeLlmStreamNext(residentStream);
-                    if (stepJson == null) break;
-                    JSONObject step = new JSONObject(stepJson);
-                    String t = step.optString("text", "");
-                    if (!t.isEmpty()) {
-                        sb.append(t);
+                final BionicDecodeLoop.Result r = BionicDecodeLoop.run(
+                    this::residentStreamStep, maxTokens, streamStep,
+                    text -> {
                         writeFrame(out, new JSONObject()
-                            .put("type", "token").put("text", t).toString());
+                            .put("type", "token").put("text", text).toString());
                         out.flush();
-                    }
-                    int nout = step.optInt("nout", 1);
-                    produced += nout > 0 ? nout : 1;
-                    if (step.optBoolean("done", false)) break;
-                }
+                    });
                 final long ms = android.os.SystemClock.elapsedRealtime() - t0;
-                final double tokS = ms > 0 ? produced * 1000.0 / ms : 0.0;
+                final double tokS = ms > 0 ? r.produced * 1000.0 / ms : 0.0;
                 writeFrame(out, new JSONObject()
                     .put("type", "done").put("ok", true)
-                    .put("tokens", produced).put("ms", ms).put("tokS", tokS)
-                    .put("text", sb.toString()).put("resident", true).toString());
+                    .put("tokens", r.produced).put("ms", ms).put("tokS", tokS)
+                    .put("text", r.text).put("resident", true).toString());
                 out.flush();
                 // Refresh under residentLock (see generateResident).
                 lastInferenceAtMs = android.os.SystemClock.elapsedRealtime();
-                Log.i(TAG, "GENERATE_STREAM done (resident): " + produced + " tok @ "
-                    + String.format(java.util.Locale.US, "%.2f", tokS) + " tok/s");
+                Log.i(TAG, "GENERATE_STREAM done (resident): eval count "
+                    + r.produced + " tok (maxTokens cap "
+                    + (maxTokens > 0 ? maxTokens : BionicDecodeLoop.DEFAULT_CAP_TOKENS)
+                    + ") @ " + String.format(java.util.Locale.US, "%.2f", tokS)
+                    + " tok/s");
             }
         } catch (Throwable t) {
             Log.w(TAG, "generate_stream failed", t);

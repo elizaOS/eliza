@@ -1246,6 +1246,21 @@ function bionicSocketName(): string | null {
 	return sock ? sock : null;
 }
 
+/**
+ * Per-native-call token budget hint for the host's streaming decode
+ * (#11913). Reads the shared agent-side streaming knob
+ * (`ELIZA_LOCAL_STREAM_TOKENS_PER_STEP`, the same one the desktop FFI runner
+ * honors); undefined lets the bionic host apply its own default (8, the
+ * #9174 user-visible streaming knee). The host clamps whatever we send to
+ * its JNI token buffer (1..256).
+ */
+export function resolveBionicStreamStep(): number | undefined {
+	const raw = process.env.ELIZA_LOCAL_STREAM_TOKENS_PER_STEP?.trim();
+	if (!raw) return undefined;
+	const parsed = Number.parseInt(raw, 10);
+	return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+}
+
 // A flat on-device model (…/models/eliza-1-2b-128k.gguf) is not the bundle
 // layout `libelizainference`'s eliza_pick_text_file() globs (<bundle>/text/
 // *.gguf), so a delegated generate fails with "bundle_dir does not exist". We
@@ -1590,14 +1605,24 @@ function makeGenerateHandler(slot: "TEXT_SMALL" | "TEXT_LARGE") {
 					// When the runtime wants streaming (chat SSE / voice), server-push
 					// the decode token-by-token over the UDS so the UI paints at the
 					// first token instead of after the whole reply. Otherwise one
-					// buffered RPC.
+					// buffered RPC. `streamStep` bounds how many tokens the host
+					// decodes per native call before flushing a frame (#11913) — the
+					// host clamps it to its JNI buffer and defaults to the #9174
+					// streaming knee (8) when the agent-side knob is unset.
 					const onChunk = params.onStreamChunk;
+					const streamStep = resolveBionicStreamStep();
 					let accumulated = "";
 					return typeof onChunk === "function"
-						? bionicHostGenerateStream(bionicSock, baseRequest, (text) => {
-								accumulated += text;
-								void onChunk(text, undefined, accumulated);
-							})
+						? bionicHostGenerateStream(
+								bionicSock,
+								streamStep !== undefined
+									? { ...baseRequest, streamStep }
+									: baseRequest,
+								(text) => {
+									accumulated += text;
+									void onChunk(text, undefined, accumulated);
+								},
+							)
 						: bionicHostGenerate(bionicSock, {
 								op: "generate",
 								...baseRequest,

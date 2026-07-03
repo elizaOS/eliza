@@ -15,10 +15,12 @@
  * back — the whole decode loop runs server-side, so there is no per-token
  * two-process round trip.
  *
- * This is the buffered first slice (one GENERATE request → one full completion).
- * Server-push per-step streaming, embed, and cancel are layered on later via the
- * shared `LlmStreamingBinding`; the wire framing already carries an `op`
- * discriminator for that.
+ * Two generate shapes share the framing (#11913):
+ *   - buffered (no `onTextChunk`): one GENERATE request → one full completion;
+ *   - streaming (`onTextChunk` set): op="generateStream" server-pushes one
+ *     {type:"token",text} frame per bounded decode step on the same
+ *     connection, then a terminal {type:"done",…} frame — so the first chunk
+ *     arrives at token cadence and TTFT decouples from full-turn latency.
  */
 
 import {
@@ -51,6 +53,21 @@ const BIONIC_FLAT_BUNDLE_DIR = ".bionic-bundles";
 interface BionicGenerateResponse {
 	ok: boolean;
 	text?: string;
+	error?: string;
+	tokens?: number;
+	ms?: number;
+	tokS?: number;
+}
+
+/**
+ * One server-push frame of the op="generateStream" reply: {type:"token",text}
+ * per bounded decode step, then a terminal {type:"done", ok, tokens, ms, tokS,
+ * text} frame (the buffered-response shape plus the discriminator).
+ */
+interface BionicStreamFrame {
+	type?: string;
+	text?: string;
+	ok?: boolean;
 	error?: string;
 	tokens?: number;
 	ms?: number;
@@ -142,14 +159,34 @@ export class BionicHostLoader implements LocalInferenceLoader {
 		maxTokens?: number;
 		temperature?: number;
 		cacheKey?: string;
+		onTextChunk?: (chunk: string) => void | Promise<void>;
+		maxTokensPerStep?: number;
 	}): Promise<string> {
-		const res = await this.roundTrip<BionicGenerateResponse>({
-			op: "generate",
+		const request = {
 			bundleDir: this.bundleDir,
 			prompt: args.prompt,
 			maxTokens: args.maxTokens ?? 256,
 			temperature: args.temperature ?? 0,
-		});
+		};
+		// Streaming shape when the runtime wired a chunk callback (chat SSE /
+		// voice): the host pushes one frame per bounded decode step, so the
+		// first chunk lands at token cadence instead of after the whole reply.
+		const res = args.onTextChunk
+			? await this.streamRoundTrip(
+					typeof args.maxTokensPerStep === "number" &&
+						args.maxTokensPerStep > 0
+						? {
+								op: "generateStream",
+								...request,
+								streamStep: Math.floor(args.maxTokensPerStep),
+							}
+						: { op: "generateStream", ...request },
+					args.onTextChunk,
+				)
+			: await this.roundTrip<BionicGenerateResponse>({
+					op: "generate",
+					...request,
+				});
 		if (!res.ok) {
 			throw new Error(
 				`[BionicHostLoader] host generate failed: ${res.error ?? "unknown error"}`,
@@ -290,6 +327,142 @@ export class BionicHostLoader implements LocalInferenceLoader {
 					finish(
 						new Error(
 							"[BionicHostLoader] host closed the connection before responding",
+						),
+					);
+			});
+		});
+	}
+
+	/**
+	 * One request → MANY server-pushed frames over a fresh connection
+	 * (op="generateStream"): each {type:"token",text} frame is forwarded to
+	 * `onTextChunk` in arrival order (async callbacks are chained so ordering
+	 * holds), and the terminal {type:"done",…} frame resolves with the
+	 * buffered-response shape. The timeout is per-frame idle, not whole-turn:
+	 * a healthy decode emits a frame every few hundred ms, so a long reply
+	 * never times out while frames keep flowing.
+	 */
+	private streamRoundTrip(
+		request: Record<string, unknown>,
+		onTextChunk: (chunk: string) => void | Promise<void>,
+	): Promise<BionicGenerateResponse> {
+		const payload = Buffer.from(JSON.stringify(request), "utf8");
+		const frame = Buffer.allocUnsafe(4 + payload.length);
+		frame.writeUInt32BE(payload.length, 0);
+		payload.copy(frame, 4);
+
+		return new Promise<BionicGenerateResponse>((resolve, reject) => {
+			const sock = net.connect({ path: `\0${this.socketName}` });
+			let settled = false;
+			let chunks: Buffer = Buffer.alloc(0);
+			// Serialize (possibly async) chunk callbacks so consumers see the
+			// decode order; the terminal resolve waits for the chain so every
+			// chunk lands before the full text does. Failures are captured
+			// inside the chain (each link is caught) so a throwing consumer
+			// rejects the turn without ever leaving an unhandled rejection.
+			let chunkChain: Promise<void> = Promise.resolve();
+			let chunkFailure: Error | null = null;
+
+			const finish = (err: Error | null, value?: BionicGenerateResponse) => {
+				if (settled) return;
+				settled = true;
+				clearTimeout(timer);
+				sock.destroy();
+				if (err) {
+					reject(err);
+					return;
+				}
+				void chunkChain.then(() => {
+					if (chunkFailure) {
+						reject(
+							new Error(
+								`[BionicHostLoader] onTextChunk failed: ${chunkFailure.message}`,
+							),
+						);
+					} else {
+						resolve(value as BionicGenerateResponse);
+					}
+				});
+			};
+
+			let timer = setTimeout(
+				() => finish(new Error("[BionicHostLoader] stream request timed out")),
+				REQUEST_TIMEOUT_MS,
+			);
+			const bumpIdleTimer = () => {
+				clearTimeout(timer);
+				timer = setTimeout(
+					() =>
+						finish(new Error("[BionicHostLoader] stream stalled (no frames)")),
+					REQUEST_TIMEOUT_MS,
+				);
+			};
+
+			sock.on("connect", () => sock.write(frame));
+			sock.on("data", (d: Buffer) => {
+				chunks = Buffer.concat([chunks, d]);
+				// Drain every complete frame currently buffered.
+				for (;;) {
+					if (chunks.length < 4) break;
+					const expected = chunks.readUInt32BE(0);
+					if (expected < 0 || expected > MAX_FRAME_BYTES) {
+						finish(
+							new Error(`[BionicHostLoader] bad stream frame ${expected}`),
+						);
+						return;
+					}
+					if (chunks.length < 4 + expected) break;
+					const json = chunks.subarray(4, 4 + expected).toString("utf8");
+					chunks = chunks.subarray(4 + expected);
+					bumpIdleTimer();
+					let msg: BionicStreamFrame;
+					try {
+						msg = JSON.parse(json) as BionicStreamFrame;
+					} catch (e) {
+						finish(
+							new Error(
+								`[BionicHostLoader] malformed stream frame: ${e instanceof Error ? e.message : String(e)}`,
+							),
+						);
+						return;
+					}
+					if (msg.type === "token") {
+						const text = msg.text;
+						if (typeof text === "string" && text.length > 0) {
+							chunkChain = chunkChain
+								.then(() => (chunkFailure ? undefined : onTextChunk(text)))
+								.catch((chunkErr: unknown) => {
+									if (!chunkFailure) {
+										chunkFailure =
+											chunkErr instanceof Error
+												? chunkErr
+												: new Error(String(chunkErr));
+									}
+								});
+						}
+						continue;
+					}
+					// Terminal {type:"done"} frame (or any non-token frame, e.g. a
+					// top-level {ok:false} error) ends the stream.
+					finish(null, {
+						ok: msg.ok === true,
+						text: msg.text,
+						error: msg.error,
+						tokens: msg.tokens,
+						ms: msg.ms,
+						tokS: msg.tokS,
+					});
+					return;
+				}
+			});
+			sock.on("error", (e: Error) =>
+				finish(new Error(`[BionicHostLoader] socket error: ${e.message}`)),
+			);
+			sock.on("close", () => {
+				if (!settled)
+					finish(
+						new Error(
+							"[BionicHostLoader] host closed the stream before the done frame",
 						),
 					);
 			});

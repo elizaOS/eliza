@@ -239,6 +239,22 @@ export interface LocalInferenceLoader {
 		 * Loaders without prefix caching can ignore the field.
 		 */
 		cacheKey?: string;
+		/**
+		 * Per-chunk streaming callback the runtime wires from the caller's
+		 * `onStreamChunk` (chat SSE / voice). Loaders with a server-push
+		 * transport (the bionic UDS host's op="generateStream") surface
+		 * chunks as they decode so TTFT decouples from full-turn latency
+		 * (#11913); loaders without streaming ignore it and resolve with
+		 * the full completion only.
+		 */
+		onTextChunk?: (chunk: string) => void | Promise<void>;
+		/**
+		 * Per-step token cap hint for streaming loaders — how many tokens
+		 * the backend may decode per step before flushing a chunk. The
+		 * bionic host clamps it to its JNI buffer (1..256) and defaults to
+		 * the #9174 user-visible streaming knee (8) when absent.
+		 */
+		maxTokensPerStep?: number;
 	}): Promise<string>;
 	/**
 	 * Optional embedding surface. When a loader implements this, the runtime

@@ -293,3 +293,187 @@ describeLinuxOnly("BionicHostLoader (real abstract-UDS)", () => {
 		).rejects.toThrow(/no asr weights staged/);
 	});
 });
+
+/**
+ * A test host that decodes one request frame and then server-pushes the given
+ * frames one write at a time — the op="generateStream" wire shape
+ * (ElizaBionicInferenceServer.generateStream, #11913).
+ */
+function startStreamingHost(
+	name: string,
+	onRequest: (req: Record<string, unknown>) => string[],
+): net.Server {
+	const server = net.createServer((sock) => {
+		let buf = Buffer.alloc(0);
+		let expected = -1;
+		sock.on("data", (d) => {
+			buf = Buffer.concat([buf, d]);
+			if (expected < 0 && buf.length >= 4) expected = buf.readUInt32BE(0);
+			if (expected >= 0 && buf.length >= 4 + expected) {
+				const req = JSON.parse(buf.subarray(4, 4 + expected).toString("utf8"));
+				const frames = onRequest(req);
+				// Stagger writes so the loader sees genuinely incremental frames
+				// (and one write intentionally splits a frame mid-buffer).
+				let delay = 0;
+				for (const [i, json] of frames.entries()) {
+					const full = frame(json);
+					if (i === frames.length - 1 && full.length > 8) {
+						setTimeout(() => sock.write(full.subarray(0, 6)), (delay += 5));
+						setTimeout(() => sock.write(full.subarray(6)), (delay += 5));
+					} else {
+						setTimeout(() => sock.write(full), (delay += 5));
+					}
+				}
+			}
+		});
+	});
+	server.listen({ path: `\0${name}` });
+	return server;
+}
+
+describeLinuxOnly("BionicHostLoader streaming generate (#11913)", () => {
+	it("sends op=generateStream with maxTokens + streamStep and surfaces chunks in decode order", async () => {
+		let seen: Record<string, unknown> | null = null;
+		host = startStreamingHost(SOCK, (req) => {
+			seen = req;
+			return [
+				JSON.stringify({ type: "token", text: "Four" }),
+				JSON.stringify({ type: "token", text: " is" }),
+				JSON.stringify({ type: "token", text: " the answer." }),
+				JSON.stringify({
+					type: "done",
+					ok: true,
+					tokens: 5,
+					ms: 700,
+					tokS: 7.1,
+					text: "Four is the answer.",
+					resident: true,
+				}),
+			];
+		});
+		const loader = new BionicHostLoader(SOCK);
+		await loader.loadModel({
+			modelPath: "/data/x/eliza-1/bundle/text/model.gguf",
+		});
+		const chunks: string[] = [];
+		const out = await loader.generate({
+			prompt: "what is 2+2?",
+			maxTokens: 20,
+			maxTokensPerStep: 8,
+			onTextChunk: (chunk) => {
+				chunks.push(chunk);
+			},
+		});
+		expect(out).toBe("Four is the answer.");
+		expect(chunks).toEqual(["Four", " is", " the answer."]);
+		expect(seen).toMatchObject({
+			op: "generateStream",
+			prompt: "what is 2+2?",
+			maxTokens: 20,
+			streamStep: 8,
+			bundleDir: "/data/x/eliza-1/bundle",
+		});
+	});
+
+	it("chains async onTextChunk callbacks so ordering holds and the result waits for them", async () => {
+		host = startStreamingHost(SOCK, () => [
+			JSON.stringify({ type: "token", text: "a" }),
+			JSON.stringify({ type: "token", text: "b" }),
+			JSON.stringify({ type: "token", text: "c" }),
+			JSON.stringify({ type: "done", ok: true, text: "abc" }),
+		]);
+		const loader = new BionicHostLoader(SOCK);
+		await loader.loadModel({ modelPath: "/m/text/x.gguf" });
+		const order: string[] = [];
+		const out = await loader.generate({
+			prompt: "x",
+			onTextChunk: async (chunk) => {
+				// Delay the FIRST chunk longest — ordering must still hold.
+				await new Promise((r) => setTimeout(r, chunk === "a" ? 30 : 1));
+				order.push(chunk);
+			},
+		});
+		expect(out).toBe("abc");
+		expect(order).toEqual(["a", "b", "c"]);
+	});
+
+	it("omits streamStep when no per-step hint is provided (host default applies)", async () => {
+		let seen: Record<string, unknown> | null = null;
+		host = startStreamingHost(SOCK, (req) => {
+			seen = req;
+			return [JSON.stringify({ type: "done", ok: true, text: "hi" })];
+		});
+		const loader = new BionicHostLoader(SOCK);
+		await loader.loadModel({ modelPath: "/m/text/x.gguf" });
+		await loader.generate({ prompt: "x", onTextChunk: () => {} });
+		expect(seen).not.toBeNull();
+		expect("streamStep" in (seen as Record<string, unknown>)).toBe(false);
+	});
+
+	it("stays on the buffered op=generate shape when no chunk callback is wired", async () => {
+		let seen: Record<string, unknown> | null = null;
+		host = startHost(SOCK, (req) => {
+			seen = req;
+			return JSON.stringify({ ok: true, text: "buffered" });
+		});
+		const loader = new BionicHostLoader(SOCK);
+		await loader.loadModel({ modelPath: "/m/text/x.gguf" });
+		const out = await loader.generate({ prompt: "x", maxTokens: 20 });
+		expect(out).toBe("buffered");
+		expect((seen as { op?: string } | null)?.op).toBe("generate");
+	});
+
+	it("throws when the terminal done frame reports ok:false", async () => {
+		host = startStreamingHost(SOCK, () => [
+			JSON.stringify({ type: "token", text: "partial" }),
+			JSON.stringify({
+				type: "done",
+				ok: false,
+				error: "resident streamOpen failed",
+			}),
+		]);
+		const loader = new BionicHostLoader(SOCK);
+		await loader.loadModel({ modelPath: "/m/text/x.gguf" });
+		await expect(
+			loader.generate({ prompt: "x", onTextChunk: () => {} }),
+		).rejects.toThrow(/resident streamOpen failed/);
+	});
+
+	it("throws when the host closes mid-stream before the done frame", async () => {
+		host = net.createServer((sock) => {
+			let buf = Buffer.alloc(0);
+			let expected = -1;
+			sock.on("data", (d) => {
+				buf = Buffer.concat([buf, d]);
+				if (expected < 0 && buf.length >= 4) expected = buf.readUInt32BE(0);
+				if (expected >= 0 && buf.length >= 4 + expected) {
+					sock.write(frame(JSON.stringify({ type: "token", text: "hal" })));
+					setTimeout(() => sock.destroy(), 10);
+				}
+			});
+		});
+		host.listen({ path: `\0${SOCK}` });
+		const loader = new BionicHostLoader(SOCK);
+		await loader.loadModel({ modelPath: "/m/text/x.gguf" });
+		await expect(
+			loader.generate({ prompt: "x", onTextChunk: () => {} }),
+		).rejects.toThrow(/closed the stream|socket error/);
+	});
+
+	it("rejects the turn when an onTextChunk callback throws", async () => {
+		host = startStreamingHost(SOCK, () => [
+			JSON.stringify({ type: "token", text: "boom" }),
+			JSON.stringify({ type: "done", ok: true, text: "boom" }),
+		]);
+		const loader = new BionicHostLoader(SOCK);
+		await loader.loadModel({ modelPath: "/m/text/x.gguf" });
+		await expect(
+			loader.generate({
+				prompt: "x",
+				onTextChunk: () => {
+					throw new Error("consumer exploded");
+				},
+			}),
+		).rejects.toThrow(/onTextChunk failed: consumer exploded/);
+	});
+});

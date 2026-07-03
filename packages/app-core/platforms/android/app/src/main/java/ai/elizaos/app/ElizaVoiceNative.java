@@ -193,8 +193,18 @@ final class ElizaVoiceNative {
     /** Feed pre-tokenized prompt tokens into the session KV before the first next(). */
     static native void nativeLlmStreamPrefill(long streamHandle, int[] tokens);
 
-    /** Pull the next decode step → JSON {text, done, drafted, accepted}. */
-    static native String nativeLlmStreamNext(long streamHandle);
+    /**
+     * Pull the next decode step → JSON {text, done, nout, drafted, accepted}.
+     * {@code maxStepTokens} bounds how many tokens this ONE native call may
+     * decode (clamped to [1, 256] — the JNI-side token buffer). The native
+     * decode loop stops at that budget, at EOS/EOG, and at the stream-level
+     * {@code max_tokens} — so a caller enforcing a per-turn cap passes
+     * {@code min(step, cap - produced)} and never pays over-cap eval work
+     * (issue #11913: the old no-arg form always decoded the full 256-token
+     * buffer in one call, so maxTokens never engaged and TTFT equaled
+     * full-turn latency).
+     */
+    static native String nativeLlmStreamNext(long streamHandle, int maxStepTokens);
 
     static native void nativeLlmStreamClose(long streamHandle);
 
