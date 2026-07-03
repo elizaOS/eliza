@@ -203,6 +203,7 @@ describe("advertisingService bid controls persistence", () => {
         organization_id: ORG_ID,
         platform: "meta",
         external_account_id: "act_1",
+        status: "active",
       } as never),
     );
     track(
