@@ -284,9 +284,10 @@ function getAgentSkillsApi(): Promise<
   typeof import("@elizaos/plugin-agent-skills")
 > {
   const moduleSpecifier = ["@elizaos", "plugin-agent-skills"].join("/");
-  agentSkillsApiPromise ??= importOptionalPlugin<
-    typeof import("@elizaos/plugin-agent-skills")
-  >(moduleSpecifier);
+  agentSkillsApiPromise ??=
+    importOptionalPlugin<typeof import("@elizaos/plugin-agent-skills")>(
+      moduleSpecifier,
+    );
   return agentSkillsApiPromise;
 }
 
@@ -297,9 +298,10 @@ function getAppManagerApi(): Promise<
   typeof import("@elizaos/plugin-app-manager")
 > {
   const moduleSpecifier = ["@elizaos", "plugin-app-manager"].join("/");
-  appManagerApiPromise ??= importOptionalPlugin<
-    typeof import("@elizaos/plugin-app-manager")
-  >(moduleSpecifier);
+  appManagerApiPromise ??=
+    importOptionalPlugin<typeof import("@elizaos/plugin-app-manager")>(
+      moduleSpecifier,
+    );
   return appManagerApiPromise;
 }
 

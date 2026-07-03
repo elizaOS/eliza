@@ -71,6 +71,7 @@ export {
 export * from "./features/advanced-memory";
 // Export capabilities and plugin creation
 export * from "./features/basic-capabilities/index";
+export * from "./features/credential-proxy/index.ts";
 export * from "./features/documents/index";
 export type {
 	DraftRecord,
@@ -142,7 +143,6 @@ export {
 	type SecretsManagerPluginConfig,
 	secretsManagerPlugin,
 } from "./features/secrets/index.ts";
-export * from "./features/credential-proxy/index.ts";
 export * from "./features/sub-agent-credentials/index";
 // Export generated action/provider/evaluator specs from centralized prompts
 export * from "./generated/action-docs";

@@ -10,11 +10,11 @@
  * when DISPLAY + xdotool are present, otherwise the Playwright driver is used.
  */
 
-import type { ElementHandle, Page } from "playwright-core";
 import { logger } from "@elizaos/core";
+import type { ElementHandle, Page } from "playwright-core";
 import { MocapEngine } from "./mocap.js";
-import { X11Input, type PointerLocation } from "./x11-input.js";
 import type { InputDriver, Rect } from "./types.js";
+import { type PointerLocation, X11Input } from "./x11-input.js";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -25,7 +25,21 @@ interface ElementMetrics {
   height: number;
 }
 
-async function metricsOf(page: Page, handle: ElementHandle<Element>): Promise<ElementMetrics> {
+interface LastMouseEvent {
+  clientX: number;
+  clientY: number;
+}
+
+declare global {
+  interface Window {
+    __elizaLastMouse?: LastMouseEvent | null;
+  }
+}
+
+async function metricsOf(
+  page: Page,
+  handle: ElementHandle<Element>,
+): Promise<ElementMetrics> {
   return page.evaluate((el) => {
     const r = (el as Element).getBoundingClientRect();
     return { left: r.left, top: r.top, width: r.width, height: r.height };
@@ -48,7 +62,11 @@ export class PlaywrightInputDriver implements InputDriver {
     return true;
   }
 
-  private async moveHumanly(page: Page, targetX: number, targetY: number): Promise<void> {
+  private async moveHumanly(
+    page: Page,
+    targetX: number,
+    targetY: number,
+  ): Promise<void> {
     // Current pointer is unknown in Playwright; start from a stable corner and
     // walk a mocap trajectory whose displacement lands near the target.
     const start: PointerLocation = { x: 4, y: 4 };
@@ -94,7 +112,11 @@ export class PlaywrightInputDriver implements InputDriver {
     await page.mouse.up();
   }
 
-  async fill(page: Page, handle: ElementHandle<Element>, text: string): Promise<void> {
+  async fill(
+    page: Page,
+    handle: ElementHandle<Element>,
+    text: string,
+  ): Promise<void> {
     await this.click(page, handle);
     await sleep(120 + Math.floor(Math.random() * 180));
     await handle.type(text, { delay: 55 + Math.floor(Math.random() * 50) });
@@ -118,7 +140,9 @@ export class XtestInputDriver implements InputDriver {
   private static readonly SLACK_PX = 3;
   private static readonly MAX_CORRECTIONS = 4;
 
-  constructor(opts: { display?: string; dryRun?: boolean; engine?: MocapEngine } = {}) {
+  constructor(
+    opts: { display?: string; dryRun?: boolean; engine?: MocapEngine } = {},
+  ) {
     this.engine = opts.engine ?? new MocapEngine();
     this.x11 = new X11Input({ display: opts.display, dryRun: opts.dryRun });
   }
@@ -132,12 +156,11 @@ export class XtestInputDriver implements InputDriver {
     this.dpr = await page.evaluate(() => window.devicePixelRatio || 1);
 
     await page.evaluate(() => {
-      (window as unknown as { __elizaLastMouse: unknown }).__elizaLastMouse = null;
+      window.__elizaLastMouse = null;
       window.addEventListener(
         "mousemove",
         (e) => {
-          (window as unknown as { __elizaLastMouse: { clientX: number; clientY: number } }).__elizaLastMouse =
-            { clientX: e.clientX, clientY: e.clientY };
+          window.__elizaLastMouse = { clientX: e.clientX, clientY: e.clientY };
         },
         { capture: true },
       );
@@ -151,17 +174,22 @@ export class XtestInputDriver implements InputDriver {
     }));
 
     const probes = [
-      { x: Math.round((geo.sx + geo.iw * 0.35) * this.dpr), y: Math.round((geo.sy + geo.ih * 0.4) * this.dpr) },
-      { x: Math.round((geo.sx + geo.iw * 0.6) * this.dpr), y: Math.round((geo.sy + geo.ih * 0.6) * this.dpr) },
+      {
+        x: Math.round((geo.sx + geo.iw * 0.35) * this.dpr),
+        y: Math.round((geo.sy + geo.ih * 0.4) * this.dpr),
+      },
+      {
+        x: Math.round((geo.sx + geo.iw * 0.6) * this.dpr),
+        y: Math.round((geo.sy + geo.ih * 0.6) * this.dpr),
+      },
     ];
 
-    let sample: { sx: number; sy: number; cx: number; cy: number } | null = null;
+    let sample: { sx: number; sy: number; cx: number; cy: number } | null =
+      null;
     for (const p of probes) {
       await this.x11.moveAbs(p.x, p.y);
       await sleep(120);
-      const ev = await page.evaluate(
-        () => (window as unknown as { __elizaLastMouse: { clientX: number; clientY: number } | null }).__elizaLastMouse,
-      );
+      const ev = await page.evaluate(() => window.__elizaLastMouse ?? null);
       if (ev) {
         sample = { sx: p.x, sy: p.y, cx: ev.clientX, cy: ev.clientY };
         break;
@@ -174,7 +202,9 @@ export class XtestInputDriver implements InputDriver {
     } else {
       this.offsetX = geo.sx * this.dpr;
       this.offsetY = geo.sy * this.dpr;
-      logger.warn("[XtestInputDriver] calibration fell back to screenX/Y formula");
+      logger.warn(
+        "[XtestInputDriver] calibration fell back to screenX/Y formula",
+      );
     }
     this.calibrated = true;
   }
@@ -192,7 +222,10 @@ export class XtestInputDriver implements InputDriver {
   }
 
   private screenToPage(sx: number, sy: number): { x: number; y: number } {
-    return { x: (sx - this.offsetX) / this.dpr, y: (sy - this.offsetY) / this.dpr };
+    return {
+      x: (sx - this.offsetX) / this.dpr,
+      y: (sy - this.offsetY) / this.dpr,
+    };
   }
 
   private pageToScreen(px: number, py: number): { x: number; y: number } {
@@ -208,14 +241,19 @@ export class XtestInputDriver implements InputDriver {
     const { x: pageX, y: pageY } = this.screenToPage(pointer.x, pointer.y);
     const s = XtestInputDriver.SLACK_PX;
     const insideRect =
-      pageX >= m.left - s && pageX <= m.left + m.width + s && pageY >= m.top - s && pageY <= m.top + m.height + s;
+      pageX >= m.left - s &&
+      pageX <= m.left + m.width + s &&
+      pageY >= m.top - s &&
+      pageY <= m.top + m.height + s;
     if (!insideRect) return { ok: false, m, pageX, pageY };
     const onTarget = await page.evaluate(
       ([px, py, el]) => {
         const hit = document.elementFromPoint(px as number, py as number);
         return (
           !!hit &&
-          (hit === el || (el as Element).contains(hit as Node) || (hit as Element).contains(el as Node))
+          (hit === el ||
+            (el as Element).contains(hit as Node) ||
+            (hit as Element).contains(el as Node))
         );
       },
       [pageX, pageY, handle] as const,
@@ -223,16 +261,23 @@ export class XtestInputDriver implements InputDriver {
     return { ok: onTarget, m, pageX, pageY };
   }
 
-  private async replayTowards(page: Page, handle: ElementHandle<Element>): Promise<void> {
+  private async replayTowards(
+    page: Page,
+    handle: ElementHandle<Element>,
+  ): Promise<void> {
     await page.waitForTimeout(120);
     const m = await metricsOf(page, handle);
-    if (m.width <= 0 || m.height <= 0) throw new Error("[XtestInputDriver] element has zero size");
+    if (m.width <= 0 || m.height <= 0)
+      throw new Error("[XtestInputDriver] element has zero size");
     const rect = this.rectDevicePx(m);
     const cur = await this.x11.getPointer();
     const seq =
       this.engine.findSequenceLandingInRect(cur.x, cur.y, rect) ??
       this.engine.findSequenceWithStretchAndRotation(cur.x, cur.y, rect);
-    if (!seq) throw new Error("[XtestInputDriver] no mocap sequence lands on target element");
+    if (!seq)
+      throw new Error(
+        "[XtestInputDriver] no mocap sequence lands on target element",
+      );
     for (const mv of seq.movements) {
       if (mv.dt > 0) await sleep(mv.dt * 1000);
       if (mv.dx !== 0 || mv.dy !== 0) await this.x11.moveRel(mv.dx, mv.dy);
@@ -267,7 +312,11 @@ export class XtestInputDriver implements InputDriver {
     await this.x11.buttonUp(1);
   }
 
-  async fill(page: Page, handle: ElementHandle<Element>, text: string): Promise<void> {
+  async fill(
+    page: Page,
+    handle: ElementHandle<Element>,
+    text: string,
+  ): Promise<void> {
     await this.click(page, handle);
     await sleep(120 + Math.floor(Math.random() * 180));
     await this.x11.typeText(text, 55 + Math.floor(Math.random() * 50));
@@ -287,7 +336,9 @@ export async function selectInputDriver(): Promise<InputDriver> {
       logger.info("[InputDriver] using XTEST (real OS-level input)");
       return xtest;
     }
-    logger.warn("[InputDriver] DISPLAY set but xdotool unavailable — using humanized Playwright input");
+    logger.warn(
+      "[InputDriver] DISPLAY set but xdotool unavailable — using humanized Playwright input",
+    );
   }
   logger.info("[InputDriver] using humanized Playwright input");
   return new PlaywrightInputDriver(engine);

@@ -3,14 +3,16 @@ import type {
   GeneratedVideo,
   GeneratedVideoObject,
   VideoGenerationRequest,
+  VideoJobStatus,
+  VideoJobStatusRequest,
   VideoProvider,
 } from "./types";
 
 const ATLAS_POLL_INTERVAL_MS = 2_000;
 const ATLAS_POLL_TIMEOUT_MS = 180_000;
 
-function atlasBaseUrl(request: VideoGenerationRequest): string {
-  return (request.apiKeys.ATLASCLOUD_BASE_URL || "https://api.atlascloud.ai").replace(/\/+$/, "");
+function atlasBaseUrl(apiKeys: Record<string, string | undefined>): string {
+  return (apiKeys.ATLASCLOUD_BASE_URL || "https://api.atlascloud.ai").replace(/\/+$/, "");
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -23,6 +25,19 @@ function stringValue(value: unknown): string | undefined {
 
 function numberValue(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function atlasApiKey(apiKeys: Record<string, string | undefined>): string {
+  const apiKey = apiKeys.ATLASCLOUD_API_KEY;
+  if (!apiKey) {
+    throw new Error(getAiProviderConfigurationError());
+  }
+  return apiKey;
+}
+
+async function readJsonRecord(response: Response): Promise<Record<string, unknown>> {
+  const payload = await response.json().catch(() => ({}));
+  return isRecord(payload) ? payload : {};
 }
 
 interface AtlasPrediction {
@@ -94,15 +109,56 @@ export function buildAtlasVideoInput(request: VideoGenerationRequest): Record<st
 const TERMINAL_OK = new Set(["completed", "succeeded", "success"]);
 const TERMINAL_FAIL = new Set(["failed", "error", "canceled", "cancelled"]);
 
+export async function getAtlasCloudVideoJobStatus(
+  request: VideoJobStatusRequest,
+): Promise<VideoJobStatus> {
+  const apiKey = atlasApiKey(request.apiKeys);
+  const baseUrl = atlasBaseUrl(request.apiKeys);
+  const pollResponse = await fetch(`${baseUrl}/api/v1/model/prediction/${request.requestId}`, {
+    headers: { authorization: `Bearer ${apiKey}` },
+  });
+  const pollPayload = await readJsonRecord(pollResponse);
+
+  if (pollResponse.status === 404) {
+    return {
+      state: "failed",
+      error: `Atlas Cloud does not know request ${request.requestId}`,
+    };
+  }
+  if (!pollResponse.ok) {
+    throw new Error(`Atlas prediction status failed: ${pollResponse.status}`);
+  }
+
+  const prediction = parsePrediction(pollPayload);
+  const status = (prediction.status ?? "").toLowerCase();
+  if (TERMINAL_FAIL.has(status)) {
+    return {
+      state: "failed",
+      error: prediction.error ?? `Atlas Cloud request ${request.requestId} failed`,
+    };
+  }
+  if (!TERMINAL_OK.has(status)) {
+    return { state: "pending" };
+  }
+
+  const video = firstAtlasVideoOutput(prediction.outputs);
+  if (!video) {
+    return {
+      state: "failed",
+      error: "Atlas video provider completed without an output video",
+    };
+  }
+  return {
+    state: "succeeded",
+    result: { requestId: prediction.id ?? request.requestId, video, timings: null },
+  };
+}
+
 export async function generateAtlasCloudVideo(
   request: VideoGenerationRequest,
 ): Promise<GeneratedVideo> {
-  const apiKey = request.apiKeys.ATLASCLOUD_API_KEY;
-  if (!apiKey) {
-    throw new Error(getAiProviderConfigurationError());
-  }
-
-  const baseUrl = atlasBaseUrl(request);
+  const apiKey = atlasApiKey(request.apiKeys);
+  const baseUrl = atlasBaseUrl(request.apiKeys);
   const authHeader = { authorization: `Bearer ${apiKey}` };
   const submitResponse = await fetch(`${baseUrl}/api/v1/model/generateVideo`, {
     method: "POST",
@@ -110,7 +166,7 @@ export async function generateAtlasCloudVideo(
     body: JSON.stringify(buildAtlasVideoInput(request)),
   });
 
-  const submitPayload = (await submitResponse.json().catch(() => ({}))) as Record<string, unknown>;
+  const submitPayload = await readJsonRecord(submitResponse);
   if (!submitResponse.ok) {
     const message =
       stringValue(submitPayload.msg) ??
@@ -136,7 +192,7 @@ export async function generateAtlasCloudVideo(
     await new Promise((resolve) => setTimeout(resolve, ATLAS_POLL_INTERVAL_MS));
 
     const pollResponse = await fetch(pollUrl, { headers: authHeader });
-    const pollPayload = (await pollResponse.json().catch(() => ({}))) as Record<string, unknown>;
+    const pollPayload = await readJsonRecord(pollResponse);
     if (!pollResponse.ok) {
       throw new Error(`Atlas prediction poll failed: ${pollResponse.status}`);
     }
@@ -168,6 +224,7 @@ export const atlasCloudVideoProvider: VideoProvider = {
     );
   },
   generate: generateAtlasCloudVideo,
+  getJobStatus: getAtlasCloudVideoJobStatus,
   async healthCheck() {
     return true;
   },

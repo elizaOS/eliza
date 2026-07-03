@@ -173,8 +173,7 @@ export class BionicHostLoader implements LocalInferenceLoader {
 		// first chunk lands at token cadence instead of after the whole reply.
 		const res = args.onTextChunk
 			? await this.streamRoundTrip(
-					typeof args.maxTokensPerStep === "number" &&
-						args.maxTokensPerStep > 0
+					typeof args.maxTokensPerStep === "number" && args.maxTokensPerStep > 0
 						? {
 								op: "generateStream",
 								...request,

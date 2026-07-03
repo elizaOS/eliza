@@ -4190,7 +4190,8 @@ export async function startEliza(
   if (preferredProviderPluginName) {
     for (const plugin of pluginsForRuntime) {
       if (plugin.name === preferredProviderPluginName) {
-        plugin.priority = (plugin.priority ?? 0) + 10;
+        plugin.priority =
+          (typeof plugin.priority === "number" ? plugin.priority : 0) + 10;
         logger.info(
           `[eliza] Boosted plugin "${plugin.name}" priority to ${plugin.priority} (preferred provider: ${preferredProviderId ?? "unknown"})`,
         );
@@ -5003,7 +5004,8 @@ export async function startEliza(
     if (preferredProviderPluginName) {
       for (const plugin of deferredPluginsForRuntime) {
         if (plugin.name === preferredProviderPluginName) {
-          plugin.priority = (plugin.priority ?? 0) + 10;
+          plugin.priority =
+            (typeof plugin.priority === "number" ? plugin.priority : 0) + 10;
           logger.info(
             `[eliza] Boosted deferred plugin "${plugin.name}" priority to ${plugin.priority} (preferred provider: ${preferredProviderId ?? "unknown"})`,
           );
@@ -5509,7 +5511,9 @@ export async function startEliza(
           if (freshPreferredProviderPluginName) {
             for (const plugin of freshPluginsForRuntime) {
               if (plugin.name === freshPreferredProviderPluginName) {
-                plugin.priority = (plugin.priority ?? 0) + 10;
+                plugin.priority =
+                  (typeof plugin.priority === "number" ? plugin.priority : 0) +
+                  10;
                 break;
               }
             }

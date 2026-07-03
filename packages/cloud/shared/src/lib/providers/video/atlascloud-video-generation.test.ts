@@ -4,6 +4,7 @@ import {
   buildAtlasVideoInput,
   firstAtlasVideoOutput,
   generateAtlasCloudVideo,
+  getAtlasCloudVideoJobStatus,
 } from "./atlascloud-video-generation";
 
 const originalFetch = globalThis.fetch;
@@ -127,5 +128,71 @@ describe("Atlas Cloud video provider", () => {
     ).rejects.toThrow("AI services are not configured on this deployment");
     expect(atlasCloudVideoProvider.isConfigured?.({})).toBe(false);
     expect(called).toBe(false);
+  });
+
+  test("reports terminal Atlas job status without refunding ambiguous failures", async () => {
+    const responses = [
+      new Response(JSON.stringify({ data: { status: "processing" } }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+      new Response(
+        JSON.stringify({
+          data: {
+            id: "atlas-prediction",
+            status: "completed",
+            outputs: ["https://cdn.atlas/video.mp4"],
+          },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+      new Response(JSON.stringify({ data: { status: "failed", error: "upstream error" } }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+      new Response(JSON.stringify({}), {
+        status: 502,
+        headers: { "content-type": "application/json" },
+      }),
+    ];
+    const calls: string[] = [];
+    globalThis.fetch = (async (url: string | URL | Request) => {
+      calls.push(String(url));
+      const response = responses.shift();
+      if (!response) throw new Error("unexpected fetch");
+      return response;
+    }) as typeof fetch;
+
+    const req = {
+      model: "vidu/q3-turbo/text-to-video",
+      requestId: "atlas-prediction",
+      apiKeys: {
+        ATLASCLOUD_API_KEY: "atlas-key",
+        ATLASCLOUD_BASE_URL: "https://atlas.test/",
+      },
+    };
+
+    await expect(getAtlasCloudVideoJobStatus(req)).resolves.toEqual({ state: "pending" });
+    await expect(getAtlasCloudVideoJobStatus(req)).resolves.toEqual({
+      state: "succeeded",
+      result: {
+        requestId: "atlas-prediction",
+        video: { url: "https://cdn.atlas/video.mp4", content_type: "video/mp4" },
+        timings: null,
+      },
+    });
+    await expect(getAtlasCloudVideoJobStatus(req)).resolves.toEqual({
+      state: "failed",
+      error: "upstream error",
+    });
+    await expect(getAtlasCloudVideoJobStatus(req)).rejects.toThrow(
+      "Atlas prediction status failed: 502",
+    );
+    expect(calls).toEqual([
+      "https://atlas.test/api/v1/model/prediction/atlas-prediction",
+      "https://atlas.test/api/v1/model/prediction/atlas-prediction",
+      "https://atlas.test/api/v1/model/prediction/atlas-prediction",
+      "https://atlas.test/api/v1/model/prediction/atlas-prediction",
+    ]);
   });
 });

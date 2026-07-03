@@ -184,8 +184,8 @@ function findPgliteDist() {
           .split(".")
           .map((n) => Number.parseInt(n, 10) || 0);
         for (let i = 0; i < Math.max(va.length, vb.length); i++) {
-          const da = va[i] ?? 0;
-          const db = vb[i] ?? 0;
+          const da = i < va.length ? va[i] : 0;
+          const db = i < vb.length ? vb[i] : 0;
           if (da !== db) return db - da;
         }
         return 0;
@@ -1542,8 +1542,9 @@ async function writeMetafileReport(label, result) {
   const inputs = Object.entries(result.metafile.inputs ?? {})
     .map(([inputPath, meta]) => ({
       inputPath,
-      bytes: typeof meta.bytes === "number" ? meta.bytes : 0,
+      bytes: typeof meta.bytes === "number" ? meta.bytes : Number.NaN,
     }))
+    .filter((input) => Number.isFinite(input.bytes))
     .sort((a, b) => b.bytes - a.bytes)
     .slice(0, 25);
   console.log(`[build-mobile] ${label} top metafile inputs:`);
