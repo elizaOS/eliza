@@ -66,7 +66,7 @@ mock.module("../generations", () => ({
   generationsService: { record: mock(async () => undefined), create: mock(async () => undefined) },
 }));
 
-const { billUsage, reserveCredits } = await import("../ai-billing");
+const { billFlatUsage, billUsage, reserveCredits } = await import("../ai-billing");
 
 const USAGE = { promptTokens: 1000, completionTokens: 500, totalTokens: 1500 };
 const BASE = {
@@ -143,6 +143,30 @@ describe("billUsage affiliate earnings guard (#10853)", () => {
     );
 
     expect(result.totalCost).toBeCloseTo(0.33, 6);
+    expect(reconcile).toHaveBeenCalledWith(result.totalCost);
+    expect(addEarnings).not.toHaveBeenCalled();
+  });
+
+  test("flat billing uncollectable overage does not mint affiliate earnings", async () => {
+    const reconcile = mock(async (actualCost: number) => ({
+      reservedAmount: 1,
+      actualCost,
+      reservationTransactionId: "reservation-flat-1",
+      settlementTransactionIds: [],
+      adjustmentType: "uncollected_overage" as const,
+    }));
+
+    const result = await billFlatUsage(
+      { ...BASE, organizationId: "00000000-0000-4000-8000-0000000000org" },
+      { totalCost: 1, baseTotalCost: 1 / 1.2, platformMarkup: 1 - 1 / 1.2 },
+      {
+        reservedAmount: 1,
+        reservationTransactionId: "reservation-flat-1",
+        reconcile,
+      },
+    );
+
+    expect(result.totalCost).toBeCloseTo(1.1, 6);
     expect(reconcile).toHaveBeenCalledWith(result.totalCost);
     expect(addEarnings).not.toHaveBeenCalled();
   });
