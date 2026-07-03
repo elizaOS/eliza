@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { capacitorState, agentRequestMock, registerPluginMock } = vi.hoisted(
@@ -128,5 +130,33 @@ describe("probeLocalAgent", () => {
         headers: { Accept: "application/json" },
       }),
     );
+  });
+
+  it("keeps the native Agent plugin name centralized in bridge/native-plugins", () => {
+    const firstRunFiles = [
+      "local-agent-token.ts",
+      "probe-local-agent.ts",
+      "first-run-finish.ts",
+    ];
+
+    for (const file of firstRunFiles) {
+      const source = readFileSync(
+        path.resolve(import.meta.dirname, file),
+        "utf8",
+      );
+      expect(source).not.toContain('"Agent"');
+      expect(source).not.toContain("'Agent'");
+      expect(source).not.toContain("registerPlugin<");
+      expect(source).not.toContain("Plugins?.Agent");
+      expect(source).not.toContain("Plugins?.[agentPluginName]");
+    }
+
+    const bridgeSource = readFileSync(
+      path.resolve(import.meta.dirname, "../bridge/native-plugins.ts"),
+      "utf8",
+    );
+    expect(bridgeSource).toContain("export interface AgentPluginLike");
+    expect(bridgeSource).toContain("export function getAgentPlugin()");
+    expect(bridgeSource).toContain('registerPlugin<AgentPluginLike>("Agent")');
   });
 });

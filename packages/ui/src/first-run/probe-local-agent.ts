@@ -14,6 +14,7 @@
  */
 
 import { Capacitor } from "@capacitor/core";
+import { type AgentPluginLike, getAgentPlugin } from "../bridge/native-plugins";
 import { isAndroidLocalAgentUrl } from "./local-agent-token";
 
 export const DEFAULT_LOCAL_AGENT_HEALTH_URL =
@@ -35,23 +36,9 @@ interface CacheEntry {
 const resultCache = new Map<string, CacheEntry>();
 const inflight = new Map<string, Promise<boolean>>();
 
-type NativeAgentProbePlugin = {
-  request?: (options: {
-    method?: string;
-    path: string;
-    headers?: Record<string, string>;
-    timeoutMs?: number;
-  }) => Promise<{
-    status: number;
-    body?: string | null;
-  }>;
-};
-
-const agentPluginName = "Agent";
-
-function toNativeAgentProbePlugin(
-  plugin: NativeAgentProbePlugin | null | undefined,
-): NativeAgentProbePlugin | null {
+function toAgentRequestPlugin(
+  plugin: AgentPluginLike | null | undefined,
+): Pick<AgentPluginLike, "request"> | null {
   if (typeof plugin?.request !== "function") return null;
   const request = plugin.request.bind(plugin);
   return {
@@ -75,15 +62,12 @@ function isNativeIos(): boolean {
   }
 }
 
-async function resolveNativeAgentPlugin(): Promise<NativeAgentProbePlugin | null> {
+async function resolveNativeAgentPlugin(): Promise<Pick<
+  AgentPluginLike,
+  "request"
+> | null> {
   try {
-    const capacitorWithPlugins = Capacitor as typeof Capacitor & {
-      Plugins?: Record<string, NativeAgentProbePlugin | undefined>;
-    };
-    const registeredAgent =
-      capacitorWithPlugins.Plugins?.[agentPluginName] ??
-      Capacitor.registerPlugin<NativeAgentProbePlugin>(agentPluginName);
-    const agent = toNativeAgentProbePlugin(registeredAgent);
+    const agent = toAgentRequestPlugin(getAgentPlugin());
     if (agent) return agent;
   } catch {
     return null;
@@ -158,9 +142,7 @@ async function runNativeAndroidProbe(
     return false;
   }
 
-  let result: Awaited<
-    ReturnType<NonNullable<NativeAgentProbePlugin["request"]>>
-  >;
+  let result: Awaited<ReturnType<NonNullable<AgentPluginLike["request"]>>>;
   try {
     result = await agent.request({
       method: "GET",

@@ -15,7 +15,6 @@
 // helper (idempotency-guarded), so a completed onboarding posts exactly once.
 // ============================================================================
 
-import { Capacitor } from "@capacitor/core";
 import { client } from "../api";
 import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";
 import {
@@ -24,6 +23,7 @@ import {
 } from "../api/client-cloud";
 import type { CloudCompatAgent } from "../api/client-types-cloud";
 import { getDesktopRuntimeMode, invokeDesktopBridgeRequest } from "../bridge";
+import { type AgentPluginLike, getAgentPlugin } from "../bridge/native-plugins";
 import { savePendingCloudHandoff } from "../cloud/handoff/pending-handoff-store";
 import { runCloudAgentHandoff } from "../cloud/handoff/run-cloud-agent-handoff";
 import { silentlyRepointToDedicated } from "../cloud/handoff/silent-repoint";
@@ -61,10 +61,6 @@ import {
 import { resolveFirstRunLocalAgentApiBase } from "./runtime-target";
 
 const FIRST_RUN_AGENT_WAIT_MS = 180_000;
-
-type NativeAgentPlugin = {
-  start?: (options?: { apiBase?: string; mode?: string }) => Promise<unknown>;
-};
 
 // ── Injected ports — the store seams the finish logic needs ──────────────────
 
@@ -239,20 +235,14 @@ function readSyncOnDeviceAgentBearer(): string | null {
 async function startMobileLocalAgent(): Promise<void> {
   if (!isAndroid && !isIOS) return;
   try {
-    const capacitorWithPlugins = Capacitor as typeof Capacitor & {
-      Plugins?: Record<string, NativeAgentPlugin | undefined>;
-    };
-    const registeredAgent =
-      capacitorWithPlugins.Plugins?.Agent ??
-      Capacitor.registerPlugin<NativeAgentPlugin>("Agent");
-    await registeredAgent.start?.({
+    await getAgentPlugin().start?.({
       apiBase: resolveFirstRunLocalAgentApiBase(),
       mode: "local",
     });
   } catch {
     const agentPluginId = "@elizaos/capacitor-agent";
     const { Agent } = await import(/* @vite-ignore */ agentPluginId);
-    await (Agent as NativeAgentPlugin | undefined)?.start?.({
+    await (Agent as AgentPluginLike | undefined)?.start?.({
       apiBase: resolveFirstRunLocalAgentApiBase(),
       mode: "local",
     });

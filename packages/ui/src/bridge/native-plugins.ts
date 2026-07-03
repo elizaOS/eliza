@@ -212,6 +212,23 @@ export interface PushNotificationsPluginLike extends NativePlugin {
   requestPermissions?: () => Promise<PushNotificationPermissionStatus>;
 }
 
+export interface AgentPluginLike extends NativePlugin {
+  getLocalAgentToken?: () => Promise<{
+    available?: boolean;
+    token?: string | null;
+  }>;
+  request?: (options: {
+    method?: string;
+    path: string;
+    headers?: Record<string, string>;
+    timeoutMs?: number;
+  }) => Promise<{
+    status: number;
+    body?: string | null;
+  }>;
+  start?: (options?: { apiBase?: string; mode?: string }) => Promise<unknown>;
+}
+
 export interface MobileSignalsPermissionStatus {
   status: "granted" | "denied" | "not-determined" | "not-applicable";
   canRequest: boolean;
@@ -882,6 +899,13 @@ export interface ElizaVoicePluginLike extends NativePlugin {
 }
 
 export type GenericNativePlugin = NativePlugin;
+
+export function getAgentPlugin(): AgentPluginLike {
+  const plugins = getCapacitorPlugins();
+  return (plugins.Agent ??
+    Capacitor.registerPlugin<AgentPluginLike>("Agent") ??
+    {}) as AgentPluginLike;
+}
 
 export function getElizaVoicePlugin(): ElizaVoicePluginLike {
   return getNativePlugin<ElizaVoicePluginLike>("ElizaVoice");
