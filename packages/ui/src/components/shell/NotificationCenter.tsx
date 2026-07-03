@@ -45,13 +45,14 @@ import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 type NotificationSortMode = "priority" | "time";
 
 /**
- * Real frosted-glass surface for the controlled shells (sheet + panel): a
- * translucent dark base under heavy blur + saturation, a hairline border, a lit
- * top edge (inset highlight), and a soft drop shadow for depth — deliberately
- * NOT flat. The list cards float on top as their own lighter glass tiles.
+ * Solid surface for the controlled shells (sheet + panel). The system is flat:
+ * an opaque token surface (--card) + a hairline border carries the depth, NOT
+ * backdrop blur/saturation or a drop shadow (both removed app-wide: blur trips
+ * the #9141 battery gate, and all shadow tokens are none). The list cards sit
+ * on top as their own token tiles.
  */
 const GLASS_SURFACE =
-  "border border-white/15 bg-neutral-950/50 backdrop-blur-2xl backdrop-saturate-150 [box-shadow:inset_0_1px_0_0_rgba(255,255,255,0.18),0_24px_70px_-18px_rgba(0,0,0,0.8)]";
+  "border border-border-strong bg-card";
 
 /**
  * Finger travel (px) that maps to a fully-revealed sheet during a pull. The
@@ -147,14 +148,13 @@ function NotificationRow({
   );
 
   return (
-    // iOS-notification-center card: each notification is its own rounded glass
-    // tile floating on the blurred shell — a hairline border + a faint lit top
-    // edge give it depth without a second backdrop-blur (the shell carries the
-    // ONE blur; per-card blur would stack GPU filters on the phone).
+    // Notification card: each notification is its own rounded token tile on the
+    // solid shell — a hairline border + a token surface fill carry the depth
+    // (flat system: no GPU blur, no drop/inset shadow).
     <li
       className={cn(
-        "group relative flex items-start gap-3 rounded-2xl border border-white/10 bg-white/[0.07] pr-9 transition-colors [box-shadow:inset_0_1px_0_0_rgba(255,255,255,0.08)] hover:bg-white/[0.12] pointer-coarse:pr-12",
-        unread && "border-white/15 bg-white/[0.11]",
+        "group relative flex items-start gap-3 rounded-2xl border border-border bg-surface pr-9 transition-colors hover:bg-bg-hover pointer-coarse:pr-12",
+        unread && "border-border-strong bg-bg-hover",
       )}
     >
       <button
@@ -169,14 +169,14 @@ function NotificationRow({
               ? "bg-status-danger/20 text-status-danger"
               : notification.priority === "high"
                 ? "bg-accent/20 text-accent"
-                : "bg-white/15 text-white/85",
+                : "bg-surface text-txt",
           )}
         >
           {categoryIcon(notification.category)}
         </span>
         <span className="min-w-0 flex-1">
           <span className="flex items-center gap-2">
-            <span className="truncate text-sm font-medium text-white">
+            <span className="truncate text-sm font-medium text-txt">
               {notification.title}
             </span>
             {unread && (
@@ -184,11 +184,11 @@ function NotificationRow({
             )}
           </span>
           {notification.body && (
-            <span className="mt-0.5 line-clamp-2 block text-xs text-white/70">
+            <span className="mt-0.5 line-clamp-2 block text-xs text-muted-strong">
               {notification.body}
             </span>
           )}
-          <span className="mt-1 block text-[11px] text-white/50">
+          <span className="mt-1 block text-xs-tight text-muted">
             {formatRelativeTime(notification.createdAt)}
           </span>
         </span>
@@ -205,7 +205,7 @@ function NotificationRow({
         // coarse pointer the hit target grows to the 44px `touch` token (the
         // house `pointer-coarse:min-*-touch` convention) so it isn't a
         // sub-target tap zone on the phone sheet.
-        className="absolute right-1.5 top-2.5 flex shrink-0 items-center justify-center rounded-full p-1 text-white/60 opacity-50 transition-opacity pointer-coarse:min-h-touch pointer-coarse:min-w-touch hover:bg-white/10 hover:text-white group-hover:opacity-100"
+        className="absolute right-1.5 top-2.5 flex shrink-0 items-center justify-center rounded-full p-1 text-muted opacity-50 transition-opacity pointer-coarse:min-h-touch pointer-coarse:min-w-touch hover:bg-bg-hover hover:text-txt group-hover:opacity-100"
       >
         <X className="h-3.5 w-3.5" />
       </button>
@@ -274,7 +274,7 @@ function FilterChip({
         "inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition-colors",
         active
           ? "bg-accent text-accent-foreground hover:bg-accent-hover"
-          : "text-white/70 hover:bg-white/10 hover:text-white",
+          : "text-muted-strong hover:bg-bg-hover hover:text-txt",
       )}
     >
       {icon}
@@ -594,7 +594,7 @@ export function NotificationCenter({
           hierarchy separate it from the list (app-wide flat direction). */}
       <div className="flex items-center justify-between gap-2 px-3.5 py-2.5">
         <div className="flex min-w-0 items-center gap-2">
-          <span className="text-sm font-semibold text-white">
+          <span className="text-sm font-semibold text-txt">
             Notifications
           </span>
           {hasUnread && (
@@ -610,7 +610,7 @@ export function NotificationCenter({
               size="icon-sm"
               aria-label="Mark all read"
               title="Mark all read"
-              className="text-white/70 hover:bg-white/10 hover:text-white"
+              className="text-muted-strong hover:bg-bg-hover hover:text-txt"
               onClick={handleMarkAll}
             >
               <CheckCheck className="h-4 w-4" />
@@ -622,7 +622,7 @@ export function NotificationCenter({
               size="icon-sm"
               aria-label="Clear all"
               title="Clear all"
-              className="text-white/70 hover:bg-white/10 hover:text-white"
+              className="text-muted-strong hover:bg-bg-hover hover:text-txt"
               onClick={handleClear}
             >
               <Trash2 className="h-4 w-4" />
@@ -642,10 +642,10 @@ export function NotificationCenter({
       )}
       {notifications.length > 1 && (
         <div className="flex items-center gap-2 px-3 py-1.5">
-          <span className="text-2xs font-medium uppercase tracking-wide text-white/60">
+          <span className="text-2xs font-medium uppercase tracking-wide text-muted">
             Sort
           </span>
-          <div className="ml-auto flex items-center gap-0.5 rounded-md bg-white/10 p-0.5">
+          <div className="ml-auto flex items-center gap-0.5 rounded-md bg-surface p-0.5">
             {(
               [
                 ["priority", "Priority"],
@@ -662,7 +662,7 @@ export function NotificationCenter({
                   "rounded-sm px-2 py-0.5 text-2xs font-medium transition-colors",
                   sortMode === mode
                     ? "bg-accent/15 text-accent"
-                    : "text-white/60 hover:text-white",
+                    : "text-muted hover:text-txt",
                 )}
               >
                 {label}
@@ -686,13 +686,13 @@ export function NotificationCenter({
               (which would flash then get replaced when rows arrive). */}
           {hydrated ? (
             <>
-              <Inbox className="h-7 w-7 text-white/50" />
-              <span className="text-sm text-white/70">
+              <Inbox className="h-7 w-7 text-muted" />
+              <span className="text-sm text-muted-strong">
                 You're all caught up
               </span>
             </>
           ) : (
-            <span className="text-sm text-white/70">Loading…</span>
+            <span className="text-sm text-muted-strong">Loading…</span>
           )}
         </div>
       ) : (
@@ -749,7 +749,7 @@ export function NotificationCenter({
             transition: revealTransition,
             pointerEvents: open ? "auto" : "none",
           }}
-          className="fixed inset-0 bg-black/55"
+          className="fixed inset-0 bg-scrim"
         />
         <div
           ref={dialogRef}
@@ -791,7 +791,7 @@ export function NotificationCenter({
             onClick={() => onOpenChange?.(false)}
             className="flex shrink-0 justify-center py-2"
           >
-            <span className="h-1 w-9 rounded-full bg-white/40" aria-hidden />
+            <span className="h-1 w-9 rounded-full bg-muted-strong" aria-hidden />
           </button>
         </div>
       </>,

@@ -330,7 +330,7 @@ function SoftButton({
         // neutral hover, accent for active — never a background/border, never
         // blue.
         "grid h-11 w-11 shrink-0 place-items-center bg-transparent transition-colors",
-        active ? "text-accent" : "text-white/75 hover:text-white",
+        active ? "text-accent" : "text-muted-strong hover:text-txt",
         disabled && "opacity-40",
       )}
     >
@@ -377,10 +377,10 @@ function HeaderButton({
         "grid h-9 w-9 shrink-0 place-items-center bg-transparent transition-colors",
         disabled
           ? // On the view it targets: shown but inert + dimmed (we disable, not hide).
-            "cursor-default text-white/35"
+            "cursor-default text-muted"
           : active
             ? "text-accent"
-            : "text-white/75 hover:text-white",
+            : "text-muted-strong hover:text-txt",
       )}
     >
       <Icon className="h-[18px] w-[18px]" aria-hidden />
@@ -425,8 +425,8 @@ function SwipeEdgeHint({
       className={cn(
         "pointer-events-none absolute inset-y-0 z-20 w-16",
         side === "left"
-          ? "left-0 bg-gradient-to-r from-white/25 to-transparent"
-          : "right-0 bg-gradient-to-l from-white/25 to-transparent",
+          ? "left-0 bg-gradient-to-r from-border-strong to-transparent"
+          : "right-0 bg-gradient-to-l from-border-strong to-transparent",
       )}
       style={{ opacity }}
     />
@@ -518,8 +518,8 @@ function SheetGrabber({
           // Pulse while the mic is hot / a reply is speaking: the warm bar
           // breathes instead of sitting static, the "audio is on" cue.
           glow
-            ? "animate-pulse bg-[rgba(255,180,120,0.8)] motion-reduce:animate-none"
-            : "bg-white/45",
+            ? "animate-pulse bg-accent motion-reduce:animate-none"
+            : "bg-muted-strong",
         )}
       />
     </motion.button>
@@ -591,8 +591,8 @@ function PillHandle({
           // Same pulse as the SheetGrabber bar: while audio is on and the chat
           // is collapsed to the pill, the pill itself pulses.
           glow
-            ? "animate-pulse bg-[rgba(255,180,120,0.8)] motion-reduce:animate-none"
-            : "bg-white/45",
+            ? "animate-pulse bg-accent motion-reduce:animate-none"
+            : "bg-muted-strong",
         )}
       />
     </button>
@@ -719,7 +719,7 @@ function TurnStatusInner({
             key={i}
             className={cn(
               "h-1.5 w-1.5 animate-pulse rounded-full motion-reduce:animate-none",
-              speaking ? "bg-[rgba(255,190,140,0.9)]" : "bg-white/70",
+              speaking ? "bg-accent" : "bg-muted-strong",
             )}
             style={{ animationDelay: `${i * 180}ms` }}
           />
@@ -729,7 +729,7 @@ function TurnStatusInner({
         <span
           className={cn(
             "text-[13px] font-medium",
-            speaking ? "text-[rgba(255,200,150,0.95)]" : "text-white/90",
+            speaking ? "text-accent" : "text-txt",
           )}
           data-testid="turn-status-label"
         >
@@ -770,7 +770,7 @@ function TurnStatusIndicator({
           // neutral white glass. No blue anywhere.
           // #10698: no own scrim — the shared panel glass carries the contrast;
           // keep only the tone border (orange when speaking) + FLOAT_SHADOW.
-          speaking ? "border-[rgba(255,180,120,0.45)]" : "border-white/10",
+          speaking ? "border-accent/45" : "border-border",
         )}
       >
         <TurnStatusInner status={status} />
@@ -827,7 +827,7 @@ export function BootStatusIndicator({
     >
       <span
         className={cn(
-          "inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-sm font-medium text-white/85",
+          "inline-flex items-center gap-2 rounded-full border border-border bg-surface px-3 py-1.5 text-sm font-medium text-txt",
           FLOAT_SHADOW,
         )}
       >
@@ -846,7 +846,7 @@ export function BootStatusIndicator({
                 type="button"
                 onClick={onOpenSettings}
                 data-testid="chat-boot-open-settings"
-                className="pointer-events-auto ml-1 rounded-full border border-white/20 bg-white/10 px-2 py-0.5 text-[12px] text-white/90 transition-colors hover:border-white/35 hover:bg-white/20"
+                className="pointer-events-auto ml-1 rounded-full border border-border-strong bg-surface px-2 py-0.5 text-xs text-txt transition-colors hover:border-border-hover hover:bg-bg-hover"
               >
                 Open settings
               </button>
@@ -955,8 +955,8 @@ function ThreadLineActionButton({
       className={cn(
         "flex h-7 w-7 items-center justify-center rounded-full transition-colors",
         active
-          ? "bg-[rgb(255,88,0)]/25 text-white"
-          : "bg-white/10 text-white/80 hover:bg-white/20",
+          ? "bg-accent/25 text-txt"
+          : "bg-surface text-muted-strong hover:bg-bg-hover",
       )}
     >
       {icon}
@@ -1009,14 +1009,14 @@ function ThreadLineEditor({
           }
         }}
         rows={Math.min(6, Math.max(1, value.split("\n").length))}
-        className="w-full resize-none rounded-lg bg-white/10 px-2.5 py-1.5 text-[14px] text-white outline-none [overflow-wrap:anywhere]"
+        className="w-full resize-none rounded-lg bg-surface px-2.5 py-1.5 text-sm text-txt outline-none [overflow-wrap:anywhere]"
       />
       <div className="flex items-center justify-end gap-1.5">
         <button
           type="button"
           data-testid="thread-line-edit-cancel"
           onClick={onCancel}
-          className="rounded-full bg-white/10 px-3 py-1 text-[13px] font-medium text-white/80 transition-colors hover:bg-white/20"
+          className="rounded-full bg-surface px-3 py-1 text-[13px] font-medium text-muted-strong transition-colors hover:bg-bg-hover"
         >
           Cancel
         </button>
@@ -1024,7 +1024,7 @@ function ThreadLineEditor({
           type="button"
           data-testid="thread-line-edit-save"
           onClick={onSave}
-          className="rounded-full bg-[rgb(255,88,0)] px-3 py-1 text-[13px] font-medium text-white transition-colors hover:bg-[rgb(214,74,0)]"
+          className="rounded-full bg-accent px-3 py-1 text-[13px] font-medium text-accent-foreground transition-colors hover:bg-accent-hover"
         >
           Send
         </button>
@@ -1258,21 +1258,21 @@ const ThreadLine = React.memo(function ThreadLine({
             // #10698: minimize the own scrim (0.60 → 0.35) now the shared glass
             // carries contrast, but keep a fill so this critical no-provider CTA
             // stays prominent over any wallpaper; structure/amber border kept.
-            "max-w-[85%] rounded-2xl rounded-bl-md border border-amber-300/30 bg-black/35 px-3.5 py-3 text-white",
+            "max-w-[85%] rounded-2xl rounded-bl-md border border-accent/30 bg-scrim px-3.5 py-3 text-txt",
             FLOAT_SHADOW,
           )}
         >
           <div className="mb-1 text-[14px] font-medium">
             Connect a provider to chat
           </div>
-          <div className="mb-2.5 whitespace-pre-wrap text-[13px] leading-relaxed text-white/80 [overflow-wrap:anywhere]">
+          <div className="mb-2.5 whitespace-pre-wrap text-[13px] leading-relaxed text-muted-strong [overflow-wrap:anywhere]">
             {message.content}
           </div>
           <button
             type="button"
             data-testid="chat-no-provider-settings"
             onClick={() => onOpenSettings?.()}
-            className="rounded-full border border-white/20 bg-white/15 px-3 py-1.5 text-[13px] font-medium text-white transition-colors hover:bg-white/25   "
+            className="rounded-full border border-border-strong bg-surface px-3 py-1.5 text-[13px] font-medium text-txt transition-colors hover:bg-bg-hover   "
           >
             Open Settings
           </button>
@@ -1303,13 +1303,13 @@ const ThreadLine = React.memo(function ThreadLine({
       ? cn(
           "border",
           isUser
-            ? "border-[rgba(255,106,31,0.28)] bg-[rgba(255,106,31,0.16)] text-white"
-            : "border-white/10 bg-[#2a1b11] text-white",
+            ? "border-accent/28 bg-accent-subtle text-txt"
+            : "border-border bg-card text-txt",
           FLOAT_SHADOW,
         )
       : isUser
-        ? "bg-white/20 text-white"
-        : "bg-white/10 text-white/90",
+        ? "bg-bg-hover text-txt"
+        : "bg-surface text-txt",
   );
   const bubbleContent =
     isUser && editing ? (
@@ -1377,7 +1377,7 @@ const ThreadLine = React.memo(function ThreadLine({
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0 }}
               transition={{ duration: reduce ? 0 : 0.18 }}
-              className="pointer-events-none absolute -top-2 right-2 rounded-full bg-white/90 px-2 py-0.5 text-[11px] font-medium text-black"
+              className="pointer-events-none absolute -top-2 right-2 rounded-full bg-txt px-2 py-0.5 text-xs-tight font-medium text-bg"
             >
               Copied
             </motion.span>
@@ -1491,7 +1491,7 @@ const ThreadLine = React.memo(function ThreadLine({
               e.stopPropagation();
               onRetry?.(message.id);
             }}
-            className="flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1 text-[13px] font-medium text-white/80 transition-colors hover:bg-white/20"
+            className="flex items-center gap-1.5 rounded-full bg-surface px-3 py-1 text-[13px] font-medium text-muted-strong transition-colors hover:bg-bg-hover"
           >
             <RotateCcw className="h-3.5 w-3.5" aria-hidden />
             Retry
@@ -4066,12 +4066,14 @@ export function ContinuousChatOverlay({
         aria-hidden="true"
         data-testid="chat-sheet-backdrop"
         data-active={sheetOpen ? "true" : "false"}
-        // Overhaul: a real warm ember scrim (radial, bottom-anchored) with a
-        // faint blur so the open chat reads on a solid dim field instead of
-        // letting the background bleed through. Outside-tap dismissal is NOT
-        // wired here on purpose: this element keeps pointerEvents:none (below)
-        // and the document-level pointerdown detector owns outside taps.
-        className="fixed inset-0 bg-[radial-gradient(120%_90%_at_50%_100%,rgba(20,12,7,0.72)_0%,rgba(12,7,4,0.84)_55%,rgba(8,5,3,0.9)_100%)] backdrop-blur-[2px]"
+        // Overhaul: a solid warm-ember dim scrim (the --scrim token, brand-black
+        // at a fixed dim) so the open chat reads on an opaque dim field instead
+        // of letting the background bleed through. Flat system: no GPU blur
+        // (battery gate #9141) — the opaque scrim carries the contrast on its
+        // own. Outside-tap dismissal is NOT wired here on purpose: this element
+        // keeps pointerEvents:none (below) and the document-level pointerdown
+        // detector owns outside taps.
+        className="fixed inset-0 bg-scrim"
         // Opacity follows the live history height (motion value) — no re-render
         // during a drag. Pointer events stay disabled so background gestures
         // keep their original targets while chat is open.
@@ -4151,9 +4153,9 @@ export function ContinuousChatOverlay({
               aria-label={s}
               onClick={() => pickSuggestion(s)}
               className={cn(
-                "max-w-full truncate rounded-full border border-white/15 bg-black/40 px-3 py-1.5",
-                "text-[12px] text-white/80 transition-colors",
-                "hover:border-white/30 hover:bg-white/15 hover:text-white",
+                "max-w-full truncate rounded-full border border-border bg-scrim px-3 py-1.5",
+                "text-xs text-muted-strong transition-colors",
+                "hover:border-border-hover hover:bg-bg-hover hover:text-txt",
                 "  ",
               )}
             >
@@ -4239,10 +4241,11 @@ export function ContinuousChatOverlay({
               // warm hairline edge + a soft drop shadow that seats it above the
               // field, so nothing behind it ever shows through. NOTE: the opaque
               // fill is enforced by the inline backgroundColor below (inline wins
-              // over this class); this class supplies the edge + shadow.
+              // over this class); this class supplies the edge. Flat system:
+              // depth = border, not a drop shadow (all shadow tokens are none).
               fullBleed
-                ? "border-0 bg-[#1d130c]"
-                : "border border-white/12 bg-[#1d130c] shadow-[0_-8px_40px_-12px_rgba(0,0,0,0.7)]",
+                ? "border-0 bg-card"
+                : "border border-border-strong bg-card",
             )}
             style={{
               opacity: glassOpacity,
@@ -4250,18 +4253,18 @@ export function ContinuousChatOverlay({
               // Overhaul: SOLID warm-dark fill (no translucency) so the ember
               // field / home widgets can't bleed through the open thread (the #1
               // "too transparent" complaint this commit fixes). Kept inline (not
-              // just the Tailwind bg-[#1d130c]) because inline wins and this is
-              // the value that actually renders. No GPU backdrop blur (#10698,
+              // just the Tailwind bg-card / --surface-1) because inline wins and
+              // this is the value that actually renders. No GPU backdrop blur (#10698,
               // #9141 battery gate) is needed anymore since the fill is opaque; a
               // faint top-sheen gradient (backgroundImage below) still reads as
               // glass. The collapsed pill stays chrome-free via glassOpacity fade.
               backgroundColor: fullBleed
-                ? "#17100a"
+                ? "var(--bg)"
                 : threadPresented
-                  ? "#1d130c"
-                  : "#1d130c",
+                  ? "var(--surface-1)"
+                  : "var(--surface-1)",
               backgroundImage:
-                "linear-gradient(180deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0) 24%)",
+                "linear-gradient(180deg, var(--surface) 0%, transparent 24%)",
               // Full-bleed: extend the glass UP through the safe-area-top so the
               // dark background reaches the true top of the screen. The panel
               // height comes from visualViewport (which excludes the Android
@@ -4347,7 +4350,7 @@ export function ContinuousChatOverlay({
             highlight. Subtle + non-interactive. */}
             <div
               aria-hidden="true"
-              className="pointer-events-none absolute inset-x-0 top-0 z-0 h-20 bg-gradient-to-b from-white/[0.07] to-transparent"
+              className="pointer-events-none absolute inset-x-0 top-0 z-0 h-20 bg-gradient-to-b from-surface to-transparent"
             />
 
             {/* Sheet header — shown at the HALF detent and up (not just FULL).
@@ -4408,7 +4411,7 @@ export function ContinuousChatOverlay({
                 {transcriptionMode ? (
                   <div
                     data-testid="chat-transcribing-badge"
-                    className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-full bg-accent/15 px-2.5 py-0.5 text-[11px] font-medium text-accent"
+                    className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-full bg-accent/15 px-2.5 py-0.5 text-xs-tight font-medium text-accent"
                   >
                     Transcribing — say “exit transcription mode” to stop
                   </div>
@@ -4497,7 +4500,7 @@ export function ContinuousChatOverlay({
                     <TopicChipsBar
                       topics={channelTopics}
                       onSelectTopic={scrollToTopic}
-                      className="sticky top-0 z-[2] -mx-5 mb-1 bg-gradient-to-b from-black/40 to-transparent px-5"
+                      className="sticky top-0 z-[2] -mx-5 mb-1 bg-gradient-to-b from-scrim to-transparent px-5"
                     />
                   ) : null}
                   {/* `mt-auto` keeps the latest line at the bottom (nearest the input)
@@ -4588,7 +4591,7 @@ export function ContinuousChatOverlay({
                           // Small visual disc, but a 44px-class hit zone via the
                           // invisible `before` overlay so it's thumb-tappable
                           // without crowding the tile.
-                          className="absolute -right-1.5 -top-1.5 grid h-5 w-5 place-items-center rounded-full border border-white/20 bg-black/70 text-xs text-white/90 transition-colors before:absolute before:-inset-3 before:content-[''] hover:bg-black/90"
+                          className="absolute -right-1.5 -top-1.5 grid h-5 w-5 place-items-center rounded-full border border-border-strong bg-scrim text-xs text-txt transition-colors before:absolute before:-inset-3 before:content-[''] hover:bg-bg"
                         >
                           ×
                         </button>
@@ -4603,7 +4606,7 @@ export function ContinuousChatOverlay({
                             <img
                               src={`data:${img.mimeType};base64,${img.data}`}
                               alt={img.name}
-                              className="h-14 w-14 rounded-lg border border-white/20 object-cover"
+                              className="h-14 w-14 rounded-lg border border-border-strong object-cover"
                             />
                             {removeButton}
                           </div>
@@ -4618,11 +4621,11 @@ export function ContinuousChatOverlay({
                       return (
                         <div
                           key={tileKey}
-                          className="group relative flex h-14 min-w-[3.5rem] max-w-[10rem] shrink-0 items-center gap-2 rounded-lg border border-white/20 bg-white/10 px-2.5 text-white/90"
+                          className="group relative flex h-14 min-w-[3.5rem] max-w-[10rem] shrink-0 items-center gap-2 rounded-lg border border-border-strong bg-surface px-2.5 text-txt"
                           title={img.name}
                         >
-                          <KindIcon className="h-5 w-5 shrink-0 text-white/70" />
-                          <span className="min-w-0 truncate text-[11px] leading-tight">
+                          <KindIcon className="h-5 w-5 shrink-0 text-muted-strong" />
+                          <span className="min-w-0 truncate text-xs-tight leading-tight">
                             {img.name}
                           </span>
                           {removeButton}
@@ -4823,10 +4826,10 @@ export function ContinuousChatOverlay({
                 // the only input), so brighten the placeholder from the resting
                 // 45% to 70% — a directive hint the user can actually read,
                 // rather than a greyed-out box that reads as dead.
-                className={`max-h-[8.5rem] min-h-8 min-w-0 flex-1 resize-none self-center border-none bg-transparent px-1.5 py-1 text-left text-sm leading-relaxed text-white/[0.92] outline-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${
+                className={`max-h-[8.5rem] min-h-8 min-w-0 flex-1 resize-none self-center border-none bg-transparent px-1.5 py-1 text-left text-sm leading-relaxed text-txt outline-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${
                   firstRunOpen
-                    ? "placeholder:text-white/70"
-                    : "placeholder:text-white/45"
+                    ? "placeholder:text-muted-strong"
+                    : "placeholder:text-muted"
                 }`}
               />
               <span id="cc-booting-hint" className="sr-only">
