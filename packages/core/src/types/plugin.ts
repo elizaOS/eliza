@@ -8,7 +8,11 @@ import type { Action, AgentContext, Provider } from "./components";
 import type { IDatabaseAdapter } from "./database";
 import type { RegisteredEvaluator } from "./evaluator";
 import type { EventHandler, EventPayload, EventPayloadMap } from "./events";
-import type { ModelParamsMap, PluginModelResult } from "./model";
+import type {
+	ModelParamsMap,
+	ModelRegistrationMetadata,
+	PluginModelResult,
+} from "./model";
 import type { X402Config, X402RequestValidator } from "./payment";
 import type { JsonValue, UUID } from "./primitives";
 import type { IAgentRuntime } from "./runtime";
@@ -873,6 +877,7 @@ export interface PluginModelRegistration {
 		runtime: IAgentRuntime,
 		params: Record<string, JsonValue | object>,
 	) => Promise<JsonValue | object>;
+	metadata?: ModelRegistrationMetadata;
 	provider: string;
 }
 
@@ -1204,6 +1209,12 @@ export interface Plugin {
 			params: ModelParamsMap[K],
 		) => Promise<PluginModelResult<K>>;
 	};
+	/**
+	 * Optional handler-free metadata for entries declared in `models`, keyed by
+	 * model type. Providers use this to publish display/routing facts without
+	 * core branching on provider names.
+	 */
+	modelMetadata?: Record<string, ModelRegistrationMetadata>;
 	events?: PluginEvents;
 	routes?: Route[];
 	/**

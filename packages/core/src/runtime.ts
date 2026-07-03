@@ -151,6 +151,7 @@ import {
 	type ModelHandler,
 	type ModelParamsMap,
 	type ModelRegistrationInfo,
+	type ModelRegistrationMetadata,
 	type ModelResultMap,
 	ModelType,
 	type ModelTypeName,
@@ -813,6 +814,7 @@ function timeoutAfter(ms: number): Promise<"timeout"> {
 
 interface ResolvedModelRegistration {
 	handler: ModelHandler["handler"];
+	metadata?: ModelRegistrationMetadata;
 	modelKey: string;
 	provider: string;
 }
@@ -2037,6 +2039,7 @@ export class AgentRuntime implements IAgentRuntime {
 					) => Promise<JsonValue | object>,
 					pluginToRegister.name,
 					pluginToRegister.priority,
+					pluginToRegister.modelMetadata?.[modelType],
 				);
 			}
 		}
@@ -4679,6 +4682,7 @@ export class AgentRuntime implements IAgentRuntime {
 		) => Promise<JsonValue | object>,
 		provider: string,
 		priority?: number,
+		metadata?: ModelRegistrationMetadata,
 	): void {
 		const modelKey = String(modelType);
 		if (!this.models.has(modelKey)) {
@@ -4690,6 +4694,7 @@ export class AgentRuntime implements IAgentRuntime {
 		if (modelsArray) {
 			modelsArray.push({
 				handler,
+				metadata,
 				provider,
 				priority: priority || 0,
 				registrationOrder,
@@ -4708,6 +4713,7 @@ export class AgentRuntime implements IAgentRuntime {
 		// is subscribed, and registry bookkeeping must never block boot.
 		void this.emitEvent(EventType.MODEL_REGISTERED, {
 			modelType: modelKey,
+			metadata,
 			provider,
 			priority: priority || 0,
 		});
@@ -4727,6 +4733,7 @@ export class AgentRuntime implements IAgentRuntime {
 			for (const h of handlers) {
 				out.push({
 					modelType,
+					metadata: h.metadata,
 					provider: h.provider,
 					priority: h.priority || 0,
 					registrationOrder: h.registrationOrder || 0,
@@ -4802,6 +4809,7 @@ export class AgentRuntime implements IAgentRuntime {
 
 				resolvedModels.push({
 					handler: resolvedModel.handler,
+					metadata: resolvedModel.metadata,
 					modelKey: candidateKey,
 					provider: resolvedModel.provider,
 				});

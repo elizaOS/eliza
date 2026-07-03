@@ -2,7 +2,7 @@ import type { HandlerCallback } from "./components";
 import type { Entity, Room, World } from "./environment";
 import type { Memory } from "./memory";
 import type { ControlMessage } from "./messaging";
-import type { ModelTypeName } from "./model";
+import type { ModelRegistrationMetadata, ModelTypeName } from "./model";
 import type { PipelineHookPhase } from "./pipeline-hooks";
 import type { Content, JsonValue, UUID } from "./primitives";
 import type { IAgentRuntime } from "./runtime";
@@ -255,6 +255,8 @@ export interface ModelRegisteredEventPayload extends EventPayload {
 	provider: string;
 	/** Selection priority (higher wins); defaults to 0 when unspecified. */
 	priority: number;
+	/** Optional provider-declared metadata. Never includes handler functions. */
+	metadata?: ModelRegistrationMetadata;
 }
 
 /**

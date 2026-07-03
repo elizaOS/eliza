@@ -46,6 +46,7 @@ import type {
 	GenerateTextResult,
 	ModelParamsMap,
 	ModelRegistrationInfo,
+	ModelRegistrationMetadata,
 	ModelResultMap,
 	ModelTypeName,
 	TextGenerationModelType,
@@ -888,6 +889,7 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 	 * @param handler - The handler function that processes model requests
 	 * @param provider - The name of the provider (plugin) registering this handler
 	 * @param priority - Optional priority for handler selection (higher = preferred)
+	 * @param metadata - Optional handler-free provider metadata for observers
 	 */
 	registerModel(
 		modelType: ModelTypeName | string,
@@ -897,6 +899,7 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 		) => Promise<JsonValue | object>,
 		provider: string,
 		priority?: number,
+		metadata?: ModelRegistrationMetadata,
 	): void;
 
 	/**

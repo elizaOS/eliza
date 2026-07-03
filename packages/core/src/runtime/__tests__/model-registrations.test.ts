@@ -29,7 +29,9 @@ describe("AgentRuntime model-registration observability", () => {
 			seen.push(payload);
 		});
 
-		runtime.registerModel(ModelType.TEXT_LARGE, noopHandler, "provider-a", 50);
+		runtime.registerModel(ModelType.TEXT_LARGE, noopHandler, "provider-a", 50, {
+			displayModelSetting: "PROVIDER_A_MODEL",
+		});
 
 		// registerModel emits fire-and-forget; give the microtask queue a turn.
 		await Promise.resolve();
@@ -37,6 +39,9 @@ describe("AgentRuntime model-registration observability", () => {
 		expect(seen).toHaveLength(1);
 		const payload = seen[0];
 		expect(payload?.modelType).toBe(ModelType.TEXT_LARGE);
+		expect(payload?.metadata).toEqual({
+			displayModelSetting: "PROVIDER_A_MODEL",
+		});
 		expect(payload?.provider).toBe("provider-a");
 		expect(payload?.priority).toBe(50);
 		// Metadata only — never leaks the handler function.
@@ -59,7 +64,9 @@ describe("AgentRuntime model-registration observability", () => {
 
 	it("getModelRegistrations() reflects every registration as handler-free metadata", () => {
 		const runtime = makeRuntime();
-		runtime.registerModel(ModelType.TEXT_LARGE, noopHandler, "provider-a", 50);
+		runtime.registerModel(ModelType.TEXT_LARGE, noopHandler, "provider-a", 50, {
+			displayModel: "model-a",
+		});
 		runtime.registerModel(ModelType.TEXT_LARGE, noopHandler, "provider-b", 10);
 		runtime.registerModel(ModelType.TEXT_EMBEDDING, noopHandler, "provider-a");
 
@@ -79,6 +86,37 @@ describe("AgentRuntime model-registration observability", () => {
 		expect(
 			regs.find((r) => r.modelType === ModelType.TEXT_EMBEDDING)?.priority,
 		).toBe(0);
+		expect(large.find((r) => r.provider === "provider-a")?.metadata).toEqual({
+			displayModel: "model-a",
+		});
+	});
+
+	it("applies plugin modelMetadata when registering Plugin.models", async () => {
+		const runtime = makeRuntime();
+
+		await runtime.registerPlugin({
+			name: "metadata-model-plugin",
+			description: "Model metadata registration test",
+			models: {
+				[ModelType.TEXT_SMALL]: noopHandler,
+			},
+			modelMetadata: {
+				[ModelType.TEXT_SMALL]: {
+					displayModelSetting: "PLUGIN_MODEL",
+				},
+			},
+		});
+
+		const registration = runtime
+			.getModelRegistrations()
+			.find(
+				(reg) =>
+					reg.modelType === ModelType.TEXT_SMALL &&
+					reg.provider === "metadata-model-plugin",
+			);
+		expect(registration?.metadata).toEqual({
+			displayModelSetting: "PLUGIN_MODEL",
+		});
 	});
 
 	it("keeps useModel provider failover intact alongside the new registry API", async () => {

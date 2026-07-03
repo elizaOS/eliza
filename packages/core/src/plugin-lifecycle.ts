@@ -3,6 +3,7 @@ import { roleRank } from "./runtime/context-gates";
 import type { ContextRegistry } from "./runtime/context-registry";
 import type { AgentContext, RoleGate, RoleGateRole } from "./types/contexts";
 import type { RegisteredEvaluator } from "./types/evaluator";
+import type { ModelRegistrationMetadata } from "./types/model";
 import type {
 	Plugin,
 	PluginEventRegistration,
@@ -63,6 +64,7 @@ type RuntimeModelHandlerRecord = {
 		runtime: unknown,
 		params: Record<string, unknown>,
 	) => Promise<unknown>;
+	metadata?: ModelRegistrationMetadata;
 	provider: string;
 	priority?: number;
 	registrationOrder?: number;
@@ -839,17 +841,19 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 		handler,
 		provider,
 		priority,
+		metadata,
 	) => {
 		const capture = pluginRegistrationContext.getStore();
 		const modelKey = String(modelType);
 		const modelsBefore = privateState.models.get(modelKey)?.length ?? 0;
-		originalRegisterModel(modelType, handler, provider, priority);
+		originalRegisterModel(modelType, handler, provider, priority, metadata);
 		if (!capture) return;
 		const nextModels = privateState.models.get(modelKey) ?? [];
 		for (const registeredModel of nextModels.slice(modelsBefore)) {
 			pushUniqueModel(capture.ownership.models, {
 				modelType: modelKey,
 				handler: registeredModel.handler as RuntimeModelRegistration["handler"],
+				metadata: registeredModel.metadata,
 				provider: registeredModel.provider,
 			});
 		}

@@ -1423,6 +1423,28 @@ export interface ModelHandler<
 	priority?: number; // Optional priority for selection order
 
 	registrationOrder?: number;
+
+	/** Optional provider-declared metadata for display/routing observers. */
+	metadata?: ModelRegistrationMetadata;
+}
+
+/**
+ * Provider-declared metadata attached to a model registration.
+ *
+ * Keep this handler-free and serializable: it is surfaced through
+ * `AgentRuntime.getModelRegistrations()` and `MODEL_REGISTERED` events.
+ */
+export interface ModelRegistrationMetadata {
+	/**
+	 * Concrete model id to display for this registration when callers ask what
+	 * model is powering a slot.
+	 */
+	displayModel?: string;
+	/**
+	 * Runtime setting/env key that resolves to the concrete model id to display
+	 * for this registration.
+	 */
+	displayModelSetting?: string;
 }
 
 /**
@@ -1441,4 +1463,6 @@ export interface ModelRegistrationInfo {
 	priority: number;
 	/** Monotonic registration ordinal used as the priority tie-breaker. */
 	registrationOrder: number;
+	/** Optional provider-declared metadata. Never includes handler functions. */
+	metadata?: ModelRegistrationMetadata;
 }
