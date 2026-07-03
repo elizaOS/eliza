@@ -5,7 +5,7 @@
 
 ## desktop
 
-- **verdict:** good
+- **verdict:** needs-work
 - **console errors:** none
 - **blue colors (banned):** none
 - **orange hover violations:** none
@@ -15,7 +15,7 @@
 
 ## mobile
 
-- **verdict:** good
+- **verdict:** needs-work
 - **console errors:** none
 - **blue colors (banned):** none
 - **orange hover violations:** none

@@ -45,11 +45,18 @@ Harness notes:
 
 34 registered routes x 2 viewports, rebased final walk 69/69 green:
 
-- **machine scan:** 68 findings; `broken=0`, `needs-work=0`, blue-color
-  violations `0`, orange-hover violations `0`.
-- **hand review:** 34/34 current route screenshots are marked `good` in
-  `manual-review/` after opening the refreshed contact sheet generated from
-  the July 2, 2026 rebased audit output.
+- **machine scan:** 68 findings; `broken=0`, blue-color violations `0`,
+  orange-hover violations `0`.
+- **hand review:** 26/34 routes `good`; **8 routes stay `needs-work`**
+  (ballot, agents, agents-detail, analytics, api-explorer, invoice-detail,
+  organization, join) — the refreshed screenshots still show the systemic
+  dark-only-port defect: ~895 hardcoded `text-white*` usages across 93 files
+  under `packages/ui/src/cloud/` render headings/copy white-on-cream on the
+  light app shell (e.g. the Instances "Usage & Rates" card heading, the
+  analytics "Filters"/"Usage" card headings, the organization "SMOKE ORG"
+  card heading, the join error copy). The fix is the theme-token sweep
+  tracked on parent #10725, not a per-page patch — verdicts stay honest
+  until it lands.
 
 Fixed in this PR (verified by the run-3 machine scan + screenshots):
 
