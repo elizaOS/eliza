@@ -1,4 +1,13 @@
-import { asRecord, type ProviderStatus } from "@elizaos/shared";
+import {
+  asRecord,
+  buildCoinGeckoMarketsUrl,
+  buildMarketMovers,
+  buildMarketPriceSnapshots,
+  COINGECKO_MARKET_PROVIDER,
+  POLYMARKET_MARKET_PROVIDER,
+  type ProviderStatus,
+  parseCoinGeckoMarkets,
+} from "@elizaos/shared";
 import { getBootConfig } from "../config/boot-config-store";
 import {
   findCatalogModel,
@@ -44,29 +53,6 @@ const DEFAULT_CLOUD_MARKET_PREVIEW_BASE_URL = "https://elizacloud.ai";
 const CLOUD_WALLET_MARKET_OVERVIEW_PATH = "/market/preview/wallet-overview";
 const WALLET_MARKET_OVERVIEW_CACHE_TTL_MS = 120_000;
 const WALLET_MARKET_OVERVIEW_FETCH_TIMEOUT_MS = 8_000;
-const COINGECKO_MARKET_LIMIT = 80;
-const MARKET_PRICE_IDS = ["bitcoin", "ethereum", "solana"] as const;
-const MARKET_PRICE_ID_SET = new Set<string>(MARKET_PRICE_IDS);
-const STABLE_ASSET_IDS = new Set([
-  "tether",
-  "usd-coin",
-  "binance-usd",
-  "first-digital-usd",
-  "dai",
-  "ethena-usde",
-  "true-usd",
-  "usds",
-]);
-const STABLE_ASSET_SYMBOLS = new Set([
-  "usdt",
-  "usdc",
-  "busd",
-  "fdusd",
-  "dai",
-  "usde",
-  "tusd",
-  "usds",
-]);
 const EMPTY_ROUTING_PREFERENCES: RoutingPreferences = {
   preferredProvider: {},
   policy: {},
@@ -158,16 +144,6 @@ interface BrowserWorkspaceStore {
 interface CachedWalletMarketOverview {
   response: Record<string, unknown>;
   expiresAt: number;
-}
-
-interface CoinGeckoMarketRecord {
-  id: string;
-  symbol: string;
-  name: string;
-  currentPriceUsd: number;
-  change24hPct: number;
-  marketCapRank: number | null;
-  imageUrl: string | null;
 }
 
 const EMPTY_WALLET_ADDRESSES = {
@@ -471,10 +447,6 @@ function writeBundleRecord(record: IosBundleRecord): void {
   const current = readBundleIndex();
   current[record.modelId] = record;
   writeJson(BUNDLE_INDEX_KEY, current);
-}
-
-function stringFromUnknown(value: unknown): string | null {
-  return typeof value === "string" && value.trim().length > 0 ? value : null;
 }
 
 function numberFromUnknown(value: unknown): number | null {
@@ -994,105 +966,14 @@ async function fetchJsonWithTimeout(url: string | URL): Promise<unknown> {
   }
 }
 
-function mapCoinGeckoMarket(input: unknown): CoinGeckoMarketRecord | null {
-  const record = asRecord(input);
-  if (!record) return null;
-
-  const id = stringFromUnknown(record.id);
-  const symbol = stringFromUnknown(record.symbol);
-  const name = stringFromUnknown(record.name);
-  const currentPriceUsd = numberFromUnknown(record.current_price);
-  const change24hPct = numberFromUnknown(record.price_change_percentage_24h);
-  if (
-    !id ||
-    !symbol ||
-    !name ||
-    currentPriceUsd === null ||
-    change24hPct === null
-  ) {
-    return null;
-  }
-
-  return {
-    id,
-    symbol: symbol.toUpperCase(),
-    name,
-    currentPriceUsd,
-    change24hPct,
-    marketCapRank: integerFromUnknown(record.market_cap_rank),
-    imageUrl: stringFromUnknown(record.image),
-  };
-}
-
-function isStableAsset(market: CoinGeckoMarketRecord): boolean {
-  const id = market.id.toLowerCase();
-  const symbol = market.symbol.toLowerCase();
-  return STABLE_ASSET_IDS.has(id) || STABLE_ASSET_SYMBOLS.has(symbol);
-}
-
-function buildLocalPriceSnapshots(markets: CoinGeckoMarketRecord[]): unknown[] {
-  const byId = new Map(markets.map((market) => [market.id, market]));
-  return MARKET_PRICE_IDS.reduce<unknown[]>((items, id) => {
-    const market = byId.get(id);
-    if (!market) return items;
-    items.push({
-      id: market.id,
-      symbol: market.symbol,
-      name: market.name,
-      priceUsd: market.currentPriceUsd,
-      change24hPct: market.change24hPct,
-      imageUrl: market.imageUrl,
-    });
-    return items;
-  }, []);
-}
-
-function buildLocalMovers(markets: CoinGeckoMarketRecord[]): unknown[] {
-  return markets
-    .filter((market) => !MARKET_PRICE_ID_SET.has(market.id))
-    .filter((market) => !isStableAsset(market))
-    .filter(
-      (market) => market.marketCapRank === null || market.marketCapRank <= 200,
-    )
-    .sort(
-      (left, right) =>
-        Math.abs(right.change24hPct) - Math.abs(left.change24hPct),
-    )
-    .slice(0, 6)
-    .map((market) => ({
-      id: market.id,
-      symbol: market.symbol,
-      name: market.name,
-      priceUsd: market.currentPriceUsd,
-      change24hPct: market.change24hPct,
-      marketCapRank: market.marketCapRank,
-      imageUrl: market.imageUrl,
-    }));
-}
-
 async function fetchCoinGeckoWalletMarketOverview(): Promise<
   Record<string, unknown>
 > {
-  const url = new URL("https://api.coingecko.com/api/v3/coins/markets");
-  url.searchParams.set("vs_currency", "usd");
-  url.searchParams.set("order", "market_cap_desc");
-  url.searchParams.set("per_page", String(COINGECKO_MARKET_LIMIT));
-  url.searchParams.set("page", "1");
-  url.searchParams.set("price_change_percentage", "24h");
-
-  const payload = await fetchJsonWithTimeout(url);
-  if (!Array.isArray(payload)) {
-    throw new Error("CoinGecko payload was not an array");
-  }
-
-  const markets = payload
-    .map(mapCoinGeckoMarket)
-    .filter((market): market is CoinGeckoMarketRecord => market !== null);
+  const payload = await fetchJsonWithTimeout(buildCoinGeckoMarketsUrl());
+  const markets = parseCoinGeckoMarkets(payload);
 
   const coinGeckoSource = {
-    providerId: "coingecko",
-    providerName: "CoinGecko",
-    providerUrl: "https://www.coingecko.com/",
+    ...COINGECKO_MARKET_PROVIDER,
     available: true,
     stale: false,
     error: null,
@@ -1106,16 +987,14 @@ async function fetchCoinGeckoWalletMarketOverview(): Promise<
       prices: coinGeckoSource,
       movers: coinGeckoSource,
       predictions: {
-        providerId: "polymarket",
-        providerName: "Polymarket",
-        providerUrl: "https://polymarket.com/",
+        ...POLYMARKET_MARKET_PROVIDER,
         available: false,
         stale: false,
         error: "Polymarket preview requires the Eliza Cloud market feed.",
       },
     },
-    prices: buildLocalPriceSnapshots(markets),
-    movers: buildLocalMovers(markets),
+    prices: buildMarketPriceSnapshots(markets),
+    movers: buildMarketMovers(markets),
     predictions: [],
   };
 }
@@ -1145,13 +1024,11 @@ function emptyWalletMarketOverview(
   error = "Market data is unavailable in local iOS mode.",
 ): Record<string, unknown> {
   const unavailable = (
-    providerId: "coingecko" | "polymarket",
-    providerName: string,
-    providerUrl: string,
+    provider:
+      | typeof COINGECKO_MARKET_PROVIDER
+      | typeof POLYMARKET_MARKET_PROVIDER,
   ) => ({
-    providerId,
-    providerName,
-    providerUrl,
+    ...provider,
     available: false,
     stale: false,
     error,
@@ -1162,21 +1039,9 @@ function emptyWalletMarketOverview(
     cacheTtlSeconds: 0,
     stale: false,
     sources: {
-      prices: unavailable(
-        "coingecko",
-        "CoinGecko",
-        "https://www.coingecko.com",
-      ),
-      movers: unavailable(
-        "coingecko",
-        "CoinGecko",
-        "https://www.coingecko.com",
-      ),
-      predictions: unavailable(
-        "polymarket",
-        "Polymarket",
-        "https://polymarket.com",
-      ),
+      prices: unavailable(COINGECKO_MARKET_PROVIDER),
+      movers: unavailable(COINGECKO_MARKET_PROVIDER),
+      predictions: unavailable(POLYMARKET_MARKET_PROVIDER),
     },
     prices: [],
     movers: [],
