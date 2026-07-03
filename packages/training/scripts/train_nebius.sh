@@ -323,7 +323,11 @@ sync_tree() {
       ssh -o StrictHostKeyChecking=no "$target" "mkdir -p $REMOTE_TRAIN_DIR/$d"
       echo "[train_nebius][sync] sending $f"
       rsync_rc=0
-      rsync -avhz --partial --info=progress2 "$ROOT/$f" "$target:$REMOTE_TRAIN_DIR/$f" || rsync_rc=$?
+      # NOTE: no --info=progress2 — macOS ships openrsync (protocol 29) which
+      # rejects that flag (rc=1, prints usage) and aborts the launch. This
+      # script is launched from macOS dev machines, so keep to flags the system
+      # rsync supports; progress output is noise in a non-interactive run anyway.
+      rsync -avhz --partial "$ROOT/$f" "$target:$REMOTE_TRAIN_DIR/$f" || rsync_rc=$?
       if [ "$rsync_rc" -ne 0 ] && [ "$rsync_rc" -ne 24 ]; then
         echo "[train_nebius][sync] $f rsync failed rc=$rsync_rc"; return "$rsync_rc"
       fi
