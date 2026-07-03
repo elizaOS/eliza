@@ -179,9 +179,22 @@ export function convertMarkdownToTelegram(markdown: string): string {
     .join("");
 
   // Finally, substitute back all sentinels with their preformatted content.
-  const finalResult = finalEscaped.replace(SENTINEL_REPLACE, (_, index) => {
-    return replacements[Number.parseInt(index, 10)];
-  });
+  // Nested markdown (e.g. inline code inside bold or a header) stores a
+  // sentinel *inside* a later replacement, and String.replace does not
+  // re-scan replacement text — so resolve iteratively until no sentinel
+  // remains. Each replacement can only reference earlier-created sentinels,
+  // so this terminates in at most replacements.length passes.
+  let finalResult = finalEscaped;
+  for (let pass = 0; pass <= replacements.length; pass++) {
+    SENTINEL_REPLACE.lastIndex = 0;
+    if (!SENTINEL_REPLACE.test(finalResult)) {
+      break;
+    }
+    SENTINEL_REPLACE.lastIndex = 0;
+    finalResult = finalResult.replace(SENTINEL_REPLACE, (_, index) => {
+      return replacements[Number.parseInt(index, 10)];
+    });
+  }
 
   return finalResult;
 }

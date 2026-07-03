@@ -31,6 +31,16 @@ describe("convertMarkdownToTelegram", () => {
       "[docs](http://x.com)",
     );
   });
+
+  it("resolves nested tokens (inline code inside bold/header) without leaking NUL sentinels", () => {
+    const bold = convertMarkdownToTelegram("**bold `code`**");
+    expect(bold).toBe("*bold `code`*");
+    expect(bold).not.toContain("\u0000");
+
+    const header = convertMarkdownToTelegram("# Header with `code`");
+    expect(header).toBe("*Header with `code`*");
+    expect(header).not.toContain("\u0000");
+  });
 });
 
 describe("convertToTelegramButtons", () => {

@@ -42,6 +42,13 @@ describe("splitPostContent", () => {
     const chunks = splitPostContent("word ".repeat(MAX_CAST_LENGTH).trim());
     expect(chunks.every((c) => c.length <= MAX_CAST_LENGTH)).toBe(true);
   });
+
+  it("keeps every chunk within the cap for a single unbroken over-limit word (long URL)", () => {
+    const url = `https://example.com/${"a".repeat(1200)}`;
+    const chunks = splitPostContent(url, 1024);
+    expect(chunks.length).toBeGreaterThan(1);
+    expect(chunks.every((c) => c.length > 0 && c.length <= 1024)).toBe(true);
+  });
 });
 
 describe("splitParagraph", () => {
@@ -55,6 +62,13 @@ describe("splitParagraph", () => {
     expect(splitParagraph("One sentence. Two sentence.", 100)).toEqual([
       "One sentence.  Two sentence.",
     ]);
+  });
+
+  it("hard-slices a word longer than maxLength instead of emitting an over-limit chunk", () => {
+    const word = "x".repeat(120);
+    const chunks = splitParagraph(word, 50);
+    expect(chunks.every((c) => c.length <= 50)).toBe(true);
+    expect(chunks.join("")).toBe(word);
   });
 });
 

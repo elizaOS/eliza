@@ -95,7 +95,15 @@ export function splitParagraph(paragraph: string, maxLength: number): string[] {
             if (currentChunk) {
               chunks.push(currentChunk.trim());
             }
-            currentChunk = word;
+            // A single unbroken word (long URL, hash, etc.) can exceed the
+            // platform limit on its own — hard-slice it so no emitted chunk
+            // is ever longer than maxLength.
+            let rest = word;
+            while (rest.length > maxLength) {
+              chunks.push(rest.slice(0, maxLength));
+              rest = rest.slice(maxLength);
+            }
+            currentChunk = rest;
           }
         }
       }

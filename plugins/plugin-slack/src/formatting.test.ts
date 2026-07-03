@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildSlackMessagePermalink,
+  chunkSlackText,
   escapeSlackMrkdwn,
   extractChannelIdFromMention,
   extractUrlFromSlackLink,
@@ -74,6 +75,45 @@ describe("stripSlackFormatting", () => {
       "bold and it and  hi",
     );
     expect(stripSlackFormatting("a &amp; b")).toBe("a & b");
+  });
+
+  it("unwraps plain links to their URL instead of deleting them", () => {
+    expect(stripSlackFormatting("see <https://a.com> ok")).toBe(
+      "see https://a.com ok",
+    );
+  });
+
+  it("strips every link, not just the first", () => {
+    expect(
+      stripSlackFormatting("<https://a.com|A> and <https://b.com|B>"),
+    ).toBe("A and B");
+    expect(stripSlackFormatting("<https://a.com> and <https://b.com>")).toBe(
+      "https://a.com and https://b.com",
+    );
+  });
+});
+
+describe("chunkSlackText", () => {
+  it("never emits a chunk over the limit, even when closing a split code block", () => {
+    const text = `\`\`\`\n${"x".repeat(4200)}\n\`\`\``;
+    const chunks = chunkSlackText(text, 4000);
+    expect(chunks.length).toBeGreaterThan(1);
+    expect(chunks.every((c) => c.length <= 4000)).toBe(true);
+    // the split chunk is fence-closed and the remainder fence-reopened
+    expect(chunks[0].endsWith("\n```")).toBe(true);
+    expect(chunks[1].startsWith("```\n")).toBe(true);
+  });
+
+  it("does not fence-close a code block that only opens after the break point", () => {
+    // Newline break lands at 2795; the opening fence sits between the break
+    // point and the maxChars window, so the emitted chunk contains no fence.
+    const text = `${"line\n".repeat(559)}\`\`\`${"x".repeat(300)}\n\`\`\`\n`;
+    const chunks = chunkSlackText(text, 3000);
+    expect(chunks.every((c) => c.length <= 3000)).toBe(true);
+    // no chunk may carry an odd number of fences (a half-open code block)
+    for (const c of chunks) {
+      expect((c.match(/```/g) || []).length % 2).toBe(0);
+    }
   });
 });
 
