@@ -97,7 +97,7 @@ function WeatherTile(): React.JSX.Element {
       ) : (
         <>
           <div className="flex items-center gap-2">
-            <Icon className="h-7 w-7 text-[#ffb488]" aria-hidden />
+            <Icon className="h-7 w-7 text-accent" aria-hidden />
             <div className="text-[2.25rem] font-semibold leading-none tabular-nums tracking-[-0.02em]">
               {weather.temp}
               <span className="align-top text-base font-medium text-white/60">
@@ -176,7 +176,7 @@ export function DefaultHomeWidgets(): React.JSX.Element | null {
             <div className="mt-2.5 text-[0.9375rem] font-medium text-white/85">
               {dateLabel}
             </div>
-            <div className="mt-0.5 text-[0.8125rem] text-[#ffb488]/80">
+            <div className="mt-0.5 text-[0.8125rem] text-accent/80">
               {greeting(hours)}
             </div>
           </div>

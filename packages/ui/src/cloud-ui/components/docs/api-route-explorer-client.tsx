@@ -46,7 +46,8 @@ function methodBadgeClass(method: HttpMethod) {
     case "PUT":
       return `${base} bg-amber-500/10 text-amber-400 border-amber-500/30 `;
     case "PATCH":
-      return `${base} bg-violet-500/10 text-violet-400 border-violet-500/30 `;
+      // Brand rule: no violet. Accent (orange) keeps PATCH distinct from the amber PUT.
+      return `${base} bg-accent-subtle text-accent border-accent/30 `;
     case "DELETE":
       return `${base} bg-rose-500/10 text-rose-400 border-rose-500/30 `;
     default:
@@ -520,7 +521,7 @@ export function ApiRouteExplorerClient({
                         {selected.methods[0] ?? "GET"}
                       </span>
                       <span className="text-white/60"> </span>
-                      <span className="text-blue-400">
+                      <span className="text-status-info">
                         &quot;https://www.elizacloud.ai{selected.path}&quot;
                       </span>
                       <span className="text-white/40"> \</span>
@@ -542,7 +543,7 @@ export function ApiRouteExplorerClient({
                           <span className="text-white/40"> \</span>
                           {"\n"}
                           <span className="text-white/60"> -d </span>
-                          <span className="text-purple-400">
+                          <span className="text-accent">
                             &apos;{"{}"}&apos;
                           </span>
                         </>

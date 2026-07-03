@@ -95,7 +95,7 @@ export function AppsListView({
                   className="px-1.5 py-0 text-[10px]"
                 />
                 {app.affiliate_code ? (
-                  <Badge className="shrink-0 rounded-sm border-purple-500/30 bg-purple-500/20 px-1.5 py-0 text-[10px] text-purple-400">
+                  <Badge className="shrink-0 rounded-sm border-accent/30 bg-accent-subtle px-1.5 py-0 text-2xs text-accent">
                     Affiliate
                   </Badge>
                 ) : null}
@@ -164,11 +164,11 @@ export function AppsListView({
               </span>
               <span className="hidden text-white/20 sm:inline">-</span>
               <div className="flex shrink-0 items-center gap-1 text-white/50">
-                <Users className="h-3 w-3 text-blue-400" />
+                <Users className="h-3 w-3 text-muted" />
                 <span>{app.total_users.toLocaleString()}</span>
               </div>
               <div className="flex shrink-0 items-center gap-1 text-white/50">
-                <Activity className="h-3 w-3 text-purple-400" />
+                <Activity className="h-3 w-3 text-muted" />
                 <span>{app.total_requests.toLocaleString()}</span>
               </div>
               <span className="text-white/20">-</span>

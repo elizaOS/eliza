@@ -48,8 +48,8 @@ export function RevenueFlowDiagram({
             icon={<User className="h-5 w-5" />}
             label="User"
             value={`Pays $${userPays.toFixed(2)}`}
-            color="text-blue-400"
-            bgColor="bg-blue-500/10"
+            color="text-status-info"
+            bgColor="bg-status-info-bg"
           />
 
           {/* Arrow 1 */}
@@ -84,7 +84,7 @@ export function RevenueFlowDiagram({
             icon={<User className="h-4 w-4" />}
             label="User pays"
             value={`$${userPays.toFixed(2)}`}
-            color="text-blue-400"
+            color="text-status-info"
           />
           <div className="flex justify-center">
             <ArrowRight className="h-4 w-4 text-neutral-600 rotate-90" />
@@ -114,9 +114,9 @@ export function RevenueFlowDiagram({
       <div className="mt-auto pt-4 border-t border-white/10">
         <div className="space-y-3 text-xs">
           <div className="flex items-start gap-2">
-            <Zap className="h-3 w-3 text-purple-400 mt-0.5" />
+            <Zap className="h-3 w-3 text-accent mt-0.5" />
             <div>
-              <p className="font-medium text-purple-400">Inference Markup</p>
+              <p className="font-medium text-accent">Inference Markup</p>
               <p className="text-neutral-500 mt-0.5">
                 You set {markupPercentage}% markup on AI costs. More usage =
                 more earnings.
