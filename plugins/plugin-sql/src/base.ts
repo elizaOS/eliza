@@ -1510,6 +1510,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         entityId: memoryTable.entityId,
         agentId: memoryTable.agentId,
         roomId: memoryTable.roomId,
+        worldId: memoryTable.worldId,
         unique: memoryTable.unique,
         metadata: memoryTable.metadata,
       };
@@ -1521,6 +1522,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         entityId: string;
         agentId: string;
         roomId: string;
+        worldId: string | null;
         unique: boolean;
         metadata: unknown;
       };
@@ -1532,6 +1534,10 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         entityId: m.entityId as UUID,
         agentId: m.agentId as UUID,
         roomId: m.roomId as UUID,
+        // Include worldId (matching searchMemoriesByEmbedding): dropping it here
+        // stripped the world association from every read — e.g. agent-export
+        // round-trips silently lost memory→world links on restore.
+        worldId: (m.worldId ?? undefined) as UUID | undefined,
         unique: m.unique,
         metadata: m.metadata as MemoryMetadata,
         embedding: embedding ? Array.from(embedding) : undefined,
@@ -1636,6 +1642,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           entityId: memoryTable.entityId,
           agentId: memoryTable.agentId,
           roomId: memoryTable.roomId,
+          worldId: memoryTable.worldId,
           unique: memoryTable.unique,
           metadata: memoryTable.metadata,
         })
@@ -1662,6 +1669,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         entityId: row.entityId as UUID,
         agentId: row.agentId as UUID,
         roomId: row.roomId as UUID,
+        worldId: (row.worldId ?? undefined) as UUID | undefined,
         unique: row.unique,
         metadata: row.metadata,
       })) as Memory[];
@@ -1698,6 +1706,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         entityId: row.memory.entityId as UUID,
         agentId: row.memory.agentId as UUID,
         roomId: row.memory.roomId as UUID,
+        worldId: (row.memory.worldId ?? undefined) as UUID | undefined,
         unique: row.memory.unique,
         metadata: row.memory.metadata as MemoryMetadata,
         embedding: row.embedding ?? undefined,
@@ -1742,6 +1751,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         entityId: row.memory.entityId as UUID,
         agentId: row.memory.agentId as UUID,
         roomId: row.memory.roomId as UUID,
+        worldId: (row.memory.worldId ?? undefined) as UUID | undefined,
         unique: row.memory.unique,
         metadata: row.memory.metadata as MemoryMetadata,
         embedding: row.embedding ?? undefined,
@@ -1887,8 +1897,16 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   }
 
   /**
-   * Sanitizes a JSON object by replacing problematic Unicode escape sequences
-   * that could cause errors during JSON serialization/storage
+   * Sanitizes a JSON object for jsonb storage: strips NUL characters (which
+   * PostgreSQL/PGlite jsonb rejects as the `\u0000` escape) and breaks
+   * circular references.
+   *
+   * WHY nothing else is rewritten: the sanitized value is serialized with
+   * JSON.stringify, which already escapes backslashes and control characters
+   * correctly. This function used to ALSO double every backslash not followed
+   * by ["\/bfnrtu] and mangle non-hex `\u` sequences, so a body value like
+   * "C:\Users" was stored (and read back) as "C:\\Users" — silent data
+   * corruption of any string containing a backslash.
    *
    * @param value - The value to sanitize
    * @returns The sanitized value
@@ -1899,16 +1917,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     }
 
     if (typeof value === "string") {
-      // Handle multiple cases that can cause PostgreSQL/PgLite JSON parsing errors:
-      // 1. Remove null bytes (U+0000) which are not allowed in PostgreSQL text fields
-      // 2. Escape single backslashes that might be interpreted as escape sequences
-      // 3. Fix broken Unicode escape sequences (\u not followed by 4 hex digits)
-      const nullChar = String.fromCharCode(0);
-      const nullCharRegex = new RegExp(nullChar, "g");
-      return value
-        .replace(nullCharRegex, "") // Remove null bytes
-        .replace(/\\(?!["\\/bfnrtu])/g, "\\\\") // Escape single backslashes not part of valid escape sequences
-        .replace(/\\u(?![0-9a-fA-F]{4})/g, "\\\\u"); // Fix malformed Unicode escape sequences
+      return value.replace(new RegExp(String.fromCharCode(0), "g"), "");
     }
 
     if (typeof value === "object") {
@@ -1922,13 +1931,11 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         return value.map((item) => this.sanitizeJsonObject(item, seen));
       } else {
         const result: Record<string, unknown> = {};
-        const nullChar = String.fromCharCode(0);
-        const nullCharRegex = new RegExp(nullChar, "g");
         for (const [key, val] of Object.entries(value)) {
           // Also sanitize object keys
           const sanitizedKey =
             typeof key === "string"
-              ? key.replace(nullCharRegex, "").replace(/\\u(?![0-9a-fA-F]{4})/g, "\\\\u")
+              ? key.replace(new RegExp(String.fromCharCode(0), "g"), "")
               : key;
           result[sanitizedKey] = this.sanitizeJsonObject(val, seen);
         }
@@ -1945,7 +1952,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
    * @param {UUID} params.entityId - The ID of the entity associated with the logs.
    * @param {UUID} [params.roomId] - The ID of the room associated with the logs.
    * @param {string} [params.type] - The type of the logs to retrieve.
-   * @param {number} [params.count] - The maximum number of logs to retrieve.
+   * @param {number} [params.limit] - The maximum number of logs to retrieve (`count` is a legacy alias).
    * @param {number} [params.offset] - The offset to retrieve logs from.
    * @returns {Promise<Log[]>} A Promise that resolves to an array of logs.
    */
@@ -1953,10 +1960,17 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     entityId?: UUID;
     roomId?: UUID;
     type?: string;
+    limit?: number;
     count?: number;
     offset?: number;
   }): Promise<Log[]> {
-    const { entityId, roomId, type, count, offset } = params;
+    const { entityId, roomId, type, offset } = params;
+    // Honor `limit` (the IDatabaseAdapter contract param — see
+    // types/database.ts getLogs) with `count` as a legacy alias, matching
+    // getMemories. Reading only `count` meant every caller passing `limit`
+    // (runtime.getLogs, agent-export's `getLogs({ limit: MAX_SAFE_INTEGER })`)
+    // silently fell back to the default 10 rows.
+    const effectiveLimit = params.limit ?? params.count ?? 10;
 
     // Use withEntityContext for RLS only when entityId is provided
     // Without entityId, bypass RLS to see all logs (for non-RLS mode)
@@ -1971,7 +1985,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           )
         )
         .orderBy(desc(logTable.createdAt))
-        .limit(count ?? 10)
+        .limit(effectiveLimit)
         .offset(offset ?? 0);
 
       const logs = result.map((log) => ({

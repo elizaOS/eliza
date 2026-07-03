@@ -77,6 +77,73 @@ describe("Log Integration Tests", () => {
       await expect(adapter.deleteLog(nonExistentId)).resolves.not.toThrow();
     });
 
+    it("honors the `limit` param from the IDatabaseAdapter contract (not just legacy `count`)", async () => {
+      // 15 logs; the pre-fix adapter only read `count` and silently capped any
+      // `limit` caller (runtime.getLogs, agent-export) at the default 10.
+      for (let i = 0; i < 15; i++) {
+        await adapter.log({
+          body: { seq: i },
+          entityId: testEntityId,
+          roomId: testRoomId,
+          type: "limit_test",
+        });
+      }
+
+      const all = await adapter.getLogs({ roomId: testRoomId, limit: 100 });
+      expect(all).toHaveLength(15);
+
+      const capped = await adapter.getLogs({ roomId: testRoomId, limit: 5 });
+      expect(capped).toHaveLength(5);
+
+      // Legacy `count` alias still works
+      const legacy = await adapter.getLogs({ roomId: testRoomId, count: 7 });
+      expect(legacy).toHaveLength(7);
+
+      // No limit provided keeps the historical default of 10
+      const defaulted = await adapter.getLogs({ roomId: testRoomId });
+      expect(defaulted).toHaveLength(10);
+    });
+
+    it("round-trips backslashes in log bodies without double-escaping", async () => {
+      const body = {
+        path: "C:\\Users\\dev\\project",
+        regex: "^\\d+\\q$",
+        unicodeish: "literal \\u12 sequence",
+      };
+      await adapter.log({
+        body,
+        entityId: testEntityId,
+        roomId: testRoomId,
+        type: "backslash_test",
+      });
+
+      const logs = await adapter.getLogs({
+        roomId: testRoomId,
+        type: "backslash_test",
+      });
+      expect(logs).toHaveLength(1);
+      // Pre-fix, sanitizeJsonObject doubled backslashes not followed by
+      // ["\/bfnrtu], so `path` came back as "C:\\\\Users\\dev\\project".
+      expect(logs[0].body).toEqual(body);
+    });
+
+    it("strips NUL characters so the jsonb insert does not fail", async () => {
+      const nul = String.fromCharCode(0);
+      await adapter.log({
+        body: { text: `a${nul}b` },
+        entityId: testEntityId,
+        roomId: testRoomId,
+        type: "nul_test",
+      });
+
+      const logs = await adapter.getLogs({
+        roomId: testRoomId,
+        type: "nul_test",
+      });
+      expect(logs).toHaveLength(1);
+      expect(logs[0].body).toEqual({ text: "ab" });
+    });
+
     it("should filter logs by type", async () => {
       await adapter.log({
         body: { message: "message 1" },
