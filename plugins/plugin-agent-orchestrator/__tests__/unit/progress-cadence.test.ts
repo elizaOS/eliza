@@ -118,6 +118,7 @@ interface BuiltRuntime {
   // Mutable session metadata the hook reads via acp.getSession().
   sessions: Map<string, { metadata: Record<string, unknown>; status: string }>;
   sessionOutput: Map<string, string>;
+  logger: { debug: Mock; warn: Mock; info: Mock; error: Mock };
 }
 
 /**
@@ -127,7 +128,22 @@ interface BuiltRuntime {
  */
 async function buildHookedRuntime(
   connectors: MockConnector[],
-  opts?: { sessionOutput?: string },
+  opts?: {
+    sessionOutput?: string;
+    // When provided, the mock runtime exposes `getRoom`, letting the hook's
+    // resolveEmitTarget enrich the outbound target with channelId/serverId the
+    // same way the swarm-synthesis completion router does. Maps roomId -> room
+    // (or null for an unresolvable room).
+    rooms?: Map<
+      string,
+      {
+        id: string;
+        channelId?: string;
+        serverId?: string;
+        source: string;
+      } | null
+    >;
+  },
 ): Promise<BuiltRuntime> {
   const sessions = new Map<
     string,
@@ -202,6 +218,10 @@ async function buildHookedRuntime(
   const services = new Map<string, unknown>();
   services.set(AcpService.serviceType, acpStub);
 
+  const getRoom = opts?.rooms
+    ? vi.fn(async (roomId: string) => opts.rooms?.get(roomId) ?? null)
+    : undefined;
+
   const runtime = {
     agentId: "agent-0000-0000-0000-000000000000",
     character: {
@@ -210,6 +230,7 @@ async function buildHookedRuntime(
       style: { chat: ["casual", "terse"] },
     },
     logger,
+    ...(getRoom ? { getRoom } : {}),
     getSetting: () => undefined,
     getService: (type: string) => services.get(type) ?? null,
     // init() awaits this for each of the 4 service types before registering the
@@ -263,6 +284,7 @@ async function buildHookedRuntime(
     },
     sessions,
     sessionOutput,
+    logger,
   };
 }
 
@@ -678,6 +700,160 @@ describe("emitProgress routing ladder + cadence", () => {
       rt.sendMessageToTarget.mock.calls.length +
       rt.editMessageOnTarget.mock.calls.length;
     expect(postsAfterMore).toBe(1);
+
+    await rt.dispose();
+  });
+
+  // ── emitProgress room→channel resolution (issue: verify-retry successor
+  //    sessions inherit a roomId whose Discord channel no longer resolves) ──
+
+  it("threads the resolved channelId/serverId onto the outbound target when getRoom resolves the room", async () => {
+    // The completion/synthesis router resolves the connector channel via
+    // getRoom and sends with an explicit channelId; emitProgress must do the
+    // same so the Discord connector sends directly instead of re-deriving the
+    // channel from the (possibly stale) roomId and throwing.
+    process.env.ACPX_PROGRESS_MODE = "compact";
+    process.env.ACPX_PROGRESS_DELAY_MS = "0";
+    const rooms = new Map<
+      string,
+      {
+        id: string;
+        channelId?: string;
+        serverId?: string;
+        source: string;
+      } | null
+    >([
+      [
+        ROOM,
+        {
+          id: ROOM,
+          channelId: "9876543210", // discord snowflake
+          serverId: "1234509876",
+          source: SOURCE,
+        },
+      ],
+    ]);
+    const rt = await buildHookedRuntime(
+      [{ source: SOURCE, capabilities: [] }],
+      { rooms },
+    );
+    seedSession(rt, "s-resolve", "build-site");
+
+    await fire(rt, "s-resolve", "message", { text: "Reading the spec." });
+    await advanceTimersByTime(1_600);
+    for (let i = 0; i < 8; i++) await Promise.resolve();
+
+    expect(rt.sendMessageToTarget).toHaveBeenCalledTimes(1);
+    const [target] = rt.sendMessageToTarget.mock.calls[0] as [
+      { source: string; roomId: string; channelId?: string; serverId?: string },
+      unknown,
+    ];
+    // The connector-resolvable channel + server are threaded through so the
+    // Discord SendHandler uses target.channelId directly.
+    expect(target.source).toBe(SOURCE);
+    expect(target.roomId).toBe(ROOM);
+    expect(target.channelId).toBe("9876543210");
+    expect(target.serverId).toBe("1234509876");
+
+    await rt.dispose();
+  });
+
+  it("falls back to room.id as channelId when the room has no channelId", async () => {
+    process.env.ACPX_PROGRESS_MODE = "compact";
+    process.env.ACPX_PROGRESS_DELAY_MS = "0";
+    const rooms = new Map<
+      string,
+      {
+        id: string;
+        channelId?: string;
+        serverId?: string;
+        source: string;
+      } | null
+    >([[ROOM, { id: ROOM, source: SOURCE }]]);
+    const rt = await buildHookedRuntime(
+      [{ source: SOURCE, capabilities: [] }],
+      { rooms },
+    );
+    seedSession(rt, "s-resolve-fallback", "build-site");
+
+    await fire(rt, "s-resolve-fallback", "message", { text: "Working." });
+    await advanceTimersByTime(1_600);
+    for (let i = 0; i < 8; i++) await Promise.resolve();
+
+    expect(rt.sendMessageToTarget).toHaveBeenCalledTimes(1);
+    const [target] = rt.sendMessageToTarget.mock.calls[0] as [
+      { channelId?: string; serverId?: string },
+      unknown,
+    ];
+    // channelId ?? id → room id; no serverId on the room → omitted.
+    expect(target.channelId).toBe(ROOM);
+    expect(target.serverId).toBeUndefined();
+
+    await rt.dispose();
+  });
+
+  it("still sends with a bare {source, roomId} target when getRoom is unavailable", async () => {
+    // No getRoom on the runtime (older connectors / non-room surfaces): the
+    // resolver must fall back to the bare target — no worse than before.
+    process.env.ACPX_PROGRESS_MODE = "compact";
+    process.env.ACPX_PROGRESS_DELAY_MS = "0";
+    const rt = await buildHookedRuntime([{ source: SOURCE, capabilities: [] }]);
+    seedSession(rt, "s-no-getroom", "build-site");
+
+    await fire(rt, "s-no-getroom", "message", { text: "Working." });
+    await advanceTimersByTime(1_600);
+    for (let i = 0; i < 8; i++) await Promise.resolve();
+
+    expect(rt.sendMessageToTarget).toHaveBeenCalledTimes(1);
+    const [target] = rt.sendMessageToTarget.mock.calls[0] as [
+      { source: string; roomId: string; channelId?: string },
+      unknown,
+    ];
+    expect(target.source).toBe(SOURCE);
+    expect(target.roomId).toBe(ROOM);
+    expect(target.channelId).toBeUndefined();
+
+    await rt.dispose();
+  });
+
+  it("warns at most once per session when the outbound send keeps failing, then drops to debug", async () => {
+    // A truly unresolvable room makes every send throw. The hook must WARN once
+    // then DEBUG on subsequent emits so a stuck session doesn't spam the log on
+    // every narration tick + heartbeat.
+    process.env.ACPX_PROGRESS_MODE = "compact";
+    process.env.ACPX_PROGRESS_DELAY_MS = "0";
+    const rt = await buildHookedRuntime([{ source: SOURCE, capabilities: [] }]);
+    seedSession(rt, "s-failsoft", "build-site");
+    // Every outbound send throws the connector's resolution error.
+    rt.sendMessageToTarget.mockRejectedValue(
+      new Error(`Could not resolve Discord channel ID for room ${ROOM}`),
+    );
+
+    const emitWarns = () =>
+      rt.logger.warn.mock.calls.filter((c) => c[1] === "emitProgress failed")
+        .length;
+    const emitDebugs = () =>
+      rt.logger.debug.mock.calls.filter(
+        (c) => c[1] === "emitProgress failed (repeat)",
+      ).length;
+
+    // First failing emit → exactly one WARN.
+    await fire(rt, "s-failsoft", "message", { text: "Attempt one." });
+    await advanceTimersByTime(1_600);
+    for (let i = 0; i < 8; i++) await Promise.resolve();
+    expect(emitWarns()).toBe(1);
+    expect(emitDebugs()).toBe(0);
+
+    // Subsequent failing emits for the SAME session → DEBUG only, WARN unchanged.
+    await fire(rt, "s-failsoft", "message", { text: "Attempt two." });
+    await advanceTimersByTime(1_600);
+    for (let i = 0; i < 8; i++) await Promise.resolve();
+    await fire(rt, "s-failsoft", "message", { text: "Attempt three." });
+    await advanceTimersByTime(1_600);
+    for (let i = 0; i < 8; i++) await Promise.resolve();
+
+    expect(emitWarns()).toBe(1);
+    expect(emitDebugs()).toBeGreaterThanOrEqual(1);
 
     await rt.dispose();
   });
