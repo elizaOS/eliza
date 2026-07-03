@@ -165,7 +165,7 @@ export function GitHubConnectionCard() {
           <Button
             unstyled
             type="button"
-            className="inline-flex w-fit items-center gap-1 text-xs text-blue-500 hover:underline"
+            className="inline-flex w-fit items-center gap-1 text-xs text-accent hover:underline"
             onClick={() => openExternalUrl(TOKEN_GENERATE_URL)}
           >
             <ExternalLink className="h-3 w-3" aria-hidden />

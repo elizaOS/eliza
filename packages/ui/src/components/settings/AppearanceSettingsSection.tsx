@@ -124,9 +124,9 @@ function AccentTileButton({
   // `--accent` token so its swatch tracks the brand accent.
   const swatchColor = preset.color ?? "var(--accent)";
   return (
-    <button
+    <Button
       ref={ref}
-      type="button"
+      variant="ghost"
       onClick={onSelect}
       aria-current={isActive ? "true" : undefined}
       className={selectableTileClass(isActive)}
@@ -141,7 +141,7 @@ function AccentTileButton({
       {isActive ? (
         <Check className="absolute right-1.5 top-1.5 h-3 w-3 text-accent" />
       ) : null}
-    </button>
+    </Button>
   );
 }
 

@@ -1221,8 +1221,8 @@ export function MessageContent({
         <MessageAttachments attachments={message.attachments} />
       ) : null}
       {analysisMode && message.actionName && (
-        <div className="my-2 border border-purple-500/20 rounded-sm bg-purple-500/5 overflow-hidden">
-          <div className="bg-purple-500/10 px-3 py-1 text-xs font-mono font-bold text-purple-500 uppercase tracking-wider">
+        <div className="my-2 overflow-hidden rounded-sm border border-accent/20 bg-accent/5">
+          <div className="bg-accent/10 px-3 py-1 text-xs font-mono font-bold text-accent uppercase tracking-wider">
             ACTION TAKEN
           </div>
           <div className="px-3 py-2 text-xs font-mono text-muted space-y-1">
@@ -1233,8 +1233,8 @@ export function MessageContent({
       {analysisMode &&
         message.actionCallbackHistory &&
         message.actionCallbackHistory.length > 0 && (
-          <div className="my-2 border border-blue-500/20 rounded-sm bg-blue-500/5 overflow-hidden">
-            <div className="bg-blue-500/10 px-3 py-1 text-xs font-mono font-bold text-blue-500 uppercase tracking-wider">
+          <div className="my-2 overflow-hidden rounded-sm border border-border/60 bg-surface/70">
+            <div className="bg-bg-accent px-3 py-1 text-xs font-mono font-bold text-muted-strong uppercase tracking-wider">
               ACTION CALLBACK HISTORY
             </div>
             <div className="px-3 py-2 text-xs font-mono text-muted space-y-1">
@@ -1246,7 +1246,7 @@ export function MessageContent({
                   return (
                     <div
                       key={`${message.id}:action-callback:${n}:${log}`}
-                      className="break-words border-b border-blue-500/10 pb-1 last:border-0 last:pb-0"
+                      className="break-words border-b border-border/40 pb-1 last:border-0 last:pb-0"
                     >
                       {log}
                     </div>
