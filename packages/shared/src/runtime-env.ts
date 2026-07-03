@@ -19,6 +19,7 @@ const API_ALLOWED_ORIGINS_KEYS = [
 const API_ALLOWED_HOSTS_KEYS = ["ELIZA_ALLOWED_HOSTS"] as const;
 const API_ALLOW_NULL_ORIGIN_KEYS = ["ELIZA_ALLOW_NULL_ORIGIN"] as const;
 const DISABLE_AUTO_API_TOKEN_KEYS = ["ELIZA_DISABLE_AUTO_API_TOKEN"] as const;
+export const API_EXPOSE_PORT_KEYS = ["ELIZA_API_EXPOSE_PORT"] as const;
 const DESKTOP_API_PORT_KEYS = ["ELIZA_API_PORT", "ELIZA_PORT"] as const;
 const DESKTOP_UI_PORT_KEYS = ["ELIZA_UI_PORT"] as const;
 const SINGLE_PROCESS_PORT_KEYS = ["ELIZA_PORT", "ELIZA_UI_PORT"] as const;
@@ -333,6 +334,19 @@ export function resolveDisableAutoApiToken(
   env: RuntimeEnvRecord = process.env,
 ): boolean {
   return resolveApiSecurityConfig(env).disableAutoApiToken;
+}
+
+/**
+ * Whether the local agent should bind a TCP listener despite running in a
+ * port-free local mode. Off by default: local-agent traffic flows over native
+ * IPC (Capacitor / Electrobun RPC / stdio bridge). Set `ELIZA_API_EXPOSE_PORT`
+ * truthy to re-open the HTTP listener for dev tooling, LAN access, or e2e
+ * harnesses. Cloud/external/server-only modes never consult this flag.
+ */
+export function resolveApiExposePort(
+  env: RuntimeEnvRecord = process.env,
+): boolean {
+  return parseEnabledFlag(env, API_EXPOSE_PORT_KEYS);
 }
 
 export function setApiToken(
