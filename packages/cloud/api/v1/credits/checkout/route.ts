@@ -13,7 +13,7 @@ import {
   failureResponse,
   ValidationError,
 } from "@/lib/api/cloud-worker-errors";
-import { validateServiceKey } from "@/lib/auth/service-key-hono-worker";
+import { requireServiceKey } from "@/lib/auth/service-key-hono-worker";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import {
   RateLimitPresets,
@@ -168,7 +168,13 @@ async function resolveCreditUser(
   agentId?: string,
 ): ReturnType<typeof requireUserOrApiKeyWithOrg> {
   if (!agentId) return requireUserOrApiKeyWithOrg(c);
-  await validateServiceKey(c);
+  // Attributing a checkout to an ARBITRARY agent's owner/org from a
+  // caller-supplied agent_id is a service-to-service capability. Require the
+  // service key — `validateServiceKey` returned null (not throw) on a
+  // missing/invalid key and the result was discarded, letting any authenticated
+  // caller mint a Stripe customer/session against, and write stripe_customer_id
+  // onto, a sibling org's row. `requireServiceKey` throws instead.
+  await requireServiceKey(c);
 
   const [sandbox] = await dbRead
     .select({

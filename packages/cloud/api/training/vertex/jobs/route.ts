@@ -18,8 +18,16 @@ async function __hono_GET(request: Request) {
     const jobId = searchParams.get("jobId");
     const persistedOnly = searchParams.get("persisted") === "true";
 
+    const viewer = {
+      organizationId: user.organization_id,
+      userId: user.id,
+    };
+
     if (jobId) {
-      const synced = await vertexModelRegistryService.syncJobStatus({ jobId });
+      const synced = await vertexModelRegistryService.syncJobStatus({
+        jobId,
+        viewer,
+      });
       if (!synced) {
         return Response.json(
           { error: "Tracked Vertex job not found" },
@@ -35,15 +43,24 @@ async function __hono_GET(request: Request) {
     }
 
     if (jobName) {
-      const [job, synced] = await Promise.all([
-        getTuningJobStatus(jobName),
-        vertexModelRegistryService.syncJobStatus({ vertexJobName: jobName }),
-      ]);
+      // Gate on the OWNED persisted record first — otherwise the direct Vertex
+      // fetch would leak a sibling org's (enumerable) tuning job config.
+      const synced = await vertexModelRegistryService.syncJobStatus({
+        vertexJobName: jobName,
+        viewer,
+      });
+      if (!synced) {
+        return Response.json(
+          { error: "Tracked Vertex job not found" },
+          { status: 404 },
+        );
+      }
 
+      const job = await getTuningJobStatus(jobName);
       return Response.json({
         job,
-        jobRecord: synced?.job,
-        tunedModelRecord: synced?.tunedModel,
+        jobRecord: synced.job,
+        tunedModelRecord: synced.tunedModel,
       });
     }
 

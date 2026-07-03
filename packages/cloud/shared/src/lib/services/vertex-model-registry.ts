@@ -380,14 +380,20 @@ export class VertexModelRegistryService {
   async syncJobStatus(params: {
     jobId?: string;
     vertexJobName?: string;
+    viewer: ViewerScope;
   }): Promise<VertexTuningJobRecordWithModel | null> {
+    // Scope the lookup to the caller (global + own-org + own-user rows) BEFORE
+    // reading OR mutating the row. Resolving by id/name alone let one org read
+    // and re-sync (a write) another org's tuning job — the by-id/name paths
+    // skipped the visibility predicate the list path already enforces.
+    const visibility = buildVisibilityCondition(params.viewer);
     const job = params.jobId
       ? await dbRead.query.vertexTuningJobs.findFirst({
-          where: eq(vertexTuningJobs.id, params.jobId),
+          where: and(eq(vertexTuningJobs.id, params.jobId), visibility),
         })
       : params.vertexJobName
         ? await dbRead.query.vertexTuningJobs.findFirst({
-            where: eq(vertexTuningJobs.vertex_job_name, params.vertexJobName),
+            where: and(eq(vertexTuningJobs.vertex_job_name, params.vertexJobName), visibility),
           })
         : null;
 
@@ -550,8 +556,19 @@ export class VertexModelRegistryService {
     const owner = normalizeScopeOwner(params);
 
     return dbWrite.transaction(async (tx) => {
+      // Only a tuned model the caller can actually SEE (global + own-org +
+      // own-user) may be bound to their assignment slot. Resolving by id alone
+      // let one org activate another org's private fine-tuned model into its
+      // own inference slot. Mirrors buildModelVisibilityCondition on the list
+      // path; a non-visible id is indistinguishable from a missing one.
       const tunedModel = await tx.query.vertexTunedModels.findFirst({
-        where: eq(vertexTunedModels.id, params.tunedModelId),
+        where: and(
+          eq(vertexTunedModels.id, params.tunedModelId),
+          buildModelVisibilityCondition({
+            organizationId: owner.organizationId,
+            userId: owner.userId,
+          }),
+        ),
       });
 
       if (!tunedModel) {
