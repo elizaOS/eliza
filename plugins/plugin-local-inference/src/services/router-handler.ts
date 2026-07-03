@@ -7,9 +7,9 @@
  *
  *   1. Read the user's per-slot policy + preferred-provider choice from
  *      `routing-preferences.ts`.
- *   2. Ask the `policyEngine` to pick a provider from the handler
- *      registry's current set (excluding ourselves).
- *   3. Invoke that provider's original handler directly — bypassing
+ *   2. Ask the `policyEngine` to pick a provider from the runtime's live
+ *      model registry (excluding ourselves).
+ *   3. Invoke that provider's registered handler directly — bypassing
  *      `runtime.useModel` which would recurse into us.
  *   4. Record the observed latency so later "fastest" picks have data.
  *   5. On handler failure: retry the next eligible provider in priority
@@ -70,7 +70,6 @@ import {
 import { readEffectiveAssignments } from "./assignments";
 import { classifyDeviceTier, type DeviceTierAssessment } from "./device-tier";
 import { localInferenceEngine } from "./engine";
-import type { HandlerRegistration } from "./handler-registry";
 import { handlerRegistry } from "./handler-registry";
 import { probeHardware } from "./hardware";
 import { type LiveDeviceSignals, readLiveDeviceSignals } from "./live-signals";
@@ -132,6 +131,20 @@ type AnyHandler = (
 	params: Record<string, unknown>,
 ) => Promise<unknown>;
 
+/**
+ * A dispatchable candidate: registration metadata plus the live handler read
+ * from the runtime's model registry at dispatch time. The router selects a
+ * provider by policy and invokes its handler directly — bypassing
+ * `runtime.useModel`, which would re-enter the router and double-apply
+ * per-call processing (model-settings merge, streaming setup, PII swap).
+ */
+interface RoutableCandidate {
+	modelType: string;
+	provider: string;
+	priority: number;
+	handler: AnyHandler;
+}
+
 function slotToModelType(slot: AgentModelSlot): string | undefined {
 	switch (slot) {
 		case "TEXT_SMALL":
@@ -165,10 +178,17 @@ function shouldForceLocalInference(
 	return policy === "manual" && preferredProvider === "eliza-local-inference";
 }
 
+/**
+ * Read the live model registry off the runtime and return the dispatchable
+ * candidates (with handlers) for a model type, excluding the router itself.
+ * This is the router's dispatch source: `getModelRegistrations()` exposes the
+ * registry as handler-free metadata, but the router must invoke the picked
+ * provider's handler directly, so it reads the one live handler it needs here.
+ */
 function getRuntimeModelCandidates(
 	runtime: IAgentRuntime,
 	modelType: string,
-): HandlerRegistration[] {
+): RoutableCandidate[] {
 	const models = (runtime as { models?: unknown }).models;
 	if (!(models instanceof Map)) return [];
 	const registrations = models.get(modelType);
@@ -180,7 +200,7 @@ function getRuntimeModelCandidates(
 			): entry is {
 				provider: string;
 				priority?: number;
-				handler: HandlerRegistration["handler"];
+				handler: AnyHandler;
 			} =>
 				entry &&
 				typeof entry === "object" &&
@@ -192,17 +212,16 @@ function getRuntimeModelCandidates(
 			modelType,
 			provider: entry.provider,
 			priority: typeof entry.priority === "number" ? entry.priority : 0,
-			registeredAt: "runtime-introspection",
 			handler: entry.handler,
 		}))
 		.sort((a, b) => b.priority - a.priority);
 }
 
 export function filterUnavailableLocalInferenceCandidates(
-	candidates: HandlerRegistration[],
+	candidates: RoutableCandidate[],
 	localInferenceAvailable: boolean,
 	forceLocalInference: boolean,
-): HandlerRegistration[] {
+): RoutableCandidate[] {
 	if (forceLocalInference || localInferenceAvailable) {
 		return candidates;
 	}
@@ -216,8 +235,8 @@ export async function filterUnavailableLocalInference(
 	slot: AgentModelSlot,
 	policy: string,
 	preferredProvider: string | null,
-	candidates: HandlerRegistration[],
-): Promise<HandlerRegistration[]> {
+	candidates: RoutableCandidate[],
+): Promise<RoutableCandidate[]> {
 	// TTS is self-sufficient: its handler calls ensureActiveBundleVoiceReady()
 	// internally and can use the Kokoro-only bridge on demand.
 	if (slot === "TEXT_TO_SPEECH") {
@@ -269,17 +288,13 @@ function makeRouterHandler(slot: AgentModelSlot): AnyHandler {
 		// policies, honor the documented fallback behaviour: if the selected
 		// provider throws, try the next eligible provider instead of surfacing a
 		// local/model-specific failure while cloud providers are available.
-		const registeredCandidates = handlerRegistry.getForTypeExcluding(
-			modelType,
-			ROUTER_PROVIDER,
-		);
+		// Candidates (with live handlers) come straight from the runtime's model
+		// registry, excluding the router itself.
 		const candidates = await filterUnavailableLocalInference(
 			slot,
 			policy,
 			preferred,
-			registeredCandidates.length > 0
-				? registeredCandidates
-				: getRuntimeModelCandidates(runtime, modelType),
+			getRuntimeModelCandidates(runtime, modelType),
 		);
 
 		// Only the capability-aware policies need the hardware assessment + live

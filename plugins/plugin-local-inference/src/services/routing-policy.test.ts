@@ -1,15 +1,9 @@
-import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { classifyDeviceTier, type DeviceTierAssessment } from "./device-tier";
 import type { HandlerRegistration } from "./handler-registry";
 import type { LiveDeviceSignals } from "./live-signals";
 import { policyEngine } from "./routing-policy";
 import type { AgentModelSlot, HardwareProbe } from "./types";
-
-const noopHandler: HandlerRegistration["handler"] = async (
-	_runtime: IAgentRuntime,
-	_params: Record<string, unknown>,
-) => null;
 
 function registration(
 	provider: string,
@@ -21,7 +15,6 @@ function registration(
 		provider,
 		priority,
 		registeredAt: "test",
-		handler: noopHandler,
 	};
 }
 

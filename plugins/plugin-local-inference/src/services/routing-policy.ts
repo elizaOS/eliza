@@ -38,11 +38,21 @@
  */
 
 import type { DeviceTierAssessment } from "./device-tier";
-import type { HandlerRegistration } from "./handler-registry";
 import type { LiveDeviceSignals } from "./live-signals";
 import { liveSignalsDemoteLocal } from "./live-signals";
 import type { RoutingPolicy } from "./routing-preferences";
 import type { AgentModelSlot } from "./types";
+
+/**
+ * The minimal shape the policy engine needs to rank and select a provider. The
+ * router passes candidates that also carry a live handler; the engine only ever
+ * reads `provider` + `priority`, so it stays generic over the candidate type
+ * and returns the exact candidate (handler included) it picked.
+ */
+export interface ProviderCandidate {
+	provider: string;
+	priority: number;
+}
 
 const RING_SIZE = 32;
 
@@ -68,9 +78,9 @@ const VOICE_SLOTS: ReadonlySet<AgentModelSlot> = new Set([
  * in-process / Capacitor backends over the device bridge, matching the
  * `prefer-local` precedence.
  */
-function findLocalCandidate(
-	candidates: HandlerRegistration[],
-): HandlerRegistration | null {
+function findLocalCandidate<C extends ProviderCandidate>(
+	candidates: C[],
+): C | null {
 	const inProcess = candidates.find(
 		(c) =>
 			c.provider === "eliza-local-inference" ||
@@ -215,17 +225,17 @@ class PolicyEngine {
 	}
 
 	/**
-	 * Pick a provider for this (modelType, policy) given the registry.
-	 * Returns the HandlerRegistration whose handler the router-handler
-	 * should dispatch to, or null if no eligible handler exists.
+	 * Pick a provider for this (modelType, policy) given the candidate set.
+	 * Returns the candidate the router-handler should dispatch to (handler
+	 * included, since the type is preserved), or null if none are eligible.
 	 *
 	 * `preferredProvider` is only honoured for policy === "manual".
 	 */
-	pickProvider(args: {
+	pickProvider<C extends ProviderCandidate>(args: {
 		modelType: string;
 		policy: RoutingPolicy;
 		preferredProvider: string | null;
-		candidates: HandlerRegistration[];
+		candidates: C[];
 		/** Provider ID of the router itself — always excluded from candidates. */
 		selfProvider: string;
 		/**
@@ -248,7 +258,7 @@ class PolicyEngine {
 		 * demotion (the static decision stands).
 		 */
 		liveSignals?: LiveDeviceSignals | null;
-	}): HandlerRegistration | null {
+	}): C | null {
 		const eligible = args.candidates
 			.filter((c) => c.provider !== args.selfProvider)
 			.slice()

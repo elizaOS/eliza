@@ -1463,10 +1463,10 @@ export async function ensureLocalInferenceHandler(
 		return;
 	}
 
-	// Install the side-registry interception as early as possible so it
-	// captures every subsequent `registerModel` call — including our own
-	// handlers below, plus anything else that registers during the rest of
-	// boot. Idempotent per-runtime.
+	// Mirror the runtime's model registry into the side-registry: it seeds
+	// from the current registrations and stays live via the `MODEL_REGISTERED`
+	// event — capturing our own handlers below plus anything else that
+	// registers during the rest of boot. Idempotent per-runtime.
 	handlerRegistry.installOn(runtime);
 
 	// Loader precedence:
