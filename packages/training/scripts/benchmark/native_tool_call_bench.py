@@ -428,6 +428,18 @@ def main() -> int:
     tokenizer = AutoTokenizer.from_pretrained(args.model, trust_remote_code=True)
     if tokenizer.pad_token_id is None:
         tokenizer.pad_token = tokenizer.eos_token
+    # Base Gemma-4 tokenizers ship no chat_template; this bench renders prompts
+    # via apply_chat_template, so borrow the template from the -it instruct
+    # variant when the base has none (mirrors train_local.py).
+    if not getattr(tokenizer, "chat_template", None):
+        try:
+            _src = AutoTokenizer.from_pretrained(
+                f"{args.model}-it", trust_remote_code=True
+            )
+            if getattr(_src, "chat_template", None):
+                tokenizer.chat_template = _src.chat_template
+        except Exception:  # noqa: BLE001
+            pass
     model_kwargs: dict[str, Any] = {
         "torch_dtype": torch.bfloat16 if device == "cuda" else torch.float32,
         "trust_remote_code": True,

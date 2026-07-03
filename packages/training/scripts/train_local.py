@@ -354,6 +354,12 @@ def build_parser() -> argparse.ArgumentParser:
              "trajectory rows.",
     )
     ap.add_argument(
+        "--chat-template-from", default=None,
+        help="Model/tokenizer id to borrow a chat_template from when the base "
+             "--model tokenizer ships none (Gemma-4 base models do). Default: "
+             "'<model>-it' (the instruct variant).",
+    )
+    ap.add_argument(
         "--use-liger", default="auto", choices=("auto", "on", "off"),
         help="Apply Liger fused chunked-CE + RMSNorm/SwiGLU/RoPE kernels. "
              "Cuts the fp32-logits transient ~4–8× (Gemma 4 vocab=262k makes "
@@ -552,6 +558,34 @@ def main() -> int:
     if tokenizer.pad_token_id is None:
         tokenizer.pad_token = tokenizer.eos_token
     tokenizer.truncation_side = "left"
+    # Base Gemma-4 tokenizers (google/gemma-4-{E2B,E4B,12B,31B}) ship NO
+    # chat_template, but SFT renders every row through apply_chat_template — with
+    # no template every row raises ValueError and the run aborts with
+    # "accepted=0/N". Borrow the official template from the matching -it instruct
+    # variant (the target we're instruction-tuning the base toward, and the
+    # source the MTP -it-assistant drafters derive from). Explicit override wins.
+    if not getattr(tokenizer, "chat_template", None):
+        template_src = args.chat_template_from or f"{args.model}-it"
+        try:
+            src_tok = AutoTokenizer.from_pretrained(
+                template_src, trust_remote_code=True
+            )
+            if getattr(src_tok, "chat_template", None):
+                tokenizer.chat_template = src_tok.chat_template
+                log.info(
+                    "chat_template borrowed from %s (base %s tokenizer had none)",
+                    template_src,
+                    args.model,
+                )
+            else:
+                log.error(
+                    "%s has no chat_template either — SFT render will fail",
+                    template_src,
+                )
+        except Exception as exc:  # noqa: BLE001
+            log.error(
+                "could not load chat_template from %s: %s", template_src, exc
+            )
 
     max_chars = args.max_chars or None
     try:
