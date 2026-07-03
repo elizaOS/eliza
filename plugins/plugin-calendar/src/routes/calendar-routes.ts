@@ -57,6 +57,8 @@ export interface CalendarRouteService {
     requestUrl: URL,
     request: { eventId: string } & Record<string, unknown>,
   ): Promise<void>;
+  getMeetingAutoJoin(): Promise<unknown>;
+  setMeetingAutoJoin(policy: unknown): Promise<unknown>;
 }
 
 /** Host-provided HTTP plumbing. */
@@ -95,6 +97,26 @@ export async function handleCalendarRoutes(
 ): Promise<boolean> {
   const { method, pathname, url } = deps;
   const q = url.searchParams;
+
+  if (
+    method === "GET" &&
+    pathname === "/api/lifeops/calendar/meeting-auto-join"
+  ) {
+    return deps.runRoute(async (service) => {
+      deps.json(await service.getMeetingAutoJoin());
+    });
+  }
+
+  if (
+    method === "PUT" &&
+    pathname === "/api/lifeops/calendar/meeting-auto-join"
+  ) {
+    const body = await deps.readJsonBody<{ policy?: unknown }>();
+    if (!body) return true;
+    return deps.runRoute(async (service) => {
+      deps.json(await service.setMeetingAutoJoin(body.policy));
+    });
+  }
 
   if (method === "GET" && pathname === "/api/lifeops/calendar/feed") {
     if (deps.rateLimit("google_api_read")) return true;

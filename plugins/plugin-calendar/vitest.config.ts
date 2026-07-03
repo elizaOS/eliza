@@ -14,6 +14,12 @@ const groundedActionReply = path.join(
 );
 const pluginGoogleSrc = path.join(elizaRoot, "plugins", "plugin-google", "src");
 const pluginSqlSrc = path.join(elizaRoot, "plugins", "plugin-sql", "src");
+const pluginSchedulingSrc = path.join(
+  elizaRoot,
+  "plugins",
+  "plugin-scheduling",
+  "src",
+);
 const uiSrc = path.join(elizaRoot, "packages", "ui", "src");
 const coreSrc = path.join(elizaRoot, "packages", "core", "src");
 const loggerSrc = path.join(elizaRoot, "packages", "logger", "src");
@@ -83,6 +89,14 @@ export default defineConfig({
       {
         find: /^@elizaos\/plugin-sql\/(.+)$/,
         replacement: path.join(pluginSqlSrc, "$1"),
+      },
+      {
+        find: /^@elizaos\/plugin-scheduling$/,
+        replacement: path.join(pluginSchedulingSrc, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-scheduling\/(.+)$/,
+        replacement: path.join(pluginSchedulingSrc, "$1"),
       },
       {
         find: /^@elizaos\/agent$/,

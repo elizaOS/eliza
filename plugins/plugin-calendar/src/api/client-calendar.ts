@@ -18,6 +18,8 @@ import type {
   LifeOpsCalendarSummary,
   LifeOpsNextCalendarEventContext,
   ListLifeOpsCalendarsRequest,
+  MeetingJoinRequest,
+  MeetingSession,
   SetLifeOpsCalendarIncludedRequest,
 } from "@elizaos/shared";
 // Load the `@elizaos/ui` barrel so the `declare module "@elizaos/ui"`
@@ -25,6 +27,10 @@ import type {
 // public `ElizaClient` surface that consumers import from `@elizaos/ui`.
 import type {} from "@elizaos/ui";
 import { ElizaClient } from "@elizaos/ui/api";
+import type {
+  MeetingAutoJoinPolicy,
+  MeetingAutoJoinSettings,
+} from "../meetings/auto-join-settings.js";
 
 export interface CalendarClientMethods {
   getLifeOpsCalendarFeed(
@@ -55,6 +61,16 @@ export interface CalendarClientMethods {
       >
     >,
   ): Promise<{ deleted: true }>;
+  getMeetingAutoJoinSettings(): Promise<MeetingAutoJoinSettings>;
+  setMeetingAutoJoinPolicy(
+    policy: MeetingAutoJoinPolicy,
+  ): Promise<MeetingAutoJoinSettings>;
+  /** Ask the meetings plugin to send the agent into a meeting now. */
+  requestMeetingJoin(data: MeetingJoinRequest): Promise<MeetingSession>;
+  /** List meeting sessions (`active: true` narrows to live ones). */
+  listMeetingSessions(options?: {
+    active?: boolean;
+  }): Promise<{ sessions: MeetingSession[] }>;
 }
 
 declare module "@elizaos/ui" {
@@ -185,5 +201,49 @@ calendarClientPrototype.deleteLifeOpsCalendarEvent = async function (
     {
       method: "DELETE",
     },
+  );
+};
+
+calendarClientPrototype.getMeetingAutoJoinSettings = async function (
+  this: ElizaClient,
+) {
+  return this.fetch<MeetingAutoJoinSettings>(
+    "/api/lifeops/calendar/meeting-auto-join",
+  );
+};
+
+calendarClientPrototype.setMeetingAutoJoinPolicy = async function (
+  this: ElizaClient,
+  policy: MeetingAutoJoinPolicy,
+) {
+  return this.fetch<MeetingAutoJoinSettings>(
+    "/api/lifeops/calendar/meeting-auto-join",
+    {
+      method: "PUT",
+      body: JSON.stringify({ policy }),
+    },
+  );
+};
+
+calendarClientPrototype.requestMeetingJoin = async function (
+  this: ElizaClient,
+  data: MeetingJoinRequest,
+) {
+  return this.fetch<MeetingSession>("/api/meetings", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+};
+
+calendarClientPrototype.listMeetingSessions = async function (
+  this: ElizaClient,
+  options: { active?: boolean } = {},
+) {
+  const params = new URLSearchParams();
+  if (options.active !== undefined)
+    params.set("active", options.active ? "1" : "0");
+  const query = params.toString();
+  return this.fetch<{ sessions: MeetingSession[] }>(
+    `/api/meetings${query ? `?${query}` : ""}`,
   );
 };

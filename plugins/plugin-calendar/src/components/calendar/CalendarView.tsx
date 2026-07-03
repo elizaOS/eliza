@@ -17,19 +17,36 @@
  * assistant.
  */
 
-import type { LifeOpsCalendarEvent } from "@elizaos/shared";
+import type { LifeOpsCalendarEvent, MeetingSession } from "@elizaos/shared";
+import { parseMeetingUrl } from "@elizaos/shared";
 
+import { client } from "@elizaos/ui/api";
 import { useAppSelector } from "@elizaos/ui/state";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import type { CalendarClientMethods } from "../../api/client-calendar.js";
+import "../../api/client-calendar.js";
 import {
   type CalendarViewMode,
   useCalendarWeek,
 } from "../../hooks/useCalendarWeek.js";
 import {
   type CalendarEventRow,
+  type CalendarRowMeetingState,
   type CalendarSnapshot,
   CalendarSpatialView,
 } from "./CalendarSpatialView.tsx";
+
+const calendarClient = client as typeof client & CalendarClientMethods;
+
+const ACTIVE_SESSIONS_POLL_MS = 15_000;
+
+/** Session states that count as "the agent is (getting) in this meeting". */
+const LIVE_SESSION_STATUSES: ReadonlySet<MeetingSession["status"]> = new Set([
+  "requested",
+  "joining",
+  "awaiting_admission",
+  "active",
+]);
 
 const TIME_ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
 
@@ -72,23 +89,121 @@ function detailFor(event: LifeOpsCalendarEvent): string | undefined {
   return event.location?.trim() || origin || undefined;
 }
 
+function meetingStateFor(
+  event: LifeOpsCalendarEvent,
+  joiningIds: ReadonlySet<string>,
+  liveEventIds: ReadonlySet<string>,
+): CalendarRowMeetingState | undefined {
+  if (!event.conferenceLink || !parseMeetingUrl(event.conferenceLink)) {
+    return undefined;
+  }
+  if (liveEventIds.has(event.id)) return "live";
+  if (joiningIds.has(event.id)) return "requesting";
+  return "available";
+}
+
 function toRows(
   events: LifeOpsCalendarEvent[],
   selectedId: string | null,
+  joiningIds: ReadonlySet<string>,
+  liveEventIds: ReadonlySet<string>,
 ): CalendarEventRow[] {
-  return events.map((event) => ({
-    id: event.id,
-    title: event.title.trim() || "Untitled event",
-    when: formatWhen(event),
-    detail: detailFor(event),
-    selected: event.id === selectedId,
-  }));
+  return events.map((event) => {
+    const meeting = meetingStateFor(event, joiningIds, liveEventIds);
+    return {
+      id: event.id,
+      title: event.title.trim() || "Untitled event",
+      when: formatWhen(event),
+      detail: detailFor(event),
+      selected: event.id === selectedId,
+      ...(meeting ? { meeting } : {}),
+    };
+  });
 }
 
 export function CalendarView() {
   const setActionNotice = useAppSelector((s) => s.setActionNotice);
   const calendar = useCalendarWeek();
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [joiningIds, setJoiningIds] = useState<ReadonlySet<string>>(new Set());
+  const [liveEventIds, setLiveEventIds] = useState<ReadonlySet<string>>(
+    new Set(),
+  );
+
+  const refreshActiveSessions = useCallback(async () => {
+    try {
+      const { sessions } = await calendarClient.listMeetingSessions({
+        active: true,
+      });
+      const live = new Set<string>();
+      for (const session of sessions) {
+        if (
+          session.calendarEventId &&
+          LIVE_SESSION_STATUSES.has(session.status)
+        ) {
+          live.add(session.calendarEventId);
+        }
+      }
+      setLiveEventIds(live);
+    } catch {
+      // The meetings plugin may not be loaded; the join button still works
+      // and reports its own error on press.
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshActiveSessions();
+    const timer = setInterval(
+      () => void refreshActiveSessions(),
+      ACTIVE_SESSIONS_POLL_MS,
+    );
+    return () => clearInterval(timer);
+  }, [refreshActiveSessions]);
+
+  const sendAgentToMeeting = useCallback(
+    async (event: LifeOpsCalendarEvent) => {
+      const parsed = event.conferenceLink
+        ? parseMeetingUrl(event.conferenceLink)
+        : null;
+      if (!parsed) {
+        setActionNotice(
+          "This event has no meeting link the agent can join.",
+          "error",
+          4000,
+        );
+        return;
+      }
+      setJoiningIds((current) => new Set(current).add(event.id));
+      try {
+        await calendarClient.requestMeetingJoin({
+          platform: parsed.platform,
+          meetingUrl: parsed.meetingUrl,
+          calendarEventId: event.id,
+        });
+        setActionNotice(
+          `Agent is joining “${event.title.trim() || "this meeting"}”.`,
+          "info",
+          4000,
+        );
+        await refreshActiveSessions();
+      } catch (cause) {
+        setActionNotice(
+          cause instanceof Error && cause.message.trim()
+            ? cause.message.trim()
+            : "Could not send the agent to this meeting.",
+          "error",
+          5000,
+        );
+      } finally {
+        setJoiningIds((current) => {
+          const next = new Set(current);
+          next.delete(event.id);
+          return next;
+        });
+      }
+    },
+    [refreshActiveSessions, setActionNotice],
+  );
 
   const periodLabel = useMemo(
     () => formatRangeLabel(calendar.windowStart, calendar.windowEnd),
@@ -96,12 +211,18 @@ export function CalendarView() {
   );
 
   const events = useMemo(
-    () => toRows(calendar.events, selectedId),
-    [calendar.events, selectedId],
+    () => toRows(calendar.events, selectedId, joiningIds, liveEventIds),
+    [calendar.events, selectedId, joiningIds, liveEventIds],
   );
 
   const onAction = useCallback(
     (action: string) => {
+      if (action.startsWith("join:")) {
+        const id = action.slice("join:".length);
+        const event = calendar.events.find((candidate) => candidate.id === id);
+        if (event) void sendAgentToMeeting(event);
+        return;
+      }
       if (action.startsWith("select:")) {
         const id = action.slice("select:".length);
         setSelectedId(id);
@@ -141,7 +262,7 @@ export function CalendarView() {
           return;
       }
     },
-    [calendar, setActionNotice],
+    [calendar, sendAgentToMeeting, setActionNotice],
   );
 
   const snapshot: CalendarSnapshot = {

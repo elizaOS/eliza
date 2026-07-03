@@ -16,7 +16,11 @@ import {
   type State,
 } from "@elizaos/core";
 import { BrowserBridgeAdapter } from "@elizaos/plugin-browser";
-import { calendarPlugin } from "@elizaos/plugin-calendar";
+import {
+  calendarPlugin,
+  handleMeetingJoinDispatch,
+  MEETING_JOIN_CHANNEL_KEY,
+} from "@elizaos/plugin-calendar";
 import { CalendlyAdapter } from "@elizaos/plugin-calendly";
 import { financesPlugin } from "@elizaos/plugin-finances/plugin";
 import { goalsPlugin } from "@elizaos/plugin-goals/plugin";
@@ -927,6 +931,24 @@ const rawPersonalAssistantPlugin: Plugin = {
 
     const channelRegistry = createChannelRegistry();
     registerDefaultChannelPack(channelRegistry, runtime);
+    // Meeting auto-join dispatch channel: plugin-calendar's scheduled join
+    // tasks fire through the standard runner with
+    // `escalation.steps[0].channelKey = "meeting_join"`; the send verb loads
+    // the calendar event, re-validates its conference link, and asks the
+    // meetings service to join (dependency direction stays PA -> calendar).
+    channelRegistry.register({
+      kind: MEETING_JOIN_CHANNEL_KEY,
+      describe: { label: "Meeting join (send the agent into a video meeting)" },
+      capabilities: {
+        send: true,
+        read: false,
+        reminders: false,
+        voice: false,
+        attachments: false,
+        quietHoursAware: false,
+      },
+      send: (payload) => handleMeetingJoinDispatch(runtime, payload),
+    });
     registerChannelRegistry(runtime, channelRegistry);
     (
       runtime as IAgentRuntime & { channelRegistry?: typeof channelRegistry }

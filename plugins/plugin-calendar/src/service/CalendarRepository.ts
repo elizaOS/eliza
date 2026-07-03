@@ -258,6 +258,22 @@ export class CalendarRepository {
     );
   }
 
+  async getCalendarEventById(
+    agentId: string,
+    eventId: string,
+  ): Promise<LifeOpsCalendarEvent | null> {
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM app_calendar.life_calendar_events
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND id = ${sqlQuote(eventId)}
+        LIMIT 1`,
+    );
+    const row = rows[0];
+    return row ? parseCalendarEvent(row) : null;
+  }
+
   async listCalendarEvents(
     agentId: string,
     provider: LifeOpsConnectorGrant["provider"],
