@@ -1,4 +1,8 @@
-import { getSolanaBalance, getSolanaRecentSignatures } from "./helius";
+import {
+  getSolanaBalance,
+  getSolanaRecentSignatures,
+  getSolanaTokenHoldings,
+} from "./helius";
 import {
   SupportedChain,
   WalletActivitySummary,
@@ -6,6 +10,7 @@ import {
   WalletInvestigationResult,
   WalletRecentTransaction,
   WalletRiskSummary,
+  WalletTokenHolding,
 } from "./types";
 
 export async function investigateWallet(
@@ -29,6 +34,7 @@ export async function investigateWallet(
       try {
         const balance = await getSolanaBalance(walletAddress);
         const recentSignatures = await getSolanaRecentSignatures(walletAddress, 10);
+        const tokenHoldings = await getSolanaTokenHoldings(walletAddress);
 
         const walletBalance: WalletBalance = {
           nativeAmount: balance.sol,
@@ -107,7 +113,8 @@ const risk: WalletRiskSummary = {
           chain,
           address: walletAddress,
           status: "supported",
-          balance: walletBalance,
+         balance: walletBalance,
+tokenHoldings,
 recentTransactions,
 transactionCountSample: recentTransactions.length,
 activity,
