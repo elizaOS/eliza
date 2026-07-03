@@ -2329,17 +2329,32 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 				return ownerCheck(runtime, message);
 			}
 
-			// Desktop-only navigation/layout ops are invisible on a text connector
-			// that can't render views for the asker. Offering them there lets the
-			// planner pick VIEWS as a silent terminal action (no chat reply) — drop
-			// them so the turn falls back to a real REPLY. Text/content modes stay
-			// available everywhere. (#8613)
-			if (
-				mode &&
-				DESKTOP_ONLY_VIEW_MODES.has(mode) &&
-				messageHasNoViewSurface(message)
-			) {
-				return false;
+			if (messageHasNoViewSurface(message)) {
+				// Desktop-only navigation/layout ops are invisible on a text connector
+				// that can't render views for the asker. Offering them there lets the
+				// planner pick VIEWS as a silent terminal action (no chat reply) — drop
+				// them so the turn falls back to a real REPLY. Text/content modes stay
+				// available everywhere. (#8613)
+				if (mode && DESKTOP_ONLY_VIEW_MODES.has(mode)) {
+					return false;
+				}
+				// No inferable view intent at all. This is how the runtime composes the
+				// planner's action surface (validate is called without planner options),
+				// so returning true here exposes VIEWS — whose description tells the
+				// planner view switching is a proactive DEFAULT — on an ordinary chat
+				// turn over a connector that renders no views. The planner then claims
+				// a navigation it structurally cannot perform ("Opening your
+				// Relationships now" into a Discord channel, observed live). Keep VIEWS
+				// off the surface unless a multi-turn views flow is pending in this
+				// room; execution-time validate re-checks with the planner's options,
+				// so every mode-carrying call above still resolves normally.
+				if (!mode) {
+					if (await hasPendingViewsCreateIntent(runtime, roomId)) return true;
+					if (await hasPendingDeleteConfirm(runtime, roomId)) {
+						return ownerCheck(runtime, message);
+					}
+					return false;
+				}
 			}
 
 			// Read modes are visible to all users.
