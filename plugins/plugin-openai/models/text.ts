@@ -728,6 +728,28 @@ function stripStrictUnsupportedConstraints(node: Record<string, unknown>): void 
   node.description = existing ? `${existing} ${suffix}` : suffix;
 }
 
+/**
+ * Human phrase describing a DECLARED free-form/open map so the intent survives
+ * when we close the object on the wire. Returns `null` for an undeclared
+ * (`undefined`) additionalProperties — that is a plain object, not a data-loss
+ * case. `true` → open map of any value; a schema value → open map of that type.
+ */
+function additionalPropertiesHint(additionalProperties: unknown): string | null {
+  if (additionalProperties === true) {
+    return "also accepts arbitrary additional properties as key/value pairs";
+  }
+  if (
+    additionalProperties &&
+    typeof additionalProperties === "object" &&
+    !Array.isArray(additionalProperties)
+  ) {
+    const valueType = (additionalProperties as Record<string, unknown>).type;
+    const typeStr = typeof valueType === "string" ? `${valueType} ` : "";
+    return `also accepts arbitrary additional ${typeStr}values as key/value pairs`;
+  }
+  return null;
+}
+
 function sanitizeJsonSchema(schema: unknown, isRoot = false): JSONSchema7 {
   if (!schema || typeof schema !== "object" || Array.isArray(schema)) {
     // Permissive fallback: no `properties: {}`/`additionalProperties: false`
@@ -787,7 +809,25 @@ function sanitizeJsonSchema(schema: unknown, isRoot = false): JSONSchema7 {
   }
 
   if (sanitized.type === "object" && sanitized.additionalProperties !== false) {
+    // Strict-grammar providers reject open maps (schema-valued or `true`
+    // additionalProperties) with a hard 400, and provider strictness is
+    // proxy-blind (an agent on api.elizacloud.ai with OPENAI_API_KEY may still
+    // route to strict Cerebras — #11123/#11156), so we must always close the
+    // object on the wire. But a DECLARED free-form map (e.g. contact
+    // customFields = `additionalProperties: { type: "string" }`) was collapsed
+    // SILENTLY: the model saw a closed object, could emit no keys, and the arg
+    // always arrived empty (#11249). Fold the intent into `description`
+    // (mirroring stripStrictUnsupportedConstraints) so it is preserved —
+    // non-strict providers can still emit the pairs (app-side parseAndValidate
+    // re-checks the caller's ORIGINAL schema and accepts them), and strict
+    // providers surface the intent instead of losing it without a trace.
+    const hint = additionalPropertiesHint(sanitized.additionalProperties);
     sanitized.additionalProperties = false;
+    if (hint) {
+      const existing =
+        typeof sanitized.description === "string" ? sanitized.description.trim() : "";
+      sanitized.description = existing ? `${existing} (${hint})` : `(${hint})`;
+    }
   }
 
   if (sanitized.items) {
