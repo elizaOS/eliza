@@ -68,6 +68,20 @@ const CROSS_ORIGIN_STRIPPED_HEADERS = [
 	"cookie",
 ] as const;
 
+/**
+ * Entity/body headers that describe a request body and must be dropped when a
+ * redirect rewrites the request to a bodyless GET (301/302 POST, any 303).
+ * Matches the WHATWG fetch "HTTP-redirect fetch" step that strips request-body
+ * headers alongside nulling the body.
+ */
+const REDIRECT_BODY_STRIPPED_HEADERS = [
+	"content-encoding",
+	"content-language",
+	"content-location",
+	"content-type",
+	"content-length",
+] as const;
+
 function stripCredentialHeaders(
 	headers: HeadersInit | undefined,
 ): HeadersInit | undefined {
@@ -79,6 +93,40 @@ function stripCredentialHeaders(
 		cleaned.delete(name);
 	}
 	return cleaned;
+}
+
+function stripBodyHeaders(
+	headers: HeadersInit | undefined,
+): HeadersInit | undefined {
+	if (!headers) {
+		return headers;
+	}
+	const cleaned = new Headers(headers);
+	for (const name of REDIRECT_BODY_STRIPPED_HEADERS) {
+		cleaned.delete(name);
+	}
+	return cleaned;
+}
+
+/**
+ * Whether a redirect at `status` from a request using `method` must be rewritten
+ * to a bodyless GET, per the WHATWG fetch redirect rules that standard fetch
+ * (browsers, undici) applies: 301/302 rewrite a POST to GET, and 303 rewrites
+ * any method except GET/HEAD to GET; the request body is dropped in all three.
+ * 307/308 preserve the method and body. Because this guard follows redirects
+ * manually, it must reproduce the same rewrite — otherwise a secret-bearing body
+ * is re-sent on every hop (including a cross-origin hop to an attacker) and the
+ * guard functionally deviates from the spec it claims to follow.
+ */
+function shouldRewriteToGet(status: number, method: string): boolean {
+	const upper = method.toUpperCase();
+	if ((status === 301 || status === 302) && upper === "POST") {
+		return true;
+	}
+	if (status === 303 && upper !== "GET" && upper !== "HEAD") {
+		return true;
+	}
+	return false;
 }
 
 type NodePinnedFetchDefaults = {
@@ -226,6 +274,11 @@ export async function fetchWithSsrfGuard(
 	let currentUrl = params.url;
 	let redirectCount = 0;
 	let hopHeaders = params.init?.headers;
+	// Method/body for the current hop. A redirect that the spec rewrites to a
+	// bodyless GET (301/302 POST, any 303) flips these; once dropped the body is
+	// never restored on later hops, matching standard fetch.
+	let hopMethod = params.init?.method;
+	let hopBodyDropped = false;
 
 	while (true) {
 		let parsedUrl: URL;
@@ -287,6 +340,8 @@ export async function fetchWithSsrfGuard(
 			const init: RequestInit = {
 				...(params.init ? { ...params.init } : {}),
 				...(hopHeaders ? { headers: hopHeaders } : {}),
+				...(hopMethod !== undefined ? { method: hopMethod } : {}),
+				...(hopBodyDropped ? { body: undefined } : {}),
 				redirect: "manual",
 				...(signal ? { signal } : {}),
 			};
@@ -321,6 +376,17 @@ export async function fetchWithSsrfGuard(
 					throw new Error("Redirect loop detected");
 				}
 				visited.add(nextUrl);
+				// 301/302 on a POST, and any 303, are rewritten to a bodyless GET
+				// (matches standard fetch redirect semantics). This both prevents a
+				// secret-bearing request body from being re-sent on the next hop —
+				// including a cross-origin hop to an attacker — and keeps GET-after-303
+				// callers working. Drop the body-describing headers with it. Once
+				// dropped the method/body stay rewritten for every later hop.
+				if (shouldRewriteToGet(response.status, hopMethod ?? "GET")) {
+					hopMethod = "GET";
+					hopBodyDropped = true;
+					hopHeaders = stripBodyHeaders(hopHeaders);
+				}
 				// A redirect hop that crosses origins must not carry the caller's
 				// credentials on the next request (matches standard fetch redirect
 				// semantics). Keep the stripped header state for later hops too;
