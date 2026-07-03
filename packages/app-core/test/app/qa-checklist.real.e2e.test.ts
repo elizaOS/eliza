@@ -701,7 +701,8 @@ function contentTypeFor(filePath: string): string {
 }
 
 function injectQaBootScript(html: string, apiBase: string): string {
-  const bootScript = `<script>window.__ELIZA_API_BASE__=${JSON.stringify(apiBase)};${API_TOKEN ? `Object.defineProperty(window,"__ELIZA_API_TOKEN__",{value:${JSON.stringify(API_TOKEN)},configurable:true,writable:true,enumerable:false});` : ""}</script>`;
+  const bootConfigSeed = `(function(){var k=Symbol.for("elizaos.app.boot-config"),w=window,prev=w.__ELIZAOS_APP_BOOT_CONFIG__||(w[k]&&w[k].current)||{},next=Object.assign({},prev,{apiBase:${JSON.stringify(apiBase)}});w.__ELIZAOS_APP_BOOT_CONFIG__=next;w[k]={current:next};})();`;
+  const bootScript = `<script>${bootConfigSeed}${API_TOKEN ? `Object.defineProperty(window,"__ELIZA_API_TOKEN__",{value:${JSON.stringify(API_TOKEN)},configurable:true,writable:true,enumerable:false});` : ""}</script>`;
   if (html.includes("</head>")) {
     return html.replace("</head>", `${bootScript}</head>`);
   }

@@ -358,7 +358,9 @@ async function createPage(
         window.localStorage.setItem("eliza:ui-theme", "dark");
         window.localStorage.setItem("eliza:ui-shell-mode", "native");
         window.sessionStorage.setItem("eliza_api_base", init.apiBaseUrl);
-        Object.assign(window, { __ELIZA_API_BASE__: init.apiBaseUrl });
+        Object.assign(window, {
+          __ELIZAOS_APP_BOOT_CONFIG__: { apiBase: init.apiBaseUrl },
+        });
       } catch {
         // Ignore storage setup failures on intermediate documents
       }

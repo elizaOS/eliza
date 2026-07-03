@@ -9,8 +9,20 @@ import type {
 } from "./definitions";
 
 interface ElizaWindow extends Window {
-  __ELIZA_API_BASE__?: string;
+  /**
+   * The renderer's boot-config mirror — the single source of truth for the API
+   * base (see packages/ui/src/config/boot-config-store.ts). This web shim reads
+   * it rather than a bespoke API-base window global so there is one base value
+   * across the app and its native plugins.
+   */
+  __ELIZAOS_APP_BOOT_CONFIG__?: { apiBase?: string };
   __ELIZA_API_TOKEN__?: string;
+}
+
+function readConfiguredApiBase(): string | undefined {
+  if (typeof window === "undefined") return undefined;
+  const base = (window as ElizaWindow).__ELIZAOS_APP_BOOT_CONFIG__?.apiBase;
+  return typeof base === "string" && base.trim().length > 0 ? base : undefined;
 }
 
 const HOSTNAME_RE =
@@ -75,14 +87,7 @@ function validateStartBlockOptions(
 
 export class WebsiteBlockerWeb extends WebPlugin {
   private apiBase(): string {
-    const global =
-      typeof window !== "undefined"
-        ? (window as ElizaWindow).__ELIZA_API_BASE__
-        : undefined;
-    if (typeof global === "string" && global.trim().length > 0) {
-      return global;
-    }
-    return "";
+    return readConfiguredApiBase() ?? "";
   }
 
   private apiToken(): string | null {
@@ -106,11 +111,7 @@ export class WebsiteBlockerWeb extends WebPlugin {
   }
 
   private canReachApi(): boolean {
-    const global =
-      typeof window !== "undefined"
-        ? (window as ElizaWindow).__ELIZA_API_BASE__
-        : undefined;
-    if (typeof global === "string" && global.trim().length > 0) {
+    if (readConfiguredApiBase()) {
       return true;
     }
     if (typeof window === "undefined") {

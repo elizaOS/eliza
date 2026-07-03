@@ -79,7 +79,7 @@ packages/app-core/platforms/android/gradlew -p packages/app-core/platforms/andro
 
 | Global | Source | Purpose |
 |---|---|---|
-| `window.__ELIZA_API_BASE__` | App shell injects at init | Base URL for Eliza HTTP API (`""` = same origin) |
+| boot-config `apiBase` (`window.__ELIZAOS_APP_BOOT_CONFIG__`) | App shell injects at init | Base URL for Eliza HTTP API (`""` = same origin) |
 | `window.__ELIZA_API_TOKEN__` | App shell or `sessionStorage.eliza_api_token` | Bearer token for authenticated API calls |
 
 Android and iOS do not use env vars; state is stored in `SharedPreferences` (Android) and App Group `UserDefaults` with suite name `group.<bundleId>` (iOS).

@@ -98,11 +98,12 @@ export function getCurrent(): Readonly<ApiBaseSnapshot> {
  * Inject the current API base + token into HTML before the first
  * renderer JS runs. Returns the HTML unchanged if no base is set yet.
  *
- * Sets the API base legacy key plus the typed boot config:
- *   - `window.__ELIZA_API_BASE__` (legacy global the appClient reads)
+ * Sets the typed boot config (the single source of truth for both the API base
+ * and token):
  *   - `window.__ELIZAOS_APP_BOOT_CONFIG__` / `__ELIZA_APP_BOOT_CONFIG__`
- *     plus the `Symbol.for("elizaos.app.boot-config")` slot (typed
- *     boot config that SettingsView reads)
+ *     plus the `Symbol.for("elizaos.app.boot-config")` slot (the typed boot
+ *     config — the single source of truth for the API base that the appClient,
+ *     every transport, and the native web shims read)
  *
  * Without the boot-config keys, the same renderer loaded via a regular
  * browser at the static-server's origin falls back to `pageOrigin` for
@@ -133,7 +134,7 @@ export function injectIntoHtml(html: string): string {
     const externalApiBaseInject = externalApiBase
       ? `window.__ELIZA_DESKTOP_EXTERNAL_API_BASE__=${safeJsonForHtml(externalApiBase)};`
       : "";
-    apiBaseInject = `window.__ELIZA_API_BASE__=${baseLiteral};${runtimeModeInject}${externalApiBaseInject}${bootConfigInject}`;
+    apiBaseInject = `${runtimeModeInject}${externalApiBaseInject}${bootConfigInject}`;
   }
 
   const script = `<script>${startupTraceInject}${apiBaseInject}</script>`;

@@ -480,8 +480,8 @@ describe("iOS local agent transport bridge", () => {
       throw new Error("direct fetch should not run");
     });
     vi.stubGlobal("fetch", originalFetch);
+    vi.stubGlobal("__ELIZAOS_APP_BOOT_CONFIG__", { apiBase: "eliza-local-agent://ipc" });
     vi.stubGlobal("window", {
-      __ELIZA_API_BASE__: "eliza-local-agent://ipc",
       location: { href: "capacitor://localhost/" },
       navigator: { userAgent: "vitest" },
     });
@@ -507,8 +507,8 @@ describe("iOS local agent transport bridge", () => {
       throw new Error("direct fetch should not run");
     });
     vi.stubGlobal("fetch", originalFetch);
+    vi.stubGlobal("__ELIZAOS_APP_BOOT_CONFIG__", { apiBase: "https://www.elizacloud.ai" });
     vi.stubGlobal("window", {
-      __ELIZA_API_BASE__: "https://www.elizacloud.ai",
       location: { href: "capacitor://localhost/" },
       navigator: { userAgent: "vitest" },
     });
@@ -528,8 +528,8 @@ describe("iOS local agent transport bridge", () => {
     vi.stubEnv("VITE_ELIZA_IOS_RUNTIME_MODE", "cloud");
     const originalFetch = vi.fn(async () => new Response('{"ok":true}'));
     vi.stubGlobal("fetch", originalFetch);
+    vi.stubGlobal("__ELIZAOS_APP_BOOT_CONFIG__", { apiBase: "https://www.elizacloud.ai" });
     vi.stubGlobal("window", {
-      __ELIZA_API_BASE__: "https://www.elizacloud.ai",
       location: { href: "capacitor://localhost/" },
       navigator: { userAgent: "vitest" },
     });
@@ -557,8 +557,8 @@ describe("iOS local agent transport bridge", () => {
       getItem: (key: string) =>
         key === "eliza:mobile-runtime-mode" ? "cloud" : null,
     });
+    vi.stubGlobal("__ELIZAOS_APP_BOOT_CONFIG__", { apiBase: "https://www.elizacloud.ai" });
     vi.stubGlobal("window", {
-      __ELIZA_API_BASE__: "https://www.elizacloud.ai",
       location: { href: "capacitor://localhost/" },
       navigator: { userAgent: "vitest" },
     });
@@ -583,8 +583,8 @@ describe("iOS local agent transport bridge", () => {
       getItem: (key: string) =>
         key === "eliza:mobile-runtime-mode" ? "cloud" : null,
     });
+    vi.stubGlobal("__ELIZAOS_APP_BOOT_CONFIG__", { apiBase: "https://www.elizacloud.ai" });
     vi.stubGlobal("window", {
-      __ELIZA_API_BASE__: "https://www.elizacloud.ai",
       location: { href: "capacitor://localhost/" },
       navigator: { userAgent: "vitest" },
     });
@@ -622,8 +622,8 @@ describe("iOS local agent transport bridge", () => {
       getItem: (key: string) =>
         key === "eliza:mobile-runtime-mode" ? "cloud" : null,
     });
+    vi.stubGlobal("__ELIZAOS_APP_BOOT_CONFIG__", { apiBase: "https://www.elizacloud.ai" });
     vi.stubGlobal("window", {
-      __ELIZA_API_BASE__: "https://www.elizacloud.ai",
       location: { href: "capacitor://localhost/" },
       navigator: { userAgent: "vitest" },
     });
@@ -745,8 +745,8 @@ describe("iOS local agent transport bridge", () => {
 
   it("uses the ITTP compatibility transport in local iOS builds without a full Bun engine", async () => {
     capacitorState.pluginAvailable = true;
+    vi.stubGlobal("__ELIZAOS_APP_BOOT_CONFIG__", { apiBase: "eliza-local-agent://ipc" });
     vi.stubGlobal("window", {
-      __ELIZA_API_BASE__: "eliza-local-agent://ipc",
       location: { href: "capacitor://localhost/" },
       navigator: { userAgent: "vitest" },
     });
@@ -785,8 +785,8 @@ describe("iOS local agent transport bridge", () => {
       throw new Error("direct fetch should not run");
     });
     vi.stubGlobal("fetch", originalFetch);
+    vi.stubGlobal("__ELIZAOS_APP_BOOT_CONFIG__", { apiBase: "http://127.0.0.1:31337" });
     vi.stubGlobal("window", {
-      __ELIZA_API_BASE__: "http://127.0.0.1:31337",
       location: { href: "capacitor://localhost/" },
       navigator: { userAgent: "vitest" },
     });
@@ -809,8 +809,8 @@ describe("iOS local agent transport bridge", () => {
       throw new Error("direct fetch should not run");
     });
     vi.stubGlobal("fetch", originalFetch);
+    vi.stubGlobal("__ELIZAOS_APP_BOOT_CONFIG__", { apiBase: "eliza-local-agent://ipc" });
     vi.stubGlobal("window", {
-      __ELIZA_API_BASE__: "eliza-local-agent://ipc",
       location: { href: "capacitor://localhost/" },
       navigator: { userAgent: "vitest" },
     });

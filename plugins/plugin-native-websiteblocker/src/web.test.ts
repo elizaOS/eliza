@@ -23,7 +23,7 @@ describe("WebsiteBlockerWeb fallback", () => {
 
   it("normalizes valid website inputs before sending them to the runtime API", async () => {
     setWindow({
-      __ELIZA_API_BASE__: "https://agent.example",
+      __ELIZAOS_APP_BOOT_CONFIG__: { apiBase: "https://agent.example" },
     } as Partial<Window>);
     const fetchMock = vi.fn(async () => ({
       ok: true,

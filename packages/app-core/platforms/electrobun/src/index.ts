@@ -2507,7 +2507,7 @@ async function main(): Promise<void> {
 
   // WHY push API base on every status tick with a port: embedded startup can
   // settle on a different loopback port than env/static HTML (allocation + stdout).
-  // Detached surfaces must not keep a stale __ELIZA_API_BASE__ while the main
+  // Detached surfaces must not keep a stale boot-config apiBase while the main
   // window was already updated—menu reset, chat, and settings each own a webview.
   cleanupFns.push(
     getAgentManager().onStatusChange((status) => {
@@ -2747,7 +2747,7 @@ async function main(): Promise<void> {
   // Agent startup: in external mode, push the API base via the
   // api-base-owner (the agent is already running externally). In local
   // mode, start the embedded agent first — apiBaseOwner.injectIntoHtml()
-  // already set the initial window.__ELIZA_API_BASE__ from the seed value
+  // already seeded the initial boot-config apiBase from the seed value
   // in main(), but _startAgent will push the actual port once the agent
   // reports it.
   const rt = resolveDesktopRuntime();

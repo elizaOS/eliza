@@ -4,6 +4,7 @@ import {
   registerElizaBridgeCapability,
 } from "../bridge/eliza-window-bridge";
 import { isStoreBuild } from "../build-variant";
+import { getBootConfig } from "../config/boot-config";
 import {
   isMobileLocalAgentUrl as isConfiguredMobileLocalAgentUrl,
   isMobileLocalAgentIpcUrl,
@@ -368,8 +369,9 @@ type ImportMetaEnvRecord = Record<string, string | boolean | undefined>;
 
 declare global {
   interface Window {
-    __ELIZA_API_BASE__?: string;
-    __ELIZAOS_API_BASE__?: string;
+    __ELIZA_IOS_LOCAL_AGENT_REQUEST__?: (
+      options: IosLocalAgentNativeRequestOptions,
+    ) => Promise<IosLocalAgentNativeRequestResult>;
   }
 }
 
@@ -456,11 +458,7 @@ function readPersistedRuntimeMode(): string | null {
 }
 
 function getElizaApiBase(): string | undefined {
-  if (typeof window === "undefined") return undefined;
-  const primary = window.__ELIZA_API_BASE__?.trim();
-  if (primary) return primary;
-  const branded = window.__ELIZAOS_API_BASE__?.trim();
-  return branded || undefined;
+  return getBootConfig().apiBase?.trim() || undefined;
 }
 
 function fullBunStartupError(message: string, cause?: unknown): Error {

@@ -68,7 +68,6 @@ function dispatchMessage(messageName: string, payload: unknown): void {
       token?: string;
       externalApiBase?: string | null;
     };
-    window.__ELIZA_API_BASE__ = apiBaseUpdate.base;
     if (
       typeof apiBaseUpdate.externalApiBase === "string" &&
       apiBaseUpdate.externalApiBase.trim()
@@ -199,7 +198,7 @@ const electrobunRpc = {
 
 declare global {
   interface Window {
-    __ELIZA_API_BASE__?: string;
+    __ELIZA_API_TOKEN__: string;
     __ELIZA_DESKTOP_EXTERNAL_API_BASE__?: string;
     __ELIZA_ELECTROBUN_RPC__?: typeof electrobunRpc;
   }

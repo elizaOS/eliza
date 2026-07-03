@@ -66,7 +66,9 @@ const ELIZA_BRANDING: Partial<BrandingConfig> = {
   cloudOnly: shouldUseCloudOnlyBranding({
     isDev: import.meta.env.DEV ?? false,
     injectedApiBase:
-      typeof window === "undefined" ? undefined : window.__ELIZA_API_BASE__,
+      typeof window === "undefined"
+        ? undefined
+        : window.__ELIZAOS_APP_BOOT_CONFIG__?.apiBase,
     isNativePlatform: Capacitor.isNativePlatform(),
   }),
 };
@@ -104,7 +106,7 @@ declare global {
   interface Window {
     __ELIZA_SHARE_QUEUE__?: ShareTargetPayload[];
     __ELIZA_CHARACTER_EDITOR__?: typeof CharacterEditor;
-    __ELIZA_API_BASE__?: string;
+    __ELIZAOS_APP_BOOT_CONFIG__?: { apiBase?: string };
   }
 }
 

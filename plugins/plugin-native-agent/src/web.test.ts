@@ -62,7 +62,7 @@ describe("AgentWeb fallback", () => {
     "https://evil.example/api/status",
   ])("rejects unsafe request path %s before fetch", async (path) => {
     setWindow({
-      __ELIZA_API_BASE__: "https://agent.example",
+      __ELIZAOS_APP_BOOT_CONFIG__: { apiBase: "https://agent.example" },
     } as Partial<Window>);
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
@@ -80,7 +80,7 @@ describe("AgentWeb fallback", () => {
     "x".repeat(17),
   ])("rejects unsafe request method %s before fetch", async (method) => {
     setWindow({
-      __ELIZA_API_BASE__: "https://agent.example",
+      __ELIZAOS_APP_BOOT_CONFIG__: { apiBase: "https://agent.example" },
     } as Partial<Window>);
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
@@ -93,7 +93,7 @@ describe("AgentWeb fallback", () => {
 
   it("sends normalized path-only requests with bearer auth", async () => {
     setWindow({
-      __ELIZA_API_BASE__: "https://agent.example",
+      __ELIZAOS_APP_BOOT_CONFIG__: { apiBase: "https://agent.example" },
       __ELIZA_API_TOKEN__: " token-123 ",
     } as Partial<Window>);
     const headers = new Headers({ "content-type": "application/json" });
@@ -133,7 +133,7 @@ describe("AgentWeb fallback", () => {
 
   it("fails closed for local-agent IPC base in the web fallback", async () => {
     setWindow({
-      __ELIZA_API_BASE__: "eliza-local-agent://ipc",
+      __ELIZAOS_APP_BOOT_CONFIG__: { apiBase: "eliza-local-agent://ipc" },
     } as Partial<Window>);
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);

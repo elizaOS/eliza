@@ -575,7 +575,6 @@ describe("App screen-background fuzz — color invariant across view switching",
       vi.fn(() => 1),
     );
     window.history.replaceState(null, "", "/views");
-    Reflect.deleteProperty(window, "__ELIZA_API_BASE__");
     Reflect.deleteProperty(window, "__ELIZAOS_API_BASE__");
     window.addEventListener("error", swallow);
     window.addEventListener("unhandledrejection", swallow);

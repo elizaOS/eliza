@@ -73,7 +73,7 @@ Runtime mode keys (selects local ITTP mode on iOS):
 
 ### Web fallback (AgentWeb)
 
-- `window.__ELIZA_API_BASE__` — API server base URL (falls back to relative)
+- boot-config `apiBase` (`window.__ELIZAOS_APP_BOOT_CONFIG__`) — API server base URL (falls back to relative)
 - `window.__ELIZA_API_TOKEN__` — bearer token (falls back to `sessionStorage.eliza_api_token`)
 
 ### Android

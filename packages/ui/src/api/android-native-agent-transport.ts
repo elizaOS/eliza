@@ -70,13 +70,6 @@ type FetchWithOptionalPreconnect = typeof fetch & {
   preconnect?: (...args: unknown[]) => unknown;
 };
 
-declare global {
-  interface Window {
-    __ELIZA_API_BASE__?: string;
-    __ELIZAOS_API_BASE__?: string;
-  }
-}
-
 function toNativeAgentPlugin(
   plugin: NativeAgentPlugin | null | undefined,
 ): NativeAgentPlugin | null {
@@ -148,12 +141,7 @@ function readRuntimeMode(): string | null {
 
 function configuredApiBaseIsAndroidLocal(): boolean {
   const bootBase = getBootConfig().apiBase?.trim();
-  if (bootBase && isAndroidLocalAgentUrl(bootBase)) return true;
-  if (typeof window === "undefined") return false;
-  const primary = window.__ELIZA_API_BASE__?.trim();
-  if (primary && isAndroidLocalAgentUrl(primary)) return true;
-  const branded = window.__ELIZAOS_API_BASE__?.trim();
-  return !!branded && isAndroidLocalAgentUrl(branded);
+  return !!bootBase && isAndroidLocalAgentUrl(bootBase);
 }
 
 async function resolveNativeAgentPlugin(): Promise<NativeAgentPlugin | null> {

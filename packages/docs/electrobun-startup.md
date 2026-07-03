@@ -8,7 +8,7 @@ This doc explains how the embedded agent starts in the packaged desktop app and 
 2. **`AgentManager.start()`** (in `native/agent.ts`) spawns a **child Bun process**: `bun run <eliza-dist>/entry.js start` (or the equivalent path for your bundle layout). The child is **not** an in-process dynamic import of `server.js` / `eliza.js`.
 3. **Child process** boots the Eliza CLI entrypoint, starts the API server, and runs the elizaOS runtime in headless mode inside that process.
 4. **Main process** health-polls `http://127.0.0.1:{port}/api/health` until the child reports ready (or times out / errors).
-5. **Main process** pushes `apiBaseUpdate` (and related RPC) to the renderer so `window.__ELIZA_API_BASE__` matches the live API.
+5. **Main process** pushes `apiBaseUpdate` (and related RPC) to the renderer so the boot-config `apiBase` matches the live API.
 
 If the child fails to start or never becomes healthy:
 

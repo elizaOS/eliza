@@ -1,4 +1,5 @@
 import { Capacitor, registerPlugin } from "@capacitor/core";
+import { getElizaApiBase } from "@elizaos/shared";
 import {
   handleIosLocalAgentRequest,
   startIosLocalAgentKernel,
@@ -135,8 +136,6 @@ type ImportMetaEnvRecord = Record<string, string | boolean | undefined>;
 
 declare global {
   interface Window {
-    __ELIZA_API_BASE__?: string;
-    __ELIZAOS_API_BASE__?: string;
     [STARTUP_TRACE_ID_WINDOW_KEY]?: string;
     [IOS_RESTART_LISTENER_WINDOW_KEY]?: boolean;
   }
@@ -222,14 +221,6 @@ function readPersistedRuntimeMode(): string | null {
   } catch {
     return null;
   }
-}
-
-function getElizaApiBase(): string | undefined {
-  if (typeof window === "undefined") return undefined;
-  const primary = window.__ELIZA_API_BASE__?.trim();
-  if (primary) return primary;
-  const branded = window.__ELIZAOS_API_BASE__?.trim();
-  return branded || undefined;
 }
 
 function fullBunStartupError(message: string, cause?: unknown): Error {
