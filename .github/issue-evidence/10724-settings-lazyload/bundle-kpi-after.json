@@ -1,0 +1,637 @@
+{
+  "summary": {
+    "assetCount": 730,
+    "totalRaw": 22441259,
+    "totalBrotli": 5470950,
+    "initialEntryBrotli": 2367013,
+    "initialEntryFiles": [
+      "main-C7VRLZax.js",
+      "index.browser-Du3925zs.js",
+      "i18n-DhPOUHKD.js",
+      "state-JhJh9PEb.js",
+      "widgets-BQ5E6v5r.js",
+      "zod-TP9X-0lr.js",
+      "request-timeout-CcQ6orh6.js",
+      "utils-B_c_X1V6.js",
+      "client-DcUYTzUl.js",
+      "character-presets-Bg-vo6kz.js",
+      "client-cloud-C4uMznmB.js",
+      "RelationshipsWorkspaceView-8d5F-Ysw.js",
+      "voice-DPiC7Tq2.js",
+      "useVoiceChat-BpkUSFHl.js",
+      "config-renderer-CA_qdRIF.js",
+      "dist-Crx_9CcJ.js",
+      "inline-registry-DpenAEJh.js",
+      "logger-B7pdF1rT.js",
+      "permission-card-DgN8PkH1.js",
+      "_virtual_eliza-buffer-esm-shim-Bub3mpjN.js",
+      "bundle-mjs-BDIFJA3M.js",
+      "select-DMOy3Qkd.js",
+      "plugin-list-utils-B5D34mAG.js",
+      "hooks-CHthd_2e.js",
+      "spatial-C8Qbzst5.js",
+      "AppPageSidebar-y9Juln4Y.js",
+      "bridge-CNGrmnzu.js",
+      "dropdown-menu-TBErJH3R.js",
+      "platform-CpM3GcGQ.js",
+      "mobile-runtime-mode-DywNITcv.js",
+      "chat-message-BOYPAOXQ.js",
+      "agent-surface-C1Y9d-x3.js",
+      "persistence-Drqlt-gv.js",
+      "Combination-DV5glT0x.js",
+      "mobile-permissions-client-BaYIV-GE.js",
+      "parsers-BQA3XEuL.js",
+      "config-readers-DGzSfAeS.js",
+      "evaluate-6iNzsaC5.js",
+      "es2015-D1ayArt2.js",
+      "config-catalog-BMxGRflm.js",
+      "brand-icons-C8DGweBB.js",
+      "tooltip-CfogSqcB.js",
+      "dist-d8gHFbAx.js",
+      "navigation-DpO0590Z.js",
+      "react-CEUeYPwl.js",
+      "video-rqKNsnxs.js",
+      "chat-conversation-rename-dialog-ClPSVbz9.js",
+      "dialog-CkQJgeFo.js",
+      "page-panel-DdYkNda8.js",
+      "config-EObLl8QU.js",
+      "voice-BnKTNE4M.js",
+      "dist-C0MF6gQa.js",
+      "events-CwNi_SmN.js",
+      "_native-stub_node_child_process-CSeJOfFz.js",
+      "TerminalPluginView-BbqvN8HF.js",
+      "sidebar-content-GqrIAXyE.js",
+      "streaming-text-gclzCC8w.js",
+      "checkbox-DevEeNId.js",
+      "file-exclamation-point-DNRxMz16.js",
+      "dist-DH9qzkxj.js",
+      "apps-DwhfYNFU.js",
+      "api-C80_eyhJ.js",
+      "table-BRn8HzHo.js",
+      "local-asr-capture-aP87z9KL.js",
+      "useLayoutShiftMonitor-j0kNLNqF.js",
+      "workspace-layout-r-_eyXWF.js",
+      "app-navigate-view-Bx6I2bPs.js",
+      "voice-chat-types-Bwn4qagm.js",
+      "merge-unified-tasks-DXoAWQo0.js",
+      "auth-client-OEEC1d0u.js",
+      "download-share-C941wzzq.js",
+      "react-dom-DXNbnNnF.js",
+      "electrobun-rpc-CeJ_eRbZ.js",
+      "dist-BFR8BhgT.js",
+      "dist-DIqe50Ux.js",
+      "heap-pressure-monitor-iWGdG14L.js",
+      "useRenderGuard-mRG21za3.js",
+      "esm-Dfs3sXtM.js",
+      "plugin-bridge-DVHn_QHd.js",
+      "sidebar-BKDSKmBn.js",
+      "steward-session-client-BokzrQDa.js",
+      "surface-BqGvSklB.js",
+      "ui-preferences-C8HGuQqU.js",
+      "ios-runtime-BtmCrm0C.js",
+      "code-block-C3wcG6uX.js",
+      "useFetchData-CNEjOsBH.js",
+      "resource-cache-WRandMwJ.js",
+      "status-badge-CwQTgSmb.js",
+      "settings-controls-DJsDO8kO.js",
+      "confirm-delete-control-BSXstMrn.js",
+      "agent-profiles-XYRb7GIg.js",
+      "createLucideIcon-a28OZfB1.js",
+      "circle-dashed-DwBzIlug.js",
+      "button-CBD3N-LD.js",
+      "asset-url-DrY4HzuN.js",
+      "at-sign-BAB2sao5.js",
+      "useRuntimeMode-yKe-t_ZU.js",
+      "format-Bb-S6_N8.js",
+      "chat-BQjXfwk3.js",
+      "dist-CX1Q9jMC.js",
+      "permission-deep-links-DEDYyYvZ.js",
+      "preload-helper-B4F6c8ia.js",
+      "ShellViewAgentSurface-BJTx5t3J.js",
+      "switch-aNNb1pze.js",
+      "app-store-DSoX9RFG.js",
+      "overlay-app-registry-DEjjhL_o.js",
+      "csrf-client-DKm9wITK.js",
+      "cloud-agent-base-DWnrWZmL.js",
+      "input-r4XRRbHw.js",
+      "boot-config-store-ZwgOlRzN.js",
+      "card-CQHzpmay.js",
+      "textarea-yZKCLcB9.js",
+      "empty-state-hMC97GcA.js",
+      "tooltip-extended-D-m8mr4g.js",
+      "error-boundary-CM95pFKl.js",
+      "character-voice-config-BeUSWtFe.js",
+      "view-interact-registry-C2QUuesu.js",
+      "openExternalUrl-BeNHc-_S.js",
+      "dom-CGrKhJla.js",
+      "chunk--c01j_DQ.js",
+      "tabs-B9MXB-hw.js",
+      "brand-BcD3GsVh.js",
+      "field-CpeoD4MW.js",
+      "skeleton-layouts-iB5GZ1Rp.js",
+      "search-x-Dl1P5rZE.js",
+      "dist-CMn5Fsme.js",
+      "sidebar-collapsed-rail-BXqBHGTG.js",
+      "native-plugins-Cc7vdEjF.js",
+      "label-8jyHVJaV.js",
+      "paperclip-CGLtm34F.js",
+      "dist-D8TZ7TOf.js",
+      "sidebar-scroll-region-DBWsdQYO.js",
+      "electrobun-runtime-5tqCQD1Y.js",
+      "region-CRP0q8IX.js",
+      "view-chat-binding-D6tvMhIW.js",
+      "sidebar-panel-C4bOXAU0.js",
+      "list-todo-BhNEclRn.js",
+      "badge-BGaw4ps1.js",
+      "clipboard-VuOJc6np.js",
+      "chat-search-hint-Byo2lxgX.js",
+      "sun-CXBL5MHB.js",
+      "fingerprint-pattern-CkAN9LBU.js",
+      "branding-CF2kKWbP.js",
+      "useDocumentVisibility-CiVv5DTw.js",
+      "spinner-CPDyJJlT.js",
+      "useModalState-BvlALqcq.js",
+      "brain-C6SSDuik.js",
+      "useMediaQuery-DTHm2Kbu.js",
+      "volume-x-DLwKl_pQ.js",
+      "user-round-FwmUJHXj.js",
+      "eye-off-E6BU_cYv.js",
+      "jsx-runtime-Ba4hAI1r.js",
+      "eliza-globals-DKdTuASL.js",
+      "app-shell-registry-Cw485vMb.js",
+      "book-open-CnWsk6BU.js",
+      "shield-alert-DCqMUjsO.js",
+      "shield-check-CpJ8n7ve.js",
+      "sparkles-C87C5hKS.js",
+      "useTimeout-191Ud3Kw.js",
+      "volume-2-BeYHUVaE.js",
+      "webhook-CYd_7YwW.js",
+      "skeleton-BJ7WYlb1.js",
+      "transcripts-D6yLJE3d.js",
+      "puzzle-CHccPAsW.js",
+      "crown-C5zXgb6e.js",
+      "app-config-D1HUNLrY.js",
+      "settings-DoENJXbO.js",
+      "useApp-CBCQxiKp.js",
+      "clipboard-list-C18lHeBd.js",
+      "calendar-clock-B_bfQOUZ.js",
+      "messages-square-BJOlXL8L.js",
+      "TranslationContext.hooks-kco0uovy.js",
+      "radio-FU_EqKfT.js",
+      "file-text-BJSVO45Y.js",
+      "file-up-CDkf8RUI.js",
+      "pencil-line-BLgh8dIo.js",
+      "message-square-text-CD6SAUPj.js",
+      "shield-Bh23P3gV.js",
+      "share-2-BG6PDl_1.js",
+      "bot-CBfPInUi.js",
+      "bell-DFExpwIj.js",
+      "send-BXYE73wu.js",
+      "server-BsGB6EKt.js",
+      "scroll-text-D06U5-OG.js",
+      "LanguageDropdown.helpers-DsuNwV0v.js",
+      "layers-CHoMMFyp.js",
+      "save-D3iNQUCk.js",
+      "users-COjHavbz.js",
+      "pencil-Cch6qplN.js",
+      "useChatPrefill-DDa8y7y9.js",
+      "network-BcG66bfV.js",
+      "square-terminal-Bw1WaO89.js",
+      "permissions-MFDlFway.js",
+      "globe-CzaZTtja.js",
+      "lock-keyhole-O4DxIdlg.js",
+      "trash-2-ikhouZ5z.js",
+      "refresh-cw-B6vzM0kb.js",
+      "mouse-pointer-2-CA5ge6Br.js",
+      "clsx-CjueKrWZ.js",
+      "copy-Clb1-7zu.js",
+      "badge-check-4KeUeDsy.js",
+      "triangle-alert-D6-N8m_B.js",
+      "wallet-YXAI2Wk1.js",
+      "smartphone-BXbC02Qz.js",
+      "circle-x-os0tXDkb.js",
+      "circle-alert-DuZdqPOf.js",
+      "message-circle-DJTeNBHx.js",
+      "mail-CcyaBNeG.js",
+      "search-CTN41kkG.js",
+      "eye-B7e9rIEf.js",
+      "link-2-D-fjsjk3.js",
+      "monitor-B5-bZvom.js",
+      "zap-DhEr7DHm.js",
+      "calendar-Cg7BNJ9Q.js",
+      "gauge-DscqK83i.js",
+      "mic-7zniSCar.js",
+      "trending-down-B8IHoZrv.js",
+      "database-oFRkijfV.js",
+      "git-branch-D9sVmwMq.js",
+      "workflow-C8YJAGv0.js",
+      "layout-grid-CTxXcLgF.js",
+      "activity-B6T12Iaj.js",
+      "ban-BAMqy8Ev.js",
+      "page-layout-header-BVTdm03r.js",
+      "panel-left-close-tyADk7w9.js",
+      "message-square-SwdibZn_.js",
+      "link-D-XCCSpu.js",
+      "panel-left-open-B3Yh8DK3.js",
+      "settings-2-a17w8Sj6.js",
+      "user-DHopdtzA.js",
+      "download-CoCc0Dbx.js",
+      "credit-card-Dw8HRJkq.js",
+      "rotate-cw-9_uqcMKj.js",
+      "circle-check-big-w2gN8PPD.js",
+      "x-BKIJMEdw.js",
+      "arrow-left-BXK6TB4H.js",
+      "headphones-BhuEAfDN.js",
+      "floating-layers-DaXG7MXX.js",
+      "play-itKt6nxO.js",
+      "context-HOMNHreP.js",
+      "page-layout-DBnCjxei.js",
+      "pause-VB1d5KVz.js",
+      "circle-check-BEqWqKqV.js",
+      "clock-3-Cp1Zan_t.js",
+      "clock-DJI2nEmV.js",
+      "loader-circle-KBc7uqf2.js",
+      "cloud-Dm59sS5o.js",
+      "useBackgroundConfig-B1HQknPD.js",
+      "ellipsis-ewy1kYfD.js",
+      "chevron-left-D0MBRTCl.js",
+      "arrow-up-BQdrJ2dW.js",
+      "chevron-up-BBjZGXcM.js",
+      "voice-provider-defaults-CK2oHiF3.js",
+      "target-BcAP7upC.js",
+      "plus-RaantYDN.js",
+      "square-BeDPWSCp.js",
+      "chevron-down-CM9c4_S_.js",
+      "chevron-right-BiyZRLSj.js",
+      "check-F__yHbBe.js",
+      "circle-CneGR3QZ.js",
+      "utils-BNT7M19s.js",
+      "aosp-user-agent-BcP1lYhM.js",
+      "workspace-layout-IWFOMoXK.js"
+    ],
+    "eagerChunkCount": 360,
+    "eagerRaw": 10471907,
+    "eagerBrotli": 2909324,
+    "lazyBrotli": 2561626,
+    "largestChunk": {
+      "name": "main-C7VRLZax.js",
+      "raw": 3189151,
+      "brotli": 1198227
+    },
+    "duplicateWastedBrotli": 281787
+  },
+  "topChunks": [
+    {
+      "name": "main-C7VRLZax.js",
+      "raw": 3189151,
+      "brotli": 1198227,
+      "eager": true
+    },
+    {
+      "name": "index.browser-Du3925zs.js",
+      "raw": 2319465,
+      "brotli": 503065,
+      "eager": true
+    },
+    {
+      "name": "useWalletModal-29fa3bw8.js",
+      "raw": 666135,
+      "brotli": 168175,
+      "eager": false
+    },
+    {
+      "name": "data-list-CaI6ANs2.js",
+      "raw": 576427,
+      "brotli": 146851,
+      "eager": true
+    },
+    {
+      "name": "three.webgpu-CTgI5KbR.js",
+      "raw": 635049,
+      "brotli": 143754,
+      "eager": false
+    },
+    {
+      "name": "dist-Cb_28l3q.js",
+      "raw": 551252,
+      "brotli": 104468,
+      "eager": false
+    },
+    {
+      "name": "dist-DdcJfYdq.js",
+      "raw": 315848,
+      "brotli": 102931,
+      "eager": false
+    },
+    {
+      "name": "tl-CVYKq8_E.js",
+      "raw": 492276,
+      "brotli": 101546,
+      "eager": false
+    },
+    {
+      "name": "pt-B05hNeNX.js",
+      "raw": 484259,
+      "brotli": 100605,
+      "eager": false
+    },
+    {
+      "name": "ja-U6fWMTCb.js",
+      "raw": 550653,
+      "brotli": 100485,
+      "eager": false
+    },
+    {
+      "name": "ko-B6b_wwQd.js",
+      "raw": 501839,
+      "brotli": 100235,
+      "eager": false
+    },
+    {
+      "name": "es-CGtpFHY6.js",
+      "raw": 486768,
+      "brotli": 100216,
+      "eager": false
+    },
+    {
+      "name": "vi-C8GZuEMQ.js",
+      "raw": 512789,
+      "brotli": 99222,
+      "eager": false
+    },
+    {
+      "name": "zh-CN-BGopvXTo.js",
+      "raw": 442250,
+      "brotli": 96479,
+      "eager": false
+    },
+    {
+      "name": "chunk-BO2N2NFS-Bh3F9q6o.js",
+      "raw": 381426,
+      "brotli": 94894,
+      "eager": true
+    },
+    {
+      "name": "i18n-DhPOUHKD.js",
+      "raw": 451274,
+      "brotli": 92923,
+      "eager": true
+    },
+    {
+      "name": "register-all-Cbff70B-.js",
+      "raw": 370354,
+      "brotli": 67742,
+      "eager": false
+    },
+    {
+      "name": "state-JhJh9PEb.js",
+      "raw": 265158,
+      "brotli": 61689,
+      "eager": true
+    },
+    {
+      "name": "widgets-BQ5E6v5r.js",
+      "raw": 264245,
+      "brotli": 61492,
+      "eager": true
+    },
+    {
+      "name": "index.es-BO7aHtEJ.js",
+      "raw": 277759,
+      "brotli": 60607,
+      "eager": false
+    },
+    {
+      "name": "SIWXUtil-DnCNHn-Q.js",
+      "raw": 268125,
+      "brotli": 58415,
+      "eager": false
+    },
+    {
+      "name": "chains-9GqkeIx-.js",
+      "raw": 360307,
+      "brotli": 58191,
+      "eager": false
+    },
+    {
+      "name": "workflow-graph-events-WIziiK4A.js",
+      "raw": 208705,
+      "brotli": 55555,
+      "eager": true
+    },
+    {
+      "name": "zod-TP9X-0lr.js",
+      "raw": 274202,
+      "brotli": 51281,
+      "eager": true
+    },
+    {
+      "name": "webxr-polyfill.module-wbtOzLVn.js",
+      "raw": 163046,
+      "brotli": 41140,
+      "eager": false
+    }
+  ],
+  "duplicates": [
+    {
+      "logical": "dist",
+      "copies": 13,
+      "eachBrotli": 104468,
+      "wastedBrotli": 139464
+    },
+    {
+      "logical": "main",
+      "copies": 2,
+      "eachBrotli": 1198227,
+      "wastedBrotli": 37473
+    },
+    {
+      "logical": "index.es",
+      "copies": 2,
+      "eachBrotli": 60607,
+      "wastedBrotli": 30788
+    },
+    {
+      "logical": "register",
+      "copies": 13,
+      "eachBrotli": 6344,
+      "wastedBrotli": 30712
+    },
+    {
+      "logical": "web",
+      "copies": 12,
+      "eachBrotli": 2915,
+      "wastedBrotli": 8392
+    },
+    {
+      "logical": "src",
+      "copies": 6,
+      "eachBrotli": 39196,
+      "wastedBrotli": 8097
+    },
+    {
+      "logical": "ui",
+      "copies": 4,
+      "eachBrotli": 6500,
+      "wastedBrotli": 6351
+    },
+    {
+      "logical": "esm",
+      "copies": 4,
+      "eachBrotli": 5518,
+      "wastedBrotli": 6144
+    },
+    {
+      "logical": "register-terminal-view",
+      "copies": 12,
+      "eachBrotli": 2801,
+      "wastedBrotli": 5671
+    },
+    {
+      "logical": "utils",
+      "copies": 4,
+      "eachBrotli": 21725,
+      "wastedBrotli": 3170
+    },
+    {
+      "logical": "voice",
+      "copies": 2,
+      "eachBrotli": 12565,
+      "wastedBrotli": 1964
+    },
+    {
+      "logical": "app-store",
+      "copies": 2,
+      "eachBrotli": 609,
+      "wastedBrotli": 571
+    },
+    {
+      "logical": "card",
+      "copies": 2,
+      "eachBrotli": 1005,
+      "wastedBrotli": 542
+    },
+    {
+      "logical": "qr-code",
+      "copies": 2,
+      "eachBrotli": 442,
+      "wastedBrotli": 374
+    },
+    {
+      "logical": "clipboard",
+      "copies": 2,
+      "eachBrotli": 327,
+      "wastedBrotli": 316
+    },
+    {
+      "logical": "send",
+      "copies": 2,
+      "eachBrotli": 1100,
+      "wastedBrotli": 203
+    },
+    {
+      "logical": "wallet",
+      "copies": 2,
+      "eachBrotli": 361,
+      "wastedBrotli": 184
+    },
+    {
+      "logical": "mail",
+      "copies": 2,
+      "eachBrotli": 554,
+      "wastedBrotli": 177
+    },
+    {
+      "logical": "search",
+      "copies": 2,
+      "eachBrotli": 226,
+      "wastedBrotli": 176
+    },
+    {
+      "logical": "x",
+      "copies": 2,
+      "eachBrotli": 345,
+      "wastedBrotli": 157
+    }
+  ],
+  "libSpread": [
+    {
+      "lib": "three",
+      "chunkNames": [
+        "three.webgpu",
+        "three-vrm.module",
+        "three.tsl-D20-bGi7",
+        "three-dots"
+      ],
+      "chunkCount": 4,
+      "fileCount": 4,
+      "totalBrotli": 177551
+    },
+    {
+      "lib": "vrm",
+      "chunkNames": [
+        "three-vrm.module"
+      ],
+      "chunkCount": 1,
+      "fileCount": 1,
+      "totalBrotli": 28525
+    },
+    {
+      "lib": "lucide-react",
+      "chunkNames": [
+        "_virtual_lucide-react-used"
+      ],
+      "chunkCount": 1,
+      "fileCount": 1,
+      "totalBrotli": 7588
+    },
+    {
+      "lib": "draco",
+      "chunkNames": [
+        "DRACOLoader"
+      ],
+      "chunkCount": 1,
+      "fileCount": 1,
+      "totalBrotli": 2427
+    }
+  ],
+  "offendersOverWarn": [
+    {
+      "name": "main-C7VRLZax.js",
+      "brotli": 1198227
+    }
+  ],
+  "checks": [
+    {
+      "name": "initialEntryBrotli",
+      "value": 2367013,
+      "budget": 3260000,
+      "pass": true
+    },
+    {
+      "name": "totalAssetsBrotli",
+      "value": 5470950,
+      "budget": 6000000,
+      "pass": true
+    },
+    {
+      "name": "largestChunkBrotli",
+      "value": 1198227,
+      "budget": 1600000,
+      "pass": true
+    },
+    {
+      "name": "maxDuplicateLibBytes",
+      "value": 139464,
+      "budget": 350000,
+      "pass": true
+    },
+    {
+      "name": "eagerGraphBrotli",
+      "value": 2909324,
+      "budget": 3330000,
+      "pass": true
+    }
+  ],
+  "pass": true
+}
