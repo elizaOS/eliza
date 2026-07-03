@@ -61,4 +61,35 @@ describe("assertRequiredKernelsPresent (native/CLAUDE.md §3#5)", () => {
 		expect(err.missing).toContain("turboquant_q4");
 		expect(err.modelId).toBe("eliza-1-2b");
 	});
+
+	// AGENTS.md §3 "Gemma 4 exception": the head_dim=128 QJL/PolarQuant KV
+	// kernels are OPTIONAL on Gemma (its MQA/SWA/shared-KV geometry never routes
+	// through them). Only TurboQuant weight-quant is required. Enforce that
+	// contract at the manifest-gate level.
+	it("does NOT throw for a Gemma-tier manifest that omits QJL/PolarQuant (Gemma exception)", () => {
+		// A real Gemma bundle declares only `turboquant_q4` and ships stock KV —
+		// no qjl / polarquant / turbo3_tcq. The gate must accept it.
+		const gemma: ManifestLoader = () => manifestWithKernels(["turboquant_q4"]);
+		expect(() =>
+			assertRequiredKernelsPresent(installed2b(), gemma),
+		).not.toThrow();
+	});
+
+	it("still throws when TurboQuant is absent even though QJL/Polar are present", () => {
+		// The inverse of the Gemma exception: QJL + Polar present but the
+		// mandatory weight-quant missing is a hard error — the optional KV
+		// kernels can never substitute for the one required kernel.
+		const noTurbo: ManifestLoader = () =>
+			manifestWithKernels(["qjl", "polarquant", "turbo3_tcq"]);
+		let thrown: unknown;
+		try {
+			assertRequiredKernelsPresent(installed2b(), noTurbo);
+		} catch (err) {
+			thrown = err;
+		}
+		expect(thrown).toBeInstanceOf(MissingRequiredKernelsError);
+		expect((thrown as MissingRequiredKernelsError).missing).toContain(
+			"turboquant_q4",
+		);
+	});
 });
