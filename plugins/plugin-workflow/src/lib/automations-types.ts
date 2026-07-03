@@ -240,7 +240,7 @@ export function taskToTriggerSummary(task: Task): TriggerSummary | null {
 // ---------------------------------------------------------------------------
 
 const WORKBENCH_TASK_TAG = 'workbench-task';
-const WORKBENCH_TODO_TAG = 'workbench-todo';
+export const WORKBENCH_TODO_TAG = 'workbench-todo';
 
 export interface WorkbenchTaskView {
   id: string;
@@ -251,11 +251,11 @@ export interface WorkbenchTaskView {
   updatedAt?: number;
 }
 
-function isObject(value: unknown): value is Record<string, unknown> {
+export function isObject(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
-function normalizeStringArray(value: unknown): string[] {
+export function normalizeStringArray(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return value
     .filter((item): item is string => typeof item === 'string')
@@ -275,11 +275,11 @@ function normalizeTimestamp(value: unknown): number | undefined {
   return undefined;
 }
 
-function readTaskMetadata(task: Task): Record<string, unknown> {
+export function readTaskMetadata(task: Task): Record<string, unknown> {
   return isObject(task.metadata) ? task.metadata : {};
 }
 
-function readTaskCompleted(task: Task): boolean {
+export function readTaskCompleted(task: Task): boolean {
   const metadata = readTaskMetadata(task);
   if (typeof metadata.isCompleted === 'boolean') return metadata.isCompleted;
   const todoMeta =
@@ -291,7 +291,7 @@ function readTaskCompleted(task: Task): boolean {
   return false;
 }
 
-function isWorkbenchTodoTask(task: Task): boolean {
+export function isWorkbenchTodoTask(task: Task): boolean {
   if (readTriggerConfig(task)) return false;
   const tags = new Set(normalizeStringArray(task.tags));
   if (tags.has(WORKBENCH_TODO_TAG) || tags.has('todo')) return true;

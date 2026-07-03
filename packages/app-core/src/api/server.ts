@@ -156,7 +156,6 @@ import { handleSecretsInventoryRoute } from "./secrets-inventory-routes";
 import { handleSecretsManagerRoute } from "./secrets-manager-routes";
 import { handleSensitiveRequestRoutes } from "./sensitive-request-routes";
 import { getCorsAllowedPorts, isAllowedOrigin } from "./server-cors";
-import { handleWorkbenchCompatRoutes } from "./workbench-compat-routes";
 
 const _require = createRequire(import.meta.url);
 
@@ -783,8 +782,8 @@ async function handleCompatRouteInner(
     return false;
   }
 
-  // Workbench / todos routes.
-  if (await handleWorkbenchCompatRoutes(req, res, state)) return true;
+  // Workbench todos CRUD is owned by @elizaos/plugin-workflow and served on the
+  // runtime plugin route system (`/api/workbench/todos*`).
 
   if (url.pathname.startsWith("/api/secrets/")) {
     if (!(await ensureRouteMinRole(req, res, state, "OWNER"))) return true;

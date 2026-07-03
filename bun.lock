@@ -5471,6 +5471,7 @@
         "@biomejs/biome": "2.5.2",
         "@electric-sql/pglite": "^0.2.17",
         "@elizaos/core": "workspace:*",
+        "@elizaos/shared": "workspace:*",
         "@types/bun": "^1.3.8",
         "@types/node": "^25.1.0",
         "bun-types": "^1.3.8",
@@ -5478,6 +5479,7 @@
       },
       "peerDependencies": {
         "@elizaos/core": "workspace:*",
+        "@elizaos/shared": "workspace:*",
       },
     },
     "plugins/plugin-x": {
