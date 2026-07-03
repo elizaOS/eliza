@@ -38,6 +38,7 @@ import { EvaluatorService } from "../../services/evaluator.ts";
 import { OptimizedPromptService } from "../../services/optimized-prompt.ts";
 import { resolveOptimizedPromptForRuntime } from "../../services/optimized-prompt-resolver.ts";
 import { TaskService } from "../../services/task.ts";
+import { TargetSourceRegistryService } from "../../target-sources/registry.ts";
 import type { Role } from "../../types/environment.ts";
 import { EventType } from "../../types/events.ts";
 import type {
@@ -1391,6 +1392,10 @@ export const basicServices: ServiceClass[] = [
 	// surfaces them back into routing via the CHANNEL_TOPICS provider.
 	ChannelTopicsService,
 	SensitiveRequestDispatchRegistryService,
+	// Connector target-source registry — connector plugins register their
+	// addressable-target enumerators here at load; the host's
+	// connector-target-catalog drains it for the workflow clarification UI.
+	TargetSourceRegistryService,
 ];
 
 /**

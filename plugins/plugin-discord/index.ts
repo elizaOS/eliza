@@ -8,6 +8,7 @@ import { printBanner } from "./banner";
 import { createDiscordConnectorAccountProvider } from "./connector-account-provider";
 import { DISCORD_SERVICE_NAME } from "./constants";
 import { discordDataRoutes } from "./data-routes";
+import { registerDiscordTargetSource } from "./discord-target-source";
 import { DiscordOwnerPairingServiceImpl } from "./owner-pairing-service";
 import { getPermissionValues } from "./permissions";
 import { registerDiscordDmSensitiveRequestAdapter } from "./sensitive-request-adapter";
@@ -47,6 +48,10 @@ const discordPlugin: Plugin = {
 		}
 
 		registerDiscordDmSensitiveRequestAdapter(runtime);
+
+		// Register the Discord target-source enumerator so the host's
+		// connector-target-catalog can surface guild/channel quick-picks.
+		registerDiscordTargetSource(runtime);
 
 		const token = runtime.getSetting("DISCORD_API_TOKEN") as string;
 		const botTokens = runtime.getSetting("DISCORD_BOT_TOKENS") as string;

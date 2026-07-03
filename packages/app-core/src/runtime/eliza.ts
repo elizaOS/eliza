@@ -32,12 +32,14 @@ import {
   type AgentRuntime,
   AutonomyService,
   ChannelType,
+  CONNECTOR_TARGET_SOURCE_REGISTRY_SERVICE,
   isTruthyEnvValue,
   logger,
   ModelType,
   OptionalAppRoutePluginUnavailableError,
   type Plugin,
   stringToUuid,
+  type TargetSource,
 } from "@elizaos/core";
 import {
   ensureRuntimeSqlCompatibility,
@@ -833,14 +835,6 @@ export function __setLatestBootTailRuntimeForTest(
 // event bus.
 let _triggerEventBridge: { stop: () => void } | null = null;
 
-// Discord enumeration cache shared with the connector-target-catalog so the
-// catalog service hits one 5-minute REST window instead of one per call.
-// Reset whenever the catalog service is re-created so a hot-reload cannot
-// leak stale guild/channel state into the fresh runtime.
-let _discordEnumerationCache:
-  | import("../services/discord-target-source").DiscordSourceCache
-  | null = null;
-
 // Module-level handle for the connector-target-catalog service.
 let _connectorTargetCatalog: { stop: () => void } | null = null;
 
@@ -880,16 +874,17 @@ async function ensureConnectorTargetCatalog(
     _connectorTargetCatalog = null;
   }
   try {
-    const { createDiscordSourceCache } = await import(
-      "../services/discord-target-source.js"
-    );
-    _discordEnumerationCache = createDiscordSourceCache();
     const { createElizaConnectorTargetCatalog } = await import(
       "../services/connector-target-catalog.js"
     );
     const catalog = createElizaConnectorTargetCatalog({
       getConfig: () => loadElizaConfig(),
-      discordCache: _discordEnumerationCache,
+      listSources: () => {
+        const registry = runtime.getService(
+          CONNECTOR_TARGET_SOURCE_REGISTRY_SERVICE,
+        ) as { list(): TargetSource[] } | null;
+        return registry?.list() ?? [];
+      },
       logger: { warn: runtime.logger.warn.bind(runtime.logger) },
     });
     runtime.services.set(CONNECTOR_TARGET_CATALOG_SERVICE_TYPE as never, [

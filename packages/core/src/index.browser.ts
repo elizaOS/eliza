@@ -125,6 +125,7 @@ export {
 	settingsDebugCloudSummary,
 } from "./settings-debug";
 export * from "./streaming-context";
+export * from "./target-sources";
 export * from "./trajectory-context";
 export * from "./trajectory-utils";
 export type { ConnectorAccountCapability, ConnectorAccountRef } from "./types";

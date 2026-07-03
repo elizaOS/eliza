@@ -297,6 +297,7 @@ export {
 	settingsDebugCloudSummary,
 } from "./settings-debug";
 export { sanitizeSpeechText } from "./spoken-text";
+export * from "./target-sources";
 export {
 	availableProviderNames,
 	isLiveTestEnabled,
