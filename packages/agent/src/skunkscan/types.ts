@@ -20,10 +20,10 @@ export type WalletRecentTransaction = {
 };
 
 export type WalletTokenHolding = {
-    mint: string;
-    amount: number;
-    decimals: number;
-    rawAmount: string;
+  mint: string;
+  amount: number;
+  decimals: number;
+  rawAmount: string;
 };
 
 export type WalletActivitySummary = {
@@ -31,6 +31,14 @@ export type WalletActivitySummary = {
   failedTransactionCount: number;
   lastActiveAt?: number | null;
   activityLevel: "none" | "low" | "medium" | "high";
+};
+
+export type WalletAgeSummary = {
+  firstKnownTransaction?: string | null;
+  firstKnownTransactionAt?: number | null;
+  ageInDays?: number | null;
+  ageInMonths?: number | null;
+  classification: "unknown" | "new" | "established" | "veteran";
 };
 
 export type WalletRiskSummary = {
@@ -45,10 +53,11 @@ export type WalletInvestigationResult = {
   status: WalletInvestigationStatus;
   balance?: WalletBalance;
   tokenHoldings?: WalletTokenHolding[];
-recentTransactions?: WalletRecentTransaction[];
-transactionCountSample?: number;
-activity?: WalletActivitySummary;
-risk?: WalletRiskSummary;
-summary: string;
-warnings: string[];
+  recentTransactions?: WalletRecentTransaction[];
+  transactionCountSample?: number;
+  activity?: WalletActivitySummary;
+  age?: WalletAgeSummary;
+  risk?: WalletRiskSummary;
+  summary: string;
+  warnings: string[];
 };
