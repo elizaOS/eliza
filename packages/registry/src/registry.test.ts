@@ -1,3 +1,9 @@
+/**
+ * Tests for the third-party registry tooling: `validateRegistryEntry` accepts a
+ * well-formed entry and rejects the reserved @elizaos scope, non-GitHub repos,
+ * unknown kinds, and unknown fields; `generateRegistry` produces the wire
+ * format. Runs against the real entries/third-party sources on disk.
+ */
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

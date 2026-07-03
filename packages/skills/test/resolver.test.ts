@@ -1,3 +1,8 @@
+/**
+ * Tests for getSkillsDir: it returns an existing on-disk path, caches the
+ * result, and honors the `ELIZAOS_BUNDLED_SKILLS_DIR` override (ignoring an
+ * empty value). Touches the real filesystem, no model.
+ */
 import assert from "node:assert";
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";

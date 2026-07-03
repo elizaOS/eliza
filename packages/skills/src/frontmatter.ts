@@ -1,3 +1,9 @@
+/**
+ * YAML frontmatter parsing and serialization for SKILL.md files: extracts the
+ * metadata block, resolves skill metadata / invocation policy / provenance from
+ * it, and writes it back. Provenance records whether a skill is human-authored,
+ * agent-generated, or agent-refined (see types.ts).
+ */
 import { parse, stringify } from "yaml";
 import type {
   SkillFrontmatter,

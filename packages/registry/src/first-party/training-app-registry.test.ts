@@ -1,3 +1,7 @@
+/**
+ * Verifies the fine-tuning dashboard is exposed as a static app-catalog entry
+ * and resolvable through the first-party registry accessors.
+ */
 import { afterEach, describe, expect, it } from "vitest";
 import {
   clearRegistryCacheForTests,

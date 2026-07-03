@@ -1,3 +1,10 @@
+/**
+ * Filesystem path resolution for the skills stores: locates the bundled
+ * `skills/` directory (cached, with a heuristic sanity check) and the per-user
+ * curated `active` / `proposed` directories under the state dir, and promotes a
+ * proposed skill to active atomically. `getSkillsDir` is the symbol the agent
+ * runtime and plugin-agent-skills call at startup.
+ */
 import {
   existsSync,
   mkdirSync,

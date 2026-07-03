@@ -1,3 +1,8 @@
+/**
+ * Tests for the structured logger: the in-memory ring buffer (`recentLogs`),
+ * the chat/prompt/response tap helpers, and add/remove listener fan-out.
+ * Pure unit test — `createLogger` writes to an in-memory buffer, no I/O.
+ */
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {

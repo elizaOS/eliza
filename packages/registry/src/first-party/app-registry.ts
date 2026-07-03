@@ -1,3 +1,9 @@
+/**
+ * Symbol-keyed global store of curated app definitions (slug, canonical name,
+ * aliases), registered at runtime via `registerCuratedApp`. The Symbol.for key
+ * lets app / shared / plugin consumers share one store regardless of which copy
+ * of this package they import.
+ */
 export interface ElizaCuratedAppDefinition {
   slug: string;
   canonicalName: string;

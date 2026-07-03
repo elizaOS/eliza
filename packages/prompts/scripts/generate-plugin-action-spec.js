@@ -1,4 +1,11 @@
 #!/usr/bin/env node
+/**
+ * Codegen: scans the plugin source tree for exported `Action` definitions,
+ * merges them with the hand-maintained core action spec, and writes
+ * `specs/actions/plugins.generated.json`. That merged spec feeds
+ * generate-action-docs.js; regenerate both when a plugin's action surface
+ * changes.
+ */
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

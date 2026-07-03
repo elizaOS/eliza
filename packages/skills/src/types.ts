@@ -1,3 +1,10 @@
+/**
+ * Shared types for the skills package: the Skill model, SkillEntry (a skill plus
+ * its parsed frontmatter/metadata), SkillFrontmatter, the invocation policy, and
+ * the SkillProvenance lineage that records how an agent-generated skill was
+ * produced and optimized. The one place these shapes are defined; every other
+ * module imports from here.
+ */
 export interface SkillProvenance {
   source: "human" | "agent-generated" | "agent-refined";
   derivedFromTrajectory?: string;

@@ -1,3 +1,9 @@
+/**
+ * Renders loaded skills into the compact structured text injected into the
+ * agent's system prompt, and builds the `/skill:name` command specs. Skills with
+ * `disableModelInvocation` are omitted from the prompt (invocable only via an
+ * explicit command). Consumed by the enabled-skills provider.
+ */
 import type { Skill, SkillCommandSpec, SkillEntry } from "./types.js";
 
 function compactPromptField(str: string): string {

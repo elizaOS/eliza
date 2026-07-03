@@ -1,3 +1,10 @@
+/**
+ * Discovers and loads skills from the bundled directory and the per-user
+ * state-dir skill stores, parsing each SKILL.md's frontmatter and body into a
+ * Skill. Resolves load locations, de-duplicates, and returns diagnostics for
+ * skills that fail to parse. `loadSkillEntries` layers full metadata parsing on
+ * top for callers that need SkillEntry[].
+ */
 import {
   existsSync,
   readdirSync,

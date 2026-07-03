@@ -1,3 +1,8 @@
+/**
+ * Tests for formatSkillsForPrompt: empty output for no skills, exclusion of
+ * skills marked `disableModelInvocation`, the structured-text layout, and
+ * punctuation preservation in name/description. Deterministic, no model.
+ */
 import assert from "node:assert";
 import { describe, it } from "node:test";
 import {

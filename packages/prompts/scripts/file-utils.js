@@ -1,3 +1,7 @@
+/**
+ * Synchronous file helpers (readText / readJson / ensureDirectory) shared by the
+ * prompts codegen scripts.
+ */
 import fs from "node:fs";
 
 export function readText(filePath) {

@@ -1,3 +1,11 @@
+/**
+ * Deterministic compressor for action/provider descriptions: strips filler
+ * phrases, collapses whitespace, and normalizes punctuation to shrink the
+ * model-facing action catalog without an LLM. Protected patterns (code spans,
+ * URLs, file paths, SCREAMING_CASE identifiers) are masked before rewriting so
+ * technical tokens survive verbatim. Owned here so both the codegen scripts and
+ * core can consume it; core re-exports it for backward compatibility.
+ */
 const PROTECTED_PATTERNS = [
   /```[\s\S]*?```/g,
   /`[^`\n]+`/g,

@@ -1,3 +1,11 @@
+/**
+ * Single source of truth for the LLM prompt templates the elizaOS runtime uses.
+ * Every shared template is exported here as a plain string (twice: a camelCase
+ * name and an UPPER_SNAKE_CASE alias); the runtime fills `{{...}}` placeholders
+ * via core's `composePrompt`. `@elizaos/core` re-exports these through
+ * `packages/core/src/prompts.ts`. Also re-exports `compressPromptDescription` so
+ * prompt tooling never depends back on core.
+ */
 export { compressPromptDescription } from "./prompt-compression.js";
 
 export const addContactTemplate = `task: Extract contact information to add to relationships.

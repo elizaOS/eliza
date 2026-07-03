@@ -1,3 +1,7 @@
+/**
+ * Tests for parseFrontmatter: valid YAML blocks, absent/empty frontmatter, CRLF
+ * line endings, and a missing closing delimiter. Deterministic string parsing.
+ */
 import assert from "node:assert";
 import { describe, it } from "node:test";
 import {

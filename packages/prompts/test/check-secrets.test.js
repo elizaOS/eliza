@@ -1,3 +1,8 @@
+/**
+ * Tests for the prompt secret scanner (scripts/check-secrets.js): real
+ * credential material is flagged with source locations, benign placeholders
+ * pass. Deterministic — scans fixtures written to a temp dir, no network.
+ */
 import assert from "node:assert";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";

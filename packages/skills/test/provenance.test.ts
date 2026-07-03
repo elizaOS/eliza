@@ -1,3 +1,8 @@
+/**
+ * Tests for resolveSkillProvenance and serializeSkillFile: parsing a full
+ * provenance block, clamping `lastEvalScore` into [0, 1], and rejecting entries
+ * with an invalid source or missing `createdAt`. Deterministic.
+ */
 import assert from "node:assert";
 import {
   mkdirSync,
