@@ -11,6 +11,12 @@
  */
 
 export * from "./core/index.ts";
+export type { ChatGptParseOptions } from "./parsers/chatgpt.ts";
+export {
+  chatgptParser,
+  flattenChatGptConversation,
+  streamJsonArrayElements,
+} from "./parsers/chatgpt.ts";
 export type { ParseOptions as ClaudeParseOptions } from "./parsers/claude.ts";
 export {
   default as claudeParser,

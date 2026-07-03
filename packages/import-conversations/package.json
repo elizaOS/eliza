@@ -71,6 +71,16 @@
       },
       "import": "./dist/parsers/hermes.js",
       "default": "./dist/parsers/hermes.js"
+    },
+    "./parsers/chatgpt": {
+      "types": "./dist/parsers/chatgpt.d.ts",
+      "eliza-source": {
+        "types": "./src/parsers/chatgpt.ts",
+        "import": "./src/parsers/chatgpt.ts",
+        "default": "./src/parsers/chatgpt.ts"
+      },
+      "import": "./dist/parsers/chatgpt.js",
+      "default": "./dist/parsers/chatgpt.js"
     }
   },
   "devDependencies": {
