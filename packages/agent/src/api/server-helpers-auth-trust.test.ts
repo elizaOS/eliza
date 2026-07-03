@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   isTrustedLocalRequest,
   isWebSocketAuthorized,
+  resolveBoundaryRole,
   resolveWebSocketUpgradeRejection,
 } from "./server-helpers-auth.ts";
 
@@ -114,5 +115,24 @@ describe("WebSocket auth no-token trust parity", () => {
       status: 401,
       reason: "Unauthorized",
     });
+  });
+});
+
+describe("resolveBoundaryRole (#12087 Item 13)", () => {
+  beforeEach(clearEnv);
+  afterEach(clearEnv);
+
+  it("classifies a trusted loopback caller as OWNER", () => {
+    expect(resolveBoundaryRole(localReq())).toBe("OWNER");
+  });
+
+  it("classifies a remote, tokenless caller as GUEST (fail closed)", () => {
+    const remote = new http.IncomingMessage(new Socket());
+    remote.headers = { host: "agent.example.test" };
+    Object.defineProperty(remote.socket, "remoteAddress", {
+      value: "203.0.113.7",
+      configurable: true,
+    });
+    expect(resolveBoundaryRole(remote)).toBe("GUEST");
   });
 });
