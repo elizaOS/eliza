@@ -11,7 +11,10 @@ import { describe, expect, it } from "vitest";
 import {
 	type AppRoutePluginRegistryEntry,
 	drainAppRoutePluginLoaders,
+	isOptionalAppRoutePluginUnavailableError,
 	listAppRoutePluginLoaders,
+	OPTIONAL_APP_ROUTE_PLUGIN_UNAVAILABLE_ERROR_NAME,
+	OptionalAppRoutePluginUnavailableError,
 	registerAppRoutePluginLoader,
 } from "./app-route-plugin-registry";
 import type { Plugin, Route } from "./types/plugin";
@@ -80,13 +83,28 @@ describe("drainAppRoutePluginLoaders", () => {
 		expect(target.routes).toHaveLength(2);
 	});
 
-	it("isolates an optional-unavailable loader and still drains the rest", async () => {
+	it("isolates an optional-unavailable loader (core error class) and still drains the rest", async () => {
 		const target: { routes: Route[] } = { routes: [] };
-		const unavailable = new Error("nope");
-		unavailable.name = "OptionalAppRoutePluginUnavailableError";
 		await drainAppRoutePluginLoaders(target, [
 			loader("optional", () => {
-				throw unavailable;
+				throw new OptionalAppRoutePluginUnavailableError(
+					"@elizaos/plugin-absent",
+				);
+			}),
+			loader("ok", () => plugin("ok", [route("GET", "/api/ok")])),
+		]);
+		expect(target.routes).toEqual([{ type: "GET", path: "/api/ok" }]);
+	});
+
+	it("recognizes the optional-unavailable signal by name across bundles (no instanceof)", async () => {
+		// A duplicate @elizaos/core bundle produces a distinct class identity, so
+		// the host may throw an error that is only name-equal, not instanceof-equal.
+		const target: { routes: Route[] } = { routes: [] };
+		const foreign = new Error("nope");
+		foreign.name = OPTIONAL_APP_ROUTE_PLUGIN_UNAVAILABLE_ERROR_NAME;
+		await drainAppRoutePluginLoaders(target, [
+			loader("optional", () => {
+				throw foreign;
 			}),
 			loader("ok", () => plugin("ok", [route("GET", "/api/ok")])),
 		]);
@@ -123,5 +141,26 @@ describe("drainAppRoutePluginLoaders", () => {
 		expect(
 			target.routes.some((r) => r.path === "/api/registered/from-global"),
 		).toBe(true);
+	});
+});
+
+describe("OptionalAppRoutePluginUnavailableError", () => {
+	it("carries the canonical name + specifier and is recognized by the guard", () => {
+		const err = new OptionalAppRoutePluginUnavailableError(
+			"@elizaos/plugin-absent",
+			new Error("cause"),
+		);
+		expect(err.name).toBe(OPTIONAL_APP_ROUTE_PLUGIN_UNAVAILABLE_ERROR_NAME);
+		expect(err.specifier).toBe("@elizaos/plugin-absent");
+		expect(err.cause).toBeInstanceOf(Error);
+		expect(isOptionalAppRoutePluginUnavailableError(err)).toBe(true);
+	});
+
+	it("guard rejects unrelated errors and non-errors", () => {
+		expect(isOptionalAppRoutePluginUnavailableError(new Error("boom"))).toBe(
+			false,
+		);
+		expect(isOptionalAppRoutePluginUnavailableError("string")).toBe(false);
+		expect(isOptionalAppRoutePluginUnavailableError(null)).toBe(false);
 	});
 });

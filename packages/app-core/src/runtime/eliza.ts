@@ -34,6 +34,7 @@ import {
   isTruthyEnvValue,
   logger,
   ModelType,
+  OptionalAppRoutePluginUnavailableError,
   type Plugin,
   stringToUuid,
 } from "@elizaos/core";
@@ -327,16 +328,6 @@ async function ensureAutonomyBootstrapContext(
 // ---------------------------------------------------------------------------
 
 type AppRoutePluginModule = Record<string, unknown>;
-
-class OptionalAppRoutePluginUnavailableError extends Error {
-  constructor(
-    readonly specifier: string,
-    cause: unknown,
-  ) {
-    super(`Optional app route plugin ${specifier} is unavailable`, { cause });
-    this.name = "OptionalAppRoutePluginUnavailableError";
-  }
-}
 
 function splitPackageSpecifier(specifier: string): {
   packageName: string;
