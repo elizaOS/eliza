@@ -3,6 +3,7 @@
  */
 
 import type { IAgentRuntime, Memory, Provider, ProviderResult, State } from "@elizaos/core";
+import { CLOUD_CONTAINER_SERVICE_TYPE } from "@elizaos/shared";
 import type { CloudAuthService } from "../services/cloud-auth";
 import type { CloudContainerService } from "../services/cloud-container";
 
@@ -24,7 +25,9 @@ export const containerHealthProvider: Provider = {
       const auth = runtime.getService("CLOUD_AUTH") as CloudAuthService | undefined;
       if (!auth?.isAuthenticated()) return { text: "" };
 
-      const svc = runtime.getService("CLOUD_CONTAINER") as CloudContainerService | undefined;
+      const svc = runtime.getService(CLOUD_CONTAINER_SERVICE_TYPE) as
+        | CloudContainerService
+        | undefined;
       const running = svc?.getTrackedContainers().filter((c) => c.status === "running") ?? [];
       if (running.length === 0)
         return {

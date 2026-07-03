@@ -1,4 +1,5 @@
 import type http from "node:http";
+import { CLOUD_CONTAINER_SERVICE_TYPE } from "@elizaos/shared";
 import { describe, expect, it } from "vitest";
 import { handleCloudCodingContainerRoute } from "../src/routes/cloud-coding-container-routes";
 import type {
@@ -56,7 +57,13 @@ describe("cloud coding-container routes", () => {
         throw new Error("unexpected");
       },
     };
-    const runtime = { getService: () => service };
+    const requestedServiceTypes: string[] = [];
+    const runtime = {
+      getService: (serviceType: string) => {
+        requestedServiceTypes.push(serviceType);
+        return serviceType === CLOUD_CONTAINER_SERVICE_TYPE ? service : null;
+      },
+    };
     const request: PromoteVfsToCloudContainerRequest = {
       preferredAgent: "codex",
       source: {
@@ -78,6 +85,7 @@ describe("cloud coding-container routes", () => {
 
     expect(handled).toBe(true);
     expect(response.statusCode).toBe(200);
+    expect(requestedServiceTypes).toEqual([CLOUD_CONTAINER_SERVICE_TYPE]);
     expect(captured).toEqual(request);
     expect(response.jsonBody()).toMatchObject({
       success: true,
@@ -215,6 +223,42 @@ describe("cloud coding-container routes", () => {
     expect(response.statusCode).toBe(400);
     expect(response.jsonBody()).toEqual({
       error: 'Invalid option: expected one of "claude"|"codex"|"opencode"|"elizaos"',
+    });
+  });
+
+  it("does not discover cloud container services through legacy spelling guesses", async () => {
+    const legacyOnlyRuntime = {
+      getService: (serviceType: string) =>
+        serviceType === "cloud-container"
+          ? {
+              promoteVfsToCloudContainer: async () => {
+                throw new Error("should not be called");
+              },
+              requestCodingAgentContainer: async () => {
+                throw new Error("should not be called");
+              },
+              syncCodingContainerChanges: async () => {
+                throw new Error("should not be called");
+              },
+            }
+          : null,
+    };
+    const response = responseSink();
+
+    const handled = await handleCloudCodingContainerRoute(
+      requestWithBody({
+        source: { sourceKind: "project", projectId: "vfs-project-1" },
+      }),
+      response,
+      "/api/cloud/coding-containers/promotions",
+      "POST",
+      { runtime: legacyOnlyRuntime as never }
+    );
+
+    expect(handled).toBe(true);
+    expect(response.statusCode).toBe(503);
+    expect(response.jsonBody()).toEqual({
+      error: "Cloud container service is not available",
     });
   });
 });
