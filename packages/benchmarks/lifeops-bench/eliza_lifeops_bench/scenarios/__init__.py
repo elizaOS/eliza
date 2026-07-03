@@ -25,6 +25,7 @@ from .health import HEALTH_SCENARIOS
 from .live import ALL_LIVE_SCENARIOS
 from .mail import MAIL_SCENARIOS
 from .messages import MESSAGES_SCENARIOS
+from .personas import PERSONA_SCENARIOS
 from .reminders import REMINDERS_SCENARIOS
 from .sleep import SLEEP_SCENARIOS
 from .travel import TRAVEL_SCENARIOS
@@ -63,6 +64,7 @@ CORE_SCENARIOS: list[Scenario] = [
     *FOCUS_SCENARIOS,
     *ALL_LIVE_SCENARIOS,
     *EXPANDED_SCENARIOS,
+    *PERSONA_SCENARIOS,
 ]
 
 EDGE_EXPANDED_SCENARIOS: list[Scenario] = [
@@ -171,6 +173,7 @@ __all__ = [
     "HEALTH_SCENARIOS",
     "MAIL_SCENARIOS",
     "MESSAGES_SCENARIOS",
+    "PERSONA_SCENARIOS",
     "REMINDERS_SCENARIOS",
     "SCENARIOS_BY_DOMAIN",
     "SCENARIOS_BY_ID",
