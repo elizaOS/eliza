@@ -51,6 +51,7 @@ export const blockerPlugin: Plugin = {
       bundlePath: "dist/views/bundle.js",
       componentExport: "FocusView",
       tags: ["focus", "blocker", "distraction-control"],
+      relatedActions: ["BLOCK"],
       visibleInManager: true,
       desktopTabEnabled: true,
     },

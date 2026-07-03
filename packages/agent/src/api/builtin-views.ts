@@ -93,6 +93,7 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
     path: "/character/documents",
     order: 51,
     tags: ["documents", "knowledge", "files", "uploads", "retrieval"],
+    relatedActions: ["OWNER_DOCUMENTS"],
     visibleInManager: true,
     desktopTabEnabled: true,
   },
@@ -126,6 +127,7 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
       "configuration",
       "extensions",
     ],
+    relatedActions: ["RUNTIME"],
     visibleInManager: true,
   },
   {
@@ -203,6 +205,7 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
     path: "/settings",
     order: 90,
     tags: ["configuration", "preferences", "plugins"],
+    relatedActions: ["RUNTIME"],
     visibleInManager: true,
     desktopTabEnabled: true,
   },

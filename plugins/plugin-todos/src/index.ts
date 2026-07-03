@@ -25,6 +25,7 @@ export const todosPlugin: Plugin = {
       bundlePath: "dist/views/bundle.js",
       componentExport: "TodosView",
       tags: ["todos", "tasks", "productivity"],
+      relatedActions: ["OWNER_TODOS"],
       visibleInManager: true,
       desktopTabEnabled: true,
     },

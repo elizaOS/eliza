@@ -30,6 +30,7 @@ const trajectoryLoggerPlugin: Plugin = {
       modalities: ["gui", "xr", "tui"],
       bundlePath: "dist/views/bundle.js",
       componentExport: "TrajectoryLoggerView",
+      relatedActions: ["TASKS"],
       capabilities: [
         {
           id: "list-trajectories",

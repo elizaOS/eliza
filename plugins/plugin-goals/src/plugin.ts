@@ -44,6 +44,12 @@ export const goalsPlugin: Plugin = {
       bundlePath: "dist/views/bundle.js",
       componentExport: "GoalsView",
       tags: ["goals", "routines", "reminders", "self-care", "owner"],
+      relatedActions: [
+        "OWNER_GOALS",
+        "OWNER_ALARMS",
+        "OWNER_REMINDERS",
+        "OWNER_ROUTINES",
+      ],
       visibleInManager: true,
       desktopTabEnabled: true,
     },

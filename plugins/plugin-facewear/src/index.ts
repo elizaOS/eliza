@@ -85,6 +85,20 @@ export const facewearPlugin: Plugin = {
       bundlePath: "dist/views/bundle.js",
       componentExport: "FacewearView",
       tags: ["facewear", "xr", "smartglasses", "wearable"],
+      relatedActions: [
+        "FACEWEAR_CONNECT",
+        "FACEWEAR_DEBUG",
+        "SMARTGLASSES_CONTROL",
+        "SMARTGLASSES_STATUS",
+        "SMARTGLASSES_DISPLAY_TEXT",
+        "SMARTGLASSES_MICROPHONE",
+        "XR_OPEN_VIEW",
+        "XR_CLOSE_VIEW",
+        "XR_SWITCH_VIEW",
+        "XR_LIST_VIEWS",
+        "XR_RESIZE_VIEW",
+        "XR_QUERY_VISION",
+      ],
       // Wearables config now lives under Settings → Wearables (see register.ts),
       // not as standalone launcher views. The view defs are retained only so the
       // agent keeps serving the XR/TUI surfaces and the in-headset view host.

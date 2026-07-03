@@ -5354,8 +5354,8 @@ export async function startEliza(
     );
     // Same timing: turn the (previously dead-but-tested) view-coverage validators
     // into a live drift guard now that all plugins/views are registered (#8798).
-    // Warns when a VIEW_ACTION_MAP entry names an unregistered action, or a
-    // registered view has neither an affinity entry nor a declared ViewCapability.
+    // Warns when a view affinity entry names an unregistered action, or a
+    // registered view has neither relatedActions nor a declared ViewCapability.
     const developerViews = listViews({ developerMode: true });
     validateViewActionMap(
       runtime.actions.map((a) => a.name),

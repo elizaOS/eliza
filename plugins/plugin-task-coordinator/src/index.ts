@@ -210,6 +210,7 @@ const taskCoordinatorPlugin: Plugin = {
       modalities: ["gui", "xr", "tui"],
       bundlePath: "dist/views/bundle.js",
       componentExport: "TaskCoordinatorView",
+      relatedActions: ["TASKS"],
       capabilities: [
         {
           id: "list-sessions",
@@ -268,6 +269,7 @@ const taskCoordinatorPlugin: Plugin = {
       modalities: ["gui", "xr", "tui"],
       bundlePath: "dist/views/bundle.js",
       componentExport: "OrchestratorView",
+      relatedActions: ["TASKS"],
       capabilities: ORCHESTRATOR_CAPABILITIES,
       tags: ["developer", "coding-agent", "orchestrator"],
       visibleInManager: true,

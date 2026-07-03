@@ -45,6 +45,7 @@ export const relationshipsPlugin: Plugin = {
       bundlePath: "dist/views/bundle.js",
       componentExport: "RelationshipsView",
       tags: ["relationships", "entities", "people", "contacts", "graph"],
+      relatedActions: ["ENTITY"],
       visibleInManager: true,
       desktopTabEnabled: true,
     },

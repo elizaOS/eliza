@@ -27,8 +27,8 @@
  * `ceil(controls / MAX_CONTROLS_PER_AGENT_ELEMENT)`. That catches the regression
  * the prior check advertised but could never see: it passed a control-heavy view
  * on a *single* `useAgentElement` occurrence anywhere — or, worse, on merely
- * having any `VIEW_ACTION_MAP` entry (which every audited view has, making the
- * old assertion unconditionally true). The control count is a conservative
+ * having any view-action-affinity entry (which every audited view has, making
+ * the old assertion unconditionally true). The control count is a conservative
  * lower-bound proxy over the dominant handler + spatial-primitive forms;
  * under-counting only relaxes the requirement, so it never causes a false
  * failure — it fails only on genuine under-instrumentation.
@@ -45,9 +45,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
-  VIEW_ACTION_MAP,
-  validateViewCoverage,
-} from "./view-action-affinity.ts";
+  registerPluginViews,
+  unregisterPluginViews,
+} from "../api/views-registry.ts";
+import { validateViewCoverage } from "./view-action-affinity.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "../../../..");
@@ -57,8 +58,9 @@ const repoRoot = path.resolve(here, "../../../..");
  * Only views whose `.tsx` actually live in a `plugins/<dir>/src` tree are listed
  * — host/built-in views (`lifeops`, `training`, `settings`) have no plugin
  * source to scan and are exercised through `validateViewCoverage` below instead.
- * Every key here is a real VIEW_ACTION_MAP entry (asserted in the suite) so this
- * stays a meaningful subset of the registered surface, not a parallel list.
+ * Every key here must declare relatedActions in its plugin entry (asserted in
+ * the suite) so this stays a meaningful subset of the registered surface, not a
+ * parallel list.
  */
 const VIEW_SOURCE_DIRS: Readonly<Record<string, string>> = {
   calendar: "plugin-calendar",
@@ -152,6 +154,12 @@ const AGENT_REGISTRATION_RE = /useAgentElement(?:<[^>]*>)?\(|\bagent=(?:"|\{)/g;
 const countMatches = (src: string, re: RegExp): number =>
   src.match(re)?.length ?? 0;
 
+function relatedActionCount(entry: string): number {
+  const match = entry.match(/\brelatedActions:\s*\[([\s\S]*?)\]/);
+  if (!match) return 0;
+  return match[1].match(/"[^"]+"/g)?.length ?? 0;
+}
+
 /** Static measure of a view's control surface and agent-element registrations. */
 interface SourceMeasure {
   /** Interactive controls detected across both dialects (lower-bound proxy). */
@@ -187,8 +195,8 @@ interface ViewCoverage extends SourceMeasure {
   requiredRegistrations: number;
   /** The plugin entry declares a `ViewCapability[]` (reported, not gated on). */
   hasCapabilities: boolean;
-  /** Non-empty VIEW_ACTION_MAP entry for the view id (reported, not gated on). */
-  mappedActions: number;
+  /** Non-empty relatedActions declaration for the view id. */
+  relatedActions: number;
 }
 
 const coverage: ViewCoverage[] = Object.entries(VIEW_SOURCE_DIRS).map(
@@ -206,7 +214,7 @@ const coverage: ViewCoverage[] = Object.entries(VIEW_SOURCE_DIRS).map(
       agentRegistrations: measure.agentRegistrations,
       requiredRegistrations: requiredAgentRegistrations(measure.controls),
       hasCapabilities: /\bcapabilities:\s*\[/.test(entry),
-      mappedActions: (VIEW_ACTION_MAP[viewId] ?? []).length,
+      relatedActions: relatedActionCount(entry),
     };
   },
 );
@@ -239,12 +247,12 @@ if (process.env.VIEW_AUDIT_REPORT) {
 }
 
 describe("static view-capability audit (#8798)", () => {
-  it("every audited view id is a real VIEW_ACTION_MAP entry", () => {
-    for (const viewId of Object.keys(VIEW_SOURCE_DIRS)) {
+  it("every audited plugin view declares relatedActions", () => {
+    for (const c of coverage) {
       expect(
-        Object.hasOwn(VIEW_ACTION_MAP, viewId),
-        `audited view "${viewId}" must be a registered VIEW_ACTION_MAP key`,
-      ).toBe(true);
+        c.relatedActions,
+        `audited view "${c.viewId}" must declare relatedActions in plugins/${c.pluginDir}/src`,
+      ).toBeGreaterThan(0);
     }
   });
 
@@ -325,7 +333,7 @@ describe("static view-capability audit (#8798)", () => {
   // measureSource + meetsRegistrationDensity the real audit uses (no parallel
   // reimplementation). Critically: a control-heavy view with a SINGLE
   // registration fails — the exact case the old "≥1 useAgentElement anywhere /
-  // any VIEW_ACTION_MAP entry passes" check let through.
+  // any view-action-affinity entry passes" check let through.
   it("registration-density gate has teeth (both dialects)", () => {
     // 8 controls, exactly 1 registration — the regression the old check missed.
     const oneRegManyControls = measureSource(
@@ -376,28 +384,42 @@ describe("static view-capability audit (#8798)", () => {
   // Reuse the exported helper. Positive control proves the assertion has teeth:
   // an unmapped, capability-less sentinel MUST be reported uncovered. The real
   // audited set must then come back clean.
-  it("validateViewCoverage flags an uncovered view and passes the audited set", () => {
+  it("validateViewCoverage flags an uncovered view and passes the audited set", async () => {
+    const pluginName = "@test/view-capability-audit";
+    await registerPluginViews({
+      name: pluginName,
+      description: "Synthetic view capability audit fixtures.",
+      views: coverage.map((c) => ({
+        id: c.viewId,
+        label: c.viewId,
+        relatedActions: ["__STATIC_AUDIT_ACTION__"],
+      })),
+    });
     const registered = Object.keys(VIEW_SOURCE_DIRS);
     const withCapabilities = coverage
       .filter((c) => c.hasCapabilities)
       .map((c) => c.viewId);
 
-    const sentinel = "__unmapped_sentinel_view__";
-    const flagged = validateViewCoverage(
-      [...registered, sentinel],
-      withCapabilities,
-      { warn: () => {} },
-    );
-    expect(flagged, "sentinel must surface as uncovered").toContain(sentinel);
+    try {
+      const sentinel = "__unmapped_sentinel_view__";
+      const flagged = validateViewCoverage(
+        [...registered, sentinel],
+        withCapabilities,
+        { warn: () => {} },
+      );
+      expect(flagged, "sentinel must surface as uncovered").toContain(sentinel);
 
-    const warnings: string[] = [];
-    const uncovered = validateViewCoverage(registered, withCapabilities, {
-      warn: (m) => warnings.push(m),
-    });
-    expect(
-      uncovered,
-      `uncovered registered views: ${uncovered.join(", ")}`,
-    ).toEqual([]);
-    expect(warnings).toEqual([]);
+      const warnings: string[] = [];
+      const uncovered = validateViewCoverage(registered, withCapabilities, {
+        warn: (m) => warnings.push(m),
+      });
+      expect(
+        uncovered,
+        `uncovered registered views: ${uncovered.join(", ")}`,
+      ).toEqual([]);
+      expect(warnings).toEqual([]);
+    } finally {
+      unregisterPluginViews(pluginName);
+    }
   });
 });

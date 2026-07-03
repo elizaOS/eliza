@@ -736,6 +736,16 @@ export interface ViewDeclaration {
 	order?: number;
 	/** Tags for search and discovery (e.g. ["finance", "crypto"]). */
 	tags?: string[];
+	/**
+	 * Runtime action names especially relevant while this view is foreground.
+	 * Hosts use these as view-scoped affinity hints so plugins keep their own
+	 * view -> action relationship with the view declaration.
+	 */
+	relatedActions?: string[];
+	/**
+	 * Optional free-form planner hints for this view.
+	 */
+	contextHints?: string[];
 	/** Relative path from the plugin's package root to its hero image. */
 	heroImagePath?: string;
 	/** Screen background policy for this view. Defaults to `"opaque"`. */

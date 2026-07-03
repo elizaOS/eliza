@@ -84,6 +84,7 @@ export const healthPlugin: Plugin = {
       bundlePath: "dist/views/bundle.js",
       componentExport: "HealthView",
       tags: ["health", "sleep", "screen-time", "activity"],
+      relatedActions: ["OWNER_HEALTH", "OWNER_SCREENTIME"],
       visibleInManager: true,
       desktopTabEnabled: true,
     },

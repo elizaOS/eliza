@@ -1,7 +1,7 @@
 import type http from "node:http";
 import { Readable } from "node:stream";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { VIEW_ACTION_MAP } from "../runtime/view-action-affinity.ts";
+import { viewActionAffinityMap } from "../runtime/view-action-affinity.ts";
 import {
   registerBuiltinViews,
   registerPluginViews,
@@ -27,8 +27,8 @@ import {
 //       live path, #8798 C7;
 //   (b) capability validation against the declared list rejects an undeclared
 //       capability and accepts/dispatches a declared one;
-//   (c) every view id in VIEW_ACTION_MAP maps to a non-empty action list, so an
-//       affinity-mapped view always has at least one reachable domain action.
+//   (c) every view id with action affinity maps to a non-empty action list, so
+//       an affinity-mapped view always has at least one reachable domain action.
 
 const REFERENCE_PLUGIN = "@test/views-manager-reference";
 const DECLARED_PLUGIN = "@test/views-declared-caps";
@@ -317,9 +317,10 @@ describe("per-view interact e2e — serverInteract reaches view capabilities hea
   });
 });
 
-describe("VIEW_ACTION_MAP affinity completeness (#8798)", () => {
+describe("view action affinity completeness (#8798)", () => {
   it("maps every affinity view id to a non-empty, reachable action list", () => {
-    const entries = Object.entries(VIEW_ACTION_MAP);
+    registerBuiltinViews();
+    const entries = Object.entries(viewActionAffinityMap());
     // Guard against an empty map silently passing the per-view assertions.
     expect(entries.length).toBeGreaterThan(0);
 
@@ -327,16 +328,16 @@ describe("VIEW_ACTION_MAP affinity completeness (#8798)", () => {
       expect(viewId, `view id "${viewId}" must be non-empty`).not.toBe("");
       expect(
         Array.isArray(actions),
-        `VIEW_ACTION_MAP["${viewId}"] must be an array`,
+        `view action affinity for "${viewId}" must be an array`,
       ).toBe(true);
       expect(
         actions.length,
-        `VIEW_ACTION_MAP["${viewId}"] must list at least one action`,
+        `view action affinity for "${viewId}" must list at least one action`,
       ).toBeGreaterThan(0);
       for (const action of actions) {
         expect(
           typeof action === "string" && action.trim().length > 0,
-          `VIEW_ACTION_MAP["${viewId}"] action names must be non-empty strings`,
+          `view action affinity for "${viewId}" action names must be non-empty strings`,
         ).toBe(true);
       }
     }

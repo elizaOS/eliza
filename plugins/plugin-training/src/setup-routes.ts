@@ -367,6 +367,7 @@ export const trainingPlugin: Plugin = {
       modalities: ["gui", "xr", "tui"],
       bundlePath: "dist/views/bundle.js",
       componentExport: "FineTuningView",
+      relatedActions: ["RUNTIME"],
       tags: [
         "training",
         "fine-tuning",

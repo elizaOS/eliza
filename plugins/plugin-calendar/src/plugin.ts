@@ -41,6 +41,7 @@ export const calendarPlugin: Plugin = {
       bundlePath: "dist/views/bundle.js",
       componentExport: "CalendarView",
       tags: ["calendar", "schedule", "events"],
+      relatedActions: ["CALENDAR", "CONFLICT_DETECT"],
       visibleInManager: true,
       desktopTabEnabled: true,
     },

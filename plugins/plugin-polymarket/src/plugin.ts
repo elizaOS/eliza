@@ -118,6 +118,7 @@ export const polymarketPlugin: Plugin = {
       bundlePath: "dist/views/bundle.js",
       componentExport: "PolymarketView",
       tags: ["prediction-markets", "polymarket", "trading"],
+      relatedActions: ["POLYMARKET_STATUS"],
       // Reached as a sub-view of Wallet (WalletSectionNav), not a launcher tile.
       visibleInManager: false,
       desktopTabEnabled: false,
