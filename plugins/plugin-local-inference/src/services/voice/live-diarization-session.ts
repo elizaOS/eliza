@@ -241,15 +241,23 @@ function encodePcm16Base64(chunks: Float32Array[]): string {
 
 /** Echo-delay self-calibration (#9583/#9586). */
 /** Accumulate this many playback-active samples before estimating the delay
- * (~0.75 s @16 kHz — enough correlated echo for a stable cross-correlation). */
-const ECHO_CAL_TARGET_SAMPLES = 12_000;
+ * (1 s @16 kHz — enough correlated echo overlap for a stable cross-correlation
+ * even when the transport lag eats several hundred ms of the window). */
+const ECHO_CAL_TARGET_SAMPLES = 16_000;
 /** Bound the rolling calibration window so a long talk-over doesn't grow it. */
 const ECHO_CAL_MAX_SAMPLES = 24_000;
 /** Accept a calibrated delay only above this normalized cross-correlation; below
  * it the near/far are independent (user talking, no echo) — keep the seed. */
 const ECHO_CAL_MIN_CONFIDENCE = 0.3;
-/** Largest playback→mic delay to search (300 ms @16 kHz). */
-const ECHO_CAL_MAX_LAG_SAMPLES = 4_800;
+/** Largest playback→mic delay to search (500 ms @16 kHz). The Pixel 6a WebView
+ * pump path measured ~381–408 ms end-to-end (#11373 device evidence) — beyond
+ * the previous 300 ms ceiling, which made the one-shot calibration lock a
+ * wrong cap-edge lag (~298 ms) and permanently misalign the NLMS reference. */
+const ECHO_CAL_MAX_LAG_SAMPLES = 8_000;
+/** Reject locks within one frame of the search ceiling: a cap-edge peak means
+ * the true delay is likely beyond the searched range, and a one-shot lock on
+ * it would pin a wrong alignment forever. Keep observing instead. */
+const ECHO_CAL_CAP_EDGE_SAMPLES = 320;
 /** Far-end mean-square floor below which a frame is "no playback" (skip). */
 const ECHO_CAL_FAR_ENERGY_FLOOR = 1e-7;
 
@@ -595,7 +603,10 @@ export class LiveDiarizationSession {
 		const est = estimateEchoDelaySamples(near, farWin, {
 			maxLagSamples: ECHO_CAL_MAX_LAG_SAMPLES,
 		});
-		if (est.confidence >= ECHO_CAL_MIN_CONFIDENCE) {
+		if (
+			est.confidence >= ECHO_CAL_MIN_CONFIDENCE &&
+			est.lagSamples < ECHO_CAL_MAX_LAG_SAMPLES - ECHO_CAL_CAP_EDGE_SAMPLES
+		) {
 			this.echoDelaySamples = est.lagSamples;
 			this.echoDelayConfidence = est.confidence;
 			this.echoDelayCalibrated = true;

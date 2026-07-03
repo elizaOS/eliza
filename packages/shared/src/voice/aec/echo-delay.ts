@@ -101,7 +101,12 @@ export const PLATFORM_PLAYBACK_DELAY_DEFAULTS: Readonly<
   darwin: 20,
   /** iOS AVAudioEngine (when its voice-processing IO AEC is not the source). */
   ios: 25,
-  /** Android AudioTrack/AudioRecord — variable; a mid seed. */
+  /** Android AudioTrack/AudioRecord — variable; a mid seed. NOTE: the WebView
+   * pump-path transport measured ~381–408 ms end-to-end on a Pixel 6a and
+   * moved ±20 ms between runs (#11373 device evidence), so no constant can
+   * represent that producer — the session's self-calibration (searching up to
+   * 500 ms) is the mechanism that recovers it; this seed only has to put the
+   * native-path filter in the right ballpark before calibration. */
   android: 45,
   /** Windows WASAPI shared-mode. */
   win32: 30,

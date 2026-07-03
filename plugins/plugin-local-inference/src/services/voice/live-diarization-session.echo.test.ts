@@ -263,6 +263,67 @@ describe("LiveDiarizationSession echo reference", () => {
 		expect(state.confidence).toBeGreaterThan(0.95);
 	});
 
+	it("calibrates a ~400 ms transport delay (Pixel 6a WebView pump path, #11373)", () => {
+		// The Pixel 6a device evidence measured ~381–408 ms playback→mic on the
+		// WebView pump path — beyond the previous 300 ms search ceiling, which
+		// made the one-shot calibration lock a wrong cap-edge lag.
+		const session = new LiveDiarizationSession(fakeRuntime());
+		const frameSamples = 320;
+		const totalSamples = 40_000;
+		const delaySamples = 6_400; // 400 ms @16 kHz
+		const playback = noise(totalSamples);
+
+		for (let offset = 0; offset < totalSamples; offset += frameSamples) {
+			session.pushPlayback([
+				playbackFrame(
+					playback.slice(offset, offset + frameSamples),
+					offset / frameSamples,
+				),
+			]);
+		}
+		for (let offset = 0; offset < totalSamples; offset += frameSamples) {
+			const near = new Float32Array(frameSamples);
+			for (let i = 0; i < frameSamples; i += 1) {
+				near[i] = playback[offset + i - delaySamples] ?? 0;
+			}
+			session.observeForDelayCalibration(near, (offset / SAMPLE_RATE) * 1000);
+			if (session.aecDelayState().calibrated) break;
+		}
+
+		const state = session.aecDelayState();
+		expect(state.calibrated).toBe(true);
+		expect(Math.abs(state.delaySamples - delaySamples)).toBeLessThanOrEqual(1);
+	});
+
+	it("refuses to lock a cap-edge delay estimate (#11373)", () => {
+		// A correlation peak within one frame of the search ceiling means the
+		// true delay is likely beyond the searched range; a one-shot lock there
+		// would pin a wrong alignment forever. The session must keep the seed.
+		const session = new LiveDiarizationSession(fakeRuntime());
+		const frameSamples = 320;
+		const totalSamples = 40_000;
+		const delaySamples = 7_900; // inside the search range but at the cap edge
+		const playback = noise(totalSamples);
+
+		for (let offset = 0; offset < totalSamples; offset += frameSamples) {
+			session.pushPlayback([
+				playbackFrame(
+					playback.slice(offset, offset + frameSamples),
+					offset / frameSamples,
+				),
+			]);
+		}
+		for (let offset = 0; offset < totalSamples; offset += frameSamples) {
+			const near = new Float32Array(frameSamples);
+			for (let i = 0; i < frameSamples; i += 1) {
+				near[i] = playback[offset + i - delaySamples] ?? 0;
+			}
+			session.observeForDelayCalibration(near, (offset / SAMPLE_RATE) * 1000);
+		}
+
+		expect(session.aecDelayState().calibrated).toBe(false);
+	});
+
 	it("seeds the echo delay from the platform default when ELIZA_VOICE_ECHO_DELAY_MS=auto", () => {
 		const prev = process.env.ELIZA_VOICE_ECHO_DELAY_MS;
 		process.env.ELIZA_VOICE_ECHO_DELAY_MS = "auto";
