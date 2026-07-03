@@ -106,6 +106,7 @@ import {
 } from "./state";
 import { goHome } from "./state/shell-surface-store";
 import { isShellPaintable } from "./state/startup-coordinator";
+import { firstRunOwnsLoginSurface } from "./state/top-level-auth-gate";
 import { isLoopbackGatewayHost } from "./state/use-startup-shell-controller";
 import { confirmDesktopAction } from "./utils/desktop-dialogs";
 import { VoiceSelfTestShell } from "./voice/voice-selftest/VoiceSelfTestShell";
@@ -1746,6 +1747,7 @@ export function App() {
   const {
     startupError,
     startupCoordinator,
+    firstRunComplete,
     retryStartup,
     tab,
     setTab,
@@ -1763,6 +1765,7 @@ export function App() {
   } = useAppSelectorShallow((s) => ({
     startupError: s.startupError,
     startupCoordinator: s.startupCoordinator,
+    firstRunComplete: s.firstRunComplete,
     retryStartup: s.retryStartup,
     tab: s.tab,
     setTab: s.setTab,
@@ -2361,7 +2364,7 @@ export function App() {
   if (
     isShellPaintableNow &&
     !isPopout &&
-    startupCoordinator.phase !== "first-run-required"
+    !firstRunOwnsLoginSurface(startupCoordinator.phase, firstRunComplete)
   ) {
     if (authState.phase === "server_unavailable") {
       return (
