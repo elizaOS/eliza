@@ -14,11 +14,13 @@ function echoAction(
 	opts: {
 		validate?: () => Promise<boolean>;
 		onOptions?: (options: Record<string, unknown> | undefined) => void;
+		roleGate?: Action["roleGate"];
 	} = {},
 ): Action {
 	return {
 		name: "ECHO_COMMAND",
 		description: "echo",
+		roleGate: opts.roleGate,
 		validate: opts.validate ?? (async () => true),
 		handler: async (_rt, message, _state, options, callback) => {
 			opts.onOptions?.(options);
@@ -169,6 +171,45 @@ describe("runShortcutGate (#8791 pre-LLM gate)", () => {
 		expect(result).toBeNull();
 		expect(validate).toHaveBeenCalledTimes(1);
 		expect(useModel).not.toHaveBeenCalled();
+	});
+
+	it("falls through before validate when the target action role gate rejects the sender", async () => {
+		const validate = vi.fn(async () => true);
+		const onOptions = vi.fn();
+		const warn = vi.fn();
+		const { runtime, useModel, emitEvent } = makeRuntime({
+			actions: [
+				echoAction({
+					validate,
+					onOptions,
+					roleGate: { minRole: "OWNER" },
+				}),
+			],
+		});
+		runtime.logger.warn = warn;
+
+		const result = await runShortcutGate({
+			// biome-ignore lint/suspicious/noExplicitAny: minimal fake runtime
+			runtime: runtime as any,
+			message: msg("/echo hi"),
+			state: {} as State,
+			responseId,
+			senderRole: "USER",
+		});
+
+		expect(result).toBeNull();
+		expect(validate).not.toHaveBeenCalled();
+		expect(onOptions).not.toHaveBeenCalled();
+		expect(useModel).not.toHaveBeenCalled();
+		expect(emitEvent).not.toHaveBeenCalled();
+		expect(warn).toHaveBeenCalledWith(
+			expect.objectContaining({
+				src: "shortcut-gate",
+				shortcut: "cmd:echo",
+				action: "ECHO_COMMAND",
+			}),
+			expect.stringContaining("runtime gate"),
+		);
 	});
 
 	it("falls through and logs when an explicit shortcut action validate() throws (#9153)", async () => {

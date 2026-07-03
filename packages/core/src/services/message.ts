@@ -75,6 +75,7 @@ import {
 	type ExecutePlannedToolCallContext,
 	type ExecutePlannedToolCallOptions,
 	executePlannedToolCall,
+	getGateFailure,
 } from "../runtime/execute-planned-tool-call";
 import {
 	type FactsAndRelationshipsRunResult,
@@ -5649,6 +5650,24 @@ export async function runShortcutGate(args: {
 
 	const action = args.runtime.actions.find((a) => a.name === target.name);
 	if (!action) return null;
+
+	const gateFailure = getGateFailure(action, {
+		message: args.message,
+		state: args.state,
+		userRoles: [args.senderRole],
+	});
+	if (gateFailure) {
+		args.runtime.logger?.warn?.(
+			{
+				src: "shortcut-gate",
+				shortcut: match.shortcut.id,
+				action: action.name,
+				gateFailure,
+			},
+			"shortcut action blocked by runtime gate; falling through to pipeline",
+		);
+		return null;
+	}
 
 	let valid = false;
 	try {

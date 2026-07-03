@@ -510,7 +510,7 @@ function actionResultToStreamingResult(
 
 export const _resetActionRolePolicyCacheForTests = _resetCacheForTests;
 
-function getGateFailure(
+export function getGateFailure(
 	action: Action,
 	ctx: ExecutePlannedToolCallContext,
 ): string | undefined {
