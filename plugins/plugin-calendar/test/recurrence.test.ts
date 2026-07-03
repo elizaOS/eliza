@@ -31,7 +31,10 @@ function isoAll(dates: Date[]): string[] {
 
 describe("parseRecurrenceRule", () => {
   it("parses a weekly BYDAY rule with and without the RRULE: prefix", () => {
-    for (const line of ["RRULE:FREQ=WEEKLY;BYDAY=MO,WE", "FREQ=WEEKLY;BYDAY=MO,WE"]) {
+    for (const line of [
+      "RRULE:FREQ=WEEKLY;BYDAY=MO,WE",
+      "FREQ=WEEKLY;BYDAY=MO,WE",
+    ]) {
       const rule = parseRecurrenceRule(line);
       expect(rule.freq).toBe("WEEKLY");
       expect(rule.interval).toBe(1);
@@ -46,9 +49,9 @@ describe("parseRecurrenceRule", () => {
     expect(
       parseRecurrenceRule("RRULE:FREQ=DAILY;UNTIL=20260310T140000Z").untilMs,
     ).toBe(Date.UTC(2026, 2, 10, 14, 0, 0));
-    expect(
-      parseRecurrenceRule("RRULE:FREQ=DAILY;UNTIL=20260310").untilMs,
-    ).toBe(Date.UTC(2026, 2, 10, 23, 59, 59));
+    expect(parseRecurrenceRule("RRULE:FREQ=DAILY;UNTIL=20260310").untilMs).toBe(
+      Date.UTC(2026, 2, 10, 23, 59, 59),
+    );
     expect(
       parseRecurrenceRule("RRULE:FREQ=MONTHLY;BYMONTHDAY=15,-1").byMonthDay,
     ).toEqual([15, -1]);
@@ -97,9 +100,9 @@ describe("normalizeRecurrence", () => {
     expect(normalizeRecurrence("freq=weekly;byday=mo")).toEqual([
       "RRULE:FREQ=WEEKLY;BYDAY=MO",
     ]);
-    expect(
-      normalizeRecurrence(["rrule:freq=daily;count=10"]),
-    ).toEqual(["RRULE:FREQ=DAILY;COUNT=10"]);
+    expect(normalizeRecurrence(["rrule:freq=daily;count=10"])).toEqual([
+      "RRULE:FREQ=DAILY;COUNT=10",
+    ]);
   });
 
   it("passes EXDATE/RDATE lines through and drops empties", () => {
@@ -214,7 +217,9 @@ describe("expandRecurrenceOccurrences — rule semantics", () => {
 
   it("expands every-2-weeks BYDAY pairs from the anchor week", () => {
     // Wednesday 2026-06-03T09:00 EDT = 13:00Z; anchor week is Jun 1 (Mon).
-    const rule = parseRecurrenceRule("RRULE:FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,WE");
+    const rule = parseRecurrenceRule(
+      "RRULE:FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,WE",
+    );
     const occurrences = expandRecurrenceOccurrences({
       rule,
       startAt: new Date("2026-06-03T13:00:00.000Z"),
@@ -311,7 +316,9 @@ describe("nextRecurrenceOccurrence", () => {
       }),
     ).toBeNull();
 
-    const bounded = parseRecurrenceRule("RRULE:FREQ=DAILY;UNTIL=20260307T140000Z");
+    const bounded = parseRecurrenceRule(
+      "RRULE:FREQ=DAILY;UNTIL=20260307T140000Z",
+    );
     expect(
       nextRecurrenceOccurrence({
         rule: bounded,

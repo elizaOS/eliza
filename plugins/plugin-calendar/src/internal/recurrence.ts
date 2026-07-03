@@ -54,8 +54,6 @@ const BYDAY_TOKEN_TO_WEEKDAY: Record<string, number> = {
   SA: 6,
 };
 
-const WEEKDAY_TO_BYDAY_TOKEN = ["SU", "MO", "TU", "WE", "TH", "FR", "SA"];
-
 const WEEKDAY_LABELS = [
   "Sunday",
   "Monday",
@@ -109,7 +107,9 @@ function parseUntilValue(value: string): number {
     if (!Number.isFinite(ms)) invalidRecurrence(`UNTIL=${value}`);
     return ms;
   }
-  const dateTime = value.match(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z$/);
+  const dateTime = value.match(
+    /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z$/,
+  );
   if (dateTime) {
     const ms = Date.UTC(
       Number(dateTime[1]),
@@ -162,7 +162,10 @@ export function parseRecurrenceRule(
     const eq = segment.indexOf("=");
     if (eq <= 0) invalidRecurrence(`malformed part "${segment}"`);
     const key = segment.slice(0, eq).trim().toUpperCase();
-    const raw = segment.slice(eq + 1).trim().toUpperCase();
+    const raw = segment
+      .slice(eq + 1)
+      .trim()
+      .toUpperCase();
     if (raw.length === 0) invalidRecurrence(`empty value for ${key}`);
 
     switch (key) {
@@ -187,7 +190,9 @@ export function parseRecurrenceRule(
       case "BYDAY": {
         const days: number[] = [];
         for (const token of raw.split(",")) {
-          const match = token.trim().match(/^([+-]?\d{1,2})?(SU|MO|TU|WE|TH|FR|SA)$/);
+          const match = token
+            .trim()
+            .match(/^([+-]?\d{1,2})?(SU|MO|TU|WE|TH|FR|SA)$/);
           if (!match) invalidRecurrence(`BYDAY token "${token}"`);
           if (match[1]) {
             // Ordinal weekday (e.g. 2MO = second Monday): provider-valid,
@@ -197,7 +202,8 @@ export function parseRecurrenceRule(
           const weekdayToken = match[2];
           if (!weekdayToken) invalidRecurrence(`BYDAY token "${token}"`);
           const weekday = BYDAY_TOKEN_TO_WEEKDAY[weekdayToken];
-          if (weekday === undefined) invalidRecurrence(`BYDAY token "${token}"`);
+          if (weekday === undefined)
+            invalidRecurrence(`BYDAY token "${token}"`);
           if (!days.includes(weekday)) days.push(weekday);
         }
         if (days.length === 0) invalidRecurrence("BYDAY has no days");
@@ -241,11 +247,22 @@ export function parseRecurrenceRule(
   if (byDay && freq !== "WEEKLY") beyondExpansionSubset = true;
   if (byMonthDay && freq !== "MONTHLY") beyondExpansionSubset = true;
 
-  return { freq, interval, byDay, byMonthDay, count, untilMs, beyondExpansionSubset };
+  return {
+    freq,
+    interval,
+    byDay,
+    byMonthDay,
+    count,
+    untilMs,
+    beyondExpansionSubset,
+  };
 }
 
 function canonicalizeRuleLine(value: string): string {
-  const body = value.trim().replace(/^RRULE:/i, "").replace(/\s+/g, "");
+  const body = value
+    .trim()
+    .replace(/^RRULE:/i, "")
+    .replace(/\s+/g, "");
   return `RRULE:${body.toUpperCase()}`;
 }
 
@@ -493,11 +510,16 @@ export function describeRecurrence(
     return null;
   }
   if (rule.beyondExpansionSubset) {
-    return firstLine.trim().replace(/^RRULE:/i, "").toLowerCase();
+    return firstLine
+      .trim()
+      .replace(/^RRULE:/i, "")
+      .toLowerCase();
   }
 
   const every = (unit: string) =>
-    rule.interval === 1 ? unit : `every ${rule.interval} ${unit.replace(/ly$/, "")}s`;
+    rule.interval === 1
+      ? unit
+      : `every ${rule.interval} ${unit.replace(/ly$/, "")}s`;
   let base: string;
   switch (rule.freq) {
     case "DAILY":

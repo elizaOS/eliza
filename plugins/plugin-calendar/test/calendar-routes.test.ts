@@ -137,6 +137,39 @@ describe("handleCalendarRoutes", () => {
     expect(jsonCalls[0]?.data).toEqual({ deleted: true });
   });
 
+  it("forwards recurrence + recurrenceScope on PATCH /events/:id", async () => {
+    const { deps, service } = harness({
+      method: "PATCH",
+      pathname: "/api/lifeops/calendar/events/standup_1",
+      body: {
+        title: "renamed",
+        recurrence: ["RRULE:FREQ=WEEKLY;BYDAY=TU"],
+        recurrenceScope: "series",
+      },
+    });
+    expect(await handleCalendarRoutes(deps)).toBe(true);
+    expect(service.updateCalendarEvent.mock.calls[0][1]).toMatchObject({
+      eventId: "standup_1",
+      recurrence: ["RRULE:FREQ=WEEKLY;BYDAY=TU"],
+      recurrenceScope: "series",
+    });
+  });
+
+  it("forwards ?recurrenceScope on DELETE /events/:id", async () => {
+    const { deps, service } = harness({
+      method: "DELETE",
+      pathname: "/api/lifeops/calendar/events/standup_1",
+    });
+    deps.url = new URL(
+      "http://host/api/lifeops/calendar/events/standup_1?recurrenceScope=series",
+    );
+    expect(await handleCalendarRoutes(deps)).toBe(true);
+    expect(service.deleteCalendarEvent.mock.calls[0][1]).toMatchObject({
+      eventId: "standup_1",
+      recurrenceScope: "series",
+    });
+  });
+
   it("short-circuits when rate-limited without calling the service", async () => {
     const { deps, service } = harness({
       method: "GET",

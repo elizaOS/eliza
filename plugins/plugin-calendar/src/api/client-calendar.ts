@@ -49,7 +49,10 @@ export interface CalendarClientMethods {
   deleteLifeOpsCalendarEvent(
     eventId: string,
     options?: Partial<
-      Pick<LifeOpsCalendarEventUpdate, "calendarId" | "grantId" | "side">
+      Pick<
+        LifeOpsCalendarEventUpdate,
+        "calendarId" | "grantId" | "side" | "recurrenceScope"
+      >
     >,
   ): Promise<{ deleted: true }>;
 }
@@ -163,13 +166,19 @@ calendarClientPrototype.deleteLifeOpsCalendarEvent = async function (
   this: ElizaClient,
   eventId: string,
   options: Partial<
-    Pick<LifeOpsCalendarEventUpdate, "calendarId" | "grantId" | "side">
+    Pick<
+      LifeOpsCalendarEventUpdate,
+      "calendarId" | "grantId" | "side" | "recurrenceScope"
+    >
   > = {},
 ) {
   const params = new URLSearchParams();
   if (options.calendarId) params.set("calendarId", options.calendarId);
   if (options.grantId) params.set("grantId", options.grantId);
   if (options.side) params.set("side", options.side);
+  if (options.recurrenceScope) {
+    params.set("recurrenceScope", options.recurrenceScope);
+  }
   const query = params.toString();
   return this.fetch<{ deleted: true }>(
     `/api/lifeops/calendar/events/${encodeURIComponent(eventId)}${query ? `?${query}` : ""}`,

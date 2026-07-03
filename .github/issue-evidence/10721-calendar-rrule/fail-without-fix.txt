@@ -1,0 +1,25 @@
+     × normalizes recurrence to the provider and surfaces it on readback 34ms
+     × rejects invalid recurrence fail-closed — no provider call, no one-off event 7ms
+     × rejects recurring creates on the Apple Calendar path 6ms
+     × series scope through an occurrence id patches the cached series master 6ms
+     × series scope for an uncached id resolves the master via the provider 4ms
+     × recurrence lines imply a series edit and reach the provider patch 5ms
+     × rejects recurrence lines with instance scope (rules are series-level) 5ms
+     × rejects an invalid recurrenceScope fail-closed 5ms
+     × series scope deletes the master once and purges cached occurrences, preserving other accounts 7ms
+     × rejects an invalid recurrenceScope fail-closed 6ms
+     × recurrence failures are CalendarServiceError instances 7ms
+     × ambiguous intent → clarification, and nothing is updated 22ms
+     × "just this" phrasing → patches only the addressed occurrence 5ms
+     × "whole series" phrasing → one series-scoped patch 4ms
+     × explicit recurrenceScope detail wins without special phrasing 3ms
+     × a recurrence-rule change is implicitly a series edit 4ms
+     × ambiguous intent → clarification, and nothing is deleted 2ms
+     × "just this" phrasing → deletes only the addressed occurrence 2ms
+     × "whole series" phrasing → exactly one series-scoped delete call 2ms
+     × explicit eventId path forwards a structured recurrenceScope 2ms
+     × carries structured RRULE recurrence into the create request 4ms
+     × accepts recurrence via the rrule alias detail key 3ms
+⎯⎯⎯⎯⎯⎯ Failed Tests 22 ⎯⎯⎯⎯⎯⎯⎯
+ Test Files  2 failed (2)
+      Tests  22 failed | 5 passed (27)

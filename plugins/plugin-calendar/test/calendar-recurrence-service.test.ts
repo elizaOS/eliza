@@ -19,17 +19,28 @@
 
 import { PGlite } from "@electric-sql/pglite";
 import type { IAgentRuntime } from "@elizaos/core";
-import type { LifeOpsCalendarEvent, LifeOpsConnectorGrant } from "@elizaos/shared";
+import type {
+  LifeOpsCalendarEvent,
+  LifeOpsConnectorGrant,
+} from "@elizaos/shared";
 import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/pglite";
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import { APPLE_CALENDAR_GRANT_ID } from "../src/apple-calendar.js";
 import { CalendarServiceError } from "../src/internal/errors.js";
+import { CalendarRepository } from "../src/service/CalendarRepository.js";
 import {
   type CalendarHostGate,
   CalendarService,
 } from "../src/service/index.js";
-import { CalendarRepository } from "../src/service/CalendarRepository.js";
 
 const INTERNAL_URL = new URL("http://internal.local/api/calendar");
 const AGENT_ID = "agent-rrule-test";
@@ -289,13 +300,11 @@ describe("createCalendarEvent — recurrence", () => {
     });
     // Readback carries the recurrence metadata through the full chain.
     expect(created.recurrence).toEqual(["RRULE:FREQ=WEEKLY;BYDAY=MO"]);
-    expect(created.metadata.recurrence).toEqual([
-      "RRULE:FREQ=WEEKLY;BYDAY=MO",
-    ]);
+    expect(created.metadata.recurrence).toEqual(["RRULE:FREQ=WEEKLY;BYDAY=MO"]);
     // And the cached row round-trips it.
-    const cached = (
-      await repo.listCalendarEvents(AGENT_ID, "google")
-    ).find((event) => event.externalId === "created-master");
+    const cached = (await repo.listCalendarEvents(AGENT_ID, "google")).find(
+      (event) => event.externalId === "created-master",
+    );
     expect(cached?.recurrence).toEqual(["RRULE:FREQ=WEEKLY;BYDAY=MO"]);
   });
 
