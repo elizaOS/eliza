@@ -38,7 +38,7 @@ import {
 	buildActionCatalog,
 	type LocalizedActionExampleResolver,
 } from "../runtime/action-catalog";
-import { canActionRun } from "../runtime/action-gate";
+import { actionGateFailure, canActionRun } from "../runtime/action-gate";
 import { retrieveActions } from "../runtime/action-retrieval";
 import { tierActionResults } from "../runtime/action-tiering";
 import {
@@ -71,7 +71,6 @@ import {
 	type ExecutePlannedToolCallContext,
 	type ExecutePlannedToolCallOptions,
 	executePlannedToolCall,
-	getGateFailure,
 } from "../runtime/execute-planned-tool-call";
 import {
 	type FactsAndRelationshipsRunResult,
@@ -5623,31 +5622,23 @@ export async function runShortcutGate(args: {
 	const action = args.runtime.actions.find((a) => a.name === target.name);
 	if (!action) return null;
 
-	// #8791/#12088: enforce the SAME access gate the planned-tool-call path
-	// applies (getGateFailure) BEFORE validating or running the target action.
-	// The shortcut path previously reached action.handler based only on the
-	// shortcut's own requiresAuth/requiresElevated flags, so a USER could hit an
-	// OWNER-gated action (e.g. SECRETS) via a shortcut lacking requiresElevated.
-	// The action's own contexts are treated as active — mirroring
-	// executeV5PlannedToolCall — so enforcement reduces to the declared
-	// role/context gates with identical strength to the planner path.
-	const gateFailure = getGateFailure(action, {
+	// #12087 Item 3: enforce the target action's DECLARED gate (roleGate +
+	// contextGate + private-action + ACTION_ROLE_POLICY) via the same chokepoint
+	// the planned-tool-call executor uses, BEFORE validate()/handler(). Previously
+	// the shortcut path invoked the handler directly, so a shortcut lacking
+	// `requiresElevated` that targeted an OWNER-gated action (e.g. SECRETS) let any
+	// USER execute it — the registry's coarse auth/elevated flags were the only
+	// protection. The shortcut runs pre-planner, so no contexts are active yet:
+	// role-gated actions still gate by role; a context-gated action is conservatively
+	// withheld from the shortcut fast-path (it can still run through the planner).
+	const gateFailure = actionGateFailure(action, {
 		message: args.message,
-		state: args.state,
-		activeContexts: mergeAgentContexts(undefined, action.contexts),
 		userRoles: [args.senderRole],
-		previousResults: [],
 	});
 	if (gateFailure) {
 		args.runtime.logger?.debug?.(
-			{
-				src: "shortcut-gate",
-				shortcut: match.shortcut.id,
-				action: action.name,
-				senderRole: args.senderRole,
-				gateFailure,
-			},
-			"shortcut target blocked by action gate; falling through to pipeline",
+			{ src: "shortcut-gate", action: action.name, reason: gateFailure },
+			"shortcut target action failed the role/context gate; falling through to pipeline",
 		);
 		return null;
 	}

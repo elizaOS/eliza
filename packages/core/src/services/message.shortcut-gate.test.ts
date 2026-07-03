@@ -242,80 +242,62 @@ describe("runShortcutGate (#8791 pre-LLM gate)", () => {
 		expect(shortcutEvents).toHaveLength(1);
 	});
 
-	it("blocks a USER from an OWNER-gated action reached via a shortcut (#12088)", async () => {
-		// The shortcut deliberately omits requiresElevated, so registry.match()
-		// admits it for a USER — the target action's declared roleGate is now the
-		// only thing standing between a USER and the OWNER-gated handler.
-		const handler = vi.fn(async () => ({ success: true, text: "secret" }));
-		const gatedAction: Action = {
-			name: "OWNER_ONLY_ACTION",
-			description: "owner only",
+	// #12087 Item 3: the shortcut path must enforce the target action's declared
+	// roleGate before running its handler. Previously it called validate()/handler()
+	// directly, so a shortcut targeting an OWNER-gated action was reachable by any
+	// USER whose shortcut lacked `requiresElevated`.
+	function ownerGatedEcho(handler: Action["handler"]): Action {
+		return {
+			name: "ECHO_COMMAND",
+			description: "owner-only echo",
 			roleGate: { minRole: "OWNER" },
 			validate: async () => true,
 			handler,
 		};
-		const { runtime, useModel } = makeRuntime({ actions: [gatedAction] });
-		(runtime.shortcutRegistry as ShortcutRegistry).register({
-			id: "cmd:owner",
-			kind: "explicit",
-			aliases: ["/owner"],
-			target: { kind: "action", name: "OWNER_ONLY_ACTION" },
-		});
+	}
 
+	it("rejects a USER triggering an OWNER-gated shortcut action (never runs the handler)", async () => {
+		const handler = vi.fn(async () => ({ success: true, text: "secret" }));
+		const { runtime, useModel } = makeRuntime({
+			actions: [ownerGatedEcho(handler)],
+		});
 		const result = await runShortcutGate({
 			// biome-ignore lint/suspicious/noExplicitAny: minimal fake runtime
 			runtime: runtime as any,
-			message: msg("/owner secrets"),
+			message: msg("/echo hi"),
 			state: {} as State,
 			responseId,
 			senderRole: "USER",
 		});
-
-		// getGateFailure rejects the USER before validate/handler run: the gate
-		// falls through to the normal pipeline (which enforces the gate again).
 		expect(result).toBeNull();
 		expect(handler).not.toHaveBeenCalled();
 		expect(useModel).not.toHaveBeenCalled();
 	});
 
-	it("still runs the same OWNER-gated shortcut action for an OWNER sender (#12088)", async () => {
+	it("allows an OWNER to trigger the same OWNER-gated shortcut action", async () => {
 		const handler = vi.fn(
 			async (
 				_rt: unknown,
 				_m: unknown,
 				_s: unknown,
 				_o: unknown,
-				callback?: (content: { text: string }) => Promise<unknown>,
+				cb?: (c: { text: string }) => Promise<unknown>,
 			) => {
-				if (callback) await callback({ text: "secret-value" });
-				return { success: true, text: "secret-value" };
+				if (cb) await cb({ text: "secret ok" });
+				return { success: true, text: "secret ok" };
 			},
 		);
-		const gatedAction: Action = {
-			name: "OWNER_ONLY_ACTION",
-			description: "owner only",
-			roleGate: { minRole: "OWNER" },
-			validate: async () => true,
-			// biome-ignore lint/suspicious/noExplicitAny: handler spy shape
-			handler: handler as any,
-		};
-		const { runtime } = makeRuntime({ actions: [gatedAction] });
-		(runtime.shortcutRegistry as ShortcutRegistry).register({
-			id: "cmd:owner",
-			kind: "explicit",
-			aliases: ["/owner"],
-			target: { kind: "action", name: "OWNER_ONLY_ACTION" },
+		const { runtime } = makeRuntime({
+			actions: [ownerGatedEcho(handler as unknown as Action["handler"])],
 		});
-
 		const result = await runShortcutGate({
 			// biome-ignore lint/suspicious/noExplicitAny: minimal fake runtime
 			runtime: runtime as any,
-			message: msg("/owner secrets"),
+			message: msg("/echo hi"),
 			state: {} as State,
 			responseId,
 			senderRole: "OWNER",
 		});
-
 		expect(result?.kind).toBe("direct_reply");
 		expect(handler).toHaveBeenCalledTimes(1);
 	});

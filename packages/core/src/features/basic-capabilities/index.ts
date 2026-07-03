@@ -43,7 +43,6 @@ import { EvaluatorService } from "../../services/evaluator.ts";
 import { OptimizedPromptService } from "../../services/optimized-prompt.ts";
 import { resolveOptimizedPromptForRuntime } from "../../services/optimized-prompt-resolver.ts";
 import { TaskService } from "../../services/task.ts";
-import { TargetSourceRegistryService } from "../../target-sources/registry.ts";
 import { EventType } from "../../types/events.ts";
 import type {
 	ActionEventPayload,
@@ -73,11 +72,8 @@ import type {
 import { MemoryType } from "../../types/memory.ts";
 import { ModelType } from "../../types/model.ts";
 import type { ServiceClass } from "../../types/plugin.ts";
-import {
-	ChannelType,
-	ContentType,
-	type JsonValue,
-} from "../../types/primitives.ts";
+import type { JsonValue } from "../../types/primitives.ts";
+import { ChannelType, ContentType } from "../../types/primitives.ts";
 import {
 	composePromptFromState,
 	getLocalServerUrl,
@@ -784,6 +780,33 @@ const postGeneratedHandler = async (
 /**
  * Syncs a single user into an entity
  */
+/**
+ * World metadata for a DM channel. The DM sender is granted OWNER of their DM
+ * world ONLY when they are a configured canonical owner (#12087 Item 2). Writing
+ * `roles[entityId] = OWNER` for EVERY DM sender (the prior behavior) made anyone
+ * who could DM the agent the OWNER of their own DM world — and with no canonical
+ * owner configured (the default), that grant is honored by `resolveOwnershipRole`,
+ * clearing every `minRole: OWNER` gate (SECRETS, SHELL, …) for that sender. The
+ * grant now goes through the auditable `recordOwnerGrant` API behind an explicit
+ * owner match; a non-owner DM sender gets an empty (non-owner) world.
+ */
+export function buildDmWorldMetadata(
+	runtime: IAgentRuntime,
+	entityId: string,
+): Record<string, JsonValue> {
+	if (getConfiguredOwnerEntityIds(runtime).includes(entityId)) {
+		const grant: RolesWorldMetadata = {};
+		recordOwnerGrant(grant, entityId);
+		return {
+			ownership: { ownerId: entityId },
+			roles: grant.roles ?? {},
+			roleSources: grant.roleSources ?? {},
+			settings: {}, // Initialize empty settings for setup
+		};
+	}
+	return { settings: {} };
+}
+
 const syncSingleUser = async (
 	entityId: UUID,
 	runtime: IAgentRuntime,
@@ -819,24 +842,10 @@ const syncSingleUser = async (
 	const roomId = createUniqueUuid(runtime, channelId);
 	const worldId = createUniqueUuid(runtime, messageServerId);
 
-	// DM worlds get an empty settings bucket for setup. Ownership is NOT granted
-	// to whoever happens to be DMing the agent: hardcoding
-	// `ownership.ownerId = entityId` + `roles[entityId] = OWNER` here promoted
-	// EVERY DM sender to OWNER (clearing every `minRole: OWNER` gate, including
-	// SECRETS) whenever no canonical owner was configured — the default. Owner
-	// resolution belongs to roles.ts. Only record an OWNER grant when this sender
-	// is a CONFIGURED owner (ELIZA_ADMIN_ENTITY_ID / owner contacts), via the
-	// sanctioned `recordOwnerGrant` API (explicit + auditable, #9948); otherwise
-	// leave the world ownerless so the sender resolves to a non-OWNER role.
-	let worldMetadata: Record<string, JsonValue> | undefined;
-	if (type === ChannelType.DM) {
-		const dmMetadata: Record<string, JsonValue> = { settings: {} };
-		if (getConfiguredOwnerEntityIds(runtime).includes(entityId)) {
-			dmMetadata.ownership = { ownerId: entityId };
-			recordOwnerGrant(dmMetadata as unknown as RolesWorldMetadata, entityId);
-		}
-		worldMetadata = dmMetadata;
-	}
+	const worldMetadata =
+		type === ChannelType.DM
+			? buildDmWorldMetadata(runtime, entityId)
+			: undefined;
 
 	runtime.logger.info(
 		{
@@ -1404,10 +1413,6 @@ export const basicServices: ServiceClass[] = [
 	// surfaces them back into routing via the CHANNEL_TOPICS provider.
 	ChannelTopicsService,
 	SensitiveRequestDispatchRegistryService,
-	// Connector target-source registry — connector plugins register their
-	// addressable-target enumerators here at load; the host's
-	// connector-target-catalog drains it for the workflow clarification UI.
-	TargetSourceRegistryService,
 ];
 
 /**
