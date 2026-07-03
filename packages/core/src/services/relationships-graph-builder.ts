@@ -1,3 +1,4 @@
+import { getCloudAuthService } from "../cloud-auth-service";
 import type {
 	Entity,
 	IAgentRuntime,
@@ -2140,9 +2141,7 @@ async function buildGraphModel(
 	const ownerEntityId = (await resolvers
 		.resolveOwnerEntityId(runtime)
 		.catch(() => null)) as UUID | null;
-	const cloudAuth = runtime.getService("CLOUD_AUTH") as {
-		getUserId?: () => string | undefined;
-	} | null;
+	const cloudAuth = getCloudAuthService(runtime);
 	const cloudUserId = asString(cloudAuth?.getUserId?.()) ?? null;
 	const configuredOwnerName = await resolvers
 		.fetchConfiguredOwnerName()

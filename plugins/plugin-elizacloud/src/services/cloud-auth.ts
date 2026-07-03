@@ -19,6 +19,7 @@
  */
 
 import {
+  CLOUD_AUTH_SERVICE_TYPE,
   type RuntimeEnvRecord,
   type IAgentRuntime,
   logger,
@@ -487,7 +488,7 @@ export function decideRevalidation(
 }
 
 export class CloudAuthService extends Service {
-  static serviceType = "CLOUD_AUTH";
+  static serviceType = CLOUD_AUTH_SERVICE_TYPE;
   capabilityDescription = "Eliza Cloud device authentication and SSO session helpers";
 
   private client: CloudApiClient;

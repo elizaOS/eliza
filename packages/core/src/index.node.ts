@@ -23,6 +23,7 @@ export * from "./capabilities";
 export * from "./character";
 // Export character utilities
 export * from "./character-utils";
+export * from "./cloud-auth-service";
 export * from "./cloud-routing";
 // Connection management (ensureConnection/ensureConnections) - standalone batch helpers
 export * from "./connection";
