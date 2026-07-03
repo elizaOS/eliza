@@ -111,15 +111,23 @@ mock.module("@/db/repositories/affiliates", () => ({
 
 // --- Credits ledger: reserve stub reproducing the REAL hold arithmetic
 // (credits.ts reserve(): estimatedCost × estimatedCostMultiplier, buffered by
-// COST_BUFFER) so reservedAmount is faithful to what prod would hold. ---------
+// COST_BUFFER, thrown InsufficientCreditsError when the org balance can't
+// cover the hold) so reservedAmount AND the 402 gate are faithful to prod. ----
+let orgBalanceUsd = Number.POSITIVE_INFINITY;
 const reconcile = mock(async (_actualCost: number) => undefined);
 const reserve = mock(
   async (
     params: { estimatedCostMultiplier?: number } & Record<string, unknown>,
   ) => {
     const multiplier = params.estimatedCostMultiplier ?? 1;
+    const hold = BASE_COST * multiplier * COST_BUFFER;
+    if (hold > orgBalanceUsd) {
+      // The REAL class the route's instanceof checks against (credits.ts,
+      // re-exported by ai-billing) — mirrors credits.ts reserve() fail-closed.
+      throw new creditsActual.InsufficientCreditsError(hold, orgBalanceUsd);
+    }
     return {
-      reservedAmount: BASE_COST * multiplier * COST_BUFFER,
+      reservedAmount: hold,
       reservationTransactionId: "reservation-1",
       reconcile,
     };
@@ -229,6 +237,7 @@ function post(body: unknown, ctx: ExecutionContext, affiliateCode?: string) {
 beforeEach(() => {
   affiliateUserId = AFFILIATE_USER;
   affiliateActive = true;
+  orgBalanceUsd = Number.POSITIVE_INFINITY;
   requireUserOrApiKeyWithOrg.mockClear();
   resolveInferenceAuthContext.mockClear();
   enforceOrgRateLimit.mockClear();
@@ -348,6 +357,47 @@ describe("POST /api/v1/embeddings — affiliate markup is reserved upfront (#120
     };
     expect(reserveArg.estimatedCostMultiplier).toBeUndefined();
     expect(reconcile.mock.calls[0][0]).toBeCloseTo(BASE_COST, 6);
+    expect(addEarnings).not.toHaveBeenCalled();
+  });
+
+  test("caller who can afford base but NOT base+markup is 402'd upfront — no embedding, no settle, no mint", async () => {
+    // $0.20 covers the base hold ($0.10 × 1.5 = $0.15) but NOT the marked-up
+    // hold ($0.10 × 11 × 1.5 = $1.65). Pre-#12017 this request sailed through
+    // (the reserve never saw the affiliate) and settled a $1.10 charge against
+    // a $0.15 hold while minting $1.00 of cashable earnings.
+    orgBalanceUsd = 0.2;
+
+    // Positive control: WITHOUT the affiliate header the same balance passes.
+    const control = makeExecutionCtx();
+    const controlRes = await post(
+      { model: "text-embedding-3-small", input: "hi" },
+      control.ctx,
+    );
+    expect(controlRes.status).toBe(200);
+    await Promise.all(control.scheduled);
+    expect(reserve).toHaveBeenCalledTimes(1);
+
+    reserve.mockClear();
+    reconcile.mockClear();
+    addEarnings.mockClear();
+    embed.mockClear();
+
+    // The attack request: base affordable, base+markup not → fail-closed 402
+    // BEFORE the embedder runs, so nothing settles and nothing is minted.
+    const { ctx, scheduled } = makeExecutionCtx();
+    const res = await post(
+      { model: "text-embedding-3-small", input: "hi" },
+      ctx,
+      "PARTNER1000",
+    );
+    expect(res.status).toBe(402);
+    const body = (await res.json()) as { error: { type: string } };
+    expect(body.error.type).toBe("insufficient_quota");
+    await Promise.all(scheduled);
+
+    expect(reserve).toHaveBeenCalledTimes(1); // the marked-up reserve attempt
+    expect(embed).not.toHaveBeenCalled();
+    expect(reconcile).not.toHaveBeenCalled();
     expect(addEarnings).not.toHaveBeenCalled();
   });
 

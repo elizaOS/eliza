@@ -228,9 +228,26 @@ app.post("/", async (c) => {
     // Durable backstop selected by INFERENCE_BILLING_LEDGER (see chat route). The
     // DB ledger's atomic admission is itself the gate and needs no writable cache.
     const optimisticBillingEnabled = isOptimisticBillingEnabled();
+    // #12017 (part 2): a request carrying an affiliate code must take the
+    // SYNCHRONOUS reserve. Both optimistic fast paths below admit on a
+    // BASE-cost estimate (calculateCost only) — the affiliate markup
+    // (attacker-set, up to 1000%) is invisible to them because
+    // resolveBillableAffiliate lives inside reserveCredits, and on this route
+    // billUsage runs WITHOUT the reservation (#10557), so nothing clamps the
+    // affiliate credit to collected money on those paths. An optimistically
+    // admitted marked-up request could therefore settle far past the admission
+    // gate's headroom while still minting the full cashable affiliate cut —
+    // the same uncollectable-overage mint this issue fixes on the synchronous
+    // path, one env flag away. Falling through folds the markup into the
+    // upfront hold (estimatedCostMultiplier) and 402s upfront when the balance
+    // can't cover base+markup (fail-closed). This costs the fast path nothing
+    // where it matters: the optimistic paths exist for the internal
+    // agent-recall embed hot path, which never sends X-Affiliate-Code.
+    const optimisticAllowedForRequest =
+      optimisticBillingEnabled && affiliateCode === null;
     const useDbLedger =
       !!orgId &&
-      optimisticBillingEnabled &&
+      optimisticAllowedForRequest &&
       resolveInferenceBillingLedger() === "db";
 
     if (useDbLedger) {
@@ -278,7 +295,7 @@ app.post("/", async (c) => {
     if (
       !optimisticReady &&
       orgId &&
-      optimisticBillingEnabled &&
+      optimisticAllowedForRequest &&
       !useDbLedger &&
       isOptimisticBackstopAvailable()
     ) {

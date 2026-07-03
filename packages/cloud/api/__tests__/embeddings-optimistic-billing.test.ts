@@ -35,6 +35,7 @@ import * as languageModelActual from "@/lib/providers/language-model";
 import * as aiBillingActual from "@/lib/services/ai-billing";
 import * as inferenceAuthActual from "@/lib/services/inference-auth-context";
 import * as fastPathActual from "@/lib/services/inference-billing-fast-path";
+import * as ledgerActual from "@/lib/services/inference-billing-ledger";
 import * as usageActual from "@/lib/services/usage";
 
 const aiActual = require("ai") as Record<string, unknown>;
@@ -56,6 +57,7 @@ let backstopAvailable = true;
 let gateBalanceUsd = 100;
 let thresholdUsd = 5;
 let backstopPersists = true;
+let billingLedger = "kv"; // anything but "db" → the KV backstop branch
 
 // --- spies on the two terminal billing paths --------------------------------
 const writePendingInferenceCharge = mock(
@@ -118,6 +120,19 @@ mock.module("@/lib/services/inference-billing-fast-path", () => ({
   createOptimisticDebitSettler,
 }));
 
+// DB-ledger optimistic branch (#12017): the ledger selector is a knob and the
+// admission/settler are spied so the tests can prove which branch admitted.
+const admitInferenceChargeViaLedger = mock(
+  async () => ({ admitted: true }) as never,
+);
+const createLedgerDebitSettler = mock(() => async () => undefined);
+mock.module("@/lib/services/inference-billing-ledger", () => ({
+  ...ledgerActual,
+  resolveInferenceBillingLedger: () => billingLedger,
+  admitInferenceChargeViaLedger,
+  createLedgerDebitSettler,
+}));
+
 // Synchronous reserve path — spied so we can prove it is the fallback. billUsage
 // is a no-op return (the settle is not the observation point here).
 mock.module("@/lib/services/ai-billing", () => ({
@@ -158,6 +173,14 @@ mock.module("ai", () => ({
 const embeddingsRoute = (await import("../v1/embeddings/route")).default;
 
 afterAll(() => {
+  // Leave the knobs fail-safe BEFORE restoring the modules: bun's mock.module
+  // can leave already-evaluated importers (the route, first loaded by an
+  // earlier test file) bound to the mocked functions even after the registry
+  // restore below, and those closures read these knobs by reference. A leaked
+  // `billingEnabled=true` (or a "db" ledger) would silently flip LATER test
+  // files' requests onto an optimistic path their suites never account for.
+  billingEnabled = false;
+  billingLedger = "kv";
   mock.module(
     "@/lib/services/inference-auth-context",
     () => inferenceAuthActual,
@@ -169,6 +192,7 @@ afterAll(() => {
     "@/lib/services/inference-billing-fast-path",
     () => fastPathActual,
   );
+  mock.module("@/lib/services/inference-billing-ledger", () => ledgerActual);
   mock.module("@/lib/services/ai-billing", () => aiBillingActual);
   mock.module("@/lib/services/usage", () => usageActual);
   mock.module("ai", () => aiActual);
@@ -187,7 +211,7 @@ function makeExecutionCtx() {
   };
 }
 
-function post(body: unknown, ctx?: ExecutionContext) {
+function post(body: unknown, ctx?: ExecutionContext, affiliateCode?: string) {
   return embeddingsRoute.request(
     "/",
     {
@@ -196,6 +220,7 @@ function post(body: unknown, ctx?: ExecutionContext) {
         Authorization: "Bearer eliza_test_key",
         "Content-Type": "application/json",
         "x-request-id": CLIENT_REQUEST_ID,
+        ...(affiliateCode ? { "X-Affiliate-Code": affiliateCode } : {}),
       },
       body: JSON.stringify(body),
     },
@@ -211,9 +236,12 @@ describe("POST /api/v1/embeddings optimistic-billing route decision (#9899/#1010
     gateBalanceUsd = 100;
     thresholdUsd = 5;
     backstopPersists = true;
+    billingLedger = "kv";
     writePendingInferenceCharge.mockClear();
     reserveCredits.mockClear();
     createOptimisticDebitSettler.mockClear();
+    admitInferenceChargeViaLedger.mockClear();
+    createLedgerDebitSettler.mockClear();
   });
 
   test("eligible org takes the optimistic path: writes backstop, skips the synchronous reserve", async () => {
@@ -327,5 +355,73 @@ describe("POST /api/v1/embeddings optimistic-billing route decision (#9899/#1010
     // ...but a non-durable write must fall through to the synchronous reserve.
     expect(reserveCredits).toHaveBeenCalledTimes(1);
     expect(createOptimisticDebitSettler).not.toHaveBeenCalled();
+  });
+
+  // #12017: the optimistic branches admit on a BASE-cost estimate and this
+  // route's billUsage runs without the reservation (#10557), so an affiliate
+  // markup (attacker-set, up to 1000%) would be minted as cashable earnings
+  // against money the admission gate never accounted for. A request carrying
+  // X-Affiliate-Code must therefore take the SYNCHRONOUS reserve, whose hold
+  // folds the markup (reserveCredits → resolveBillableAffiliate →
+  // estimatedCostMultiplier — the markup arithmetic itself is pinned by
+  // embeddings-affiliate-reserve.test.ts).
+  test("X-Affiliate-Code forces the synchronous reserve even when the KV optimistic path is eligible (#12017)", async () => {
+    const { ctx, scheduled } = makeExecutionCtx();
+    const res = await post(
+      { model: "text-embedding-3-small", input: "hi" },
+      ctx,
+      "PARTNER1000",
+    );
+    await Promise.all(scheduled);
+    expect(res.status).toBe(200);
+
+    // Neither optimistic admission may see a marked-up request…
+    expect(writePendingInferenceCharge).not.toHaveBeenCalled();
+    expect(createOptimisticDebitSettler).not.toHaveBeenCalled();
+    // …the synchronous reserve runs and CARRIES the affiliate, so the hold
+    // covers base + markup and an uncollectable settle can't mint earnings.
+    expect(reserveCredits).toHaveBeenCalledTimes(1);
+    const reserveCalls = reserveCredits.mock.calls as unknown as Array<
+      [{ affiliateCode?: string | null }]
+    >;
+    expect(reserveCalls[0]?.[0]?.affiliateCode).toBe("PARTNER1000");
+  });
+
+  test("X-Affiliate-Code also bypasses the DB-ledger optimistic branch (#12017)", async () => {
+    billingLedger = "db";
+
+    // Positive control: WITHOUT the header the ledger branch admits and the
+    // synchronous reserve is skipped — proving the gate below is affiliate-
+    // specific, not a broken ledger branch.
+    const control = makeExecutionCtx();
+    const controlRes = await post(
+      { model: "text-embedding-3-small", input: "hi" },
+      control.ctx,
+    );
+    await Promise.all(control.scheduled);
+    expect(controlRes.status).toBe(200);
+    expect(admitInferenceChargeViaLedger).toHaveBeenCalledTimes(1);
+    expect(reserveCredits).not.toHaveBeenCalled();
+
+    admitInferenceChargeViaLedger.mockClear();
+    createLedgerDebitSettler.mockClear();
+    reserveCredits.mockClear();
+
+    const { ctx, scheduled } = makeExecutionCtx();
+    const res = await post(
+      { model: "text-embedding-3-small", input: "hi" },
+      ctx,
+      "PARTNER1000",
+    );
+    await Promise.all(scheduled);
+    expect(res.status).toBe(200);
+
+    expect(admitInferenceChargeViaLedger).not.toHaveBeenCalled();
+    expect(createLedgerDebitSettler).not.toHaveBeenCalled();
+    expect(reserveCredits).toHaveBeenCalledTimes(1);
+    const reserveCalls = reserveCredits.mock.calls as unknown as Array<
+      [{ affiliateCode?: string | null }]
+    >;
+    expect(reserveCalls[0]?.[0]?.affiliateCode).toBe("PARTNER1000");
   });
 });
