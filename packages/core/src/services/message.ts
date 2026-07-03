@@ -3903,12 +3903,30 @@ export function messageHandlerFromFieldResult(
 	// live bug where "build the app" came back with contexts=[simple] +
 	// candidateActionNames=[TASKS_SPAWN_AGENT], so shouldPreferCompleteDirectReply
 	// treated the spawn as "weak", suppressed it, and the bot said "I'm building
-	// it" while never spawning. Still safe: looksLikeCodingWorkRequest excludes
+	// it" while never spawning. Still safe: the text gate below excludes
 	// creative-writing / explanation asks, and the candidate must be a REGISTERED
 	// delegation action — so this never fires on a poem or a how-do-I question.
+	const modelRoutedPlanningContext = rawContexts.some(
+		(context) => context.toLowerCase() !== SIMPLE_CONTEXT_ID,
+	);
+	// Text gate for the delegation commitment. When the model routed a planning
+	// context of its OWN (dual model-authored signal: context + candidate), the
+	// commitment stands unless the ask is a class delegation can never serve
+	// (creative writing, explanation, explicit no-spawn) — requiring positive
+	// coding keywords in the CURRENT message was the live ack-then-nothing hole
+	// (2026-07-01, trajectory tj-df82b48e763b7b): a follow-up critique of prior
+	// build work ("this isn't your best work") carries no coding keywords — the
+	// work context lives in conversation history — so the complete-direct-reply
+	// override dropped the model's TASKS_SPAWN_AGENT plan and shipped its ack
+	// ("Let me take another pass…") as the whole turn. In the contradictory
+	// contexts=[simple] shape the candidate is the only signal, so the message
+	// itself must still look like coding work.
+	const delegationTextGate = modelRoutedPlanningContext
+		? !looksLikeDelegationExcludedAsk(currentMessageText)
+		: looksLikeCodingWorkRequest(currentMessageText);
 	const modelCommittedToDelegation =
 		!preemptDirect &&
-		looksLikeCodingWorkRequest(currentMessageText) &&
+		delegationTextGate &&
 		modelProvidedRunnableDelegationCandidate(
 			rawCandidateActions,
 			runtimeContext?.actions ?? [],
@@ -3922,10 +3940,38 @@ export function messageHandlerFromFieldResult(
 			// direct answer into forced planning.
 			{ requireUnambiguous: initialPlanningContexts.length === 0 },
 		);
+	// The model can also route a planning context AND name candidates that
+	// resolve to NOTHING in the registry (e.g. SEND_ATTACHMENT / UPLOAD_FILE for
+	// "attach that here"). That is still a committed plan — the model believes
+	// tool work is needed and wrote its replyText as an ACK per the Stage-1
+	// field contract — but the candidates expose a capability gap, so the
+	// complete-direct-reply override must not reinterpret the full-sentence ack
+	// ("On it — attaching now.") as a finished answer and ship the promise as
+	// the WHOLE turn (live ack-then-nothing regression, 2026-07-01: trajectory
+	// tj-823d6382b54c66). The planner turn is where an unresolvable plan gets an
+	// honest "I can't do that here" instead of a silent broken promise. Keyed on
+	// the model-authored plan shape (contexts + candidates it emitted vs the
+	// action registry), never on the reply text. Registered candidates are not
+	// commitment by themselves: weak-class ones stay overridable (a complete
+	// answer beats a stray SHELL hint), non-weak ones already block the override
+	// via hasOnlyWeakDirectReplyPlanningSignals, and delegation-class ones are
+	// the guard above.
+	const modelCommittedToPlanning =
+		!preemptDirect &&
+		modelRoutedPlanningContext &&
+		runtimeContext !== undefined &&
+		rawCandidateActions.some((name) => {
+			const normalized = normalizeActionIdentifier(name);
+			return (
+				canonicalPlannerControlActionName(normalized) === null &&
+				!exposedActionMatches(runtimeContext.actions, normalized)
+			);
+		});
 	const preferCompleteDirectReply =
 		!preemptDirect &&
 		requestedPlanning &&
 		!modelCommittedToDelegation &&
+		!modelCommittedToPlanning &&
 		shouldPreferCompleteDirectReply({
 			replyText: replyTextRaw,
 			candidateActions: runnableCandidateActions,
@@ -7271,28 +7317,38 @@ function looksLikeActionExplanationRequest(text: string): boolean {
 	return !asksToExecuteAfterExplanation;
 }
 
+// Ask classes a coding delegation can never serve: an explicit "don't spawn",
+// an explanation/teaching ask, or creative writing that isn't a coding task.
+// Shared by looksLikeCodingWorkRequest (as its exclusion list) and the
+// delegation-commitment gate in messageHandlerFromFieldResult.
+function looksLikeDelegationExcludedAsk(text: string): boolean {
+	const normalized = text.toLowerCase();
+	if (!normalized.trim()) {
+		return false;
+	}
+	if (
+		/\b(?:do not|don't|dont|without)\s+(?:spawn|delegate|use|start)\s+(?:a\s+)?(?:sub[- ]?agent|task[- ]?agent|coding agent|opencode|codex|claude)\b/iu.test(
+			normalized,
+		)
+	) {
+		return true;
+	}
+	if (looksLikeActionExplanationRequest(normalized)) {
+		return true;
+	}
+	return (
+		looksLikeCreativeWritingRequest(normalized) &&
+		!looksLikeCreativeCodingWorkRequest(normalized)
+	);
+}
+
 function looksLikeCodingWorkRequest(text: string): boolean {
 	const normalized = text.toLowerCase();
 	if (!normalized.trim()) {
 		return false;
 	}
 
-	if (
-		/\b(?:do not|don't|dont|without)\s+(?:spawn|delegate|use|start)\s+(?:a\s+)?(?:sub[- ]?agent|task[- ]?agent|coding agent|opencode|codex|claude)\b/iu.test(
-			normalized,
-		)
-	) {
-		return false;
-	}
-
-	if (looksLikeActionExplanationRequest(normalized)) {
-		return false;
-	}
-
-	if (
-		looksLikeCreativeWritingRequest(normalized) &&
-		!looksLikeCreativeCodingWorkRequest(normalized)
-	) {
+	if (looksLikeDelegationExcludedAsk(normalized)) {
 		return false;
 	}
 
