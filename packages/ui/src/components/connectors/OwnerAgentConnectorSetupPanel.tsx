@@ -19,7 +19,10 @@
 
 import { useConnectorAccounts } from "../../hooks/useConnectorAccounts";
 import { cn } from "../../lib/utils";
-import { ConnectorAccountList } from "./ConnectorAccountList";
+import {
+  CONNECTOR_UNKNOWN_ROLE_BUCKET,
+  ConnectorAccountList,
+} from "./ConnectorAccountList";
 
 export interface OwnerAgentConnectorSetupPanelProps {
   provider: string;
@@ -55,6 +58,14 @@ export function OwnerAgentConnectorSetupPanel({
     pollMs,
   });
 
+  // #12087 Item 32: accounts whose server role is unrecognized/missing are no
+  // longer mislabelled OWNER. Surface any such accounts in a distinct read-only
+  // section — outside the Owner/Agent sections — so they are neither dropped nor
+  // shown as the owner's own. Rendered only when at least one exists.
+  const hasUnknownRoleAccounts = accountsHook.accounts.some(
+    (account) => !account.role,
+  );
+
   return (
     <div className={cn("flex flex-col gap-3", className)}>
       {description ? <p className="text-xs text-muted">{description}</p> : null}
@@ -73,6 +84,14 @@ export function OwnerAgentConnectorSetupPanel({
           connectorId={connectorId}
           accountRole="AGENT"
           title={agentTitle}
+          externalAccounts={accountsHook}
+        />
+      ) : null}
+      {hasUnknownRoleAccounts ? (
+        <ConnectorAccountList
+          provider={provider}
+          connectorId={connectorId}
+          accountRole={CONNECTOR_UNKNOWN_ROLE_BUCKET}
           externalAccounts={accountsHook}
         />
       ) : null}

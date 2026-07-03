@@ -14,6 +14,19 @@ import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
 import { ConnectorAccountCard } from "./ConnectorAccountCard";
 
+/**
+ * Pseudo-role for accounts whose server role is unrecognized/missing (#12087
+ * Item 32). A list keyed on this bucket renders exactly those accounts —
+ * OUTSIDE the Owner section — so an unknown-role account is neither dropped nor
+ * mislabelled as the owner's own.
+ */
+export const CONNECTOR_UNKNOWN_ROLE_BUCKET = "UNKNOWN";
+
+/** Role a list section can filter on: a real UI role or the unknown bucket. */
+export type ConnectorAccountListRole =
+  | ConnectorAccountRole
+  | typeof CONNECTOR_UNKNOWN_ROLE_BUCKET;
+
 export interface ConnectorAccountListProps {
   provider: string;
   connectorId?: string;
@@ -32,9 +45,11 @@ export interface ConnectorAccountListProps {
    * agent's separate identity account(s). Filters the rendered accounts and
    * threads the role into the OAuth start request so the cloud stores the
    * resulting connection under the correct role. When omitted, the legacy
-   * "single flat list of accounts" behavior is preserved.
+   * "single flat list of accounts" behavior is preserved. The special value
+   * {@link CONNECTOR_UNKNOWN_ROLE_BUCKET} selects accounts whose role is
+   * unrecognized/missing (rendered read-only, outside the Owner section).
    */
-  accountRole?: ConnectorAccountRole;
+  accountRole?: ConnectorAccountListRole;
   /**
    * Optional pre-built `useConnectorAccounts` result. When provided, the
    * component reuses this external hook state instead of instantiating its
@@ -75,7 +90,9 @@ function openConnectorAuthUrl(authUrl: string | undefined): void {
   window.open(authUrl, "_blank", "noopener,noreferrer");
 }
 
-function defaultTitleForRole(role: ConnectorAccountRole | undefined): string {
+function defaultTitleForRole(
+  role: ConnectorAccountListRole | undefined,
+): string {
   switch (role) {
     case "OWNER":
       return "Owner accounts";
@@ -83,6 +100,8 @@ function defaultTitleForRole(role: ConnectorAccountRole | undefined): string {
       return "Agent accounts";
     case "TEAM":
       return "Team accounts";
+    case CONNECTOR_UNKNOWN_ROLE_BUCKET:
+      return "Unrecognized accounts";
     default:
       return "Connector accounts";
   }
@@ -119,17 +138,24 @@ export function ConnectorAccountList({
   }, [selectedAccountId, setConnectorSelectedAccountId]);
 
   const sortedAccounts = useMemo(() => {
-    const filtered = accountRole
-      ? connectorAccounts.accounts.filter(
-          (account) => account.role === accountRole,
-        )
-      : connectorAccounts.accounts;
+    const filtered =
+      accountRole === CONNECTOR_UNKNOWN_ROLE_BUCKET
+        ? connectorAccounts.accounts.filter((account) => !account.role)
+        : accountRole
+          ? connectorAccounts.accounts.filter(
+              (account) => account.role === accountRole,
+            )
+          : connectorAccounts.accounts;
     return sortConnectorAccounts(filtered, connectorAccounts.defaultAccountId);
   }, [
     connectorAccounts.accounts,
     connectorAccounts.defaultAccountId,
     accountRole,
   ]);
+
+  // The unknown/unrecognized bucket is read-only: it exists to surface
+  // mis-roled accounts, not to create new ones under an unknown role.
+  const canAddAccount = accountRole !== CONNECTOR_UNKNOWN_ROLE_BUCKET;
 
   const handleSelect = (accountId: string) => {
     setConnectorSelectedAccountId(accountId);
@@ -143,7 +169,10 @@ export function ConnectorAccountList({
       await connectorAccounts.add(body);
       return;
     }
-    const requestedRole: ConnectorAccountRole = accountRole ?? "OWNER";
+    const requestedRole: ConnectorAccountRole =
+      accountRole && accountRole !== CONNECTOR_UNKNOWN_ROLE_BUCKET
+        ? accountRole
+        : "OWNER";
     const result = await connectorAccounts.startOAuth({
       metadata: {
         requestedRole,
@@ -168,21 +197,23 @@ export function ConnectorAccountList({
         <h3 className="text-xs font-semibold uppercase tracking-wider text-muted">
           {effectiveTitle} ({sortedAccounts.length})
         </h3>
-        <Button
-          type="button"
-          variant="default"
-          size="sm"
-          disabled={addBusy}
-          onClick={() => void handleAdd()}
-          className="h-8 gap-1 px-2.5 text-xs"
-        >
-          {addBusy ? (
-            <Spinner className="h-3 w-3" />
-          ) : (
-            <Plus className="h-3.5 w-3.5" aria-hidden />
-          )}
-          Add account
-        </Button>
+        {canAddAccount ? (
+          <Button
+            type="button"
+            variant="default"
+            size="sm"
+            disabled={addBusy}
+            onClick={() => void handleAdd()}
+            className="h-8 gap-1 px-2.5 text-xs"
+          >
+            {addBusy ? (
+              <Spinner className="h-3 w-3" />
+            ) : (
+              <Plus className="h-3.5 w-3.5" aria-hidden />
+            )}
+            Add account
+          </Button>
+        ) : null}
       </div>
 
       {connectorAccounts.loading && !connectorAccounts.data ? (
