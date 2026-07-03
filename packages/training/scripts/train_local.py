@@ -661,6 +661,25 @@ def main() -> int:
         else:
             log.warning(msg)
         use_liger = False
+    # Liger has no validated gemma4_unified (dense 12B/31B) kernel path. Its
+    # fused RMSNorm/RoPE/CE assume the Gemma2/3 layer layout and silently
+    # corrupt the gemma4_unified forward — which adds per-layer q_norm/k_norm,
+    # a layer_scalar, and logit softcapping the Gemma3 kernels don't model — so
+    # the loss NaNs within the first optimizer steps and the saved checkpoint is
+    # all-NaN. Force Liger off for this arch (E2B/E4B "gemma4" stay on). The
+    # generic finite-weights guard (make_finite_weights_callback) is the second
+    # line of defense; this is the specific known-arch prevention.
+    _model_type = str(getattr(model.config, "model_type", "")).lower()
+    _arch_names = getattr(model.config, "architectures", None) or []
+    if use_liger and (
+        "gemma4_unified" in _model_type
+        or any("Gemma4Unified" in a for a in _arch_names)
+    ):
+        log.warning(
+            "Liger kernel disabled for gemma4_unified arch (no validated fused "
+            "kernel path; avoids NaN divergence in 12B/31B SFT)."
+        )
+        use_liger = False
     if use_liger and device == "cuda":
         try:
             from liger_kernel.transformers import _apply_liger_kernel_to_instance
