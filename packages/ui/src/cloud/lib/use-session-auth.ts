@@ -23,6 +23,7 @@ import {
   LocalStewardAuthContext,
   type LocalStewardAuthValue,
 } from "../shell/StewardProvider";
+import { isCloudApiKeyToken } from "./cloud-api-key-token";
 import { decodeJwtPayload } from "./jwt";
 
 export type StewardSessionUser = {
@@ -88,7 +89,11 @@ function nativeCloudApiKey(): string | null {
   if (typeof globalToken === "string" && globalToken.trim()) {
     return globalToken.trim();
   }
-  return getBootConfig().apiToken?.trim() || getElizaApiToken()?.trim() || null;
+  // Only a real cloud key (not the on-device agent bearer) counts as a native
+  // cloud session.
+  const configToken =
+    getBootConfig().apiToken?.trim() || getElizaApiToken()?.trim() || null;
+  return isCloudApiKeyToken(configToken) ? configToken : null;
 }
 
 function apiKeySessionId(token: string): string {

@@ -634,6 +634,14 @@ export class ElizaClient {
     } else {
       clearElizaApiToken();
     }
+    // A same-view sign-in/out (this is the only path that writes the token
+    // without a page load) must refresh any mounted session gate — e.g. the
+    // Apps tab — without a remount. `steward-token-sync` is the established
+    // "re-read your token" signal that use-session-auth already listens for.
+    // (#12046 Nit 2)
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("steward-token-sync"));
+    }
   }
 
   getBaseUrl(): string {

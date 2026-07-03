@@ -52,6 +52,25 @@ describe("getCloudAuthToken (Cloud = Steward everywhere)", () => {
   it("returns null when no token is available anywhere", () => {
     expect(getCloudAuthToken()).toBeNull();
   });
+
+  it("dispatches steward-token-sync on setToken so mounted gates refresh (#12046 Nit 2)", () => {
+    const client = new ElizaClient();
+    let syncs = 0;
+    const handler = () => {
+      syncs++;
+    };
+    window.addEventListener("steward-token-sync", handler);
+    try {
+      client.setToken("client-token");
+      client.setToken(null);
+      // Both the sign-in and the sign-out write must notify listeners — before
+      // the fix setToken dispatched nothing and the gate went stale until a
+      // remount.
+      expect(syncs).toBe(2);
+    } finally {
+      window.removeEventListener("steward-token-sync", handler);
+    }
+  });
 });
 
 describe("cloudTokenSecsRemaining", () => {
