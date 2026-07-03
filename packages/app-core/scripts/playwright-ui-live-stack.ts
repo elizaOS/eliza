@@ -337,6 +337,45 @@ async function readRequestBody(request: IncomingMessage): Promise<Buffer> {
   return Buffer.concat(chunks);
 }
 
+/**
+ * Proxy the request to the API, retrying the transient undici keep-alive race
+ * (`UND_ERR_SOCKET: other side closed` → `TypeError: fetch failed`). The node
+ * HTTP API server closes idle keep-alive connections on its own timeout; under
+ * the app's concurrent boot fan-out undici reuses a socket the server just
+ * closed and the fetch throws before the request is ever sent — so retrying on
+ * a fresh connection is safe (the handler never ran) and is what keeps the app
+ * boot (plugins/config/WS) from degrading into a "Reconnecting" partial render.
+ */
+async function fetchApiWithRetry(
+  input: string,
+  init: RequestInit,
+  attempts = 5,
+): Promise<Response> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      return await fetch(input, init);
+    } catch (error) {
+      lastError = error;
+      const message = error instanceof Error ? error.message : String(error);
+      const cause =
+        error instanceof Error && error.cause instanceof Error
+          ? error.cause.message
+          : "";
+      const transient =
+        message.includes("fetch failed") ||
+        cause.includes("other side closed") ||
+        cause.includes("UND_ERR_SOCKET") ||
+        cause.includes("ECONNRESET");
+      if (!transient || attempt === attempts - 1) {
+        throw error;
+      }
+      await sleep(50 * (attempt + 1));
+    }
+  }
+  throw lastError;
+}
+
 async function proxyUiRequest(args: {
   apiBase: string;
   request: IncomingMessage;
@@ -357,7 +396,7 @@ async function proxyUiRequest(args: {
       headers.authorization = authorization;
     }
 
-    const upstream = await fetch(
+    const upstream = await fetchApiWithRetry(
       `${args.apiBase}${requestUrl.pathname}${requestUrl.search}`,
       {
         body: body.byteLength > 0 ? body : undefined,

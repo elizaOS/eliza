@@ -1,0 +1,13 @@
+{
+  "conversationId": "cedd86c4-111d-4ede-a9c1-6322937f3342",
+  "wsProactiveFrames": [
+    "{\"type\":\"proactive-message\",\"conversationId\":\"cedd86c4-111d-4ede-a9c1-6322937f3342\",\"message\":{\"id\":\"e857fe79-eca9-49fc-984b-76d3cd9a770d\",\"role\":\"assistant\",\"text\":\"Want to see your latest balances?\",\"timestamp\":1783104333557,\"source\":\"proactive-interaction\"}}"
+  ],
+  "persisted": [
+    {
+      "text": "Want to see your latest balances?",
+      "source": "proactive-interaction"
+    }
+  ],
+  "bubbleCount": 1
+}
