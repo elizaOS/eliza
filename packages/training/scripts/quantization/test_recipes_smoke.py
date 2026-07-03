@@ -212,8 +212,7 @@ def test_legacy_push_model_to_hf_redirects_to_canonical_publishers():
 # Kernel-vs-recipe parity tests
 #
 # These tests pin the recipes to the canonical kernel references in
-# eliza/packages/inference/{reference,verify}/ and
-# eliza/packages/native-plugins/{qjl-cpu,polarquant-cpu}/.
+# packages/native/plugins/{turboquant-cpu,qjl-cpu,polarquant-cpu}/.
 #
 # Per packages/training/AGENTS.md §3:
 #   "Bit-exact with kernels — when a quantization recipe and a kernel
@@ -236,8 +235,8 @@ _TURBO_H = _KERNEL_PACKAGES_DIR / "inference" / "reference" / "turbo_kernels.h"
 
 
 # Canonical 4-bit Lloyd-Max centroids for N(0,1), bit-exact match required
-# against eliza/packages/native-plugins/polarquant-cpu/include/polarquant/polar_centroids.h
-# and eliza/packages/inference/verify/qjl_polar_ref.c.
+# against packages/native/plugins/polarquant-cpu/include/polarquant/polar_centroids.h
+# and the qjl-cpu reference kernels (packages/native/plugins/qjl-cpu/src/).
 _C_POLAR_Q4_CENTROIDS = (
     -2.754354807, -2.093562707, -1.643041510, -1.279739752,
     -0.962640978, -0.672392117, -0.397897103, -0.131757782,

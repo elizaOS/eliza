@@ -108,7 +108,8 @@ jobs:
                   scripts/test_eliza_record.py \
                   scripts/test_cap_distribution.py \
                   scripts/test_reward_fn.py \
-                  scripts/test_tier_caps.py"
+                  scripts/test_tier_caps.py \
+                  scripts/quantization/test_recipes_smoke.py"
 
       - name: Corpus-quality chain end-to-end smoke
         # Synthesizer dry-runs → classifier → audit --strict-phases →

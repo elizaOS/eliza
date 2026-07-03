@@ -6,10 +6,9 @@ codebook hash, expected per-block tolerance. The fragment is consumed by
 the inference manifest builder at publish time.
 
 This module owns the canonical pin between training-side recipes and the
-kernel references in eliza/packages/inference/{reference,verify}/ and
-eliza/packages/native-plugins/{qjl-cpu,polarquant-cpu}/. When a kernel
-constant changes, the matching value here MUST be bumped in lockstep,
-otherwise the publish gate's parity tests fail.
+kernel references in packages/native/plugins/{turboquant-cpu,qjl-cpu,
+polarquant-cpu}/. When a kernel constant changes, the matching value here MUST
+be bumped in lockstep, otherwise the publish gate's parity tests fail.
 
 The helper has no torch/transformers imports so unit tests can validate
 manifest correctness without loading a model.
@@ -21,9 +20,9 @@ from __future__ import annotations
 # Codebook hashes pinned to the canonical kernel references.
 #
 # turbo3/turbo4/turbo3_tcq codebooks live in
-#   eliza/packages/inference/reference/turbo_kernels.c
+#   packages/native/plugins/turboquant-cpu/include/turboquant/turboquant.h
 # polar_q4 centroids live in
-#   eliza/packages/native-plugins/polarquant-cpu/include/polarquant/polar_centroids.h
+#   packages/native/plugins/polarquant-cpu/include/polarquant/polar_centroids.h
 # qjl1_256 has no centroid table — it's sign-only — so its "hash" identifies
 # the block layout convention rather than a numeric codebook.
 #
