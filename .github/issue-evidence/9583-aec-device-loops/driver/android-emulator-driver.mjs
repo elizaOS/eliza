@@ -52,15 +52,17 @@ async function cdpConnect() {
   const pid = adb("shell", "pidof", "ai.elizaos.app").trim();
   if (!pid) throw new Error("ai.elizaos.app not running");
   log(`app pid ${pid}`);
-  adb("forward", `tcp:${CDP_PORT}`, `localabstract:webview_devtools_remote_${pid}`);
+  adb(
+    "forward",
+    `tcp:${CDP_PORT}`,
+    `localabstract:webview_devtools_remote_${pid}`,
+  );
   const targets = await (
     await fetch(`http://127.0.0.1:${CDP_PORT}/json`)
   ).json();
   const page = targets.find(
     (t) =>
-      t.type === "page" &&
-      /localhost/.test(t.url) &&
-      t.webSocketDebuggerUrl,
+      t.type === "page" && /localhost/.test(t.url) && t.webSocketDebuggerUrl,
   );
   if (!page) {
     throw new Error(
@@ -129,9 +131,7 @@ async function stageFarEndUrl() {
   const CHUNK = 256 * 1024;
   for (let off = 0; off < dataUrl.length; off += CHUNK) {
     const part = dataUrl.slice(off, off + CHUNK);
-    await evalJs(
-      `window.__aecFarUrl += ${JSON.stringify(part)}; void 0`,
-    );
+    await evalJs(`window.__aecFarUrl += ${JSON.stringify(part)}; void 0`);
   }
   const len = await evalJs(`window.__aecFarUrl.length`);
   log(`staged far-end data URL (${len} chars) from ${FAR_END_WAV}`);
@@ -158,7 +158,8 @@ async function runPass({ tag, doubleTalkText, farUrlExpr }) {
     const parsed = JSON.parse(state);
     if (parsed.log.some((l) => l.includes("play TTS"))) break;
     if (parsed.state === "error" || parsed.state === "done") break;
-    if (Date.now() - t0 > 180_000) throw new Error("timeout waiting for playback");
+    if (Date.now() - t0 > 180_000)
+      throw new Error("timeout waiting for playback");
     await new Promise((r) => setTimeout(r, 500));
   }
 
@@ -193,7 +194,13 @@ async function runPass({ tag, doubleTalkText, farUrlExpr }) {
 // ── Main ───────────────────────────────────────────────────────────────────
 log(`granting RECORD_AUDIO`);
 try {
-  adb("shell", "pm", "grant", "ai.elizaos.app", "android.permission.RECORD_AUDIO");
+  adb(
+    "shell",
+    "pm",
+    "grant",
+    "ai.elizaos.app",
+    "android.permission.RECORD_AUDIO",
+  );
 } catch (err) {
   log(`grant failed (may already hold it): ${err}`);
 }

@@ -373,7 +373,9 @@ async function runAecLoop(
       ttsBytes = await ttsRes.arrayBuffer();
     }
     const ttsBuffer = await ctx.decodeAudioData(ttsBytes.slice(0));
-    log(`tts decoded ${ttsBuffer.duration.toFixed(2)}s @${ttsBuffer.sampleRate}`);
+    log(
+      `tts decoded ${ttsBuffer.duration.toFixed(2)}s @${ttsBuffer.sampleRate}`,
+    );
 
     // Playback branch: source → tap → destination (the device speaker). The
     // tap sees the RENDERED samples — the live playback-reference producer.
