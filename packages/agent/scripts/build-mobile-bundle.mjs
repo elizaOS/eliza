@@ -578,6 +578,7 @@ const corePackages = [
   "@elizaos/core",
   "@elizaos/shared",
   "@elizaos/shared/brand",
+  "@elizaos/shared/voice/aec",
   "@elizaos/shared-brand",
   "@elizaos/ui",
   "@elizaos/plugin-sql",
@@ -618,6 +619,21 @@ const dedupeTargets = {
     "shared",
     "src",
     "brand",
+    "index.ts",
+  ),
+  // Pin the AEC subpath to src as well (#11373). Without this the subpath
+  // resolves through the exports map to the compiled `dist/voice/aec/index.js`
+  // re-export barrel, which Bun.build's lazy CJS-interop lowering drops while
+  // keeping its consumers — on device the live-diarization status route then
+  // dies with `EchoReferenceBuffer is not defined` at session construction
+  // (invisible to the module-load smoke, which never constructs the session).
+  "@elizaos/shared/voice/aec": path.resolve(
+    repoRoot,
+    "packages",
+    "shared",
+    "src",
+    "voice",
+    "aec",
     "index.ts",
   ),
   "@elizaos/shared-brand": path.resolve(
