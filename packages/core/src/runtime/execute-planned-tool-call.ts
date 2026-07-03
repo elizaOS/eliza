@@ -17,20 +17,16 @@ import type {
 	Memory,
 	StreamChunkCallback,
 } from "../types";
-import type { AgentContext, RoleGate, RoleGateRole } from "../types/contexts";
+import type { AgentContext, RoleGateRole } from "../types/contexts";
 import { EventType } from "../types/events";
 import type { ToolCall } from "../types/model";
 import type { UUID } from "../types/primitives";
 import type { State } from "../types/state";
-import {
-	_resetActionRolePolicyCacheForTests as _resetCacheForTests,
-	resolveActionRolePolicyRole,
-} from "./action-role-policy";
+import { actionGateFailure } from "./action-gate";
+import { _resetActionRolePolicyCacheForTests as _resetCacheForTests } from "./action-role-policy";
 import { runWithActionRoutingContext } from "./action-routing-context";
-import { satisfiesContextGate, satisfiesRoleGate } from "./context-gates";
 import { parseJsonObject } from "./json-output";
 import type { PlannerToolCall } from "./planner-loop";
-import { privateActionAllowedOnTurn } from "./private-action-gate";
 
 export interface PlannedToolCall {
 	id?: string;
@@ -190,7 +186,7 @@ export async function executePlannedToolCall(
 	}
 
 	const executorCtx = await withResolvedUserRoles(runtime, ctx);
-	const gateFailure = getGateFailure(action, executorCtx);
+	const gateFailure = actionGateFailure(action, executorCtx);
 	if (gateFailure) {
 		return emitToolResult(toolCall, failureResult(action.name, gateFailure));
 	}
@@ -509,53 +505,6 @@ function actionResultToStreamingResult(
 }
 
 export const _resetActionRolePolicyCacheForTests = _resetCacheForTests;
-
-/**
- * The single authoritative access gate for running an action's handler.
- * Enforces (in order): the private-action turn gate, ACTION_ROLE_POLICY, the
- * action's contextGate, and the action's roleGate. Returns a human-readable
- * reason string when the action must be blocked, or `undefined` when allowed.
- *
- * Exported so alternate execution entry points (e.g. the pre-LLM shortcut gate
- * in services/message.ts) enforce the exact same policy instead of duplicating
- * it — callers MUST supply already-resolved `ctx.userRoles`.
- */
-export function getGateFailure(
-	action: Action,
-	ctx: ExecutePlannedToolCallContext,
-): string | undefined {
-	// Private actions may only run inside the agent's own autonomous loop.
-	// The planner exposure gate already withholds them on user turns; this is a
-	// defense-in-depth backstop so a hallucinated tool call cannot run one.
-	if (!privateActionAllowedOnTurn(action, ctx.message)) {
-		return `Action ${action.name} is private and can only run in the agent's autonomous loop`;
-	}
-
-	const policyRole = resolveActionRolePolicyRole(action);
-	if (policyRole) {
-		return satisfiesRoleGate(ctx.userRoles, { minRole: policyRole })
-			? undefined
-			: `Action ${action.name} is not allowed for the current role`;
-	}
-
-	const contextGate = action.contextGate ?? {
-		contexts: action.contexts,
-		roleGate: action.roleGate,
-	};
-
-	if (!satisfiesContextGate(ctx.activeContexts, contextGate, ctx.userRoles)) {
-		return `Action ${action.name} is not allowed in the current context`;
-	}
-
-	if (
-		!satisfiesRoleGate(ctx.userRoles, action.roleGate as RoleGate | undefined)
-	) {
-		return `Action ${action.name} is not allowed for the current role`;
-	}
-
-	return undefined;
-}
-
 /**
  * Short-form enum completion. When the action has a single closed-enum
  * parameter, accept three input shapes from the planner:

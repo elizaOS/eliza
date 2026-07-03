@@ -1,4 +1,4 @@
-import type { RoleName } from "../roles";
+import { isAdminRank, type RoleName } from "../roles";
 import type { AccessContext, Memory, MemoryScope, UUID } from "../types";
 
 /**
@@ -29,7 +29,7 @@ export function actorFromAccessContext(
 	if (ctx.requesterEntityId === agentId) {
 		return { entityId: agentId, role: "AGENT" };
 	}
-	if (ctx.isOwner || ctx.role === "OWNER" || ctx.role === "ADMIN") {
+	if (ctx.isOwner || isAdminRank(ctx.role)) {
 		return { entityId: ctx.requesterEntityId, role: "OWNER" };
 	}
 	return { entityId: ctx.requesterEntityId, role: "USER" };

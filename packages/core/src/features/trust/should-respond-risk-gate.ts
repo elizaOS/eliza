@@ -16,6 +16,7 @@
  *     single `TEXT_LARGE` adjudication. Called only when `shouldRespond === true`.
  */
 
+import { isAdminRank } from "../../roles.ts";
 import type { Memory } from "../../types/memory.ts";
 import { ModelType } from "../../types/model.ts";
 import type { PipelineHookSpec } from "../../types/pipeline-hooks.ts";
@@ -209,8 +210,7 @@ function roleKey(role: string | undefined): string {
 }
 
 function isTrustedRole(role: string | undefined): boolean {
-	const normalized = roleKey(role);
-	return normalized === "OWNER" || normalized === "ADMIN";
+	return isAdminRank(role);
 }
 
 export interface RoleKeyedRiskDecision {

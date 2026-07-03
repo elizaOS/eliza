@@ -32,25 +32,21 @@ import { logger } from "../logger";
 import { describeImageCached } from "../media";
 import { fetchRemoteMedia } from "../media/fetch";
 import { imageDescriptionTemplate, messageHandlerTemplate } from "../prompts";
-import { checkSenderRole } from "../roles";
+import { checkSenderRole, hasAtLeastRole, isAdminRank } from "../roles";
 import {
 	type ActionCatalog,
 	buildActionCatalog,
 	type LocalizedActionExampleResolver,
 } from "../runtime/action-catalog";
+import { canActionRun } from "../runtime/action-gate";
 import { retrieveActions } from "../runtime/action-retrieval";
-import { resolveActionRolePolicyRole } from "../runtime/action-role-policy";
 import { tierActionResults } from "../runtime/action-tiering";
 import {
 	addresseeIsNonOwnerBot,
 	applyAddressedTo,
 } from "../runtime/addressed-to";
 import { normalizeTopics } from "../runtime/builtin-field-evaluators";
-import {
-	filterByContextGate,
-	satisfiesContextGate,
-	satisfiesRoleGate,
-} from "../runtime/context-gates";
+import { filterByContextGate } from "../runtime/context-gates";
 import { computePrefixHashes, hashString } from "../runtime/context-hash";
 import {
 	appendContextEvent,
@@ -108,7 +104,6 @@ import {
 	type PlannerTrajectory,
 	runPlannerLoop,
 } from "../runtime/planner-loop";
-import { privateActionAllowedOnTurn } from "../runtime/private-action-gate";
 import {
 	extractReplyTextFromTranscript,
 	looksLikeRawFieldTranscript,
@@ -2255,14 +2250,12 @@ async function collectV5PlannerCandidateActions(args: {
 		if (!normalizedName || seen.has(normalizedName)) {
 			return false;
 		}
-		// Private actions are reserved for the agent's own autonomous loop and
-		// must never be exposed to the planner on a user-driven turn.
-		if (!privateActionAllowedOnTurn(action, args.message)) {
-			return false;
-		}
+		// One gate for exposure and execution (#12087 Item 9): private-action gate
+		// (private actions never reach the planner on a user turn) + ACTION_ROLE_POLICY
+		// + contextGate + roleGate, all via the shared chokepoint.
 		if (
-			!actionPassesPlannerExecutionGates({
-				action,
+			!canActionRun(action, {
+				message: args.message,
 				activeContexts,
 				userRoles: args.userRoles,
 			})
@@ -2410,27 +2403,6 @@ const CODING_SUB_AGENT_EXCLUDED_ACTIONS: ReadonlySet<string> = new Set(
 	// stripped), since that is what the filter compares against.
 	["VIEWS", "CLOSEVIEW", "CLOSEALLVIEWS", "TASKS"],
 );
-
-function actionPassesPlannerExecutionGates(args: {
-	action: Action;
-	activeContexts?: readonly AgentContext[];
-	userRoles?: readonly RoleGateRole[];
-}): boolean {
-	const policyRole = resolveActionRolePolicyRole(args.action);
-	if (policyRole) {
-		return satisfiesRoleGate(args.userRoles, { minRole: policyRole });
-	}
-
-	const contextGate = args.action.contextGate ?? {
-		contexts: args.action.contexts,
-		roleGate: args.action.roleGate,
-	};
-	if (!satisfiesContextGate(args.activeContexts, contextGate, args.userRoles)) {
-		return false;
-	}
-
-	return satisfiesRoleGate(args.userRoles, args.action.roleGate);
-}
 
 function getMessageHandlerCandidateActions(
 	messageHandler: MessageHandlerResult,
@@ -5635,12 +5607,12 @@ export async function runShortcutGate(args: {
 		.shortcutRegistry;
 	if (!registry || registry.size === 0) return null;
 
-	const authorized = args.senderRole === "OWNER" || args.senderRole === "ADMIN";
+	const authorized = isAdminRank(args.senderRole);
 	const match = registry.match(text, {
 		actions: args.runtime.actions.map((action) => action.name),
 		allowNatural: true,
 		isAuthorized: authorized,
-		isElevated: args.senderRole === "OWNER",
+		isElevated: hasAtLeastRole(args.senderRole, "OWNER"),
 	});
 	if (!match) return null;
 	const target = match.shortcut.target;
@@ -6505,10 +6477,13 @@ export async function runV5MessageRuntimeStage1(args: {
 						!CODING_SUB_AGENT_EXCLUDED_ACTIONS.has(
 							normalizeActionIdentifier(action.name),
 						) &&
-						actionPassesPlannerExecutionGates({
-							action,
+						// Static candidate-action set for a coding sub-agent — no concrete
+						// turn message here, so skip the private-action gate; the eventual
+						// execution still enforces it through the executor.
+						canActionRun(action, {
 							activeContexts: CODING_SUB_AGENT_CONTEXTS,
 							userRoles: [senderRole],
+							skipPrivateGate: true,
 						}),
 				)
 			: await collectV5PlannerCandidateActions({

@@ -7,8 +7,7 @@ import { emitStreamingHook, getStreamingContext } from "../streaming-context";
 import type { Action, ActionResult, IAgentRuntime } from "../types";
 import type { ContextEvent, ContextObject } from "../types/context-object";
 import type { JSONSchema, ToolDefinition } from "../types/model";
-import { isActionAllowedByRolePolicy } from "./action-role-policy";
-import { filterByContextGate } from "./context-gates";
+import { canActionRun } from "./action-gate";
 import {
 	type ExecutePlannedToolCallContext,
 	type ExecutePlannedToolCallOptions,
@@ -185,17 +184,20 @@ export async function runSubPlanner(
 		params.action.contexts,
 		...declaredChildActions.map((child) => child.contexts),
 	);
-	const contextGated = new Set(
-		filterByContextGate(
-			declaredChildActions,
-			authorizedActiveContexts,
-			params.ctx.userRoles,
-		),
-	);
-	const childActions = declaredChildActions.filter(
-		(child) =>
-			contextGated.has(child) ||
-			isActionAllowedByRolePolicy(child, params.ctx.userRoles),
+	// One gate for every path (#12087 Item 9). The prior `contextGated.has(child)
+	// || isActionAllowedByRolePolicy(child)` OR-filter admitted a child that passed
+	// its contextGate even when an ACTION_ROLE_POLICY entry the caller FAILS applied
+	// to it — policy is meant to REPLACE the declared gate, not be an alternative to
+	// it. canActionRun applies the same policy-or-gate precedence the executor uses.
+	// skipPrivateGate: child execution still runs through the executor, which
+	// enforces the private-action gate.
+	const childActions = declaredChildActions.filter((child) =>
+		canActionRun(child, {
+			message: params.ctx.message,
+			activeContexts: authorizedActiveContexts,
+			userRoles: params.ctx.userRoles,
+			skipPrivateGate: true,
+		}),
 	);
 	if (childActions.length === 0) {
 		throw new Error(

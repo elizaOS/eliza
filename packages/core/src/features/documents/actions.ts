@@ -276,6 +276,7 @@ async function getAddedByRole(
 	if (!message.entityId) return "RUNTIME";
 	if (message.entityId === runtime.agentId) return "AGENT";
 	const role = await checkSenderRole(runtime, message).catch(() => null);
+	// The comparison narrows role.role to the returned union subset (OWNER|ADMIN).
 	if (role?.role === "OWNER" || role?.role === "ADMIN") return role.role;
 	return "USER";
 }

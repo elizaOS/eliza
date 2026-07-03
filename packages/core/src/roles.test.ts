@@ -3,7 +3,9 @@ import {
 	CANONICAL_ROLE_RANK,
 	canModifyRole,
 	getEntityRole,
+	hasAtLeastRole,
 	hasRoleAccess,
+	isAdminRank,
 	isAgentSelf,
 	matchEntityToConnectorAdminWhitelist,
 	normalizeRole,
@@ -31,6 +33,52 @@ describe("normalizeRole", () => {
 		expect(normalizeRole("USER")).toBe("USER");
 		expect(normalizeRole("superuser")).toBe("GUEST");
 		expect(normalizeRole(null)).toBe("GUEST");
+	});
+
+	// #12087 Item 6: MEMBER is the USER-tier alias, not GUEST. Folding it to GUEST
+	// (the prior bug) demoted a stored MEMBER world role below a minRole:USER gate
+	// that the context-gate path grants — the two paths must agree on MEMBER.
+	it("resolves the MEMBER alias to its canonical USER tier (not GUEST)", () => {
+		expect(normalizeRole("MEMBER")).toBe("USER");
+		expect(normalizeRole("member")).toBe("USER");
+		expect(ROLE_RANK[normalizeRole("MEMBER")]).toBe(CANONICAL_ROLE_RANK.USER);
+	});
+
+	it("a stored MEMBER role clears a minRole:USER gate via both role paths", () => {
+		// getEntityRole (checkSenderRole path) must resolve MEMBER to a USER-rank
+		// role that satisfies a USER gate — matching satisfiesRoleGate (context path).
+		const stored = getEntityRole(
+			{ roles: { "entity-1": "MEMBER" as never } },
+			"entity-1",
+		);
+		expect(ROLE_RANK[stored]).toBeGreaterThanOrEqual(CANONICAL_ROLE_RANK.USER);
+		expect(satisfiesRoleGate(["MEMBER"], { minRole: "USER" })).toBe(true);
+		expect(gateRoleRank("MEMBER")).toBe(gateRoleRank("USER"));
+	});
+});
+
+describe("hasAtLeastRole / isAdminRank (#12087 Item 31)", () => {
+	it("ranks roles by CANONICAL_ROLE_RANK, not string identity", () => {
+		expect(hasAtLeastRole("OWNER", "ADMIN")).toBe(true);
+		expect(hasAtLeastRole("ADMIN", "ADMIN")).toBe(true);
+		expect(hasAtLeastRole("USER", "ADMIN")).toBe(false);
+		expect(hasAtLeastRole("MEMBER", "USER")).toBe(true); // alias resolves
+		expect(hasAtLeastRole("GUEST", "USER")).toBe(false);
+	});
+
+	it("fails closed for unknown/empty roles", () => {
+		expect(hasAtLeastRole(undefined, "ADMIN")).toBe(false);
+		expect(hasAtLeastRole(null, "USER")).toBe(false);
+		expect(hasAtLeastRole("superuser", "ADMIN")).toBe(false);
+	});
+
+	it("isAdminRank is true only for ADMIN and OWNER (case-insensitive)", () => {
+		expect(isAdminRank("owner")).toBe(true);
+		expect(isAdminRank("ADMIN")).toBe(true);
+		expect(isAdminRank("USER")).toBe(false);
+		expect(isAdminRank("member")).toBe(false);
+		expect(isAdminRank("GUEST")).toBe(false);
+		expect(isAdminRank(undefined)).toBe(false);
 	});
 });
 

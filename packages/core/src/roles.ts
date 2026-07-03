@@ -37,6 +37,29 @@ export const ROLE_RANK: Record<RoleName, number> = {
 	OWNER: CANONICAL_ROLE_RANK.OWNER,
 };
 
+/**
+ * True iff `role` ranks at least `minRole` on {@link CANONICAL_ROLE_RANK}. The
+ * rank-aware replacement for the scattered `isAdminRank(role)`
+ * string comparisons (#12087 Item 31) — those silently miss any tier added between
+ * ADMIN and OWNER and don't recognize the MEMBER/USER aliasing. Unknown/empty roles
+ * fall to the NONE floor (rank 0), so the predicate fails closed.
+ */
+export function hasAtLeastRole(
+	role: string | undefined | null,
+	minRole: keyof typeof CANONICAL_ROLE_RANK,
+): boolean {
+	const rank =
+		CANONICAL_ROLE_RANK[
+			(role ?? "").toUpperCase() as keyof typeof CANONICAL_ROLE_RANK
+		] ?? 0;
+	return rank >= CANONICAL_ROLE_RANK[minRole];
+}
+
+/** True iff `role` is ADMIN-rank or higher (ADMIN or OWNER). #12087 Item 31. */
+export function isAdminRank(role: string | undefined | null): boolean {
+	return hasAtLeastRole(role, "ADMIN");
+}
+
 export type RolesWorldMetadata = {
 	ownership?: { ownerId?: string };
 	roles?: Record<string, RoleName>;
@@ -539,6 +562,12 @@ export function matchEntityToConnectorAdminWhitelist(
 export function normalizeRole(raw: string | undefined | null): RoleName {
 	const upper = (raw ?? "").toUpperCase();
 	if (upper === "OWNER" || upper === "ADMIN" || upper === "USER") return upper;
+	// MEMBER is the USER-tier alias (CANONICAL_ROLE_RANK.MEMBER === .USER). Folding
+	// it to GUEST here (rank 2 → 1) silently demoted a stored "MEMBER" world role
+	// below a `minRole: USER` gate that the context-gate path (normalizeGateRole
+	// folds USER→MEMBER) would grant — the #12087 Item 6 asymmetry. Resolve MEMBER
+	// to its canonical USER tier so both paths agree.
+	if (upper === "MEMBER") return "USER";
 	return "GUEST";
 }
 
@@ -785,8 +814,8 @@ export async function checkSenderPrivateAccess(
 		entityId,
 		role,
 		isOwner: false,
-		isAdmin: role === "OWNER" || role === "ADMIN",
-		canManageRoles: role === "OWNER" || role === "ADMIN",
+		isAdmin: isAdminRank(role),
+		canManageRoles: isAdminRank(role),
 		hasPrivateAccess: explicitAccess !== null,
 		accessRole: explicitAccess?.role ?? null,
 		accessSource: explicitAccess?.source ?? null,
@@ -856,8 +885,8 @@ export async function checkSenderRole(
 		entityId,
 		role,
 		isOwner: role === "OWNER",
-		isAdmin: role === "OWNER" || role === "ADMIN",
-		canManageRoles: role === "OWNER" || role === "ADMIN",
+		isAdmin: isAdminRank(role),
+		canManageRoles: isAdminRank(role),
 	};
 }
 
