@@ -106,7 +106,9 @@ export function loadLocalInferenceRouteApi(): Promise<LocalInferenceRouteApi> {
  */
 export function loadLocalInferenceVoiceRouteApi(): Promise<LocalInferenceVoiceRouteApi> {
   voiceRouteApiPromise ??= (
-    import(/* @vite-ignore */ "@elizaos/plugin-local-inference/routes") as Promise<LocalInferenceVoiceRouteApi>
+    import(
+      /* @vite-ignore */ "@elizaos/plugin-local-inference/routes"
+    ) as Promise<LocalInferenceVoiceRouteApi>
   ).catch((err: unknown) => {
     voiceRouteApiPromise = null;
     throw err;

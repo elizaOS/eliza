@@ -164,7 +164,8 @@ const optionalPluginImports = {
   workflow: () => importOptionalPlugin("@elizaos/plugin-workflow"),
 };
 
-type LocalInferenceServerApi = LocalInferenceRouteApi & LocalInferenceVoiceRouteApi;
+type LocalInferenceServerApi = LocalInferenceRouteApi &
+  LocalInferenceVoiceRouteApi;
 
 /**
  * Combine the route + voice surfaces from the single subpath-owning loader

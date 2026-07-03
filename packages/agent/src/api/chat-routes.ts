@@ -52,12 +52,6 @@ import { startTrajectoryStepInDatabase } from "../runtime/trajectory-storage.ts"
 import { syncCharacterIntoConfig } from "../services/character-persistence.ts";
 import { detectRuntimeModel } from "./agent-model.ts";
 import {
-  type LocalInferenceChatMetadata,
-  type LocalInferenceCommandIntent,
-  type LocalInferenceRouteApi,
-  loadLocalInferenceRouteApi,
-} from "./local-inference-server-api.ts";
-import {
   executeFallbackParsedActions,
   maybeHandleDirectBinanceSkillRequest,
   parseFallbackActionBlocks,
@@ -81,6 +75,12 @@ import {
   isInsufficientCreditsError,
   isInsufficientCreditsMessage,
 } from "./credit-detection.ts";
+import {
+  type LocalInferenceChatMetadata,
+  type LocalInferenceCommandIntent,
+  type LocalInferenceRouteApi,
+  loadLocalInferenceRouteApi,
+} from "./local-inference-server-api.ts";
 import {
   buildWalletActionNotExecutedReply,
   cloneWithoutBlockedObjectKeys,
@@ -138,7 +138,8 @@ function getLocalInferenceChatApi(): Promise<LocalInferenceChatApi> {
         }),
       };
       try {
-        const mod = (await loadLocalInferenceRouteApi()) as Partial<LocalInferenceChatApi>;
+        const mod =
+          (await loadLocalInferenceRouteApi()) as Partial<LocalInferenceChatApi>;
         return {
           getLocalInferenceChatStatus:
             typeof mod.getLocalInferenceChatStatus === "function"

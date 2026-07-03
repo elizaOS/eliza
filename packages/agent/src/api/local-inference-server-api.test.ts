@@ -12,13 +12,11 @@ import * as loader from "./local-inference-server-api.ts";
  * subpath themselves — otherwise the stub knowledge is duplicated and drifts.
  */
 function readSibling(name: string): string {
-  return readFileSync(
-    fileURLToPath(new URL(name, import.meta.url)),
-    "utf8",
-  );
+  return readFileSync(fileURLToPath(new URL(name, import.meta.url)), "utf8");
 }
 
-const SUBPATH_IMPORT = /@elizaos\/plugin-local-inference\/(local-inference-routes|routes)\b/;
+const SUBPATH_IMPORT =
+  /@elizaos\/plugin-local-inference\/(local-inference-routes|routes)\b/;
 
 describe("local-inference-server-api loader (single subpath owner)", () => {
   it("exposes the two memoized subpath loaders", () => {
@@ -35,9 +33,9 @@ describe("local-inference-server-api loader (single subpath owner)", () => {
   });
 
   it("is the only api-route file that names the plugin subpaths", () => {
-    expect(SUBPATH_IMPORT.test(readSibling("./local-inference-server-api.ts"))).toBe(
-      true,
-    );
+    expect(
+      SUBPATH_IMPORT.test(readSibling("./local-inference-server-api.ts")),
+    ).toBe(true);
     for (const consumer of [
       "./server.ts",
       "./health-routes.ts",
