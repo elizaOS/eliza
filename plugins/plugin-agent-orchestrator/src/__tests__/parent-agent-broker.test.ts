@@ -313,17 +313,14 @@ describe("runParentAgentBroker", () => {
       vi.stubEnv("ELIZA_CLOUD_BASE_URL", "https://cloud.test");
     }
 
-    it("self-authorizes a paid self-spend command within the cap and strips the spend hint", async () => {
+    it("self-authorizes a fixed-cost self-spend command within the cap and strips the spend hint", async () => {
       stubAllowance("50");
       const fetchMock = vi.fn(
         async () =>
-          new Response(
-            JSON.stringify({ success: true, status: "registered" }),
-            {
-              status: 200,
-              headers: { "content-type": "application/json" },
-            },
-          ),
+          new Response(JSON.stringify({ success: true, id: "container-1" }), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          }),
       );
       vi.stubGlobal("fetch", fetchMock);
 
@@ -333,8 +330,8 @@ describe("runParentAgentBroker", () => {
         message: brokerMessage(),
         args: {
           mode: "cloud-command",
-          command: "domains.buy",
-          params: { id: "app-1", domain: "myapp.com", spendEstimateUsd: 14.95 },
+          command: "containers.create",
+          params: { image: "ghcr.io/acme/app:latest", spendEstimateUsd: 14.95 },
         },
       });
 
@@ -342,12 +339,14 @@ describe("runParentAgentBroker", () => {
       expect(result.text).not.toContain("Reply yes");
       expect(fetchMock).toHaveBeenCalledTimes(1);
       const [url, init] = fetchMock.mock.calls[0] as [URL, RequestInit];
-      expect(url.pathname).toBe("/api/v1/apps/app-1/domains/buy");
+      expect(url.pathname).toBe("/api/v1/containers");
       // The reserved spend hint must NOT leak into the Cloud request body.
-      expect(init.body).toBe(JSON.stringify({ domain: "myapp.com" }));
+      expect(init.body).toBe(
+        JSON.stringify({ image: "ghcr.io/acme/app:latest" }),
+      );
     });
 
-    it("requires confirmation when a self-spend command exceeds the allowance", async () => {
+    it("requires confirmation when a fixed-cost self-spend command exceeds the allowance", async () => {
       stubAllowance("10");
       const fetchMock = vi.fn();
       vi.stubGlobal("fetch", fetchMock);
@@ -358,13 +357,34 @@ describe("runParentAgentBroker", () => {
         message: brokerMessage(),
         args: {
           mode: "cloud-command",
-          command: "domains.buy",
-          params: { id: "app-1", domain: "myapp.com", spendEstimateUsd: 14.95 },
+          command: "containers.create",
+          params: { image: "ghcr.io/acme/app:latest", spendEstimateUsd: 14.95 },
         },
       });
 
       expect(result.text).toContain("Reply yes");
       expect(result.text).toContain("allowance");
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("requires confirmation for variable-cost self-spend even with a positive hint", async () => {
+      stubAllowance("50");
+      const fetchMock = vi.fn();
+      vi.stubGlobal("fetch", fetchMock);
+
+      const result = await runParentAgentBroker({
+        runtime: createRuntime(),
+        sessionId: "variable-spend",
+        message: brokerMessage(),
+        args: {
+          mode: "cloud-command",
+          command: "domains.buy",
+          params: { id: "app-1", domain: "myapp.com", spendEstimateUsd: 0.01 },
+        },
+      });
+
+      expect(result.text).toContain("Reply yes");
+      expect(result.text).toContain("child-declared spend estimates");
       expect(fetchMock).not.toHaveBeenCalled();
     });
 
@@ -392,8 +412,8 @@ describe("runParentAgentBroker", () => {
         message: brokerMessage(),
         args: {
           mode: "cloud-command",
-          command: "domains.buy",
-          params: { id: "app-1", domain: "myapp.com", spendEstimateUsd: 2 },
+          command: "containers.create",
+          params: { image: "ghcr.io/acme/app:latest", spendEstimateUsd: 2 },
         },
       });
 

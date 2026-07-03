@@ -99,7 +99,6 @@ describe("estimateSelfSpendCostUsd", () => {
       estimateSelfSpendCostUsd("containers.create", { [SPEND_HINT_PARAM]: 3 }),
     ).toBe(3);
   });
-
 });
 
 describe("decideSpendAuthorization — spend-cap bypass regression", () => {
