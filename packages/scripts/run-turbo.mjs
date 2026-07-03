@@ -9,17 +9,38 @@ const repoRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "../..",
 );
-const turboShimCandidates =
-  process.platform === "win32"
-    ? [
-        path.join(repoRoot, "node_modules/.bin/turbo.exe"),
-        path.join(repoRoot, "node_modules/.bin/turbo"),
-      ]
-    : [path.join(repoRoot, "node_modules/.bin/turbo")];
+
+// Every `node_modules` from repoRoot up to the filesystem root. A git worktree
+// (e.g. `.claude/worktrees/<name>`) has no `node_modules` of its own and shares
+// the parent checkout's via node's ancestor resolution — so turbo lives several
+// levels up. Walk the same chain node/bun would instead of only checking
+// repoRoot, so `run-turbo` works from a worktree, not just the primary checkout.
+function ancestorNodeModules(startDir) {
+  const dirs = [];
+  let dir = startDir;
+  while (true) {
+    dirs.push(path.join(dir, "node_modules"));
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return dirs;
+}
+
+const nodeModulesDirs = ancestorNodeModules(repoRoot);
+const shimNames =
+  process.platform === "win32" ? ["turbo.exe", "turbo"] : ["turbo"];
+const turboShimCandidates = nodeModulesDirs.flatMap((nm) =>
+  shimNames.map((name) => path.join(nm, ".bin", name)),
+);
 const turboShim = turboShimCandidates.find((candidate) =>
   fs.existsSync(candidate),
 );
-const turboPackageBin = path.join(repoRoot, "node_modules/turbo/bin/turbo");
+const turboPackageBin =
+  nodeModulesDirs
+    .map((nm) => path.join(nm, "turbo/bin/turbo"))
+    .find((candidate) => fs.existsSync(candidate)) ??
+  path.join(repoRoot, "node_modules/turbo/bin/turbo");
 const turboArgs = process.argv.slice(2);
 
 if (!turboArgs.some((arg) => arg === "--ui" || arg.startsWith("--ui="))) {

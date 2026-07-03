@@ -231,7 +231,13 @@ function readRepoFiles(files: readonly string[]): string {
 function countAgentElements(source: string): number {
   return (
     (source.match(/useAgentElement(?:<[^>]*>)?\(/g)?.length ?? 0) +
-    (source.match(/\sagent=\{?["'`][^"'`]+["'`]\}?/g)?.length ?? 0)
+    (source.match(/\sagent=\{?["'`][^"'`]+["'`]\}?/g)?.length ?? 0) +
+    // Design-system agent-surface rows (`settings-agent-rows`,
+    // `useAgentElement`-backed controls) declare their agent-addressable control
+    // via an `agentId=` prop instead of a direct `useAgentElement(` call — a
+    // section built entirely from those rows (e.g. CapabilitiesSection after the
+    // design-system consolidation) is still fully agent-wired.
+    (source.match(/\sagentId=\{?["'`][^"'`]+["'`]\}?/g)?.length ?? 0)
   );
 }
 
