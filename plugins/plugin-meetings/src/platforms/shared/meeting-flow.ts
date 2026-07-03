@@ -63,9 +63,20 @@ export async function runMeetingFlow(args: RunMeetingFlowArgs): Promise<MeetingE
   const { page, session, strategies, waitingRoomTimeoutMs } = args;
 
   // ── Join ──────────────────────────────────────────────────────────────────
+  // Join and admission are long multi-step Playwright sequences; race each
+  // against the abort signal so a user-requested stop mid-join short-circuits
+  // to a graceful leave instead of running every remaining step first.
+  const ABORTED = Symbol("aborted");
   session.reportStatus("joining");
   try {
-    await strategies.join(page, session);
+    const joined = await Promise.race([
+      strategies.join(page, session).then(() => "joined" as const),
+      abortReason(session.signal).then(() => ABORTED),
+    ]);
+    if (joined === ABORTED) {
+      await strategies.leave(page);
+      return "requested_stop";
+    }
   } catch (err) {
     logger.error(
       { error: err instanceof Error ? err.message : String(err) },
@@ -74,17 +85,19 @@ export async function runMeetingFlow(args: RunMeetingFlowArgs): Promise<MeetingE
     return "join_failed";
   }
 
-  if (session.signal.aborted) {
+  // ── Admission ∥ prepare ─────────────────────────────────────────────────────
+  session.reportStatus("awaiting_admission");
+  const admission = await Promise.race([
+    Promise.all([
+      strategies.waitForAdmission(page, session, waitingRoomTimeoutMs),
+      strategies.prepare(page, session),
+    ]).then(([outcome]) => outcome),
+    abortReason(session.signal).then(() => ABORTED),
+  ]);
+  if (admission === ABORTED) {
     await strategies.leave(page);
     return "requested_stop";
   }
-
-  // ── Admission ∥ prepare ─────────────────────────────────────────────────────
-  session.reportStatus("awaiting_admission");
-  const [admission] = await Promise.all([
-    strategies.waitForAdmission(page, session, waitingRoomTimeoutMs),
-    strategies.prepare(page, session),
-  ]);
 
   if (admission === "rejected") {
     logger.info("[MeetingFlow] admission rejected by host");

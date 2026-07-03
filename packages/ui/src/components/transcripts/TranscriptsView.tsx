@@ -144,10 +144,13 @@ function TranscriptRow({
           <LiveIndicator testId={`transcript-live-${summary.id}`} />
         ) : null}
       </div>
-      <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted">
+      <div className="mt-0.5 flex items-center gap-1.5 overflow-hidden whitespace-nowrap text-xs text-muted [&>span]:shrink-0">
         {meta?.platform ? (
           <>
-            <span data-testid={`transcript-platform-${summary.id}`}>
+            <span
+              className="truncate"
+              data-testid={`transcript-platform-${summary.id}`}
+            >
               {MEETING_PLATFORM_LABELS[meta.platform]}
             </span>
             <span aria-hidden>·</span>

@@ -100,7 +100,7 @@ export function MeetingJoinBar({
           onChange={(e) => setBotName(e.target.value)}
           placeholder="Bot name (optional)"
           aria-label="Bot name"
-          className="w-40"
+          className="w-48"
         />
         <Button
           type="submit"

@@ -1,0 +1,12 @@
+ Info       [eliza-scenarios] discovered 1 scenario(s) under /Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/meetings/plugins/plugin-meetings/test/scenarios
+ Info       [eliza-scenarios] run-dir: /Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/meetings/.github/issue-evidence/11856-trajectory-join-meeting-run (trajectories → /Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/meetings/.github/issue-evidence/11856-trajectory-join-meeting-run/trajectories, runId=022a5392-502d-4624-ad64-b8d4d0bf3831)
+ Info       [eliza-scenarios] provider: openai
+ Info       [eliza-scenarios] ▶ live-join-meeting
+ Info       [MeetingService] started
+ Info       [MeetingService] meeting transcript record created (recording) (transcriptId=901eb0cb-22fd-462d-8fab-be9fc1cfb294, sessionId=60375528-4250-4de0-aacc-f779b3772790)
+ Info       [MeetingService] meeting join requested (sessionId=60375528-4250-4de0-aacc-f779b3772790, platform=google_meet, nativeMeetingId=abc-defg-hij, botName=ScenarioAgent Notetaker)
+ Info       [InputDriver] using humanized Playwright input
+ Info       [MeetingLaunch] launching Chromium (executablePath=/Users/shawwalters/Library/Caches/ms-playwright/chromium-1228/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing, headless=false)
+ Info       [MeetingService] session status (sessionId=60375528-4250-4de0-aacc-f779b3772790, status=joining)
+ Info       [eliza-scenarios] ✓ live-join-meeting passed (3386ms)
+ Info       [GoogleMeetJoin] locating name input
