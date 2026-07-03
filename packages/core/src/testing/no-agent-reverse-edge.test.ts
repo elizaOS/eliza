@@ -16,8 +16,19 @@ import {
 // These guard the invariant structurally (grep-in-a-test) so the edge cannot
 // creep back, and assert the injected-option shape callers rely on.
 const testingDir = path.dirname(fileURLToPath(import.meta.url));
+const packageRoot = path.resolve(testingDir, "../..");
 
 const HARNESS_FILES = ["real-runtime.ts", "pglite-runtime.ts"] as const;
+const CORE_PACKAGE_FILES = [
+	...HARNESS_FILES.map((file) => `src/testing/${file}`),
+	"test/helpers/pglite-runtime.ts",
+] as const;
+
+function importSpecifiers(source: string): string[] {
+	const importSpecifier =
+		/(?:from|import|require)\s*\(?\s*["'`]([^"'`]+)["'`]/g;
+	return [...source.matchAll(importSpecifier)].map((match) => match[1]);
+}
 
 describe("core ./testing has no reverse edge into @elizaos/agent (#12091 item 6)", () => {
 	for (const file of HARNESS_FILES) {
@@ -27,15 +38,22 @@ describe("core ./testing has no reverse edge into @elizaos/agent (#12091 item 6)
 			// `import("…")`, `require("…")`) so the doc-comments explaining WHY the
 			// edge is gone don't self-trip the guard. No specifier may resolve into
 			// the sibling agent package by relative path or by `@elizaos/agent`.
-			const importSpecifier =
-				/(?:from|import|require)\s*\(?\s*["'`]([^"'`]+)["'`]/g;
-			for (const match of source.matchAll(importSpecifier)) {
-				const specifier = match[1];
+			for (const specifier of importSpecifiers(source)) {
 				expect(specifier).not.toMatch(/\.\.\/\.\.\/\.\.\/agent/);
 				expect(specifier).not.toMatch(/^@elizaos\/agent(?:\/|$)/);
 			}
 		});
 	}
+
+	it("keeps core-package runtime helpers free of agent imports", () => {
+		for (const file of CORE_PACKAGE_FILES) {
+			const source = fs.readFileSync(path.join(packageRoot, file), "utf8");
+			for (const specifier of importSpecifiers(source)) {
+				expect(specifier).not.toMatch(/\.\.\/\.\.\/\.\.\/agent/);
+				expect(specifier).not.toMatch(/^@elizaos\/agent(?:\/|$)/);
+			}
+		}
+	});
 
 	it("accepts an injected flushTrajectoryWrites instead of importing it", () => {
 		const flushTrajectoryWrites: RealTestRuntimeOptions["flushTrajectoryWrites"] =
