@@ -1,4 +1,4 @@
-import { isElizaGenUiActionNameAllowed } from "./catalog";
+import { isElizaGenUiActionAllowed } from "./genui-action-registry";
 import type {
   ElizaGenUiAction,
   ElizaGenUiActionContext,
@@ -37,7 +37,9 @@ export async function routeElizaGenUiAction(
   handlers: readonly ElizaGenUiActionHandler[],
 ): Promise<ElizaGenUiActionResult> {
   const eventName = action.event.name;
-  if (!isElizaGenUiActionNameAllowed(eventName)) {
+  // #12087 Item 26: the gate reads the boot-time registry (built-in prefixes +
+  // any names/prefixes feature/plugin modules registered). Unregistered → throw.
+  if (!isElizaGenUiActionAllowed(eventName)) {
     throw new ElizaGenUiActionError(
       `Generated UI action "${eventName}" is not allowed.`,
       action,
