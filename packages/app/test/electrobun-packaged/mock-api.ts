@@ -281,6 +281,20 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
+/**
+ * Deterministic canned assistant reply for the mock chat send paths. Echoes the
+ * user's prompt so the packaged desktop walkthrough recording shows a genuine
+ * request -> streamed response round-trip (not an empty turn the transcript
+ * would filter out).
+ */
+function buildMockAssistantReply(userText: string): string {
+  const trimmed = userText.replace(/\s+/g, " ").trim();
+  if (!trimmed) {
+    return "I'm the mock desktop agent — ask me anything to see a streamed reply.";
+  }
+  return `Here's a mock reply to "${trimmed}". This packaged desktop walkthrough streams the response token by token to prove the chat round-trip end to end.`;
+}
+
 function createDefaultPermissionsState(): PermissionsStateRecord {
   const now = Date.now();
   return Object.fromEntries(
@@ -813,6 +827,86 @@ export async function startMockApiServer(
     if (method === "GET" && conversationMessagesMatch) {
       const id = decodeURIComponent(conversationMessagesMatch[1]);
       json(res, 200, { messages: messagesByConversation.get(id) ?? [] });
+      return;
+    }
+
+    // Streaming chat send — the path the ContinuousChatOverlay actually uses
+    // (`sendConversationMessageStream` -> `POST …/messages/stream`, Accept:
+    // text/event-stream). Emits token frames then a terminal `done` frame per the
+    // client SSE contract (client-base.ts `streamChatEndpoint`) so a real
+    // assistant reply bubble streams into the transcript — without this the send
+    // hit the `{ok:true}` catch-all, the assistant turn stayed empty, and the
+    // transcript filtered it out.
+    const conversationStreamMatch = pathname.match(
+      /^\/api\/conversations\/([^/]+)\/messages\/stream$/,
+    );
+    if (method === "POST" && conversationStreamMatch) {
+      const id = decodeURIComponent(conversationStreamMatch[1]);
+      const body = await readJson(req);
+      const userText = typeof body.text === "string" ? body.text.trim() : "";
+      const reply = buildMockAssistantReply(userText);
+      const thread = messagesByConversation.get(id) ?? [];
+      thread.push({
+        id: randomUUID(),
+        role: "user",
+        text: userText,
+        timestamp: Date.now(),
+      });
+      messagesByConversation.set(id, thread);
+
+      applyCors(res);
+      res.statusCode = 200;
+      res.setHeader("Content-Type", "text/event-stream");
+      res.setHeader("Cache-Control", "no-cache, no-transform");
+      res.setHeader("Connection", "keep-alive");
+
+      const tokens = reply.match(/\S+\s*/g) ?? [reply];
+      let accumulated = "";
+      for (const token of tokens) {
+        if (res.writableEnded || res.destroyed) break;
+        accumulated += token;
+        res.write(
+          `data: ${JSON.stringify({ type: "token", text: token, fullText: accumulated })}\n\n`,
+        );
+        await new Promise((resolve) => setTimeout(resolve, 45));
+      }
+      if (!res.writableEnded && !res.destroyed) {
+        thread.push({
+          id: randomUUID(),
+          role: "assistant",
+          text: reply,
+          timestamp: Date.now(),
+        });
+        res.write(
+          `data: ${JSON.stringify({ type: "done", fullText: reply, agentName })}\n\n`,
+        );
+        res.end();
+      }
+      return;
+    }
+
+    // Non-streaming chat send fallback (`sendConversationMessage`), for parity so
+    // neither send path falls through to the generic catch-all.
+    if (method === "POST" && conversationMessagesMatch) {
+      const id = decodeURIComponent(conversationMessagesMatch[1]);
+      const body = await readJson(req);
+      const userText = typeof body.text === "string" ? body.text.trim() : "";
+      const reply = buildMockAssistantReply(userText);
+      const thread = messagesByConversation.get(id) ?? [];
+      thread.push({
+        id: randomUUID(),
+        role: "user",
+        text: userText,
+        timestamp: Date.now(),
+      });
+      thread.push({
+        id: randomUUID(),
+        role: "assistant",
+        text: reply,
+        timestamp: Date.now(),
+      });
+      messagesByConversation.set(id, thread);
+      json(res, 200, { text: reply, agentName });
       return;
     }
 
