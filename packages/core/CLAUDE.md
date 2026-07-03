@@ -25,7 +25,7 @@ src/
   types/                Canonical type system. types/index.ts is the barrel; types/runtime.ts has IAgentRuntime;
                         plugin.ts, model.ts, memory.ts, state.ts, service.ts, task.ts, events.ts, schema*.ts, etc.
   services/             Built-in services: task / task-scheduler, evaluator, message, relationships,
-                        pairing, pairing-integration, pairing-migration, hook, plugin-hooks, optimized-prompt,
+                        pairing, pairing-integration, pairing-migration, hook, optimized-prompt,
                         optimized-prompt-resolver, tool-policy, trajectories, trajectory-export, trajectory-types,
                         triggerScheduling, approval, embedding, followUp, analysis-mode-handler, agentEvent,
                         runtime-capability-service, setup-cli, setup-rpc, setup-state
