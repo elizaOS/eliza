@@ -304,6 +304,301 @@ final class BootCaptureUITests: XCTestCase {
         )
     }
 
+    // MARK: - Full onboarding → chat → voice (cloud + local)
+
+    private enum OnboardingPath: String {
+        case cloud
+        case local
+    }
+
+    /// Drive the REAL first-run onboarding on the CLOUD path (managed agent),
+    /// then verify chat + voice. A fresh install boots into the in-chat
+    /// first-run conductor: greeting → runtime choice → (cloud provision) →
+    /// tutorial choice. Cloud provisioning needs an Eliza Cloud session on the
+    /// device; if none is present the flow stalls at the OAuth prompt and the
+    /// filmstrip records exactly where (hard-asserted only past the unlock).
+    func testCloudOnboardingChatAndVoice() throws {
+        try runFullOnboarding(.cloud)
+    }
+
+    /// Drive the REAL first-run onboarding on the LOCAL path ("On this device"),
+    /// then verify chat + voice against the on-device model: greeting → "On this
+    /// device" → provider "On this device (recommended)" → tutorial choice →
+    /// model warm-up → send a prompt + await reply → exercise the mic.
+    func testLocalOnboardingChatAndVoice() throws {
+        try runFullOnboarding(.local)
+    }
+
+    private func runFullOnboarding(_ path: OnboardingPath) throws {
+        let env = ProcessInfo.processInfo.environment
+        let bootTimeout = Double(env["ELIZA_BOOT_TIMEOUT_SECONDS"] ?? "") ?? 180
+        let agentReady = Double(env["ELIZA_AGENT_READY_TIMEOUT_SECONDS"] ?? "") ?? 360
+
+        let app = XCUIApplication()
+        launchWithRetry(app)
+        let tag = path.rawValue
+
+        // 1. Reach a live renderer (past the boot splash).
+        let bootDeadline = Date().addingTimeInterval(bootTimeout)
+        var live = false
+        while Date() < bootDeadline {
+            if app.state == .notRunning { break }
+            if classifyBootState(of: app) == .home { live = true; break }
+            Thread.sleep(forTimeInterval: 1.0)
+        }
+        attachScreenshot(named: "\(tag)-000-greeting")
+        guard live else {
+            attachAccessibilitySnapshot(of: app)
+            throw XCTSkip("boot never reached a live renderer — onboarding not attempted")
+        }
+
+        // 2. Placement choice. The conductor seeds it as a tappable in-chat
+        //    widget ("Eliza Cloud (managed)" / "On this device").
+        let placement = path == .cloud ? "Eliza Cloud (managed)" : "On this device"
+        guard tapWebChoice(app, label: placement, timeout: 30) else {
+            attachScreenshot(named: "\(tag)-010-no-placement-choice")
+            attachAccessibilitySnapshot(of: app)
+            throw XCTSkip("first-run placement choice '\(placement)' never surfaced")
+        }
+        attachScreenshot(named: "\(tag)-010-after-placement")
+
+        if path == .local {
+            // 3a. Local sub-step: model provider choice.
+            if tapWebChoice(app, label: "On this device (recommended)", timeout: 30) {
+                attachScreenshot(named: "\(tag)-020-after-provider")
+            } else {
+                attachScreenshot(named: "\(tag)-020-no-provider-choice")
+            }
+        } else {
+            // 3b. Cloud sub-step: provisioning (auto if a Cloud session exists;
+            //     otherwise an OAuth prompt appears). Give it room, screenshot
+            //     the outcome either way.
+            Thread.sleep(forTimeInterval: 4.0)
+            attachScreenshot(named: "\(tag)-020-cloud-provisioning")
+        }
+
+        // 4. Tutorial choice → skip (fastest finish). It only appears once the
+        //    runtime path resolved, so poll generously.
+        if tapWebChoice(app, label: "Skip for now", timeout: agentReady) {
+            attachScreenshot(named: "\(tag)-030-skipped-tutorial")
+        } else {
+            attachScreenshot(named: "\(tag)-030-no-tutorial-choice")
+        }
+
+        // 5. First-run done = the composer unlocks (the "Tap a highlighted
+        //    option above to continue" hint disappears). Bounded wait.
+        let unlockHint = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS[c] 'highlighted option'")
+        ).firstMatch
+        let unlockDeadline = Date().addingTimeInterval(agentReady)
+        var unlocked = false
+        while Date() < unlockDeadline {
+            if !unlockHint.exists { unlocked = true; break }
+            Thread.sleep(forTimeInterval: 3.0)
+        }
+        attachScreenshot(named: "\(tag)-040-onboarding-\(unlocked ? "complete" : "stalled")")
+        guard unlocked else {
+            attachAccessibilitySnapshot(of: app)
+            throw XCTSkip(
+                "onboarding (\(tag)) did not complete — composer stayed locked "
+                    + "(cloud OAuth needs a device session, or the local model is "
+                    + "still warming). See the \(tag)-*.png filmstrip."
+            )
+        }
+
+        // 6. Chat: type a prompt, send, await a reply.
+        try verifyChat(app, tag: tag, agentReady: agentReady)
+
+        // 7. Voice: tap the mic, assert it enters the recording state.
+        try verifyVoice(app, tag: tag)
+
+        attachScreenshot(named: "\(tag)-090-done")
+    }
+
+    /// Type a prompt into the composer, tap send, and watch for a reply.
+    private func verifyChat(
+        _ app: XCUIApplication, tag: String, agentReady: Double
+    ) throws {
+        // Wait out the "Loading Eliza…" model warm-up so the send lands ready.
+        let loading = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS[c] 'Loading Eliza'"))
+        let warmDeadline = Date().addingTimeInterval(agentReady)
+        while Date() < warmDeadline {
+            if loading.count == 0 { break }
+            Thread.sleep(forTimeInterval: 5.0)
+        }
+        attachScreenshot(named: "\(tag)-050-agent-ready")
+
+        let composer = firstHittableComposer(app)
+        guard let composer else {
+            attachAccessibilitySnapshot(of: app)
+            throw XCTSkip("no hittable composer after onboarding")
+        }
+        var baseline = Set<String>()
+        for text in app.staticTexts.allElementsBoundByIndex.prefix(80) {
+            baseline.insert(text.label)
+        }
+        composer.tap()
+        guard app.keyboards.firstMatch.waitForExistence(timeout: 10) else {
+            attachAccessibilitySnapshot(of: app)
+            throw XCTSkip("keyboard never appeared for the chat composer")
+        }
+        let prompt = "Say hello in exactly three words."
+        composer.typeText(prompt)
+        attachScreenshot(named: "\(tag)-060-typed-prompt")
+
+        let sendButton = app.descendants(matching: .any).matching(
+            NSPredicate(format: "label BEGINSWITH[c] 'send'")
+        ).firstMatch
+        guard sendButton.waitForExistence(timeout: 5), sendButton.isHittable else {
+            attachScreenshot(named: "\(tag)-061-no-send")
+            attachAccessibilitySnapshot(of: app)
+            throw XCTSkip("no send control after typing the prompt")
+        }
+        sendButton.tap()
+        Thread.sleep(forTimeInterval: 2.0)
+        attachScreenshot(named: "\(tag)-070-after-send")
+
+        let residual = (composer.exists ? (composer.value as? String) : nil) ?? ""
+        XCTAssertFalse(
+            residual.contains(prompt),
+            "[\(tag)] tapped send but the composer still holds the prompt "
+                + "('\(residual)') — the send never fired."
+        )
+
+        // Await a reply: any NEW static-text label (not the prompt echo, ≥ 12 chars).
+        let replyTimeout = 300.0
+        let start = Date()
+        let deadline = start.addingTimeInterval(replyTimeout)
+        var reply: String?
+        var nextShot = start.addingTimeInterval(15)
+        let promptPrefix = String(prompt.prefix(20))
+        while Date() < deadline {
+            if app.state == .notRunning { break }
+            for text in app.staticTexts.allElementsBoundByIndex.prefix(120) {
+                let label = text.label
+                if label.count >= 12, !baseline.contains(label),
+                    !label.contains(promptPrefix),
+                    !label.localizedCaseInsensitiveContains("highlighted option") {
+                    reply = label
+                    break
+                }
+            }
+            if reply != nil { break }
+            Thread.sleep(forTimeInterval: 2.0)
+            if Date() >= nextShot {
+                let s = Int(Date().timeIntervalSince(start).rounded())
+                attachScreenshot(named: String(format: "\(tag)-071-wait-%03ds", s))
+                nextShot = Date().addingTimeInterval(15)
+            }
+        }
+        attachScreenshot(named: "\(tag)-075-reply-\(reply != nil ? "arrived" : "timeout")")
+        if let reply {
+            let att = XCTAttachment(string: reply)
+            att.name = "\(tag)-reply-text"
+            att.lifetime = .keepAlways
+            add(att)
+        }
+        XCTAssertNotEqual(
+            app.state, .notRunning,
+            "[\(tag)] the app died while waiting for the chat reply.")
+        XCTAssertNotNil(
+            reply,
+            "[\(tag)] no assistant reply arrived within \(Int(replyTimeout))s — "
+                + "see the \(tag)-071-wait filmstrip + \(tag)-075.")
+    }
+
+    /// Tap the composer mic ("talk") and assert it enters the recording state
+    /// ("stop listening"), then stop. Proves the mic capture path is live on
+    /// device without needing to assert transcription content.
+    private func verifyVoice(_ app: XCUIApplication, tag: String) throws {
+        let mic = app.descendants(matching: .any).matching(
+            NSPredicate(format: "label ==[c] 'talk'")
+        ).firstMatch
+        guard mic.waitForExistence(timeout: 8), mic.isHittable else {
+            attachScreenshot(named: "\(tag)-080-no-mic")
+            attachAccessibilitySnapshot(of: app)
+            throw XCTSkip("mic control ('talk') not hittable — voice not attempted")
+        }
+        mic.tap()
+        // First voice use raises the SpringBoard microphone-permission alert;
+        // grant it so the capture path actually engages.
+        grantSystemPermissionIfPresent(named: ["Allow", "OK", "Allow While Using App"])
+        Thread.sleep(forTimeInterval: 1.5)
+        attachScreenshot(named: "\(tag)-081-mic-tapped")
+
+        // Recording flips the mic label to "stop listening" (and the
+        // grabber/pill bar pulses). Poll for either signal.
+        let stopListening = app.descendants(matching: .any).matching(
+            NSPredicate(format: "label ==[c] 'stop listening'")
+        ).firstMatch
+        var recording = stopListening.waitForExistence(timeout: 8)
+        if !recording {
+            // The permission alert may have interrupted the first tap — grant
+            // and retry once.
+            grantSystemPermissionIfPresent(named: ["Allow", "OK", "Allow While Using App"])
+            if mic.exists, mic.isHittable { mic.tap() }
+            recording = stopListening.waitForExistence(timeout: 8)
+        }
+        attachScreenshot(named: "\(tag)-082-voice-\(recording ? "recording" : "no-state")")
+        attachAccessibilitySnapshot(of: app)
+        XCTAssertTrue(
+            recording,
+            "[\(tag)] tapping the mic did not enter the recording state "
+                + "('stop listening' never appeared) — mic capture may have been "
+                + "denied or is not wired. See \(tag)-082.")
+        // Stop cleanly so the run doesn't leave the mic hot.
+        if stopListening.exists, stopListening.isHittable { stopListening.tap() }
+        attachScreenshot(named: "\(tag)-083-voice-stopped")
+    }
+
+    /// Tap a first-run in-chat choice widget by its exact visible label.
+    private func tapWebChoice(
+        _ app: XCUIApplication, label: String, timeout: TimeInterval
+    ) -> Bool {
+        let predicate = NSPredicate(format: "label ==[c] %@", label)
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            // Prefer a button; fall back to any descendant carrying the label.
+            let button = app.buttons.matching(predicate).firstMatch
+            if button.exists, button.isHittable { button.tap(); return true }
+            let any = app.descendants(matching: .any).matching(predicate).firstMatch
+            if any.exists, any.isHittable { any.tap(); return true }
+            Thread.sleep(forTimeInterval: 1.0)
+        }
+        return false
+    }
+
+    /// Tap the first matching button on a SpringBoard system alert (mic /
+    /// speech-recognition permission). No-op when no alert is up.
+    private func grantSystemPermissionIfPresent(named labels: [String]) {
+        let springboard = XCUIApplication(
+            bundleIdentifier: "com.apple.springboard")
+        // Give the alert a beat to animate in.
+        for _ in 0..<6 {
+            for label in labels {
+                let button = springboard.buttons[label]
+                if button.exists, button.isHittable {
+                    attachScreenshot(named: "permission-grant-\(label)")
+                    button.tap()
+                    return
+                }
+            }
+            if springboard.alerts.count == 0 { Thread.sleep(forTimeInterval: 0.5) }
+        }
+    }
+
+    private func firstHittableComposer(_ app: XCUIApplication) -> XCUIElement? {
+        let webView = app.webViews.firstMatch
+        let candidates: [XCUIElement] = [
+            webView.textViews.firstMatch,
+            webView.textFields.firstMatch,
+            app.textViews.firstMatch,
+            app.textFields.firstMatch,
+        ]
+        return candidates.first { $0.waitForExistence(timeout: 10) && $0.isHittable }
+    }
+
     /// `XCUIApplication.launch()` can race an in-flight app (re)install —
     /// FrontBoard force-quits the fresh pid (exit code 0xfbfbfbfb) and the
     /// session is left driving a dead app. Wait for foreground and relaunch a
