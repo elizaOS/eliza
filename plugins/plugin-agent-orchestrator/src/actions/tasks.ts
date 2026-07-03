@@ -37,7 +37,12 @@ import type {
   State,
   UUID,
 } from "@elizaos/core";
-import { ChannelType, logger as coreLogger, stringToUuid } from "@elizaos/core";
+import {
+  ChannelType,
+  logger as coreLogger,
+  MESSAGE_SOURCE_SUB_AGENT,
+  stringToUuid,
+} from "@elizaos/core";
 import type { IssueInfo, PullRequestInfo } from "git-workspace-service";
 import {
   detectTaskType,
@@ -1136,7 +1141,8 @@ async function runSpawnAgent(
       resolvedTaskRoomId,
     );
     const inheritedRoute =
-      content.source === "sub_agent" && extraMetadata.subAgent === true
+      content.source === MESSAGE_SOURCE_SUB_AGENT &&
+      extraMetadata.subAgent === true
         ? inheritedResolvedWorkdirRoute(extraMetadata)
         : undefined;
     const effectiveRoute = route ?? inheritedRoute;
@@ -1169,7 +1175,7 @@ async function runSpawnAgent(
         ? ((content.metadata as Record<string, unknown>).originSource as string)
         : undefined;
     const resolvedSpawnSource =
-      content.source === "sub_agent" && inboundOriginSource
+      content.source === MESSAGE_SOURCE_SUB_AGENT && inboundOriginSource
         ? inboundOriginSource
         : content.source;
 
@@ -1400,7 +1406,7 @@ async function runSend(
 function routedSubAgentCompletion(
   content: Record<string, unknown>,
 ): { completionText: string; sessionId: string } | undefined {
-  if (content.source !== "sub_agent") return undefined;
+  if (content.source !== MESSAGE_SOURCE_SUB_AGENT) return undefined;
   const metadata =
     content.metadata !== null && typeof content.metadata === "object"
       ? (content.metadata as Record<string, unknown>)
@@ -3632,7 +3638,7 @@ export const tasksAction: Action & {
       metadata?: unknown;
       source?: unknown;
     };
-    if (messageContent.source === "sub_agent") {
+    if (messageContent.source === MESSAGE_SOURCE_SUB_AGENT) {
       const metadata =
         messageContent.metadata !== null &&
         typeof messageContent.metadata === "object"

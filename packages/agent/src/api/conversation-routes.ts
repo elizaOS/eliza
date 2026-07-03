@@ -24,6 +24,7 @@ import {
   type Content,
   createMessageMemory,
   logger,
+  MESSAGE_SOURCE_CLIENT_CHAT,
   type Memory,
   type RolesWorldMetadata,
   recordOwnerGrant,
@@ -801,7 +802,7 @@ async function ensureConversationRoom(
     roomId: conv.roomId,
     worldId,
     userName: caller.userName,
-    source: "client_chat",
+    source: MESSAGE_SOURCE_CLIENT_CHAT,
     channelId: `web-conv-${conv.id}`,
     type: ChannelType.DM,
     messageServerId,
@@ -1664,7 +1665,7 @@ export async function handleConversationRoutes(
           const normalizedSource =
             typeof contentSource === "string" &&
             contentSource.length > 0 &&
-            contentSource !== "client_chat"
+            contentSource !== MESSAGE_SOURCE_CLIENT_CHAT
               ? contentSource
               : undefined;
           const actionName =

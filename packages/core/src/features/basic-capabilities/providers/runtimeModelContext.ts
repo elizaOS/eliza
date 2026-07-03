@@ -4,6 +4,7 @@ import type {
 	ModelTypeName,
 	Provider,
 } from "../../../types/index.ts";
+import { MESSAGE_SOURCE_SUB_AGENT } from "../../../types/message-source.ts";
 import { getModelFallbackChain, ModelType } from "../../../types/model.ts";
 import { readEnv } from "../../../utils/read-env.ts";
 
@@ -177,7 +178,7 @@ function tokenize(text: string): Set<string> {
 
 function shouldRenderRuntimeModelContext(message: Memory): boolean {
 	if (
-		message.content.source === "sub_agent" ||
+		message.content.source === MESSAGE_SOURCE_SUB_AGENT ||
 		(message.content.metadata &&
 			typeof message.content.metadata === "object" &&
 			(message.content.metadata as Record<string, unknown>).subAgent === true)

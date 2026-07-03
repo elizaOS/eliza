@@ -171,6 +171,7 @@ import type {
 	MessageProcessingResult,
 	ShouldRespondModelType,
 } from "../types/message-service";
+import { MESSAGE_SOURCE_CLIENT_CHAT } from "../types/message-source";
 import type {
 	ChatMessage,
 	GenerateTextAttachment,
@@ -4679,7 +4680,7 @@ function shouldUseStage1PlannerFallback(
 		return true;
 	}
 	const source = String(content.source ?? "").toLowerCase();
-	if (source.includes("client_chat")) {
+	if (source.includes(MESSAGE_SOURCE_CLIENT_CHAT)) {
 		return true;
 	}
 	return textContainsAgentName(content.text, [
@@ -9824,7 +9825,7 @@ export class DefaultMessageService implements IMessageService {
 		];
 
 		// Sources that always trigger a response
-		const alwaysRespondSources = ["client_chat"];
+		const alwaysRespondSources = [MESSAGE_SOURCE_CLIENT_CHAT];
 
 		// Support runtime-configurable overrides via env settings
 		const customChannels = normalizeEnvList(

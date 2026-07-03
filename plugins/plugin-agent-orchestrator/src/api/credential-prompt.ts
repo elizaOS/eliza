@@ -15,7 +15,7 @@
  */
 
 import type { Content, IAgentRuntime, UUID } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { logger, MESSAGE_SOURCE_SUB_AGENT } from "@elizaos/core";
 
 type RuntimeWithSendTarget = IAgentRuntime & {
   sendMessageToTarget?: (
@@ -29,7 +29,7 @@ interface CredentialPromptOrigin {
   source: string;
 }
 
-const DEFAULT_SOURCE = "sub_agent";
+const DEFAULT_SOURCE = MESSAGE_SOURCE_SUB_AGENT;
 
 function readOrigin(
   metadata: Record<string, unknown> | undefined,

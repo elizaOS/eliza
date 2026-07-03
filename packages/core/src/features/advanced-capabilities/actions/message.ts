@@ -41,6 +41,7 @@ import {
 	ChannelType,
 	ModelType,
 } from "../../../types/index.ts";
+import { MESSAGE_SOURCE_CLIENT_CHAT } from "../../../types/message-source.ts";
 import { hasActionContext } from "../../../utils/action-validation.ts";
 import { getActiveRoutingContextsForTurn } from "../../../utils/context-routing.ts";
 import { isObjectRecord as isRecord } from "../../../utils/type-guards.ts";
@@ -1397,7 +1398,7 @@ async function resolveAdminTarget(
 ): Promise<SendCandidate | null> {
 	if (!params.target || !ADMIN_TARGETS.has(params.target.toLowerCase()))
 		return null;
-	const source = params.source ?? "client_chat";
+	const source = params.source ?? MESSAGE_SOURCE_CLIENT_CHAT;
 	const connector = findConnectorBySource(connectors, source);
 	if (!connector) return null;
 	const ownerId =

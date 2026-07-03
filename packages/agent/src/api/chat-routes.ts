@@ -22,6 +22,7 @@ import {
   EventType,
   isRateLimitError,
   logger,
+  MESSAGE_SOURCE_CLIENT_CHAT,
   ModelType,
   type RolesWorldMetadata,
   type RouteRequestContext,
@@ -644,7 +645,7 @@ async function maybeGenerateAndroidLocalDirectChatResponse(args: {
   } satisfies LocalInferenceChatMetadata;
   const responseContent = {
     text,
-    source: "client_chat",
+    source: MESSAGE_SOURCE_CLIENT_CHAT,
     actions: ["REPLY"],
     localInference,
   } satisfies Content;
@@ -1836,14 +1837,16 @@ export async function persistAssistantConversationMemory(
     typeof content === "string"
       ? ({
           text: content,
-          source: "client_chat",
+          source: MESSAGE_SOURCE_CLIENT_CHAT,
           channelType,
         } satisfies Content)
       : ({
           ...content,
           text: extractCompatTextContent(content),
           source:
-            typeof content.source === "string" ? content.source : "client_chat",
+            typeof content.source === "string"
+              ? content.source
+              : MESSAGE_SOURCE_CLIENT_CHAT,
           channelType:
             typeof content.channelType === "string"
               ? content.channelType
@@ -2470,7 +2473,7 @@ export async function generateChatResponse(
                 didRespond: true,
                 responseContent: {
                   text: localResult.text,
-                  source: "client_chat",
+                  source: MESSAGE_SOURCE_CLIENT_CHAT,
                   actions: ["REPLY"],
                   localInference: localResult.localInference as
                     | Record<string, unknown>
@@ -3060,7 +3063,7 @@ async function ensureCompatChatConnection(
     roomId,
     worldId,
     userName: resolveAppUserName(state.config),
-    source: "client_chat",
+    source: MESSAGE_SOURCE_CLIENT_CHAT,
     channelId: `${channelIdPrefix}-${roomKey}`,
     type: ChannelType.DM,
     messageServerId,

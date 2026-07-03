@@ -89,8 +89,8 @@ export {
 // add `as const` data only — never an `import * as` of these packages.
 import {
   AgentRuntime,
-  AutonomyService,
   AUTONOMY_SERVICE_TYPE,
+  AutonomyService,
   addLogListener,
   ChannelType,
   type Component,
@@ -103,6 +103,7 @@ import {
   type IAgentRuntime,
   type LogEntry,
   logger,
+  MESSAGE_SOURCE_CLIENT_CHAT,
   type Plugin,
   type Provider,
   type ServiceClass,
@@ -6011,7 +6012,7 @@ export async function startEliza(
           roomId,
           content: {
             text,
-            source: "client_chat",
+            source: MESSAGE_SOURCE_CLIENT_CHAT,
             channelType: ChannelType.DM,
           },
         });

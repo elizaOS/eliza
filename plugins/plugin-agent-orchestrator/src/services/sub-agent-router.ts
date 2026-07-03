@@ -8,7 +8,7 @@ import type {
   Memory,
   UUID,
 } from "@elizaos/core";
-import { Service, ServiceType } from "@elizaos/core";
+import { MESSAGE_SOURCE_SUB_AGENT, Service, ServiceType } from "@elizaos/core";
 import type { AcpService } from "./acp-service.js";
 import { registerBuiltAppsForCompletion } from "./built-apps-registry.js";
 import {
@@ -52,7 +52,7 @@ type RuntimeWithSendTarget = IAgentRuntime & {
   ) => Promise<Memory | undefined>;
 };
 
-const ACPX_ROUTER_SOURCE = "sub_agent";
+const ACPX_ROUTER_SOURCE = MESSAGE_SOURCE_SUB_AGENT;
 const SUB_AGENT_ENTITY_NAMESPACE = "acpx:sub-agent";
 // Metadata key the router stamps on a session it hands off to a successor
 // (verify-retry, state-lost respawn, or account failover) before that session

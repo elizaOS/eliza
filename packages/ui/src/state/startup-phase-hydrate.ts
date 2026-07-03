@@ -5,6 +5,7 @@
  * "ready" phase (WebSocket bindings, nav listener).
  */
 
+import { MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core";
 import { logger } from "@elizaos/logger";
 import type { AgentStatus, WalletAddresses } from "../api";
 import {
@@ -609,7 +610,11 @@ export function bindReadyPhase(
         d.setUnreadConversations(
           (prev: Set<string>) => new Set([...prev, cid]),
         );
-      if (msg.source && msg.source !== "client_chat" && msg.role === "user")
+      if (
+        msg.source &&
+        msg.source !== MESSAGE_SOURCE_CLIENT_CHAT &&
+        msg.role === "user"
+      )
         d.appendAutonomousEvent({
           type: "agent_event",
           version: 1,

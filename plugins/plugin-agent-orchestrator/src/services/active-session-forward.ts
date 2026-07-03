@@ -8,7 +8,11 @@
  * decision→action wiring is unit-testable in isolation (see
  * `active-session-forward.test.ts`).
  */
-import type { IAgentRuntime, Memory } from "@elizaos/core";
+import {
+  type IAgentRuntime,
+  MESSAGE_SOURCE_SUB_AGENT,
+  type Memory,
+} from "@elizaos/core";
 import { AcpService } from "./acp-service.js";
 import { decideInterruptionWithModel } from "./interruption-decider.js";
 import type { SubAgentInbox } from "./sub-agent-inbox.js";
@@ -19,7 +23,7 @@ import { type SessionInfo, TERMINAL_SESSION_STATUSES } from "./types.js";
 // `entityId === runtime.agentId` is not enough: the router uses a synthetic
 // sub-agent UUID, so we also filter by Content.source.
 export const INTERNAL_FORWARD_SKIP_SOURCES = new Set([
-  "sub_agent",
+  MESSAGE_SOURCE_SUB_AGENT,
   "sub_agent_progress",
   "sub_agent_complete",
 ]);

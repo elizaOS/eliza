@@ -71,6 +71,7 @@ import type {
 	WorldPayload,
 } from "../../types/index.ts";
 import { MemoryType } from "../../types/memory.ts";
+import { MESSAGE_SOURCE_CLIENT_CHAT } from "../../types/message-source.ts";
 import { ModelType } from "../../types/model.ts";
 import type { ServiceClass } from "../../types/plugin.ts";
 import {
@@ -476,7 +477,7 @@ export function shouldRespond(
 		ChannelType.API,
 	];
 
-	const alwaysRespondSources = ["client_chat"];
+	const alwaysRespondSources = [MESSAGE_SOURCE_CLIENT_CHAT];
 
 	const customChannels = normalizeEnvList(
 		runtime.getSetting("ALWAYS_RESPOND_CHANNELS") ??
@@ -1130,7 +1131,7 @@ const events: PluginEvents = {
 		async (payload: ActionEventPayload) => {
 			// Only notify for client_chat messages
 			const payloadContent = payload.content;
-			if (payloadContent && payloadContent.source === "client_chat") {
+			if (payloadContent?.source === MESSAGE_SOURCE_CLIENT_CHAT) {
 				const messageBusService =
 					payload.runtime.getService<IMessageBusService>("message-bus-service");
 				if (messageBusService?.notifyActionStart) {
@@ -1184,7 +1185,7 @@ const events: PluginEvents = {
 		async (payload: ActionEventPayload) => {
 			// Only notify for client_chat messages
 			const payloadContent = payload.content;
-			if (payloadContent && payloadContent.source === "client_chat") {
+			if (payloadContent?.source === MESSAGE_SOURCE_CLIENT_CHAT) {
 				const messageBusService =
 					payload.runtime.getService<IMessageBusService>("message-bus-service");
 				if (messageBusService?.notifyActionUpdate) {

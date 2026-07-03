@@ -1,5 +1,5 @@
 import type { IAgentRuntime, UUID } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { logger, MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core";
 import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
 import {
   loadOwnerContactRoutingHints,
@@ -30,7 +30,7 @@ export interface EscalationState {
   resolvedAt?: number;
 }
 
-const DEFAULT_CHANNELS: string[] = ["client_chat"];
+const DEFAULT_CHANNELS: string[] = [MESSAGE_SOURCE_CLIENT_CHAT];
 const DEFAULT_WAIT_MINUTES = 5;
 const DEFAULT_MAX_RETRIES = 3;
 const ESCALATION_CACHE_KEY_PREFIX = "agent:escalation:active";
@@ -134,8 +134,8 @@ export function registerEscalationChannel(channelName: string): boolean {
     }
 
     // Ensure client_chat stays first
-    if (!existing.includes("client_chat")) {
-      existing.unshift("client_chat");
+    if (!existing.includes(MESSAGE_SOURCE_CLIENT_CHAT)) {
+      existing.unshift(MESSAGE_SOURCE_CLIENT_CHAT);
     }
 
     existing.push(trimmed);
@@ -226,7 +226,7 @@ async function sendToChannel(
   try {
     const targetSource = resolvedContact?.source ?? channel;
     if (
-      targetSource === "client_chat" &&
+      targetSource === MESSAGE_SOURCE_CLIENT_CHAT &&
       !hasRuntimeSendHandler(runtime, targetSource)
     ) {
       logMissingSendHandlerOnce("escalation", targetSource);

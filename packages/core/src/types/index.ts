@@ -30,6 +30,7 @@ export * from "./hook";
 export * from "./interactions";
 export * from "./memory";
 export * from "./memory-storage";
+export * from "./message-source";
 export * from "./messaging";
 export * from "./model";
 export * from "./notification";

@@ -5,6 +5,7 @@
  * streaming, stop, retry, edit, clear, and queue management.
  */
 
+import { MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core";
 import { asRecord } from "@elizaos/shared";
 import { type MutableRefObject, useCallback, useEffect, useRef } from "react";
 import type { Conversation, CustomActionDef } from "../api";
@@ -1102,7 +1103,7 @@ export function useChatSend(deps: UseChatSendDeps) {
             contentType: optimisticAttachmentKind(img.mimeType),
             ...(img.name ? { title: img.name } : {}),
             mimeType: img.mimeType,
-            source: "client_chat",
+            source: MESSAGE_SOURCE_CLIENT_CHAT,
             ...(img.transcriptId ? { transcriptId: img.transcriptId } : {}),
             ...(img.thumbnail
               ? {

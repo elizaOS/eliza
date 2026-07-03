@@ -1,12 +1,13 @@
 import {
   type AgentContext,
+  MESSAGE_SOURCE_SUB_AGENT,
   type Memory,
   type MessageHandlerResult,
   type ResponseHandlerEvaluator,
   SIMPLE_CONTEXT_ID,
 } from "@elizaos/core";
 
-const SUB_AGENT_SOURCE = "sub_agent";
+const SUB_AGENT_SOURCE = MESSAGE_SOURCE_SUB_AGENT;
 const EMPTY_COMPLETION_PLACEHOLDER =
   "sub-agent reports task complete (no captured output).";
 // When the evaluator routes back to TASKS_SEND_TO_AGENT or TASKS_SPAWN_AGENT,

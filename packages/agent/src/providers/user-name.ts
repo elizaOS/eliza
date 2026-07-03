@@ -14,6 +14,7 @@ import type {
   ProviderResult,
   State,
 } from "@elizaos/core";
+import { MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core";
 import { fetchConfiguredOwnerName } from "../services/owner-name.ts";
 
 export function createUserNameProvider(): Provider {
@@ -38,7 +39,7 @@ export function createUserNameProvider(): Provider {
       _state: State,
     ): Promise<ProviderResult> {
       const content = message.content as Record<string, unknown> | undefined;
-      if (content?.source !== "client_chat") {
+      if (content?.source !== MESSAGE_SOURCE_CLIENT_CHAT) {
         return { text: "" };
       }
 

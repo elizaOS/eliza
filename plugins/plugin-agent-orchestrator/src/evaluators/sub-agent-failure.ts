@@ -1,11 +1,12 @@
 import {
+  MESSAGE_SOURCE_SUB_AGENT,
   type Memory,
   type MessageHandlerResult,
   type ResponseHandlerEvaluator,
   SIMPLE_CONTEXT_ID,
 } from "@elizaos/core";
 
-const SUB_AGENT_SOURCE = "sub_agent";
+const SUB_AGENT_SOURCE = MESSAGE_SOURCE_SUB_AGENT;
 
 // Terminal failure events the SubAgentRouter stamps onto a synthetic inbound
 // when a coding sub-agent dies WITHOUT delivering: a hard ACP error, an

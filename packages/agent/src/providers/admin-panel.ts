@@ -6,7 +6,10 @@ import type {
   State,
   UUID,
 } from "@elizaos/core";
-import { resolveCanonicalOwnerIdForMessage } from "@elizaos/core";
+import {
+  MESSAGE_SOURCE_CLIENT_CHAT,
+  resolveCanonicalOwnerIdForMessage,
+} from "@elizaos/core";
 import { hasAdminAccess } from "../security/access.ts";
 
 /** Maximum total characters for the provider text output. */
@@ -42,7 +45,8 @@ async function fetchOwnerChatMessages(
     roomIds.map((id) => runtime.getRoom(id)),
   );
   const chatRooms = roomResults.filter(
-    (r): r is NonNullable<typeof r> => r != null && r.source === "client_chat",
+    (r): r is NonNullable<typeof r> =>
+      r != null && r.source === MESSAGE_SOURCE_CLIENT_CHAT,
   );
   if (chatRooms.length === 0) return [];
 
