@@ -24,6 +24,12 @@ import type {
 } from "@elizaos/core";
 import { logger, ModelType, spawnWithTrajectoryLink } from "@elizaos/core";
 import { readStringOption } from "../params.js";
+import {
+	preflightCodingDispatch,
+	resolvePluginScaffoldBaseDir,
+	resolveScaffoldTemplateDir,
+	templateMissingGuidance,
+} from "./scaffold-env.js";
 import type { ViewSummary } from "./views-client.js";
 import { writeViewHeroAsset } from "./views-hero.js";
 import { isRestrictedPlatform } from "./views-platform.js";
@@ -34,15 +40,6 @@ import {
 } from "./views-snapshot.js";
 
 export const VIEWS_CREATE_INTENT_TAG = "views-create-intent";
-
-/** Resolves from monorepo root (with embedded `eliza/`) or eliza repo root. */
-const MIN_PLUGIN_TEMPLATE_CANDIDATES = [
-	"packages/elizaos/templates/min-plugin",
-	"eliza/packages/elizaos/templates/min-plugin",
-] as const;
-
-/** Where new plugins land relative to the repo root. */
-const PLUGINS_DIR_CANDIDATES = ["eliza/plugins", "plugins"] as const;
 
 const NAME_PLACEHOLDER = "__PLUGIN_NAME__";
 const DISPLAY_NAME_PLACEHOLDER = "__PLUGIN_DISPLAY_NAME__";
@@ -239,48 +236,29 @@ async function copyTemplate(
 	}
 }
 
-async function resolveTemplateDir(
-	repoRoot: string,
-): Promise<string | undefined> {
-	for (const rel of MIN_PLUGIN_TEMPLATE_CANDIDATES) {
-		const dir = path.join(repoRoot, rel);
-		const stat = await fs.stat(dir).catch(() => null);
-		if (stat?.isDirectory()) return dir;
-	}
-	return undefined;
-}
-
 async function findFreePluginWorkdir(
 	repoRoot: string,
 	baseName: string,
 ): Promise<string> {
-	for (const candidate of PLUGINS_DIR_CANDIDATES) {
-		const baseDir = path.join(repoRoot, candidate);
-		const stat = await fs.stat(baseDir).catch(() => null);
-		if (!stat?.isDirectory()) continue;
-
-		let pluginDirName = `plugin-${baseName}`;
-		let dir = path.join(baseDir, pluginDirName);
-		let suffix = 2;
-		while (
-			await fs.stat(dir).then(
-				() => true,
-				() => false,
-			)
-		) {
-			pluginDirName = `plugin-${baseName}-${suffix}`;
-			dir = path.join(baseDir, pluginDirName);
-			suffix += 1;
-			if (suffix > 50)
-				throw new Error(
-					`Could not find a free plugin directory for "${baseName}"`,
-				);
-		}
-		return dir;
+	const baseDir = await resolvePluginScaffoldBaseDir(repoRoot);
+	let pluginDirName = `plugin-${baseName}`;
+	let dir = path.join(baseDir, pluginDirName);
+	let suffix = 2;
+	while (
+		await fs.stat(dir).then(
+			() => true,
+			() => false,
+		)
+	) {
+		pluginDirName = `plugin-${baseName}-${suffix}`;
+		dir = path.join(baseDir, pluginDirName);
+		suffix += 1;
+		if (suffix > 50)
+			throw new Error(
+				`Could not find a free plugin directory for "${baseName}"`,
+			);
 	}
-	throw new Error(
-		`Could not find a plugins directory under ${repoRoot} (tried: ${PLUGINS_DIR_CANDIDATES.join(", ")})`,
-	);
+	return dir;
 }
 
 // ---------------------------------------------------------------------------
@@ -678,14 +656,22 @@ async function createNewViewPlugin({
 	originRoomId: string;
 	callback?: HandlerCallback;
 }): Promise<ActionResult> {
+	// Preflight the pieces the dispatch silently depends on BEFORE scaffolding,
+	// so a missing orchestrator/CLI answers with setup guidance instead of
+	// leaving a half-created plugin dir behind.
+	const preflight = await preflightCodingDispatch(runtime);
+	if (!preflight.ok) {
+		const text = `I can't build a view plugin yet. ${preflight.guidance.join(" ")}`;
+		await callback?.({ text });
+		return { success: false, text };
+	}
+
 	const { name, displayName } = await extractNames(runtime, intent);
 
-	const templateSrc = await resolveTemplateDir(repoRoot);
+	const template = await resolveScaffoldTemplateDir(repoRoot, "min-plugin");
+	const templateSrc = template.dir;
 	if (!templateSrc) {
-		const tried = MIN_PLUGIN_TEMPLATE_CANDIDATES.map((rel) =>
-			path.join(repoRoot, rel),
-		).join(", ");
-		const text = `min-plugin template not found (tried: ${tried}); cannot scaffold a new view plugin.`;
+		const text = `I can't scaffold a new view plugin: ${templateMissingGuidance("min-plugin", template.tried)}`;
 		await callback?.({ text });
 		return { success: false, text };
 	}
@@ -794,6 +780,15 @@ async function editExistingViewPlugin({
 	originRoomId: string;
 	callback?: HandlerCallback;
 }): Promise<ActionResult> {
+	// Same preflight as the create path: surface missing orchestrator/CLI as
+	// setup guidance before taking a snapshot or dispatching.
+	const preflight = await preflightCodingDispatch(runtime);
+	if (!preflight.ok) {
+		const text = `I can't edit ${view.label} yet. ${preflight.guidance.join(" ")}`;
+		await callback?.({ text });
+		return { success: false, text };
+	}
+
 	const workdir = await locatePluginSourceDir(repoRoot, view);
 	if (!workdir) {
 		const text = `Could not locate the source directory for ${view.label} (${view.pluginName}).`;

@@ -50,6 +50,7 @@
 		"@elizaos/logger": "workspace:*",
 		"@elizaos/shared": "workspace:*",
 		"@elizaos/ui": "workspace:*",
+		"elizaos": "workspace:*",
 		"lucide-react": "^1.16.0",
 		"react": "^19.0.0"
 	},
