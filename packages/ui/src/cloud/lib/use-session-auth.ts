@@ -13,8 +13,12 @@
  * suites can exercise authed surfaces against a mock stack.
  */
 
+import { Capacitor } from "@capacitor/core";
+import { getElizaApiToken } from "@elizaos/shared";
 import { STEWARD_TOKEN_KEY } from "@elizaos/shared/steward-session-client";
 import { useContext, useEffect, useState } from "react";
+import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
+import { getBootConfig } from "../../config/boot-config";
 import {
   LocalStewardAuthContext,
   type LocalStewardAuthValue,
@@ -70,6 +74,38 @@ function readPlaywrightTestSession(): StewardSessionUser {
   return {
     id: PLAYWRIGHT_TEST_USER_ID,
     email: PLAYWRIGHT_TEST_USER_EMAIL,
+  };
+}
+
+function isNativeCloudRuntime(): boolean {
+  return Capacitor.isNativePlatform() || isElectrobunRuntime();
+}
+
+function nativeCloudApiKey(): string | null {
+  if (!isNativeCloudRuntime()) return null;
+  const globalToken = (globalThis as Record<string, unknown>)
+    .__ELIZA_CLOUD_AUTH_TOKEN__;
+  if (typeof globalToken === "string" && globalToken.trim()) {
+    return globalToken.trim();
+  }
+  return getBootConfig().apiToken?.trim() || getElizaApiToken()?.trim() || null;
+}
+
+function apiKeySessionId(token: string): string {
+  let hash = 2166136261;
+  for (let index = 0; index < token.length; index++) {
+    hash ^= token.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `native-api-key:${(hash >>> 0).toString(36)}`;
+}
+
+function readNativeApiKeySession(): StewardSessionUser {
+  const token = nativeCloudApiKey();
+  if (!token) return null;
+  return {
+    id: apiKeySessionId(token),
+    email: "",
   };
 }
 
@@ -132,6 +168,9 @@ export function useSessionAuth(): SessionAuthState {
   const [storageUser, setStorageUser] = useState<StewardSessionUser>(
     readStewardSessionFromStorage,
   );
+  const [apiKeyUser, setApiKeyUser] = useState<StewardSessionUser>(
+    readNativeApiKeySession,
+  );
   const [testUser, setTestUser] = useState<StewardSessionUser>(
     readPlaywrightTestSession,
   );
@@ -139,6 +178,7 @@ export function useSessionAuth(): SessionAuthState {
   useEffect(() => {
     const handler = () => {
       setStorageUser(readStewardSessionFromStorage());
+      setApiKeyUser(readNativeApiKeySession());
       setTestUser(readPlaywrightTestSession());
     };
     handler();
@@ -160,9 +200,12 @@ export function useSessionAuth(): SessionAuthState {
       }
     : null;
 
-  const user = providerUser ?? storageUser ?? testUser;
+  const user = providerUser ?? storageUser ?? apiKeyUser ?? testUser;
   const authenticated =
-    providerAuth.isAuthenticated || storageUser !== null || testUser !== null;
+    providerAuth.isAuthenticated ||
+    storageUser !== null ||
+    apiKeyUser !== null ||
+    testUser !== null;
   const ready = !providerAuth.isLoading || isPlaywrightTestAuthEnabled();
 
   return { ready, authenticated, user };
