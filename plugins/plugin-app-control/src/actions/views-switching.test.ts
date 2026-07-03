@@ -832,23 +832,25 @@ describe("view switching — VIEWS action resolver", () => {
 			};
 		}
 
-		it.each(["discord", "telegram", "slack", "whatsapp"])(
-			"keeps VIEWS off the planner surface for a no-view-intent turn on %s (surface-composition validate: no options)",
-			async (source) => {
-				const action = createViewsAction({
-					client: clientFor(REGISTRY),
-					hasOwnerAccess: vi.fn(async () => true),
-				});
-				const ok = await action.validate(
-					runtimeWithTasks([]) as never,
-					sourcedMessage(
-						"lol did you catch what happened on the server last night",
-						source,
-					) as never,
-				);
-				expect(ok).toBe(false);
-			},
-		);
+		it.each([
+			"discord",
+			"telegram",
+			"slack",
+			"whatsapp",
+		])("keeps VIEWS off the planner surface for a no-view-intent turn on %s (surface-composition validate: no options)", async (source) => {
+			const action = createViewsAction({
+				client: clientFor(REGISTRY),
+				hasOwnerAccess: vi.fn(async () => true),
+			});
+			const ok = await action.validate(
+				runtimeWithTasks([]) as never,
+				sourcedMessage(
+					"lol did you catch what happened on the server last night",
+					source,
+				) as never,
+			);
+			expect(ok).toBe(false);
+		});
 
 		it("still exposes VIEWS for a no-view-intent turn on a local view-capable surface", async () => {
 			const action = createViewsAction({
