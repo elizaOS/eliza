@@ -5,6 +5,7 @@ import {
   WalletBalance,
   WalletInvestigationResult,
   WalletRecentTransaction,
+  WalletRiskSummary,
 } from "./types";
 
 export async function investigateWallet(
@@ -67,6 +68,41 @@ const activity: WalletActivitySummary = {
   activityLevel,
 };
 
+const riskReasons: string[] = [];
+let riskScore = 0;
+
+if (balance.sol === 0) {
+  riskScore += 5;
+  riskReasons.push("Wallet currently has zero SOL balance.");
+}
+
+if (failedTransactionCount > 0) {
+  riskScore += Math.min(failedTransactionCount * 10, 30);
+  riskReasons.push(
+    `${failedTransactionCount} failed transaction(s) found in the recent sample.`,
+  );
+}
+
+if (recentTransactions.length === 0) {
+  riskScore += 10;
+  riskReasons.push("No recent transaction activity found.");
+} else {
+  riskReasons.push("Wallet has recent transaction activity.");
+}
+
+if (riskReasons.length === 0) {
+  riskReasons.push("No obvious risk signals found in the current sample.");
+}
+
+const riskLevel =
+  riskScore >= 60 ? "high" : riskScore >= 25 ? "medium" : "low";
+
+const risk: WalletRiskSummary = {
+  score: riskScore,
+  level: riskLevel,
+  reasons: riskReasons,
+};
+
         return {
           chain,
           address: walletAddress,
@@ -75,6 +111,7 @@ const activity: WalletActivitySummary = {
 recentTransactions,
 transactionCountSample: recentTransactions.length,
 activity,
+risk,
 summary: `Wallet found. Current balance: ${balance.sol.toFixed(
   6,
 )} SOL. Recent transaction sample: ${recentTransactions.length}.`,
