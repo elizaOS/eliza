@@ -652,6 +652,10 @@ const STRICT_LLM_ROUTING_SCENARIOS: Record<
     actionNames: ["APP", "VIEWS"],
     minMessageTurns: REQUIRED_APP_CONTROL_NL_TURNS.length,
   },
+  "deterministic-active-view-agent-surface": {
+    actionNames: ["VIEWS"],
+    minMessageTurns: 2,
+  },
   "deterministic-agent-skills-actions": {
     actionNames: [
       "SKILL",
@@ -1196,11 +1200,15 @@ describe("deterministic action coverage", () => {
         continue;
       }
       // `_helpers/strict-llm-action-fixtures.ts` re-exports the canonical
-      // template from `@elizaos/test-harness`; read that file for the fixture
-      // literals (RESPONSE_HANDLER / ACTION_PLANNER / register call).
-      const fixtureSource = source.includes("registerStrictActionRouteFixtures")
-        ? `${source}\n${readFileSync(resolve(repoRoot, "packages/test/harness/action-route-fixtures.ts"), "utf8")}`
-        : source;
+      // template from `@elizaos/test-harness`; scenarios may also import the
+      // stage1/planner fixture builders from that harness directly. Either
+      // way, read the harness file for the fixture literals
+      // (RESPONSE_HANDLER / ACTION_PLANNER / register call).
+      const fixtureSource =
+        source.includes("registerStrictActionRouteFixtures") ||
+        source.includes("stage1ResponseHandlerFixture")
+          ? `${source}\n${readFileSync(resolve(repoRoot, "packages/test/harness/action-route-fixtures.ts"), "utf8")}`
+          : source;
 
       const messageTurns = messageTurnCount(scenario);
       if (messageTurns < spec.minMessageTurns) {
