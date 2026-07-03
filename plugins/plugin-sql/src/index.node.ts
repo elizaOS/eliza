@@ -30,9 +30,11 @@ import {
   type PgliteSyncTableStatus,
 } from "./pglite/manager";
 import {
+  type ClosePgliteSingletonResult,
   getActivePgliteManager,
   getOrCreatePgliteManagerForAgent,
   type PgliteManagerCache,
+  type PgliteSingletonCache,
 } from "./pglite/manager-cache";
 import * as schema from "./schema";
 import { AdvancedMemoryStorageService } from "./services/advanced-memory-storage";
@@ -60,6 +62,11 @@ export type {
 export * from "./connector-credential-store";
 export * from "./pglite/errors";
 export type { LiveNamespace, PgliteSyncStatus, PgliteSyncTableStatus } from "./pglite/manager";
+export type {
+  ClosePgliteSingletonResult,
+  PgliteSingletonCache,
+  PgliteSingletonManager,
+} from "./pglite/manager-cache";
 export * from "./schema";
 export type { DrizzleDatabase } from "./types";
 
@@ -277,4 +284,57 @@ export async function forcePgliteResync(): Promise<{
   const manager = globalSingletons.pgLiteClientManager;
   if (!manager) return null;
   return manager.forceResync();
+}
+
+/**
+ * Close and drop the process-global PGlite singleton manager.
+ *
+ * Awaits the manager's `close()` bounded by `timeoutMs` (default 1000ms), then
+ * removes it from the singleton cache so the next `createDatabaseAdapter()`
+ * builds a fresh manager. Used by hosts recovering from a corrupt PGlite data
+ * directory. Returns whether a manager was closed and whether close() timed out.
+ */
+export async function closePgliteSingleton(options?: {
+  timeoutMs?: number;
+}): Promise<ClosePgliteSingletonResult> {
+  const manager = globalSingletons.pgLiteClientManager;
+  if (!manager) {
+    return { closed: false, timedOut: false, error: null };
+  }
+
+  let timedOut = false;
+  let error: Error | null = null;
+  const timeoutMs = options?.timeoutMs ?? 1_000;
+  let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+
+  try {
+    await Promise.race([
+      Promise.resolve(manager.close()),
+      new Promise<void>((resolve) => {
+        timeoutHandle = setTimeout(() => {
+          timedOut = true;
+          resolve();
+        }, timeoutMs);
+      }),
+    ]);
+  } catch (err) {
+    error = err instanceof Error ? err : new Error(String(err));
+  } finally {
+    if (timeoutHandle) {
+      clearTimeout(timeoutHandle);
+    }
+  }
+
+  delete globalSingletons.pgLiteClientManager;
+  return { closed: true, timedOut, error };
+}
+
+/**
+ * Public handle onto the process-global PGlite singleton cache. Lets a host
+ * pre-seed or inspect the active manager (e.g. a browser bundle that
+ * pre-initializes PGlite with custom asset loading) without hand-copying the
+ * private `Symbol.for("elizaos.plugin-sql.global-singletons")`.
+ */
+export function getPgliteSingletonCache(): PgliteSingletonCache {
+  return globalSingletons;
 }

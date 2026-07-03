@@ -57,6 +57,7 @@ import {
   listAppRoutePluginLoaders,
 } from "./app-route-plugin-registry.js";
 import { ensureBundledFusedLibDir } from "./bundled-fused-lib.js";
+import { resetPluginSqlPgliteSingleton } from "./pglite-auto-reset.js";
 import { registerSubAgentCredentialBridge } from "./sub-agent-credential-bridge-wiring.js";
 import { shouldWarmupVoice, warmVoiceModels } from "./voice-warmup";
 
@@ -110,18 +111,9 @@ const AGENT_ORCHESTRATOR_PLUGIN = "agent-orchestrator";
 const require = createRequire(import.meta.url);
 const DIRECT_HELP_FLAGS = new Set(["-h", "--help", "help"]);
 const DIRECT_VERSION_FLAGS = new Set(["-v", "-V", "--version", "version"]);
-const PLUGIN_SQL_GLOBAL_SINGLETONS = Symbol.for(
-  "elizaos.plugin-sql.global-singletons",
-);
 const ELIZA_AUTO_RESET_PGLITE_ERROR_CODE = "ELIZA_PGLITE_MANUAL_RESET_REQUIRED";
 
 export const shutdownRuntime = upstreamShutdownRuntime;
-
-interface PluginSqlGlobalSingletons {
-  pgLiteClientManager?: {
-    close?: () => Promise<unknown> | unknown;
-  };
-}
 
 type ErrorWithCause = Error & {
   cause?: unknown;
@@ -1363,48 +1355,6 @@ function resolveManagedPgliteDataDir(): string | null {
 
 function isAutoResettablePgliteDir(dataDir: string | null): dataDir is string {
   return typeof dataDir === "string" && path.basename(dataDir) === ".elizadb";
-}
-
-async function resetPluginSqlPgliteSingleton(context: string): Promise<void> {
-  const globalSymbols = globalThis as typeof globalThis &
-    Record<symbol, PluginSqlGlobalSingletons | undefined>;
-  const singletons = globalSymbols[PLUGIN_SQL_GLOBAL_SINGLETONS];
-  const manager = singletons?.pgLiteClientManager;
-
-  if (manager && typeof manager.close === "function") {
-    let closeTimedOut = false;
-    let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
-
-    try {
-      await Promise.race([
-        Promise.resolve(manager.close()),
-        new Promise<void>((resolve) => {
-          timeoutHandle = setTimeout(() => {
-            closeTimedOut = true;
-            resolve();
-          }, 1_000);
-        }),
-      ]);
-    } catch (err) {
-      logger.warn(
-        `[eliza] ${context}: failed to close plugin-sql PGlite singleton: ${formatError(err)}`,
-      );
-    } finally {
-      if (timeoutHandle) {
-        clearTimeout(timeoutHandle);
-      }
-    }
-
-    if (closeTimedOut) {
-      logger.warn(
-        `[eliza] ${context}: plugin-sql PGlite singleton close timed out; continuing with a forced reset`,
-      );
-    }
-  }
-
-  if (singletons?.pgLiteClientManager) {
-    delete singletons.pgLiteClientManager;
-  }
 }
 
 async function quarantinePgliteDataDir(
