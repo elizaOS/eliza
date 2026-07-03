@@ -11,7 +11,7 @@
 // render throw is contained to the single widget with a "View JSON" fallback.
 
 import { cleanup, render, screen } from "@testing-library/react";
-import type * as React from "react";
+import * as React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { UiSpec } from "../../config/ui-spec";
 import { __setAppValueForTests } from "../../state/app-store";
@@ -26,7 +26,7 @@ function withApp(node: React.ReactElement) {
   } as never;
   __setAppValueForTests(appValue);
   return render(
-    <AppContext.Provider value={appValue}>{node}</AppContext.Provider>,
+    React.createElement(AppContext.Provider, { value: appValue }, node),
   );
 }
 
@@ -43,7 +43,12 @@ describe("MessageUiSpecBlock — a malformed model spec never bricks the app", (
     // this threw Object.entries(undefined) / undefined.map() out of render.
     const spec = asSpec({ root: "a", elements: { a: { type: "Text" } } });
     expect(() =>
-      withApp(<MessageUiSpecBlock spec={spec} raw={JSON.stringify(spec)} />),
+      withApp(
+        React.createElement(MessageUiSpecBlock, {
+          spec,
+          raw: JSON.stringify(spec),
+        }),
+      ),
     ).not.toThrow();
   });
 
@@ -60,7 +65,10 @@ describe("MessageUiSpecBlock — a malformed model spec never bricks the app", (
     let container: HTMLElement | undefined;
     expect(() => {
       container = withApp(
-        <MessageUiSpecBlock spec={spec} raw={JSON.stringify(spec)} />,
+        React.createElement(MessageUiSpecBlock, {
+          spec,
+          raw: JSON.stringify(spec),
+        }),
       ).container;
     }).not.toThrow();
     // The whole message did not disappear behind a root error screen — the
