@@ -214,7 +214,7 @@ describe("cloud coding-container routes", () => {
 
     expect(response.statusCode).toBe(400);
     expect(response.jsonBody()).toEqual({
-      error: 'Invalid option: expected one of "claude"|"codex"|"opencode"',
+      error: 'Invalid option: expected one of "claude"|"codex"|"opencode"|"elizaos"',
     });
   });
 });
