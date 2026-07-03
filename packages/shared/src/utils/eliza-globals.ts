@@ -30,13 +30,23 @@ export function getElizaApiToken(): string | undefined {
 }
 
 export function setElizaApiBase(value: string): void {
+  const apiBase = readTrimmedString(value);
+  setBootConfig({ ...getBootConfig(), apiBase });
+
   const elizaWindow = getElizaWindow();
   if (elizaWindow) {
-    elizaWindow.__ELIZAOS_API_BASE__ = value;
+    if (apiBase) {
+      elizaWindow.__ELIZAOS_API_BASE__ = apiBase;
+    } else {
+      Reflect.deleteProperty(elizaWindow, "__ELIZAOS_API_BASE__");
+    }
   }
 }
 
 export function clearElizaApiBase(): void {
+  const { apiBase: _apiBase, ...config } = getBootConfig();
+  setBootConfig(config);
+
   const elizaWindow = getElizaWindow();
   if (elizaWindow) {
     Reflect.deleteProperty(elizaWindow, "__ELIZAOS_API_BASE__");

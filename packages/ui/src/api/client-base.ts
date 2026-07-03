@@ -652,14 +652,16 @@ export class ElizaClient {
 
   /**
    * Persist a base URL to every consumer that reads it out-of-band (the
-   * boot-config store — the single source of truth — plus localStorage). Shared
-   * by {@link setBaseUrl} and {@link repointBaseUrl} so both keep the same
-   * persistence semantics — the only difference between them is the WS handling.
+   * boot-config store, plus localStorage). Shared by {@link setBaseUrl} and
+   * {@link repointBaseUrl} so both keep the same persistence semantics — the
+   * only difference between them is the WS handling.
    */
   private persistBaseUrl(normalized: string): void {
-    // Update boot config so other consumers (resolveApiUrl, etc.) see the new base.
-    const config = getBootConfig();
-    setBootConfig({ ...config, apiBase: normalized || undefined });
+    if (normalized) {
+      setElizaApiBase(normalized);
+    } else {
+      clearElizaApiBase();
+    }
     if (typeof window !== "undefined") {
       if (normalized) {
         window.localStorage.setItem(LOCAL_STORAGE_API_BASE_KEY, normalized);
@@ -668,16 +670,6 @@ export class ElizaClient {
       }
       // Clean up legacy sessionStorage entry (same key was used historically)
       window.sessionStorage.removeItem(LOCAL_STORAGE_API_BASE_KEY);
-    }
-    // `setBootConfig` above already updated the single source of truth (the
-    // boot-config store + its `window.__ELIZAOS_APP_BOOT_CONFIG__` mirror), which
-    // is what every transport, web shim, and `getElizaApiBase()` reader resolves
-    // the base from. Keep the legacy `__ELIZAOS_API_BASE__` branded mirror in sync
-    // for any external consumer that still reads it.
-    if (normalized) {
-      setElizaApiBase(normalized);
-    } else {
-      clearElizaApiBase();
     }
   }
 

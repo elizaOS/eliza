@@ -146,21 +146,17 @@ function readSessionStorageApiBase(): string | undefined {
  * the renderer. In desktop shells the page origin is electrobun:// or
  * file://, so bare /api/... paths resolve to the SPA instead of the backend.
  *
- * Resolution order: boot `apiBase` → shell-injected `__ELIZAOS_API_BASE__` →
- * `sessionStorage` fallback. The boot config is the current client-owned
- * source of truth because `client.setBaseUrl()` updates it whenever the user
- * switches servers. Injection still beats stale session state from prior
- * sessions, but it must not override the active runtime target once the client
- * has changed it.
+ * Resolution order: boot-config `apiBase` (via `getElizaApiBase()`) →
+ * `sessionStorage` fallback. The boot config is the current client-owned source
+ * of truth because `client.setBaseUrl()` updates it whenever the user switches
+ * servers. It must beat stale session state from prior sessions, but session
+ * storage remains a compatibility fallback when no boot config exists yet.
  */
 export function resolveApiUrl(apiPath: string): string {
-  const bootRaw = getBootConfig().apiBase?.trim();
-  const boot = bootRaw && bootRaw.length > 0 ? bootRaw : undefined;
-  const injectedRaw = getElizaApiBase()?.trim();
-  const injected =
-    injectedRaw && injectedRaw.length > 0 ? injectedRaw : undefined;
+  const apiBaseRaw = getElizaApiBase()?.trim();
+  const apiBase = apiBaseRaw && apiBaseRaw.length > 0 ? apiBaseRaw : undefined;
   const stored = readSessionStorageApiBase();
-  const base = boot ?? injected ?? stored;
+  const base = apiBase ?? stored;
   if (!base) return apiPath;
   const normalized = base.replace(/\/+$/, "");
   const suffix = apiPath.startsWith("/") ? apiPath : `/${apiPath}`;
