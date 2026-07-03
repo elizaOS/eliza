@@ -158,6 +158,21 @@ describe("preflightCodingDispatch", () => {
 		expect(result.guidance).toEqual([]);
 	});
 
+	it("passes when the orchestrator exposes TASKS with delegation tags", async () => {
+		process.env.PATH = fakeCliDir("codex");
+		const runtime = stubRuntime(["TASKS"]);
+		runtime.actions[0].tags = [
+			"domain:coding",
+			"resource:agent-task",
+			"capability:delegate",
+		];
+
+		const result = await preflightCodingDispatch(runtime);
+
+		expect(result.ok).toBe(true);
+		expect(result.guidance).toEqual([]);
+	});
+
 	it("guides to the orchestrator plugin when START_CODING_TASK is missing", async () => {
 		process.env.PATH = fakeCliDir("claude");
 		const result = await preflightCodingDispatch(stubRuntime(["REPLY"]));

@@ -241,13 +241,16 @@ import { runPostTurnEvaluators } from "./evaluator";
 import { runBotNoiseTriage } from "./message/bot-noise-triage";
 import {
 	findAvailableActionName,
+	findCodingDelegationActionName,
 	findWebLookupActionName,
 	findWebLookupActionNames,
 	inferDirectCurrentRequestCandidateActions as inferDirectCurrentRequestCandidateActionsFromHeuristics,
 	inferLocalShellCommandFromMessageText,
 	inferWebSearchQueryFromMessageText,
+	LEGACY_CODING_DELEGATION_ACTION_NAMES,
 	looksLikeLocalShellRequest,
 	looksLikeWebSearchRequest,
+	normalizeActionIdentifier,
 } from "./message/direct-action-heuristics";
 import {
 	buildFailureReplyPrompt,
@@ -4468,40 +4471,6 @@ export function inferDirectCurrentRequestCandidateActions(
 	);
 }
 
-const CODING_DELEGATION_ACTION_TAGS = [
-	"domain:coding",
-	"resource:agent-task",
-	"capability:delegate",
-] as const;
-
-const LEGACY_CODING_DELEGATION_ACTION_NAMES = [
-	"TASKS",
-	"TASKS_SPAWN_AGENT",
-	"SPAWN_AGENT",
-	"START_CODING_TASK",
-	"CODE_TASK",
-	"SPAWN_CODING_AGENT",
-] as const;
-
-function hasActionTags(
-	action: Pick<Action, "tags">,
-	requiredTags: readonly string[],
-): boolean {
-	const tags = new Set((action.tags ?? []).map((tag) => tag.toLowerCase()));
-	return requiredTags.every((tag) => tags.has(tag));
-}
-
-function findCodingDelegationActionName(
-	actions: ReadonlyArray<Pick<Action, "name" | "similes" | "tags">>,
-): string | undefined {
-	return (
-		actions.find((action) =>
-			hasActionTags(action, CODING_DELEGATION_ACTION_TAGS),
-		)?.name ??
-		findAvailableActionName(actions, LEGACY_CODING_DELEGATION_ACTION_NAMES)
-	);
-}
-
 const LIVE_LOOKUP_UNAVAILABLE_REPLY =
 	"I don't have a live web search action available here, so I can't look up current information in this chat.";
 
@@ -7225,10 +7194,6 @@ function isStopResponse(
 		typeof responseContent.actions[0] === "string" &&
 		responseContent.actions[0].toUpperCase() === "STOP"
 	);
-}
-
-function normalizeActionIdentifier(actionName: string): string {
-	return unwrapPlannerIdentifier(actionName).toUpperCase().replace(/_/g, "");
 }
 
 function unwrapPlannerIdentifier(value: string): string {

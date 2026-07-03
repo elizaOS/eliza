@@ -27,7 +27,7 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { IAgentRuntime } from "@elizaos/core";
-import { resolveStateDir } from "@elizaos/core";
+import { findCodingDelegationActionName, resolveStateDir } from "@elizaos/core";
 
 /** Templates published by the `elizaos` package under `templates/`. */
 export type ScaffoldTemplateId = "min-plugin" | "min-project";
@@ -275,12 +275,12 @@ export async function preflightCodingDispatch(
 ): Promise<CodingDispatchPreflight> {
 	const guidance: string[] = [];
 
-	const hasCreateTask = runtime.actions.some(
-		(a) => a.name === "START_CODING_TASK" || a.name === "CREATE_TASK",
+	const hasCreateTask = Boolean(
+		findCodingDelegationActionName(runtime.actions ?? []),
 	);
 	if (!hasCreateTask) {
 		guidance.push(
-			"The coding-agent orchestrator is not loaded (no START_CODING_TASK action). " +
+			"The coding-agent orchestrator is not loaded (no coding delegation action). " +
 				"Add @elizaos/plugin-agent-orchestrator to this agent's plugins to enable scaffolding.",
 		);
 	}

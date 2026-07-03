@@ -1,6 +1,7 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { logger } from "../../../../logger.ts";
+import { findCodingDelegationActionName } from "../../../../services/message/direct-action-heuristics.ts";
 import type {
 	ActionResult,
 	HandlerCallback,
@@ -266,13 +267,14 @@ async function dispatchCodingAgent({
 	pluginName: string;
 	callback?: HandlerCallback;
 }): Promise<DispatchResult> {
-	const createTask =
-		runtime.actions.find((action) => action.name === "START_CODING_TASK") ??
-		runtime.actions.find((action) => action.name === "CREATE_TASK");
+	const createTaskName = findCodingDelegationActionName(runtime.actions ?? []);
+	const createTask = runtime.actions.find(
+		(action) => action.name === createTaskName,
+	);
 	if (!createTask) {
 		return {
 			dispatched: false,
-			reason: "START_CODING_TASK action not registered",
+			reason: "Coding delegation action not registered",
 		};
 	}
 

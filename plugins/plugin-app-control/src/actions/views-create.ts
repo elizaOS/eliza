@@ -22,7 +22,12 @@ import type {
 	IAgentRuntime,
 	Memory,
 } from "@elizaos/core";
-import { logger, ModelType, spawnWithTrajectoryLink } from "@elizaos/core";
+import {
+	findCodingDelegationActionName,
+	logger,
+	ModelType,
+	spawnWithTrajectoryLink,
+} from "@elizaos/core";
 import { readStringOption } from "../params.js";
 import {
 	preflightCodingDispatch,
@@ -319,13 +324,12 @@ async function dispatchCodingAgent({
 	originRoomId: string;
 	callback?: HandlerCallback;
 }): Promise<DispatchResult> {
-	const createTask =
-		runtime.actions.find((a) => a.name === "START_CODING_TASK") ??
-		runtime.actions.find((a) => a.name === "CREATE_TASK");
+	const createTaskName = findCodingDelegationActionName(runtime.actions ?? []);
+	const createTask = runtime.actions.find((a) => a.name === createTaskName);
 	if (!createTask) {
 		return {
 			dispatched: false,
-			reason: "START_CODING_TASK action not registered",
+			reason: "Coding delegation action not registered",
 		};
 	}
 

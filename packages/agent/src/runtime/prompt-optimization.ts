@@ -773,7 +773,7 @@ function resolveConversationCompactionKey(
 }
 
 function isModelUsedEvent(event: unknown): boolean {
-  if (event === EventType.MODEL_USED || event === "MODEL_USED") {
+  if (event === EventType.MODEL_USED) {
     return true;
   }
   if (Array.isArray(event)) {

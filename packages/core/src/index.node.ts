@@ -278,6 +278,13 @@ export * from "./services/evaluator";
 export * from "./services/evaluator-priorities";
 export * from "./services/hook";
 export * from "./services/message";
+export {
+	CODING_DELEGATION_ACTION_TAGS,
+	findCodingDelegationActionName,
+	hasActionTags,
+	LEGACY_CODING_DELEGATION_ACTION_NAMES,
+	normalizeActionIdentifier,
+} from "./services/message/direct-action-heuristics";
 export * from "./services/notification";
 export * from "./services/optimized-prompt";
 export { resolveOptimizedPromptForRuntime } from "./services/optimized-prompt-resolver";

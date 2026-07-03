@@ -20,6 +20,7 @@ import type {
   AutomationNodeCatalogResponse,
   AutomationNodeDescriptor,
 } from "@elizaos/ui";
+import { classifyRuntimeActionNode } from "./automation-action-classifier.ts";
 import { ensureRouteAuthorized } from "./auth.ts";
 import {
   buildRuntimeCapabilityNodes,
@@ -110,12 +111,7 @@ async function buildAutomationNodeCatalog(
       id: `action:${action.name}`,
       label: humanizeCapabilityName(action.name),
       description: action.description || `${action.name} runtime action`,
-      class:
-        action.name === "START_CODING_TASK" ||
-        action.name === "CREATE_TASK" ||
-        action.name === "CODE_TASK"
-          ? "agent"
-          : "action",
+      class: classifyRuntimeActionNode(action),
       source: "runtime_action",
       backingCapability: action.name,
       ownerScoped: false,

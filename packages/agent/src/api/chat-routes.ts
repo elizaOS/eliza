@@ -19,6 +19,7 @@ import {
   ChannelType,
   type Content,
   createMessageMemory,
+  EventType,
   isRateLimitError,
   logger,
   ModelType,
@@ -2238,7 +2239,7 @@ export async function generateChatResponse(
     // Emit inbound events so trajectory/session hooks run for API chat.
     try {
       if (typeof runtime.emitEvent === "function") {
-        await runtime.emitEvent("MESSAGE_RECEIVED", {
+        await runtime.emitEvent(EventType.MESSAGE_RECEIVED, {
           message,
           source: messageSource,
         });
@@ -2286,7 +2287,7 @@ export async function generateChatResponse(
             ),
           });
           memoryLike.metadata = message.metadata;
-          await runtime.emitEvent("MESSAGE_SENT", {
+          await runtime.emitEvent(EventType.MESSAGE_SENT, {
             message: memoryLike,
             source: messageSource,
           });
@@ -2592,7 +2593,7 @@ export async function generateChatResponse(
                     ),
                   });
                   memoryLike.metadata = message.metadata;
-                  await runtime.emitEvent("MESSAGE_SENT", {
+                  await runtime.emitEvent(EventType.MESSAGE_SENT, {
                     message: memoryLike,
                     source: messageSource,
                   });
