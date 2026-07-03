@@ -116,6 +116,28 @@ export function isCloudTtsAvailable(runtime: IAgentRuntime): boolean {
   );
 }
 
+/**
+ * Whether Cloud STT (TRANSCRIPTION) may serve. Exact mirror of
+ * {@link isCloudTtsAvailable}: a Cloud API key is present AND cloud audio is
+ * on — either through the full cloud connection (`ELIZAOS_CLOUD_ENABLED`) or
+ * through the per-service flag (`ELIZAOS_CLOUD_USE_STT`, the STT counterpart
+ * of `ELIZAOS_CLOUD_USE_TTS`) for capability-only mode where an external
+ * provider owns the text brain and `ELIZAOS_CLOUD_ENABLED` stays unset.
+ *
+ * When this returns false the TRANSCRIPTION handler throws
+ * `CloudSttUnavailableError` so the local-inference router's per-pick retry
+ * loop falls through to the next eligible provider instead of firing an
+ * unauthenticated cloud request.
+ */
+export function isCloudSttAvailable(runtime: IAgentRuntime): boolean {
+  const apiKey = getApiKey(runtime);
+  if (!apiKey?.trim()) return false;
+  return (
+    isTruthyCloudFlag(getSetting(runtime, "ELIZAOS_CLOUD_ENABLED")) ||
+    isTruthyCloudFlag(getSetting(runtime, "ELIZAOS_CLOUD_USE_STT"))
+  );
+}
+
 export function getEmbeddingApiKey(runtime: IAgentRuntime): string | undefined {
   const embeddingApiKey = getSetting(runtime, "ELIZAOS_CLOUD_EMBEDDING_API_KEY");
   if (embeddingApiKey) {

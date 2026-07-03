@@ -1,14 +1,72 @@
-import type { IAgentRuntime } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import type { IAgentRuntime, TranscriptionParams } from "@elizaos/core";
+import { fetchWithSsrfGuard, logger } from "@elizaos/core";
 import type { OpenAITranscriptionParams } from "../types";
-import { getSetting, resolveCloudTimeoutMs } from "../utils/config";
+import { getSetting, isCloudSttAvailable, resolveCloudTimeoutMs } from "../utils/config";
 import { detectAudioMimeType } from "../utils/helpers";
 import { createElizaCloudClient } from "../utils/sdk-client";
 
+/**
+ * Thrown when Cloud STT cannot serve (no API key, or neither
+ * `ELIZAOS_CLOUD_ENABLED` nor `ELIZAOS_CLOUD_USE_STT` is set). The
+ * local-inference router catches any provider error and falls through to the
+ * next eligible TRANSCRIPTION provider — the STT counterpart of
+ * `CloudTtsUnavailableError` in `speech.ts`.
+ */
+export class CloudSttUnavailableError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "CloudSttUnavailableError";
+  }
+}
+
+/** Every input shape core documents for `ModelType.TRANSCRIPTION` plus the plugin's own param object. */
+export type CloudTranscriptionInput =
+  | Blob
+  | File
+  | Buffer
+  | string
+  | TranscriptionParams
+  | OpenAITranscriptionParams;
+
+function isCoreTranscriptionParams(input: object): input is TranscriptionParams {
+  return "audioUrl" in input && typeof (input as { audioUrl: unknown }).audioUrl === "string";
+}
+
+/**
+ * Fetch caller-provided audio bytes from an http(s) URL through the SSRF
+ * guard (the repo's convention for every server-side attachment fetch) so a
+ * crafted `audioUrl` can't reach internal/metadata endpoints.
+ */
+async function fetchAudioFromUrl(url: string, signal?: AbortSignal): Promise<Blob> {
+  const { response, release } = await fetchWithSsrfGuard({
+    url,
+    timeoutMs: 30_000,
+    signal,
+  });
+  try {
+    if (!response.ok) {
+      throw new Error(
+        `Failed to fetch TRANSCRIPTION audioUrl: ${response.status} ${response.statusText}`
+      );
+    }
+    const bytes = Buffer.from(await response.arrayBuffer());
+    const mimeType = response.headers.get("content-type") || detectAudioMimeType(bytes);
+    return new Blob([bytes] as never, { type: mimeType });
+  } finally {
+    await release();
+  }
+}
+
 export async function handleTranscription(
   runtime: IAgentRuntime,
-  input: Blob | File | Buffer | OpenAITranscriptionParams
+  input: CloudTranscriptionInput
 ): Promise<string> {
+  if (!isCloudSttAvailable(runtime)) {
+    throw new CloudSttUnavailableError(
+      "Eliza Cloud STT is not available — falling through to next TRANSCRIPTION handler"
+    );
+  }
+
   let modelName = getSetting(runtime, "ELIZAOS_CLOUD_TRANSCRIPTION_MODEL", "gpt-5-mini-transcribe");
   logger.log(`[ELIZAOS_CLOUD] Using TRANSCRIPTION model: ${modelName}`);
 
@@ -21,6 +79,10 @@ export async function handleTranscription(
     const detectedMimeType = detectAudioMimeType(input);
     logger.debug(`Auto-detected audio MIME type: ${detectedMimeType}`);
     blob = new Blob([input] as never, { type: detectedMimeType });
+  } else if (typeof input === "string") {
+    blob = await fetchAudioFromUrl(input);
+  } else if (typeof input === "object" && input !== null && isCoreTranscriptionParams(input)) {
+    blob = await fetchAudioFromUrl(input.audioUrl, input.signal);
   } else if (
     typeof input === "object" &&
     input !== null &&
@@ -53,7 +115,7 @@ export async function handleTranscription(
     }
   } else {
     throw new Error(
-      "TRANSCRIPTION expects a Blob/File/Buffer or an object { audio: Blob/File/Buffer, mimeType?, language?, response_format?, timestampGranularities?, prompt?, temperature?, model? }"
+      "TRANSCRIPTION expects a Blob/File/Buffer, an http(s) audio URL string, { audioUrl }, or an object { audio: Blob/File/Buffer, mimeType?, language?, response_format?, timestampGranularities?, prompt?, temperature?, model? }"
     );
   }
 

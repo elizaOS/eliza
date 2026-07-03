@@ -22,6 +22,7 @@ import {
   handleTextNano,
   handleTextSmall,
   handleTextToSpeech,
+  handleTranscription,
   handleVideoGeneration,
 } from "./models";
 // Cloud services
@@ -264,6 +265,7 @@ export const elizaOSCloudPlugin: Plugin = {
     [ModelType.IMAGE]: handleImageGeneration,
     [ModelType.IMAGE_DESCRIPTION]: handleImageDescription,
     [ModelType.TEXT_TO_SPEECH]: handleTextToSpeech,
+    [ModelType.TRANSCRIPTION]: handleTranscription,
     [ModelType.AUDIO]: handleAudioGeneration,
     [ModelType.VIDEO]: handleVideoGeneration,
   },
@@ -487,6 +489,10 @@ export {
   CloudTtsUnavailableError,
   type CloudTextToSpeechParams,
 } from "./models/speech";
+export {
+  CloudSttUnavailableError,
+  type CloudTranscriptionInput,
+} from "./models/transcription";
 export {
   normalizeCloudSiteUrl,
   resolveCloudApiBaseUrl,
