@@ -134,6 +134,16 @@ export const COMPAT_ROUTE_AUTH_POLICIES: readonly CompatRouteAuthPolicy[] = [
     "POST",
     "/api/background/run-due-tasks",
   ),
+  sessionExact(
+    "background.generate-image",
+    "POST",
+    "/api/background/generate-image",
+  ),
+  sessionExact(
+    "background.upload-image",
+    "POST",
+    "/api/background/upload-image",
+  ),
   sessionPrefix("sensitive-requests", "/api/sensitive-requests"),
   sessionPrefix("local-inference", "/api/local-inference/"),
   sessionPrefix("voice.local-inference", "/api/voice/"),

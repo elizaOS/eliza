@@ -7,10 +7,17 @@
  * WebView tests reach it through adb reverse as a "remote" first-run target.
  */
 
+import { backgroundUploadImageRoute } from "../../agent/src/api/background-routes.ts";
 import { createDeterministicLlmProxyPlugin } from "../../test/mocks/helpers/llm-proxy-plugin.ts";
 import { startApiServer } from "../src/api/server.ts";
 import { useIsolatedConfigEnv } from "../test/helpers/isolated-config.ts";
 import { createRealTestRuntime } from "../test/helpers/real-runtime.ts";
+
+const deviceE2eUploadImageRoute = {
+  ...backgroundUploadImageRoute,
+  path: "/api/device-e2e/upload-image",
+  name: "device-e2e-upload-image",
+};
 
 function resolvePort(): number {
   const raw = process.env.ELIZA_API_PORT ?? process.env.ELIZA_PORT ?? "31337";
@@ -31,9 +38,14 @@ async function main(): Promise<void> {
   const proxy = createDeterministicLlmProxyPlugin({
     failOnUnhandledAction: false,
   });
+  const mediaRoutesPlugin = {
+    name: "device-e2e-media-routes",
+    description: "No-secret media-store routes for mobile device smokes.",
+    routes: [backgroundUploadImageRoute, deviceE2eUploadImageRoute],
+  };
   const runtimeResult = await createRealTestRuntime({
     characterName: "DeviceE2EHostAgent",
-    plugins: [proxy],
+    plugins: [proxy, mediaRoutesPlugin],
   });
   const server = await startApiServer({
     port,

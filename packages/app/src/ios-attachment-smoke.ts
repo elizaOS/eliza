@@ -1,6 +1,11 @@
+import { Filesystem } from "@capacitor/filesystem";
+import { Share } from "@capacitor/share";
+
 const IOS_ATTACHMENT_SMOKE_REQUEST_KEY = "eliza:ios-attachment-smoke:request";
 const IOS_ATTACHMENT_SMOKE_RESULT_KEY = "eliza:ios-attachment-smoke:result";
+const IOS_ONBOARDING_SMOKE_RESULT_KEY = "eliza:ios-onboarding-smoke:result";
 const IOS_ATTACHMENT_SMOKE_TIMEOUT_MS = 180_000;
+const IOS_ATTACHMENT_OPERATION_TIMEOUT_MS = 15_000;
 const IOS_ATTACHMENT_SMOKE_PNG_BASE64 =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=";
 
@@ -54,7 +59,7 @@ function parseIosAttachmentSmokeRequest(
   raw: string | null,
 ): IosAttachmentSmokeRequest {
   const fallback = {
-    apiBase: "http://127.0.0.1:31337",
+    apiBase: "http://127.0.0.1:31338",
     filename: "eliza-ios-attachment-smoke.png",
     dataUrl: `data:image/png;base64,${IOS_ATTACHMENT_SMOKE_PNG_BASE64}`,
   };
@@ -126,24 +131,14 @@ async function sha256Hex(bytes: Uint8Array): Promise<string> {
 function readCapacitorFilesystemForSmoke():
   | CapacitorFilesystemSmokeLike
   | undefined {
-  const cap = (globalThis as { Capacitor?: unknown }).Capacitor;
-  if (!cap || typeof cap !== "object") return undefined;
-  const plugins = (cap as { Plugins?: Record<string, unknown> }).Plugins;
-  const fs = plugins?.Filesystem;
-  if (!fs || typeof fs !== "object") return undefined;
-  return typeof (fs as CapacitorFilesystemSmokeLike).writeFile === "function"
-    ? (fs as CapacitorFilesystemSmokeLike)
+  return typeof Filesystem?.writeFile === "function"
+    ? (Filesystem as CapacitorFilesystemSmokeLike)
     : undefined;
 }
 
 function readCapacitorShareForSmoke(): CapacitorShareSmokeLike | undefined {
-  const cap = (globalThis as { Capacitor?: unknown }).Capacitor;
-  if (!cap || typeof cap !== "object") return undefined;
-  const plugins = (cap as { Plugins?: Record<string, unknown> }).Plugins;
-  const share = plugins?.Share;
-  if (!share || typeof share !== "object") return undefined;
-  return typeof (share as CapacitorShareSmokeLike).share === "function"
-    ? (share as CapacitorShareSmokeLike)
+  return typeof Share?.share === "function"
+    ? (Share as CapacitorShareSmokeLike)
     : undefined;
 }
 
@@ -158,7 +153,7 @@ function resolveIosAttachmentSmokeApiUrl(
     // Relative API paths inside a Capacitor WKWebView resolve to the app origin,
     // so use the same configured agent base as the rest of the UI client.
   }
-  const base = (getApiBaseUrl() || fallbackBase).replace(/\/+$/, "");
+  const base = (fallbackBase.trim() || getApiBaseUrl()).replace(/\/+$/, "");
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
   return base ? `${base}${normalizedPath}` : normalizedPath;
 }
@@ -170,13 +165,110 @@ async function writeAttachmentResult(
   await writeResult(IOS_ATTACHMENT_SMOKE_RESULT_KEY, result);
 }
 
+async function writeAttachmentPhase(
+  writeResult: RunIosAttachmentSmokeOptions["writeResult"],
+  request: IosAttachmentSmokeRequest,
+  phase: string,
+  extra: Record<string, unknown> = {},
+): Promise<void> {
+  await writeAttachmentResult(writeResult, {
+    ok: false,
+    phase,
+    updatedAt: new Date().toISOString(),
+    apiBase: request.apiBase,
+    ...extra,
+  });
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+async function withTimeout<T>(
+  label: string,
+  promise: Promise<T>,
+  timeoutMs = IOS_ATTACHMENT_OPERATION_TIMEOUT_MS,
+): Promise<T> {
+  let timeoutId: number | null = null;
+  try {
+    const timeout = new Promise<never>((_, reject) => {
+      timeoutId = window.setTimeout(
+        () => reject(new Error(`${label} timed out after ${timeoutMs}ms`)),
+        timeoutMs,
+      );
+    });
+    return await Promise.race([promise, timeout]);
+  } finally {
+    if (timeoutId !== null) window.clearTimeout(timeoutId);
+  }
+}
+
+async function readSmokePreference(
+  key: string,
+  getPreference: RunIosAttachmentSmokeOptions["getPreference"],
+): Promise<string | null> {
+  const preferenceValue = await getPreference(key);
+  if (preferenceValue) return preferenceValue;
+  try {
+    const value = window.localStorage.getItem(key);
+    if (value) return value;
+  } catch {
+    // Preferences is the authoritative native store for the simulator harness.
+  }
+  return null;
+}
+
+async function waitForOnboardingSmokeResultIfPresent(
+  getPreference: RunIosAttachmentSmokeOptions["getPreference"],
+): Promise<void> {
+  const initial = await readSmokePreference(
+    IOS_ONBOARDING_SMOKE_RESULT_KEY,
+    getPreference,
+  );
+  if (!initial) {
+    await sleep(750);
+    return;
+  }
+
+  const deadline = Date.now() + IOS_ATTACHMENT_SMOKE_TIMEOUT_MS;
+  let lastRaw = initial;
+  while (Date.now() < deadline) {
+    const raw =
+      (await readSmokePreference(
+        IOS_ONBOARDING_SMOKE_RESULT_KEY,
+        getPreference,
+      )) ?? lastRaw;
+    lastRaw = raw;
+    try {
+      const parsed = JSON.parse(raw) as {
+        ok?: unknown;
+        phase?: unknown;
+        error?: unknown;
+      };
+      if (parsed.ok === true || parsed.phase === "complete") return;
+      if (parsed.phase === "failed" || parsed.error) {
+        throw new Error(
+          `iOS onboarding smoke failed before attachment: ${raw}`,
+        );
+      }
+    } catch (error) {
+      if (error instanceof Error && error.message.includes("failed")) {
+        throw error;
+      }
+    }
+    await sleep(250);
+  }
+  throw new Error(
+    `Timed out waiting for iOS onboarding smoke before attachment. Last result: ${lastRaw}`,
+  );
+}
+
 export async function runIosAttachmentSmokeIfRequested({
   isIOS,
   getApiBaseUrl,
   getPreference,
   removePreference,
   writeResult,
-  waitForElement,
   readStorageSnapshot,
 }: RunIosAttachmentSmokeOptions): Promise<boolean> {
   if (!isIOS || iosAttachmentSmokeStarted) return iosAttachmentSmokeStarted;
@@ -201,30 +293,37 @@ export async function runIosAttachmentSmokeIfRequested({
   });
 
   try {
-    await waitForElement<HTMLElement>(
-      '[data-testid="home-launcher-surface"][data-page="home"]',
-      { visible: true, timeoutMs: IOS_ATTACHMENT_SMOKE_TIMEOUT_MS },
-    );
+    await waitForOnboardingSmokeResultIfPresent(getPreference);
 
     const sourceBytes = bytesFromBase64(request.dataUrl.split(",")[1] ?? "");
     const expectedSha256 = await sha256Hex(sourceBytes);
     const uploadUrl = resolveIosAttachmentSmokeApiUrl(
-      "/api/background/upload-image",
+      "/api/device-e2e/upload-image",
       request.apiBase,
       getApiBaseUrl,
     );
-    const upload = await fetch(uploadUrl, {
-      method: "POST",
-      headers: {
-        accept: "application/json",
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({ dataUrl: request.dataUrl }),
+    await writeAttachmentPhase(writeResult, request, "uploading-media", {
+      uploadUrl,
     });
-    const uploadText = await upload.text();
+    const upload = await withTimeout(
+      "image upload fetch",
+      fetch(uploadUrl, {
+        method: "POST",
+        headers: {
+          accept: "application/json",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ dataUrl: request.dataUrl }),
+      }),
+    );
+    const uploadText = await withTimeout(
+      "image upload response body",
+      upload.text(),
+      5_000,
+    );
     if (!upload.ok) {
       throw new Error(
-        `/api/background/upload-image returned HTTP ${upload.status}: ${uploadText.slice(0, 500)}`,
+        `/api/device-e2e/upload-image returned HTTP ${upload.status}: ${uploadText.slice(0, 500)}`,
       );
     }
     const uploadJson = JSON.parse(uploadText) as { url?: unknown };
@@ -243,13 +342,22 @@ export async function runIosAttachmentSmokeIfRequested({
       request.apiBase,
       getApiBaseUrl,
     );
-    const mediaResponse = await fetch(mediaFetchUrl);
+    await writeAttachmentPhase(writeResult, request, "fetching-media", {
+      mediaUrl,
+      mediaFetchUrl,
+    });
+    const mediaResponse = await withTimeout(
+      "media fetch",
+      fetch(mediaFetchUrl),
+    );
     if (!mediaResponse.ok) {
       throw new Error(
         `media fetch returned HTTP ${mediaResponse.status} for ${mediaFetchUrl}`,
       );
     }
-    const servedBytes = new Uint8Array(await mediaResponse.arrayBuffer());
+    const servedBytes = new Uint8Array(
+      await withTimeout("media response body", mediaResponse.arrayBuffer()),
+    );
     const servedSha256 = await sha256Hex(servedBytes);
     if (servedSha256 !== expectedSha256) {
       throw new Error(
@@ -257,6 +365,7 @@ export async function runIosAttachmentSmokeIfRequested({
       );
     }
 
+    await writeAttachmentPhase(writeResult, request, "loading-native-plugins");
     const filesystem = readCapacitorFilesystemForSmoke();
     const share = readCapacitorShareForSmoke();
     if (!filesystem) {
@@ -266,16 +375,24 @@ export async function runIosAttachmentSmokeIfRequested({
       throw new Error("Capacitor Share plugin is unavailable");
     }
 
-    const written = await filesystem.writeFile({
-      path: request.filename,
-      data: base64FromBytes(servedBytes),
-      directory: "CACHE",
-    });
+    await writeAttachmentPhase(writeResult, request, "writing-filesystem");
+    const written = await withTimeout(
+      "Filesystem.writeFile",
+      filesystem.writeFile({
+        path: request.filename,
+        data: base64FromBytes(servedBytes),
+        directory: "CACHE",
+      }),
+    );
+    await writeAttachmentPhase(writeResult, request, "reading-filesystem");
     const readBack = filesystem.readFile
-      ? await filesystem.readFile({
-          path: request.filename,
-          directory: "CACHE",
-        })
+      ? await withTimeout(
+          "Filesystem.readFile",
+          filesystem.readFile({
+            path: request.filename,
+            directory: "CACHE",
+          }),
+        )
       : undefined;
     const readBackBytes = await bytesFromFilesystemReadData(readBack?.data);
     const readBackSha256 = await sha256Hex(readBackBytes);
@@ -289,16 +406,22 @@ export async function runIosAttachmentSmokeIfRequested({
       written?.uri ??
       (filesystem.getUri
         ? (
-            await filesystem.getUri({
-              path: request.filename,
-              directory: "CACHE",
-            })
+            await withTimeout(
+              "Filesystem.getUri",
+              filesystem.getUri({
+                path: request.filename,
+                directory: "CACHE",
+              }),
+            )
           )?.uri
         : undefined);
     if (!uri) {
       throw new Error("Filesystem did not return a file URI");
     }
 
+    await writeAttachmentPhase(writeResult, request, "sharing-file", {
+      fileUri: uri,
+    });
     let shareOutcome: Record<string, unknown> = { attempted: true };
     try {
       await Promise.race([
@@ -344,6 +467,8 @@ export async function runIosAttachmentSmokeIfRequested({
       share: shareOutcome,
     });
   } catch (error) {
+    const filesystem = readCapacitorFilesystemForSmoke();
+    const share = readCapacitorShareForSmoke();
     await writeAttachmentResult(writeResult, {
       ok: false,
       phase: "failed",
@@ -352,8 +477,8 @@ export async function runIosAttachmentSmokeIfRequested({
       error: error instanceof Error ? error.message : String(error),
       storage: readStorageSnapshot(),
       plugins: {
-        filesystem: Boolean(readCapacitorFilesystemForSmoke()),
-        share: Boolean(readCapacitorShareForSmoke()),
+        filesystem: Boolean(filesystem),
+        share: Boolean(share),
       },
     });
   } finally {

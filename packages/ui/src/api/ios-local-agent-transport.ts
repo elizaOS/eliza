@@ -519,6 +519,23 @@ function normalizeHost(host: string | null | undefined): string {
     .replace(/^\[|\]$/g, "");
 }
 
+function isLoopbackHost(host: string): boolean {
+  const normalized = normalizeHost(host);
+  return (
+    normalized === "localhost" ||
+    normalized === "::1" ||
+    normalized.startsWith("127.")
+  );
+}
+
+function allowsIosSimulatorLoopback(url: URL): boolean {
+  return (
+    !isNativeIosStoreBuild() &&
+    isTruthyBuildFlag(viteEnv().VITE_ELIZA_IOS_ALLOW_SIMULATOR_LOOPBACK) &&
+    isLoopbackHost(url.hostname)
+  );
+}
+
 function isPrivateOrLoopbackHost(host: string): boolean {
   const normalized = normalizeHost(host);
   return (
@@ -635,7 +652,8 @@ export function isIosInProcessLocalAgentUrl(url: string): boolean {
     if (
       usesStrictIosNetworkPolicy() &&
       isCleartextNetworkUrl(parsed) &&
-      isPrivateOrLoopbackHost(parsed.hostname)
+      isPrivateOrLoopbackHost(parsed.hostname) &&
+      !allowsIosSimulatorLoopback(parsed)
     ) {
       return false;
     }
@@ -1017,7 +1035,8 @@ function shouldBridgeFetchUrl(url: URL): boolean {
   if (
     usesStrictIosNetworkPolicy() &&
     isCleartextNetworkUrl(url) &&
-    (isNativeIosStoreBuild() || isPrivateOrLoopbackHost(url.hostname))
+    (isNativeIosStoreBuild() || isPrivateOrLoopbackHost(url.hostname)) &&
+    !allowsIosSimulatorLoopback(url)
   ) {
     throw new TypeError(
       "iOS store/cloud builds block cleartext loopback or private-network requests",

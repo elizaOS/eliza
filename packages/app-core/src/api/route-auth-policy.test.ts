@@ -75,6 +75,9 @@ describe("compat route auth policy table", () => {
       resolveCompatRouteAuthPolicy("POST", "/api/tts/cloud"),
     ).toMatchObject({ id: "tts.cloud", tier: "session" });
     expect(
+      resolveCompatRouteAuthPolicy("POST", "/api/background/upload-image"),
+    ).toMatchObject({ id: "background.upload-image", tier: "session" });
+    expect(
       resolveCompatRouteAuthPolicy("POST", "/api/tts/elevenlabs"),
     ).toMatchObject({
       id: "tts.elevenlabs-passthrough",
@@ -111,6 +114,7 @@ describe("compat route auth policy table", () => {
     const res = fakeRes();
 
     expect(isCompatManagedRoute("/api/messages")).toBe(false);
+    expect(isCompatManagedRoute("/api/device-e2e/upload-image")).toBe(false);
     await expect(
       enforceCompatRouteAuthPolicy(req, res.res, STATE, "GET", "/api/messages"),
     ).resolves.toBe("unmanaged");

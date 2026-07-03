@@ -29,6 +29,16 @@ export const MOBILE_CAPACITOR_PLUGIN_MANIFEST = [
     ],
   },
   {
+    packageName: "@capacitor/filesystem",
+    iosPods: [
+      {
+        name: "CapacitorFilesystem",
+        kind: "official",
+        spmHandling: "incompatible",
+      },
+    ],
+  },
+  {
     packageName: "@capacitor-community/background-runner",
     android: { patchAgp9: true },
   },
@@ -83,6 +93,16 @@ export const MOBILE_CAPACITOR_PLUGIN_MANIFEST = [
     iosPods: [
       {
         name: "CapacitorPushNotifications",
+        kind: "official",
+        spmHandling: "incompatible",
+      },
+    ],
+  },
+  {
+    packageName: "@capacitor/share",
+    iosPods: [
+      {
+        name: "CapacitorShare",
         kind: "official",
         spmHandling: "incompatible",
       },

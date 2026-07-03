@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 // iOS Simulator native attachment smoke for #10936. WKWebView is not
 // CDP-drivable, so this mirrors ios-onboarding-smoke: seed Capacitor
-// Preferences, launch the installed app, connect it to a real local agent via
-// deep link, then let the in-app verifier exercise the media store +
-// Capacitor Filesystem/Share plugins and report back via Preferences.
+// Preferences, launch the installed app, let the in-app onboarding verifier
+// connect it to a real local agent, then let the attachment verifier exercise
+// the media store + Capacitor Filesystem/Share plugins and report back via
+// Preferences.
 import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
@@ -28,7 +29,7 @@ const ONBOARDING_REQUEST_KEY = "eliza:ios-onboarding-smoke:request";
 const ONBOARDING_RESULT_KEY = "eliza:ios-onboarding-smoke:result";
 const ATTACHMENT_REQUEST_KEY = "eliza:ios-attachment-smoke:request";
 const ATTACHMENT_RESULT_KEY = "eliza:ios-attachment-smoke:result";
-const DEFAULT_API_BASE = "http://127.0.0.1:31337";
+const DEFAULT_API_BASE = "http://127.0.0.1:31338";
 const PNG_BASE64 =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=";
 
@@ -430,8 +431,12 @@ async function main() {
     simctl(["launch", udid, appId]);
     await sleep(1500);
     const deepLink = `${urlScheme}://first-run/runtime/remote?api=${encodeURIComponent(apiBase)}`;
-    log(`opening first-run remote deep link: ${deepLink}`);
-    simctl(["openurl", udid, deepLink]);
+    if (has("--os-deep-link")) {
+      log(`opening first-run remote deep link: ${deepLink}`);
+      simctl(["openurl", udid, deepLink]);
+    } else {
+      log(`armed in-app first-run remote connect for ${apiBase}`);
+    }
     takeScreenshot(udid, "fresh-launch");
     const result = await pollResult(udid, appId);
     const screenshot = takeScreenshot(udid, "attachment-result");

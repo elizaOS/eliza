@@ -136,12 +136,12 @@ import { renderBootFailure } from "./boot-failure";
 import { APP_ENV_ALIASES, APP_ENV_PREFIX } from "./brand-env";
 import { APP_CHARACTER_CATALOG } from "./character-catalog";
 import { isTrustedAppLink } from "./deep-link-handler";
-import { decideChatOverlayToggle } from "./desktop-hotkey";
 import {
   buildAssistantLaunchHashRoute,
   type DeepLinkNavigationIntent,
   resolveDeepLinkNavigationIntent,
 } from "./deep-link-routing";
+import { decideChatOverlayToggle } from "./desktop-hotkey";
 import { runEmbedHandshake } from "./embed-bootstrap";
 import { registerAppHostExternalImporters } from "./host-externals";
 import { runIosAttachmentSmokeIfRequested } from "./ios-attachment-smoke";
@@ -715,7 +715,7 @@ function renderIosFullBunSmokeStatus(message: string): void {
 function parseIosOnboardingSmokeRequest(raw: string | null): {
   apiBase: string;
 } {
-  const fallback = { apiBase: "http://127.0.0.1:31337" };
+  const fallback = { apiBase: "http://127.0.0.1:31338" };
   if (!raw || raw === "1") return fallback;
   try {
     const parsed = JSON.parse(raw) as { apiBase?: unknown };
@@ -774,6 +774,24 @@ function readIosOnboardingSmokeStorageSnapshot(): Record<
   );
 }
 
+async function waitForIosOnboardingSmokeStorageSnapshot(
+  apiBase: string,
+): Promise<Record<string, string | null>> {
+  const deadline = Date.now() + IOS_ONBOARDING_SMOKE_TIMEOUT_MS;
+  let snapshot = readIosOnboardingSmokeStorageSnapshot();
+  while (Date.now() < deadline) {
+    const activeServer = snapshot["elizaos:active-server"];
+    if (typeof activeServer === "string" && activeServer.includes(apiBase)) {
+      return snapshot;
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, 250));
+    snapshot = readIosOnboardingSmokeStorageSnapshot();
+  }
+  throw new Error(
+    `Timed out waiting for iOS onboarding active server ${apiBase}: ${JSON.stringify(snapshot)}`,
+  );
+}
+
 async function runIosOnboardingSmokeIfRequested(): Promise<boolean> {
   if (!isIOS || iosOnboardingSmokeStarted) return iosOnboardingSmokeStarted;
   let rawRequest: string | null = null;
@@ -796,11 +814,15 @@ async function runIosOnboardingSmokeIfRequested(): Promise<boolean> {
     apiBase: request.apiBase,
   });
   try {
-    // The harness fires the `<scheme>://first-run/runtime/remote?api=…` deep
-    // link after launch; the app connects to the remote and completes first-run
-    // on its own (CONNECT_EVENT → adopt → startup re-poll). This verifier only
-    // proves the post-connect surface, so it is decoupled from the onboarding
-    // DOM — no remote-address field to fill, resilient to the in-chat redesign.
+    // WKWebView is not CDP-drivable, and recent iOS simulators can stop
+    // `simctl openurl` behind a system "Open in <app>?" confirmation. Drive the
+    // same hardened remote-connect handler that the OS deep-link route uses,
+    // after React has had a chance to install its CONNECT_EVENT listener.
+    await new Promise((resolve) => window.setTimeout(resolve, 750));
+    connectFirstRunRemoteDeepLink(request.apiBase);
+
+    // Prove the post-connect surface, decoupled from the onboarding DOM — no
+    // remote-address field to fill, resilient to the in-chat redesign.
     const home = await waitForIosOnboardingElement<HTMLElement>(
       '[data-testid="home-launcher-surface"][data-page="home"]',
       { visible: true },
@@ -813,6 +835,9 @@ async function runIosOnboardingSmokeIfRequested(): Promise<boolean> {
     const onboardingHidden = !document.querySelector(
       '[data-testid="first-run-chat"], [data-testid="startup-first-run-background"]',
     );
+    const storage = await waitForIosOnboardingSmokeStorageSnapshot(
+      request.apiBase,
+    );
 
     await writeIosOnboardingSmokeResult({
       ok: true,
@@ -822,7 +847,7 @@ async function runIosOnboardingSmokeIfRequested(): Promise<boolean> {
       homeVisible: Boolean(home),
       composerVisible: Boolean(composer),
       onboardingHidden,
-      storage: readIosOnboardingSmokeStorageSnapshot(),
+      storage,
     });
   } catch (error) {
     await writeIosOnboardingSmokeResult({
@@ -1650,9 +1675,13 @@ function connectFirstRunRemoteDeepLink(rawApiBase: string): void {
     label: validatedUrl.hostname || "Remote agent",
     apiBase: connection.apiBase,
   });
-  void setStorageValue("elizaos:active-server", activeServer).finally(
-    dispatchConnect,
-  );
+  void setStorageValue("elizaos:active-server", activeServer).catch((error) => {
+    console.warn(
+      `${APP_LOG_PREFIX} Failed to persist first-run remote active server:`,
+      error,
+    );
+  });
+  dispatchConnect();
 }
 
 function handleDeepLink(url: string): void {
@@ -2175,6 +2204,22 @@ function usesStrictIosNetworkPolicy(): boolean {
   return isNativeIosStoreBuild() || isNativeIosCloudRuntimeMode();
 }
 
+function isTruthyBuildFlag(value: string | boolean | undefined): boolean {
+  return value === true || value === "1" || value === "true";
+}
+
+function allowsIosSimulatorLoopbackApiBase(parsed: URL): boolean {
+  return (
+    isNative &&
+    isIOS &&
+    !isNativeIosStoreBuild() &&
+    isTruthyBuildFlag(
+      import.meta.env.VITE_ELIZA_IOS_ALLOW_SIMULATOR_LOOPBACK,
+    ) &&
+    isLoopbackApiHost(parsed.hostname)
+  );
+}
+
 function canUseIosLocalAgentIpc(): boolean {
   return isNative && isIOS && getCurrentIosRuntimeConfig().mode === "local";
 }
@@ -2198,6 +2243,7 @@ function isTrustedApiBaseUrl(parsed: URL): boolean {
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return false;
   const host = parsed.hostname;
   if (usesStrictIosNetworkPolicy()) {
+    if (allowsIosSimulatorLoopbackApiBase(parsed)) return true;
     if (parsed.protocol !== "https:" || isPrivateOrLoopbackApiHost(host)) {
       return false;
     }
@@ -2222,6 +2268,7 @@ function isTrustedDeepLinkApiBaseUrl(parsed: URL): boolean {
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return false;
   const host = parsed.hostname;
   if (usesStrictIosNetworkPolicy()) {
+    if (allowsIosSimulatorLoopbackApiBase(parsed)) return true;
     if (parsed.protocol !== "https:" || isPrivateOrLoopbackApiHost(host)) {
       return false;
     }
