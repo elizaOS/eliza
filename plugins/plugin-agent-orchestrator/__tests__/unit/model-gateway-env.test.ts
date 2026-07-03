@@ -144,6 +144,18 @@ const MANAGED_ENV_KEYS = [
   "CLAUDE_CODE_OAUTH_TOKEN",
   "OPENAI_BASE_URL",
   "ANTHROPIC_BASE_URL",
+  // Host vars that steer buildOpencodeSpawnConfig — cleared so the opencode
+  // spawn tests are deterministic on any developer/CI machine.
+  "ELIZA_LLM_PROVIDER",
+  "ELIZA_OPENCODE_BASE_URL",
+  "ELIZA_OPENCODE_LOCAL",
+  "ELIZA_OPENCODE_MODEL_POWERFUL",
+  "ELIZA_OPENCODE_MODEL_FAST",
+  "OPENCODE_MODEL",
+  "OPENCODE_SMALL_MODEL",
+  "OPENCODE_CONFIG_CONTENT",
+  "CEREBRAS_BASE_URL",
+  "CEREBRAS_MODEL",
 ] as const;
 
 let savedEnv: Record<string, string | undefined>;
@@ -193,7 +205,7 @@ function allLoggedText(logger: MockLogger): string {
 }
 
 async function spawnAndCaptureEnv(
-  agentType: "claude" | "codex",
+  agentType: "claude" | "codex" | "opencode",
 ): Promise<{ env: NodeJS.ProcessEnv; logger: MockLogger }> {
   const { runtime: rt, logger } = runtime();
   const service = new AcpService(rt);
@@ -306,6 +318,23 @@ describe("applyModelGatewayEnv (pure env rewrite)", () => {
     expectNoRawKeyInDump(env);
   });
 
+  it("scrubs composite env values that embed a raw provider key (fail closed)", () => {
+    const env: NodeJS.ProcessEnv = {
+      CEREBRAS_API_KEY: RAW_CEREBRAS_KEY,
+      // A composite carrier: a JSON config blob embedding the raw key, the
+      // shape buildOpencodeAcpEnv writes (guards any future merge step that
+      // smuggles a raw value inside a non-excluded var).
+      OPENCODE_CONFIG_CONTENT: JSON.stringify({
+        provider: { cerebras: { options: { apiKey: RAW_CEREBRAS_KEY } } },
+      }),
+      PATH: "/usr/bin",
+    };
+    applyModelGatewayEnv(env, { url: GATEWAY_URL, token: GATEWAY_TOKEN });
+    expect(env.OPENCODE_CONFIG_CONTENT).toBeUndefined();
+    expect(env.PATH).toBe("/usr/bin");
+    expectNoRawKeyInDump(env);
+  });
+
   it("covers every provider credential buildEnv can carry (frozen contract)", () => {
     expect([...MODEL_GATEWAY_EXCLUDED_PROVIDER_KEYS]).toEqual([
       "OPENAI_API_KEY",
@@ -350,6 +379,31 @@ describe("gateway mode ON — spawned sub-agent env", () => {
     expect(env.CEREBRAS_API_KEY).toBeUndefined();
     expect(env.ELIZA_OPENCODE_API_KEY).toBeUndefined();
 
+    expectNoRawKeyInDump(env);
+  });
+
+  it("opencode spawn: OPENCODE_CONFIG_CONTENT routes through the gateway, raw keys excluded", async () => {
+    setRawProviderKeys();
+    enableGateway();
+    const { env } = await spawnAndCaptureEnv("opencode");
+
+    // The runtime-built opencode config must point the child at the gateway —
+    // same transport contract as OPENAI_BASE_URL / ANTHROPIC_BASE_URL for the
+    // codex/claude children — not directly at Cerebras/Eliza Cloud.
+    expect(env.OPENCODE_CONFIG_CONTENT).toBeDefined();
+    const config = JSON.parse(env.OPENCODE_CONFIG_CONTENT ?? "{}");
+    const provider = config.provider?.["eliza-gateway"];
+    expect(provider?.options?.baseURL).toBe(GATEWAY_URL);
+    expect(provider?.options?.apiKey).toBe(GATEWAY_TOKEN);
+    expect(env.OPENCODE_CONFIG_CONTENT).not.toContain("cerebras.ai");
+
+    expect(env.OPENAI_BASE_URL).toBe(GATEWAY_URL);
+    expect(env.ANTHROPIC_BASE_URL).toBe(GATEWAY_URL);
+    expect(env.CEREBRAS_API_KEY).toBeUndefined();
+    expect(env.ELIZA_OPENCODE_API_KEY).toBeUndefined();
+
+    // The stated invariant: a child env dump contains no raw provider key —
+    // including inside composite values like the JSON spawn config.
     expectNoRawKeyInDump(env);
   });
 
@@ -441,6 +495,22 @@ describe("gateway mode OFF — byte-identical legacy env", () => {
     const dump = JSON.stringify(env);
     expect(dump).not.toContain(GATEWAY_URL);
     expect(dump).not.toContain(GATEWAY_TOKEN);
+    expect(allLoggedText(logger)).not.toContain("model-gateway mode engaged");
+  });
+
+  it("both vars unset: opencode config keeps the direct provider wiring untouched", async () => {
+    setRawProviderKeys();
+    const { env, logger } = await spawnAndCaptureEnv("opencode");
+
+    // Legacy cerebras-api auto-detect: direct base URL, raw key embedded
+    // (ELIZA_OPENCODE_API_KEY wins over CEREBRAS_API_KEY), no gateway wiring.
+    const config = JSON.parse(env.OPENCODE_CONFIG_CONTENT ?? "{}");
+    expect(config.provider?.cerebras?.options?.baseURL).toBe(
+      "https://api.cerebras.ai/v1",
+    );
+    expect(config.provider?.cerebras?.options?.apiKey).toBe(RAW_OPENCODE_KEY);
+    expect(env.OPENAI_BASE_URL).toBeUndefined();
+    expect(env.ANTHROPIC_BASE_URL).toBeUndefined();
     expect(allLoggedText(logger)).not.toContain("model-gateway mode engaged");
   });
 
