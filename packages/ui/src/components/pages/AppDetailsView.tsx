@@ -322,7 +322,7 @@ function WidgetRow({
           <div className="truncate text-sm font-medium text-foreground">
             {declaration.label}
           </div>
-          <div className="truncate text-[10px] uppercase tracking-[0.14em] text-muted">
+          <div className="truncate text-2xs uppercase tracking-[0.14em] text-muted">
             {declaration.slot}
           </div>
         </div>
@@ -332,7 +332,7 @@ function WidgetRow({
             type="button"
             onClick={onTogglePreview}
             /* Flat — borderless pill; hover fill is the affordance. */
-            className="rounded-full px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] text-muted transition-colors hover:bg-surface hover:text-foreground"
+            className="rounded-full px-2 py-0.5 text-2xs uppercase tracking-[0.14em] text-muted transition-colors hover:bg-surface hover:text-foreground"
             {...previewButton.agentProps}
           >
             {expanded
@@ -708,7 +708,7 @@ export function AppDetailsView({
       : t("appdetails.dedicatedWindow", { defaultValue: "Dedicated window" });
 
   return (
-    <div className="device-layout mx-auto flex w-full max-w-4xl flex-col gap-6 px-4 py-6 lg:px-6">
+    <div className="device-layout mx-auto flex min-h-[100dvh] w-full max-w-4xl flex-col gap-8 px-4 py-6 lg:px-6">
       {/* Header — flat, no divider. Sections separate by whitespace. */}
       <header className="flex flex-col gap-3">
         <div className="flex items-center gap-4">
@@ -716,21 +716,21 @@ export function AppDetailsView({
             <img
               src={resolveRuntimeImageUrl(resolved.info.heroImage)}
               alt=""
-              className="h-14 w-14 rounded-sm object-cover"
+              className="h-16 w-16 shrink-0 rounded-lg border border-border object-cover"
             />
           ) : (
-            <div className="flex h-14 w-14 items-center justify-center rounded-sm bg-surface text-xs uppercase text-muted">
+            <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-lg border border-border bg-surface text-sm font-semibold uppercase tracking-[0.1em] text-muted">
               {(resolved.info.displayName ?? resolved.info.name)
                 .slice(0, 2)
                 .toUpperCase()}
             </div>
           )}
           <div className="min-w-0">
-            <h2 className="truncate text-base font-semibold text-foreground">
+            <h2 className="truncate text-lg font-semibold tracking-tight text-foreground">
               {resolved.info.displayName ?? resolved.info.name}
             </h2>
             <p className="truncate text-xs text-muted">{resolved.info.name}</p>
-            <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px] uppercase tracking-[0.16em] text-muted">
+            <div className="mt-1.5 flex flex-wrap items-center gap-2 text-2xs uppercase tracking-[0.16em] text-muted">
               <span>{sourceLabel(resolved.source, t)}</span>
               {provenanceBadges.map((badge) => (
                 <span
@@ -796,7 +796,7 @@ export function AppDetailsView({
 
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <div className="min-w-0">
-            <div className="text-[10px] uppercase tracking-[0.14em] text-muted">
+            <div className="text-2xs uppercase tracking-[0.14em] text-muted">
               {t("appdetails.statRun", { defaultValue: "Run" })}
             </div>
             <div className="truncate text-sm font-medium text-foreground">
@@ -805,7 +805,7 @@ export function AppDetailsView({
             </div>
           </div>
           <div className="min-w-0">
-            <div className="text-[10px] uppercase tracking-[0.14em] text-muted">
+            <div className="text-2xs uppercase tracking-[0.14em] text-muted">
               {t("appdetails.statWindow", { defaultValue: "Window" })}
             </div>
             <div className="truncate text-sm font-medium text-foreground">
@@ -813,7 +813,7 @@ export function AppDetailsView({
             </div>
           </div>
           <div className="min-w-0">
-            <div className="text-[10px] uppercase tracking-[0.14em] text-muted">
+            <div className="text-2xs uppercase tracking-[0.14em] text-muted">
               {t("appdetails.statTarget", { defaultValue: "Target" })}
             </div>
             <div
@@ -826,7 +826,7 @@ export function AppDetailsView({
             </div>
           </div>
           <div className="min-w-0">
-            <div className="text-[10px] uppercase tracking-[0.14em] text-muted">
+            <div className="text-2xs uppercase tracking-[0.14em] text-muted">
               {t("appdetails.statSession", { defaultValue: "Session" })}
             </div>
             <div className="truncate text-sm font-medium text-foreground">
