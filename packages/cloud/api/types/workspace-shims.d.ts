@@ -7,6 +7,18 @@
  */
 
 declare module "@elizaos/shared" {
+  export const COINGECKO_MARKET_PROVIDER: {
+    readonly providerId: "coingecko";
+    readonly providerName: "CoinGecko";
+    readonly providerUrl: "https://www.coingecko.com/";
+  };
+
+  export const POLYMARKET_MARKET_PROVIDER: {
+    readonly providerId: "polymarket";
+    readonly providerName: "Polymarket";
+    readonly providerUrl: "https://polymarket.com/";
+  };
+
   export interface CoinGeckoMarketRecord {
     id: string;
     symbol: string;
@@ -73,29 +85,17 @@ declare module "@elizaos/shared" {
     predictions: WalletMarketPrediction[];
   }
 
-  export const COINGECKO_MARKET_PROVIDER: {
-    providerId: "coingecko";
-    providerName: "CoinGecko";
-    providerUrl: "https://www.coingecko.com/";
-  };
-
-  export const POLYMARKET_MARKET_PROVIDER: {
-    providerId: "polymarket";
-    providerName: "Polymarket";
-    providerUrl: "https://polymarket.com/";
-  };
-
   export function buildCoinGeckoMarketsUrl(): URL;
 
-  export function buildMarketMovers(
-    markets: CoinGeckoMarketRecord[],
-  ): WalletMarketMover[];
+  export function parseCoinGeckoMarkets(
+    payload: unknown,
+  ): CoinGeckoMarketRecord[];
 
   export function buildMarketPriceSnapshots(
     markets: CoinGeckoMarketRecord[],
   ): WalletMarketPriceSnapshot[];
 
-  export function parseCoinGeckoMarkets(
-    payload: unknown,
-  ): CoinGeckoMarketRecord[];
+  export function buildMarketMovers(
+    markets: CoinGeckoMarketRecord[],
+  ): WalletMarketMover[];
 }
