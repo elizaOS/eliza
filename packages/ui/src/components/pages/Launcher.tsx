@@ -99,6 +99,11 @@ const IconTile = memo(function IconTile({ entry, onLaunch }: IconTileProps) {
             // no border; a subtle glass wash is the icon plate (neutral resting →
             // neutral-with-opacity hover).
             "h-16 w-16 overflow-hidden rounded-2xl bg-white/10 text-white transition-colors hover:bg-white/20",
+            // Neutralize Button's default-size padding (px-4 py-2 letterboxed
+            // the artwork into a 32×48 inset) and its [&_svg]:size-4 descendant
+            // rule (which would shrink the 28px glyph fallback): the artwork
+            // must fill the whole 64×64 icon plate.
+            "p-0 [&_svg]:size-7",
           )}
         >
           <ViewTileImage

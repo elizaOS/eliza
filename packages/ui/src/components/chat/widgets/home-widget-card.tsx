@@ -138,7 +138,11 @@ export function HomeWidgetCard({
         {value != null ? (
           <span
             className={cn(
-              "truncate text-sm font-semibold leading-tight",
+              // Wrap to two lines before ellipsizing: half-width mobile cards
+              // (col-span-2 at 390px) hard-clipped one-line values to a few
+              // characters ("Confirm…", "Paymen…"), which read broken. Two
+              // lines keeps the datum glanceable without unbounded growth.
+              "line-clamp-2 break-words text-sm font-semibold leading-tight",
               TONE_VALUE_CLASS[tone],
             )}
           >

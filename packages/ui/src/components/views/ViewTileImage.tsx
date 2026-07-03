@@ -10,6 +10,9 @@ import { resolveApiUrl } from "../../utils/asset-url";
 import { emitViewInteraction } from "../../view-telemetry";
 import { ViewIcon } from "./ViewIcon";
 
+// Brand rule: no blue anywhere — the deterministic tile gradients stay in the
+// warm/neutral/green range (former blue + indigo entries were recolored to
+// gold + fuchsia).
 const LAUNCHER_ICON_PALETTES: ReadonlyArray<{
   from: string;
   to: string;
@@ -17,12 +20,12 @@ const LAUNCHER_ICON_PALETTES: ReadonlyArray<{
 }> = [
   { from: "#ff7a1a", to: "#f2c14e", foreground: "#fff7ed" },
   { from: "#0f766e", to: "#5eead4", foreground: "#ecfeff" },
-  { from: "#1d4ed8", to: "#93c5fd", foreground: "#eff6ff" },
+  { from: "#a16207", to: "#fde047", foreground: "#fefce8" },
   { from: "#7c2d12", to: "#fb923c", foreground: "#fff7ed" },
   { from: "#334155", to: "#94a3b8", foreground: "#f8fafc" },
   { from: "#be123c", to: "#fda4af", foreground: "#fff1f2" },
   { from: "#166534", to: "#86efac", foreground: "#f0fdf4" },
-  { from: "#6d28d9", to: "#c4b5fd", foreground: "#f5f3ff" },
+  { from: "#86198f", to: "#f0abfc", foreground: "#fdf4ff" },
 ];
 
 function hashText(value: string): number {

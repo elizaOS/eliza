@@ -45,8 +45,45 @@ function builtinView(
   };
 }
 
-/** A distinct branded-tile data-URI hero (gradient square), keyed by hue. */
-function heroDataUri(hue: number): string {
+// Simple white glyphs drawn into the synthetic hero tiles so they read as
+// finished app icons in demo captures instead of blank gradient squares.
+// Keyed by view id; every hero tile must have one.
+const HERO_GLYPHS: Record<string, string> = {
+  // Wallet — card body + clasp.
+  wallet:
+    `<g fill='none' stroke='#ffffff' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'>` +
+    `<rect x='16' y='22' width='32' height='22' rx='5'/><path d='M40 33h6'/></g>`,
+  // Automations — clock face.
+  automations:
+    `<g fill='none' stroke='#ffffff' stroke-width='4' stroke-linecap='round'>` +
+    `<circle cx='32' cy='33' r='14'/><path d='M32 25v8l6 4'/></g>`,
+  // Browser — globe.
+  browser:
+    `<g fill='none' stroke='#ffffff' stroke-width='4' stroke-linecap='round'>` +
+    `<circle cx='32' cy='33' r='14'/><path d='M18 33h28'/><ellipse cx='32' cy='33' rx='7' ry='14'/></g>`,
+  // Character — head + shoulders.
+  character:
+    `<g fill='none' stroke='#ffffff' stroke-width='4' stroke-linecap='round'>` +
+    `<circle cx='32' cy='26' r='7'/><path d='M20 46c2-7 6-10 12-10s10 3 12 10'/></g>`,
+  // Knowledge — open book.
+  documents:
+    `<g fill='none' stroke='#ffffff' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'>` +
+    `<path d='M32 23c-4-3-9-3-13-1v21c4-2 9-2 13 1c4-3 9-3 13-1V22c-4-2-9-2-13 1'/><path d='M32 23v21'/></g>`,
+  // Settings — gear (hub + spokes).
+  settings:
+    `<g fill='none' stroke='#ffffff' stroke-width='4' stroke-linecap='round'>` +
+    `<circle cx='32' cy='33' r='7'/>` +
+    `<path d='M32 17v6M32 43v6M16 33h6M42 33h6M21 22l4 4M39 40l4 4M43 22l-4 4M25 40l-4 4'/></g>`,
+  // Trajectories — activity pulse.
+  trajectories:
+    `<path d='M14 33h9l5-12l7 24l5-12h10' fill='none' stroke='#ffffff' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'/>`,
+};
+
+/**
+ * A distinct branded-tile data-URI hero (gradient + white glyph), keyed by hue
+ * and view id. Hues stay out of the blue range (no-blue brand rule).
+ */
+function heroDataUri(hue: number, glyphId: string): string {
   const svg =
     `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'>` +
     `<defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'>` +
@@ -55,6 +92,7 @@ function heroDataUri(hue: number): string {
     `</linearGradient></defs>` +
     `<rect width='64' height='64' fill='url(#g)'/>` +
     `<circle cx='44' cy='20' r='22' fill='#ffffff' opacity='0.18'/>` +
+    (HERO_GLYPHS[glyphId] ?? "") +
     `</svg>`;
   return `data:image/svg+xml,${encodeURIComponent(svg)}`;
 }
@@ -73,23 +111,25 @@ export function useRoutableViews() {
       builtinView("shopify", "Shopify", "/shopify", "ShoppingBag", true),
       builtinView("hyperliquid", "Hyperliquid", "/hyperliquid", "TrendingUp", true),
       // Page 1 — everyday apps (curated order is enforced by launcher-curation).
-      builtinView("wallet", "Wallet", "/wallet", "Wallet", true, heroDataUri(28)),
+      builtinView("wallet", "Wallet", "/wallet", "Wallet", true, heroDataUri(28, "wallet")),
       // Duplicate wallet registration — must collapse to the single Wallet tile.
       builtinView("inventory", "Wallet", "/wallet", "Wallet"),
-      builtinView("automations", "Automations", "/automations", "Clock3", true, heroDataUri(64)),
+      builtinView("automations", "Automations", "/automations", "Clock3", true, heroDataUri(64, "automations")),
       // Duplicate automations registration — folds into the one Automations tile.
       builtinView("triggers", "Automations", "/automations", "Clock3"),
-      builtinView("browser", "Browser", "/browser", "Globe", true, heroDataUri(150)),
-      builtinView("character", "Character", "/character", "Bot", true, heroDataUri(200)),
-      builtinView("documents", "Knowledge", "/character/documents", "FileText", true, heroDataUri(240)),
+      builtinView("browser", "Browser", "/browser", "Globe", true, heroDataUri(150, "browser")),
+      // Hues 348/96 (raspberry/green): the old 200/240 heroes rendered BLUE
+      // Character/Knowledge tiles, violating the no-blue brand rule.
+      builtinView("character", "Character", "/character", "Bot", true, heroDataUri(348, "character")),
+      builtinView("documents", "Knowledge", "/character/documents", "FileText", true, heroDataUri(96, "documents")),
       builtinView("transcripts", "Transcripts", "/apps/transcripts", "AudioLines", true),
       builtinView("relationships", "Relationships", "/apps/relationships", "Network", true),
       builtinView("memories", "Memories", "/apps/memories", "Brain", true),
       builtinView("feed", "Feed", "/feed", "Rss", true),
       builtinView("stream", "Stream", "/stream", "Radio", true),
-      builtinView("settings", "Settings", "/settings", "Settings", false, heroDataUri(28)),
+      builtinView("settings", "Settings", "/settings", "Settings", false, heroDataUri(28, "settings")),
       // Page 2 — developer tools.
-      builtinView("trajectories", "Trajectories", "/apps/trajectories", "Activity", true, heroDataUri(300)),
+      builtinView("trajectories", "Trajectories", "/apps/trajectories", "Activity", true, heroDataUri(300, "trajectories")),
       builtinView("database", "Databases", "/apps/database", "Database", true),
       builtinView("runtime", "Runtime", "/apps/runtime", "Terminal", false),
       builtinView("logs", "Logs", "/apps/logs", "ScrollText", true),
