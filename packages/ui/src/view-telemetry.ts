@@ -19,16 +19,10 @@ export type ViewInteractionSource =
   | "conversation-swipe";
 
 export type ViewInteractionAction =
+  // A launcher/view-catalog tile launch.
   | "launch"
-  | "reorder"
-  | "page-swipe"
-  | "edit-mode-enter"
-  | "edit-mode-exit"
-  | "search"
-  | "search-zero-results"
+  // A tile hero image failed to load (fell back to the glyph).
   | "hero-image-error"
-  | "dynamic-view-edit"
-  | "dynamic-view-delete"
   // Frame-budget summary for a single conversation-swipe gesture (#9954). Until
   // this action existed, swipe jank only surfaced through the dev-only PerfOverlay
   // HUD; emitting it here makes dropped-frame/fps data observable in the same
@@ -41,9 +35,7 @@ export interface ViewInteractionEvent {
   action: ViewInteractionAction;
   /** View/app id the interaction targeted, when applicable. */
   viewId?: string;
-  /** Search query (for search/search-zero-results). */
-  query?: string;
-  /** Result count (for search) or page index (for page-swipe/reorder). */
+  /** Dropped-frame count for a `conversation-swipe-jank` event (#9954). */
   count?: number;
   /**
    * Swipe direction for a `conversation-swipe-jank` event (#9954): `"prev"`

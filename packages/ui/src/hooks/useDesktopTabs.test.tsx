@@ -2,9 +2,8 @@
 
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { LAUNCHER_DOCK_LIMIT } from "../state/launcher-layout";
 import type { ViewRegistryEntry } from "./useAvailableViews";
-import { useDesktopTabs } from "./useDesktopTabs";
+import { LAUNCHER_DOCK_LIMIT, useDesktopTabs } from "./useDesktopTabs";
 
 const runtimeMock = vi.hoisted(() => ({
   isElectrobunRuntime: vi.fn(),

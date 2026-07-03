@@ -57,18 +57,18 @@ describe("view-telemetry", () => {
     window.addEventListener(VIEW_INTERACTION_TELEMETRY_EVENT, handler);
     emitViewInteraction({
       source: "view-catalog",
-      action: "search",
-      query: "q",
+      action: "hero-image-error",
+      viewId: "notes",
     });
     window.removeEventListener(VIEW_INTERACTION_TELEMETRY_EVENT, handler);
-    expect(seen).toEqual(["search"]);
+    expect(seen).toEqual(["hero-image-error"]);
   });
 
   it("bounds the ring to VIEW_INTERACTION_RING_MAX, dropping the oldest", () => {
     for (let i = 0; i < VIEW_INTERACTION_RING_MAX + 25; i += 1) {
       emitViewInteraction({
-        source: "launcher",
-        action: "page-swipe",
+        source: "conversation-swipe",
+        action: "conversation-swipe-jank",
         count: i,
       });
     }

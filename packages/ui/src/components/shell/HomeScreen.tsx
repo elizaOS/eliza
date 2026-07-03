@@ -146,14 +146,6 @@ export interface HomeScreenProps {
   onOpenTile: (target: HomeTileTarget) => void;
   /** Render the AOSP-only phone/contacts tiles (native OS surfaces). */
   showNativeOsTiles?: boolean;
-  /**
-   * Optional host-provided header content rendered at the top of the home
-   * screen (e.g. a brand wallet widget). The framework intentionally ships no
-   * default clock to keep the home minimal; this host-override slot stays so a
-   * host app can opt back into a header
-   * without the framework providing one.
-   */
-  clockAccessory?: React.ReactNode;
 }
 
 /**
@@ -170,7 +162,6 @@ export interface HomeScreenProps {
 export function HomeScreen({
   onOpenTile,
   showNativeOsTiles = false,
-  clockAccessory,
 }: HomeScreenProps): React.JSX.Element {
   // Only the AOSP native-OS tiles remain, and they need an AOSP build. On every
   // other platform `tiles` is empty and the grid renders nothing.
@@ -267,12 +258,6 @@ export function HomeScreen({
       >
         <style>{HOME_ENTER_CSS}</style>
         <div className="mx-auto flex w-full max-w-2xl flex-col gap-4">
-          {clockAccessory ? (
-            <div className={cn(enterClass, "flex justify-end")}>
-              {clockAccessory}
-            </div>
-          ) : null}
-
           {/* The always-on base: a naked sized grid with the time + weather as
             2×2 neighbours and the week strip — no card, white text on the
             ambient field. */}

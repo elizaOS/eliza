@@ -390,21 +390,6 @@ describe("App navigate-view shell handler", () => {
     });
   });
 
-  it("records agent-navigated views in the recent views list", () => {
-    const localNotes = view({
-      id: "local-notes",
-      label: "Local Notes",
-      path: "/apps/local-notes",
-    });
-    const fixture = createHandlerFixture([localNotes]);
-
-    fixture.handler(navigateEvent({ viewId: "local-notes" }));
-
-    expect(
-      JSON.parse(window.localStorage.getItem("elizaos.views.recent") ?? "[]"),
-    ).toEqual(["local-notes"]);
-  });
-
   it("stores generic one-shot payloads for target views", () => {
     const fixture = createHandlerFixture();
 

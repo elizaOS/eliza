@@ -4,7 +4,6 @@ import {
 } from "@elizaos/shared/events";
 import type { ViewRegistryEntry } from "./hooks/useAvailableViews";
 import { type Tab, tabFromPath } from "./navigation";
-import { recordRecentViewId } from "./view-recents";
 
 export type { NavigateViewDetail };
 
@@ -212,7 +211,6 @@ export function createNavigateViewHandler({
         );
         if (!entry) continue;
         resolvedViewIds.push(entry.id);
-        recordRecentViewId(entry.id);
         openDesktopTab(entry, { pinned: false });
       }
       const primaryViewId =
@@ -232,9 +230,6 @@ export function createNavigateViewHandler({
     if (!path) return;
     setViewLayout?.(null);
     const directTab = directTabForNavigateView(detail, path);
-    if (detail.viewId) {
-      recordRecentViewId(detail.viewId);
-    }
     if (directTab) {
       setTab(directTab);
       return;

@@ -8,8 +8,13 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
-import { LAUNCHER_DOCK_LIMIT } from "../state/launcher-layout";
 import type { ViewRegistryEntry } from "./useAvailableViews";
+
+/**
+ * iOS-dock-style pin cap: at most this many pinned tabs in the desktop dock.
+ * Pinning past the cap evicts the oldest pinned tab (see `capPinnedTabs`).
+ */
+export const LAUNCHER_DOCK_LIMIT = 4;
 
 export interface DesktopTab {
   viewId: string;
