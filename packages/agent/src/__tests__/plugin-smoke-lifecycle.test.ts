@@ -188,6 +188,28 @@ describe("skills-shaped plugin — 3 load/unload cycles", () => {
   });
 });
 
+describe("provider role gating during hot plugin registration", () => {
+  it("applies provider role gating to plugins registered after boot", async () => {
+    const runtime = createTestRuntime();
+    installRuntimePluginLifecycle(runtime);
+    const sensitiveProvider = {
+      name: "SECRETS_STATUS",
+      description: "sensitive secrets status",
+      get: vi.fn(async () => ({ text: "secret state" })),
+    };
+
+    await runtime.registerPlugin({
+      name: "synthetic-sensitive-plugin",
+      description: "Synthetic plugin with a sensitive provider",
+      providers: [sensitiveProvider],
+    });
+
+    expect((sensitiveProvider as { __roleGate?: string }).__roleGate).toBe(
+      "admin",
+    );
+  });
+});
+
 describe("app-shaped plugin — 3 load/unload cycles", () => {
   it("runs 3 cycles and restores baseline state each time", async () => {
     const runtime = createTestRuntime();

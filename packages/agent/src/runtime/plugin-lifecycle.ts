@@ -15,6 +15,7 @@ import {
   registerPluginViews,
   unregisterPluginViews,
 } from "../api/views-registry.ts";
+import { applyPluginRoleGating } from "./plugin-role-gating.ts";
 import type { ToolCallCache } from "./tool-call-cache/index.ts";
 import {
   createToolCallCacheFromConfig,
@@ -683,6 +684,7 @@ function installPluginViewSync(runtime: RuntimeWithPluginLifecycle): void {
   runtime.registerPlugin = (async (plugin: Plugin) => {
     await baseRegisterPlugin(plugin);
     try {
+      applyPluginRoleGating([plugin]);
       await migratePluginSchemasIfReady(runtime, plugin);
       await registerPluginViews(plugin);
     } catch (error) {
@@ -707,6 +709,7 @@ function installPluginViewSync(runtime: RuntimeWithPluginLifecycle): void {
     runtime.reloadPlugin = async (plugin: Plugin) => {
       unregisterPluginViews(plugin.name);
       await baseReloadPlugin(plugin);
+      applyPluginRoleGating([plugin]);
       await registerPluginViews(plugin);
     };
   }
@@ -937,6 +940,7 @@ export function installRuntimePluginLifecycle(runtime: AgentRuntime): void {
         pluginsBefore,
         routesBefore,
       );
+      applyPluginRoleGating([plugin]);
       await migratePluginSchemasIfReady(runtime, plugin);
       if (
         capture.ownership.registeredPlugin ||
