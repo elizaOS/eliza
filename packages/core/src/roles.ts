@@ -66,13 +66,12 @@ export interface ServerOwnershipState {
 const CONNECTOR_ADMINS_SETTING_KEY = "ELIZA_ROLES_CONNECTOR_ADMINS_JSON";
 const CANONICAL_OWNER_SETTING_KEY = "ELIZA_ADMIN_ENTITY_ID";
 const OWNER_CONTACTS_SETTING_KEY = "ELIZA_OWNER_CONTACTS_JSON";
-const CONNECTOR_ID_FIELDS = ["userId", "id", "username", "userName"] as const;
 const CONNECTOR_STABLE_ID_FIELDS = ["userId", "id"] as const;
-type ConnectorIdField = (typeof CONNECTOR_ID_FIELDS)[number];
+type ConnectorStableIdField = (typeof CONNECTOR_STABLE_ID_FIELDS)[number];
 type ConnectorAdminMatch = {
 	connector: string;
 	matchedValue: string;
-	matchedField: ConnectorIdField;
+	matchedField: ConnectorStableIdField;
 };
 
 type ResolveEntityRoleOptions = {
@@ -526,7 +525,7 @@ export function matchEntityToConnectorAdminWhitelist(
 			continue;
 		}
 
-		for (const field of CONNECTOR_ID_FIELDS) {
+		for (const field of CONNECTOR_STABLE_ID_FIELDS) {
 			const value = connectorMeta[field];
 			if (typeof value === "string" && platformIds.includes(value)) {
 				return { connector, matchedValue: value, matchedField: field };

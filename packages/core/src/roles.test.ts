@@ -155,6 +155,17 @@ describe("matchEntityToConnectorAdminWhitelist", () => {
 		).toBeNull();
 		expect(matchEntityToConnectorAdminWhitelist(null, whitelist)).toBeNull();
 	});
+
+	it("does not match mutable username fields against the whitelist", () => {
+		const whitelist = { discord: ["alice"] };
+
+		expect(
+			matchEntityToConnectorAdminWhitelist(
+				{ discord: { username: "alice", userName: "alice" } },
+				whitelist,
+			),
+		).toBeNull();
+	});
 });
 
 describe("canonical role rank (#9948)", () => {
