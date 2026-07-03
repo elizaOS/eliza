@@ -2056,7 +2056,9 @@ export class CreditsService {
         settlement_marker: RESERVATION_SETTLEMENT_MARKER,
         estimated_cost: estimatedCost,
         reserved_amount: reservedAmount,
-        ...(estimatedCostMultiplier !== 1 && { estimated_cost_multiplier: estimatedCostMultiplier }),
+        ...(estimatedCostMultiplier !== 1 && {
+          estimated_cost_multiplier: estimatedCostMultiplier,
+        }),
         ...(model && { model }),
       },
     });

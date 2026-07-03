@@ -107,7 +107,9 @@ interface BillableAffiliate {
   markupPercent: number;
 }
 
-async function resolveBillableAffiliate(context: BillingContext): Promise<BillableAffiliate | null> {
+async function resolveBillableAffiliate(
+  context: BillingContext,
+): Promise<BillableAffiliate | null> {
   if (!context.affiliateCode || context.organizationId === "anonymous") return null;
   const affiliate = await affiliatesRepository.getAffiliateCodeByCode(context.affiliateCode);
   if (!affiliate?.is_active) return null;
