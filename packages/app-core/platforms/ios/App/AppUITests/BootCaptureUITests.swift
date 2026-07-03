@@ -352,19 +352,26 @@ final class BootCaptureUITests: XCTestCase {
             throw XCTSkip("boot never reached a live renderer — onboarding not attempted")
         }
 
-        // 2. Placement choice. The conductor seeds it as a tappable in-chat
-        //    widget ("Eliza Cloud (managed)" / "On this device").
+        // 2. Placement choice. The conductor seeds the greeting + choice ONLY
+        //    after client.listLocalAgentBackups() resolves, which waits on the
+        //    agent API — on a fresh device the local full-Bun engine is still
+        //    "Waking Eliza…", so the greeting can take a couple minutes to
+        //    appear. Poll generously (agentReady budget), screenshotting the
+        //    wait so a genuine no-show is distinguishable from slow boot.
         let placement = path == .cloud ? "Eliza Cloud (managed)" : "On this device"
-        guard tapWebChoice(app, label: placement, timeout: 30) else {
+        if !tapWebChoice(app, label: placement, timeout: min(agentReady, 300)) {
             attachScreenshot(named: "\(tag)-010-no-placement-choice")
             attachAccessibilitySnapshot(of: app)
-            throw XCTSkip("first-run placement choice '\(placement)' never surfaced")
+            throw XCTSkip(
+                "first-run placement choice '\(placement)' never surfaced within "
+                    + "\(Int(min(agentReady, 300)))s (greeting is gated behind the "
+                    + "agent-wake + listLocalAgentBackups). See \(tag)-010.")
         }
         attachScreenshot(named: "\(tag)-010-after-placement")
 
         if path == .local {
             // 3a. Local sub-step: model provider choice.
-            if tapWebChoice(app, label: "On this device (recommended)", timeout: 30) {
+            if tapWebChoice(app, label: "On this device (recommended)", timeout: 120) {
                 attachScreenshot(named: "\(tag)-020-after-provider")
             } else {
                 attachScreenshot(named: "\(tag)-020-no-provider-choice")
