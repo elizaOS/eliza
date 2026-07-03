@@ -204,6 +204,46 @@ describe("runBotNoiseTriage — cheap-tier verdict", () => {
 		expect(result).toEqual({ applied: true, respond: false });
 	});
 
+	it("parses IGNORE from a reasoning model that names both verdicts inside <think>", async () => {
+		// A REASONING-tier TEXT_SMALL provider (e.g. Cerebras gpt-oss) deliberates
+		// out loud before the one-word answer. The reasoning block mentions both
+		// RESPOND and IGNORE; only the post-think verdict counts. Without stripping
+		// the block the regex sees both words and fails open — the silent no-op.
+		const runtime = makeRuntime({
+			modelResult:
+				"<think>The bot embed is a status feed and does not address Remilio. " +
+				"I could RESPOND, but automated updates like this should IGNORE. " +
+				"Final answer below.</think>\nIGNORE",
+		});
+		const result = await runBotNoiseTriage({
+			runtime,
+			message: relayEmbedMessage(),
+			explicitlyAddressesAgent: false,
+		});
+		expect(result).toEqual({ applied: true, respond: false });
+	});
+
+	it("extracts the verdict from a content-array GenerateTextResult with no flat text", async () => {
+		// Reasoning-tier providers surface structured output: the flat `.text` is
+		// empty and the real assistant text lives in the `content` parts array.
+		// getV5ModelText must recover it; the ad-hoc `.text` read saw "" (fail open).
+		const runtime = makeRuntime({
+			modelResult: {
+				text: "",
+				content: [
+					{ type: "reasoning", text: "weighing RESPOND vs IGNORE" },
+					{ type: "text", text: "IGNORE" },
+				],
+			},
+		});
+		const result = await runBotNoiseTriage({
+			runtime,
+			message: relayEmbedMessage(),
+			explicitlyAddressesAgent: false,
+		});
+		expect(result).toEqual({ applied: true, respond: false });
+	});
+
 	it("fails open on an unparseable verdict", async () => {
 		for (const garbage of ["", "maybe?", "RESPOND IGNORE"]) {
 			const runtime = makeRuntime({ modelResult: garbage });
