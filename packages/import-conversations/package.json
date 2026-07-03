@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/import-conversations",
   "version": "2.0.4",
-  "description": "Import prior AI conversation history (ChatGPT / Claude / Hermes exports) into elizaOS as searchable, scoped knowledge. Track A: shared core (normalized types + ingestion pipeline).",
+  "description": "Import prior AI conversation history (ChatGPT / Claude / Hermes exports) into elizaOS as searchable, scoped knowledge.",
   "type": "module",
   "sideEffects": false,
   "main": "./dist/index.js",
@@ -51,6 +51,16 @@
       },
       "import": "./dist/index.js",
       "default": "./dist/index.js"
+    },
+    "./parsers/claude": {
+      "types": "./dist/parsers/claude.d.ts",
+      "eliza-source": {
+        "types": "./src/parsers/claude.ts",
+        "import": "./src/parsers/claude.ts",
+        "default": "./src/parsers/claude.ts"
+      },
+      "import": "./dist/parsers/claude.js",
+      "default": "./dist/parsers/claude.js"
     },
     "./parsers/hermes": {
       "types": "./dist/parsers/hermes.d.ts",

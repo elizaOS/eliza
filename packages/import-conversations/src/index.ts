@@ -11,5 +11,11 @@
  */
 
 export * from "./core/index.ts";
+export type { ParseOptions as ClaudeParseOptions } from "./parsers/claude.ts";
+export {
+  default as claudeParser,
+  detect as detectClaudeExport,
+  parse as parseClaudeExport,
+} from "./parsers/claude.ts";
 export type { ParseOptions } from "./parsers/hermes.ts";
 export { default as hermesParser, detect, parse } from "./parsers/hermes.ts";
