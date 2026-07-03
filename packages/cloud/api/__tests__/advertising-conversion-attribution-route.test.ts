@@ -27,10 +27,12 @@ mock.module("@/lib/middleware/rate-limit-hono-cloudflare", () => ({
 }));
 
 const getAttributionToken = mock();
+const createAttributionLink = mock();
 const recordConversion = mock();
 mock.module("@/lib/services/advertising", () => ({
   advertisingService: {
     getAttributionToken,
+    createAttributionLink,
     recordConversion,
   },
 }));
@@ -68,6 +70,7 @@ interface AttributionInstallResponse {
 beforeEach(() => {
   requireUserOrApiKeyWithOrg.mockReset();
   getAttributionToken.mockReset();
+  createAttributionLink.mockReset();
   recordConversion.mockReset();
 });
 
@@ -105,6 +108,50 @@ describe("advertising attribution install route", () => {
       dedupeKey: "ORDER_OR_EVENT_ID",
     });
   });
+
+  test("creates deterministic UTM links for the caller org", async () => {
+    requireUserOrApiKeyWithOrg.mockResolvedValue({ organization_id: ORG_ID });
+    createAttributionLink.mockResolvedValue({
+      id: "link_1",
+      campaignId: CAMPAIGN_ID,
+      destinationUrl: "https://app.test/install",
+      utmUrl:
+        "https://app.test/install?utm_source=meta&utm_medium=paid&utm_campaign=launch",
+      utm: {
+        source: "meta",
+        medium: "paid",
+        campaign: "launch",
+      },
+    });
+
+    const res = await app.request(
+      `https://cloud.test/api/v1/advertising/campaigns/${CAMPAIGN_ID}/attribution`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          destinationUrl: "https://app.test/install",
+          source: "meta",
+        }),
+      },
+    );
+    const body = (await res.json()) as {
+      link: { id: string; utmUrl: string };
+    };
+
+    expect(res.status).toBe(201);
+    expect(body.link.utmUrl).toContain("utm_source=meta");
+    expect(createAttributionLink).toHaveBeenCalledWith({
+      campaignId: CAMPAIGN_ID,
+      organizationId: ORG_ID,
+      destinationUrl: "https://app.test/install",
+      creativeId: undefined,
+      source: "meta",
+      medium: undefined,
+      content: undefined,
+      term: undefined,
+    });
+  });
 });
 
 describe("advertising conversion tracking route", () => {
@@ -134,6 +181,7 @@ describe("advertising conversion tracking route", () => {
         value: 12.34,
         currency: "USD",
         referrer: "https://app.test/thanks",
+        userAgent: "test-agent",
         metadata: { utmSource: "meta" },
       }),
     );

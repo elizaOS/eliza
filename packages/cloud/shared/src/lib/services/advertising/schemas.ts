@@ -312,6 +312,7 @@ export const RecordConversionSchema = z.object({
   currency: z.string().length(3).default("USD"),
   sourceUrl: z.string().url().optional(),
   referrer: z.string().url().optional(),
+  userAgent: z.string().max(512).optional(),
   occurredAt: z.string().datetime().optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
 });

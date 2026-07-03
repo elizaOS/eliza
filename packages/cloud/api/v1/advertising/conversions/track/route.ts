@@ -10,7 +10,6 @@
 
 import { type Context, Hono } from "hono";
 import {
-  getIpKey,
   RateLimitPresets,
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
@@ -21,7 +20,7 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 
-app.use("*", rateLimit({ ...RateLimitPresets.STRICT, keyGenerator: getIpKey }));
+app.use("*", rateLimit(RateLimitPresets.AGGRESSIVE));
 
 function requestContext(c: Context<AppEnv>) {
   return {

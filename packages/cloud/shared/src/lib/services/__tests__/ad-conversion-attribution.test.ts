@@ -125,6 +125,7 @@ describe("conversion attribution token", () => {
       event_type: "purchase",
       dedupe_key: "order-123",
       value: "42.00",
+      user_agent: "test-agent",
     });
   });
 
