@@ -401,10 +401,52 @@ function selectAndGroup() {
 }
 
 /**
+ * Slim a harvested request down to ONLY the fields the native backend + GEPA
+ * scorer actually consume, so the GEPA dataset fits under the Cerebras
+ * queue/TPM ceilings instead of shipping 96K-600K-char rows.
+ *
+ * WHAT THE PIPELINE READS (verified against native.ts rowToExample + the
+ * scorers in scoring.ts): `request.system`, `request.prompt`, and
+ * `request.messages` filtered to system/user/assistant roles. The scorer then
+ * composes only `system + "\n\n" + user` and runs it through the model; the
+ * expected output comes from `response.text` / `response.toolCalls`.
+ *
+ * WHAT IS PURE DEAD WEIGHT (never read, but dominates row size):
+ *   - `request.tools` — the full 38-53-tool catalog serialized per row
+ *     (~260K chars on the big action_planner rows). should_respond is a binary
+ *     respond/ignore decision that needs no tool schemas at all; action_planner
+ *     is scored on the ACTION NAME extracted from the model's text output, not
+ *     on re-issuing the tool schema.
+ *   - `request.toolChoice`, `request.providerOptions` (~31K chars on the big
+ *     should_respond rows) — transport knobs the scorer never sees.
+ *   - `tool`-role and other non-{system,user,assistant} messages — the
+ *     multi-turn tool-result transcript the parser skips.
+ *
+ * Dropping these does NOT change any score (the scorer's model input is
+ * identical) — it just removes the tokens that saturate the rate limits.
+ */
+const SCORED_MESSAGE_ROLES = new Set(["system", "user", "assistant"]);
+function slimRequest(req) {
+  const slim = {};
+  if (typeof req.system === "string" && req.system.length > 0) {
+    slim.system = req.system;
+  }
+  if (typeof req.prompt === "string" && req.prompt.trim()) {
+    slim.prompt = req.prompt;
+  }
+  if (Array.isArray(req.messages)) {
+    slim.messages = req.messages
+      .filter((m) => m && SCORED_MESSAGE_ROLES.has(m.role))
+      .map((m) => ({ role: m.role, content: m.content }));
+  }
+  return slim;
+}
+
+/**
  * Build the per-task GEPA dataset: PASSING (gold) native rows for that task,
- * written in the exact `eliza_native_v1` shape the native backend parses. We
- * only keep the minimal fields the parser reads (format/boundary/request/
- * response/metadata) plus keep metadata so the failed-scenario guard stays live.
+ * written in the exact `eliza_native_v1` shape the native backend parses. The
+ * request is slimmed (see slimRequest) to the fields the parser + scorer read,
+ * keeping metadata so the failed-scenario quality guard stays live.
  */
 function buildTaskDataset(task, goldRows) {
   mkdirSync(DATASET_DIR, { recursive: true });
@@ -429,7 +471,7 @@ function buildTaskDataset(task, goldRows) {
       format: "eliza_native_v1",
       schemaVersion: row.schemaVersion ?? 1,
       boundary: row.boundary,
-      request: req,
+      request: slimRequest(req),
       response: resp,
       metadata: row.metadata ?? {},
     };

@@ -157,6 +157,52 @@ function resolveConfig(role: "eval" | "training"): ResolvedClientConfig {
 const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
 const MAX_CHAT_ATTEMPTS = 8;
 
+function readIntEnv(name: string, fallback: number, min = 0): number {
+  const raw = process.env[name]?.trim();
+  if (!raw) return fallback;
+  const n = Number.parseInt(raw, 10);
+  return Number.isFinite(n) && n >= min ? n : fallback;
+}
+
+// ---------------------------------------------------------------------------
+// Global request pacing.
+//
+// A GEPA run fans out population(12)×generations(8) prompt candidates, each
+// scored across the whole dataset — hundreds of provider calls. Firing them
+// concurrently saturates Cerebras on BOTH the requests-in-queue limit
+// (`queue_exceeded`) and the tokens-per-minute limit (`token_quota_exceeded`),
+// which no per-request backoff can fix because the fan-out structurally
+// exceeds the ceiling. The fix is a process-global concurrency gate + a small
+// inter-request delay so the whole optimizer run stays under the queue/TPM
+// ceilings. Tunable via env; the defaults are deliberately conservative so the
+// hi-tier key completes an at-scale sweep without tripping either limit.
+//
+//   CEREBRAS_MAX_CONCURRENCY  in-flight cap (default 1 — full serialization)
+//   CEREBRAS_REQUEST_DELAY_MS delay after each request releases (default 350ms)
+// ---------------------------------------------------------------------------
+const MAX_CONCURRENCY = Math.max(1, readIntEnv("CEREBRAS_MAX_CONCURRENCY", 1, 1));
+const REQUEST_DELAY_MS = readIntEnv("CEREBRAS_REQUEST_DELAY_MS", 350, 0);
+
+let inFlight = 0;
+const waiters: Array<() => void> = [];
+
+async function acquireSlot(): Promise<void> {
+  if (inFlight < MAX_CONCURRENCY) {
+    inFlight += 1;
+    return;
+  }
+  await new Promise<void>((resolve) => waiters.push(resolve));
+  inFlight += 1;
+}
+
+function releaseSlot(): void {
+  inFlight -= 1;
+  const next = waiters.shift();
+  if (next) next();
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 /**
  * POST the chat-completions request, retrying transient failures (429 + 5xx +
  * network errors) with exponential backoff. A single optimizer run fans out
@@ -164,8 +210,24 @@ const MAX_CHAT_ATTEMPTS = 8;
  * gpt-oss-120b relays) would otherwise abort the whole generation. A
  * non-retryable status is returned to the caller unchanged for its own
  * error-body handling.
+ *
+ * Every request runs under the global concurrency gate + inter-request delay
+ * so an optimizer fan-out never bursts past the Cerebras queue/TPM ceilings.
  */
 async function fetchChatWithRetry(
+  config: ResolvedClientConfig,
+  body: Record<string, unknown>,
+): Promise<Response> {
+  await acquireSlot();
+  try {
+    return await fetchChatWithRetryInner(config, body);
+  } finally {
+    if (REQUEST_DELAY_MS > 0) await sleep(REQUEST_DELAY_MS);
+    releaseSlot();
+  }
+}
+
+async function fetchChatWithRetryInner(
   config: ResolvedClientConfig,
   body: Record<string, unknown>,
 ): Promise<Response> {
@@ -195,13 +257,16 @@ async function fetchChatWithRetry(
       lastError = err;
     }
     if (attempt < MAX_CHAT_ATTEMPTS) {
-      // A 429 token-per-minute quota only clears when the 60s TPM window rolls
-      // over, so back off long enough to survive it rather than hammering with
-      // sub-8s retries that keep tripping the same limit. Other transients
-      // (5xx / network) keep the fast exponential schedule.
+      // Both rate-limit shapes only clear when their window rolls over:
+      // `token_quota_exceeded` (tokens/min) waits for the 60s TPM window;
+      // `queue_exceeded` (requests in queue) clears as in-flight requests
+      // drain. Both arrive as HTTP 429, so back off long enough to survive
+      // either rather than hammering with sub-8s retries that keep tripping
+      // the same limit. Other transients (5xx / network) keep the fast
+      // exponential schedule.
       const cap = lastStatus === 429 ? 65_000 : 8_000;
       const backoffMs = Math.min(cap, 400 * 2 ** (attempt - 1));
-      await new Promise((r) => setTimeout(r, backoffMs));
+      await sleep(backoffMs);
     }
   }
   throw lastError instanceof Error
