@@ -8,6 +8,7 @@ export const AdPlatformSchema = z.enum([
   "x-twitter",
   "reddit",
   "linkedin",
+  "programmatic-dsp",
 ]);
 
 export const CampaignObjectiveSchema = z.enum([

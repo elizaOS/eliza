@@ -505,6 +505,7 @@ export const AD_CREDIT_RATES = {
     "x-twitter": 1.1,
     reddit: 1.1,
     linkedin: 1.1,
+    "programmatic-dsp": 1.1,
   },
 
   // Analytics/reports
