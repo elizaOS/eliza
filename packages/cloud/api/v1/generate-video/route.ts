@@ -65,6 +65,40 @@ interface PendingSettlementContext {
   parameters: Record<string, unknown>;
 }
 
+function providerFailureDetails(options: {
+  provider: string;
+  model: string;
+  billingSource: string;
+  error: unknown;
+}): Record<string, unknown> {
+  const errorRecord =
+    typeof options.error === "object" && options.error !== null
+      ? (options.error as Record<string, unknown>)
+      : {};
+  const details: Record<string, unknown> = {
+    provider: options.provider,
+    model: options.model,
+    billingSource: options.billingSource,
+  };
+  const status = errorRecord.status ?? errorRecord.statusCode;
+  if (typeof status === "number" && Number.isFinite(status)) {
+    details.upstreamStatus = status;
+  }
+  if (typeof errorRecord.code === "string" && errorRecord.code.trim()) {
+    details.upstreamCode = errorRecord.code.trim().slice(0, 128);
+  }
+  const message =
+    options.error instanceof Error
+      ? options.error.message
+      : typeof options.error === "string"
+        ? options.error
+        : "";
+  if (message.trim()) {
+    details.upstreamMessage = message.trim().slice(0, 500);
+  }
+  return details;
+}
+
 app.post("/", async (c) => {
   let reservation: Awaited<ReturnType<typeof creditsService.reserve>> | null =
     null;
@@ -176,17 +210,33 @@ app.post("/", async (c) => {
       },
     };
 
-    const generated = await provider.generate({
-      ...request,
-      // Bill-what-you-deliver: the org is charged for the RESOLVED duration
-      // (request.durationSeconds ?? the catalog default), but the raw request
-      // spread would forward an undefined durationSeconds when the client omits
-      // it — the provider then renders its OWN default (potentially longer),
-      // so the platform pays for a longer clip than it billed. Forward the
-      // resolved value so the generated duration matches the charge.
-      durationSeconds,
-      apiKeys,
-    });
+    let generated: Awaited<ReturnType<typeof provider.generate>>;
+    try {
+      generated = await provider.generate({
+        ...request,
+        // Bill-what-you-deliver: the org is charged for the RESOLVED duration
+        // (request.durationSeconds ?? the catalog default), but the raw request
+        // spread would forward an undefined durationSeconds when the client omits
+        // it — the provider then renders its OWN default (potentially longer),
+        // so the platform pays for a longer clip than it billed. Forward the
+        // resolved value so the generated duration matches the charge.
+        durationSeconds,
+        apiKeys,
+      });
+    } catch (error) {
+      if (error instanceof VideoGenerationPendingError) throw error;
+      throw new ApiError(
+        503,
+        "internal_error",
+        "Video provider request failed",
+        providerFailureDetails({
+          provider: definition.provider,
+          model: request.model,
+          billingSource: definition.billingSource,
+          error,
+        }),
+      );
+    }
     if (generated.hasNsfwConcepts?.some(Boolean)) {
       throw new ApiError(
         400,

@@ -152,8 +152,15 @@ const validResult = {
 
 interface ErrorResponseBody {
   error?: string;
+  code?: string;
   details?: {
     supportedModels?: string[];
+    provider?: string;
+    model?: string;
+    billingSource?: string;
+    upstreamStatus?: number;
+    upstreamCode?: string;
+    upstreamMessage?: string;
   };
 }
 
@@ -236,14 +243,32 @@ describe("generate-video — post-settle failure must not refund (#10278)", () =
 });
 
 describe("generate-video — pre-settle failure still refunds", () => {
-  test("fal.subscribe throws BEFORE settle: reconciled once to 0, balance restored", async () => {
+  test("provider throws BEFORE settle: refunds and returns provider diagnostics", async () => {
     const ledger = makeLedgerReservation(100, COST);
     reserve.mockResolvedValue(ledger.reservation);
-    subscribe.mockRejectedValue(new Error("fal upstream 503"));
+    const providerError = Object.assign(new Error("fal upstream 503"), {
+      status: 503,
+      code: "FAL_UPSTREAM_UNAVAILABLE",
+    });
+    subscribe.mockRejectedValue(providerError);
 
     const res = await post();
 
-    expect(res.status).toBeGreaterThanOrEqual(400);
+    expect(res.status).toBe(503);
+    const body = (await res.json()) as ErrorResponseBody;
+    expect(body).toMatchObject({
+      success: false,
+      error: "Video provider request failed",
+      code: "internal_error",
+      details: {
+        provider: "fal",
+        model: MODEL,
+        billingSource: "fal",
+        upstreamStatus: 503,
+        upstreamCode: "FAL_UPSTREAM_UNAVAILABLE",
+        upstreamMessage: "fal upstream 503",
+      },
+    });
     expect(generationsCreate).not.toHaveBeenCalled();
     // Failure before settle → full refund (reconcile(0)).
     expect(ledger.reconcileCalls).toBe(1);
