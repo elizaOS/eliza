@@ -25,6 +25,9 @@
   --muted-strong: rgba(0, 0, 0, 0.74);
   --border: rgba(0, 0, 0, 0.12);
   --border-strong: rgba(0, 0, 0, 0.22);
+  /* Modal/drawer scrim: brand black at a fixed dim so an open sheet reads as a
+     genuine backdrop (never off-palette "ember" rgba). */
+  --scrim: rgba(20, 12, 7, 0.7);
   --accent: var(--brand-orange);
   --accent-rgb: 255, 106, 31;
   --accent-foreground: var(--brand-white);
@@ -74,6 +77,9 @@
   --muted-strong: rgba(255, 244, 236, 0.76);
   --border: rgba(255, 255, 255, 0.12);
   --border-strong: rgba(255, 255, 255, 0.22);
+  /* Modal/drawer scrim: brand black at a fixed dim so an open sheet reads as a
+     genuine backdrop (never off-palette "ember" rgba). */
+  --scrim: rgba(20, 12, 7, 0.72);
   --accent: var(--brand-orange);
   --accent-rgb: 255, 106, 31;
   --accent-foreground: var(--brand-white);
