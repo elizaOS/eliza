@@ -346,6 +346,84 @@ describe("stale-reservation sweep vs app-chat settle lane (#11683)", () => {
     expect(await refundRows(payerOrgId)).toHaveLength(1);
   });
 
+  test("stale sweep refunds the original payer org even if the user moved orgs", async () => {
+    if (!pgliteReady) return;
+    const { appId, payerUserId, payerOrgId, creatorUserId } = await seed();
+    const [newOrg] = await dbWrite
+      .insert(organizations)
+      .values({ name: "Moved Org", slug: uniq("moved"), credit_balance: "50.000000" })
+      .returning();
+
+    const holdId = await openRouteShapedHold({
+      appId,
+      userId: payerUserId,
+      estimatedBaseCost: 0.02,
+      reservedBaseCost: 0.03,
+      ageMs: 3 * 60 * 60 * 1000,
+    });
+    await dbWrite
+      .update(users)
+      .set({ organization_id: newOrg.id })
+      .where(eq(users.id, payerUserId));
+
+    const stats = await creditsService.sweepStaleReservations();
+
+    expect(stats.settled).toBe(1);
+    expect(stats.refunds).toBe(1);
+    expect(await orgBalance(payerOrgId)).toBeCloseTo(99.96, 6);
+    expect(await orgBalance(newOrg.id)).toBeCloseTo(50, 6);
+    expect(await creatorBalance(creatorUserId)).toBeCloseTo(0.02, 6);
+    expect(await refundRows(payerOrgId)).toHaveLength(1);
+    expect(await refundRows(newOrg.id)).toHaveLength(0);
+    expect(await holdSettledAt(holdId)).toBeTruthy();
+  });
+
+  test("stale sweep uses charge-time markup even if app monetization changed", async () => {
+    if (!pgliteReady) return;
+    const { appId, payerUserId, payerOrgId, creatorUserId } = await seed();
+
+    const holdId = await openRouteShapedHold({
+      appId,
+      userId: payerUserId,
+      estimatedBaseCost: 0.02,
+      reservedBaseCost: 0.03,
+      ageMs: 3 * 60 * 60 * 1000,
+    });
+    await dbWrite.update(apps).set({ inference_markup_percentage: 300 }).where(eq(apps.id, appId));
+
+    const stats = await creditsService.sweepStaleReservations();
+
+    expect(stats.settled).toBe(1);
+    expect(stats.refunds).toBe(1);
+    expect(await orgBalance(payerOrgId)).toBeCloseTo(99.96, 6);
+    expect(await creatorBalance(creatorUserId)).toBeCloseTo(0.02, 6);
+    expect(await appCreatorEarningsCounter(appId)).toBeCloseTo(0.02, 6);
+    expect(await holdSettledAt(holdId)).toBeTruthy();
+  });
+
+  test("stale sweep can settle a deleted app from immutable debit metadata", async () => {
+    if (!pgliteReady) return;
+    const { appId, payerUserId, payerOrgId, creatorUserId } = await seed();
+
+    const holdId = await openRouteShapedHold({
+      appId,
+      userId: payerUserId,
+      estimatedBaseCost: 0.02,
+      reservedBaseCost: 0.03,
+      ageMs: 3 * 60 * 60 * 1000,
+    });
+    await dbWrite.delete(apps).where(eq(apps.id, appId));
+
+    const stats = await creditsService.sweepStaleReservations();
+
+    expect(stats.settled).toBe(1);
+    expect(stats.refunds).toBe(1);
+    expect(await orgBalance(payerOrgId)).toBeCloseTo(99.96, 6);
+    expect(await creatorBalance(creatorUserId)).toBeCloseTo(0.02, 6);
+    expect(await refundRows(payerOrgId)).toHaveLength(1);
+    expect(await holdSettledAt(holdId)).toBeTruthy();
+  });
+
   test("settled-first hold: the sweep skips it (settled_at fence)", async () => {
     if (!pgliteReady) return;
     const { appId, payerUserId, payerOrgId, creatorUserId } = await seed();

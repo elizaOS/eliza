@@ -83,12 +83,12 @@
     }
   ],
   "outputs": {
-    "face_obj": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/cad/source-assets/human-donor/eliza_face_donor.obj",
-    "face_stl": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/cad/source-assets/human-donor/eliza_face_donor.stl",
-    "face_glb": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/cad/source-assets/human-donor/eliza_face_donor.glb",
-    "reference_body_obj": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/cad/source-assets/human-donor/eliza_reference_body.obj",
-    "review_png": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/review/eliza-face-donor.png",
-    "blend": "/home/shaw/milady/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/review/eliza-donor.blend"
+    "face_obj": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/cad/source-assets/human-donor/eliza_face_donor.obj",
+    "face_stl": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/cad/source-assets/human-donor/eliza_face_donor.stl",
+    "face_glb": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/cad/source-assets/human-donor/eliza_face_donor.glb",
+    "reference_body_obj": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/cad/source-assets/human-donor/eliza_reference_body.obj",
+    "review_png": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/review/eliza-face-donor.png",
+    "blend": "/home/shaw/eliza/eliza/packages/research/robot/mechanical/unitree-r1-bodykit/review/eliza-donor.blend"
   },
   "manufacturing_note": "Donor mesh is an aesthetic/source surface only. Molded parts must be rebuilt as hard shell panels over R1 keepout envelopes."
 }

@@ -1154,7 +1154,7 @@ describe("ContinuousChatOverlay", () => {
     expect(input.hasAttribute("readonly")).toBe(false);
   });
 
-  it("renders the live interim transcript while recording", () => {
+  it("uses the pulsing chrome cue instead of rendering interim transcript text", () => {
     render(
       <ContinuousChatOverlay
         controller={makeController({
@@ -1164,7 +1164,11 @@ describe("ContinuousChatOverlay", () => {
         })}
       />,
     );
-    expect(screen.getByText(/tell me about the coast/)).toBeTruthy();
+    expect(screen.queryByText(/tell me about the coast/)).toBeNull();
+    const grabberCue = screen
+      .getByTestId("chat-sheet-grabber")
+      .querySelector("span");
+    expect(grabberCue?.className).toContain("animate-pulse");
   });
 
   it("keeps the ambient layer non-blocking for controls behind it", () => {

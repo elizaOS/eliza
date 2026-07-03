@@ -14,7 +14,7 @@ agent (see `10726-android-voice-selftest/`).
 | Piece | Value |
 | --- | --- |
 | Fused lib | rebuilt from the fork pin via `packages/app-core/scripts/stage-desktop-fused-lib.mjs --variant cpu` (ABI v12); a second variant re-configured with system `libespeak-ng.so.1` + espeak-ng 1.51 headers (`Kokoro G2P: real IPA path enabled`) |
-| ASR bundle | `~/.local/state/milady/asr-bundle/asr/` — `eliza-1-asr.gguf` 804,749,248 B + `eliza-1-asr-mmproj.gguf` 214,392,480 B (byte-size-identical to HF `bundles/2b/asr/`) |
+| ASR bundle | `~/.local/state/eliza/asr-bundle/asr/` — `eliza-1-asr.gguf` 804,749,248 B + `eliza-1-asr-mmproj.gguf` 214,392,480 B (byte-size-identical to HF `bundles/2b/asr/`) |
 | Kokoro model | fresh download of the **republished** HF `bundles/2b/tts/kokoro/kokoro-82m-v1_0.gguf` (162,546,720 B) + fixed voices (522,240 B each) |
 
 ## Lane-by-lane results
@@ -128,14 +128,14 @@ Audio evidence (same phrase, af_bella, republished GGUF):
 
 ```bash
 # ASR (REAL):
-ELIZA_ASR_BUNDLE=~/.local/state/milady/asr-bundle \
+ELIZA_ASR_BUNDLE=~/.local/state/eliza/asr-bundle \
 ELIZA_INFERENCE_LIB_DIR=<staged-lib-dir> \
   bun run --cwd plugins/plugin-local-inference test:asr:real
 
 # Kokoro (REAL, requires staged model + voices):
 KOKORO_SMOKE_REQUIRE=1 \
 ELIZA_KOKORO_MODEL_DIR=<dir with kokoro-82m-v1_0.gguf + voices/> \
-ELIZA_ASR_BUNDLE=~/.local/state/milady/asr-bundle \
+ELIZA_ASR_BUNDLE=~/.local/state/eliza/asr-bundle \
 ELIZA_INFERENCE_LIB_DIR=<staged-lib-dir> \
   bun run --cwd plugins/plugin-local-inference test:kokoro:real
 

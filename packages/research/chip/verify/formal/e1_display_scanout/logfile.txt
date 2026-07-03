@@ -1,8 +1,8 @@
 == bmc ==
-SBY 19:48:03 [build/formal/e1_display_scanout.1014868_bmc] Removing directory '/home/shaw/milady/eliza/packages/research/chip/build/formal/e1_display_scanout.1014868_bmc'.
-SBY 19:48:03 [build/formal/e1_display_scanout.1014868_bmc] Copy '/home/shaw/milady/eliza/packages/research/chip/rtl/interconnect/axi4/e1_axi4_pkg.sv' to '/home/shaw/milady/eliza/packages/research/chip/build/formal/e1_display_scanout.1014868_bmc/src/e1_axi4_pkg.sv'.
-SBY 19:48:03 [build/formal/e1_display_scanout.1014868_bmc] Copy '/home/shaw/milady/eliza/packages/research/chip/rtl/display/e1_display_scanout.sv' to '/home/shaw/milady/eliza/packages/research/chip/build/formal/e1_display_scanout.1014868_bmc/src/e1_display_scanout.sv'.
-SBY 19:48:03 [build/formal/e1_display_scanout.1014868_bmc] Copy '/home/shaw/milady/eliza/packages/research/chip/verify/formal/e1_display_scanout_formal.sv' to '/home/shaw/milady/eliza/packages/research/chip/build/formal/e1_display_scanout.1014868_bmc/src/e1_display_scanout_formal.sv'.
+SBY 19:48:03 [build/formal/e1_display_scanout.1014868_bmc] Removing directory '/home/shaw/eliza/eliza/packages/research/chip/build/formal/e1_display_scanout.1014868_bmc'.
+SBY 19:48:03 [build/formal/e1_display_scanout.1014868_bmc] Copy '/home/shaw/eliza/eliza/packages/research/chip/rtl/interconnect/axi4/e1_axi4_pkg.sv' to '/home/shaw/eliza/eliza/packages/research/chip/build/formal/e1_display_scanout.1014868_bmc/src/e1_axi4_pkg.sv'.
+SBY 19:48:03 [build/formal/e1_display_scanout.1014868_bmc] Copy '/home/shaw/eliza/eliza/packages/research/chip/rtl/display/e1_display_scanout.sv' to '/home/shaw/eliza/eliza/packages/research/chip/build/formal/e1_display_scanout.1014868_bmc/src/e1_display_scanout.sv'.
+SBY 19:48:03 [build/formal/e1_display_scanout.1014868_bmc] Copy '/home/shaw/eliza/eliza/packages/research/chip/verify/formal/e1_display_scanout_formal.sv' to '/home/shaw/eliza/eliza/packages/research/chip/build/formal/e1_display_scanout.1014868_bmc/src/e1_display_scanout_formal.sv'.
 SBY 19:48:03 [build/formal/e1_display_scanout.1014868_bmc] engine_0: smtbmc z3
 SBY 19:48:03 [build/formal/e1_display_scanout.1014868_bmc] base: starting process "cd build/formal/e1_display_scanout.1014868_bmc/src; yosys -ql ../model/design.log ../model/design.ys"
 SBY 19:48:03 [build/formal/e1_display_scanout.1014868_bmc] base: Warning: Replacing memory \fifo_mem with list of registers. See e1_display_scanout.sv:218

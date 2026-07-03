@@ -126,6 +126,13 @@ for (const w of [
 const APP_HOME_DEFAULT_WIDGET_DECLARATIONS: PluginWidgetDeclaration[] = (
   [
     {
+      pluginId: "birdclaw",
+      label: "Birdclaw",
+      icon: "Bird",
+      defaultWidget: "activity",
+      signalKinds: ["activity", "notification"],
+    },
+    {
       pluginId: "blocker",
       label: "Focus",
       icon: "Shield",
@@ -454,7 +461,8 @@ export const BUILTIN_WIDGET_DECLARATIONS: PluginWidgetDeclaration[] = [
     order: CALENDAR_HOME_WIDGET.order,
     defaultEnabled: true,
     signalKinds: CALENDAR_HOME_WIDGET.signalKinds,
-    size: { cols: 2, rows: 1 },
+    // Own full-width row; the widget renders only when an event exists.
+    size: { cols: 4, rows: 1 },
   },
   // -- Curated home-grid widgets (4-col grid `size`) -------------------------
   // Recent conversations, agent activity, wallet, and running workflows. Each is
@@ -473,7 +481,10 @@ export const BUILTIN_WIDGET_DECLARATIONS: PluginWidgetDeclaration[] = [
     order: MODEL_DOWNLOAD_HOME_WIDGET.order,
     defaultEnabled: true,
     signalKinds: MODEL_DOWNLOAD_HOME_WIDGET.signalKinds,
-    size: { cols: 2, rows: 1 },
+    // Full-width, double-height: model download/activation is the one thing
+    // standing between a fresh local agent and its first reply, so it owns a
+    // whole row with a real progress bar (it self-hides once ready).
+    size: { cols: 4, rows: 2 },
   },
   // Cloud-agent provisioning (CLOUD mode): while a freshly-provisioned dedicated
   // cloud agent boots, the user already chats on the shared agent and this tile

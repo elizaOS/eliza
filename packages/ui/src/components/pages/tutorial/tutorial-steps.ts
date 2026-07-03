@@ -93,7 +93,7 @@ const isShrunk = (d: ChatDetent | null): boolean =>
 
 /**
  * Build the tour script for a given agent/app name so the copy reads "Meet
- * Milady" / "Hi, I'm Milady" in a white-label app instead of the hardcoded
+ * My App" / "Hi, I'm My App" in a white-label app instead of the hardcoded
  * "Eliza". Pass the branding appName (which is also the default agent's name).
  */
 export function buildTutorialSteps(appName = "Eliza"): TutorialStep[] {

@@ -110,7 +110,10 @@ function appendRunRecord(
 }
 
 function taskMetadata(task: Task): TriggerTaskMetadata {
-  return (task.metadata ?? {}) as TriggerTaskMetadata;
+  const metadata = task.metadata;
+  return metadata && typeof metadata === "object" && !Array.isArray(metadata)
+    ? (metadata as TriggerTaskMetadata)
+    : {};
 }
 
 export function readTriggerConfig(task: Task): TriggerConfig | null {

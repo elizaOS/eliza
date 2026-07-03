@@ -3,7 +3,7 @@
 03-11 04:23:51.573 D/BaseIconCache( 8018): Default icon returned for ai.eliza.plugins.canvas.test
 03-11 04:23:51.649 I/Finsky  ( 7317): [2] Received an install/uninstall event for package ai.eliza.plugins.canvas.test
 03-11 04:23:51.711 I/ActivityManager( 1676): Force stopping ai.eliza.plugins.canvas.test appid=10353 user=0: start instr
-03-11 04:23:51.741 I/AppsFilter( 1676): interaction: PackageSetting{f76b125 ai.milady.milady/10323} -> PackageSetting{3834f3f ai.eliza.plugins.canvas.test/10353} BLOCKED
+03-11 04:23:51.741 I/AppsFilter( 1676): interaction: PackageSetting{f76b125 ai.elizaos.app/10323} -> PackageSetting{3834f3f ai.eliza.plugins.canvas.test/10353} BLOCKED
 03-11 04:23:51.741 I/AppsFilter( 1676): interaction: PackageSetting{58500ab app.eliza/10324} -> PackageSetting{3834f3f ai.eliza.plugins.canvas.test/10353} BLOCKED
 03-11 04:23:51.741 I/AppsFilter( 1676): interaction: PackageSetting{f179308 com.google.android.microdroid.empty_payload/10404} -> PackageSetting{3834f3f ai.eliza.plugins.canvas.test/10353} BLOCKED
 03-11 04:23:51.741 I/AppsFilter( 1676): interaction: PackageSetting{c063aa1 ai.eliza.plugins.swabble.test/10351} -> PackageSetting{3834f3f ai.eliza.plugins.canvas.test/10353} BLOCKED
@@ -33,7 +33,7 @@
 03-11 04:23:53.078 I/ActivityManager( 1676): Killing 17238:ai.eliza.plugins.canvas.test/u0a353 (adj 0): stop ai.eliza.plugins.canvas.test due to finished inst
 03-11 04:23:53.135 V/ActivityManager( 1676): Got obituary of 17238:ai.eliza.plugins.canvas.test
 03-11 04:23:53.472 I/ActivityManager( 1676): Force stopping ai.eliza.plugins.canvas.test appid=10353 user=-1: deletePackageX
-03-11 04:23:53.473 I/AppsFilter( 1676): interaction: PackageSetting{26cf2f ai.milady.milady/10323} -> PackageSetting{d053610 ai.eliza.plugins.canvas.test/10353} BLOCKED
+03-11 04:23:53.473 I/AppsFilter( 1676): interaction: PackageSetting{26cf2f ai.elizaos.app/10323} -> PackageSetting{d053610 ai.eliza.plugins.canvas.test/10353} BLOCKED
 03-11 04:23:53.473 I/AppsFilter( 1676): interaction: PackageSetting{79a8967 app.eliza/10324} -> PackageSetting{d053610 ai.eliza.plugins.canvas.test/10353} BLOCKED
 03-11 04:23:53.473 I/AppsFilter( 1676): interaction: PackageSetting{52050ee com.google.android.microdroid.empty_payload/10404} -> PackageSetting{d053610 ai.eliza.plugins.canvas.test/10353} BLOCKED
 03-11 04:23:53.473 I/AppsFilter( 1676): interaction: PackageSetting{c45b8e7 ai.eliza.plugins.swabble.test/10351} -> PackageSetting{d053610 ai.eliza.plugins.canvas.test/10353} BLOCKED

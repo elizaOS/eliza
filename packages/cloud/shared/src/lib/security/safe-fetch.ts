@@ -110,7 +110,7 @@ async function nodePinnedFetch(
     });
 
     req.on("error", reject);
-    writeRequestBody(req, method, init.body);
+    writeRequestBody(req, method, init.body).catch(reject);
   });
 }
 
@@ -138,7 +138,9 @@ function nodeResponseBodyStream(res: IncomingMessage): ReadableStream<Uint8Array
         res.off("end", onEnd);
         res.off("error", onError);
       };
-      const onData = (chunk: unknown) => controller.enqueue(toUint8ArrayChunk(chunk));
+      const onData = (chunk: unknown) => {
+        controller.enqueue(toUint8ArrayChunk(chunk));
+      };
       const onEnd = () => {
         cleanup();
         controller.close();
@@ -157,7 +159,11 @@ function nodeResponseBodyStream(res: IncomingMessage): ReadableStream<Uint8Array
   });
 }
 
-function writeRequestBody(req: ClientRequest, method: string, body: RequestInit["body"]): void {
+async function writeRequestBody(
+  req: ClientRequest,
+  method: string,
+  body: RequestInit["body"],
+): Promise<void> {
   if (body == null || method === "GET" || method === "HEAD") {
     req.end();
   } else if (typeof body === "string") {
@@ -165,7 +171,7 @@ function writeRequestBody(req: ClientRequest, method: string, body: RequestInit[
   } else if (body instanceof Uint8Array) {
     req.end(Buffer.from(body));
   } else if (body instanceof ReadableStream) {
-    writeReadableStreamBody(req, body);
+    await writeReadableStreamBody(req, body);
   } else {
     req.end(String(body));
   }
@@ -175,8 +181,9 @@ async function writeReadableStreamBody(
   req: ClientRequest,
   body: ReadableStream<unknown>,
 ): Promise<void> {
-  const reader = body.getReader();
+  let reader: ReadableStreamDefaultReader<unknown> | undefined;
   try {
+    reader = body.getReader();
     for (;;) {
       const { done, value } = await reader.read();
       if (done) {
@@ -184,13 +191,30 @@ async function writeReadableStreamBody(
         return;
       }
       if (!req.write(Buffer.from(toUint8ArrayChunk(value)))) {
-        await new Promise<void>((resolve) => req.once("drain", resolve));
+        await new Promise<void>((resolve, reject) => {
+          function cleanup() {
+            req.off("drain", onDrain);
+            req.off("error", onError);
+          }
+          function onDrain() {
+            cleanup();
+            resolve();
+          }
+          function onError(error: Error) {
+            cleanup();
+            reject(error);
+          }
+          req.once("drain", onDrain);
+          req.once("error", onError);
+        });
       }
     }
   } catch (error) {
-    req.destroy(error instanceof Error ? error : new Error(String(error)));
+    const destroyError = error instanceof Error ? error : new Error(String(error));
+    req.destroy(destroyError);
+    throw destroyError;
   } finally {
-    reader.releaseLock();
+    reader?.releaseLock();
   }
 }
 

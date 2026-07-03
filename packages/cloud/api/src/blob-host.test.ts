@@ -73,6 +73,26 @@ describe("serveBlobHostRequest", () => {
     expect(await res?.text()).toBe("PNGBYTES");
   });
 
+  test("serves cloud file upload URLs while forcing active types to download", async () => {
+    const key = "cloud-files/org-1/2026-07-03/file-1-abc123.svg";
+    const { env } = makeEnv({
+      [key]: {
+        body: "<svg xmlns='http://www.w3.org/2000/svg'><script>alert(1)</script></svg>",
+        contentType: "image/svg+xml",
+      },
+    });
+    const [request, url] = req(`https://blob.elizacloud.ai/${key}`);
+
+    const res = await serveBlobHostRequest(request, url, env);
+
+    expect(res?.status).toBe(200);
+    expect(res?.headers.get("content-type")).toBe("image/svg+xml");
+    expect(res?.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(res?.headers.get("content-disposition")).toBe("attachment");
+    expect(res?.headers.get("content-security-policy")).toContain("sandbox");
+    expect(await res?.text()).toContain("<svg");
+  });
+
   test("respects R2_PUBLIC_HOST for the per-env host (staging)", async () => {
     const { env } = makeEnv(
       { "avatars/eliza.png": { body: "AVATAR" } },

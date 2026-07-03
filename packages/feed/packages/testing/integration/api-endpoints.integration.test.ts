@@ -15,11 +15,22 @@ const BASE_URL =
   process.env.PLAYWRIGHT_BASE_URL ||
   "http://localhost:3000";
 const REQUEST_TIMEOUT_MS = 55_000;
+const TEST_AUTH_USER_ID = "123456789012345";
+const TEST_AUTH_HEADERS = {
+  Authorization: `Bearer steward:test:${TEST_AUTH_USER_ID}`,
+};
 
 setDefaultTimeout(60_000);
 
 async function get(path: string): Promise<Response> {
   return fetch(`${BASE_URL}${path}`, {
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  });
+}
+
+async function authenticatedGet(path: string): Promise<Response> {
+  return fetch(`${BASE_URL}${path}`, {
+    headers: TEST_AUTH_HEADERS,
     signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
 }
@@ -165,6 +176,13 @@ describe("API Endpoints - Complete Coverage", () => {
     test("GET /api/users/search", async () => {
       const res = await get("/api/users/search?q=test");
       expect(res.status).toBe(401);
+    });
+
+    test("GET /api/users/search - authenticated query returns users array", async () => {
+      const res = await authenticatedGet("/api/users/search?q=test");
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(Array.isArray(data.users)).toBe(true);
     });
 
     test("GET /api/users/api-keys - requires auth", async () => {
@@ -722,6 +740,18 @@ describe("API Endpoints - Complete Coverage", () => {
       });
       expect(res.status).toBe(401);
     });
+
+    test("malformed JSON returns 400 after authentication", async () => {
+      const res = await fetch(`${BASE_URL}/api/posts`, {
+        method: "POST",
+        headers: {
+          ...TEST_AUTH_HEADERS,
+          "Content-Type": "application/json",
+        },
+        body: "not valid json {{{",
+      });
+      expect(res.status).toBe(400);
+    });
   });
 
   // ============================================
@@ -731,6 +761,15 @@ describe("API Endpoints - Complete Coverage", () => {
     test("SQL injection in query params handled safely", async () => {
       const res = await get("/api/users/search?q='; DROP TABLE users; --");
       expect(res.status).toBe(401);
+    });
+
+    test("authenticated SQL-like user search returns a safe result shape", async () => {
+      const res = await authenticatedGet(
+        "/api/users/search?q='; DROP TABLE users; --",
+      );
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(Array.isArray(data.users)).toBe(true);
     });
   });
 });

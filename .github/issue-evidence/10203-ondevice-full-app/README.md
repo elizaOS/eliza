@@ -9,7 +9,7 @@ clearing several blockers first.
 ## What it took (root-cause unblocks, this session)
 
 1. **Fixed `build:android`** — it was building the wrong app because
-   `run-mobile-build.mjs`'s `repoRoot` fallback resolved to the outer Milady
+   `run-mobile-build.mjs`'s `repoRoot` fallback resolved to the outer Eliza
    monorepo. `ELIZA_MOBILE_REPO_ROOT=<eliza checkout>` → a fresh, correctly
    reconciled APK (0 `PluginLoadException`, 37 plugins).
 2. **Bypassed the x86 on-device-agent SIGSEGV** the same way the e2e harness

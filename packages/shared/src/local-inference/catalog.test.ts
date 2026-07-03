@@ -80,9 +80,11 @@ describe("Eliza-1 runtime quant metadata", () => {
 
   it("advertises Gemma MTP metadata only for tiers with hosted drafter GGUFs", () => {
     expect(ELIZA_1_MTP_TIER_IDS).toEqual(ELIZA_1_TIER_IDS);
-    // 2b hosts the gemma4-assistant drafter at bundles/2b/mtp/drafter-2b.gguf
-    // (converted from google/gemma-4-E2B-it-assistant, 2026-07-02).
-    expect(ELIZA_1_HOSTED_MTP_TIER_IDS).toEqual(["eliza-1-2b"]);
+    // 2b/4b host the gemma4-assistant drafters at
+    // bundles/<tier>/mtp/drafter-<tier>.gguf (converted from
+    // google/gemma-4-E2B-it-assistant / google/gemma-4-E4B-it-assistant,
+    // 2026-07-02).
+    expect(ELIZA_1_HOSTED_MTP_TIER_IDS).toEqual(["eliza-1-2b", "eliza-1-4b"]);
     const hosted: ReadonlySet<string> = new Set(ELIZA_1_HOSTED_MTP_TIER_IDS);
     for (const id of ELIZA_1_MTP_TIER_IDS) {
       const entry = MODEL_CATALOG.find((model) => model.id === id);

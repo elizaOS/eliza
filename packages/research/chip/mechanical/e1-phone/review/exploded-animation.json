@@ -1,9 +1,9 @@
 {
-  "glb": "/home/shaw/milady/eliza/packages/research/chip/mechanical/e1-phone/out/e1-phone-exploded.glb",
+  "glb": "/home/shaw/eliza/eliza/packages/research/chip/mechanical/e1-phone/out/e1-phone-exploded.glb",
   "glb_size_bytes": 258668,
-  "mp4": "/home/shaw/milady/eliza/packages/research/chip/mechanical/e1-phone/out/e1-phone-exploded.mp4",
+  "mp4": "/home/shaw/eliza/eliza/packages/research/chip/mechanical/e1-phone/out/e1-phone-exploded.mp4",
   "mp4_size_bytes": 914974,
-  "frames_dir": "/home/shaw/milady/eliza/packages/research/chip/mechanical/e1-phone/out/e1-phone-exploded-frames",
+  "frames_dir": "/home/shaw/eliza/eliza/packages/research/chip/mechanical/e1-phone/out/e1-phone-exploded-frames",
   "frame_count": 360,
   "keyframe_count": 24,
   "clips": ["explode", "reassemble", "turntable"],

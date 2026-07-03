@@ -45,9 +45,18 @@ flat view-host route, the **single canonical IWER harness** under `simulator/`
 (`navigator.xr` polyfill on an emulated Quest 3 — #9941 deduped; facewear
 re-exports it) that starts a session, sets head/controller/hand poses, aims a
 controller ray, computes the hit, presses, drags, and captures screenshot +
-per-frame pose/hit JSON. Coverage: `simulator/e2e/harness.spec.ts` (flat target)
-and `simulator/e2e/scene.spec.ts` (the 3D `XRSpatialScene` over the gallery
-views). Every registered view is asserted to place + render in the 3D scene by
+per-frame pose/hit JSON. Coverage: `simulator/e2e/harness.spec.ts` (flat target),
+`simulator/e2e/scene.spec.ts` (the 3D `XRSpatialScene` over the gallery views),
+`simulator/e2e/hand-input.spec.ts` (real `XRHandInput` hand-tracking: pinch aim →
+computed hit → hand `select` firing the authored view handler; pinch-grab drags a
+panel in world space), and `simulator/e2e/gaze-input.spec.ts` (head-gaze *aiming*
+→ hit). **Gaze honesty:** IWER 2.2.1 cannot surface a live `targetRayMode: "gaze"`
+/ `"transient-pointer"` input source (both are enum-only; the only live sources —
+controller + hand — are hard-coded to `tracked-pointer`), so interactive gaze
+*selection* is NOT emulable and is NOT tested; only head-gaze aiming is. That
+blocker is pinned by an executable assertion in `gaze-input.spec.ts` that fails if
+a future IWER gains gaze emulation. Every registered view is asserted to place +
+render in the 3D scene by
 `packages/ui/src/spatial/__tests__/registered-view-parity.test.tsx`.
 
 ## Plugin surface

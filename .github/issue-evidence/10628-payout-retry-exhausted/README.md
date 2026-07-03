@@ -35,7 +35,7 @@ broadcast_tx_hash = null
 
 ## Validation
 
-Commands run from `/home/shaw/milady/eliza-wt-10628-payout-retry-exhausted`:
+Commands run from `/home/shaw/eliza/eliza-wt-10628-payout-retry-exhausted`:
 
 ```bash
 ELIZA_SKIP_ARTIFACT_SYNC=1 bun install --frozen-lockfile

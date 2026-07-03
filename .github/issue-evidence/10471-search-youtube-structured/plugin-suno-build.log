@@ -2,7 +2,7 @@ $ tsup --format esm
 CLI Building entry: src/index.ts
 CLI Using tsconfig: tsconfig.json
 CLI tsup v8.5.1
-CLI Using tsup config: /home/shaw/milady/eliza-wt-10471-search-youtube/plugins/plugin-suno/tsup.config.ts
+CLI Using tsup config: /home/shaw/eliza/eliza-wt-10471-search-youtube/plugins/plugin-suno/tsup.config.ts
 CLI Target: node16
 CLI Cleaning output folder
 ESM Build start

@@ -36,9 +36,9 @@ def test_default_state_dir_prefers_eliza_home(monkeypatch, tmp_path):
 
 
 def test_default_state_dir_falls_back(monkeypatch):
-    for env in ("ELIZA_HOME", "MILADY_STATE_DIR", "ELIZA_STATE_DIR"):
+    for env in ("ELIZA_HOME", "ELIZA_STATE_DIR", "ELIZA_STATE_DIR"):
         monkeypatch.delenv(env, raising=False)
-    assert default_state_dir().parts[-2:] == ("state", "milady")
+    assert default_state_dir().parts[-2:] == ("state", "eliza")
 
 
 def test_codex_homes_root_layout(tmp_path):

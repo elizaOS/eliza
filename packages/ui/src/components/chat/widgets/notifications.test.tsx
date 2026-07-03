@@ -166,4 +166,39 @@ describe("NotificationsWidget (#9143)", () => {
     // The card renders an icon glyph (the category icon now, not a hard-coded bell).
     expect(card.querySelector("svg")).toBeTruthy();
   });
+
+  it("home slot: applies the host-supplied spanClassName to its single root grid-item element (#11752)", () => {
+    __resetNotificationStoreForTests();
+    __ingestNotificationForTests(
+      notification({ title: "Disk almost full", priority: "urgent" }),
+    );
+
+    const { container } = render(
+      <NotificationsWidget
+        pluginId="notifications"
+        slot="home"
+        spanClassName="col-span-2 row-span-1"
+      />,
+    );
+
+    const root = container.firstElementChild;
+    expect(root).not.toBeNull();
+    expect(root?.className).toContain("col-span-2");
+    expect(root?.className).toContain("row-span-1");
+    expect(
+      root?.querySelector('[data-testid="widget-notifications"]'),
+    ).not.toBeNull();
+  });
+
+  it("home slot: falls back to the default 2x1 span when no spanClassName is supplied (#11752)", () => {
+    __resetNotificationStoreForTests();
+    __ingestNotificationForTests(
+      notification({ title: "Disk almost full", priority: "urgent" }),
+    );
+
+    const { container } = render(
+      <NotificationsWidget pluginId="notifications" slot="home" />,
+    );
+    expect(container.firstElementChild?.className).toContain("col-span-2");
+  });
 });

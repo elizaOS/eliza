@@ -14,6 +14,11 @@ import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 import { chromium } from "playwright";
 import {
+  FRAME_SAMPLER_INIT,
+  shouldReportFrameBudget,
+  summarizeFrameSamples,
+} from "../../../hooks/frame-budget.ts";
+import {
   LAYOUT_SHIFT_OBSERVER_INIT,
   summarizeStability,
 } from "../../../testing/layout-stability.ts";
@@ -21,6 +26,17 @@ import {
   touchLongPress,
   touchSwipe,
 } from "../../../testing/real-touch-gestures.ts";
+
+// Frame gate for the home↔launcher rail swipe — same factor-based thresholds as
+// the sibling real-overlay gates (run-perf-gate-e2e / run-chat-perf-gate): the
+// budget adapts to the runner's refresh rate instead of hard-coding a Hz.
+const FRAME_BUDGET = { targetFps: 60 };
+const FRAME_GATE = {
+  p95BudgetFactor: 2,
+  droppedFrameRatio: 0.2,
+  reportOnLongTask: false,
+};
+const MIN_FRAME_SAMPLES = 30;
 
 const here = dirname(fileURLToPath(import.meta.url));
 const outDir = join(here, "output-home");
@@ -321,6 +337,8 @@ try {
   // it after the entrance animation finishes and assert the home doesn't jump
   // (CLS budget + no flicker flash) via the meta-tested summarizeStability.
   await mobile.addInitScript(LAYOUT_SHIFT_OBSERVER_INIT);
+  // Frame sampler for the rail-swipe FPS gate below (start()/read()/stop()).
+  await mobile.addInitScript(FRAME_SAMPLER_INIT);
   await mobile.goto(`${url}?native`);
   await mobile.waitForSelector('[data-testid="home-launcher-surface"]');
   await mobile.waitForSelector('[data-testid="home-screen"]');
@@ -415,6 +433,68 @@ try {
       (await mobile.getByTestId(`home-tile-${id}`).count()) === 0,
       `removed default tile ${id} is gone`,
     );
+  }
+  // Home-grid geometry integrity (#11752). Every widget must apply its
+  // host-supplied grid-span classes to its root grid item; a widget that
+  // drops them collapses to a one-column (~85px) auto-placed cell whose
+  // icon+text flex content overflows the cell and paints over the neighboring
+  // card ("Overdr[icon]wn" collisions). Measure the real boxes: each grid
+  // item's painted content must fit its own cell, and no two items' painted
+  // content may intersect.
+  {
+    const TOLERANCE = 1; // px, subpixel rounding
+    const geometry = await mobile.evaluate(() => {
+      const host = document.querySelector('[data-testid="widget-host-home"]');
+      if (!host) return null;
+      return Array.from(host.children).map((el) => {
+        const rect = el.getBoundingClientRect();
+        // Painted-content box: the union of the item's own border box and every
+        // visible descendant box (overflowing flex children extend past it).
+        let { left, right, top, bottom } = rect;
+        for (const descendant of el.querySelectorAll("*")) {
+          const r = descendant.getBoundingClientRect();
+          if (r.width === 0 || r.height === 0) continue;
+          left = Math.min(left, r.left);
+          right = Math.max(right, r.right);
+          top = Math.min(top, r.top);
+          bottom = Math.max(bottom, r.bottom);
+        }
+        return {
+          testId:
+            el.getAttribute("data-testid") ||
+            el
+              .querySelector("[data-testid]")
+              ?.getAttribute("data-testid") ||
+            el.tagName.toLowerCase(),
+          overflowX: el.scrollWidth - el.clientWidth,
+          content: { left, right, top, bottom },
+        };
+      });
+    });
+    assert(geometry !== null, "home WidgetHost present for geometry probe");
+    assert(
+      (geometry ?? []).length > 1,
+      `home grid geometry probe sees multiple widgets (${geometry?.length ?? 0})`,
+    );
+    for (const item of geometry ?? []) {
+      assert(
+        item.overflowX <= TOLERANCE,
+        `home widget ${item.testId} content fits its grid cell (overflow ${item.overflowX}px)`,
+      );
+    }
+    const items = geometry ?? [];
+    for (let i = 0; i < items.length; i += 1) {
+      for (let j = i + 1; j < items.length; j += 1) {
+        const a = items[i].content;
+        const b = items[j].content;
+        const xOverlap = Math.min(a.right, b.right) - Math.max(a.left, b.left);
+        const yOverlap = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+        assert(
+          !(xOverlap > TOLERANCE && yOverlap > TOLERANCE),
+          `home widgets ${items[i].testId} and ${items[j].testId} do not overlap (x ${Math.round(xOverlap)}px, y ${Math.round(yOverlap)}px)`,
+        );
+      }
+    }
   }
   await snap(mobile, "mobile-home");
 
@@ -608,6 +688,44 @@ try {
   );
   await touchSwipeLeft(mobile, "home-launcher-home-page");
   await waitForSurfacePageSettled(mobile, "launcher");
+
+  // ── Rail-swipe FPS gate: sample REAL frames over three full home↔launcher
+  // round-trips (right swipe back home, left swipe to the launcher — the exact
+  // gesture the launcher redesign must keep smooth) and hard-fail on sustained
+  // jank via the same shared, meta-tested frame-budget detectors the chat perf
+  // gates use. The rail paints via rAF-paced translate3d, so a regression that
+  // moves work onto the drag path (layout, paint storms, main-thread stalls)
+  // shows up here as dropped frames / p95 blowout.
+  {
+    await mobile.evaluate(() => window.__ELIZA_FRAME.start());
+    for (let i = 0; i < 3; i += 1) {
+      await touchSwipeRight(mobile, "home-launcher-launcher-page");
+      await waitForSurfacePageSettled(mobile, "home");
+      await touchSwipeLeft(mobile, "home-launcher-home-page");
+      await waitForSurfacePageSettled(mobile, "launcher");
+    }
+    const { deltas, longTasks } = await mobile.evaluate(() =>
+      window.__ELIZA_FRAME.read(),
+    );
+    await mobile.evaluate(() => window.__ELIZA_FRAME.stop());
+    const s = summarizeFrameSamples(deltas, longTasks, FRAME_BUDGET);
+    const droppedPct = (100 * s.droppedFrames) / Math.max(1, s.sampleCount);
+    console.log(
+      `  [rail-swipe] fps=${s.fps.toFixed(1)} p95=${s.p95FrameMs.toFixed(1)}ms ` +
+        `worst=${s.worstFrameMs.toFixed(1)}ms dropped=${s.droppedFrames}/${s.sampleCount} ` +
+        `(${droppedPct.toFixed(0)}%) long=${s.longTasks}`,
+    );
+    assert(
+      s.sampleCount >= MIN_FRAME_SAMPLES,
+      `rail-swipe window captured ≥${MIN_FRAME_SAMPLES} frames (got ${s.sampleCount})`,
+    );
+    assert(
+      !shouldReportFrameBudget(s, FRAME_GATE),
+      `rail swipe stays within the frame budget (p95 ${s.p95FrameMs.toFixed(1)}ms ≤ ` +
+        `${(s.budgetMs * FRAME_GATE.p95BudgetFactor).toFixed(1)}ms, dropped ` +
+        `${droppedPct.toFixed(0)}% < ${(FRAME_GATE.droppedFrameRatio * 100).toFixed(0)}%)`,
+    );
+  }
 
   // ── ONE page of views. Developer tools are NOT a separate swipeable page any
   // more: when Developer Mode is on they sit on the SAME single page after the

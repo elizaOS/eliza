@@ -1,5 +1,5 @@
  Info       [eliza-scenarios] discovered 1 scenario(s) under /home/shaw/eliza-worktrees/lifeops-audit/plugins/plugin-personal-assistant/test/scenarios
- Info       [eliza-scenarios] run-dir: /tmp/claude-1000/-home-shaw-milady-eliza/4eba94f8-407a-44cb-b025-91e4b1e714e5/scratchpad/live-proof/run (trajectories → /tmp/claude-1000/-home-shaw-milady-eliza/4eba94f8-407a-44cb-b025-91e4b1e714e5/scratchpad/live-proof/run/trajectories, runId=eda40050-168c-4c8f-b8bf-64b7ae15b6ac)
+ Info       [eliza-scenarios] run-dir: /tmp/claude-1000/-home-shaw-eliza-eliza/4eba94f8-407a-44cb-b025-91e4b1e714e5/scratchpad/live-proof/run (trajectories → /tmp/claude-1000/-home-shaw-eliza-eliza/4eba94f8-407a-44cb-b025-91e4b1e714e5/scratchpad/live-proof/run/trajectories, runId=eda40050-168c-4c8f-b8bf-64b7ae15b6ac)
  Info       [scenario-runner] Registered zero-vector TEXT_EMBEDDING fallback (dim=1024); set ELIZA_BENCH_SKIP_EMBEDDING=0 to use @elizaos/plugin-local-inference instead.
  Info       [cli-inference] enabled via ELIZA_CHAT_VIA_CLI=claude — large-tier handlers spawn the claude CLI
  Info       [cli-inference] text-planner mode (ELIZA_PLANNER_NATIVE_TOOLS=0) — ACTION_PLANNER also served via this route (standalone SAFE stack)

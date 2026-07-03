@@ -1,32 +1,32 @@
 Tue Jun 30 00:30:53 PDT 2026
 $ node ../shared/scripts/sync-to-public.mjs ./public --logos --favicons --concepts --banners --background --background-videos
-[shared-brand] synced into /home/shaw/milady/eliza-issue-10416/packages/app/public: logos, favicons, banners, concepts, background+videos
+[shared-brand] synced into /home/shaw/eliza/eliza-issue-10416/packages/app/public: logos, favicons, banners, concepts, background+videos
 $ bun --bun vite --host "127.0.0.1"
-failed to load config from /home/shaw/milady/eliza-issue-10416/packages/app/vite.config.ts
+failed to load config from /home/shaw/eliza/eliza-issue-10416/packages/app/vite.config.ts
 error when starting dev server:
 Error: Build failed with 2 errors:
 
 [plugin externalize-deps]
 Error: Failed to resolve entry for package "@elizaos/core". The package may have incorrect main/module/exports specified in its package.json.
-    at packageEntryFailure (/home/shaw/milady/eliza-issue-10416/node_modules/.bun/vite@8.0.16+1f4de08050f1f556/node_modules/vite/dist/node/chunks/node.js:32596:34)
-    at resolvePackageEntry (/home/shaw/milady/eliza-issue-10416/node_modules/.bun/vite@8.0.16+1f4de08050f1f556/node_modules/vite/dist/node/chunks/node.js:32593:2)
-    at tryNodeResolve (/home/shaw/milady/eliza-issue-10416/node_modules/.bun/vite@8.0.16+1f4de08050f1f556/node_modules/vite/dist/node/chunks/node.js:32492:50)
-    at nodeResolveWithVite (/home/shaw/milady/eliza-issue-10416/node_modules/.bun/vite@8.0.16+1f4de08050f1f556/node_modules/vite/dist/node/chunks/node.js:32701:9)
-    at handler (/home/shaw/milady/eliza-issue-10416/node_modules/.bun/vite@8.0.16+1f4de08050f1f556/node_modules/vite/dist/node/chunks/node.js:34912:18)
-    at <anonymous> (/home/shaw/milady/eliza-issue-10416/node_modules/.bun/rolldown@1.0.3/node_modules/rolldown/dist/shared/bindingify-input-options-ClrST5Xx.mjs:1092:30)
-    at <anonymous> (/home/shaw/milady/eliza-issue-10416/node_modules/.bun/rolldown@1.0.3/node_modules/rolldown/dist/shared/bindingify-input-options-ClrST5Xx.mjs:1625:18)
+    at packageEntryFailure (/home/shaw/eliza/eliza-issue-10416/node_modules/.bun/vite@8.0.16+1f4de08050f1f556/node_modules/vite/dist/node/chunks/node.js:32596:34)
+    at resolvePackageEntry (/home/shaw/eliza/eliza-issue-10416/node_modules/.bun/vite@8.0.16+1f4de08050f1f556/node_modules/vite/dist/node/chunks/node.js:32593:2)
+    at tryNodeResolve (/home/shaw/eliza/eliza-issue-10416/node_modules/.bun/vite@8.0.16+1f4de08050f1f556/node_modules/vite/dist/node/chunks/node.js:32492:50)
+    at nodeResolveWithVite (/home/shaw/eliza/eliza-issue-10416/node_modules/.bun/vite@8.0.16+1f4de08050f1f556/node_modules/vite/dist/node/chunks/node.js:32701:9)
+    at handler (/home/shaw/eliza/eliza-issue-10416/node_modules/.bun/vite@8.0.16+1f4de08050f1f556/node_modules/vite/dist/node/chunks/node.js:34912:18)
+    at <anonymous> (/home/shaw/eliza/eliza-issue-10416/node_modules/.bun/rolldown@1.0.3/node_modules/rolldown/dist/shared/bindingify-input-options-ClrST5Xx.mjs:1092:30)
+    at <anonymous> (/home/shaw/eliza/eliza-issue-10416/node_modules/.bun/rolldown@1.0.3/node_modules/rolldown/dist/shared/bindingify-input-options-ClrST5Xx.mjs:1625:18)
 [plugin externalize-deps]
 Error: Failed to resolve entry for package "@elizaos/core". The package may have incorrect main/module/exports specified in its package.json.
-    at packageEntryFailure (/home/shaw/milady/eliza-issue-10416/node_modules/.bun/vite@8.0.16+1f4de08050f1f556/node_modules/vite/dist/node/chunks/node.js:32596:34)
-    at resolvePackageEntry (/home/shaw/milady/eliza-issue-10416/node_modules/.bun/vite@8.0.16+1f4de08050f1f556/node_modules/vite/dist/node/chunks/node.js:32593:2)
-    at tryNodeResolve (/home/shaw/milady/eliza-issue-10416/node_modules/.bun/vite@8.0.16+1f4de08050f1f556/node_modules/vite/dist/node/chunks/node.js:32492:50)
-    at nodeResolveWithVite (/home/shaw/milady/eliza-issue-10416/node_modules/.bun/vite@8.0.16+1f4de08050f1f556/node_modules/vite/dist/node/chunks/node.js:32701:9)
-    at handler (/home/shaw/milady/eliza-issue-10416/node_modules/.bun/vite@8.0.16+1f4de08050f1f556/node_modules/vite/dist/node/chunks/node.js:34912:18)
-    at <anonymous> (/home/shaw/milady/eliza-issue-10416/node_modules/.bun/rolldown@1.0.3/node_modules/rolldown/dist/shared/bindingify-input-options-ClrST5Xx.mjs:1092:30)
-    at <anonymous> (/home/shaw/milady/eliza-issue-10416/node_modules/.bun/rolldown@1.0.3/node_modules/rolldown/dist/shared/bindingify-input-options-ClrST5Xx.mjs:1625:18)
-    at aggregateBindingErrorsIntoJsError (/home/shaw/milady/eliza-issue-10416/node_modules/.bun/rolldown@1.0.3/node_modules/rolldown/dist/shared/error-BuvQYXuZ.mjs:48:22)
-    at unwrapBindingResult (/home/shaw/milady/eliza-issue-10416/node_modules/.bun/rolldown@1.0.3/node_modules/rolldown/dist/shared/error-BuvQYXuZ.mjs:18:128)
-    at #build (/home/shaw/milady/eliza-issue-10416/node_modules/.bun/rolldown@1.0.3/node_modules/rolldown/dist/shared/rolldown-build-CrPk_lZe.mjs:3246:34)
+    at packageEntryFailure (/home/shaw/eliza/eliza-issue-10416/node_modules/.bun/vite@8.0.16+1f4de08050f1f556/node_modules/vite/dist/node/chunks/node.js:32596:34)
+    at resolvePackageEntry (/home/shaw/eliza/eliza-issue-10416/node_modules/.bun/vite@8.0.16+1f4de08050f1f556/node_modules/vite/dist/node/chunks/node.js:32593:2)
+    at tryNodeResolve (/home/shaw/eliza/eliza-issue-10416/node_modules/.bun/vite@8.0.16+1f4de08050f1f556/node_modules/vite/dist/node/chunks/node.js:32492:50)
+    at nodeResolveWithVite (/home/shaw/eliza/eliza-issue-10416/node_modules/.bun/vite@8.0.16+1f4de08050f1f556/node_modules/vite/dist/node/chunks/node.js:32701:9)
+    at handler (/home/shaw/eliza/eliza-issue-10416/node_modules/.bun/vite@8.0.16+1f4de08050f1f556/node_modules/vite/dist/node/chunks/node.js:34912:18)
+    at <anonymous> (/home/shaw/eliza/eliza-issue-10416/node_modules/.bun/rolldown@1.0.3/node_modules/rolldown/dist/shared/bindingify-input-options-ClrST5Xx.mjs:1092:30)
+    at <anonymous> (/home/shaw/eliza/eliza-issue-10416/node_modules/.bun/rolldown@1.0.3/node_modules/rolldown/dist/shared/bindingify-input-options-ClrST5Xx.mjs:1625:18)
+    at aggregateBindingErrorsIntoJsError (/home/shaw/eliza/eliza-issue-10416/node_modules/.bun/rolldown@1.0.3/node_modules/rolldown/dist/shared/error-BuvQYXuZ.mjs:48:22)
+    at unwrapBindingResult (/home/shaw/eliza/eliza-issue-10416/node_modules/.bun/rolldown@1.0.3/node_modules/rolldown/dist/shared/error-BuvQYXuZ.mjs:18:128)
+    at #build (/home/shaw/eliza/eliza-issue-10416/node_modules/.bun/rolldown@1.0.3/node_modules/rolldown/dist/shared/rolldown-build-CrPk_lZe.mjs:3246:34)
     at processTicksAndRejections (native:7:39) {
   errors: [Getter/Setter]
 }

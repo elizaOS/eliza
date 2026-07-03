@@ -148,13 +148,13 @@ $ bun run --cwd ../.. packages/ui/src/components/shell/__e2e__/run-home-screen-e
   📸 04-mobile-springboard-page2.png
 ✓ no Edit toggle (clean dashboard)
 ✓ no "Pinned" label
-  🎥 /home/shaw/milady/eliza/packages/ui/src/components/shell/__e2e__/output-home/page@7fafcaf7b4270001c1e5c241996f68a6.webm
+  🎥 /home/shaw/eliza/eliza/packages/ui/src/components/shell/__e2e__/output-home/page@7fafcaf7b4270001c1e5c241996f68a6.webm
 ✓ no pinned tiles off-AOSP (grid omitted)
 ✓ phone tile hidden when native disabled
   📸 05-desktop-home.png
   📸 06-desktop-springboard.png
 ✓ no page errors (0)
 
-Screenshots (6) → /home/shaw/milady/eliza/packages/ui/src/components/shell/__e2e__/output-home
+Screenshots (6) → /home/shaw/eliza/eliza/packages/ui/src/components/shell/__e2e__/output-home
 
 HOME-SCREEN E2E PASSED

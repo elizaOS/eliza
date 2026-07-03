@@ -1,5 +1,5 @@
- Info       [eliza-scenarios] discovered 1 scenario(s) under /Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/ui-mobile-wave3/packages/scenario-runner/test/scenarios
- Info       [eliza-scenarios] run-dir: /Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/ui-mobile-wave3/.github/issue-evidence/8792-10694-proactive-shader/live-llm/run (trajectories → /Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/ui-mobile-wave3/.github/issue-evidence/8792-10694-proactive-shader/live-llm/run/trajectories, runId=396c5cb1-5ef5-4d7a-a1cf-920fb18a4506)
+ Info       [eliza-scenarios] discovered 1 scenario(s) under /Users/shawwalters/eliza-workspace/eliza/eliza/.claude/worktrees/ui-mobile-wave3/packages/scenario-runner/test/scenarios
+ Info       [eliza-scenarios] run-dir: /Users/shawwalters/eliza-workspace/eliza/eliza/.claude/worktrees/ui-mobile-wave3/.github/issue-evidence/8792-10694-proactive-shader/live-llm/run (trajectories → /Users/shawwalters/eliza-workspace/eliza/eliza/.claude/worktrees/ui-mobile-wave3/.github/issue-evidence/8792-10694-proactive-shader/live-llm/run/trajectories, runId=396c5cb1-5ef5-4d7a-a1cf-920fb18a4506)
 ◇ injected env (27) from ../../../.env // tip: ◈ secrets for agents [www.dotenvx.com]
  Info       [scenario-runner] Registered zero-vector TEXT_EMBEDDING fallback (dim=1024); set ELIZA_BENCH_SKIP_EMBEDDING=0 to use @elizaos/plugin-local-inference instead.
  Warn       [CORE:SETTINGS] SECRET_SALT is not set or using default value (event=core.settings.default_secret_salt)
@@ -341,10 +341,10 @@
  Info       [FollowUpService] Stopped successfully
  Warn       #agent:ScenarioAgent  [AGENT] Service instance is missing stop(); skipping (serviceType=connector_credential_store, reason=shutdown)
  Info       CharacterFileManager stopped
- Info       [scenario-runner] wrote 25 eliza_native_v1 row(s) from 6 trajectory file(s) → /Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/ui-mobile-wave3/.github/issue-evidence/8792-10694-proactive-shader/live-llm/live-background-actions-native.jsonl (passed=25 failed=0 skipped=0 unknown=0) (manifest → /Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/ui-mobile-wave3/.github/issue-evidence/8792-10694-proactive-shader/live-llm/live-background-actions-native.manifest.json)
- Info       [scenario-runner] wrote run viewer → /Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/ui-mobile-wave3/.github/issue-evidence/8792-10694-proactive-shader/live-llm/run/viewer/index.html
- Info       [scenario-runner] wrote report → /Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/ui-mobile-wave3/.github/issue-evidence/8792-10694-proactive-shader/live-llm/live-background-actions-report.json
- Info       [scenario-runner] wrote report → /Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/ui-mobile-wave3/.github/issue-evidence/8792-10694-proactive-shader/live-llm/run/matrix.json
+ Info       [scenario-runner] wrote 25 eliza_native_v1 row(s) from 6 trajectory file(s) → /Users/shawwalters/eliza-workspace/eliza/eliza/.claude/worktrees/ui-mobile-wave3/.github/issue-evidence/8792-10694-proactive-shader/live-llm/live-background-actions-native.jsonl (passed=25 failed=0 skipped=0 unknown=0) (manifest → /Users/shawwalters/eliza-workspace/eliza/eliza/.claude/worktrees/ui-mobile-wave3/.github/issue-evidence/8792-10694-proactive-shader/live-llm/live-background-actions-native.manifest.json)
+ Info       [scenario-runner] wrote run viewer → /Users/shawwalters/eliza-workspace/eliza/eliza/.claude/worktrees/ui-mobile-wave3/.github/issue-evidence/8792-10694-proactive-shader/live-llm/run/viewer/index.html
+ Info       [scenario-runner] wrote report → /Users/shawwalters/eliza-workspace/eliza/eliza/.claude/worktrees/ui-mobile-wave3/.github/issue-evidence/8792-10694-proactive-shader/live-llm/live-background-actions-report.json
+ Info       [scenario-runner] wrote report → /Users/shawwalters/eliza-workspace/eliza/eliza/.claude/worktrees/ui-mobile-wave3/.github/issue-evidence/8792-10694-proactive-shader/live-llm/run/matrix.json
 
 Scenario run 396c5cb1-5ef5-4d7a-a1cf-920fb18a4506 | provider=openai | 2026-07-02T08:08:58.835Z → 2026-07-02T08:09:17.275Z
 | id | status | duration | failures |

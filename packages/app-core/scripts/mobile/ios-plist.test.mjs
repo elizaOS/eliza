@@ -42,8 +42,10 @@ describe("escape leaf utilities", () => {
 
 describe("replaceOrInsertPlistString", () => {
   it("replaces the value of an existing key", () => {
-    const out = replaceOrInsertPlistString(PLIST, "CFBundleName", "Milady");
-    expect(out).toContain("<key>CFBundleName</key>\n\t<string>Milady</string>");
+    const out = replaceOrInsertPlistString(PLIST, "CFBundleName", "Test App");
+    expect(out).toContain(
+      "<key>CFBundleName</key>\n\t<string>Test App</string>",
+    );
     expect(out).not.toContain("<string>Eliza</string>");
   });
 

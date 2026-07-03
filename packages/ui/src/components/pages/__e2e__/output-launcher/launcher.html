@@ -789,7 +789,7 @@
   var require_react_dom_production = __commonJS({
     "node_modules/.bun/react-dom@19.2.5+3f10a4be4e334a9b/node_modules/react-dom/cjs/react-dom.production.js"(exports) {
       "use strict";
-      var React3 = require_react();
+      var React5 = require_react();
       function formatProdErrorMessage(code) {
         var url2 = "https://react.dev/errors/" + code;
         if (1 < arguments.length) {
@@ -829,7 +829,7 @@
           implementation
         };
       }
-      var ReactSharedInternals = React3.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE;
+      var ReactSharedInternals = React5.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE;
       function getCrossOriginStringAs(as, input) {
         if ("font" === as) return "";
         if ("string" === typeof input)
@@ -965,7 +965,7 @@
     "node_modules/.bun/react-dom@19.2.5+3f10a4be4e334a9b/node_modules/react-dom/cjs/react-dom-client.production.js"(exports) {
       "use strict";
       var Scheduler = require_scheduler();
-      var React3 = require_react();
+      var React5 = require_react();
       var ReactDOM = require_react_dom();
       function formatProdErrorMessage(code) {
         var url2 = "https://react.dev/errors/" + code;
@@ -1156,7 +1156,7 @@
         return null;
       }
       var isArrayImpl = Array.isArray;
-      var ReactSharedInternals = React3.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE;
+      var ReactSharedInternals = React5.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE;
       var ReactDOMSharedInternals = ReactDOM.__DOM_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE;
       var sharedNotPendingObject = {
         pending: false,
@@ -1537,8 +1537,8 @@
           var hiddenUpdatesForLane = hiddenUpdates[index$7];
           if (null !== hiddenUpdatesForLane)
             for (hiddenUpdates[index$7] = null, index$7 = 0; index$7 < hiddenUpdatesForLane.length; index$7++) {
-              var update = hiddenUpdatesForLane[index$7];
-              null !== update && (update.lane &= -536870913);
+              var update2 = hiddenUpdatesForLane[index$7];
+              null !== update2 && (update2.lane &= -536870913);
             }
           remainingLanes &= ~lane;
         }
@@ -2737,43 +2737,43 @@
           concurrentQueues[i++] = null;
           var queue = concurrentQueues[i];
           concurrentQueues[i++] = null;
-          var update = concurrentQueues[i];
+          var update2 = concurrentQueues[i];
           concurrentQueues[i++] = null;
           var lane = concurrentQueues[i];
           concurrentQueues[i++] = null;
-          if (null !== queue && null !== update) {
+          if (null !== queue && null !== update2) {
             var pending = queue.pending;
-            null === pending ? update.next = update : (update.next = pending.next, pending.next = update);
-            queue.pending = update;
+            null === pending ? update2.next = update2 : (update2.next = pending.next, pending.next = update2);
+            queue.pending = update2;
           }
-          0 !== lane && markUpdateLaneFromFiberToRoot(fiber, update, lane);
+          0 !== lane && markUpdateLaneFromFiberToRoot(fiber, update2, lane);
         }
       }
-      function enqueueUpdate$1(fiber, queue, update, lane) {
+      function enqueueUpdate$1(fiber, queue, update2, lane) {
         concurrentQueues[concurrentQueuesIndex++] = fiber;
         concurrentQueues[concurrentQueuesIndex++] = queue;
-        concurrentQueues[concurrentQueuesIndex++] = update;
+        concurrentQueues[concurrentQueuesIndex++] = update2;
         concurrentQueues[concurrentQueuesIndex++] = lane;
         concurrentlyUpdatedLanes |= lane;
         fiber.lanes |= lane;
         fiber = fiber.alternate;
         null !== fiber && (fiber.lanes |= lane);
       }
-      function enqueueConcurrentHookUpdate(fiber, queue, update, lane) {
-        enqueueUpdate$1(fiber, queue, update, lane);
+      function enqueueConcurrentHookUpdate(fiber, queue, update2, lane) {
+        enqueueUpdate$1(fiber, queue, update2, lane);
         return getRootForUpdatedFiber(fiber);
       }
       function enqueueConcurrentRenderForLane(fiber, lane) {
         enqueueUpdate$1(fiber, null, null, lane);
         return getRootForUpdatedFiber(fiber);
       }
-      function markUpdateLaneFromFiberToRoot(sourceFiber, update, lane) {
+      function markUpdateLaneFromFiberToRoot(sourceFiber, update2, lane) {
         sourceFiber.lanes |= lane;
         var alternate = sourceFiber.alternate;
         null !== alternate && (alternate.lanes |= lane);
         for (var isHidden = false, parent = sourceFiber.return; null !== parent; )
           parent.childLanes |= lane, alternate = parent.alternate, null !== alternate && (alternate.childLanes |= lane), 22 === parent.tag && (sourceFiber = parent.stateNode, null === sourceFiber || sourceFiber._visibility & 1 || (isHidden = true)), sourceFiber = parent, parent = parent.return;
-        return 3 === sourceFiber.tag ? (parent = sourceFiber.stateNode, isHidden && null !== update && (isHidden = 31 - clz32(lane), sourceFiber = parent.hiddenUpdates, alternate = sourceFiber[isHidden], null === alternate ? sourceFiber[isHidden] = [update] : alternate.push(update), update.lane = lane | 536870912), parent) : null;
+        return 3 === sourceFiber.tag ? (parent = sourceFiber.stateNode, isHidden && null !== update2 && (isHidden = 31 - clz32(lane), sourceFiber = parent.hiddenUpdates, alternate = sourceFiber[isHidden], null === alternate ? sourceFiber[isHidden] = [update2] : alternate.push(update2), update2.lane = lane | 536870912), parent) : null;
       }
       function getRootForUpdatedFiber(sourceFiber) {
         if (50 < nestedUpdateCount)
@@ -3928,19 +3928,19 @@
       function createUpdate(lane) {
         return { lane, tag: 0, payload: null, callback: null, next: null };
       }
-      function enqueueUpdate(fiber, update, lane) {
+      function enqueueUpdate(fiber, update2, lane) {
         var updateQueue = fiber.updateQueue;
         if (null === updateQueue) return null;
         updateQueue = updateQueue.shared;
         if (0 !== (executionContext & 2)) {
           var pending = updateQueue.pending;
-          null === pending ? update.next = update : (update.next = pending.next, pending.next = update);
-          updateQueue.pending = update;
-          update = getRootForUpdatedFiber(fiber);
+          null === pending ? update2.next = update2 : (update2.next = pending.next, pending.next = update2);
+          updateQueue.pending = update2;
+          update2 = getRootForUpdatedFiber(fiber);
           markUpdateLaneFromFiberToRoot(fiber, null, lane);
-          return update;
+          return update2;
         }
-        enqueueUpdate$1(fiber, updateQueue, update, lane);
+        enqueueUpdate$1(fiber, updateQueue, update2, lane);
         return getRootForUpdatedFiber(fiber);
       }
       function entangleTransitions(root3, fiber, lane) {
@@ -4024,12 +4024,12 @@
                 next: null
               });
               a: {
-                var workInProgress2 = workInProgress$jscomp$0, update = pendingQueue;
+                var workInProgress2 = workInProgress$jscomp$0, update2 = pendingQueue;
                 updateLane = props;
                 var instance = instance$jscomp$0;
-                switch (update.tag) {
+                switch (update2.tag) {
                   case 1:
-                    workInProgress2 = update.payload;
+                    workInProgress2 = update2.payload;
                     if ("function" === typeof workInProgress2) {
                       newState = workInProgress2.call(instance, newState, updateLane);
                       break a;
@@ -4039,7 +4039,7 @@
                   case 3:
                     workInProgress2.flags = workInProgress2.flags & -65537 | 128;
                   case 0:
-                    workInProgress2 = update.payload;
+                    workInProgress2 = update2.payload;
                     updateLane = "function" === typeof workInProgress2 ? workInProgress2.call(instance, newState, updateLane) : workInProgress2;
                     if (null === updateLane || void 0 === updateLane) break a;
                     newState = assign({}, newState, updateLane);
@@ -4359,50 +4359,50 @@
         if (null === baseQueue) hook.memoizedState = pendingQueue;
         else {
           current = baseQueue.next;
-          var newBaseQueueFirst = baseFirst = null, newBaseQueueLast = null, update = current, didReadFromEntangledAsyncAction$60 = false;
+          var newBaseQueueFirst = baseFirst = null, newBaseQueueLast = null, update2 = current, didReadFromEntangledAsyncAction$60 = false;
           do {
-            var updateLane = update.lane & -536870913;
-            if (updateLane !== update.lane ? (workInProgressRootRenderLanes & updateLane) === updateLane : (renderLanes & updateLane) === updateLane) {
-              var revertLane = update.revertLane;
+            var updateLane = update2.lane & -536870913;
+            if (updateLane !== update2.lane ? (workInProgressRootRenderLanes & updateLane) === updateLane : (renderLanes & updateLane) === updateLane) {
+              var revertLane = update2.revertLane;
               if (0 === revertLane)
                 null !== newBaseQueueLast && (newBaseQueueLast = newBaseQueueLast.next = {
                   lane: 0,
                   revertLane: 0,
                   gesture: null,
-                  action: update.action,
-                  hasEagerState: update.hasEagerState,
-                  eagerState: update.eagerState,
+                  action: update2.action,
+                  hasEagerState: update2.hasEagerState,
+                  eagerState: update2.eagerState,
                   next: null
                 }), updateLane === currentEntangledLane && (didReadFromEntangledAsyncAction$60 = true);
               else if ((renderLanes & revertLane) === revertLane) {
-                update = update.next;
+                update2 = update2.next;
                 revertLane === currentEntangledLane && (didReadFromEntangledAsyncAction$60 = true);
                 continue;
               } else
                 updateLane = {
                   lane: 0,
-                  revertLane: update.revertLane,
+                  revertLane: update2.revertLane,
                   gesture: null,
-                  action: update.action,
-                  hasEagerState: update.hasEagerState,
-                  eagerState: update.eagerState,
+                  action: update2.action,
+                  hasEagerState: update2.hasEagerState,
+                  eagerState: update2.eagerState,
                   next: null
                 }, null === newBaseQueueLast ? (newBaseQueueFirst = newBaseQueueLast = updateLane, baseFirst = pendingQueue) : newBaseQueueLast = newBaseQueueLast.next = updateLane, currentlyRenderingFiber.lanes |= revertLane, workInProgressRootSkippedLanes |= revertLane;
-              updateLane = update.action;
+              updateLane = update2.action;
               shouldDoubleInvokeUserFnsInHooksDEV && reducer(pendingQueue, updateLane);
-              pendingQueue = update.hasEagerState ? update.eagerState : reducer(pendingQueue, updateLane);
+              pendingQueue = update2.hasEagerState ? update2.eagerState : reducer(pendingQueue, updateLane);
             } else
               revertLane = {
                 lane: updateLane,
-                revertLane: update.revertLane,
-                gesture: update.gesture,
-                action: update.action,
-                hasEagerState: update.hasEagerState,
-                eagerState: update.eagerState,
+                revertLane: update2.revertLane,
+                gesture: update2.gesture,
+                action: update2.action,
+                hasEagerState: update2.hasEagerState,
+                eagerState: update2.eagerState,
                 next: null
               }, null === newBaseQueueLast ? (newBaseQueueFirst = newBaseQueueLast = revertLane, baseFirst = pendingQueue) : newBaseQueueLast = newBaseQueueLast.next = revertLane, currentlyRenderingFiber.lanes |= updateLane, workInProgressRootSkippedLanes |= updateLane;
-            update = update.next;
-          } while (null !== update && update !== current);
+            update2 = update2.next;
+          } while (null !== update2 && update2 !== current);
           null === newBaseQueueLast ? baseFirst = pendingQueue : newBaseQueueLast.next = newBaseQueueFirst;
           if (!objectIs(pendingQueue, hook.memoizedState) && (didReceiveUpdate = true, didReadFromEntangledAsyncAction$60 && (reducer = currentEntangledActionThenable, null !== reducer)))
             throw reducer;
@@ -4421,10 +4421,10 @@
         var dispatch = queue.dispatch, lastRenderPhaseUpdate = queue.pending, newState = hook.memoizedState;
         if (null !== lastRenderPhaseUpdate) {
           queue.pending = null;
-          var update = lastRenderPhaseUpdate = lastRenderPhaseUpdate.next;
+          var update2 = lastRenderPhaseUpdate = lastRenderPhaseUpdate.next;
           do
-            newState = reducer(newState, update.action), update = update.next;
-          while (update !== lastRenderPhaseUpdate);
+            newState = reducer(newState, update2.action), update2 = update2.next;
+          while (update2 !== lastRenderPhaseUpdate);
           objectIs(newState, hook.memoizedState) || (didReceiveUpdate = true);
           hook.memoizedState = newState;
           null === hook.baseQueue && (hook.baseState = newState);
@@ -5005,7 +5005,7 @@
         dispatchSetStateInternal(fiber, queue, action, lane);
       }
       function dispatchSetStateInternal(fiber, queue, action, lane) {
-        var update = {
+        var update2 = {
           lane,
           revertLane: 0,
           gesture: null,
@@ -5014,20 +5014,20 @@
           eagerState: null,
           next: null
         };
-        if (isRenderPhaseUpdate(fiber)) enqueueRenderPhaseUpdate(queue, update);
+        if (isRenderPhaseUpdate(fiber)) enqueueRenderPhaseUpdate(queue, update2);
         else {
           var alternate = fiber.alternate;
           if (0 === fiber.lanes && (null === alternate || 0 === alternate.lanes) && (alternate = queue.lastRenderedReducer, null !== alternate))
             try {
               var currentState = queue.lastRenderedState, eagerState = alternate(currentState, action);
-              update.hasEagerState = true;
-              update.eagerState = eagerState;
+              update2.hasEagerState = true;
+              update2.eagerState = eagerState;
               if (objectIs(eagerState, currentState))
-                return enqueueUpdate$1(fiber, queue, update, 0), null === workInProgressRoot && finishQueueingConcurrentUpdates(), false;
+                return enqueueUpdate$1(fiber, queue, update2, 0), null === workInProgressRoot && finishQueueingConcurrentUpdates(), false;
             } catch (error51) {
             } finally {
             }
-          action = enqueueConcurrentHookUpdate(fiber, queue, update, lane);
+          action = enqueueConcurrentHookUpdate(fiber, queue, update2, lane);
           if (null !== action)
             return scheduleUpdateOnFiber(action, fiber, lane), entangleTransitionUpdate(action, queue, lane), true;
         }
@@ -5057,11 +5057,11 @@
         var alternate = fiber.alternate;
         return fiber === currentlyRenderingFiber || null !== alternate && alternate === currentlyRenderingFiber;
       }
-      function enqueueRenderPhaseUpdate(queue, update) {
+      function enqueueRenderPhaseUpdate(queue, update2) {
         didScheduleRenderPhaseUpdateDuringThisPass = didScheduleRenderPhaseUpdate = true;
         var pending = queue.pending;
-        null === pending ? update.next = update : (update.next = pending.next, pending.next = update);
-        queue.pending = update;
+        null === pending ? update2.next = update2 : (update2.next = pending.next, pending.next = update2);
+        queue.pending = update2;
       }
       function entangleTransitionUpdate(root3, queue, lane) {
         if (0 !== (lane & 4194048)) {
@@ -5387,27 +5387,27 @@
       var classComponentUpdater = {
         enqueueSetState: function(inst, payload, callback) {
           inst = inst._reactInternals;
-          var lane = requestUpdateLane(), update = createUpdate(lane);
-          update.payload = payload;
-          void 0 !== callback && null !== callback && (update.callback = callback);
-          payload = enqueueUpdate(inst, update, lane);
+          var lane = requestUpdateLane(), update2 = createUpdate(lane);
+          update2.payload = payload;
+          void 0 !== callback && null !== callback && (update2.callback = callback);
+          payload = enqueueUpdate(inst, update2, lane);
           null !== payload && (scheduleUpdateOnFiber(payload, inst, lane), entangleTransitions(payload, inst, lane));
         },
         enqueueReplaceState: function(inst, payload, callback) {
           inst = inst._reactInternals;
-          var lane = requestUpdateLane(), update = createUpdate(lane);
-          update.tag = 1;
-          update.payload = payload;
-          void 0 !== callback && null !== callback && (update.callback = callback);
-          payload = enqueueUpdate(inst, update, lane);
+          var lane = requestUpdateLane(), update2 = createUpdate(lane);
+          update2.tag = 1;
+          update2.payload = payload;
+          void 0 !== callback && null !== callback && (update2.callback = callback);
+          payload = enqueueUpdate(inst, update2, lane);
           null !== payload && (scheduleUpdateOnFiber(payload, inst, lane), entangleTransitions(payload, inst, lane));
         },
         enqueueForceUpdate: function(inst, callback) {
           inst = inst._reactInternals;
-          var lane = requestUpdateLane(), update = createUpdate(lane);
-          update.tag = 2;
-          void 0 !== callback && null !== callback && (update.callback = callback);
-          callback = enqueueUpdate(inst, update, lane);
+          var lane = requestUpdateLane(), update2 = createUpdate(lane);
+          update2.tag = 2;
+          void 0 !== callback && null !== callback && (update2.callback = callback);
+          callback = enqueueUpdate(inst, update2, lane);
           null !== callback && (scheduleUpdateOnFiber(callback, inst, lane), entangleTransitions(callback, inst, lane));
         }
       };
@@ -5481,19 +5481,19 @@
         lane.tag = 3;
         return lane;
       }
-      function initializeClassErrorUpdate(update, root3, fiber, errorInfo) {
+      function initializeClassErrorUpdate(update2, root3, fiber, errorInfo) {
         var getDerivedStateFromError = fiber.type.getDerivedStateFromError;
         if ("function" === typeof getDerivedStateFromError) {
           var error51 = errorInfo.value;
-          update.payload = function() {
+          update2.payload = function() {
             return getDerivedStateFromError(error51);
           };
-          update.callback = function() {
+          update2.callback = function() {
             logCaughtError(root3, fiber, errorInfo);
           };
         }
         var inst = fiber.stateNode;
-        null !== inst && "function" === typeof inst.componentDidCatch && (update.callback = function() {
+        null !== inst && "function" === typeof inst.componentDidCatch && (update2.callback = function() {
           logCaughtError(root3, fiber, errorInfo);
           "function" !== typeof getDerivedStateFromError && (null === legacyErrorBoundariesThatAlreadyFailed ? legacyErrorBoundariesThatAlreadyFailed = /* @__PURE__ */ new Set([this]) : legacyErrorBoundariesThatAlreadyFailed.add(this));
           var stack = errorInfo.stack;
@@ -11912,7 +11912,7 @@
       var estimatedBytesWithinLimit = 0;
       function waitForCommitToBeReady(state, timeoutOffset) {
         state.stylesheets && 0 === state.count && insertSuspendedStylesheets(state, state.stylesheets);
-        return 0 < state.count || 0 < state.imgCount ? function(commit) {
+        return 0 < state.count || 0 < state.imgCount ? function(commit2) {
           var stylesheetTimer = setTimeout(function() {
             state.stylesheets && insertSuspendedStylesheets(state, state.stylesheets);
             if (state.unsuspend) {
@@ -11933,7 +11933,7 @@
             },
             (state.imgBytes > estimatedBytesWithinLimit ? 50 : 800) + timeoutOffset
           );
-          state.unsuspend = commit;
+          state.unsuspend = commit2;
           return function() {
             state.unsuspend = null;
             clearTimeout(stylesheetTimer);
@@ -12602,7 +12602,7 @@
           0 === i && attemptExplicitHydrationTarget(target);
         }
       };
-      var isomorphicReactPackageVersion$jscomp$inline_1840 = React3.version;
+      var isomorphicReactPackageVersion$jscomp$inline_1840 = React5.version;
       if ("19.2.5" !== isomorphicReactPackageVersion$jscomp$inline_1840)
         throw Error(
           formatProdErrorMessage(
@@ -13388,14 +13388,110 @@
   });
 
   // packages/ui/src/components/pages/__e2e__/launcher-fixture.tsx
-  var React2 = __toESM(require_react(), 1);
+  var React4 = __toESM(require_react(), 1);
   var import_client = __toESM(require_client(), 1);
 
-  // packages/ui/src/components/pages/Launcher.tsx
-  var import_react7 = __toESM(require_react(), 1);
+  // packages/ui/src/state/shell-surface-store.ts
+  var React = __toESM(require_react(), 1);
+
+  // packages/ui/src/components/shell/home-launcher-events.ts
+  var HOME_LAUNCHER_NAV_EVENT = "eliza:home-launcher:navigate";
+
+  // packages/ui/src/state/shell-surface-store.ts
+  var INITIAL_STATE = {
+    page: "home",
+    launcherPage: 0,
+    launcherPageCount: 1
+  };
+  function normalize(next) {
+    const pageCount = Math.max(1, Math.floor(next.launcherPageCount));
+    if (next.page !== "launcher") {
+      return {
+        page: next.page,
+        launcherPage: 0,
+        launcherPageCount: pageCount
+      };
+    }
+    const launcherPage = Math.min(
+      Math.max(0, Math.floor(next.launcherPage)),
+      pageCount - 1
+    );
+    return {
+      page: "launcher",
+      launcherPage,
+      launcherPageCount: pageCount
+    };
+  }
+  function statesEqual(a, b) {
+    return a.page === b.page && a.launcherPage === b.launcherPage && a.launcherPageCount === b.launcherPageCount;
+  }
+  function store() {
+    const g = globalThis;
+    const k = /* @__PURE__ */ Symbol.for("elizaos.ui.shell-surface-store");
+    const existing = g[k];
+    if (existing) {
+      ensureWindowBridge(existing);
+      return existing;
+    }
+    const created = {
+      state: INITIAL_STATE,
+      listeners: /* @__PURE__ */ new Set()
+    };
+    g[k] = created;
+    ensureWindowBridge(created);
+    return created;
+  }
+  function ensureWindowBridge(s) {
+    if (typeof window !== "undefined") {
+      if (s.bridgedWindow === window) return;
+      window.addEventListener(HOME_LAUNCHER_NAV_EVENT, (event) => {
+        const detail = event.detail;
+        commit(s, { ...s.state, page: detail?.page ?? "home" });
+      });
+      s.bridgedWindow = window;
+    }
+  }
+  function commit(s, next) {
+    const normalized = normalize(next);
+    if (statesEqual(s.state, normalized)) return;
+    s.state = normalized;
+    for (const l of s.listeners) l();
+  }
+  function update(partial2) {
+    const s = store();
+    commit(s, { ...s.state, ...partial2 });
+  }
+  function goHome() {
+    update({ page: "home" });
+  }
+  function goLauncher() {
+    update({ page: "launcher" });
+  }
+  function setShellSurfacePage(page) {
+    update({ page });
+  }
+  function resetShellSurfaceForTests() {
+    const s = store();
+    s.state = INITIAL_STATE;
+    for (const l of s.listeners) l();
+  }
+  function useShellSurface() {
+    const s = store();
+    return React.useSyncExternalStore(
+      (l) => {
+        s.listeners.add(l);
+        return () => s.listeners.delete(l);
+      },
+      () => s.state,
+      () => s.state
+    );
+  }
+
+  // packages/ui/src/components/shell/HomeLauncherSurface.tsx
+  var React3 = __toESM(require_react(), 1);
 
   // packages/ui/src/hooks/useHorizontalPager.ts
-  var React = __toESM(require_react(), 1);
+  var React2 = __toESM(require_react(), 1);
   var AXIS_COMMIT_SLOP = 6;
   var AXIS_DOMINANCE_RATIO = 1.15;
   var MIN_DISTANCE_THRESHOLD = 64;
@@ -13519,40 +13615,34 @@
     page,
     pageCount,
     enabled = true,
-    edgeSwipeRightEnabled = false,
-    onPageChange,
-    onEdgeSwipeRight
+    onPageChange
   }) {
-    const viewportRef = React.useRef(null);
-    const railRef = React.useRef(null);
-    const dragRef = React.useRef(null);
-    const rafRef = React.useRef(0);
-    const pendingOffsetRef = React.useRef(null);
-    const suppressClickRef = React.useRef(false);
-    const pendingSettleRef = React.useRef(null);
-    const mountedRef = React.useRef(false);
-    const pageRef = React.useRef(page);
-    const pageCountRef = React.useRef(pageCount);
-    const enabledRef = React.useRef(enabled);
-    const edgeSwipeRightEnabledRef = React.useRef(edgeSwipeRightEnabled);
-    const onPageChangeRef = React.useRef(onPageChange);
-    const onEdgeSwipeRightRef = React.useRef(onEdgeSwipeRight);
-    const abandonDragRef = React.useRef(() => {
+    const viewportRef = React2.useRef(null);
+    const railRef = React2.useRef(null);
+    const dragRef = React2.useRef(null);
+    const rafRef = React2.useRef(0);
+    const pendingOffsetRef = React2.useRef(null);
+    const suppressClickRef = React2.useRef(false);
+    const pendingSettleRef = React2.useRef(null);
+    const mountedRef = React2.useRef(false);
+    const pageRef = React2.useRef(page);
+    const pageCountRef = React2.useRef(pageCount);
+    const enabledRef = React2.useRef(enabled);
+    const onPageChangeRef = React2.useRef(onPageChange);
+    const abandonDragRef = React2.useRef(() => {
     });
-    const pointerTrackerRef = React.useRef({
+    const pointerTrackerRef = React2.useRef({
       onEvicted: () => abandonDragRef.current()
     });
     pageRef.current = page;
     pageCountRef.current = pageCount;
     enabledRef.current = enabled;
-    edgeSwipeRightEnabledRef.current = edgeSwipeRightEnabled;
     onPageChangeRef.current = onPageChange;
-    onEdgeSwipeRightRef.current = onEdgeSwipeRight;
-    const measureWidth = React.useCallback(() => {
+    const measureWidth = React2.useCallback(() => {
       const width = viewportRef.current?.clientWidth || (typeof window !== "undefined" ? window.innerWidth : 1);
       return Math.max(1, width);
     }, []);
-    const writeOffset = React.useCallback(
+    const writeOffset = React2.useCallback(
       (offset, transitionMs) => {
         const rail = railRef.current;
         if (!rail) return;
@@ -13562,14 +13652,14 @@
       },
       []
     );
-    const flushOffset = React.useCallback(() => {
+    const flushOffset = React2.useCallback(() => {
       rafRef.current = 0;
       const offset = pendingOffsetRef.current;
       pendingOffsetRef.current = null;
       if (offset == null) return;
       writeOffset(offset, null);
     }, [writeOffset]);
-    const scheduleOffset = React.useCallback(
+    const scheduleOffset = React2.useCallback(
       (offset) => {
         pendingOffsetRef.current = offset;
         if (rafRef.current !== 0) return;
@@ -13583,35 +13673,33 @@
       },
       [flushOffset]
     );
-    const cancelScheduledOffset = React.useCallback(() => {
+    const cancelScheduledOffset = React2.useCallback(() => {
       if (rafRef.current !== 0 && typeof cancelAnimationFrame === "function") {
         cancelAnimationFrame(rafRef.current);
       }
       rafRef.current = 0;
       pendingOffsetRef.current = null;
     }, []);
-    const canMove = React.useCallback((state, dx) => {
+    const canMove = React2.useCallback((state, dx) => {
       if (dx < 0) return state.page < pageCountRef.current - 1;
-      if (dx > 0) {
-        return state.page > 0 || edgeSwipeRightEnabledRef.current;
-      }
+      if (dx > 0) return state.page > 0;
       return false;
     }, []);
-    const visualDragOffset = React.useCallback((state, dx) => {
+    const visualDragOffset = React2.useCallback((state, dx) => {
       if (dx > 0 && state.page === 0) return dx * EDGE_RESISTANCE;
       if (dx < 0 && state.page >= pageCountRef.current - 1) {
         return dx * EDGE_RESISTANCE;
       }
       return dx;
     }, []);
-    const releaseCapture = React.useCallback((state) => {
+    const releaseCapture = React2.useCallback((state) => {
       if (!state.captured || state.captureTarget === null) return;
       try {
         state.captureTarget.releasePointerCapture?.(state.pointerId);
       } catch {
       }
     }, []);
-    const abandonDrag = React.useCallback(() => {
+    const abandonDrag = React2.useCallback(() => {
       const state = dragRef.current;
       if (!state) return;
       cancelScheduledOffset();
@@ -13621,7 +13709,7 @@
       writeOffset(pageOffset(state.page, measureWidth()), SETTLE_MS);
     }, [cancelScheduledOffset, measureWidth, releaseCapture, writeOffset]);
     abandonDragRef.current = abandonDrag;
-    React.useLayoutEffect(() => {
+    React2.useLayoutEffect(() => {
       const width = measureWidth();
       const nextPage = clampPage(page, pageCount);
       const pendingSettle = pendingSettleRef.current;
@@ -13633,7 +13721,7 @@
       );
       mountedRef.current = true;
     }, [measureWidth, page, pageCount, writeOffset]);
-    React.useEffect(() => {
+    React2.useEffect(() => {
       if (typeof ResizeObserver === "undefined") return;
       const viewport = viewportRef.current;
       if (!viewport) return;
@@ -13650,9 +13738,9 @@
       observer.observe(viewport);
       return () => observer.disconnect();
     }, [measureWidth, writeOffset]);
-    React.useEffect(() => cancelScheduledOffset, [cancelScheduledOffset]);
-    React.useEffect(() => () => abandonDragRef.current(), []);
-    const finish = React.useCallback(
+    React2.useEffect(() => cancelScheduledOffset, [cancelScheduledOffset]);
+    React2.useEffect(() => () => abandonDragRef.current(), []);
+    const finish = React2.useCallback(
       (event, cancelled = false) => {
         const state = dragRef.current;
         if (!state || state.pointerId !== event.pointerId) return;
@@ -13682,8 +13770,7 @@
           settleTo(base);
           return;
         }
-        const isEdgeSwipeHome = dx > 0 && state.page === 0 && edgeSwipeRightEnabledRef.current;
-        const distanceThreshold = isEdgeSwipeHome ? MIN_DISTANCE_THRESHOLD : Math.max(
+        const distanceThreshold = Math.max(
           MIN_DISTANCE_THRESHOLD,
           state.width * DISTANCE_THRESHOLD_RATIO
         );
@@ -13693,15 +13780,6 @@
         Math.abs(dx) >= MIN_FLICK_DISTANCE && Math.abs(velocity) >= FLICK_VELOCITY && Math.sign(velocity) === Math.sign(dx) && Math.abs(dx) > Math.abs(dy) * AXIS_DOMINANCE_RATIO;
         if (!shouldAdvance) {
           settleTo(base);
-          return;
-        }
-        if (isEdgeSwipeHome) {
-          settleTo(base);
-          suppressClickRef.current = true;
-          setTimeout(() => {
-            suppressClickRef.current = false;
-          }, 0);
-          onEdgeSwipeRightRef.current?.();
           return;
         }
         const targetPage = clampPage(
@@ -13735,15 +13813,15 @@
         writeOffset
       ]
     );
-    const goPrev = React.useCallback(() => {
+    const goPrev = React2.useCallback(() => {
       const target = clampPage(pageRef.current - 1, pageCountRef.current);
       if (target !== pageRef.current) onPageChangeRef.current(target);
     }, []);
-    const goNext = React.useCallback(() => {
+    const goNext = React2.useCallback(() => {
       const target = clampPage(pageRef.current + 1, pageCountRef.current);
       if (target !== pageRef.current) onPageChangeRef.current(target);
     }, []);
-    const onPointerDown = React.useCallback(
+    const onPointerDown = React2.useCallback(
       (event) => {
         if (!enabledRef.current || pageCountRef.current <= 0 || event.isPrimary === false || // Only the primary (left) button starts a drag. A right/middle-button
         // (or pen barrel-button, button 2) press otherwise starts a real drag
@@ -13782,7 +13860,7 @@
       },
       [cancelScheduledOffset, measureWidth, writeOffset]
     );
-    const onPointerMove = React.useCallback(
+    const onPointerMove = React2.useCallback(
       (event) => {
         const state = dragRef.current;
         if (!state || state.pointerId !== event.pointerId) return;
@@ -13827,22 +13905,22 @@
       },
       [abandonDrag, canMove, scheduleOffset, visualDragOffset]
     );
-    const onPointerUp = React.useCallback(
+    const onPointerUp = React2.useCallback(
       (event) => finish(event),
       [finish]
     );
-    const onPointerCancel = React.useCallback(
+    const onPointerCancel = React2.useCallback(
       (event) => finish(event, true),
       [finish]
     );
-    const onLostPointerCapture = React.useCallback(
+    const onLostPointerCapture = React2.useCallback(
       (event) => {
         if (event.target !== event.currentTarget) return;
         finish(event, true);
       },
       [finish]
     );
-    const onClickCapture = React.useCallback(
+    const onClickCapture = React2.useCallback(
       (event) => {
         if (!suppressClickRef.current) return;
         suppressClickRef.current = false;
@@ -14054,7 +14132,7 @@
     let cacheSize = 0;
     let cache = /* @__PURE__ */ Object.create(null);
     let previousCache = /* @__PURE__ */ Object.create(null);
-    const update = (key, value) => {
+    const update2 = (key, value) => {
       cache[key] = value;
       cacheSize++;
       if (cacheSize > maxCacheSize) {
@@ -14070,7 +14148,7 @@
           return value;
         }
         if ((value = previousCache[key]) !== void 0) {
-          update(key, value);
+          update2(key, value);
           return value;
         }
       },
@@ -14078,7 +14156,7 @@
         if (key in cache) {
           cache[key] = value;
         } else {
-          update(key, value);
+          update2(key, value);
         }
       }
     };
@@ -16899,36 +16977,6 @@
     return twMerge(clsx(inputs));
   }
 
-  // packages/ui/src/view-telemetry.ts
-  var VIEW_INTERACTION_TELEMETRY_EVENT = "eliza:view-interaction-telemetry";
-  var VIEW_INTERACTION_RING_MAX = 200;
-  var viewInteractionSequence = 0;
-  function currentRoute() {
-    if (typeof window === "undefined") return void 0;
-    return window.location.pathname;
-  }
-  function emitViewInteraction(event) {
-    const detail = {
-      ...event,
-      at: Date.now(),
-      route: currentRoute()
-    };
-    const g = globalThis;
-    viewInteractionSequence += 1;
-    g.__ELIZA_VIEW_INTERACTION_TELEMETRY_SEQUENCE__ = viewInteractionSequence;
-    const ring = g.__ELIZA_VIEW_INTERACTION_TELEMETRY__ ?? [];
-    ring.push(detail);
-    if (ring.length > VIEW_INTERACTION_RING_MAX) {
-      ring.splice(0, ring.length - VIEW_INTERACTION_RING_MAX);
-    }
-    g.__ELIZA_VIEW_INTERACTION_TELEMETRY__ = ring;
-    if (typeof window !== "undefined" && typeof window.dispatchEvent === "function" && typeof CustomEvent !== "undefined") {
-      window.dispatchEvent(
-        new CustomEvent(VIEW_INTERACTION_TELEMETRY_EVENT, { detail })
-      );
-    }
-  }
-
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/createLucideIcon.mjs
   var import_react3 = __toESM(require_react(), 1);
 
@@ -17643,6 +17691,137 @@
         }
       ) : null
     ] });
+  }
+
+  // packages/ui/src/components/shell/HomeLauncherSurface.tsx
+  var import_jsx_runtime2 = __toESM(require_jsx_runtime(), 1);
+  function HomeLauncherSurface({
+    home,
+    launcher,
+    initialPage = "home",
+    className
+  }) {
+    const { page, launcherPage } = useShellSurface();
+    React3.useEffect(() => {
+      setShellSurfacePage(initialPage);
+    }, [initialPage]);
+    const railButtonsEnabled = page === "home" || launcherPage === 0;
+    const pager = useHorizontalPager({
+      page: page === "launcher" ? 1 : 0,
+      pageCount: 2,
+      // The hook arms + swallows the committed-swipe click itself (handlers.
+      // onClickCapture, attached on both halves below), so this stays a plain
+      // navigation intent — no local click-suppression bookkeeping.
+      onPageChange: (nextPage) => {
+        if (nextPage === 0) {
+          goHome();
+        } else {
+          goLauncher();
+        }
+      }
+    });
+    return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
+      "section",
+      {
+        ref: pager.viewportRef,
+        "data-testid": "home-launcher-surface",
+        "data-page": page,
+        className: cn(
+          "absolute inset-0 z-[1] select-none overflow-hidden",
+          className
+        ),
+        children: [
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: "sr-only", "data-testid": "home-launcher-page-probe", children: `home-launcher-page:${page}` }),
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
+            "div",
+            {
+              ref: pager.railRef,
+              "data-testid": "home-launcher-rail",
+              className: "absolute inset-0 flex w-[200%]",
+              children: [
+                /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+                  "div",
+                  {
+                    "data-testid": "home-launcher-home-page",
+                    "aria-hidden": page !== "home",
+                    inert: page !== "home" || void 0,
+                    className: "relative h-full w-1/2 shrink-0 touch-pan-y",
+                    onPointerDown: pager.handlers.onPointerDown,
+                    onPointerMove: pager.handlers.onPointerMove,
+                    onPointerUp: pager.handlers.onPointerUp,
+                    onPointerCancel: pager.handlers.onPointerCancel,
+                    onLostPointerCapture: pager.handlers.onLostPointerCapture,
+                    onClickCapture: pager.handlers.onClickCapture,
+                    children: home
+                  }
+                ),
+                /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+                  "div",
+                  {
+                    "data-testid": "home-launcher-launcher-page",
+                    "aria-hidden": page !== "launcher",
+                    inert: page !== "launcher" || void 0,
+                    className: "relative h-full w-1/2 shrink-0 touch-pan-y",
+                    onPointerDown: pager.handlers.onPointerDown,
+                    onPointerMove: pager.handlers.onPointerMove,
+                    onPointerUp: pager.handlers.onPointerUp,
+                    onPointerCancel: pager.handlers.onPointerCancel,
+                    onLostPointerCapture: pager.handlers.onLostPointerCapture,
+                    onClickCapture: pager.handlers.onClickCapture,
+                    children: launcher
+                  }
+                )
+              ]
+            }
+          ),
+          railButtonsEnabled ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+            PagerEdgeButtons,
+            {
+              idPrefix: "rail",
+              canPrev: pager.canPrev,
+              canNext: pager.canNext,
+              goPrev: pager.goPrev,
+              goNext: pager.goNext,
+              prevLabel: "Home",
+              nextLabel: "Launcher"
+            }
+          ) : null
+        ]
+      }
+    );
+  }
+
+  // packages/ui/src/components/pages/Launcher.tsx
+  var import_react7 = __toESM(require_react(), 1);
+
+  // packages/ui/src/view-telemetry.ts
+  var VIEW_INTERACTION_TELEMETRY_EVENT = "eliza:view-interaction-telemetry";
+  var VIEW_INTERACTION_RING_MAX = 200;
+  var viewInteractionSequence = 0;
+  function currentRoute() {
+    if (typeof window === "undefined") return void 0;
+    return window.location.pathname;
+  }
+  function emitViewInteraction(event) {
+    const detail = {
+      ...event,
+      at: Date.now(),
+      route: currentRoute()
+    };
+    const g = globalThis;
+    viewInteractionSequence += 1;
+    g.__ELIZA_VIEW_INTERACTION_TELEMETRY_SEQUENCE__ = viewInteractionSequence;
+    const ring = g.__ELIZA_VIEW_INTERACTION_TELEMETRY__ ?? [];
+    ring.push(detail);
+    if (ring.length > VIEW_INTERACTION_RING_MAX) {
+      ring.splice(0, ring.length - VIEW_INTERACTION_RING_MAX);
+    }
+    g.__ELIZA_VIEW_INTERACTION_TELEMETRY__ = ring;
+    if (typeof window !== "undefined" && typeof window.dispatchEvent === "function" && typeof CustomEvent !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent(VIEW_INTERACTION_TELEMETRY_EVENT, { detail })
+      );
+    }
   }
 
   // packages/ui/src/components/views/ViewTileImage.tsx
@@ -32473,7 +32652,9 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
   var _ELIZA_1_VISION_TIER_ID_SET = new Set(
     ELIZA_1_VISION_TIER_IDS
   );
-  var ELIZA_1_HOSTED_MTP_TIER_IDS = [];
+  var ELIZA_1_HOSTED_MTP_TIER_IDS = [
+    "eliza-1-2b"
+  ];
   function hostedMtpDrafterAvailableForTier(id) {
     return ELIZA_1_HOSTED_MTP_TIER_IDS.some((mtpId) => mtpId === id);
   }
@@ -32691,14 +32872,21 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
     const runtime = {
       preferredBackend: "llama-cpp",
       optimizations: {
-        parallel: 4,
+        // Gemma-aware RAM defaults (epic #9033). Eliza-1 is Gemma-4-based and
+        // hits llama.cpp/#21690: the server KV context-checkpoint ring grows
+        // unbounded on Gemma (a handful of ~16K-prompt turns filled ~64 GB in
+        // the upstream repro). The on-device Eliza-1 runtime is single-user, so
+        // pin single-slot decode (`-np 1`) and bound the checkpoint ring to 1 —
+        // this is pure config, not a kernel change, and only touches the
+        // Gemma-4 Eliza-1 tiers built here (never other models).
+        parallel: 1,
         flashAttention: true,
         requiresKernel,
         // OpenVINO is the right backend for ASR/Whisper on Intel hosts but
         // never for autoregressive text. The text path uses optimized
         // llama.cpp kernels plus native MTP heads.
         unsupportedKernels: ["openvino"],
-        ctxCheckpoints: 4,
+        ctxCheckpoints: 1,
         ctxCheckpointInterval: 4096
       }
     };
@@ -33257,14 +33445,14 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
     if (existing && typeof existing === "object" && "current" in existing) {
       return existing;
     }
-    const store = { current: DEFAULT_BOOT_CONFIG };
-    globalObject[BOOT_CONFIG_STORE_KEY] = store;
-    globalObject[BOOT_CONFIG_WINDOW_KEY] = store.current;
-    return store;
+    const store2 = { current: DEFAULT_BOOT_CONFIG };
+    globalObject[BOOT_CONFIG_STORE_KEY] = store2;
+    globalObject[BOOT_CONFIG_WINDOW_KEY] = store2.current;
+    return store2;
   }
   function setBootConfig(config2) {
-    const store = getBootConfigStore();
-    store.current = config2;
+    const store2 = getBootConfigStore();
+    store2.current = config2;
     getGlobalSlot()[BOOT_CONFIG_WINDOW_KEY] = config2;
   }
   function getBootConfig() {
@@ -34327,8 +34515,8 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
       conversations: Array.isArray(parsed.conversations) ? parsed.conversations : []
     };
   }
-  function writeStore(store) {
-    writeJson(CONVERSATIONS_KEY, store);
+  function writeStore(store2) {
+    writeJson(CONVERSATIONS_KEY, store2);
   }
   function readBrowserWorkspaceStore() {
     const parsed = readJson(BROWSER_WORKSPACE_KEY, {
@@ -34338,8 +34526,8 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
       tabs: Array.isArray(parsed.tabs) ? parsed.tabs : []
     };
   }
-  function writeBrowserWorkspaceStore(store) {
-    writeJson(BROWSER_WORKSPACE_KEY, store);
+  function writeBrowserWorkspaceStore(store2) {
+    writeJson(BROWSER_WORKSPACE_KEY, store2);
   }
   function normalizeBrowserWorkspaceUrl(rawUrl) {
     const value = typeof rawUrl === "string" ? rawUrl.trim() : "";
@@ -34372,8 +34560,8 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
     };
     const kind = normalizeBrowserWorkspaceKind(body.kind);
     if (kind) tab.kind = kind;
-    const store = readBrowserWorkspaceStore();
-    const tabs = show ? store.tabs.map((entry) => ({ ...entry, visible: false })) : store.tabs;
+    const store2 = readBrowserWorkspaceStore();
+    const tabs = show ? store2.tabs.map((entry) => ({ ...entry, visible: false })) : store2.tabs;
     tabs.push(tab);
     writeBrowserWorkspaceStore({ tabs });
     return json2({ tab });
@@ -34386,14 +34574,14 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
     if (!match) return null;
     const tabId = decodeURIComponent(match[1]).trim();
     const action = match[2] ?? null;
-    const store = readBrowserWorkspaceStore();
-    const index = store.tabs.findIndex((tab) => tab.id === tabId);
+    const store2 = readBrowserWorkspaceStore();
+    const index = store2.tabs.findIndex((tab) => tab.id === tabId);
     if (index < 0) {
       return json2({ error: "Browser tab not found" }, 404);
     }
     if (!action && method === "DELETE") {
-      store.tabs.splice(index, 1);
-      writeBrowserWorkspaceStore(store);
+      store2.tabs.splice(index, 1);
+      writeBrowserWorkspaceStore(store2);
       return json2({ closed: true });
     }
     if (action === "snapshot" && method === "GET") {
@@ -34401,39 +34589,39 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
     }
     if (action === "show" && method === "POST") {
       const now2 = nowIso();
-      store.tabs = store.tabs.map(
+      store2.tabs = store2.tabs.map(
         (tab) => tab.id === tabId ? { ...tab, visible: true, updatedAt: now2, lastFocusedAt: now2 } : { ...tab, visible: false }
       );
-      writeBrowserWorkspaceStore(store);
-      return json2({ tab: store.tabs[index] });
+      writeBrowserWorkspaceStore(store2);
+      return json2({ tab: store2.tabs[index] });
     }
     if (action === "hide" && method === "POST") {
       const now2 = nowIso();
-      store.tabs[index] = {
-        ...store.tabs[index],
+      store2.tabs[index] = {
+        ...store2.tabs[index],
         visible: false,
         updatedAt: now2
       };
-      writeBrowserWorkspaceStore(store);
-      return json2({ tab: store.tabs[index] });
+      writeBrowserWorkspaceStore(store2);
+      return json2({ tab: store2.tabs[index] });
     }
     if (action === "navigate" && method === "POST") {
       const body = await requestJson(request);
       const now2 = nowIso();
       const url2 = normalizeBrowserWorkspaceUrl(body.url);
-      store.tabs[index] = {
-        ...store.tabs[index],
+      store2.tabs[index] = {
+        ...store2.tabs[index],
         url: url2,
-        title: url2 === "about:blank" ? "New tab" : store.tabs[index].title,
+        title: url2 === "about:blank" ? "New tab" : store2.tabs[index].title,
         updatedAt: now2,
         lastFocusedAt: now2,
         visible: true
       };
-      store.tabs = store.tabs.map(
-        (tab) => tab.id === tabId ? store.tabs[index] : { ...tab, visible: false }
+      store2.tabs = store2.tabs.map(
+        (tab) => tab.id === tabId ? store2.tabs[index] : { ...tab, visible: false }
       );
-      writeBrowserWorkspaceStore(store);
-      return json2({ tab: store.tabs.find((tab) => tab.id === tabId) });
+      writeBrowserWorkspaceStore(store2);
+      return json2({ tab: store2.tabs.find((tab) => tab.id === tabId) });
     }
     return null;
   }
@@ -36652,9 +36840,9 @@ Assistant:`;
       }
     }
     if (method === "GET" && pathname === "/api/conversations") {
-      const store = readStore();
+      const store2 = readStore();
       return json2({
-        conversations: store.conversations.map(conversationDto).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+        conversations: store2.conversations.map(conversationDto).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
       });
     }
     if (method === "POST" && pathname === "/api/conversations") {
@@ -36662,9 +36850,9 @@ Assistant:`;
       const conversation = createConversation(
         typeof body.title === "string" ? body.title : void 0
       );
-      const store = readStore();
-      store.conversations.unshift(conversation);
-      writeStore(store);
+      const store2 = readStore();
+      store2.conversations.unshift(conversation);
+      writeStore(store2);
       return json2({ conversation: conversationDto(conversation) });
     }
     const greetingMatch = pathname.match(
@@ -36685,8 +36873,8 @@ Assistant:`;
     );
     if (messageMatch) {
       const conversationId = decodeURIComponent(messageMatch[1]);
-      const store = readStore();
-      const conversation = store.conversations.find(
+      const store2 = readStore();
+      const conversation = store2.conversations.find(
         (entry) => entry.id === conversationId
       );
       if (!conversation) return json2({ error: "Conversation not found" }, 404);
@@ -36704,7 +36892,7 @@ Assistant:`;
         const deletedCount = conversation.messages.length - deleteFrom;
         conversation.messages.splice(deleteFrom);
         conversation.updatedAt = nowIso();
-        writeStore(store);
+        writeStore(store2);
         return json2({ ok: true, deletedCount });
       }
       if (method === "POST") {
@@ -36731,7 +36919,7 @@ Assistant:`;
         };
         conversation.messages.push(assistantMessage);
         conversation.updatedAt = nowIso();
-        writeStore(store);
+        writeStore(store2);
         if (pathname.endsWith("/stream")) {
           return textEventStream([
             { type: "token", text: reply.text, fullText: reply.text },
@@ -36755,25 +36943,25 @@ Assistant:`;
     const conversationMatch = pathname.match(/^\/api\/conversations\/([^/]+)$/);
     if (conversationMatch) {
       const conversationId = decodeURIComponent(conversationMatch[1]);
-      const store = readStore();
-      const index = store.conversations.findIndex(
+      const store2 = readStore();
+      const index = store2.conversations.findIndex(
         (entry) => entry.id === conversationId
       );
       if (index < 0) return json2({ error: "Conversation not found" }, 404);
       if (method === "DELETE") {
-        store.conversations.splice(index, 1);
-        writeStore(store);
+        store2.conversations.splice(index, 1);
+        writeStore(store2);
         return json2({ ok: true });
       }
       if (method === "PATCH") {
         const body = await requestJson(request);
         if (typeof body.title === "string" && body.title.trim()) {
-          store.conversations[index].title = body.title.trim();
+          store2.conversations[index].title = body.title.trim();
         }
-        store.conversations[index].updatedAt = nowIso();
-        writeStore(store);
+        store2.conversations[index].updatedAt = nowIso();
+        writeStore(store2);
         return json2({
-          conversation: conversationDto(store.conversations[index])
+          conversation: conversationDto(store2.conversations[index])
         });
       }
     }
@@ -36805,6 +36993,80 @@ Assistant:`;
   var fullBunRuntime = null;
   var IOS_LOCAL_AGENT_IPC_BASE2 = "eliza-local-agent://ipc";
   var IOS_CLOUD_MODE_LOCAL_IPC_POLICY_MESSAGE = "iOS cloud builds cannot use local-agent IPC unless local runtime mode is active";
+  var IOS_BOOT_TRACE_MAX_ENTRIES_PER_SESSION = 400;
+  var agentPluginForBootTrace;
+  var bootTraceDisabled = false;
+  var bootTraceConsecutiveFailures = 0;
+  var bootTraceEntryCount = 0;
+  var bootTraceLaunchedAtMs = Date.now();
+  var BOOT_TRACE_MAX_CONSECUTIVE_BRIDGE_FAILURES = 3;
+  function resolveBootTraceBridge() {
+    if (agentPluginForBootTrace !== void 0) {
+      return agentPluginForBootTrace;
+    }
+    try {
+      const capacitor = Capacitor;
+      if (!isNativeIos2() || capacitor.isPluginAvailable?.("Agent") !== true) {
+        agentPluginForBootTrace = null;
+        return null;
+      }
+      agentPluginForBootTrace = registerPlugin("Agent");
+    } catch {
+      agentPluginForBootTrace = null;
+    }
+    return agentPluginForBootTrace;
+  }
+  function appendIosBootTrace(stage, detail = {}) {
+    const bridge = resolveBootTraceBridge();
+    if (!bridge || bootTraceDisabled) return;
+    if (bootTraceEntryCount >= IOS_BOOT_TRACE_MAX_ENTRIES_PER_SESSION) return;
+    bootTraceEntryCount += 1;
+    let safeDetail;
+    try {
+      safeDetail = JSON.parse(
+        JSON.stringify({
+          sinceLaunchMs: Date.now() - bootTraceLaunchedAtMs,
+          ...detail
+        })
+      );
+    } catch {
+      return;
+    }
+    bridge.appendBootTrace({ stage, detail: safeDetail }).then(() => {
+      bootTraceConsecutiveFailures = 0;
+    }).catch((error51) => {
+      const message = error51 instanceof Error ? error51.message : String(error51 ?? "");
+      bootTraceConsecutiveFailures += 1;
+      if (/not implemented|is not available|method not found/i.test(message) || bootTraceConsecutiveFailures >= BOOT_TRACE_MAX_CONSECUTIVE_BRIDGE_FAILURES) {
+        bootTraceDisabled = true;
+      }
+    });
+  }
+  var iosAgentBootProgress = {
+    phase: "idle",
+    startedAt: null,
+    lastHeartbeatAt: null,
+    lastError: null
+  };
+  function recordIosNativeAgentBootPhase(phase, error51) {
+    const now2 = Date.now();
+    iosAgentBootProgress = {
+      phase,
+      startedAt: phase === "starting" ? now2 : iosAgentBootProgress.startedAt ?? now2,
+      lastHeartbeatAt: now2,
+      lastError: error51 ?? (phase === "error" ? iosAgentBootProgress.lastError : null)
+    };
+    appendIosBootTrace("agent-boot-phase", {
+      phase,
+      ...error51 ? { error: error51 } : {}
+    });
+  }
+  function recordIosNativeAgentBootHeartbeat() {
+    iosAgentBootProgress = {
+      ...iosAgentBootProgress,
+      lastHeartbeatAt: Date.now()
+    };
+  }
   function isPrimedFullBunRuntime(value) {
     return !!value && typeof value === "object" && value.kind === "primed";
   }
@@ -37026,11 +37288,23 @@ Assistant:`;
       bodyEncoding: typeof record2.bodyEncoding === "string" ? record2.bodyEncoding : void 0
     };
   }
+  var tracedEngineAcquire = false;
   async function getFullBunRuntime() {
     const strict = shouldRequireFullBunRuntime();
+    const pluginAvailable = isFullBunRuntimePluginAvailable();
+    if (!tracedEngineAcquire && isNativeIos2()) {
+      tracedEngineAcquire = true;
+      appendIosBootTrace("engine-acquire", {
+        copy: "ui",
+        strict,
+        builtIn: isFullBunRuntimeBuiltIn(),
+        pluginAvailable,
+        runtimeMode: readRuntimeMode()
+      });
+    }
     if (!isNativeIos2() && !strict) return null;
     if (!strict && !isFullBunRuntimeBuiltIn()) return null;
-    if (!isFullBunRuntimePluginAvailable()) {
+    if (!pluginAvailable) {
       if (strict) {
         throw fullBunStartupError("the ElizaBunRuntime plugin is unavailable");
       }
@@ -37041,11 +37315,18 @@ Assistant:`;
     }
     fullBunRuntime ??= (async () => {
       try {
-        const runtime = wrapFullBunRuntime(await importFullBunRuntimePlugin());
+        const runtime = await importFullBunRuntimePlugin();
         const currentStatus = await runtime.getStatus().catch(() => null);
         if (currentStatus?.ready && currentStatus.engine === "bun") {
+          recordIosNativeAgentBootPhase("ready");
+          appendIosBootTrace("engine-adopted-running", {
+            engine: currentStatus.engine
+          });
           return runtime;
         }
+        recordIosNativeAgentBootPhase("starting");
+        appendIosBootTrace("engine-start-requested", { copy: "ui" });
+        const startRequestedAt = Date.now();
         const started = await runtime.start({
           engine: "bun",
           argv: IOS_FULL_BUN_ARGV,
@@ -37060,8 +37341,15 @@ Assistant:`;
             `runtime status was ready=${String(status.ready)} engine=${status.engine ?? "unknown"}`
           );
         }
+        recordIosNativeAgentBootPhase("ready");
+        appendIosBootTrace("engine-start-ok", {
+          durationMs: Date.now() - startRequestedAt,
+          engine: status.engine
+        });
         return runtime;
       } catch (error51) {
+        const message = error51 instanceof Error ? error51.message : String(error51);
+        recordIosNativeAgentBootPhase("error", message);
         if (strict) {
           throw fullBunStartupError("startup failed", error51);
         }
@@ -37081,13 +37369,20 @@ Assistant:`;
     }
   }
   async function importFullBunRuntimePlugin() {
+    appendIosBootTrace("engine-import-start", { copy: "ui" });
     let mod = null;
     try {
       mod = await Promise.resolve().then(() => (init_src(), src_exports));
     } catch {
       mod = null;
     }
-    return mod?.ElizaBunRuntime ?? registerPlugin("ElizaBunRuntime");
+    appendIosBootTrace("engine-import-done", {
+      copy: "ui",
+      viaModule: Boolean(mod?.ElizaBunRuntime)
+    });
+    return wrapFullBunRuntime(
+      mod?.ElizaBunRuntime ?? registerPlugin("ElizaBunRuntime")
+    );
   }
   async function tryFullBunNativeRequest(options) {
     const runtime = await getFullBunRuntime();
@@ -37106,6 +37401,7 @@ Assistant:`;
     if (!result) {
       throw new Error("Full Bun iOS bridge returned an invalid HTTP response");
     }
+    recordIosNativeAgentBootHeartbeat();
     return result;
   }
   async function requestToNativeBridgeOptions(request, context) {
@@ -37144,7 +37440,16 @@ Assistant:`;
       await handleIosLocalAgentNativeRequest(options)
     );
   }
+  var tracedNativeRequests = 0;
   async function handleIosLocalAgentNativeRequest(options) {
+    if (tracedNativeRequests < 3) {
+      tracedNativeRequests += 1;
+      appendIosBootTrace("native-request", {
+        copy: "ui",
+        n: tracedNativeRequests,
+        path: options.path?.slice(0, 120) ?? null
+      });
+    }
     const path = options.path?.trim();
     if (!path || !isSafeLocalPath(path)) {
       throw new Error(
@@ -38816,8 +39121,10 @@ Assistant:`;
     ["elizacloud.ai", DEFAULT_DIRECT_CLOUD_API_BASE_URL],
     ["www.elizacloud.ai", DEFAULT_DIRECT_CLOUD_API_BASE_URL],
     ["dev.elizacloud.ai", DEFAULT_DIRECT_CLOUD_API_BASE_URL],
+    ["app.elizacloud.ai", DEFAULT_DIRECT_CLOUD_API_BASE_URL],
     ["api-staging.elizacloud.ai", STAGING_DIRECT_CLOUD_API_BASE_URL],
-    ["staging.elizacloud.ai", STAGING_DIRECT_CLOUD_API_BASE_URL]
+    ["staging.elizacloud.ai", STAGING_DIRECT_CLOUD_API_BASE_URL],
+    ["app-staging.elizacloud.ai", STAGING_DIRECT_CLOUD_API_BASE_URL]
   ]);
   var DIRECT_ELIZA_CLOUD_WEB_BY_API_HOST = /* @__PURE__ */ new Map([
     ["api.elizacloud.ai", DEFAULT_DIRECT_CLOUD_BASE_URL],
@@ -38936,6 +39243,12 @@ Assistant:`;
       return resolveDirectCloudAuthApiBase(
         getBootConfig().cloudApiBase?.trim() || DEFAULT_DIRECT_CLOUD_BASE_URL
       );
+    }
+    if (typeof window !== "undefined") {
+      const byHost = DIRECT_ELIZA_CLOUD_API_BY_HOST.get(
+        window.location.hostname.toLowerCase()
+      );
+      if (byHost) return byHost;
     }
     return null;
   }
@@ -39957,7 +40270,7 @@ Assistant:`;
       ...edit.agentName !== void 0 ? { agentName: edit.agentName } : {},
       ...edit.agentConfig !== void 0 ? { agentConfig: edit.agentConfig } : {}
     });
-    const normalize = (response) => ({
+    const normalize2 = (response) => ({
       success: response.success === true,
       ...response.error ? { error: response.error } : {},
       data: {
@@ -39966,7 +40279,7 @@ Assistant:`;
       }
     });
     const direct = await directCloudRequest(this, path, { method: "PATCH", body });
-    if (direct) return normalize(direct);
+    if (direct) return normalize2(direct);
     if (isNativeDirectCloudAuthMissing(this)) {
       return {
         success: false,
@@ -39976,7 +40289,7 @@ Assistant:`;
     }
     if (isDirectCloudBase(this)) {
       const response = await this.fetch(path, { method: "PATCH", body }, { allowNonOk: true });
-      return normalize(response);
+      return normalize2(response);
     }
     return this.fetch(`/api/cloud/compat/agents/${encodeURIComponent(agentId)}`, {
       method: "PATCH",
@@ -40453,6 +40766,53 @@ Assistant:`;
     }
     throw new Error("Provisioning timed out after 2 minutes");
   };
+  var CLOUD_AGENT_WAKE_POLL_INTERVAL_MS = 5e3;
+  var CLOUD_AGENT_WAKE_TIMEOUT_MS = 6 * 6e4;
+  var CLOUD_AGENT_FAILED_STATUSES = /* @__PURE__ */ new Set(["error", "failed"]);
+  async function waitForCloudAgentRunning(client2, options) {
+    const { agentId, onProgress } = options;
+    const pollIntervalMs = Math.max(
+      50,
+      options.pollIntervalMs ?? CLOUD_AGENT_WAKE_POLL_INTERVAL_MS
+    );
+    const timeoutMs = Math.max(
+      pollIntervalMs,
+      options.timeoutMs ?? CLOUD_AGENT_WAKE_TIMEOUT_MS
+    );
+    const startedAt2 = Date.now();
+    onProgress?.(
+      "starting",
+      "Starting your agent \u2014 a cold boot can take a few minutes..."
+    );
+    await client2.resumeCloudCompatAgent(agentId).catch(() => null);
+    let lastStatus = "unknown";
+    for (; ; ) {
+      const detail = await client2.getCloudCompatAgent(agentId).catch(() => null);
+      const agent = detail?.success ? detail.data : null;
+      if (agent) {
+        lastStatus = agent.status || "unknown";
+        if (lastStatus === "running") return agent;
+        if (CLOUD_AGENT_FAILED_STATUSES.has(lastStatus)) {
+          throw new Error(
+            agent.error_message ? `Your cloud agent failed to start: ${agent.error_message}` : "Your cloud agent failed to start. Check its status in Eliza Cloud and try again."
+          );
+        }
+      }
+      const elapsedMs = Date.now() - startedAt2;
+      if (elapsedMs + pollIntervalMs > timeoutMs) {
+        throw new Error(
+          `Your cloud agent is still "${lastStatus}" after ${Math.round(
+            elapsedMs / 1e3
+          )}s. It may still be booting \u2014 try again in a minute.`
+        );
+      }
+      onProgress?.(
+        "starting",
+        `Starting your agent (${lastStatus}) \u2014 ${Math.round(elapsedMs / 1e3)}s elapsed...`
+      );
+      await new Promise((r2) => setTimeout(r2, pollIntervalMs));
+    }
+  }
   function pickPreferredCloudAgent(agents, preferAgentId) {
     if (!agents.length) return null;
     if (preferAgentId) {
@@ -40493,18 +40853,34 @@ Assistant:`;
       }
       const chosen = pickPreferredCloudAgent(list.data, preferAgentId);
       if (chosen) {
-        const apiBase2 = resolveCloudAgentApiBase({
+        let agent = chosen;
+        const initialBase = resolveCloudAgentApiBase({
           bridgeUrl: chosen.bridge_url,
           webUiUrl: chosen.web_ui_url ?? chosen.webUiUrl,
           agentId: chosen.agent_id,
           cloudApiBase: resolvedCloudApiBase
         });
+        const isDedicated = !isDirectCloudSharedAgentBase(initialBase) && Boolean(chosen.web_ui_url ?? chosen.webUiUrl ?? chosen.bridge_url);
+        if (isDedicated && agent.status !== "running") {
+          agent = await waitForCloudAgentRunning(this, {
+            agentId: chosen.agent_id,
+            ...typeof options.wakePollIntervalMs === "number" ? { pollIntervalMs: options.wakePollIntervalMs } : {},
+            ...typeof options.wakeTimeoutMs === "number" ? { timeoutMs: options.wakeTimeoutMs } : {},
+            ...onProgress ? { onProgress } : {}
+          });
+        }
+        const apiBase2 = resolveCloudAgentApiBase({
+          bridgeUrl: agent.bridge_url,
+          webUiUrl: agent.web_ui_url ?? agent.webUiUrl,
+          agentId: agent.agent_id,
+          cloudApiBase: resolvedCloudApiBase
+        });
         onProgress?.("ready", "Connected to your agent");
         return {
-          agentId: chosen.agent_id,
-          agentName: chosen.agent_name,
+          agentId: agent.agent_id,
+          agentName: agent.agent_name,
           apiBase: apiBase2,
-          bridgeUrl: chosen.bridge_url,
+          bridgeUrl: agent.bridge_url,
           created: false
         };
       }
@@ -45398,7 +45774,7 @@ Assistant:`;
   }
 
   // packages/ui/src/components/views/ViewIcon.tsx
-  var import_jsx_runtime2 = __toESM(require_jsx_runtime(), 1);
+  var import_jsx_runtime3 = __toESM(require_jsx_runtime(), 1);
   var ICONS = {
     Activity,
     AppWindow,
@@ -45505,7 +45881,7 @@ Assistant:`;
     className = "h-5 w-5"
   }) {
     if (icon && isImageIcon(icon)) {
-      return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+      return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
         "img",
         {
           src: icon,
@@ -45518,11 +45894,11 @@ Assistant:`;
       );
     }
     const Icon2 = (icon ? ICONS[icon] : void 0) ?? guessIconFromText(label, id);
-    return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Icon2, { className, "aria-hidden": "true" });
+    return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Icon2, { className, "aria-hidden": "true" });
   }
 
   // packages/ui/src/components/views/ViewTileImage.tsx
-  var import_jsx_runtime3 = __toESM(require_jsx_runtime(), 1);
+  var import_jsx_runtime4 = __toESM(require_jsx_runtime(), 1);
   var LAUNCHER_ICON_PALETTES = [
     { from: "#ff7a1a", to: "#f2c14e", foreground: "#fff7ed" },
     { from: "#0f766e", to: "#5eead4", foreground: "#ecfeff" },
@@ -45572,28 +45948,28 @@ Assistant:`;
     const hasFallback = Boolean(fallbackUrl && fallbackUrl !== primaryUrl);
     if (source === "launcher") {
       if (url2) {
-        return /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(
+        return /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(
           "div",
           {
             className: cn(containerClassName, "relative overflow-hidden"),
             "data-view-visual": entry.id,
             style: launcherIconStyle(entry),
             children: [
-              /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+              /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
                 "span",
                 {
                   "aria-hidden": "true",
                   className: "pointer-events-none absolute -right-4 -top-5 h-14 w-14 rounded-full bg-white/25"
                 }
               ),
-              /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+              /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
                 "span",
                 {
                   "aria-hidden": "true",
                   className: "pointer-events-none absolute inset-0 bg-[linear-gradient(160deg,rgba(255,255,255,0.36)_0%,rgba(255,255,255,0.08)_42%,rgba(0,0,0,0.2)_100%)]"
                 }
               ),
-              /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+              /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
                 ViewIcon,
                 {
                   icon: entry.icon,
@@ -45605,7 +45981,7 @@ Assistant:`;
                   )
                 }
               ),
-              /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+              /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
                 "img",
                 {
                   src: url2,
@@ -45629,28 +46005,28 @@ Assistant:`;
           }
         );
       }
-      return /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(
+      return /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(
         "div",
         {
           className: cn(containerClassName, "relative overflow-hidden"),
           "data-view-visual": entry.id,
           style: launcherIconStyle(entry),
           children: [
-            /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+            /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
               "span",
               {
                 "aria-hidden": "true",
                 className: "pointer-events-none absolute -right-4 -top-5 h-14 w-14 rounded-full bg-white/25"
               }
             ),
-            /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+            /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
               "span",
               {
                 "aria-hidden": "true",
                 className: "pointer-events-none absolute inset-0 bg-[linear-gradient(160deg,rgba(255,255,255,0.36)_0%,rgba(255,255,255,0.08)_42%,rgba(0,0,0,0.2)_100%)]"
               }
             ),
-            /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+            /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
               ViewIcon,
               {
                 icon: entry.icon,
@@ -45667,7 +46043,7 @@ Assistant:`;
       );
     }
     if (url2) {
-      return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { className: containerClassName, children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+      return /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { className: containerClassName, children: /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
         "img",
         {
           src: url2,
@@ -45688,7 +46064,7 @@ Assistant:`;
         }
       ) });
     }
-    return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { className: containerClassName, "data-view-visual": entry.id, children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+    return /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { className: containerClassName, "data-view-visual": entry.id, children: /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
       ViewIcon,
       {
         icon: entry.icon,
@@ -45700,7 +46076,7 @@ Assistant:`;
   }
 
   // packages/ui/src/components/pages/Launcher.tsx
-  var import_jsx_runtime4 = __toESM(require_jsx_runtime(), 1);
+  var import_jsx_runtime5 = __toESM(require_jsx_runtime(), 1);
   function viewKindBadge(entry) {
     if (entry.viewKind === "preview") {
       return {
@@ -45718,14 +46094,14 @@ Assistant:`;
   }
   var IconTile = (0, import_react7.memo)(function IconTile2({ entry, onLaunch }) {
     const badge = viewKindBadge(entry);
-    return /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(
+    return /* @__PURE__ */ (0, import_jsx_runtime5.jsxs)(
       "div",
       {
         className: "flex flex-col items-center gap-1.5 select-none",
         "data-testid": `launcher-tile-${entry.id}`,
         children: [
-          /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "relative", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
+          /* @__PURE__ */ (0, import_jsx_runtime5.jsxs)("div", { className: "relative", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime5.jsx)(
               "button",
               {
                 type: "button",
@@ -45739,7 +46115,7 @@ Assistant:`;
                   // neutral-with-opacity hover).
                   "h-16 w-16 overflow-hidden rounded-2xl bg-white/10 text-white transition-colors hover:bg-white/20"
                 ),
-                children: /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
+                children: /* @__PURE__ */ (0, import_jsx_runtime5.jsx)(
                   ViewTileImage,
                   {
                     entry,
@@ -45751,7 +46127,7 @@ Assistant:`;
                 )
               }
             ),
-            badge ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
+            badge ? /* @__PURE__ */ (0, import_jsx_runtime5.jsx)(
               "span",
               {
                 "data-testid": `launcher-kind-${entry.id}`,
@@ -45761,7 +46137,7 @@ Assistant:`;
               }
             ) : null
           ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { className: "max-w-[4.5rem] truncate text-center text-[11px] font-medium leading-tight text-white [text-shadow:0_1px_3px_rgba(0,0,0,0.55)]", children: entry.label })
+          /* @__PURE__ */ (0, import_jsx_runtime5.jsx)("span", { className: "max-w-[4.5rem] truncate text-center text-[11px] font-medium leading-tight text-white [text-shadow:0_1px_3px_rgba(0,0,0,0.55)]", children: entry.label })
         ]
       }
     );
@@ -45771,7 +46147,6 @@ Assistant:`;
     pageGroups,
     loading = false,
     onLaunch,
-    onEdgeSwipeRight,
     page: pageProp,
     onPageChange,
     onPageCountChange,
@@ -45816,13 +46191,10 @@ Assistant:`;
       },
       [onLaunch]
     );
-    const edgeSwipeRightEnabled = onEdgeSwipeRight != null;
     const pager = useHorizontalPager({
       page: clampedPage,
       pageCount: pages.length,
-      enabled: pages.length > 1 || edgeSwipeRightEnabled,
-      edgeSwipeRightEnabled,
-      onEdgeSwipeRight,
+      enabled: pages.length > 1,
       onPageChange: (nextPage) => {
         setActivePage(nextPage);
         emitViewInteraction({
@@ -45832,13 +46204,13 @@ Assistant:`;
         });
       }
     });
-    return /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
+    return /* @__PURE__ */ (0, import_jsx_runtime5.jsx)(
       "div",
       {
         className: cn("flex min-h-0 flex-1 flex-col", className),
         "data-testid": "launcher",
-        children: /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "relative flex min-h-0 flex-1 flex-col overflow-hidden", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
+        children: /* @__PURE__ */ (0, import_jsx_runtime5.jsxs)("div", { className: "relative flex min-h-0 flex-1 flex-col overflow-hidden", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime5.jsx)(
             "div",
             {
               ref: pager.viewportRef,
@@ -45851,25 +46223,25 @@ Assistant:`;
               onPointerCancel: pager.handlers.onPointerCancel,
               onLostPointerCapture: pager.handlers.onLostPointerCapture,
               onClickCapture: pager.handlers.onClickCapture,
-              children: /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
+              children: /* @__PURE__ */ (0, import_jsx_runtime5.jsx)(
                 "div",
                 {
                   ref: pager.railRef,
                   "data-testid": "launcher-page-rail",
                   className: "flex h-full min-h-0 w-full",
-                  children: loading && entries.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { className: "flex h-full min-h-0 min-w-full items-start justify-center overflow-y-auto px-6 pt-2 pb-8", children: /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { className: "grid w-full max-w-2xl grid-cols-4 gap-x-4 gap-y-5 max-sm:portrait:gap-y-14 sm:grid-cols-5", children: ["a", "b", "c", "d", "e", "f", "g", "h"].map((id) => /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(
+                  children: loading && entries.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime5.jsx)("div", { className: "flex h-full min-h-0 min-w-full items-start justify-center overflow-y-auto px-6 pt-2 pb-8", children: /* @__PURE__ */ (0, import_jsx_runtime5.jsx)("div", { className: "grid w-full max-w-2xl grid-cols-4 gap-x-4 gap-y-5 max-sm:portrait:gap-y-14 sm:grid-cols-5", children: ["a", "b", "c", "d", "e", "f", "g", "h"].map((id) => /* @__PURE__ */ (0, import_jsx_runtime5.jsxs)(
                     "div",
                     {
                       className: "flex flex-col items-center gap-1.5 opacity-60",
                       children: [
-                        /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { className: "h-16 w-16 rounded-2xl bg-white/15" }),
-                        /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { className: "h-2.5 w-12 rounded-full bg-white/25" })
+                        /* @__PURE__ */ (0, import_jsx_runtime5.jsx)("div", { className: "h-16 w-16 rounded-2xl bg-white/15" }),
+                        /* @__PURE__ */ (0, import_jsx_runtime5.jsx)("div", { className: "h-2.5 w-12 rounded-full bg-white/25" })
                       ]
                     },
                     id
                   )) }) }) : pages.map((pageIds, pageIndex) => {
                     const active = pageIndex === clampedPage;
-                    return /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
+                    return /* @__PURE__ */ (0, import_jsx_runtime5.jsx)(
                       "div",
                       {
                         "data-testid": `launcher-page-${pageIndex}`,
@@ -45880,10 +46252,10 @@ Assistant:`;
                           "flex h-full min-h-0 min-w-full items-start justify-center overflow-y-auto px-6 pt-2 pb-8",
                           !active && "pointer-events-none"
                         ),
-                        children: /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { className: "grid w-full max-w-2xl grid-cols-4 gap-x-4 gap-y-5 max-sm:portrait:gap-y-14 sm:grid-cols-5", children: pageIds.map((id) => {
+                        children: /* @__PURE__ */ (0, import_jsx_runtime5.jsx)("div", { className: "grid w-full max-w-2xl grid-cols-4 gap-x-4 gap-y-5 max-sm:portrait:gap-y-14 sm:grid-cols-5", children: pageIds.map((id) => {
                           const entry = byId.get(id);
                           if (!entry) return null;
-                          return /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { className: "flex justify-center", children: /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(IconTile, { entry, onLaunch: handleLaunch }) }, id);
+                          return /* @__PURE__ */ (0, import_jsx_runtime5.jsx)("div", { className: "flex justify-center", children: /* @__PURE__ */ (0, import_jsx_runtime5.jsx)(IconTile, { entry, onLaunch: handleLaunch }) }, id);
                         }) })
                       },
                       `launcher-page-${pageIndex}`
@@ -45893,7 +46265,7 @@ Assistant:`;
               )
             }
           ),
-          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
+          /* @__PURE__ */ (0, import_jsx_runtime5.jsx)(
             PagerEdgeButtons,
             {
               idPrefix: "launcher",
@@ -45905,7 +46277,7 @@ Assistant:`;
               nextLabel: "Next page"
             }
           ),
-          showPageDots && pages.length > 1 ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { className: "flex items-center justify-center gap-2 pb-3", children: pages.map((pageIds, index) => /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
+          showPageDots && pages.length > 1 ? /* @__PURE__ */ (0, import_jsx_runtime5.jsx)("div", { className: "flex items-center justify-center gap-2 pb-3", children: pages.map((pageIds, index) => /* @__PURE__ */ (0, import_jsx_runtime5.jsx)(
             "button",
             {
               type: "button",
@@ -45925,7 +46297,7 @@ Assistant:`;
   }
 
   // packages/ui/src/components/pages/__e2e__/launcher-fixture.tsx
-  var import_jsx_runtime5 = __toESM(require_jsx_runtime(), 1);
+  var import_jsx_runtime6 = __toESM(require_jsx_runtime(), 1);
   function tileImage(a, b) {
     return `data:image/svg+xml;utf8,${encodeURIComponent(
       `<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160">
@@ -45972,11 +46344,11 @@ Assistant:`;
   var ENTRIES = SPECS.map(makeEntry);
   var PAGE_GROUPS = [ENTRIES.map((e) => e.id)];
   function Harness() {
-    React2.useLayoutEffect(() => {
+    React4.useLayoutEffect(() => {
       const win = window;
-      win.__launcherCalls = { launch: [], edgeSwipeHome: 0 };
+      win.__launcherCalls = { launch: [] };
     }, []);
-    return /* @__PURE__ */ (0, import_jsx_runtime5.jsx)(
+    return /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
       "div",
       {
         "data-testid": "launcher-fixture-root",
@@ -45987,25 +46359,36 @@ Assistant:`;
           overflow: "hidden",
           background: "#0a0d16"
         },
-        children: /* @__PURE__ */ (0, import_jsx_runtime5.jsx)(
-          Launcher,
+        children: /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+          HomeLauncherSurface,
           {
-            entries: ENTRIES,
-            pageGroups: PAGE_GROUPS,
-            onLaunch: (entry) => {
-              window.__launcherCalls?.launch.push(entry.id);
-            },
-            onEdgeSwipeRight: () => {
-              const win = window;
-              if (win.__launcherCalls) win.__launcherCalls.edgeSwipeHome += 1;
-            }
+            initialPage: "launcher",
+            home: /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+              "div",
+              {
+                "data-testid": "fixture-home-content",
+                style: { height: "100%", padding: "64px 28px", color: "white" },
+                children: /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("h1", { style: { fontSize: 28, fontWeight: 700, margin: 0 }, children: "Home" })
+              }
+            ),
+            launcher: /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+              Launcher,
+              {
+                entries: ENTRIES,
+                pageGroups: PAGE_GROUPS,
+                onLaunch: (entry) => {
+                  window.__launcherCalls?.launch.push(entry.id);
+                }
+              }
+            )
           }
         )
       }
     );
   }
+  resetShellSurfaceForTests();
   var root = document.getElementById("root");
-  if (root) (0, import_client.createRoot)(root).render(/* @__PURE__ */ (0, import_jsx_runtime5.jsx)(Harness, {}));
+  if (root) (0, import_client.createRoot)(root).render(/* @__PURE__ */ (0, import_jsx_runtime6.jsx)(Harness, {}));
 })();
 /*! Bundled license information:
 

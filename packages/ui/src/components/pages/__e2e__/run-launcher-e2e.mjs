@@ -237,24 +237,39 @@ assert(launchInRing, "telemetry ring recorded the tap launch");
   );
 }
 
-// 3. A right-swipe on the launcher requests a return to the home dashboard
-//    (onEdgeSwipeRight). This is the ONLY horizontal gesture the launcher owns;
-//    there is no inter-page view paging to swipe to.
+// 3. A right-swipe on the launcher rides the OUTER home↔launcher rail back to
+//    the home dashboard, tracking the pointer 1:1 mid-drag (the iOS feel: the
+//    rail moves with the finger, not a damped rubber-band). The single-page
+//    inner launcher pager owns no horizontal gesture.
 {
   const win = page.getByTestId("launcher-page-window");
   const box = await win.boundingBox();
   const y = box.y + box.height * 0.5;
-  const startX = box.x + box.width * 0.25;
+  const startX = box.x + box.width * 0.15;
+  const dragPx = Math.round(box.width * 0.3);
   await page.mouse.move(startX, y);
   await page.mouse.down();
-  await page.mouse.move(startX + box.width * 0.55, y, { steps: 12 });
-  await page.mouse.up();
-  await page.waitForTimeout(350);
-  const calls = await readCalls(page);
+  await page.mouse.move(startX + dragPx, y, { steps: 8 });
+  // Mid-drag: the rail must track the finger 1:1 — resting offset is -width
+  // (launcher page), so after a +dragPx drag it sits at -(width - dragPx).
+  const midDrag = await page.evaluate(() => {
+    const rail = document.querySelector('[data-testid="home-launcher-rail"]');
+    if (!(rail instanceof HTMLElement)) return null;
+    return new DOMMatrixReadOnly(getComputedStyle(rail).transform).m41;
+  });
+  const expectedMid = -(box.width - dragPx);
   assert(
-    (calls.edgeSwipeHome ?? 0) >= 1,
-    `right-swipe requests home (edgeSwipeHome=${calls.edgeSwipeHome ?? 0})`,
+    midDrag !== null && Math.abs(midDrag - expectedMid) <= 2,
+    `mid-drag rail tracks the pointer 1:1 (m41=${midDrag}, expected ≈${expectedMid})`,
   );
+  // Finish past the 50% commit point and release.
+  await page.mouse.move(startX + Math.round(box.width * 0.6), y, { steps: 6 });
+  await page.mouse.up();
+  await page.waitForTimeout(500);
+  const railPage = await page
+    .getByTestId("home-launcher-surface")
+    .getAttribute("data-page");
+  assert(railPage === "home", `right-swipe rides the rail home (data-page=${railPage})`);
   await snap(page, "mobile-after-swipe-home");
 }
 

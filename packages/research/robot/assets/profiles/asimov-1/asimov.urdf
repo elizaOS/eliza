@@ -1,5 +1,5 @@
 <?xml version='1.0' encoding='utf-8'?>
-<robot name="asimov-1" mjcf_source="/home/shaw/milady/eliza/packages/research/robot/assets/profiles/asimov-1/mjcf/asimov_eliza.xml" note="Generated from ASIMOV-1 MJCF; MuJoCo XML remains dynamics authority.">
+<robot name="asimov-1" mjcf_source="/home/shaw/eliza/eliza/packages/research/robot/assets/profiles/asimov-1/mjcf/asimov_eliza.xml" note="Generated from ASIMOV-1 MJCF; MuJoCo XML remains dynamics authority.">
   <link name="pelvis_link">
     <inertial>
       <origin xyz="-0.05409183232 -3.482595224e-05 -0.01562551822" rpy="0 0 0" />

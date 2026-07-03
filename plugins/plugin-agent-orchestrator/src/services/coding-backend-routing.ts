@@ -59,6 +59,8 @@ export type CodingBackendSource =
   | "explicit"
   | "character:byTag"
   | "character:default"
+  | "env:byTag"
+  | "env:default"
   | "pin"
   | "planner";
 
@@ -85,7 +87,7 @@ function parseAxis(value: unknown): BackendAxisRouting | undefined {
   }
   if (Array.isArray(value.allow)) {
     const allow = value.allow.filter((v): v is string => typeof v === "string");
-    if (allow.length > 0) axis.allow = allow;
+    axis.allow = allow;
   }
   return axis.default || axis.byTag || axis.allow ? axis : undefined;
 }
@@ -106,16 +108,19 @@ function parseCodingAxis(raw: unknown): BackendAxisRouting | undefined {
  * policy. Both sources are validated; this is declared policy, never
  * message-text inspection.
  */
-export function readCodingRouting(
+function readCodingRoutingEntry(
   runtime: IAgentRuntime | undefined,
-): BackendAxisRouting | undefined {
+): { routing: BackendAxisRouting; source: "character" | "env" } | undefined {
   const fromCharacter = parseCodingAxis(runtime?.character?.settings?.routing);
-  if (fromCharacter) return fromCharacter;
+  if (fromCharacter) {
+    return { routing: fromCharacter, source: "character" };
+  }
 
   const rawEnv = readConfigEnvKey("ELIZA_BACKEND_ROUTING")?.trim();
   if (!rawEnv) return undefined;
   try {
-    return parseCodingAxis(JSON.parse(rawEnv));
+    const fromEnv = parseCodingAxis(JSON.parse(rawEnv));
+    return fromEnv ? { routing: fromEnv, source: "env" } : undefined;
   } catch (err) {
     logger.warn(
       `[backend-routing] failed to parse ELIZA_BACKEND_ROUTING: ${
@@ -124,6 +129,12 @@ export function readCodingRouting(
     );
     return undefined;
   }
+}
+
+export function readCodingRouting(
+  runtime: IAgentRuntime | undefined,
+): BackendAxisRouting | undefined {
+  return readCodingRoutingEntry(runtime)?.routing;
 }
 
 /** Normalize a candidate to a known adapter id, or `undefined` if unusable. */
@@ -152,12 +163,17 @@ export function resolveCodingBackend(args: {
   /** The planner's heuristic `agentType` guess (lowest precedence). */
   plannerGuess?: string;
 }): CodingBackendResolution | undefined {
-  const coding = readCodingRouting(args.runtime);
-  const allow = coding?.allow
-    ?.map((v) => asKnownAdapter(v))
-    .filter((v): v is string => Boolean(v));
+  const codingEntry = readCodingRoutingEntry(args.runtime);
+  const coding = codingEntry?.routing;
+  const rawAllow = coding?.allow;
+  const allowConfigured = Array.isArray(rawAllow);
+  const allow = allowConfigured
+    ? rawAllow
+        .map((v) => asKnownAdapter(v))
+        .filter((v): v is string => Boolean(v))
+    : undefined;
   const allowed = (backend: string | undefined): string | undefined =>
-    backend && (!allow?.length || allow.includes(backend))
+    backend && (!allowConfigured || allow?.includes(backend))
       ? backend
       : undefined;
 
@@ -168,10 +184,20 @@ export function resolveCodingBackend(args: {
     const tag = args.tag?.trim().toLowerCase();
     if (tag && coding.byTag) {
       const byTag = allowed(asKnownAdapter(coding.byTag[tag]));
-      if (byTag) return { agentType: byTag, source: "character:byTag" };
+      if (byTag) {
+        return {
+          agentType: byTag,
+          source: `${codingEntry.source}:byTag` as CodingBackendSource,
+        };
+      }
     }
     const fallback = allowed(asKnownAdapter(coding.default));
-    if (fallback) return { agentType: fallback, source: "character:default" };
+    if (fallback) {
+      return {
+        agentType: fallback,
+        source: `${codingEntry.source}:default` as CodingBackendSource,
+      };
+    }
   }
 
   const pin = allowed(resolvePinnedAdapter(args.runtime));

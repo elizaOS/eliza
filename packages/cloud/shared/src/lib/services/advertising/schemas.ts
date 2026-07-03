@@ -1,6 +1,13 @@
 import { z } from "zod";
 
-export const AdPlatformSchema = z.enum(["meta", "google", "tiktok", "x-twitter"]);
+export const AdPlatformSchema = z.enum([
+  "meta",
+  "google",
+  "tiktok",
+  "x-twitter",
+  "reddit",
+  "linkedin",
+]);
 
 export const CampaignObjectiveSchema = z.enum([
   "awareness",

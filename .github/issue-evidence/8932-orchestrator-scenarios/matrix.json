@@ -759,11 +759,11 @@
   "flakyPassedCount": 0,
   "totalCostUsd": 0,
   "artifactPaths": {
-    "runDir": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/scenarios/pr-deterministic-orchestrator",
-    "matrixJson": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/scenarios/pr-deterministic-orchestrator/matrix.json",
-    "viewerIndex": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/scenarios/pr-deterministic-orchestrator/viewer/index.html",
-    "viewerData": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/scenarios/pr-deterministic-orchestrator/viewer/data.js",
-    "nativeJsonl": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/scenarios/pr-deterministic-orchestrator/native.jsonl",
-    "nativeManifest": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/scenarios/pr-deterministic-orchestrator/native.manifest.json"
+    "runDir": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/scenarios/pr-deterministic-orchestrator",
+    "matrixJson": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/scenarios/pr-deterministic-orchestrator/matrix.json",
+    "viewerIndex": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/scenarios/pr-deterministic-orchestrator/viewer/index.html",
+    "viewerData": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/scenarios/pr-deterministic-orchestrator/viewer/data.js",
+    "nativeJsonl": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/scenarios/pr-deterministic-orchestrator/native.jsonl",
+    "nativeManifest": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/scenarios/pr-deterministic-orchestrator/native.manifest.json"
   }
 }

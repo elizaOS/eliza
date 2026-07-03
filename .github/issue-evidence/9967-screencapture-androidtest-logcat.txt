@@ -1,6 +1,6 @@
 03-11 03:56:14.313 D/BaseIconCache( 8018): Default icon returned for ai.eliza.plugins.screencapture.test
 03-11 03:56:14.369 I/ActivityManager( 1676): Force stopping ai.eliza.plugins.screencapture.test appid=10342 user=0: start instr
-03-11 03:56:14.383 I/AppsFilter( 1676): interaction: PackageSetting{2077f16 ai.milady.milady/10323} -> PackageSetting{bb9e059 ai.eliza.plugins.screencapture.test/10342} BLOCKED
+03-11 03:56:14.383 I/AppsFilter( 1676): interaction: PackageSetting{2077f16 ai.elizaos.app/10323} -> PackageSetting{bb9e059 ai.eliza.plugins.screencapture.test/10342} BLOCKED
 03-11 03:56:14.383 I/AppsFilter( 1676): interaction: PackageSetting{34e7284 app.eliza/10324} -> PackageSetting{bb9e059 ai.eliza.plugins.screencapture.test/10342} BLOCKED
 03-11 03:56:14.383 I/AppsFilter( 1676): interaction: PackageSetting{5632a6d ai.eliza.plugins.websiteblocker.test/10341} -> PackageSetting{bb9e059 ai.eliza.plugins.screencapture.test/10342} BLOCKED
 03-11 03:56:14.383 I/AppsFilter( 1676): interaction: PackageSetting{f7476a2 com.google.android.microdroid.empty_payload/10404} -> PackageSetting{bb9e059 ai.eliza.plugins.screencapture.test/10342} BLOCKED
@@ -34,7 +34,7 @@
 03-11 03:56:15.960 I/ActivityManager( 1676): Killing 12129:ai.eliza.plugins.screencapture.test/u0a342 (adj 0): stop ai.eliza.plugins.screencapture.test due to finished inst
 03-11 03:56:15.980 V/ActivityManager( 1676): Got obituary of 12129:ai.eliza.plugins.screencapture.test
 03-11 03:56:16.363 I/ActivityManager( 1676): Force stopping ai.eliza.plugins.screencapture.test appid=10342 user=-1: deletePackageX
-03-11 03:56:16.363 I/AppsFilter( 1676): interaction: PackageSetting{26cf2f ai.milady.milady/10323} -> PackageSetting{ba5ba59 ai.eliza.plugins.screencapture.test/10342} BLOCKED
+03-11 03:56:16.363 I/AppsFilter( 1676): interaction: PackageSetting{26cf2f ai.elizaos.app/10323} -> PackageSetting{ba5ba59 ai.eliza.plugins.screencapture.test/10342} BLOCKED
 03-11 03:56:16.363 I/AppsFilter( 1676): interaction: PackageSetting{79a8967 app.eliza/10324} -> PackageSetting{ba5ba59 ai.eliza.plugins.screencapture.test/10342} BLOCKED
 03-11 03:56:16.364 I/AppsFilter( 1676): interaction: PackageSetting{83bcc1e ai.eliza.plugins.websiteblocker.test/10341} -> PackageSetting{ba5ba59 ai.eliza.plugins.screencapture.test/10342} BLOCKED
 03-11 03:56:16.364 I/AppsFilter( 1676): interaction: PackageSetting{52050ee com.google.android.microdroid.empty_payload/10404} -> PackageSetting{ba5ba59 ai.eliza.plugins.screencapture.test/10342} BLOCKED

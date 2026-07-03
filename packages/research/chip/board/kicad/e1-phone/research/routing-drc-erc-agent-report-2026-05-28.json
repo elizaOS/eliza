@@ -4,7 +4,7 @@
   "lane": "kicad_production_routing_and_drc_erc_evidence_feasibility",
   "status": "blocked_tool_unavailable_and_candidate_not_production_routed",
   "claim_boundary": "Local feasibility and evidence audit only. This is not DRC evidence, ERC evidence, production routing signoff, fabrication release, or routed-board promotion approval.",
-  "workspace": "/home/shaw/milady/eliza",
+  "workspace": "/home/shaw/eliza/eliza",
   "tool_preflight": {
     "kicad_cli_available": true,
     "kicad_cli_version": "7.0.11",

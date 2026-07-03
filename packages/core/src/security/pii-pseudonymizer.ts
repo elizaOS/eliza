@@ -92,7 +92,6 @@ export const DEFAULT_PSEUDONYM_BLOCKLIST: readonly string[] = [
 	"elizaos",
 	"eliza classic",
 	"eliza cloud",
-	"milady",
 	"anthropic",
 	"claude",
 	"openai",

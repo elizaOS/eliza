@@ -26,7 +26,7 @@ node packages/app-core/scripts/aosp/compile-libllama.mjs \
 
 Dry-run evidence from this host:
 
-- `install=/Users/shawwalters/eliza-workspace/milady/apps/app/android/app/src/main/assets/agent/arm64-v8a`
+- `install=/Users/shawwalters/eliza-workspace/eliza/apps/app/android/app/src/main/assets/agent/arm64-v8a`
 - `zig requirement: 0.13.0 <= version < 0.14.0 (aarch64-linux-musl pin)`
 
 ## Not verified here

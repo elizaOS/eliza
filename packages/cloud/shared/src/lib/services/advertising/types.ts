@@ -441,6 +441,8 @@ export const AD_CREDIT_RATES = {
     google: 1.1,
     tiktok: 1.1,
     "x-twitter": 1.1,
+    reddit: 1.1,
+    linkedin: 1.1,
   },
 
   // Analytics/reports

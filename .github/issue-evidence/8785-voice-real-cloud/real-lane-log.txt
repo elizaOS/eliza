@@ -1,7 +1,7 @@
 ### Real on-device ASR (fused libelizainference + Metal)
 [asr-real-smoke] lib=/Users/shawwalters/.local/state/eliza/local-inference/lib/libelizainference.dylib
 [asr-real-smoke] bundle=/Users/shawwalters/.eliza/local-inference/models/eliza-1-0_8b.bundle
-[asr-real-smoke] audio=/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-local-inference/native/omnivoice.cpp/examples/freeman.wav
+[asr-real-smoke] audio=/Users/shawwalters/eliza-workspace/eliza/eliza/plugins/plugin-local-inference/native/omnivoice.cpp/examples/freeman.wav
 [asr-real-smoke] (975ms) "If you go into different cultures, they have different concepts of creation. They have their own creation story and of what an afterlife is, where you go, what you do, who you're gonna be with. People who say, "Well.""
 [asr-real-smoke] words=39 sentences≈3
 [asr-real-smoke] PASS

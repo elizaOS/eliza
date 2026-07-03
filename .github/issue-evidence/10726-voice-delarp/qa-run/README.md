@@ -19,7 +19,7 @@ Driver: `scratchpad/qa-execute.mjs` (Playwright, fake-audio) against the **live 
 Mobile lane hit a `page.goto` timeout under machine load (env, not a product defect).
 
 ## Why no screenshots here
-The **running app is the Milady shell** (`milady/apps/app`), whose onboarding gate is not
+The **running app is the Eliza shell** (`eliza/apps/app`), whose onboarding gate is not
 dismissable via the eliza storage keys, so its onboarding renders **on top of** the (mounted,
 correctly-stated) chat overlay — the DOM states above are real, but the pixels are occluded.
 Clean full-page pixels + the end-to-end **video** come from the eliza-app e2e

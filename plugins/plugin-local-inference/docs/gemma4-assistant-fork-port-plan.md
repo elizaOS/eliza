@@ -4,7 +4,7 @@
 > completed and validated in the fork, *without* a full rebase. The `mem_other` /
 > `share` / `ctx_other` infra is additive (every existing arch passes null), so the
 > custom KV kernels are untouched. Fork PR **elizaOS/llama.cpp#32** (branch
-> `feat/gemma4-assistant-arch`, 22 files +419/-26), milady gitlink bump **eliza
+> `feat/gemma4-assistant-arch`, 22 files +419/-26), eliza gitlink bump **eliza
 > #9268**. Validated on M4 Max Metal: loads `gemma4-assistant` cleanly, correct
 > output, ~41-49% draft acceptance, **~1.1x decode speedup** (evidence:
 > `native/verify/evidence/platform/gemma4-assistant-fork-draft-mtp.log`). Three

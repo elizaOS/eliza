@@ -3,9 +3,9 @@
 # Reproduces the build + scoring on an x86_64 host. No git tree is touched.
 set -euo pipefail
 
-SRC=/home/shaw/milady/eliza/packages/native/plugins/wakeword-cpp
-WAKE=/home/shaw/.local/state/milady/local-inference/wake          # 3 staged GGUFs (v0.3.0)
-BASE=/tmp/claude-1000/-home-shaw-milady-eliza/0f9d78ee-be57-4a92-a2d4-d61de93eed6b/scratchpad
+SRC=/home/shaw/eliza/eliza/packages/native/plugins/wakeword-cpp
+WAKE=/home/shaw/.local/state/eliza/local-inference/wake          # 3 staged GGUFs (v0.3.0)
+BASE=/tmp/claude-1000/-home-shaw-eliza-eliza/0f9d78ee-be57-4a92-a2d4-d61de93eed6b/scratchpad
 BUILD=$BASE/wakeword-build
 EVID=$BASE/9880-linux-wakeword
 AUDIO=$EVID/audio

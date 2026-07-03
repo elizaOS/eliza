@@ -109,9 +109,10 @@ function disconnectedGoogle() {
   });
 }
 
+// Mirrors the registry declaration: the calendar owns a full-width row.
 const homeProps: Partial<WidgetProps> = {
   slot: "home",
-  spanClassName: "col-span-2 row-span-1",
+  spanClassName: "col-span-4 row-span-1",
 };
 
 afterEach(() => {
@@ -141,29 +142,25 @@ describe("CalendarUpcomingWidget", () => {
     expect(globalThis.fetch as ReturnType<typeof vi.fn>).not.toHaveBeenCalled();
   });
 
-  it("renders a connect affordance (not null) when no Google account is linked", async () => {
+  it("renders NOTHING when no Google account is linked — no connect-CTA tile", async () => {
     disconnectedGoogle();
     mockFeed([]);
-    render(<CalendarUpcomingWidget {...homeProps} />);
+    const { container } = render(<CalendarUpcomingWidget {...homeProps} />);
 
-    const connect = await screen.findByTestId(
-      "chat-widget-calendar-upcoming-connect",
-    );
-    expect(connect.textContent).toContain("Connect calendar");
-    expect(connect.getAttribute("aria-label")).toMatch(/Connect a Google/);
-
-    const navEvents: string[] = [];
-    const onNav = (e: Event) => {
-      const detail = (e as CustomEvent<{ viewPath?: string }>).detail;
-      if (detail?.viewPath) navEvents.push(detail.viewPath);
-    };
-    window.addEventListener("eliza:navigate:view", onNav);
-    fireEvent.click(connect);
-    window.removeEventListener("eliza:navigate:view", onNav);
-    expect(navEvents).toContain("/settings/connectors");
+    // The probe settles to "disconnected" and the widget self-hides; the
+    // connect flow lives in Settings → Connectors, not the home grid.
+    await waitFor(() => {
+      expect(listConnectorAccountsMock).toHaveBeenCalled();
+    });
+    await waitFor(() => {
+      expect(container.firstChild).toBeNull();
+    });
+    expect(
+      screen.queryByTestId("chat-widget-calendar-upcoming-connect"),
+    ).toBeNull();
   });
 
-  it("shows the connected-but-empty state when there are no upcoming events", async () => {
+  it("renders NOTHING when connected but no upcoming events — the row must earn its place", async () => {
     connectedGoogle();
     // A past event only — filtered out (startAt < now).
     mockFeed([
@@ -172,13 +169,15 @@ describe("CalendarUpcomingWidget", () => {
         startAt: new Date(Date.now() - 60 * 60_000).toISOString(),
       }),
     ]);
-    render(<CalendarUpcomingWidget {...homeProps} />);
+    const { container } = render(<CalendarUpcomingWidget {...homeProps} />);
 
     await waitFor(() => {
-      expect(
-        screen.getByTestId("chat-widget-calendar-upcoming").textContent,
-      ).toContain("No events today");
+      expect(listConnectorAccountsMock).toHaveBeenCalled();
     });
+    await waitFor(() => {
+      expect(container.firstChild).toBeNull();
+    });
+    expect(screen.queryByTestId("chat-widget-calendar-upcoming")).toBeNull();
   });
 
   it("shows ONE high-priority datum — the soonest event — with a +N more badge", async () => {
@@ -213,7 +212,7 @@ describe("CalendarUpcomingWidget", () => {
     const { container } = render(<CalendarUpcomingWidget {...homeProps} />);
     await screen.findByTestId("chat-widget-calendar-upcoming");
     const root = container.firstElementChild as HTMLElement;
-    expect(root.className).toContain("col-span-2");
+    expect(root.className).toContain("col-span-4");
     expect(root.className).toContain("row-span-1");
   });
 

@@ -32,12 +32,14 @@
 import {
   createWriteStream,
   existsSync,
+  linkSync,
   mkdirSync,
   readdirSync,
   readFileSync,
   renameSync,
   rmSync,
   statSync,
+  symlinkSync,
   unlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -472,6 +474,44 @@ function readPositiveIntEnv(name: string, fallback: number): number {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
+type AospKvCacheTypeName =
+  | "f16"
+  | "tbq3_0"
+  | "tbq4_0"
+  | "qjl1_256"
+  | "q4_polar";
+
+const AOSP_KV_CACHE_TYPE_NAMES: readonly AospKvCacheTypeName[] = [
+  "f16",
+  "tbq3_0",
+  "tbq4_0",
+  "qjl1_256",
+  "q4_polar",
+];
+
+/**
+ * Chat KV-cache type override (`ELIZA_LLAMA_KV_TYPE_K` / `_V`). The fork
+ * KV-quant defaults (qjl1_256 / q4_polar) are eliza-1's memory optimization,
+ * but some fused-lib builds reject a quantized V cache without flash_attn
+ * ("V cache quantization requires flash_attn" → llm_stream_open fails) — the
+ * env knob lets a device profile pin f16 without a rebuild.
+ */
+function readKvCacheTypeEnv(
+  name: string,
+  fallback: AospKvCacheTypeName,
+): AospKvCacheTypeName {
+  const raw = process.env[name]?.trim().toLowerCase();
+  if (!raw) return fallback;
+  const match = AOSP_KV_CACHE_TYPE_NAMES.find((candidate) => candidate === raw);
+  if (!match) {
+    logger.warn(
+      `[aosp-local-inference] ${name}="${raw}" is not a recognised KV cache type (accepted: ${AOSP_KV_CACHE_TYPE_NAMES.join(", ")}); using ${fallback}`,
+    );
+    return fallback;
+  }
+  return match;
+}
+
 function readNonNegativeIntEnv(name: string): number | null {
   const raw = process.env[name]?.trim();
   if (!raw) return null;
@@ -687,8 +727,8 @@ export function buildAospLoadModelArgs(
       useGpu: gpuLayers > 0,
       gpuLayers,
       kvCacheType: {
-        k: "qjl1_256",
-        v: "q4_polar",
+        k: readKvCacheTypeEnv("ELIZA_LLAMA_KV_TYPE_K", "qjl1_256"),
+        v: readKvCacheTypeEnv("ELIZA_LLAMA_KV_TYPE_V", "q4_polar"),
       },
     };
   }
@@ -2091,6 +2131,44 @@ function resolveAospFusedKokoroConfig(): AospFusedKokoroConfig | null {
   return { libPath, bundleRoot, kokoroGgufPath, kokoroVoicePath };
 }
 
+/**
+ * The fused lib resolves the chat GGUF strictly as `<bundleRoot>/text/*.gguf`,
+ * but Android first-run staging lays the curated model FLAT under `models/`.
+ * Mirror the bionic host's hardlink-bundle shim (`deriveBundleDir` in
+ * plugin-local-inference's bionic-host-loader) so the fused musl loader
+ * accepts the flat layout: hardlink (or symlink) the flat GGUF into
+ * `<bundleRoot>/text/` without copying the multi-GB model bytes. Best-effort —
+ * on failure the fused create/tokenize surfaces its own loud
+ * "no text GGUF found" diagnostic (verified live on emulator-5554).
+ */
+function ensureFusedTextBundleLayout(
+  modelPath: string,
+  bundleRoot: string,
+): void {
+  try {
+    if (!modelPath.endsWith(".gguf") || !existsSync(modelPath)) return;
+    if (path.basename(path.dirname(modelPath)) === "text") return;
+    const textDir = path.join(bundleRoot, "text");
+    const target = path.join(textDir, path.basename(modelPath));
+    if (existsSync(target)) return;
+    mkdirSync(textDir, { recursive: true });
+    try {
+      linkSync(modelPath, target);
+    } catch {
+      symlinkSync(modelPath, target);
+    }
+    writeAospLlamaDebugLog("bootstrap:fusedText:flatBundleShim", {
+      modelPath,
+      target,
+    });
+  } catch (err) {
+    writeAospLlamaDebugLog("bootstrap:fusedText:flatBundleShimFailed", {
+      modelPath,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
 function resolveBundleRootFromModelPath(modelPath: string): string {
   const parts = modelPath.replaceAll("\\", "/").split("/");
   const bundleIndex = parts.findIndex((part) => part.endsWith(".bundle"));
@@ -2151,13 +2229,15 @@ function readFfiStringAndFree(
 }
 
 function readFfiPointer(
-  ffi: BunFfiModule,
+  _ffi: BunFfiModule,
   ptrBuffer: Buffer,
   offset = 0,
 ): bigint {
-  const viaFfi = ffi.read?.ptr?.(ptrBuffer, offset);
-  if (typeof viaFfi === "bigint") return viaFfi;
-  if (typeof viaFfi === "number") return BigInt(viaFfi);
+  // NOTE: never hand the Buffer to `ffi.read.ptr` — bun's `read.ptr` takes a
+  // raw Pointer NUMBER and throws "Expected a pointer" for a Buffer (verified
+  // on-device, bun 1.3.14). That throw masked every native error diagnostic
+  // on the fused-lib error paths. The out-param bytes live in JS memory, so a
+  // DataView read is always correct.
   const view = new DataView(
     ptrBuffer.buffer,
     ptrBuffer.byteOffset,
@@ -2500,6 +2580,8 @@ interface AospFusedTextLoaderState {
   gpuLayers?: number;
   contextSize: number | null;
   draftModelPath: string | null;
+  /** Set after a one-time f16 retry when the build rejects KV-quant. */
+  kvQuantRejected?: boolean;
 }
 
 /**
@@ -2727,6 +2809,10 @@ export async function tryBuildAospFusedTextLoader(): Promise<AospLoader | null> 
       // context is created lazily on the first load; its bundle root is
       // derived from the resolved model path so the loader does not need a
       // pre-staged bundle at boot.
+      ensureFusedTextBundleLayout(
+        args.modelPath,
+        state?.bundleRoot ?? resolveBundleRootFromModelPath(args.modelPath),
+      );
       if (!state) {
         const bundleRoot = resolveBundleRootFromModelPath(args.modelPath);
         const errCreate = Buffer.alloc(8);
@@ -2835,14 +2921,48 @@ export async function tryBuildAospFusedTextLoader(): Promise<AospLoader | null> 
         disableThinking: false,
         contextSize: active.contextSize,
       };
-      const result = await streamGenerate(active.binding, {
-        ctx: active.ctx,
-        config,
-        promptTokens,
-        ...(args.signal ? { signal: args.signal } : {}),
-        ...(args.onTextChunk ? { onTextChunk: args.onTextChunk } : {}),
-      });
-      return result.text;
+      const runStream = async () => {
+        const result = await streamGenerate(active.binding, {
+          ctx: active.ctx,
+          config,
+          promptTokens,
+          ...(args.signal ? { signal: args.signal } : {}),
+          ...(args.onTextChunk ? { onTextChunk: args.onTextChunk } : {}),
+        });
+        return result.text;
+      };
+      try {
+        return await runStream();
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        // Some fused-lib builds reject a quantized V cache without flash_attn
+        // ("V cache quantization requires flash_attn" → llm_stream_open fails
+        // to init the llama context). Retry ONCE with f16 KV so local text
+        // inference stays alive, and log loudly — the eliza-1 KV-quant memory
+        // optimization is disabled for the rest of this load.
+        const kvQuantRejection =
+          /flash_attn|failed to init llama context/i.test(message);
+        if (active.kvQuantRejected || !kvQuantRejection) {
+          throw err;
+        }
+        active.kvQuantRejected = true;
+        logger.warn(
+          `[aosp-local-inference] fused llm_stream_open rejected the KV-quant cache config (${message}); retrying with f16 KV cache — eliza-1 KV-quant memory optimization DISABLED for this model load. Set ELIZA_LLAMA_KV_TYPE_K/V=f16 to silence this retry, or ship a fused lib with flash_attn wired for quantized V cache.`,
+        );
+        writeAospLlamaDebugLog("bootstrap:fusedText:kvQuantRejected", {
+          message,
+        });
+        active.binding = createAospStreamingLlmBinding({
+          ctx: active.ctx,
+          symbols: active.symbols as unknown as AospFusedLlmSymbols,
+          helpers: active.helpers,
+          ...(typeof active.gpuLayers === "number"
+            ? { gpuLayers: active.gpuLayers }
+            : {}),
+          kvCacheTypes: { cacheTypeK: "f16", cacheTypeV: "f16" },
+        });
+        return await runStream();
+      }
     },
 
     async embed(args): Promise<{ embedding: number[]; tokens: number }> {

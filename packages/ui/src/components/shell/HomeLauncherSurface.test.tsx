@@ -10,16 +10,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { HomeLauncherSurface } from "./HomeLauncherSurface";
 import { dispatchHomeLauncherNavigation } from "./home-launcher-events";
 
-function LauncherProbe({
-  onNavigateHomeFromEdge,
-}: {
-  onNavigateHomeFromEdge?: () => void;
-}) {
-  return (
-    <button type="button" onClick={onNavigateHomeFromEdge}>
-      edge home
-    </button>
-  );
+function LauncherProbe() {
+  return <div data-testid="launcher-probe">launcher</div>;
 }
 
 const originalMatchMedia = window.matchMedia;
@@ -63,7 +55,7 @@ describe("HomeLauncherSurface", () => {
     );
 
     expect(screen.getByTestId("home-pane")).toBeTruthy();
-    expect(screen.getByText("edge home")).toBeTruthy();
+    expect(screen.getByTestId("launcher-probe")).toBeTruthy();
 
     const homePage = screen.getByTestId("home-launcher-home-page");
     fireEvent.pointerDown(homePage, {
@@ -87,7 +79,7 @@ describe("HomeLauncherSurface", () => {
     ).toBe("launcher");
   });
 
-  it("accepts navigation events and lets Launcher edge-swipe back home", () => {
+  it("accepts navigation events and a right flick on the launcher half rides the rail home", () => {
     render(
       <HomeLauncherSurface
         home={<div>home</div>}
@@ -100,7 +92,24 @@ describe("HomeLauncherSurface", () => {
       screen.getByTestId("home-launcher-surface").getAttribute("data-page"),
     ).toBe("launcher");
 
-    fireEvent.click(screen.getByText("edge home"));
+    // The rail owns the back gesture on the launcher half — a decisive right
+    // flick commits home (no inner edge-swipe delegate anymore).
+    const launcherPage = screen.getByTestId("home-launcher-launcher-page");
+    fireEvent.pointerDown(launcherPage, {
+      isPrimary: true,
+      clientX: 120,
+      clientY: 300,
+    });
+    fireEvent.pointerMove(launcherPage, {
+      isPrimary: true,
+      clientX: 260,
+      clientY: 304,
+    });
+    fireEvent.pointerUp(launcherPage, {
+      isPrimary: true,
+      clientX: 260,
+      clientY: 304,
+    });
 
     expect(
       screen.getByTestId("home-launcher-surface").getAttribute("data-page"),

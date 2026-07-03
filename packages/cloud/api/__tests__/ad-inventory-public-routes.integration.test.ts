@@ -128,6 +128,7 @@ async function seedWorld() {
       platform: "meta",
       external_account_id: uniq("acct"),
       account_name: "Adv Account",
+      status: "active",
     })
     .returning();
   const [campaign] = await dbWrite

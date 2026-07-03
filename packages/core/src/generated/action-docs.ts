@@ -5619,6 +5619,14 @@ export const allActionsSpec = {
 			],
 		},
 		{
+			name: "DUPLICATE_AD_CAMPAIGN",
+			description:
+				"Duplicate a Cloud advertising campaign config and creatives into a new draft. Requires structured campaignId; optional name sets the copy name.",
+			parameters: [],
+			descriptionCompressed: "Duplicate an ad campaign into a draft copy.",
+			similes: ["COPY_AD_CAMPAIGN", "CLONE_AD_CAMPAIGN"],
+		},
+		{
 			name: "ELEVATED_COMMAND",
 			description: "Set elevated permission mode",
 			parameters: [
@@ -6235,6 +6243,20 @@ export const allActionsSpec = {
 			],
 		},
 		{
+			name: "GET_AD_CAMPAIGN_ATTRIBUTION",
+			description:
+				"Fetch the signed conversion pixel and webhook install instructions for an Eliza Cloud advertising campaign by campaign id.",
+			parameters: [],
+			descriptionCompressed:
+				"Fetch signed conversion pixel/webhook install instructions for a campaign.",
+			similes: [
+				"GET_CONVERSION_PIXEL",
+				"GET_ATTRIBUTION_PIXEL",
+				"GET_CAMPAIGN_WEBHOOK",
+				"INSTALL_CONVERSION_TRACKING",
+			],
+		},
+		{
 			name: "GET_APP",
 			description:
 				"Show details about one specific Eliza Cloud app the user owns (URL, deployment status, credits used, earnings, users). Use when the user asks about a particular app by name or id.",
@@ -6682,14 +6704,14 @@ export const allActionsSpec = {
 				{
 					name: "classification",
 					description:
-						"Optional triage queue filter for persisted items: ignore | info | notify | needs_reply | urgent. When set on triage, reads the queue without classifying fresh messages.",
+						"Optional triage queue filter for returned persisted items: ignore | info | notify | needs_reply | urgent. Fresh messages are still classified first.",
 					required: false,
 					schema: {
 						type: "string",
 						enum: ["ignore", "info", "notify", "needs_reply", "urgent"],
 					},
 					descriptionCompressed:
-						"Optional triage queue filter for persisted items: ignore | info | notify | needs_reply | urgent. When set on triage, reads the queue without classifying...",
+						"Optional triage queue filter for returned persisted items: ignore | info | notify | needs_reply | urgent. Fresh msgs are still classified first.",
 				},
 				{
 					name: "includeSnoozed",
@@ -8648,6 +8670,19 @@ export const allActionsSpec = {
 						},
 					},
 				},
+			],
+		},
+		{
+			name: "SET_AD_CAMPAIGN_DAYPARTING",
+			description:
+				"Set a Cloud advertising campaign's dayparting delivery schedule. Requires structured campaignId and dayparting { timezone, windows } parameters.",
+			parameters: [],
+			descriptionCompressed:
+				"Set dayparting delivery windows for an ad campaign.",
+			similes: [
+				"SCHEDULE_AD_CAMPAIGN",
+				"SET_AD_DELIVERY_WINDOWS",
+				"UPDATE_AD_DAYPARTING",
 			],
 		},
 		{

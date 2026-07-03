@@ -2,26 +2,26 @@ $ node scripts/lint-default-packs.mjs
 [lint-default-packs] clean — 0 findings across default packs.
 $ vitest run --config vitest.config.ts
 
- RUN  v4.1.5 /Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/ui-mobile-wave3
+ RUN  v4.1.5 /Users/shawwalters/eliza-workspace/eliza/eliza/.claude/worktrees/ui-mobile-wave3
 
-Sourcemap for "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/ui-mobile-wave3/node_modules/.bun/entities@4.5.0/node_modules/entities/lib/esm/index.js" points to missing source files
-Sourcemap for "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/ui-mobile-wave3/node_modules/.bun/entities@4.5.0/node_modules/entities/lib/esm/decode.js" points to missing source files
-Sourcemap for "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/ui-mobile-wave3/node_modules/.bun/entities@4.5.0/node_modules/entities/lib/esm/generated/decode-data-html.js" points to missing source files
-Sourcemap for "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/ui-mobile-wave3/node_modules/.bun/entities@4.5.0/node_modules/entities/lib/esm/generated/decode-data-xml.js" points to missing source files
-Sourcemap for "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/ui-mobile-wave3/node_modules/.bun/entities@4.5.0/node_modules/entities/lib/esm/decode_codepoint.js" points to missing source files
-Sourcemap for "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/ui-mobile-wave3/node_modules/.bun/entities@4.5.0/node_modules/entities/lib/esm/encode.js" points to missing source files
-Sourcemap for "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/ui-mobile-wave3/node_modules/.bun/entities@4.5.0/node_modules/entities/lib/esm/generated/encode-html.js" points to missing source files
-Sourcemap for "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/ui-mobile-wave3/node_modules/.bun/entities@4.5.0/node_modules/entities/lib/esm/escape.js" points to missing source files
+Sourcemap for "/Users/shawwalters/eliza-workspace/eliza/eliza/.claude/worktrees/ui-mobile-wave3/node_modules/.bun/entities@4.5.0/node_modules/entities/lib/esm/index.js" points to missing source files
+Sourcemap for "/Users/shawwalters/eliza-workspace/eliza/eliza/.claude/worktrees/ui-mobile-wave3/node_modules/.bun/entities@4.5.0/node_modules/entities/lib/esm/decode.js" points to missing source files
+Sourcemap for "/Users/shawwalters/eliza-workspace/eliza/eliza/.claude/worktrees/ui-mobile-wave3/node_modules/.bun/entities@4.5.0/node_modules/entities/lib/esm/generated/decode-data-html.js" points to missing source files
+Sourcemap for "/Users/shawwalters/eliza-workspace/eliza/eliza/.claude/worktrees/ui-mobile-wave3/node_modules/.bun/entities@4.5.0/node_modules/entities/lib/esm/generated/decode-data-xml.js" points to missing source files
+Sourcemap for "/Users/shawwalters/eliza-workspace/eliza/eliza/.claude/worktrees/ui-mobile-wave3/node_modules/.bun/entities@4.5.0/node_modules/entities/lib/esm/decode_codepoint.js" points to missing source files
+Sourcemap for "/Users/shawwalters/eliza-workspace/eliza/eliza/.claude/worktrees/ui-mobile-wave3/node_modules/.bun/entities@4.5.0/node_modules/entities/lib/esm/encode.js" points to missing source files
+Sourcemap for "/Users/shawwalters/eliza-workspace/eliza/eliza/.claude/worktrees/ui-mobile-wave3/node_modules/.bun/entities@4.5.0/node_modules/entities/lib/esm/generated/encode-html.js" points to missing source files
+Sourcemap for "/Users/shawwalters/eliza-workspace/eliza/eliza/.claude/worktrees/ui-mobile-wave3/node_modules/.bun/entities@4.5.0/node_modules/entities/lib/esm/escape.js" points to missing source files
 (node:74947) ExperimentalWarning: SQLite is an experimental feature and might change at any time
 (Use `node --trace-warnings ...` to show where the warning was created)
-Sourcemap for "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/ui-mobile-wave3/node_modules/.bun/@electric-sql+client@1.5.22/node_modules/@electric-sql/client/dist/index.mjs" points to missing source files
-4:11:38 AM [vite] (ssr) Failed to load source map for /Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/ui-mobile-wave3/node_modules/.bun/typescript@6.0.3/node_modules/typescript/lib/typescript.js.
+Sourcemap for "/Users/shawwalters/eliza-workspace/eliza/eliza/.claude/worktrees/ui-mobile-wave3/node_modules/.bun/@electric-sql+client@1.5.22/node_modules/@electric-sql/client/dist/index.mjs" points to missing source files
+4:11:38 AM [vite] (ssr) Failed to load source map for /Users/shawwalters/eliza-workspace/eliza/eliza/.claude/worktrees/ui-mobile-wave3/node_modules/.bun/typescript@6.0.3/node_modules/typescript/lib/typescript.js.
 Error: An error occurred while trying to read the map file at typescript.js.map
-Error: ENOENT: no such file or directory, open '/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/ui-mobile-wave3/node_modules/.bun/typescript@6.0.3/node_modules/typescript/lib/typescript.js.map'
+Error: ENOENT: no such file or directory, open '/Users/shawwalters/eliza-workspace/eliza/eliza/.claude/worktrees/ui-mobile-wave3/node_modules/.bun/typescript@6.0.3/node_modules/typescript/lib/typescript.js.map'
     at open (node:internal/fs/promises:640:25)
     at Object.readFile (node:internal/fs/promises:1277:14)
-    at extractSourcemapFromFile (file:///Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/ui-mobile-wave3/node_modules/.bun/vite@7.3.3+8486e62b86ea2758/node_modules/vite/dist/node/chunks/config.js:8066:65)
-    at loadAndTransform (file:///Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/ui-mobile-wave3/node_modules/.bun/vite@7.3.3+8486e62b86ea2758/node_modules/vite/dist/node/chunks/config.js:22657:22)
+    at extractSourcemapFromFile (file:///Users/shawwalters/eliza-workspace/eliza/eliza/.claude/worktrees/ui-mobile-wave3/node_modules/.bun/vite@7.3.3+8486e62b86ea2758/node_modules/vite/dist/node/chunks/config.js:8066:65)
+    at loadAndTransform (file:///Users/shawwalters/eliza-workspace/eliza/eliza/.claude/worktrees/ui-mobile-wave3/node_modules/.bun/vite@7.3.3+8486e62b86ea2758/node_modules/vite/dist/node/chunks/config.js:22657:22)
 (node:76159) ExperimentalWarning: SQLite is an experimental feature and might change at any time
 (Use `node --trace-warnings ...` to show where the warning was created)
 

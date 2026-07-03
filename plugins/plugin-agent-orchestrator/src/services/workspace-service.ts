@@ -447,7 +447,7 @@ export class CodingWorkspaceService {
 
     // Normalize common shorthand like owner/repo before handing it to the
     // lower-level clone service, which expects an actual remote URL, then hard-
-    // gate it at the Milady boundary BEFORE any git spawn. assertSafeGitRemote
+    // gate it at the local boundary BEFORE any git spawn. assertSafeGitRemote
     // rejects transport helpers, leading-"-" argument injection, non-http(s)/ssh
     // schemes, AND shell metacharacters — so the SAME validated string is safe
     // on every downstream strategy (credentialed execFile clone, worktree, and

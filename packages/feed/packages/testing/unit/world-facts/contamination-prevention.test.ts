@@ -15,9 +15,9 @@
  * These tests exercise the full contamination lifecycle:
  *   Source → Generate → Gate → (would store) → Read back → Generate again
  *
- * Requires OPENAI_API_KEY for embedding-based tests. Tests that need embeddings
- * are marked with [EMBEDDING] in their names — they degrade gracefully when
- * the key is absent but provide stronger coverage with it.
+ * Requires a real embedding provider for embedding-based tests. Tests that need
+ * embeddings are marked with [EMBEDDING] in their names and skip only when no
+ * real provider is configured.
  */
 
 import { describe, expect, test } from "bun:test";
@@ -29,7 +29,7 @@ import {
   validateGrounding,
 } from "@feed/engine";
 
-// ─── Helper: check if embeddings are available ──────────────────────────────
+// ─── Helper: require a real embedding provider ──────────────────────────────
 
 // unit/preload.ts injects OPENAI_API_KEY="mock-openai-api-key-for-testing" as a
 // placeholder for modules that validate config at import time. That mock cannot

@@ -195,6 +195,9 @@ TUNNEL_AUTH_KEY_COST_USD = "0.01"
 #   STRIPE_WEBHOOK_SECRET              Stripe webhook signing (main billing endpoint)
 #   STRIPE_CONNECT_WEBHOOK_SECRET      Stripe Connect endpoint webhook signing (payouts; distinct secret — the Connect payout webhook fail-closes without it)
 #   STRIPE_SMALL_PACK_PRICE_ID         (and MEDIUM/LARGE *_PRICE_ID/_PRODUCT_ID)
+#   OXAPAY_MERCHANT_API_KEY            OxaPay crypto checkout + webhook verification
+#   OXAPAY_WEBHOOK_IPS                 Optional OxaPay webhook source IP allowlist
+#   OXAPAY_PAYMENT_REQUESTS_CALLBACK_URL Payment-request settlement callback override
 #   KV_REST_API_URL                    Upstash Redis REST (LEGACY fallback only; primary is REDIS_URL)
 #   KV_REST_API_TOKEN                  Upstash auth (legacy fallback)
 #   KV_REST_API_READ_ONLY_TOKEN        Upstash read-only token (legacy fallback)
@@ -205,6 +208,10 @@ TUNNEL_AUTH_KEY_COST_USD = "0.01"
 #   GROQ_API_KEY                       Groq
 #   CEREBRAS_API_KEY                   Cerebras — ultra-fast inference for provisioning chat agent
 #   FAL_KEY                            Fal.ai video gen
+#   FAL_API_KEY                        Alias for FAL_KEY used by image/video/music generation
+#   ATLASCLOUD_API_KEY                 AtlasCloud image generation billing key
+#   ATLASCLOUD_BASE_URL                Optional AtlasCloud API base URL override
+#   BIRDEYE_API_KEY                    Birdeye defi/price proxy key
 #   ELEVENLABS_API_KEY                 ElevenLabs TTS
 #   HF_TOKEN                           HuggingFace token for the /api/v1/hf-proxy/* route
 #       (gated eliza-1 bundle downloads; clients never hold an HF key)
@@ -244,6 +251,7 @@ TUNNEL_AUTH_KEY_COST_USD = "0.01"
 #   HEADSCALE_API_KEY / HEADSCALE_INTERNAL_TOKEN
 #   TUNNEL_HOSTNAME_SIGNING_SECRET     Shared HMAC secret with tunnel-proxy
 #   AGENT_SERVER_SHARED_SECRET / WAIFU_SERVICE_KEY
+#   WAIFU_BRIDGE_ORG_ID                Required owner org for waifu bridge user provisioning
 # -----------------------------------------------------------------------------
 
 # =============================================================================

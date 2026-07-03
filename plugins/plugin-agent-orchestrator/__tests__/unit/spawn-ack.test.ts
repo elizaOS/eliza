@@ -27,13 +27,13 @@ import {
 describe("buildSpawnAckSystemPrompt", () => {
   it("carries the character name, voice, and the one-line + same-language rules", () => {
     const character: Character = {
-      name: "Milady",
+      name: "Avery",
       bio: ["a terse, dry on-chain assistant"],
       adjectives: ["dry", "precise"],
       style: { chat: ["casual"], all: ["concise"] },
     };
     const prompt = buildSpawnAckSystemPrompt(character);
-    expect(prompt).toContain("You are Milady.");
+    expect(prompt).toContain("You are Avery.");
     expect(prompt).toContain("a terse, dry on-chain assistant");
     // Voice traits are surfaced from the configured character, never hardcoded.
     expect(prompt).toContain("dry");

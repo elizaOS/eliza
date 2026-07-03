@@ -1,14 +1,14 @@
 [ios-device-capture] --skip-build: reusing existing test products
-[ios-device-capture] xctestrun: /Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/eliza-11030/packages/app/ios/build/xcuitest-dd/Build/Products/AppUITests_AppUITests_iphonesimulator26.4-arm64.xctestrun
+[ios-device-capture] xctestrun: /Users/shawwalters/eliza-workspace/eliza/eliza/.claude/worktrees/eliza-11030/packages/app/ios/build/xcuitest-dd/Build/Products/AppUITests_AppUITests_iphonesimulator26.4-arm64.xctestrun
 [ios-device-capture] simctl install AppUITests-Runner.app
 [ios-device-capture] simctl install App.app
 [ios-device-capture] destination: platform=iOS Simulator,id=39F890C2-072D-4BFE-9144-5327AF30B10A
 Command line invocation:
-    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild test-without-building -xctestrun /private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/d3-verify-rerun/boot-capture.xctestrun -destination "platform=iOS Simulator,id=39F890C2-072D-4BFE-9144-5327AF30B10A" -resultBundlePath /private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/d3-verify-rerun/BootCapture.xcresult -only-testing AppUITests/BootCaptureUITests
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild test-without-building -xctestrun /private/tmp/claude-501/-Users-shawwalters-eliza-workspace-eliza-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/d3-verify-rerun/boot-capture.xctestrun -destination "platform=iOS Simulator,id=39F890C2-072D-4BFE-9144-5327AF30B10A" -resultBundlePath /private/tmp/claude-501/-Users-shawwalters-eliza-workspace-eliza-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/d3-verify-rerun/BootCapture.xcresult -only-testing AppUITests/BootCaptureUITests
 
 2026-07-02 02:00:55.594 xcodebuild[67892:62740128] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
 Writing result bundle at path:
-	/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/d3-verify-rerun/BootCapture.xcresult
+	/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-eliza-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/d3-verify-rerun/BootCapture.xcresult
 
 2026-07-02 02:00:55.651 xcodebuild[67892:62740128] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
 --- xcodebuild: WARNING: Using the first of multiple matching destinations:
@@ -67,7 +67,7 @@ Test Suite 'Selected tests' passed at 2026-07-02 02:01:13.232.
 2026-07-02 02:01:13.585 xcodebuild[67892:62740128] [MT] IDETestOperationsObserverDebug: 16.359 sec, +16.359 sec -- end
 
 Test session results, code coverage, and logs:
-	/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/d3-verify-rerun/BootCapture.xcresult
+	/tmp/claude-501/-Users-shawwalters-eliza-workspace-eliza-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/d3-verify-rerun/BootCapture.xcresult
 
 ** TEST EXECUTE SUCCEEDED **
 
@@ -77,7 +77,7 @@ File: 2311588C-40FB-4EE5-9503-33F92144EEF4.txt, suggested name: "ax-hierarchy_0_
 File: 4B1BE4CE-3D89-4B31-928F-1CEB42C294F8.png, suggested name: "boot-final-home_0_5D293B06-E8BD-43AB-87E6-339EE6E25E72.png"
 File: 1D8CEAAD-6437-40E2-ACEE-6932B54D13B6.png, suggested name: "boot-000s_0_5A0C7CD4-0E3B-4216-81B5-299389AA1C73.png"
 
-Generated manifest file with attachment details: /private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/d3-verify-rerun/attachments/manifest.json
-[ios-device-capture] attachments: 4 file(s) in /private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/d3-verify-rerun/attachments
-[ios-device-capture] result bundle: /private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/d3-verify-rerun/BootCapture.xcresult
+Generated manifest file with attachment details: /private/tmp/claude-501/-Users-shawwalters-eliza-workspace-eliza-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/d3-verify-rerun/attachments/manifest.json
+[ios-device-capture] attachments: 4 file(s) in /private/tmp/claude-501/-Users-shawwalters-eliza-workspace-eliza-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/d3-verify-rerun/attachments
+[ios-device-capture] result bundle: /private/tmp/claude-501/-Users-shawwalters-eliza-workspace-eliza-eliza/4a06843a-558f-4c29-9bc0-6edc1a280d55/scratchpad/d3-verify-rerun/BootCapture.xcresult
 [ios-device-capture] boot capture PASSED (home or startup-failure card reached).

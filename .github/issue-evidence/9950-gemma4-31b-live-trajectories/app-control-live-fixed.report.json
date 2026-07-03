@@ -5415,9 +5415,9 @@
   "flakyPassedCount": 0,
   "totalCostUsd": 0,
   "artifactPaths": {
-    "runDir": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza--claude-worktrees-nice-spence-509094/6fe4b554-7b95-4b3e-88ab-6f26ab022d08/scratchpad/evidence-gemma-run-final",
-    "matrixJson": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza--claude-worktrees-nice-spence-509094/6fe4b554-7b95-4b3e-88ab-6f26ab022d08/scratchpad/evidence-gemma-run-final/matrix.json",
-    "viewerIndex": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza--claude-worktrees-nice-spence-509094/6fe4b554-7b95-4b3e-88ab-6f26ab022d08/scratchpad/evidence-gemma-run-final/viewer/index.html",
-    "viewerData": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza--claude-worktrees-nice-spence-509094/6fe4b554-7b95-4b3e-88ab-6f26ab022d08/scratchpad/evidence-gemma-run-final/viewer/data.js"
+    "runDir": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-eliza-eliza--claude-worktrees-nice-spence-509094/6fe4b554-7b95-4b3e-88ab-6f26ab022d08/scratchpad/evidence-gemma-run-final",
+    "matrixJson": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-eliza-eliza--claude-worktrees-nice-spence-509094/6fe4b554-7b95-4b3e-88ab-6f26ab022d08/scratchpad/evidence-gemma-run-final/matrix.json",
+    "viewerIndex": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-eliza-eliza--claude-worktrees-nice-spence-509094/6fe4b554-7b95-4b3e-88ab-6f26ab022d08/scratchpad/evidence-gemma-run-final/viewer/index.html",
+    "viewerData": "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-eliza-eliza--claude-worktrees-nice-spence-509094/6fe4b554-7b95-4b3e-88ab-6f26ab022d08/scratchpad/evidence-gemma-run-final/viewer/data.js"
   }
 }

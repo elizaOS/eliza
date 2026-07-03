@@ -1,0 +1,96 @@
+# /private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/57726691-214c-40f9-bc80-cc4cdb2cab61/scratchpad/g4a4b/drafter-4b.gguf: v3 tensors=49 kv=42
+general.architecture = gemma4-assistant
+general.type = model
+general.sampling.top_k = 64
+general.sampling.top_p = 0.949999988079071
+general.sampling.temp = 1.0
+general.name = Model
+general.size_label = 78M
+gemma4-assistant.block_count = 4
+gemma4-assistant.context_length = 131072
+gemma4-assistant.embedding_length = 256
+gemma4-assistant.feed_forward_length = 2048
+gemma4-assistant.attention.head_count = 4
+gemma4-assistant.attention.head_count_kv = 2
+gemma4-assistant.rope.freq_base = 1000000.0
+gemma4-assistant.rope.freq_base_swa = 10000.0
+gemma4-assistant.attention.layer_norm_rms_epsilon = 9.999999974752427e-07
+gemma4-assistant.attention.key_length = 512
+gemma4-assistant.attention.value_length = 512
+general.file_type = 1
+gemma4-assistant.attention.sliding_window = 512
+gemma4-assistant.attention.shared_kv_layers = 4
+gemma4-assistant.embedding_length_per_layer_input = 0
+gemma4-assistant.attention.sliding_window_pattern = [1, 1, 1, 0]
+gemma4-assistant.attention.key_length_swa = 256
+gemma4-assistant.attention.value_length_swa = 256
+gemma4-assistant.rope.dimension_count = 512
+gemma4-assistant.rope.dimension_count_swa = 256
+gemma4-assistant.embedding_length_out = 2560
+gemma4-assistant.nextn_predict_layers = 1
+general.quantization_version = 2
+tokenizer.ggml.model = gemma4
+tokenizer.ggml.bos_token_id = 2
+tokenizer.ggml.eos_token_id = 1
+tokenizer.ggml.unknown_token_id = 3
+tokenizer.ggml.padding_token_id = 0
+tokenizer.ggml.mask_token_id = 4
+tokenizer.ggml.add_space_prefix = 0
+tokenizer.ggml.add_bos_token = 1
+T rope_freqs.weight [256] type=0
+T token_embd.weight [256, 262144] type=1
+T blk.0.attn_norm.weight [256] type=0
+T blk.0.layer_output_scale.weight [1] type=0
+T blk.0.ffn_down.weight [2048, 256] type=1
+T blk.0.ffn_gate.weight [256, 2048] type=1
+T blk.0.ffn_up.weight [256, 2048] type=1
+T blk.0.post_attention_norm.weight [256] type=0
+T blk.0.post_ffw_norm.weight [256] type=0
+T blk.0.ffn_norm.weight [256] type=0
+T blk.0.attn_output.weight [1024, 256] type=1
+T blk.0.attn_q_norm.weight [256] type=0
+T blk.0.attn_q.weight [256, 1024] type=1
+T blk.1.attn_norm.weight [256] type=0
+T blk.1.layer_output_scale.weight [1] type=0
+T blk.1.ffn_down.weight [2048, 256] type=1
+T blk.1.ffn_gate.weight [256, 2048] type=1
+T blk.1.ffn_up.weight [256, 2048] type=1
+T blk.1.post_attention_norm.weight [256] type=0
+T blk.1.post_ffw_norm.weight [256] type=0
+T blk.1.ffn_norm.weight [256] type=0
+T blk.1.attn_output.weight [1024, 256] type=1
+T blk.1.attn_q_norm.weight [256] type=0
+T blk.1.attn_q.weight [256, 1024] type=1
+T blk.2.attn_norm.weight [256] type=0
+T blk.2.layer_output_scale.weight [1] type=0
+T blk.2.ffn_down.weight [2048, 256] type=1
+T blk.2.ffn_gate.weight [256, 2048] type=1
+T blk.2.ffn_up.weight [256, 2048] type=1
+T blk.2.post_attention_norm.weight [256] type=0
+T blk.2.post_ffw_norm.weight [256] type=0
+T blk.2.ffn_norm.weight [256] type=0
+T blk.2.attn_output.weight [1024, 256] type=1
+T blk.2.attn_q_norm.weight [256] type=0
+T blk.2.attn_q.weight [256, 1024] type=1
+T blk.3.attn_norm.weight [256] type=0
+T blk.3.layer_output_scale.weight [1] type=0
+T blk.3.ffn_down.weight [2048, 256] type=1
+T blk.3.ffn_gate.weight [256, 2048] type=1
+T blk.3.ffn_up.weight [256, 2048] type=1
+T blk.3.post_attention_norm.weight [256] type=0
+T blk.3.post_ffw_norm.weight [256] type=0
+T blk.3.ffn_norm.weight [256] type=0
+T blk.3.attn_output.weight [2048, 256] type=1
+T blk.3.attn_q_norm.weight [512] type=0
+T blk.3.attn_q.weight [256, 2048] type=1
+T output_norm.weight [256] type=0
+T nextn.post_projection.weight [256, 2560] type=1
+T nextn.pre_projection.weight [5120, 256] type=1
+Traceback (most recent call last):
+  File "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/1922753a-a0a5-43ed-9312-34c30cea32cf/scratchpad/ggufkv.py", line 30, in <module>
+    read_gguf(p, show_tensors='--tensors' in sys.argv and not p.startswith('--'))
+    ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/private/tmp/claude-501/-Users-shawwalters-eliza-workspace-milady-eliza/1922753a-a0a5-43ed-9312-34c30cea32cf/scratchpad/ggufkv.py", line 3, in read_gguf
+    with open(path,'rb') as f:
+         ~~~~^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '--tensors'

@@ -720,6 +720,15 @@ const api: XREmulatorAPI = {
     return s.dragPanel(hit.panelId, delta);
   },
 
+  dragHand(handedness: Handedness, delta: Vec3): Vec3 | null {
+    const s = scene();
+    const ray = handRay(handedness);
+    if (!s || !ray) return null;
+    const hit = s.hitTest(ray);
+    if (!hit) return null;
+    return s.dragPanel(hit.panelId, delta);
+  },
+
   getFrameLog(): TelemetrySnapshot[] {
     return frameLog;
   },

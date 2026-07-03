@@ -6,9 +6,10 @@
  * READ-ONLY: page composition + visibility are owned by `curateLauncherPages`
  * (system + release always; developer + preview gated by their Settings
  * toggles), so there is no reorder, no edit mode, and no persisted free-form
- * layout. The only gesture the launcher itself owns is a right-swipe back to the
- * home dashboard (`onEdgeSwipeRight`); the outer home↔launcher rail owns the
- * left-swipe into the launcher.
+ * layout. The launcher's own pager only pages its own grid (when curation packs
+ * more than one page); the outer home↔launcher rail owns home navigation in
+ * both directions — the pointer-claim registry inside useHorizontalPager
+ * arbitrates so exactly one pager tracks any given finger.
  *
  * Renders no background of its own — the shared root `AppBackground` shows
  * through, matching the home screen. Tiles, labels, and the skeleton use a FIXED
@@ -35,8 +36,6 @@ export interface LauncherProps {
   pageGroups?: string[][];
   loading?: boolean;
   onLaunch: (entry: ViewEntry) => void;
-  /** Right-swipe back to the home dashboard. */
-  onEdgeSwipeRight?: () => void;
   /**
    * Controlled active page index (owned by the shell-surface store via
    * LauncherSurface); local state otherwise so the component stays usable
@@ -131,7 +130,6 @@ export function Launcher({
   pageGroups,
   loading = false,
   onLaunch,
-  onEdgeSwipeRight,
   page: pageProp,
   onPageChange,
   onPageCountChange,
@@ -191,16 +189,14 @@ export function Launcher({
     [onLaunch],
   );
 
-  // The launcher owns only the right-swipe back to home (`onEdgeSwipeRight`);
-  // there is no inter-page view paging (a single curated page), so a left-swipe
-  // just rubber-bands. The outer rail owns the home→launcher direction.
-  const edgeSwipeRightEnabled = onEdgeSwipeRight != null;
+  // The launcher pager exists only to page its own grid; with a single curated
+  // page it stands down entirely and the outer home↔launcher rail owns every
+  // horizontal gesture (including the right-swipe back home, which then tracks
+  // the finger 1:1 instead of rubber-banding here).
   const pager = useHorizontalPager({
     page: clampedPage,
     pageCount: pages.length,
-    enabled: pages.length > 1 || edgeSwipeRightEnabled,
-    edgeSwipeRightEnabled,
-    onEdgeSwipeRight,
+    enabled: pages.length > 1,
     onPageChange: (nextPage) => {
       setActivePage(nextPage);
       emitViewInteraction({

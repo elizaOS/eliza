@@ -349,7 +349,7 @@ describe("#9963 agent export → import round-trip", () => {
   beforeAll(() => {
     stateDir = mkdtempSync(join(tmpdir(), "agent-export-roundtrip-"));
     process.env.ELIZA_STATE_DIR = stateDir;
-    process.env.MILADY_STATE_DIR = stateDir;
+    process.env.ELIZA_STATE_DIR = stateDir;
     // The content-addressed media byte the exported memory references.
     writeStoredMediaFile(MEDIA_FILE, MEDIA_BYTES);
   });

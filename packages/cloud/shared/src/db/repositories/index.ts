@@ -70,6 +70,7 @@ export * from "./apps";
 // ============================================
 export * from "./characters";
 export * from "./cli-auth-sessions";
+export * from "./cloud-files";
 export * from "./container-billing";
 // ============================================
 // Deployment Domain (Infrastructure)

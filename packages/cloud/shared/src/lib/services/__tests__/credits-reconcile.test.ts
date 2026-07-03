@@ -926,12 +926,11 @@ describe("CreditsService reservation settlement marker (#11169)", () => {
     // NEVER the generic lane below (keyed `recon:<holdId>:refund`) — the disjoint
     // keys let a swept-but-still-in-flight hold be refunded twice, and the
     // generic base-only math over-refunded the markup. This minimal fixture has
-    // no users/apps rows for the app-credits lane to resolve, so the sweep must
-    // leave the hold untouched (skipped, retried next sweep) rather than settle
-    // it generically. The full app-credits-lane sweep proof (markup math,
-    // cross-writer dedup with the real settle lane) lives in
-    // app-chat-sweep-double-refund.test.ts.
-    "sweep never settles app-chat holds through the generic lane",
+    // no users/apps rows, so it proves the synthetic no-markup fallback still
+    // uses the app-credits lane and shared idempotency key. The full app-credits
+    // sweep proof (markup math, mutable org/app state, cross-writer dedup with
+    // the real settle lane) lives in app-chat-sweep-double-refund.test.ts.
+    "sweep settles app-chat holds through the app lane, never the generic lane",
     async () => {
       if (!pgliteReady) return;
       await seedOrg("8.5");
@@ -943,14 +942,17 @@ describe("CreditsService reservation settlement marker (#11169)", () => {
       });
 
       expect(stats.scanned).toBe(1);
-      expect(stats.settled).toBe(0);
-      expect(stats.refunds).toBe(0);
-      expect(stats.skipped).toBe(1);
-      // No generically-keyed money row, no settle claim, balance untouched.
-      expect(await getBalance()).toBeCloseTo(8.5, 6);
-      expect(await getReservationSettledAt(reservationId)).toBeNull();
-      expect(await settlementRowsForReservation(reservationId)).toEqual([]);
-      expect(await countByType("refund")).toBe(0);
+      expect(stats.settled).toBe(1);
+      expect(stats.refunds).toBe(1);
+      expect(stats.skipped).toBe(0);
+      expect(await getBalance()).toBeCloseTo(9, 6);
+      expect(await getReservationSettledAt(reservationId)).toBeTruthy();
+      const settlements = await settlementRowsForReservation(reservationId);
+      expect(settlements).toHaveLength(1);
+      expect(settlements[0]?.type).toBe("refund");
+      expect(Number(settlements[0]?.amount)).toBeCloseTo(0.5, 6);
+      expect(settlements[0]?.stripe_payment_intent_id).toBe(`reconcile-refund:${reservationId}`);
+      expect(await countByType("refund")).toBe(1);
     },
     PGLITE_TIMEOUT,
   );
@@ -964,10 +966,10 @@ describe("CreditsService reservation settlement marker (#11169)", () => {
       // (`computeInferenceCharge`), creator earnings recorded at deduct time;
       // #11683 requires the sweep to use the app-credits settle lane, not the
       // generic `recon:<holdId>:refund` lane. This synthetic fixture does not
-      // create the users/apps tables that appCreditsService needs, so the safe
-      // behavior is to skip and retry later, leaving the hold open. The real
-      // app-credits-lane proof for markup math and late-settle dedup lives in
-      // app-chat-sweep-double-refund.test.ts.
+      // carry the creator id needed for immutable charge-time accounting, so the
+      // safe behavior is to skip and retry later, leaving the hold open. The
+      // real app-credits-lane proof for markup math and late-settle dedup lives
+      // in app-chat-sweep-double-refund.test.ts.
       await seedOrg("8.2"); // org had 10, paid the 1.8 hold
       const reservationId = await insertAppChatReservation(1.8, 25 * 60 * 1000, {
         estimated_cost: 1.0,
@@ -985,8 +987,8 @@ describe("CreditsService reservation settlement marker (#11169)", () => {
 
       expect(stats.scanned).toBe(1);
       expect(stats.settled).toBe(0);
-      expect(stats.skipped).toBe(1);
       expect(stats.refunds).toBe(0);
+      expect(stats.skipped).toBe(1);
       expect(await getBalance()).toBeCloseTo(8.2, 6);
       expect(await getReservationSettledAt(reservationId)).toBeNull();
       expect(await settlementRowsForReservation(reservationId)).toEqual([]);

@@ -92,6 +92,7 @@ const RUNTIME_CHOICE_MESSAGE = [
   "[CHOICE:first-run id=runtime]",
   "__first_run__:runtime:cloud=Eliza Cloud (managed)",
   "__first_run__:runtime:local=On this device",
+  "__first_run__:runtime:remote=Connect to a remote agent",
   "[/CHOICE]",
 ].join("\n");
 
@@ -262,6 +263,10 @@ describe("ContinuousChatOverlay first-run gating", () => {
     } as unknown as Partial<ShellController>);
     render(<ContinuousChatOverlay controller={controller} firstRunOpen />);
 
+    // All three location chips render — including the Remote third option.
+    expect(
+      screen.getByTestId("choice-__first_run__:runtime:remote"),
+    ).toBeTruthy();
     const localChoice = screen.getByTestId(
       "choice-__first_run__:runtime:local",
     );

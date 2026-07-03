@@ -191,6 +191,11 @@ export function useStartupCoordinator(
   // "usable agent" checkpoint.
   useEffect(() => {
     markStartup(`coordinator:${state.phase}`, { phase: state.phase });
+    // Also emit the transition to the console: on a native WebView the
+    // in-memory startup trace is unreachable, and without this line a boot
+    // wedged in one phase (e.g. the "Booting up…" splash) is undiagnosable
+    // from `simctl launch --console` / logcat output.
+    logger.info(`[startup-coordinator] phase=${state.phase}`);
   }, [state.phase]);
 
   // ── Phase: restoring-session ────────────────────────────────────

@@ -45,6 +45,9 @@ export const PUBLIC_BLOB_PREFIXES: readonly string[] = [
   // App promotion imagery (social cards/banners/screenshots) —
   // app-promotion-assets service; fetched by URL for moderation + posting.
   "promotion-assets/",
+  // Org-scoped cloud file uploads — cloud-files service mints unguessable
+  // public-by-URL handles after auth-gated upload/list/get.
+  "cloud-files/",
   // Affiliate character avatar/reference images — affiliate-images service;
   // URLs become character avatar/reference URLs.
   "affiliate/",
