@@ -28,6 +28,7 @@ export interface AgentElementHandle<T extends HTMLElement> {
     "data-agent-id": string;
     "data-agent-role": string;
     "data-agent-label": string;
+    "data-agent-sensitive"?: "true";
     "data-state"?: string;
   };
 }
@@ -63,6 +64,9 @@ export function useAgentElement<T extends HTMLElement = HTMLElement>(
       },
       get status() {
         return latest.current.status;
+      },
+      get sensitive() {
+        return latest.current.sensitive;
       },
       get order() {
         return latest.current.order;
@@ -102,7 +106,13 @@ export function useAgentElement<T extends HTMLElement = HTMLElement>(
   // biome-ignore lint/correctness/useExhaustiveDependencies: deps drive the version bump
   useEffect(() => {
     registry?.touch();
-  }, [registry, descriptor.label, descriptor.status, descriptor.role]);
+  }, [
+    registry,
+    descriptor.label,
+    descriptor.status,
+    descriptor.role,
+    descriptor.sensitive,
+  ]);
 
   return {
     ref: elRef,
@@ -110,6 +120,9 @@ export function useAgentElement<T extends HTMLElement = HTMLElement>(
       "data-agent-id": descriptor.id,
       "data-agent-role": descriptor.role ?? "region",
       "data-agent-label": descriptor.label,
+      ...(descriptor.sensitive
+        ? { "data-agent-sensitive": "true" as const }
+        : {}),
       ...(descriptor.status ? { "data-state": descriptor.status } : {}),
     },
   };

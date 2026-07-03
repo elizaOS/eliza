@@ -35,6 +35,10 @@ export {
   ViewAgentRegistry,
 } from "./registry";
 export {
+  isSensitiveAgentElement,
+  SENSITIVE_AGENT_ELEMENT_REASON,
+} from "./sensitive";
+export {
   AGENT_SURFACE_CAPABILITY_IDS,
   type AgentActionResult,
   type AgentElementDescriptor,

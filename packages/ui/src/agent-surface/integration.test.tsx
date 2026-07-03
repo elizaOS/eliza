@@ -94,6 +94,46 @@ describe("agent-surface render integration", () => {
     expect(result).toMatchObject({ ok: true, id: "note", value: "hello" });
   });
 
+  it("stamps explicit sensitive state and blocks password fills", () => {
+    function SensitiveInner() {
+      const { ref, agentProps } = useAgentElement<HTMLInputElement>({
+        id: "owner-password",
+        role: "text-input",
+        label: "Owner password",
+        sensitive: true,
+      });
+      return (
+        <input
+          ref={ref}
+          type="password"
+          defaultValue="existing"
+          {...agentProps}
+        />
+      );
+    }
+    render(
+      <AgentSurfaceProvider viewId={VIEW} viewType="gui">
+        <SensitiveInner />
+      </AgentSurfaceProvider>,
+    );
+
+    const registry = getViewRegistry(VIEW, "gui");
+    if (!registry) throw new Error("registry missing");
+    const element = document.querySelector<HTMLInputElement>(
+      "[data-agent-id='owner-password']",
+    );
+    expect(element?.getAttribute("data-agent-sensitive")).toBe("true");
+    const result = handleAgentSurfaceCapability(registry, "agent-fill", {
+      id: "owner-password",
+      value: "changed",
+    });
+    expect(result).toMatchObject({
+      ok: false,
+      id: "owner-password",
+    });
+    expect(element?.value).toBe("existing");
+  });
+
   it("tears down the registry when the view unmounts", () => {
     const { unmount } = render(
       <AgentSurfaceProvider viewId="ephemeral" viewType="gui">

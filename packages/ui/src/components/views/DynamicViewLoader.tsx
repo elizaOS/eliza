@@ -37,6 +37,8 @@ import {
   getViewRegistry,
   handleAgentSurfaceCapability,
   isAgentSurfaceCapability,
+  isSensitiveAgentElement,
+  SENSITIVE_AGENT_ELEMENT_REASON,
   type ViewAgentRegistry,
 } from "../../agent-surface";
 import { client } from "../../api/index.ts";
@@ -784,12 +786,20 @@ function readElementValue(el: HTMLElement): unknown {
 function snapshotDomAgentElement(el: HTMLElement) {
   const rect = el.getBoundingClientRect();
   const role = el.getAttribute("data-agent-role") || "region";
-  return {
+  const descriptor = {
     id: el.getAttribute("data-agent-id") || "",
-    role,
     label: el.getAttribute("data-agent-label") || "",
+    sensitive: el.getAttribute("data-agent-sensitive") === "true",
+  };
+  const sensitive = isSensitiveAgentElement(descriptor, el);
+  return {
+    id: descriptor.id,
+    role,
+    label: descriptor.label,
     status: el.getAttribute("data-state") || undefined,
-    value: readElementValue(el),
+    ...(sensitive
+      ? { sensitive: true, valueRedacted: true }
+      : { value: readElementValue(el) }),
     fillable: DOM_FILLABLE_AGENT_ROLES.has(role),
     clickable: DOM_CLICKABLE_AGENT_ROLES.has(role),
     focused:
@@ -880,6 +890,18 @@ function handleDomAgentSurfaceCapability(
       }
       const el = getAgentElementById(containerEl, id);
       if (!el) return { ok: false, id, reason: "element not found" };
+      if (
+        isSensitiveAgentElement(
+          {
+            id,
+            label: el.getAttribute("data-agent-label") || "",
+            sensitive: el.getAttribute("data-agent-sensitive") === "true",
+          },
+          el,
+        )
+      ) {
+        return { ok: false, id, reason: SENSITIVE_AGENT_ELEMENT_REASON };
+      }
       if (
         el instanceof HTMLInputElement ||
         el instanceof HTMLTextAreaElement ||
@@ -991,7 +1013,12 @@ async function handleStandardCapability(
       const id = agentIdParam(params);
       if (id && registry) {
         const result = registry.fill(id, value);
-        return { filled: result.ok, id, reason: result.reason, value };
+        return {
+          filled: result.ok,
+          id,
+          reason: result.reason,
+          ...(result.ok ? { value } : {}),
+        };
       }
       const { target, selector } = resolveInteractTarget(containerEl, params);
       if (!target) {
@@ -1002,6 +1029,27 @@ async function handleStandardCapability(
         target instanceof HTMLTextAreaElement ||
         target instanceof HTMLSelectElement
       ) {
+        if (
+          isSensitiveAgentElement(
+            {
+              id:
+                target.getAttribute("data-agent-id") ||
+                target.id ||
+                target.name ||
+                selector ||
+                "",
+              label: target.getAttribute("data-agent-label") || "",
+              sensitive: target.getAttribute("data-agent-sensitive") === "true",
+            },
+            target,
+          )
+        ) {
+          return {
+            filled: false,
+            selector,
+            reason: SENSITIVE_AGENT_ELEMENT_REASON,
+          };
+        }
         setNativeInputValue(target, value);
         return { filled: true, selector, value };
       }

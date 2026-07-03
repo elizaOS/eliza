@@ -71,6 +71,12 @@ export interface AgentElementDescriptor {
   description?: string;
   /** Current status token rendered as `data-state` (e.g. "active", "error"). */
   status?: string;
+  /**
+   * Marks this element as credential/sensitive data. Sensitive elements remain
+   * addressable, but their values are redacted from snapshots and agent fills
+   * are rejected.
+   */
+  sensitive?: boolean;
   /** Sort priority for `list-elements` (lower first). Falls back to DOM order. */
   order?: number;
   /** Override fillability (else derived from role). */
@@ -98,6 +104,8 @@ export interface AgentElementSnapshot {
   description?: string;
   status?: string;
   value?: unknown;
+  sensitive?: boolean;
+  valueRedacted?: boolean;
   fillable: boolean;
   clickable: boolean;
   focused: boolean;

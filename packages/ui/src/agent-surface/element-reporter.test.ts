@@ -38,6 +38,28 @@ describe("element-reporter buildPayload", () => {
     expect("focused" in byId.send).toBe(false);
   });
 
+  it("does not report values for sensitive elements", () => {
+    const registry = new ViewAgentRegistry("auth", "gui");
+    registry.register(
+      {
+        id: "password",
+        label: "Password",
+        role: "text-input",
+        sensitive: true,
+        getValue: () => "secret-value",
+      },
+      () => null,
+    );
+
+    const payload = buildPayload(registry);
+    expect(payload.elements[0]).toMatchObject({
+      id: "password",
+      role: "text-input",
+      label: "Password",
+    });
+    expect("value" in payload.elements[0]).toBe(false);
+  });
+
   it("returns an empty element list for an empty view", () => {
     const registry = new ViewAgentRegistry("empty", "gui");
     expect(buildPayload(registry).elements).toEqual([]);

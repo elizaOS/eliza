@@ -436,6 +436,91 @@ describe("DynamicViewLoader", () => {
     });
   });
 
+  it("redacts and refuses raw DOM sensitive fields", async () => {
+    const bundleUrl = "https://capability.example.test/assets/sensitive.js";
+    window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__ = vi.fn(async () => ({
+      default: function SensitivePanel() {
+        return (
+          <section>
+            <input
+              data-agent-id="owner-password"
+              data-agent-role="text-input"
+              data-agent-label="Owner password"
+              type="password"
+              defaultValue="existing-secret"
+            />
+          </section>
+        );
+      },
+    }));
+
+    render(<DynamicViewLoader bundleUrl={bundleUrl} viewId="sensitive.view" />);
+    await screen.findByDisplayValue("existing-secret");
+
+    const { dispatchViewInteract } = await import("./view-interact-registry");
+    await dispatchViewInteract(
+      "sensitive.view",
+      "gui",
+      "list-elements",
+      undefined,
+      "req-list-sensitive",
+    );
+    await dispatchViewInteract(
+      "sensitive.view",
+      "gui",
+      "agent-fill",
+      { id: "owner-password", value: "changed-secret" },
+      "req-fill-sensitive-agent",
+    );
+    await dispatchViewInteract(
+      "sensitive.view",
+      "gui",
+      "fill-input",
+      { selector: "[data-agent-id='owner-password']", value: "changed-secret" },
+      "req-fill-sensitive-selector",
+    );
+
+    expect(screen.getByDisplayValue("existing-secret")).toBeTruthy();
+    expect(sendWsMessage).toHaveBeenCalledWith({
+      type: "view:interact:result",
+      requestId: "req-list-sensitive",
+      success: true,
+      result: [
+        expect.objectContaining({
+          id: "owner-password",
+          sensitive: true,
+          valueRedacted: true,
+        }),
+      ],
+    });
+    const listCall = vi
+      .mocked(sendWsMessage)
+      .mock.calls.find(
+        ([message]) =>
+          message.type === "view:interact:result" &&
+          message.requestId === "req-list-sensitive",
+      );
+    expect(JSON.stringify(listCall?.[0])).not.toContain("existing-secret");
+    expect(sendWsMessage).toHaveBeenCalledWith({
+      type: "view:interact:result",
+      requestId: "req-fill-sensitive-agent",
+      success: true,
+      result: expect.objectContaining({
+        ok: false,
+        id: "owner-password",
+      }),
+    });
+    expect(sendWsMessage).toHaveBeenCalledWith({
+      type: "view:interact:result",
+      requestId: "req-fill-sensitive-selector",
+      success: true,
+      result: expect.objectContaining({
+        filled: false,
+        selector: "[data-agent-id='owner-password']",
+      }),
+    });
+  });
+
   it("reports missing focus targets without throwing", async () => {
     const bundleUrl = "https://capability.example.test/assets/missing-focus.js";
     window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__ = vi.fn(async () => ({
