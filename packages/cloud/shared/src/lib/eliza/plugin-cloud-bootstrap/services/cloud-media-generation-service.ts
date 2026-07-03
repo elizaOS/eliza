@@ -41,6 +41,33 @@ function imageMimeTypeFromUrl(url: string): string | undefined {
   }
 }
 
+// The cloud image path authenticates to Eliza Cloud with ELIZAOS_CLOUD_API_KEY
+// (plugin-elizacloud `getApiKey`). plugin-elizacloud registers the
+// ModelType.IMAGE handler statically — it is present even when the key is
+// absent — so a registered handler alone is NOT proof the backend can generate.
+// Without a usable key every image call 401s ("Invalid or expired API key"),
+// which is what turned image generation 0/7 live (#11953) with every failure
+// arriving AFTER a user-facing "generating now" ack. Gate availability on the
+// key so the planner never offers a tool that is guaranteed to fail.
+const CLOUD_MEDIA_API_KEY_SETTING = "ELIZAOS_CLOUD_API_KEY";
+
+function hasCloudMediaKey(runtime: IAgentRuntime): boolean {
+  const fromSetting = runtime.getSetting(CLOUD_MEDIA_API_KEY_SETTING);
+  if (typeof fromSetting === "string" && fromSetting.trim().length > 0) {
+    return true;
+  }
+  const env =
+    typeof globalThis === "object" && "process" in globalThis
+      ? (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env
+      : undefined;
+  const fromEnv = env?.[CLOUD_MEDIA_API_KEY_SETTING];
+  return typeof fromEnv === "string" && fromEnv.trim().length > 0;
+}
+
+function hasImageModelHandler(runtime: IAgentRuntime): boolean {
+  return typeof runtime.getModel(ModelType.IMAGE) === "function";
+}
+
 function normalizeImageResult(result: ImageResultLike | undefined): MediaGenerationResponse | null {
   if (!result) {
     return null;
@@ -103,6 +130,15 @@ export class CloudMediaGenerationService extends IMediaGenerationService {
   }
 
   async stop(): Promise<void> {}
+
+  override canGenerateMedia(
+    request: Pick<MediaGenerationRequest, "mediaType" | "audioKind">,
+  ): boolean {
+    if (request.mediaType !== "image") {
+      return false;
+    }
+    return hasImageModelHandler(this.runtime) && hasCloudMediaKey(this.runtime);
+  }
 
   async generateMedia(request: MediaGenerationRequest): Promise<MediaGenerationResponse> {
     if (request.mediaType !== "image") {

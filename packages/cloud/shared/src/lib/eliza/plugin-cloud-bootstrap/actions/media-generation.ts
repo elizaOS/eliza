@@ -171,8 +171,25 @@ export const generateMediaAction: ActionWithParams = {
       return false;
     }
 
-    if (!getMediaService(runtime)) {
+    const service = getMediaService(runtime);
+    if (!service) {
       logger.warn("[GENERATE_MEDIA] Runtime missing media generation service");
+      return false;
+    }
+
+    // Honesty gate (#11953): only expose GENERATE_MEDIA when the backing media
+    // key + image model are actually usable. Otherwise the planner picks it, the
+    // agent acks "generating now", and generation fails with an expired/absent
+    // key — a promise-then-fail. Withholding the tool keeps the ack honest.
+    if (!(await service.canGenerateMedia({ mediaType }))) {
+      logger.debug(
+        {
+          src: "cloud:generate_media:validate",
+          agentId: runtime.agentId,
+          mediaType,
+        },
+        "[GENERATE_MEDIA] media backend not usable (missing cloud media key or image model) — tool withheld",
+      );
       return false;
     }
 
