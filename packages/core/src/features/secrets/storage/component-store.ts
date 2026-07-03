@@ -14,6 +14,7 @@ import type {
 	SecretConfig,
 	SecretContext,
 	SecretMetadata,
+	SecretPermissionType,
 	StorageBackend,
 } from "../types.ts";
 import { PermissionDeniedError, StorageError } from "../types.ts";
@@ -59,6 +60,7 @@ export class ComponentSecretStorage extends BaseSecretStorage {
 		if (!context.userId) {
 			return false;
 		}
+		this.assertUserAccess(key, "read", context);
 
 		const component = await this.findSecretComponent(context.userId, key);
 		return component !== null;
@@ -70,10 +72,7 @@ export class ComponentSecretStorage extends BaseSecretStorage {
 			return null;
 		}
 
-		// Check permission - only the user can access their own secrets
-		if (context.requesterId && context.requesterId !== context.userId) {
-			throw new PermissionDeniedError(key, "read", context);
-		}
+		this.assertUserAccess(key, "read", context);
 
 		const component = await this.findSecretComponent(context.userId, key);
 		if (!component) {
@@ -113,10 +112,7 @@ export class ComponentSecretStorage extends BaseSecretStorage {
 			throw new StorageError("Cannot set user secret without userId");
 		}
 
-		// Check permission - only the user can set their own secrets
-		if (context.requesterId && context.requesterId !== context.userId) {
-			throw new PermissionDeniedError(key, "write", context);
-		}
+		this.assertUserAccess(key, "write", context);
 
 		const existingComponent = await this.findSecretComponent(
 			context.userId,
@@ -183,10 +179,7 @@ export class ComponentSecretStorage extends BaseSecretStorage {
 			return false;
 		}
 
-		// Check permission - only the user can delete their own secrets
-		if (context.requesterId && context.requesterId !== context.userId) {
-			throw new PermissionDeniedError(key, "delete", context);
-		}
+		this.assertUserAccess(key, "delete", context);
 
 		const component = await this.findSecretComponent(context.userId, key);
 		if (!component) {
@@ -205,10 +198,7 @@ export class ComponentSecretStorage extends BaseSecretStorage {
 			return {};
 		}
 
-		// Check permission
-		if (context.requesterId && context.requesterId !== context.userId) {
-			throw new PermissionDeniedError("*", "read", context);
-		}
+		this.assertUserAccess("*", "read", context);
 
 		const components = await this.runtime.getComponents(context.userId as UUID);
 		const metadata: SecretMetadata = {};
@@ -241,6 +231,7 @@ export class ComponentSecretStorage extends BaseSecretStorage {
 		if (!context.userId) {
 			return null;
 		}
+		this.assertUserAccess(key, "read", context);
 
 		const component = await this.findSecretComponent(context.userId, key);
 		if (!component) {
@@ -260,10 +251,7 @@ export class ComponentSecretStorage extends BaseSecretStorage {
 			return false;
 		}
 
-		// Check permission
-		if (context.requesterId && context.requesterId !== context.userId) {
-			throw new PermissionDeniedError(key, "write", context);
-		}
+		this.assertUserAccess(key, "write", context);
 
 		const component = await this.findSecretComponent(context.userId, key);
 		if (!component) {
@@ -310,6 +298,16 @@ export class ComponentSecretStorage extends BaseSecretStorage {
 		}
 
 		return null;
+	}
+
+	private assertUserAccess(
+		key: string,
+		action: SecretPermissionType,
+		context: SecretContext,
+	): void {
+		if (!context.requesterId || context.requesterId !== context.userId) {
+			throw new PermissionDeniedError(key, action, context);
+		}
 	}
 
 	/**

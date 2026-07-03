@@ -440,6 +440,7 @@ export class DefaultGoogleCredentialResolver implements GoogleCredentialResolver
             secretsService.get?.(key, {
               level: "global",
               agentId: this.runtime?.agentId,
+              requesterId: this.runtime?.agentId,
             }) ?? null,
         });
       }
@@ -580,6 +581,7 @@ async function readSecret(
     return candidate.get(vaultRef, {
       level: "global",
       agentId: runtime?.agentId,
+      requesterId: runtime?.agentId,
     });
   }
 

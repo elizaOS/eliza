@@ -506,6 +506,7 @@ export class SetupService extends Service {
 					agentId: this.runtime.agentId,
 					worldId: session.worldId,
 					userId: session.userId,
+					requesterId: session.userId,
 				};
 
 				await this.secretsService.set(currentSettingKey, value, context, {

@@ -340,7 +340,11 @@ export class SecretsService extends Service {
 	 * Get a global secret (agent-level)
 	 */
 	async getGlobal(key: string): Promise<string | null> {
-		return this.get(key, { level: "global", agentId: this.runtime.agentId });
+		return this.get(key, {
+			level: "global",
+			agentId: this.runtime.agentId,
+			requesterId: this.runtime.agentId,
+		});
 	}
 
 	/**
@@ -354,7 +358,11 @@ export class SecretsService extends Service {
 		return this.set(
 			key,
 			value,
-			{ level: "global", agentId: this.runtime.agentId },
+			{
+				level: "global",
+				agentId: this.runtime.agentId,
+				requesterId: this.runtime.agentId,
+			},
 			config,
 		);
 	}
@@ -367,6 +375,7 @@ export class SecretsService extends Service {
 			level: "world",
 			worldId,
 			agentId: this.runtime.agentId,
+			requesterId: this.runtime.agentId,
 		});
 	}
 
@@ -382,7 +391,12 @@ export class SecretsService extends Service {
 		return this.set(
 			key,
 			value,
-			{ level: "world", worldId, agentId: this.runtime.agentId },
+			{
+				level: "world",
+				worldId,
+				agentId: this.runtime.agentId,
+				requesterId: this.runtime.agentId,
+			},
 			config,
 		);
 	}
@@ -516,6 +530,7 @@ export class SecretsService extends Service {
 					exists = await this.exists(key, {
 						level: "global",
 						agentId: this.runtime.agentId,
+						requesterId: this.runtime.agentId,
 					});
 					break;
 				case "world":

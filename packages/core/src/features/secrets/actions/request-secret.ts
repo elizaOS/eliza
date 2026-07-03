@@ -96,6 +96,7 @@ export async function requestSecretHandler(
 			const exists = await service.exists(key, {
 				level: "global", // Check global/user level
 				agentId: runtime.agentId,
+				requesterId: message.entityId,
 				userId:
 					message.entityId !== runtime.agentId
 						? String(message.entityId)

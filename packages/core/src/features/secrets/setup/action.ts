@@ -179,6 +179,7 @@ async function processSettingUpdates(
 	settings: Record<string, SetupSetting>,
 	updates: SettingUpdate[],
 	secretsService: SecretsService | null,
+	requesterId: string,
 ): Promise<{ updatedAny: boolean; messages: string[] }> {
 	if (!updates.length) {
 		return { updatedAny: false, messages: [] };
@@ -237,6 +238,7 @@ async function processSettingUpdates(
 				level: "world",
 				agentId: runtime.agentId,
 				worldId: world.id,
+				requesterId,
 			};
 
 			await secretsService.set(update.key, valueStr, context, {
@@ -422,6 +424,7 @@ export const updateSettingsAction: Action = {
 			settings,
 			extractedSettings,
 			secretsService,
+			message.entityId,
 		);
 
 		// Get updated settings

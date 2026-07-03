@@ -465,7 +465,11 @@ function resolveVaultWriters(
         await secrets.set?.(
           vaultRef,
           credential.value,
-          { level: "global", agentId: runtime.agentId },
+          {
+            level: "global",
+            agentId: runtime.agentId,
+            requesterId: runtime.agentId,
+          },
           { sensitive: true },
         );
         return vaultRef;
@@ -513,6 +517,7 @@ async function readSecret(
     return candidate.get(vaultRef, {
       level: "global",
       agentId: runtime.agentId,
+      requesterId: runtime.agentId,
     });
   }
   return candidate.get(vaultRef, { reveal: true, caller });

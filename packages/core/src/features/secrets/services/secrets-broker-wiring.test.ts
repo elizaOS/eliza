@@ -43,6 +43,7 @@ function runtimeWithEnv(
 const GLOBAL_CTX = (agentId: string): SecretContext => ({
 	level: "global",
 	agentId,
+	requesterId: agentId,
 });
 
 function makeHandleBroker(

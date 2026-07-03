@@ -56,6 +56,7 @@ export const secretsStatusProvider: Provider = {
 			const globalSecrets = await secretsService.list({
 				level: "global",
 				agentId: runtime.agentId,
+				requesterId: runtime.agentId,
 			});
 
 			const secretKeys = Object.keys(globalSecrets);
@@ -192,6 +193,7 @@ export const secretsInfoProvider: Provider = {
 			const globalSecrets = await secretsService.list({
 				level: "global",
 				agentId: runtime.agentId,
+				requesterId: runtime.agentId,
 			});
 
 			const secretCount = Object.keys(globalSecrets).length;
