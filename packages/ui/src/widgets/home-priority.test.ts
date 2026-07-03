@@ -1,16 +1,22 @@
 import { describe, expect, it } from "vitest";
 import {
   baseHomeScore,
+  HOME_MIN_SEVERITY,
+  HOME_NOTIFICATION_MAX_AGE_MS,
   HOME_SIGNAL_WEIGHTS,
+  type HomeGroupedNotification,
   type HomeWidgetSignal,
   homeSignalsFromEvents,
   homeSignalsFromNotifications,
   homeSignalWeight,
+  isHomeWorthy,
   type RankableContentNotification,
+  type RankableHomeNotification,
   type RankableHomeWidget,
   rankHomeNotifications,
   rankHomeWidgets,
   scoreHomeWidget,
+  selectHomeNotifications,
   signalKindForEventType,
 } from "./home-priority";
 
@@ -417,5 +423,179 @@ describe("rankHomeNotifications — content-item priority", () => {
   it("is stable for fully-equal items (preserves input order)", () => {
     const ranked = rankHomeNotifications([n("a"), n("b"), n("c")]);
     expect(ranked.map((x) => x.id)).toEqual(["a", "b", "c"]);
+  });
+});
+
+// The home quiet-threshold + grouping layer (signal, not noise). The full inbox
+// never calls these; only the home widget does.
+describe("isHomeWorthy — home quiet threshold", () => {
+  const hn = (
+    patch: Partial<RankableHomeNotification> = {},
+  ): RankableHomeNotification => ({
+    priority: "high",
+    category: "general",
+    createdAt: NOW,
+    readAt: null,
+    ...patch,
+  });
+
+  it("admits an unread, recent, high-severity notification", () => {
+    expect(isHomeWorthy(hn(), { now: NOW })).toBe(true);
+  });
+
+  it("rejects a read notification (already acknowledged = not signal)", () => {
+    expect(isHomeWorthy(hn({ readAt: NOW }), { now: NOW })).toBe(false);
+  });
+
+  it("rejects below-threshold severity (normal/low stay in the inbox)", () => {
+    expect(isHomeWorthy(hn({ priority: "normal" }), { now: NOW })).toBe(false);
+    expect(isHomeWorthy(hn({ priority: "low" }), { now: NOW })).toBe(false);
+  });
+
+  it("admits urgent (>= HOME_MIN_SEVERITY)", () => {
+    expect(isHomeWorthy(hn({ priority: "urgent" }), { now: NOW })).toBe(true);
+  });
+
+  it("rejects a stale notification past the recency window", () => {
+    const old = hn({ createdAt: NOW - HOME_NOTIFICATION_MAX_AGE_MS - 1 });
+    expect(isHomeWorthy(old, { now: NOW })).toBe(false);
+  });
+
+  it("does NOT age-filter on the deterministic first render (now === 0)", () => {
+    // useNow returns 0 on first paint; a fresh high notification must still show.
+    expect(isHomeWorthy(hn({ createdAt: NOW }), { now: 0 })).toBe(true);
+  });
+
+  it("HOME_MIN_SEVERITY is `high` (2) by default", () => {
+    expect(HOME_MIN_SEVERITY).toBe(2);
+  });
+
+  it("a lowered minSeverity lets normal notifications through", () => {
+    expect(
+      isHomeWorthy(hn({ priority: "normal" }), { now: NOW, minSeverity: 1 }),
+    ).toBe(true);
+  });
+
+  it("unreadOnly:false lets a read (but important, recent) notification through", () => {
+    expect(
+      isHomeWorthy(hn({ readAt: NOW }), { now: NOW, unreadOnly: false }),
+    ).toBe(true);
+  });
+});
+
+describe("selectHomeNotifications — quiet + category grouping", () => {
+  const hn = (
+    id: string,
+    patch: Partial<RankableHomeNotification> = {},
+  ): RankableHomeNotification & { id: string } => ({
+    id,
+    priority: "high",
+    category: "general",
+    createdAt: NOW,
+    readAt: null,
+    ...patch,
+  });
+
+  it("drops everything below the quiet threshold (near-empty unless it matters)", () => {
+    const entries = selectHomeNotifications(
+      [
+        hn("normal", { priority: "normal" }),
+        hn("low", { priority: "low" }),
+        hn("read-urgent", { priority: "urgent", readAt: NOW }),
+        hn("stale-high", { createdAt: NOW - HOME_NOTIFICATION_MAX_AGE_MS - 1 }),
+      ],
+      { now: NOW },
+    );
+    // All four fail the threshold (low severity / read / stale) → nothing surfaces.
+    expect(entries).toEqual([]);
+  });
+
+  it("keeps a single home-worthy notification as a single entry", () => {
+    const entries = selectHomeNotifications(
+      [hn("a", { category: "health", priority: "urgent" })],
+      { now: NOW },
+    );
+    expect(entries).toHaveLength(1);
+    expect(entries[0].kind).toBe("single");
+  });
+
+  it("collapses same-category notifications into ONE grouped row", () => {
+    const entries = selectHomeNotifications(
+      [
+        hn("h1", { category: "health" }),
+        hn("h2", { category: "health" }),
+        hn("h3", { category: "health" }),
+      ],
+      { now: NOW },
+    );
+    expect(entries).toHaveLength(1);
+    expect(entries[0].kind).toBe("group");
+    const group = entries[0] as HomeGroupedNotification<
+      RankableHomeNotification & { id: string }
+    >;
+    expect(group.category).toBe("health");
+    expect(group.count).toBe(3);
+    expect(group.members).toHaveLength(3);
+  });
+
+  it("mixes singles and groups: a lone category stays single, a chatty one collapses", () => {
+    const entries = selectHomeNotifications(
+      [
+        hn("lone", { category: "approval", priority: "urgent" }),
+        hn("t1", { category: "task" }),
+        hn("t2", { category: "task" }),
+      ],
+      { now: NOW },
+    );
+    const kinds = entries.map((e) => e.kind).sort();
+    expect(kinds).toEqual(["group", "single"]);
+    const group = entries.find((e) => e.kind === "group") as
+      | HomeGroupedNotification<RankableHomeNotification & { id: string }>
+      | undefined;
+    expect(group?.category).toBe("task");
+    expect(group?.count).toBe(2);
+  });
+
+  it("the group lead is the highest-attention member (urgent over high)", () => {
+    const entries = selectHomeNotifications(
+      [
+        hn("high", { category: "task", priority: "high", createdAt: NOW }),
+        hn("urgent", {
+          category: "task",
+          priority: "urgent",
+          createdAt: NOW - 5_000,
+        }),
+      ],
+      { now: NOW },
+    );
+    const group = entries[0] as HomeGroupedNotification<
+      RankableHomeNotification & { id: string }
+    >;
+    expect(group.kind).toBe("group");
+    expect(group.lead.id).toBe("urgent");
+  });
+
+  it("groupByCategory:false keeps every eligible notification as its own row", () => {
+    const entries = selectHomeNotifications(
+      [
+        hn("h1", { category: "health" }),
+        hn("h2", { category: "health" }),
+      ],
+      { now: NOW, groupByCategory: false },
+    );
+    expect(entries).toHaveLength(2);
+    expect(entries.every((e) => e.kind === "single")).toBe(true);
+  });
+
+  it("groupMinSize gates collapsing (raise it and a pair stays as singles)", () => {
+    const entries = selectHomeNotifications(
+      [
+        hn("h1", { category: "health" }),
+        hn("h2", { category: "health" }),
+      ],
+      { now: NOW, groupMinSize: 3 },
+    );
+    expect(entries).toHaveLength(2);
+    expect(entries.every((e) => e.kind === "single")).toBe(true);
   });
 });

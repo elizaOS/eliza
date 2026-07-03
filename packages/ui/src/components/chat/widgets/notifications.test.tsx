@@ -74,7 +74,12 @@ describe("NotificationsWidget (#9143)", () => {
 
   it("home slot: clicking the card navigates to the inbox (or the deep link)", () => {
     __resetNotificationStoreForTests();
-    __ingestNotificationForTests(notification({ title: "Plain alert" }), 1);
+    // Home-worthy (high) so it clears the aggressive quiet threshold and the
+    // tile actually renders.
+    __ingestNotificationForTests(
+      notification({ title: "Plain alert", priority: "high" }),
+      1,
+    );
 
     const navEvents: string[] = [];
     const onNav = (e: Event) => {
@@ -93,7 +98,11 @@ describe("NotificationsWidget (#9143)", () => {
   it("home slot: prefers the notification's own deep link when present", () => {
     __resetNotificationStoreForTests();
     __ingestNotificationForTests(
-      notification({ title: "Review needed", deepLink: "/tasks" }),
+      notification({
+        title: "Review needed",
+        deepLink: "/tasks",
+        priority: "high",
+      }),
       1,
     );
 
@@ -200,5 +209,57 @@ describe("NotificationsWidget (#9143)", () => {
       <NotificationsWidget pluginId="notifications" slot="home" />,
     );
     expect(container.firstElementChild?.className).toContain("col-span-2");
+  });
+
+  // signal, not noise: the home surface applies an aggressive quiet threshold
+  // and collapses same-category bursts so it never reads as a wall of noise.
+  it("home slot: renders NOTHING when every notification is below the quiet threshold", () => {
+    __resetNotificationStoreForTests();
+    // A wall of normal/low informational notifications = noise, not signal.
+    for (let i = 0; i < 6; i++) {
+      __ingestNotificationForTests(
+        notification({ title: `FYI ${i}`, priority: "normal" }),
+      );
+    }
+    const { container } = render(
+      <NotificationsWidget pluginId="notifications" slot="home" />,
+    );
+    expect(container.firstChild).toBeNull();
+    expect(screen.queryByTestId("widget-notifications")).toBeNull();
+  });
+
+  it("home slot: hides read/stale notifications, surfaces only the unread high one", () => {
+    __resetNotificationStoreForTests();
+    __ingestNotificationForTests(
+      notification({ title: "Old read alert", priority: "urgent", readAt: Date.now() }),
+    );
+    __ingestNotificationForTests(
+      notification({ title: "Act now", priority: "high" }),
+      1,
+    );
+    render(<NotificationsWidget pluginId="notifications" slot="home" />);
+    const card = screen.getByTestId("widget-notifications");
+    expect(card.textContent).toContain("Act now");
+    expect(card.textContent).not.toContain("Old read alert");
+  });
+
+  it("home slot: collapses a same-category burst into a grouped 'N updates' tile", () => {
+    __resetNotificationStoreForTests();
+    // Three unread high health notifications = one grouped tile, not three.
+    for (let i = 0; i < 3; i++) {
+      __ingestNotificationForTests(
+        notification({
+          title: `Health ping ${i}`,
+          category: "health",
+          priority: "high",
+        }),
+        i + 1,
+      );
+    }
+    render(<NotificationsWidget pluginId="notifications" slot="home" />);
+    const card = screen.getByTestId("widget-notifications");
+    // The tile summarizes the group instead of showing a single title.
+    expect(card.textContent).toContain("3 health updates");
+    expect(card.getAttribute("aria-label")).toMatch(/3 health updates/i);
   });
 });
