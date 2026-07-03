@@ -56,6 +56,26 @@ const HARVEST_ROOT = path.join(EVIDENCE_ROOT, "harvest");
 const TSCONFIG = path.join(REPO_ROOT, "tsconfig.json");
 const S1_PROVIDER_PATH = "/tmp/s1-provider-full.json";
 
+// The harvest tree dirs are slug(realDir) (slashes → "_"), which is NOT
+// reversible, so rebuild slug → realDir from the manifest to give the rerun the
+// real scenario-runner directory. Matches harvest-runner.mjs's slug().
+const slugKey = (s) =>
+  s.replace(/[^a-zA-Z0-9._-]+/g, "_").replace(/^_+|_+$/g, "");
+const SLUG_TO_DIR = (() => {
+  const map = {};
+  try {
+    const manifest = JSON.parse(
+      readFileSync(path.join(__dirname, "manifest.json"), "utf8"),
+    );
+    for (const it of manifest.families?.scenario?.items ?? []) {
+      if (it.dir) map[slugKey(it.dir)] = it.dir;
+    }
+  } catch {
+    /* manifest optional — fall back to best-effort un-slug below */
+  }
+  return map;
+})();
+
 // Stage-3 working tree (datasets, artifacts, reruns) — NOT the harvest dirs.
 const STAGE3_ROOT = path.join(EVIDENCE_ROOT, "s3-gepa", "sweep");
 const DATASET_DIR = path.join(STAGE3_ROOT, "datasets");
@@ -516,7 +536,11 @@ function runGepaForTask(task, datasetPath) {
 
 /** Re-run one failing scenario with the GEPA artifact loaded, capture flip. */
 function rerunScenario(scn, providerEnv) {
-  const dirRel = scn.familyDir.replace(/__/g, "/"); // familyDir slug → dir path
+  // Real scenario-runner dir from the manifest slug map (the slug is not
+  // reversible by string replace; the old __→/ heuristic produced a bogus path
+  // like "packages_test_scenarios" → ENOENT, which errored every rerun).
+  const dirRel =
+    SLUG_TO_DIR[scn.familyDir] ?? scn.familyDir.replace(/__/g, "/");
   const outDir = path.join(RERUN_DIR, scn.familyDir, scn.item);
   mkdirSync(outDir, { recursive: true });
   const reportPath = path.join(outDir, "report.json");
