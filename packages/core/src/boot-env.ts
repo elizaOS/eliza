@@ -24,13 +24,13 @@ function getGlobalSlot(): GlobalConfigSlot {
 
 function getBootConfigStore(): BootConfigStore {
 	const globalObject = getGlobalSlot();
-	const mirroredWindowConfig = globalObject[BOOT_CONFIG_WINDOW_KEY];
-	if (mirroredWindowConfig) {
-		const mirroredStore: BootConfigStore = { current: mirroredWindowConfig };
-		globalObject[BOOT_CONFIG_STORE_KEY] = mirroredStore;
-		return mirroredStore;
-	}
 
+	// An established store always wins. The window-key mirror is only a
+	// pre-boot seed (set by the HTML bootstrap / Electrobun preload before any
+	// bundle loads) and must never replace a store that already exists —
+	// otherwise a stale or partial window value silently clobbers config that
+	// setBootConfig already committed, and the store's object identity churns
+	// on every read (dropping any store-only state).
 	const existing = globalObject[BOOT_CONFIG_STORE_KEY];
 	if (
 		existing &&
@@ -40,7 +40,13 @@ function getBootConfigStore(): BootConfigStore {
 		return existing as BootConfigStore;
 	}
 
-	const store: BootConfigStore = { current: DEFAULT_BOOT_CONFIG };
+	// No store yet: seed it once. Prefer a cross-bundle window mirror when a
+	// bootstrap set it, otherwise fall back to defaults. The slot is written
+	// once here and thereafter returned as-is by the branch above.
+	const mirroredWindowConfig = globalObject[BOOT_CONFIG_WINDOW_KEY];
+	const store: BootConfigStore = {
+		current: mirroredWindowConfig ?? DEFAULT_BOOT_CONFIG,
+	};
 	globalObject[BOOT_CONFIG_STORE_KEY] = store;
 	globalObject[BOOT_CONFIG_WINDOW_KEY] = store.current;
 	return store;
