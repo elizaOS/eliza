@@ -528,15 +528,19 @@ describe("FileTaskStore", () => {
 });
 
 /**
- * Emulates the pglite/postgres failure mode from #11641: the driver rejects a
- * `document LIKE ?` comparison against the JSON-bearing column (it does not
- * treat it as a plain-text haystack the way sqlite does). Every other query
- * shape behaves like {@link FakeSqlAdapter}. If `findSession` still emits
- * `document LIKE`, the lookup throws here — proving the portability fix.
+ * Emulates the pglite/postgres failure modes from #11641/#11778: the driver
+ * rejects a `document LIKE ?` comparison against the JSON-bearing column and
+ * the legacy bare full-table `SELECT document FROM orchestrator_tasks`
+ * fallback. Every other query shape behaves like {@link FakeSqlAdapter}. If
+ * `findSession` still emits either shape, the lookup throws here — proving the
+ * portability fix.
  */
 class PgliteLikeRejectingAdapter extends FakeSqlAdapter {
   override async all(sql: string, params: unknown[] = []): Promise<unknown[]> {
-    if (sql.includes("document LIKE")) {
+    if (
+      sql.includes("document LIKE") ||
+      /^SELECT\s+document\s+FROM\s+orchestrator_tasks\s*$/i.test(sql.trim())
+    ) {
       throw new Error(
         `Failed query: ${sql}\nparams: ${JSON.stringify(params)}`,
       );
@@ -568,6 +572,24 @@ describe("RuntimeDbTaskStore", () => {
     expect((await store.findSession("session-x"))?.session.activeTool).toBe(
       "edit",
     );
+  });
+
+  it("uses a portable legacy fallback when search_text does not contain the session id (#11778)", async () => {
+    const adapter = new PgliteLikeRejectingAdapter();
+    const store = new RuntimeDbTaskStore(adapter);
+    const { task } = await store.createTask(
+      createInput({ title: "legacy pglite" }),
+    );
+    await store.addSession(
+      sessionFor(task.id, { sessionId: "legacy-session" }),
+    );
+    const row = adapter.rows.get(task.id);
+    if (!row) throw new Error("expected persisted test row");
+    row.search_text = "legacy row written before session ids were indexed";
+
+    const found = await store.findSession("legacy-session");
+    expect(found?.taskId).toBe(task.id);
+    expect(found?.session.sessionId).toBe("legacy-session");
   });
 
   it("finds a session on a task even when other tasks exist, without substring LIKE false-positives", async () => {

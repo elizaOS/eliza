@@ -807,6 +807,8 @@ const TASK_INDEX_SQL = [
   "CREATE INDEX IF NOT EXISTS idx_orch_tasks_activity ON orchestrator_tasks(last_activity_at)",
 ];
 
+const TASK_DOCUMENT_SELECT_SQL = "CAST(document AS TEXT) AS document";
+
 /** SQL backend. Stores the whole document as a JSON column with indexed
  * columns for the list query, so all reads/writes are single-row operations.
  *
@@ -895,7 +897,7 @@ export class RuntimeDbTaskStore {
 
   private async loadOne(id: string): Promise<OrchestratorTaskDocument | null> {
     const rows = await this.exec().all(
-      "SELECT document FROM orchestrator_tasks WHERE id = ?",
+      `SELECT ${TASK_DOCUMENT_SELECT_SQL} FROM orchestrator_tasks WHERE id = ?`,
       [id],
     );
     return rows.length > 0 ? this.parseDoc(rows[0]) : null;
@@ -936,7 +938,7 @@ export class RuntimeDbTaskStore {
         ? `LIMIT ${Math.floor(filter.limit)}`
         : "";
     const rows = await this.exec().all(
-      `SELECT document FROM orchestrator_tasks ${where} ORDER BY last_activity_at DESC ${limit}`,
+      `SELECT ${TASK_DOCUMENT_SELECT_SQL} FROM orchestrator_tasks ${where} ORDER BY last_activity_at DESC ${limit}`,
       params,
     );
     return rows
@@ -1020,7 +1022,7 @@ export class RuntimeDbTaskStore {
     // resolve to the wrong session.
     const needle = `%${sessionId.toLowerCase()}%`;
     let rows = await this.exec().all(
-      "SELECT document FROM orchestrator_tasks WHERE search_text LIKE ?",
+      `SELECT ${TASK_DOCUMENT_SELECT_SQL} FROM orchestrator_tasks WHERE search_text LIKE ?`,
       [needle],
     );
     const match = this.matchSession(rows, sessionId);
@@ -1028,7 +1030,9 @@ export class RuntimeDbTaskStore {
     // Legacy fallback: rows persisted before session ids were added to
     // `search_text` won't match the prefilter. Only pay for a full scan when
     // the targeted lookup misses, so the steady-state hot path stays cheap.
-    rows = await this.exec().all("SELECT document FROM orchestrator_tasks");
+    rows = await this.exec().all(
+      `SELECT ${TASK_DOCUMENT_SELECT_SQL} FROM orchestrator_tasks`,
+    );
     return this.matchSession(rows, sessionId);
   }
 
