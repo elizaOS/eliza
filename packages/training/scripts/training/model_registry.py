@@ -403,6 +403,11 @@ REGISTRY: dict[str, ModelEntry] = {
         grad_accum=8,
         train_mem_gb_budget=80.0,
         train_dtype="bf16",
+        # gemma4_unified (dense 12B/31B) has no validated Liger kernel path —
+        # its fused RMSNorm/RoPE/CE assume the Gemma2/3 layout and NaN the
+        # forward (all-NaN 12B checkpoint incident). Registry is the single
+        # source of truth; train_local.py's arch-string check is the backstop.
+        use_liger=False,
         infer_max_in=262144,
         infer_max_out=16384,
         # Proportionate KV-bearing count; verify against gemma-4-12B config.json.
@@ -436,6 +441,10 @@ REGISTRY: dict[str, ModelEntry] = {
         grad_accum=8,
         train_mem_gb_budget=210.0,
         train_dtype="bf16",
+        # See gemma4-12b: gemma4_unified has no validated Liger path; keep it
+        # off in the registry so the 31B tier is protected independent of the
+        # train_local.py arch check.
+        use_liger=False,
         infer_max_in=262144,
         infer_max_out=16384,
         # Proportionate KV-bearing count; verify against gemma-4-31B config.json.
