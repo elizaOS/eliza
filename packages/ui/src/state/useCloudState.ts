@@ -675,6 +675,15 @@ export function useCloudState({
                 (
                   globalThis as Record<string, unknown>
                 ).__ELIZA_CLOUD_AUTH_TOKEN__ = poll.token;
+                // Persist the token DURABLY too, not just on the volatile window
+                // global. On a native device the OAuth opens an external browser
+                // (SFSafariViewController) which backgrounds the WebView; iOS
+                // often cold-launches it on return, wiping the global — so
+                // getCloudAuthToken() read nothing, elizaCloudConnected never
+                // recomputed true, and onboarding restarted at the greeting.
+                // Writing the steward-session channel (which getCloudAuthToken
+                // reads first) lets the connection survive the relaunch.
+                writeStoredStewardToken(poll.token);
                 // Also update boot config so subsequent reads use the resolved cloud base.
                 const cfg = getBootConfig();
                 setBootConfig({
