@@ -78,11 +78,11 @@ import {
   summarizeDroppedAttachments,
 } from "../../utils/image-attachment";
 import { InlineWidgetText } from "../chat/InlineWidgetText";
+import { MessageAttachments } from "../chat/MessageAttachments";
+import { SensitiveRequestBlock } from "../chat/MessageContent";
 import { findChoiceRegions } from "../chat/message-choice-parser";
 import { findFollowupsRegions } from "../chat/message-followups-parser";
 import { findFormRegions } from "../chat/message-form-parser";
-import { MessageAttachments } from "../chat/MessageAttachments";
-import { SensitiveRequestBlock } from "../chat/MessageContent";
 import { ThinkingBlock } from "../chat/ThinkingBlock";
 import { withTranscriptMarker } from "../chat/TranscriptViewerOverlay";
 import {
