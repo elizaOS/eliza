@@ -1233,9 +1233,15 @@ class JsonFileTrajectoryRecorder implements TrajectoryRecorder {
 			trajectory.metrics.finalDecision = "error";
 		}
 
-		await this.queueFlushTrajectory(trajectory);
-		this.active.delete(trajectoryId);
-		this.flushQueues.delete(trajectoryId);
+		try {
+			await this.queueFlushTrajectory(trajectory);
+		} finally {
+			// Always retire the trajectory, even when the terminal flush fails —
+			// otherwise a failed write leaves the entry in `active` forever and
+			// late recordStage calls keep resurrecting a half-dead record.
+			this.active.delete(trajectoryId);
+			this.flushQueues.delete(trajectoryId);
+		}
 	}
 
 	async load(trajectoryId: string): Promise<RecordedTrajectory | null> {
@@ -1381,6 +1387,86 @@ export function createJsonFileTrajectoryRecorder(
 	opts: CreateJsonFileRecorderOptions = {},
 ): TrajectoryRecorder {
 	return new JsonFileTrajectoryRecorder(opts);
+}
+
+// ---------------------------------------------------------------------------
+// Trajectory finalization guard
+// ---------------------------------------------------------------------------
+
+/** Bound on optional pre-end work before the terminal status is written anyway. */
+export const DEFAULT_FINALIZE_TIMEOUT_MS = 60_000;
+
+export interface FinalizeTrajectoryRecordingOptions {
+	recorder: TrajectoryRecorder;
+	trajectoryId: string;
+	status: "finished" | "errored";
+	/**
+	 * Optional best-effort work to run before the terminal write (e.g. recording
+	 * a late background stage). Failures and timeouts are logged, never fatal.
+	 */
+	beforeEnd?: () => Promise<void>;
+	beforeEndTimeoutMs?: number;
+	logger?: RecorderLogger;
+}
+
+async function awaitBounded(
+	work: Promise<void>,
+	timeoutMs: number,
+): Promise<"done" | "timeout"> {
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	try {
+		return await Promise.race([
+			work.then(() => "done" as const),
+			new Promise<"timeout">((resolve) => {
+				timer = setTimeout(() => resolve("timeout"), timeoutMs);
+				(timer as { unref?: () => void }).unref?.();
+			}),
+		]);
+	} finally {
+		if (timer !== undefined) clearTimeout(timer);
+		// A raced-out `work` may still reject later; keep that from surfacing as
+		// an unhandled rejection.
+		void work.catch(() => undefined);
+	}
+}
+
+/**
+ * Lifecycle guard: every started trajectory must reach a terminal status.
+ *
+ * Runs `beforeEnd` bounded by `beforeEndTimeoutMs`, then writes the terminal
+ * status no matter what — a hung or throwing `beforeEnd` (historically the
+ * background FACTS_AND_RELATIONSHIPS model call) must never leave the
+ * trajectory stuck in `running`.
+ */
+export async function finalizeTrajectoryRecording(
+	opts: FinalizeTrajectoryRecordingOptions,
+): Promise<void> {
+	const timeoutMs = opts.beforeEndTimeoutMs ?? DEFAULT_FINALIZE_TIMEOUT_MS;
+	try {
+		if (opts.beforeEnd) {
+			const outcome = await awaitBounded(opts.beforeEnd(), timeoutMs);
+			if (outcome === "timeout") {
+				opts.logger?.warn?.(
+					{ trajectoryId: opts.trajectoryId, timeoutMs },
+					"[TrajectoryRecorder] finalize: pre-end work timed out; ending trajectory without it",
+				);
+			}
+		}
+	} catch (err) {
+		opts.logger?.warn?.(
+			{ err: (err as Error).message, trajectoryId: opts.trajectoryId },
+			"[TrajectoryRecorder] finalize: pre-end work failed",
+		);
+	} finally {
+		try {
+			await opts.recorder.endTrajectory(opts.trajectoryId, opts.status);
+		} catch (err) {
+			opts.logger?.warn?.(
+				{ err: (err as Error).message, trajectoryId: opts.trajectoryId },
+				"[TrajectoryRecorder] endTrajectory failed",
+			);
+		}
+	}
 }
 
 // ---------------------------------------------------------------------------

@@ -134,6 +134,7 @@ import { actionHasSubActions, runSubPlanner } from "../runtime/sub-planner";
 import { buildCanonicalSystemPrompt } from "../runtime/system-prompt";
 import {
 	createJsonFileTrajectoryRecorder,
+	finalizeTrajectoryRecording,
 	isTrajectoryRecordingEnabled,
 	type TrajectoryRecorder,
 } from "../runtime/trajectory-recorder";
@@ -6806,32 +6807,30 @@ export async function runV5MessageRuntimeStage1(args: {
 		// finalize in the background by default and let the turn return as soon as
 		// the reply is decided. Await it only when deterministic trajectory
 		// ordering is required (e.g. the scenario-runner) via ELIZA_AWAIT_FACTS_STAGE.
+		// finalizeTrajectoryRecording is the lifecycle guard: it bounds the wait
+		// on the facts stage and writes the terminal status no matter what, so a
+		// hung facts model call can never leave the trajectory stuck `running`.
 		const finalizeTrajectory = async () => {
-			try {
-				const factsOutcome = await factsTask;
-				if (recorder && trajectoryId && factsOutcome) {
-					await recordFactsAndRelationshipsStage({
-						recorder,
-						trajectoryId,
-						outcome: factsOutcome,
-						logger: args.runtime.logger,
-					});
-				}
-			} catch (factsErr) {
-				args.runtime.logger?.warn?.(
-					{ err: (factsErr as Error).message, trajectoryId },
-					"[facts] background facts-stage recording failed",
-				);
-			} finally {
-				if (recorder && trajectoryId) {
-					await recorder.endTrajectory(trajectoryId, endStatus).catch((err) => {
-						args.runtime.logger?.warn?.(
-							{ err: (err as Error).message, trajectoryId },
-							"[TrajectoryRecorder] endTrajectory failed",
-						);
-					});
-				}
-			}
+			if (!recorder || !trajectoryId) return;
+			await finalizeTrajectoryRecording({
+				recorder,
+				trajectoryId,
+				status: endStatus,
+				beforeEnd: async () => {
+					const factsOutcome = await factsTask;
+					if (factsOutcome) {
+						await recordFactsAndRelationshipsStage({
+							recorder,
+							trajectoryId,
+							outcome: factsOutcome,
+							logger: args.runtime.logger,
+						});
+					}
+				},
+				logger: args.runtime.logger as {
+					warn?: (context: unknown, message?: string) => void;
+				},
+			});
 		};
 		if (process.env.ELIZA_AWAIT_FACTS_STAGE === "true") {
 			await finalizeTrajectory();

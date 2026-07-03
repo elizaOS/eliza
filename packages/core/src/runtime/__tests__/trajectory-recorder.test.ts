@@ -8,6 +8,7 @@ import {
 	captureToolStageIO,
 	createJsonFileTrajectoryRecorder,
 	encodeTrajectoryFieldValue,
+	finalizeTrajectoryRecording,
 	type RecordedStage,
 	type RecordedTrajectory,
 	resolveTrajectoryFieldCapBytes,
@@ -1160,5 +1161,127 @@ describe("integration: action stage records input/output/error (M12)", () => {
 		expect(markdown).toContain(
 			"- description: manage EXISTING scheduled items -> SCHEDULED_TASKS",
 		);
+	});
+});
+
+describe("finalizeTrajectoryRecording (running-status leak guard)", () => {
+	const rootMessage = { id: "msg-1", text: "hello", sender: "user-1" };
+
+	async function readPersisted(id: string): Promise<RecordedTrajectory> {
+		const raw = await fs.readFile(
+			path.join(tmpDir, "agent-test", `${id}.json`),
+			"utf8",
+		);
+		return JSON.parse(raw) as RecordedTrajectory;
+	}
+
+	it("writes a terminal status even when the pre-end work never settles", async () => {
+		const warn = vi.fn();
+		const recorder = createJsonFileTrajectoryRecorder({ rootDir: tmpDir });
+		const id = recorder.startTrajectory({ agentId: "agent-test", rootMessage });
+
+		await finalizeTrajectoryRecording({
+			recorder,
+			trajectoryId: id,
+			status: "finished",
+			// Simulates a hung background facts-stage model call.
+			beforeEnd: () => new Promise<void>(() => {}),
+			beforeEndTimeoutMs: 25,
+			logger: { warn },
+		});
+
+		const persisted = await readPersisted(id);
+		expect(persisted.status).toBe("finished");
+		expect(persisted.endedAt).toBeGreaterThan(0);
+		expect(warn).toHaveBeenCalledWith(
+			expect.objectContaining({ trajectoryId: id, timeoutMs: 25 }),
+			expect.stringContaining("timed out"),
+		);
+	});
+
+	it("writes a terminal errored status even when the pre-end work throws", async () => {
+		const warn = vi.fn();
+		const recorder = createJsonFileTrajectoryRecorder({ rootDir: tmpDir });
+		const id = recorder.startTrajectory({ agentId: "agent-test", rootMessage });
+
+		await finalizeTrajectoryRecording({
+			recorder,
+			trajectoryId: id,
+			status: "errored",
+			beforeEnd: () => Promise.reject(new Error("facts stage exploded")),
+			logger: { warn },
+		});
+
+		const persisted = await readPersisted(id);
+		expect(persisted.status).toBe("errored");
+		expect(persisted.metrics.finalDecision).toBe("error");
+		expect(warn).toHaveBeenCalledWith(
+			expect.objectContaining({ err: "facts stage exploded" }),
+			expect.stringContaining("pre-end work failed"),
+		);
+	});
+
+	it("records the pre-end stage before ending when it completes in time", async () => {
+		const recorder = createJsonFileTrajectoryRecorder({ rootDir: tmpDir });
+		const id = recorder.startTrajectory({ agentId: "agent-test", rootMessage });
+
+		await finalizeTrajectoryRecording({
+			recorder,
+			trajectoryId: id,
+			status: "finished",
+			beforeEnd: async () => {
+				await recorder.recordStage(id, {
+					stageId: "stage-facts-1",
+					kind: "factsAndRelationships",
+					startedAt: 1,
+					endedAt: 2,
+					latencyMs: 1,
+				});
+			},
+		});
+
+		const persisted = await readPersisted(id);
+		expect(persisted.status).toBe("finished");
+		expect(persisted.stages).toHaveLength(1);
+		expect(persisted.stages[0]?.stageId).toBe("stage-facts-1");
+	});
+
+	it("never throws, even when endTrajectory itself rejects", async () => {
+		const warn = vi.fn();
+		const failing = {
+			startTrajectory: () => "tj-x",
+			recordStage: async () => undefined,
+			endTrajectory: async () => {
+				throw new Error("disk gone");
+			},
+			load: async () => null,
+			list: async () => [],
+		};
+
+		await expect(
+			finalizeTrajectoryRecording({
+				recorder: failing,
+				trajectoryId: "tj-x",
+				status: "finished",
+				logger: { warn },
+			}),
+		).resolves.toBeUndefined();
+		expect(warn).toHaveBeenCalledWith(
+			expect.objectContaining({ err: "disk gone", trajectoryId: "tj-x" }),
+			expect.stringContaining("endTrajectory failed"),
+		);
+	});
+
+	it("ends immediately when there is no pre-end work", async () => {
+		const recorder = createJsonFileTrajectoryRecorder({ rootDir: tmpDir });
+		const id = recorder.startTrajectory({ agentId: "agent-test", rootMessage });
+
+		await finalizeTrajectoryRecording({
+			recorder,
+			trajectoryId: id,
+			status: "finished",
+		});
+
+		expect((await readPersisted(id)).status).toBe("finished");
 	});
 });
