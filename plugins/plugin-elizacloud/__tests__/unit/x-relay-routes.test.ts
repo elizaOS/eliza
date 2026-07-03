@@ -47,14 +47,10 @@ afterEach(() => {
 describe("handleXRelayRoute", () => {
   it("forwards GET X relay routes to the Cloud API with auth headers", async () => {
     process.env.NODE_ENV = "development";
-    const fetchMock = vi.fn<typeof fetch>(async () =>
-      Response.json({ ok: true }),
-    );
+    const fetchMock = vi.fn<typeof fetch>(async () => Response.json({ ok: true }));
     vi.stubGlobal("fetch", fetchMock);
 
-    const req = createRequest(
-      "/api/cloud/x/users/me?expansions=pinned_tweet_id",
-    );
+    const req = createRequest("/api/cloud/x/users/me?expansions=pinned_tweet_id");
     const res = createResponse();
 
     await expect(
@@ -66,7 +62,7 @@ describe("handleXRelayRoute", () => {
             serviceKey: "service-key",
           },
         },
-      }),
+      })
     ).resolves.toBe(true);
 
     expect(fetchMock).toHaveBeenCalledWith(
@@ -78,7 +74,7 @@ describe("handleXRelayRoute", () => {
           Authorization: "Bearer eliza_test",
           "X-Service-Key": "service-key",
         }),
-      }),
+      })
     );
     expect(res.statusCode).toBe(200);
     expect(JSON.parse(res.body)).toEqual({ ok: true });
@@ -86,9 +82,7 @@ describe("handleXRelayRoute", () => {
 
   it("forwards a POST body read fresh from the request stream", async () => {
     process.env.NODE_ENV = "development";
-    const fetchMock = vi.fn<typeof fetch>(async () =>
-      Response.json({ id: "tweet-1" }),
-    );
+    const fetchMock = vi.fn<typeof fetch>(async () => Response.json({ id: "tweet-1" }));
     vi.stubGlobal("fetch", fetchMock);
 
     const req = createRequest("/api/cloud/x/tweets", "POST");
@@ -99,29 +93,29 @@ describe("handleXRelayRoute", () => {
     await expect(
       handleXRelayRoute(req as never, res as never, pathnameOf(req), "POST", {
         config: { cloud: { apiKey: "eliza_test", baseUrl: "https://cloud.example" } },
-      }),
+      })
     ).resolves.toBe(true);
 
     expect(fetchMock).toHaveBeenCalledWith(
       "https://cloud.example/api/v1/x/tweets",
-      expect.objectContaining({ method: "POST", body: payload }),
+      expect.objectContaining({ method: "POST", body: payload })
     );
     expect(JSON.parse(res.body)).toEqual({ id: "tweet-1" });
   });
 
   it("forwards a POST body already cached by the plugin route pre-parse", async () => {
     process.env.NODE_ENV = "development";
-    const fetchMock = vi.fn<typeof fetch>(async () =>
-      Response.json({ id: "tweet-2" }),
-    );
+    const fetchMock = vi.fn<typeof fetch>(async () => Response.json({ id: "tweet-2" }));
     vi.stubGlobal("fetch", fetchMock);
 
     // Simulate attachJsonBodyIfPresent having already drained + cached the body
     // (the runtime plugin route system reads JSON POST bodies before handlers).
     const req = createRequest("/api/cloud/x/tweets", "POST");
     const payload = JSON.stringify({ text: "cached path" });
-    (req as unknown as Record<symbol, unknown>)[CACHED_REQUEST_BODY] =
-      Buffer.from(payload, "utf-8");
+    (req as unknown as Record<symbol, unknown>)[CACHED_REQUEST_BODY] = Buffer.from(
+      payload,
+      "utf-8"
+    );
     const res = createResponse();
 
     await handleXRelayRoute(req as never, res as never, pathnameOf(req), "POST", {
@@ -130,7 +124,7 @@ describe("handleXRelayRoute", () => {
 
     expect(fetchMock).toHaveBeenCalledWith(
       "https://cloud.example/api/v1/x/tweets",
-      expect.objectContaining({ method: "POST", body: payload }),
+      expect.objectContaining({ method: "POST", body: payload })
     );
     expect(JSON.parse(res.body)).toEqual({ id: "tweet-2" });
   });
@@ -147,8 +141,8 @@ describe("handleXRelayRoute", () => {
               "content-type": "text/plain",
               "www-authenticate": "x402 challenge",
             },
-          }),
-      ),
+          })
+      )
     );
 
     const req = createRequest("/api/cloud/x/tweets", "POST");
@@ -193,7 +187,7 @@ describe("handleXRelayRoute", () => {
     await expect(
       handleXRelayRoute(req as never, res as never, pathnameOf(req), "DELETE", {
         config: { cloud: { apiKey: "eliza_test", baseUrl: "https://cloud.example" } },
-      }),
+      })
     ).resolves.toBe(true);
 
     expect(fetchMock).not.toHaveBeenCalled();
@@ -208,7 +202,7 @@ describe("handleXRelayRoute", () => {
     await expect(
       handleXRelayRoute(req as never, res as never, pathnameOf(req), "GET", {
         config: {},
-      }),
+      })
     ).resolves.toBe(false);
   });
 });
@@ -216,15 +210,11 @@ describe("handleXRelayRoute", () => {
 describe("elizaCloudRoutePlugin X relay registration", () => {
   it("registers /api/cloud/x/:path* for every method as a raw path", () => {
     const routes = (elizaCloudRoutePlugin.routes ?? []) as Route[];
-    const xRoutes = routes.filter(
-      (route) => route.path === "/api/cloud/x/:path*",
-    );
+    const xRoutes = routes.filter((route) => route.path === "/api/cloud/x/:path*");
     const methods = xRoutes.map((route) => route.type).sort();
 
     expect(methods).toEqual(["DELETE", "GET", "PATCH", "POST", "PUT"]);
     expect(xRoutes.every((route) => route.rawPath === true)).toBe(true);
-    expect(xRoutes.every((route) => typeof route.handler === "function")).toBe(
-      true,
-    );
+    expect(xRoutes.every((route) => typeof route.handler === "function")).toBe(true);
   });
 });

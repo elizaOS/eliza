@@ -7,6 +7,7 @@ export async function runIosBridgeCli(argv?: string[]): Promise<void> {
 	const { runIosBridgeCli } = await import("./ios/bridge.js");
 	await runIosBridgeCli(argv);
 }
+
 import type { Plugin } from "@elizaos/core";
 import { CapacitorMobileDeviceBridgeService } from "./mobile-device-bridge-bootstrap.js";
 
