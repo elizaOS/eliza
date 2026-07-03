@@ -2,6 +2,7 @@
 
 import { logger } from "@elizaos/logger";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { DEFAULT_BOOT_CONFIG, setBootConfig } from "../config/boot-config";
 import {
   createPersistedActiveServer,
   loadPersistedActiveServer,
@@ -13,7 +14,6 @@ import {
   canRestoreActiveServer,
   reconcileMobileRestoredActiveServer,
 } from "./startup-phase-restore";
-import { DEFAULT_BOOT_CONFIG, setBootConfig } from "../config/boot-config";
 
 describe("Cloud active server persistence", () => {
   const elizaWindow = window as typeof window & {
@@ -178,7 +178,10 @@ describe("Cloud active server persistence", () => {
   });
 
   it("preserves the injected desktop API base when restoring a local session", async () => {
-    setBootConfig({ ...DEFAULT_BOOT_CONFIG, apiBase: "http://127.0.0.1:31337" });
+    setBootConfig({
+      ...DEFAULT_BOOT_CONFIG,
+      apiBase: "http://127.0.0.1:31337",
+    });
     const setBaseUrl = vi.fn();
     const setToken = vi.fn();
     const startLocalRuntime = vi.fn().mockResolvedValue(undefined);

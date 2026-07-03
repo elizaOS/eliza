@@ -253,7 +253,10 @@ describe("androidNativeAgentTransportForUrl", { timeout: 15_000 }, () => {
     vi.stubGlobal("window", {
       location: { href: "http://localhost/" },
     });
-    setBootConfig({ ...DEFAULT_BOOT_CONFIG, apiBase: "eliza-local-agent://ipc" });
+    setBootConfig({
+      ...DEFAULT_BOOT_CONFIG,
+      apiBase: "eliza-local-agent://ipc",
+    });
 
     installAndroidNativeAgentFetchBridge();
 
