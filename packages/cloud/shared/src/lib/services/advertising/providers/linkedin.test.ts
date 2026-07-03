@@ -101,13 +101,76 @@ describe("linkedinAdsProvider", () => {
     expect(create.url.pathname).toBe("/rest/adAccounts/12345/adCampaigns");
     expect(create.body).toMatchObject({
       account: "urn:li:sponsoredAccount:12345",
+      audienceExpansionEnabled: false,
       campaignGroup: "urn:li:sponsoredCampaignGroup:77",
+      connectedTelevisionOnly: false,
+      costType: "CPC",
       creativeSelection: "OPTIMIZED",
       dailyBudget: { amount: "50.00", currencyCode: "USD" },
+      locale: { country: "US", language: "en" },
       name: "Launch campaign",
       objectiveType: "WEBSITE_VISITS",
+      offsiteDeliveryEnabled: false,
+      optimizationTargetType: "NONE",
+      politicalIntent: "NOT_DECLARED",
       status: "PAUSED",
+      targetingCriteria: {
+        include: {
+          and: [
+            {
+              or: {
+                "urn:li:adTargetingFacet:locations": ["urn:li:geo:103644278"],
+              },
+            },
+            {
+              or: {
+                "urn:li:adTargetingFacet:interfaceLocales": ["urn:li:locale:en_US"],
+              },
+            },
+          ],
+        },
+      },
       type: "TEXT_AD",
+    });
+  });
+
+  test("uses LinkedIn geo URNs and language targeting when supplied", async () => {
+    fetchMock()
+      .mockResolvedValueOnce(jsonResponse({ elements: [{ id: 77, status: "ACTIVE" }] }))
+      .mockResolvedValueOnce(jsonResponse({}, { status: 201, restliId: "888" }));
+
+    await linkedinAdsProvider.createCampaign(credentials, "12345", {
+      organizationId: "org-1",
+      adAccountId: "ad-account-1",
+      name: "Localized launch",
+      objective: "traffic",
+      budgetType: "daily",
+      budgetAmount: 50,
+      targeting: {
+        locations: ["urn:li:geo:101174742", "not-a-linkedin-urn"],
+        languages: ["fr_FR"],
+      },
+    });
+
+    const create = nextRequest(1);
+    expect(create.body).toMatchObject({
+      locale: { country: "FR", language: "fr" },
+      targetingCriteria: {
+        include: {
+          and: [
+            {
+              or: {
+                "urn:li:adTargetingFacet:locations": ["urn:li:geo:101174742"],
+              },
+            },
+            {
+              or: {
+                "urn:li:adTargetingFacet:interfaceLocales": ["urn:li:locale:fr_FR"],
+              },
+            },
+          ],
+        },
+      },
     });
   });
 
@@ -183,8 +246,8 @@ describe("linkedinAdsProvider", () => {
     expect(request.url.pathname).toBe("/rest/adAccounts/12345/creatives");
     expect(request.body).toEqual({
       campaign: "urn:li:sponsoredCampaign:888",
+      intendedStatus: "PAUSED",
       name: "Creative one",
-      status: "PAUSED",
       type: "TEXT_AD",
       variables: {
         clickUri: "https://elizaos.ai",

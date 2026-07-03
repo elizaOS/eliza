@@ -216,6 +216,15 @@ function buildLinkedInCampaignPayload(
   input: CreateCampaignInput,
 ): Record<string, unknown> {
   const currencyCode = input.budgetCurrency || "USD";
+  const locations =
+    input.targeting?.locations?.map((location) => location.trim()).filter(Boolean) ?? [];
+  const linkedInLocations = locations.filter((location) => location.startsWith("urn:li:geo:"));
+  const [rawLanguage = "en", rawCountry = "US"] = (
+    input.targeting?.languages?.[0] ?? "en_US"
+  ).split(/[-_]/);
+  const language = rawLanguage.toLowerCase();
+  const country = rawCountry.toUpperCase();
+  const locale = `${language}_${country}`;
   const budget = {
     amount: input.budgetAmount.toFixed(2),
     currencyCode,
@@ -223,15 +232,43 @@ function buildLinkedInCampaignPayload(
 
   return {
     account: sponsoredAccountUrn(accountId),
+    audienceExpansionEnabled: false,
     campaignGroup: campaignGroupUrn(campaignGroupId),
+    connectedTelevisionOnly: false,
+    costType: "CPC",
     creativeSelection: "OPTIMIZED",
+    locale: {
+      country,
+      language,
+    },
     name: input.name,
     objectiveType: mapObjectiveToLinkedIn(input.objective),
+    offsiteDeliveryEnabled: false,
+    optimizationTargetType: "NONE",
+    politicalIntent: "NOT_DECLARED",
     runSchedule: {
       start: (input.startDate ?? new Date()).getTime(),
       ...(input.endDate ? { end: input.endDate.getTime() } : {}),
     },
     status: "PAUSED",
+    targetingCriteria: {
+      include: {
+        and: [
+          {
+            or: {
+              "urn:li:adTargetingFacet:locations": linkedInLocations.length
+                ? linkedInLocations
+                : ["urn:li:geo:103644278"],
+            },
+          },
+          {
+            or: {
+              "urn:li:adTargetingFacet:interfaceLocales": [`urn:li:locale:${locale}`],
+            },
+          },
+        ],
+      },
+    },
     type: "TEXT_AD",
     ...(input.budgetType === "daily" ? { dailyBudget: budget } : { totalBudget: budget }),
     unitCost: { amount: "1.00", currencyCode },
@@ -432,8 +469,8 @@ export const linkedinAdsProvider: AdProvider = {
           method: "POST",
           body: JSON.stringify({
             campaign: campaignUrn(campaign.campaignId),
+            intendedStatus: "PAUSED",
             name: input.name,
-            status: "PAUSED",
             type: "TEXT_AD",
             variables: {
               clickUri: input.destinationUrl,

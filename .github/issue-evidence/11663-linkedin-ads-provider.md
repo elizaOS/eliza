@@ -5,7 +5,7 @@
 Implemented the `linkedin` advertising provider for the Cloud advertising service:
 
 - LinkedIn Marketing API account discovery and credential validation.
-- Paused campaign creation under an existing or newly created campaign group.
+- Paused campaign creation under an existing or newly created campaign group, including required LinkedIn campaign fields for locale, cost type, targeting criteria, offsite delivery, and political intent.
 - Campaign update, pause, activate, and archive lifecycle operations through Rest.li patch bodies.
 - Text ad creative creation.
 - Image upload initialization, binary upload, and media library registration.
@@ -25,7 +25,7 @@ Implemented the `linkedin` advertising provider for the Cloud advertising servic
 ## Verification
 
 - `bun test packages/cloud/shared/src/lib/services/advertising/providers/linkedin.test.ts packages/cloud/shared/src/lib/services/advertising/providers/linkedin.real.test.ts`
-  - Result: 8 pass, 1 skipped live test.
+  - Result: 9 pass, 1 skipped live test.
 - `bun run --cwd packages/cloud/shared typecheck`
   - Result: pass.
 - `bun run --cwd packages/cloud/api typecheck`
