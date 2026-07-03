@@ -1543,7 +1543,28 @@ public class ElizaAgentService extends Service {
             // delegate inference over an abstract-namespace UDS to the in-process
             // ElizaBionicInferenceServer, which runs libelizainference on the Mali
             // GPU. The musl agent never tries to load the native lib itself.
-            boolean delegateToBionicHost = fusedInferenceBundled && abiGgmlVulkan.isFile();
+            // The bionic host is served through the fused-voice JNI bridge
+            // (libelizavoicejni.so, ElizaVoiceNative → ElizaBionicInferenceServer).
+            // That bridge is only built by the app's externalNativeBuild when the
+            // staged libelizainference.so carries the fused-voice symbols; a build
+            // whose prebuilt lib lacks them silently ships WITHOUT the bridge (see
+            // build.gradle). Requiring it here means we never advertise a
+            // bionic-host serving path the server cannot actually stand up — the
+            // musl agent would otherwise register capacitor-llama handlers "(via
+            // bionic-host)" against a socket that never binds, and every turn
+            // would fail with a cryptic "bionic socket error: connect ENOENT".
+            boolean bionicJniBridgeBundled =
+                resolveBundledNativeLib(abiDir, "libelizavoicejni.so").isFile();
+            boolean delegateToBionicHost =
+                fusedInferenceBundled && abiGgmlVulkan.isFile() && bionicJniBridgeBundled;
+            if (fusedInferenceBundled && abiGgmlVulkan.isFile() && !bionicJniBridgeBundled) {
+                Log.w(TAG, "agent/" + abiDir.getName()
+                    + ": fused Vulkan libs are staged but libelizavoicejni.so is absent "
+                    + "(this build skipped the fused-voice JNI bridge); on-device GPU "
+                    + "inference via the bionic host is UNAVAILABLE. Rebuild with "
+                    + "stage-elizavoice-lib.mjs to re-enable. Falling back to the "
+                    + "non-delegated inference path.");
+            }
             if (delegateToBionicHost) {
                 agentEnv.put("ELIZA_BIONIC_HOST_DELEGATED", "1");
                 agentEnv.put("ELIZA_BIONIC_INFERENCE_SOCK", BIONIC_INFERENCE_SOCKET_NAME);
@@ -1571,7 +1592,24 @@ public class ElizaAgentService extends Service {
                     bionicInferenceServer =
                         new ElizaBionicInferenceServer(BIONIC_INFERENCE_SOCKET_NAME, defaultBundleDir);
                 }
-                bionicInferenceServer.start();
+                // Guard the start: a failure here (e.g. the fused-voice native
+                // libs failing to dlopen) must NOT leave the delegation env set,
+                // or the musl agent registers dead "(via bionic-host)" handlers
+                // against a socket that never binds and every turn fails. On
+                // failure, retract the delegation so the caller falls through to
+                // the non-delegated inference path below. UnsatisfiedLinkError is
+                // an Error, not an Exception, so catch Throwable here.
+                try {
+                    bionicInferenceServer.start();
+                } catch (Throwable startError) {
+                    Log.e(TAG, "ElizaBionicInferenceServer.start() failed; disabling "
+                        + "bionic-host delegation for this launch: " + startError.getMessage(),
+                        startError);
+                    bionicInferenceServer = null;
+                    agentEnv.remove("ELIZA_BIONIC_HOST_DELEGATED");
+                    agentEnv.remove("ELIZA_BIONIC_INFERENCE_SOCK");
+                    delegateToBionicHost = false;
+                }
             }
             if (!delegateToBionicHost && nativeLlamaBundled
                     && !env.containsKey("ELIZA_LOCAL_LLAMA")) {
