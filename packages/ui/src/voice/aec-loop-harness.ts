@@ -54,6 +54,17 @@ export interface AecLoopRunOptions {
    * `adb reverse` host server).
    */
   audioUrl?: string;
+  /**
+   * Near-end (double-talk) audio URL played through the SAME AudioContext but
+   * connected directly to the destination — never through the playback tap —
+   * so it reaches the mic acoustically while staying absent from the far-end
+   * reference, which is the property that defines near-end speech for the
+   * canceller. (A separate AudioContext does not work: on Android WebView a
+   * second context created while the harness context holds the output stream
+   * renders silently, verified on a Pixel 6a.) Starts when far-end playback
+   * starts.
+   */
+  nearEndAudioUrl?: string;
   /** Agent-side capture window ceiling in seconds (default 30). */
   maxSeconds?: number;
   /** Extra mic tail after TTS playback ends, ms (default 2000). */
@@ -85,6 +96,9 @@ export interface AecLoopResult {
   contextSampleRate: number;
   ttsDurationMs: number;
   playStartedAtMs: number | null;
+  /** Near-end (double-talk) playback: start time and duration, when used. */
+  nearEndStartedAtMs: number | null;
+  nearEndDurationMs: number | null;
   warmupMs: number;
   tailMs: number;
   log: string[];
@@ -395,6 +409,23 @@ async function runAecLoop(
     source.connect(playTap);
     playTap.connect(ctx.destination);
 
+    // Near-end (double-talk) branch: same context, straight to destination —
+    // deliberately NOT routed through playTap, so this speech reaches the mic
+    // acoustically but never enters the far-end reference.
+    let nearSource: AudioBufferSourceNode | null = null;
+    let nearEndDurationMs: number | null = null;
+    if (options.nearEndAudioUrl) {
+      log(`fetch near-end audio from ${options.nearEndAudioUrl.slice(0, 64)}`);
+      const nearRes = await fetch(options.nearEndAudioUrl);
+      if (!nearRes.ok) throw new Error(`nearEndAudioUrl -> ${nearRes.status}`);
+      const nearBuffer = await ctx.decodeAudioData(await nearRes.arrayBuffer());
+      nearEndDurationMs = Math.round(nearBuffer.duration * 1000);
+      nearSource = ctx.createBufferSource();
+      nearSource.buffer = nearBuffer;
+      nearSource.connect(ctx.destination);
+      log(`near-end decoded ${nearBuffer.duration.toFixed(2)}s (un-tapped)`);
+    }
+
     let micPosts = 0;
     let playPosts = 0;
     let shipError: string | null = null;
@@ -425,7 +456,17 @@ async function runAecLoop(
       source.onended = () => resolve();
     });
     source.start(0);
-    await ended;
+    let nearEndStartedAtMs: number | null = null;
+    let nearEnded: Promise<void> = Promise.resolve();
+    if (nearSource) {
+      log("play near-end (double-talk) speech");
+      nearEndStartedAtMs = performance.now();
+      nearEnded = new Promise<void>((resolve) => {
+        if (nearSource) nearSource.onended = () => resolve();
+      });
+      nearSource.start(0);
+    }
+    await Promise.all([ended, nearEnded]);
     log("tts ended; tail");
     await new Promise((r) => setTimeout(r, tailMs));
 
@@ -459,6 +500,8 @@ async function runAecLoop(
       contextSampleRate: contextRate,
       ttsDurationMs: Math.round(ttsBuffer.duration * 1000),
       playStartedAtMs,
+      nearEndStartedAtMs,
+      nearEndDurationMs,
       warmupMs,
       tailMs,
       log: runLog,
@@ -517,6 +560,8 @@ export function parseAecLoopHash(hash: string): AecLoopRunOptions | null {
   if (text) options.ttsText = text;
   const audioUrl = params.get("audioUrl");
   if (audioUrl) options.audioUrl = audioUrl;
+  const nearUrl = params.get("nearUrl");
+  if (nearUrl) options.nearEndAudioUrl = nearUrl;
   const tag = params.get("tag");
   if (tag) options.tag = tag;
   const readNumber = (name: string, min: number): number | null => {
