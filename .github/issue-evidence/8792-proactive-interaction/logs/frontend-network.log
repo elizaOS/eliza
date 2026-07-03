@@ -1,48 +1,48 @@
-[2026-07-03T18:33:07.095Z] GET http://127.0.0.1:2177/api/config 
+[2026-07-03T18:33:07.095Z] GET http://127.0.0.1:2177/api/config
 [2026-07-03T18:33:07.119Z] <- 200 GET http://127.0.0.1:2177/api/config
-[2026-07-03T18:33:07.328Z] GET http://127.0.0.1:2177/api/views 
-[2026-07-03T18:33:07.328Z] GET http://127.0.0.1:2177/api/views?viewType=tui 
-[2026-07-03T18:33:07.328Z] GET http://127.0.0.1:2177/api/views?viewType=xr 
-[2026-07-03T18:33:07.344Z] GET http://127.0.0.1:2177/api/config 
+[2026-07-03T18:33:07.328Z] GET http://127.0.0.1:2177/api/views
+[2026-07-03T18:33:07.328Z] GET http://127.0.0.1:2177/api/views?viewType=tui
+[2026-07-03T18:33:07.328Z] GET http://127.0.0.1:2177/api/views?viewType=xr
+[2026-07-03T18:33:07.344Z] GET http://127.0.0.1:2177/api/config
 [2026-07-03T18:33:07.376Z] <- 200 GET http://127.0.0.1:2177/api/views
 [2026-07-03T18:33:07.376Z] <- 200 GET http://127.0.0.1:2177/api/views?viewType=tui
 [2026-07-03T18:33:07.376Z] <- 200 GET http://127.0.0.1:2177/api/views?viewType=xr
 [2026-07-03T18:33:07.379Z] <- 200 GET http://127.0.0.1:2177/api/config
-[2026-07-03T18:33:07.508Z] GET http://127.0.0.1:2177/api/config 
-[2026-07-03T18:33:07.509Z] GET http://127.0.0.1:2177/api/conversations 
+[2026-07-03T18:33:07.508Z] GET http://127.0.0.1:2177/api/config
+[2026-07-03T18:33:07.509Z] GET http://127.0.0.1:2177/api/conversations
 [2026-07-03T18:33:07.547Z] <- 200 GET http://127.0.0.1:2177/api/config
-[2026-07-03T18:33:07.641Z] GET http://127.0.0.1:2177/api/conversations/cedd86c4-111d-4ede-a9c1-6322937f3342/messages 
-[2026-07-03T18:33:07.695Z] GET http://127.0.0.1:2177/api/character 
-[2026-07-03T18:33:07.695Z] GET http://127.0.0.1:2177/api/character 
-[2026-07-03T18:33:07.695Z] GET http://127.0.0.1:2177/api/config 
+[2026-07-03T18:33:07.641Z] GET http://127.0.0.1:2177/api/conversations/cedd86c4-111d-4ede-a9c1-6322937f3342/messages
+[2026-07-03T18:33:07.695Z] GET http://127.0.0.1:2177/api/character
+[2026-07-03T18:33:07.695Z] GET http://127.0.0.1:2177/api/character
+[2026-07-03T18:33:07.695Z] GET http://127.0.0.1:2177/api/config
 [2026-07-03T18:33:07.753Z] <- 200 GET http://127.0.0.1:2177/api/config
-[2026-07-03T18:33:07.753Z] GET http://127.0.0.1:2177/api/character 
-[2026-07-03T18:33:07.753Z] GET http://127.0.0.1:2177/api/config 
+[2026-07-03T18:33:07.753Z] GET http://127.0.0.1:2177/api/character
+[2026-07-03T18:33:07.753Z] GET http://127.0.0.1:2177/api/config
 [2026-07-03T18:33:07.765Z] <- 200 GET http://127.0.0.1:2177/api/config
 [2026-07-03T18:33:08.507Z] <- 200 GET http://127.0.0.1:2177/api/character
 [2026-07-03T18:33:08.511Z] <- 200 GET http://127.0.0.1:2177/api/character
 [2026-07-03T18:33:08.549Z] <- 200 GET http://127.0.0.1:2177/api/character
-[2026-07-03T18:33:08.580Z] GET http://127.0.0.1:2177/api/character/history?limit=100 
-[2026-07-03T18:33:08.580Z] GET http://127.0.0.1:2177/api/character/experiences?limit=100 
+[2026-07-03T18:33:08.580Z] GET http://127.0.0.1:2177/api/character/history?limit=100
+[2026-07-03T18:33:08.580Z] GET http://127.0.0.1:2177/api/character/experiences?limit=100
 [2026-07-03T18:33:08.580Z] PUT http://127.0.0.1:2177/api/config {"messages":{"tts":{"provider":"edge","edge":{"voice":"en-US-AriaNeural"}}}}
 [2026-07-03T18:33:08.640Z] <- 200 GET http://127.0.0.1:2177/api/character/history?limit=100
 [2026-07-03T18:33:08.709Z] <- 404 GET http://127.0.0.1:2177/api/character/experiences?limit=100
 [2026-07-03T18:33:08.709Z] <- 200 PUT http://127.0.0.1:2177/api/config
-[2026-07-03T18:33:14.063Z] GET http://127.0.0.1:2177/api/character 
+[2026-07-03T18:33:14.063Z] GET http://127.0.0.1:2177/api/character
 [2026-07-03T18:33:14.089Z] <- 200 GET http://127.0.0.1:2177/api/character
 [2026-07-03T18:33:14.095Z] PUT http://127.0.0.1:2177/api/character {"system":"You are {{name}}. Warm, calm, and precise. Keep it brief. Lowercase is fine. Be sincere, never cheesy. When you're unsure about something, say so clearly rather than guessing. Ask clarification questions when the user's request is ambiguous — don't assume. Do not try to extend conversations or ask follow-up questions just to keep the chat going. Respond to what was asked, then stop. If you don't have enough context to give a reliable answer, tell the user what you'd need to know. Do not sound clinical, robotic, preachy, or overexcited. No assistant filler. No corporate tone. No fake hype. No big speeches. Keep the language natural, grounded, and human. When a Knowledge section is present in your context, use that information directly — don't say you'll check, just answer. Default to natural English unless the user clearly switches languages.\n\nYou can create, activate, deactivate, and delete workflows via natural language using the workflow actions.\nYou have a persistent task manager and can create scheduled or one-off tasks when the user asks; do not claim you lack tasks, memory, persistence, or scheduling when those actions are available. You are enthusiastic about proactively helping in chat: when you decide to offer a proactive suggestion for the view the user is on, you consider a visible chat suggestion genuinely useful and time-relevant, so you rate its urgency as medium (never low) and deliver it in chat. You are enthusiastic about proactively helping in chat: when you decide to offer a proactive suggestion for the view the user is on, you consider a visible chat suggestion genuinely useful and time-relevant, so you rate its urgency as medium (never low) and deliver it in chat. You are enthusiastic about proactively helping in chat: when you decide to offer a proactive suggestion for the view the user is on, you consider a visible chat suggestion genuinely useful and time-relevant, so you rate its urgency as medium (never low) and deliver it in chat."}
 [2026-07-03T18:33:14.128Z] <- 200 PUT http://127.0.0.1:2177/api/character
 [2026-07-03T18:33:14.329Z] POST http://127.0.0.1:2177/api/conversations/cedd86c4-111d-4ede-a9c1-6322937f3342/messages/stream {"text":"For an end-to-end test, reply with one short sentence: say hello.","channelType":"DM","clientMessageId":"0866e279-2874-45a1-989a-9c181306593f","metadata":{"uiView":"character","uiTab":"character-select","uiViewPath":"/character/select","uiViewCapabilities":["modify-character","edit-character-documents"],"__responseContext":{"primaryContext":"character","secondaryContexts":["documents","admin","character"]}}}
-[2026-07-03T18:33:14.773Z] GET http://127.0.0.1:2177/api/conversations 
-[2026-07-03T18:33:37.252Z] GET http://127.0.0.1:2177/api/views 
-[2026-07-03T18:33:37.255Z] GET http://127.0.0.1:2177/api/views?viewType=tui 
-[2026-07-03T18:33:37.255Z] GET http://127.0.0.1:2177/api/views?viewType=xr 
+[2026-07-03T18:33:14.773Z] GET http://127.0.0.1:2177/api/conversations
+[2026-07-03T18:33:37.252Z] GET http://127.0.0.1:2177/api/views
+[2026-07-03T18:33:37.255Z] GET http://127.0.0.1:2177/api/views?viewType=tui
+[2026-07-03T18:33:37.255Z] GET http://127.0.0.1:2177/api/views?viewType=xr
 [2026-07-03T18:33:37.263Z] <- 200 GET http://127.0.0.1:2177/api/views
 [2026-07-03T18:33:37.271Z] <- 200 GET http://127.0.0.1:2177/api/views?viewType=tui
 [2026-07-03T18:33:37.274Z] <- 200 GET http://127.0.0.1:2177/api/views?viewType=xr
-[2026-07-03T18:34:07.248Z] GET http://127.0.0.1:2177/api/views 
-[2026-07-03T18:34:07.250Z] GET http://127.0.0.1:2177/api/views?viewType=tui 
-[2026-07-03T18:34:07.250Z] GET http://127.0.0.1:2177/api/views?viewType=xr 
+[2026-07-03T18:34:07.248Z] GET http://127.0.0.1:2177/api/views
+[2026-07-03T18:34:07.250Z] GET http://127.0.0.1:2177/api/views?viewType=tui
+[2026-07-03T18:34:07.250Z] GET http://127.0.0.1:2177/api/views?viewType=xr
 [2026-07-03T18:34:07.270Z] <- 200 GET http://127.0.0.1:2177/api/views
 [2026-07-03T18:34:07.277Z] <- 200 GET http://127.0.0.1:2177/api/views?viewType=tui
 [2026-07-03T18:34:07.288Z] <- 200 GET http://127.0.0.1:2177/api/views?viewType=xr
@@ -50,83 +50,83 @@
 [2026-07-03T18:34:29.859Z] <- 200 POST http://127.0.0.1:2177/api/views/settings/navigate
 [2026-07-03T18:34:33.385Z] POST http://127.0.0.1:2177/api/views/wallet/navigate {"source":"user","path":"/apps/wallet"}
 [2026-07-03T18:34:33.403Z] <- 200 POST http://127.0.0.1:2177/api/views/wallet/navigate
-[2026-07-03T18:34:33.693Z] GET http://127.0.0.1:2177/api/conversations/cedd86c4-111d-4ede-a9c1-6322937f3342/messages 
-[2026-07-03T18:34:33.713Z] GET http://127.0.0.1:2177/api/conversations 
-[2026-07-03T18:34:37.248Z] GET http://127.0.0.1:2177/api/views 
-[2026-07-03T18:34:37.250Z] GET http://127.0.0.1:2177/api/views?viewType=tui 
-[2026-07-03T18:34:37.250Z] GET http://127.0.0.1:2177/api/views?viewType=xr 
+[2026-07-03T18:34:33.693Z] GET http://127.0.0.1:2177/api/conversations/cedd86c4-111d-4ede-a9c1-6322937f3342/messages
+[2026-07-03T18:34:33.713Z] GET http://127.0.0.1:2177/api/conversations
+[2026-07-03T18:34:37.248Z] GET http://127.0.0.1:2177/api/views
+[2026-07-03T18:34:37.250Z] GET http://127.0.0.1:2177/api/views?viewType=tui
+[2026-07-03T18:34:37.250Z] GET http://127.0.0.1:2177/api/views?viewType=xr
 [2026-07-03T18:34:37.263Z] <- 200 GET http://127.0.0.1:2177/api/views
 [2026-07-03T18:34:37.281Z] <- 200 GET http://127.0.0.1:2177/api/views?viewType=tui
 [2026-07-03T18:34:37.281Z] <- 200 GET http://127.0.0.1:2177/api/views?viewType=xr
-[2026-07-03T18:35:07.251Z] GET http://127.0.0.1:2177/api/views 
-[2026-07-03T18:35:07.255Z] GET http://127.0.0.1:2177/api/views?viewType=tui 
-[2026-07-03T18:35:07.255Z] GET http://127.0.0.1:2177/api/views?viewType=xr 
+[2026-07-03T18:35:07.251Z] GET http://127.0.0.1:2177/api/views
+[2026-07-03T18:35:07.255Z] GET http://127.0.0.1:2177/api/views?viewType=tui
+[2026-07-03T18:35:07.255Z] GET http://127.0.0.1:2177/api/views?viewType=xr
 [2026-07-03T18:35:07.278Z] <- 200 GET http://127.0.0.1:2177/api/views
 [2026-07-03T18:35:07.292Z] <- 200 GET http://127.0.0.1:2177/api/views?viewType=tui
 [2026-07-03T18:35:07.308Z] <- 200 GET http://127.0.0.1:2177/api/views?viewType=xr
-[2026-07-03T18:35:37.247Z] GET http://127.0.0.1:2177/api/views 
-[2026-07-03T18:35:37.247Z] GET http://127.0.0.1:2177/api/views?viewType=tui 
-[2026-07-03T18:35:37.247Z] GET http://127.0.0.1:2177/api/views?viewType=xr 
+[2026-07-03T18:35:37.247Z] GET http://127.0.0.1:2177/api/views
+[2026-07-03T18:35:37.247Z] GET http://127.0.0.1:2177/api/views?viewType=tui
+[2026-07-03T18:35:37.247Z] GET http://127.0.0.1:2177/api/views?viewType=xr
 [2026-07-03T18:35:37.258Z] <- 200 GET http://127.0.0.1:2177/api/views
 [2026-07-03T18:35:37.261Z] <- 200 GET http://127.0.0.1:2177/api/views?viewType=tui
 [2026-07-03T18:35:37.269Z] <- 200 GET http://127.0.0.1:2177/api/views?viewType=xr
-[2026-07-03T18:36:07.248Z] GET http://127.0.0.1:2177/api/views 
-[2026-07-03T18:36:07.249Z] GET http://127.0.0.1:2177/api/views?viewType=tui 
-[2026-07-03T18:36:07.249Z] GET http://127.0.0.1:2177/api/views?viewType=xr 
+[2026-07-03T18:36:07.248Z] GET http://127.0.0.1:2177/api/views
+[2026-07-03T18:36:07.249Z] GET http://127.0.0.1:2177/api/views?viewType=tui
+[2026-07-03T18:36:07.249Z] GET http://127.0.0.1:2177/api/views?viewType=xr
 [2026-07-03T18:36:07.260Z] <- 200 GET http://127.0.0.1:2177/api/views
 [2026-07-03T18:36:07.267Z] <- 200 GET http://127.0.0.1:2177/api/views?viewType=tui
 [2026-07-03T18:36:07.270Z] <- 200 GET http://127.0.0.1:2177/api/views?viewType=xr
-[2026-07-03T18:36:37.248Z] GET http://127.0.0.1:2177/api/views 
-[2026-07-03T18:36:37.248Z] GET http://127.0.0.1:2177/api/views?viewType=tui 
-[2026-07-03T18:36:37.248Z] GET http://127.0.0.1:2177/api/views?viewType=xr 
+[2026-07-03T18:36:37.248Z] GET http://127.0.0.1:2177/api/views
+[2026-07-03T18:36:37.248Z] GET http://127.0.0.1:2177/api/views?viewType=tui
+[2026-07-03T18:36:37.248Z] GET http://127.0.0.1:2177/api/views?viewType=xr
 [2026-07-03T18:36:37.262Z] <- 200 GET http://127.0.0.1:2177/api/views
 [2026-07-03T18:36:37.269Z] <- 200 GET http://127.0.0.1:2177/api/views?viewType=tui
 [2026-07-03T18:36:37.275Z] <- 200 GET http://127.0.0.1:2177/api/views?viewType=xr
-[2026-07-03T18:37:07.248Z] GET http://127.0.0.1:2177/api/views 
-[2026-07-03T18:37:07.248Z] GET http://127.0.0.1:2177/api/views?viewType=tui 
-[2026-07-03T18:37:07.248Z] GET http://127.0.0.1:2177/api/views?viewType=xr 
+[2026-07-03T18:37:07.248Z] GET http://127.0.0.1:2177/api/views
+[2026-07-03T18:37:07.248Z] GET http://127.0.0.1:2177/api/views?viewType=tui
+[2026-07-03T18:37:07.248Z] GET http://127.0.0.1:2177/api/views?viewType=xr
 [2026-07-03T18:37:07.283Z] <- 200 GET http://127.0.0.1:2177/api/views
 [2026-07-03T18:37:07.283Z] <- 200 GET http://127.0.0.1:2177/api/views?viewType=tui
 [2026-07-03T18:37:07.283Z] <- 200 GET http://127.0.0.1:2177/api/views?viewType=xr
-[2026-07-03T18:37:37.249Z] GET http://127.0.0.1:2177/api/views 
-[2026-07-03T18:37:37.249Z] GET http://127.0.0.1:2177/api/views?viewType=tui 
-[2026-07-03T18:37:37.250Z] GET http://127.0.0.1:2177/api/views?viewType=xr 
+[2026-07-03T18:37:37.249Z] GET http://127.0.0.1:2177/api/views
+[2026-07-03T18:37:37.249Z] GET http://127.0.0.1:2177/api/views?viewType=tui
+[2026-07-03T18:37:37.250Z] GET http://127.0.0.1:2177/api/views?viewType=xr
 [2026-07-03T18:37:37.260Z] <- 200 GET http://127.0.0.1:2177/api/views
 [2026-07-03T18:37:37.266Z] <- 200 GET http://127.0.0.1:2177/api/views?viewType=tui
 [2026-07-03T18:37:37.272Z] <- 200 GET http://127.0.0.1:2177/api/views?viewType=xr
-[2026-07-03T18:38:07.246Z] GET http://127.0.0.1:2177/api/views 
-[2026-07-03T18:38:07.247Z] GET http://127.0.0.1:2177/api/views?viewType=tui 
-[2026-07-03T18:38:07.247Z] GET http://127.0.0.1:2177/api/views?viewType=xr 
+[2026-07-03T18:38:07.246Z] GET http://127.0.0.1:2177/api/views
+[2026-07-03T18:38:07.247Z] GET http://127.0.0.1:2177/api/views?viewType=tui
+[2026-07-03T18:38:07.247Z] GET http://127.0.0.1:2177/api/views?viewType=xr
 [2026-07-03T18:38:07.258Z] <- 200 GET http://127.0.0.1:2177/api/views
 [2026-07-03T18:38:07.264Z] <- 200 GET http://127.0.0.1:2177/api/views?viewType=tui
 [2026-07-03T18:38:07.270Z] <- 200 GET http://127.0.0.1:2177/api/views?viewType=xr
-[2026-07-03T18:38:07.292Z] GET http://127.0.0.1:2177/api/config 
+[2026-07-03T18:38:07.292Z] GET http://127.0.0.1:2177/api/config
 [2026-07-03T18:38:07.300Z] <- 200 GET http://127.0.0.1:2177/api/config
-[2026-07-03T18:38:16.533Z] GET http://127.0.0.1:2177/api/config 
+[2026-07-03T18:38:16.533Z] GET http://127.0.0.1:2177/api/config
 [2026-07-03T18:38:16.545Z] <- 200 GET http://127.0.0.1:2177/api/config
-[2026-07-03T18:38:16.634Z] GET http://127.0.0.1:2177/api/views 
-[2026-07-03T18:38:16.640Z] GET http://127.0.0.1:2177/api/views?viewType=tui 
-[2026-07-03T18:38:16.640Z] GET http://127.0.0.1:2177/api/views?viewType=xr 
-[2026-07-03T18:38:16.648Z] GET http://127.0.0.1:2177/api/config 
+[2026-07-03T18:38:16.634Z] GET http://127.0.0.1:2177/api/views
+[2026-07-03T18:38:16.640Z] GET http://127.0.0.1:2177/api/views?viewType=tui
+[2026-07-03T18:38:16.640Z] GET http://127.0.0.1:2177/api/views?viewType=xr
+[2026-07-03T18:38:16.648Z] GET http://127.0.0.1:2177/api/config
 [2026-07-03T18:38:16.655Z] <- 200 GET http://127.0.0.1:2177/api/views
 [2026-07-03T18:38:16.655Z] <- 200 GET http://127.0.0.1:2177/api/views?viewType=tui
 [2026-07-03T18:38:16.662Z] <- 200 GET http://127.0.0.1:2177/api/views?viewType=xr
 [2026-07-03T18:38:16.664Z] <- 200 GET http://127.0.0.1:2177/api/config
-[2026-07-03T18:38:16.757Z] GET http://127.0.0.1:2177/api/config 
-[2026-07-03T18:38:16.768Z] GET http://127.0.0.1:2177/api/conversations 
+[2026-07-03T18:38:16.757Z] GET http://127.0.0.1:2177/api/config
+[2026-07-03T18:38:16.768Z] GET http://127.0.0.1:2177/api/conversations
 [2026-07-03T18:38:16.772Z] <- 200 GET http://127.0.0.1:2177/api/config
-[2026-07-03T18:38:16.871Z] GET http://127.0.0.1:2177/api/conversations/cedd86c4-111d-4ede-a9c1-6322937f3342/messages 
-[2026-07-03T18:38:16.931Z] GET http://127.0.0.1:2177/api/character 
-[2026-07-03T18:38:16.931Z] GET http://127.0.0.1:2177/api/character 
-[2026-07-03T18:38:16.931Z] GET http://127.0.0.1:2177/api/config 
-[2026-07-03T18:38:16.945Z] GET http://127.0.0.1:2177/api/character 
-[2026-07-03T18:38:16.946Z] GET http://127.0.0.1:2177/api/config 
+[2026-07-03T18:38:16.871Z] GET http://127.0.0.1:2177/api/conversations/cedd86c4-111d-4ede-a9c1-6322937f3342/messages
+[2026-07-03T18:38:16.931Z] GET http://127.0.0.1:2177/api/character
+[2026-07-03T18:38:16.931Z] GET http://127.0.0.1:2177/api/character
+[2026-07-03T18:38:16.931Z] GET http://127.0.0.1:2177/api/config
+[2026-07-03T18:38:16.945Z] GET http://127.0.0.1:2177/api/character
+[2026-07-03T18:38:16.946Z] GET http://127.0.0.1:2177/api/config
 [2026-07-03T18:38:16.951Z] <- 200 GET http://127.0.0.1:2177/api/config
 [2026-07-03T18:38:16.953Z] <- 200 GET http://127.0.0.1:2177/api/config
 [2026-07-03T18:38:17.665Z] <- 200 GET http://127.0.0.1:2177/api/character
 [2026-07-03T18:38:17.665Z] <- 200 GET http://127.0.0.1:2177/api/character
-[2026-07-03T18:38:17.672Z] GET http://127.0.0.1:2177/api/character/history?limit=100 
-[2026-07-03T18:38:17.674Z] GET http://127.0.0.1:2177/api/character/experiences?limit=100 
+[2026-07-03T18:38:17.672Z] GET http://127.0.0.1:2177/api/character/history?limit=100
+[2026-07-03T18:38:17.674Z] GET http://127.0.0.1:2177/api/character/experiences?limit=100
 [2026-07-03T18:38:17.674Z] PUT http://127.0.0.1:2177/api/config {"messages":{"tts":{"provider":"edge","edge":{"voice":"en-US-AriaNeural"}}}}
 [2026-07-03T18:38:17.676Z] <- 200 GET http://127.0.0.1:2177/api/character
 [2026-07-03T18:38:17.702Z] <- 200 GET http://127.0.0.1:2177/api/character/history?limit=100
