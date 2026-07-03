@@ -314,8 +314,26 @@
     }
   },
   "peerDependencies": {
+    "@capacitor/app": "^8.0.0",
+    "@elizaos/capacitor-agent": "workspace:*",
+    "@elizaos/capacitor-llama": "workspace:*",
+    "llama-cpp-capacitor": "^0.1.5",
     "react": "19.2.5",
     "react-dom": "19.2.5"
+  },
+  "peerDependenciesMeta": {
+    "@capacitor/app": {
+      "optional": true
+    },
+    "@elizaos/capacitor-agent": {
+      "optional": true
+    },
+    "@elizaos/capacitor-llama": {
+      "optional": true
+    },
+    "llama-cpp-capacitor": {
+      "optional": true
+    }
   },
   "optionalDependencies": {
     "@elizaos/capacitor-bun-runtime": "workspace:*",
