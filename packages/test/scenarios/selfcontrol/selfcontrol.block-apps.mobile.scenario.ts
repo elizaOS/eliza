@@ -38,13 +38,13 @@ export default scenario({
     {
       // Effect proof (#11381): the routed call must actually carry the two
       // requested apps through the param-resolution -> blocker pipeline —
-      // a call whose payload names neither Instagram nor TikTok proves only
-      // that some handler ran, not that this request reached it.
+      // a call whose payload does not name both Instagram and TikTok proves
+      // only that some handler ran, not that this request reached it.
       type: "custom",
       name: "mobile-block-payload-names-requested-apps",
       predicate: (ctx) => {
         const blob = callPayloadBlob(ctx, "WEBSITE_BLOCK");
-        if (!blob.includes("instagram") && !blob.includes("tiktok")) {
+        if (!blob.includes("instagram") || !blob.includes("tiktok")) {
           return `expected the block payload to carry the requested apps (instagram/tiktok), saw: ${blob.slice(0, 300)}`;
         }
       },

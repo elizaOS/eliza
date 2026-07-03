@@ -38,13 +38,13 @@ export default scenario({
     {
       // Effect proof (#11381): the blocker-planning fallback must carry the
       // two requested apps through the param-resolution pipeline — an
-      // APP_BLOCK call whose payload names neither Instagram nor TikTok
+      // APP_BLOCK call whose payload does not name both Instagram and TikTok
       // proves only that some handler ran, not that this request reached it.
       type: "custom",
       name: "ios-block-payload-names-requested-apps",
       predicate: (ctx) => {
         const blob = callPayloadBlob(ctx, "APP_BLOCK");
-        if (!blob.includes("instagram") && !blob.includes("tiktok")) {
+        if (!blob.includes("instagram") || !blob.includes("tiktok")) {
           return `expected the app-block payload to carry the requested apps (instagram/tiktok), saw: ${blob.slice(0, 300)}`;
         }
       },
