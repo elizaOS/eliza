@@ -71,21 +71,7 @@ export function AppsPageView({
   if (inModal) {
     return (
       <ShellViewAgentSurface viewId="apps">
-        <div
-          className="settings-content-area"
-          style={
-            {
-              "--accent": "var(--section-accent-apps, #ff8a24)",
-              "--surface": "rgba(255, 255, 255, 0.06)",
-              "--s-accent": "#ff8a24",
-              "--s-text-txt": "#ff8a24",
-              "--s-accent-glow": "rgba(255, 138, 36, 0.35)",
-              "--s-accent-subtle": "rgba(255, 138, 36, 0.12)",
-              "--s-grid-line": "rgba(255, 138, 36, 0.02)",
-              "--s-glow-edge": "rgba(255, 138, 36, 0.08)",
-            } as React.CSSProperties
-          }
-        >
+        <div className="settings-content-area">
           <div className="settings-section-pane pt-4">
             <AppsViewRenderer />
           </div>

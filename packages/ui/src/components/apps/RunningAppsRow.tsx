@@ -1,4 +1,4 @@
-import { Square } from "lucide-react";
+import { AlertTriangle, Square } from "lucide-react";
 import { type MouseEvent, memo, useMemo } from "react";
 import type { AppRunSummary, RegistryAppInfo } from "../../api";
 import { AppHero, type AppIdentitySource } from "./app-identity";
@@ -50,22 +50,22 @@ const RunningAppCard = memo(function RunningAppCard({
   return (
     <div
       data-testid={`running-app-card-${run.runId}`}
-      className="group relative overflow-hidden rounded-sm border border-accent/35 bg-card/72 transition-all hover:border-accent/55  "
+      className="group relative overflow-hidden rounded-lg border border-accent/40 bg-card transition-colors hover:border-accent/60"
     >
       <button
         type="button"
         aria-label={`Open ${run.displayName}`}
         aria-busy={isBusy || undefined}
-        className="block w-full text-left "
+        className="block w-full text-left transition-transform active:scale-[0.99] motion-reduce:transition-none"
         onClick={() => onOpenRun(run)}
       >
         <AppHero
           app={app}
-          className="aspect-[5/4] transition-transform duration-300 group-hover:scale-[1.02]"
+          className="aspect-[5/4] transition-transform duration-300 group-hover:scale-[1.03] motion-reduce:transition-none"
         />
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end p-4 pe-12">
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end p-3.5 pe-12">
           <div className="min-w-0 flex-1">
-            <div className="truncate text-sm font-semibold text-white">
+            <div className="truncate text-sm font-semibold leading-tight text-white">
               {run.displayName}
             </div>
           </div>
@@ -74,15 +74,15 @@ const RunningAppCard = memo(function RunningAppCard({
 
       <span
         title={needsAttention ? attentionReasons[0] : run.health.state}
-        className={`pointer-events-none absolute right-4 top-4 h-2.5 w-2.5 rounded-full ${tone.dot} ${tone.ring}`}
+        className={`pointer-events-none absolute right-3 top-3 h-2.5 w-2.5 rounded-full ${tone.dot} ${tone.ring}`}
       />
 
       {needsAttention ? (
         <span
           title={attentionReasons[0]}
-          className="pointer-events-none absolute right-10 top-3.5 inline-flex items-center rounded-full border border-warn/40 bg-black/40 px-2 py-0.5 text-[0.56rem] font-semibold uppercase tracking-[0.2em] text-warn"
+          className="pointer-events-none absolute right-8 top-2.5 inline-flex items-center rounded-full bg-scrim px-2 py-0.5 text-3xs font-semibold uppercase tracking-[0.2em] text-warn"
         >
-          !
+          <AlertTriangle className="h-3 w-3" strokeWidth={2} aria-hidden="true" />
         </span>
       ) : null}
 
@@ -92,14 +92,14 @@ const RunningAppCard = memo(function RunningAppCard({
           data-testid={`running-app-stop-${run.runId}`}
           aria-label={`Stop ${run.displayName}`}
           disabled={isStopping}
-          className="absolute bottom-3 right-3 inline-flex h-8 w-8 items-center justify-center rounded-full bg-black/70 text-white/90 transition-all hover:bg-danger/80 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+          className="absolute bottom-3 right-3 inline-flex h-8 w-8 items-center justify-center rounded-full bg-scrim text-white transition-colors hover:bg-danger disabled:cursor-not-allowed disabled:opacity-50"
           onClick={(event: MouseEvent<HTMLButtonElement>) => {
             event.stopPropagation();
             onStopRun(run);
           }}
         >
           {isStopping ? (
-            <span className="h-2 w-2 animate-pulse rounded-full bg-white" />
+            <span className="h-2 w-2 animate-pulse rounded-full bg-white motion-reduce:animate-none" />
           ) : (
             <Square className="h-3.5 w-3.5" aria-hidden />
           )}
@@ -130,7 +130,7 @@ export function RunningAppsRow({
         <h2 className="text-xs-tight font-semibold uppercase tracking-[0.18em] text-accent">
           Running
         </h2>
-        <div className="h-px flex-1 bg-border/30" />
+        <div className="h-px flex-1 bg-border" />
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
