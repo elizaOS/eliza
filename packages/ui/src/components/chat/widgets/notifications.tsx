@@ -1,6 +1,7 @@
 import type { AgentNotification } from "@elizaos/core";
 import { Bell, ChevronRight } from "lucide-react";
 import { cn } from "../../../lib/utils";
+import { useNow } from "../../../hooks/useNow";
 import { categoryIcon } from "../../../state/notifications/category-icon";
 import {
   isSafeDeepLink,
@@ -10,13 +11,25 @@ import {
   markNotificationRead,
   useNotifications,
 } from "../../../state/notifications/notification-store";
-import { rankHomeNotifications } from "../../../widgets/home-priority";
+import {
+  rankHomeNotifications,
+  selectHomeNotifications,
+} from "../../../widgets/home-priority";
 import { formatRelativeTime } from "../../../utils/format";
 import type { WidgetProps } from "../../../widgets/types";
 import { HomeWidgetCard, useWidgetNavigation } from "./home-widget-card";
 import { WidgetSection } from "./shared";
 
+/**
+ * How many home ENTRIES (single rows or grouped rows) the home notification
+ * surface shows. Kept small on purpose — home is a glance, not the inbox.
+ */
 const MAX_HOME_NOTIFICATIONS = 4;
+
+/** Human-facing label for a collapsed same-category group of `count` items. */
+function groupTitle(category: string, count: number): string {
+  return `${count} ${category} update${count === 1 ? "" : "s"}`;
+}
 
 /**
  * One scannable notification row. A whole-row button (comfortable tap target)
@@ -117,25 +130,22 @@ function NotificationRow({
 
 /**
  * Frontpage Notifications widget (#9143). A "default" home-slot widget showing
- * the most recent agent notifications, so the Launcher home surfaces real
- * activity out of the box rather than only launcher icons. Reads the shared
- * notification store directly (no per-widget polling).
+ * the most attention-worthy agent notifications, so the Launcher home surfaces
+ * real activity out of the box rather than only launcher icons. Reads the
+ * shared notification store directly (no per-widget polling).
+ *
+ * Signal, not noise: the home surface applies an aggressive quiet-threshold
+ * (only unread, recent, high/urgent notifications are eligible) and collapses
+ * same-category bursts into a single grouped row. The full inbox/pull-down
+ * still shows everything — only THIS home surface gets the quiet + grouping.
  */
 export function NotificationsWidget(props: WidgetProps) {
   const { notifications, unreadCount } = useNotifications();
   const nav = useWidgetNavigation();
-  // Rank by attention (unread → priority → recency) so an urgent notification
-  // surfaces ahead of a newer low-priority one, not merely the newest few.
-  const ranked = rankHomeNotifications(notifications);
-  const recent = ranked.slice(0, MAX_HOME_NOTIFICATIONS);
-  const overflow = ranked.length - recent.length;
-
-  // Render nothing until there's real activity. The always-visible home surface
-  // (#9143) must not show an empty placeholder card — empty-state hints belong
-  // on the dedicated view, not the home slot.
-  if (recent.length === 0) {
-    return null;
-  }
+  // Coarse live clock for the home recency gate. `0` on first render keeps the
+  // render path deterministic (no Date.now in render); the age-gate treats
+  // `now === 0` as "don't age-filter yet" so home never flashes empty on paint.
+  const now = useNow();
 
   // Open a row: mirror NotificationCenter's row behavior exactly — mark read,
   // then navigate through the scheme-checked deep-link helper (deepLink is
@@ -150,33 +160,63 @@ export function NotificationsWidget(props: WidgetProps) {
     }
   };
 
-  // Home slot: a single compact, icon-first, whole-card-clickable tile —
-  // the top (highest-priority, unread-first) notification as the one datum,
-  // unread count as the badge, urgent → danger. Tapping opens the notification's
-  // own deep link if it has one, else the inbox. The sidebar keeps the list.
+  // ---- HOME SLOT ----------------------------------------------------------
+  // The compact tile only surfaces when a genuinely home-worthy notification
+  // exists. Below the quiet threshold (read / stale / low severity) the tile
+  // renders nothing at all — signal, not noise (#9226 null contract preserved).
   if (props.slot === "home") {
-    const top = recent[0];
-    const urgent = top.priority === "urgent";
+    const homeEntries = selectHomeNotifications(notifications, { now });
+    const top = homeEntries[0];
+    if (!top) return null;
+
+    // The tile's one datum: either the lead notification's title, or a grouped
+    // "N updates" summary when the top entry is a collapsed category.
+    const isGroup = top.kind === "group";
+    const leadNotification = isGroup ? top.lead : top.notification;
+    const value = isGroup
+      ? groupTitle(top.category, top.count)
+      : leadNotification.title;
+    const urgent = leadNotification.priority === "urgent";
+    const high = leadNotification.priority === "high";
+    // The lead of a group shares the group's category, so its typed
+    // NotificationCategory drives the icon in both the single and group cases.
+    const category = leadNotification.category;
+
     return (
       <div
         className={`min-w-0 ${props.spanClassName ?? "col-span-2 row-span-1"}`}
       >
         <HomeWidgetCard
-          // The tile leads with the top notification's own category icon (#10697)
+          // The tile leads with the notification's own category icon (#10697)
           // so the home surface reads its kind at a glance, not a generic bell.
-          icon={categoryIcon(top.category)}
+          icon={categoryIcon(category)}
           label="Notifications"
-          value={top.title}
+          value={value}
           badge={unreadCount > 0 ? unreadCount : undefined}
-          tone={
-            urgent ? "danger" : top.priority === "high" ? "warn" : "default"
-          }
+          tone={urgent ? "danger" : high ? "warn" : "default"}
           testId="widget-notifications"
-          ariaLabel={`Notifications: ${unreadCount} unread, latest ${top.title}. Open inbox.`}
-          onActivate={() => openNotification(top)}
+          ariaLabel={`Notifications: ${unreadCount} unread, ${
+            isGroup ? value : `latest ${value}`
+          }. Open inbox.`}
+          onActivate={() =>
+            isGroup ? nav.openView("/inbox", "inbox") : openNotification(top.notification)
+          }
         />
       </div>
     );
+  }
+
+  // ---- CHAT-SIDEBAR / DEFAULT SLOT ----------------------------------------
+  // The sidebar keeps the fuller list (the inbox-adjacent surface): rank by
+  // attention (unread → priority → recency), capped, so it stays useful without
+  // the home surface's aggressive quiet.
+  const ranked = rankHomeNotifications(notifications);
+  const recent = ranked.slice(0, MAX_HOME_NOTIFICATIONS);
+  const overflow = ranked.length - recent.length;
+
+  // Render nothing until there's real activity (#9226 null contract).
+  if (recent.length === 0) {
+    return null;
   }
 
   return (
