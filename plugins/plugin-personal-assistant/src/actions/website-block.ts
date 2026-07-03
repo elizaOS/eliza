@@ -111,15 +111,6 @@ type WebsiteBlockConversationTurn = {
   text: string;
 };
 
-function coerceConfirmedFlag(value: unknown): boolean {
-  if (typeof value === "boolean") return value;
-  if (typeof value === "string") {
-    const normalized = value.trim().toLowerCase();
-    return normalized === "true" || normalized === "yes" || normalized === "1";
-  }
-  return false;
-}
-
 function getMessageText(message: Memory): string {
   return typeof message.content.text === "string" ? message.content.text : "";
 }
