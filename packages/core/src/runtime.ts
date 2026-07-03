@@ -7,7 +7,6 @@ import {
 import { ensureConnection as ensureConnectionStandalone } from "./connection";
 import { deriveKnownSecrets } from "./constants/secrets";
 import { InMemoryDatabaseAdapter } from "./database/inMemoryAdapter";
-import { createAdvancedMemoryPlugin } from "./features/advanced-memory/index";
 import {
 	type CapabilityConfig,
 	createBasicCapabilitiesPlugin,
@@ -1036,6 +1035,11 @@ export class AgentRuntime implements IAgentRuntime {
 			documents: opts.enableDocuments,
 			relationships: opts.enableRelationships,
 			trajectories: opts.enableTrajectories,
+			// Character flags are the explicit override for these two features
+			// (default false in the registry); build-character-config surfaces
+			// them as flags deliberately.
+			advancedPlanning: character.advancedPlanning,
+			advancedMemory: character.advancedMemory,
 		};
 		// Generate deterministic UUID from character name
 		// Falls back to random UUID only if no character name is provided
@@ -2363,21 +2367,6 @@ export class AgentRuntime implements IAgentRuntime {
 					this.registerPlugin(getNativeRuntimeFeaturePlugin(feature)),
 				);
 			}
-		}
-
-		if (this.character.advancedPlanning === true) {
-			const { createAdvancedPlanningPlugin } = await import(
-				"./features/advanced-planning/index.ts"
-			);
-			pluginRegistrationPromises.push(
-				this.registerPlugin(createAdvancedPlanningPlugin()),
-			);
-		}
-
-		if (this.character.advancedMemory === true) {
-			pluginRegistrationPromises.push(
-				this.registerPlugin(createAdvancedMemoryPlugin()),
-			);
 		}
 
 		for (const plugin of this.characterPlugins) {

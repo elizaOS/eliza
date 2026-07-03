@@ -20,15 +20,26 @@ import {
 	fetchDocumentFromUrl,
 	isYouTubeUrl,
 } from "../features/documents/index";
+import { createAdvancedMemoryPlugin } from "../features/advanced-memory/index";
+import { createAdvancedPlanningPlugin } from "../features/advanced-planning/index";
 import { trajectoriesPlugin } from "../features/trajectories/index";
 import { FollowUpService } from "../services/followUp";
 import { RelationshipsService } from "../services/relationships";
 import type { Plugin } from "../types/plugin";
 
+// advancedPlanning/advancedMemory are core-compiled feature plugins gated by a
+// character flag; they live in the native-feature registry (default off) rather
+// than as bespoke if-blocks in `_initializeCore`. Constructed once — the Plugin
+// object is stateless config, matching the other singleton entries below.
+const advancedPlanningPlugin = createAdvancedPlanningPlugin();
+const advancedMemoryPlugin = createAdvancedMemoryPlugin();
+
 export type NativeRuntimeFeature =
 	| "documents"
 	| "relationships"
-	| "trajectories";
+	| "trajectories"
+	| "advancedPlanning"
+	| "advancedMemory";
 
 export const relationshipsPlugin: Plugin = {
 	name: "relationships",
@@ -68,6 +79,8 @@ export const nativeRuntimeFeaturePlugins: Record<NativeRuntimeFeature, Plugin> =
 		documents: documentsPlugin,
 		relationships: relationshipsPlugin,
 		trajectories: trajectoriesPlugin,
+		advancedPlanning: advancedPlanningPlugin,
+		advancedMemory: advancedMemoryPlugin,
 	};
 
 export function getNativeRuntimeFeaturePlugin(
@@ -83,6 +96,8 @@ export const nativeRuntimeFeaturePluginNames: Record<
 	documents: documentsPlugin.name,
 	relationships: relationshipsPlugin.name,
 	trajectories: trajectoriesPlugin.name,
+	advancedPlanning: advancedPlanningPlugin.name,
+	advancedMemory: advancedMemoryPlugin.name,
 };
 
 export const nativeRuntimeFeatureDefaults: Record<
@@ -92,6 +107,8 @@ export const nativeRuntimeFeatureDefaults: Record<
 	documents: true,
 	relationships: true,
 	trajectories: true,
+	advancedPlanning: false,
+	advancedMemory: false,
 };
 
 export function resolveNativeRuntimeFeatureFromPluginName(
