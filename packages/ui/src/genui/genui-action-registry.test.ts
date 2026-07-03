@@ -72,11 +72,9 @@ describe("routeElizaGenUiAction gate reads the registry", () => {
         return { ok: true };
       },
     );
-    const result = await routeElizaGenUiAction(
-      act("regtest_plugin_e.go"),
-      {},
-      [handler],
-    );
+    const result = await routeElizaGenUiAction(act("regtest_plugin_e.go"), {}, [
+      handler,
+    ]);
     expect(result).toEqual({ ok: true });
     expect(seen).toEqual(["regtest_plugin_e.go"]);
   });

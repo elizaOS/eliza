@@ -36,9 +36,7 @@ describe("adminRoleRank", () => {
     expect(adminRoleRank("super_admin")).toBeGreaterThan(
       adminRoleRank("moderator"),
     );
-    expect(adminRoleRank("moderator")).toBeGreaterThan(
-      adminRoleRank("viewer"),
-    );
+    expect(adminRoleRank("moderator")).toBeGreaterThan(adminRoleRank("viewer"));
   });
 
   it("ranks unknown/null below every real tier", () => {

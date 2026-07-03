@@ -448,9 +448,7 @@ export const ADMIN_ROLE_RANK: Record<AdminRole, number> = {
 
 /** Type guard: `value` is a recognized {@link AdminRole}. */
 export function isAdminRole(value: unknown): value is AdminRole {
-  return (
-    value === "super_admin" || value === "moderator" || value === "viewer"
-  );
+  return value === "super_admin" || value === "moderator" || value === "viewer";
 }
 
 /**

@@ -24,24 +24,20 @@ describe("applyRouteGate", () => {
         <div data-testid="gate-wrapper">{children}</div>
       ),
     );
-    render(
-      <>{applyRouteGate("test-gate", <div data-testid="ungated-body" />)}</>,
-    );
+    render(applyRouteGate("test-gate", <div data-testid="ungated-body" />));
     // The body carried no gate of its own, yet the shell applied one.
     expect(screen.getByTestId("gate-wrapper")).toBeTruthy();
     expect(screen.getByTestId("ungated-body")).toBeTruthy();
   });
 
   it("fails closed when a declared gate has no registered implementation", () => {
-    render(
-      <>{applyRouteGate("no-such-gate", <div data-testid="secret-body" />)}</>,
-    );
+    render(applyRouteGate("no-such-gate", <div data-testid="secret-body" />));
     expect(screen.queryByTestId("secret-body")).toBeNull();
     expect(screen.getByText("Access unavailable")).toBeTruthy();
   });
 
   it("renders the body ungated when no gate is declared", () => {
-    render(<>{applyRouteGate(undefined, <div data-testid="public-body" />)}</>);
+    render(applyRouteGate(undefined, <div data-testid="public-body" />));
     expect(screen.getByTestId("public-body")).toBeTruthy();
   });
 });
