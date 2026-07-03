@@ -16,8 +16,12 @@
  * With either var unset the child env is byte-identical to non-gateway
  * behavior.
  *
- * Per-spawn scoped leases/revocation need the credential-broker API and are
- * deliberately NOT part of this slice.
+ * Parent-only gateway/broker admin config (`ELIZA_MODEL_GATEWAY_*`) is stripped
+ * from the child env here too, so the privileged static token never rides along.
+ * Per-spawn scoped leases + revocation + credit-gate (the #11536 E2 residual)
+ * live in `model-gateway-lease.ts`, which supplies the effective token this
+ * rewrite injects (a short-lived lease when a broker is configured, else the
+ * static gateway token).
  *
  * @module services/model-gateway
  */
@@ -75,6 +79,17 @@ export function resolveModelGatewayConfig(): ModelGatewayConfig | undefined {
 const MIN_SWEPT_RAW_VALUE_LENGTH = 8;
 
 /**
+ * Prefix of the parent-only gateway/broker admin config vars
+ * (`ELIZA_MODEL_GATEWAY_URL` / `_TOKEN` / `_LEASE_URL` / `_STRICT`). None of
+ * these belong in a sub-agent env: the child authenticates with the token set
+ * on `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` (a per-spawn lease when leasing is
+ * on, else the static gateway token). Forwarding the static `_TOKEN` would put
+ * the privileged, mint-capable token in every child — the exact leak leasing
+ * exists to close (#11536 E2 residual) — so all of them are stripped.
+ */
+const MODEL_GATEWAY_ENV_PREFIX = "ELIZA_MODEL_GATEWAY_";
+
+/**
  * Rewrite a fully-assembled sub-agent env for gateway mode. Must run LAST in
  * `AcpService.buildEnv` so no earlier merge step can reintroduce a raw
  * provider key: the raw keys are deleted first, then the gateway token is
@@ -99,6 +114,11 @@ export function applyModelGatewayEnv(
     if (typeof value === "string" && value.length >= MIN_SWEPT_RAW_VALUE_LENGTH)
       rawValues.push(value);
     delete env[key];
+  }
+  // Strip parent-only gateway/broker admin config so the privileged static
+  // token (and the lease-mint endpoint) never travel in a child env.
+  for (const key of Object.keys(env)) {
+    if (key.startsWith(MODEL_GATEWAY_ENV_PREFIX)) delete env[key];
   }
   for (const [key, value] of Object.entries(env)) {
     if (typeof value !== "string") continue;

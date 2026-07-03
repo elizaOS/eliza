@@ -294,6 +294,10 @@ All are optional unless noted. Read by `src/services/config-env.ts` and
 | `ACPX_PROGRESS_DELAY_MS` / `ELIZA_SUB_AGENT_PROGRESS_DELAY_MS` | `15000` | Delay before first progress post (ms) |
 | `ACPX_PROGRESS_REACTIONS` / `ELIZA_SUB_AGENT_PROGRESS_REACTIONS` | unset | Set to `1` for emoji reactions in `threaded` mode |
 | `ACP_AUDIT_LOG_PATH` | `~/.eliza/acp-audit.log` | Append-only audit log path |
+| `ELIZA_MODEL_GATEWAY_URL` | unset | Model-gateway mode (#11536 E2): OpenAI/Anthropic-compatible base URL a spawned sub-agent is pointed at. ON only when both this and `_TOKEN` are set. |
+| `ELIZA_MODEL_GATEWAY_TOKEN` | unset | Gateway credential injected into the sub-agent (as `OPENAI_API_KEY`/`ANTHROPIC_API_KEY`) in place of raw provider keys. In lease mode this is the parent-only, mint-capable token — never forwarded to the child. |
+| `ELIZA_MODEL_GATEWAY_LEASE_URL` | unset | Broker lease endpoint (#11536 E2 residual). When set (with gateway mode on), each spawn mints a per-spawn, TTL-bound, revocable lease (`POST` → `{ token, expiresAt, leaseId }`; revoke `POST <url>/<leaseId>/revoke`) and the child gets the leased token, not the static one. Unset ⇒ static-token fallback. |
+| `ELIZA_MODEL_GATEWAY_STRICT` | unset | `1`/`true` fails a spawn closed rather than hand a sub-agent a static long-lived gateway token when a lease broker is expected but absent or the mint fails. |
 
 ## How to extend
 
