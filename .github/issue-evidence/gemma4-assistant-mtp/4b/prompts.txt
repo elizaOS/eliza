@@ -1,0 +1,8 @@
+Count from one to twenty, writing each number as a word separated by commas.
+Complete the sentence and stop: The quick brown fox
+List the seven days of the week in order, one per line.
+List the twelve months of the year in order, separated by commas.
+Explain in two sentences why the sky is blue.
+Write a haiku about autumn leaves.
+Name the first eight planets from the Sun in order.
+Summarize what a hash table is in one sentence.
