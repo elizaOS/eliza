@@ -184,8 +184,10 @@ describe("advertisingService bid controls persistence", () => {
     });
   });
 
-  test("updateCampaign merges bid controls into existing metadata", async () => {
-    track(
+  test("updateCampaign rejects bid-control changes before touching money or the platform", async () => {
+    // No adapter applies bid-control changes to a live campaign, so the
+    // service must fail closed instead of persisting metadata drift.
+    const findCampaign = track(
       spyOn(adCampaignsRepository, "findById").mockResolvedValue({
         id: "campaign-1",
         organization_id: ORG_ID,
@@ -197,38 +199,32 @@ describe("advertisingService bid controls persistence", () => {
         metadata: { external_ad_set_ids: ["adset-1"] },
       } as never),
     );
-    track(
-      spyOn(adAccountsRepository, "findById").mockResolvedValue({
-        id: ACCOUNT_ID,
-        organization_id: ORG_ID,
-        platform: "meta",
-        external_account_id: "act_1",
-        status: "active",
+    const deduct = track(
+      spyOn(creditsService, "deductCredits").mockResolvedValue({
+        success: true,
+        transaction: { id: "tx-1" },
       } as never),
     );
-    track(
-      spyOn(
-        advertisingService as unknown as { getCredentials: () => Promise<unknown> },
-        "getCredentials",
-      ).mockResolvedValue({ accessToken: "token" } as never),
-    );
-    track(spyOn(advertisingService, "getProvider").mockReturnValue(stubProvider()));
+    const refund = track(spyOn(creditsService, "refundCredits").mockResolvedValue({} as never));
+    const provider = stubProvider();
+    const updateOnProvider = track(spyOn(provider, "updateCampaign"));
+    track(spyOn(advertisingService, "getProvider").mockReturnValue(provider));
     const updateRow = track(
       spyOn(adCampaignsRepository, "update").mockImplementation(async (_id, data) => data as never),
     );
 
-    await advertisingService.updateCampaign("campaign-1", ORG_ID, {
-      bidStrategy: "cpa",
-      optimizationGoal: "conversions",
-    });
+    await expect(
+      advertisingService.updateCampaign("campaign-1", ORG_ID, {
+        bidStrategy: "cpa",
+        optimizationGoal: "conversions",
+      }),
+    ).rejects.toThrow(/only be set at campaign creation/);
 
-    expect(updateRow.mock.calls[0]?.[1]).toMatchObject({
-      metadata: {
-        external_ad_set_ids: ["adset-1"],
-        bid_strategy: "cpa",
-        optimization_goal: "conversions",
-      },
-    });
+    expect(findCampaign).not.toHaveBeenCalled();
+    expect(deduct).not.toHaveBeenCalled();
+    expect(refund).not.toHaveBeenCalled();
+    expect(updateOnProvider).not.toHaveBeenCalled();
+    expect(updateRow).not.toHaveBeenCalled();
   });
 });
 

@@ -7,6 +7,7 @@
 - Threaded bid controls through app promotion config and the promotion dialog.
 - Mapped controls into Meta ad set and Google campaign create payloads.
 - Explicitly rejects TikTok campaign-level bid controls because this adapter only has bid settings on the ad-group path today.
+- `updateCampaign` rejects bid-control changes fail-closed (before any credit movement or platform call): no adapter applies bid changes to a live campaign, so persisting them locally would be silent local/platform drift.
 
 ## Verification
 

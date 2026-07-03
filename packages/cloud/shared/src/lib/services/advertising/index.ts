@@ -737,6 +737,16 @@ class AdvertisingService {
     organizationId: string,
     input: UpdateCampaignInput,
   ): Promise<AdCampaign> {
+    // No ad-platform adapter applies bid-control changes to a live campaign
+    // (Meta bid controls live on the ad set created with the campaign;
+    // Google/TikTok updates only push name/budget/dates). Reject explicitly
+    // instead of persisting local metadata the platform never receives.
+    if (input.bidStrategy !== undefined || input.optimizationGoal !== undefined) {
+      throw new Error(
+        "Bid strategy and optimization goal can only be set at campaign creation; ad platform adapters do not apply bid-control changes to live campaigns",
+      );
+    }
+
     const campaign = await adCampaignsRepository.findById(campaignId);
     if (!campaign || campaign.organization_id !== organizationId) {
       throw new Error("Campaign not found");
@@ -842,19 +852,6 @@ class AdvertisingService {
       throw new Error(result.error || "Failed to update campaign");
     }
 
-    const metadataUpdate =
-      input.bidStrategy !== undefined || input.optimizationGoal !== undefined
-        ? {
-            metadata: {
-              ...campaign.metadata,
-              ...(input.bidStrategy !== undefined ? { bid_strategy: input.bidStrategy } : {}),
-              ...(input.optimizationGoal !== undefined
-                ? { optimization_goal: input.optimizationGoal }
-                : {}),
-            },
-          }
-        : {};
-
     const updateData = {
       name: input.name,
       budget_amount: input.budgetAmount ? String(input.budgetAmount) : undefined,
@@ -864,7 +861,6 @@ class AdvertisingService {
       start_date: input.startDate,
       end_date: input.endDate,
       targeting: input.targeting,
-      ...metadataUpdate,
     };
 
     let updated: AdCampaign | undefined;
