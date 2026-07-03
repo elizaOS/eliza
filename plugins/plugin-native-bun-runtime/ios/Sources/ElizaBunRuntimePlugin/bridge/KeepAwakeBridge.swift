@@ -20,6 +20,11 @@ import JavaScriptCore
 /// background `URLSession` download (#11841 primary fix) — but it removes the
 /// far more common auto-lock stall for a foregrounded download.
 public final class KeepAwakeBridge {
+    /// Process-wide holder shared by both runtime engines. A device runs exactly
+    /// one engine (full-Bun *or* JSContext compat), but sharing one ref-counted
+    /// holder keeps the idle-timer state single-sourced either way.
+    public static let shared = KeepAwakeBridge()
+
     private let lock = NSLock()
     private var holders = 0
 
@@ -31,6 +36,13 @@ public final class KeepAwakeBridge {
             self.setHolder(enabled)
             return true
         }
+    }
+
+    /// Acquire (`true`) or release (`false`) an idle-timer hold. This is the
+    /// entry point the full-Bun `host_call` dispatch (`FullBunEngineHost`) uses,
+    /// mirroring the JSContext `keep_awake_set` closure above.
+    public func setEnabled(_ enabled: Bool) {
+        setHolder(enabled)
     }
 
     /// Force-release the idle-timer hold (call when the runtime tears down so a
