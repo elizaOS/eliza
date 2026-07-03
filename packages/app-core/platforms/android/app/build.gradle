@@ -1,5 +1,28 @@
 apply plugin: 'com.android.application'
 
+def elizaRepoRootForVoiceBuild = rootProject.projectDir.toPath().resolve('../../../..').normalize().toFile()
+
+def resolveElizaVoiceArm64SourceDir = {
+    def fromProp = project.findProperty("eliza.mtp.android.libdir")
+    if (fromProp) return fromProp.toString()
+    def fromEnv = System.getenv("ELIZA_MTP_ANDROID_LIBDIR")
+    if (fromEnv) return fromEnv
+    def stateDir = System.getenv('ELIZA_STATE_DIR') ?: "${System.getProperty('user.home')}/.eliza"
+    def candidates = ['vulkan', 'cpu'].collect { backend ->
+        "${stateDir}/local-inference/bin/mtp/android-arm64-${backend}"
+    }
+    return candidates.find { new File(it).isDirectory() }
+}
+
+def resolveElizaVoiceProbePrebuilt = {
+    def sourceDir = resolveElizaVoiceArm64SourceDir()
+    if (sourceDir) {
+        def sourcePrebuilt = new File(sourceDir.toString(), 'libelizainference.so')
+        if (sourcePrebuilt.isFile()) return sourcePrebuilt
+    }
+    return file("src/main/jniLibs/arm64-v8a/libelizainference.so")
+}
+
 android {
     namespace "ai.elizaos.app"
     compileSdk rootProject.ext.compileSdkVersion
@@ -48,16 +71,31 @@ android {
         }
     }
 
-    // Only wire the Phase 3a elizavoice-jni native build when the prebuilt
-    // libelizainference.so actually exports the fused-voice FFI entrypoints
-    // (wakeword/speaker/diariz). That .so is rebuilt out-of-band by
-    // stage-elizavoice-lib.mjs; when it predates those symbols the bridge fails
-    // to link and would block the entire APK. Skip it instead — the Java
-    // ElizaVoiceNative.ensureLoaded() already degrades to "unavailable" when the
-    // bridge .so is absent. Re-enables automatically once the .so is rebuilt.
-    def elizavoicePrebuilt = file("src/main/jniLibs/arm64-v8a/libelizainference.so")
-    def elizavoiceReady = elizavoicePrebuilt.exists() &&
-        new String(elizavoicePrebuilt.readBytes(), "ISO-8859-1").contains("eliza_inference_wakeword_supported")
+    // Only wire the Phase 3a elizavoice-jni native build when the configured
+    // fused lib source exports the fused-voice FFI entrypoints. This probe must
+    // not read only src/main/jniLibs: copyForkLlamaLib stages that directory at
+    // task execution time, after Gradle configuration. Clean builds therefore
+    // decide from -Peliza.mtp.android.libdir / ELIZA_MTP_ANDROID_LIBDIR (or the
+    // state-dir default), then the externalNativeBuild tasks depend on
+    // copyForkLlamaLib below so CMake sees the staged .so before linking.
+    def elizavoiceHeader = new File(elizaRepoRootForVoiceBuild, 'plugins/plugin-local-inference/native/llama.cpp/tools/omnivoice/include/eliza-inference-ffi.h')
+    def elizavoicePrebuilt = resolveElizaVoiceProbePrebuilt()
+    def elizavoicePrebuiltText = elizavoicePrebuilt.exists()
+        ? new String(elizavoicePrebuilt.readBytes(), "ISO-8859-1")
+        : ""
+    def elizavoiceRequiredBinaryTokens = [
+        "eliza_inference_wakeword_supported",
+        "eliza_inference_speaker_supported",
+        "eliza_inference_diariz_supported"
+    ]
+    def elizavoiceBridgeSkipped = project.findProperty('elizaCloudBuild') == 'true' ||
+        System.getenv('ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB') == '1'
+    def elizavoiceReady = !elizavoiceBridgeSkipped &&
+        elizavoicePrebuilt.exists() &&
+        elizavoiceRequiredBinaryTokens.every { elizavoicePrebuiltText.contains(it) }
+    if (elizavoiceReady && !elizavoiceHeader.exists()) {
+        throw new GradleException("[elizavoice-jni] ${elizavoicePrebuilt} exports the fused-voice ABI, but ${elizavoiceHeader} is missing. Run git submodule update --init --recursive so the llama.cpp omnivoice headers are checked out.")
+    }
     if (elizavoiceReady) {
         externalNativeBuild {
             cmake {
@@ -65,6 +103,8 @@ android {
                 version "3.22.1"
             }
         }
+    } else if (elizavoiceBridgeSkipped) {
+        logger.lifecycle("[elizavoice-jni] skipped for cloud/smoke build")
     } else {
         logger.warn("[elizavoice-jni] prebuilt libelizainference.so lacks fused-voice symbols (wakeword/speaker/diariz); skipping Phase 3a JNI bridge so the APK still builds. Rebuild via stage-elizavoice-lib.mjs to re-enable.")
     }
@@ -315,6 +355,11 @@ task copyForkLlamaLib {
 
 afterEvaluate {
     tasks.matching { it.name == 'preBuild' }.all { it.dependsOn copyForkLlamaLib }
+    tasks.matching {
+        it.name.startsWith('externalNativeBuild') ||
+            it.name.startsWith('configureCMake') ||
+            it.name.startsWith('buildCMake')
+    }.all { it.dependsOn copyForkLlamaLib }
 }
 
 // Optional app thinning: keep assets/agent/ by default so stock
