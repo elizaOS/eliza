@@ -45,13 +45,19 @@ function devicectl(args, opts = {}) {
 }
 
 function launchUrl(url) {
+  // `process launch <url>` mis-parses the URL as a bundle path; the URL must be
+  // handed to the app via --payload-url (LaunchServices openURL), with the app
+  // bundle id as the launch target. The app's URL handler (main.tsx) maps
+  // elizaos://aec-loop?… onto the #aec-loop hash the harness watches.
   const res = devicectl([
     "device",
     "process",
     "launch",
     "--device",
     DEVICE,
+    "--payload-url",
     url,
+    BUNDLE_ID,
   ]);
   if (res.status !== 0) {
     throw new Error(`deep link launch failed: ${res.stderr || res.stdout}`);

@@ -301,10 +301,13 @@ async function runAecLoop(
   let track: MediaStreamTrack | null = null;
   try {
     // The deep-link trigger can land while the on-device agent is still
-    // booting; poll the status route until it answers (up to ~90 s).
+    // booting. A fresh install on a physical device cold-boots the bun agent
+    // in ~2.5 min (PGlite migrations, plugin load, native inference init —
+    // measured on an iPhone 16 Pro Max), so poll the status route generously
+    // rather than giving up at 90 s and losing the whole capture.
     log("status:before");
     let statusBefore: unknown = null;
-    const bootDeadline = Date.now() + 90_000;
+    const bootDeadline = Date.now() + 300_000;
     for (;;) {
       try {
         statusBefore = await getJson("/api/voice/audio-frames/status");
