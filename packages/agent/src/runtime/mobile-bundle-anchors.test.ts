@@ -19,10 +19,10 @@ function read(rel: string): string {
  * gone. These are source guards against reintroducing the dead pins.
  */
 const DEAD_GLOBALS = [
-  "__elizaAospLlamaLoader",
-  "__elizaAospLocalInferenceBootstrap",
-  "__elizaMobileDeviceBridgeBootstrap",
-  "__elizaAndroidAppPlugins",
+  "__eliza" + "AospLlamaLoader",
+  "__eliza" + "AospLocalInferenceBootstrap",
+  "__eliza" + "MobileDeviceBridgeBootstrap",
+  "__eliza" + "AndroidAppPlugins",
 ] as const;
 
 describe("mobile bundle anchors (no write-only globalThis pinning)", () => {
