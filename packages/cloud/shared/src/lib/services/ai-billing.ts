@@ -81,6 +81,17 @@ export interface BillingResult {
   markupApplied: boolean;
 }
 
+export interface BillUsageOptions {
+  /**
+   * Route-owned reconciliation hook for paths that keep a first-call-wins
+   * settler outside billUsage. This lets affiliate payouts be clamped to
+   * collected revenue without handing billUsage the raw reservation.
+   */
+  reconcile?: (
+    actualCost: number,
+  ) => Promise<CreditReconciliationResult | null | void>;
+}
+
 export interface FlatBillingCost {
   totalCost: number;
   baseTotalCost: number;
@@ -121,10 +132,9 @@ async function resolveBillableAffiliate(
 
 function collectedTotalCost(
   totalCost: number,
-  reservation: CreditReservation | undefined,
   reconciliation: CreditReconciliationResult | void | undefined,
 ): number {
-  if (!reservation || !reconciliation) return totalCost;
+  if (!reconciliation) return totalCost;
   if (reconciliation.adjustmentType === "uncollected_overage") {
     return Math.min(totalCost, reconciliation.reservedAmount);
   }
@@ -135,10 +145,9 @@ function collectedAffiliateEarnings(params: {
   nominalEarnings: number;
   preAffiliateTotalCost: number;
   totalCost: number;
-  reservation?: CreditReservation;
   reconciliation?: CreditReconciliationResult | void;
 }): number {
-  const collected = collectedTotalCost(params.totalCost, params.reservation, params.reconciliation);
+  const collected = collectedTotalCost(params.totalCost, params.reconciliation);
   const collectedMarkup = Math.max(0, collected - params.preAffiliateTotalCost);
   return Math.min(params.nominalEarnings, collectedMarkup);
 }
@@ -268,6 +277,7 @@ export async function billUsage(
   context: BillingContext,
   usage: AIUsage | undefined | null,
   reservation?: CreditReservation,
+  options: BillUsageOptions = {},
 ): Promise<BillingResult> {
   const { inputTokens, outputTokens, totalTokens, cacheReadInputTokens, cacheWriteInputTokens } =
     normalizeUsage(usage);
@@ -319,6 +329,17 @@ export async function billUsage(
       cacheWriteInputTokens,
       outputTokens,
     });
+  } else if (options.reconcile) {
+    reconciliation = (await options.reconcile(totalCost)) ?? undefined;
+    logger.info("[AI Billing] Credits reconciled", {
+      model: context.model,
+      actual: totalCost,
+      inputTokens,
+      billableInputTokens,
+      cacheReadInputTokens,
+      cacheWriteInputTokens,
+      outputTokens,
+    });
   }
 
   if (affiliate && affiliateEarnings > 0) {
@@ -326,7 +347,6 @@ export async function billUsage(
       nominalEarnings: affiliateEarnings,
       preAffiliateTotalCost,
       totalCost,
-      reservation,
       reconciliation,
     });
 
@@ -408,7 +428,6 @@ export async function billFlatUsage(
       nominalEarnings: affiliateEarnings,
       preAffiliateTotalCost,
       totalCost,
-      reservation,
       reconciliation,
     });
 

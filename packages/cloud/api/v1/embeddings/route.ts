@@ -213,6 +213,7 @@ app.post("/", async (c) => {
     // dedupe sourceId and must not be client-controllable (see the fuller note
     // in v1/chat/completions/route.ts).
     const requestId = crypto.randomUUID();
+    const affiliateCode = c.req.header("X-Affiliate-Code") ?? null;
     const orgId = user.organization_id;
     let reservation: Awaited<ReturnType<typeof reserveCredits>> | undefined;
     let optimisticReady = false;
@@ -364,6 +365,7 @@ app.post("/", async (c) => {
             model,
             provider,
             billingSource,
+            affiliateCode,
           },
           estimatedInputTokens,
           0,
@@ -429,12 +431,14 @@ app.post("/", async (c) => {
     // the only residual risk is an under-bill if the Worker dies before the
     // deferred task completes — an accepted trade-off for this route. The settler
     // prevents double-settlement inside the task.
-    const affiliateCode = c.req.header("X-Affiliate-Code") ?? null;
     const settleBilling = async () => {
       try {
-        // #10557: bill WITHOUT handing billUsage the reservation, then settle
-        // explicitly below — making `settleReservation` the SINGLE idempotent
-        // reconcile owner (mirrors /v1/messages and /v1/chat/completions).
+        // #10557: bill WITHOUT handing billUsage the raw reservation. Instead,
+        // pass the route's first-call-wins settler as the reconcile hook so
+        // settleReservation remains the SINGLE idempotent reconcile owner
+        // (mirrors /v1/messages and /v1/chat/completions). This also lets
+        // billUsage clamp affiliate payouts to the actually-collected revenue
+        // when a reserve/settle overage is uncollectable (#12017).
         // Previously billUsage was given the reservation and reconciled it at the
         // very END, AFTER two unguarded awaits (calculateCost + the affiliate-code
         // lookup). If either threw, that internal reconcile never ran and the
@@ -450,17 +454,15 @@ app.post("/", async (c) => {
             model,
             provider,
             billingSource,
+            requestId,
             // Affiliate revenue-share: when the calling app sets X-Affiliate-Code,
             // activate the existing billUsage affiliate branch (same as /v1/messages).
             affiliateCode,
           },
           { inputTokens: actualTokens, outputTokens: 0 },
+          undefined,
+          { reconcile: settleReservation },
         );
-
-        // Single reconcile site. The settler is first-call-wins idempotent, so
-        // this actual-cost charge can never be double-applied with the catch's
-        // settleReservation(0).
-        await settleReservation?.(billing.totalCost);
 
         logger.info("[Embeddings] Complete", {
           model,

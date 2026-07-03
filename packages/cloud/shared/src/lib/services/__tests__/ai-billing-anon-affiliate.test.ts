@@ -147,6 +147,27 @@ describe("billUsage affiliate earnings guard (#10853)", () => {
     expect(addEarnings).not.toHaveBeenCalled();
   });
 
+  test("route-owned reconcile hook clamps affiliate earnings on uncollectable overage", async () => {
+    const reconcile = mock(async (actualCost: number) => ({
+      reservedAmount: 0.3,
+      actualCost,
+      reservationTransactionId: "reservation-route-owned-1",
+      settlementTransactionIds: [],
+      adjustmentType: "uncollected_overage" as const,
+    }));
+
+    const result = await billUsage(
+      { ...BASE, organizationId: "00000000-0000-4000-8000-0000000000org" },
+      USAGE,
+      undefined,
+      { reconcile },
+    );
+
+    expect(result.totalCost).toBeCloseTo(0.33, 6);
+    expect(reconcile).toHaveBeenCalledWith(result.totalCost);
+    expect(addEarnings).not.toHaveBeenCalled();
+  });
+
   test("flat billing uncollectable overage does not mint affiliate earnings", async () => {
     const reconcile = mock(async (actualCost: number) => ({
       reservedAmount: 1,

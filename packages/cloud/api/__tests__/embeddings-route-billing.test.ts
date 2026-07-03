@@ -172,18 +172,22 @@ beforeEach(() => {
     reservedAmount: 0.01,
     reconcile: mock(async () => undefined),
   });
-  billUsage.mockResolvedValue({
-    inputCost: 0.001,
-    outputCost: 0,
-    totalCost: 0.001,
-    baseInputCost: 0.001,
-    baseOutputCost: 0,
-    baseTotalCost: 0.001,
-    platformMarkup: 0,
-    inputTokens: 5,
-    outputTokens: 0,
-    totalTokens: 5,
-    markupApplied: true,
+  billUsage.mockImplementation(async (_context, _usage, _reservation, options) => {
+    const billing = {
+      inputCost: 0.001,
+      outputCost: 0,
+      totalCost: 0.001,
+      baseInputCost: 0.001,
+      baseOutputCost: 0,
+      baseTotalCost: 0.001,
+      platformMarkup: 0,
+      inputTokens: 5,
+      outputTokens: 0,
+      totalTokens: 5,
+      markupApplied: true,
+    };
+    await options?.reconcile?.(billing.totalCost);
+    return billing;
   });
   usageCreate.mockResolvedValue({ id: "usage-1" });
   embed.mockResolvedValue({ embedding: EMBEDDING, usage: { tokens: 5 } });
@@ -205,9 +209,9 @@ describe("POST /api/v1/embeddings — deferred billing", () => {
     const billingGate = new Promise<void>((resolve) => {
       releaseBilling = resolve;
     });
-    billUsage.mockImplementation(async () => {
+    billUsage.mockImplementation(async (_context, _usage, _reservation, options) => {
       await billingGate;
-      return {
+      const billing = {
         inputCost: 0.001,
         outputCost: 0,
         totalCost: 0.001,
@@ -220,6 +224,8 @@ describe("POST /api/v1/embeddings — deferred billing", () => {
         totalTokens: 5,
         markupApplied: true,
       };
+      await options?.reconcile?.(billing.totalCost);
+      return billing;
     });
 
     const { ctx, scheduled } = makeExecutionCtx();
@@ -318,6 +324,43 @@ describe("POST /api/v1/embeddings — single key validation", () => {
     expect(validateApiKey).not.toHaveBeenCalled();
     expect(billUsage.mock.calls[0][0].apiKeyId).toBe(API_KEY_ID);
     expect(usageCreate.mock.calls[0][0].api_key_id).toBe(API_KEY_ID);
+  });
+
+  test("affiliate code is included in both the upfront reserve and deferred bill context", async () => {
+    const { ctx, scheduled } = makeExecutionCtx();
+    const res = await embeddingsRoute.request(
+      "/",
+      {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer eliza_test_key",
+          "Content-Type": "application/json",
+          "X-Affiliate-Code": "PARTNER1000",
+        },
+        body: JSON.stringify({
+          model: "text-embedding-3-small",
+          input: "hi",
+        }),
+      },
+      {},
+      ctx,
+    );
+    await Promise.all(scheduled);
+
+    expect(res.status).toBe(200);
+    expect(reserveCredits.mock.calls[0][0]).toMatchObject({
+      organizationId: ORG,
+      userId: USER,
+      affiliateCode: "PARTNER1000",
+    });
+    expect(billUsage.mock.calls[0][0]).toMatchObject({
+      organizationId: ORG,
+      userId: USER,
+      apiKeyId: API_KEY_ID,
+      affiliateCode: "PARTNER1000",
+    });
+    expect(typeof billUsage.mock.calls[0][0].requestId).toBe("string");
+    expect(typeof billUsage.mock.calls[0][3]?.reconcile).toBe("function");
   });
 });
 

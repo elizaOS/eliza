@@ -270,9 +270,11 @@ describe("embeddings — success settles to actual usage exactly once", () => {
     // #10557: billUsage is now called WITHOUT the reservation, so it does NOT
     // reconcile internally (mirrors the real adapter's `if (reservation)`
     // guard). The route reconciles via the single first-call-wins settler.
-    billUsage.mockImplementation(async (_ctx, _usage, reservationArg) => {
+    billUsage.mockImplementation(async (_ctx, _usage, reservationArg, options) => {
       expect(reservationArg).toBeUndefined();
-      return makeBilling(ACTUAL);
+      const billing = makeBilling(ACTUAL);
+      await options?.reconcile?.(billing.totalCost);
+      return billing;
     });
 
     const { ctx, scheduled } = makeExecutionCtx();
@@ -331,7 +333,11 @@ describe("embeddings — billUsage internal throw releases the hold (#10557)", (
     const ACTUAL = 0.004;
     reserveCredits.mockResolvedValue(ledger.reservation);
     embed.mockResolvedValue({ embedding: [0.1], usage: { tokens: 5 } });
-    billUsage.mockResolvedValue(makeBilling(ACTUAL));
+    billUsage.mockImplementation(async (_ctx, _usage, _reservation, options) => {
+      const billing = makeBilling(ACTUAL);
+      await options?.reconcile?.(billing.totalCost);
+      return billing;
+    });
     usageCreate.mockRejectedValue(new Error("usage table write failed"));
 
     const { ctx, scheduled } = makeExecutionCtx();
