@@ -1,11 +1,18 @@
 /**
  * Chromium bootstrap for meeting bots (playwright-core, no playwright-extra).
  *
- * Executable resolution order:
+ * Executable resolution (`chromiumExecutable`) and headless resolution
+ * (`resolveHeadlessMode`) both live in ../../platform-support.ts so the launcher
+ * and the capability probe agree on the exact binary + mode. Resolution order:
  *   1. env ELIZA_MEETINGS_CHROMIUM_PATH — explicit override.
  *   2. Playwright's bundled Chromium (if the browser download is installed).
  *   3. System channel fallback ("chrome" / "msedge"). Teams prefers Edge via
  *      the `channel` param; Meet/Zoom use Chrome.
+ *
+ * Headless mode: explicit `ELIZA_MEETINGS_HEADLESS` wins, else headed only when
+ * a display is available (macOS/Windows always; Linux when DISPLAY/WAYLAND set).
+ * Meet's isTrusted bot-detection needs a real X server, so servers should run
+ * HEADED Chromium under Xvfb rather than pure headless — see docs/DEPLOYMENT.md.
  *
  * Stealth is applied as explicit init scripts (navigator.webdriver removal,
  * plugin/language shims) — NOT playwright-extra. The User-Agent is pinned to
@@ -18,18 +25,28 @@
  */
 
 import { chromium, type Browser, type BrowserContext, type Page } from "playwright-core";
-import { existsSync } from "node:fs";
 import { logger } from "@elizaos/core";
+import {
+  type BrowserChannel,
+  chromiumExecutable,
+  resolveHeadlessMode,
+} from "../../platform-support.js";
 
-/** Channel a platform prefers for its system-browser fallback. */
-export type BrowserChannel = "chrome" | "msedge";
+// Re-exported so existing importers of `BrowserChannel` from this module keep
+// working; the canonical definition now lives in platform-support.ts alongside
+// the Chromium resolver both files share.
+export type { BrowserChannel };
 
 export interface LaunchMeetingBrowserOptions {
   /** System-browser channel to prefer when no bundled/override binary exists. */
   channel?: BrowserChannel;
   /** Extra environment for the browser process (e.g. Zoom's PULSE_SINK). */
   env?: Record<string, string>;
-  /** Run headless. Default false — Meet bot-detection is harsher on headless. */
+  /**
+   * Force headless (`true`) or headed (`false`). When omitted the mode is
+   * resolved by {@link resolveHeadlessMode} — explicit `ELIZA_MEETINGS_HEADLESS`
+   * env, else display auto-detect. Headed under Xvfb is recommended for Meet.
+   */
   headless?: boolean;
 }
 
@@ -92,25 +109,6 @@ function consistentUserAgent(browser: Browser): string | null {
   return `Mozilla/5.0 (${platformToken}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${major}.0.0.0 Safari/537.36`;
 }
 
-/** Resolve the Chromium executable per the documented precedence. */
-function resolveExecutable(channel: BrowserChannel): { executablePath?: string; channel?: BrowserChannel } {
-  const override = process.env.ELIZA_MEETINGS_CHROMIUM_PATH;
-  if (override) {
-    if (!existsSync(override)) {
-      throw new Error(`[MeetingLaunch] ELIZA_MEETINGS_CHROMIUM_PATH does not exist: ${override}`);
-    }
-    return { executablePath: override };
-  }
-  // Playwright's bundled Chromium — executablePath() throws if not installed.
-  try {
-    const bundled = chromium.executablePath();
-    if (bundled && existsSync(bundled)) return { executablePath: bundled };
-  } catch {
-    // Bundled browser not downloaded — fall through to system channel.
-  }
-  return { channel };
-}
-
 /**
  * Launch a Chromium browser + context + page ready for a meeting join. The
  * caller owns the returned handle and must `close()` it.
@@ -119,21 +117,25 @@ export async function launchMeetingBrowser(
   opts: LaunchMeetingBrowserOptions = {},
 ): Promise<MeetingBrowser> {
   const channel = opts.channel ?? "chrome";
-  const resolved = resolveExecutable(channel);
+  const resolved = chromiumExecutable(channel);
+  const headless = opts.headless ?? resolveHeadlessMode();
   logger.info(
     {
       channel: resolved.channel,
       executablePath: resolved.executablePath,
-      headless: opts.headless === true,
+      chromiumSource: resolved.source,
+      headless,
+      headlessResolvedBy: opts.headless === undefined ? "env/display-autodetect" : "explicit-option",
     },
     "[MeetingLaunch] launching Chromium",
   );
 
   const browser = await chromium.launch({
-    headless: opts.headless === true,
+    headless,
     args: [...LAUNCH_ARGS],
     env: opts.env ? { ...process.env, ...opts.env } : undefined,
-    ...resolved,
+    executablePath: resolved.executablePath,
+    channel: resolved.channel,
   });
 
   const userAgent = consistentUserAgent(browser) ?? undefined;

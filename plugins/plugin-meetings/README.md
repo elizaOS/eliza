@@ -83,9 +83,34 @@ Signal/WhatsApp pairing events use. No changes in `packages/agent` were needed.
 | `ELIZA_MEETINGS_ENABLED` | No | Opt-in auto-enable flag for the plugin |
 | `ELIZA_MEETINGS_BOT_NAME` | No | Bot display name (default `"<character name> Notetaker"`) |
 | `ELIZA_MEETINGS_CHROMIUM_PATH` | No | Chromium executable the platform bots launch; also auto-enables the plugin |
+| `ELIZA_MEETINGS_HEADLESS` | No | Force headless (`true`) / headed (`false`). When unset, auto-detected from the available display (macOS/Windows always headed; Linux headed only when `DISPLAY`/`WAYLAND_DISPLAY` is set) |
 
-The plugin is opt-in (`autoEnable.envKeys`) because the bots need a Chromium
-binary on the host — matching the env-gated connector plugin pattern.
+The plugin is opt-in (`autoEnable.shouldEnable`) because the bots need a Chromium
+binary on the host — matching the env-gated connector plugin pattern. The
+predicate ORs the env keys but **vetoes auto-enable on mobile**
+(`ELIZA_PLATFORM=android|ios`): browser automation cannot run in an Android/iOS
+sandbox, so a set env key must not enable the plugin there.
+
+## Platform support & deployment
+
+`src/platform-support.ts` is the typed capability layer:
+
+- `resolveMeetingRuntimeSupport(runtime)` → `{ supported, reason?, headless, chromiumPath? }`
+  — unsupported on mobile or when no Chromium is resolvable. Use it to refuse a
+  launch cleanly instead of crashing.
+- `resolveHeadlessMode(env, platform)` — explicit `ELIZA_MEETINGS_HEADLESS` else
+  display auto-detect. Headless uses `--headless=new` (getUserMedia/WebAudio
+  intact).
+- `chromiumExecutable(channel, env)` — the single Chromium resolver shared with
+  `platforms/shared/launch.ts` (override → bundled → system channel).
+
+**Meet needs a real X server** for humanized XTEST admission clicks, so the
+recommended server topology is **headed Chromium under Xvfb**
+(`ELIZA_MEETINGS_HEADLESS=false` + `DISPLAY=:99`), not pure headless (which is
+best-effort for Meet, reliable for Teams/Zoom). Full deployment matrix — local
+desktop, Linux server / Eliza Cloud container (Xvfb + PulseAudio + apt packages +
+Dockerfile), and why mobile is unsupported — is in
+[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 ## Commands
 

@@ -15,10 +15,15 @@
  *   - ELIZA_MEETINGS_ENABLED       opt-in auto-enable flag
  *   - ELIZA_MEETINGS_BOT_NAME      bot display name (default "<agent> Notetaker")
  *   - ELIZA_MEETINGS_CHROMIUM_PATH Chromium executable for the platform bots
+ *   - ELIZA_MEETINGS_HEADLESS      force headless (true) / headed (false); else
+ *                                  auto-detected from the available display
+ *
+ * Host support (mobile vs desktop/server) is a typed probe —
+ * {@link resolveMeetingRuntimeSupport}; see docs/DEPLOYMENT.md for the matrix.
  */
 
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
-import type { MeetingPlatform } from "@elizaos/shared";
+import { isMobilePlatform, type MeetingPlatform } from "@elizaos/shared";
 import {
   getMeetingTranscriptAction,
   joinMeetingAction,
@@ -34,6 +39,16 @@ import { MeetingService } from "./service.js";
 import type { MeetingPlatformAdapter } from "./types.js";
 
 export { MeetingEventEmitter } from "./events.js";
+export {
+  type BrowserChannel,
+  type ChromiumSource,
+  chromiumExecutable,
+  hasDisplay,
+  type MeetingRuntimeSupport,
+  type ResolvedChromium,
+  resolveHeadlessMode,
+  resolveMeetingRuntimeSupport,
+} from "./platform-support.js";
 export { createMeetingTranscriptionPipeline } from "./pipeline/index.js";
 export { meetingsRoutes } from "./routes/meetings-routes.js";
 export {
@@ -71,8 +86,18 @@ export const meetingsPlugin: Plugin = {
   // Opt-in: the bots need a Chromium binary on the host, so the plugin is only
   // auto-enabled when the user has flagged it (or pointed at a browser) —
   // matching the repo pattern of env-gated connector plugins (e.g. calendly).
+  // The mobile guard makes the flag honest: browser automation cannot run in an
+  // Android / iOS app sandbox, so even a set env key must NOT auto-enable there
+  // (mobile users get meeting transcripts via a cloud-hosted agent — see
+  // docs/DEPLOYMENT.md). resolveMeetingRuntimeSupport() is the full typed probe;
+  // this predicate only needs the mobile veto over the env-key OR.
   autoEnable: {
-    envKeys: ["ELIZA_MEETINGS_ENABLED", "ELIZA_MEETINGS_CHROMIUM_PATH"],
+    shouldEnable: (env) => {
+      if (isMobilePlatform(env)) return false;
+      return Boolean(
+        env.ELIZA_MEETINGS_ENABLED?.trim() || env.ELIZA_MEETINGS_CHROMIUM_PATH?.trim(),
+      );
+    },
   },
 };
 
