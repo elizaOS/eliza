@@ -38,13 +38,30 @@ electrobun-wgpu {
 
 /* ── Global resets ──────────────────────────────────────────────────── */
 
+/* LAUNCH / BASE BACKGROUND (the orange-bottom-band fix, reported 3x on
+   mobile): the html/body/#root base color is what bleeds through wherever the
+   app's fixed-position background layers don't reach — most visibly the iOS
+   home-indicator safe-area below the composer and the overscroll zones. It
+   MUST be the DARK app background (--brand-black #140c07, theme.css), never
+   the bright brand orange: a dark bleed is invisible against the dark app, an
+   orange one reads as a glowing band. index.html's inline FOUC guard still
+   seeds --launch-bg as orange pre-CSS (we can't edit index.html here), so this
+   :root re-declaration — loaded AFTER the inline <style>, same specificity —
+   wins the cascade the moment the real stylesheet lands and flips every
+   var(--launch-bg) consumer (html/body/#root here, the StartupShell loader,
+   the preboot shell) to dark. Only the brief pre-stylesheet flash stays
+   orange. Keep the var indirection: it remains the whitelabel seam. */
+:root {
+  --launch-bg: #140c07;
+}
+
 html,
 body {
   width: 100%;
   max-width: 100%;
   height: 100%;
   margin: 0;
-  background: var(--launch-bg, #ef5a1f);
+  background: var(--launch-bg, #140c07);
   overflow: hidden;
   overscroll-behavior: none;
   -webkit-text-size-adjust: 100%;
@@ -59,7 +76,7 @@ body {
   overflow: hidden;
   font-family: var(--font-body);
   color: var(--text);
-  background: var(--launch-bg, #ef5a1f);
+  background: var(--launch-bg, #140c07);
 }
 
 html.eliza-chat-overlay-shell,
