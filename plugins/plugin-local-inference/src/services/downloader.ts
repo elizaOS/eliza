@@ -86,6 +86,46 @@ export class BundleIncompatibleError extends Error {
 }
 
 /**
+ * Thrown when HuggingFace answers a download with 401/403 — the repo is gated or
+ * private and this device cannot see it with the credentials it has. Distinct
+ * from a generic `HTTP <status>` failure so the UI can present one consistent
+ * "link this device to Eliza Cloud" recovery keyed off real HTTP evidence,
+ * rather than content-sniffing an HTML login body.
+ */
+export class GatedRepoError extends Error {
+	readonly code = "HF_GATED_REPO" as const;
+	readonly httpStatus: number;
+	constructor(message: string, httpStatus: number) {
+		super(message);
+		this.name = "GatedRepoError";
+		this.httpStatus = httpStatus;
+	}
+}
+
+/**
+ * Transient HTTP statuses worth retrying with backoff: 429 rate-limit and 5xx.
+ * A 429 is NOT a 404 — the artifact exists, HuggingFace is throttling. Ported
+ * from `lifecycle-remote-checks.ts`.
+ */
+function isTransientStatus(statusCode: number): boolean {
+	return statusCode === 429 || statusCode >= 500;
+}
+
+/** Honor a `Retry-After` header (seconds), bounded so a hostile header can't stall a download. */
+function retryAfterMs(headers: Record<string, string | string[] | undefined>): number | null {
+	const raw = headers["retry-after"];
+	const value = Array.isArray(raw) ? raw[0] : raw;
+	if (!value) return null;
+	const seconds = Number(value);
+	if (!Number.isFinite(seconds) || seconds < 0) return null;
+	return Math.min(seconds * 1000, DOWNLOAD_MAX_RETRY_AFTER_MS);
+}
+
+const DOWNLOAD_TRANSIENT_ATTEMPTS = 3;
+const DOWNLOAD_TRANSIENT_BACKOFF_MS = 1_000;
+const DOWNLOAD_MAX_RETRY_AFTER_MS = 10_000;
+
+/**
  * One-time verify-on-device pass per `packages/inference/AGENTS.md` §7:
  * load → 1-token text generation → 1-phrase voice generation → barge-in
  * cancel. The downloader stays decoupled from the engine — the service
@@ -108,6 +148,12 @@ export interface DownloaderOptions {
 	verifyOnDevice?: VerifyBundleOnDevice;
 	/** Override the hardware probe used by the disk-space preflight (tests). */
 	probeHardware?: () => Promise<HardwareProbe>;
+	/** Injectable sleep for transient-retry backoff (tests). Defaults to setTimeout. */
+	sleep?: (ms: number) => Promise<void>;
+}
+
+function defaultDownloadSleep(ms: number): Promise<void> {
+	return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 async function defaultProbeDeviceCaps(): Promise<Eliza1DeviceCaps> {
@@ -430,11 +476,13 @@ export class Downloader {
 	private readonly probeDeviceCaps: () => Promise<Eliza1DeviceCaps>;
 	private readonly verifyOnDevice?: VerifyBundleOnDevice;
 	private readonly probeHardware: () => Promise<HardwareProbe>;
+	private readonly sleep: (ms: number) => Promise<void>;
 
 	constructor(options: DownloaderOptions = {}) {
 		this.probeDeviceCaps = options.probeDeviceCaps ?? defaultProbeDeviceCaps;
 		this.verifyOnDevice = options.verifyOnDevice;
 		this.probeHardware = options.probeHardware ?? probeHardware;
+		this.sleep = options.sleep ?? defaultDownloadSleep;
 		this.loadTerminalDownloads();
 	}
 
@@ -871,6 +919,13 @@ export class Downloader {
 					signal: record.abortController.signal,
 				});
 
+				if (response.statusCode === 401 || response.statusCode === 403) {
+					throw new GatedRepoError(
+						`HuggingFace repo ${catalogEntry.hfRepo} is gated or private (HTTP ${response.statusCode}). ` +
+							"Link this device to Eliza Cloud and retry — gated downloads route through the cloud HuggingFace proxy.",
+						response.statusCode,
+					);
+				}
 				if (response.statusCode >= 400) {
 					throw new Error(
 						`HTTP ${response.statusCode} from model hub for ${catalogEntry.hfRepo}`,
@@ -1268,6 +1323,13 @@ export class Downloader {
 					signal: record.abortController.signal,
 				});
 
+				if (response.statusCode === 401 || response.statusCode === 403) {
+					throw new GatedRepoError(
+						`HuggingFace repo ${catalogEntry.hfRepo}/${remotePath} is gated or private (HTTP ${response.statusCode}). ` +
+							"Link this device to Eliza Cloud and retry — gated downloads route through the cloud HuggingFace proxy.",
+						response.statusCode,
+					);
+				}
 				if (response.statusCode >= 400) {
 					throw new Error(
 						`HTTP ${response.statusCode} from model hub for ${catalogEntry.hfRepo}/${remotePath}`,
@@ -1358,14 +1420,40 @@ export class Downloader {
 		}>;
 	}> {
 		const fetchImpl = globalThis.fetch;
+		const sleep = this.sleep;
 		return {
 			request: async (url, options) => {
-				const response = await fetchImpl(url, {
-					method: options.method,
-					headers: options.headers,
-					signal: options.signal,
-					redirect: "follow",
-				});
+				// Retry transient upstream statuses (429 rate-limit, 5xx) with bounded
+				// backoff before surfacing them. Without this a single HuggingFace
+				// throttle aborts a multi-GB download exactly like a hard 404.
+				let response: Awaited<ReturnType<typeof fetchImpl>> | null = null;
+				for (
+					let attempt = 1;
+					attempt <= DOWNLOAD_TRANSIENT_ATTEMPTS;
+					attempt += 1
+				) {
+					response = await fetchImpl(url, {
+						method: options.method,
+						headers: options.headers,
+						signal: options.signal,
+						redirect: "follow",
+					});
+					if (
+						!isTransientStatus(response.status) ||
+						attempt === DOWNLOAD_TRANSIENT_ATTEMPTS
+					) {
+						break;
+					}
+					const headers = Object.fromEntries(response.headers.entries());
+					// Release the throttled body before re-issuing the request.
+					await response.body?.cancel().catch(() => undefined);
+					await sleep(
+						retryAfterMs(headers) ?? DOWNLOAD_TRANSIENT_BACKOFF_MS * attempt,
+					);
+				}
+				if (!response) {
+					throw new Error(`No response from ${url}`);
+				}
 				if (!response.body) {
 					throw new Error(`Empty response body from ${url}`);
 				}
