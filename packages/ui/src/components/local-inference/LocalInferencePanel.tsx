@@ -10,6 +10,7 @@ import type {
   ModelHubSnapshot,
 } from "../../api/client-local-inference";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
+import { useRole } from "../../hooks/useRole";
 import { filterSettingsDefaultLocalModels } from "../../services/local-inference/catalog-policy";
 import { useAppSelectorShallow } from "../../state";
 import { resolveApiUrl } from "../../utils/asset-url";
@@ -442,7 +443,10 @@ function VoiceModelUpdatesSection() {
     autoUpdateOnCellular: false,
     autoUpdateOnMetered: false,
   });
-  const [isOwner, setIsOwner] = useState(false);
+  // #12087 Item 25: owner-tier gating comes from the canonical role context, not
+  // a per-endpoint `isOwner` flag threaded through fetched state. The
+  // voice-preferences endpoint's owner flag is no longer consumed here.
+  const { isOwner } = useRole();
   const [installations, setInstallations] = useState<
     ReadonlyArray<VoiceModelInstallationView>
   >([]);
@@ -464,7 +468,6 @@ function VoiceModelUpdatesSection() {
           autoUpdateOnCellular: prefsResp.preferences.autoUpdateOnCellular,
           autoUpdateOnMetered: prefsResp.preferences.autoUpdateOnMetered,
         });
-        setIsOwner(prefsResp.isOwner);
         setInstallations(
           listResp.installations.map((i) => ({
             id: i.id,

@@ -10,6 +10,7 @@ import { API_KEY_PREFIX_HINTS } from "../../config/api-key-prefix-hints";
 import type { JsonSchemaObject } from "../../config/config-catalog";
 import { useTimeout } from "../../hooks/useTimeout";
 import { useAppSelector } from "../../state";
+import { OwnerOnlyNotice, RoleGate } from "../RoleGate";
 import type { ConfigUiHint } from "../../types";
 import { autoLabel } from "../../utils/labels";
 import { SettingsActionButton } from "./settings-agent-rows";
@@ -171,7 +172,20 @@ function CredentialFieldAgentBinding({
   return <span ref={ref} hidden aria-hidden {...agentProps} />;
 }
 
-export function ApiKeyConfig({
+/**
+ * Provider API keys are OWNER-tier credentials (#12087 Item 24): only the
+ * workspace owner may view or set them. Gated at the surface boundary via the
+ * canonical {@link RoleGate}.
+ */
+export function ApiKeyConfig(props: ApiKeyConfigProps) {
+  return (
+    <RoleGate minRole="OWNER" fallback={<OwnerOnlyNotice />}>
+      <ApiKeyConfigBody {...props} />
+    </RoleGate>
+  );
+}
+
+function ApiKeyConfigBody({
   selectedProvider,
   pluginSaving,
   pluginSaveSuccess,

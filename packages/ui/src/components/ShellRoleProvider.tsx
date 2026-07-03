@@ -9,7 +9,7 @@
  * computes in app-core); when that lands, only `deriveShellRole` changes.
  */
 
-import type { RoleGateRole } from "@elizaos/core";
+import { ROLE_RANK, type RoleGateRole } from "@elizaos/core";
 import type { ReactNode } from "react";
 import { useAuthStatus } from "../hooks/useAuthStatus.ts";
 import { RoleProvider } from "../hooks/useRole.tsx";
@@ -19,7 +19,13 @@ type AuthStatusLike = {
   access?: { mode?: string; role?: string };
 };
 
-const CANONICAL_ROLES = new Set(["OWNER", "ADMIN", "USER", "GUEST"]);
+/**
+ * The accepted canonical role set (#12087 Item 28). Derived from core's
+ * {@link ROLE_RANK} so there is one source of truth for which tier strings the
+ * UI recognizes — a role added to the core rank table is recognized here with
+ * no edit to this file.
+ */
+const CANONICAL_ROLES = new Set<string>(Object.keys(ROLE_RANK));
 
 /**
  * Pure mapping from auth status → canonical role. Prefers the server-authoritative

@@ -10,6 +10,7 @@
  */
 
 import { type RoleGateRole, satisfiesRoleGate } from "@elizaos/core";
+import { Lock } from "lucide-react";
 import type { ReactNode } from "react";
 import { useRole } from "../hooks/useRole.tsx";
 
@@ -36,4 +37,22 @@ export function RoleGate({
   const { role } = useRole();
   const allowed = satisfiesRoleGate([role], { minRole, anyOf, noneOf });
   return <>{allowed ? children : fallback}</>;
+}
+
+/**
+ * Standard fallback for an OWNER-tier surface a lower-tier caller reached
+ * (#12087 Item 24). Kept unobtrusive — a lock glyph + one muted line — so the
+ * gated surface reads as "not yours" rather than "broken".
+ */
+export function OwnerOnlyNotice({
+  message = "This section is available to the workspace owner only.",
+}: {
+  message?: string;
+}): React.JSX.Element {
+  return (
+    <div className="flex items-center gap-2 rounded-sm border border-border/45 bg-card/30 px-3 py-6 text-xs text-muted">
+      <Lock className="h-3.5 w-3.5 shrink-0" aria-hidden />
+      <span>{message}</span>
+    </div>
+  );
 }

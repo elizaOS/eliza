@@ -65,7 +65,10 @@ export interface VoiceModelsPinResponse {
 
 export interface VoiceModelsPreferencesResponse {
   readonly preferences: NetworkPolicyPreferences;
-  readonly isOwner: boolean;
+  // #12087 Item 25: the per-endpoint `isOwner` flag was dropped from the UI
+  // contract — owner-tier gating now flows through the canonical `useRole()`
+  // context, not a flag threaded from this endpoint. The server may still send
+  // it for older clients; the UI no longer reads it.
 }
 
 export interface VoiceModelsSetPreferencesResponse {
