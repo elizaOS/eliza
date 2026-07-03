@@ -285,6 +285,20 @@ declare module "@elizaos/plugin-elizacloud" {
   const plugin: unknown;
   export default plugin;
 }
+
+declare module "@elizaos/plugin-background-runner" {
+  import type { Plugin } from "@elizaos/core";
+  export const plugin: Plugin;
+  const defaultPlugin: Plugin;
+  export default defaultPlugin;
+}
+
+declare module "@elizaos/plugin-vision" {
+  import type { Plugin } from "@elizaos/core";
+  export const plugin: Plugin;
+  const defaultPlugin: Plugin;
+  export default defaultPlugin;
+}
 declare module "@elizaos/plugin-video" {
   import type { Plugin } from "@elizaos/core";
 

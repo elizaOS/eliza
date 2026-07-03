@@ -378,8 +378,9 @@ export async function runFirstTimeSetup(
       "No problem! Starting with local setup. You can switch to cloud anytime with `eliza cloud connect`.",
     );
   } else if (runtimeChoice === "cloud") {
+    const moduleSpecifier = ["@elizaos", "plugin-elizacloud"].join("/");
     const { runCloudSetup, ClackObserver } = await import(
-      "@elizaos/plugin-elizacloud"
+      /* @vite-ignore */ moduleSpecifier
     );
     // Cast to `unknown` first to bridge the two @clack/prompts module
     // identities that show up under workspace tsconfig roots (plugin-registry

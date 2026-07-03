@@ -171,6 +171,33 @@ function isBundledMobileRuntime(): boolean {
   );
 }
 
+type DeferredCoreStaticPluginsModule = {
+  registerDeferredCoreStaticPlugins: (options?: {
+    bootTimeoutMs?: number;
+  }) => Promise<void>;
+  registerStaticPluginsByName: (
+    packageNames: readonly string[],
+    options?: { bootTimeoutMs?: number },
+  ) => Promise<void>;
+  loadDeferredStaticPluginModule: (packageName: string) => Promise<unknown>;
+};
+
+let _deferredCoreStaticPluginsModulePromise: Promise<DeferredCoreStaticPluginsModule> | null =
+  null;
+function importDeferredCoreStaticPluginsModule(): Promise<DeferredCoreStaticPluginsModule> {
+  if (!_deferredCoreStaticPluginsModulePromise) {
+    const moduleSpecifier = isBundledMobileRuntime()
+      ? new URL("./agent-deferred.js", import.meta.url).href
+      : fileURLToPath(import.meta.url).endsWith(".ts")
+        ? "./deferred-core-static-plugins.ts"
+        : "./deferred-core-static-plugins.js";
+    _deferredCoreStaticPluginsModulePromise = import(
+      /* @vite-ignore */ moduleSpecifier
+    ) as Promise<DeferredCoreStaticPluginsModule>;
+  }
+  return _deferredCoreStaticPluginsModulePromise;
+}
+
 import { buildCharacterFromConfig } from "./build-character-config.ts";
 import {
   resolvePreferredProviderId,
@@ -297,93 +324,6 @@ async function loadRequiredPluginSql(): Promise<
   }
 }
 
-function resolveWorkspacePluginSourceEntry(packageName: string): string | null {
-  if (!packageName.startsWith("@elizaos/plugin-")) return null;
-  const shortName = packageName.slice("@elizaos/".length);
-  let dir = path.dirname(fileURLToPath(import.meta.url));
-  for (let depth = 0; depth < 14; depth += 1) {
-    const candidate = path.join(dir, "plugins", shortName, "src", "index.ts");
-    if (existsSync(candidate)) return candidate;
-    const parent = path.dirname(dir);
-    if (parent === dir) break;
-    dir = parent;
-  }
-  return null;
-}
-
-// Agent orchestrator ships as the standalone @elizaos/plugin-agent-orchestrator package.
-const loadOptionalPlugin = async (packageName: string): Promise<unknown> => {
-  try {
-    if (packageName === "@elizaos/plugin-agent-orchestrator") {
-      return await import(
-        /* @vite-ignore */ "@elizaos/plugin-agent-orchestrator"
-      );
-    }
-    if (packageName === "@elizaos/plugin-task-coordinator") {
-      return await import(
-        /* @vite-ignore */ "@elizaos/plugin-task-coordinator"
-      );
-    }
-    if (packageName === "@elizaos/plugin-app-control") {
-      const appControlPackageName = packageName;
-      return await import(/* @vite-ignore */ appControlPackageName);
-    }
-    if (packageName === "@elizaos/plugin-shell") {
-      return await import(/* @vite-ignore */ "@elizaos/plugin-shell");
-    }
-    if (packageName === "@elizaos/plugin-coding-tools") {
-      return await import(/* @vite-ignore */ "@elizaos/plugin-coding-tools");
-    }
-    if (packageName === "@elizaos/plugin-pty") {
-      return await import(/* @vite-ignore */ "@elizaos/plugin-pty");
-    }
-    if (packageName === "@elizaos/plugin-birdclaw") {
-      return await import(/* @vite-ignore */ "@elizaos/plugin-birdclaw");
-    }
-    if (packageName === "@elizaos/plugin-ollama") {
-      return await import(/* @vite-ignore */ "@elizaos/plugin-ollama");
-    }
-    if (packageName === "@elizaos/plugin-elizacloud") {
-      return await import(/* @vite-ignore */ "@elizaos/plugin-elizacloud");
-    }
-    if (packageName === "@elizaos/plugin-commands") {
-      return await import(/* @vite-ignore */ "@elizaos/plugin-commands");
-    }
-    if (packageName === "@elizaos/plugin-video") {
-      return await import(/* @vite-ignore */ "@elizaos/plugin-video");
-    }
-    if (packageName === "@elizaos/plugin-vision") {
-      return await import(/* @vite-ignore */ "@elizaos/plugin-vision");
-    }
-    if (packageName === "@elizaos/plugin-background-runner") {
-      return await import(
-        /* @vite-ignore */ "@elizaos/plugin-background-runner"
-      );
-    }
-    if (packageName === "@elizaos/plugin-anthropic") {
-      return await import(/* @vite-ignore */ "@elizaos/plugin-anthropic");
-    }
-    if (packageName === "@elizaos/plugin-openai") {
-      return await import(/* @vite-ignore */ "@elizaos/plugin-openai");
-    }
-    return await import(packageName);
-  } catch {
-    const sourceEntry = resolveWorkspacePluginSourceEntry(packageName);
-    if (sourceEntry) {
-      try {
-        logger.debug(
-          `[eliza] Loading ${packageName} from workspace source at ${sourceEntry}`,
-        );
-        return await import(pathToFileURL(sourceEntry).href);
-      } catch {
-        // Fall through to the existing optional-plugin behavior: missing or
-        // unbuildable optional plugins are omitted from STATIC_ELIZA_PLUGINS.
-      }
-    }
-    return null;
-  }
-};
-
 // IMPORTANT: Do NOT pull plugin modules in via top-level `await` at module scope.
 //
 // Bun.build (and any cross-module top-level-await scheduling that follows the
@@ -426,18 +366,6 @@ async function getPluginLocalEmbedding(): Promise<
   return _pluginLocalEmbeddingPromise;
 }
 
-let _optionalPluginCache: Map<string, Promise<unknown>> | null = null;
-function getOptionalPlugin(packageName: string): Promise<unknown> {
-  if (_optionalPluginCache === null) {
-    _optionalPluginCache = new Map();
-  }
-  const cache = _optionalPluginCache;
-  const cached = cache.get(packageName);
-  if (cached) return cached;
-  const promise = loadOptionalPlugin(packageName);
-  cache.set(packageName, promise);
-  return promise;
-}
 // Personality is bundled in @elizaos/core advanced capabilities (advancedCapabilities).
 
 type CoreStaticPluginPhase = "blocking" | "deferred";
@@ -464,115 +392,6 @@ const CORE_STATIC_PLUGIN_REGISTRATIONS: readonly CoreStaticPluginRegistration[] 
       required: false,
       load: () => getPluginLocalEmbedding(),
     },
-    {
-      packageName: "@elizaos/plugin-agent-orchestrator",
-      registryName: "agent-orchestrator",
-      phase: "deferred",
-      required: false,
-      load: () => getOptionalPlugin("@elizaos/plugin-agent-orchestrator"),
-    },
-    {
-      packageName: "@elizaos/plugin-task-coordinator",
-      phase: "deferred",
-      required: false,
-      load: () => getOptionalPlugin("@elizaos/plugin-task-coordinator"),
-    },
-    {
-      packageName: "@elizaos/plugin-shell",
-      phase: "deferred",
-      required: false,
-      load: () => getOptionalPlugin("@elizaos/plugin-shell"),
-    },
-    {
-      packageName: "@elizaos/plugin-coding-tools",
-      phase: "deferred",
-      required: false,
-      load: () => getOptionalPlugin("@elizaos/plugin-coding-tools"),
-    },
-    {
-      // Opt-in only: dormant unless a character lists @elizaos/plugin-pty (no
-      // autoEnable). Registers PTY_SERVICE so the web terminal can drive a real
-      // interactive CLI (eliza-code on Eliza Cloud/cerebras).
-      packageName: "@elizaos/plugin-pty",
-      phase: "deferred",
-      required: false,
-      load: () => getOptionalPlugin("@elizaos/plugin-pty"),
-    },
-    {
-      // Auto-on only when the host has the birdclaw CLI or an existing
-      // ~/.birdclaw data root (see birdclawRequested in plugin-collector.ts).
-      // Registers BIRDCLAW_SERVICE + the local Twitter/X archive view/action.
-      packageName: "@elizaos/plugin-birdclaw",
-      phase: "deferred",
-      required: false,
-      load: () => getOptionalPlugin("@elizaos/plugin-birdclaw"),
-    },
-    {
-      packageName: "@elizaos/plugin-commands",
-      phase: "deferred",
-      required: false,
-      load: () => getOptionalPlugin("@elizaos/plugin-commands"),
-    },
-    {
-      packageName: "@elizaos/plugin-video",
-      phase: "deferred",
-      required: false,
-      load: () => getOptionalPlugin("@elizaos/plugin-video"),
-    },
-    {
-      // MOBILE_CORE_PLUGINS lists plugin-vision (screen understanding on
-      // mobile — GET_SCREEN, the renderer-pulled screen-capture bridge, and
-      // the #11111 ML Kit OCR bridge routes), but without a static
-      // registration the mobile agent bundle could never resolve it: the
-      // renderer OCR poller polled /api/vision/ocr-requests into a 404
-      // forever (verified live on emulator-5554).
-      packageName: "@elizaos/plugin-vision",
-      phase: "deferred",
-      required: false,
-      load: () => getOptionalPlugin("@elizaos/plugin-vision"),
-    },
-    {
-      packageName: "@elizaos/plugin-background-runner",
-      phase: "deferred",
-      required: false,
-      load: () => getOptionalPlugin("@elizaos/plugin-background-runner"),
-    },
-    {
-      packageName: "@elizaos/plugin-elizacloud",
-      phase: "deferred",
-      required: false,
-      load: () => getOptionalPlugin("@elizaos/plugin-elizacloud"),
-    },
-    {
-      packageName: "@elizaos/plugin-ollama",
-      phase: "deferred",
-      required: false,
-      load: () => getOptionalPlugin("@elizaos/plugin-ollama"),
-    },
-    {
-      packageName: "@elizaos/plugin-anthropic",
-      phase: "deferred",
-      required: false,
-      load: () => getOptionalPlugin("@elizaos/plugin-anthropic"),
-    },
-    {
-      packageName: "@elizaos/plugin-openai",
-      phase: "deferred",
-      required: false,
-      load: () => getOptionalPlugin("@elizaos/plugin-openai"),
-    },
-    {
-      packageName: "@elizaos/plugin-gitpathologist",
-      phase: "deferred",
-      required: false,
-      // Not in the mobile bundle — attempting the import there hangs the full
-      // 30s deferred-plugin timeout before being skipped. Skip it up front on
-      // android/ios (it's a desktop dev tool, already gated in plugin-collector).
-      load: () =>
-        isMobilePlatform()
-          ? Promise.resolve(null)
-          : getOptionalPlugin("@elizaos/plugin-gitpathologist"),
-    },
   ];
 
 let _blockingStaticPluginsRegistered = false;
@@ -596,6 +415,14 @@ async function registerStaticPluginPhase(
   const bootTimeoutMs = Number(
     process.env.ELIZA_PLUGIN_BOOT_TIMEOUT_MS ?? 30_000,
   );
+
+  if (phase === "deferred") {
+    const deferredModule = await importDeferredCoreStaticPluginsModule();
+    await deferredModule.registerDeferredCoreStaticPlugins({ bootTimeoutMs });
+    _deferredStaticPluginsRegistered = true;
+    return;
+  }
+
   const registrations = CORE_STATIC_PLUGIN_REGISTRATIONS.filter(
     (registration) => registration.phase === phase,
   );
@@ -652,25 +479,8 @@ async function registerStaticPluginPhase(
     }
   };
 
-  if (phase === "deferred") {
-    // Deferred plugins run in the background after the API server is already
-    // listening; they must not hold the ready gate. Importing them one at a
-    // time and yielding to the event loop (setImmediate) between each lets the
-    // bound HTTP server serve /api/health (and other I/O) between the CPU-bound
-    // module evaluations, instead of starving it until the whole batch finishes
-    // (observed ready was dominated by this on contended hosts). All plugins
-    // still register — only the scheduling changes.
-    for (const registration of registrations) {
-      await trackImport(registration);
-      await new Promise<void>((resolve) => {
-        setImmediate(resolve);
-      });
-    }
-    _deferredStaticPluginsRegistered = true;
-  } else {
-    await Promise.all(registrations.map(trackImport));
-    _blockingStaticPluginsRegistered = true;
-  }
+  await Promise.all(registrations.map(trackImport));
+  _blockingStaticPluginsRegistered = true;
 }
 
 async function ensureStaticPluginsRegisteredByName(
@@ -694,12 +504,6 @@ async function ensureStaticPluginsRegisteredByName(
           registration.registryName === packageName,
       ),
   );
-  if (missing.length > 0) {
-    logger.debug(
-      `[boot] no static registration for preferred provider plugin(s): ${missing.join(", ")}`,
-    );
-  }
-
   await Promise.all(
     registrations.map(async (registration) => {
       const registryName =
@@ -722,6 +526,21 @@ async function ensureStaticPluginsRegisteredByName(
       }
     }),
   );
+
+  if (missing.length > 0) {
+    const deferredModule = await importDeferredCoreStaticPluginsModule();
+    await deferredModule.registerStaticPluginsByName(missing, {
+      bootTimeoutMs: Number(process.env.ELIZA_PLUGIN_BOOT_TIMEOUT_MS ?? 30_000),
+    });
+    const stillMissing = missing.filter(
+      (packageName) => !STATIC_ELIZA_PLUGINS[packageName],
+    );
+    if (stillMissing.length > 0) {
+      logger.debug(
+        `[boot] no static registration for preferred provider plugin(s): ${stillMissing.join(", ")}`,
+      );
+    }
+  }
 }
 
 async function ensureBlockingCoreStaticPluginsRegistered(): Promise<void> {
@@ -6104,6 +5923,17 @@ type CloudRuntimeProxyLike = {
   handleChatMessage: (text: string) => Promise<string>;
 };
 
+type ElizaCloudPluginModule = {
+  CloudManager: new (
+    cloudConfig: NonNullable<ElizaConfig["cloud"]>,
+    options: { onStatusChange: (status: string) => void },
+  ) => {
+    init: () => Promise<void>;
+    connect: (agentId: string) => Promise<unknown>;
+    disconnect: () => Promise<void>;
+  };
+};
+
 export async function startInCloudMode(
   config: ElizaConfig,
   agentId: string,
@@ -6116,9 +5946,10 @@ export async function startInCloudMode(
   // `@elizaos/plugin-local-inference` (model/embedding/voice warmup, bun:ffi
   // dylib) — it would only add first-paint latency for a remote agent.
   await ensureCloudCoreStaticPluginsRegistered();
-  const { CloudManager } = await import(
-    /* @vite-ignore */ "@elizaos/plugin-elizacloud"
-  );
+  const deferredModule = await importDeferredCoreStaticPluginsModule();
+  const { CloudManager } = (await deferredModule.loadDeferredStaticPluginModule(
+    "@elizaos/plugin-elizacloud",
+  )) as ElizaCloudPluginModule;
 
   const cloudConfig = config.cloud;
   if (!cloudConfig) {
