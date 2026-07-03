@@ -25,7 +25,19 @@ import { STEWARD_TOKEN_KEY } from "@elizaos/shared/steward-session-client";
 import { setBootConfig } from "../../config/boot-config";
 import { ApiError, api } from "./api-client";
 
-const STEWARD_TOKEN = "steward-jwt-token";
+function makeJwt(payload: Record<string, unknown>): string {
+  const b64url = (value: object) =>
+    btoa(JSON.stringify(value))
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_")
+      .replace(/=+$/, "");
+  return `${b64url({ alg: "HS256", typ: "JWT" })}.${b64url(payload)}.sig`;
+}
+
+const STEWARD_TOKEN = makeJwt({
+  userId: "u1",
+  exp: Math.floor(Date.now() / 1000) + 600,
+});
 
 function setElectrobun(active: boolean): void {
   const w = window as unknown as { __electrobunWindowId?: number };
@@ -289,7 +301,7 @@ describe("cloud api-client transport bridge", () => {
       );
     });
 
-    it("native: the Steward JWT still WINS over the cloud API key when both exist", async () => {
+    it("native: a live Steward JWT still WINS over the cloud API key when both exist", async () => {
       capacitorState.isNative = true;
       // beforeEach already seeded STEWARD_TOKEN_KEY.
       setBootConfig({
@@ -308,6 +320,31 @@ describe("cloud api-client transport bridge", () => {
           }),
         }),
       );
+    });
+
+    it("native: an expired Steward JWT is cleared and falls back to the cloud API key", async () => {
+      capacitorState.isNative = true;
+      window.localStorage.setItem(
+        STEWARD_TOKEN_KEY,
+        makeJwt({ userId: "u1", exp: Math.floor(Date.now() / 1000) - 600 }),
+      );
+      setBootConfig({
+        branding: {},
+        cloudApiBase: "https://www.elizacloud.ai",
+        apiToken: CLOUD_API_KEY,
+      });
+      nativeOk();
+
+      await api("/api/v1/apps");
+
+      expect(capacitorMocks.request).toHaveBeenCalledWith(
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            authorization: `Bearer ${CLOUD_API_KEY}`,
+          }),
+        }),
+      );
+      expect(window.localStorage.getItem(STEWARD_TOKEN_KEY)).toBeNull();
     });
 
     it("native: the __ELIZA_CLOUD_AUTH_TOKEN__ global outranks the REST token, matching getCloudAuthToken()", async () => {
