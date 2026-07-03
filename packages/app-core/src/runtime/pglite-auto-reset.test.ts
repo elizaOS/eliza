@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import {
   closePgliteSingleton,
   getPgliteSingletonCache,
@@ -14,9 +16,16 @@ import { resetPluginSqlPgliteSingleton } from "./pglite-auto-reset";
  * getPgliteSingletonCache() accessor, proving the seam is real.
  */
 describe("resetPluginSqlPgliteSingleton (app-core DB auto-reset)", () => {
+  const originalPgliteDataDir = process.env.PGLITE_DATA_DIR;
+
   afterEach(async () => {
     // Leave no manager behind for other suites sharing the process-global cache.
     await closePgliteSingleton();
+    if (originalPgliteDataDir === undefined) {
+      delete process.env.PGLITE_DATA_DIR;
+    } else {
+      process.env.PGLITE_DATA_DIR = originalPgliteDataDir;
+    }
   });
 
   it("closes and drops the active PGlite manager through the exported API", async () => {
@@ -61,5 +70,20 @@ describe("resetPluginSqlPgliteSingleton (app-core DB auto-reset)", () => {
 
     expect(closeCalled).toBe(true);
     expect(cache.pgLiteClientManager).toBeUndefined();
+  });
+
+  it("keys runtime PGlite recovery on plugin-sql's exported error codes", () => {
+    const source = readFileSync(
+      path.resolve(import.meta.dirname, "eliza.ts"),
+      "utf8",
+    );
+
+    expect(source).toContain(
+      'import { PGLITE_ERROR_CODES } from "@elizaos/plugin-sql";',
+    );
+    expect(source).toContain("PGLITE_ERROR_CODES.MANUAL_RESET_REQUIRED");
+    expect(source).toContain("PGLITE_ERROR_CODES.CORRUPT_DATA");
+    expect(source).not.toContain("ELIZA_AUTO_RESET_PGLITE_ERROR_CODE");
+    expect(source).not.toContain('"ELIZA_PGLITE_MANUAL_RESET_REQUIRED"');
   });
 });
