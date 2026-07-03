@@ -79,24 +79,29 @@ describe("VerificationRoomBridgeService — boot-order retry", () => {
 		expect(coordinator.__listenerCount()).toBe(0);
 	});
 
-	it("gives up quietly after ATTACH_MAX_RETRIES without binding twice", async () => {
+	it("keeps retrying past ATTACH_MAX_RETRIES and still binds when the coordinator appears late", async () => {
 		const coordinator = makeCoordinator();
 		const { runtime, setService } = makeRuntime({});
 
 		const service = await VerificationRoomBridgeService.start(runtime);
 
-		// Drain the entire retry budget: 60 retries × 500ms = 30s.
+		// Drain well past the escalation threshold (60 retries × 500ms = 30s).
+		// The bridge no longer gives up there (see scheduleAttachRetry) — it keeps
+		// polling on a capped backoff so a heavy-boot coordinator that registers
+		// minutes late is still wired, instead of leaving verdicts unposted.
 		vi.advanceTimersByTime(31_000);
-		await Promise.resolve();
-
-		// Service eventually shows up AFTER giving up. Bridge must NOT
-		// subscribe — the retry loop already terminated.
-		setService("SWARM_COORDINATOR", coordinator);
-		vi.advanceTimersByTime(5_000);
 		await Promise.resolve();
 		expect(coordinator.__listenerCount()).toBe(0);
 
+		// The coordinator finally registers; a later retry tick binds it exactly
+		// once (success clears the timer, so no second subscription).
+		setService("SWARM_COORDINATOR", coordinator);
+		vi.advanceTimersByTime(10_000);
+		await Promise.resolve();
+		expect(coordinator.__listenerCount()).toBe(1);
+
 		await service.stop();
+		expect(coordinator.__listenerCount()).toBe(0);
 	});
 
 	it("stop() cancels a pending retry timer", async () => {
@@ -160,6 +165,118 @@ describe("VerificationRoomBridgeService — verdict posting", () => {
 			},
 		};
 	}
+
+	// An app pass carries the built dir on `verification.params.workdir` only —
+	// no top-level `workdir` — which exercises the params fallback in decodeEvent.
+	function appEvent(verdict: "pass" | "fail") {
+		return {
+			type: verdict === "pass" ? "task_complete" : "escalation",
+			sessionId: `sess-app-${verdict}`,
+			data: {
+				originRoomId: "room-99",
+				label: "create-app:notes",
+				summary: verdict === "fail" ? "build error" : undefined,
+				verification: {
+					source: "custom-validator",
+					verdict,
+					validator: { service: "app-verification", method: "verifyApp" },
+					params: {
+						appName: "notes",
+						workdir: "/repo/eliza/apps/app-notes",
+						profile: "full",
+					},
+				},
+			},
+		};
+	}
+
+	it("registers the built app and tells the user to launch it (#11954)", async () => {
+		vi.mocked(globalThis.fetch).mockResolvedValue({
+			ok: true,
+			status: 200,
+			json: async () => ({
+				ok: true,
+				registered: 1,
+				items: [{ slug: "notes", canonicalName: "app-notes" }],
+			}),
+		} as Response);
+		const coordinator = makeCoordinator();
+		const { runtime } = makeRuntime({ SWARM_COORDINATOR: coordinator });
+		const service = await VerificationRoomBridgeService.start(runtime);
+
+		coordinator.__emit(appEvent("pass"));
+		await flush();
+
+		// It POSTed the workdir (resolved from verification.params) to the apps
+		// registration route so `launch <name>` can resolve the fresh app.
+		expect(globalThis.fetch).toHaveBeenCalledWith(
+			expect.stringContaining("/api/apps/load-from-directory"),
+			expect.objectContaining({
+				method: "POST",
+				body: expect.stringContaining("/repo/eliza/apps/app-notes"),
+			}),
+		);
+
+		expect(runtime.createMemory).toHaveBeenCalledTimes(1);
+		const [memory] = (runtime.createMemory as ReturnType<typeof vi.fn>).mock
+			.calls[0];
+		const text = memory.content.text as string;
+		expect(text).toContain("notes app built, verified, and registered");
+		expect(text).toContain("launch notes");
+		expect(memory.content.metadata).toMatchObject({ verdict: "pass" });
+
+		await service.stop();
+	});
+
+	it("surfaces an app registration failure honestly, not a dead-end launch (#11954)", async () => {
+		vi.mocked(globalThis.fetch).mockResolvedValue({
+			ok: false,
+			status: 503,
+			json: async () => ({
+				ok: false,
+				error: "AppRegistryService is not registered on the runtime",
+			}),
+		} as Response);
+		const coordinator = makeCoordinator();
+		const { runtime } = makeRuntime({ SWARM_COORDINATOR: coordinator });
+		const service = await VerificationRoomBridgeService.start(runtime);
+
+		coordinator.__emit(appEvent("pass"));
+		await flush();
+
+		const [memory] = (runtime.createMemory as ReturnType<typeof vi.fn>).mock
+			.calls[0];
+		const text = memory.content.text as string;
+		expect(text).toContain("built and verified");
+		expect(text).toContain("registration failed");
+		expect(text).toContain("AppRegistryService is not registered");
+		// It must NOT falsely promise a launch that will dead-end.
+		expect(text).not.toContain("Reply 'launch notes'");
+
+		await service.stop();
+	});
+
+	it("reports a no-manifest app dir honestly (registered: 0)", async () => {
+		vi.mocked(globalThis.fetch).mockResolvedValue({
+			ok: true,
+			status: 200,
+			json: async () => ({ ok: true, registered: 0, items: [] }),
+		} as Response);
+		const coordinator = makeCoordinator();
+		const { runtime } = makeRuntime({ SWARM_COORDINATOR: coordinator });
+		const service = await VerificationRoomBridgeService.start(runtime);
+
+		coordinator.__emit(appEvent("pass"));
+		await flush();
+
+		const [memory] = (runtime.createMemory as ReturnType<typeof vi.fn>).mock
+			.calls[0];
+		const text = memory.content.text as string;
+		expect(text).toContain("no app manifest was found");
+		expect(text).not.toContain("Reply 'launch notes'");
+
+		await service.stop();
+	});
 
 	it("live-loads the plugin and posts a 'loaded live' verdict (never reinject)", async () => {
 		const coordinator = makeCoordinator();

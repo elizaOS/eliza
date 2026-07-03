@@ -1587,10 +1587,12 @@ export async function handleAppsRoutes(
       error(res, "AppRegistryService is not registered on the runtime", 503);
       return true;
     }
+    // Capture the guard-narrowed handle so the nested per-directory closure
+    // keeps the non-undefined type (control-flow narrowing does not cross into
+    // the closure otherwise).
+    const registerApp = registry.register;
 
     try {
-      const entries = await fs.readdir(directory, { withFileTypes: true });
-      let registered = 0;
       const items: Array<{ slug: string; canonicalName: string }> = [];
       const rejectedManifests: Array<{
         directory: string;
@@ -1598,12 +1600,15 @@ export async function handleAppsRoutes(
         reason: string;
         path: string;
       }> = [];
-      for (const entry of entries) {
-        if (!entry.isDirectory()) continue;
-        const subdir = path.join(directory, entry.name);
-        const pkgPath = path.join(subdir, "package.json");
+
+      // Register a single directory whose own package.json carries the
+      // `elizaos.app` manifest. Returns true when registered; records a
+      // rejection (and returns false) when the manifest is present but its
+      // permissions are malformed; returns false when the dir is not an app.
+      const registerAppDir = async (appDir: string): Promise<boolean> => {
+        const pkgPath = path.join(appDir, "package.json");
         const raw = await fs.readFile(pkgPath, "utf8").catch(() => null);
-        if (raw === null) continue;
+        if (raw === null) return false;
         const parsed = JSON.parse(raw) as Record<string, unknown>;
         const elizaos =
           parsed.elizaos && typeof parsed.elizaos === "object"
@@ -1613,15 +1618,15 @@ export async function handleAppsRoutes(
           elizaos?.app && typeof elizaos.app === "object"
             ? (elizaos.app as Record<string, unknown>)
             : null;
-        if (!appMeta) continue;
+        if (!appMeta) return false;
         const packageName =
           typeof parsed.name === "string" ? parsed.name : null;
-        if (!packageName) continue;
+        if (!packageName) return false;
 
         const permissionsResult = parseAppPermissions(appMeta.permissions);
         if (permissionsResult.ok === false) {
           const rejection = {
-            directory: subdir,
+            directory: appDir,
             packageName,
             reason: permissionsResult.reason,
             path: permissionsResult.path,
@@ -1632,7 +1637,7 @@ export async function handleAppsRoutes(
             requesterEntityId: null,
             requesterRoomId: null,
           });
-          continue;
+          return false;
         }
 
         const basename = packageName.replace(/^@[^/]+\//, "").trim();
@@ -1650,21 +1655,41 @@ export async function handleAppsRoutes(
           slug,
           canonicalName: packageName,
           aliases,
-          directory: subdir,
+          directory: appDir,
           displayName,
           isolation: parseAppIsolation(appMeta.isolation),
         };
         if (permissionsResult.manifest.raw !== null) {
           entryRecord.requestedPermissions = permissionsResult.manifest.raw;
         }
-        await registry.register(entryRecord, {
+        await registerApp(entryRecord, {
           requesterEntityId: null,
           requesterRoomId: null,
           trust: "external",
         });
-        registered += 1;
         items.push({ slug, canonicalName: packageName });
+        return true;
+      };
+
+      // Accept either a single freshly-built app directory (the dir itself
+      // carries the `elizaos.app` manifest — e.g. a `verifyApp` pass handing off
+      // `eliza/apps/app-<slug>`, #11954) or a parent directory to scan for app
+      // subdirectories. Trying the top-level dir first makes single-app
+      // registration work without the caller knowing which shape it passed; a
+      // parent/container dir has no manifest of its own, so it falls through to
+      // the subdir scan exactly as before.
+      const candidates = [directory];
+      const entries = await fs.readdir(directory, { withFileTypes: true });
+      for (const entry of entries) {
+        if (entry.isDirectory()) {
+          candidates.push(path.join(directory, entry.name));
+        }
       }
+      let registered = 0;
+      for (const candidate of candidates) {
+        if (await registerAppDir(candidate)) registered += 1;
+      }
+
       json(res, {
         ok: true,
         directory,

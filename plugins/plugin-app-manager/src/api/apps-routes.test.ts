@@ -82,6 +82,7 @@ async function callRoute(args: {
   favoriteApps?: FavoriteAppsStore;
   getPluginManager?: AppsRouteContext["getPluginManager"];
   actorRole?: AppsRouteActorRole | null;
+  runtime?: AppsRouteContext["runtime"];
 }): Promise<{
   handled: boolean;
   res: CapturedResponse;
@@ -100,7 +101,7 @@ async function callRoute(args: {
     appManager,
     favoriteApps: args.favoriteApps,
     actorRole: args.actorRole,
-    runtime: null,
+    runtime: args.runtime ?? null,
     getPluginManager:
       args.getPluginManager ??
       (() =>
@@ -334,6 +335,145 @@ describe("handleAppsRoutes", () => {
       expect(refreshRegistry).toHaveBeenCalledTimes(1);
     } finally {
       await rm(packageDir, { recursive: true, force: true });
+    }
+  });
+});
+
+interface MockRegistry {
+  register: ReturnType<typeof vi.fn>;
+  recordManifestRejection: ReturnType<typeof vi.fn>;
+}
+
+function createMockRegistryRuntime(): {
+  runtime: AppsRouteContext["runtime"];
+  registry: MockRegistry;
+} {
+  const registry: MockRegistry = {
+    register: vi.fn(async () => {}),
+    recordManifestRejection: vi.fn(async () => {}),
+  };
+  const runtime = {
+    getService: (type: string) => (type === "app-registry" ? registry : null),
+  } as unknown as AppsRouteContext["runtime"];
+  return { runtime, registry };
+}
+
+async function writeAppManifest(
+  dir: string,
+  name: string,
+  app: Record<string, unknown>,
+): Promise<void> {
+  await mkdir(dir, { recursive: true });
+  await writeFile(
+    path.join(dir, "package.json"),
+    JSON.stringify({ name, version: "0.0.0", elizaos: { app } }),
+    "utf8",
+  );
+}
+
+describe("POST /api/apps/load-from-directory — single-dir registration (#11954)", () => {
+  it("registers an app when the directory itself carries the elizaos.app manifest", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "app-single-"));
+    const appDir = path.join(root, "eliza", "apps", "app-notes");
+    try {
+      await writeAppManifest(appDir, "app-notes", {
+        slug: "notes",
+        displayName: "Notes",
+      });
+      const { runtime, registry } = createMockRegistryRuntime();
+
+      const result = await callRoute({
+        method: "POST",
+        pathname: "/api/apps/load-from-directory",
+        body: { directory: appDir },
+        runtime,
+      });
+
+      expect(result.handled).toBe(true);
+      expect(result.res.status).toBe(200);
+      expect(result.res.body).toMatchObject({
+        ok: true,
+        registered: 1,
+        items: [{ slug: "notes", canonicalName: "app-notes" }],
+      });
+      // Registered with the app's own dir + external trust — exactly the path
+      // the verifyApp handoff (verification-room-bridge) now drives (#11954).
+      expect(registry.register).toHaveBeenCalledTimes(1);
+      expect(registry.register).toHaveBeenCalledWith(
+        expect.objectContaining({ slug: "notes", directory: appDir }),
+        expect.objectContaining({ trust: "external" }),
+      );
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("still scans subdirectories when a parent/container dir is passed", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "app-scan-"));
+    const appsDir = path.join(root, "apps");
+    try {
+      await writeAppManifest(path.join(appsDir, "app-alpha"), "app-alpha", {
+        slug: "alpha",
+      });
+      await writeAppManifest(path.join(appsDir, "app-beta"), "app-beta", {
+        slug: "beta",
+      });
+      // A non-app subdir must be ignored.
+      await mkdir(path.join(appsDir, "not-an-app"), { recursive: true });
+      const { runtime, registry } = createMockRegistryRuntime();
+
+      const result = await callRoute({
+        method: "POST",
+        pathname: "/api/apps/load-from-directory",
+        body: { directory: appsDir },
+        runtime,
+      });
+
+      expect(result.res.status).toBe(200);
+      // The container dir has no manifest of its own, so only the two app
+      // subdirs register — the top-level candidate must not double-count.
+      expect(result.res.body).toMatchObject({ ok: true, registered: 2 });
+      expect(registry.register).toHaveBeenCalledTimes(2);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("registers 0 for a directory that is neither an app nor a container of apps", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "app-empty-"));
+    try {
+      await mkdir(path.join(root, "src"), { recursive: true });
+      const { runtime, registry } = createMockRegistryRuntime();
+
+      const result = await callRoute({
+        method: "POST",
+        pathname: "/api/apps/load-from-directory",
+        body: { directory: root },
+        runtime,
+      });
+
+      expect(result.res.status).toBe(200);
+      expect(result.res.body).toMatchObject({ ok: true, registered: 0 });
+      expect(registry.register).not.toHaveBeenCalled();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("503s when no AppRegistryService is on the runtime", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "app-noreg-"));
+    const appDir = path.join(root, "app-notes");
+    try {
+      await writeAppManifest(appDir, "app-notes", { slug: "notes" });
+      const result = await callRoute({
+        method: "POST",
+        pathname: "/api/apps/load-from-directory",
+        body: { directory: appDir },
+        runtime: null,
+      });
+      expect(result.res.status).toBe(503);
+    } finally {
+      await rm(root, { recursive: true, force: true });
     }
   });
 });

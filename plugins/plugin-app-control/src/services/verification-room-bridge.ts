@@ -175,7 +175,10 @@ function decodeEvent(event: SwarmEventLike): BridgeEventPayload | null {
 		method,
 		targetName,
 		label: readString(event.data, "label"),
-		workdir: readString(event.data, "workdir"),
+		// verifyApp carries the built dir only on `verification.params.workdir`
+		// (verifyPlugin also mirrors it at the top level); read both so app
+		// registration below always has the workdir (#11954).
+		workdir: readString(event.data, "workdir") ?? readString(params, "workdir"),
 		summary: readString(event.data, "summary"),
 		retryCount: readNumber(event.data, "retryCount"),
 		maxRetries: readNumber(event.data, "maxRetries"),
@@ -227,10 +230,73 @@ async function loadPluginFromWorkdir(
 	}
 }
 
+/**
+ * Register a freshly built app directory into the running runtime via the
+ * loopback apps API so `launch <name>` can resolve it. The verifyApp pass hands
+ * off `eliza/apps/app-<slug>` (the app's own dir); `/api/apps/load-from-directory`
+ * now registers that dir directly (in addition to scanning subdirs). Without
+ * this step a verified app was never registered and `launch <name>` dead-ended
+ * at "No installed app matches" (#11954). Returns the outcome so the verdict
+ * message can tell the user whether the app is launchable or only built on disk.
+ */
+async function registerAppFromWorkdir(
+	workdir: string,
+): Promise<{ ok: boolean; registered: number; error?: string }> {
+	const port = resolveServerOnlyPort(process.env);
+	try {
+		const resp = await fetch(
+			`http://127.0.0.1:${port}/api/apps/load-from-directory`,
+			{
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ directory: workdir }),
+				signal: AbortSignal.timeout(30_000),
+			},
+		);
+		const body = (await resp.json().catch(() => ({}))) as Record<
+			string,
+			unknown
+		>;
+		if (resp.ok && body.ok === true) {
+			return {
+				ok: true,
+				registered: typeof body.registered === "number" ? body.registered : 0,
+			};
+		}
+		return {
+			ok: false,
+			registered: 0,
+			error:
+				typeof body.error === "string"
+					? body.error
+					: `register returned HTTP ${resp.status}`,
+		};
+	} catch (err) {
+		return {
+			ok: false,
+			registered: 0,
+			error: err instanceof Error ? err.message : String(err),
+		};
+	}
+}
+
 async function buildPassMessage(payload: BridgeEventPayload): Promise<string> {
 	const isApp = payload.method === VERIFY_APP_METHOD;
 	if (isApp) {
-		// Apps resolve through the launch/registry path.
+		// Register the freshly built app so `launch <name>` resolves — a verified
+		// app that was never registered dead-ends at "No installed app matches"
+		// (#11954). Best-effort: on failure the app still exists on disk.
+		if (payload.workdir) {
+			const reg = await registerAppFromWorkdir(payload.workdir);
+			if (reg.ok && reg.registered > 0) {
+				return `${payload.targetName} app built, verified, and registered. Reply 'launch ${payload.targetName}' to open it.`;
+			}
+			if (reg.ok) {
+				return `${payload.targetName} app built and verified, but no app manifest was found at ${payload.workdir} to register. Check the app's package.json 'elizaos.app' field before launching.`;
+			}
+			return `${payload.targetName} app built and verified at ${payload.workdir}, but registration failed: ${reg.error}. Re-run load-from-directory before launching.`;
+		}
+		// No workdir on the event — fall back to the best-effort launch hint.
 		return `${payload.targetName} app built and verified. Reply 'launch ${payload.targetName}' to open it.`;
 	}
 
@@ -330,9 +396,10 @@ export class VerificationRoomBridgeService extends Service {
 			// is not deterministic, so the orchestrator may register its
 			// SwarmCoordinator after we ran. Retry on a backoff up to
 			// `ATTACH_MAX_RETRIES` so the bridge ends up wired whenever the
-			// orchestrator IS in the plugin set. After the retry budget
-			// expires we give up quietly — `plugin-app-control` still works
-			// for non-create flows without the bridge.
+			// orchestrator IS in the plugin set. The retry never gives up (see
+			// scheduleAttachRetry) — it backs off and gets louder past
+			// ATTACH_MAX_RETRIES so a late-registering coordinator is still wired;
+			// stop() cancels the pending timer.
 			this.scheduleAttachRetry();
 			return;
 		}
