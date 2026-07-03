@@ -1,26 +1,14 @@
 import {
-  type Action,
-  type ActionResult,
   composePromptFromState,
-  type HandlerCallback,
   type IAgentRuntime,
   type Memory,
   ModelType,
   parseJSONObjectFromText,
   type State,
 } from "@elizaos/core";
-import { formatEther, type Hex, parseEther } from "viem";
-import {
-  assertEvmTransferRecipientAuthorized,
-  assertWalletFinancialActionAllowed,
-} from "../../../security/wallet-context-safety.js";
-import {
-  gateWalletFinancialExecution,
-  walletFinancialGateActionResult,
-} from "../../../security/wallet-financial-confirmation.js";
+import { type Hex, parseEther } from "viem";
 import { runIntentModel } from "../../../utils/intent-trajectory";
-import { requireActionSpec } from "../generated/specs/spec-helpers";
-import { initWalletProvider, type WalletProvider } from "../providers/wallet";
+import type { WalletProvider } from "../providers/wallet";
 import { transferTemplate } from "../templates";
 import {
   EVMError,
@@ -30,7 +18,7 @@ import {
   type Transaction,
   type TransferParams,
 } from "../types";
-import { buildSendTxParams, createEvmActionValidator } from "./helpers";
+import { buildSendTxParams } from "./helpers";
 
 export class TransferAction {
   constructor(private readonly walletProvider: WalletProvider) {}
@@ -127,135 +115,3 @@ export async function buildTransferDetails(
 
   return transferDetails;
 }
-
-const legacySpec = requireActionSpec("EVM_TRANSFER");
-const spec = { ...legacySpec, name: "WALLET" };
-
-export const transferAction: Action = {
-  name: spec.name,
-  description: spec.description,
-  descriptionCompressed: spec.descriptionCompressed,
-  contexts: ["finance", "crypto", "wallet", "payments"],
-  contextGate: { anyOf: ["finance", "crypto", "wallet", "payments"] },
-  roleGate: { minRole: "ADMIN" },
-  parameters: [
-    {
-      name: "amount",
-      description: "Human-readable amount to transfer.",
-      required: true,
-      schema: { type: "string" },
-    },
-    {
-      name: "toAddress",
-      description: "Recipient EVM address.",
-      required: true,
-      schema: { type: "string" },
-    },
-    {
-      name: "fromChain",
-      description: "Source EVM chain.",
-      required: false,
-      schema: { type: "string" },
-    },
-    {
-      name: "token",
-      description: "Native token or ERC-20 token symbol/address.",
-      required: false,
-      schema: { type: "string" },
-    },
-  ],
-
-  handler: async (
-    runtime: IAgentRuntime,
-    message: Memory,
-    state: State | undefined,
-    options: Record<string, unknown> | undefined,
-    callback?: HandlerCallback
-  ): Promise<ActionResult> => {
-    if (!state) {
-      state = (await runtime.composeState(message)) as State;
-    }
-
-    assertWalletFinancialActionAllowed(message, "transfer");
-
-    const walletProvider = await initWalletProvider(runtime);
-    const paramOptions = await buildTransferDetails(state, message, runtime, walletProvider);
-    assertEvmTransferRecipientAuthorized(message, options, paramOptions.toAddress);
-
-    const gate = await gateWalletFinancialExecution({
-      runtime,
-      message,
-      params: {
-        subaction: "transfer",
-        chain: paramOptions.fromChain,
-        amount: paramOptions.amount,
-        recipient: paramOptions.toAddress,
-        fromToken: paramOptions.token,
-        mode: "execute",
-        dryRun: false,
-      },
-      callback,
-    });
-    if (!gate.proceed) {
-      return walletFinancialGateActionResult(gate);
-    }
-
-    const action = new TransferAction(walletProvider);
-    const transferResp = await action.transfer(paramOptions);
-
-    const successText = `Successfully transferred ${paramOptions.amount} tokens to ${paramOptions.toAddress}\nTransaction Hash: ${transferResp.hash}`;
-
-    if (callback) {
-      callback({
-        text: successText,
-        content: {
-          success: true,
-          hash: transferResp.hash,
-          amount: formatEther(transferResp.value),
-          recipient: transferResp.to,
-          chain: paramOptions.fromChain,
-        },
-      });
-    }
-
-    return {
-      success: true,
-      text: successText,
-      values: {
-        transferSucceeded: true,
-      },
-      data: {
-        actionName: "EVM_TRANSFER_TOKENS",
-        transactionHash: transferResp.hash,
-        chain: paramOptions.fromChain,
-        amount: paramOptions.amount,
-        recipient: transferResp.to,
-      },
-    };
-  },
-  validate: createEvmActionValidator({
-    keywords: ["transfer"],
-    regex: /\b(?:transfer)\b/i,
-  }),
-
-  examples: [
-    [
-      {
-        name: "assistant",
-        content: {
-          text: "I'll help you transfer 1 ETH to 0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
-          action: "SEND_TOKENS",
-        },
-      },
-      {
-        name: "user",
-        content: {
-          text: "Transfer 1 ETH to 0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
-          action: "SEND_TOKENS",
-        },
-      },
-    ],
-  ],
-
-  similes: spec.similes ? [...spec.similes] : [],
-};
