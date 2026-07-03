@@ -6,13 +6,17 @@ Captured on 2026-07-03 from device `27051JEGR10034` using the debug APK at
 ## Build
 
 - `bun run --cwd packages/agent build:mobile`
-  - `agent-bundle.js`: 28.82 MB
+  - `agent-bundle.js`: 28.83 MB
   - `agent-deferred.js`: 15.80 MB
-  - Mobile load smoke passed.
+  - Mobile load smoke passed, including deferred plugin registration into the
+    shared static registry after importing both bundle graphs.
 - `ANDROID_SERIAL=27051JEGR10034 ELIZA_MOBILE_REPO_ROOT=/tmp/eliza-11903-android-boot ELIZA_WEBVIEW_DEBUG=1 ELIZA_BUN_RISCV64_OPTIONAL=1 ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB=1 bun run --cwd packages/app build:android`
   - APK build and artifact audit passed.
 - `ANDROID_SERIAL=27051JEGR10034 bun run --cwd packages/app install:android:adb -- --apk /tmp/eliza-11903-android-boot/packages/app-core/platforms/android/app/build/outputs/apk/debug/app-debug.apk`
-  - On-device APK SHA matched the local APK (`d36dc0b8650c...`).
+  - On-device APK SHA matched the local APK (`668672175c48...`).
+  - A fresh launch recapture from this final APK was blocked because the device
+    was `RUNNING_LOCKED`; Android would install and parse the APK, but would not
+    resolve/start non-direct-boot-aware activities or services until unlock.
 
 ## Device boot capture
 

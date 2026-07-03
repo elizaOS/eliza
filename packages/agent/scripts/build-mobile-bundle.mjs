@@ -2173,9 +2173,13 @@ if (TARGET === "android" && process.env.ELIZA_SKIP_BUNDLE_LOAD_SMOKE !== "1") {
   for (const { source, target } of smokeRootAssets) {
     await copyFile(source, target);
   }
+  const deferredRegistryProbe = "@elizaos/plugin-vision";
   const smokeEval =
     `await import(${JSON.stringify(bundlePath)}); ` +
-    `await import(${JSON.stringify(deferredBundlePath)}); ` +
+    `const deferredBundle = await import(${JSON.stringify(deferredBundlePath)}); ` +
+    'if (typeof deferredBundle.registerStaticPluginsByName !== "function") throw new Error("deferred bundle did not export registerStaticPluginsByName"); ' +
+    `await deferredBundle.registerStaticPluginsByName([${JSON.stringify(deferredRegistryProbe)}], { bootTimeoutMs: 30000 }); ` +
+    `if (!globalThis.__STATIC_ELIZA_PLUGINS__?.[${JSON.stringify(deferredRegistryProbe)}]) throw new Error("deferred plugin registry did not update global static registry"); ` +
     'console.log("BUNDLE_LOAD_SMOKE_OK"); process.exit(0);';
   const smoke = spawnSync("bun", ["-e", smokeEval], {
     stdio: ["ignore", "pipe", "pipe"],
