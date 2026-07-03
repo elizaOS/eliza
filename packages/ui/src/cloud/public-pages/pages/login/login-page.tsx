@@ -18,8 +18,11 @@ function StewardLoginSectionFallback() {
 function LoginBackground({ children }: { children: React.ReactNode }) {
   return (
     <div
-      className="theme-cloud min-h-screen bg-black text-white"
-      style={{ background: "var(--background)" }}
+      className="theme-cloud min-h-screen text-white"
+      style={{
+        background:
+          "linear-gradient(155deg, var(--brand-orange) 0%, #c2410c 52%, #7c2d12 100%)",
+      }}
     >
       <div className="flex min-h-screen w-full flex-col">
         <div className="relative z-10 flex flex-1 items-center justify-center p-4">
