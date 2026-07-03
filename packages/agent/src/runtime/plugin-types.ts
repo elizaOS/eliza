@@ -42,6 +42,10 @@ export interface PluginModuleShape {
 // Constants
 // ---------------------------------------------------------------------------
 
+type StaticPluginRegistryGlobal = typeof globalThis & {
+  __STATIC_ELIZA_PLUGINS__?: Record<string, unknown>;
+};
+
 /**
  * Static plugin registry.
  *
@@ -49,8 +53,14 @@ export interface PluginModuleShape {
  * statically-imported plugin modules. Defined here (as a mutable record) so that
  * plugin-resolver.ts can read it without importing eliza.ts, breaking the
  * circular dependency.
+ *
+ * Mobile builds intentionally split the runtime and deferred plugin loaders into
+ * separate bundles. Each bundle gets its own copy of this module, so the backing
+ * store must live on globalThis for deferred registrations to be visible to the
+ * runtime resolver.
  */
-export const STATIC_ELIZA_PLUGINS: Record<string, unknown> = {};
+export const STATIC_ELIZA_PLUGINS: Record<string, unknown> =
+  ((globalThis as StaticPluginRegistryGlobal).__STATIC_ELIZA_PLUGINS__ ??= {});
 
 /** Subdirectory under the Eliza state dir for drop-in custom plugins. */
 export const CUSTOM_PLUGINS_DIRNAME = "plugins/custom";
