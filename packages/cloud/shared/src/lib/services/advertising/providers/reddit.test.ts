@@ -111,6 +111,22 @@ describe("redditAdsProvider", () => {
   test("creates a Reddit post and ad creative against the composite campaign id", async () => {
     enqueue({ data: { id: "post_1" } });
     enqueue({ data: { id: "ad_1" } });
+    const media = [
+      {
+        id: "00000000-0000-4000-8000-000000000002",
+        source: "upload" as const,
+        url: "https://cdn.example.com/ad-second.png",
+        type: "image" as const,
+        order: 1,
+      },
+      {
+        id: "00000000-0000-4000-8000-000000000001",
+        source: "upload" as const,
+        url: "https://cdn.example.com/ad-first.png",
+        type: "image" as const,
+        order: 0,
+      },
+    ];
 
     const result = await redditAdsProvider.createCreative(
       { accessToken: "token" },
@@ -125,19 +141,15 @@ describe("redditAdsProvider", () => {
         callToAction: "learn_more",
         destinationUrl: "https://example.com",
         pageId: "profile_1",
-        media: [
-          {
-            id: "00000000-0000-4000-8000-000000000001",
-            source: "upload",
-            url: "https://cdn.example.com/ad.png",
-            type: "image",
-            order: 0,
-          },
-        ],
+        media,
       },
     );
 
     expect(result).toEqual({ success: true, externalCreativeId: "post_1/ad_1" });
+    expect(media.map((item) => item.url)).toEqual([
+      "https://cdn.example.com/ad-second.png",
+      "https://cdn.example.com/ad-first.png",
+    ]);
     expect(calls.map((call) => new URL(call.url).pathname)).toEqual([
       "/api/v3/profiles/profile_1/posts",
       "/api/v3/ad_accounts/t2_account/ads",
@@ -148,7 +160,12 @@ describe("redditAdsProvider", () => {
         headline: "Try the app",
         content: [
           {
-            media_url: "https://cdn.example.com/ad.png",
+            media_url: "https://cdn.example.com/ad-first.png",
+            destination_url: "https://example.com",
+            call_to_action: "Learn More",
+          },
+          {
+            media_url: "https://cdn.example.com/ad-second.png",
             destination_url: "https://example.com",
             call_to_action: "Learn More",
           },
@@ -164,6 +181,43 @@ describe("redditAdsProvider", () => {
         configured_status: "PAUSED",
       },
     });
+  });
+
+  test("creates a Reddit creative from an account/campaign id by discovering an ad group and profile", async () => {
+    enqueue({ data: [{ id: "grp_1" }] });
+    enqueue({ data: [{ id: "profile_1" }] });
+    enqueue({ data: { id: "post_1" } });
+    enqueue({ data: { id: "ad_1" } });
+
+    const result = await redditAdsProvider.createCreative(
+      { accessToken: "token" },
+      "t2_account",
+      "t2_account/cmp_1",
+      {
+        campaignId: "campaign-local",
+        name: "Launch Creative",
+        type: "image",
+        destinationUrl: "https://example.com",
+        media: [
+          {
+            id: "00000000-0000-4000-8000-000000000001",
+            source: "upload",
+            url: "https://cdn.example.com/ad.png",
+            type: "image",
+            order: 0,
+          },
+        ],
+      },
+    );
+
+    expect(result).toEqual({ success: true, externalCreativeId: "post_1/ad_1" });
+    expect(calls.map((call) => new URL(call.url).pathname)).toEqual([
+      "/api/v3/ad_accounts/t2_account/ad_groups",
+      "/api/v3/ad_accounts/t2_account/profiles",
+      "/api/v3/profiles/profile_1/posts",
+      "/api/v3/ad_accounts/t2_account/ads",
+    ]);
+    expect(new URL(calls[0]?.url ?? "").searchParams.get("campaign_id")).toBe("cmp_1");
   });
 
   test("patches campaign and ad group status for pause and activation", async () => {
@@ -183,6 +237,65 @@ describe("redditAdsProvider", () => {
     expect(jsonBody(calls[1] as FetchCall)).toEqual({ data: { configured_status: "PAUSED" } });
     expect(jsonBody(calls[2] as FetchCall)).toEqual({ data: { configured_status: "ACTIVE" } });
     expect(jsonBody(calls[3] as FetchCall)).toEqual({ data: { configured_status: "ACTIVE" } });
+  });
+
+  test("updates and archives campaign resources", async () => {
+    enqueue({ data: { id: "cmp_1" } });
+    enqueue({ data: { id: "grp_1" } });
+    enqueue({ data: { id: "grp_1" } });
+    enqueue({ data: { id: "cmp_1" } });
+
+    await expect(
+      redditAdsProvider.updateCampaign({ accessToken: "token" }, "t2_account/cmp_1/grp_1", {
+        name: "Renamed",
+        budgetAmount: 50,
+        endDate: new Date("2026-07-10T00:00:00Z"),
+      }),
+    ).resolves.toMatchObject({ success: true });
+    await expect(
+      redditAdsProvider.deleteCampaign({ accessToken: "token" }, "t2_account/cmp_1/grp_1"),
+    ).resolves.toMatchObject({ success: true });
+
+    expect(jsonBody(calls[0] as FetchCall)).toEqual({
+      data: {
+        name: "Renamed",
+        end_time: "2026-07-10T00:00:00.000Z",
+        spend_cap: 50_000_000,
+      },
+    });
+    expect(jsonBody(calls[1] as FetchCall)).toEqual({ data: { goal_value: 50_000_000 } });
+    expect(jsonBody(calls[2] as FetchCall)).toEqual({
+      data: { configured_status: "ARCHIVED" },
+    });
+    expect(jsonBody(calls[3] as FetchCall)).toEqual({
+      data: { configured_status: "ARCHIVED" },
+    });
+  });
+
+  test("maps hosted media URLs into stable Reddit external URL assets and rejects unsafe URLs", async () => {
+    await expect(
+      redditAdsProvider.uploadMedia?.({ accessToken: "token" }, "t2_account", {
+        name: "Launch Creative",
+        type: "image",
+        url: "https://example.com/ad.png",
+      }),
+    ).resolves.toMatchObject({
+      success: true,
+      providerAssetId: "reddit-url:Launch-Creative",
+      providerAssetUrl: "https://example.com/ad.png",
+      providerAssetResourceName: "https://example.com/ad.png",
+      metadata: { storage: "external_url", type: "image" },
+    });
+
+    await expect(
+      redditAdsProvider.uploadMedia?.({ accessToken: "token" }, "t2_account", {
+        type: "image",
+        url: "http://127.0.0.1/ad.png",
+      }),
+    ).resolves.toMatchObject({
+      success: false,
+      error: "Private or reserved IP addresses are not allowed",
+    });
   });
 
   test("queries Reddit reports and sums campaign metrics", async () => {
@@ -221,6 +334,31 @@ describe("redditAdsProvider", () => {
         ends_at: "2026-07-02T12:00:00Z",
         fields: ["SPEND", "IMPRESSIONS", "CLICKS", "CONVERSIONS"],
         breakdowns: ["CAMPAIGN_ID"],
+      },
+    });
+  });
+
+  test("queries Reddit reports from a two-part account/campaign id", async () => {
+    enqueue({ data: [] });
+
+    const result = await redditAdsProvider.getCampaignMetrics(
+      { accessToken: "token" },
+      "t2_account/cmp_1",
+      {
+        start: new Date("2026-07-01T12:34:00Z"),
+        end: new Date("2026-07-02T12:34:00Z"),
+      },
+    );
+
+    expect(result).toMatchObject({ success: true });
+    expect(new URL(calls[0]?.url ?? "").pathname).toBe("/api/v3/ad_accounts/t2_account/reports");
+    expect(jsonBody(calls[0] as FetchCall)).toMatchObject({
+      data: {
+        filter: {
+          field: "CAMPAIGN_ID",
+          operator: "IN",
+          values: ["cmp_1"],
+        },
       },
     });
   });

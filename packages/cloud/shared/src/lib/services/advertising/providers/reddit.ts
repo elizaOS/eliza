@@ -158,7 +158,7 @@ function splitRedditCampaignId(externalCampaignId: string): {
 } {
   const [accountId, campaignId, adGroupId] = externalCampaignId.split("/");
   if (accountId && campaignId && adGroupId) return { accountId, campaignId, adGroupId };
-  if (accountId && campaignId) return { campaignId: accountId, adGroupId: campaignId };
+  if (accountId && campaignId) return { accountId, campaignId };
   return { campaignId: externalCampaignId };
 }
 
@@ -484,7 +484,8 @@ export const redditAdsProvider: AdProvider = {
       const adGroupId =
         compositeAdGroupId ?? (await firstAdGroupForCampaign(credentials, accountId, campaignId));
       const profileId = input.pageId ?? (await firstProfileId(credentials, accountId));
-      const primaryMedia = input.media.sort((a, b) => a.order - b.order)[0];
+      const orderedMedia = [...input.media].sort((a, b) => a.order - b.order);
+      const primaryMedia = orderedMedia[0];
       const type =
         input.type === "video" ? "VIDEO" : input.type === "carousel" ? "CAROUSEL" : "IMAGE";
       const postResponse = await redditRequest<RedditEntity>(
@@ -499,13 +500,11 @@ export const redditAdsProvider: AdProvider = {
               body: input.primaryText ?? input.description ?? "",
               allow_comments: true,
               thumbnail_url: primaryMedia?.thumbnailUrl ?? null,
-              content: input.media
-                .sort((a, b) => a.order - b.order)
-                .map((media) => ({
-                  media_url: media.url,
-                  destination_url: input.destinationUrl ?? null,
-                  call_to_action: mapCtaToReddit(input.callToAction),
-                })),
+              content: orderedMedia.map((media) => ({
+                media_url: media.url,
+                destination_url: input.destinationUrl ?? null,
+                call_to_action: mapCtaToReddit(input.callToAction),
+              })),
             },
           }),
         },
