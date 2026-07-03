@@ -14,6 +14,7 @@ import type {
   CreateLifeOpsCalendarEventRequest,
   GetLifeOpsCalendarFeedRequest,
   LifeOpsCalendarEventUpdate,
+  LifeOpsCalendarRecurrenceScope,
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
   ListLifeOpsCalendarsRequest,
@@ -210,6 +211,8 @@ export async function handleCalendarRoutes(
           timeZone: body.timeZone,
           location: body.location,
           attendees: body.attendees,
+          recurrence: body.recurrence,
+          recurrenceScope: body.recurrenceScope,
         });
         deps.json({ event });
       });
@@ -222,6 +225,10 @@ export async function handleCalendarRoutes(
           side: deps.parseConnectorSide(q.get("side")),
           grantId: q.get("grantId") ?? undefined,
           calendarId: q.get("calendarId") ?? undefined,
+          // Validated in the service; invalid values 400 instead of silently
+          // degrading a series delete to a single-occurrence delete.
+          recurrenceScope: (q.get("recurrenceScope") ??
+            undefined) as LifeOpsCalendarRecurrenceScope | undefined,
         });
         deps.json({ deleted: true });
       });

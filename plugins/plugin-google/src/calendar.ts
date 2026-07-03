@@ -91,6 +91,7 @@ export class GoogleCalendarClient {
         location: params.location,
         start: toEventDateTime(params.start, params.timeZone),
         end: toEventDateTime(params.end, params.timeZone),
+        recurrence: params.recurrence,
         attendees: params.attendees?.map(toCalendarAttendee),
         conferenceData: params.createMeetLink
           ? {
@@ -149,6 +150,9 @@ export class GoogleCalendarClient {
     }
     if (params.attendees !== undefined) {
       requestBody.attendees = params.attendees.map(toCalendarAttendee);
+    }
+    if (params.recurrence !== undefined) {
+      requestBody.recurrence = params.recurrence;
     }
 
     const response = await calendar.events.patch({
@@ -233,9 +237,12 @@ function mapEvent(
           self: Boolean(event.organizer.self),
         }
       : undefined,
+    recurrence: event.recurrence ?? null,
+    recurringEventId: event.recurringEventId ?? null,
     metadata: {
       iCalUID: event.iCalUID ?? null,
       recurringEventId: event.recurringEventId ?? null,
+      ...(event.recurrence ? { recurrence: event.recurrence } : {}),
       createdAt: event.created ?? null,
       updatedAt: event.updated ?? null,
     },

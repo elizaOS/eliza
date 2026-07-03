@@ -179,6 +179,8 @@ export interface GoogleCalendarEventInput extends GoogleAccountRef {
   description?: string;
   createMeetLink?: boolean;
   timeZone?: string;
+  /** RFC 5545 recurrence lines, e.g. ["RRULE:FREQ=WEEKLY;BYDAY=MO"]. */
+  recurrence?: string[];
 }
 
 export interface GoogleCalendarEventPatchInput extends GoogleAccountRef {
@@ -191,6 +193,8 @@ export interface GoogleCalendarEventPatchInput extends GoogleAccountRef {
   location?: string;
   description?: string;
   timeZone?: string;
+  /** Replacement RFC 5545 recurrence lines. Valid on series masters only. */
+  recurrence?: string[];
 }
 
 export interface GoogleCalendarEvent {
@@ -208,6 +212,10 @@ export interface GoogleCalendarEvent {
   location?: string;
   description?: string;
   organizer?: GoogleEmailAddress & { self?: boolean };
+  /** RFC 5545 recurrence lines when the event is a recurring series master. */
+  recurrence?: string[] | null;
+  /** Series master event id when this event is a flattened occurrence. */
+  recurringEventId?: string | null;
   metadata?: Record<string, unknown>;
 }
 

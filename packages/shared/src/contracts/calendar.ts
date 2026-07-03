@@ -40,6 +40,12 @@ export interface LifeOpsCalendarEventAttendee {
 
 export type LifeOpsCalendarProvider = "google" | "apple_calendar";
 
+/**
+ * Which part of a recurring series a mutation targets: one flattened
+ * occurrence (`instance`) or the series master (`series`).
+ */
+export type LifeOpsCalendarRecurrenceScope = "instance" | "series";
+
 export interface LifeOpsCalendarEvent {
   id: string;
   externalId: string;
@@ -60,6 +66,17 @@ export interface LifeOpsCalendarEvent {
   organizer: Record<string, unknown> | null;
   attendees: LifeOpsCalendarEventAttendee[];
   metadata: Record<string, unknown>;
+  /**
+   * RFC 5545 recurrence lines (e.g. `RRULE:FREQ=WEEKLY;BYDAY=MO`) when this
+   * event is a recurring series master; null/absent for one-off events and
+   * flattened instances.
+   */
+  recurrence?: string[] | null;
+  /**
+   * Series master event id when this event is a flattened occurrence of a
+   * recurring series; null/absent otherwise.
+   */
+  recurringEventId?: string | null;
   syncedAt: string;
   updatedAt: string;
   /** Set on merged feeds so the UI can show which calendar an event came from. */
@@ -172,6 +189,12 @@ export interface CreateLifeOpsCalendarEventRequest {
   durationMinutes?: number;
   windowPreset?: LifeOpsCalendarWindowPreset;
   attendees?: CreateLifeOpsCalendarEventAttendee[];
+  /**
+   * RFC 5545 recurrence lines for a recurring event (e.g.
+   * `["RRULE:FREQ=WEEKLY;BYDAY=MO"]`). Validated before reaching a provider;
+   * invalid rules fail the request instead of creating a one-off event.
+   */
+  recurrence?: string[];
 }
 
 export interface LifeOpsNextCalendarEventContext {
@@ -205,6 +228,13 @@ export interface LifeOpsCalendarEventUpdate {
   notes?: string;
   location?: string;
   attendees?: CreateLifeOpsCalendarEventAttendee[];
+  /** Replacement RFC 5545 recurrence lines. Series-level edits only. */
+  recurrence?: string[];
+  /**
+   * When the target is part of a recurring series: `instance` patches only the
+   * addressed occurrence, `series` patches the series master.
+   */
+  recurrenceScope?: LifeOpsCalendarRecurrenceScope;
 }
 
 export interface LifeOpsCalendarEventMutationResult {

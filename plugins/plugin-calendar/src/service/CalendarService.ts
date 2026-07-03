@@ -6,6 +6,7 @@ import type {
   GetLifeOpsCalendarFeedRequest,
   LifeOpsCalendarEvent,
   LifeOpsCalendarFeed,
+  LifeOpsCalendarRecurrenceScope,
   LifeOpsCalendarSummary,
   LifeOpsConnectorGrant,
   LifeOpsConnectorMode,
@@ -51,6 +52,11 @@ import {
   normalizeOptionalString,
   requireNonEmptyString,
 } from "../internal/normalize.js";
+import {
+  normalizeRecurrence,
+  normalizeRecurrenceScope,
+  recurringEventIdFrom,
+} from "../internal/recurrence.js";
 import {
   CalendarRepository,
   createLifeOpsCalendarSyncState,
@@ -149,6 +155,14 @@ function appleCalendarPlaceholderSummary(args: {
     selected: true,
     includeInFeed: true,
   };
+}
+
+function failAppleRecurrenceUnsupported(operation: string): never {
+  fail(
+    400,
+    `Apple Calendar does not support recurring-event ${operation} through this integration. Connect Google Calendar for recurring events.`,
+    "CALENDAR_RECURRENCE_UNSUPPORTED_PROVIDER",
+  );
 }
 
 function shouldIncludeAppleCalendar(request: {
@@ -710,6 +724,9 @@ export class CalendarService extends Service {
     const mode = normalizeOptionalConnectorMode(request.mode, "mode");
     const side = normalizeOptionalConnectorSide(request.side, "side");
     const calendarId = normalizeCalendarId(request.calendarId);
+    // Validate recurrence up front so an invalid rule fails the request
+    // instead of silently creating a one-off event.
+    const recurrence = normalizeRecurrence(request.recurrence);
     const { startAt, endAt, timeZone } = resolveCalendarEventRange(
       request,
       now,
@@ -752,6 +769,7 @@ export class CalendarService extends Service {
         description: normalizeOptionalString(request.description),
         location: normalizeOptionalString(request.location),
         attendees: normalizeCalendarAttendees(request.attendees),
+        recurrence,
       }),
     );
     const event = lifeOpsCalendarEventFromGoogle({
@@ -775,6 +793,9 @@ export class CalendarService extends Service {
     calendarId: string,
     range: { startAt: string; endAt: string; timeZone: string },
   ): Promise<LifeOpsCalendarEvent> {
+    if (normalizeRecurrence(request.recurrence)) {
+      failAppleRecurrenceUnsupported("create");
+    }
     const nativeEvent = await createNativeAppleCalendarEvent({
       agentId: this.agentId(),
       request: {
@@ -816,10 +837,21 @@ export class CalendarService extends Service {
       endAt?: string;
       timeZone?: string;
       attendees?: CreateLifeOpsCalendarEventAttendee[] | null;
+      recurrence?: string[] | null;
+      recurrenceScope?: LifeOpsCalendarRecurrenceScope | null;
     },
   ): Promise<LifeOpsCalendarEvent> {
     const mode = normalizeOptionalConnectorMode(request.mode, "mode");
     const side = normalizeOptionalConnectorSide(request.side, "side");
+    const recurrence = normalizeRecurrence(request.recurrence);
+    const recurrenceScope = normalizeRecurrenceScope(request.recurrenceScope);
+    if (recurrence && recurrenceScope === "instance") {
+      fail(
+        400,
+        'Recurrence rules apply to the whole series. Use recurrenceScope "series" to change how an event repeats.',
+        "CALENDAR_RECURRENCE_SCOPE_CONFLICT",
+      );
+    }
     const timeZone = request.timeZone
       ? normalizeCalendarTimeZone(request.timeZone)
       : undefined;
@@ -850,6 +882,9 @@ export class CalendarService extends Service {
           : normalizeCalendarAttendees(request.attendees),
     };
     if (isAppleCalendarGrant(request.grantId)) {
+      if (recurrence || recurrenceScope) {
+        failAppleRecurrenceUnsupported("update");
+      }
       return this.updateAppleCalendarEvent(request.eventId, nativePatch);
     }
 
@@ -865,14 +900,28 @@ export class CalendarService extends Service {
       if (request.grantId) {
         throw error;
       }
+      if (recurrence || recurrenceScope) {
+        failAppleRecurrenceUnsupported("update");
+      }
       return this.updateAppleCalendarEvent(request.eventId, nativePatch);
+    }
+    let targetEventId = requireNonEmptyString(request.eventId, "eventId");
+    // A series edit addressed through a flattened occurrence must patch the
+    // series master; a recurrence-rule change is always a series edit.
+    if (recurrenceScope === "series" || (recurrence && !recurrenceScope)) {
+      targetEventId = await this.resolveSeriesMasterEventId({
+        grant,
+        calendarId: request.calendarId,
+        eventId: targetEventId,
+      });
     }
     const updateEvent = requireGoogleServiceMethod(this.runtime, "updateEvent");
     const googleEvent = await updateEvent(
       googleCalendarEventPatchInput({
         accountId: accountIdForGrant(grant),
         calendarId: request.calendarId,
-        eventId: requireNonEmptyString(request.eventId, "eventId"),
+        eventId: targetEventId,
+        recurrence,
         title: request.title,
         description: request.description,
         location: request.location,
@@ -950,12 +999,17 @@ export class CalendarService extends Service {
       grantId?: string;
       calendarId?: string | null;
       eventId: string;
+      recurrenceScope?: LifeOpsCalendarRecurrenceScope | null;
     },
   ): Promise<void> {
     const mode = normalizeOptionalConnectorMode(request.mode, "mode");
     const side = normalizeOptionalConnectorSide(request.side, "side");
+    const recurrenceScope = normalizeRecurrenceScope(request.recurrenceScope);
     const eventId = requireNonEmptyString(request.eventId, "eventId");
     if (isAppleCalendarGrant(request.grantId)) {
+      if (recurrenceScope) {
+        failAppleRecurrenceUnsupported("delete");
+      }
       await this.deleteAppleCalendarEvent(eventId, request.calendarId);
       return;
     }
@@ -972,37 +1026,144 @@ export class CalendarService extends Service {
       if (request.grantId) {
         throw error;
       }
+      if (recurrenceScope) {
+        failAppleRecurrenceUnsupported("delete");
+      }
       await this.deleteAppleCalendarEvent(eventId, request.calendarId);
       return;
     }
+    // A series delete addressed through a flattened occurrence deletes the
+    // series master — one provider call, never an iteration over occurrences.
+    const targetEventId =
+      recurrenceScope === "series"
+        ? await this.resolveSeriesMasterEventId({
+            grant,
+            calendarId: request.calendarId,
+            eventId,
+          })
+        : eventId;
     const deleteEvent = requireGoogleServiceMethod(this.runtime, "deleteEvent");
     await deleteEvent({
       accountId: accountIdForGrant(grant),
       calendarId: request.calendarId ?? undefined,
-      eventId,
+      eventId: targetEventId,
     });
-    const cachedOwnerIds = await this.findCachedCalendarEventOwnerIds({
-      provider: "google",
-      externalEventId: eventId,
-      calendarId: request.calendarId,
-      side: grant.side,
-      grantId: grant.id,
-    });
-    await this.repo.deleteCalendarEventByExternalId(
-      this.agentId(),
-      "google",
-      request.calendarId,
-      eventId,
-      grant.side,
-    );
-    await this.deleteCalendarReminderPlansForEvents(cachedOwnerIds);
+    if (recurrenceScope === "series") {
+      // Purge every cached flattened occurrence of the deleted series so the
+      // cache does not serve ghost instances until the next sync.
+      const cachedSeries = await this.findCachedSeriesEvents({
+        masterEventId: targetEventId,
+        calendarId: request.calendarId,
+        side: grant.side,
+        grantId: grant.id,
+      });
+      for (const cachedEvent of cachedSeries) {
+        await this.repo.deleteCalendarEventByExternalId(
+          this.agentId(),
+          "google",
+          cachedEvent.calendarId,
+          cachedEvent.externalId,
+          grant.side,
+        );
+      }
+      await this.deleteCalendarReminderPlansForEvents(
+        cachedSeries.map((cachedEvent) => cachedEvent.id),
+      );
+    } else {
+      const cachedOwnerIds = await this.findCachedCalendarEventOwnerIds({
+        provider: "google",
+        externalEventId: targetEventId,
+        calendarId: request.calendarId,
+        side: grant.side,
+        grantId: grant.id,
+      });
+      await this.repo.deleteCalendarEventByExternalId(
+        this.agentId(),
+        "google",
+        request.calendarId,
+        targetEventId,
+        grant.side,
+      );
+      await this.deleteCalendarReminderPlansForEvents(cachedOwnerIds);
+    }
     await this.recordCalendarEventAudit(
-      eventId,
+      targetEventId,
       "calendar event deleted through plugin-google",
-      { eventId },
+      { eventId: targetEventId, recurrenceScope: recurrenceScope ?? null },
       { deleted: true },
       "calendar_event_deleted",
     );
+  }
+
+  /**
+   * Resolve the series master id for an event id that may address a flattened
+   * recurring occurrence: cached instance metadata first, then a provider
+   * lookup. An id with no `recurringEventId` already is the master.
+   */
+  private async resolveSeriesMasterEventId(args: {
+    grant: LifeOpsConnectorGrant;
+    calendarId?: string | null;
+    eventId: string;
+  }): Promise<string> {
+    const cached = await this.repo.listCalendarEvents(
+      this.agentId(),
+      "google",
+      undefined,
+      undefined,
+      args.grant.side,
+    );
+    const match = cached.find(
+      (event) =>
+        event.externalId === args.eventId &&
+        (args.calendarId && args.calendarId !== "all"
+          ? event.calendarId === args.calendarId
+          : true) &&
+        (event.grantId ? event.grantId === args.grant.id : true),
+    );
+    const cachedMaster = recurringEventIdFrom(match ?? null);
+    if (cachedMaster) {
+      return cachedMaster;
+    }
+    if (match) {
+      // Cached and not an occurrence: the id addresses the master directly.
+      return args.eventId;
+    }
+    const getEvent = requireGoogleServiceMethod(this.runtime, "getEvent");
+    const googleEvent = await getEvent({
+      accountId: accountIdForGrant(args.grant),
+      calendarId: args.calendarId ?? undefined,
+      eventId: args.eventId,
+    });
+    return recurringEventIdFrom(googleEvent) ?? args.eventId;
+  }
+
+  private async findCachedSeriesEvents(args: {
+    masterEventId: string;
+    calendarId?: string | null;
+    side: LifeOpsConnectorSide;
+    grantId: string;
+  }): Promise<LifeOpsCalendarEvent[]> {
+    const events = await this.repo.listCalendarEvents(
+      this.agentId(),
+      "google",
+      undefined,
+      undefined,
+      args.side,
+    );
+    return events
+      .filter(
+        (event) =>
+          event.externalId === args.masterEventId ||
+          recurringEventIdFrom(event) === args.masterEventId,
+      )
+      .filter((event) =>
+        args.calendarId && args.calendarId !== "all"
+          ? event.calendarId === args.calendarId
+          : true,
+      )
+      .filter((event) =>
+        event.grantId ? event.grantId === args.grantId : true,
+      );
   }
 
   private async deleteAppleCalendarEvent(

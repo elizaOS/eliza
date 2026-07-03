@@ -42,6 +42,12 @@ export function createLifeOpsCalendarSyncState(
 function parseCalendarEvent(
   row: Record<string, unknown>,
 ): LifeOpsCalendarEvent {
+  const metadata = parseJsonRecord(row.metadata_json);
+  const metadataRecurrence = Array.isArray(metadata.recurrence)
+    ? metadata.recurrence.filter(
+        (line): line is string => typeof line === "string" && line.length > 0,
+      )
+    : [];
   return {
     id: toText(row.id),
     externalId: toText(row.external_event_id),
@@ -69,7 +75,13 @@ function parseCalendarEvent(
     attendees: parseJsonArray(
       row.attendees_json,
     ) as LifeOpsCalendarEvent["attendees"],
-    metadata: parseJsonRecord(row.metadata_json),
+    metadata,
+    recurrence: metadataRecurrence.length > 0 ? metadataRecurrence : null,
+    recurringEventId:
+      typeof metadata.recurringEventId === "string" &&
+      metadata.recurringEventId.length > 0
+        ? metadata.recurringEventId
+        : null,
     syncedAt: toText(row.synced_at),
     updatedAt: toText(row.updated_at),
     grantId: row.grant_id ? toText(row.grant_id) : undefined,

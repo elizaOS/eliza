@@ -1061,6 +1061,90 @@ describe("google plugin", () => {
       "meet.createMeeting"
     );
   });
+
+  it("passes RFC 5545 recurrence through create/patch and maps it on readback", async () => {
+    const fakeCalendar = {
+      events: {
+        insert: vi.fn(async () => ({
+          data: {
+            id: "series_master",
+            summary: "Standup",
+            start: { dateTime: "2026-07-06T09:00:00-04:00", timeZone: "America/New_York" },
+            end: { dateTime: "2026-07-06T09:15:00-04:00", timeZone: "America/New_York" },
+            recurrence: ["RRULE:FREQ=WEEKLY;BYDAY=MO"],
+          },
+        })),
+        patch: vi.fn(async () => ({
+          data: {
+            id: "series_master",
+            summary: "Standup",
+            start: { dateTime: "2026-07-06T09:00:00-04:00", timeZone: "America/New_York" },
+            end: { dateTime: "2026-07-06T09:15:00-04:00", timeZone: "America/New_York" },
+            recurrence: ["RRULE:FREQ=WEEKLY;BYDAY=TU"],
+          },
+        })),
+        list: vi.fn(async () => ({
+          data: {
+            items: [
+              {
+                id: "series_master_20260713T130000Z",
+                summary: "Standup",
+                start: { dateTime: "2026-07-13T09:00:00-04:00" },
+                end: { dateTime: "2026-07-13T09:15:00-04:00" },
+                recurringEventId: "series_master",
+              },
+            ],
+          },
+        })),
+      },
+    };
+    const factory = {
+      calendar: vi.fn(async () => fakeCalendar),
+    } as unknown as GoogleApiClientFactory;
+    const client = new GoogleCalendarClient(factory);
+
+    // create: recurrence lines land in the insert requestBody and readback
+    // exposes them first-class + in metadata.
+    const created = await client.createEvent({
+      accountId: "acct_google_1",
+      title: "Standup",
+      start: "2026-07-06T13:00:00.000Z",
+      end: "2026-07-06T13:15:00.000Z",
+      timeZone: "America/New_York",
+      recurrence: ["RRULE:FREQ=WEEKLY;BYDAY=MO"],
+    });
+    expect(fakeCalendar.events.insert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        requestBody: expect.objectContaining({
+          recurrence: ["RRULE:FREQ=WEEKLY;BYDAY=MO"],
+        }),
+      })
+    );
+    expect(created.recurrence).toEqual(["RRULE:FREQ=WEEKLY;BYDAY=MO"]);
+    expect(created.recurringEventId).toBeNull();
+    expect(created.metadata).toMatchObject({
+      recurrence: ["RRULE:FREQ=WEEKLY;BYDAY=MO"],
+    });
+
+    // patch: recurrence replacement flows through; omitting it leaves the
+    // requestBody untouched (no accidental recurrence clears).
+    await client.updateEvent({
+      accountId: "acct_google_1",
+      eventId: "series_master",
+      recurrence: ["RRULE:FREQ=WEEKLY;BYDAY=TU"],
+    });
+    expect(fakeCalendar.events.patch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventId: "series_master",
+        requestBody: { recurrence: ["RRULE:FREQ=WEEKLY;BYDAY=TU"] },
+      })
+    );
+
+    // flattened instances keep the series pointer first-class.
+    const [instance] = await client.listEvents({ accountId: "acct_google_1" });
+    expect(instance?.recurringEventId).toBe("series_master");
+    expect(instance?.recurrence).toBeNull();
+  });
 });
 
 interface TestCredentialRecord {
