@@ -1,9 +1,5 @@
 #!/usr/bin/env node
 
-// Static import: Bun.build must include the AOSP loader in the mobile bundle.
-// We pin it to globalThis to prevent tree-shaking — the only consumer is a
-// dynamic import in cli/index.ts, which is enough for resolution but not
-// inclusion. Without this guard the symbol silently disappears from the bundle.
 import * as _earlyFs from "node:fs";
 import { enableCompileCache } from "node:module";
 import { homedir as _earlyHomedir } from "node:os";
@@ -92,18 +88,12 @@ async function bootstrapMobileEntrypoint(): Promise<void> {
   if (process.env.ELIZA_PLATFORM === "android") {
     _binDebugLog("[bin.ts] entering android block");
     try {
-      const { registerAospLlamaLoader, ensureAospLocalInferenceHandlers } =
-        await import(/* @vite-ignore */ "@elizaos/plugin-aosp-local-inference");
-      (
-        globalThis as {
-          __elizaAospLlamaLoader?: typeof registerAospLlamaLoader;
-        }
-      ).__elizaAospLlamaLoader = registerAospLlamaLoader;
-      (
-        globalThis as {
-          __elizaAospLocalInferenceBootstrap?: typeof ensureAospLocalInferenceHandlers;
-        }
-      ).__elizaAospLocalInferenceBootstrap = ensureAospLocalInferenceHandlers;
+      // Bundle anchor: evaluating this literal-specifier import forces
+      // @elizaos/plugin-aosp-local-inference into the mobile bundle. Its exports
+      // are re-imported and consumed by the runtime independently
+      // (eliza.ts ensureAospLocalInferenceHandlers; plugin-local-inference's
+      // registerAospLlamaLoader), so nothing is captured here.
+      await import(/* @vite-ignore */ "@elizaos/plugin-aosp-local-inference");
     } catch (e) {
       // Android-only local inference is optional outside the privileged AOSP build.
       _binDebugLog(
@@ -125,15 +115,11 @@ async function bootstrapMobileEntrypoint(): Promise<void> {
 
   if (process.env.ELIZA_DEVICE_BRIDGE_ENABLED === "1") {
     try {
-      const { ensureMobileDeviceBridgeInferenceHandlers } = await import(
+      // Bundle anchor only: eliza.ts imports and calls
+      // ensureMobileDeviceBridgeInferenceHandlers on the runtime.
+      await import(
         "@elizaos/plugin-capacitor-bridge/mobile-device-bridge-bootstrap"
       );
-      (
-        globalThis as {
-          __elizaMobileDeviceBridgeBootstrap?: typeof ensureMobileDeviceBridgeInferenceHandlers;
-        }
-      ).__elizaMobileDeviceBridgeBootstrap =
-        ensureMobileDeviceBridgeInferenceHandlers;
     } catch {
       // Device bridge is explicitly opt-in; absence just leaves cloud/local-model
       // provider selection to the runtime.

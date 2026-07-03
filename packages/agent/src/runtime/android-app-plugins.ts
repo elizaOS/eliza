@@ -44,24 +44,11 @@ const appPhonePluginModule = {
   phoneCallLogProvider,
 };
 
+// The Object.assign into STATIC_ELIZA_PLUGINS is a consumed side effect that
+// Bun.build keeps, so the three app-plugin modules survive tree-shaking without
+// any globalThis pinning. The runtime resolves them by name from this registry.
 Object.assign(STATIC_ELIZA_PLUGINS, {
   [WIFI_APP_NAME]: appWifiPluginModule,
   [CONTACTS_APP_NAME]: appContactsPluginModule,
   [PHONE_APP_NAME]: appPhonePluginModule,
 });
-
-// Pin to globalThis so Bun.build's tree-shaker keeps the symbols even though
-// the runtime resolves plugins by name.
-(
-  globalThis as {
-    __elizaAndroidAppPlugins?: {
-      wifi: typeof appWifiPluginModule;
-      contacts: typeof appContactsPluginModule;
-      phone: typeof appPhonePluginModule;
-    };
-  }
-).__elizaAndroidAppPlugins = {
-  wifi: appWifiPluginModule,
-  contacts: appContactsPluginModule,
-  phone: appPhonePluginModule,
-};
