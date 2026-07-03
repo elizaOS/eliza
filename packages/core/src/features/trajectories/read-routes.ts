@@ -1,22 +1,24 @@
 import type { ServerResponse } from "node:http";
-import type { AgentRuntime } from "@elizaos/core";
+import type { IAgentRuntime, UUID } from "../../types";
 
 /**
- * Built-in compatibility fallback for the trajectory READ routes
+ * Owner-side read routes for the realtime trajectory viewer
  * (`GET /api/trajectories`, `/api/trajectories/:id`, `/api/trajectories/stats`).
  *
- * The realtime trajectory viewer (`@elizaos/plugin-trajectory-logger`) polls
- * these, but the routes are normally served by `@elizaos/plugin-training` — which
- * is NOT bundled on mobile (the device log: "Training service package
- * unavailable; training routes will be disabled"). Without a provider the viewer
- * gets a 404 and shows "Trajectory logging unavailable", even though the core
- * `TrajectoriesService` IS running and has data. This fallback reads that service
- * directly and returns the shapes the viewer expects.
+ * These live next to the data owner (`TrajectoriesService`, this package) so the
+ * viewer wire shapes stay co-located with the service that produces the data,
+ * instead of being hand-mirrored in the API host.
  *
- * Dispatch placement matters: this runs AFTER `tryHandleRuntimePluginRoute`, so
- * when plugin-training IS loaded (desktop) its richer route handles the request
- * first and this fallback is never reached — no shadowing, no regression. It only
- * fires when no plugin owns the path (mobile, or training disabled).
+ * The realtime trajectory viewer (`@elizaos/plugin-trajectory-logger`) polls
+ * these. On desktop the richer routes from `@elizaos/plugin-training` own the
+ * path (registered as runtime plugin routes) and handle the request first; this
+ * handler is only reached when no plugin owns the path (mobile, or training
+ * disabled). The core `TrajectoriesService` runs on every platform, so the
+ * viewer works without `@elizaos/plugin-training` bundled.
+ *
+ * The API host mounts this AFTER runtime plugin routes, so when plugin-training
+ * IS loaded its richer route wins and this handler is never reached — no
+ * shadowing, no regression.
  */
 
 interface ServiceTrajectoryListItem {
@@ -247,15 +249,13 @@ function detailToUi(
 }
 
 async function resolveRoomContext(
-  runtime: AgentRuntime | null | undefined,
+  runtime: IAgentRuntime | null | undefined,
   roomId: string | null | undefined,
   cache: Map<string, ResolvedRoomContext | null>,
 ): Promise<ResolvedRoomContext | null> {
   if (!roomId) return null;
   if (cache.has(roomId)) return cache.get(roomId) ?? null;
-  const room = await runtime?.getRoom?.(
-    roomId as `${string}-${string}-${string}-${string}-${string}`,
-  );
+  const room = await runtime?.getRoom?.(roomId as UUID);
   const context = room
     ? {
         id: String(room.id || roomId),
@@ -271,11 +271,16 @@ async function resolveRoomContext(
   return context;
 }
 
-export async function tryHandleTrajectoryFallback(options: {
+/**
+ * Handle the trajectory viewer READ routes from the core `TrajectoriesService`.
+ * Returns `true` when the request was handled (even on error), `false` when the
+ * path/method does not belong to these read routes.
+ */
+export async function tryHandleTrajectoryReadRoutes(options: {
   pathname: string;
   method: string;
   url: URL;
-  runtime: AgentRuntime | null | undefined;
+  runtime: IAgentRuntime | null | undefined;
   res: ServerResponse;
 }): Promise<boolean> {
   const { pathname, method, url, runtime, res } = options;
@@ -331,7 +336,7 @@ export async function tryHandleTrajectoryFallback(options: {
         scenarioId: url.searchParams.get("scenarioId") || undefined,
         batchId: url.searchParams.get("batchId") || undefined,
         // The SQL reader filters + counts by `search` (id/scenario_id/
-        // batch_id/metadata/steps_json LIKE). On mobile this fallback owns
+        // batch_id/metadata/steps_json LIKE). On mobile this owns
         // /api/trajectories, so without forwarding `search` the viewer's
         // search box returned the full unfiltered list.
         search: url.searchParams.get("search") || undefined,

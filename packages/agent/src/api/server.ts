@@ -38,6 +38,7 @@ import {
   sendJson,
   sendJsonError,
   stringToUuid,
+  tryHandleTrajectoryReadRoutes,
   type UUID,
 } from "@elizaos/core";
 import type {
@@ -493,7 +494,6 @@ import {
   tryHandleMusicPlayerStatusFallbackLazy,
   tryHandleRuntimePluginRoute,
 } from "./server-lazy-routes.ts";
-import { tryHandleTrajectoryFallback } from "./trajectory-fallback-routes.ts";
 import {
   EVM_PLUGIN_PACKAGE,
   resolveWalletAutomationMode as resolveAgentAutomationModeFromConfig,
@@ -3622,13 +3622,13 @@ async function handleRequest(
     return;
   }
 
-  // ── Trajectory read fallback ────────────────────────────────────────────
+  // ── Trajectory read routes (owned by core TrajectoriesService) ──────────
   // Serves GET /api/trajectories[/:id|/stats] from the core TrajectoriesService
   // when no plugin owns the route (mobile / training disabled), so the realtime
   // trajectory viewer works without @elizaos/plugin-training. Runs AFTER the
   // plugin routes above, so plugin-training's richer route wins when present.
   if (
-    await tryHandleTrajectoryFallback({
+    await tryHandleTrajectoryReadRoutes({
       pathname,
       method,
       url,

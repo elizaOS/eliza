@@ -1,7 +1,7 @@
 import type { ServerResponse } from "node:http";
-import type { AgentRuntime } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import { tryHandleTrajectoryFallback } from "./trajectory-fallback-routes.ts";
+import type { IAgentRuntime } from "../../types";
+import { tryHandleTrajectoryReadRoutes } from "./read-routes";
 
 // Minimal ServerResponse capture — records statusCode + parsed JSON body.
 function mockRes(): {
@@ -24,20 +24,20 @@ function mockRes(): {
 function runtimeWith(
   service: unknown,
   rooms: Record<string, unknown> = {},
-): AgentRuntime {
+): IAgentRuntime {
   return {
     getService: (type: string) => (type === "trajectories" ? service : null),
     getRoom: async (id: string) => rooms[id] ?? null,
-  } as unknown as AgentRuntime;
+  } as unknown as IAgentRuntime;
 }
 
 const url = (p: string) => new URL(`http://localhost${p}`);
 
-describe("tryHandleTrajectoryFallback", () => {
+describe("tryHandleTrajectoryReadRoutes", () => {
   it("ignores non-trajectory paths and non-GET methods", async () => {
     const { res } = mockRes();
     expect(
-      await tryHandleTrajectoryFallback({
+      await tryHandleTrajectoryReadRoutes({
         pathname: "/api/health",
         method: "GET",
         url: url("/api/health"),
@@ -46,7 +46,7 @@ describe("tryHandleTrajectoryFallback", () => {
       }),
     ).toBe(false);
     expect(
-      await tryHandleTrajectoryFallback({
+      await tryHandleTrajectoryReadRoutes({
         pathname: "/api/trajectories",
         method: "DELETE",
         url: url("/api/trajectories"),
@@ -75,7 +75,7 @@ describe("tryHandleTrajectoryFallback", () => {
       }),
     };
     const { res, get } = mockRes();
-    const handled = await tryHandleTrajectoryFallback({
+    const handled = await tryHandleTrajectoryReadRoutes({
       pathname: "/api/trajectories",
       method: "GET",
       url: url("/api/trajectories?limit=10"),
@@ -117,7 +117,7 @@ describe("tryHandleTrajectoryFallback", () => {
       },
     };
     const { res, get } = mockRes();
-    const handled = await tryHandleTrajectoryFallback({
+    const handled = await tryHandleTrajectoryReadRoutes({
       pathname: "/api/trajectories",
       method: "GET",
       url: url("/api/trajectories?search=match&limit=10"),
@@ -171,7 +171,7 @@ describe("tryHandleTrajectoryFallback", () => {
       }),
     };
     const { res, get } = mockRes();
-    const handled = await tryHandleTrajectoryFallback({
+    const handled = await tryHandleTrajectoryReadRoutes({
       pathname: "/api/trajectories/abc",
       method: "GET",
       url: url("/api/trajectories/abc"),
@@ -231,7 +231,7 @@ describe("tryHandleTrajectoryFallback", () => {
       }),
     };
     const { res, get } = mockRes();
-    const handled = await tryHandleTrajectoryFallback({
+    const handled = await tryHandleTrajectoryReadRoutes({
       pathname: "/api/trajectories",
       method: "GET",
       url: url("/api/trajectories?resolve=1"),
@@ -262,7 +262,7 @@ describe("tryHandleTrajectoryFallback", () => {
   it("404s an unknown detail id", async () => {
     const service = { getTrajectoryDetail: async () => null };
     const { res, get } = mockRes();
-    const handled = await tryHandleTrajectoryFallback({
+    const handled = await tryHandleTrajectoryReadRoutes({
       pathname: "/api/trajectories/missing",
       method: "GET",
       url: url("/api/trajectories/missing"),
@@ -275,7 +275,7 @@ describe("tryHandleTrajectoryFallback", () => {
 
   it("returns an empty list (200, not 404) when the service is absent", async () => {
     const { res, get } = mockRes();
-    const handled = await tryHandleTrajectoryFallback({
+    const handled = await tryHandleTrajectoryReadRoutes({
       pathname: "/api/trajectories",
       method: "GET",
       url: url("/api/trajectories"),
@@ -297,7 +297,7 @@ describe("tryHandleTrajectoryFallback", () => {
       },
     };
     const { res, get } = mockRes();
-    const handled = await tryHandleTrajectoryFallback({
+    const handled = await tryHandleTrajectoryReadRoutes({
       pathname: "/api/trajectories/stats",
       method: "GET",
       url: url("/api/trajectories/stats"),

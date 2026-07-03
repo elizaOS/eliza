@@ -1,4 +1,5 @@
 export { TrajectoriesService } from "../features/trajectories/TrajectoriesService";
+export { tryHandleTrajectoryReadRoutes } from "../features/trajectories/read-routes";
 export * from "./trajectory-export";
 export * from "./trajectory-types";
 
