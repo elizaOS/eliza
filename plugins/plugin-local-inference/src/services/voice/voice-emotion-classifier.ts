@@ -3,15 +3,18 @@
  * attribution pipeline (`emotion-attribution.ts`).
  *
  * The ONNX-backed `VoiceEmotionClassifier` class was removed when
- * `onnxruntime-node` was dropped. No resident voice-emotion classifier
- * remains; only the pure types and projection helpers below are kept.
+ * `onnxruntime-node` was dropped, and the native GGUF port is not yet wired
+ * (native/AGENTS.md §11 K1). No resident voice-emotion classifier remains; the
+ * pure types + projection helpers below are kept, plus `classifyVoiceEmotion()`
+ * which fails LOUDLY so a shipped `emotion` artifact can never silently no-op.
  *
- * Pure exports here:
+ * Exports here:
  *   - Model id constants (`WAV2SMALL_INT8_MODEL_ID`, etc.)
  *   - Sample rate / window constants
  *   - `VoiceEmotionVad`, `VoiceEmotionClassifierOutput` interfaces
  *   - `VoiceEmotionHead` type
  *   - `VoiceEmotionClassifierError` error class
+ *   - `classifyVoiceEmotion` — fail-loud acoustic-read entry point (unimplemented)
  *   - `projectVadToExpressiveEmotion` — V-A-D → ExpressiveEmotion projection
  *   - `interpretCls7Output` — 7-class logit → structured output
  */
@@ -38,10 +41,42 @@ export const WAV2SMALL_MAX_SAMPLES = WAV2SMALL_SAMPLE_RATE * 12; // 12 s
 
 /** Raised when the bundled model file can not be loaded or run. */
 export class VoiceEmotionClassifierError extends Error {
-	constructor(message: string) {
+	readonly code?: string;
+	constructor(message: string, code?: string) {
 		super(message);
 		this.name = "VoiceEmotionClassifierError";
+		this.code = code;
 	}
+}
+
+/**
+ * Run the bundled acoustic-prosody emotion classifier over an audio window.
+ *
+ * There is currently NO native runtime for this head: the ONNX-backed
+ * `VoiceEmotionClassifier` was deleted when `onnxruntime-node` was dropped, and
+ * the native GGUF port (K1 in native/AGENTS.md §11 — scalar C forward exists in
+ * `voice-classifier-cpp/src/voice_emotion.c`) is not yet bound into
+ * `libelizainference`. Until that binding lands, a bundle that ships an
+ * `emotion` GGUF has no code able to run it.
+ *
+ * Per the repo's no-silent-fallback rule (native/AGENTS.md §9 "No defensive
+ * code"), this fails LOUDLY rather than silently returning no acoustic read —
+ * the text/prosody fusion path in `attributeVoiceEmotion()` is the intentional
+ * fallback ONLY when no `emotion` artifact is present; a present-but-unrunnable
+ * artifact is a hard error, not a silent degrade. Callers that reach this with
+ * a shipped GGUF must surface the failure, not swallow it.
+ */
+export function classifyVoiceEmotion(
+	_samples: Float32Array,
+	_head: VoiceEmotionHead,
+): never {
+	throw new VoiceEmotionClassifierError(
+		"[voice-emotion] acoustic emotion classifier is not implemented on this build: " +
+			"the ONNX Wav2Small runtime was removed and the native GGUF port is not yet " +
+			"wired into libelizainference (native/AGENTS.md §11 K1). A bundle that ships an " +
+			"`emotion` artifact cannot be run — omit the artifact to use the text/prosody path.",
+		"VOICE_EMOTION_CLASSIFIER_UNAVAILABLE",
+	);
 }
 
 /** Continuous V-A-D output. All three are in [0, 1]. */

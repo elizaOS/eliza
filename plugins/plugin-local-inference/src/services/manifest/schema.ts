@@ -323,11 +323,14 @@ export const Eliza1FilesSchema = z.object({
 	// (Wav2Small student, GGUF). Optional — when omitted, the runtime falls
 	// back to the lexicon + audio-prosody heuristic path inside
 	// `attributeVoiceEmotion()` (no acoustic-model evidence row). When present,
-	// the runtime loads the GGUF via `VoiceEmotionClassifier`, runs it on
-	// `isFinal` transcript snapshots, and fuses the output with the Stage-1
-	// text-emotion field via the single fusion point in `emotion-attribution.ts`.
-	// All tiers ship the same Wav2Small student (the on-device budget is
-	// dominated by the LM, not this small head); a 2b entry bundle may still
+	// the runtime would load the GGUF and run it on `isFinal` transcript
+	// snapshots, fusing the output with the Stage-1 text-emotion field via the
+	// single fusion point in `emotion-attribution.ts`. NOTE: the acoustic
+	// runtime is NOT yet wired — `classifyVoiceEmotion()` throws
+	// `VOICE_EMOTION_CLASSIFIER_UNAVAILABLE` (native/AGENTS.md §11 K1), so a
+	// bundle that ships this artifact today fails loudly rather than silently
+	// no-op'ing. All tiers ship the same Wav2Small student (the on-device budget
+	// is dominated by the LM, not this small head); a 2b entry bundle may still
 	// choose to omit it to save the cold-start cost.
 	emotion: z.array(Eliza1FileEntrySchema).optional(),
 	// Fused libelizainference native-lib SET, per platform target (#9105 /

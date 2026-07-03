@@ -9,6 +9,7 @@
 
 import { describe, expect, it } from "vitest";
 import {
+	classifyVoiceEmotion,
 	interpretCls7Output,
 	projectVadToExpressiveEmotion,
 	VoiceEmotionClassifierError,
@@ -196,6 +197,26 @@ describe("interpretCls7Output (cls7 head)", () => {
 			const out = interpretCls7Output(logits, WAV2SMALL_INT8_MODEL_ID, 0);
 			expect(out.emotion).toBe(order[i]);
 		}
+	});
+});
+
+describe("classifyVoiceEmotion (fail-loud, no native runtime)", () => {
+	it("throws a typed, coded error rather than silently producing no read", () => {
+		// The ONNX runtime was removed and the native GGUF port is not wired
+		// (native/AGENTS.md §11 K1). Per the no-silent-fallback rule, attempting
+		// an acoustic read must fail LOUDLY — a present-but-unrunnable `emotion`
+		// artifact is a hard error, not a silent degrade to text/prosody.
+		const samples = new Float32Array(WAV2SMALL_MIN_SAMPLES);
+		let thrown: unknown;
+		try {
+			classifyVoiceEmotion(samples, "vad");
+		} catch (err) {
+			thrown = err;
+		}
+		expect(thrown).toBeInstanceOf(VoiceEmotionClassifierError);
+		const err = thrown as VoiceEmotionClassifierError;
+		expect(err.code).toBe("VOICE_EMOTION_CLASSIFIER_UNAVAILABLE");
+		expect(err.message).toContain("not implemented");
 	});
 });
 

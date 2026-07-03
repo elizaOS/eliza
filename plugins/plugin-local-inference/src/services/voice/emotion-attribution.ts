@@ -41,11 +41,14 @@ export interface VoiceEmotionAsrFeatures {
 
 /**
  * Acoustic-model emotion read fed in as a *fusion* source — the result of
- * running the Wav2Small student (`VoiceEmotionClassifier.classify()`) over
- * the utterance window. Pass the raw classifier output directly; the
- * fusion logic in `attributeVoiceEmotion` is the single place that combines
- * acoustic + text-side evidence (R3-emotion §3, "Two confidence scores,
- * no fusion rule" risk).
+ * running the Wav2Small student over the utterance window via
+ * `classifyVoiceEmotion()`. NOTE: that entry point currently throws
+ * `VOICE_EMOTION_CLASSIFIER_UNAVAILABLE` (no native runtime is wired yet —
+ * native/AGENTS.md §11 K1), so in production `model` is absent and the fusion
+ * runs text/prosody-only. When a native read lands, pass the raw classifier
+ * output directly; the fusion logic in `attributeVoiceEmotion` is the single
+ * place that combines acoustic + text-side evidence (R3-emotion §3, "Two
+ * confidence scores, no fusion rule" risk).
  */
 export interface VoiceEmotionModelInput {
 	output: VoiceEmotionClassifierOutput;
