@@ -19,6 +19,13 @@ export type WalletRecentTransaction = {
   status: "success" | "failed" | "unknown";
 };
 
+export type WalletTokenHolding = {
+    mint: string;
+    amount: number;
+    decimals: number;
+    rawAmount: string;
+};
+
 export type WalletActivitySummary = {
   recentTransactionCount: number;
   failedTransactionCount: number;
@@ -37,6 +44,7 @@ export type WalletInvestigationResult = {
   address: string;
   status: WalletInvestigationStatus;
   balance?: WalletBalance;
+  tokenHoldings?: WalletTokenHolding[];
 recentTransactions?: WalletRecentTransaction[];
 transactionCountSample?: number;
 activity?: WalletActivitySummary;
