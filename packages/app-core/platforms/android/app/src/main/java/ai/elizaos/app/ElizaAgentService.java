@@ -658,8 +658,12 @@ public class ElizaAgentService extends Service {
         if (foregroundStartDenied) {
             // onCreate could not enter the foreground (background sticky
             // restart on Android 12+) and already called stopSelf(); refuse
-            // the pending start so AMS does not re-deliver it.
+            // the pending start so AMS does not re-deliver it. Stop this
+            // delivered start explicitly too: a startService() racing the
+            // teardown would otherwise leave this instance running as a
+            // started service that never entered the foreground.
             appendDiagnosticEvent("service-start-refused-fgs-denied", details);
+            stopSelf(startId);
             return START_NOT_STICKY;
         }
         if (ACTION_STOP.equals(action)) {
