@@ -568,10 +568,12 @@ export const CLOUD_AUTH_TOKEN = "ui-smoke-onboarding-cloud-token";
 export const CLOUD_AGENT_ID = "ui-smoke-cloud-agent-1";
 export const CLOUD_AGENT_NAME = "Smoke Cloud Agent";
 
-/** Inject the cloud session token before React boots (getCloudAuthToken reads it). */
+/** Inject the cloud session token before React boots (getCloudAuthToken reads
+ *  the canonical steward-session store first). */
 export async function injectCloudAuthToken(page: Page): Promise<void> {
   await page.addInitScript((token) => {
-    (globalThis as Record<string, unknown>).__ELIZA_CLOUD_AUTH_TOKEN__ = token;
+    // STEWARD_TOKEN_KEY from @elizaos/shared/steward-session-client.
+    window.localStorage.setItem("steward_session_token", token);
   }, CLOUD_AUTH_TOKEN);
 }
 

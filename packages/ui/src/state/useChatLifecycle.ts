@@ -7,6 +7,7 @@
 
 import { logger } from "@elizaos/logger";
 import { getDefaultStylePreset } from "@elizaos/shared";
+import { clearStoredStewardToken } from "@elizaos/shared/steward-session-client";
 import { type MutableRefObject, useCallback, useEffect, useRef } from "react";
 import type {
   Conversation,
@@ -654,10 +655,12 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
           setElizaCloudUserId(null);
           setElizaCloudStatusReason(null);
           setElizaCloudLoginError(null);
-          // Clear the global cloud token so directCloudRequest stops firing
-          // against api.elizacloud.ai with a stale key after reset. Without
-          // this, the renderer keeps making direct cloud calls even though
-          // the UI shows disconnected.
+          // Clear the stored cloud session token so directCloudRequest stops
+          // firing against api.elizacloud.ai with a stale key after reset.
+          // Without this, the renderer keeps making direct cloud calls even
+          // though the UI shows disconnected. The device-code flow persists its
+          // token through the steward-session store, so clearing that store is
+          // what getCloudAuthToken() reads first.
           //
           // Coupling guarantee: this runs in `clearElizaCloudSessionUi`,
           // which `complete-reset-local-state-after-wipe.ts` calls on
@@ -666,16 +669,7 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
           // token clear happens on every reset path that uses the
           // shared cascade. (The cascade is the sole caller; there
           // is no path that calls one without the other.)
-          if (typeof globalThis !== "undefined") {
-            try {
-              delete (globalThis as Record<string, unknown>)
-                .__ELIZA_CLOUD_AUTH_TOKEN__;
-            } catch {
-              (
-                globalThis as Record<string, unknown>
-              ).__ELIZA_CLOUD_AUTH_TOKEN__ = undefined;
-            }
-          }
+          clearStoredStewardToken();
         },
         markFirstRunReset: () => {
           enableForceFreshFirstRun();

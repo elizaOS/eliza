@@ -187,10 +187,9 @@ function readLiveNativeStewardToken(token: string): string | null {
  * config (see `ElizaClient.setToken`). So
  * without this fallback every native Apps API call left the WebView with NO
  * Authorization header and 401'd (#11930). The chain mirrors the canonical
- * `getCloudAuthToken()` in `../../api/client-cloud.ts` (steward JWT →
- * `__ELIZA_CLOUD_AUTH_TOKEN__` global → client REST token), read here via the
- * token's out-of-band mirrors because this module has no client handle. The
- * Cloud API accepts both a Steward JWT and the owner API key. Web stays
+ * `getCloudAuthToken()` in `../../api/client-cloud.ts` (steward JWT → owner cloud
+ * API key), read here from boot config because this module has no client handle.
+ * The Cloud API accepts both a Steward JWT and the owner API key. Web stays
  * byte-identical (steward token or nothing, exactly as before).
  */
 function readCloudBearerToken(): string | null {
@@ -201,12 +200,6 @@ function readCloudBearerToken(): string | null {
     if (liveToken) return liveToken;
   }
   if (!isNativeCloudRuntime()) return null;
-  const globalToken = (globalThis as Record<string, unknown>)
-    .__ELIZA_CLOUD_AUTH_TOKEN__;
-  if (typeof globalToken === "string") {
-    const cloudKey = normalizeCloudApiKeyToken(globalToken);
-    if (cloudKey) return cloudKey;
-  }
   return (
     normalizeCloudApiKeyToken(getBootConfig().apiToken) ??
     normalizeCloudApiKeyToken(getElizaApiToken())

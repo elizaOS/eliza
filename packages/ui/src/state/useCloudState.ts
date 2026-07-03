@@ -672,17 +672,14 @@ export function useCloudState({
             consecutivePollErrors = 0;
             if (poll.status === "authenticated") {
               if (poll.token && typeof window !== "undefined") {
-                (
-                  globalThis as Record<string, unknown>
-                ).__ELIZA_CLOUD_AUTH_TOKEN__ = poll.token;
-                // Persist the token DURABLY too, not just on the volatile window
-                // global. On a native device the OAuth opens an external browser
+                // Persist the device-code session token through the canonical
+                // steward-session store (which getCloudAuthToken reads first). On
+                // a native device the OAuth opens an external browser
                 // (SFSafariViewController) which backgrounds the WebView; iOS
-                // often cold-launches it on return, wiping the global — so
-                // getCloudAuthToken() read nothing, elizaCloudConnected never
-                // recomputed true, and onboarding restarted at the greeting.
-                // Writing the steward-session channel (which getCloudAuthToken
-                // reads first) lets the connection survive the relaunch.
+                // often cold-launches it on return, so the token must be durable,
+                // not a volatile in-memory global — otherwise getCloudAuthToken()
+                // reads nothing, elizaCloudConnected never recomputes true, and
+                // onboarding restarts at the greeting.
                 writeStoredStewardToken(poll.token);
                 // Also update boot config so subsequent reads use the resolved cloud base.
                 const cfg = getBootConfig();
@@ -929,19 +926,12 @@ export function useCloudState({
         scrubPersistedActiveServerToken();
         // SECURITY: scrubbing active-server.accessToken alone is incomplete —
         // the LIVE cloud bearer also lives in (a) localStorage steward_session_token
-        // (the JWT read on every /api/* call), (b) per-agent-profile accessToken
-        // copies, and (c) the in-memory __ELIZA_CLOUD_AUTH_TOKEN__ global. Clear
-        // all of them on an explicit disconnect so no usable credential survives
-        // at rest / in memory (XSS / same-origin plugin views).
+        // (the JWT read on every /api/* call, and where the device-code flow
+        // persists its session token) and (b) per-agent-profile accessToken
+        // copies. Clear both on an explicit disconnect so no usable credential
+        // survives at rest / in memory (XSS / same-origin plugin views).
         clearStoredStewardToken();
         scrubPersistedAgentProfileTokens();
-        try {
-          delete (globalThis as Record<string, unknown>)
-            .__ELIZA_CLOUD_AUTH_TOKEN__;
-        } catch {
-          (globalThis as Record<string, unknown>).__ELIZA_CLOUD_AUTH_TOKEN__ =
-            undefined;
-        }
         if (wasConnected) {
           setActionNotice("Disconnected from Eliza Cloud.", "success");
         }

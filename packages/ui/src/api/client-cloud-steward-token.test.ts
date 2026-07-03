@@ -21,24 +21,24 @@ function makeJwt(exp: number | null): string {
 describe("getCloudAuthToken (Cloud = Steward everywhere)", () => {
   beforeEach(() => {
     localStorage.removeItem(STEWARD_TOKEN_KEY);
-    delete (globalThis as Record<string, unknown>).__ELIZA_CLOUD_AUTH_TOKEN__;
   });
 
   afterEach(() => {
     localStorage.removeItem(STEWARD_TOKEN_KEY);
-    delete (globalThis as Record<string, unknown>).__ELIZA_CLOUD_AUTH_TOKEN__;
   });
 
-  it("prefers the Steward session token over the legacy global", () => {
+  it("prefers the Steward session token over the client REST token", () => {
     localStorage.setItem(STEWARD_TOKEN_KEY, "steward-jwt");
-    (globalThis as Record<string, unknown>).__ELIZA_CLOUD_AUTH_TOKEN__ =
-      "device-code-token";
-    expect(getCloudAuthToken()).toBe("steward-jwt");
+    const client = new ElizaClient();
+    client.setToken("client-token");
+    expect(getCloudAuthToken(client)).toBe("steward-jwt");
+    client.setToken(null);
   });
 
-  it("falls back to the legacy global when no Steward token (device-code/Remote)", () => {
-    (globalThis as Record<string, unknown>).__ELIZA_CLOUD_AUTH_TOKEN__ =
-      "device-code-token";
+  it("resolves the device-code/Remote session token from the steward store", () => {
+    // The device-code/pairing flow persists its session token through the same
+    // steward-session store, so it resolves via the canonical Steward branch.
+    localStorage.setItem(STEWARD_TOKEN_KEY, "device-code-token");
     expect(getCloudAuthToken()).toBe("device-code-token");
   });
 

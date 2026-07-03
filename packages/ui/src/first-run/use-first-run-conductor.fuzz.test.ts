@@ -244,14 +244,12 @@ beforeEach(() => {
     success: true,
     data: [],
   });
-  (globalThis as Record<string, unknown>).__ELIZA_CLOUD_AUTH_TOKEN__ =
-    "cloud-token";
+  localStorage.setItem("steward_session_token", "cloud-token");
 });
 
 afterEach(() => {
   __setAppValueForTests(null);
   ensureLocalStorage().clear();
-  delete (globalThis as Record<string, unknown>).__ELIZA_CLOUD_AUTH_TOKEN__;
 });
 
 describe("first-run conductor fuzz storms", () => {

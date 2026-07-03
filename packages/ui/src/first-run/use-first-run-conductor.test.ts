@@ -207,15 +207,13 @@ beforeEach(() => {
     success: true,
     data: [],
   });
-  (globalThis as Record<string, unknown>).__ELIZA_CLOUD_AUTH_TOKEN__ =
-    "cloud-token";
+  localStorage.setItem("steward_session_token", "cloud-token");
 });
 
 afterEach(() => {
   __setAppValueForTests(null);
   resetTutorialState();
   ensureLocalStorage().clear();
-  delete (globalThis as Record<string, unknown>).__ELIZA_CLOUD_AUTH_TOKEN__;
 });
 
 describe("useFirstRunConductor", () => {
@@ -835,7 +833,7 @@ describe("useFirstRunConductor", () => {
   });
 
   it("re-offers an UNLOCKED runtime choice when cloud login does not land, and the LOCAL escape completes", async () => {
-    delete (globalThis as Record<string, unknown>).__ELIZA_CLOUD_AUTH_TOKEN__;
+    localStorage.removeItem("steward_session_token");
     mocks.client.getCloudStatus.mockResolvedValue({ connected: false });
     seedAppStore({ elizaCloudConnected: false });
     const { turn, unmount } = renderConductor();
@@ -864,7 +862,7 @@ describe("useFirstRunConductor", () => {
   });
 
   it("auto-resumes the interrupted cloud flow when the cloud connection lands", async () => {
-    delete (globalThis as Record<string, unknown>).__ELIZA_CLOUD_AUTH_TOKEN__;
+    localStorage.removeItem("steward_session_token");
     mocks.client.getCloudStatus.mockResolvedValue({ connected: false });
     seedAppStore({ elizaCloudConnected: false });
     const { turn, unmount } = renderConductor();
@@ -880,8 +878,7 @@ describe("useFirstRunConductor", () => {
 
     // The user connects from the OAuth block instead of re-picking: the token
     // lands and the store learns the connection — the flow resumes by itself.
-    (globalThis as Record<string, unknown>).__ELIZA_CLOUD_AUTH_TOKEN__ =
-      "cloud-token";
+    localStorage.setItem("steward_session_token", "cloud-token");
     mocks.client.getCloudStatus.mockResolvedValue({ connected: true });
     seedAppStore({ elizaCloudConnected: true });
 

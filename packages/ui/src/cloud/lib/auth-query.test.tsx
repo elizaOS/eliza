@@ -60,12 +60,10 @@ beforeEach(() => {
     value: storage,
   });
   capacitorState.isNative = false;
-  delete (globalThis as Record<string, unknown>).__ELIZA_CLOUD_AUTH_TOKEN__;
   setBootConfig({ branding: {}, apiToken: undefined });
 });
 
 afterEach(() => {
-  delete (globalThis as Record<string, unknown>).__ELIZA_CLOUD_AUTH_TOKEN__;
   vi.unstubAllGlobals();
 });
 
@@ -127,10 +125,12 @@ describe("shared cloud query gate — session from persisted JWT only (page-relo
     expect(result.current.userId).toBeNull();
   });
 
-  it("native: ignores a non-cloud legacy global token", () => {
+  it("native: ignores a non-JWT (non-cloud) steward token", () => {
     capacitorState.isNative = true;
-    (globalThis as Record<string, unknown>).__ELIZA_CLOUD_AUTH_TOKEN__ =
-      "legacy-local-agent-bearer-token";
+    localStorage.setItem(
+      "steward_session_token",
+      "legacy-local-agent-bearer-token",
+    );
 
     const { result } = renderHook(() => useAuthenticatedQueryGate());
 

@@ -45,14 +45,12 @@ describe("ElizaClient direct Cloud auth on native", () => {
       branding: {},
       cloudApiBase: "https://www.elizacloud.ai",
     });
-    delete (globalThis as Record<string, unknown>).__ELIZA_CLOUD_AUTH_TOKEN__;
     capacitorMocks.get.mockReset();
     capacitorMocks.post.mockReset();
     capacitorMocks.request.mockReset();
   });
 
   afterEach(() => {
-    delete (globalThis as Record<string, unknown>).__ELIZA_CLOUD_AUTH_TOKEN__;
     vi.useRealTimers();
     vi.restoreAllMocks();
   });
@@ -914,8 +912,7 @@ describe("ElizaClient direct Cloud auth on native", () => {
       login.apiBase ?? "https://api.elizacloud.ai",
       login.sessionId ?? "missing-session",
     );
-    (globalThis as Record<string, unknown>).__ELIZA_CLOUD_AUTH_TOKEN__ =
-      poll.token;
+    client.setToken(poll.token ?? null);
 
     const status = await client.getCloudStatus();
     const agents = await client.getCloudCompatAgents();

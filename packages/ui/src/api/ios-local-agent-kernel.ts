@@ -8,6 +8,7 @@ import {
   type ProviderStatus,
   parseCoinGeckoMarkets,
 } from "@elizaos/shared";
+import { readStoredStewardToken } from "@elizaos/shared/steward-session-client";
 import {
   summarizeTranscript,
   type Transcript,
@@ -361,10 +362,9 @@ function readIosCloudPairing(): IosCloudPairing {
   const id = stringValue(activeServer.id);
   const agentId = id?.startsWith("cloud:") ? id.slice("cloud:".length) : null;
   const storedToken = stringValue(activeServer.accessToken);
-  const globalToken = stringValue(
-    (globalThis as Record<string, unknown>).__ELIZA_CLOUD_AUTH_TOKEN__,
-  );
-  const token = storedToken ?? globalToken;
+  // The device-code/pairing flow persists its cloud session token through the
+  // steward-session store (see client-cloud.getCloudAuthToken).
+  const token = storedToken ?? readStoredStewardToken()?.trim() ?? null;
   const label = stringValue(activeServer.label);
   return {
     paired: Boolean(agentId && token),

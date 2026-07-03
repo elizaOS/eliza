@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 // Mock-cloud connect e2e (#8621 / #8387): the REAL client connect path —
 // selectOrProvisionCloudAgent → cold-boot wait → base resolution → chat REST
 // round-trip — driven against a REAL HTTP server that implements the cloud
@@ -338,7 +339,6 @@ describe("mock-cloud connect e2e — dedicated cold boot + shared chat bridge", 
   afterAll(async () => {
     await new Promise<void>((resolve) => server.close(() => resolve()));
     setBootConfig(DEFAULT_BOOT_CONFIG);
-    delete (globalThis as Record<string, unknown>).__ELIZA_CLOUD_AUTH_TOKEN__;
   });
 
   beforeEach(() => {
@@ -349,7 +349,6 @@ describe("mock-cloud connect e2e — dedicated cold boot + shared chat bridge", 
     // Make the mock origin the recognized direct-cloud base for both
     // isDirectCloudBase() (client-base origin match) and the native fallback.
     setBootConfig({ ...DEFAULT_BOOT_CONFIG, cloudApiBase: base });
-    delete (globalThis as Record<string, unknown>).__ELIZA_CLOUD_AUTH_TOKEN__;
   });
 
   function makeClient(): ElizaClient {
@@ -503,8 +502,7 @@ describe("mock-cloud connect e2e — dedicated cold boot + shared chat bridge", 
       detailFailuresRemaining: 2,
     });
     const client = makeClient();
-    (globalThis as Record<string, unknown>).__ELIZA_CLOUD_AUTH_TOKEN__ =
-      AUTH_TOKEN;
+    client.setToken(AUTH_TOKEN);
     const record = await waitForCloudAgentRunning(client, {
       agentId: "agent-ded",
       pollIntervalMs: 20,

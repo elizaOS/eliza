@@ -45,13 +45,11 @@ function setHostname(hostname: string, protocol = "https:"): void {
 }
 
 beforeEach(() => {
-  (globalThis as Record<string, unknown>).__ELIZA_CLOUD_AUTH_TOKEN__ =
-    "steward-jwt";
+  localStorage.setItem("steward_session_token", "steward-jwt");
 });
 
 afterEach(() => {
   vi.restoreAllMocks();
-  delete (globalThis as Record<string, unknown>).__ELIZA_CLOUD_AUTH_TOKEN__;
 });
 
 describe("getCloudCompatAgents on hosted web with no agent baseUrl (join flow)", () => {

@@ -7,6 +7,7 @@ import { Capacitor, CapacitorHttp } from "@capacitor/core";
 import {
   readStoredStewardToken,
   STEWARD_REFRESH_ENDPOINT,
+  writeStoredStewardToken,
 } from "@elizaos/shared/steward-session-client";
 import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
 import {
@@ -320,19 +321,14 @@ function resolveDirectCloudClientApiBase(client: ElizaClient): string | null {
  * `steward-token` cookie; on native (`capacitor://localhost` / loopback) it is
  * sent as `Authorization: Bearer`.
  *
- * The legacy `__ELIZA_CLOUD_AUTH_TOKEN__` global and the client REST token are
- * kept only as fallbacks for the Remote (device-code/pairing) flow, which still
- * mints its own session token via `cloudLoginPollDirect`.
+ * The Remote (device-code/pairing) flow mints its own session token via
+ * `cloudLoginPollDirect` and persists it through the same steward-session store
+ * (`writeStoredStewardToken`), so it resolves here through the canonical Steward
+ * branch too. The client REST token is the last fallback.
  */
 export function getCloudAuthToken(client?: ElizaClient): string | null {
   const stewardToken = readStoredStewardToken()?.trim();
   if (stewardToken) return stewardToken;
-
-  const globalToken = (globalThis as Record<string, unknown>)
-    .__ELIZA_CLOUD_AUTH_TOKEN__;
-  if (typeof globalToken === "string" && globalToken.trim()) {
-    return globalToken.trim();
-  }
 
   const clientToken = client?.getRestAuthToken()?.trim();
   return clientToken || null;
@@ -3093,11 +3089,11 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
   const onProgress = options.onProgress;
   const resolvedCloudApiBase = resolveDirectCloudAuthApiBase(cloudApiBase);
   // Ensure the direct-cloud requests below authenticate even on a cold boot,
-  // where the runtime global token may be empty (the caller always passes the
-  // session token).
-  if (authToken && typeof globalThis !== "undefined") {
-    (globalThis as Record<string, unknown>).__ELIZA_CLOUD_AUTH_TOKEN__ =
-      authToken;
+  // where the resolved token may be empty (the caller always passes the session
+  // token). Persist it through the canonical steward-session store so
+  // getCloudAuthToken() resolves it for those requests.
+  if (authToken) {
+    writeStoredStewardToken(authToken);
   }
 
   // Reuse an existing agent unless the caller explicitly forces a new one. This

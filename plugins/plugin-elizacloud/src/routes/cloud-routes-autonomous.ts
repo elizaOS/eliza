@@ -730,9 +730,9 @@ export async function handleCloudRoute(
         }
       }
 
-      // Return the cloud API key to the renderer so it can populate
-      // `globalThis.__ELIZA_CLOUD_AUTH_TOKEN__` and use the direct cloud
-      // path (`/api/v1/eliza/agents`) for agent creation/provisioning.
+      // Return the cloud API key to the renderer so it can persist it through
+      // the steward-session store and use the direct cloud path
+      // (`/api/v1/eliza/agents`) for agent creation/provisioning.
       // Without this, every cloud op falls back to the proxy compat path,
       // which creates agents in a namespace whose queue never drains
       // (agents stay `status: "queued"` forever — setup hangs).

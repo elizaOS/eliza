@@ -34,7 +34,6 @@ describe("ElizaClient direct Cloud auth on hosted web", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
-    delete (globalThis as Record<string, unknown>).__ELIZA_CLOUD_AUTH_TOKEN__;
   });
 
   it("creates CLI sessions through the same-origin proxy and opens staging auth", async () => {
