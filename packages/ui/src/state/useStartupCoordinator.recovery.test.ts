@@ -74,6 +74,33 @@ describe("recoverTerminalStartupError", () => {
     });
   });
 
+  it("a rehydrated completion ref routes a fresh boot home even when the server still reports incomplete (#11506)", async () => {
+    // A fresh process seeds `firstRunCompletionCommittedRef` from the durable
+    // completion flag. If the freshly-booted agent's first-run status has not
+    // caught up yet and transiently reports incomplete, the committed ref must
+    // still route the boot home instead of re-showing onboarding.
+    clientMock.getStatus.mockResolvedValue({
+      state: "running",
+      agentName: "Eliza",
+      startup: { phase: "running", attempt: 0 },
+    });
+    clientMock.getFirstRunStatus.mockResolvedValue({ complete: false });
+    const deps = createDeps();
+    deps.firstRunCompletionCommittedRef.current = true;
+    const dispatch = vi.fn();
+
+    await expect(
+      recoverTerminalStartupError(deps, dispatch, { current: false }),
+    ).resolves.toBe(true);
+
+    expect(deps.setFirstRunComplete).toHaveBeenCalledWith(true);
+    expect(dispatch).toHaveBeenCalledWith({ type: "AGENT_RUNNING" });
+    expect(dispatch).not.toHaveBeenCalledWith({
+      type: "BACKEND_REACHED",
+      firstRunComplete: false,
+    });
+  });
+
   it("does not recover while the agent is still not running", async () => {
     clientMock.getStatus.mockResolvedValue({
       state: "starting",

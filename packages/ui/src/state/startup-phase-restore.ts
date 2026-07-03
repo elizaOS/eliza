@@ -52,6 +52,7 @@ import { getElizaApiBase } from "../utils/eliza-globals";
 import { detectExistingFirstRunConnection } from "./first-run-bootstrap";
 import {
   clearPersistedActiveServer,
+  hydratePersistedFirstRunCompleteFromNativeStore,
   loadPersistedActiveServer,
   loadPersistedFirstRunComplete,
   type PersistedActiveServer,
@@ -628,6 +629,13 @@ export async function runRestoringSession(
 
   const forceLocal = deps.forceLocalBootstrapRef.current;
   deps.forceLocalBootstrapRef.current = false;
+  // Restore the onboarding-complete flag from the durable native store when a
+  // WebView-storage wipe dropped it from localStorage (issue #11506), BEFORE
+  // reading `hadPrior` below — so an already set-up mobile install is not
+  // re-onboarded on the boot after the wipe. No-op on web/desktop and whenever
+  // localStorage still carries the flag.
+  await hydratePersistedFirstRunCompleteFromNativeStore();
+  if (cancelled.current) return;
   let persistedActiveServer = loadPersistedActiveServer();
   let hadPrior = loadPersistedFirstRunComplete();
   const forceFreshFirstRun = isForceFreshFirstRunEnabled();

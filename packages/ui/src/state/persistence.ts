@@ -419,7 +419,37 @@ export function loadPersistedFirstRunComplete(): boolean {
   }
 }
 
+/**
+ * Mirror the completion flag into the Capacitor Preferences native store
+ * (Android SharedPreferences / iOS UserDefaults). WebView localStorage can be
+ * cleared by the OS independently of app-scoped native storage; the native
+ * mirror is what lets a WebView-storage wipe NOT re-trigger onboarding for an
+ * already set-up install. No-op (and never throws) in web / unit-test shells
+ * where Capacitor is unavailable. Mirrors the mobile-runtime-mode dual-write.
+ */
+async function persistNativeFirstRunComplete(complete: boolean): Promise<void> {
+  try {
+    const [{ Capacitor }, { Preferences }] = await Promise.all([
+      import("@capacitor/core"),
+      import("@capacitor/preferences"),
+    ]);
+    if (!Capacitor.isNativePlatform()) return;
+    if (complete) {
+      await Preferences.set({
+        key: FIRST_RUN_COMPLETE_STORAGE_KEY,
+        value: "1",
+      });
+    } else {
+      await Preferences.remove({ key: FIRST_RUN_COMPLETE_STORAGE_KEY });
+    }
+  } catch {
+    // Capacitor Preferences is unavailable in web / unit-test shells.
+  }
+}
+
 export function savePersistedFirstRunComplete(complete: boolean): void {
+  void persistNativeFirstRunComplete(complete);
+
   if (typeof localStorage === "undefined") {
     return;
   }
@@ -434,6 +464,44 @@ export function savePersistedFirstRunComplete(complete: boolean): void {
     logger.warn(
       `[persistence] failed to save first-run completion flag: ${describePersistenceError(err)}`,
     );
+  }
+}
+
+/**
+ * Boot-time durability restore for the onboarding-complete flag (issue #11506).
+ *
+ * Android/iOS can clear a WebView's localStorage independently of the app's
+ * Capacitor Preferences store, which would drop `eliza:first-run-complete` and
+ * re-show onboarding on the next launch even though the agent config on disk is
+ * intact. Completion is mirrored into Preferences on save; on boot, when the
+ * WebView lost the localStorage flag but the durable native store still has it,
+ * restore the localStorage value so the synchronous boot readers
+ * (`loadPersistedFirstRunComplete` in restore, the lifecycle-state init, and
+ * the first-run completion ref) see the completed state and route straight
+ * home instead of re-prompting.
+ *
+ * Awaited early in the restoring-session phase (before `hadPrior` is read), so
+ * the restore repopulates localStorage on the SAME boot. No-op when
+ * localStorage already carries the flag or Capacitor is unavailable.
+ */
+export async function hydratePersistedFirstRunCompleteFromNativeStore(): Promise<void> {
+  if (typeof localStorage === "undefined") return;
+  if (loadPersistedFirstRunComplete()) return;
+
+  try {
+    const [{ Capacitor }, { Preferences }] = await Promise.all([
+      import("@capacitor/core"),
+      import("@capacitor/preferences"),
+    ]);
+    if (!Capacitor.isNativePlatform()) return;
+    const { value } = await Preferences.get({
+      key: FIRST_RUN_COMPLETE_STORAGE_KEY,
+    });
+    if (value === "1") {
+      localStorage.setItem(FIRST_RUN_COMPLETE_STORAGE_KEY, "1");
+    }
+  } catch {
+    // Native store unavailable — localStorage remains authoritative.
   }
 }
 

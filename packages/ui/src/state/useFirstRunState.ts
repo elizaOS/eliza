@@ -20,6 +20,7 @@ import {
 import { canRunLocal } from "../platform/init";
 import {
   loadPersistedActiveServer,
+  loadPersistedFirstRunComplete,
   loadPersistedSetupStep,
   saveSetupStep,
 } from "./persistence";
@@ -381,7 +382,15 @@ export function useFirstRunState(cloudOnly?: boolean): FirstRunStateHook {
     createInitialState(co),
   );
 
-  const completionCommittedRef = useRef(false);
+  // Rehydrate from the durable completion flag (issue #11506): a fresh app
+  // process (mobile relaunch / desktop restart) starts with no in-memory
+  // completion state, so without this the ref would read false and the startup
+  // coordinator would fall back to re-probing / re-prompting onboarding when
+  // the server status is briefly unavailable. Seeding from the persisted flag
+  // keeps a completed onboarding committed across a process restart, coherent
+  // with the `hadPrior` protection the restore/poll phases read from the same
+  // durable store.
+  const completionCommittedRef = useRef(loadPersistedFirstRunComplete());
   const forceLocalBootstrapRef = useRef(false);
 
   const setStep = useCallback((step: SetupStep) => {
