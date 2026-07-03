@@ -17,13 +17,51 @@
  * `packages/cloud/shared/src/types/cloud-api.ts`).
  */
 
+/**
+ * Organization role tiers (#12087 Item 22). Mirrors the backend RBAC ladder
+ * (`owner > admin > member`). One typed union + one rank table replace the
+ * scattered lowercase-literal comparisons (`role === "owner" || role ===
+ * "admin"`) across the org tabs.
+ */
+export type OrgRole = "owner" | "admin" | "member";
+
+export const ORG_ROLE_RANK: Record<OrgRole, number> = {
+  member: 0,
+  admin: 1,
+  owner: 2,
+};
+
+/** Type guard: `value` is a recognized {@link OrgRole}. */
+export function isOrgRole(value: unknown): value is OrgRole {
+  return value === "owner" || value === "admin" || value === "member";
+}
+
+/**
+ * Rank of `role` on {@link ORG_ROLE_RANK}. Unknown/`null` roles fall to `-1`
+ * (below every real tier) so comparisons fail closed. Mirrors core's
+ * `satisfiesRoleGate` rank ordering for the org domain.
+ */
+export function orgRoleRank(role: string | null | undefined): number {
+  return role && isOrgRole(role) ? ORG_ROLE_RANK[role] : -1;
+}
+
+/** True iff `role` may manage the org (rank ≥ admin: admin or owner). */
+export function canManageOrg(role: string | null | undefined): boolean {
+  return orgRoleRank(role) >= ORG_ROLE_RANK.admin;
+}
+
+/** True iff `role` is the org owner. */
+export function isOrgOwner(role: string | null | undefined): boolean {
+  return role === "owner";
+}
+
 export interface OrgMemberDto {
   id: string;
   name: string | null;
   email: string | null;
   wallet_address: string | null;
   wallet_chain_type: string | null;
-  role: string;
+  role: OrgRole;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -32,7 +70,7 @@ export interface OrgMemberDto {
 export interface OrgInviteDto {
   id: string;
   email: string;
-  role: string;
+  role: OrgRole;
   status: string;
   expires_at: string;
   created_at: string;
@@ -62,12 +100,12 @@ export interface UserWithOrganizationDto {
   wallet_address: string | null;
   wallet_chain_type: string | null;
   organization_id: string | null;
-  role: string;
+  role: OrgRole;
   organization: OrganizationDto | null;
 }
 
 /** `member` | `admin` — the two roles an invite can target (owner is implicit). */
-export type InviteRole = "member" | "admin";
+export type InviteRole = Exclude<OrgRole, "owner">;
 
 /**
  * POST /api/organizations/invites response payload. `token` is the raw invite
@@ -77,7 +115,7 @@ export type InviteRole = "member" | "admin";
 export interface CreatedInviteDto {
   id: string;
   email: string;
-  role: string;
+  role: OrgRole;
   expires_at: string;
   status: string;
   token: string;

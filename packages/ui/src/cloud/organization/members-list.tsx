@@ -31,12 +31,18 @@ import {
 } from "../../cloud-ui";
 import { Button } from "../../components/ui/button";
 import { useCloudT } from "../shell/CloudI18nProvider";
-import type { OrgMemberDto } from "./data/cloud-org-types";
+import {
+  canManageOrg,
+  isOrgOwner,
+  type OrgMemberDto,
+  type OrgRole,
+  orgRoleRank,
+} from "./data/cloud-org-types";
 
 interface MembersListProps {
   members: OrgMemberDto[];
   currentUserId: string;
-  currentUserRole: string;
+  currentUserRole: OrgRole;
   isOwner: boolean;
   onUpdateRole: (userId: string, role: string) => void;
   onRemove: (userId: string) => void;
@@ -103,15 +109,18 @@ export function MembersList({
   };
 
   const canUpdateRole = (member: OrgMemberDto) => {
-    return isOwner && member.id !== currentUserId && member.role !== "owner";
+    return isOwner && member.id !== currentUserId && !isOrgOwner(member.role);
   };
 
   const canRemove = (member: OrgMemberDto) => {
     if (member.id === currentUserId) return false;
-    if (member.role === "owner") return false;
-    if (currentUserRole === "owner") return true;
-    if (currentUserRole === "admin" && member.role !== "admin") return true;
-    return false;
+    if (isOrgOwner(member.role)) return false;
+    // A manager (admin/owner) may remove anyone strictly below their own tier:
+    // an owner removes admins + members; an admin removes only members.
+    return (
+      canManageOrg(currentUserRole) &&
+      orgRoleRank(currentUserRole) > orgRoleRank(member.role)
+    );
   };
 
   return (

@@ -22,7 +22,10 @@ import { BrandButton } from "../../cloud-ui";
 import { useCloudT } from "../shell/CloudI18nProvider";
 import { ContributeCredentialDialog } from "./contribute-credential-dialog";
 import { CredentialsList } from "./credentials-list";
-import type { UserWithOrganizationDto } from "./data/cloud-org-types";
+import {
+  canManageOrg,
+  type UserWithOrganizationDto,
+} from "./data/cloud-org-types";
 import {
   useOrganizationCredentials,
   useRemoveCredential,
@@ -44,7 +47,7 @@ export function CredentialsTab({
   const [isContributeOpen, setIsContributeOpen] = useState(autoContribute);
   const [isInviteOpen, setIsInviteOpen] = useState(false);
 
-  const canManage = user.role === "owner" || user.role === "admin";
+  const canManage = canManageOrg(user.role);
 
   const credentialsQuery = useOrganizationCredentials();
   const updateCredential = useUpdateCredential();
