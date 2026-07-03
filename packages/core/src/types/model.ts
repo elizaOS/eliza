@@ -1424,3 +1424,21 @@ export interface ModelHandler<
 
 	registrationOrder?: number;
 }
+
+/**
+ * Handler-free view of a single model registration, returned by
+ * `AgentRuntime.getModelRegistrations()`. Exposes the runtime's model registry
+ * as metadata only — no handler function — so hosts and observers can render a
+ * routing table or subscribe to registration changes without capturing
+ * handlers or reaching into the private `models` map.
+ */
+export interface ModelRegistrationInfo {
+	/** The model type key the handler is registered for (e.g. `TEXT_LARGE`). */
+	modelType: string;
+	/** The provider (plugin) name that registered the handler. */
+	provider: string;
+	/** Selection priority (higher wins); 0 when unspecified. */
+	priority: number;
+	/** Monotonic registration ordinal used as the priority tie-breaker. */
+	registrationOrder: number;
+}

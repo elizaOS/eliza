@@ -40,6 +40,7 @@ import type {
 	GenerateTextParams,
 	GenerateTextResult,
 	ModelParamsMap,
+	ModelRegistrationInfo,
 	ModelResultMap,
 	ModelTypeName,
 	TextGenerationModelType,
@@ -901,6 +902,15 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 				params: Record<string, JsonValue | object>,
 		  ) => Promise<JsonValue | object>)
 		| undefined;
+
+	/**
+	 * List every registered model handler as handler-free metadata, sorted by
+	 * priority (descending) then registration order within each model type.
+	 * Hosts and observers use this to render a routing table or seed a mirror
+	 * of the model registry without capturing handlers or patching the runtime.
+	 * Pair with the {@link EventType.MODEL_REGISTERED} event to stay live.
+	 */
+	getModelRegistrations(): ModelRegistrationInfo[];
 
 	registerEvent<T extends keyof EventPayloadMap>(
 		event: T,

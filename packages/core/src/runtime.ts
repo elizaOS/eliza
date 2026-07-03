@@ -145,6 +145,7 @@ import {
 	type Metadata,
 	type ModelHandler,
 	type ModelParamsMap,
+	type ModelRegistrationInfo,
 	type ModelResultMap,
 	ModelType,
 	type ModelTypeName,
@@ -4655,6 +4656,39 @@ export class AgentRuntime implements IAgentRuntime {
 				return (a.registrationOrder || 0) - (b.registrationOrder || 0);
 			});
 		}
+
+		// Announce the registration so observers (e.g. the local-inference
+		// routing table) can mirror the model registry without patching the
+		// runtime or capturing handlers. Fire-and-forget: a no-op when nothing
+		// is subscribed, and registry bookkeeping must never block boot.
+		void this.emitEvent(EventType.MODEL_REGISTERED, {
+			modelType: modelKey,
+			provider,
+			priority: priority || 0,
+		});
+	}
+
+	/**
+	 * Handler-free snapshot of every registered model handler, sorted by
+	 * priority (descending) then registration order within each model type —
+	 * the same order `getModel`/`useModel` select in. Exposes the private
+	 * `models` map as metadata so hosts and observers can render a routing
+	 * table or seed a mirror without touching handler functions. Pair with the
+	 * {@link EventType.MODEL_REGISTERED} event to stay live.
+	 */
+	getModelRegistrations(): ModelRegistrationInfo[] {
+		const out: ModelRegistrationInfo[] = [];
+		for (const [modelType, handlers] of this.models) {
+			for (const h of handlers) {
+				out.push({
+					modelType,
+					provider: h.provider,
+					priority: h.priority || 0,
+					registrationOrder: h.registrationOrder || 0,
+				});
+			}
+		}
+		return out;
 	}
 
 	/**

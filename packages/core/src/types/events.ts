@@ -67,6 +67,7 @@ export enum EventType {
 
 	// Model events
 	MODEL_USED = "MODEL_USED",
+	MODEL_REGISTERED = "MODEL_REGISTERED",
 
 	// Embedding events
 	EMBEDDING_GENERATION_REQUESTED = "EMBEDDING_GENERATION_REQUESTED",
@@ -238,6 +239,22 @@ export interface ModelEventPayload extends EventPayload {
 		cacheCreationInputTokens?: number;
 		cachedInputTokens?: number;
 	};
+}
+
+/**
+ * Payload for {@link EventType.MODEL_REGISTERED}, emitted by
+ * `AgentRuntime.registerModel` whenever a plugin registers a model handler.
+ * Carries registration metadata only — never the handler function — so
+ * observers (e.g. the local-inference routing table) can mirror the runtime's
+ * model registry without capturing handlers or patching the prototype.
+ */
+export interface ModelRegisteredEventPayload extends EventPayload {
+	/** The model type key the handler was registered for (e.g. `TEXT_LARGE`). */
+	modelType: string;
+	/** The provider (plugin) name that registered the handler. */
+	provider: string;
+	/** Selection priority (higher wins); defaults to 0 when unspecified. */
+	priority: number;
 }
 
 /**
@@ -562,6 +579,7 @@ export interface EventPayloadMap {
 	[EventType.EVALUATOR_STARTED]: EvaluatorEventPayload;
 	[EventType.EVALUATOR_COMPLETED]: EvaluatorEventPayload;
 	[EventType.MODEL_USED]: ModelEventPayload;
+	[EventType.MODEL_REGISTERED]: ModelRegisteredEventPayload;
 	[EventType.EMBEDDING_GENERATION_REQUESTED]: EmbeddingGenerationPayload;
 	[EventType.EMBEDDING_GENERATION_COMPLETED]: EmbeddingGenerationPayload;
 	[EventType.EMBEDDING_GENERATION_FAILED]: EmbeddingGenerationPayload;
