@@ -4,6 +4,20 @@ export type SolanaBalanceResult = {
   sol: number;
 };
 
+export type SolanaSignatureResult = {
+  signature: string;
+  slot?: number;
+  blockTime?: number | null;
+  err?: unknown;
+};
+
+export type SolanaOldestSignatureResult = {
+  signature: string | null;
+  blockTime: number | null;
+  scannedTransactionCount: number;
+  reachedOldestKnownTransaction: boolean;
+};
+
 function getHeliusApiKey(): string {
   const apiKey = process.env.HELIUS_API_KEY?.trim();
 
@@ -19,13 +33,7 @@ function getHeliusRpcUrl(): string {
   return `https://mainnet.helius-rpc.com/?api-key=${apiKey}`;
 }
 
-export async function getSolanaBalance(
-  address: string,
-): Promise<SolanaBalanceResult> {
-  if (!address || address.trim().length === 0) {
-    throw new Error("Wallet address is required");
-  }
-
+async function callHeliusRpc<T>(id: string, method: string, params: unknown[]): Promise<T> {
   const response = await fetch(getHeliusRpcUrl(), {
     method: "POST",
     headers: {
@@ -33,9 +41,9 @@ export async function getSolanaBalance(
     },
     body: JSON.stringify({
       jsonrpc: "2.0",
-      id: "skunkscan-balance",
-      method: "getBalance",
-      params: [address.trim()],
+      id,
+      method,
+      params,
     }),
   });
 
@@ -49,7 +57,21 @@ export async function getSolanaBalance(
     throw new Error(data.error.message ?? "Helius returned an error");
   }
 
-  const lamports = data.result?.value;
+  return data.result as T;
+}
+
+export async function getSolanaBalance(
+  address: string,
+): Promise<SolanaBalanceResult> {
+  if (!address || address.trim().length === 0) {
+    throw new Error("Wallet address is required");
+  }
+
+  const lamports = await callHeliusRpc<number>(
+    "skunkscan-balance",
+    "getBalance",
+    [address.trim()],
+  ).then((result: any) => result?.value);
 
   if (typeof lamports !== "number") {
     throw new Error("Invalid Helius balance response");
@@ -64,40 +86,83 @@ export async function getSolanaBalance(
 
 export async function getSolanaRecentSignatures(
   address: string,
-  limit = 20
-): Promise<any[]> {
+  limit = 20,
+): Promise<SolanaSignatureResult[]> {
+  if (!address || address.trim().length === 0) {
+    throw new Error("Wallet address is required");
+  }
 
-  const response = await fetch(getHeliusRpcUrl(), {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      id: "skunkscan-signatures",
-      method: "getSignaturesForAddress",
-      params: [
-        address.trim(),
-        {
-          limit,
-        },
-      ],
-    }),
-  });
+  const result = await callHeliusRpc<SolanaSignatureResult[]>(
+    "skunkscan-signatures",
+    "getSignaturesForAddress",
+    [
+      address.trim(),
+      {
+        limit,
+      },
+    ],
+  );
 
-  if (!response.ok) {
-    throw new Error(
-      `Helius request failed with status ${response.status}`
+  return Array.isArray(result) ? result : [];
+}
+
+export async function getSolanaOldestKnownSignature(
+  address: string,
+  maxPages = 20,
+  pageSize = 1000,
+): Promise<SolanaOldestSignatureResult> {
+  if (!address || address.trim().length === 0) {
+    throw new Error("Wallet address is required");
+  }
+
+  let before: string | undefined;
+  let oldestSignature: SolanaSignatureResult | null = null;
+  let scannedTransactionCount = 0;
+  let reachedOldestKnownTransaction = false;
+
+  for (let page = 0; page < maxPages; page += 1) {
+    const options: {
+      limit: number;
+      before?: string;
+    } = {
+      limit: pageSize,
+    };
+
+    if (before) {
+      options.before = before;
+    }
+
+    const signatures = await callHeliusRpc<SolanaSignatureResult[]>(
+      `skunkscan-oldest-signature-${page + 1}`,
+      "getSignaturesForAddress",
+      [address.trim(), options],
     );
+
+    if (!Array.isArray(signatures) || signatures.length === 0) {
+      reachedOldestKnownTransaction = true;
+      break;
+    }
+
+    scannedTransactionCount += signatures.length;
+    oldestSignature = signatures[signatures.length - 1];
+
+    if (signatures.length < pageSize) {
+      reachedOldestKnownTransaction = true;
+      break;
+    }
+
+    before = oldestSignature.signature;
   }
 
-  const data = await response.json();
-
-  if (data.error) {
-    throw new Error(data.error.message ?? "Helius error");
-  }
-
-  return data.result ?? [];
+  return {
+    signature: oldestSignature?.signature ?? null,
+    blockTime:
+      typeof oldestSignature?.blockTime === "number"
+        ? oldestSignature.blockTime
+        : null,
+    scannedTransactionCount,
+    reachedOldestKnownTransaction,
+  };
 }
 
 export type SolanaTokenHolding = {
@@ -114,38 +179,19 @@ export async function getSolanaTokenHoldings(
     throw new Error("Wallet address is required");
   }
 
-  const response = await fetch(getHeliusRpcUrl(), {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      id: "skunkscan-token-accounts",
-      method: "getTokenAccountsByOwner",
-      params: [
-        address.trim(),
-        {
-          programId: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-        },
-        {
-          encoding: "jsonParsed",
-        },
-      ],
-    }),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Helius request failed with status ${response.status}`);
-  }
-
-  const data = await response.json();
-
-  if (data.error) {
-    throw new Error(data.error.message ?? "Helius returned an error");
-  }
-
-  const accounts = data.result?.value;
+  const accounts = await callHeliusRpc<any[]>(
+    "skunkscan-token-accounts",
+    "getTokenAccountsByOwner",
+    [
+      address.trim(),
+      {
+        programId: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+      },
+      {
+        encoding: "jsonParsed",
+      },
+    ],
+  ).then((result: any) => result?.value);
 
   if (!Array.isArray(accounts)) {
     return [];
