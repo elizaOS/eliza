@@ -20,7 +20,10 @@ describe("isSensitiveConfigKey", () => {
 
   it("does not classify non-secret token-count settings", () => {
     expect(isSensitiveConfigKey("maxTokens")).toBe(false);
+    expect(isSensitiveConfigKey("max_tokens")).toBe(false);
+    expect(isSensitiveConfigKey("max-tokens")).toBe(false);
     expect(isSensitiveConfigKey("models.large.maxTokens")).toBe(false);
+    expect(isSensitiveConfigKey("models.large.max_tokens")).toBe(false);
   });
 });
 
@@ -31,11 +34,13 @@ describe("sensitive config handling", () => {
         seed_phrase: "seed",
         connection_string: "postgres://secret",
         maxTokens: 2048,
+        max_tokens: 2048,
       }),
     ).toEqual({
       seed_phrase: "[REDACTED]",
       connection_string: "[REDACTED]",
       maxTokens: 2048,
+      max_tokens: 2048,
     });
   });
 
@@ -48,6 +53,7 @@ describe("sensitive config handling", () => {
             seed_phrase: { label: "Seed phrase" },
             connection_string: { label: "Connection string" },
             maxTokens: { label: "Max tokens" },
+            max_tokens: { label: "Max tokens" },
           },
         },
       ],
@@ -62,6 +68,9 @@ describe("sensitive config handling", () => {
     ).toBe(true);
     expect(
       schema.uiHints["plugins.entries.wallet.config.maxTokens"]?.sensitive,
+    ).toBeUndefined();
+    expect(
+      schema.uiHints["plugins.entries.wallet.config.max_tokens"]?.sensitive,
     ).toBeUndefined();
   });
 });
