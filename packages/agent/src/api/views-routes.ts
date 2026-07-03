@@ -30,7 +30,12 @@ import {
   type RouteRequestMeta,
   type ViewType,
 } from "@elizaos/core";
-import { type RouteHelpers, readJsonBody } from "@elizaos/shared";
+import {
+  createShellNavigateViewWsFrame,
+  type RouteHelpers,
+  readJsonBody,
+  type ShellNavigateViewPayload,
+} from "@elizaos/shared";
 import { AGENT_SURFACE_CAPABILITY_IDS } from "@elizaos/ui/agent-surface/types";
 import { STANDARD_CAPABILITIES } from "@elizaos/ui/views/view-interact-protocol";
 import {
@@ -739,7 +744,7 @@ export async function handleViewsRoutes(
     // `source` distinguishes an agent-initiated switch (the default) from a user
     // manually clicking a tab/tile/slash-command, which the client *reports* with
     // `source: "user"`. A user-reported switch must NOT re-broadcast
-    // `shell:navigate:view` (the client already navigated locally) — that would
+    // the shell navigation WS event (the client already navigated locally) — that would
     // echo back and re-navigate. It still records state + emits VIEW_SWITCHED.
     const reportedSource = body?.source === "user" ? "user" : "agent";
     const subview =
@@ -843,8 +848,7 @@ export async function handleViewsRoutes(
 
     // Skip the echo for user-reported switches (the client already navigated).
     if (reportedSource !== "user") {
-      ctx.broadcastWs?.({
-        type: "shell:navigate:view",
+      const navigatePayload: ShellNavigateViewPayload = {
         viewId: id,
         viewPath,
         viewLabel,
@@ -853,7 +857,8 @@ export async function handleViewsRoutes(
         ...(subview ? { subview } : {}),
         ...(alwaysOnTop ? { alwaysOnTop } : {}),
         ...layoutPayload,
-      });
+      };
+      ctx.broadcastWs?.(createShellNavigateViewWsFrame(navigatePayload));
     }
 
     json(res, {

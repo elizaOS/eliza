@@ -19,6 +19,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import type http from "node:http";
 import os from "node:os";
 import path from "node:path";
+import { SHELL_NAVIGATE_VIEW_WS_EVENT } from "@elizaos/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   generateViewHeroSvg,
@@ -493,7 +494,7 @@ describe("stage 6: POST /api/views/:id/navigate broadcasts WS event", () => {
       viewPath: string | null;
       viewType: string;
     };
-    expect(event.type).toBe("shell:navigate:view");
+    expect(event.type).toBe(SHELL_NAVIGATE_VIEW_WS_EVENT);
     expect(event.viewId).toBe("smoke.main");
     expect(event.viewPath).toBe("/smoke");
     expect(event.viewType).toBe("gui");
@@ -529,7 +530,7 @@ describe("stage 6: POST /api/views/:id/navigate broadcasts WS event", () => {
     expect(handled).toBe(true);
     expect(broadcasts).toHaveLength(1);
     expect(broadcasts[0]).toMatchObject({
-      type: "shell:navigate:view",
+      type: SHELL_NAVIGATE_VIEW_WS_EVENT,
       viewId: "smoke.main",
       action: "open-window",
       alwaysOnTop: true,
@@ -570,7 +571,7 @@ describe("stage 6: POST /api/views/:id/navigate broadcasts WS event", () => {
       viewId: string;
       viewPath: string | null;
     };
-    expect(event.type).toBe("shell:navigate:view");
+    expect(event.type).toBe(SHELL_NAVIGATE_VIEW_WS_EVENT);
     expect(event.viewId).toBe("__view-manager__");
     // The synthetic manager id resolves to the built-in Views route.
     expect(event.viewPath).toBe("/apps");

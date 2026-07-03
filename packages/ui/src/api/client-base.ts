@@ -7,6 +7,7 @@
 
 import {
   extractAssistantReplyText,
+  SHELL_NAVIGATE_VIEW_WS_EVENT,
   stripAssistantStageDirections,
 } from "@elizaos/shared";
 import { getBootConfig, setBootConfig } from "../config/boot-config";
@@ -60,7 +61,7 @@ const ELIZA_CLOUD_CONTROL_PLANE_HOSTS = new Set([
   "www.elizacloud.ai",
   "dev.elizacloud.ai",
 ]);
-const REPLAYABLE_WS_EVENT_TYPES = new Set(["shell:navigate:view"]);
+const REPLAYABLE_WS_EVENT_TYPES = new Set([SHELL_NAVIGATE_VIEW_WS_EVENT]);
 const WS_EVENT_BACKLOG_LIMIT = 8;
 
 type StreamChatEvent = {

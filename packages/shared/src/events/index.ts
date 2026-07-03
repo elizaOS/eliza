@@ -88,6 +88,71 @@ export const FIRST_RUN_VOICE_PREVIEW_AWAIT_TELEPORT_EVENT =
 // ── Sidebar sync ─────────────────────────────────────────────────────────
 export const SELF_STATUS_SYNC_EVENT = "eliza:self-status-refresh" as const;
 
+// ── Agent WebSocket shell events ─────────────────────────────────────────
+export const SHELL_NAVIGATE_VIEW_WS_EVENT = "shell:navigate:view" as const;
+
+export type ShellNavigateViewType = "gui" | "tui" | "xr";
+
+export interface ShellNavigateViewPayload {
+  viewId?: string;
+  viewPath?: string | null;
+  viewLabel?: string;
+  viewType?: ShellNavigateViewType;
+  action?: string;
+  subview?: string;
+  views?: string[];
+  layout?: string;
+  placement?: string;
+  alwaysOnTop?: boolean;
+}
+
+export type ShellNavigateViewWsFrame = ShellNavigateViewPayload & {
+  type: typeof SHELL_NAVIGATE_VIEW_WS_EVENT;
+};
+
+function readNonEmptyString(value: unknown): string | undefined {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function readViewType(value: unknown): ShellNavigateViewType | undefined {
+  return value === "gui" || value === "tui" || value === "xr"
+    ? value
+    : undefined;
+}
+
+export function normalizeShellNavigateViewPayload(
+  data: Record<string, unknown>,
+): ShellNavigateViewPayload {
+  const views = Array.isArray(data.views)
+    ? data.views.filter(
+        (value): value is string =>
+          typeof value === "string" && value.length > 0,
+      )
+    : undefined;
+
+  return {
+    viewId: typeof data.viewId === "string" ? data.viewId : undefined,
+    viewPath: typeof data.viewPath === "string" ? data.viewPath : undefined,
+    viewLabel: typeof data.viewLabel === "string" ? data.viewLabel : undefined,
+    viewType: readViewType(data.viewType),
+    action: typeof data.action === "string" ? data.action : undefined,
+    subview: readNonEmptyString(data.subview),
+    views: views && views.length > 0 ? views : undefined,
+    layout: readNonEmptyString(data.layout),
+    placement: readNonEmptyString(data.placement),
+    alwaysOnTop: data.alwaysOnTop === true,
+  };
+}
+
+export function createShellNavigateViewWsFrame(
+  payload: ShellNavigateViewPayload,
+): ShellNavigateViewWsFrame {
+  return {
+    type: SHELL_NAVIGATE_VIEW_WS_EVENT,
+    ...payload,
+  };
+}
+
 export interface AppEmoteEventDetail {
   emoteId: string;
   path: string;

@@ -7,6 +7,10 @@
 
 import { MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core";
 import { logger } from "@elizaos/logger";
+import {
+  normalizeShellNavigateViewPayload,
+  SHELL_NAVIGATE_VIEW_WS_EVENT,
+} from "@elizaos/shared/events";
 import type { AgentStatus, WalletAddresses } from "../api";
 import {
   type CodingAgentSession,
@@ -451,61 +455,13 @@ export function bindReadyPhase(
   );
 
   const unbindShellNavigateView = client.onWsEvent(
-    "shell:navigate:view",
+    SHELL_NAVIGATE_VIEW_WS_EVENT,
     (data: Record<string, unknown>) => {
       if (typeof window === "undefined") return;
-      const viewId = typeof data.viewId === "string" ? data.viewId : undefined;
-      const viewPath =
-        typeof data.viewPath === "string" ? data.viewPath : undefined;
-      const viewLabel =
-        typeof data.viewLabel === "string" ? data.viewLabel : undefined;
-      const viewType =
-        data.viewType === "gui" ||
-        data.viewType === "tui" ||
-        data.viewType === "xr"
-          ? data.viewType
-          : undefined;
-      const action = typeof data.action === "string" ? data.action : undefined;
-      const subview =
-        typeof data.subview === "string" && data.subview.length > 0
-          ? data.subview
-          : undefined;
-      const alwaysOnTop = data.alwaysOnTop === true;
-      // Multi-view layout fields for the split-view / tile-views actions. The
-      // server broadcasts `views`/`layout`/`placement` (views-routes.ts
-      // layoutPayload); dropping them here made an agent "split A and B"
-      // degrade to a single view — createNavigateViewHandler saw only
-      // `viewId` and laid out one pane.
-      const layoutViews = Array.isArray(data.views)
-        ? data.views.filter(
-            (value): value is string =>
-              typeof value === "string" && value.length > 0,
-          )
-        : undefined;
-      const views =
-        layoutViews && layoutViews.length > 0 ? layoutViews : undefined;
-      const layout =
-        typeof data.layout === "string" && data.layout.length > 0
-          ? data.layout
-          : undefined;
-      const placement =
-        typeof data.placement === "string" && data.placement.length > 0
-          ? data.placement
-          : undefined;
+      const payload = normalizeShellNavigateViewPayload(data);
       window.dispatchEvent(
         new CustomEvent("eliza:navigate:view", {
-          detail: {
-            viewId,
-            viewPath,
-            viewLabel,
-            viewType,
-            action,
-            subview,
-            views,
-            layout,
-            placement,
-            alwaysOnTop,
-          },
+          detail: payload,
         }),
       );
     },

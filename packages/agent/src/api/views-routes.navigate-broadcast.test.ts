@@ -1,5 +1,6 @@
 import type http from "node:http";
 import { Readable } from "node:stream";
+import { SHELL_NAVIGATE_VIEW_WS_EVENT } from "@elizaos/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   registerBuiltinViews,
@@ -18,7 +19,7 @@ import {
 
 // Server half of the agent view-switch contract. When the VIEWS action (or any
 // caller) hits POST /api/views/:id/navigate, the route must broadcast a
-// `shell:navigate:view` WebSocket frame. The frontend half — that this exact
+// `SHELL_NAVIGATE_VIEW_WS_EVENT` WebSocket frame. The frontend half — that this exact
 // frame normalizes into an `eliza:navigate:view` DOM event — is covered by
 // packages/ui/src/state/startup-phase-hydrate.navigate-frame.test.ts. Together
 // they pin the wire contract end to end without the scenario harness.
@@ -113,7 +114,7 @@ describe("POST /api/views/:id/navigate broadcast contract", () => {
     // Resolved from the builtin registry (id "settings" → /settings, "Settings").
     expect(broadcastWs).toHaveBeenCalledTimes(1);
     expect(broadcastWs).toHaveBeenCalledWith({
-      type: "shell:navigate:view",
+      type: SHELL_NAVIGATE_VIEW_WS_EVENT,
       viewId: "settings",
       viewPath: "/settings",
       viewLabel: "Settings",
@@ -144,7 +145,7 @@ describe("POST /api/views/:id/navigate broadcast contract", () => {
     await expect(handleViewsRoutes(ctx)).resolves.toBe(true);
 
     expect(broadcastWs).toHaveBeenCalledWith({
-      type: "shell:navigate:view",
+      type: SHELL_NAVIGATE_VIEW_WS_EVENT,
       viewId: "settings",
       viewPath: "/settings",
       viewLabel: "Settings",
@@ -162,7 +163,7 @@ describe("POST /api/views/:id/navigate broadcast contract", () => {
     await expect(handleViewsRoutes(ctx)).resolves.toBe(true);
 
     expect(broadcastWs).toHaveBeenCalledWith({
-      type: "shell:navigate:view",
+      type: SHELL_NAVIGATE_VIEW_WS_EVENT,
       viewId: "settings",
       viewPath: "/settings",
       viewLabel: "Settings",
@@ -183,7 +184,7 @@ describe("POST /api/views/:id/navigate broadcast contract", () => {
 
     expect(broadcastWs).toHaveBeenCalledWith(
       expect.objectContaining({
-        type: "shell:navigate:view",
+        type: SHELL_NAVIGATE_VIEW_WS_EVENT,
         viewId: "notes",
         action: "split-view",
         views: ["notes", "calendar"],
@@ -224,7 +225,7 @@ describe("POST /api/views/:id/navigate broadcast contract", () => {
     await expect(handleViewsRoutes(ctx)).resolves.toBe(true);
 
     expect(broadcastWs).toHaveBeenCalledWith({
-      type: "shell:navigate:view",
+      type: SHELL_NAVIGATE_VIEW_WS_EVENT,
       viewId: "ghost-view",
       viewPath: "/apps/ghost-view",
       viewLabel: "ghost-view",
@@ -239,7 +240,7 @@ describe("POST /api/views/:id/navigate broadcast contract", () => {
 
     expect(broadcastWs).toHaveBeenCalledWith(
       expect.objectContaining({
-        type: "shell:navigate:view",
+        type: SHELL_NAVIGATE_VIEW_WS_EVENT,
         viewId: "__view-manager__",
         viewPath: "/apps",
         viewType: "gui",
@@ -330,7 +331,7 @@ describe("POST /api/views/:id/navigate broadcast contract", () => {
 
     expect(broadcastWs).toHaveBeenCalledWith(
       expect.objectContaining({
-        type: "shell:navigate:view",
+        type: SHELL_NAVIGATE_VIEW_WS_EVENT,
         viewId: "settings",
         subview: "voice",
       }),
