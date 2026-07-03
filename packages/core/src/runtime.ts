@@ -4650,7 +4650,10 @@ export class AgentRuntime implements IAgentRuntime {
 	 * flips the chat brain on the next model call with no restart. Returns
 	 * undefined when the setting is empty OR names a provider that has no
 	 * registered text handler, so a stale or mistyped value never strands the
-	 * brain — it simply falls back to the default provider.
+	 * brain — it simply falls back to the default provider. The same contract
+	 * holds at call time: useModel keeps the default-chain registrations behind
+	 * the override as a failover tail, so a rate-limited/exhausted override
+	 * provider falls to the registered backups instead of stranding the brain.
 	 */
 	private resolveTextProviderOverride(): string | undefined {
 		const raw = this.getSetting("ELIZA_BRAIN_PROVIDER");
@@ -5131,9 +5134,30 @@ export class AgentRuntime implements IAgentRuntime {
 		const overrideResolved = providerOverride
 			? this.resolveModelRegistrations(requestedModelKey, providerOverride)
 			: [];
+		// The override provider goes FIRST, but the remaining default-chain
+		// registrations stay behind it as the failover tail. Without the tail a
+		// rate-limited override provider strands the brain (its throw has no next
+		// registration to fall to) even though healthy backup providers are
+		// registered — violating the "never strands the brain" contract of
+		// resolveTextProviderOverride. The failover loop below still only
+		// advances on fallback-class errors, so a healthy pinned provider keeps
+		// winning every call.
 		const resolvedModels =
 			overrideResolved.length > 0
-				? overrideResolved
+				? [
+						...overrideResolved,
+						...this.resolveModelRegistrations(
+							requestedModelKey,
+							requestedProvider,
+						).filter(
+							(candidate) =>
+								!overrideResolved.some(
+									(chosen) =>
+										chosen.handler === candidate.handler &&
+										chosen.modelKey === candidate.modelKey,
+								),
+						),
+					]
 				: this.resolveModelRegistrations(requestedModelKey, requestedProvider);
 		if (resolvedModels.length === 0) {
 			this.throwNoModelHandler(requestedModelKey);
