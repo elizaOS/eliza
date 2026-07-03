@@ -91,11 +91,6 @@
       "import": "./dist/entry.js",
       "default": "./dist/entry.js"
     },
-    "./agent-bridge": {
-      "types": "./dist/agent-bridge.d.ts",
-      "import": "./dist/agent-bridge.js",
-      "default": "./dist/agent-bridge.js"
-    },
     "./account-pool": {
       "types": "./src/account-pool.ts",
       "eliza-source": {

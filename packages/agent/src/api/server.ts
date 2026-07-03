@@ -355,6 +355,7 @@ import {
   type AgentEventServiceLike,
   getAgentEventService,
 } from "../runtime/agent-event-service.ts";
+import { getAgentHostBridge } from "../runtime/host-bridge.ts";
 import {
   resolvePreferredProviderId,
   resolvePrimaryModel,
@@ -2002,24 +2003,15 @@ async function handleRequest(
   // static-UI catch-all, otherwise the SPA index.html is served and the user
   // ends up on the password screen.
   //
-  // Guard the call: in the on-device mobile bundle this app-core export can
-  // come through as `undefined` (circular re-export init order under Bun.build),
-  // and an unguarded call throws on EVERY request — 500-ing /api/auth/status
-  // and wedging the dashboard at "Connecting to backend…". The route is a
-  // cloud-SSO handoff that a local on-device agent never legitimately serves,
-  // so skipping it when unavailable is safe.
-  // Dynamic import (matching the account-pool / vault-mirror seams in this
-  // package) so agent never *statically* imports @elizaos/app-core: the static
-  // import was what produced the circular re-export init-order `undefined`
-  // above, and it is the build-time edge that puts @elizaos/app-core <->
-  // @elizaos/agent in a Turbo dependency cycle (#9626). `.catch(() => null)`
-  // keeps the on-device path graceful when app-core isn't present at all.
-  const cloudPairMod = await import(
-    /* @vite-ignore */ "@elizaos/app-core/api/cloud-pair-route"
-  ).catch(() => null);
+  // The cloud-SSO handoff route is owned by the app-core host and injected
+  // downward through the agent host bridge (see ../runtime/host-bridge.ts) so
+  // agent never imports `@elizaos/app-core`. A local on-device agent never
+  // legitimately serves it, so the bridge omits the handler and the request
+  // falls through to the normal pipeline.
+  const handleCloudPairRoute = getAgentHostBridge().handleCloudPairRoute;
   if (
-    typeof cloudPairMod?.handleCloudPairRoute === "function" &&
-    (await cloudPairMod.handleCloudPairRoute(req, res))
+    typeof handleCloudPairRoute === "function" &&
+    (await handleCloudPairRoute(req, res))
   ) {
     return;
   }

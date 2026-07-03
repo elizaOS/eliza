@@ -192,12 +192,6 @@
         "vite": "^8.0.8",
         "vitest": "^4.0.18",
       },
-      "peerDependencies": {
-        "@elizaos/app-core": "workspace:*",
-      },
-      "optionalPeers": [
-        "@elizaos/app-core",
-      ],
     },
     "packages/app": {
       "name": "@elizaos/app",

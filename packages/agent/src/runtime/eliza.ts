@@ -121,47 +121,18 @@ import {
 } from "@elizaos/shared";
 import { buildDefaultElizaCloudServiceRouting } from "@elizaos/shared/contracts/service-routing";
 import type { Vault } from "@elizaos/vault";
+import { type AgentHostBridge, getAgentHostBridge } from "./host-bridge.ts";
 
-type AccountPoolCredentialsOptions = {
-  activeBackend?: string | undefined;
-  accountStrategies?: Record<string, unknown> | undefined;
-  serviceRouting?: ReturnType<typeof resolveServiceRoutingInConfig>;
-};
-
-type AppCoreRuntimeModule = {
-  hydrateWalletKeysFromNodePlatformSecureStore: () => Promise<void> | void;
-  runVaultBootstrap: () => Promise<{
-    migrated: number;
-    failed: unknown[];
-  }>;
-  sharedVault: () => Vault;
-  getDefaultAccountPool: () => unknown;
-  applyAccountPoolApiCredentials: (
-    options: AccountPoolCredentialsOptions,
-  ) => Promise<void> | void;
-  startAccountPoolKeepAlive: () => void;
-  getBuildVariant: () => "store" | "direct";
-  isStoreBuild: () => boolean;
-};
-
-let _appCoreRuntimePromise: Promise<AppCoreRuntimeModule> | null = null;
-function importAppCoreRuntime(): Promise<AppCoreRuntimeModule> {
-  // Use a string-literal dynamic import (no indirection through a `const`)
-  // so Bun.build can statically follow it and inline `@elizaos/app-core`
-  // into the mobile bundle. The previous indirect form
-  // (`const moduleId = "@elizaos/app-core"; import(moduleId)`) defeated
-  // Bun's resolver and produced a runtime `Cannot find module` on AOSP
-  // where there is no node_modules tree.
-  //
-  // Memoized: boot resolves this ~7x across the pre-resolve-setup phase. The
-  // ES module cache already dedupes evaluation, but caching the promise
-  // collapses the repeated dynamic-import round-trips into one.
-  if (!_appCoreRuntimePromise) {
-    _appCoreRuntimePromise = import(
-      /* webpackIgnore: true */ "@elizaos/app-core/agent-bridge"
-    ) as Promise<AppCoreRuntimeModule>;
-  }
-  return _appCoreRuntimePromise;
+// Host capabilities (wallet-key hydration, vault bootstrap/access, account
+// pool, build variant) are INJECTED downward by the app-core host via
+// `setAgentHostBridge` before boot — agent never imports `@elizaos/app-core`.
+// When no host installs a bridge (mobile bundle / standalone agent), the leaf
+// default in `./host-bridge.ts` supplies the same no-op behavior the mobile
+// `app-core-runtime.cjs` stub used to. `await`-compatible (returns the bridge
+// synchronously) so existing `await importAppCoreRuntime()` call sites are
+// unchanged.
+function importAppCoreRuntime(): AgentHostBridge {
+  return getAgentHostBridge();
 }
 
 function isBundledMobileRuntime(): boolean {
@@ -3966,12 +3937,8 @@ export async function startEliza(
   // pool is a desktop feature for users juggling several accounts per provider
   // (work / personal / throwaway). Cloud sandboxes get one set of credentials
   // injected by the daemon as env vars, so there's nothing to multiplex. The
-  // dynamic `importAppCoreRuntime()` here also pulls in
-  // `app-core/services/account-pool`, which statically imports from
-  // `@elizaos/agent` — completing a circular import that deadlocks Node ESM
-  // module evaluation in the cloud Docker boot path. Manifests as a silent
-  // hang at this await call after the node:sqlite experimental warning; PID 1
-  // sits in `ep_poll`, no listen, 180s health timeout.
+  // pool implementation is supplied by the host through the injected agent host
+  // bridge (see ./host-bridge.ts) — no app-core import, no boot-time cycle.
   if (process.env.ELIZA_CLOUD_PROVISIONED !== "1")
     try {
       const accountPool = await importAppCoreRuntime();

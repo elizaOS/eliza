@@ -17,6 +17,7 @@ import {
   type SubscriptionProvider,
 } from "../auth/types.ts";
 import type { ElizaConfig } from "../config/types.eliza.ts";
+import { getAgentHostBridge } from "../runtime/host-bridge.ts";
 
 type AuthModule = typeof import("../auth/index.ts");
 
@@ -366,23 +367,18 @@ function subscriptionSelectionIdForStoredProvider(
 /**
  * Read rich `LinkedAccountConfig` rows from the AccountPool singleton.
  * The pool is the single source of truth — it joins on-disk credential
- * records with the metadata overlay file. Loaded from the account-pool leaf
- * subpath so subscription routes do not evaluate the app-core barrel.
+ * records with the metadata overlay file. Read from the host account pool
+ * injected via the agent host bridge — no `@elizaos/app-core` import.
  */
 async function readRichLinkedAccountsFromPool(): Promise<
   Record<string, LinkedAccountConfig>
 > {
   try {
-    // String-literal dynamic import — see comment in
-    // ../runtime/eliza.ts#importAppCoreRuntime for the AOSP bundle issue.
-    const mod = (await import(
-      /* @vite-ignore */ "@elizaos/app-core/account-pool"
-    )) as {
-      getDefaultAccountPool: () => {
-        list(): LinkedAccountConfig[];
-      };
+    // Host account pool injected downward via the agent host bridge (see
+    // ../runtime/host-bridge.ts) — agent never imports `@elizaos/app-core`.
+    const pool = getAgentHostBridge().getDefaultAccountPool() as {
+      list(): LinkedAccountConfig[];
     };
-    const pool = mod.getDefaultAccountPool();
     const out: Record<string, LinkedAccountConfig> = {};
     for (const account of pool.list()) {
       out[`${account.providerId}:${account.id}`] = account;

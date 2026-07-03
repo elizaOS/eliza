@@ -22,6 +22,7 @@ import {
   shutdownRuntime as upstreamShutdownRuntime,
   startEliza as upstreamStartEliza,
 } from "@elizaos/agent";
+import { installAgentHostBridge } from "./install-agent-host-bridge.js";
 
 export { CHANNEL_PLUGIN_MAP } from "./channel-plugin-map.js";
 
@@ -1404,6 +1405,12 @@ function normalizePgliteStartupError(err: unknown): unknown {
 async function upstreamStartElizaWithPgliteCompat(
   options?: StartElizaOptions,
 ): Promise<Awaited<ReturnType<typeof upstreamStartEliza>>> {
+  // Inject the app-core host capabilities (vault, account pool, wallet-key
+  // hydration, build variant, cloud-pair route) into the agent runtime before
+  // it boots. Every app-core agent boot funnels through here, and this is the
+  // sole caller of `upstreamStartEliza`, so the bridge is always installed
+  // before agent code that reads it runs. See install-agent-host-bridge.ts.
+  installAgentHostBridge();
   try {
     return await upstreamStartEliza(options);
   } catch (err) {

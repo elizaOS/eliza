@@ -65,16 +65,16 @@ import {
   type SubscriptionProvider,
 } from "../auth/types.ts";
 import type { ElizaConfig } from "../config/types.eliza.ts";
+import { getAgentHostBridge } from "../runtime/host-bridge.ts";
 
 const z = (zod as typeof zod & { z?: typeof zod }).z ?? zod;
 
 // ─── Account pool (single source of truth) ──────────────────────────
 //
 // All `LinkedAccountConfig` records (label / enabled / priority / health /
-// usage) are owned by `@elizaos/app-core`'s account-pool subpath. Import the
-// leaf module so account routes do not evaluate app-core's server/runtime
-// barrel during agent API initialization. The promise is cached at module
-// scope so we pay the import cost once per process.
+// usage) are owned by the host account-pool, injected downward through the
+// agent host bridge (see ../runtime/host-bridge.ts). Account routes read it via
+// `getAgentHostBridge()` so agent never imports `@elizaos/app-core`.
 
 interface PoolFacade {
   list(providerId?: string): LinkedAccountConfig[];
@@ -88,27 +88,18 @@ interface PoolFacade {
   ): Promise<void>;
 }
 
-let cachedPoolPromise: Promise<PoolFacade> | null = null;
+let cachedPool: PoolFacade | null = null;
 
 async function getPool(): Promise<PoolFacade> {
-  if (!cachedPoolPromise) {
-    cachedPoolPromise = (async () => {
-      // String-literal dynamic import — see comment in
-      // ../runtime/eliza.ts#importAppCoreRuntime for the AOSP bundle issue.
-      const mod = (await import(
-        /* @vite-ignore */ "@elizaos/app-core/account-pool"
-      )) as {
-        getDefaultAccountPool: () => PoolFacade;
-      };
-      return mod.getDefaultAccountPool();
-    })();
+  if (!cachedPool) {
+    cachedPool = getAgentHostBridge().getDefaultAccountPool() as PoolFacade;
   }
-  return cachedPoolPromise;
+  return cachedPool;
 }
 
 /** Test-only: drop the cached pool reference between tests. */
 export function _resetAccountsRoutesPoolCache(): void {
-  cachedPoolPromise = null;
+  cachedPool = null;
 }
 
 // ─── Provider id mapping ────────────────────────────────────────────
