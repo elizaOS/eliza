@@ -46,7 +46,17 @@ body {
   margin: 0;
   background: var(--launch-bg, #ef5a1f);
   overflow: hidden;
-  overscroll-behavior: none;
+  /* Split the axes instead of a blanket `overscroll-behavior: none`.
+     `-y: none` keeps the vertical rubber-band / pull-to-refresh suppression
+     this rule was added for, while `-x: auto` re-enables the macOS trackpad
+     two-finger swipe-to-navigate (back/forward) gesture in the desktop
+     (Electrobun) webview. That native gesture drives the app's History API
+     navigation through the `popstate` listener in
+     state/startup-phase-hydrate.ts. Native mobile shells re-lock BOTH axes via
+     the higher-specificity `body.native { overscroll-behavior: none }` rule in
+     base.css, so this only relaxes the X axis on web + desktop. */
+  overscroll-behavior-x: auto;
+  overscroll-behavior-y: none;
   -webkit-text-size-adjust: 100%;
 }
 
