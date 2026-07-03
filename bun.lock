@@ -3981,6 +3981,24 @@
         "@elizaos/core": "workspace:*",
       },
     },
+    "plugins/plugin-meetings": {
+      "name": "@elizaos/plugin-meetings",
+      "version": "2.0.3-beta.7",
+      "dependencies": {
+        "@elizaos/core": "workspace:*",
+        "@elizaos/shared": "workspace:*",
+        "playwright-core": "^1.56.0",
+      },
+      "devDependencies": {
+        "@types/node": "24.12.2",
+        "tsup": "8.5.1",
+        "typescript": "^6.0.3",
+        "vitest": "4.1.9",
+      },
+      "peerDependencies": {
+        "@elizaos/core": "workspace:*",
+      },
+    },
     "plugins/plugin-messages": {
       "name": "@elizaos/plugin-messages",
       "version": "2.0.3-beta.7",
@@ -6466,6 +6484,8 @@
     "@elizaos/plugin-matrix": ["@elizaos/plugin-matrix@workspace:plugins/plugin-matrix"],
 
     "@elizaos/plugin-mcp": ["@elizaos/plugin-mcp@workspace:plugins/plugin-mcp"],
+
+    "@elizaos/plugin-meetings": ["@elizaos/plugin-meetings@workspace:plugins/plugin-meetings"],
 
     "@elizaos/plugin-messages": ["@elizaos/plugin-messages@workspace:plugins/plugin-messages"],
 
