@@ -317,9 +317,11 @@ async function generateViaCli(
     const framedSystem = frameTextSystemPrompt(system);
     const framedBody = appendTextDirective(body);
     const key = claudeSessionKey(model, framedSystem, false);
-    // On a subscription limit, rotate to the next healthy pooled Claude account
-    // (evicting the warm session so it re-auths as the new account), then retry;
-    // fall through to provider failover only when the pool is exhausted.
+    // Pool-first auth: the FIRST warm session already auths as a healthy pooled
+    // Claude account when one exists (ambient ~/.claude is the fallback). On a
+    // subscription limit, rotate to the next healthy pooled account (evicting
+    // the warm session so it re-auths as the new account), then retry; fall
+    // through to provider failover only when the pool is exhausted.
     return withAccountRotation(
       (env) => getSdkSession(runtime, model, framedSystem, false, env).generate(framedBody),
       {

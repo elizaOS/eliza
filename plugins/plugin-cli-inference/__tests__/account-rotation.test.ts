@@ -11,9 +11,13 @@ import {
 import { ProviderApiError } from "../src/provider-errors";
 
 /**
- * Issue #11180 Gap A: the chat brain must rotate to the next healthy pooled
- * account on a subscription limit, and ONLY on a subscription limit — a non-limit
- * error must fall straight through to the caller's provider-failover chain.
+ * Issue #11180 Gap A: the chat brain must (1) authenticate its FIRST warm
+ * session from the account pool when one is present — an app-connected
+ * subscription is used immediately, not stored-but-unused until a limit error;
+ * ambient stays the fallback when the pool is empty — and (2) rotate to the
+ * next healthy pooled account on a subscription limit, and ONLY on a
+ * subscription limit — a non-limit error must fall straight through to the
+ * caller's provider-failover chain.
  *
  * These drive the pure rotation logic with a FAKE coding-agent selector bridge
  * installed on the `globalThis` symbol (the real bridge lives in app-core; the
@@ -213,14 +217,62 @@ describe("withAccountRotation", () => {
     ...overrides,
   });
 
-  it("passes success straight through with no rotation", async () => {
+  it("uses a pooled account for the FIRST warm-session auth — no ambient token needed", async () => {
+    // THE app-connect regression: a machine with NO ambient CLI login but a
+    // pooled (app-connected) subscription must serve the very first turn from
+    // the pool, not fail / sit stored-but-unused until a limit error.
+    const savedToken = process.env.CLAUDE_CODE_OAUTH_TOKEN;
+    delete process.env.CLAUDE_CODE_OAUTH_TOKEN;
     const bridge = installFakeBridge([account("b")]);
-    const attempt = vi.fn(async () => "hello");
+    const attempt = vi.fn(async (env?: Record<string, string | undefined>) => {
+      expect(env?.CLAUDE_CODE_OAUTH_TOKEN).toBe("tok-b");
+      return "first-turn-on-pooled-account";
+    });
     const c = ctx();
-    await expect(withAccountRotation(attempt, c as never)).resolves.toBe("hello");
+    try {
+      await expect(withAccountRotation(attempt, c as never)).resolves.toBe(
+        "first-turn-on-pooled-account"
+      );
+      expect(attempt).toHaveBeenCalledTimes(1);
+      // Pool consulted BEFORE the first attempt, without an exclude list.
+      expect(bridge.select).toHaveBeenCalledTimes(1);
+      expect(bridge.select.mock.calls[0][1]?.exclude).toBeUndefined();
+      expect(bridge.select.mock.invocationCallOrder[0]).toBeLessThan(
+        attempt.mock.invocationCallOrder[0]
+      );
+      // Any stale ambient-auth'd warm session is evicted before the attempt.
+      expect(c.onRotate).toHaveBeenCalledTimes(1);
+      // Usage recorded against the initially-selected account on success.
+      expect(bridge.recordUsage).toHaveBeenCalledWith("anthropic-subscription", "b", { ok: true });
+      // The pooled token never leaks into the parent process env.
+      expect(process.env.CLAUDE_CODE_OAUTH_TOKEN).toBeUndefined();
+    } finally {
+      if (savedToken !== undefined) process.env.CLAUDE_CODE_OAUTH_TOKEN = savedToken;
+    }
+  });
+
+  it("falls back to the ambient credential when the pool is empty (select → null)", async () => {
+    const bridge = installFakeBridge([null]);
+    const attempt = vi.fn(async (env?: Record<string, string | undefined>) => {
+      expect(env).toBeUndefined();
+      return "ambient-answer";
+    });
+    const c = ctx();
+    await expect(withAccountRotation(attempt, c as never)).resolves.toBe("ambient-answer");
     expect(attempt).toHaveBeenCalledTimes(1);
-    expect(bridge.select).not.toHaveBeenCalled();
+    expect(bridge.select).toHaveBeenCalledTimes(1);
     expect(c.onRotate).not.toHaveBeenCalled();
+  });
+
+  it("falls back to the ambient credential when the initial pool selection throws", async () => {
+    const bridge = installFakeBridge([]);
+    bridge.select.mockRejectedValueOnce(new Error("pool store unavailable"));
+    const attempt = vi.fn(async (env?: Record<string, string | undefined>) => {
+      expect(env).toBeUndefined();
+      return "ambient-answer";
+    });
+    await expect(withAccountRotation(attempt, ctx() as never)).resolves.toBe("ambient-answer");
+    expect(attempt).toHaveBeenCalledTimes(1);
   });
 
   it("rotates on a subscription-limit error then succeeds on the next account", async () => {
@@ -228,31 +280,43 @@ describe("withAccountRotation", () => {
     const savedKey = process.env.ANTHROPIC_API_KEY;
     process.env.CLAUDE_CODE_OAUTH_TOKEN = "ambient-token";
     process.env.ANTHROPIC_API_KEY = "ambient-key";
-    const bridge = installFakeBridge([account("b")]);
+    const bridge = installFakeBridge([account("b"), account("c")]);
     let calls = 0;
     const seenEnv: Array<Record<string, string | undefined> | undefined> = [];
     const attempt = vi.fn(async (env?: Record<string, string | undefined>) => {
       seenEnv.push(env);
       calls += 1;
       if (calls === 1) throw new Error("subscription rate limit reached: session limit");
-      return "answer-on-account-b";
+      return "answer-on-account-c";
     });
     const c = ctx();
     try {
-      await expect(withAccountRotation(attempt, c as never)).resolves.toBe("answer-on-account-b");
+      await expect(withAccountRotation(attempt, c as never)).resolves.toBe("answer-on-account-c");
       expect(attempt).toHaveBeenCalledTimes(2);
-      expect(seenEnv[0]).toBeUndefined();
-      expect(seenEnv[1]?.CLAUDE_CODE_OAUTH_TOKEN).toBe("tok-b");
+      // First attempt already runs on the pool-selected account b (pool-first),
+      // with the ambient token/key stripped from the subprocess env.
+      expect(seenEnv[0]?.CLAUDE_CODE_OAUTH_TOKEN).toBe("tok-b");
+      expect(seenEnv[0]?.ANTHROPIC_API_KEY).toBeUndefined();
+      // b limits → rotate to c.
+      expect(seenEnv[1]?.CLAUDE_CODE_OAUTH_TOKEN).toBe("tok-c");
       expect(seenEnv[1]?.ANTHROPIC_API_KEY).toBeUndefined();
       expect(seenEnv[1]?.PATH).toBe(process.env.PATH);
-      expect(bridge.select).toHaveBeenCalledTimes(1);
-      // Selected account b's token is scoped to the subprocess env only.
+      expect(bridge.select).toHaveBeenCalledTimes(2);
+      // The limited account b was marked + excluded from the rotation select.
+      expect(bridge.markRateLimited).toHaveBeenCalledWith(
+        "anthropic-subscription",
+        "b",
+        expect.any(Number),
+        expect.any(String)
+      );
+      expect(bridge.select.mock.calls[1][1].exclude).toContain("b");
+      // Selected tokens are scoped to the subprocess env only.
       expect(process.env.CLAUDE_CODE_OAUTH_TOKEN).toBe("ambient-token");
       expect(process.env.ANTHROPIC_API_KEY).toBe("ambient-key");
-      // The warm session bound to the limited account was torn down before retry.
-      expect(c.onRotate).toHaveBeenCalledTimes(1);
+      // Torn down once for the initial selection, once for the rotation.
+      expect(c.onRotate).toHaveBeenCalledTimes(2);
       // Usage recorded against the account we rotated INTO on success.
-      expect(bridge.recordUsage).toHaveBeenCalledWith("anthropic-subscription", "b", { ok: true });
+      expect(bridge.recordUsage).toHaveBeenCalledWith("anthropic-subscription", "c", { ok: true });
     } finally {
       if (savedToken === undefined) delete process.env.CLAUDE_CODE_OAUTH_TOKEN;
       else process.env.CLAUDE_CODE_OAUTH_TOKEN = savedToken;
@@ -266,19 +330,15 @@ describe("withAccountRotation", () => {
     process.env.CLAUDE_CODE_OAUTH_TOKEN = "ambient-token";
     const bridge = installFakeBridge([account("b")]);
     try {
-      let firstCalls = 0;
       await expect(
         withAccountRotation(
-          async () => {
-            firstCalls += 1;
-            if (firstCalls === 1) {
-              throw new Error("subscription rate limit reached: session limit");
-            }
-            return "rotated";
+          async (env?: Record<string, string | undefined>) => {
+            expect(env?.CLAUDE_CODE_OAUTH_TOKEN).toBe("tok-b");
+            return "first-turn";
           },
           ctx({ sessionKey: "stable-session" }) as never
         )
-      ).resolves.toBe("rotated");
+      ).resolves.toBe("first-turn");
 
       const secondAttempt = vi.fn(async (env?: Record<string, string | undefined>) => {
         expect(env?.CLAUDE_CODE_OAUTH_TOKEN).toBe("tok-b");
@@ -298,7 +358,7 @@ describe("withAccountRotation", () => {
   });
 
   it("rotates on OpenAI's classic quota envelope (the pre-fix silent tier-failover)", async () => {
-    const bridge = installFakeBridge([account("b")]);
+    const bridge = installFakeBridge([account("b"), account("c")]);
     let calls = 0;
     const attempt = vi.fn(async () => {
       calls += 1;
@@ -307,13 +367,13 @@ describe("withAccountRotation", () => {
           "You exceeded your current quota, please check your plan and billing details."
         );
       }
-      return "answer-on-account-b";
+      return "answer-on-account-c";
     });
     const c = ctx({ backend: "codex-sdk" });
-    await expect(withAccountRotation(attempt, c as never)).resolves.toBe("answer-on-account-b");
+    await expect(withAccountRotation(attempt, c as never)).resolves.toBe("answer-on-account-c");
     expect(attempt).toHaveBeenCalledTimes(2);
-    expect(bridge.select).toHaveBeenCalledTimes(1);
-    expect(c.onRotate).toHaveBeenCalledTimes(1);
+    expect(bridge.select).toHaveBeenCalledTimes(2);
+    expect(c.onRotate).toHaveBeenCalledTimes(2);
   });
 
   it("does NOT rotate on a non-limit error — rethrows immediately to failover", async () => {
@@ -324,23 +384,25 @@ describe("withAccountRotation", () => {
     const c = ctx();
     await expect(withAccountRotation(attempt, c as never)).rejects.toThrow("empty completion");
     expect(attempt).toHaveBeenCalledTimes(1);
-    expect(bridge.select).not.toHaveBeenCalled();
-    expect(c.onRotate).not.toHaveBeenCalled();
+    // Only the pool-first initial selection ran — no rotation select.
+    expect(bridge.select).toHaveBeenCalledTimes(1);
+    expect(bridge.markRateLimited).not.toHaveBeenCalled();
   });
 
   it("excludes already-tried accounts and rotates through several before succeeding", async () => {
-    const bridge = installFakeBridge([account("b"), account("c")]);
+    const bridge = installFakeBridge([account("b"), account("c"), account("d")]);
     let calls = 0;
     const attempt = vi.fn(async () => {
       calls += 1;
       if (calls <= 2) throw new Error("429 too many requests");
-      return "answer-on-account-c";
+      return "answer-on-account-d";
     });
-    await expect(withAccountRotation(attempt, ctx() as never)).resolves.toBe("answer-on-account-c");
+    await expect(withAccountRotation(attempt, ctx() as never)).resolves.toBe("answer-on-account-d");
     expect(attempt).toHaveBeenCalledTimes(3);
-    expect(bridge.select).toHaveBeenCalledTimes(2);
-    // Second select excludes the first rotated-into account (b).
-    expect(bridge.select.mock.calls[1][1].exclude).toContain("b");
+    expect(bridge.select).toHaveBeenCalledTimes(3);
+    // Each rotation select excludes every account already tried.
+    expect(bridge.select.mock.calls[1][1].exclude).toEqual(["b"]);
+    expect(bridge.select.mock.calls[2][1].exclude).toEqual(["b", "c"]);
   });
 
   it("falls through to provider failover (rethrows) when the pool is exhausted", async () => {
@@ -348,12 +410,12 @@ describe("withAccountRotation", () => {
     const attempt = vi.fn(async () => {
       throw new Error("subscription rate limit reached: session limit");
     });
-    // First limit → rotate to b; b limits too → select returns null → rethrow.
+    // Pool-first start on b; b limits → select returns null → rethrow.
     await expect(withAccountRotation(attempt, ctx() as never)).rejects.toThrow(
       "subscription rate limit reached"
     );
     expect(bridge.select).toHaveBeenCalledTimes(2);
-    // The rotated-into account b was marked rate-limited when it also limited.
+    // The limited account b was marked rate-limited before the exhausted select.
     expect(bridge.markRateLimited).toHaveBeenCalledWith(
       "anthropic-subscription",
       "b",

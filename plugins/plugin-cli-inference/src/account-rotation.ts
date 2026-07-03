@@ -2,27 +2,41 @@
  * Chat-brain multi-account rotation for the SAFE/CLI inference route (issue
  * #11180 Gap A).
  *
- * The problem: `plugin-cli-inference` authenticates the warm claude-sdk / codex-sdk
- * session from the machine's single ambient credential (`~/.claude` /
- * `CLAUDE_CODE_OAUTH_TOKEN`, or `~/.codex` / `CODEX_HOME`). When THAT account hits
- * its hourly/monthly subscription limit, the SDK ends the turn by streaming the
- * limit envelope, the session handlers throw (per the throw-to-failover contract),
- * and `useModel` skips straight to the next provider TIER (cloud / API key) — it
- * never asks the pool for the next healthy *account* of the SAME provider first. A
- * user with two Claude Max accounts still stalls the brain when account #1 limits,
- * exactly like a solo account.
+ * The problem: without this module `plugin-cli-inference` authenticates the warm
+ * claude-sdk / codex-sdk session from the machine's single ambient credential
+ * (`~/.claude` / `CLAUDE_CODE_OAUTH_TOKEN`, or `~/.codex` / `CODEX_HOME`). Two
+ * consequences: (a) an app-connected subscription stored in the account pool is
+ * never used for chat — on a machine with no ambient CLI login the route fails
+ * outright even though a healthy pooled account exists; (b) when the active
+ * account hits its hourly/monthly subscription limit, the SDK ends the turn by
+ * streaming the limit envelope, the session handlers throw (per the
+ * throw-to-failover contract), and `useModel` skips straight to the next
+ * provider TIER (cloud / API key) — it never asks the pool for the next healthy
+ * *account* of the SAME provider first. A user with two Claude Max accounts
+ * still stalls the brain when account #1 limits, exactly like a solo account.
  *
- * The fix (this module): on a subscription-limit-classed throw, consume the
- * `eliza.account-pool.coding-agent.v1` bridge (the SAME bridge coding sub-agents
- * rotate through — it maps backend → provider, pool-selects the next healthy
- * account, and MATERIALIZES the exact env the subprocess needs:
- * `CLAUDE_CODE_OAUTH_TOKEN` for claude, a per-account `CODEX_HOME` for codex).
- * We build a subprocess-only env patch for the next SDK session, dispose the
- * warm session so it re-auths as the new account on its next start, and retry the
- * turn transparently. Only when the pool returns null (all accounts limited / no
- * pool / single account) do we rethrow so the caller's existing provider-failover
- * chain runs. Rotation (account A → account B, same provider) therefore composes
- * with — and runs BEFORE — failover (claude → cloud → api).
+ * The fix (this module): consume the `eliza.account-pool.coding-agent.v1`
+ * bridge (the SAME bridge coding sub-agents rotate through — it maps backend →
+ * provider, pool-selects the next healthy account, and MATERIALIZES the exact
+ * env the subprocess needs: `CLAUDE_CODE_OAUTH_TOKEN` for claude, a per-account
+ * `CODEX_HOME` for codex) at TWO points:
+ *
+ *  1. **Pool-first initial auth.** BEFORE the session's first attempt, select a
+ *     healthy pooled account and hand its subprocess-only env to the warm
+ *     session. Without this, an app-connected subscription sits stored-but-
+ *     unused while the SDK auths from the machine's ambient credential — and on
+ *     a machine with NO ambient login the route fails outright even though a
+ *     pooled account is present. Ambient stays the FALLBACK: an empty pool
+ *     (select → null) or a failed selection preserves the pre-pool behavior
+ *     (attempt with no env).
+ *  2. **Rotation on a subscription-limit-classed throw.** We mark the limited
+ *     account, select the next healthy one, build its subprocess-only env,
+ *     dispose the warm session so it re-auths as the new account on its next
+ *     start, and retry the turn transparently. Only when the pool returns null
+ *     (all accounts limited / no pool / single account) do we rethrow so the
+ *     caller's existing provider-failover chain runs. Rotation (account A →
+ *     account B, same provider) therefore composes with — and runs BEFORE —
+ *     failover (claude → cloud → api).
  *
  * Design notes:
  *  - **Bridge over `globalThis`, not an app-core import.** The pool + credential
@@ -208,9 +222,11 @@ export interface RotationContext {
   /** Stable key so pool session-affinity ties a conversation to one account. */
   sessionKey?: string;
   /**
-   * Called after a successful rotation, BEFORE the retry, so the caller can tear
-   * down the warm SDK session bound to the old account's credential — the fresh
-   * session then re-auths as the newly-selected account on its next start.
+   * Called whenever the selected account changes — after the pool-first initial
+   * selection and after each successful rotation, BEFORE the (re)try — so the
+   * caller can tear down any warm SDK session bound to the previous credential;
+   * the fresh session then re-auths as the newly-selected account on its next
+   * start. A no-op when no warm session exists yet (the common initial case).
    */
   onRotate: () => void | Promise<void>;
   /** Selection strategy override (else the pool's default). */
@@ -227,15 +243,20 @@ export function resetRotationStateForTests(): void {
 }
 
 /**
- * Run `attempt` with transparent account rotation on subscription-limit errors.
+ * Run `attempt` with pool-first auth + transparent account rotation on
+ * subscription-limit errors.
  *
  * Flow:
- *  1. Try `attempt()`. On success, return it (and best-effort record usage on the
- *     currently-selected account if we rotated into it).
- *  2. If it throws and the error is NOT a subscription-limit (or rotation is
+ *  1. Pool-FIRST initial auth: when no account is selected for this session yet,
+ *     select a healthy pooled account BEFORE the first attempt so a stored
+ *     app-connected subscription serves the very first turn. Empty pool / failed
+ *     selection → ambient fallback (attempt with no env, pre-pool behavior).
+ *  2. Try `attempt(env)`. On success, return it (and best-effort record usage on
+ *     the currently-selected account).
+ *  3. If it throws and the error is NOT a subscription-limit (or rotation is
  *     disabled / no bridge / backend not rotatable), rethrow immediately →
  *     the caller's existing provider-failover chain handles it.
- *  3. On a limit error: mark the current account rate-limited, select the next
+ *  4. On a limit error: mark the current account rate-limited, select the next
  *     healthy account from the pool (excluding every account already tried),
  *     build its subprocess-only env, dispose the warm session (`onRotate`), and retry.
  *     Repeat until an attempt succeeds or the pool is exhausted; when the pool
@@ -260,6 +281,56 @@ export async function withAccountRotation(
 
   const stateKey = rotationStateKey(ctx);
   let state = rotationStateBySession.get(stateKey) ?? null;
+
+  // Pool-first initial auth: nothing selected for this session yet, so ask the
+  // pool BEFORE the first attempt instead of silently starting on the machine's
+  // ambient credential. An app user who connected their subscription expects it
+  // used immediately — and a machine with NO ambient login would otherwise fail
+  // despite a healthy pooled account. Ambient stays the fallback: select → null
+  // (empty pool) or a selection error changes nothing.
+  if (!state) {
+    let selection: RotationAccountSelection | null = null;
+    try {
+      selection = await bridge.select(agentType, {
+        ...(ctx.sessionKey ? { sessionKey: ctx.sessionKey } : {}),
+        ...(ctx.strategy ? { strategy: ctx.strategy } : {}),
+      });
+    } catch (selectErr) {
+      logger.warn(
+        {
+          src: "cli-inference:rotation",
+          backend: ctx.backend,
+          reason: "initial-select-failed",
+        },
+        `[cli-inference] initial pool selection failed (${String(selectErr)}) — falling back to the ambient credential`
+      );
+    }
+    if (selection) {
+      state = {
+        selection,
+        subprocessEnv: buildRotatedSubprocessEnv(agentType, selection.envPatch),
+      };
+      rotationStateBySession.set(stateKey, state);
+      // Evict any warm session that started on the ambient credential before
+      // the pool was installed, so the next start auths as the selected
+      // account. A no-op when no session exists yet (the common first turn).
+      try {
+        await ctx.onRotate();
+      } catch {
+        // Session teardown is best-effort; the fresh start will re-init anyway.
+      }
+      logger.info(
+        {
+          src: "cli-inference:rotation",
+          backend: ctx.backend,
+          account: safeAccountLabel(selection),
+          strategy: selection.strategy,
+        },
+        `[cli-inference] pooled ${agentType} account selected for warm-session auth`
+      );
+    }
+  }
+
   const tried: string[] = state ? [state.selection.accountId] : [];
   let lastError: unknown;
 
@@ -302,7 +373,9 @@ export async function withAccountRotation(
         selection = await bridge.select(agentType, {
           ...(ctx.sessionKey ? { sessionKey: ctx.sessionKey } : {}),
           ...(ctx.strategy ? { strategy: ctx.strategy } : {}),
-          exclude: tried,
+          // Copy: `tried` keeps growing across rotations; the bridge must see
+          // the exclusions as of THIS call, not a live reference.
+          exclude: [...tried],
         });
       } catch (selectErr) {
         // Pool selection itself failed — treat as pool-exhausted and fail over.
