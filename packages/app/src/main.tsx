@@ -131,6 +131,7 @@ import {
   APP_NAMESPACE,
   APP_URL_SCHEME,
 } from "./app-config";
+import { renderBootFailure } from "./boot-failure";
 import { APP_ENV_ALIASES, APP_ENV_PREFIX } from "./brand-env";
 import { APP_CHARACTER_CATALOG } from "./character-catalog";
 import { isTrustedAppLink } from "./deep-link-handler";
@@ -2757,8 +2758,15 @@ async function main(): Promise<void> {
   // Swabble fallback. No-op off-desktop (no electrobun RPC). Awaited before
   // mountReactApp so `window.__ELIZA_FUSED_WAKE__` is set for the wake
   // controller's first-render capability probe.
-  const { registerDesktopFusedWake } = await import("@elizaos/ui/voice");
-  registerDesktopFusedWake();
+  // A separate hashed lazy chunk that runs on ALL platforms before first
+  // paint. Never let a voice-chunk load failure (e.g. a stale index.html
+  // pointing at a purged hash during a redeploy) gate mounting the app.
+  try {
+    const { registerDesktopFusedWake } = await import("@elizaos/ui/voice");
+    registerDesktopFusedWake();
+  } catch (error) {
+    console.warn("[boot] fused-wake voice module unavailable", error);
+  }
   markStartup("bridges:end", { platform });
   measureStartup("bridges", "bridges:start", "bridges:end");
   mountReactApp();
@@ -2766,10 +2774,17 @@ async function main(): Promise<void> {
   await initializePlatform();
 }
 
+// main() awaits fallible pre-mount chunks; a bare invocation would leave any
+// rejection unhandled and the page permanently blank. Route every boot failure
+// to an actionable reload card instead.
+function boot(): void {
+  void main().catch(renderBootFailure);
+}
+
 if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", main);
+  document.addEventListener("DOMContentLoaded", boot);
 } else {
-  main();
+  boot();
 }
 
 export { isAndroid, isDesktopPlatform as isDesktop, isIOS, isNative, platform };
