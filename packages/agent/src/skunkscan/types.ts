@@ -26,6 +26,12 @@ export type WalletActivitySummary = {
   activityLevel: "none" | "low" | "medium" | "high";
 };
 
+export type WalletRiskSummary = {
+  score: number;
+  level: "low" | "medium" | "high";
+  reasons: string[];
+};
+
 export type WalletInvestigationResult = {
   chain: SupportedChain;
   address: string;
@@ -34,6 +40,7 @@ export type WalletInvestigationResult = {
 recentTransactions?: WalletRecentTransaction[];
 transactionCountSample?: number;
 activity?: WalletActivitySummary;
-  summary: string;
+risk?: WalletRiskSummary;
+summary: string;
 warnings: string[];
 };
