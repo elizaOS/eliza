@@ -137,6 +137,12 @@ class AdvertisingService {
     return parsed.success ? parsed.data : null;
   }
 
+  private assertProviderCanApplyDayparting(platform: AdPlatform): void {
+    if (platform !== "meta") {
+      throw new Error("Campaign dayparting is currently supported only for Meta ad accounts");
+    }
+  }
+
   getProvider(platform: AdPlatform): AdProvider {
     const provider = providers[platform];
     if (!provider) {
@@ -550,6 +556,9 @@ class AdvertisingService {
         `Ad account is not active (status: ${account.status}); it must be approved before running campaigns`,
       );
     }
+    if (dayparting) {
+      this.assertProviderCanApplyDayparting(account.platform);
+    }
 
     await contentSafetyService.assertSafeForPublicUse({
       surface: "advertising_campaign",
@@ -652,7 +661,12 @@ class AdvertisingService {
         end_date: input.endDate,
         targeting: input.targeting || {},
         app_id: input.appId,
-        metadata: dayparting ? { dayparting } : {},
+        metadata: dayparting
+          ? {
+              dayparting,
+              dayparting_provider_synced_at: new Date().toISOString(),
+            }
+          : {},
       });
 
       // Record budget allocation transaction
@@ -729,6 +743,12 @@ class AdvertisingService {
     }
     const dayparting =
       input.dayparting === undefined ? undefined : this.normalizeDayparting(input.dayparting);
+
+    if (input.dayparting !== undefined && campaign.external_campaign_id) {
+      throw new Error(
+        "Campaign dayparting cannot be changed after provider sync; create or duplicate a scheduled campaign instead",
+      );
+    }
 
     if (!campaign.external_campaign_id) {
       const metadata = {

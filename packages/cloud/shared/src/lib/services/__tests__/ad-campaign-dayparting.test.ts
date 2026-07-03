@@ -1,9 +1,11 @@
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
+import { adAccountsRepository } from "../../../db/repositories/ad-accounts";
 import { adCampaignsRepository } from "../../../db/repositories/ad-campaigns";
 import { adCreativesRepository } from "../../../db/repositories/ad-creatives";
 import { advertisingService } from "../advertising";
 import { mapDaypartingToMetaAdSetSchedule } from "../advertising/providers/meta";
 import type { CampaignDaypartingSchedule } from "../advertising/types";
+import { creditsService } from "../credits";
 
 const ORG_ID = "org-1";
 const OTHER_ORG_ID = "org-2";
@@ -50,6 +52,24 @@ function makeCampaign(overrides: Record<string, unknown> = {}) {
       dayparting_provider_synced_at: "2026-07-01T00:00:00.000Z",
       last_sync_at: "2026-07-01T00:00:00.000Z",
     },
+    created_at: new Date("2026-07-01T00:00:00.000Z"),
+    updated_at: new Date("2026-07-01T00:00:00.000Z"),
+    ...overrides,
+  };
+}
+
+function makeAdAccount(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "acct-1",
+    organization_id: ORG_ID,
+    platform: "meta",
+    external_account_id: "act_1",
+    account_name: "Meta Ads",
+    status: "active",
+    credentials_secret_id: "secret-1",
+    currency: "USD",
+    timezone: "America/Los_Angeles",
+    metadata: {},
     created_at: new Date("2026-07-01T00:00:00.000Z"),
     updated_at: new Date("2026-07-01T00:00:00.000Z"),
     ...overrides,
@@ -108,6 +128,44 @@ describe("advertising campaign dayparting", () => {
       timezone: "America/Los_Angeles",
       windows: [{ daysOfWeek: [1, 3, 5], startTime: "09:00", endTime: "17:30" }],
     });
+  });
+
+  test("rejects dayparting on providers that cannot apply it before charging", async () => {
+    track(
+      spyOn(adAccountsRepository, "findById").mockResolvedValue(
+        makeAdAccount({ platform: "google" }) as never,
+      ),
+    );
+    const deductCredits = track(spyOn(creditsService, "deductCredits"));
+
+    await expect(
+      advertisingService.createCampaign({
+        organizationId: ORG_ID,
+        adAccountId: "acct-1",
+        name: "Launch",
+        objective: "traffic",
+        budgetType: "daily",
+        budgetAmount: 100,
+        dayparting: schedule,
+      }),
+    ).rejects.toThrow("supported only for Meta");
+
+    expect(deductCredits).not.toHaveBeenCalled();
+  });
+
+  test("rejects dayparting changes after provider sync instead of claiming sync", async () => {
+    track(
+      spyOn(adCampaignsRepository, "findById").mockResolvedValue(
+        makeCampaign({ external_campaign_id: "meta-campaign-1" }) as never,
+      ),
+    );
+    const update = track(spyOn(adCampaignsRepository, "update"));
+
+    await expect(
+      advertisingService.updateCampaignDayparting(CAMPAIGN_ID, ORG_ID, schedule),
+    ).rejects.toThrow("cannot be changed after provider sync");
+
+    expect(update).not.toHaveBeenCalled();
   });
 
   test("maps dayparting to Meta ad-set schedule minutes", () => {
