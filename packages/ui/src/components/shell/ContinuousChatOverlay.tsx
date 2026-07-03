@@ -4145,26 +4145,57 @@ export function ContinuousChatOverlay({
       // Lift the whole overlay above the on-screen keyboard (`bottom`); padding
       // below the composer is conditional on an actual keyboard lift, not focus
       // alone. With the keyboard up, only a small gap (0.75rem, matching the side
-      // margin) sits between composer and keyboard. At rest, clear the
-      // home-gesture zone (max safe-area / android inset) plus a hair, keeping the
-      // chat low without touching that zone.
+      // margin) sits between composer and keyboard. At rest, the composer is
+      // ANCHORED DOWN: it clears only the home-gesture inset itself (no extra
+      // breathing gap), so the input sits low near the true bottom instead of
+      // hovering above a dead band. The reclaimed zone below the composer is
+      // painted by the continuous home-surface floor (below), not left as a void.
       style={{
         zIndex: Z_SHELL_OVERLAY,
         bottom: effectiveKeyboardInset,
         // Full-bleed fills the screen edge-to-edge: NO overlay bottom padding,
         // so the glass panel reaches the true bottom (no orange gap). The
         // gesture-zone clearance moves INSIDE the composer row (below) so the
-        // input still sits above the home-gesture bar. Non-full-bleed keeps the
-        // chat lifted off the gesture zone as before.
+        // input still sits above the home-gesture bar. Non-full-bleed anchors the
+        // composer down: it clears the home-gesture inset (max safe-area /
+        // android inset) and nothing more, so it sits low with no dead gap
+        // beneath. The floor layer below paints that inset zone with the home
+        // surface so it reads continuous, not as a black bar.
         paddingBottom: fullBleed
           ? 0
           : keyboardLiftActive
             ? "0.75rem"
-            : "calc(var(--eliza-mobile-nav-offset, 0px) + max(var(--safe-area-bottom, 0px), var(--android-gesture-inset-bottom, 0px)) + 0.25rem)",
+            : "calc(var(--eliza-mobile-nav-offset, 0px) + max(var(--safe-area-bottom, 0px), var(--android-gesture-inset-bottom, 0px)))",
       }}
       data-testid="continuous-chat-overlay"
       data-open={sheetOpen ? "true" : undefined}
     >
+      {/* RECLAIMED BOTTOM FLOOR: the composer is lifted off the home-gesture
+          inset, so the strip between the composer and the true screen bottom
+          used to be an unpainted, transparent zone — the home's near-black floor
+          showed through as a distinct DEAD BLACK BAR under the composer. This
+          layer fills that reclaimed zone (and a hair above, so it seats behind
+          the composer with no seam) with the same warm home-surface tone the
+          rest of the screen uses (--launch-bg = the app's dark ember floor), so
+          the bottom reads as one continuous surface instead of a black band. It
+          is purely cosmetic (pointer-events-none, aria-hidden), sits at the very
+          back of the overlay stack (z-0, below the scrim + panel), and is only
+          needed at rest — with the keyboard up the keyboard covers this zone, and
+          full-bleed reaches the true bottom itself. A soft top fade blends it up
+          into the field so there's no hard edge where it meets the composer. */}
+      {!fullBleed && !keyboardLiftActive ? (
+        <div
+          aria-hidden="true"
+          data-testid="continuous-chat-bottom-floor"
+          className="pointer-events-none absolute inset-x-0 bottom-0 z-0"
+          style={{
+            height:
+              "calc(max(var(--safe-area-bottom, 0px), var(--android-gesture-inset-bottom, 0px)) + 1.5rem)",
+            backgroundImage:
+              "linear-gradient(to bottom, transparent 0%, var(--launch-bg) 55%)",
+          }}
+        />
+      ) : null}
       {/* Visual dimming scrim behind the open chat. It fades in WITH the reveal
           but never captures pointer events; outside taps are handled by the
           document-level detector above, and outside drags pass through to the
