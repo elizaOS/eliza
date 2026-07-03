@@ -9,10 +9,35 @@ import {
   dispatchOpenNotificationCenter,
   TRAY_ACTION_EVENT,
 } from "@elizaos/ui/events";
+import {
+  type DesktopLauncherEntry,
+  type DesktopLauncherIconId,
+  setDesktopLauncherEntries,
+} from "@elizaos/ui/state/desktop-tray-launcher";
 import { useApp } from "@elizaos/ui/state/useApp";
 import { openDesktopSettingsWindow } from "@elizaos/ui/utils/desktop-workspace";
 import { useEffect } from "react";
-import { DESKTOP_VIEW_WINDOWS, parseTrayOpenViewItemId } from "./tray-menu";
+import {
+  DESKTOP_VIEW_WINDOWS,
+  parseTrayOpenViewItemId,
+  trayOpenViewItemId,
+} from "./tray-menu";
+
+const LAUNCHER_ICON_IDS: ReadonlySet<string> = new Set<DesktopLauncherIconId>([
+  "tutorial",
+  "help",
+  "chat",
+  "character",
+  "documents",
+  "settings",
+  "background",
+]);
+
+function launcherIconForView(viewId: string): DesktopLauncherIconId {
+  return LAUNCHER_ICON_IDS.has(viewId)
+    ? (viewId as DesktopLauncherIconId)
+    : "view";
+}
 
 interface TrayActionDetail {
   itemId?: string;
@@ -39,6 +64,31 @@ export function DesktopTrayRuntime() {
     switchShellView,
     t,
   } = useApp();
+
+  // Publish the tray-popover launcher catalog to the renderer store the popover
+  // shell reads (#12184). Single source of truth stays `DESKTOP_VIEW_WINDOWS`;
+  // rows dispatch `tray-open-view-*` / `tray-show-window` through the same
+  // TRAY_ACTION_EVENT handler wired below, so no new RPC or duplicated catalog.
+  useEffect(() => {
+    if (!isElectrobunRuntime()) {
+      return;
+    }
+    const viewRows: DesktopLauncherEntry[] = DESKTOP_VIEW_WINDOWS.map(
+      (view) => ({
+        itemId: trayOpenViewItemId(view.id),
+        label: t(view.labelKey, { defaultValue: view.label }),
+        icon: launcherIconForView(view.id),
+      }),
+    );
+    setDesktopLauncherEntries([
+      {
+        itemId: "tray-show-window",
+        label: t("desktop.tray.openEliza", { defaultValue: "Open Eliza" }),
+        icon: "home",
+      },
+      ...viewRows,
+    ]);
+  }, [t]);
 
   // App menu "Reset App…" reuses the same push channel as tray `navigate-*`.
   // WHY: Electrobun already bridges `desktopTrayMenuClick`; no new IPC type needed.

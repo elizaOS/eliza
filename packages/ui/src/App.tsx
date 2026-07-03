@@ -67,6 +67,7 @@ import { ShellOverlays } from "./components/shell/ShellOverlays";
 import { StartupFailureView } from "./components/shell/StartupFailureView";
 import { StartupScreen } from "./components/shell/StartupScreen";
 import { SystemWarningBanner } from "./components/shell/SystemWarningBanner";
+import { TrayLauncher } from "./components/shell/TrayLauncher";
 import { useBarSurfaceWindows } from "./components/shell/useBarSurfaceWindows";
 import { useKioskViewSurfaces } from "./components/shell/useKioskViewSurfaces";
 import { Button } from "./components/ui/button";
@@ -477,18 +478,20 @@ function ChatOverlayShell() {
 }
 
 /**
- * Native tray popover surface (#9953 Phase 4). Renders ONLY the widget surface
- * (reusing the shell widget registry's "home" slot) inside the frameless,
- * transparent, always-on-top window the native tray anchors near its icon — no
- * app chrome. Each widget self-hides when it has nothing to show, so the popover
- * is a compact at-a-glance panel.
+ * Native tray popover surface (#9953 Phase 4 / #12184). Renders the compact
+ * launcher (the `DESKTOP_VIEW_WINDOWS` catalog + "Open Eliza", registered by
+ * the desktop host) above the shell widget registry's "home" slot inside the
+ * frameless, transparent, always-on-top window the native tray anchors near its
+ * icon — no app chrome. Each widget self-hides when it has nothing to show, so
+ * the popover is a compact at-a-glance panel + one-click launcher.
  */
 function TrayPopoverShell() {
   return (
     <div
       data-testid="tray-popover-shell"
-      className="fixed inset-0 overflow-y-auto bg-transparent p-3"
+      className="fixed inset-0 flex flex-col gap-3 overflow-y-auto bg-transparent p-3"
     >
+      <TrayLauncher />
       <WidgetHost slot="home" layout="stack" />
     </div>
   );

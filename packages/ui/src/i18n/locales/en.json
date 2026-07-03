@@ -7486,6 +7486,7 @@
   "desktop.tray.sendTestNotification": "Send Test Notification",
   "desktop.tray.showWindow": "Show Window",
   "desktop.tray.hideWindow": "Hide Window",
+  "desktop.tray.openEliza": "Open Eliza",
   "desktop.tray.quit": "Quit",
   "desktop.tray.testNotification.title": "Desktop",
   "desktop.tray.testNotification.body": "Renderer tray actions are wired and responding.",
