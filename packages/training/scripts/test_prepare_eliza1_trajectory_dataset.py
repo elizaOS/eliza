@@ -356,6 +356,96 @@ def test_prepare_keeps_requested_success_splits_non_empty(tmp_path: Path) -> Non
     assert len(_read_jsonl(out_dir / "test.jsonl")) == 1
 
 
+def _dup_native_row(trajectory_id: str) -> dict:
+    """A successful native row with a fixed (request, response) boundary. Only
+    provenance (trajectoryId) varies, so dedup — which keys on content, not
+    identity — must collapse repeats to one."""
+    return {
+        "format": "eliza_native_v1",
+        "boundary": "vercel_ai_sdk.generateText",
+        "status": "completed",
+        "trajectoryId": trajectory_id,
+        "stepIndex": 0,
+        "request": {"messages": [{"role": "user", "content": "what is 2+2?"}]},
+        "response": {
+            "text": "4",
+            "usage": {"promptTokens": 5, "completionTokens": 1},
+        },
+        "metadata": {"source_dataset": "unit_dedup"},
+    }
+
+
+def test_prepare_dedupes_identical_native_rows(tmp_path: Path) -> None:
+    """Repeated scenario/benchmark runs replay the same boundary; by default the
+    corpus MUST NOT accumulate exact-duplicate eliza_native_v1 rows."""
+    source = tmp_path / "dupes.jsonl"
+    _write_jsonl(
+        source,
+        [
+            _dup_native_row("traj-a"),
+            _dup_native_row("traj-b"),  # identical (request,response), diff id
+            _dup_native_row("traj-c"),  # identical again
+        ],
+    )
+    out_dir = tmp_path / "out"
+
+    code = prepare_main(
+        ["--input", str(source), "--output-dir", str(out_dir),
+         "--val-ratio", "0", "--test-ratio", "0"]
+    )
+    assert code == 0
+
+    train = _read_jsonl(out_dir / "train.jsonl")
+    assert len(train) == 1, "only the first of three identical rows should survive"
+    assert train[0]["response"]["text"] == "4"
+
+    manifest = json.loads((out_dir / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["droppedDuplicateNativeRows"] == 2
+    assert manifest["counts"]["train"] == 1
+
+
+def test_prepare_no_dedup_keeps_duplicates(tmp_path: Path) -> None:
+    """--no-dedup is the escape hatch: all three identical rows are kept."""
+    source = tmp_path / "dupes.jsonl"
+    _write_jsonl(
+        source,
+        [_dup_native_row("traj-a"), _dup_native_row("traj-b"), _dup_native_row("traj-c")],
+    )
+    out_dir = tmp_path / "out"
+
+    code = prepare_main(
+        ["--input", str(source), "--output-dir", str(out_dir),
+         "--val-ratio", "0", "--test-ratio", "0", "--no-dedup"]
+    )
+    assert code == 0
+
+    train = _read_jsonl(out_dir / "train.jsonl")
+    assert len(train) == 3
+    manifest = json.loads((out_dir / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["droppedDuplicateNativeRows"] == 0
+
+
+def test_prepare_dedup_keeps_distinct_boundaries(tmp_path: Path) -> None:
+    """Dedup must not over-collapse: two rows with different responses are both
+    kept."""
+    row_a = _dup_native_row("traj-a")
+    row_b = _dup_native_row("traj-b")
+    row_b["response"]["text"] = "22"  # distinct boundary
+    source = tmp_path / "distinct.jsonl"
+    _write_jsonl(source, [row_a, row_b])
+    out_dir = tmp_path / "out"
+
+    code = prepare_main(
+        ["--input", str(source), "--output-dir", str(out_dir),
+         "--val-ratio", "0", "--test-ratio", "0"]
+    )
+    assert code == 0
+    train = _read_jsonl(out_dir / "train.jsonl")
+    assert len(train) == 2
+    manifest = json.loads((out_dir / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["droppedDuplicateNativeRows"] == 0
+
+
 def test_prepare_strict_privacy_fails_on_any_redaction(tmp_path: Path) -> None:
     source = tmp_path / "native-private.jsonl"
     _write_jsonl(

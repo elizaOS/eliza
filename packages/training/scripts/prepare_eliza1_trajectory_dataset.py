@@ -1065,12 +1065,40 @@ class PrepStats:
     seen: int = 0
     produced: int = 0
     skipped: int = 0
+    dropped_dup: int = 0
     privacy_redactions: int = 0
     privacy_anonymizations: int = 0
     credential_hits: Counter[str] = field(default_factory=Counter)
     source_counts: Counter[str] = field(default_factory=Counter)
     task_counts: Counter[str] = field(default_factory=Counter)
     action_counts: Counter[str] = field(default_factory=Counter)
+
+
+def native_content_key(record: dict[str, Any]) -> str | None:
+    """Content hash of a produced record's (request, response), for `eliza_
+    native_v1` dedup.
+
+    Repeated scenario/benchmark runs replay the same prompt and produce the same
+    model boundary, so identical native rows accumulate across runs. Legacy
+    `transform_dedup_records.py` dedupes the flat format on
+    (currentMessage, expectedResponse); native rows had no equivalent. This
+    keys on the canonical native projection's `request` + `response` (the model
+    boundary that actually becomes a training row) — provenance/metadata is
+    excluded so two identical boundaries from different runs collapse to one.
+
+    Returns None for records that don't convert to a native row (they are not
+    training rows, so nothing to dedup against).
+    """
+    native = trajectory_record_to_eliza_native(record)
+    if native is None:
+        return None
+    payload = json.dumps(
+        {"request": native.get("request"), "response": native.get("response")},
+        sort_keys=True,
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 def _stats_int(stats: Any, *names: str) -> int:
@@ -1332,6 +1360,8 @@ def prepare(args: argparse.Namespace) -> tuple[dict[str, list[dict[str, Any]]], 
     splits: dict[str, list[dict[str, Any]]] = {"train": [], "val": [], "test": [], "repair_eval": []}
     stats = PrepStats()
     max_records = int(args.max_records or 0)
+    dedup_native = not getattr(args, "no_dedup", False)
+    seen_native: set[str] = set()
 
     for path in iter_input_files(args.input):
         if not path.exists():
@@ -1390,6 +1420,13 @@ def prepare(args: argparse.Namespace) -> tuple[dict[str, list[dict[str, Any]]], 
                 continue
 
             for record in produced:
+                if dedup_native:
+                    content_key = native_content_key(record)
+                    if content_key is not None:
+                        if content_key in seen_native:
+                            stats.dropped_dup += 1
+                            continue
+                        seen_native.add(content_key)
                 if record["quality"]["success"]:
                     split = split_success_record(
                         record,
@@ -1469,6 +1506,7 @@ def prepare(args: argparse.Namespace) -> tuple[dict[str, list[dict[str, Any]]], 
         "seenRecords": stats.seen,
         "producedRecords": stats.produced,
         "skippedRecords": stats.skipped,
+        "droppedDuplicateNativeRows": stats.dropped_dup,
         "sourceCounts": dict(sorted(stats.source_counts.items())),
         "taskCounts": dict(sorted(stats.task_counts.items())),
         "actionCounts": dict(sorted(stats.action_counts.items())),
@@ -1533,6 +1571,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--lifeops-success-threshold", type=float, default=0.99)
     parser.add_argument("--strict-privacy", action="store_true")
+    parser.add_argument(
+        "--no-dedup",
+        action="store_true",
+        help="Disable content-hash dedup of eliza_native_v1 rows. By default, "
+        "rows whose (request, response) boundary is identical to an "
+        "already-emitted row are dropped so repeated scenario/benchmark runs "
+        "do not inflate the corpus with exact duplicates.",
+    )
     parser.add_argument("--verbose", "-v", action="store_true")
     return parser
 
