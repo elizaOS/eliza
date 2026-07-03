@@ -45,7 +45,12 @@ export function extractFirstSentence(text: string): {
 				// "e.g" — the "e.g"/"i.e" list entries were dead and those got split
 				// mid-token (the first-sentence / TTS early-emit path chopped "e.g."
 				// into "e."). Strip a trailing dot before comparing to the list.
-				const lastWordMatch = preText.match(/(?:^|\s)([\w.]+)$/);
+				// No prefix anchor: leftmost matching captures the maximal trailing
+				// [\w.] run, and any other char (space, quote, paren, asterisk, dash)
+				// or start-of-string delimits it — a (?:^|\s) anchor rejected
+				// punctuation-preceded abbreviations ('"Dr' / '(Mr') that the
+				// original \b handled, chopping mid-name.
+				const lastWordMatch = preText.match(/([\w.]+)$/);
 
 				let isAbbreviation = false;
 				if (lastWordMatch) {
