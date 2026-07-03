@@ -41,7 +41,11 @@ import {
   CloudI18nProvider,
   resolveInitialCloudLang,
 } from "./CloudI18nProvider";
-import { type CloudRouteDef, listCloudRoutes } from "./cloud-route-registry";
+import {
+  type CloudRouteDef,
+  getCloudRouteGate,
+  listCloudRoutes,
+} from "./cloud-route-registry";
 import { StewardAuthProvider } from "./StewardProvider";
 
 /**
@@ -144,6 +148,36 @@ function renderRouteElement(
   );
 }
 
+/** Fail-closed denial when a route declares a gate with no registered impl. */
+function RouteGateUnavailable(): React.JSX.Element {
+  return (
+    <div className="theme-cloud min-h-dvh bg-black text-white">
+      <div className="mx-auto max-w-prose p-8 text-sm text-white/62">
+        <h1 className="mb-3 text-lg font-semibold text-white">
+          Access unavailable
+        </h1>
+        <p>This area could not be authorized.</p>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Apply a route's declared `gate` (#12087 Item 23). The shell — not each route
+ * body — enforces authorization: a route declaring `gate: "admin"` is wrapped in
+ * the registered `AdminGate` even if its own body forgot to. An unknown gate
+ * name fails closed (renders a denial, never the body).
+ */
+export function applyRouteGate(
+  gate: string | undefined,
+  body: ReactNode,
+): ReactNode {
+  if (!gate) return body;
+  const Gate = getCloudRouteGate(gate);
+  if (!Gate) return <RouteGateUnavailable />;
+  return <Gate>{body}</Gate>;
+}
+
 /**
  * Transparent in-flight fallback for a lazy route chunk. Cloud pages supply
  * their own richer skeletons; this just fills the slot for the cold-load gap.
@@ -194,9 +228,9 @@ function CloudRouteElement({
 }: {
   route: CloudRouteDef;
 }): React.JSX.Element {
-  const body = renderRouteElement(route.element);
+  const body = applyRouteGate(route.gate, renderRouteElement(route.element));
   if (route.public) {
-    return body;
+    return <>{body}</>;
   }
   return (
     <StewardAuthProvider>
