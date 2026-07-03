@@ -74,7 +74,6 @@ export * from "./features/advanced-memory";
 export * from "./features/basic-capabilities/index";
 export * from "./features/credential-proxy/index.ts";
 export * from "./features/documents/index";
-export * from "./features/subscription-auth/index.ts";
 export type {
 	DraftRecord,
 	DraftRequest,
@@ -146,6 +145,7 @@ export {
 	secretsManagerPlugin,
 } from "./features/secrets/index.ts";
 export * from "./features/sub-agent-credentials/index";
+export * from "./features/subscription-auth/index.ts";
 // Export generated action/provider/evaluator specs from centralized prompts
 export * from "./generated/action-docs";
 export * from "./generated/spec-helpers";
@@ -188,6 +188,7 @@ export {
 	normalizeActionName,
 	type RuntimeActionLike,
 } from "./runtime/action-catalog";
+export { warnOnUnmatchedActionRolePolicyKeys } from "./runtime/action-role-policy";
 export * from "./runtime/builtin-field-evaluators";
 export * from "./runtime/cleanup-scope";
 export * from "./runtime/context-gates";
