@@ -179,6 +179,12 @@ export class PermissionRegistry
     return withRequest;
   }
 
+  async openSettings(id: PermissionId): Promise<boolean> {
+    const prober = this.probers.get(id);
+    if (!prober?.openSettings) return false;
+    return prober.openSettings();
+  }
+
   recordBlock(
     id: PermissionId,
     feature: { app: string; action: string },

@@ -46,6 +46,7 @@ function fakeRegistry(state: Partial<PermissionState> = {}): {
     ),
     check: vi.fn(),
     request: vi.fn(),
+    openSettings: vi.fn(async () => false),
     recordBlock,
     list: vi.fn(() => []),
     pending: vi.fn(() => []),

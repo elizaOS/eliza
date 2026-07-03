@@ -138,6 +138,29 @@ describe("PermissionRegistry", () => {
     expect(prober.requestMock).toHaveBeenCalledWith({ reason: "Need access" });
   });
 
+  it("delegates openSettings() to a registered prober when available", async () => {
+    const persistence = new InMemoryPersistence();
+    const registry = makeRegistry(persistence);
+    const prober = makeProber("website-blocking");
+    const openSettings = vi.fn(async () => true);
+    registry.registerProber({ ...prober, openSettings });
+
+    await expect(registry.openSettings("website-blocking")).resolves.toBe(true);
+
+    expect(openSettings).toHaveBeenCalledOnce();
+  });
+
+  it("returns false for openSettings() when no hook is registered", async () => {
+    const persistence = new InMemoryPersistence();
+    const registry = makeRegistry(persistence);
+    registry.registerProber(makeProber("website-blocking"));
+
+    await expect(registry.openSettings("website-blocking")).resolves.toBe(
+      false,
+    );
+    await expect(registry.openSettings("camera")).resolves.toBe(false);
+  });
+
   it("recordBlock() updates lastBlockedFeature without a prober and persists", () => {
     const persistence = new InMemoryPersistence();
     const registry = makeRegistry(persistence);

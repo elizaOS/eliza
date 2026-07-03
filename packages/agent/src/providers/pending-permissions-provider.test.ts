@@ -13,6 +13,7 @@ function makeRegistry(pending: PermissionState[]): IPermissionsRegistry {
     get: vi.fn(),
     check: vi.fn(),
     request: vi.fn(),
+    openSettings: vi.fn(async () => false),
     recordBlock: vi.fn(),
     list: vi.fn(() => pending),
     pending: vi.fn(() => pending),

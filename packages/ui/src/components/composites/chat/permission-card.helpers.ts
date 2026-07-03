@@ -142,6 +142,9 @@ export function createClientPermissionsRegistry(
         },
       });
     },
+    async openSettings() {
+      return false;
+    },
     recordBlock(id, feature) {
       const current = states.get(id) ?? defaultStateFor(id);
       commit({

@@ -29,6 +29,7 @@ function makeRegistry(
     subscribe: vi.fn(() => () => {}),
     registerProber: vi.fn(),
     ...overrides,
+    openSettings: overrides.openSettings ?? vi.fn(async () => false),
   };
 }
 

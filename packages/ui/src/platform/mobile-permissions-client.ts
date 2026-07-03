@@ -888,6 +888,14 @@ export function createMobileSignalsPermissionsRegistry(
         },
       });
     },
+    async openSettings(id) {
+      const result = await openMobilePermissionSettings(
+        id,
+        plugin,
+        native.system,
+      );
+      return result?.opened === true;
+    },
     recordBlock(id, feature: PermissionFeatureRef) {
       const current =
         states.get(id) ?? defaultMobileState(id, "not-determined");

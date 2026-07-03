@@ -15,6 +15,11 @@ import {
   registerSendPolicy,
   type State,
 } from "@elizaos/core";
+import {
+  getSelfControlPermissionState,
+  openSelfControlPermissionLocation,
+  requestSelfControlPermission,
+} from "@elizaos/plugin-blocker/services/website-blocker/index";
 import { BrowserBridgeAdapter } from "@elizaos/plugin-browser";
 import {
   calendarPlugin,
@@ -38,6 +43,7 @@ import { inboxPlugin } from "@elizaos/plugin-inbox/plugin";
 import { remindersPlugin } from "@elizaos/plugin-reminders";
 import { remoteDesktopPlugin } from "@elizaos/plugin-remote-desktop";
 import { XDmAdapter } from "@elizaos/plugin-x/lifeops-message-adapter";
+import type { IPermissionsRegistry, Prober } from "@elizaos/shared";
 import { blockAction } from "./actions/block.js";
 import { briefAction } from "./actions/brief.js";
 import { calendarAction } from "./actions/calendar.js";
@@ -175,6 +181,7 @@ import {
 
 const GOOGLE_CONNECTOR_PLUGIN_PACKAGE = "@elizaos/plugin-google";
 const GOOGLE_CONNECTOR_PLUGIN_NAME = "google";
+const PERMISSIONS_REGISTRY_SERVICE = "eliza_permissions_registry";
 
 type LifeOpsMessageActionHookArgs = {
   operation: string;
@@ -184,6 +191,36 @@ type LifeOpsMessageActionHookArgs = {
   options?: HandlerOptions;
   callback?: HandlerCallback;
 };
+
+function isPermissionsRegistry(value: unknown): value is IPermissionsRegistry {
+  return (
+    !!value &&
+    typeof value === "object" &&
+    typeof (value as { get?: unknown }).get === "function" &&
+    typeof (value as { check?: unknown }).check === "function" &&
+    typeof (value as { request?: unknown }).request === "function" &&
+    typeof (value as { openSettings?: unknown }).openSettings === "function" &&
+    typeof (value as { registerProber?: unknown }).registerProber === "function"
+  );
+}
+
+const websiteBlockingPermissionProber: Prober = {
+  id: "website-blocking",
+  check: getSelfControlPermissionState,
+  request: async () => requestSelfControlPermission(),
+  openSettings: openSelfControlPermissionLocation,
+};
+
+export function registerLifeOpsWebsiteBlockingPermissionProber(
+  runtime: IAgentRuntime,
+): boolean {
+  const service = runtime.getService(PERMISSIONS_REGISTRY_SERVICE);
+  if (!isPermissionsRegistry(service)) {
+    return false;
+  }
+  service.registerProber(websiteBlockingPermissionProber);
+  return true;
+}
 
 function getMessageText(message: Memory): string {
   return typeof message.content.text === "string" ? message.content.text : "";
@@ -884,6 +921,8 @@ const rawPersonalAssistantPlugin: Plugin = {
         `[lifeops] LIFEOPS_USE_MOCKOON=1 — redirecting ${mockoonApplied.length} connector base URL(s) to mock servers`,
       );
     }
+
+    registerLifeOpsWebsiteBlockingPermissionProber(runtime);
 
     await ensureLifeOpsGooglePluginRegistered(runtime);
     await ensureLifeOpsCalendarPluginRegistered(runtime);
