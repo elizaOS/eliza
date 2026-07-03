@@ -10,6 +10,12 @@ const minutes = (expr: string): number[] => {
 	return Array.from(schedule.minute).sort((a, b) => a - b);
 };
 
+const daysOfWeek = (expr: string): number[] => {
+	const schedule = parseCronExpression(expr);
+	if (!schedule) throw new Error(`expected ${expr} to parse`);
+	return Array.from(schedule.dayOfWeek).sort((a, b) => a - b);
+};
+
 describe("parseCronExpression - minute field", () => {
 	it("expands `N/step` from N to the field max (regression: previously dropped the step)", () => {
 		// `5/15` means 5,20,35,50 — not just [5].
@@ -36,6 +42,36 @@ describe("parseCronExpression - minute field", () => {
 		expect(parseCronExpression("*/0 * * * *")).toBeNull(); // zero step
 		expect(parseCronExpression("1-2-3 * * * *")).toBeNull(); // bad range
 		expect(parseCronExpression("* * * *")).toBeNull(); // too few fields
+	});
+});
+
+describe("parseCronExpression - day-of-week Sunday alias (7 == 0)", () => {
+	// POSIX/Vixie cron accepts BOTH 0 and 7 for Sunday, and LLMs commonly emit
+	// `7`. Previously the dayOfWeek range was capped at 6, so `7` (and any range
+	// or step touching it) hard-failed trigger creation.
+	it("accepts a bare `7` and folds it onto Sunday (0)", () => {
+		expect(daysOfWeek("0 0 * * 7")).toEqual([0]);
+	});
+
+	it("accepts ranges ending in `7` (e.g. `5-7` = Fri/Sat/Sun)", () => {
+		expect(daysOfWeek("0 0 * * 5-7")).toEqual([0, 5, 6]);
+		expect(daysOfWeek("0 0 * * 0-7")).toEqual([0, 1, 2, 3, 4, 5, 6]);
+	});
+
+	it("accepts `7` inside a comma list and dedupes against a literal 0", () => {
+		expect(daysOfWeek("0 0 * * 0,7")).toEqual([0]);
+		expect(daysOfWeek("0 0 * * 1,7")).toEqual([0, 1]);
+	});
+
+	it("still accepts the canonical `0` for Sunday", () => {
+		expect(daysOfWeek("0 0 * * 0")).toEqual([0]);
+	});
+
+	it("does not accept `7` in fields where it is not a Sunday alias", () => {
+		// minute/hour ranges are unchanged: `7` is a valid minute but the
+		// Sunday-alias relaxation must not bleed into other fields.
+		expect(parseCronExpression("0 0 * * 8")).toBeNull(); // dow out of range
+		expect(parseCronExpression("0 0 * 13 *")).toBeNull(); // month still max 12
 	});
 });
 

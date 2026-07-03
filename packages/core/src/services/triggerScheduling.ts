@@ -20,6 +20,12 @@ const MAX_REPRESENTABLE_MS = 8_640_000_000_000_000;
 interface CronRange {
 	min: number;
 	max: number;
+	/**
+	 * POSIX/Vixie cron accepts `7` as an alias for Sunday (`0`) in the
+	 * day-of-week field. LLMs commonly emit `7`, so where this is set the
+	 * parser accepts `7` (single, range end, or step) and folds it onto `0`.
+	 */
+	sundayIsSeven?: boolean;
 }
 
 interface CronSchedule {
@@ -44,7 +50,7 @@ const CRON_RANGES: readonly CronRange[] = [
 	{ min: 0, max: 23 },
 	{ min: 1, max: 31 },
 	{ min: 1, max: 12 },
-	{ min: 0, max: 6 },
+	{ min: 0, max: 6, sundayIsSeven: true },
 ];
 
 function parseInteger(raw: string): number | null {
@@ -63,6 +69,14 @@ function clamp(value: number, min: number, max: number): number {
 function parseCronPart(part: string, range: CronRange): Set<number> | null {
 	const output = new Set<number>();
 	const chunks = part.split(",");
+
+	// `7` is a legal Sunday alias in the day-of-week field. Accept it up to
+	// `max + 1` during bounds checks and fold it back onto `min` (0) on insert,
+	// so `7`, `5-7`, and `7/step` all resolve to Sunday without duplicating a
+	// day. For every other field `foldValue` is the identity.
+	const upperBound = range.sundayIsSeven ? range.max + 1 : range.max;
+	const foldValue = (value: number): number =>
+		range.sundayIsSeven && value === range.max + 1 ? range.min : value;
 
 	for (const chunkRaw of chunks) {
 		const chunk = chunkRaw.trim();
@@ -86,12 +100,12 @@ function parseCronPart(part: string, range: CronRange): Set<number> | null {
 		if (rangeParts.length === 1) {
 			const single = parseInteger(rangeParts[0].trim());
 			if (single === null) return null;
-			if (single < range.min || single > range.max) return null;
+			if (single < range.min || single > upperBound) return null;
 			// `N/step` (e.g. `5/15`) means "from N to the range max, stepping by
 			// step" — standard cron. Without a step it is just the single value.
-			const upper = stepParts.length === 2 ? range.max : single;
+			const upper = stepParts.length === 2 ? upperBound : single;
 			for (let value = single; value <= upper; value += step) {
-				output.add(value);
+				output.add(foldValue(value));
 			}
 			continue;
 		}
@@ -101,9 +115,9 @@ function parseCronPart(part: string, range: CronRange): Set<number> | null {
 		const end = parseInteger(rangeParts[1].trim());
 		if (start === null || end === null) return null;
 		if (start > end) return null;
-		if (start < range.min || end > range.max) return null;
+		if (start < range.min || end > upperBound) return null;
 		for (let value = start; value <= end; value += step) {
-			output.add(value);
+			output.add(foldValue(value));
 		}
 	}
 
