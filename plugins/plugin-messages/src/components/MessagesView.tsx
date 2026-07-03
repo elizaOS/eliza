@@ -14,7 +14,7 @@ import type { SmsMessageSummary } from "@elizaos/capacitor-messages";
 import { Messages } from "@elizaos/capacitor-messages";
 import { System, type SystemStatus } from "@elizaos/capacitor-system";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
-import { consumePendingMessageRecipient } from "@elizaos/ui/app-navigate-view";
+import { consumeNavigateViewPayload } from "@elizaos/ui/app-navigate-view";
 import { Button } from "@elizaos/ui/components/ui/button";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -23,6 +23,18 @@ import {
   MessagesSpatialView,
 } from "./MessagesSpatialView.tsx";
 import { buildThreads, smsRole } from "./messages-view-helpers.ts";
+
+type MessagesNavigatePayload = {
+  recipient?: unknown;
+};
+
+function consumeMessagesNavigateRecipient(): string | null {
+  const payload =
+    consumeNavigateViewPayload<MessagesNavigatePayload>("messages");
+  return typeof payload?.recipient === "string"
+    ? payload.recipient.trim()
+    : null;
+}
 
 export function MessagesView() {
   const [messages, setMessages] = useState<SmsMessageSummary[]>([]);
@@ -75,7 +87,7 @@ export function MessagesView() {
   // control that navigated here with a number). Single-shot: the recipient is
   // consumed so a later plain navigation does not re-seed a stale "To" field.
   useEffect(() => {
-    const pending = consumePendingMessageRecipient();
+    const pending = consumeMessagesNavigateRecipient();
     if (pending) {
       setSelectedThreadId(null);
       setComposeAddress(pending);

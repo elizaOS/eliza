@@ -20,10 +20,6 @@ import {
 import type { OverlayAppContext } from "@elizaos/ui";
 import { Button, Input } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
-import {
-  navigateToMessagesWithNumber,
-  navigateToPhoneWithNumber,
-} from "@elizaos/ui/app-navigate-view";
 import { PermissionRecoveryCallout } from "@elizaos/ui/components";
 import { isNative } from "@elizaos/ui/platform";
 import {
@@ -61,6 +57,32 @@ const EMPTY_FORM: NewContactForm = {
   phoneNumber: "",
   emailAddress: "",
 };
+
+function navigateToPhoneWithNumber(number: string): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(
+    new CustomEvent("eliza:navigate:view", {
+      detail: {
+        viewId: "phone",
+        viewPath: "/phone",
+        payload: { number },
+      },
+    }),
+  );
+}
+
+function navigateToMessagesWithNumber(recipient: string): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(
+    new CustomEvent("eliza:navigate:view", {
+      detail: {
+        viewId: "messages",
+        viewPath: "/messages",
+        payload: { recipient },
+      },
+    }),
+  );
+}
 
 function getInitials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);

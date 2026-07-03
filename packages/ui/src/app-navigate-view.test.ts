@@ -2,6 +2,7 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  consumeNavigateViewPayload,
   createNavigateViewHandler,
   type DesktopBridgeRequest,
   directTabForNavigateView,
@@ -401,6 +402,22 @@ describe("App navigate-view shell handler", () => {
     expect(
       JSON.parse(window.localStorage.getItem("elizaos.views.recent") ?? "[]"),
     ).toEqual(["local-notes"]);
+  });
+
+  it("stores generic one-shot payloads for target views", () => {
+    const fixture = createHandlerFixture();
+
+    fixture.handler(
+      navigateEvent({
+        viewId: "remote-ledger",
+        payload: { rowId: "row-7" },
+      }),
+    );
+
+    expect(
+      consumeNavigateViewPayload<{ rowId: string }>("remote-ledger"),
+    ).toEqual({ rowId: "row-7" });
+    expect(consumeNavigateViewPayload("remote-ledger")).toBeNull();
   });
 
   it("navigates browser history for normal view navigation", () => {

@@ -32,6 +32,7 @@ const phoneBridge = vi.hoisted(() => ({
 
 vi.mock("@elizaos/capacitor-phone", () => ({ Phone: phoneBridge }));
 
+import { __setNavigateViewPayloadForTests } from "@elizaos/ui/app-navigate-view";
 import { PhoneView } from "./PhoneView";
 
 function makeCall(over: Record<string, unknown>) {
@@ -101,6 +102,19 @@ afterEach(() => {
 });
 
 describe("PhoneView — unified GUI/XR dialer", () => {
+  it("prefills the dialer from a generic navigation payload", async () => {
+    __setNavigateViewPayloadForTests("phone", { number: " +1 (555) 0100 " });
+
+    render(React.createElement(PhoneView));
+    await screen.findByText("Ada Lovelace");
+
+    expect(
+      Array.from(document.querySelectorAll('[data-spatial-kind="text"]')).some(
+        (n) => n.textContent === "+15550100",
+      ),
+    ).toBe(true);
+  });
+
   it("builds a multi-digit number across keys and places the normalized call", async () => {
     render(React.createElement(PhoneView));
     await screen.findByText("Ada Lovelace");

@@ -43,6 +43,7 @@ vi.mock("@elizaos/capacitor-system", () => ({
   },
 }));
 
+import { __setNavigateViewPayloadForTests } from "@elizaos/ui/app-navigate-view";
 import { MessagesView } from "./MessagesView";
 
 // Real-shaped SmsMessageSummary rows. type 1 = inbound, 2 = sent.
@@ -142,6 +143,19 @@ describe("MessagesView — unified GUI/XR thread list", () => {
 });
 
 describe("MessagesView — compose and send", () => {
+  it("prefills the composer from a generic navigation payload", async () => {
+    __setNavigateViewPayloadForTests("messages", {
+      recipient: " +15550400 ",
+    });
+
+    render(React.createElement(MessagesView));
+    await screen.findByText("+15550200");
+
+    expect((field("compose-address") as HTMLInputElement).value).toBe(
+      "+15550400",
+    );
+  });
+
   it("composes an address + body and sends the trimmed SMS via the bridge", async () => {
     render(React.createElement(MessagesView));
     await screen.findByText("+15550200");
