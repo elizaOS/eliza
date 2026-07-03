@@ -40,4 +40,21 @@
 [7] Lint:
     $ bunx biome check <8 touched files>            → clean, no fixes
 
-[8] Root verify: see PR body (run after full workspace build).
+[8] Root verify (expanded — the one-shot `bun run verify` crashed twice on this
+    host with SIGSEGV/SIGBUS during the 8-way parallel fan-out, both times in
+    unrelated packages; each phase run separately at --concurrency=4):
+    $ bun run audit:type-safety-ratchet                     → PASS
+      (baseline can shrink: as unknown as 75->74, `?? {}` 377->375 — develop drift, not this branch)
+    $ node packages/scripts/run-turbo.mjs run typecheck lint --concurrency=4 \
+        --filter='!@elizaos/example-code'                   → 485/485 tasks successful
+      (required clearing an inherited @elizaos/ui#lint red present on
+       origin/develop a747ced409 in two files this branch never touched —
+       mechanical biome --write fix committed separately)
+    $ bun run audit:build-model                             → PASS
+    $ bun run audit:turbo-build-deps                        → PASS
+    $ bun run audit:tee-secret-leak                         → PASS
+    $ bun run audit:scripts                                 → PASS
+    $ bun run audit:test-realness                           → PASS
+    $ bun run typecheck:dist                                → PASS (28 consumer configs)
+      (required regenerating tsconfig.dist-paths.json — stale on origin/develop
+       since packages/import-conversations landed; committed separately)
