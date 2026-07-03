@@ -81,7 +81,7 @@ export interface AgentStatusRouteDeps {
     config: ElizaConfig,
   ) => string | undefined;
   resolveProviderFromModel: (model: string) => string | null;
-  getGlobalAwarenessRegistry: () => AwarenessRegistryLike | null;
+  getAwarenessRegistry: () => AwarenessRegistryLike | null;
   RegistryService: RegistryServiceStatic;
 }
 
@@ -150,7 +150,7 @@ export async function handleAgentStatusRoutes(
     const automationMode = capability.automationMode;
 
     let registrySummary: string | null = null;
-    const registry = deps.getGlobalAwarenessRegistry();
+    const registry = deps.getAwarenessRegistry();
     if (registry && state.runtime) {
       try {
         registrySummary = await registry.composeSummary(state.runtime);

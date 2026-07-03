@@ -42,16 +42,6 @@ interface CacheEntry {
   expiresAt: number;
 }
 
-let _globalRegistry: AwarenessRegistry | null = null;
-
-export function setGlobalAwarenessRegistry(registry: AwarenessRegistry): void {
-  _globalRegistry = registry;
-}
-
-export function getGlobalAwarenessRegistry(): AwarenessRegistry | null {
-  return _globalRegistry;
-}
-
 export class AwarenessRegistry {
   private readonly contributors: AwarenessContributor[] = [];
   private readonly contributorIds = new Set<string>();

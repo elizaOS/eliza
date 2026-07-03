@@ -341,7 +341,6 @@ function getPluginRegistryApi(): Promise<
   return pluginRegistryApiPromise;
 }
 
-import { getGlobalAwarenessRegistry } from "../awareness/registry.ts";
 import {
   type ElizaConfig,
   loadElizaConfig,
@@ -3053,9 +3052,9 @@ async function handleRequest(
               detectRuntimeModel,
             ),
           resolveProviderFromModel,
-          getGlobalAwarenessRegistry: coerce<
-            AgentStatusRouteArg["deps"]["getGlobalAwarenessRegistry"]
-          >(getGlobalAwarenessRegistry),
+          getAwarenessRegistry: coerce<
+            AgentStatusRouteArg["deps"]["getAwarenessRegistry"]
+          >(() => state.runtime?.getService("AWARENESS_REGISTRY") ?? null),
           RegistryService,
         },
       });

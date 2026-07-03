@@ -27,7 +27,6 @@ import type {
 import { logger } from "@elizaos/core";
 import {
   type AwarenessRegistry,
-  getGlobalAwarenessRegistry,
   getValidationKeywordTerms,
   isSelfEditEnabled,
   requestRestart,
@@ -199,12 +198,8 @@ async function selfStatusOp(
   runtime: IAgentRuntime,
   params: RuntimeParams,
 ): Promise<ActionResult> {
-  const registry = (() => {
-    const service = runtime.getService("AWARENESS_REGISTRY");
-    return isAwarenessRegistry(service)
-      ? service
-      : getGlobalAwarenessRegistry();
-  })();
+  const service = runtime.getService("AWARENESS_REGISTRY");
+  const registry = isAwarenessRegistry(service) ? service : null;
   if (!registry) {
     return fail("self_status", "Self-awareness registry is not available.");
   }
