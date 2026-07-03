@@ -210,6 +210,26 @@ describe("LiveDiarizationSession echo reference", () => {
 			expect(status.aec.playbackFramesReceived).toBe(1);
 			expect(status.aec.playbackSamplesReceived).toBe(320);
 		});
+
+		it("ingest() still captures AEC evidence when the fused diarizer cannot build (#11373 iOS)", async () => {
+			// On builds that ship no fused voice lib the diarizer never builds, but
+			// the AEC evidence transport must still work — otherwise on-device
+			// aec-capture is impossible (the whole reason iOS could not capture).
+			const session = new LiveDiarizationSession(fakeRuntime());
+			session.armAecCapture(2);
+			session.pushPlayback([playbackFrame(noise(320), 0)]);
+
+			// ingest must NOT throw despite the deterministic build failure.
+			await session.ingest([playbackFrame(noise(320), 0)]);
+			await session.ingest([playbackFrame(noise(320), 1)]);
+
+			const snap = session.aecCaptureSnapshot();
+			expect(snap.sampleCount).toBe(640);
+			const status = await session.status();
+			expect(status.ready).toBe(false); // diarizer never built
+			expect(status.framesReceived).toBe(2); // but frames were ingested
+			expect(typeof status.error).toBe("string"); // build failure surfaced
+		});
 	});
 
 	it("self-calibrates playback-to-mic delay from correlated echo", () => {

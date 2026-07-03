@@ -18,7 +18,7 @@
  */
 
 import { execFileSync, spawn } from "node:child_process";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 const argvArg = (name) => {
@@ -28,6 +28,14 @@ const argvArg = (name) => {
 const SERIAL = argvArg("--serial") ?? "emulator-5554";
 const OUT = path.resolve(argvArg("--out") ?? ".");
 const SKIP_DOUBLE_TALK = process.argv.includes("--skip-double-talk");
+// Far-end speech played through the DEVICE speaker instead of on-device TTS —
+// for builds where the local TTS engine is not provisioned (e.g. the emulator,
+// which ships no eliza-1/kokoro bundle). Passed to the harness as an
+// `audioUrl` data: URL (a data URL, not http, so the https://localhost WebView
+// never trips mixed-content blocking). The acoustic loop — device speaker →
+// air → device mic — and the production /api/voice/* transport are unchanged;
+// only the speech source differs.
+const FAR_END_WAV = argvArg("--far-end-wav");
 const CDP_PORT = 9223;
 mkdirSync(OUT, { recursive: true });
 
@@ -110,13 +118,33 @@ async function pullLargeString(pageExpr) {
   return out;
 }
 
+/** Push the far-end WAV to the page as a data: URL under window.__aecFarUrl.
+ * Chunked so the CDP eval payload stays small. Returns the JS expression that
+ * reads it back (or `undefined` when no far-end WAV was given → on-device TTS). */
+async function stageFarEndUrl() {
+  if (!FAR_END_WAV) return "undefined";
+  const b64 = readFileSync(path.resolve(FAR_END_WAV)).toString("base64");
+  const dataUrl = `data:audio/wav;base64,${b64}`;
+  await evalJs(`window.__aecFarUrl = ""; void 0`);
+  const CHUNK = 256 * 1024;
+  for (let off = 0; off < dataUrl.length; off += CHUNK) {
+    const part = dataUrl.slice(off, off + CHUNK);
+    await evalJs(
+      `window.__aecFarUrl += ${JSON.stringify(part)}; void 0`,
+    );
+  }
+  const len = await evalJs(`window.__aecFarUrl.length`);
+  log(`staged far-end data URL (${len} chars) from ${FAR_END_WAV}`);
+  return "window.__aecFarUrl";
+}
+
 // ── Run one loop pass ──────────────────────────────────────────────────────
-async function runPass({ tag, doubleTalkText }) {
+async function runPass({ tag, doubleTalkText, farUrlExpr }) {
   log(`pass "${tag}": starting`);
   await evalJs(`window.__aecCapJson = null; void 0`);
   // Kick the run without awaiting it over CDP (long-running), stash JSON.
   await evalJs(
-    `window.__aecRun = window.__aecLoop.run({ tag: ${JSON.stringify(tag)}, maxSeconds: 30, skipFileSink: true })
+    `window.__aecRun = window.__aecLoop.run({ tag: ${JSON.stringify(tag)}, maxSeconds: 30, skipFileSink: true, audioUrl: ${farUrlExpr} })
        .then((r) => { window.__aecCapJson = JSON.stringify(r); return "ok"; })
        .catch((e) => { window.__aecCapJson = JSON.stringify({ error: String(e && e.stack || e) }); return "err"; }); void 0`,
   );
@@ -178,7 +206,13 @@ if (ready !== "object") {
   );
 }
 
-const echoOnly = await runPass({ tag: "echo-only", doubleTalkText: null });
+const farUrlExpr = await stageFarEndUrl();
+
+const echoOnly = await runPass({
+  tag: "echo-only",
+  doubleTalkText: null,
+  farUrlExpr,
+});
 let doubleTalk = null;
 if (!SKIP_DOUBLE_TALK) {
   doubleTalk = await runPass({
@@ -187,6 +221,7 @@ if (!SKIP_DOUBLE_TALK) {
       "This is the near end talker. Please keep my words intact " +
       "while the canceller removes the agent's own voice. " +
       "Sphinx of black quartz, judge my vow.",
+    farUrlExpr,
   });
 }
 log(`results: ${echoOnly}${doubleTalk ? ` + ${doubleTalk}` : ""}`);

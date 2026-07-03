@@ -1523,6 +1523,20 @@ public class ElizaAgentService extends Service {
                 Log.i(TAG, "libvoice_classifier.so present; exporting ELIZA_VOICE_CLASSIFIER_LIB="
                     + voiceClassifierLib.getAbsolutePath());
             }
+            // Fused voice engine (#11373): the bun agent's LiveDiarizationSession
+            // resolves libelizainference via ELIZA_INFERENCE_LIBRARY /
+            // ELIZA_INFERENCE_LIB_DIR (see live-diarization-session.ts). The lib
+            // ships as a jniLib and extracts into nativeLibraryDir, but nothing
+            // exported the env var, so /api/voice/audio-frames died with
+            // "fused libelizainference not found" at session construction —
+            // invisible to the module-load smoke, which never builds a session.
+            // Only export when the .so actually shipped (same guard as above).
+            File fusedInferenceLib = new File(nativeLibraryDir(), "libelizainference.so");
+            if (fusedInferenceLib.isFile() && !env.containsKey("ELIZA_INFERENCE_LIBRARY")) {
+                agentEnv.put("ELIZA_INFERENCE_LIBRARY", fusedInferenceLib.getAbsolutePath());
+                Log.i(TAG, "libelizainference.so present; exporting ELIZA_INFERENCE_LIBRARY="
+                    + fusedInferenceLib.getAbsolutePath());
+            }
             agentEnv.put("AGENT_ROOT", root.getAbsolutePath());
             agentEnv.put("RUNTIME_DIR", abiDir.getAbsolutePath());
             agentEnv.put("DEVICE_DIR", abiDir.getAbsolutePath());

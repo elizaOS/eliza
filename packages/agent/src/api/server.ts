@@ -2256,7 +2256,9 @@ async function handleRequest(
     (pathname.startsWith("/api/local-inference") ||
       pathname === "/api/tts/local-inference" ||
       pathname.startsWith("/api/asr/local-inference") ||
-      pathname.startsWith("/api/voice/audio-frames")) &&
+      pathname.startsWith("/api/voice/audio-frames") ||
+      pathname === "/api/voice/playback-frames" ||
+      pathname === "/api/voice/aec-capture") &&
     (await (async () => {
       const localInferenceServerApi = await getLocalInferenceServerApi();
       if (

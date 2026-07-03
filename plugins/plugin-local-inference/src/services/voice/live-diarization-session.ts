@@ -706,8 +706,20 @@ export class LiveDiarizationSession {
 
 	/** Feed a batch of WebView-captured frames; resolves once VAD has processed them. */
 	async ingest(frames: AudioFrameEvent[]): Promise<void> {
-		await this.ensureBuilt();
-		if (!this.consumer) return;
+		// The AEC evidence seam — delay self-calibration and the armed near/far
+		// capture — is pure TypeScript and is the actual subject of #9583/#11373.
+		// Diarization is a separate, native-only concern: builds that ship no
+		// fused voice lib (e.g. iOS, which embeds only ElizaBunEngine) must still
+		// serve the AEC path rather than 500 the whole transport. So the fused
+		// consumer is best-effort — its build failure is recorded in buildError
+		// (surfaced by status()) and never blocks capture.
+		let consumerReady = false;
+		try {
+			await this.ensureBuilt();
+			consumerReady = this.consumer != null;
+		} catch {
+			// Fused diarizer unavailable; the pure-TS AEC seam below still runs.
+		}
 		for (const frame of frames) {
 			this.framesReceived += 1;
 			if (!this.echoDelayCalibrated || this.aecCaptureArmed) {
@@ -721,7 +733,9 @@ export class LiveDiarizationSession {
 					// Let AudioFrameConsumer own decode-error accounting below.
 				}
 			}
-			await this.consumer.onAudioFrame(frame);
+			if (consumerReady && this.consumer) {
+				await this.consumer.onAudioFrame(frame);
+			}
 		}
 	}
 
