@@ -53,19 +53,19 @@ export default function PaymentSuccessPage() {
   }, [ready, authenticated, navigate, searchParams]);
 
   return (
-    <div className="flex h-screen w-full items-center justify-center bg-[#0A0A0A]">
+    <div className="theme-cloud flex min-h-[100dvh] w-full items-center justify-center bg-bg">
       <div className="flex flex-col items-center gap-4 text-center">
         <div className="relative">
-          <CheckCircle className="h-12 w-12 text-green-500" />
-          <Loader2 className="absolute -bottom-1 -right-1 h-5 w-5 animate-spin text-white/60" />
+          <CheckCircle className="h-12 w-12 text-status-success" />
+          <Loader2 className="absolute -bottom-1 -right-1 h-5 w-5 animate-spin text-muted" />
         </div>
         <div className="space-y-2">
-          <h1 className="text-xl font-mono text-white">
+          <h1 className="text-xl text-txt">
             {t("cloud.paymentSuccess.received", {
               defaultValue: "Payment Received",
             })}
           </h1>
-          <p className="text-sm text-white/74 font-mono">
+          <p className="text-sm text-muted">
             {t("cloud.paymentSuccess.redirecting", {
               defaultValue: "Redirecting to your dashboard...",
             })}

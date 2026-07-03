@@ -124,22 +124,22 @@ export default function PrivacyPolicyPage() {
   );
   const sections = buildSections(t);
   return (
-    <div className="theme-cloud flex min-h-screen w-full flex-col bg-black font-poppins text-white">
+    <div className="theme-cloud flex min-h-[100dvh] w-full flex-col bg-bg font-sans text-txt">
       <main id="main" className="flex-1 px-6 pt-16 pb-16 sm:px-8 lg:px-12">
         <div className="mx-auto w-full max-w-4xl space-y-10">
           <Link
             to="/login"
-            className="inline-flex items-center gap-2 text-sm text-white/60 transition-opacity hover:opacity-75"
+            className="inline-flex items-center gap-2 text-sm text-muted transition-opacity hover:opacity-75"
           >
             <ArrowLeft className="h-4 w-4" />
             {t("cloud.privacy.backToLogin", { defaultValue: "Back to login" })}
           </Link>
 
-          <div className="space-y-3 border-b border-white/14 pb-6">
-            <h1 className="text-4xl font-bold tracking-tight text-white sm:text-5xl">
+          <div className="space-y-3 border-b border-border pb-6">
+            <h1 className="text-4xl font-bold tracking-tight text-txt sm:text-5xl">
               {t("cloud.privacy.heading", { defaultValue: "Privacy Policy" })}
             </h1>
-            <p className="text-base text-white/74">
+            <p className="text-base text-muted">
               {t("cloud.privacy.lastUpdated", {
                 defaultValue: "Last updated: November 4, 2025",
               })}
@@ -149,18 +149,20 @@ export default function PrivacyPolicyPage() {
           <div className="space-y-10">
             {sections.map((section) => (
               <section key={section.title} className="space-y-3">
-                <h2 className="text-2xl font-bold text-white">
+                <h2 className="text-2xl font-bold text-txt">
                   {section.title}
                 </h2>
-                <p className="leading-relaxed text-white/80">{section.body}</p>
+                <p className="leading-relaxed text-muted-strong">
+                  {section.body}
+                </p>
               </section>
             ))}
           </div>
 
-          <div className="flex flex-col items-center justify-between gap-4 border-t border-white/14 pt-8 sm:flex-row">
+          <div className="flex flex-col items-center justify-between gap-4 border-t border-border pt-8 sm:flex-row">
             <Link
               to="/terms-of-service"
-              className="text-sm text-white/60 underline underline-offset-4 transition-opacity hover:opacity-75"
+              className="text-sm text-muted underline underline-offset-4 transition-opacity hover:opacity-75"
             >
               {t("cloud.privacy.termsOfService", {
                 defaultValue: "Terms of Service",
@@ -168,7 +170,7 @@ export default function PrivacyPolicyPage() {
             </Link>
             <Link
               to="/login"
-              className="text-sm text-white/60 transition-opacity hover:opacity-75"
+              className="text-sm text-muted transition-opacity hover:opacity-75"
             >
               {t("cloud.privacy.returnToLogin", {
                 defaultValue: "Return to login",

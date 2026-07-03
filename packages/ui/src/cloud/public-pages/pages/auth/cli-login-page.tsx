@@ -41,11 +41,11 @@ const PANEL_TONE_CLASSES: Record<
   { container: string; icon: string }
 > = {
   accent: {
-    container: "bg-[var(--brand-orange)]/10",
-    icon: "text-[var(--brand-orange)]",
+    container: "bg-accent-subtle",
+    icon: "text-accent",
   },
-  danger: { container: "bg-red-500/10", icon: "text-red-500" },
-  success: { container: "bg-green-500/10", icon: "text-green-500" },
+  danger: { container: "bg-destructive-subtle", icon: "text-destructive" },
+  success: { container: "bg-status-success-bg", icon: "text-status-success" },
 };
 
 function getPageState({
@@ -94,9 +94,8 @@ function CliLoginPanel({
 }) {
   const toneClasses = PANEL_TONE_CLASSES[tone];
   return (
-    <div className="flex min-h-screen items-center justify-center bg-black p-4">
-      <div className="absolute inset-0 bg-black" />
-      <div className="relative w-full max-w-md bg-black border border-white/14 p-8">
+    <div className="theme-cloud relative flex min-h-[100dvh] items-center justify-center bg-bg p-4">
+      <div className="relative w-full max-w-md bg-card border border-border p-8">
         <div className="flex flex-col items-center gap-6 text-center">
           <div
             className={`flex h-14 w-14 items-center justify-center ${toneClasses.container}`}
@@ -106,8 +105,8 @@ function CliLoginPanel({
             />
           </div>
           <div className="space-y-1">
-            <h2 className="text-xl font-semibold text-white">{title}</h2>
-            <div className="text-sm text-neutral-500">{description}</div>
+            <h2 className="text-xl font-semibold text-txt">{title}</h2>
+            <div className="text-sm text-muted">{description}</div>
           </div>
           {children}
           {actions ? <div className="w-full space-y-2">{actions}</div> : null}
@@ -262,7 +261,7 @@ export default function CliLoginPage() {
         actions={
           sessionId ? (
             <a href={signInHref} className="w-full">
-              <Button className="w-full h-11 bg-[var(--brand-orange)] hover:bg-[#e54f00] text-white">
+              <Button className="w-full h-11 bg-accent hover:bg-accent-hover text-accent-foreground">
                 {t("cloud.cliLogin.signInAgain", {
                   defaultValue: "Sign In Again",
                 })}
@@ -305,7 +304,7 @@ export default function CliLoginPage() {
         actions={
           <Button
             asChild
-            className="w-full h-11 bg-[var(--brand-orange)] hover:bg-[#e54f00] text-white"
+            className="w-full h-11 bg-accent hover:bg-accent-hover text-accent-foreground"
           >
             <a href={signInHref}>
               {t("cloud.cliLogin.signIn", { defaultValue: "Sign In" })}
@@ -338,9 +337,9 @@ export default function CliLoginPage() {
         tone="accent"
       >
         <div className="flex gap-1.5 mt-2">
-          <div className="h-2 w-2 animate-bounce rounded-full bg-[var(--brand-orange)] [animation-delay:-0.3s]" />
-          <div className="h-2 w-2 animate-bounce rounded-full bg-[var(--brand-orange)] [animation-delay:-0.15s]" />
-          <div className="h-2 w-2 animate-bounce rounded-full bg-[var(--brand-orange)]" />
+          <div className="h-2 w-2 animate-bounce rounded-full bg-accent [animation-delay:-0.3s] motion-reduce:animate-none" />
+          <div className="h-2 w-2 animate-bounce rounded-full bg-accent [animation-delay:-0.15s] motion-reduce:animate-none" />
+          <div className="h-2 w-2 animate-bounce rounded-full bg-accent motion-reduce:animate-none" />
         </div>
       </CliLoginPanel>
     );
@@ -351,7 +350,7 @@ export default function CliLoginPage() {
       <CliLoginPanel
         actions={
           <a href="/" className="w-full">
-            <Button className="w-full h-11 bg-[var(--brand-orange)] hover:bg-[#e54f00] text-white">
+            <Button className="w-full h-11 bg-accent hover:bg-accent-hover text-accent-foreground">
               {t("cloud.cliLogin.continueToDashboard", {
                 defaultValue: "Continue to dashboard",
               })}
@@ -368,8 +367,8 @@ export default function CliLoginPage() {
         })}
         tone="success"
       >
-        <div className="w-full border border-green-500/20 bg-green-500/5 p-4">
-          <p className="text-sm text-green-400 flex items-center justify-center gap-2">
+        <div className="w-full border border-status-success/20 bg-status-success-bg p-4">
+          <p className="text-sm text-status-success flex items-center justify-center gap-2">
             <CheckCircle2 className="h-4 w-4" />
             {t("cloud.cliLogin.returnToApp", {
               defaultValue: "Return to your app to continue.",

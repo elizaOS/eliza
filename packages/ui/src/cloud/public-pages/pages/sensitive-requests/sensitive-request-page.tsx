@@ -306,42 +306,42 @@ export default function SensitiveRequestPage() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#080A0D] p-4">
-        <Loader2 className="h-8 w-8 animate-spin text-white/60" />
+      <div className="theme-cloud flex min-h-[100dvh] items-center justify-center bg-bg p-4">
+        <Loader2 className="h-8 w-8 animate-spin text-muted" />
       </div>
     );
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[#080A0D] px-4 py-6 text-white">
+    <div className="theme-cloud flex min-h-[100dvh] items-center justify-center bg-bg px-4 py-6 text-txt">
       <main
         id="main"
-        className="w-full max-w-[520px] border border-white/10 bg-black/55 p-5"
+        className="w-full max-w-[520px] border border-border bg-card p-5"
       >
         <div className="flex items-start gap-3">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center border border-white/10 bg-white/5">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center border border-border bg-bg-elevated">
             {effectiveStatus === "success" ||
             effectiveStatus === "fulfilled" ? (
-              <CheckCircle2 className="h-4 w-4 text-green-300" />
+              <CheckCircle2 className="h-4 w-4 text-status-success" />
             ) : effectiveStatus === "pending" ? (
-              <LockKeyhole className="h-4 w-4 text-[#FF8A47]" />
+              <LockKeyhole className="h-4 w-4 text-accent" />
             ) : (
-              <AlertCircle className="h-4 w-4 text-red-300" />
+              <AlertCircle className="h-4 w-4 text-destructive" />
             )}
           </div>
           <div className="min-w-0">
-            <p className="text-xs font-medium uppercase tracking-[0.14em] text-white/74">
+            <p className="text-xs font-medium uppercase tracking-[0.14em] text-muted">
               Eliza Cloud
             </p>
             <h1 className="mt-1 text-lg font-semibold">{copy.title}</h1>
-            <p className="mt-1 text-sm leading-relaxed text-white/74">
+            <p className="mt-1 text-sm leading-relaxed text-muted">
               {copy.body}
             </p>
           </div>
         </div>
 
         {request?.reason ? (
-          <div className="mt-5 border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-white/70">
+          <div className="mt-5 border border-border bg-surface px-3 py-2 text-sm text-muted">
             {request.reason}
           </div>
         ) : null}
@@ -381,7 +381,7 @@ export default function SensitiveRequestPage() {
                     className="block space-y-2"
                     key={field.name}
                   >
-                    <span className="text-sm font-medium text-white/85">
+                    <span className="text-sm font-medium text-muted-strong">
                       {field.label}
                     </span>
                     <Input
@@ -448,7 +448,7 @@ export default function SensitiveRequestPage() {
                   className="block space-y-2"
                   key={field.name}
                 >
-                  <span className="text-sm font-medium text-white/85">
+                  <span className="text-sm font-medium text-muted-strong">
                     {field.label}
                   </span>
                   {useTextarea ? (

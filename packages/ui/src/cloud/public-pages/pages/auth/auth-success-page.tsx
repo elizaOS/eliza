@@ -54,15 +54,14 @@ export default function AuthSuccessPage() {
   }, []);
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-black p-4">
-      <div className="absolute inset-0 bg-black" />
-      <div className="relative w-full max-w-md bg-black border border-white/14 p-8">
+    <div className="theme-cloud relative flex min-h-[100dvh] items-center justify-center bg-bg p-4">
+      <div className="relative w-full max-w-md bg-card border border-border p-8">
         <div className="flex flex-col items-center gap-6 text-center">
-          <div className="flex h-14 w-14 items-center justify-center bg-green-500/10">
-            <CheckCircle className="h-7 w-7 text-green-500" />
+          <div className="flex h-14 w-14 items-center justify-center bg-status-success-bg">
+            <CheckCircle className="h-7 w-7 text-status-success" />
           </div>
           <div className="space-y-2">
-            <h2 className="text-xl font-semibold text-white">
+            <h2 className="text-xl font-semibold text-txt">
               {platformDisplay
                 ? t("cloud.authSuccess.platformConnected", {
                     platform: platformDisplay,
@@ -72,7 +71,7 @@ export default function AuthSuccessPage() {
                     defaultValue: "Connection Successful",
                   })}
             </h2>
-            <p className="text-sm text-neutral-400">
+            <p className="text-sm text-muted">
               {platformDisplay
                 ? t("cloud.authSuccess.platformAccountConnected", {
                     platform: platformDisplay,
@@ -86,7 +85,7 @@ export default function AuthSuccessPage() {
             </p>
           </div>
 
-          <p className="text-xs text-neutral-600">
+          <p className="text-xs text-muted">
             {t("cloud.authSuccess.returnToApp", {
               defaultValue: "Return to the app to continue.",
             })}
