@@ -63,6 +63,41 @@ const androidWidgetLayoutXml = readFileSync(
   ),
   "utf8",
 );
+const androidVoiceInteractionServiceXml = readFileSync(
+  path.join(
+    repoRoot,
+    "packages/app-core/platforms/android/app/src/main/res/xml/eliza_voice_interaction_service.xml",
+  ),
+  "utf8",
+);
+const androidVoiceInteractionService = readFileSync(
+  path.join(
+    repoRoot,
+    "packages/app-core/platforms/android/app/src/main/java/ai/elizaos/app/ElizaVoiceInteractionService.java",
+  ),
+  "utf8",
+);
+const androidVoiceInteractionSessionService = readFileSync(
+  path.join(
+    repoRoot,
+    "packages/app-core/platforms/android/app/src/main/java/ai/elizaos/app/ElizaVoiceInteractionSessionService.java",
+  ),
+  "utf8",
+);
+const androidVoiceInteractionSession = readFileSync(
+  path.join(
+    repoRoot,
+    "packages/app-core/platforms/android/app/src/main/java/ai/elizaos/app/ElizaVoiceInteractionSession.java",
+  ),
+  "utf8",
+);
+const androidRecognitionService = readFileSync(
+  path.join(
+    repoRoot,
+    "packages/app-core/platforms/android/app/src/main/java/ai/elizaos/app/ElizaRecognitionService.java",
+  ),
+  "utf8",
+);
 
 describe("native assistant entry contracts", () => {
   it("compiles the iOS App Intents source in the App target", () => {
@@ -159,6 +194,73 @@ describe("native assistant entry contracts", () => {
     );
     expect(androidQuickActionsWidgetProvider).toContain(
       "elizaos://lifeops/task/new",
+    );
+  });
+
+  it("exposes the Android digital-assistant VoiceInteractionService entry point", () => {
+    // Manifest: the VoiceInteractionService + its session service must be
+    // declared and guarded by BIND_VOICE_INTERACTION, plus the RecognitionService
+    // the framework requires for a valid assistant. Without these the app never
+    // appears under Settings -> Default apps -> Digital assistant app.
+    expect(androidManifest).toContain("ElizaVoiceInteractionService");
+    expect(androidManifest).toContain("ElizaVoiceInteractionSessionService");
+    expect(androidManifest).toContain("ElizaRecognitionService");
+    expect(androidManifest).toContain(
+      "android.permission.BIND_VOICE_INTERACTION",
+    );
+    expect(androidManifest).toContain(
+      "android.service.voice.VoiceInteractionService",
+    );
+    expect(androidManifest).toContain(
+      "@xml/eliza_voice_interaction_service",
+    );
+    expect(androidManifest).toContain("android.speech.RecognitionService");
+
+    // The ACTION_ASSIST fallback activity must coexist with the VIS route.
+    expect(androidManifest).toContain("ElizaAssistActivity");
+    expect(androidManifest).toContain("android.intent.action.ASSIST");
+
+    // voice-interaction metadata: both sessionService AND recognitionService
+    // are mandatory (VoiceInteractionServiceInfo rejects the service otherwise),
+    // plus the assist + keyguard support flags.
+    expect(androidVoiceInteractionServiceXml).toContain(
+      "voice-interaction-service",
+    );
+    expect(androidVoiceInteractionServiceXml).toContain(
+      'android:sessionService="ai.elizaos.app.ElizaVoiceInteractionSessionService"',
+    );
+    expect(androidVoiceInteractionServiceXml).toContain(
+      'android:recognitionService="ai.elizaos.app.ElizaRecognitionService"',
+    );
+    expect(androidVoiceInteractionServiceXml).toContain(
+      'android:supportsAssist="true"',
+    );
+    expect(androidVoiceInteractionServiceXml).toContain(
+      'android:supportsLaunchVoiceAssistFromKeyguard="true"',
+    );
+
+    // Session service class files exist with the right superclasses, and the
+    // overlay session hands off through the one deep-link spine with a distinct
+    // source tag so logs prove the entry point.
+    expect(androidVoiceInteractionService).toContain(
+      "extends VoiceInteractionService",
+    );
+    expect(androidVoiceInteractionSessionService).toContain(
+      "extends VoiceInteractionSessionService",
+    );
+    expect(androidVoiceInteractionSessionService).toContain(
+      "new ElizaVoiceInteractionSession",
+    );
+    expect(androidVoiceInteractionSession).toContain(
+      "extends VoiceInteractionSession",
+    );
+    expect(androidVoiceInteractionSession).toContain(
+      "elizaos://voice?source=android-assistant-session",
+    );
+    expect(androidVoiceInteractionSession).toContain("startAssistantActivity");
+    expect(androidRecognitionService).toContain("extends RecognitionService");
+    expect(androidRecognitionService).toContain(
+      "source=android-recognition-service",
     );
   });
 });

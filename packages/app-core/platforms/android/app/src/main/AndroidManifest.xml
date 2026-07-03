@@ -109,7 +109,51 @@
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
-    
+
+        <!--
+            Digital-assistant (ROLE_ASSISTANT) integration. Declaring a
+            VoiceInteractionService is what surfaces Eliza under Settings ->
+            Apps -> Default apps -> Digital assistant app on retail devices and
+            lets the assist gesture / long-press-power invoke Eliza over the
+            current app; the session renders a native voice bar then routes into
+            the app via elizaos://voice?source=android-assistant-session. The
+            ElizaAssistActivity above stays as the ACTION_ASSIST fallback for OEM
+            flows that still deliver the assist intent directly (when the role is
+            held the framework prefers this VoiceInteractionService session). The
+            framework rejects the service unless BOTH the session and recognition
+            services in @xml/eliza_voice_interaction_service are declared, so all
+            three are declared together. Runtime role request lives in the
+            @elizaos/capacitor-system bridge (System.requestRole assistant); the
+            AOSP ROM glue that pre-grants the role for these components is
+            follow-up sub-issue 6.
+        -->
+        <service
+            android:name="ai.elizaos.app.ElizaVoiceInteractionService"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_VOICE_INTERACTION">
+            <meta-data
+                android:name="android.voice_interaction"
+                android:resource="@xml/eliza_voice_interaction_service" />
+            <intent-filter>
+                <action android:name="android.service.voice.VoiceInteractionService" />
+            </intent-filter>
+        </service>
+
+        <service
+            android:name="ai.elizaos.app.ElizaVoiceInteractionSessionService"
+            android:exported="true"
+            android:permission="android.permission.BIND_VOICE_INTERACTION" />
+
+        <service
+            android:name="ai.elizaos.app.ElizaRecognitionService"
+            android:exported="true"
+            android:label="@string/app_name">
+            <intent-filter>
+                <action android:name="android.speech.RecognitionService" />
+            </intent-filter>
+        </service>
+
         <activity
             android:name="ai.elizaos.app.ElizaShareActivity"
             android:exported="true"

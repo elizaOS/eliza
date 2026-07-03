@@ -4,4 +4,6 @@
     <string name="title_activity_main">Eliza</string>
     <string name="package_name">ai.elizaos.app</string>
     <string name="custom_url_scheme">elizaos</string>
+    <!-- Digital-assistant voice bar (ElizaVoiceInteractionSession). -->
+    <string name="assistant_session_prompt">Ask Eliza</string>
 </resources>

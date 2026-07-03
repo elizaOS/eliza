@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Native voice bar rendered by ElizaVoiceInteractionSession over the current
+    app when Eliza is invoked as the digital assistant. The bar reads as a real,
+    native assistant surface (D8) before the session hands off into the Eliza
+    app via elizaos://voice?source=android-assistant-session.
+-->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:padding="16dp">
+
+    <LinearLayout
+        android:id="@+id/eliza_voice_bar_root"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:background="@drawable/eliza_voice_bar_bg"
+        android:clickable="true"
+        android:focusable="true"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="20dp"
+        android:paddingTop="16dp"
+        android:paddingEnd="20dp"
+        android:paddingBottom="16dp">
+
+        <View
+            android:layout_width="12dp"
+            android:layout_height="12dp"
+            android:background="@drawable/eliza_voice_bar_dot" />
+
+        <TextView
+            android:id="@+id/eliza_voice_bar_label"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="16dp"
+            android:text="@string/assistant_session_prompt"
+            android:textColor="#FFFFFFFF"
+            android:textSize="17sp" />
+
+        <ImageView
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:contentDescription="@string/app_name"
+            android:src="@mipmap/ic_launcher_monochrome" />
+    </LinearLayout>
+</FrameLayout>

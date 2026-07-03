@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Orange "listening" indicator dot for the assistant voice bar. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="oval">
+    <solid android:color="@color/eliza_orange" />
+    <size
+        android:width="12dp"
+        android:height="12dp" />
+</shape>
