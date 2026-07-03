@@ -133,6 +133,48 @@ To build on the runtime from your own TypeScript with no CLI/UI, import
 - Keep weak types (`any` / `unknown` / unsafe casts) out; validate at runtime
   boundaries and type the validated result.
 
+## Slop and Comment Cleanup
+
+Comments must earn their keep: they explain intent a reader cannot get from the
+code, and they never narrate the edit that produced them. This is the binding
+convention for the repo-wide comment cleanup (#12181) and for every new file.
+
+1. **Every file opens with a prose header.** One `/** … */` block at the very
+   top — after a `#!` shebang or a third-party license block if present, before
+   the imports. Write sentences, not a form: no `@fileoverview`, `@author`,
+   `@date`, or `@version`. The position is the signal.
+2. **The first sentence says what the file does in system terms**, without
+   repeating the filename — "Local content-addressed media store for chat
+   attachments," not "This is media-store.ts." After that, add only what helps:
+   the relationships (what consumes it, what it consumes, which boundary it sits
+   on), the load-bearing invariants, and the gotchas to know before editing. An
+   issue ref like `(#8876)` is welcome when it anchors non-obvious rationale,
+   never as a substitute for stating it.
+3. **Length scales with weight.** A barrel `index.ts` or a tiny type file gets
+   one line; a typical module 2–6 lines; a load-bearing module 2–3 short
+   paragraphs. Hard ceiling ~25 lines — anything longer belongs in the package
+   `CLAUDE.md`/`README.md`; reference it instead. Test files get 1–3 lines: what
+   surface is under test and how real the harness is (live model vs.
+   deterministic proxy, real DB vs. in-memory).
+4. **In-body comments explain what the code cannot** — the "why," the invariant,
+   the non-obvious consequence — not a line-by-line English echo of the code.
+5. **Delete comment slop on sight:** change/churn narration ("now we do X,"
+   "refactored to…"), status updates, migration stories, and comments that just
+   restate the next line. Salvageable churn is rewritten to a present-tense fact
+   about how the code works today.
+6. **Accuracy over coverage — a wrong header is worse than none.** Read the
+   package's `CLAUDE.md` before writing headers in it and describe files in that
+   package's architecture terms. If you cannot determine what a file is for, flag
+   it rather than guess.
+
+Copy the tone from the exemplars already in the tree:
+`packages/agent/src/api/media-store.ts` (load-bearing module),
+`packages/ui/src/components/RoleGate.tsx` (component),
+`packages/scripts/run-all-tests.mjs` (script), and `.gitmodules` (config).
+Comment-cleanup batches carry **zero functional diffs** — machine-checked by
+`bun run check:comment-only` (`scripts/assert-comment-only-diff.mjs`), which
+tokenizes both revisions and fails on any non-comment token change.
+
 ## App visual review — REQUIRED for UI changes in `packages/app/`
 
 Any change in `packages/app/` (or a shared package whose UI bleeds into it) MUST
