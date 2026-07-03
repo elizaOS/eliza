@@ -267,6 +267,30 @@ describe("executeTriggerTask", () => {
     expect(typeof persisted?.nextRunAtMs).toBe("number");
   });
 
+  it("surfaces the re-armed updateInterval in the result so the worker hands it back as nextInterval (#12030)", async () => {
+    // A cron trigger re-arms with a per-fire interval (ms until the next fire),
+    // which varies. executeTriggerTask persists it — and must ALSO return it, so
+    // the task worker can pass it to the scheduler as `nextInterval`. Without
+    // this the worker returned undefined and the scheduler's success path
+    // clobbered the cadence with a frozen `baseInterval`, drifting to wrong days.
+    const task = makeTriggerTask({
+      triggerType: "cron",
+      cronExpression: "0 9 * * 1-5",
+    });
+
+    const result = await executeTriggerTask(handle.runtime, task, {
+      source: "scheduler",
+    });
+
+    expect(result.taskDeleted).toBe(false);
+    const persistedInterval = (
+      handle.updatedTasks[0]?.patch.metadata as { updateInterval?: number }
+    )?.updateInterval;
+    expect(typeof persistedInterval).toBe("number");
+    // The result carries the SAME interval that was persisted (not undefined).
+    expect(result.updateInterval).toBe(persistedInterval);
+  });
+
   it("dispatches an event trigger when the event-source eventKind matches", async () => {
     const task = makeTriggerTask({
       triggerType: "event",

@@ -45,6 +45,11 @@ export interface TriggerExecutionResult {
   // Present when a workflow-kind trigger dispatches to WORKFLOW_DISPATCH and
   // the service returns an execution id.
   executionId?: string;
+  // The re-arm interval this fire persisted (ms until the next scheduled fire).
+  // Trigger cadence VARIES per fire (e.g. a weekday cron's Fri→Mon gap), so the
+  // task worker must hand this back to the scheduler as `nextInterval` — else
+  // the success path falls back to a frozen `baseInterval` and drifts.
+  updateInterval?: number;
 }
 
 interface NotificationEmitter {
@@ -476,6 +481,10 @@ export async function executeTriggerTask(
     taskDeleted: false,
     trigger: triggerSummary,
     executionId: workflowExecutionId,
+    updateInterval:
+      typeof metadataToPersist.updateInterval === "number"
+        ? metadataToPersist.updateInterval
+        : undefined,
   };
 }
 
@@ -486,14 +495,18 @@ export function registerTriggerTaskWorker(runtime: IAgentRuntime): void {
     name: TRIGGER_TASK_NAME,
     shouldRun: async () => true,
     execute: async (rt, options, task) => {
-      // Return the full result so callers (tests, dashboards) can inspect
-      // trigger-specific fields like taskDeleted and runRecord.
-      // TaskWorker.execute is typed as returning only scheduling metadata; trigger
-      // workers return TriggerExecutionResult for tests and dashboards.
-      await executeTriggerTask(rt, task, {
+      const result = await executeTriggerTask(rt, task, {
         source: options.source === "manual" ? "manual" : "scheduler",
         force: options.force === true,
       });
+      // Hand the per-fire re-arm interval back to the task service as scheduling
+      // metadata. Without it, the service's success path falls through to a
+      // frozen `baseInterval` (seeded on the first transient failure), so a
+      // varying-cadence trigger (e.g. weekday cron) permanently drifts — firing
+      // on the wrong days. Deleted tasks don't reschedule, so return nothing.
+      if (!result.taskDeleted && typeof result.updateInterval === "number") {
+        return { nextInterval: result.updateInterval };
+      }
       return undefined;
     },
   });
