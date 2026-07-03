@@ -1,0 +1,129 @@
+{
+  "runId": "f0eff94d-4354-48ca-9d07-02f1049c3507",
+  "startedAtIso": "2026-07-03T14:51:29.901Z",
+  "completedAtIso": "2026-07-03T14:51:42.002Z",
+  "providerName": "deterministic-llm-proxy",
+  "scenarios": [
+    {
+      "id": "cloud-apps-create-monetized-review",
+      "title": "Create-a-monetized-app degrades gracefully: app created, monetization off, review step surfaced",
+      "domain": "cloud-apps",
+      "tags": [
+        "cloud-apps",
+        "monetization",
+        "review-gate",
+        "ux"
+      ],
+      "status": "passed",
+      "durationMs": 140,
+      "turns": [
+        {
+          "name": "monetized create succeeds with review next-step, no dead 403",
+          "kind": "action",
+          "text": "create a monetized app called Coin with 20% markup",
+          "responseText": "Created \"Coin\" on Eliza Cloud (status: draft).\nNote: Monetization requires an approved app review, so the app was created with monetization disabled. Submit it for review (the Monetize tab in the dashboard, or POST /api/v1/apps/:id/review), then enable monetization after approval.\nWant me to deploy it now? Just say \"deploy Coin\".",
+          "actionsCalled": [
+            {
+              "actionName": "CREATE_APP",
+              "parameters": {},
+              "result": {
+                "success": true,
+                "data": {
+                  "app": {
+                    "id": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+                    "name": "Coin",
+                    "slug": "coin"
+                  },
+                  "monetization": false,
+                  "reviewStatus": "draft"
+                },
+                "text": "Created Eliza Cloud app Coin.",
+                "raw": {
+                  "success": true,
+                  "text": "Created Eliza Cloud app Coin.",
+                  "userFacingText": "Created \"Coin\" on Eliza Cloud (status: draft).\nNote: Monetization requires an approved app review, so the app was created with monetization disabled. Submit it for review (the Monetize tab in the dashboard, or POST /api/v1/apps/:id/review), then enable monetization after approval.\nWant me to deploy it now? Just say \"deploy Coin\".",
+                  "verifiedUserFacing": true,
+                  "data": {
+                    "app": {
+                      "id": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+                      "name": "Coin",
+                      "slug": "coin"
+                    },
+                    "monetization": false,
+                    "reviewStatus": "draft"
+                  }
+                }
+              }
+            }
+          ],
+          "durationMs": 21,
+          "failedAssertions": []
+        }
+      ],
+      "finalChecks": [
+        {
+          "label": "loopback cloud saw one create carrying the user's monetization intent",
+          "type": "custom",
+          "status": "passed",
+          "detail": "predicate returned undefined"
+        },
+        {
+          "label": "create action executed through scenario runner",
+          "type": "actionCalled",
+          "status": "passed",
+          "detail": "CREATE_APP called 1x"
+        }
+      ],
+      "actionsCalled": [
+        {
+          "actionName": "CREATE_APP",
+          "parameters": {},
+          "result": {
+            "success": true,
+            "data": {
+              "app": {
+                "id": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+                "name": "Coin",
+                "slug": "coin"
+              },
+              "monetization": false,
+              "reviewStatus": "draft"
+            },
+            "text": "Created Eliza Cloud app Coin.",
+            "raw": {
+              "success": true,
+              "text": "Created Eliza Cloud app Coin.",
+              "userFacingText": "Created \"Coin\" on Eliza Cloud (status: draft).\nNote: Monetization requires an approved app review, so the app was created with monetization disabled. Submit it for review (the Monetize tab in the dashboard, or POST /api/v1/apps/:id/review), then enable monetization after approval.\nWant me to deploy it now? Just say \"deploy Coin\".",
+              "verifiedUserFacing": true,
+              "data": {
+                "app": {
+                  "id": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+                  "name": "Coin",
+                  "slug": "coin"
+                },
+                "monetization": false,
+                "reviewStatus": "draft"
+              }
+            }
+          }
+        }
+      ],
+      "failedAssertions": [],
+      "providerName": "deterministic-llm-proxy"
+    }
+  ],
+  "totals": {
+    "passed": 1,
+    "failed": 0,
+    "skipped": 0,
+    "flakyPassed": 0,
+    "costUsd": 0,
+    "finalChecksSkipped": 0
+  },
+  "totalCount": 1,
+  "passedCount": 1,
+  "failedCount": 0,
+  "skippedCount": 0,
+  "flakyPassedCount": 0,
+  "totalCostUsd": 0
+}
