@@ -37,6 +37,7 @@ export interface ServiceTypeRegistry {
 	CONNECTOR_ACCOUNT: "connector_account";
 	CONNECTOR_ACCOUNT_STORAGE: "connector_account_storage";
 	AGENT_EVENT: "agent_event";
+	CONTROL_TRANSPORT: "control_transport";
 	OPTIMIZED_PROMPT: "optimized_prompt";
 	CHANNEL_TOPICS: "channel_topics";
 	COMMANDS: "commands";
@@ -137,6 +138,7 @@ export const ServiceType = {
 	CONNECTOR_ACCOUNT: "connector_account",
 	CONNECTOR_ACCOUNT_STORAGE: "connector_account_storage",
 	AGENT_EVENT: "agent_event",
+	CONTROL_TRANSPORT: "control_transport",
 	NOTIFICATION: "notification",
 	MEDIA_GENERATION: "media_generation",
 	VOICE_CACHE: "voice_cache",

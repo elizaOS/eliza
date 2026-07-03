@@ -54,6 +54,7 @@ import type {
 	EvaluatorEventPayload,
 	EventPayload,
 	IAgentRuntime,
+	IControlTransportService,
 	IMessageBusService,
 	InvokePayload,
 	Media,
@@ -72,8 +73,12 @@ import type {
 import { MemoryType } from "../../types/memory.ts";
 import { ModelType } from "../../types/model.ts";
 import type { ServiceClass } from "../../types/plugin.ts";
-import type { JsonValue } from "../../types/primitives.ts";
-import { ChannelType, ContentType } from "../../types/primitives.ts";
+import {
+	ChannelType,
+	ContentType,
+	type JsonValue,
+} from "../../types/primitives.ts";
+import { ServiceType } from "../../types/service.ts";
 import {
 	composePromptFromState,
 	getLocalServerUrl,
@@ -942,51 +947,35 @@ const controlMessageHandler = async ({
 		"Processing control message",
 	);
 
-	const serviceNames = Array.from(runtime.getAllServices().keys()) as string[];
-	const websocketServiceName = serviceNames.find(
-		(name: string) =>
-			name.toLowerCase().includes("websocket") ||
-			name.toLowerCase().includes("socket"),
+	const controlTransport = runtime.getService<IControlTransportService>(
+		ServiceType.CONTROL_TRANSPORT,
 	);
 
-	if (websocketServiceName) {
-		const websocketService = runtime.getService(websocketServiceName);
-		interface WebSocketServiceWithSendMessage {
-			sendMessage: (message: {
-				type: string;
-				payload: unknown;
-			}) => Promise<void>;
-		}
-		if (websocketService && "sendMessage" in websocketService) {
-			await (websocketService as WebSocketServiceWithSendMessage).sendMessage({
-				type: "controlMessage",
-				payload: {
-					action: message.payload.action,
-					target: message.payload.target,
-					roomId: message.roomId,
-				},
-			});
-
-			runtime.logger.debug(
-				{
-					src: "basic-capabilities",
-					agentId: runtime.agentId,
-					action: message.payload.action,
-				},
-				"Control message sent successfully",
-			);
-		} else {
-			runtime.logger.error(
-				{ src: "basic-capabilities", agentId: runtime.agentId },
-				"WebSocket service does not have sendMessage method",
-			);
-		}
-	} else {
+	if (!controlTransport) {
 		runtime.logger.error(
 			{ src: "basic-capabilities", agentId: runtime.agentId },
-			"No WebSocket service found to send control message",
+			"No control transport service found to send control message",
 		);
+		return;
 	}
+
+	await controlTransport.sendMessage({
+		type: "controlMessage",
+		payload: {
+			action: message.payload.action,
+			target: message.payload.target,
+			roomId: message.roomId,
+		},
+	});
+
+	runtime.logger.debug(
+		{
+			src: "basic-capabilities",
+			agentId: runtime.agentId,
+			action: message.payload.action,
+		},
+		"Control message sent successfully",
+	);
 };
 
 // ============================================================================

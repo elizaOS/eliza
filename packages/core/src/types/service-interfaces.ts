@@ -5,6 +5,7 @@
  * Data types are proto-generated; runtime classes remain TypeScript.
  */
 
+import type { ControlMessageAction } from "./messaging";
 import type { Content, JsonObject, JsonValue, UUID } from "./primitives";
 import { Service, ServiceType } from "./service";
 
@@ -120,6 +121,24 @@ export interface IMessageBusService extends Service {
 		content: Content,
 		messageId?: UUID,
 	): Promise<void>;
+}
+
+export interface ControlTransportMessage {
+	type: "controlMessage";
+	payload: {
+		action: ControlMessageAction;
+		target?: string;
+		roomId: UUID;
+	};
+}
+
+export abstract class IControlTransportService extends Service {
+	static override readonly serviceType = ServiceType.CONTROL_TRANSPORT;
+
+	public readonly capabilityDescription =
+		"Dispatches backend control messages to interactive clients.";
+
+	abstract sendMessage(message: ControlTransportMessage): Promise<void>;
 }
 
 // ============================================================================
