@@ -660,7 +660,12 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
       ...(isEmbedding ? {} : { swa_full: false }),
       embedding: isEmbedding,
       n_batch: options.mobileSpeculative ? 128 : 512,
-      n_ubatch: options.mobileSpeculative ? 64 : 512,
+      // #11612: the GPU compute buffer scales ~linearly with n_ubatch
+      // (~1.01 MiB per element measured on A18). 256 keeps it ~260 MiB so
+      // full-offload weights (4722 MiB on the 4b tier) + compute + KV stay
+      // under the ~5461 MiB iOS jetsam working set. n_ubatch ≤ n_batch is
+      // preserved (llama.cpp splits the logical batch internally).
+      n_ubatch: options.mobileSpeculative ? 64 : 256,
       ...(options.draftModelPath
         ? {
             draft_model: options.draftModelPath,
@@ -678,10 +683,22 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
       ...(options.disableThinking ? { reasoning: false } : {}),
     };
 
-    await plugin.initContext({
-      contextId: this.contextId,
-      params,
-    });
+    try {
+      await plugin.initContext({
+        contextId: this.contextId,
+        params,
+      });
+    } catch (err) {
+      // Unload-on-failure (#11612): a failed/partial init must not leave
+      // wired GPU buffers mapped — on iOS that footprint alone gets the
+      // process jetsammed on the next allocation.
+      try {
+        await plugin.releaseContext({ contextId: this.contextId });
+      } catch {
+        // Native side may have already cleaned up the failed context.
+      }
+      throw err;
+    }
 
     // Fork builds expose a separate `setSpecType` bridge that configures
     // the MTP drafter after the main context is up. Stock builds lack
@@ -994,6 +1011,21 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
     }
 
     if (completionState.error) {
+      // Unload-on-failure (#11612): a failed decode (e.g. Metal ret=-3 GPU
+      // OOM) must release the model instead of leaving multi-GiB wired
+      // buffers mapped until jetsam kills the process. The next generate
+      // reloads lazily via the loader's ensure-loaded path.
+      try {
+        await this.unload();
+      } catch (unloadErr) {
+        console.warn(
+          "[capacitor-llama] failed to unload after generation error",
+          {
+            error:
+              unloadErr instanceof Error ? unloadErr.message : String(unloadErr),
+          },
+        );
+      }
       yield {
         kind: "error",
         message: completionState.error.message,
