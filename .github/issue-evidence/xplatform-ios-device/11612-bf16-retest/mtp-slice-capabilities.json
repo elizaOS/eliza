@@ -7,7 +7,7 @@
   "deploymentTarget": "16.0",
   "builtAt": "2026-07-03T00:57:44.887Z",
   "fork": {
-    "path": "/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-local-inference/native/llama.cpp",
+    "path": "plugins/plugin-local-inference/native/llama.cpp",
     "revision": "58c0391eb-dirty"
   },
   "kernels": {

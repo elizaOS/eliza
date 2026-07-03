@@ -177,7 +177,7 @@ generated-project drift:
 
 ```text
 Configuring project ':elizaos-capacitor-mlkit-text' without an existing directory is not allowed.
-The configured projectDirectory '/home/shaw/milady/plugins/plugin-native-mlkit-text/android' does not exist
+The configured projectDirectory '<workspace>/plugins/plugin-native-mlkit-text/android' does not exist
 ```
 
 `packages/app/android` is ignored/generated; the tracked fix is in the
