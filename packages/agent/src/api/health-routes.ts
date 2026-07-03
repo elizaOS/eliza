@@ -1,6 +1,9 @@
 import type http from "node:http";
 import type { AgentRuntime } from "@elizaos/core";
-import { hasTextGenerationHandler } from "@elizaos/core";
+import {
+  getSwarmCoordinatorService,
+  hasTextGenerationHandler,
+} from "@elizaos/core";
 import type { ElizaConfig } from "../config/config.ts";
 import { detectRuntimeModel } from "./agent-model.ts";
 import type { ConnectorHealthMonitor } from "./connector-health.ts";
@@ -546,7 +549,7 @@ export async function handleHealthRoutes(
 
     let coordinatorStatus: "ok" | "not_wired" = "not_wired";
     try {
-      if (runtime?.getService("SWARM_COORDINATOR")) {
+      if (getSwarmCoordinatorService(runtime)) {
         coordinatorStatus = "ok";
       }
     } catch {

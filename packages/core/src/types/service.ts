@@ -49,6 +49,7 @@ export interface ServiceTypeRegistry {
 	RELATIONSHIPS: "relationships";
 	FOLLOW_UP: "follow_up";
 	TRAJECTORIES: "trajectories";
+	SWARM_COORDINATOR: "SWARM_COORDINATOR";
 	UNKNOWN: "unknown";
 }
 
@@ -155,6 +156,7 @@ export const ServiceType = {
 	RELATIONSHIPS: "relationships",
 	FOLLOW_UP: "follow_up",
 	TRAJECTORIES: "trajectories",
+	SWARM_COORDINATOR: "SWARM_COORDINATOR",
 	UNKNOWN: "unknown",
 } as const;
 

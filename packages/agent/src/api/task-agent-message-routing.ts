@@ -1,4 +1,9 @@
-import type { AgentRuntime, UUID } from "@elizaos/core";
+import {
+  type AgentRuntime,
+  getSwarmCoordinatorService,
+  type ISwarmCoordinatorService,
+  type UUID,
+} from "@elizaos/core";
 
 export interface TaskAgentChatRouting {
   sessionId?: string;
@@ -6,21 +11,10 @@ export interface TaskAgentChatRouting {
   roomId?: string | null;
 }
 
-interface TaskAgentRoutingTaskContext {
-  label?: string;
-  sessionId?: string;
-  threadId?: string;
-}
-
-interface TaskAgentRoutingCoordinator {
-  getTaskContext?: (
-    sessionId: string,
-  ) => { threadId?: string | null } | null | undefined;
-  getAllTaskContexts?: () => TaskAgentRoutingTaskContext[];
-  getTaskThread?: (
-    threadId: string,
-  ) => Promise<{ roomId?: string | null } | null>;
-}
+type TaskAgentRoutingCoordinator = Pick<
+  ISwarmCoordinatorService,
+  "getTaskContext" | "getAllTaskContexts" | "getTaskThread"
+>;
 
 type RoutingRuntime = Pick<
   AgentRuntime,
@@ -30,10 +24,7 @@ type RoutingRuntime = Pick<
 function getRoutingCoordinator(
   runtime: RoutingRuntime,
 ): TaskAgentRoutingCoordinator | null {
-  const coordinator = runtime.getService("SWARM_COORDINATOR");
-  return coordinator && typeof coordinator === "object"
-    ? (coordinator as TaskAgentRoutingCoordinator)
-    : null;
+  return getSwarmCoordinatorService(runtime);
 }
 
 function inferTaskAgentRoutingFromMessage(

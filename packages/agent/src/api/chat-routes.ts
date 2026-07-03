@@ -20,6 +20,7 @@ import {
   type Content,
   createMessageMemory,
   EventType,
+  getSwarmCoordinatorService,
   isRateLimitError,
   logger,
   MESSAGE_SOURCE_CLIENT_CHAT,
@@ -2395,7 +2396,7 @@ export async function generateChatResponse(
               | Record<string, unknown>
               | undefined;
             if (contentMetadata?.intent === "create_task") {
-              const coordinator = runtime.getService("SWARM_COORDINATOR");
+              const coordinator = getSwarmCoordinatorService(runtime);
               if (coordinator) {
                 const createTaskAction =
                   runtime.actions.find(

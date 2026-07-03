@@ -11,9 +11,13 @@ import {
   ChannelType,
   ContentType,
   createMessageMemory,
+  getSwarmCoordinatorService,
+  type ISwarmCoordinatorService,
   logger,
   MESSAGE_SOURCE_CLIENT_CHAT,
   type Media,
+  type SwarmCoordinatorTaskContext,
+  type SwarmEvent,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
@@ -33,48 +37,7 @@ import { resolveAppUserName } from "./server-helpers.ts";
 import type { ConversationMeta, ServerState } from "./server-types.ts";
 import { routeTaskAgentTextToConnector } from "./task-agent-message-routing.ts";
 
-interface TaskContext {
-  threadId: string;
-  taskNodeId?: string;
-  sessionId: string;
-  agentType: string;
-  label: string;
-  originalTask: string;
-  workdir: string;
-  repo?: string;
-  originRoomId?: string;
-  originMetadata?: Record<string, unknown>;
-  status: string;
-  decisions: unknown[];
-  autoResolvedCount: number;
-  registeredAt: number;
-  lastActivityAt: number;
-  idleCheckCount: number;
-  taskDelivered: boolean;
-  completionSummary?: string;
-  validationSummary?: string;
-  lastSeenDecisionIndex: number;
-  lastInputSentAt?: number;
-  stoppedAt?: number;
-}
-
-interface SwarmEvent {
-  type: string;
-  sessionId: string;
-  timestamp: number;
-  data: unknown;
-}
-
-interface TaskCompletionSummary {
-  sessionId: string;
-  label: string;
-  agentType: string;
-  originalTask: string;
-  status: string;
-  completionSummary: string;
-  validationSummary?: string;
-  [key: string]: unknown;
-}
+type TaskContext = SwarmCoordinatorTaskContext;
 
 // ---------------------------------------------------------------------------
 // Autonomy -> User message routing
@@ -222,45 +185,10 @@ export async function routeAutonomyTextToUser(
 /**
  * Get the SwarmCoordinator from the runtime services (if available).
  */
-export function getCoordinatorFromRuntime(runtime: AgentRuntime): {
-  setChatCallback?: (
-    cb: (
-      text: string,
-      source?: string,
-      routing?: {
-        sessionId?: string;
-        threadId?: string;
-        roomId?: string | null;
-      },
-    ) => Promise<void>,
-  ) => void;
-  setWsBroadcast?: (cb: (event: SwarmEvent) => void) => void;
-  setAgentDecisionCallback?: (
-    cb: (
-      eventDescription: string,
-      sessionId: string,
-      taskContext: TaskContext,
-    ) => Promise<CoordinationLLMResponse | null>,
-  ) => void;
-  setSwarmCompleteCallback?: (
-    cb: (payload: {
-      tasks: TaskCompletionSummary[];
-      total: number;
-      completed: number;
-      stopped: number;
-      errored: number;
-    }) => Promise<void>,
-  ) => void;
-  getTaskThread?: (
-    threadId: string,
-  ) => Promise<{ roomId?: string | null } | null>;
-  sourceRoomId?: string | null;
-} | null {
-  const coordinator = runtime.getService("SWARM_COORDINATOR");
-  if (coordinator) {
-    return coordinator as ReturnType<typeof getCoordinatorFromRuntime>;
-  }
-  return null;
+export function getCoordinatorFromRuntime(
+  runtime: AgentRuntime,
+): ISwarmCoordinatorService | null {
+  return getSwarmCoordinatorService(runtime);
 }
 
 export function wireCodingAgentBridgesNow(st: ServerState): void {

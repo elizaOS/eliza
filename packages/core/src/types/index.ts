@@ -66,6 +66,7 @@ export * from "./setup";
 export * from "./shortcut";
 export * from "./state";
 export * from "./streaming";
+export * from "./swarm-coordinator";
 export * from "./task";
 export * from "./tee";
 export type { TestCase, TestSuite } from "./testing";

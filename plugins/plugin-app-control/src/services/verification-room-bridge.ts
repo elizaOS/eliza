@@ -34,8 +34,13 @@
 
 import { randomUUID } from "node:crypto";
 import path from "node:path";
-import type { IAgentRuntime, Memory, UUID } from "@elizaos/core";
-import { logger, resolveServerOnlyPort, Service } from "@elizaos/core";
+import type { IAgentRuntime, Memory, SwarmEvent, UUID } from "@elizaos/core";
+import {
+	getSwarmCoordinatorService,
+	logger,
+	resolveServerOnlyPort,
+	Service,
+} from "@elizaos/core";
 
 export const VERIFICATION_ROOM_BRIDGE_SERVICE_TYPE = "verification-room-bridge";
 
@@ -70,23 +75,6 @@ const ATTACH_RETRY_INTERVAL_MS = 500;
 // the old 30s window), it just gets coarser and louder past here.
 const ATTACH_MAX_RETRIES = 60;
 const ATTACH_MAX_RETRY_INTERVAL_MS = 5_000;
-
-/**
- * Minimal shape of the SwarmCoordinator service surface this bridge
- * depends on. We only need `subscribe`; declared locally so we don't
- * pull in plugin-agent-orchestrator as a hard dependency just for
- * types.
- */
-interface SwarmEventLike {
-	type: string;
-	sessionId: string;
-	timestamp: number;
-	data: unknown;
-}
-
-interface SwarmCoordinatorLike {
-	subscribe(listener: (event: SwarmEventLike) => void): () => void;
-}
 
 interface BridgeEventPayload {
 	originRoomId: string;
@@ -130,7 +118,7 @@ function readNumber(
  * originRoomId, missing target name, malformed shape). Returns `null` for
  * non-actionable events — callers ignore those silently.
  */
-function decodeEvent(event: SwarmEventLike): BridgeEventPayload | null {
+function decodeEvent(event: SwarmEvent): BridgeEventPayload | null {
 	if (event.type !== "task_complete" && event.type !== "escalation") {
 		return null;
 	}
@@ -409,10 +397,8 @@ export class VerificationRoomBridgeService extends Service {
 	}
 
 	private attach(): void {
-		const coordinator = this.runtime.getService(
-			"SWARM_COORDINATOR",
-		) as SwarmCoordinatorLike | null;
-		if (!coordinator || typeof coordinator.subscribe !== "function") {
+		const coordinator = getSwarmCoordinatorService(this.runtime);
+		if (!coordinator) {
 			// Orchestrator plugin isn't loaded yet — but plugin start ordering
 			// is not deterministic, so the orchestrator may register its
 			// SwarmCoordinator after we ran. Retry on a backoff up to
@@ -477,7 +463,7 @@ export class VerificationRoomBridgeService extends Service {
 		}, interval);
 	}
 
-	private async handleEvent(event: SwarmEventLike): Promise<void> {
+	private async handleEvent(event: SwarmEvent): Promise<void> {
 		const payload = decodeEvent(event);
 		if (!payload) return;
 
