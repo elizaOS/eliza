@@ -17,6 +17,7 @@
   "telegram": "@elizaos/plugin-telegram",
   "twitch": "@elizaos/plugin-twitch",
   "twitter": "@elizaos/plugin-x",
+  "wechat": "@elizaos/plugin-wechat",
   "whatsapp": "@elizaos/plugin-whatsapp",
   "x": "@elizaos/plugin-x"
 }
