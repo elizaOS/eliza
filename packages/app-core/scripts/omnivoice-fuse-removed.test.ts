@@ -17,17 +17,17 @@ import { describe, expect, it } from "vitest";
 const scriptsDir = path.dirname(fileURLToPath(import.meta.url));
 
 describe("omnivoice-fuse legacy graft path removal (C16)", () => {
-	it("does not have an omnivoice-fuse directory", () => {
-		const graftDir = path.join(scriptsDir, "omnivoice-fuse");
-		expect(fs.existsSync(graftDir)).toBe(false);
-	});
+  it("does not have an omnivoice-fuse directory", () => {
+    const graftDir = path.join(scriptsDir, "omnivoice-fuse");
+    expect(fs.existsSync(graftDir)).toBe(false);
+  });
 
-	it("keeps the merged build helper as the live path", () => {
-		const merged = path.join(
-			scriptsDir,
-			"build-helpers",
-			"omnivoice-merged.mjs",
-		);
-		expect(fs.existsSync(merged)).toBe(true);
-	});
+  it("keeps the merged build helper as the live path", () => {
+    const merged = path.join(
+      scriptsDir,
+      "build-helpers",
+      "omnivoice-merged.mjs",
+    );
+    expect(fs.existsSync(merged)).toBe(true);
+  });
 });

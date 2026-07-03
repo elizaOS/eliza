@@ -47,7 +47,8 @@ function repoFromResolvePath(path: string): string | null {
   const repo = path.slice(0, resolveIdx);
   // Require exactly `<owner>/<repo>` — reject empty segments.
   const segments = repo.split("/");
-  if (segments.length !== 2 || segments.some((s) => s.length === 0)) return null;
+  if (segments.length !== 2 || segments.some((s) => s.length === 0))
+    return null;
   return repo;
 }
 
@@ -94,7 +95,7 @@ app.get("/*", async (c) => {
     // the allowed org is refused — the token must never be spent on arbitrary
     // third-party downloads on the cloud's bandwidth/quota.
     const repo = repoFromResolvePath(path);
-    if (!repo || !repo.startsWith(ALLOWED_REPO_PREFIX)) {
+    if (!repo?.startsWith(ALLOWED_REPO_PREFIX)) {
       logger.warn("[hf-proxy] rejected out-of-catalog repo", {
         repo: repo ?? "[unparseable]",
         orgId: redact.orgId(orgId),

@@ -112,7 +112,9 @@ function isTransientStatus(statusCode: number): boolean {
 }
 
 /** Honor a `Retry-After` header (seconds), bounded so a hostile header can't stall a download. */
-function retryAfterMs(headers: Record<string, string | string[] | undefined>): number | null {
+function retryAfterMs(
+	headers: Record<string, string | string[] | undefined>,
+): number | null {
 	const raw = headers["retry-after"];
 	const value = Array.isArray(raw) ? raw[0] : raw;
 	if (!value) return null;
