@@ -129,6 +129,7 @@ describe("claude parser: parse() mapping", () => {
     expect(first.messages[0]?.sourceMessageId).toBe("msg-1");
     expect(first.messages[0]?.text).toContain("Summarize the importer plan");
     expect(first.messages[1]?.text).toContain("Use DocumentService");
+    expect(first.messages[1]?.attachments).toBeUndefined();
   });
 
   it("flattens typed content blocks and code blocks", async () => {
@@ -138,6 +139,7 @@ describe("claude parser: parse() mapping", () => {
     expect(second.messages[0]?.text).toContain("Here is a snippet");
     expect(second.messages[0]?.text).toContain("```ts");
     expect(second.messages[0]?.text).toContain("const ok = true;");
+    expect(second.messages[0]?.attachments).toBeUndefined();
   });
 
   it("keeps extracted attachment text as normalized attachments", async () => {

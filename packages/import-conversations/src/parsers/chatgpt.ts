@@ -18,9 +18,10 @@
  * See conversation-importer-scope.md §formats.
  */
 
-import { createReadStream, existsSync } from "node:fs";
+import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
 import path from "node:path";
+import type { Readable } from "node:stream";
 
 import type { ConversationImporter } from "../core/registry.ts";
 import type {
@@ -29,6 +30,11 @@ import type {
   NormalizedMessage,
   NormalizedRole,
 } from "../core/types.ts";
+import {
+  readFirstJsonArrayObject,
+  streamJsonArrayObjects,
+} from "./json-array-stream.ts";
+import { findZipEntryMetadata, openZipEntryStream } from "./zip-entry.ts";
 
 const SOURCE = "chatgpt" as const;
 const CONVERSATIONS_FILE = "conversations.json";
@@ -417,17 +423,52 @@ export async function* streamJsonArrayElements(
 
 // --- ConversationImporter surface -------------------------------------------
 
-/** Resolve the `conversations.json` path for a dir or a direct file path. */
-function resolveConversationsFile(input: string): string {
-  if (input.toLowerCase().endsWith(".json")) return input;
-  return path.join(input, CONVERSATIONS_FILE);
+async function resolveInput(
+  input: string,
+): Promise<
+  { kind: "json"; path: string } | { kind: "zip"; path: string } | undefined
+> {
+  let st: Awaited<ReturnType<typeof stat>>;
+  try {
+    st = await stat(input);
+  } catch {
+    return undefined;
+  }
+
+  if (st.isDirectory()) {
+    const file = path.join(input, CONVERSATIONS_FILE);
+    try {
+      const fileStat = await stat(file);
+      return fileStat.isFile() ? { kind: "json", path: file } : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  if (!st.isFile()) return undefined;
+  if (input.toLowerCase().endsWith(".zip")) return { kind: "zip", path: input };
+  if (
+    path.basename(input).toLowerCase() === CONVERSATIONS_FILE ||
+    input.toLowerCase().endsWith(".json")
+  ) {
+    return { kind: "json", path: input };
+  }
+  return undefined;
 }
 
-async function* readFileChunks(filePath: string): AsyncGenerator<string> {
-  const stream = createReadStream(filePath, { encoding: "utf8" });
-  for await (const chunk of stream) {
-    yield chunk as string;
+async function openConversationsStream(input: string): Promise<Readable> {
+  const resolved = await resolveInput(input);
+  if (!resolved) {
+    throw new Error(
+      `ChatGPT export input must be a directory, ${CONVERSATIONS_FILE}, or .zip`,
+    );
   }
+
+  if (resolved.kind === "json") {
+    return createReadStream(resolved.path);
+  }
+
+  return openZipEntryStream(resolved.path, CONVERSATIONS_FILE);
 }
 
 /**
@@ -437,24 +478,24 @@ async function* readFileChunks(filePath: string): AsyncGenerator<string> {
  * (which has `chat_messages`).
  */
 async function detect(input: string): Promise<boolean> {
-  const file = resolveConversationsFile(input);
-  if (!existsSync(file)) return false;
   try {
-    const st = await stat(file);
-    if (!st.isFile()) return false;
-  } catch {
-    return false;
-  }
-  try {
-    for await (const element of streamJsonArrayElements(readFileChunks(file))) {
-      return (
-        isRecord(element) && isRecord((element as ChatGptConversation).mapping)
+    const resolved = await resolveInput(input);
+    if (!resolved) return false;
+    if (resolved.kind === "zip") {
+      const metadata = await findZipEntryMetadata(
+        resolved.path,
+        CONVERSATIONS_FILE,
       );
+      if (!metadata) return false;
     }
+
+    const first = await readFirstJsonArrayObject(
+      await openConversationsStream(input),
+    );
+    return isRecord(first) && isRecord((first as ChatGptConversation).mapping);
   } catch {
     return false;
   }
-  return false; // empty array — nothing to import, not a positive match
 }
 
 /**
@@ -466,8 +507,8 @@ async function* parse(
   input: string,
   options?: ChatGptParseOptions,
 ): AsyncIterable<NormalizedConversation> {
-  const file = resolveConversationsFile(input);
-  for await (const element of streamJsonArrayElements(readFileChunks(file))) {
+  const source = await openConversationsStream(input);
+  for await (const element of streamJsonArrayObjects(source)) {
     if (!isRecord(element)) continue;
     const conversation = flattenChatGptConversation(
       element as ChatGptConversation,

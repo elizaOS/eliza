@@ -93,6 +93,7 @@ function textFromContentBlock(block: unknown): string | undefined {
     "content",
     "value",
     "input",
+    "code",
     "name",
   ]);
   if (!text) return undefined;
@@ -131,6 +132,9 @@ function attachmentKind(record: RecordLike): AttachmentKind {
 function attachmentFromRecord(
   record: RecordLike,
 ): NormalizedAttachment | undefined {
+  const type = stringField(record, ["type", "kind"]);
+  if (type === "text" || type === "code") return undefined;
+
   const extracted = stringField(record, [
     "extracted_content",
     "extractedContent",
