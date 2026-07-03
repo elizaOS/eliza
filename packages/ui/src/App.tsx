@@ -51,6 +51,7 @@ import { TutorialOverlay } from "./components/pages/tutorial/TutorialOverlay";
 import { ActionBanner } from "./components/shell/ActionBanner";
 import { AssistantOverlay } from "./components/shell/AssistantOverlay";
 import { BugReportModal } from "./components/shell/BugReportModal";
+import { BuildBadge } from "./components/shell/BuildBadge";
 import { ChatSurface } from "./components/shell/ChatSurface";
 import { CloudHandoffBanner } from "./components/shell/CloudHandoffBanner";
 import { ConnectionFailedBanner } from "./components/shell/ConnectionFailedBanner";
@@ -2553,6 +2554,10 @@ export function App() {
             the floating bell by rendering <NotificationCenter /> in a
             top-right fixed wrapper again (HomePill owns bottom-center). */}
         <NotificationCenter headless />
+        {/* Tiny dismissible build stamp (bottom-left) so testers can verify
+            PWA cache freshness at a glance. Best-effort: hidden when
+            /sol-build-info.json is absent. */}
+        <BuildBadge />
         <ShellOverlays actionNotice={actionNotice} />
         <SaveCommandModal
           open={contextMenu.saveCommandModalOpen}
