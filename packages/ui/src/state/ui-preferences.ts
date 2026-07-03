@@ -66,8 +66,12 @@ export const DEFAULT_BACKGROUND_COLOR = "#160d07";
 export const DEFAULT_BACKGROUND_GLOW = "#ff6a1f";
 
 export const DEFAULT_BACKGROUND_CONFIG: BackgroundConfig = {
-  mode: "shader",
+  mode: "image",
   color: DEFAULT_BACKGROUND_COLOR,
+  // Default wallpaper: warm orange sunset in the clouds (served from
+  // packages/app/public). The shader field remains the fallback when the
+  // image is cleared or fails to load.
+  imageUrl: "/bg-sunset.jpg",
 };
 
 /** A named default background — a curated shader color the user can pick. */
