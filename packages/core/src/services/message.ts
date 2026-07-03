@@ -6292,7 +6292,10 @@ export async function runV5MessageRuntimeStage1(args: {
 					},
 					"[message] Blocked raw response-handler field transcript at send boundary; extracting replyText",
 				);
-				reply = recovered ?? "";
+				// Fail closed: never send the raw transcript. When extraction cannot
+				// recover a reply, blank it so the unusable-reply guard below owns
+				// the failure path (already logged above).
+				reply = recovered !== null ? recovered : "";
 			}
 			if (
 				isUnusableStage1Reply(reply) &&

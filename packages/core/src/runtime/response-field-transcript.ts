@@ -145,8 +145,8 @@ export function parseFieldTranscript(
 			flush();
 			currentField = match[1] as ResponseHandlerFieldName;
 			foundAny = true;
-			const inline = match[2] ?? "";
-			buffer = inline.length > 0 ? [inline] : [];
+			const inline = match[2];
+			buffer = inline && inline.length > 0 ? [inline] : [];
 		} else if (currentField !== null) {
 			// Continuation line of the current field value (including blank lines).
 			buffer.push(line);
