@@ -16,7 +16,7 @@ import {
 	join as pathJoin,
 	resolve as pathResolve,
 } from "node:path";
-import type { AgentRuntime } from "@elizaos/core";
+import { type AgentRuntime, logger } from "@elizaos/core";
 import {
 	ELIZA_1_PLACEHOLDER_IDS,
 	FIRST_RUN_DEFAULT_MODEL_ID,
@@ -1093,7 +1093,7 @@ function logResolvedKernelSet(
 	}
 	const optional = OPTIONAL_KERNELS_BY_TIER[tier];
 	const backend = resolveComputeBackendLabel(probe);
-	console.info(
+	logger.info(
 		`[LocalInferenceEngine] kernel set: required=[${[...required].join(", ")}] optional=[${optional.join(", ")}] backend=${backend}`,
 	);
 }
