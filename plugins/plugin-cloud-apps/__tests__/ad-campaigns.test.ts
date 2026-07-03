@@ -9,7 +9,9 @@ import {
   keyedRuntime,
   makeMessage,
   resetSdk,
+  setCreateAdCampaignReportShare,
   setDuplicateAdCampaign,
+  setGetAdCampaignPerformanceReport,
   setUpdateAdCampaignDayparting,
   unkeyedRuntime,
 } from "./helpers";
@@ -18,8 +20,11 @@ mock.module("@elizaos/cloud-sdk", () => ({
   ElizaCloudClient: FakeElizaCloudClient,
 }));
 
-const { duplicateAdCampaignAction, setAdCampaignDaypartingAction } =
-  await import("../src/actions/ad-campaigns.ts");
+const {
+  duplicateAdCampaignAction,
+  exportAdCampaignReportAction,
+  setAdCampaignDaypartingAction,
+} = await import("../src/actions/ad-campaigns.ts");
 
 const SCHEDULE = {
   timezone: "America/Los_Angeles",
@@ -147,5 +152,121 @@ describe("DUPLICATE_AD_CAMPAIGN", () => {
       input: { name: "Summer Campaign Copy" },
     });
     expect(res.userFacingText).toContain("2 creative");
+  });
+});
+
+describe("EXPORT_AD_CAMPAIGN_REPORT", () => {
+  beforeEach(() => resetSdk());
+
+  it("requires a campaign id", async () => {
+    const cb = captureCallback();
+    const res = await exportAdCampaignReportAction.handler(
+      keyedRuntime(),
+      makeMessage("export campaign report"),
+      undefined,
+      {},
+      cb.callback,
+    );
+    expect(res.success).toBe(false);
+    expect(res.data).toMatchObject({ reason: "missing_campaign_id" });
+  });
+
+  it("exports server-computed campaign metrics through the SDK boundary", async () => {
+    let captured: string | null = null;
+    setGetAdCampaignPerformanceReport((campaignId) => {
+      captured = campaignId;
+      return Promise.resolve({
+        success: true,
+        report: {
+          generatedAt: "2026-07-03T00:00:00.000Z",
+          campaign: {
+            id: campaignId,
+            name: "Launch Push",
+            platform: "meta",
+            objective: "traffic",
+            status: "active",
+            externalCampaignId: "ext_1",
+            appId: null,
+            budgetType: "daily",
+            budgetAmount: 200,
+            budgetCurrency: "USD",
+            creditsAllocated: 220,
+            creditsSpent: 44,
+            startDate: null,
+            endDate: null,
+            createdAt: "2026-07-01T00:00:00.000Z",
+            updatedAt: "2026-07-03T00:00:00.000Z",
+          },
+          dateRange: null,
+          summary: {
+            spend: 40,
+            impressions: 2000,
+            clicks: 100,
+            conversions: 10,
+            ctr: 5,
+            cpc: 0.4,
+            cpm: 20,
+            conversionRate: 10,
+            costPerConversion: 4,
+            budgetUtilization: 20,
+            conversionValue: 0,
+          },
+          provider: {
+            platform: "meta",
+            accountId: "acct_1",
+            externalAccountId: "external_acct",
+            externalCampaignId: "ext_1",
+          },
+        },
+      });
+    });
+    const cb = captureCallback();
+    const res = await exportAdCampaignReportAction.handler(
+      keyedRuntime(),
+      makeMessage("export report"),
+      undefined,
+      { campaignId: "campaign_1" },
+      cb.callback,
+    );
+    expect(res.success).toBe(true);
+    expect(captured).toBe("campaign_1");
+    expect(res.userFacingText).toContain("Launch Push");
+    expect(res.userFacingText).toContain("CTR: 5.00%");
+  });
+
+  it("creates an expiring share link when requested", async () => {
+    let shareInput: { campaignId: string; expiresInHours?: number } | null =
+      null;
+    setCreateAdCampaignReportShare((campaignId, input) => {
+      shareInput = { campaignId, expiresInHours: input?.expiresInHours };
+      return Promise.resolve({
+        success: true,
+        share: {
+          id: "share_1",
+          campaignId,
+          token: "token_1",
+          publicPath: "/api/v1/advertising/reports/token_1",
+          publicUrl: "https://elizacloud.ai/api/v1/advertising/reports/token_1",
+          expiresAt: "2026-07-10T00:00:00.000Z",
+        },
+      });
+    });
+    const cb = captureCallback();
+    const res = await exportAdCampaignReportAction.handler(
+      keyedRuntime(),
+      makeMessage("share report"),
+      undefined,
+      { campaignId: "campaign_1", share: true, expiresInHours: 48 },
+      cb.callback,
+    );
+    expect(res.success).toBe(true);
+    expect(shareInput).toEqual({
+      campaignId: "campaign_1",
+      expiresInHours: 48,
+    });
+    expect(res.userFacingText).toContain("Share link:");
+    expect(res.userFacingText).toContain(
+      "https://elizacloud.ai/api/v1/advertising/reports/token_1",
+    );
   });
 });

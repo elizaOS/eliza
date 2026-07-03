@@ -217,6 +217,65 @@ export interface RecordConversionResult {
   inserted: boolean;
 }
 
+export interface CampaignPerformanceReportSummary {
+  spend: number;
+  impressions: number;
+  clicks: number;
+  conversions: number;
+  ctr: number;
+  cpc: number;
+  cpm: number;
+  conversionRate: number;
+  costPerConversion: number;
+  budgetUtilization: number;
+  conversionValue: number;
+}
+
+export interface CampaignPerformanceReport {
+  generatedAt: string;
+  campaign: {
+    id: string;
+    name: string;
+    platform: AdPlatform;
+    objective: CampaignObjective;
+    status: CampaignStatus;
+    externalCampaignId: string | null;
+    appId: string | null;
+    budgetType: BudgetType;
+    budgetAmount: number;
+    budgetCurrency: string;
+    creditsAllocated: number;
+    creditsSpent: number;
+    startDate: string | null;
+    endDate: string | null;
+    createdAt: string;
+    updatedAt: string;
+  };
+  dateRange: { start: string; end: string } | null;
+  summary: CampaignPerformanceReportSummary;
+  provider: {
+    platform: AdPlatform;
+    accountId: string;
+    externalAccountId: string;
+    externalCampaignId: string | null;
+  };
+}
+
+export interface CreateCampaignReportShareInput {
+  organizationId: string;
+  userId: string;
+  campaignId: string;
+  expiresAt: Date;
+}
+
+export interface CampaignReportShare {
+  id: string;
+  campaignId: string;
+  token: string;
+  expiresAt: string;
+  publicPath: string;
+}
+
 // ============================================
 // Creative Types
 // ============================================

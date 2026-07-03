@@ -31,6 +31,7 @@ export * from "./ad-audience-segments";
 export * from "./ad-campaigns";
 export * from "./ad-conversions";
 export * from "./ad-creatives";
+export * from "./ad-report-shares";
 export * from "./ad-transactions";
 export * from "./affiliates";
 export * from "./agent-billing";

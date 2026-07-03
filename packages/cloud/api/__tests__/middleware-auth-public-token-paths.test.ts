@@ -63,4 +63,16 @@ describe("isPublicPath — out-of-band token pages", () => {
       false,
     );
   });
+
+  test("campaign report public token route is public but report management stays gated", () => {
+    expect(isPublicPath("/api/v1/advertising/reports/share-token-1")).toBe(
+      true,
+    );
+    expect(
+      isPublicPath("/api/v1/advertising/campaigns/campaign-1/report"),
+    ).toBe(false);
+    expect(
+      isPublicPath("/api/v1/advertising/campaigns/campaign-1/report/share"),
+    ).toBe(false);
+  });
 });

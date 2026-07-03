@@ -8,9 +8,10 @@ import {
   adCampaignsRepository,
   adConversionsRepository,
   adCreativesRepository,
+  adReportSharesRepository,
   adTransactionsRepository,
 } from "../../../db/repositories";
-import { ValidationError } from "../../api/cloud-worker-errors";
+import { NotFoundError, ValidationError } from "../../api/cloud-worker-errors";
 import { logger } from "../../utils/logger";
 import { type ContentSafetyReview, contentSafetyService } from "../content-safety";
 import { creditsService } from "../credits";
@@ -27,11 +28,14 @@ import type {
   AdProviderMediaUploadResult,
   CampaignDaypartingSchedule,
   CampaignMetrics,
+  CampaignPerformanceReport,
+  CampaignReportShare,
   CampaignTargeting,
   ConnectAccountInput,
   CreateAttributionLinkInput,
   CreateAudienceSegmentInput,
   CreateCampaignInput,
+  CreateCampaignReportShareInput,
   CreateCreativeInput,
   CreativeMedia,
   DuplicateCampaignInput,
@@ -53,6 +57,39 @@ const providers: Record<AdPlatform, AdProvider | null> = {
   google: googleAdsProvider,
   tiktok: tiktokAdsProvider,
 };
+
+const REPORT_TOKEN_BYTES = 24;
+
+function safeDiv(numerator: number, denominator: number, multiplier = 1): number {
+  return denominator > 0 ? (numerator / denominator) * multiplier : 0;
+}
+
+function roundMetric(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+function randomReportToken(): string {
+  const bytes = new Uint8Array(REPORT_TOKEN_BYTES);
+  crypto.getRandomValues(bytes);
+  let binary = "";
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte);
+  }
+  return btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
+}
+
+async function sha256Hex(value: string): Promise<string> {
+  const data = new TextEncoder().encode(value);
+  const digest = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+function csvCell(value: string | number | null): string {
+  const text = value === null ? "" : String(value);
+  return /[",\n\r]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
+}
 
 class AdvertisingService {
   private textEncoder = new TextEncoder();
@@ -1651,6 +1688,187 @@ class AdvertisingService {
       firstPartyConversions: firstParty.conversions,
       conversionValue: firstParty.value,
     };
+  }
+
+  async getCampaignPerformanceReport(
+    campaignId: string,
+    organizationId: string,
+    dateRange?: { start: Date; end: Date },
+  ): Promise<CampaignPerformanceReport> {
+    const campaign = await adCampaignsRepository.findById(campaignId);
+    if (!campaign || campaign.organization_id !== organizationId) {
+      throw new Error("Campaign not found");
+    }
+
+    const account = await adAccountsRepository.findById(campaign.ad_account_id);
+    if (!account) {
+      throw new Error("Ad account not found");
+    }
+
+    const metrics = await this.getCampaignMetrics(campaignId, organizationId, dateRange);
+    const budgetAmount = parseFloat(campaign.budget_amount);
+    const creditsAllocated = parseFloat(campaign.credits_allocated);
+    const creditsSpent = parseFloat(campaign.credits_spent);
+
+    return {
+      generatedAt: new Date().toISOString(),
+      campaign: {
+        id: campaign.id,
+        name: campaign.name,
+        platform: campaign.platform,
+        objective: campaign.objective,
+        status: campaign.status,
+        externalCampaignId: campaign.external_campaign_id,
+        appId: campaign.app_id,
+        budgetType: campaign.budget_type,
+        budgetAmount,
+        budgetCurrency: campaign.budget_currency,
+        creditsAllocated,
+        creditsSpent,
+        startDate: campaign.start_date?.toISOString() ?? null,
+        endDate: campaign.end_date?.toISOString() ?? null,
+        createdAt: campaign.created_at.toISOString(),
+        updatedAt: campaign.updated_at.toISOString(),
+      },
+      dateRange: dateRange
+        ? {
+            start: dateRange.start.toISOString(),
+            end: dateRange.end.toISOString(),
+          }
+        : null,
+      summary: {
+        spend: roundMetric(metrics.spend),
+        impressions: metrics.impressions,
+        clicks: metrics.clicks,
+        conversions: metrics.conversions,
+        ctr: roundMetric(metrics.ctr ?? safeDiv(metrics.clicks, metrics.impressions, 100)),
+        cpc: roundMetric(metrics.cpc ?? safeDiv(metrics.spend, metrics.clicks)),
+        cpm: roundMetric(metrics.cpm ?? safeDiv(metrics.spend, metrics.impressions, 1000)),
+        conversionRate: roundMetric(safeDiv(metrics.conversions, metrics.clicks, 100)),
+        costPerConversion: roundMetric(safeDiv(metrics.spend, metrics.conversions)),
+        budgetUtilization: roundMetric(safeDiv(metrics.spend, budgetAmount, 100)),
+        conversionValue: roundMetric(metrics.conversionValue ?? 0),
+      },
+      provider: {
+        platform: campaign.platform,
+        accountId: campaign.ad_account_id,
+        externalAccountId: account.external_account_id,
+        externalCampaignId: campaign.external_campaign_id,
+      },
+    };
+  }
+
+  formatCampaignPerformanceCsv(report: CampaignPerformanceReport): string {
+    const headers = [
+      "campaign_id",
+      "campaign_name",
+      "platform",
+      "status",
+      "budget_type",
+      "budget_amount",
+      "budget_currency",
+      "spend",
+      "impressions",
+      "clicks",
+      "conversions",
+      "ctr",
+      "cpc",
+      "cpm",
+      "conversion_rate",
+      "cost_per_conversion",
+      "budget_utilization",
+      "conversion_value",
+      "date_start",
+      "date_end",
+      "generated_at",
+    ];
+    const row = [
+      report.campaign.id,
+      report.campaign.name,
+      report.campaign.platform,
+      report.campaign.status,
+      report.campaign.budgetType,
+      report.campaign.budgetAmount,
+      report.campaign.budgetCurrency,
+      report.summary.spend,
+      report.summary.impressions,
+      report.summary.clicks,
+      report.summary.conversions,
+      report.summary.ctr,
+      report.summary.cpc,
+      report.summary.cpm,
+      report.summary.conversionRate,
+      report.summary.costPerConversion,
+      report.summary.budgetUtilization,
+      report.summary.conversionValue,
+      report.dateRange?.start ?? null,
+      report.dateRange?.end ?? null,
+      report.generatedAt,
+    ];
+    return `${headers.map(csvCell).join(",")}\n${row.map(csvCell).join(",")}\n`;
+  }
+
+  async createCampaignReportShare(
+    input: CreateCampaignReportShareInput,
+  ): Promise<CampaignReportShare> {
+    const campaign = await adCampaignsRepository.findById(input.campaignId);
+    if (!campaign || campaign.organization_id !== input.organizationId) {
+      throw new Error("Campaign not found");
+    }
+    if (input.expiresAt.getTime() <= Date.now()) {
+      throw new Error("Report share expiration must be in the future");
+    }
+
+    const token = randomReportToken();
+    const tokenHash = await sha256Hex(token);
+    const share = await adReportSharesRepository.create({
+      organization_id: input.organizationId,
+      campaign_id: input.campaignId,
+      token_hash: tokenHash,
+      expires_at: input.expiresAt,
+      created_by_user_id: input.userId,
+    });
+
+    logger.info("[Advertising] Campaign report share created", {
+      campaignId: input.campaignId,
+      shareId: share.id,
+      expiresAt: input.expiresAt.toISOString(),
+    });
+
+    return {
+      id: share.id,
+      campaignId: share.campaign_id,
+      token,
+      expiresAt: share.expires_at.toISOString(),
+      publicPath: `/api/v1/advertising/reports/${encodeURIComponent(token)}`,
+    };
+  }
+
+  async revokeCampaignReportShare(
+    shareId: string,
+    organizationId: string,
+  ): Promise<{ id: string; status: string; revokedAt: string | null }> {
+    const share = await adReportSharesRepository.revoke(shareId, organizationId);
+    if (!share) {
+      throw new Error("Report share not found");
+    }
+    return {
+      id: share.id,
+      status: share.status,
+      revokedAt: share.revoked_at?.toISOString() ?? null,
+    };
+  }
+
+  async getPublicCampaignPerformanceReport(
+    token: string,
+    dateRange?: { start: Date; end: Date },
+  ): Promise<CampaignPerformanceReport> {
+    const tokenHash = await sha256Hex(token);
+    const share = await adReportSharesRepository.findByTokenHash(tokenHash);
+    if (!share || share.status !== "active" || share.expires_at.getTime() <= Date.now()) {
+      throw NotFoundError("Report share not found or expired");
+    }
+    return this.getCampaignPerformanceReport(share.campaign_id, share.organization_id, dateRange);
   }
 
   // ============================================
