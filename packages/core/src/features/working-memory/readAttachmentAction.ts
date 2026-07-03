@@ -336,6 +336,8 @@ export const readAttachmentAction: Action = {
 	],
 	description:
 		"Attachment operations. Use action=read to read current or recent attachments/link previews using extracted text, transcripts, page content, or media descriptions. Use action=save_as_document to store readable attachment content in the document store.",
+	routingHint:
+		"read or save the content of an attachment, link preview, or media ALREADY present in THIS conversation (extracted text/transcript/page/description) -> ATTACHMENT; to fetch a brand-new URL you name yourself -> WEB_FETCH, to manage the agent's stored files -> FILES, or to answer an open-web question -> WEB_SEARCH",
 	suppressPostActionContinuation: true,
 	validate: async (runtime, message) => {
 		const params = message.content as Record<string, unknown>;

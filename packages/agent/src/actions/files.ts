@@ -169,6 +169,8 @@ export const filesAction: Action = {
     "Access stored files. op:list shows recent stored files (optional query/limit); op:get returns a file's details + served URL by fileName; op:delete removes a file (requires confirm:true).",
   descriptionCompressed:
     "list/get/delete stored files; delete requires confirm:true",
+  routingHint:
+    "list/get/delete the agent's stored files by filename (the content-addressed media store) -> FILES; to read an attachment or link already in THIS conversation -> ATTACHMENT (action=read), for owner document signature/approval/deadline/portal workflows -> OWNER_DOCUMENTS, or to query raw database tables/rows -> DATABASE",
   validate: async () => true,
   handler: async (
     runtime: IAgentRuntime,

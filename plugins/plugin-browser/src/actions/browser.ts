@@ -673,6 +673,8 @@ export const browserAction: Action = {
     "BROWSER action. Control registered browser target: app workspace, bridge Chrome/Safari companion, computeruse Chromium, or Stagehand fallback. BrowserService picks target if omitted. action=autofill_login + domain vault-gated autofills open workspace tab. action=wait_for_url + pattern opens an optional url then watches the tab and resumes when its URL matches (OAuth callback, deploy/CI done), streaming progress.",
   descriptionCompressed:
     "Browser open|navigate|click|type|screenshot|state|autofill_login|wait_for_url; bridge status elsewhere",
+  routingHint:
+    "drive an INTERACTIVE web browser session — navigate/click/type across pages, log into a site, or autofill saved credentials on a real browser target -> BROWSER; to fetch ONE URL's contents in a single shot -> WEB_FETCH, to answer an open-web question -> WEB_SEARCH, or to control native desktop apps/Finder/windows on the machine -> COMPUTER_USE",
   validate: async () => true,
   handler: async (
     runtime,

@@ -251,3 +251,13 @@ describe("guarded WEB_FETCH User-Agent defaults", () => {
     ).resolves.toBe("CallerUA/1.0");
   });
 });
+
+describe("WEB_FETCH routing hint (#12209)", () => {
+  it("states its planner boundary versus WEB_SEARCH, ATTACHMENT, and MEMORY", () => {
+    const hint = webFetch.routingHint ?? "";
+    expect(hint).toContain("WEB_FETCH");
+    expect(hint).toContain("WEB_SEARCH");
+    expect(hint).toContain("ATTACHMENT");
+    expect(hint).toContain("MEMORY");
+  });
+});

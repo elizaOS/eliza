@@ -726,6 +726,8 @@ export const databaseAction: Action = {
     "Inspect or query the agent's database. Ops: list_tables, get_table, query (read-only by default), search_vectors (semantic memory search).",
   descriptionCompressed:
     "database list_tables|get_table|query(read-only default)|search_vectors",
+  routingHint:
+    "inspect the agent's RAW database — list/read tables, run read-only SQL, or vector/similarity search over stored rows -> DATABASE; for the agent's own conversational memory records about the user -> MEMORY (action=search); for the user's stored files -> FILES; for open-web lookups -> WEB_SEARCH",
   validate: async (runtime) => {
     registerVectorSearchCategory(runtime);
     return true;

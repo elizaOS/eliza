@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveOp } from "./post.ts";
+import { postAction, resolveOp } from "./post.ts";
 
 /**
  * #10471 — POST op routing must come from the planner-emitted `action` enum
@@ -33,5 +33,15 @@ describe("post resolveOp is i18n-safe (#10471)", () => {
 		// "search"/"read" here; that English-only behavior is gone.
 		expect(resolveOp({ parameters: {} })).toBe("send");
 		expect(resolveOp(undefined)).toBe("send");
+	});
+});
+
+describe("POST routing hint (#12209)", () => {
+	it("states its planner boundary versus MESSAGE, REPLY, and ROOM", () => {
+		const hint = postAction.routingHint ?? "";
+		expect(hint).toContain("POST");
+		expect(hint).toContain("MESSAGE");
+		expect(hint).toContain("REPLY");
+		expect(hint).toContain("ROOM");
 	});
 });
