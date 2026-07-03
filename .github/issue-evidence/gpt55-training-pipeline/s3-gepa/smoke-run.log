@@ -1,0 +1,9 @@
+[s3-gepa] model=gemma-4-31b dataset=12 rows
+[s3-gepa] baseline score (FULL dataset) = 0.000
+[s3-gepa] gepa optimized score (FULL dataset) = 1.000 (gepa internal subset score=1.000, 61.7s)
+[s3-gepa] promotion gate: PROMOTE (candidate beats incumbent by 1.0000 > margin 0.0000 (1.5× stddev=0.0000))
+ Info       [SERVICE:OPTIMIZED_PROMPT] Persisted optimized prompt artifact (task=view_context, optimizer=gepa, score=1, baselineScore=0, path=/var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/s3-gepa-state-rINwUa/optimized-prompts/view_context/v1.json, version=1)
+[s3-gepa] persisted artifact -> /var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/s3-gepa-state-rINwUa/optimized-prompts/view_context/v1.json
+[s3-gepa] runtime pickup: OK (optimizer=gepa, score=1.000)
+[s3-gepa] OUTCOME: FLIPPED (fail -> improved)
+[s3-gepa] wrote smoke-report.json + artifact-view_context.json

@@ -1,0 +1,463 @@
+{
+  "task": "view_context",
+  "optimizer": "gepa",
+  "baseline": "You help decide which single app view would be most useful to open for the user. The available views are: calendar, inbox, wallet, finances, todos, goals, health, documents, relationships, focus, none. Read the user's message and tell them which view is most relevant and why.",
+  "prompt": "Select the most relevant view from: calendar, inbox, wallet, finances, todos, goals, health, documents, relationships, focus, none. Output only a JSON object with keys \"viewId\" and \"reason\".",
+  "baselineScore": 0,
+  "score": 1,
+  "datasetSize": 12,
+  "datasetId": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/.github/issue-evidence/gpt55-training-pipeline/s3-gepa/smoke-dataset-view_context.jsonl",
+  "generatedAt": "2026-07-03T01:00:24.769Z",
+  "lineage": [
+    {
+      "round": 0,
+      "variant": 0,
+      "score": 0,
+      "notes": "baseline"
+    },
+    {
+      "round": 0,
+      "variant": 1,
+      "score": 1,
+      "notes": "seed-feedback | Failure mode: The model is wrapping the JSON output in Markdown code blocks. To fix this, add the instruction: Do not u…"
+    },
+    {
+      "round": 0,
+      "variant": 2,
+      "score": 0,
+      "notes": "seed-compress | tokens=36"
+    },
+    {
+      "round": 0,
+      "variant": 3,
+      "score": 1,
+      "notes": "seed-feedback | Failure mode: The model is wrapping the JSON in Markdown code blocks and providing overly verbose reasons. Add \"Output …"
+    },
+    {
+      "round": 0,
+      "variant": 4,
+      "score": 0,
+      "notes": "seed-compress | tokens=37"
+    },
+    {
+      "round": 0,
+      "variant": 5,
+      "score": 1,
+      "notes": "seed-feedback | Failure mode: The model is wrapping the JSON in Markdown code blocks instead of providing raw text. Fix: Add the instru…"
+    },
+    {
+      "round": 0,
+      "variant": 6,
+      "score": 0,
+      "notes": "seed-compress | tokens=38"
+    },
+    {
+      "round": 0,
+      "variant": 7,
+      "score": 1,
+      "notes": "seed-feedback | Failure mode: The model is wrapping the JSON in Markdown code blocks and providing overly verbose reasons. Change the p…"
+    },
+    {
+      "round": 0,
+      "variant": 8,
+      "score": 0,
+      "notes": "seed-compress | tokens=39"
+    },
+    {
+      "round": 0,
+      "variant": 9,
+      "score": 1,
+      "notes": "seed-feedback | Failure mode: The model is wrapping the JSON in Markdown code blocks and providing overly verbose reasons. Change the p…"
+    },
+    {
+      "round": 0,
+      "variant": 10,
+      "score": 0,
+      "notes": "seed-compress | tokens=36"
+    },
+    {
+      "round": 0,
+      "variant": 11,
+      "score": 1,
+      "notes": "seed-feedback | Failure mode: The model is wrapping the JSON in Markdown code blocks and providing overly verbose reasons. Change the p…"
+    },
+    {
+      "round": 1,
+      "variant": 4,
+      "score": 1,
+      "notes": "feedback-mut | Failure mode: The model is wrapping the JSON in markdown code blocks and providing overly verbose reasons. Change the p…"
+    },
+    {
+      "round": 1,
+      "variant": 5,
+      "score": 0,
+      "notes": "compress-mut | tokens=29"
+    },
+    {
+      "round": 1,
+      "variant": 6,
+      "score": 1,
+      "notes": "feedback-mut | The model is providing overly verbose, descriptive reasons instead of the concise, functional summaries expected. Updat…"
+    },
+    {
+      "round": 1,
+      "variant": 7,
+      "score": 1,
+      "notes": "compress-mut | tokens=35"
+    },
+    {
+      "round": 1,
+      "variant": 8,
+      "score": 1,
+      "notes": "feedback-mut | Failure mode: The model is mirroring user phrasing in the reason instead of providing a synthesized, high-level intent.…"
+    },
+    {
+      "round": 1,
+      "variant": 9,
+      "score": 1,
+      "notes": "compress-mut | tokens=35"
+    },
+    {
+      "round": 1,
+      "variant": 10,
+      "score": 1,
+      "notes": "feedback-mut | Failure mode: The model is wrapping the JSON in Markdown code blocks and providing overly verbose reasons. Change the p…"
+    },
+    {
+      "round": 1,
+      "variant": 11,
+      "score": 0,
+      "notes": "compress-mut | tokens=33"
+    },
+    {
+      "round": 2,
+      "variant": 3,
+      "score": 1,
+      "notes": "feedback-mut | Failure mode: The model is wrapping the JSON in markdown code blocks and providing overly verbose reasons. Change the p…"
+    },
+    {
+      "round": 2,
+      "variant": 4,
+      "score": 0,
+      "notes": "compress-mut | tokens=29"
+    },
+    {
+      "round": 2,
+      "variant": 5,
+      "score": 1,
+      "notes": "feedback-mut | Failure mode: The model is providing overly formal, descriptive reasons instead of the concise, lowercase functional de…"
+    },
+    {
+      "round": 2,
+      "variant": 6,
+      "score": 1,
+      "notes": "compress-mut | tokens=35"
+    },
+    {
+      "round": 2,
+      "variant": 7,
+      "score": 1,
+      "notes": "feedback-mut | The model is failing to match the specific phrasing and perspective of the expected reasons. The prompt lacks a defined…"
+    },
+    {
+      "round": 2,
+      "variant": 8,
+      "score": 1,
+      "notes": "compress-mut | tokens=35"
+    },
+    {
+      "round": 2,
+      "variant": 9,
+      "score": 1,
+      "notes": "crossover | Failure mode: The model is wrapping the JSON in Markdown code blocks instead of providing raw text. Change the prompt t…"
+    },
+    {
+      "round": 3,
+      "variant": 4,
+      "score": 1,
+      "notes": "feedback-mut | Failure mode: The model is wrapping the JSON in Markdown code blocks and providing overly verbose reasons. Change the p…"
+    },
+    {
+      "round": 3,
+      "variant": 5,
+      "score": 0,
+      "notes": "compress-mut | tokens=29"
+    },
+    {
+      "round": 3,
+      "variant": 6,
+      "score": 1,
+      "notes": "feedback-mut | Failure mode: The model is providing descriptive, formal reasons instead of the brief, lowercase, intent-based reasons …"
+    },
+    {
+      "round": 3,
+      "variant": 7,
+      "score": 1,
+      "notes": "compress-mut | tokens=35"
+    },
+    {
+      "round": 3,
+      "variant": 8,
+      "score": 1,
+      "notes": "feedback-mut | The model is generating reasons based on literal user phrasing rather than the underlying intent or domain-specific con…"
+    },
+    {
+      "round": 3,
+      "variant": 9,
+      "score": 1,
+      "notes": "compress-mut | tokens=35"
+    },
+    {
+      "round": 3,
+      "variant": 10,
+      "score": 1,
+      "notes": "feedback-mut | Failure mode: The model is providing overly formal, descriptive reasons instead of the concise, lowercase summaries exp…"
+    },
+    {
+      "round": 3,
+      "variant": 11,
+      "score": 1,
+      "notes": "compress-mut | tokens=35"
+    },
+    {
+      "round": 4,
+      "variant": 4,
+      "score": 1,
+      "notes": "feedback-mut | Failure mode: The model is wrapping the JSON in Markdown code blocks and providing overly verbose reasons. Change the p…"
+    },
+    {
+      "round": 4,
+      "variant": 5,
+      "score": 0,
+      "notes": "compress-mut | tokens=29"
+    },
+    {
+      "round": 4,
+      "variant": 6,
+      "score": 1,
+      "notes": "feedback-mut | Failure mode: The model is providing descriptive, formal explanations instead of the terse, lowercase style required by…"
+    },
+    {
+      "round": 4,
+      "variant": 7,
+      "score": 1,
+      "notes": "compress-mut | tokens=35"
+    },
+    {
+      "round": 4,
+      "variant": 8,
+      "score": 1,
+      "notes": "feedback-mut | The model is failing to match the specific phrasing and semantic detail required for the reason field. The prompt lacks…"
+    },
+    {
+      "round": 4,
+      "variant": 9,
+      "score": 1,
+      "notes": "compress-mut | tokens=35"
+    },
+    {
+      "round": 4,
+      "variant": 10,
+      "score": 1,
+      "notes": "feedback-mut | Failure mode: The model is providing descriptive, formal reasons instead of the concise, lowercase, intent-based summar…"
+    },
+    {
+      "round": 4,
+      "variant": 11,
+      "score": 1,
+      "notes": "compress-mut | tokens=35"
+    },
+    {
+      "round": 5,
+      "variant": 4,
+      "score": 1,
+      "notes": "feedback-mut | Failure mode: The model is wrapping the JSON in Markdown code blocks and providing overly verbose reasoning. Change the…"
+    },
+    {
+      "round": 5,
+      "variant": 5,
+      "score": 0,
+      "notes": "compress-mut | tokens=29"
+    },
+    {
+      "round": 5,
+      "variant": 6,
+      "score": 1,
+      "notes": "feedback-mut | Failure mode: The model is generating descriptive, full-sentence reasons instead of the desired concise, lowercase styl…"
+    },
+    {
+      "round": 5,
+      "variant": 7,
+      "score": 1,
+      "notes": "compress-mut | tokens=35"
+    },
+    {
+      "round": 5,
+      "variant": 8,
+      "score": 1,
+      "notes": "feedback-mut | The failure mode is a lack of stylistic constraint on the reason field, leading to inconsistent phrasing and formatting…"
+    },
+    {
+      "round": 5,
+      "variant": 9,
+      "score": 1,
+      "notes": "compress-mut | tokens=35"
+    },
+    {
+      "round": 5,
+      "variant": 10,
+      "score": 1,
+      "notes": "feedback-mut | Failure mode: The model is generating overly formal, descriptive reasons instead of the desired concise, lowercase styl…"
+    },
+    {
+      "round": 5,
+      "variant": 11,
+      "score": 1,
+      "notes": "compress-mut | tokens=35"
+    },
+    {
+      "round": 6,
+      "variant": 4,
+      "score": 1,
+      "notes": "feedback-mut | Failure mode: The model is wrapping the JSON in Markdown code blocks and providing overly verbose reasons. Change the p…"
+    },
+    {
+      "round": 6,
+      "variant": 5,
+      "score": 0,
+      "notes": "compress-mut | tokens=29"
+    },
+    {
+      "round": 6,
+      "variant": 6,
+      "score": 1,
+      "notes": "feedback-mut | Failure mode: The model is generating descriptive, formal reasons instead of the concise, lowercase, intent-based phras…"
+    },
+    {
+      "round": 6,
+      "variant": 7,
+      "score": 1,
+      "notes": "compress-mut | tokens=35"
+    },
+    {
+      "round": 6,
+      "variant": 8,
+      "score": 1,
+      "notes": "feedback-mut | The model is generating reasons based on the user's phrasing rather than the underlying intent. To fix this, instruct t…"
+    },
+    {
+      "round": 6,
+      "variant": 9,
+      "score": 1,
+      "notes": "compress-mut | tokens=35"
+    },
+    {
+      "round": 6,
+      "variant": 10,
+      "score": 1,
+      "notes": "feedback-mut | Failure mode: The model is generating overly formal, descriptive reasons instead of the desired concise, lowercase styl…"
+    },
+    {
+      "round": 6,
+      "variant": 11,
+      "score": 1,
+      "notes": "compress-mut | tokens=35"
+    },
+    {
+      "round": 7,
+      "variant": 4,
+      "score": 1,
+      "notes": "feedback-mut | Failure mode: The model is including Markdown code fences in the output and providing overly verbose reasons. Change th…"
+    },
+    {
+      "round": 7,
+      "variant": 5,
+      "score": 0,
+      "notes": "compress-mut | tokens=26"
+    },
+    {
+      "round": 7,
+      "variant": 6,
+      "score": 1,
+      "notes": "feedback-mut | Failure mode: The model is generating descriptive, formal reasons instead of the desired concise, lowercase style. Add …"
+    },
+    {
+      "round": 7,
+      "variant": 7,
+      "score": 1,
+      "notes": "compress-mut | tokens=35"
+    },
+    {
+      "round": 7,
+      "variant": 8,
+      "score": 1,
+      "notes": "feedback-mut | The model is failing to follow a specific, implicit style for the reason field, producing descriptive sentences instead…"
+    },
+    {
+      "round": 7,
+      "variant": 9,
+      "score": 1,
+      "notes": "compress-mut | tokens=35"
+    },
+    {
+      "round": 7,
+      "variant": 10,
+      "score": 1,
+      "notes": "feedback-mut | Failure mode: The model is providing descriptive, formal reasons instead of the concise, lowercase, functional summarie…"
+    },
+    {
+      "round": 7,
+      "variant": 11,
+      "score": 1,
+      "notes": "compress-mut | tokens=35"
+    },
+    {
+      "round": 8,
+      "variant": 4,
+      "score": 1,
+      "notes": "feedback-mut | Failure mode: The model is providing overly descriptive, formal reasons instead of the brief, lowercase summaries expec…"
+    },
+    {
+      "round": 8,
+      "variant": 5,
+      "score": 1,
+      "notes": "compress-mut | tokens=35"
+    },
+    {
+      "round": 8,
+      "variant": 6,
+      "score": 1,
+      "notes": "feedback-mut | Failure mode: The model is generating reasons based on the user's phrasing rather than the underlying intent or specifi…"
+    },
+    {
+      "round": 8,
+      "variant": 7,
+      "score": 1,
+      "notes": "compress-mut | tokens=35"
+    },
+    {
+      "round": 8,
+      "variant": 8,
+      "score": 1,
+      "notes": "feedback-mut | Failure mode: The model is providing overly descriptive, formal reasons instead of the concise, lowercase style expecte…"
+    },
+    {
+      "round": 8,
+      "variant": 9,
+      "score": 1,
+      "notes": "compress-mut | tokens=36"
+    },
+    {
+      "round": 8,
+      "variant": 10,
+      "score": 1,
+      "notes": "feedback-mut | Failure mode: The model is wrapping the JSON in Markdown code blocks and providing overly verbose reasons. Change the p…"
+    },
+    {
+      "round": 8,
+      "variant": 11,
+      "score": 0,
+      "notes": "compress-mut | tokens=26"
+    }
+  ]
+}

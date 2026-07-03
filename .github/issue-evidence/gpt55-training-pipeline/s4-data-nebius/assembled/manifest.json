@@ -1,0 +1,34 @@
+{
+  "generatedAt": "2026-07-03T00:59:13.554Z",
+  "passingItems": 149,
+  "gepaFlips": 0,
+  "extractedRows": 1403,
+  "degenerateDropped": 0,
+  "dedupDropped": 3,
+  "kept": 1400,
+  "byFamily": {
+    "scenario": 1363,
+    "benchmark": 40
+  },
+  "taskTypeCounts": {
+    "should_respond": 932,
+    "action_planner": 286,
+    "evaluation": 110,
+    "morning_brief": 72
+  },
+  "splitCounts": {
+    "train": 1283,
+    "val": 55,
+    "test": 62
+  },
+  "seed": "eliza1-gpt55-scenarios",
+  "valRatio": 0.05,
+  "testRatio": 0.05,
+  "hfRepo": "elizaos/eliza-1-training-data",
+  "hfSubdir": "converted/gpt55-scenarios",
+  "files": {
+    "train": ".github/issue-evidence/gpt55-training-pipeline/s4-data-nebius/assembled/train.jsonl",
+    "val": ".github/issue-evidence/gpt55-training-pipeline/s4-data-nebius/assembled/val.jsonl",
+    "test": ".github/issue-evidence/gpt55-training-pipeline/s4-data-nebius/assembled/test.jsonl"
+  }
+}

@@ -1,0 +1,54 @@
+{
+  "generatedAt": "2026-07-03T01:01:52.288Z",
+  "mode": "dry-run",
+  "stateDir": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/.github/issue-evidence/gpt55-training-pipeline/s3-gepa/sweep/state",
+  "stats": {
+    "itemsScanned": 673,
+    "passed": 150,
+    "failed": 523,
+    "error": 0,
+    "other": 0,
+    "failClassCounts": {
+      "ACTION_SELECTION": 158,
+      "OUTPUT_FORMAT": 24,
+      "OTHER": 50,
+      "CONNECTOR_CRED": 106,
+      "JUDGE_BELOW": 185
+    },
+    "excludedConnectorCred": 106
+  },
+  "tasks": [
+    {
+      "task": "should_respond",
+      "goldRows": 934,
+      "datasetSize": 933,
+      "failingScenarios": 186,
+      "dedicatedScorer": false,
+      "datasetPath": ".github/issue-evidence/gpt55-training-pipeline/s3-gepa/sweep/datasets/should_respond.gepa.jsonl"
+    },
+    {
+      "task": "action_planner",
+      "goldRows": 289,
+      "datasetSize": 288,
+      "failingScenarios": 177,
+      "dedicatedScorer": true,
+      "datasetPath": ".github/issue-evidence/gpt55-training-pipeline/s3-gepa/sweep/datasets/action_planner.gepa.jsonl"
+    },
+    {
+      "task": "morning_brief",
+      "goldRows": 73,
+      "datasetSize": 73,
+      "failingScenarios": 2,
+      "dedicatedScorer": true,
+      "datasetPath": ".github/issue-evidence/gpt55-training-pipeline/s3-gepa/sweep/datasets/morning_brief.gepa.jsonl"
+    },
+    {
+      "task": "inbox_triage",
+      "goldRows": 0,
+      "datasetSize": 0,
+      "failingScenarios": 1,
+      "dedicatedScorer": true,
+      "datasetPath": ".github/issue-evidence/gpt55-training-pipeline/s3-gepa/sweep/datasets/inbox_triage.gepa.jsonl"
+    }
+  ]
+}
