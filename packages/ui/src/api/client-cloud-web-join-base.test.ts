@@ -120,3 +120,38 @@ describe("getCloudCompatAgents on hosted web with no agent baseUrl (join flow)",
     expect(urls.some((u) => u.includes("/api/v1/eliza/agents"))).toBe(false);
   });
 });
+
+// The regression NubsCarson flagged on PR #11448: the page-host branch is meant
+// ONLY for the empty-baseUrl /join state. When the client is connected to a
+// NON-cloud agent server (baseUrl = an agent URL that isn't a direct-cloud
+// base), the direct-cloud call must route to that connected agent, NOT the
+// cloud page host. Firing the page-host branch while connected sent the request
+// with the agent's Bearer to the cloud control plane → mis-route / 401.
+describe("getCloudCompatAgents connected to a non-cloud agent while served from a cloud host", () => {
+  it("routes to the connected agent, NOT the cloud page host", async () => {
+    // SPA is being served from a real cloud Pages host...
+    setHostname("app.elizacloud.ai");
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(jsonResponse({ success: true, data: [] }));
+
+    // ...but the client is connected to an external, non-cloud agent server.
+    const client = new ElizaClient("https://my-agent.example.com");
+    await client.getCloudCompatAgents();
+
+    const urls = fetchSpy.mock.calls.map((c) => String(c[0]));
+
+    // The request must hit the connected agent's absolute origin via the
+    // agent-proxy compat route.
+    expect(urls).toContain(
+      "https://my-agent.example.com/api/cloud/compat/agents",
+    );
+
+    // It must NOT resolve to the page host: no direct-cloud v1 route, and no
+    // same-site rewrite to a relative /api/v1 path against the cloud origin.
+    for (const url of urls) {
+      expect(url).not.toContain("/api/v1/eliza/agents");
+      expect(url).not.toContain("api.elizacloud.ai");
+    }
+  });
+});

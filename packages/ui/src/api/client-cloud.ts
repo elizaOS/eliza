@@ -297,7 +297,13 @@ function resolveDirectCloudClientApiBase(client: ElizaClient): string | null {
   // agent-proxy fallback (/api/cloud/compat/*), a route only agent servers
   // mount — the cloud worker 404s it, so every web sign-in dead-ended on
   // "Couldn't connect to your agent".
-  if (typeof window !== "undefined") {
+  //
+  // Gate this on the empty-baseUrl state ONLY. Once the client is connected to
+  // a NON-cloud agent server (baseUrl = an agent URL that isn't a direct-cloud
+  // base — handled above), the direct-cloud call must go to that agent, not the
+  // page host. Firing this branch while connected would mis-route to the cloud
+  // host and 401. See PR #11448.
+  if (!baseUrl && typeof window !== "undefined") {
     const byHost = DIRECT_ELIZA_CLOUD_API_BY_HOST.get(
       window.location.hostname.toLowerCase(),
     );
