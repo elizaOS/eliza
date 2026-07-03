@@ -864,7 +864,7 @@ export async function handleStreamRoute(
 
       // Stop current frame capture if active
       if (state.screenCapture?.isFrameCaptureActive()) {
-        state.screenCapture.stopFrameCapture?.();
+        state.screenCapture.stopFrameCapture();
       }
 
       // Build capture options
