@@ -1,7 +1,4 @@
-import {
-  getDefaultStylePreset,
-  getStylePresets,
-} from "@elizaos/shared";
+import { getDefaultStylePreset, getStylePresets } from "@elizaos/shared";
 import { describe, expect, it } from "vitest";
 import { getBundledContentPacks } from "./bundled-packs";
 
@@ -28,7 +25,9 @@ describe("getBundledContentPacks", () => {
   it("derives name + catchphrase from the shared registry for all 8 characters", () => {
     const packs = getBundledContentPacks();
     for (const preset of registryPresets) {
-      const pack = packs.find((candidate) => candidate.manifest.id === preset.id);
+      const pack = packs.find(
+        (candidate) => candidate.manifest.id === preset.id,
+      );
       expect(pack, `missing bundled pack for ${preset.id}`).toBeDefined();
       // Name matches the registry.
       expect(pack?.manifest.name).toBe(preset.name);
@@ -61,7 +60,9 @@ describe("getBundledContentPacks", () => {
   it("references /vrms assets by avatarIndex-derived slug", () => {
     const packs = getBundledContentPacks();
     for (const preset of registryPresets) {
-      const pack = packs.find((candidate) => candidate.manifest.id === preset.id);
+      const pack = packs.find(
+        (candidate) => candidate.manifest.id === preset.id,
+      );
       const slug = `bundled-${preset.avatarIndex}`;
       expect(pack?.avatarIndex).toBe(preset.avatarIndex);
       expect(pack?.vrmUrl).toBeUndefined();

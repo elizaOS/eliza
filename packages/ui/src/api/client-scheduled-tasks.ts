@@ -68,7 +68,9 @@ declare module "./client-base" {
      * regardless of due-ness (the same strict-fire path the scheduler tick
      * uses) and returns the typed outcome. Routes to the LifeOps runner.
      */
-    fireScheduledTask(taskId: string): Promise<{ fire: ScheduledTaskFireResult }>;
+    fireScheduledTask(
+      taskId: string,
+    ): Promise<{ fire: ScheduledTaskFireResult }>;
 
     /**
      * Run a one-click LifeOps live-validation probe
