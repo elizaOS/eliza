@@ -122,7 +122,9 @@ describe("boot config store is write-once", () => {
 	it("the window-key mirror cannot replace an established store", () => {
 		const slot = globalThis as Slot;
 		slot[STORE_KEY] = {
-			current: { envAliases: [["ELIZA_ESTABLISHED_SRC", "ELIZA_ESTABLISHED_DST"]] },
+			current: {
+				envAliases: [["ELIZA_ESTABLISHED_SRC", "ELIZA_ESTABLISHED_DST"]],
+			},
 		};
 		slot[WINDOW_KEY] = {
 			envAliases: [["ELIZA_WINDOW_SRC", "ELIZA_WINDOW_DST"]],
