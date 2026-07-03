@@ -1,5 +1,7 @@
 import type { ComponentType, LazyExoticComponent } from "react";
 
+export const CLOUD_PUBLIC_ROUTE_ACCESS = "cloud-public-route-reviewed" as const;
+
 /**
  * Pluggable cloud-route registry.
  *
@@ -28,6 +30,12 @@ export interface CloudRouteDef {
    * (public marketing / auth / payment pages). Defaults to `false`.
    */
   public?: boolean;
+  /**
+   * Required whenever `public: true` is set. This makes public exposure a
+   * searchable, explicit opt-in instead of a boolean that can be flipped by
+   * accident during re-registration.
+   */
+  publicAccess?: typeof CLOUD_PUBLIC_ROUTE_ACCESS;
   /** Optional grouping key for nav/IA (e.g. `"dashboard"`, `"auth"`). */
   group?: string;
 }
@@ -65,19 +73,44 @@ interface CloudRouteEntry extends CloudRouteDef {
  */
 export function registerCloudRoute(def: CloudRouteDef): void {
   const store = getStore();
+  const existing = store.entries.get(def.path);
+  if (def.public === true && def.publicAccess !== CLOUD_PUBLIC_ROUTE_ACCESS) {
+    throw new Error(
+      `Cloud route "${def.path}" is public but did not opt in with CLOUD_PUBLIC_ROUTE_ACCESS`,
+    );
+  }
+  if (
+    isDevMode() &&
+    existing &&
+    existing.public !== true &&
+    def.public === true
+  ) {
+    console.warn(
+      `[cloud-route-registry] Route "${def.path}" was re-registered from private to public. Use CLOUD_PUBLIC_ROUTE_ACCESS only for intentionally public routes.`,
+    );
+  }
   const entry: CloudRouteEntry = { ...def, order: store.seq };
   store.seq += 1;
   store.entries.set(def.path, entry);
+}
+
+function isDevMode(): boolean {
+  return (
+    import.meta.env.DEV ||
+    import.meta.env.MODE === "test" ||
+    process.env.NODE_ENV !== "production"
+  );
 }
 
 /** All registered cloud routes, in registration order. */
 export function listCloudRoutes(): CloudRouteDef[] {
   return [...getStore().entries.values()]
     .sort((a, b) => (a as CloudRouteEntry).order - (b as CloudRouteEntry).order)
-    .map(({ path, element, public: isPublic, group }) => ({
+    .map(({ path, element, public: isPublic, publicAccess, group }) => ({
       path,
       element,
       public: isPublic,
+      publicAccess,
       group,
     }));
 }
