@@ -23,6 +23,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import {
   ChannelKeyError,
   type ScheduledTask,
+  type ScheduledTaskFireResult,
   type ScheduledTaskRunnerHandle,
 } from "../scheduled-task/index.js";
 import {
@@ -76,6 +77,50 @@ function matchTaskVerb(pathname: string): { id: string; verb: string } | null {
   );
   if (!m) return null;
   return { id: decodeURIComponent(m[1] ?? ""), verb: m[2] ?? "" };
+}
+
+function matchTaskFire(pathname: string): { id: string } | null {
+  const m = /^\/api\/lifeops\/scheduled-tasks\/([^/]+)\/fire\/?$/.exec(pathname);
+  if (!m) return null;
+  return { id: decodeURIComponent(m[1] ?? "") };
+}
+
+/** JSON-safe projection of the runner's typed fire outcome. */
+export interface ScheduledTaskFireResponse {
+  kind: ScheduledTaskFireResult["kind"];
+  reason?: string;
+  error?: string;
+  nextAttemptAtIso?: string;
+  task: ScheduledTask | null;
+}
+
+function serializeFireResult(
+  result: ScheduledTaskFireResult,
+): ScheduledTaskFireResponse {
+  switch (result.kind) {
+    case "fired":
+      return { kind: result.kind, task: result.task };
+    case "raced":
+      return { kind: result.kind, task: null };
+    case "skipped":
+      return { kind: result.kind, reason: result.reason, task: result.task };
+    case "dispatch_deferred":
+      return {
+        kind: result.kind,
+        reason: result.reason,
+        nextAttemptAtIso: result.nextAttemptAtIso,
+        task: result.task,
+      };
+    case "dispatch_failed":
+      return {
+        kind: result.kind,
+        error:
+          result.error instanceof Error
+            ? result.error.message
+            : String(result.error),
+        task: result.task,
+      };
+  }
 }
 
 function matchTaskHistory(pathname: string): { id: string } | null {
@@ -236,6 +281,96 @@ export function makeScheduledTasksRouteHandler(
       return true;
     }
 
+    // Test probe — the one-click "run a live LifeOps validation" entry point.
+    // Seeds a due-now reminder (or check-in) and fires it in the same call, so a
+    // HITL tester can confirm the real schedule → fire → dispatch path works
+    // end-to-end with their connected model/connectors, without hand-crafting a
+    // ScheduledTaskInput. The seeded row is owner-visible and tagged
+    // `metadata.liveTest` so it is identifiable in the task list.
+    if (method === "POST" && pathname === `${PATH_PREFIX}/test-probe`) {
+      const runner = await deps.resolveRunner(ctx);
+      if (!runner) return true;
+      const contentLength = Number.parseInt(
+        (req.headers["content-length"] as string | undefined) ?? "0",
+        10,
+      );
+      let body: Record<string, unknown> = {};
+      if (Number.isFinite(contentLength) && contentLength > 0) {
+        const parsed = await readJsonBody<Record<string, unknown>>(req, res);
+        if (parsed === null) return true;
+        body = parsed;
+      }
+      const probeKind = body.kind === "checkin" ? "checkin" : "reminder";
+      const nowIso = new Date().toISOString();
+      const probeInput = {
+        kind: probeKind,
+        promptInstructions:
+          probeKind === "checkin"
+            ? "LifeOps live test: a check-in probe — confirm the scheduler fires and the check-in dispatches to you."
+            : "LifeOps live test: a reminder probe — confirm the scheduler fires and this reminder dispatches to you.",
+        trigger: { kind: "once", atIso: nowIso },
+        priority: "medium",
+        respectsGlobalPause: false,
+        source: "plugin",
+        createdBy: "lifeops-live-test",
+        ownerVisible: true,
+        metadata: { liveTest: true, seededAtIso: nowIso },
+      };
+      const parsedProbe = scheduledTaskInputSchema.safeParse(probeInput);
+      if (!parsedProbe.success) {
+        error(
+          res,
+          `invalid probe: ${parsedProbe.error.issues.map((i) => i.message).join("; ")}`,
+          400,
+        );
+        return true;
+      }
+      try {
+        const task = await runner.schedule(
+          parsedProbe.data as Omit<ScheduledTask, "taskId" | "state">,
+        );
+        const result = await runner.fireWithResult(task.taskId, {
+          allowTerminalRefire: true,
+        });
+        json(res, { task, fire: serializeFireResult(result) }, 201);
+      } catch (err) {
+        if (
+          err instanceof ScheduledTaskValidationError ||
+          err instanceof ChannelKeyError
+        ) {
+          error(res, err.message, 400);
+          return true;
+        }
+        const msg = err instanceof Error ? err.message : String(err);
+        error(res, msg, 400);
+      }
+      return true;
+    }
+
+    // Fire now — the interactive HITL live-test trigger. Runs the task
+    // immediately regardless of due-ness (the same strict-fire path the
+    // scheduler tick uses via `processDueScheduledTasks → runner.fireWithResult`),
+    // returning the typed outcome (fired / skipped / dispatch_deferred /
+    // dispatch_failed / raced) plus the post-fire task. Placed before the
+    // generic verb block so `fire` is not rejected by the apply-verb allowlist.
+    {
+      const fireMatch = matchTaskFire(pathname);
+      if (method === "POST" && fireMatch) {
+        const runner = await deps.resolveRunner(ctx);
+        if (!runner) return true;
+        try {
+          const result = await runner.fireWithResult(fireMatch.id, {
+            allowTerminalRefire: true,
+          });
+          json(res, { fire: serializeFireResult(result) });
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          error(res, msg, 400);
+        }
+        return true;
+      }
+    }
+
     // Apply verb.
     {
       const verbed = matchTaskVerb(pathname);
@@ -311,6 +446,8 @@ export const SCHEDULED_TASKS_ROUTE_PATHS = [
   },
   { type: "POST" as const, path: "/api/lifeops/scheduled-tasks/:id/reopen" },
   { type: "POST" as const, path: "/api/lifeops/scheduled-tasks/:id/edit" },
+  { type: "POST" as const, path: "/api/lifeops/scheduled-tasks/:id/fire" },
+  { type: "POST" as const, path: "/api/lifeops/scheduled-tasks/test-probe" },
   { type: "GET" as const, path: "/api/lifeops/scheduled-tasks/:id/history" },
   { type: "GET" as const, path: "/api/lifeops/dev/scheduled-tasks/:id/log" },
   { type: "GET" as const, path: "/api/lifeops/dev/scheduling/registries" },
