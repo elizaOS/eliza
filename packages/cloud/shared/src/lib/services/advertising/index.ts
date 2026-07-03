@@ -226,6 +226,14 @@ class AdvertisingService {
     return this.fromDbTargeting(segment.targeting);
   }
 
+  private assertNoPostSyncTargetingUpdate(input: UpdateCampaignInput): void {
+    if (input.targeting || input.audienceSegmentId) {
+      throw ValidationError(
+        "Campaign targeting cannot be updated after platform sync; create a new campaign with the desired audience segment",
+      );
+    }
+  }
+
   async listAudienceSegments(organizationId: string) {
     const segments = await adAudienceSegmentsRepository.listByOrganization(organizationId);
     return segments.map((segment) => this.serializeAudienceSegment(segment));
@@ -940,6 +948,8 @@ class AdvertisingService {
       logger.info("[Advertising] Campaign dayparting updated locally", { campaignId });
       return updated;
     }
+
+    this.assertNoPostSyncTargetingUpdate(input);
 
     const targeting = await this.resolveAudienceTargeting(organizationId, input);
     const campaignInput: UpdateCampaignInput = {

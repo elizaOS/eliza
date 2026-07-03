@@ -6,7 +6,6 @@ import {
 } from "../../../db/repositories";
 import { advertisingService } from "../advertising";
 import { CreateAudienceSegmentSchema } from "../advertising/schemas";
-import type { AdProvider } from "../advertising/types";
 
 const ORG_ID = "00000000-0000-4000-8000-000000000001";
 const OTHER_ORG_ID = "00000000-0000-4000-8000-000000000002";
@@ -59,14 +58,6 @@ function makeCampaign(overrides: Record<string, unknown> = {}) {
     targeting: {},
     ...overrides,
   };
-}
-
-function stubProvider(overrides: Partial<AdProvider> = {}): AdProvider {
-  return {
-    platform: "meta",
-    updateCampaign: async () => ({ success: true }),
-    ...overrides,
-  } as unknown as AdProvider;
 }
 
 afterEach(() => {
@@ -136,27 +127,7 @@ describe("audience segment service", () => {
     });
   });
 
-  test("denies applying a segment from another organization before campaign update", async () => {
-    track(spyOn(adCampaignsRepository, "findById").mockResolvedValue(makeCampaign() as never));
-    track(
-      spyOn(adAudienceSegmentsRepository, "findById").mockResolvedValue(
-        makeSegment({ organization_id: OTHER_ORG_ID }) as never,
-      ),
-    );
-    const accountLookup = track(spyOn(adAccountsRepository, "findById"));
-
-    await expect(
-      advertisingService.applyAudienceSegmentToCampaign(SEGMENT_ID, CAMPAIGN_ID, ORG_ID),
-    ).rejects.toThrow("Audience segment not found");
-
-    expect(accountLookup).not.toHaveBeenCalled();
-  });
-
-  test("applies a same-org segment to an existing campaign targeting update", async () => {
-    track(
-      spyOn(adAudienceSegmentsRepository, "findById").mockResolvedValue(makeSegment() as never),
-    );
-    track(spyOn(adCampaignsRepository, "findById").mockResolvedValue(makeCampaign() as never));
+  test("denies creating a campaign with a segment from another organization before persistence", async () => {
     track(
       spyOn(adAccountsRepository, "findById").mockResolvedValue({
         id: "account-1",
@@ -166,44 +137,35 @@ describe("audience segment service", () => {
       } as never),
     );
     track(
-      spyOn(
-        advertisingService as unknown as { getCredentials: () => Promise<unknown> },
-        "getCredentials",
-      ).mockResolvedValue({} as never),
-    );
-    track(spyOn(advertisingService, "getProvider").mockReturnValue(stubProvider()));
-    const update = track(
-      spyOn(adCampaignsRepository, "update").mockResolvedValue(
-        makeCampaign({
-          targeting: {
-            locations: ["US"],
-            age_min: 21,
-            age_max: 44,
-            custom_audiences: ["ca_123"],
-            excluded_audiences: ["ca_excluded"],
-          },
-        }) as never,
+      spyOn(adAudienceSegmentsRepository, "findById").mockResolvedValue(
+        makeSegment({ organization_id: OTHER_ORG_ID }) as never,
       ),
     );
+    const create = track(spyOn(adCampaignsRepository, "create"));
 
-    const campaign = await advertisingService.applyAudienceSegmentToCampaign(
-      SEGMENT_ID,
-      CAMPAIGN_ID,
-      ORG_ID,
-    );
+    await expect(
+      advertisingService.createCampaign({
+        organizationId: ORG_ID,
+        adAccountId: "account-1",
+        name: "Campaign",
+        objective: "traffic",
+        budgetType: "lifetime",
+        budgetAmount: 100,
+        audienceSegmentId: SEGMENT_ID,
+      }),
+    ).rejects.toThrow("Audience segment not found");
 
-    expect(update).toHaveBeenCalledTimes(1);
-    expect(update.mock.calls[0]?.[1]).toMatchObject({
-      targeting: {
-        age_min: 21,
-        age_max: 44,
-        custom_audiences: ["ca_123"],
-        excluded_audiences: ["ca_excluded"],
-      },
-    });
-    expect(campaign.targeting).toMatchObject({
-      custom_audiences: ["ca_123"],
-      excluded_audiences: ["ca_excluded"],
-    });
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  test("rejects applying a same-org segment to an already-synced campaign", async () => {
+    track(spyOn(adCampaignsRepository, "findById").mockResolvedValue(makeCampaign() as never));
+    const accountLookup = track(spyOn(adAccountsRepository, "findById"));
+
+    await expect(
+      advertisingService.applyAudienceSegmentToCampaign(SEGMENT_ID, CAMPAIGN_ID, ORG_ID),
+    ).rejects.toThrow("Campaign targeting cannot be updated after platform sync");
+
+    expect(accountLookup).not.toHaveBeenCalled();
   });
 });
