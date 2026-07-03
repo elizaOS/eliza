@@ -73,6 +73,26 @@ describe("validateIntentActionMap", () => {
     expect(joined).not.toMatch(/"TASKS"/);
   });
 
+  it("aggregates all missing actions into a single warn line, with per-action debug detail", () => {
+    const warned: string[] = [];
+    const debugs: string[] = [];
+    validateIntentActionMap([], {
+      warn: (m) => warned.push(m),
+      debug: (m) => debugs.push(m),
+    });
+    // One summary line, not one warn per missing (category, action) pair.
+    expect(warned).toHaveLength(1);
+    expect(warned[0]).toContain("INTENT_ACTION_MAP:");
+    expect(warned[0]).toContain("not registered");
+    expect(warned[0]).toContain("terminal: SHELL, RUNTIME");
+    expect(warned[0]).toContain("plugins not loaded in this config");
+    // Per-action detail is preserved at debug level (opt-in TASKS still skipped).
+    expect(
+      debugs.some((d) => d.includes('INTENT_ACTION_MAP["terminal"]')),
+    ).toBe(true);
+    expect(debugs.join("\n")).not.toMatch(/"TASKS"/);
+  });
+
   it("stays silent when every mapped action is registered", () => {
     const all = [
       ...new Set(Object.values(INTENT_ACTION_MAP).flatMap((s) => [...s])),

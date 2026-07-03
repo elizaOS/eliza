@@ -97,6 +97,39 @@ describe("view-action-affinity", () => {
     expect(warnings.some((w) => w.includes("TASKS"))).toBe(false);
   });
 
+  it("aggregates all missing actions into a single warn line, with per-action debug detail", () => {
+    const warnings: string[] = [];
+    const debugs: string[] = [];
+    // Register nothing → every mapped action is "missing". Deployments without
+    // the optional wallet/polymarket/… plugins hit this shape at boot; the
+    // detector must not flood the log with one warn per (view, action) pair.
+    validateViewActionMap([], {
+      warn: (m) => warnings.push(m),
+      debug: (m) => debugs.push(m),
+    });
+    expect(warnings).toHaveLength(1);
+    // Summary carries the count, per-view grouping, and the not-loaded hint.
+    expect(warnings[0]).toContain("VIEW_ACTION_MAP:");
+    expect(warnings[0]).toContain("not registered");
+    expect(warnings[0]).toContain("wallet: WALLET, EVM_SWAP");
+    expect(warnings[0]).toContain("plugins not loaded in this config");
+    // Per-action detail is preserved at debug level.
+    const totalMapped = Object.values(VIEW_ACTION_MAP).reduce(
+      (n, a) => n + a.length,
+      0,
+    );
+    expect(debugs).toHaveLength(totalMapped);
+    expect(debugs.some((d) => d.includes('VIEW_ACTION_MAP["wallet"]'))).toBe(
+      true,
+    );
+  });
+
+  it("aggregated warn works when the logger has no debug method", () => {
+    const warnings: string[] = [];
+    validateViewActionMap([], { warn: (m) => warnings.push(m) });
+    expect(warnings).toHaveLength(1);
+  });
+
   it("does not warn when every mapped action is registered", () => {
     const allMapped = new Set<string>();
     for (const actions of Object.values(VIEW_ACTION_MAP)) {
