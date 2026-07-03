@@ -57,8 +57,9 @@ interface CloudAuthApiKeyService {
 
 function getCloudHelpers(): Promise<CloudHelperModule> {
   if (!cloudHelpersPromise) {
+    const moduleSpecifier = ["@elizaos", "plugin-elizacloud"].join("/");
     cloudHelpersPromise = import(
-      "@elizaos/plugin-elizacloud"
+      /* @vite-ignore */ moduleSpecifier
     ) as Promise<CloudHelperModule>;
   }
   return cloudHelpersPromise;

@@ -165,9 +165,8 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
           let registerCommand: (command: CommandDefinition) => void;
           let initForRuntime: (agentId: string) => void;
           try {
-            const cmds = await import(
-              /* @vite-ignore */ "@elizaos/plugin-commands"
-            );
+            const moduleSpecifier = ["@elizaos", "plugin-commands"].join("/");
+            const cmds = await import(/* @vite-ignore */ moduleSpecifier);
             registerCommand = cmds.registerCommand;
             initForRuntime = cmds.initForRuntime;
           } catch {

@@ -1167,8 +1167,8 @@ export async function stageAndroidAgentRuntime({
     );
   }
 
-  // ABI-independent assets: agent-bundle.js + PGlite payload. The real
-  // bundle is produced in packages/agent/dist-mobile/ via
+  // ABI-independent assets: agent-bundle.js + agent-deferred.js + PGlite payload. The real
+  // bundles are produced in packages/agent/dist-mobile/ via
   // `bun run --cwd packages/agent build:mobile`. PGlite at runtime
   // resolves vector.tar.gz and fuzzystrmatch.tar.gz with `new URL("../X",
   // import.meta.url)`, so those two files must land ONE DIR ABOVE the
@@ -1243,6 +1243,30 @@ export async function stageAndroidAgentRuntime({
       source: {
         kind: "mobile-agent-bundle",
         path: bundleSrc,
+      },
+    }),
+  );
+
+  const deferredBundleSrc = path.join(distMobileDir, "agent-deferred.js");
+  if (!fs.existsSync(deferredBundleSrc)) {
+    throw new Error(
+      `No deferred mobile agent bundle found at ${deferredBundleSrc}. Run ` +
+        "`bun run --cwd packages/agent build:mobile` before staging Android assets.",
+    );
+  }
+  const deferredBundleTarget = path.join(assetsAgentDir, "agent-deferred.js");
+  if (copyIfDifferent(deferredBundleSrc, deferredBundleTarget))
+    stagedCount += 1;
+  stagedFiles.push(
+    fileProvenanceEntry({
+      filePath: deferredBundleTarget,
+      relativePath: path.relative(
+        path.join(androidDir, "app", "src", "main"),
+        deferredBundleTarget,
+      ),
+      source: {
+        kind: "mobile-agent-bundle",
+        path: deferredBundleSrc,
       },
     }),
   );

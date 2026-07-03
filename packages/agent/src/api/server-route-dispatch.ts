@@ -27,16 +27,18 @@ type CloudPluginRoutesModule = {
 
 let computeUsePromise: Promise<ComputeUsePluginModule> | null = null;
 function getComputeUsePlugin(): Promise<ComputeUsePluginModule> {
+  const moduleSpecifier = ["@elizaos", "plugin-computeruse"].join("/");
   computeUsePromise ??= import(
-    "@elizaos/plugin-computeruse"
+    /* @vite-ignore */ moduleSpecifier
   ) as Promise<unknown> as Promise<ComputeUsePluginModule>;
   return computeUsePromise;
 }
 
 let cloudRoutesPromise: Promise<CloudPluginRoutesModule> | null = null;
 function getCloudRoutesPlugin(): Promise<CloudPluginRoutesModule> {
+  const moduleSpecifier = ["@elizaos", "plugin-elizacloud"].join("/");
   cloudRoutesPromise ??= import(
-    "@elizaos/plugin-elizacloud"
+    /* @vite-ignore */ moduleSpecifier
   ) as Promise<unknown> as Promise<CloudPluginRoutesModule>;
   return cloudRoutesPromise;
 }

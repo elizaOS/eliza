@@ -92,6 +92,7 @@ public class ElizaAgentService extends Service {
     private static final String AGENT_DIR_NAME = "agent";
     private static final String AGENT_STATE_DIR_NAME = ".eliza";
     private static final String AGENT_BUNDLE_NAME = "agent-bundle.js";
+    private static final String AGENT_DEFERRED_BUNDLE_NAME = "agent-deferred.js";
     private static final String AGENT_LAUNCH_SCRIPT = "launch.sh";
     private static final String BUN_BINARY = "bun";
     private static final String AGENT_LOG_NAME = "agent.log";
@@ -922,6 +923,8 @@ public class ElizaAgentService extends Service {
             Log.i(TAG, "APK changed (was=" + stampedUpdate + ", now=" + pkgUpdate + "); refreshing extracted agent assets");
             File bundle = new File(root, AGENT_BUNDLE_NAME);
             if (bundle.exists() && !bundle.delete()) Log.w(TAG, "Could not delete stale agent-bundle.js");
+            File deferredBundle = new File(root, AGENT_DEFERRED_BUNDLE_NAME);
+            if (deferredBundle.exists() && !deferredBundle.delete()) Log.w(TAG, "Could not delete stale agent-deferred.js");
             File launchScript = new File(root, AGENT_LAUNCH_SCRIPT);
             if (launchScript.exists() && !launchScript.delete()) Log.w(TAG, "Could not delete stale launch.sh");
             File pgWasm = new File(root, "pglite.wasm");
@@ -955,6 +958,7 @@ public class ElizaAgentService extends Service {
         AssetManager assets = getAssets();
 
         copyAssetIfMissing(assets, "agent/" + AGENT_BUNDLE_NAME, new File(root, AGENT_BUNDLE_NAME));
+        copyAssetIfMissing(assets, "agent/" + AGENT_DEFERRED_BUNDLE_NAME, new File(root, AGENT_DEFERRED_BUNDLE_NAME));
         copyAssetIfPresent(assets, "agent/" + AGENT_LAUNCH_SCRIPT, new File(root, AGENT_LAUNCH_SCRIPT));
 
         // PGlite runtime assets. pglite.wasm + initdb.wasm + pglite.data
