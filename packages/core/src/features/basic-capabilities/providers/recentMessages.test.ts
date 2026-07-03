@@ -368,6 +368,39 @@ describe("recentMessagesProvider", () => {
 		expect(result.text).not.toContain("💬 [codex]");
 	});
 
+	it("keeps history when the incoming message has no metadata and its sender entity is unresolvable", async () => {
+		// Memory.metadata is optional. A message from an entity that is not a
+		// current room participant AND whose entity row is unavailable used to
+		// throw on `metaData.entityName`, and the catch collapsed the whole
+		// provider to "No recent messages available" — dropping ALL history.
+		const memories = [
+			makeMemory("msg-1", USER_ID, "hello agent", "discord", 1000),
+			makeMemory("msg-2", AGENT_ID, "hi there", "discord", 2000),
+		];
+
+		const strangerMessage = makeMemory(
+			"current",
+			"00000000-0000-0000-0000-000000000009",
+			"what did we discuss?",
+			"discord",
+			3000,
+		);
+		expect(strangerMessage.metadata).toBeUndefined();
+
+		const result = await recentMessagesProvider.get(
+			makeRuntime(memories),
+			strangerMessage,
+			{ values: {}, data: {}, text: "" },
+		);
+
+		expect((result.data as { error?: string })?.error).toBeUndefined();
+		expect(result.data?.recentMessages).toHaveLength(2);
+		expect(result.text).toContain("User: hello agent");
+		expect(result.text).toContain("Agent: hi there");
+		expect(result.text).toContain("Unknown User: what did we discuss?");
+		expect(result.text).not.toBe("No recent messages available");
+	});
+
 	it("sorts memories by timestamp before applying the conversation window", async () => {
 		const memories = Array.from({ length: 12 }, (_, index) => {
 			const n = 12 - index;

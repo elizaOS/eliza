@@ -162,12 +162,15 @@ export const choiceAction: Action = {
 		const { taskId, selectedOption } = _readChoiceParameters(message, _options);
 
 		if (taskId && selectedOption) {
-			const taskMap = new Map(
-				formattedTasks.map((task) => [task.taskId, task]),
-			);
-			const taskInfo = taskMap.get(taskId) as
-				| (typeof formattedTasks)[0]
-				| undefined;
+			// The taskId parameter accepts the "Short or full ID of the pending
+			// choice task" — key the lookup by both so a model passing the full
+			// UUID (as stored on the task) is not rejected with TASK_NOT_FOUND.
+			const taskMap = new Map<string, (typeof formattedTasks)[0]>();
+			for (const task of formattedTasks) {
+				taskMap.set(task.taskId, task);
+				taskMap.set(task.fullId, task);
+			}
+			const taskInfo = taskMap.get(taskId);
 
 			if (!taskInfo) {
 				if (callback) {
