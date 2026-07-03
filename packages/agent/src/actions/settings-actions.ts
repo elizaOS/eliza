@@ -5,7 +5,7 @@
  * Ops:
  *   - update_ai_provider → applyFirstRunConnectionConfig + saveElizaConfig
  *   - toggle_capability  → config.ui.capabilities.{wallet|browser|computerUse}
- *   - toggle_training    → app-training loadTrainingConfig/saveTrainingConfig
+ *   - toggle_training    → training plugin's TrainingConfigService (via registry)
  *   - set_owner_name     → config.ui.ownerName via owner-name service
  *   - set                → worldSettings registry write (key/value list)
  *
@@ -98,19 +98,40 @@ type CapabilityKey = (typeof CAPABILITY_KEYS)[number];
 
 const MODEL_SLOTS = ["nano", "small", "medium", "large", "mega"] as const;
 
-const TRAINING_CONFIG_MODULE = "@elizaos/plugin-training";
+// `toggle_training` is contributed by the training plugin, which registers a
+// TrainingConfigService under this name. The host dispatches to the service
+// instead of importing the plugin (which @elizaos/agent does not depend on):
+// the op is available only when the plugin is loaded, and reports unavailable
+// otherwise. The structural shape below mirrors the plugin's
+// TrainingConfigCapability so no import edge is created.
+const TRAINING_CONFIG_SERVICE = "training_config_service";
 
-interface TrainingConfig {
+interface AutoTrainToggleInput {
+  enabled: boolean;
+  threshold?: number;
+  cooldownHours?: number;
+}
+
+interface TrainingConfigSummary {
   autoTrain: boolean;
   triggerThreshold: number;
   triggerCooldownHours: number;
-  backends?: string[];
-  perTaskOverrides?: Record<string, unknown>;
 }
 
-interface TrainingConfigModule {
-  loadTrainingConfig: () => TrainingConfig;
-  saveTrainingConfig: (config: TrainingConfig) => void;
+interface TrainingConfigCapability {
+  applyAutoTrainToggle: (
+    input: AutoTrainToggleInput,
+  ) => TrainingConfigSummary | Promise<TrainingConfigSummary>;
+}
+
+function isTrainingConfigCapability(
+  service: unknown,
+): service is TrainingConfigCapability {
+  return (
+    service != null &&
+    typeof (service as { applyAutoTrainToggle?: unknown })
+      .applyAutoTrainToggle === "function"
+  );
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────
@@ -301,6 +322,7 @@ function handleToggleCapability(params: Record<string, unknown>): ActionResult {
 // ── op: toggle_training ──────────────────────────────────────────────────
 
 async function handleToggleTraining(
+  runtime: IAgentRuntime,
   params: Record<string, unknown>,
 ): Promise<ActionResult> {
   if (typeof params.enabled !== "boolean") {
@@ -336,21 +358,21 @@ async function handleToggleTraining(
     );
   }
 
-  let next: TrainingConfig;
+  const service = runtime.getService(TRAINING_CONFIG_SERVICE);
+  if (!isTrainingConfigCapability(service)) {
+    return fail(
+      "TRAINING_UNAVAILABLE",
+      "Auto-training is unavailable — the training plugin is not loaded.",
+    );
+  }
+
+  let summary: TrainingConfigSummary;
   try {
-    const mod = (await import(TRAINING_CONFIG_MODULE)) as TrainingConfigModule;
-    const current = mod.loadTrainingConfig();
-    next = {
-      ...current,
-      autoTrain: params.enabled,
-      ...(typeof threshold === "number"
-        ? { triggerThreshold: Math.floor(threshold) }
-        : {}),
-      ...(typeof cooldownHours === "number"
-        ? { triggerCooldownHours: cooldownHours }
-        : {}),
-    };
-    mod.saveTrainingConfig(next);
+    summary = await service.applyAutoTrainToggle({
+      enabled: params.enabled,
+      ...(typeof threshold === "number" ? { threshold } : {}),
+      ...(typeof cooldownHours === "number" ? { cooldownHours } : {}),
+    });
   } catch (err) {
     logger.error(
       { error: err instanceof Error ? err.stack : String(err) },
@@ -363,12 +385,12 @@ async function handleToggleTraining(
   }
 
   return ok(
-    `Auto-training is now ${next.autoTrain ? "enabled" : "disabled"} (threshold ${next.triggerThreshold}, cooldown ${next.triggerCooldownHours}h).`,
+    `Auto-training is now ${summary.autoTrain ? "enabled" : "disabled"} (threshold ${summary.triggerThreshold}, cooldown ${summary.triggerCooldownHours}h).`,
     {
       op: "toggle_training",
-      autoTrain: next.autoTrain,
-      triggerThreshold: next.triggerThreshold,
-      triggerCooldownHours: next.triggerCooldownHours,
+      autoTrain: summary.autoTrain,
+      triggerThreshold: summary.triggerThreshold,
+      triggerCooldownHours: summary.triggerCooldownHours,
     },
   );
 }
@@ -936,7 +958,7 @@ export const settingsAction: Action = {
       case "toggle_capability":
         return handleToggleCapability(params);
       case "toggle_training":
-        return handleToggleTraining(params);
+        return handleToggleTraining(runtime, params);
       case "set_owner_name":
         return handleSetOwnerName(params);
       case "set":

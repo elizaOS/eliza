@@ -4,6 +4,15 @@ export {
   detectAvailableBackends,
 } from "./training-backend-check.js";
 export {
+  type AutoTrainToggleInput,
+  registerTrainingConfigService,
+  TRAINING_CONFIG_SERVICE,
+  type TrainingConfigCapability,
+  TrainingConfigService,
+  type TrainingConfigServiceOptions,
+  type TrainingConfigSummary,
+} from "./training-config-service.js";
+export {
   isNotImplementedError,
   NotImplementedError,
   TrainingService,

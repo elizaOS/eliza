@@ -2,6 +2,7 @@ import type { AgentRuntime, Service } from "@elizaos/core";
 import { logger, OptimizedPromptService } from "@elizaos/core";
 import { registerSkillScoringCron } from "./core/skill-scoring-cron.js";
 import { registerTrajectoryExportCron } from "./core/trajectory-export-cron.js";
+import { registerTrainingConfigService } from "./services/training-config-service.js";
 import {
   bootstrapOptimizationFromAccumulatedTrajectories,
   registerTrainingTriggerService,
@@ -51,6 +52,11 @@ export async function registerTrainingRuntimeHooks(
     await registerTrajectoryExportCron(runtime);
     await registerSkillScoringCron(runtime);
   }
+  // Contribute the settings extension the host SETTINGS action dispatches
+  // `toggle_training` to (looked up by TRAINING_CONFIG_SERVICE name; the host
+  // does not import this plugin).
+  registerTrainingConfigService(runtime);
+
   const triggerService = registerTrainingTriggerService(runtime);
   logger.info(
     skipCronRegistration
