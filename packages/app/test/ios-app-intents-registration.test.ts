@@ -14,6 +14,26 @@ const pbxproj = readFileSync(
   path.join(iosAppRoot, "App.xcodeproj/project.pbxproj"),
   "utf8",
 );
+const widgetsSwift = readFileSync(
+  path.join(iosAppRoot, "App/ElizaWidgets/ElizaWidgets.swift"),
+  "utf8",
+);
+const widgetControlsSwift = readFileSync(
+  path.join(iosAppRoot, "App/ElizaWidgets/ElizaWidgetControls.swift"),
+  "utf8",
+);
+const widgetsInfoPlist = readFileSync(
+  path.join(iosAppRoot, "App/ElizaWidgets/Info.plist"),
+  "utf8",
+);
+const widgetsEntitlements = readFileSync(
+  path.join(iosAppRoot, "App/ElizaWidgets/ElizaWidgets.entitlements"),
+  "utf8",
+);
+const mobileBuildScript = readFileSync(
+  path.join(repoRoot, "packages/app-core/scripts/run-mobile-build.mjs"),
+  "utf8",
+);
 const androidAssistActivity = readFileSync(
   path.join(
     repoRoot,
@@ -90,6 +110,69 @@ describe("native assistant entry contracts", () => {
     expect(appIntentsSwift).toContain("Open \\(.applicationName) daily brief");
     expect(appIntentsSwift).toContain(
       "Draft a reply with \\(.applicationName)",
+    );
+  });
+
+  it("builds the ElizaWidgets extension target with widget + controls sources", () => {
+    expect(pbxproj).toContain('PBXNativeTarget "ElizaWidgets"');
+    expect(pbxproj).toContain("com.apple.product-type.app-extension");
+    expect(pbxproj).toContain("ElizaWidgets.swift in Sources");
+    expect(pbxproj).toContain("ElizaWidgetControls.swift in Sources");
+    expect(pbxproj).toContain("ElizaWidgets.appex in Embed App Extensions");
+    expect(pbxproj).toContain(
+      "PRODUCT_BUNDLE_IDENTIFIER = ai.elizaos.app.ElizaWidgets;",
+    );
+    expect(widgetsInfoPlist).toContain("com.apple.widgetkit-extension");
+    expect(widgetsEntitlements).toContain("group.ai.elizaos.app");
+  });
+
+  it("exposes iOS home/lock-screen widgets on the deep-link spine", () => {
+    expect(widgetsSwift).toContain("struct ElizaWidgetsBundle: WidgetBundle");
+    expect(widgetsSwift).toContain("struct ElizaQuickActionsWidget: Widget");
+    expect(widgetsSwift).toContain("ios-widget");
+    expect(widgetsSwift).toContain(".accessoryCircular");
+    expect(widgetsSwift).toContain(".accessoryRectangular");
+    // The five quick actions mirror the app-target App Intents.
+    expect(widgetsSwift).toContain('path: "assistant", action: "ask"');
+    expect(widgetsSwift).toContain('path: "voice"');
+    expect(widgetsSwift).toContain(
+      'path: "lifeops/daily-brief", action: "lifeops.daily-brief"',
+    );
+    expect(widgetsSwift).toContain(
+      'path: "lifeops/task/new", action: "lifeops.create"',
+    );
+    expect(widgetsSwift).toContain('path: "chat", action: "smart-reply"');
+  });
+
+  it("exposes iOS 18 controls (Control Center / Lock Screen / Action button)", () => {
+    expect(widgetControlsSwift).toContain(
+      "struct ElizaAskControl: ControlWidget",
+    );
+    expect(widgetControlsSwift).toContain(
+      "struct ElizaVoiceControl: ControlWidget",
+    );
+    expect(widgetControlsSwift).toContain("ios-control");
+    // Controls foreground the app (mic needs foreground) and deep-link via
+    // OpenURLIntent instead of touching UIKit from the extension process.
+    expect(widgetControlsSwift).toContain("static var openAppWhenRun = true");
+    expect(widgetControlsSwift).toContain("OpenURLIntent");
+    expect(widgetControlsSwift).toContain("@available(iOS 18.0, *)");
+  });
+
+  it("wires ElizaWidgets and version threading through the iOS build pipeline", () => {
+    // Brand rewrite: bundle-id suffix, app-group entitlements, fastlane ids,
+    // and the personal-team strip list all cover the widget extension.
+    expect(mobileBuildScript).toContain('"ElizaWidgets",');
+    expect(mobileBuildScript).toContain("`${appId}.ElizaWidgets`");
+    expect(mobileBuildScript).toContain('"ElizaWidgets.entitlements"');
+    expect(mobileBuildScript).toContain('"EWDG00010000000000000401"');
+    // D11: ELIZAOS_VERSION_NAME/ELIZAOS_VERSION_CODE → MARKETING_VERSION /
+    // CURRENT_PROJECT_VERSION so the running iOS build is identifiable.
+    expect(mobileBuildScript).toContain("ELIZAOS_VERSION_NAME");
+    expect(mobileBuildScript).toContain("ELIZAOS_VERSION_CODE");
+    expect(mobileBuildScript).toContain("MARKETING_VERSION = ${versionName};");
+    expect(mobileBuildScript).toContain(
+      "CURRENT_PROJECT_VERSION = ${versionCode};",
     );
   });
 
