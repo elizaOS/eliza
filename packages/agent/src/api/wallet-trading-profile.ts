@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { writeJsonAtomicSync } from "@elizaos/auth/atomic-json";
 import type {
   BscTradeSide,
   BscTradeTxStatus,
@@ -14,7 +15,6 @@ import type {
   WalletTradingProfileWindow,
 } from "@elizaos/shared";
 import { resolveStateDir } from "../config/paths.ts";
-import { writeJsonAtomicSync } from "../utils/atomic-json.ts";
 
 const WALLET_PROFILE_LEDGER_VERSION = 1;
 const MAX_WALLET_PROFILE_LEDGER_ENTRIES = 2000;

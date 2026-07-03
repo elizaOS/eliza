@@ -21,7 +21,7 @@ import {
   resolveUserPath,
 } from "@elizaos/core";
 import type { SubscriptionCredentialSource } from "@elizaos/shared/contracts/first-run-options";
-import { ensureBuiltinSubscriptionAuthProviders } from "../subscription-auth/builtin-providers.ts";
+import { ensureBuiltinSubscriptionAuthProviders } from "./subscription-auth/builtin-providers.ts";
 import {
   type AccountCredentialRecord,
   deleteAccount,

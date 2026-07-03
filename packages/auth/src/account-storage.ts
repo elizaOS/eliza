@@ -9,7 +9,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { logger, resolveStateDir } from "@elizaos/core";
-import { writeJsonAtomicSync } from "../utils/atomic-json.ts";
+import { writeJsonAtomicSync } from "./atomic-json.ts";
 import {
   ACCOUNT_CREDENTIAL_PROVIDER_IDS,
   type AccountCredentialProvider,

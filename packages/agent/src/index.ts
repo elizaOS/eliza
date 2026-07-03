@@ -172,7 +172,7 @@ export {
 export { getWalletAddresses, initStewardWalletCache } from "./api/wallet.ts";
 export * from "./api/wallet-capability.ts";
 export * from "./api/workbench-helpers.ts";
-export * from "./auth/index.ts";
+export * from "@elizaos/auth";
 export * from "./awareness/index.ts";
 export { runBenchmark } from "./cli/benchmark.ts";
 export { CharacterSchema } from "./config/character-schema.ts";

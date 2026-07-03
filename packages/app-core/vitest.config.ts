@@ -7,6 +7,7 @@ const fileDir = path.dirname(fileURLToPath(import.meta.url));
 const monorepoRoot = path.resolve(fileDir, "../..");
 const appCoreSrc = path.join(fileDir, "src");
 const agentSrc = path.join(monorepoRoot, "packages/agent/src");
+const authSrc = path.join(monorepoRoot, "packages/auth/src");
 const uiDir = path.join(monorepoRoot, "packages/ui");
 const sharedSrc = path.join(monorepoRoot, "packages/shared/src");
 const coreSrc = path.join(monorepoRoot, "packages/core/src");
@@ -220,6 +221,14 @@ export default defineConfig({
       {
         find: /^@elizaos\/agent\/(.+)$/,
         replacement: path.join(agentSrc, "$1"),
+      },
+      {
+        find: /^@elizaos\/auth$/,
+        replacement: path.join(authSrc, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/auth\/(.+)$/,
+        replacement: path.join(authSrc, "$1"),
       },
       { find: /^@elizaos\/ui$/, replacement: path.join(uiDir, "src/index.ts") },
       {

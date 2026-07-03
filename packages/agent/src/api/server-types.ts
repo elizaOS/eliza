@@ -218,8 +218,8 @@ export interface ServerState {
    */
   deliveryDedupe?: import("./delivery-dedupe.ts").DeliveryDedupeState;
   /** Transient OAuth flow state for subscription auth. */
-  _anthropicFlow?: import("../auth/anthropic.ts").AnthropicFlow;
-  _codexFlow?: import("../auth/openai-codex.ts").CodexFlow;
+  _anthropicFlow?: import("@elizaos/auth/anthropic").AnthropicFlow;
+  _codexFlow?: import("@elizaos/auth/openai-codex").CodexFlow;
   _codexFlowTimer?: ReturnType<typeof setTimeout>;
   /** System permission states (cached from the desktop bridge). */
   permissionStates?: Record<string, import("@elizaos/shared").PermissionState>;

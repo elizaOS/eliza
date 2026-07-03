@@ -194,6 +194,8 @@
       "@elizaos/security/*": ["./packages/security/src/*"],
       "@elizaos/tui": ["./packages/tui/src/index.ts"],
       "@elizaos/tui/*": ["./packages/tui/src/*"],
+      "@elizaos/auth": ["./packages/auth/src/index.ts"],
+      "@elizaos/auth/*": ["./packages/auth/src/*"],
       "@elizaos/shared": ["./packages/shared/src/index.ts"],
       "@elizaos/shared/*": ["./packages/shared/src/*"],
       "@elizaos/skills": ["./packages/skills/src/index.ts"],

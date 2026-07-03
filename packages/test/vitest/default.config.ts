@@ -294,6 +294,17 @@ const vitestResolveAlias: ModuleAlias[] = [
       "plugins/plugin-sql/src/index.node.ts",
     ),
   },
+  // Leaf auth package (account storage, credentials, oauth flows, atomic-json).
+  // Sits below @elizaos/agent and @elizaos/app-core; source-aliased here so every
+  // base-config consumer resolves it without needing its dist built.
+  {
+    find: /^@elizaos\/auth$/,
+    replacement: path.join(elizaWorkspaceRoot, "packages/auth/src/index.ts"),
+  },
+  {
+    find: /^@elizaos\/auth\/(.+)$/,
+    replacement: path.join(elizaWorkspaceRoot, "packages/auth/src/$1"),
+  },
   // Server-safe DB subpaths of the carved LifeOps plugins. PA's
   // lifeops/repository.ts imports its schemas/repos/factories from these leaf
   // modules (not the package barrels, which re-export React views → @elizaos/ui).

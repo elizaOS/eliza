@@ -3978,9 +3978,7 @@ export async function startEliza(
   //     it only logs availability — so deferring it changes no resolve input.
   let subscriptionCredentialsDeferredPromise: Promise<void> = Promise.resolve();
   try {
-    const { applySubscriptionCredentialsLocal } = await import(
-      "../auth/index.ts"
-    );
+    const { applySubscriptionCredentialsLocal } = await import("@elizaos/auth");
     applySubscriptionCredentialsLocal(config);
   } catch (err) {
     logger.warn(
@@ -3989,7 +3987,7 @@ export async function startEliza(
   }
   subscriptionCredentialsDeferredPromise = (async () => {
     const { applySubscriptionCredentialsDeferred } = await import(
-      "../auth/index.ts"
+      "@elizaos/auth"
     );
     await applySubscriptionCredentialsDeferred();
   })().catch((err) => {
@@ -5659,7 +5657,7 @@ export async function startEliza(
           // that may have been set up during first-run setup.
           try {
             const { applySubscriptionCredentials } = await import(
-              "../auth/index.ts"
+              "@elizaos/auth"
             );
             await applySubscriptionCredentials(freshConfig);
           } catch (subErr) {

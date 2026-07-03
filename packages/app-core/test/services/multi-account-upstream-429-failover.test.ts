@@ -30,15 +30,15 @@ import http from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { saveAccount } from "@elizaos/agent/auth/account-storage";
+import { saveAccount } from "@elizaos/auth/account-storage";
 import type { IAgentRuntime } from "@elizaos/core";
+import { generateText } from "ai";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 // Relative source import (repo convention for cross-package test imports —
 // the plugin build does not emit dist/providers/, so the package subpath
 // export cannot resolve this module).
 import { createAnthropicClientWithTopPSupport } from "../../../../plugins/plugin-anthropic/providers/anthropic.ts";
 import { clearTokenCache } from "../../../../plugins/plugin-anthropic/utils/credential-store.ts";
-import { generateText } from "ai";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   __resetDefaultAccountPoolForTests,
   getDefaultAccountPool,

@@ -109,6 +109,8 @@
       ],
       "@elizaos/plugin-workflow/*": ["../../plugins/plugin-workflow/src/*"],
       "@elizaos/plugin-sql": ["../../plugins/plugin-sql/src/index.node.ts"],
+      "@elizaos/auth": ["../auth/src/index.ts"],
+      "@elizaos/auth/*": ["../auth/src/*"],
       "@elizaos/shared": ["../shared/src/index.ts"],
       "@elizaos/shared/local-inference": [
         "../shared/src/local-inference/index.ts"

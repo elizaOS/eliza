@@ -26,20 +26,17 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { loadAccount } from "@elizaos/agent/auth/account-storage";
-import {
-  getAccessToken,
-  saveCredentials,
-} from "@elizaos/agent/auth/credentials";
-import { probeDirectApiKey } from "@elizaos/agent/auth/direct-api-probe";
-import { accountRefreshMutex } from "@elizaos/agent/auth/refresh-mutex";
-import type { DirectAccountProvider } from "@elizaos/agent/auth/types";
+import { loadAccount } from "@elizaos/auth/account-storage";
+import { writeJsonAtomicSync } from "@elizaos/auth/atomic-json";
+import { getAccessToken, saveCredentials } from "@elizaos/auth/credentials";
+import { probeDirectApiKey } from "@elizaos/auth/direct-api-probe";
+import { accountRefreshMutex } from "@elizaos/auth/refresh-mutex";
+import type { DirectAccountProvider } from "@elizaos/auth/types";
 import {
   DIRECT_ACCOUNT_PROVIDER_ENV,
   isDirectAccountProvider,
   isSubscriptionProvider,
-} from "@elizaos/agent/auth/types";
-import { writeJsonAtomicSync } from "@elizaos/agent/utils/atomic-json";
+} from "@elizaos/auth/types";
 import {
   type CodingAgentSelectorBridge,
   type CodingProviderAvailability,

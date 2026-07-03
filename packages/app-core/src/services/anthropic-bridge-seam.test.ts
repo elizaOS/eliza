@@ -12,7 +12,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { saveAccount } from "@elizaos/agent/auth/account-storage";
+import { saveAccount } from "@elizaos/auth/account-storage";
 import {
   type AnthropicAccountPoolBridge,
   getAnthropicAccountPoolBridge,

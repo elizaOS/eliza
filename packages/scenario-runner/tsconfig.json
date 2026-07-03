@@ -17,6 +17,8 @@
       "@elizaos/core": ["../core/src/index.node.ts"],
       "@elizaos/core/testing": ["../core/src/testing/index.ts"],
       "@elizaos/agent": ["../agent/src/index.ts"],
+      "@elizaos/auth": ["../auth/src/index.ts"],
+      "@elizaos/auth/*": ["../auth/src/*"],
       "@elizaos/shared": ["../shared/src/index.ts"],
       "@elizaos/logger": ["../logger/src/index.ts"],
       "@elizaos/security": ["../security/src/index.ts"],

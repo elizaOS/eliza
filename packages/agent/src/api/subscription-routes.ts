@@ -1,3 +1,10 @@
+import type { AnthropicFlow } from "@elizaos/auth/anthropic";
+import type { CodexFlow } from "@elizaos/auth/openai-codex";
+import {
+  isSubscriptionProvider,
+  type OAuthCredentials,
+  type SubscriptionProvider,
+} from "@elizaos/auth/types";
 import { logger, type RouteRequestContext } from "@elizaos/core";
 import type {
   LinkedAccountConfig,
@@ -9,17 +16,10 @@ import {
   PostSubscriptionAnthropicSetupTokenRequestSchema,
   PostSubscriptionOpenAIExchangeRequestSchema,
 } from "@elizaos/shared";
-import type { AnthropicFlow } from "../auth/anthropic.ts";
-import type { CodexFlow } from "../auth/openai-codex.ts";
-import {
-  isSubscriptionProvider,
-  type OAuthCredentials,
-  type SubscriptionProvider,
-} from "../auth/types.ts";
 import type { ElizaConfig } from "../config/types.eliza.ts";
 import { getAgentHostBridge } from "../runtime/host-bridge.ts";
 
-type AuthModule = typeof import("../auth/index.ts");
+type AuthModule = typeof import("@elizaos/auth");
 
 export type SubscriptionAuthApi = Pick<
   AuthModule,

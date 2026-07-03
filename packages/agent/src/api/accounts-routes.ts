@@ -26,24 +26,15 @@
  */
 
 import nodeCrypto from "node:crypto";
-import { logger } from "@elizaos/core";
-import type { RouteRequestContext } from "@elizaos/shared";
-import {
-  isLinkedAccountProviderId,
-  type LinkedAccountConfig,
-  type LinkedAccountProviderId,
-  type ServiceRouteAccountStrategy,
-} from "@elizaos/shared";
-import * as zod from "zod";
 import {
   type AccountCredentialRecord,
   deleteAccount,
   listAccounts,
   loadAccount,
   saveAccount,
-} from "../auth/account-storage.ts";
-import { getAccessToken } from "../auth/credentials.ts";
-import { probeDirectApiKey } from "../auth/direct-api-probe.ts";
+} from "@elizaos/auth/account-storage";
+import { getAccessToken } from "@elizaos/auth/credentials";
+import { probeDirectApiKey } from "@elizaos/auth/direct-api-probe";
 import {
   cancelFlow,
   getFlowState,
@@ -51,7 +42,7 @@ import {
   startCodexOAuthFlow,
   submitFlowCode,
   subscribeFlow,
-} from "../auth/oauth-flow.ts";
+} from "@elizaos/auth/oauth-flow";
 import {
   type AccountCredentialProvider,
   CODING_PLAN_PROVIDER_BASE_URL,
@@ -63,7 +54,16 @@ import {
   isSubscriptionProvider,
   isUnavailableSubscriptionProvider,
   type SubscriptionProvider,
-} from "../auth/types.ts";
+} from "@elizaos/auth/types";
+import { logger } from "@elizaos/core";
+import type { RouteRequestContext } from "@elizaos/shared";
+import {
+  isLinkedAccountProviderId,
+  type LinkedAccountConfig,
+  type LinkedAccountProviderId,
+  type ServiceRouteAccountStrategy,
+} from "@elizaos/shared";
+import * as zod from "zod";
 import type { ElizaConfig } from "../config/types.eliza.ts";
 import { getAgentHostBridge } from "../runtime/host-bridge.ts";
 

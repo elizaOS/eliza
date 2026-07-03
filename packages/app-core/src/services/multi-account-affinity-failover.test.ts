@@ -34,11 +34,8 @@
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import {
-  deleteAccount,
-  saveAccount,
-} from "@elizaos/agent/auth/account-storage";
-import type { AccountCredentialProvider } from "@elizaos/agent/auth/types";
+import { deleteAccount, saveAccount } from "@elizaos/auth/account-storage";
+import type { AccountCredentialProvider } from "@elizaos/auth/types";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   __resetDefaultAccountPoolForTests,

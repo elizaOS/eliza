@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { readJsonFile } from "@elizaos/auth/atomic-json";
 import type { AppPackageRouteContext, Plugin } from "@elizaos/core";
 import { logger, resolveStateDir } from "@elizaos/core";
 import {
@@ -14,7 +15,6 @@ import {
   packageNameToAppRouteSlug,
 } from "@elizaos/shared";
 import { isLegacyAppsWorkspaceDiscoveryEnabled } from "../config/feature-flags.ts";
-import { readJsonFile } from "../utils/atomic-json.ts";
 import { getPluginInfo } from "./registry-client.ts";
 
 export type {

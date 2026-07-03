@@ -2282,7 +2282,7 @@ async function handleRequest(
       error,
       saveConfig: saveElizaConfig,
       loadSubscriptionAuth: async () =>
-        (await import("../auth/index.ts")) as never,
+        (await import("@elizaos/auth")) as never,
     } as never)
   ) {
     return;

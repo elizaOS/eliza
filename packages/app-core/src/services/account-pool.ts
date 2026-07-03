@@ -24,18 +24,19 @@ import {
   writeFileSync,
 } from "node:fs";
 import path from "node:path";
-import type { AccountCredentialRecord } from "@elizaos/agent/auth/account-storage";
+import type { AccountCredentialRecord } from "@elizaos/auth/account-storage";
 import {
   getAccessToken as getAccountAccessToken,
   listProviderAccounts,
-} from "@elizaos/agent/auth/credentials";
+} from "@elizaos/auth/credentials";
 import {
   ACCOUNT_CREDENTIAL_PROVIDER_IDS,
   DIRECT_ACCOUNT_PROVIDER_ENV,
   DIRECT_ACCOUNT_PROVIDER_IDS,
   type DirectAccountProvider,
   isSubscriptionProvider,
-} from "@elizaos/agent/auth/types";
+  type SubscriptionProvider,
+} from "@elizaos/auth/types";
 import {
   type AnthropicAccountPoolBridge,
   logger,

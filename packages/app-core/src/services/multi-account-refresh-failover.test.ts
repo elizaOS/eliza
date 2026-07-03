@@ -18,9 +18,9 @@
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { loadAccount, saveAccount } from "@elizaos/agent/auth/account-storage";
-import type { AccountCredentialProvider } from "@elizaos/agent/auth/types";
-import { writeJsonAtomicSync } from "@elizaos/agent/utils/atomic-json";
+import { loadAccount, saveAccount } from "@elizaos/auth/account-storage";
+import { writeJsonAtomicSync } from "@elizaos/auth/atomic-json";
+import type { AccountCredentialProvider } from "@elizaos/auth/types";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   __resetDefaultAccountPoolForTests,

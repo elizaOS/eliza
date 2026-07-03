@@ -278,7 +278,8 @@
     "json5": "^2.2.3",
     "undici": "8.5.0",
     "ws": "^8.19.0",
-    "zod": "^4.4.3"
+    "zod": "^4.4.3",
+    "@elizaos/auth": "workspace:*"
   },
   "publishConfig": {
     "access": "public",
