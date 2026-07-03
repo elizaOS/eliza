@@ -1062,6 +1062,10 @@ async function createMainWindow(rpc: ElizaDesktopRpc): Promise<BrowserWindow> {
   // empty region above the bar; on darwin it pairs with vibrancy. Win/Linux
   // transparency support varies, so the bar stays opaque there for now.
   const transparent = presentation.transparent;
+  // The pill spans the full work-area width but only the small bar is visible;
+  // OS-level click-through (passthrough) lets clicks on the transparent region
+  // land on the app underneath instead of being eaten by the invisible window.
+  const passthrough = bottomBar;
   const forceMainWindowCef = shouldForceMainWindowCef(
     process.env,
     process.platform,
@@ -1094,6 +1098,7 @@ async function createMainWindow(rpc: ElizaDesktopRpc): Promise<BrowserWindow> {
       renderer: resolveBootstrapShellRenderer(buildInfo),
       titleBarStyle,
       transparent,
+      passthrough,
     });
     win.webview.remove();
     const mainView = new BrowserView({
@@ -1111,6 +1116,9 @@ async function createMainWindow(rpc: ElizaDesktopRpc): Promise<BrowserWindow> {
       },
       windowId: win.id,
       rpc,
+      // Mirror the window's click-through onto the hosted view so the isolated
+      // (CEF) main-view path passes clicks through its transparent region too.
+      startPassthrough: passthrough,
     });
     win.webviewId = mainView.id;
     if (forceMainWindowCef) {
@@ -1127,6 +1135,7 @@ async function createMainWindow(rpc: ElizaDesktopRpc): Promise<BrowserWindow> {
       frame: windowFrame,
       titleBarStyle,
       transparent,
+      passthrough,
       rpc,
       ...(mainWindowPartition ? { partition: mainWindowPartition } : {}),
     });
@@ -1159,7 +1168,26 @@ async function createMainWindow(rpc: ElizaDesktopRpc): Promise<BrowserWindow> {
         `[main-window] bottom-bar setAlwaysOnTop() failed: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
+    // Join the pill to every Space/desktop (macOS) so it follows the user
+    // across Space switches instead of stranding on the Space it was created
+    // on. No-op on Windows/Linux (the pill is per-desktop there — fork gap G4).
+    if (process.platform === "darwin") {
+      try {
+        (
+          win as typeof win & {
+            setVisibleOnAllWorkspaces?: (flag: boolean) => void;
+          }
+        ).setVisibleOnAllWorkspaces?.(true);
+      } catch (err) {
+        logger.warn(
+          `[main-window] bottom-bar setVisibleOnAllWorkspaces() failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
     applyMacOSWindowEffects(win);
+    // Keep the bar pinned to the primary display's bottom edge across display
+    // plug/unplug + resolution changes (recompute on showWindow() + 5s poll).
+    getDesktopManager().enableBottomBarReanchor();
     return win;
   }
 

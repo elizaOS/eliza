@@ -4,6 +4,7 @@ import {
   computeBottomBarFrame,
   DEFAULT_BOTTOM_BAR_HEIGHT,
   resolveDesktopShellWindowPresentation,
+  shouldReanchorBottomBar,
   shouldStartBottomBar,
 } from "./desktop-bottom-bar-config";
 
@@ -154,6 +155,24 @@ describe("desktop bottom-bar config", () => {
         titleBarStyle: "hidden",
         transparent: false,
       });
+    });
+  });
+
+  describe("shouldReanchorBottomBar", () => {
+    const base = { x: 0, y: 24, width: 1920, height: 1056 };
+
+    it("does not re-anchor when the work area is unchanged", () => {
+      expect(shouldReanchorBottomBar(base, { ...base })).toBe(false);
+    });
+
+    it("re-anchors on a width/height change (dock or resolution change)", () => {
+      expect(shouldReanchorBottomBar(base, { ...base, width: 1440 })).toBe(true);
+      expect(shouldReanchorBottomBar(base, { ...base, height: 900 })).toBe(true);
+    });
+
+    it("re-anchors on an origin change (display plug/unplug, monitor swap)", () => {
+      expect(shouldReanchorBottomBar(base, { ...base, x: 1920 })).toBe(true);
+      expect(shouldReanchorBottomBar(base, { ...base, y: 0 })).toBe(true);
     });
   });
 });
