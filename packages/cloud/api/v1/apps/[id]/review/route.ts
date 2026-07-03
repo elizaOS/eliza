@@ -12,6 +12,7 @@
 import { Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
+import { isAppKeyOutOfScope } from "@/lib/auth/app-key-scope";
 import {
   RateLimitPresets,
   rateLimit,
@@ -28,13 +29,17 @@ const app = new Hono<AppEnv>();
 // the redemptions POST).
 app.post("/", rateLimit(RateLimitPresets.CRITICAL), async (c) => {
   try {
-    const { user } = await requireAuthOrApiKeyWithOrg(c.req.raw);
+    const { user, apiKey } = await requireAuthOrApiKeyWithOrg(c.req.raw);
     const appId = c.req.param("id");
     if (!appId) return c.json({ success: false, error: "Missing app id" }, 400);
 
     const appRow = await appsService.getById(appId);
     if (!appRow) return c.json({ success: false, error: "App not found" }, 404);
     if (appRow.organization_id !== user.organization_id) {
+      return c.json({ success: false, error: "Access denied" }, 403);
+    }
+    // An app-scoped API key may only act on its own app, never a sibling (#10852).
+    if (await isAppKeyOutOfScope(apiKey?.id, appId)) {
       return c.json({ success: false, error: "Access denied" }, 403);
     }
 
@@ -69,13 +74,17 @@ app.post("/", rateLimit(RateLimitPresets.CRITICAL), async (c) => {
 
 app.get("/", async (c) => {
   try {
-    const { user } = await requireAuthOrApiKeyWithOrg(c.req.raw);
+    const { user, apiKey } = await requireAuthOrApiKeyWithOrg(c.req.raw);
     const appId = c.req.param("id");
     if (!appId) return c.json({ success: false, error: "Missing app id" }, 400);
 
     const appRow = await appsService.getById(appId);
     if (!appRow) return c.json({ success: false, error: "App not found" }, 404);
     if (appRow.organization_id !== user.organization_id) {
+      return c.json({ success: false, error: "Access denied" }, 403);
+    }
+    // An app-scoped API key may only act on its own app, never a sibling (#10852).
+    if (await isAppKeyOutOfScope(apiKey?.id, appId)) {
       return c.json({ success: false, error: "Access denied" }, 403);
     }
 

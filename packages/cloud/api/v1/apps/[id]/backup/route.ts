@@ -7,6 +7,7 @@
 
 import { Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
+import { isAppKeyOutOfScope } from "@/lib/auth/app-key-scope";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { appBackupService } from "@/lib/services/app-backup";
 import { appsService } from "@/lib/services/apps";
@@ -24,6 +25,10 @@ app.get("/", async (c) => {
     const found = await appsService.getById(id);
     if (!found) return c.json({ success: false, error: "App not found" }, 404);
     if (found.organization_id !== user.organization_id) {
+      return c.json({ success: false, error: "Access denied" }, 403);
+    }
+    // An app-scoped API key may only act on its own app, never a sibling (#10852).
+    if (await isAppKeyOutOfScope(c.get("apiKeyId"), id)) {
       return c.json({ success: false, error: "Access denied" }, 403);
     }
 
