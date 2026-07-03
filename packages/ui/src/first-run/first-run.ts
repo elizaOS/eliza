@@ -341,8 +341,15 @@ export function applyFirstRunVoiceTranscript(args: {
       /\b(?:local|on device|on-device|this device|this computer|offline|device|phone)\b/.test(
         command,
       );
-    const wantsCloud =
-      /\b(?:cloud|elizacloud|eliza cloud|recommended|online)\b/.test(command);
+    // NB: "recommended" is NOT a cloud signal. The on-device option is labelled
+    // "On this device (recommended)", so matching "recommended" here misread an
+    // explicit local pick as cloud → `localInference` became "cloud-inference"
+    // and the local model download never triggered (#11841). Cloud options still
+    // carry "cloud"/"eliza cloud"/"online"; a bare "recommended" falls through to
+    // the same cloud-inference default below, so removing it changes nothing else.
+    const wantsCloud = /\b(?:cloud|elizacloud|eliza cloud|online)\b/.test(
+      command,
+    );
     if (wantsLocal && !wantsCloud) {
       draft.localInference = "all-local";
       return { step: "inference", draft, action: "finish" };

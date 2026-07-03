@@ -434,6 +434,24 @@ describe("first-run flow", () => {
       draft: { localInference: "cloud-inference" },
       action: "finish",
     });
+
+    // Regression (#11841): the on-device option is labelled "On this device
+    // (recommended)". The word "recommended" must NOT be read as a cloud signal,
+    // or an explicit local pick becomes cloud-inference and the local model
+    // download never triggers.
+    const onDeviceRecommended = applyFirstRunVoiceTranscript({
+      step: "inference",
+      draft: localDraft,
+      transcript: "On this device (recommended)",
+    });
+    expect(onDeviceRecommended).toMatchObject({
+      step: "inference",
+      draft: { localInference: "all-local" },
+      action: "finish",
+    });
+    expect(
+      firstRunDownloadsLocalModel(onDeviceRecommended.draft.localInference),
+    ).toBe(true);
   });
 
   it("filters prompt echo before voice transcripts can mutate setup state", () => {

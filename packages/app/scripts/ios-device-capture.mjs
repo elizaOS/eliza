@@ -318,6 +318,13 @@ async function main() {
           args["agent-ready-timeout"] ??
           process.env.ELIZA_AGENT_READY_TIMEOUT_SECONDS ??
           "240",
+        // Local onboarding only: how long to hold the app foregrounded after
+        // finish so the fire-and-forget recommended-model download completes
+        // (0 = skip, the default — a multi-GB pull should not slow normal runs).
+        TEST_RUNNER_ELIZA_LOCAL_MODEL_DOWNLOAD_WAIT_SECONDS:
+          args["local-download-wait"] ??
+          process.env.ELIZA_LOCAL_MODEL_DOWNLOAD_WAIT_SECONDS ??
+          "0",
       },
     },
   );

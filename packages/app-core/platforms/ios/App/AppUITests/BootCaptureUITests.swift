@@ -413,6 +413,14 @@ final class BootCaptureUITests: XCTestCase {
             )
         }
 
+        // 5b. Local path only: hold the app foregrounded so the fire-and-forget
+        //     recommended-model download that first-run finish kicks off can run
+        //     to completion instead of dying with the test teardown (that
+        //     teardown is exactly why the ~5GB pull never landed in prior runs).
+        if path == .local {
+            holdForLocalModelDownload(app, tag: tag)
+        }
+
         // 6. Chat: type a prompt, send, await a reply.
         try verifyChat(app, tag: tag, agentReady: agentReady)
 
@@ -420,6 +428,34 @@ final class BootCaptureUITests: XCTestCase {
         try verifyVoice(app, tag: tag)
 
         attachScreenshot(named: "\(tag)-090-done")
+    }
+
+    /// Keep the app foregrounded after local onboarding so the recommended
+    /// model download (fired fire-and-forget by first-run finish) completes
+    /// instead of being torn down with the test. The WKWebView download UI is
+    /// invisible to XCUITest, so this does not assert on progress — it holds the
+    /// session alive (touching the AX tree each tick so XCUITest does not
+    /// idle-kill it) and films the wait; the `[Downloader]` completion and the
+    /// native `keep_awake_set` idle-timer hold are verified from device syslog.
+    /// Opt-in via `ELIZA_LOCAL_MODEL_DOWNLOAD_WAIT_SECONDS` (default 0 = skip),
+    /// so the default suite is not slowed by a multi-GB download.
+    private func holdForLocalModelDownload(_ app: XCUIApplication, tag: String) {
+        let env = ProcessInfo.processInfo.environment
+        let seconds =
+            Double(env["ELIZA_LOCAL_MODEL_DOWNLOAD_WAIT_SECONDS"] ?? "") ?? 0
+        guard seconds > 0 else { return }
+        let deadline = Date().addingTimeInterval(seconds)
+        var tick = 0
+        while Date() < deadline {
+            if app.state == .notRunning { break }
+            _ = app.staticTexts.firstMatch.exists  // keep the session active
+            if tick % 4 == 0 {
+                attachScreenshot(named: "\(tag)-045-model-download-t\(tick)")
+            }
+            tick += 1
+            Thread.sleep(forTimeInterval: 15.0)
+        }
+        attachScreenshot(named: "\(tag)-046-model-download-hold-done")
     }
 
     /// Type a prompt into the composer, tap send, and watch for a reply.
