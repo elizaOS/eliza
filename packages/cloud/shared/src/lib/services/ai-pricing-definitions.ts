@@ -159,6 +159,7 @@ export interface SupportedMusicModelDefinition {
   billingSource: "fal" | "elevenlabs" | "suno";
   label: string;
   pageUrl: string;
+  durationControl: "supported" | "unsupported";
   defaultParameters: {
     durationSeconds: number;
   };
@@ -545,6 +546,7 @@ export const SUPPORTED_MUSIC_MODELS: SupportedMusicModelDefinition[] = [
     billingSource: "fal",
     label: "MiniMax Music 2.6",
     pageUrl: "https://fal.ai/models/fal-ai/minimax-music/v2.6/api",
+    durationControl: "unsupported",
     defaultParameters: {
       durationSeconds: 60,
     },
@@ -555,6 +557,7 @@ export const SUPPORTED_MUSIC_MODELS: SupportedMusicModelDefinition[] = [
     billingSource: "elevenlabs",
     label: "ElevenLabs Music v1",
     pageUrl: "https://elevenlabs.io/docs/api-reference/music/compose",
+    durationControl: "supported",
     defaultParameters: {
       durationSeconds: 60,
     },
@@ -565,6 +568,7 @@ export const SUPPORTED_MUSIC_MODELS: SupportedMusicModelDefinition[] = [
     billingSource: "suno",
     label: "Suno-compatible provider",
     pageUrl: "https://docs.sunoapi.org/suno-api/generate-music/",
+    durationControl: "supported",
     defaultParameters: {
       durationSeconds: 120,
     },
@@ -634,12 +638,12 @@ export const MUSIC_SNAPSHOT_PRICING: MusicSnapshotEntry[] = [
     billingSource: "fal",
     productFamily: "music",
     chargeType: "generation",
-    unit: "minute",
-    unitPrice: 0.1,
+    unit: "request",
+    unitPrice: 0.15,
     sourceUrl: "https://fal.ai/models/fal-ai/minimax-music/v2.6/api",
     metadata: {
       tier: "manual_override_recommended",
-      note: "Conservative fallback for MiniMax music generation until account-specific Fal pricing is refreshed.",
+      note: "Fal bills MiniMax Music 2.6 per audio generation and the model page exposes no duration control.",
     },
   },
   {
