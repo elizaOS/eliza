@@ -616,6 +616,9 @@ export function useShellController(): ShellController {
         role: message.role,
         content: message.text,
         createdAt: message.timestamp,
+        // Invariant per id (like role/createdAt), so the cache compare above
+        // can omit it. Drives the suggestion affordance (#8792).
+        ...(message.source ? { source: message.source } : {}),
         failureKind: message.failureKind,
         ...(message.reasoning ? { reasoning: message.reasoning } : {}),
         ...(message.attachments?.length

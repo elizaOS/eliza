@@ -13,8 +13,10 @@ import {
   Pencil,
   RotateCcw,
   SendHorizontal,
+  Sparkles,
   Square,
   Volume2,
+  X,
 } from "lucide-react";
 import {
   AnimatePresence,
@@ -63,6 +65,7 @@ import {
   useChatComposerDraftPersistence,
   writeChatDraft,
 } from "../../state/ChatComposerContext.hooks";
+import { useConversationMessages } from "../../state/ConversationMessagesContext.hooks";
 import { goHome, goLauncher } from "../../state/shell-surface-store";
 import { useViewChatBinding } from "../../state/view-chat-binding";
 import { copyTextToClipboard } from "../../utils/clipboard";
@@ -91,6 +94,12 @@ import { deriveChannelTopics, groupMessagesByTopic } from "./topic-grouping";
 import { type PullGestureBinding, usePullGesture } from "./use-pull-gesture";
 import { usePromptSuggestions } from "./usePromptSuggestions";
 import type { ConversationNav, ShellController } from "./useShellController";
+
+/**
+ * Server source tag for decider-pushed proactive suggestions (#8792) — mirrors
+ * PROACTIVE_INTERACTION_SOURCE in the agent's proactive-interaction decider.
+ */
+const PROACTIVE_SUGGESTION_SOURCE = "proactive-interaction";
 
 /** No-op slash controller so the overlay renders without a provider (stories). */
 const EMPTY_SLASH_CONTROLLER: SlashCommandController = {
@@ -1045,6 +1054,8 @@ const ThreadLine = React.memo(function ThreadLine({
   onOpenSettings,
   turnStatus,
   suppressReasoning,
+  onAcceptSuggestion,
+  onDismissSuggestion,
 }: {
   message: ShellMessage;
   floating?: boolean;
@@ -1070,9 +1081,19 @@ const ThreadLine = React.memo(function ThreadLine({
   turnStatus?: ChatTurnStatus | null;
   /** Hide reasoning while the assistant turn is still streaming. */
   suppressReasoning?: boolean;
+  /** Accept ("Do it") a proactive suggestion (#8792) — sends the implied
+   *  action as a real turn and clears the bubble. Stable identity. */
+  onAcceptSuggestion?: (message: ShellMessage) => void;
+  /** Dismiss a proactive suggestion (#8792) — removes the bubble locally; the
+   *  server-side per-surface cooldown guards immediate re-noise. Stable id. */
+  onDismissSuggestion?: (messageId: string) => void;
 }): React.JSX.Element {
   const isUser = message.role === "user";
   const isAssistant = message.role === "assistant";
+  // Proactive suggestion bubbles (#8792): distinct affordance (Suggestion chip
+  // + "Do it" + dismiss) on assistant turns pushed by the interaction decider.
+  const isSuggestion =
+    isAssistant && message.source === PROACTIVE_SUGGESTION_SOURCE;
 
   // Press-and-hold to copy an assistant answer — the only extraction affordance
   // on touch (no hover row). A still hold past COPY_HOLD_MS copies + flashes
@@ -1303,6 +1324,12 @@ const ThreadLine = React.memo(function ThreadLine({
       : isUser
         ? "text-white"
         : "text-white/90",
+    // Suggestion treatment (#8792): dashed accent edge + faint accent tint so
+    // a proactive offer reads as a suggestion, not a normal reply — mirrors
+    // the composite ChatMessage's affordance. Placed last so it wins over the
+    // floating hairline.
+    isSuggestion &&
+      "border border-dashed border-[rgb(255,88,0)]/45 bg-[rgb(255,88,0)]/[0.06]",
   );
   const bubbleContent =
     isUser && editing ? (
@@ -1314,6 +1341,49 @@ const ThreadLine = React.memo(function ThreadLine({
       />
     ) : (
       <>
+        {isSuggestion ? (
+          // Proactive suggestion affordance (#8792): Suggestion chip + accept
+          // ("Do it") + dismiss. stopPropagation keeps these taps from
+          // toggling the bubble's click-to-reveal action row.
+          <div className="mb-1.5 flex items-center justify-between gap-2">
+            <span className="inline-flex items-center gap-1 text-[12px] font-medium text-[rgb(255,148,84)]">
+              <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
+              Suggestion
+            </span>
+            <div className="flex items-center gap-1">
+              {onAcceptSuggestion ? (
+                <button
+                  type="button"
+                  data-testid="thread-line-suggestion-accept"
+                  title="Do it"
+                  aria-label="Do it"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onAcceptSuggestion(message);
+                  }}
+                  className="rounded-full bg-white/10 px-2.5 py-0.5 text-[12px] font-medium text-[rgb(255,148,84)] transition-colors hover:bg-white/20"
+                >
+                  Do it
+                </button>
+              ) : null}
+              {onDismissSuggestion ? (
+                <button
+                  type="button"
+                  data-testid="thread-line-suggestion-dismiss"
+                  title="Dismiss suggestion"
+                  aria-label="Dismiss suggestion"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDismissSuggestion(message.id);
+                  }}
+                  className="flex h-6 w-6 items-center justify-center rounded-full bg-white/10 text-white/70 transition-colors hover:bg-white/20"
+                >
+                  <X className="h-3.5 w-3.5" aria-hidden="true" />
+                </button>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
         <div data-chat-selectable="true">
           {isAssistant &&
           !message.content.trim() &&
@@ -1416,11 +1486,16 @@ const ThreadLine = React.memo(function ThreadLine({
             onClick={handleBubbleClick}
             onKeyDown={handleBubbleKeyDown}
             className={bubbleClassName}
+            data-proactive-suggestion={isSuggestion ? "true" : undefined}
           >
             {bubbleContent}
           </div>
         ) : (
-          <div {...(copyHandlers ?? {})} className={bubbleClassName}>
+          <div
+            {...(copyHandlers ?? {})}
+            className={bubbleClassName}
+            data-proactive-suggestion={isSuggestion ? "true" : undefined}
+          >
             {bubbleContent}
           </div>
         )}
@@ -1500,10 +1575,16 @@ const ThreadLine = React.memo(function ThreadLine({
  * + settings handlers, reasoning shown). Test-only seam for the component-tree
  * render-parity contract (render-parity.contract.test.tsx, #9954), which diffs
  * this surface's structure against ChatView's MessageContent over a shared
- * corpus. Not part of the public overlay API — keep usage to that contract.
+ * corpus, and for the proactive-suggestion affordance unit test (#8792 —
+ * optional accept/dismiss handlers). Not part of the public overlay API — keep
+ * usage to those tests.
  */
 export function __renderThreadLineForParity(
   message: ShellMessage,
+  handlers?: {
+    onAcceptSuggestion?: (message: ShellMessage) => void;
+    onDismissSuggestion?: (messageId: string) => void;
+  },
 ): React.JSX.Element {
   return (
     <ThreadLine
@@ -1511,6 +1592,8 @@ export function __renderThreadLineForParity(
       floating
       onCopy={() => {}}
       onOpenSettings={() => {}}
+      onAcceptSuggestion={handlers?.onAcceptSuggestion}
+      onDismissSuggestion={handlers?.onDismissSuggestion}
     />
   );
 }
@@ -1689,6 +1772,26 @@ export function ContinuousChatOverlay({
       }
     },
     [send],
+  );
+
+  // Proactive suggestions (#8792) — same semantics as the composite ChatView:
+  // dismiss removes the bubble from the live transcript only (the server-side
+  // per-surface cooldown keeps the same offer from immediately re-appearing);
+  // accept ("Do it") sends the implied action as a real turn through the SAME
+  // send() path an edit-resend uses, then clears the bubble.
+  const { removeConversationMessage } = useConversationMessages();
+  const handleDismissSuggestion = React.useCallback(
+    (messageId: string) => {
+      removeConversationMessage(messageId);
+    },
+    [removeConversationMessage],
+  );
+  const handleAcceptSuggestion = React.useCallback(
+    (m: ShellMessage) => {
+      send("Yes, let's do it.");
+      removeConversationMessage(m.id);
+    },
+    [send, removeConversationMessage],
   );
 
   const slash = slashProp ?? EMPTY_SLASH_CONTROLLER;
@@ -2100,6 +2203,8 @@ export function ContinuousChatOverlay({
           onOpenSettings={openSettings}
           turnStatus={isInFlight ? turnStatus : undefined}
           suppressReasoning={responding && isLastAssistant}
+          onAcceptSuggestion={handleAcceptSuggestion}
+          onDismissSuggestion={handleDismissSuggestion}
         />
       );
     },
@@ -2115,6 +2220,8 @@ export function ContinuousChatOverlay({
       openSettings,
       responding,
       turnStatus,
+      handleAcceptSuggestion,
+      handleDismissSuggestion,
     ],
   );
 
