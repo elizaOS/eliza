@@ -258,6 +258,20 @@ export function runWithTrajectoryContext<T>(
   return fn();
 }
 
+/**
+ * Worker-safe stand-in for `runWithTrajectoryPurpose`. Same rationale as
+ * `runWithTrajectoryContext` above — the trajectory context manager lives on
+ * the agent sidecar, not in the Worker bundle (pulled in transitively via
+ * `@elizaos/shared` email-classification, not invoked on a Worker route), so
+ * there is no active context to tag with a purpose; just run the function.
+ */
+export function runWithTrajectoryPurpose<T>(
+  _purpose: string,
+  fn: () => T | Promise<T>,
+): T | Promise<T> {
+  return fn();
+}
+
 type InferenceTimingMeta = Record<string, string | number | boolean>;
 
 /**
