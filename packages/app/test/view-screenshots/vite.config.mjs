@@ -44,10 +44,38 @@ export default defineConfig({
     // De-dupe React so the views and the harness share one copy.
     dedupe: ["react", "react-dom"],
     alias: [
-      // Subpath must come before the bare package alias.
+      // Subpaths must come before the bare package alias (string `find` is a
+      // prefix match, so `@elizaos/ui` alone would swallow every subpath and
+      // rewrite it to `<stub>.tsx/<subpath>`, which cannot resolve).
       {
         find: "@elizaos/ui/agent-surface",
         replacement: path.join(here, "stubs/elizaos-ui-agent-surface.ts"),
+      },
+      // The spatial primitives are pure React (no network, no renderer
+      // barrel) — resolve them for real so spatial views (Inbox, Focus)
+      // screenshot their actual layout instead of a stub.
+      {
+        find: "@elizaos/ui/spatial",
+        replacement: path.join(elizaRoot, "packages/ui/src/spatial/index.ts"),
+      },
+      {
+        find: "@elizaos/ui/state",
+        replacement: path.join(here, "stubs/elizaos-ui-state.ts"),
+      },
+      // The components/hooks/api subpath surfaces the views touch are the
+      // same primitives the bare-stub exports (Button, Popover*, Spinner,
+      // SegmentedControl, useMediaQuery, client).
+      {
+        find: "@elizaos/ui/components",
+        replacement: path.join(here, "stubs/elizaos-ui.tsx"),
+      },
+      {
+        find: "@elizaos/ui/hooks",
+        replacement: path.join(here, "stubs/elizaos-ui.tsx"),
+      },
+      {
+        find: "@elizaos/ui/api",
+        replacement: path.join(here, "stubs/elizaos-ui.tsx"),
       },
       {
         find: "@elizaos/ui",

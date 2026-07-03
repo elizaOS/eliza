@@ -2522,10 +2522,49 @@ export interface LifeOpsInboxThreadGroup {
   messages: LifeOpsInboxMessage[];
 }
 
+/**
+ * The connector-backed feeds the inbox aggregates. `chat` covers every
+ * memory-backed chat channel (Discord/Telegram/Signal/iMessage/WhatsApp/SMS —
+ * one local scan); `gmail` and `x_dm` are the remote connector seams.
+ */
+export const LIFEOPS_INBOX_SOURCES = ["chat", "gmail", "x_dm"] as const;
+export type LifeOpsInboxSource = (typeof LIFEOPS_INBOX_SOURCES)[number];
+
+export const LIFEOPS_INBOX_SOURCE_STATES = [
+  "ok",
+  "degraded",
+  "disconnected",
+] as const;
+export type LifeOpsInboxSourceState =
+  (typeof LIFEOPS_INBOX_SOURCE_STATES)[number];
+
+/**
+ * Health of one inbox source for the response it accompanies.
+ *
+ * - `ok` — the source was read successfully (zero messages is still ok).
+ * - `degraded` — the source is supposed to work but did not (expired auth,
+ *   missing scope, fetch failure). An empty inbox with a degraded source is
+ *   NOT "inbox zero".
+ * - `disconnected` — the source was requested but is not connected/configured;
+ *   there is nothing to fetch until the user connects it.
+ */
+export interface LifeOpsInboxSourceStatus {
+  source: LifeOpsInboxSource;
+  state: LifeOpsInboxSourceState;
+  /** Structured reasons; non-empty whenever `state` is not `ok`. */
+  degradations: LifeOpsConnectorDegradation[];
+}
+
 export interface LifeOpsInbox {
   messages: LifeOpsInboxMessage[];
   channelCounts: Record<LifeOpsInboxChannel, LifeOpsInboxChannelCount>;
   fetchedAt: string;
+  /**
+   * Per-source connector health for this response, covering every source the
+   * request selected. Required so an empty `messages` list can never
+   * masquerade as a healthy empty inbox when a connector is degraded.
+   */
+  sources: LifeOpsInboxSourceStatus[];
   /** Populated when the caller requests grouped output via `groupByThread`. */
   threadGroups?: LifeOpsInboxThreadGroup[];
 }
@@ -2566,7 +2605,9 @@ export interface GetLifeOpsInboxRequest {
   /**
    * read-through: use fresh cache, otherwise fetch and cache;
    * refresh: force a connector pull and cache the full requested window;
-   * cache-only: never hit connectors, only read persisted inbox messages.
+   * cache-only: never pull connector messages, only read persisted inbox
+   * messages. Connector *status* is still probed in every mode so the
+   * response's `sources` health is real.
    */
   cacheMode?: LifeOpsInboxCacheMode;
   /** Cap on messages pulled/read for cache operations. Defaults to a bounded full-cache window. */

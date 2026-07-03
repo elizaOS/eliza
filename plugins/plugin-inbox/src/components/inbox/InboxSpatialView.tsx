@@ -42,6 +42,19 @@ export interface InboxChannelFilter {
   active: boolean;
 }
 
+/**
+ * One degraded inbox source for the warning banner: which connector, why, and
+ * the `reconnect:<source>` affordance target.
+ */
+export interface InboxDegradedSource {
+  /** Source key from the server payload ("gmail", "x_dm", "chat"). */
+  source: string;
+  /** Human-readable connector name ("Gmail", "X DMs", "Chat channels"). */
+  label: string;
+  /** First structured degradation message from the connector. */
+  message: string;
+}
+
 export interface InboxSnapshot {
   /** Current fetch state. */
   status: InboxStatus;
@@ -53,6 +66,13 @@ export interface InboxSnapshot {
   activeFilterCount: number;
   /** True when at least one channel reported messages in the payload. */
   hasConnectedChannels: boolean;
+  /**
+   * Degraded connector sources reported by the server. Required: an empty
+   * list means every source is healthy; a non-empty list renders the warning
+   * banner so an empty inbox can never pass for "inbox zero" while a
+   * connector is broken.
+   */
+  degradedSources: InboxDegradedSource[];
   /** Proactive one-liner ("N threads still need a reply"); absent when zero. */
   nudge?: string | null;
   /** Error text for the error state. */
@@ -72,6 +92,7 @@ export const EMPTY_INBOX_SNAPSHOT: InboxSnapshot = {
   filters: DEFAULT_FILTERS,
   activeFilterCount: 0,
   hasConnectedChannels: false,
+  degradedSources: [],
   nudge: null,
   error: null,
 };
@@ -112,7 +133,8 @@ export interface InboxSpatialViewProps {
   snapshot: InboxSnapshot;
   /**
    * Dispatch by agent id: `retry`, `connect`, `channel:<id>` (toggle a channel
-   * filter), and `open:<messageId>` (open a triage item).
+   * filter), `open:<messageId>` (open a triage item), and
+   * `reconnect:<source>` (fix a degraded connector).
    */
   onAction?: (action: string) => void;
 }
@@ -126,8 +148,55 @@ export function InboxSpatialView({
   return (
     <Card gap={2} padding={1}>
       <InboxChannelFilters filters={snapshot.filters} dispatch={dispatch} />
+      {snapshot.status !== "loading" && snapshot.status !== "error" ? (
+        <InboxDegradedBanner
+          degradedSources={snapshot.degradedSources}
+          dispatch={dispatch}
+        />
+      ) : null}
       <InboxBody snapshot={snapshot} dispatch={dispatch} />
     </Card>
+  );
+}
+
+/**
+ * Per-connector degradation rows: which source is broken, the structured
+ * reason, and a Reconnect handoff into chat. Rendered above the list in both
+ * the ready and empty states — an empty inbox with a dead connector must read
+ * as "Gmail is broken", never as "inbox zero".
+ */
+function InboxDegradedBanner({
+  degradedSources,
+  dispatch,
+}: {
+  degradedSources: InboxDegradedSource[];
+  dispatch: (action: string) => () => void;
+}) {
+  if (degradedSources.length === 0) return null;
+  return (
+    <VStack gap={1} shrink={0}>
+      {degradedSources.map((source) => (
+        <HStack key={source.source} gap={1} align="center" shrink={0}>
+          <VStack gap={0} grow={1}>
+            <Text bold tone="danger" wrap={false}>
+              {`${source.label} unavailable`}
+            </Text>
+            <Text style="caption" tone="muted">
+              {source.message}
+            </Text>
+          </VStack>
+          <Button
+            variant="outline"
+            tone="danger"
+            agent={`reconnect:${source.source}`}
+            onPress={dispatch(`reconnect:${source.source}`)}
+            shrink={0}
+          >
+            Reconnect
+          </Button>
+        </HStack>
+      ))}
+    </VStack>
   );
 }
 
@@ -198,6 +267,21 @@ function InboxEmptyBody({
   snapshot: InboxSnapshot;
   dispatch: (action: string) => () => void;
 }) {
+  // A degraded connector means this emptiness is NOT verified: some sources
+  // could not be checked, so never claim "inbox zero" or push "Connect".
+  if (snapshot.degradedSources.length > 0) {
+    const labels = snapshot.degradedSources
+      .map((source) => source.label)
+      .join(", ");
+    return (
+      <VStack gap={1}>
+        <Text bold>No messages from reachable channels</Text>
+        <Text tone="muted" style="caption">
+          {`${labels} could not be checked — this may not be everything.`}
+        </Text>
+      </VStack>
+    );
+  }
   const noChannels =
     !snapshot.hasConnectedChannels && snapshot.activeFilterCount === 0;
   if (noChannels) {

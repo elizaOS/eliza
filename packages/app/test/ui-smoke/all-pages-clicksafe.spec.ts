@@ -1039,6 +1039,7 @@ async function installSupplementalSafeRoutes(page: Page): Promise<void> {
         channelCounts: EMPTY_LIFEOPS_CHANNEL_COUNTS,
         threadGroups: [],
         fetchedAt: SMOKE_GENERATED_AT,
+        sources: [],
       }),
     });
   });

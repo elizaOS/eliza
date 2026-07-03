@@ -53,6 +53,7 @@ describe("tryHandleLifeOpsInboxFallback", () => {
     expect(captured.status).toBe(200);
     expect(captured.header("content-type")).toContain("application/json");
     expect(captured.body.messages).toEqual([]);
+    expect(captured.body.sources).toEqual([]);
     expect(captured.body.available).toBe(false);
     expect(captured.body.channelCounts).toMatchObject({
       gmail: { total: 0, unread: 0 },

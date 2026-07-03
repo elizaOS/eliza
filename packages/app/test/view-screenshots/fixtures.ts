@@ -312,6 +312,38 @@ function inboxPopulated() {
       discord: { total: 1, unread: 0 },
     },
     fetchedAt: "2026-06-17T12:00:00.000Z",
+    sources: [
+      { source: "chat", state: "ok", degradations: [] },
+      { source: "gmail", state: "ok", degradations: [] },
+    ],
+  };
+}
+
+/** Gmail auth expired: chat messages still flow, Gmail rides the banner. */
+function inboxDegraded() {
+  const populated = inboxPopulated();
+  return {
+    ...populated,
+    messages: populated.messages.filter(
+      (message) => message.channel !== "gmail",
+    ),
+    channelCounts: { discord: { total: 1, unread: 0 } },
+    sources: [
+      { source: "chat", state: "ok", degradations: [] },
+      {
+        source: "gmail",
+        state: "degraded",
+        degradations: [
+          {
+            axis: "auth-expired",
+            code: "gmail_needs_reauth",
+            message:
+              "Gmail authorization has expired — reconnect Google to resume inbox sync.",
+            retryable: false,
+          },
+        ],
+      },
+    ],
   };
 }
 
@@ -324,10 +356,12 @@ const inboxFixtures: Record<string, () => Record<string, unknown>> = {
         messages: [],
         channelCounts: {},
         fetchedAt: "2026-06-17T12:00:00.000Z",
+        sources: [],
       }),
     },
   }),
   populated: () => ({ fetchers: { fetchInbox: async () => inboxPopulated() } }),
+  degraded: () => ({ fetchers: { fetchInbox: async () => inboxDegraded() } }),
 };
 
 // ---------------------------------------------------------------------------
@@ -723,7 +757,7 @@ export const VIEW_SPECS: Record<string, ViewSpec> = {
     propsFor: (s) => financesFixtures[s](),
   },
   inbox: {
-    states: ["loading", "error", "empty", "populated"],
+    states: ["loading", "error", "empty", "populated", "degraded"],
     propsFor: (s) => inboxFixtures[s](),
   },
   goals: {

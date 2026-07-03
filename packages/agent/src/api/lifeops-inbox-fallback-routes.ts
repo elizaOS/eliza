@@ -93,6 +93,9 @@ export function tryHandleLifeOpsInboxFallback(options: {
     messages: [],
     channelCounts: emptyChannelCounts(),
     fetchedAt: new Date().toISOString(),
+    // No PA means no connector-backed sources at all — an empty `sources`
+    // list (paired with `available: false`) rather than fabricated health.
+    sources: [],
     available: false,
     reason: "personal_assistant_unavailable",
     ...(parsed.channels ? { channels: parsed.channels } : {}),
