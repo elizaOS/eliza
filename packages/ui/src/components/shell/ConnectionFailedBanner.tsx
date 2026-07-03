@@ -6,8 +6,17 @@ import { Spinner } from "../ui/spinner";
 // Kept as a literal so Tailwind v4's source scanner emits the utility.
 
 /**
- * Banner shown during WebSocket reconnection attempts.
- * Renders in document flow to push the header and content down.
+ * Connection status surface for the app shell. Two visually distinct states:
+ *
+ * - "reconnecting" — a transient, informational indicator. Rendered as a
+ *   floating pill OVERLAY (absolutely positioned, out of document flow) so that
+ *   it appearing/disappearing on every reconnect attempt never reflows the
+ *   header or page content. This is the fix for the layout shift the in-flow
+ *   bar used to cause each time the socket blipped.
+ * - "failed" — a persistent, actionable "connection lost" alert with Retry /
+ *   Dismiss. It stays in document flow (a full-width bar that pushes content
+ *   down) because it is a durable state the user must act on, and it keeps the
+ *   macOS Electrobun titlebar-banner integration (data-window-titlebar-banner).
  */
 export function ConnectionFailedBanner() {
   const {
@@ -28,23 +37,33 @@ export function ConnectionFailedBanner() {
   if (backendConnection.showDisconnectedUI) return null;
 
   if (backendConnection.state === "reconnecting") {
+    // Overlay layer: absolutely positioned within the shell's relative content
+    // column so it floats above the header/content and consumes NO layout
+    // height — mounting/unmounting it does not shift anything below. The
+    // wrapper is click-through (pointer-events-none); the pill is a status
+    // readout with nothing to interact with.
     return (
-      <div
-        role="status"
-        aria-live="polite"
-        data-window-titlebar-banner="true"
-        className="mobile-top-banner shrink-0 z-[9999] flex items-center gap-3 bg-warn px-4 py-2 text-sm font-medium text-[color:var(--accent-foreground)] "
-      >
-        <Spinner
-          size={16}
-          className="shrink-0 text-[color:var(--accent-foreground)]"
-          aria-label={t("aria.reconnecting")}
-        />
-        <span className="truncate">
-          {t("connectionfailedbanner.ReconnectingAtt")}{" "}
-          {backendConnection.reconnectAttempt}/
-          {backendConnection.maxReconnectAttempts})
-        </span>
+      <div className="pointer-events-none absolute inset-x-0 top-[max(0.5rem,env(safe-area-inset-top))] z-[9999] flex justify-center">
+        <div
+          role="status"
+          aria-live="polite"
+          // bg-warn (--warn: #ff8a24) is a light-ish orange in every theme, so
+          // white text fails WCAG contrast (~2:1). Pin the foreground to
+          // near-black (--brand-black) for a readable ~8:1 on the orange, rather
+          // than the theme-flipping --accent-foreground that renders white here.
+          className="flex max-w-[calc(100%-1rem)] items-center gap-2 rounded-full bg-warn px-4 py-1.5 text-sm font-semibold text-[color:var(--brand-black)] shadow-md"
+        >
+          <Spinner
+            size={14}
+            className="shrink-0 text-[color:var(--brand-black)]"
+            aria-label={t("aria.reconnecting")}
+          />
+          <span className="truncate">
+            {t("connectionfailedbanner.ReconnectingAtt")}{" "}
+            {backendConnection.reconnectAttempt}/
+            {backendConnection.maxReconnectAttempts})
+          </span>
+        </div>
       </div>
     );
   }
