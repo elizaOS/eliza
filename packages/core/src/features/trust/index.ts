@@ -10,9 +10,7 @@ import {
 import { trustAction } from "./actions/trust.ts";
 import { securityEvaluator } from "./evaluators/securityEvaluator.ts";
 import { adminTrustProvider } from "./providers/adminTrust.ts";
-import { roleProvider } from "./providers/roles.ts";
 import { securityStatusProvider } from "./providers/securityStatus.ts";
-import { settingsProvider } from "./providers/settings.ts";
 import { trustProfileProvider } from "./providers/trustProfile.ts";
 import * as schema from "./schema.ts";
 import { ContextualPermissionSystem } from "./services/ContextualPermissionSystem.ts";
@@ -140,8 +138,6 @@ export function createTrustPlugin(options: TrustPluginOptions = {}): Plugin {
 		],
 
 		providers: [
-			roleProvider,
-			settingsProvider,
 			trustProfileProvider,
 			securityStatusProvider,
 			adminTrustProvider,

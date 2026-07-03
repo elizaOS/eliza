@@ -27,15 +27,11 @@ import type { IAgentRuntime } from "../types/runtime.ts";
 // requires bypassing barrels here too.
 import { trustAction } from "./trust/actions/trust.ts";
 import { adminTrustProvider } from "./trust/providers/adminTrust.ts";
-import { roleProvider as trustRoleProvider } from "./trust/providers/roles.ts";
 import { securityStatusProvider } from "./trust/providers/securityStatus.ts";
-import { settingsProvider as trustSettingsProvider } from "./trust/providers/settings.ts";
 import { trustProfileProvider } from "./trust/providers/trustProfile.ts";
 
 const trustCapability = {
 	providers: [
-		trustRoleProvider,
-		trustSettingsProvider,
 		trustProfileProvider,
 		securityStatusProvider,
 		adminTrustProvider,
