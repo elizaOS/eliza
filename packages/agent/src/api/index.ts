@@ -4,10 +4,16 @@
 // should import from `@elizaos/plugin-app-manager` directly.
 export {
   type AppManagerLike,
+  type AppsRouteActorRole,
   type AppsRouteContext,
   type FavoriteAppsStore,
-  handleAppsRoutes,
 } from "@elizaos/plugin-app-manager";
+export const handleAppsRoutes: typeof import("@elizaos/plugin-app-manager").handleAppsRoutes =
+  async (context) => {
+    const moduleSpecifier = ["@elizaos", "plugin-app-manager"].join("/");
+    const appManagerApi = await import(/* @vite-ignore */ moduleSpecifier);
+    return appManagerApi.handleAppsRoutes(context);
+  };
 // wallet routes extracted to @elizaos/plugin-wallet.
 // Keep the compatibility surface, but lazy-load the wallet implementation.
 // The agent API barrel is loaded during local-server startup, and a static

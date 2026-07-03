@@ -1,0 +1,10 @@
+  bash arg: -p
+  bash arg: ai.elizaos.app
+  bash arg: 1
+args: [-p, ai.elizaos.app, 1]
+ arg: "-p"
+ arg: "ai.elizaos.app"
+ arg: "1"
+data="ai.elizaos.app"
+Events injected: 1
+## Network stats: elapsed time=18ms (0ms mobile, 0ms wifi, 18ms not connected)
