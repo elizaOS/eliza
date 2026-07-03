@@ -30,8 +30,17 @@
   },
   "files": [
     "dist",
+    "auto-enable.ts",
     "NOTICE"
   ],
+  "elizaos": {
+    "plugin": {
+      "autoEnableModule": "./auto-enable.ts",
+      "capabilities": [
+        "meeting-transcription"
+      ]
+    }
+  },
   "scripts": {
     "build": "tsup src/index.ts --format esm --clean && tsc --declaration --emitDeclarationOnly --noEmit false --noCheck",
     "test": "vitest run",

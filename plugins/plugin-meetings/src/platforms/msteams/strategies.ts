@@ -9,6 +9,7 @@ import { logger } from "@elizaos/core";
 import type { Page } from "playwright-core";
 import type { MeetingEndReason } from "@elizaos/shared";
 import type { MeetingBotSession } from "../../types.js";
+import { anySelectorVisible } from "../shared/selectors.js";
 import type { AdmissionOutcome, PlatformStrategies } from "../shared/strategy.js";
 import { TeamsCaptionRouter } from "./caption-router.js";
 import {
@@ -34,18 +35,6 @@ import {
 
 const TAG = "[MsTeamsAdapter]";
 
-async function anyVisible(page: Page, selectors: string[]): Promise<boolean> {
-  for (const selector of selectors) {
-    const visible = await page
-      .locator(selector)
-      .first()
-      .isVisible()
-      .catch(() => false);
-    if (visible) return true;
-  }
-  return false;
-}
-
 async function isAdmitted(page: Page): Promise<boolean> {
   for (const selector of teamsInitialAdmissionIndicators) {
     const element = page.locator(selector).first();
@@ -58,14 +47,14 @@ async function isAdmitted(page: Page): Promise<boolean> {
 }
 
 async function isInWaitingRoom(page: Page): Promise<boolean> {
-  if (await anyVisible(page, teamsWaitingRoomIndicators)) return true;
+  if (await anySelectorVisible(page, teamsWaitingRoomIndicators)) return true;
   // "Join now" still visible means the prejoin never completed — treat as
   // pre-admission, not failure.
-  return anyVisible(page, ['button:has-text("Join now")']);
+  return anySelectorVisible(page, ['button:has-text("Join now")']);
 }
 
 async function isRejected(page: Page): Promise<boolean> {
-  return anyVisible(page, teamsRejectionIndicators);
+  return anySelectorVisible(page, teamsRejectionIndicators);
 }
 
 /**
