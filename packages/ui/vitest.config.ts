@@ -8,6 +8,7 @@ const monorepoRoot = resolve(packageRoot, "../..");
 const uiSrc = resolve(packageRoot, "src");
 const sharedSrc = resolve(monorepoRoot, "packages/shared/src");
 const coreSrc = resolve(monorepoRoot, "packages/core/src");
+const cloudSharedSrc = resolve(monorepoRoot, "packages/cloud/shared/src");
 const loggerSrc = resolve(monorepoRoot, "packages/logger/src");
 const tuiSrc = resolve(monorepoRoot, "packages/tui/src");
 const bunRuntimeSrc = resolve(
@@ -80,6 +81,14 @@ export default defineConfig({
       {
         find: /^@elizaos\/shared\/(.+)$/,
         replacement: resolve(sharedSrc, "$1"),
+      },
+      {
+        find: /^@elizaos\/cloud-shared$/,
+        replacement: resolve(cloudSharedSrc, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/cloud-shared\/(.+)$/,
+        replacement: resolve(cloudSharedSrc, "$1"),
       },
       {
         find: /^@elizaos\/logger$/,

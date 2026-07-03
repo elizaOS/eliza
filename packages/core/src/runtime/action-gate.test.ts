@@ -115,7 +115,7 @@ describe("canActionRun — ACTION_ROLE_POLICY replaces the declared gate", () =>
 });
 
 describe("warnOnUnmatchedActionRolePolicyKeys (#12087 Item 19)", () => {
-	it("flags policy keys matching no registered action name or simile", () => {
+	it("flags policy keys matching no registered action name", () => {
 		process.env.ACTION_ROLE_POLICY = JSON.stringify({
 			SHELL: "OWNER",
 			RENAMED_OLD_NAME: "USER",
@@ -128,14 +128,14 @@ describe("warnOnUnmatchedActionRolePolicyKeys (#12087 Item 19)", () => {
 		expect(unmatched).toEqual(["RENAMED_OLD_NAME"]);
 	});
 
-	it("matches a policy key against action similes", () => {
+	it("does not treat action similes as policy keys", () => {
 		process.env.ACTION_ROLE_POLICY = JSON.stringify({ RESPOND: "USER" });
 		_resetActionRolePolicyCacheForTests();
 		expect(
 			warnOnUnmatchedActionRolePolicyKeys([
 				{ name: "REPLY", similes: ["RESPOND"] },
 			]),
-		).toEqual([]);
+		).toEqual(["RESPOND"]);
 	});
 
 	it("is a no-op when no policy is configured", () => {
