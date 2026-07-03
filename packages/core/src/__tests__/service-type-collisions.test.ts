@@ -223,6 +223,19 @@ class MultiTestServiceB extends Service {
 	async stop(): Promise<void> {}
 }
 
+class WebSearchTestService extends Service {
+	static override serviceType = ServiceType.WEB_SEARCH;
+	capabilityDescription = "web search test service";
+
+	static override async start(
+		runtime: IAgentRuntime,
+	): Promise<WebSearchTestService> {
+		return new WebSearchTestService(runtime);
+	}
+
+	async stop(): Promise<void> {}
+}
+
 function toRelativePath(filePath: string): string {
 	return path.relative(repoRoot, filePath).split(path.sep).join("/");
 }
@@ -579,6 +592,17 @@ describe("serviceType collision guardrails", () => {
 			expect.stringContaining("Duplicate serviceType registration"),
 		);
 		warnSpy.mockRestore();
+	});
+
+	it("does not fabricate web search metadata during generic service registration", async () => {
+		const runtime = new AgentRuntime({ logLevel: "fatal" });
+
+		await runtime.registerService(WebSearchTestService);
+
+		expect(runtime.hasService(ServiceType.WEB_SEARCH)).toBe(true);
+		expect(() => runtime.getSearchCategory("web")).toThrow(
+			"No search category registered",
+		);
 	});
 
 	it("keeps service class serviceType values unique unless explicitly allowlisted", () => {
