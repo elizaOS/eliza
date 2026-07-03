@@ -39,26 +39,6 @@ import {
 
 export const SETUP_SERVICE_TYPE = "SECRETS_SETUP" as ServiceTypeName;
 
-interface TelegramDeepLinkService {
-	messageManager: {
-		sendMessage(chatId: string | number, msg: { text: string }): Promise<void>;
-	};
-}
-
-function isTelegramDeepLinkService(
-	service: unknown,
-): service is TelegramDeepLinkService {
-	return (
-		typeof service === "object" &&
-		service !== null &&
-		"messageManager" in service &&
-		typeof service.messageManager === "object" &&
-		service.messageManager !== null &&
-		"sendMessage" in service.messageManager &&
-		typeof service.messageManager.sendMessage === "function"
-	);
-}
-
 /**
  * Extended WorldMetadata for setup
  */
@@ -376,22 +356,24 @@ export class SetupService extends Service {
 			return;
 		}
 
-		// Send deep link message to group
-		const telegramService = this.runtime.getService("telegram");
+		const deepLinkMessage = [
+			`Hello @${ownerUsername}! Could we take a few minutes to get everything set up?`,
+			`Please click this link to start chatting with me: https://t.me/${botUsername}?start=setup`,
+		].join(" ");
 
-		if (isTelegramDeepLinkService(telegramService)) {
-			const deepLinkMessage = [
-				`Hello @${ownerUsername}! Could we take a few minutes to get everything set up?`,
-				`Please click this link to start chatting with me: https://t.me/${botUsername}?start=setup`,
-			].join(" ");
-
-			await telegramService.messageManager.sendMessage(chat.id, {
+		await this.runtime.sendMessageToTarget(
+			{
+				source: "telegram",
+				channelId: String(chat.id),
+			},
+			{
 				text: deepLinkMessage,
-			});
-			logger.info(
-				`[SetupService] Sent Telegram deep link - chatId: ${chat.id}, ownerId: ${ownerId}`,
-			);
-		}
+				source: "telegram",
+			},
+		);
+		logger.info(
+			`[SetupService] Sent Telegram deep link - chatId: ${chat.id}, ownerId: ${ownerId}`,
+		);
 	}
 
 	/**

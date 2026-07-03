@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createMockRuntime } from "../../../testing/mock-runtime.ts";
-import type { Memory, UUID } from "../../../types/index.ts";
+import type { Memory, TargetInfo, UUID } from "../../../types/index.ts";
 import type { SetupConfig, SetupSetting } from "./config.ts";
 import { SetupService } from "./service.ts";
 
@@ -76,5 +76,78 @@ describe("SetupService.processMessage — settingUpdated message", () => {
 		// currentSettingKey was reassigned to the next key before the return;
 		// the reported key must still be the one just answered.
 		expect(result.updatedKey).toBe("openai");
+	});
+});
+
+describe("SetupService.startTelegramSetup", () => {
+	const world = { id: "44444444-4444-4444-4444-444444444444" as UUID };
+	const ownerEntities = [
+		{
+			metadata: {
+				telegram: {
+					id: "owner-telegram-id",
+					username: "owner_username",
+					adminTitle: "Owner",
+				},
+			},
+		},
+	];
+
+	it("sends the owner deep link through the runtime send registry", async () => {
+		const sendMessageToTarget = vi.fn(async () => undefined);
+		const getService = vi.fn();
+		const svc = new SetupService(
+			createMockRuntime({
+				sendMessageToTarget,
+				getService,
+			}),
+		);
+
+		await svc.startTelegramSetup(
+			world as never,
+			{ id: -100123456 },
+			ownerEntities,
+			"my_agent_bot",
+		);
+
+		expect(sendMessageToTarget).toHaveBeenCalledWith(
+			{
+				source: "telegram",
+				channelId: "-100123456",
+			} satisfies TargetInfo,
+			{
+				text: "Hello @owner_username! Could we take a few minutes to get everything set up? Please click this link to start chatting with me: https://t.me/my_agent_bot?start=setup",
+				source: "telegram",
+			},
+		);
+		expect(getService).not.toHaveBeenCalled();
+	});
+
+	it("does not send when Telegram ownership metadata is missing", async () => {
+		const sendMessageToTarget = vi.fn(async () => undefined);
+		const svc = new SetupService(
+			createMockRuntime({
+				sendMessageToTarget,
+			}),
+		);
+
+		await svc.startTelegramSetup(
+			world as never,
+			{ id: -100123456 },
+			[
+				{
+					metadata: {
+						telegram: {
+							id: "admin-telegram-id",
+							username: "admin_username",
+							adminTitle: "Administrator",
+						},
+					},
+				},
+			],
+			"my_agent_bot",
+		);
+
+		expect(sendMessageToTarget).not.toHaveBeenCalled();
 	});
 });
