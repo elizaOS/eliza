@@ -77,6 +77,7 @@ import { PermissionRegistry } from "../services/permissions-registry.ts";
 import { NotificationPushService } from "../services/push/notification-push-service.ts";
 import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.ts";
 import { registerTriggerTaskWorker } from "../triggers/runtime.ts";
+import { migrateWorkbenchScheduleTags } from "../triggers/workbench-migration.ts";
 
 import { setCustomActionsRuntime } from "./custom-actions.ts";
 
@@ -153,6 +154,15 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
 
     init: async (_pluginConfig, runtime: IAgentRuntime) => {
       registerTriggerTaskWorker(runtime);
+      // One-time (#12177): fold legacy `schedule:<cron>` tag encoding on
+      // workbench tasks into a prompt-kind TriggerConfig. Idempotent; a
+      // failure must not block boot.
+      void migrateWorkbenchScheduleTags(runtime).catch((err) => {
+        runtime.logger.warn(
+          { src: "trigger-runtime", err: String(err) },
+          "Workbench schedule-tag migration failed",
+        );
+      });
       setCustomActionsRuntime(runtime);
       // Media store: persist inline data: URLs out of context/history, and
       // sweep orphaned files daily. The serving route is declared below.

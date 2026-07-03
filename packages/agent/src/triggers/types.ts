@@ -1,6 +1,7 @@
 import type { TriggerConfig, TriggerRunRecord } from "@elizaos/core";
 
 export {
+  type PromptTriggerConfig,
   TRIGGER_SCHEMA_VERSION,
   type TriggerConfig,
   type TriggerKind,
@@ -8,6 +9,7 @@ export {
   type TriggerRunRecord,
   type TriggerType,
   type TriggerWakeMode,
+  type WorkflowTriggerConfig,
 } from "@elizaos/core";
 export type {
   CreateTriggerRequest,
@@ -50,6 +52,8 @@ export interface NormalizedTriggerDraft {
   eventKind?: string;
   maxRuns?: number;
   kind: import("@elizaos/core").TriggerKind;
-  workflowId: string;
+  // Present only for `kind === "workflow"`. `buildTriggerConfig` produces the
+  // strict `TriggerConfig` union member for the draft's kind.
+  workflowId?: string;
   workflowName?: string;
 }

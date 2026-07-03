@@ -116,7 +116,7 @@ export function buildTriggerConfig(params: {
   previous?: TriggerConfig;
 }): TriggerConfig {
   const previous = params.previous;
-  return {
+  const base = {
     version: TRIGGER_SCHEMA_VERSION,
     triggerId: params.triggerId,
     displayName: params.draft.displayName,
@@ -157,8 +157,16 @@ export function buildTriggerConfig(params: {
     lastRunAtIso: previous?.lastRunAtIso,
     lastStatus: previous?.lastStatus,
     lastError: previous?.lastError,
-    kind: params.draft.kind,
-    workflowId: params.draft.workflowId,
+  } as const;
+
+  if (params.draft.kind === "prompt") {
+    return { ...base, kind: "prompt" };
+  }
+  // Workflow kind: `normalizeTriggerDraft` guarantees workflowId is present.
+  return {
+    ...base,
+    kind: "workflow",
+    workflowId: params.draft.workflowId ?? "",
     workflowName: params.draft.workflowName,
   };
 }
@@ -175,17 +183,22 @@ export function normalizeTriggerDraft(params: {
   };
 }): { draft?: NormalizedTriggerDraft; error?: string } {
   const kind: TriggerKind = params.input.kind ?? "workflow";
-  const workflowId = params.input.workflowId?.trim();
-  const workflowName = params.input.workflowName?.trim();
+  const workflowId =
+    kind === "workflow" ? params.input.workflowId?.trim() : undefined;
+  const workflowName =
+    kind === "workflow" ? params.input.workflowName?.trim() : undefined;
 
   const displayName =
     normalizeText(params.input.displayName ?? "") ||
     normalizeText(params.fallback.displayName);
 
-  if (!workflowId) {
+  if (kind === "workflow" && !workflowId) {
     return { error: "workflowId is required for workflow triggers" };
   }
-  const synthesized = `Run workflow ${workflowName ?? workflowId}`;
+  const synthesized =
+    kind === "workflow"
+      ? `Run workflow ${workflowName ?? workflowId}`
+      : "Run prompt automation";
   const instructions =
     normalizeText(params.input.instructions ?? "") ||
     normalizeText(params.fallback.instructions) ||

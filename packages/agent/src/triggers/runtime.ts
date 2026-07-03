@@ -1,5 +1,11 @@
 import crypto from "node:crypto";
-import type { IAgentRuntime, Service, Task, UUID } from "@elizaos/core";
+import type {
+  IAgentRuntime,
+  Memory,
+  Service,
+  Task,
+  UUID,
+} from "@elizaos/core";
 import { ServiceType, stringToUuid } from "@elizaos/core";
 import {
   buildTriggerMetadata,
@@ -12,6 +18,7 @@ import type {
   TriggerRunRecord,
   TriggerSummary,
   TriggerTaskMetadata,
+  WorkflowTriggerConfig,
 } from "./types.ts";
 
 export const TRIGGER_TASK_NAME = "TRIGGER_DISPATCH" as const;
@@ -197,7 +204,7 @@ function readTaskIdempotencyKey(task: Task): string | undefined {
 async function dispatchWorkflow(
   runtime: IAgentRuntime,
   task: Task,
-  trigger: TriggerConfig,
+  trigger: WorkflowTriggerConfig,
   event?: TriggerExecutionOptions["event"],
 ): Promise<{ ok: true; executionId?: string } | { ok: false; error: string }> {
   if (!trigger.workflowId) {
@@ -230,6 +237,56 @@ async function dispatchWorkflow(
   return result.ok
     ? { ok: true, executionId: result.executionId }
     : { ok: false, error: result.error ?? "workflow execution failed" };
+}
+
+interface AutonomyRoomService {
+  getAutonomousRoomId?(): UUID;
+}
+
+/**
+ * Dispatch a `prompt`-kind trigger: inject the trigger's `instructions` as an
+ * agent turn via the message-service pipeline, so the agent can act on it (the
+ * "prompt automation" path). The message is authored by a per-trigger synthetic
+ * entity (never the agent's own id — the pipeline skips messages "from self")
+ * and lands in the autonomy room when one is available.
+ */
+async function dispatchPrompt(
+  runtime: IAgentRuntime,
+  trigger: TriggerConfig,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const instructions = trigger.instructions.trim();
+  if (!instructions) {
+    return { ok: false, error: "prompt trigger missing instructions" };
+  }
+  const messageService = runtime.messageService;
+  if (!messageService) {
+    return { ok: false, error: "message service not available" };
+  }
+
+  const roomId =
+    (runtime.getService("AUTONOMY") as AutonomyRoomService | null)
+      ?.getAutonomousRoomId?.() ?? stringToUuid(`trigger-room:${runtime.agentId}`);
+  const entityId = stringToUuid(`trigger-entity:${trigger.triggerId}`);
+
+  const message: Memory = {
+    id: stringToUuid(crypto.randomUUID()),
+    entityId,
+    agentId: runtime.agentId,
+    roomId,
+    content: {
+      text: instructions,
+      source: "trigger-prompt",
+      metadata: {
+        type: "prompt-automation",
+        triggerId: trigger.triggerId,
+        wakeMode: trigger.wakeMode,
+      },
+    },
+    createdAt: Date.now(),
+  };
+
+  await messageService.handleMessage(runtime, message);
+  return { ok: true };
 }
 
 export async function executeTriggerTask(
@@ -285,15 +342,15 @@ export async function executeTriggerTask(
     };
   }
 
-  if (trigger.kind !== "workflow") {
+  if (trigger.kind !== "workflow" && trigger.kind !== "prompt") {
     runtime.logger.warn(
       {
         src: "trigger-runtime",
         taskId: task.id,
         triggerId: trigger.triggerId,
-        kind: trigger.kind,
+        kind: (trigger as { kind: string }).kind,
       },
-      "Trigger is not workflow-kind; skipping",
+      "Trigger kind is not workflow or prompt; skipping",
     );
     recordExecutionMetric(runtime.agentId, "skipped", Date.now());
     return { status: "skipped", taskDeleted: false };
@@ -304,9 +361,13 @@ export async function executeTriggerTask(
   let errorMessage = "";
   let workflowExecutionId: string | undefined;
 
-  const result = await dispatchWorkflow(runtime, task, trigger, options.event);
+  const result =
+    trigger.kind === "workflow"
+      ? await dispatchWorkflow(runtime, task, trigger, options.event)
+      : await dispatchPrompt(runtime, trigger);
   if (result.ok === true) {
-    workflowExecutionId = result.executionId;
+    workflowExecutionId =
+      "executionId" in result ? result.executionId : undefined;
   } else {
     status = "error";
     errorMessage = result.error;
@@ -316,10 +377,12 @@ export async function executeTriggerTask(
         agentId: runtime.agentId,
         taskId: task.id,
         triggerId: trigger.triggerId,
-        workflowId: trigger.workflowId,
+        kind: trigger.kind,
+        workflowId:
+          trigger.kind === "workflow" ? trigger.workflowId : undefined,
         error: errorMessage,
       },
-      "Workflow trigger dispatch failed",
+      "Trigger dispatch failed",
     );
     // Scheduled automations run without the user in the chat loop, so a
     // dispatch failure is otherwise invisible. Surface it on the notification
@@ -631,8 +694,9 @@ export function taskToTriggerSummary(task: Task): TriggerSummary | null {
       updatedAt: metadata.updatedAt,
       updateInterval: metadata.updateInterval,
       kind: trigger.kind,
-      workflowId: trigger.workflowId,
-      workflowName: trigger.workflowName,
+      workflowId: trigger.kind === "workflow" ? trigger.workflowId : undefined,
+      workflowName:
+        trigger.kind === "workflow" ? trigger.workflowName : undefined,
     };
   }
 
