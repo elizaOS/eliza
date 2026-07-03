@@ -168,6 +168,11 @@ const REQUIRED_FUSED_SYMBOLS = [
   "eliza_inference_kokoro_load",
   "eliza_inference_kokoro_synthesize",
   "eliza_inference_kokoro_sample_rate",
+  // ABI v14 — Kokoro IPA input + G2P-kind query (#11776). iOS never links
+  // espeak, so without the IPA path the on-device Kokoro voice is unintelligible;
+  // require these so a slice built before the fork bump fails loudly here.
+  "eliza_inference_kokoro_g2p_kind",
+  "eliza_inference_kokoro_synthesize_ipa",
   "mtmd_init_from_file",
 ].map((symbol) => ({
   symbol,

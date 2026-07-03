@@ -32,16 +32,23 @@ export interface KokoroRuntimeChunk {
  */
 export interface KokoroRuntimeInputs {
 	/**
-	 * Raw (pre-phonemization) phrase text. The in-process fused engine
-	 * (`KokoroFfiRuntime`) MUST synthesize from this: `eliza_inference_kokoro_synthesize`
-	 * phonemizes internally (espeak-ng when linked, ASCII grapheme fallback
-	 * otherwise). Feeding it the JS-side IPA string double-phonemizes — the
-	 * engine's per-byte ASCII fallback shreds multi-byte IPA codepoints and the
-	 * espeak path re-G2Ps IPA as if it were words; both produce speech-shaped
-	 * but lexically wrong audio (#10726).
+	 * Raw (pre-phonemization) phrase text. On an espeak-LINKED fused build the
+	 * in-process engine phonemizes this itself, so it MUST receive the raw text
+	 * — feeding it the JS-side IPA there double-phonemizes into lexically wrong
+	 * audio (#10726/#11238). On an espeak-LESS build (Android/iOS/host without
+	 * libespeak-ng) the engine's raw-text path is the lossy ASCII grapheme map
+	 * (unintelligible), so `KokoroFfiRuntime` instead feeds `phonemes.phonemes`
+	 * (espeak-ng IPA) through `synthesize_ipa` (#11776). The runtime picks per
+	 * loaded lib via `kokoroG2pKind()`.
 	 */
 	text: string;
+	/** espeak-ng IPA + tokenized ids for `text`, produced by the TS phonemizer
+	 *  chain. Consumed by the FFI runtime's IPA path on espeak-less builds. */
 	phonemes: KokoroPhonemeSequence;
+	/** Id of the phonemizer that produced `phonemes` (`"phonemizer"` /
+	 *  `"espeak-ng"` = real espeak-ng; `"fallback-g2p"` = the lossy dev fallback,
+	 *  which the FFI runtime warns about before using on the IPA path). */
+	phonemizerId?: string;
 	voice: KokoroVoicePack;
 	/**
 	 * Output sample budget. The runtime always honours the model's native

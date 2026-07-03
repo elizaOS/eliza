@@ -1,9 +1,17 @@
 /**
  * In-process Kokoro-82M runtime over the fused `libelizainference` FFI
- * (the `eliza_inference_kokoro_*` exports — introduced at ABI v10; the fused
- * library is currently ABI v12, which adds EOT (v11) and ASR word timestamps
- * (v12) on top, so these symbols are present in every current build — see
- * `ELIZA_INFERENCE_ABI_VERSION` in ffi-bindings.ts).
+ * (the `eliza_inference_kokoro_*` exports — introduced at ABI v10; ABI v14 adds
+ * the IPA-input entry + G2P-kind query — see `ELIZA_INFERENCE_ABI_VERSION` in
+ * ffi-bindings.ts).
+ *
+ * G2P routing (#11776): the fused build only links libespeak-ng on some hosts
+ * and never on Android/iOS. Where it does (`kokoroG2pKind() === "espeak"`) the
+ * lib phonemizes raw text itself and synthesis sends the raw phrase (#11238 —
+ * sending IPA there would double-phonemize). Where it does NOT
+ * (`"ascii"`) the lib's raw-text path is a lossy grapheme fallback that yields
+ * unintelligible audio, so synthesis instead feeds the espeak-ng IPA the TS
+ * phonemizer already produced through `synthesize_ipa`. A pre-v14 lib
+ * (`"unknown"`) keeps raw text with a one-time warning.
  *
  * This is the canonical Kokoro execution path on every platform. It replaces
  * the local-TCP `KokoroGgufRuntime` (POST `/v1/audio/speech` on a running
@@ -405,6 +413,18 @@ export class KokoroFfiRuntime implements KokoroRuntime {
 	/** Voice id currently resident on the ctx (null until first load). */
 	private loadedVoiceId: string | null = null;
 	private disposed = false;
+	/**
+	 * Which G2P path the loaded fused lib uses (queried once at construction).
+	 * Decides whether synthesis sends raw text (`espeak` — the lib phonemizes)
+	 * or precomputed espeak-ng IPA (`ascii` — the lib's raw-text path is the
+	 * lossy grapheme fallback). `unknown` = a pre-v14 lib without the IPA
+	 * symbols; the runtime keeps raw text and warns once (#11776).
+	 */
+	private readonly g2pKind: "espeak" | "ascii" | "unknown";
+	/** One-time warning latches (avoid log spam on every phrase). */
+	private warnedOldLib = false;
+	private warnedFallbackPhonemizer = false;
+	private warnedEmptyIpa = false;
 
 	constructor(opts: KokoroFfiRuntimeOptions) {
 		this.layout = opts.layout;
@@ -447,6 +467,15 @@ export class KokoroFfiRuntime implements KokoroRuntime {
 			this.ownsCtx = true;
 		}
 
+		// Query the lib's G2P kind once. On an espeak-less build (`ascii`) the
+		// native raw-text path is unintelligible, so synthesis routes through the
+		// IPA entry with the TS phonemizer's espeak-ng IPA (#11776). A pre-v14 lib
+		// lacks the query symbol → `unknown` → keep raw text (warned once).
+		this.g2pKind =
+			typeof this.ffi.kokoroG2pKind === "function"
+				? this.ffi.kokoroG2pKind(this.ctx)
+				: "unknown";
+
 		this.sampleRate = this.layout.sampleRate;
 	}
 
@@ -469,12 +498,7 @@ export class KokoroFfiRuntime implements KokoroRuntime {
 		}
 
 		const maxSamples = args.maxSamples ?? MAX_OUTPUT_SAMPLES;
-		// The Kokoro engine produces the full waveform in one synchronous
-		// forward and phonemizes internally (espeak-ng when linked, ASCII
-		// grapheme fallback otherwise) — so it must receive the RAW phrase
-		// text. Passing the JS-side IPA string here double-phonemizes and
-		// yields speech-shaped but unintelligible audio (#10726).
-		const pcm = this.kokoroSynthesize(args.text, maxSamples);
+		const pcm = this.synthesizePcm(args, maxSamples);
 
 		let cancelled = false;
 		if (args.cancelSignal.cancelled) {
@@ -545,6 +569,59 @@ export class KokoroFfiRuntime implements KokoroRuntime {
 		);
 	}
 
+	/**
+	 * Route one phrase to the correct native entry based on the loaded lib's
+	 * G2P kind:
+	 *   - `espeak`: the lib phonemizes raw text with real espeak-ng → send text
+	 *     (the #11238 behavior; sending IPA here would double-phonemize).
+	 *   - `ascii`: the lib's raw-text path is the lossy grapheme fallback
+	 *     (unintelligible) → send the espeak-ng IPA the TS phonemizer produced
+	 *     through the native IPA entry (#11776).
+	 *   - `unknown`: a pre-v14 lib without the IPA entry → keep raw text and warn
+	 *     once (correct on espeak-linked builds, garbled on espeak-less ones).
+	 */
+	private synthesizePcm(
+		args: KokoroRuntimeInputs,
+		maxSamples: number,
+	): Float32Array {
+		if (this.g2pKind === "ascii") {
+			const ipa = args.phonemes.phonemes;
+			if (ipa.length > 0) {
+				if (
+					args.phonemizerId === "fallback-g2p" &&
+					!this.warnedFallbackPhonemizer
+				) {
+					this.warnedFallbackPhonemizer = true;
+					logger.warn(
+						"[KokoroFfiRuntime] the loaded Kokoro lib has no espeak-ng (g2p=ascii) and the " +
+							"TS phonemizer resolved to the lossy 'fallback-g2p' — audio will be degraded. " +
+							"Install the 'phonemizer' npm package (espeak-ng WASM) for intelligible speech (#11776).",
+					);
+				}
+				return this.kokoroSynthesizeIpa(ipa, maxSamples);
+			}
+			if (!this.warnedEmptyIpa) {
+				this.warnedEmptyIpa = true;
+				logger.warn(
+					"[KokoroFfiRuntime] g2p=ascii but the phrase produced no IPA — falling back to raw " +
+						"text (the lib's lossy ASCII grapheme path). Check the TS phonemizer chain (#11776).",
+				);
+			}
+			return this.kokoroSynthesize(args.text, maxSamples);
+		}
+
+		if (this.g2pKind === "unknown" && !this.warnedOldLib) {
+			this.warnedOldLib = true;
+			logger.warn(
+				"[KokoroFfiRuntime] the loaded libelizainference predates the Kokoro IPA G2P surface " +
+					`(ABI v14, #11776; lib reports ABI v${this.ffi.libraryAbiVersion}). Using raw-text ` +
+					"synthesis — correct on an espeak-linked build, but UNINTELLIGIBLE on an espeak-less " +
+					"one. Rebuild the fused lib to pick up the IPA path.",
+			);
+		}
+		return this.kokoroSynthesize(args.text, maxSamples);
+	}
+
 	private kokoroSynthesize(text: string, maxSamples: number): Float32Array {
 		if (typeof this.ffi.kokoroSynthesize !== "function") {
 			throw new VoiceLifecycleError(
@@ -553,5 +630,17 @@ export class KokoroFfiRuntime implements KokoroRuntime {
 			);
 		}
 		return this.ffi.kokoroSynthesize({ ctx: this.ctx, text, maxSamples });
+	}
+
+	private kokoroSynthesizeIpa(ipa: string, maxSamples: number): Float32Array {
+		if (typeof this.ffi.kokoroSynthesizeIpa !== "function") {
+			// g2pKind === "ascii" is only reachable when the v14 symbols bound, so
+			// this is an invariant breach rather than an old-lib case.
+			throw new VoiceLifecycleError(
+				"kernel-missing",
+				"[KokoroFfiRuntime] eliza_inference_kokoro_synthesize_ipa is not exported despite g2p=ascii",
+			);
+		}
+		return this.ffi.kokoroSynthesizeIpa({ ctx: this.ctx, ipa, maxSamples });
 	}
 }

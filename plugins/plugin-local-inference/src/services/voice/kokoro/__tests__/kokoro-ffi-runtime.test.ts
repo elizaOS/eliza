@@ -7,6 +7,7 @@ import {
 } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { logger } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
 	ElizaInferenceContextHandle,
@@ -22,6 +23,7 @@ const MODEL_FILE = "kokoro-82m-v1_0.gguf";
 interface FakeFfiCalls {
 	loads: Array<{ ggufPath: string; voiceBinPath: string; styleDim?: number }>;
 	synths: Array<{ text: string; maxSamples: number; speed?: number }>;
+	ipaSynths: Array<{ ipa: string; maxSamples: number; speed?: number }>;
 	destroyed: number;
 	closed: number;
 }
@@ -30,20 +32,34 @@ function fakeKokoroFfi(opts: {
 	supported?: boolean;
 	pcm?: Float32Array;
 	calls: FakeFfiCalls;
+	/**
+	 * When set, the fake exports the v14 G2P surface reporting this kind. When
+	 * omitted, the fake OMITS `kokoroG2pKind`/`kokoroSynthesizeIpa` entirely —
+	 * modelling a pre-v14 library (the runtime resolves g2p="unknown").
+	 */
+	g2pKind?: "espeak" | "ascii";
 }): ElizaInferenceFfi {
 	const pcm = opts.pcm ?? Float32Array.from([0.1, 0.2, 0.3, 0.4]);
-	return {
+	const base = {
 		libraryPath: "/fake/libelizainference.so",
-		libraryAbiVersion: "10",
+		libraryAbiVersion: opts.g2pKind ? "14" : "13",
 		create: () => 7n as ElizaInferenceContextHandle,
 		destroy: () => {
 			opts.calls.destroyed++;
 		},
 		kokoroSupported: () => opts.supported ?? true,
-		kokoroLoad: (a) => {
+		kokoroLoad: (a: {
+			ggufPath: string;
+			voiceBinPath: string;
+			styleDim?: number;
+		}) => {
 			opts.calls.loads.push(a);
 		},
-		kokoroSynthesize: (a) => {
+		kokoroSynthesize: (a: {
+			text: string;
+			maxSamples: number;
+			speed?: number;
+		}) => {
 			opts.calls.synths.push({
 				text: a.text,
 				maxSamples: a.maxSamples,
@@ -55,7 +71,26 @@ function fakeKokoroFfi(opts: {
 		close: () => {
 			opts.calls.closed++;
 		},
-	} as unknown as ElizaInferenceFfi;
+	};
+	if (opts.g2pKind) {
+		return {
+			...base,
+			kokoroG2pKind: () => opts.g2pKind,
+			kokoroSynthesizeIpa: (a: {
+				ipa: string;
+				maxSamples: number;
+				speed?: number;
+			}) => {
+				opts.calls.ipaSynths.push({
+					ipa: a.ipa,
+					maxSamples: a.maxSamples,
+					speed: a.speed,
+				});
+				return pcm.slice();
+			},
+		} as unknown as ElizaInferenceFfi;
+	}
+	return base as unknown as ElizaInferenceFfi;
 }
 
 function makeLayout(root: string): KokoroModelLayout {
@@ -75,10 +110,15 @@ function makeInputs(
 	v: KokoroVoicePack,
 	onChunk: KokoroRuntimeInputs["onChunk"],
 	cancelSignal = { cancelled: false },
+	extra?: { phonemizerId?: string; ipa?: string },
 ): KokoroRuntimeInputs {
 	return {
 		text: "hello",
-		phonemes: { ids: Int32Array.from([1, 2, 3]), phonemes: "hɛˈloʊ" },
+		phonemes: {
+			ids: Int32Array.from([1, 2, 3]),
+			phonemes: extra?.ipa ?? "hɛˈloʊ",
+		},
+		phonemizerId: extra?.phonemizerId,
 		voice: v,
 		cancelSignal,
 		onChunk,
@@ -146,7 +186,7 @@ describe("KokoroFfiRuntime", () => {
 			path.join(root, "voices", "af_bella.bin"),
 			Buffer.alloc(1024),
 		);
-		calls = { loads: [], synths: [], destroyed: 0, closed: 0 };
+		calls = { loads: [], synths: [], ipaSynths: [], destroyed: 0, closed: 0 };
 	});
 
 	afterEach(() => {
@@ -188,14 +228,100 @@ describe("KokoroFfiRuntime", () => {
 		expect(calls.loads[0]?.voiceBinPath).toBe(
 			path.join(root, "voices", "af_same.bin"),
 		);
-		// The fork phonemizes internally (espeak-ng or ASCII fallback) — it must
-		// receive the RAW phrase text, never the JS-side IPA string. IPA-as-text
-		// double-phonemizes into unintelligible audio (#10726).
+		// Pre-v14 lib (fake omits the G2P surface → g2p="unknown"): the runtime
+		// keeps the raw-text path (correct on espeak-linked builds), never the
+		// JS-side IPA string. IPA-as-text double-phonemizes (#10726/#11238).
 		expect(calls.synths[0]?.text).toBe("hello");
-		expect(calls.synths[0]?.text).not.toBe("hɛˈloʊ");
+		expect(calls.ipaSynths).toHaveLength(0);
 		expect(chunks.filter((c) => !c.isFinal)).toHaveLength(1);
 		expect(chunks.at(-1)?.isFinal).toBe(true);
 		expect(chunks[0]?.len).toBe(4);
+	});
+
+	it("g2p=espeak: sends RAW text (the lib phonemizes with espeak-ng, #11238)", async () => {
+		const ffi = fakeKokoroFfi({ calls, g2pKind: "espeak" });
+		const rt = new KokoroFfiRuntime({
+			layout: makeLayout(root),
+			ffi,
+			ctx: 7n as ElizaInferenceContextHandle,
+		});
+		await rt.synthesize(
+			makeInputs(voice("af_same", "af_same.bin"), () => undefined, undefined, {
+				phonemizerId: "phonemizer",
+			}),
+		);
+		expect(calls.synths).toHaveLength(1);
+		expect(calls.synths[0]?.text).toBe("hello");
+		// Never the IPA entry on an espeak-linked lib.
+		expect(calls.ipaSynths).toHaveLength(0);
+	});
+
+	it("g2p=ascii: feeds espeak-ng IPA through the IPA entry (#11776)", async () => {
+		const ffi = fakeKokoroFfi({ calls, g2pKind: "ascii" });
+		const rt = new KokoroFfiRuntime({
+			layout: makeLayout(root),
+			ffi,
+			ctx: 7n as ElizaInferenceContextHandle,
+		});
+		await rt.synthesize(
+			makeInputs(voice("af_same", "af_same.bin"), () => undefined, undefined, {
+				phonemizerId: "phonemizer",
+				ipa: "həlˈoʊ",
+			}),
+		);
+		// The lossy raw-text path is bypassed; the IPA the TS phonemizer produced
+		// goes straight to the native IPA entry.
+		expect(calls.ipaSynths).toHaveLength(1);
+		expect(calls.ipaSynths[0]?.ipa).toBe("həlˈoʊ");
+		expect(calls.synths).toHaveLength(0);
+	});
+
+	it("g2p=ascii + fallback phonemizer: warns once, still uses the IPA entry", async () => {
+		const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
+		const ffi = fakeKokoroFfi({ calls, g2pKind: "ascii" });
+		const rt = new KokoroFfiRuntime({
+			layout: makeLayout(root),
+			ffi,
+			ctx: 7n as ElizaInferenceContextHandle,
+		});
+		const v = voice("af_same", "af_same.bin");
+		await rt.synthesize(
+			makeInputs(v, () => undefined, undefined, {
+				phonemizerId: "fallback-g2p",
+				ipa: "hɛloʊ",
+			}),
+		);
+		await rt.synthesize(
+			makeInputs(v, () => undefined, undefined, {
+				phonemizerId: "fallback-g2p",
+				ipa: "hɛloʊ",
+			}),
+		);
+		expect(calls.ipaSynths).toHaveLength(2);
+		// Warned exactly once about the lossy fallback despite two synths.
+		const fallbackWarns = warn.mock.calls.filter((c) =>
+			String(c[0]).includes("fallback-g2p"),
+		);
+		expect(fallbackWarns).toHaveLength(1);
+	});
+
+	it("g2p=unknown (pre-v14 lib): warns once and keeps raw text", async () => {
+		const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
+		const ffi = fakeKokoroFfi({ calls }); // no g2pKind → unknown
+		const rt = new KokoroFfiRuntime({
+			layout: makeLayout(root),
+			ffi,
+			ctx: 7n as ElizaInferenceContextHandle,
+		});
+		const v = voice("af_same", "af_same.bin");
+		await rt.synthesize(makeInputs(v, () => undefined));
+		await rt.synthesize(makeInputs(v, () => undefined));
+		expect(calls.synths).toHaveLength(2);
+		expect(calls.ipaSynths).toHaveLength(0);
+		const oldLibWarns = warn.mock.calls.filter((c) =>
+			String(c[0]).includes("predates the Kokoro IPA G2P surface"),
+		);
+		expect(oldLibWarns).toHaveLength(1);
 	});
 
 	it("materializes packaged voice presets before calling the native loader", async () => {

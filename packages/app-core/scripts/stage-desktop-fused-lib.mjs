@@ -566,6 +566,10 @@ for (const s of staged) log(`  ${s}`);
 // staged set, not the fused lib alone. A half-fused link drops eliza/ov.
 verifyFusedSymbols(outDir);
 
+// Honesty check: warn loudly when the staged Kokoro lib has no espeak G2P (the
+// TS layer supplies IPA — #11776 — so this is informational, not fatal).
+warnIfEspeakless();
+
 // Stamp the staged set with the fork fingerprint + the staged fused-lib sha256.
 // `--check` reads this to fast-detect a stale staged lib, and the next build
 // reads the buildDir copy to self-heal an incremental build from another commit.
@@ -583,7 +587,9 @@ const buildStamp = JSON.stringify(
 );
 writeFileSync(path.join(outDir, STAMP_FILE), buildStamp);
 writeFileSync(path.join(buildDir, STAMP_FILE), buildStamp);
-log(`stamped build → fork ${currentFork.slice(0, 10)}${currentDirty ? " (+local edits)" : ""}`);
+log(
+  `stamped build → fork ${currentFork.slice(0, 10)}${currentDirty ? " (+local edits)" : ""}`,
+);
 
 function definedSymbols(libPath) {
   const tool =
@@ -603,6 +609,68 @@ function definedSymbols(libPath) {
   } catch {
     return null;
   }
+}
+
+// True when the host has libespeak-ng dev files where CMake looks for them.
+// Mirrors tools/kokoro/CMakeLists.txt find_path/find_library (same prefixes +
+// KOKORO_ESPEAK_ROOT). When false, the fused kokoro build silently linked NO
+// espeak — its raw-text G2P is the lossy ASCII grapheme fallback.
+function hostHasEspeakNg() {
+  const roots = [
+    process.env.KOKORO_ESPEAK_ROOT,
+    "/opt/homebrew",
+    "/usr/local",
+    "/usr",
+  ].filter(Boolean);
+  const libNames =
+    process.platform === "win32"
+      ? ["espeak-ng.lib", "libespeak-ng.lib"]
+      : process.platform === "darwin"
+        ? ["libespeak-ng.dylib", "libespeak-ng.a"]
+        : ["libespeak-ng.so", "libespeak-ng.a"];
+  return roots.some((root) => {
+    const hasHeader = existsSync(
+      path.join(root, "include", "espeak-ng", "speak_lib.h"),
+    );
+    const hasLib = ["lib", "lib64"].some((d) =>
+      libNames.some((n) => existsSync(path.join(root, d, n))),
+    );
+    return hasHeader && hasLib;
+  });
+}
+
+// Loud, non-fatal notice when the staged Kokoro lib has no espeak G2P. Since
+// ABI v14 (#11776) the TS runtime feeds espeak-ng-WASM IPA through
+// eliza_inference_kokoro_synthesize_ipa, so an espeak-less lib stays
+// intelligible — but the operator should know the host is missing the dev files
+// (the old failure mode was silent garbled desktop TTS).
+function warnIfEspeakless() {
+  if (hostHasEspeakNg()) {
+    log(
+      "Kokoro G2P: libespeak-ng found on host — fused lib links real espeak.",
+    );
+    return;
+  }
+  log("");
+  log(
+    "WARNING: no libespeak-ng dev files on this host — the staged Kokoro lib was",
+  );
+  log(
+    "  built WITHOUT espeak (g2p_kind = ASCII). Its internal raw-text path is the",
+  );
+  log(
+    "  lossy grapheme fallback (unintelligible on its own). This is OK: the TS",
+  );
+  log(
+    "  Kokoro runtime detects g2p=ascii and feeds espeak-ng-WASM IPA through",
+  );
+  log("  eliza_inference_kokoro_synthesize_ipa (#11776), so desktop TTS stays");
+  log(
+    "  intelligible. Install libespeak-ng-dev (macOS: `brew install espeak-ng`;",
+  );
+  log(
+    "  Debian/Ubuntu: `apt-get install libespeak-ng-dev`) to link real G2P in.",
+  );
 }
 
 function verifyFusedSymbols(stagedDir) {

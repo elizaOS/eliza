@@ -105,8 +105,23 @@ function ensureWin32DllSearchDir(dir: string): void {
  *     refuses (no TCP fallback on mobile). A v9 library is still accepted at
  *     degraded capability: its voice/ASR/VAD/LLM/text surface is unchanged and
  *     Kokoro just probes unsupported on it.
+ *
+ * v14: Kokoro IPA input + G2P-kind capability query. The fused handle gains
+ *     `eliza_inference_kokoro_g2p_kind` (does the linked kokoro_lib phonemize
+ *     raw text with real espeak-ng, or only the lossy ASCII grapheme fallback?)
+ *     and `eliza_inference_kokoro_synthesize_ipa` (synthesize from precomputed
+ *     espeak-ng IPA, bypassing the in-lib phonemizer). On an espeak-less build
+ *     (Android / iOS / host without libespeak-ng) the raw-text path is
+ *     unintelligible; the Kokoro runtime queries g2p_kind and, when ASCII, feeds
+ *     the espeak-ng-WASM IPA it already computed through the IPA entry (#11776).
+ *     The two symbols are additive — a v13 library lacks them, so the g2p-kind
+ *     query reports "unknown" and the runtime keeps the raw-text path (with a
+ *     loud one-time warning naming the fix). NOTE: v13 (token-by-token vision
+ *     describe) is the main-lineage vision surface; the develop-pinned fork
+ *     lineage advances 12 -> 14 for the Kokoro IPA surface (fork-sync #11386)
+ *     so the two independent bumps stay collision-free.
  */
-export const ELIZA_INFERENCE_ABI_VERSION = 13 as const;
+export const ELIZA_INFERENCE_ABI_VERSION = 14 as const;
 
 /** One transcribed word with playback-synced timing (ms from utterance start). */
 export interface AsrWordTiming {
@@ -165,6 +180,16 @@ export const ELIZA_ERR_FFI_FAULT = -4;
 export const ELIZA_ERR_OOM = -5;
 export const ELIZA_ERR_ABI_MISMATCH = -6;
 export const ELIZA_ERR_CANCELLED = -7;
+
+/**
+ * Kokoro G2P kind (ABI v14). Mirrors `ELIZA_KOKORO_G2P_*` in
+ * `eliza-inference-ffi.h`: `eliza_inference_kokoro_g2p_kind` returns ESPEAK when
+ * the fused build links libespeak-ng (raw text is phonemized correctly in the
+ * lib) and ASCII when it only has the lossy grapheme fallback (the TS layer must
+ * supply espeak-ng IPA via `synthesize_ipa`).
+ */
+export const ELIZA_KOKORO_G2P_ASCII = 0;
+export const ELIZA_KOKORO_G2P_ESPEAK = 1;
 
 /**
  * WeSpeaker ResNet34-LM embedding dimension. The native
@@ -787,6 +812,28 @@ export interface ElizaInferenceFfi {
 	}): Float32Array;
 	/** The loaded Kokoro model's audio sample rate (24000 for v1.0). */
 	kokoroSampleRate?(ctx: ElizaInferenceContextHandle): number;
+	/**
+	 * Which G2P path the linked kokoro_lib uses (ABI v14). `"espeak"` when the
+	 * lib links libespeak-ng (raw text is phonemized correctly in
+	 * `kokoroSynthesize`); `"ascii"` when it only has the lossy grapheme
+	 * fallback (the caller must feed IPA via `kokoroSynthesizeIpa`); `"unknown"`
+	 * when the symbol is absent (a <=v13 library — the runtime keeps raw text).
+	 */
+	kokoroG2pKind?(
+		ctx: ElizaInferenceContextHandle,
+	): "espeak" | "ascii" | "unknown";
+	/**
+	 * Synthesize from precomputed espeak-ng IPA (ABI v14) — the intelligible
+	 * path on espeak-less builds. The IPA is mapped straight to Kokoro vocab ids
+	 * in the lib (bypassing its internal phonemizer). Same output contract as
+	 * `kokoroSynthesize`.
+	 */
+	kokoroSynthesizeIpa?(args: {
+		ctx: ElizaInferenceContextHandle;
+		ipa: string;
+		speed?: number;
+		maxSamples: number;
+	}): Float32Array;
 
 	/** Best-effort dispose for the binding itself (closes the dlopen handle). */
 	close(): void;
@@ -1131,6 +1178,17 @@ interface BunFfiSymbols {
 		outErr: unknown,
 	) => number;
 	eliza_inference_kokoro_sample_rate?: (ctx: bigint) => number;
+	// Kokoro IPA input + G2P-kind (ABI v14). Optional — absent on <=v13 builds.
+	eliza_inference_kokoro_g2p_kind?: (ctx: bigint) => number;
+	eliza_inference_kokoro_synthesize_ipa?: (
+		ctx: bigint,
+		ipa: unknown,
+		ipaLen: bigint | number,
+		speed: number,
+		outPcm: unknown,
+		maxSamples: bigint | number,
+		outErr: unknown,
+	) => number;
 }
 
 interface BunFfiLib {
@@ -1420,6 +1478,21 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 		},
 		eliza_inference_kokoro_sample_rate: { args: [T.ptr], returns: T.i32 },
 	};
+	// Kokoro IPA input + G2P-kind query (ABI v14): an espeak-less fused build
+	// phonemizes raw text with a lossy ASCII grapheme fallback (unintelligible).
+	// `g2p_kind` lets the runtime detect that and route through `synthesize_ipa`
+	// with espeak-ng-WASM IPA instead (#11776). Layered on top of v13; the
+	// cascade peels it when a <=v13 library is loaded (the g2p-kind query then
+	// reports "unknown" and the runtime keeps the raw-text path with a warning).
+	let kokoroG2pSymbolsAvailable = true;
+	const kokoroG2pDefs = {
+		eliza_inference_kokoro_g2p_kind: { args: [T.ptr], returns: T.i32 },
+		eliza_inference_kokoro_synthesize_ipa: {
+			// ctx, ipa, ipa_len, speed, out_pcm, max_samples, out_error
+			args: [T.ptr, T.ptr, T.usize, T.f32, T.ptr, T.usize, T.ptr],
+			returns: T.i32,
+		},
+	};
 	// End-of-turn scoring (ABI v11): a single causal forward pass over a
 	// pre-tokenized partial transcript returns P(end-of-turn token). Layered on
 	// top of the v10 surface; the cascade peels it when a v10 library is loaded
@@ -1548,7 +1621,70 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 	const classifierDefs = { ...speakerDefs, ...diarizDefs };
 	const attempts = [
 		{
-			// Full v13 surface (v12 + token-by-token mmproj vision describe).
+			// Full v14 surface (v13 + Kokoro IPA input + G2P-kind query).
+			defs: {
+				...coreDefs,
+				...referenceEncodeDefs,
+				...nativeVadDefs,
+				...wakewordDefs,
+				...classifierDefs,
+				...llmStreamDefs,
+				...llmCapabilityDefs,
+				...textModalitiesDefs,
+				...kokoroDefs,
+				...kokoroG2pDefs,
+				...eotDefs,
+				...timedAsrDefs,
+				...visionStreamDefs,
+			},
+			referenceEncode: true,
+			nativeVad: true,
+			wakeword: true,
+			classifiers: true,
+			llmStream: true,
+			llmCapability: true,
+			textModalities: true,
+			kokoro: true,
+			kokoroG2p: true,
+			eot: true,
+			timedAsr: true,
+			visionStream: true,
+		},
+		{
+			// Develop-pinned fork lineage: v12 + Kokoro IPA (v14) WITHOUT the
+			// main-lineage vision-stream (v13) symbols. The fork advanced
+			// 12 -> 14 for Kokoro IPA (fork-sync #11386), so this lib reports
+			// v14 + kokoro-g2p but has no vision-stream. Accepted via the
+			// exact-version clause; visionStreamSupported() reports false.
+			defs: {
+				...coreDefs,
+				...referenceEncodeDefs,
+				...nativeVadDefs,
+				...wakewordDefs,
+				...classifierDefs,
+				...llmStreamDefs,
+				...llmCapabilityDefs,
+				...textModalitiesDefs,
+				...kokoroDefs,
+				...kokoroG2pDefs,
+				...eotDefs,
+				...timedAsrDefs,
+			},
+			referenceEncode: true,
+			nativeVad: true,
+			wakeword: true,
+			classifiers: true,
+			llmStream: true,
+			llmCapability: true,
+			textModalities: true,
+			kokoro: true,
+			kokoroG2p: true,
+			eot: true,
+			timedAsr: true,
+		},
+		{
+			// Full v13 surface (v12 + token-by-token mmproj vision describe); a
+			// v13 build lacks the v14 Kokoro IPA / G2P-kind symbols.
 			defs: {
 				...coreDefs,
 				...referenceEncodeDefs,
@@ -1810,6 +1946,8 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 				(attempt as { textModalities?: boolean }).textModalities ?? false;
 			kokoroSymbolsAvailable =
 				(attempt as { kokoro?: boolean }).kokoro ?? false;
+			kokoroG2pSymbolsAvailable =
+				(attempt as { kokoroG2p?: boolean }).kokoroG2p ?? false;
 			eotSymbolsAvailable = (attempt as { eot?: boolean }).eot ?? false;
 			timedAsrSymbolsAvailable =
 				(attempt as { timedAsr?: boolean }).timedAsr ?? false;
@@ -1858,7 +1996,10 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 	// tokenizer), accepted only when those are absent too.
 	const abiOk =
 		reported === String(ELIZA_INFERENCE_ABI_VERSION) ||
-		(reported === "12" && !visionStreamSymbolsAvailable) ||
+		(reported === "13" && !kokoroG2pSymbolsAvailable) ||
+		(reported === "12" &&
+			!kokoroG2pSymbolsAvailable &&
+			!visionStreamSymbolsAvailable) ||
 		(reported === "11" && !timedAsrSymbolsAvailable) ||
 		(reported === "10" && !eotSymbolsAvailable && !timedAsrSymbolsAvailable) ||
 		(reported === "9" && !kokoroSymbolsAvailable && !eotSymbolsAvailable) ||
@@ -3244,6 +3385,50 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 				);
 			}
 			return rc;
+		},
+
+		/* ---- Kokoro IPA input + G2P-kind (ABI v14) ----------------- */
+
+		kokoroG2pKind(ctx): "espeak" | "ascii" | "unknown" {
+			const fn = loadedLib.symbols.eliza_inference_kokoro_g2p_kind;
+			if (!kokoroG2pSymbolsAvailable || typeof fn !== "function") {
+				return "unknown";
+			}
+			const rc = fn(ctx);
+			if (rc === ELIZA_KOKORO_G2P_ESPEAK) return "espeak";
+			if (rc === ELIZA_KOKORO_G2P_ASCII) return "ascii";
+			// Negative rc = non-Kokoro build; the kokoroSupported() probe already
+			// gates that upstream, so treat any other value as unknown.
+			return "unknown";
+		},
+
+		kokoroSynthesizeIpa({ ctx, ipa, speed, maxSamples }) {
+			const synth = loadedLib.symbols.eliza_inference_kokoro_synthesize_ipa;
+			if (!kokoroG2pSymbolsAvailable || typeof synth !== "function") {
+				throw new VoiceLifecycleError(
+					"kernel-missing",
+					"[ffi-bindings] eliza_inference_kokoro_synthesize_ipa is not exported by this build (pre-v14)",
+				);
+			}
+			const err = makeOutErr();
+			const ipaArg = cstr(ipa);
+			const outPcm = new Float32Array(maxSamples);
+			const rc = synth(
+				ctx,
+				ipaArg.ptr,
+				BigInt(ipaArg.bytes),
+				speed ?? 1.0,
+				ffi.ptr(outPcm),
+				BigInt(maxSamples),
+				err.ptr,
+			);
+			if (rc < 0) {
+				const message =
+					takeError(err.buf) ??
+					`[ffi-bindings] eliza_inference_kokoro_synthesize_ipa rc=${rc}`;
+				throw new VoiceLifecycleError(failureCode(rc), message);
+			}
+			return outPcm.slice(0, Math.min(rc, maxSamples));
 		},
 
 		close(): void {

@@ -159,6 +159,7 @@ export class KokoroTtsBackend implements TtsBackend, StreamingTtsBackend {
 		const result = await this.runtime.synthesize({
 			text: args.phrase.text,
 			phonemes,
+			phonemizerId: phonemizer.id,
 			voice,
 			cancelSignal: args.cancelSignal,
 			onChunk: ({ pcm, isFinal }) => {
