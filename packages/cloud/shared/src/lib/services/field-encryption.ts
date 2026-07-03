@@ -42,6 +42,22 @@ interface ParsedEncryptedValue {
 }
 
 /**
+ * Table/row/column that a ciphertext belongs to. When supplied, the coordinates
+ * are bound into the AES-GCM AAD (`table|rowId|column`) so a ciphertext cannot
+ * be relocated to a different row/column and still decrypt. Mirrors the pattern
+ * in `db/crypto/field-crypto.ts` / `@elizaos/security/crypto/aead`.
+ */
+export interface FieldCoords {
+  table: string;
+  rowId: string;
+  column: string;
+}
+
+function aadForCoords(coords: FieldCoords): Buffer {
+  return Buffer.from(`${coords.table}|${coords.rowId}|${coords.column}`, "utf8");
+}
+
+/**
  * Field Encryption Service
  *
  * Provides encrypt/decrypt operations for sensitive database fields.
@@ -97,7 +113,7 @@ export class FieldEncryptionService {
    * @param plaintext - The value to encrypt
    * @returns Encrypted string in encoded format
    */
-  async encrypt(organizationId: string, plaintext: string): Promise<string> {
+  async encrypt(organizationId: string, plaintext: string, coords?: FieldCoords): Promise<string> {
     this.ensureInitialized();
 
     // Get or create the organization's DEK
@@ -107,8 +123,12 @@ export class FieldEncryptionService {
     // Generate random nonce
     const nonce = crypto.randomBytes(NONCE_LENGTH);
 
-    // Encrypt with AES-256-GCM
+    // Encrypt with AES-256-GCM. When `coords` are supplied, bind them into the
+    // GCM AAD so the ciphertext cannot be relocated to another row/column and
+    // still decrypt. Omitting `coords` preserves the pre-existing on-disk
+    // format (backward compatible with rows written before AAD binding).
     const cipher = crypto.createCipheriv(ALGORITHM, dek, nonce);
+    if (coords) cipher.setAAD(aadForCoords(coords));
     const ciphertext = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
     const authTag = cipher.getAuthTag();
 
@@ -131,7 +151,7 @@ export class FieldEncryptionService {
    * @param encryptedValue - The encrypted string to decrypt
    * @returns Decrypted plaintext
    */
-  async decrypt(encryptedValue: string): Promise<string> {
+  async decrypt(encryptedValue: string, coords?: FieldCoords): Promise<string> {
     this.ensureInitialized();
 
     const parsed = this.parseEncryptedValue(encryptedValue);
@@ -143,8 +163,11 @@ export class FieldEncryptionService {
     }
     const dek = this.unwrapDek(orgKey.encrypted_dek);
 
-    // Decrypt with AES-256-GCM
+    // Decrypt with AES-256-GCM. `coords` must match the AAD used at encrypt
+    // time; a mismatch (or a ciphertext moved to a different row/column) makes
+    // `decipher.final()` throw an auth-tag error.
     const decipher = crypto.createDecipheriv(ALGORITHM, dek, parsed.nonce);
+    if (coords) decipher.setAAD(aadForCoords(coords));
     decipher.setAuthTag(parsed.authTag);
 
     const plaintext = Buffer.concat([decipher.update(parsed.ciphertext), decipher.final()]);

@@ -26,13 +26,14 @@ app.get("/", async (c) => {
     return c.json({ error: "Nonce storage unavailable" }, 503);
   }
 
-  const nonce = await issueSiwsNonce(redis);
+  const uri = getAppUrl(c.env);
+  const nonce = await issueSiwsNonce(redis, { uri, chainId });
 
   return c.json(
     {
       nonce,
       domain: getAppHost(c.env),
-      uri: getAppUrl(c.env),
+      uri,
       chainId,
       version: "1",
       statement: "Sign in to Eliza Cloud",

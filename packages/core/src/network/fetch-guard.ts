@@ -250,6 +250,22 @@ export async function fetchWithSsrfGuard(
 	const pinnedFetchImpl =
 		params.pinnedFetchImpl ?? nodeDefaults?.pinnedFetchImpl;
 
+	// Fail CLOSED on the footgun that re-creates #11147: a `lookupFn` computes a
+	// DNS pin, but without a `pinnedFetchImpl` to connect to that pinned IP the
+	// request falls through to the unpinned `fetcher` — the pin is computed and
+	// then silently discarded, re-opening the DNS-rebinding race the lookup was
+	// meant to close. No current caller hits this (Node supplies both via
+	// nodeDefaults; edge supplies neither), but the combination must throw rather
+	// than downgrade to unpinned fetch.
+	if (lookupFn && !pinnedFetchImpl) {
+		throw new Error(
+			"SSRF guard: a DNS lookupFn was provided without a pinnedFetchImpl. " +
+				"Refusing to fall back to the unpinned fetcher — the computed DNS pin " +
+				"would be discarded, re-introducing a DNS-rebinding race. Provide a " +
+				"pinnedFetchImpl (e.g. node-pinned-fetch) alongside the lookupFn.",
+		);
+	}
+
 	const maxRedirects =
 		typeof params.maxRedirects === "number" &&
 		Number.isFinite(params.maxRedirects)

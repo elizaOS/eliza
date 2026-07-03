@@ -49,12 +49,31 @@ export class LocalKMSProvider implements KMSProvider {
   private getMasterKey(): Buffer {
     const env = getCloudAwareEnv();
     const keySource = this.masterKeyHex || env.SECRETS_MASTER_KEY;
-    if (!keySource && env.NODE_ENV === "production") {
-      throw new Error("SECRETS_MASTER_KEY environment variable is required in production");
+    if (!keySource) {
+      // Fail CLOSED. Previously this silently derived an all-zero master key
+      // ("0".repeat(64)) outside production, so any staging/preview/self-host
+      // env that held real secrets but did not set NODE_ENV=production (or
+      // forgot SECRETS_MASTER_KEY) encrypted every DEK under a publicly-known
+      // key — a DB read then trivially recovered plaintext. Never derive the
+      // zero key. Production always throws; non-prod requires an explicit,
+      // loud ALLOW_INSECURE_DEV_KMS=1 opt-in for local development only.
+      if (env.NODE_ENV === "production" || env.ALLOW_INSECURE_DEV_KMS !== "1") {
+        throw new Error(
+          "SECRETS_MASTER_KEY is required to encrypt/decrypt secrets. " +
+            "Generate one with `openssl rand -hex 32`. " +
+            "For local development only, set ALLOW_INSECURE_DEV_KMS=1 to use an " +
+            "insecure all-zero key (never in production or with real secrets).",
+        );
+      }
+      logger.warn(
+        "[LocalKMSProvider] SECRETS_MASTER_KEY is unset and ALLOW_INSECURE_DEV_KMS=1 — " +
+          "using an INSECURE, publicly-known all-zero master key. Every secret encrypted " +
+          "in this process is effectively PLAINTEXT. Use this ONLY for local development.",
+      );
+      return Buffer.alloc(32, 0);
     }
-    const key = keySource || "0".repeat(64);
-    if (key.length !== 64) throw new Error("Master key must be 64 hex characters (32 bytes)");
-    return Buffer.from(key, "hex");
+    if (keySource.length !== 64) throw new Error("Master key must be 64 hex characters (32 bytes)");
+    return Buffer.from(keySource, "hex");
   }
 
   async generateDataKey() {
@@ -176,10 +195,17 @@ export class SecretsEncryptionService {
 
   isConfigured = () => this.kms.isConfigured();
 
-  async encrypt(plaintext: string): Promise<EncryptionResult> {
+  async encrypt(plaintext: string, aad?: string): Promise<EncryptionResult> {
     const { plaintext: dek, ciphertext: encryptedDek, keyId } = await this.kms.generateDataKey();
     const nonce = randomBytes(12);
     const cipher = createCipheriv("aes-256-gcm", dek, nonce);
+    // AAD binds the ciphertext to a caller-supplied context (e.g.
+    // `table|rowId|column`). GCM folds the AAD into the auth tag, so a
+    // ciphertext relocated to a different row/column decrypts only if the
+    // caller presents the same AAD — an attacker with DB-write cannot move a
+    // ciphertext between rows and still decrypt it. Omitting the AAD preserves
+    // the pre-existing on-disk format (backward compatible).
+    if (aad !== undefined) cipher.setAAD(Buffer.from(aad, "utf8"));
     const encrypted = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
     dek.fill(0);
     return {
@@ -191,12 +217,10 @@ export class SecretsEncryptionService {
     };
   }
 
-  async decrypt({
-    encryptedValue,
-    encryptedDek,
-    nonce,
-    authTag,
-  }: DecryptionParams): Promise<string> {
+  async decrypt(
+    { encryptedValue, encryptedDek, nonce, authTag }: DecryptionParams,
+    aad?: string,
+  ): Promise<string> {
     let dek: Buffer;
     try {
       dek = await this.kms.decrypt(encryptedDek);
@@ -210,6 +234,7 @@ export class SecretsEncryptionService {
 
     try {
       const decipher = createDecipheriv("aes-256-gcm", dek, Buffer.from(nonce, "base64"));
+      if (aad !== undefined) decipher.setAAD(Buffer.from(aad, "utf8"));
       decipher.setAuthTag(Buffer.from(authTag, "base64"));
       const result = Buffer.concat([
         decipher.update(Buffer.from(encryptedValue, "base64")),
@@ -218,7 +243,7 @@ export class SecretsEncryptionService {
       return result;
     } catch (error) {
       throw new DecryptionError(
-        "Failed to decrypt secret value — stored encryption data may be corrupted",
+        "Failed to decrypt secret value — stored encryption data may be corrupted or AAD mismatch (row/column relocation)",
         "value_decryption",
         error,
       );
@@ -227,8 +252,8 @@ export class SecretsEncryptionService {
     }
   }
 
-  async rotate(params: DecryptionParams): Promise<EncryptionResult> {
-    return this.encrypt(await this.decrypt(params));
+  async rotate(params: DecryptionParams, aad?: string): Promise<EncryptionResult> {
+    return this.encrypt(await this.decrypt(params, aad), aad);
   }
 }
 
