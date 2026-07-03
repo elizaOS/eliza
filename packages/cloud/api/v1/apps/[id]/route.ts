@@ -52,6 +52,11 @@ app.get("/", async (c) => {
     if (found.organization_id !== user.organization_id) {
       return c.json({ success: false, error: "Access denied" }, 403);
     }
+    // An app-scoped API key may only read its own app, never a sibling's raw
+    // row (metadata, api_key_id, review state, automation config) (#10852).
+    if (await isAppKeyOutOfScope(c.get("apiKeyId"), id)) {
+      return c.json({ success: false, error: "Access denied" }, 403);
+    }
     return c.json({
       success: true,
       app: await appsService.withDatabaseState(found),
