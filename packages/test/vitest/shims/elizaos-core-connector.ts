@@ -125,6 +125,13 @@ export function runWithTrajectoryContext<T>(
   return fn();
 }
 
+export function runWithTrajectoryPurpose<T>(
+  _purpose: string,
+  fn: () => T | Promise<T>,
+): T | Promise<T> {
+  return fn();
+}
+
 export function resolveOptimizedPromptForRuntime(
   runtime: {
     getService?: (name: string) => {
