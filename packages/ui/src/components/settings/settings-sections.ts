@@ -33,7 +33,7 @@ import {
   type SettingsSectionGroup,
 } from "./settings-section-meta";
 import {
-  listSettingsSections,
+  getAllSettingsSections,
   registerSettingsSection,
   type SettingsSectionDef,
   type SettingsSectionHue,
@@ -143,6 +143,7 @@ const MyRuntimesContainer = lazy(() =>
 );
 
 export {
+  getAllSettingsSections,
   getSettingsSection,
   listSettingsSections,
   registerSettingsSection,
@@ -408,12 +409,6 @@ registerSettingsSection({
 });
 
 registerCloudConnectorsSettingsSection();
-
-/** Every section the Settings view should render — built-ins plus any added by
- *  a host app / plugin through {@link registerSettingsSection}. */
-export function getAllSettingsSections(): SettingsSectionDef[] {
-  return listSettingsSections();
-}
 
 export function settingsSectionLabel(
   section: SettingsSectionDef,

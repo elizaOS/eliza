@@ -79,7 +79,7 @@ export {
   listSettingsSections,
   registerSettingsSection,
   type SettingsSectionDef,
-} from "./components/settings/settings-sections.ts";
+} from "./components/settings/settings-section-registry.ts";
 export { AppPageSidebar } from "./components/shared/AppPageSidebar.tsx";
 export * from "./components/shared/LanguageDropdown.helpers.ts";
 export type { TranslatorFn } from "./components/shared/LanguageDropdown.tsx";

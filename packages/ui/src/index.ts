@@ -278,7 +278,7 @@ export {
   listSettingsSections,
   registerSettingsSection,
   type SettingsSectionDef,
-} from "./components/settings/settings-sections";
+} from "./components/settings/settings-section-registry";
 export { AppPageSidebar } from "./components/shared/AppPageSidebar";
 export {
   AssistantOverlay,

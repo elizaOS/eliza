@@ -122,3 +122,14 @@ export function listSettingsSections(): SettingsSectionDef[] {
 export function getSettingsSection(id: string): SettingsSectionDef | undefined {
   return getStore().entries.get(id);
 }
+
+/**
+ * Every section the Settings view should render — built-ins plus any added by a
+ * host app / plugin through {@link registerSettingsSection}. Alias of
+ * {@link listSettingsSections}; exported from this light module so the eager
+ * boot barrels (`index.ts` / `browser.ts`) can re-export it without pulling in
+ * the heavy `settings-sections.ts` component graph (#10724).
+ */
+export function getAllSettingsSections(): SettingsSectionDef[] {
+  return listSettingsSections();
+}
