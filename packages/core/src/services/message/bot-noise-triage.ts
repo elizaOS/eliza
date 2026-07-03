@@ -33,11 +33,11 @@ import type { IAgentRuntime } from "../../types/runtime";
  * rooms have their own turn-taking pipeline and are deliberately excluded.
  */
 const TRIAGE_CHANNEL_TYPES: ReadonlySet<string> = new Set([
-  String(ChannelType.GROUP),
-  String(ChannelType.THREAD),
-  String(ChannelType.WORLD),
-  String(ChannelType.FORUM),
-  String(ChannelType.FEED),
+	String(ChannelType.GROUP),
+	String(ChannelType.THREAD),
+	String(ChannelType.WORLD),
+	String(ChannelType.FORUM),
+	String(ChannelType.FEED),
 ]);
 
 /** Sub-agent completion relays are routed by their own evaluator — never gate. */
@@ -51,32 +51,32 @@ const MAX_HISTORY_LINE_CHARS = 160;
 const MAX_CURRENT_TEXT_CHARS = 1200;
 
 export interface BotNoiseTriageArgs {
-  runtime: IAgentRuntime;
-  message: Memory;
-  /** Platform mention/reply or agent named in text (computed by the caller). */
-  explicitlyAddressesAgent: boolean;
+	runtime: IAgentRuntime;
+	message: Memory;
+	/** Platform mention/reply or agent named in text (computed by the caller). */
+	explicitlyAddressesAgent: boolean;
 }
 
 export type BotNoiseTriageResult =
-  /** Gate did not apply (or failed open) — run the full pipeline. */
-  | { applied: false }
-  /** Small-model verdict. `respond: false` ends the turn before Stage 1. */
-  | { applied: true; respond: boolean };
+	/** Gate did not apply (or failed open) — run the full pipeline. */
+	| { applied: false }
+	/** Small-model verdict. `respond: false` ends the turn before Stage 1. */
+	| { applied: true; respond: boolean };
 
 function metadataRecord(value: unknown): Record<string, unknown> | undefined {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : undefined;
+	return typeof value === "object" && value !== null && !Array.isArray(value)
+		? (value as Record<string, unknown>)
+		: undefined;
 }
 
 /**
  * The gate is ON by default; opt out with ELIZA_BOT_NOISE_TRIAGE=0|false|off.
  */
 export function isBotNoiseTriageEnabled(runtime: IAgentRuntime): boolean {
-  const raw = runtime.getSetting("ELIZA_BOT_NOISE_TRIAGE");
-  if (raw === undefined || raw === null) return true;
-  const normalized = String(raw).trim().toLowerCase();
-  return !["0", "false", "no", "off"].includes(normalized);
+	const raw = runtime.getSetting("ELIZA_BOT_NOISE_TRIAGE");
+	if (raw === undefined || raw === null) return true;
+	const normalized = String(raw).trim().toLowerCase();
+	return !["0", "false", "no", "off"].includes(normalized);
 }
 
 /**
@@ -85,113 +85,113 @@ export function isBotNoiseTriageEnabled(runtime: IAgentRuntime): boolean {
  * falls through to the full pipeline (fail-open).
  */
 export function isTriagableBotNoiseMessage(
-  message: Memory,
-  explicitlyAddressesAgent: boolean,
+	message: Memory,
+	explicitlyAddressesAgent: boolean,
 ): boolean {
-  if (explicitlyAddressesAgent) return false;
+	if (explicitlyAddressesAgent) return false;
 
-  const contentMetadata = metadataRecord(message.content?.metadata);
-  const topLevelMetadata = metadataRecord(message.metadata);
+	const contentMetadata = metadataRecord(message.content?.metadata);
+	const topLevelMetadata = metadataRecord(message.metadata);
 
-  // Positively bot/webhook-authored only (connector-stamped `fromBot`).
-  const fromBot =
-    contentMetadata?.fromBot === true || topLevelMetadata?.fromBot === true;
-  if (!fromBot) return false;
+	// Positively bot/webhook-authored only (connector-stamped `fromBot`).
+	const fromBot =
+		contentMetadata?.fromBot === true || topLevelMetadata?.fromBot === true;
+	if (!fromBot) return false;
 
-  // Autonomous self-turns are not inbound noise.
-  if (
-    contentMetadata?.isAutonomous === true ||
-    topLevelMetadata?.isAutonomous === true
-  ) {
-    return false;
-  }
+	// Autonomous self-turns are not inbound noise.
+	if (
+		contentMetadata?.isAutonomous === true ||
+		topLevelMetadata?.isAutonomous === true
+	) {
+		return false;
+	}
 
-  // Sub-agent completion relays carry their own routing evaluator.
-  const source =
-    typeof message.content?.source === "string"
-      ? message.content.source.trim().toLowerCase()
-      : "";
-  if (source === SUB_AGENT_SOURCE) return false;
-  if (
-    contentMetadata?.subAgent === true ||
-    topLevelMetadata?.subAgent === true
-  ) {
-    return false;
-  }
-  if (ALWAYS_RESPOND_SOURCES.some((pattern) => source.includes(pattern))) {
-    return false;
-  }
+	// Sub-agent completion relays carry their own routing evaluator.
+	const source =
+		typeof message.content?.source === "string"
+			? message.content.source.trim().toLowerCase()
+			: "";
+	if (source === SUB_AGENT_SOURCE) return false;
+	if (
+		contentMetadata?.subAgent === true ||
+		topLevelMetadata?.subAgent === true
+	) {
+		return false;
+	}
+	if (ALWAYS_RESPOND_SOURCES.some((pattern) => source.includes(pattern))) {
+		return false;
+	}
 
-  // Only known text group-ish channels; unknown/missing channel type fails open.
-  const channelType =
-    typeof message.content?.channelType === "string"
-      ? message.content.channelType.trim().toUpperCase()
-      : "";
-  return TRIAGE_CHANNEL_TYPES.has(channelType);
+	// Only known text group-ish channels; unknown/missing channel type fails open.
+	const channelType =
+		typeof message.content?.channelType === "string"
+			? message.content.channelType.trim().toUpperCase()
+			: "";
+	return TRIAGE_CHANNEL_TYPES.has(channelType);
 }
 
 function senderNameOf(message: Memory): string {
-  const metadata = metadataRecord(message.metadata);
-  const entityName = metadata?.entityName;
-  if (typeof entityName === "string" && entityName.trim() !== "") {
-    return entityName.trim();
-  }
-  const entityUserName = metadata?.entityUserName;
-  if (typeof entityUserName === "string" && entityUserName.trim() !== "") {
-    return entityUserName.trim();
-  }
-  return "bot";
+	const metadata = metadataRecord(message.metadata);
+	const entityName = metadata?.entityName;
+	if (typeof entityName === "string" && entityName.trim() !== "") {
+		return entityName.trim();
+	}
+	const entityUserName = metadata?.entityUserName;
+	if (typeof entityUserName === "string" && entityUserName.trim() !== "") {
+		return entityUserName.trim();
+	}
+	return "bot";
 }
 
 function clip(text: string, maxChars: number): string {
-  const collapsed = text.replace(/\s+/g, " ").trim();
-  return collapsed.length > maxChars
-    ? `${collapsed.slice(0, maxChars)}…`
-    : collapsed;
+	const collapsed = text.replace(/\s+/g, " ").trim();
+	return collapsed.length > maxChars
+		? `${collapsed.slice(0, maxChars)}…`
+		: collapsed;
 }
 
 function historyLine(runtime: IAgentRuntime, memory: Memory): string | null {
-  const text =
-    typeof memory.content?.text === "string" ? memory.content.text : "";
-  if (text.trim() === "") return null;
-  const name =
-    memory.entityId === runtime.agentId
-      ? (runtime.character?.name ?? "agent")
-      : senderNameOf(memory);
-  return `${name}: ${clip(text, MAX_HISTORY_LINE_CHARS)}`;
+	const text =
+		typeof memory.content?.text === "string" ? memory.content.text : "";
+	if (text.trim() === "") return null;
+	const name =
+		memory.entityId === runtime.agentId
+			? (runtime.character?.name ?? "agent")
+			: senderNameOf(memory);
+	return `${name}: ${clip(text, MAX_HISTORY_LINE_CHARS)}`;
 }
 
 export function buildBotNoiseTriagePrompt(args: {
-  agentName: string;
-  senderName: string;
-  messageText: string;
-  historyLines: readonly string[];
+	agentName: string;
+	senderName: string;
+	messageText: string;
+	historyLines: readonly string[];
 }): string {
-  const history =
-    args.historyLines.length > 0 ? args.historyLines.join("\n") : "(none)";
-  return [
-    `You decide whether ${args.agentName}, an AI agent in a group channel, should respond to a message.`,
-    `The newest message was posted by a bot or webhook and does not mention or address ${args.agentName}.`,
-    "",
-    "Recent channel messages:",
-    history,
-    "",
-    `Newest message, from ${args.senderName} (bot/webhook):`,
-    clip(args.messageText, MAX_CURRENT_TEXT_CHARS) || "(empty)",
-    "",
-    `Automated status feeds, embeds, queue/system updates, notifications, and bot-to-bot chatter not involving ${args.agentName} should be ignored.`,
-    `Answer RESPOND only if the message clearly asks ${args.agentName} something or requires ${args.agentName} to act.`,
-    "Reply with exactly one word: RESPOND or IGNORE.",
-  ].join("\n");
+	const history =
+		args.historyLines.length > 0 ? args.historyLines.join("\n") : "(none)";
+	return [
+		`You decide whether ${args.agentName}, an AI agent in a group channel, should respond to a message.`,
+		`The newest message was posted by a bot or webhook and does not mention or address ${args.agentName}.`,
+		"",
+		"Recent channel messages:",
+		history,
+		"",
+		`Newest message, from ${args.senderName} (bot/webhook):`,
+		clip(args.messageText, MAX_CURRENT_TEXT_CHARS) || "(empty)",
+		"",
+		`Automated status feeds, embeds, queue/system updates, notifications, and bot-to-bot chatter not involving ${args.agentName} should be ignored.`,
+		`Answer RESPOND only if the message clearly asks ${args.agentName} something or requires ${args.agentName} to act.`,
+		"Reply with exactly one word: RESPOND or IGNORE.",
+	].join("\n");
 }
 
 function parseTriageVerdict(raw: string): boolean | undefined {
-  const normalized = raw.trim().toUpperCase();
-  const saysIgnore = /\bIGNORE\b/.test(normalized);
-  const saysRespond = /\bRESPOND\b/.test(normalized);
-  if (saysIgnore && !saysRespond) return false;
-  if (saysRespond && !saysIgnore) return true;
-  return undefined;
+	const normalized = raw.trim().toUpperCase();
+	const saysIgnore = /\bIGNORE\b/.test(normalized);
+	const saysRespond = /\bRESPOND\b/.test(normalized);
+	if (saysIgnore && !saysRespond) return false;
+	if (saysRespond && !saysIgnore) return true;
+	return undefined;
 }
 
 /**
@@ -199,70 +199,70 @@ function parseTriageVerdict(raw: string): boolean | undefined {
  * does not confidently apply — the caller then runs the normal pipeline.
  */
 export async function runBotNoiseTriage(
-  args: BotNoiseTriageArgs,
+	args: BotNoiseTriageArgs,
 ): Promise<BotNoiseTriageResult> {
-  const { runtime, message, explicitlyAddressesAgent } = args;
-  if (!isBotNoiseTriageEnabled(runtime)) return { applied: false };
-  if (!isTriagableBotNoiseMessage(message, explicitlyAddressesAgent)) {
-    return { applied: false };
-  }
+	const { runtime, message, explicitlyAddressesAgent } = args;
+	if (!isBotNoiseTriageEnabled(runtime)) return { applied: false };
+	if (!isTriagableBotNoiseMessage(message, explicitlyAddressesAgent)) {
+		return { applied: false };
+	}
 
-  let historyLines: string[] = [];
-  try {
-    const recent = await runtime.getMemories({
-      tableName: "messages",
-      roomId: message.roomId,
-      count: MAX_HISTORY_MESSAGES,
-    });
-    historyLines = recent
-      .filter((memory) => memory.id !== message.id)
-      .sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0))
-      .map((memory) => historyLine(runtime, memory))
-      .filter((line): line is string => line !== null);
-  } catch {
-    // History is best-effort context; triage still works without it.
-  }
+	let historyLines: string[] = [];
+	try {
+		const recent = await runtime.getMemories({
+			tableName: "messages",
+			roomId: message.roomId,
+			count: MAX_HISTORY_MESSAGES,
+		});
+		historyLines = recent
+			.filter((memory) => memory.id !== message.id)
+			.sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0))
+			.map((memory) => historyLine(runtime, memory))
+			.filter((line): line is string => line !== null);
+	} catch {
+		// History is best-effort context; triage still works without it.
+	}
 
-  const prompt = buildBotNoiseTriagePrompt({
-    agentName: runtime.character?.name ?? "agent",
-    senderName: senderNameOf(message),
-    messageText:
-      typeof message.content?.text === "string" ? message.content.text : "",
-    historyLines,
-  });
+	const prompt = buildBotNoiseTriagePrompt({
+		agentName: runtime.character?.name ?? "agent",
+		senderName: senderNameOf(message),
+		messageText:
+			typeof message.content?.text === "string" ? message.content.text : "",
+		historyLines,
+	});
 
-  try {
-    const params: GenerateTextParams = {
-      prompt,
-      // One word is the contract, but reasoning-style small models may spend
-      // budget before the visible answer — leave headroom so the verdict is
-      // never truncated into a fail-open.
-      maxTokens: 64,
-      temperature: 0,
-      voiceOutput: "internal",
-    };
-    const raw = await runtime.useModel(ModelType.TEXT_SMALL, params);
-    const text =
-      typeof raw === "string"
-        ? raw
-        : (((raw as { text?: unknown })?.text as string | undefined) ?? "");
-    const verdict = parseTriageVerdict(text);
-    if (verdict === undefined) {
-      // Unparseable verdict — fail open into the full pipeline.
-      return { applied: false };
-    }
-    return { applied: true, respond: verdict };
-  } catch (error) {
-    // No TEXT_SMALL handler / provider failure: the gate must never take
-    // the pipeline down. Fail open.
-    runtime.logger?.debug?.(
-      {
-        src: "service:message",
-        agentId: runtime.agentId,
-        error: error instanceof Error ? error.message : String(error),
-      },
-      "[message] bot-noise triage model call failed — falling back to full pipeline",
-    );
-    return { applied: false };
-  }
+	try {
+		const params: GenerateTextParams = {
+			prompt,
+			// One word is the contract, but reasoning-style small models may spend
+			// budget before the visible answer — leave headroom so the verdict is
+			// never truncated into a fail-open.
+			maxTokens: 64,
+			temperature: 0,
+			voiceOutput: "internal",
+		};
+		const raw = await runtime.useModel(ModelType.TEXT_SMALL, params);
+		const text =
+			typeof raw === "string"
+				? raw
+				: (((raw as { text?: unknown })?.text as string | undefined) ?? "");
+		const verdict = parseTriageVerdict(text);
+		if (verdict === undefined) {
+			// Unparseable verdict — fail open into the full pipeline.
+			return { applied: false };
+		}
+		return { applied: true, respond: verdict };
+	} catch (error) {
+		// No TEXT_SMALL handler / provider failure: the gate must never take
+		// the pipeline down. Fail open.
+		runtime.logger?.debug?.(
+			{
+				src: "service:message",
+				agentId: runtime.agentId,
+				error: error instanceof Error ? error.message : String(error),
+			},
+			"[message] bot-noise triage model call failed — falling back to full pipeline",
+		);
+		return { applied: false };
+	}
 }
