@@ -52,6 +52,19 @@ export interface PullGestureOptions {
   distanceThresholdX?: number;
   /** Minimum horizontal speed (px/ms) to count as a swipe flick. Default 0.4. */
   velocityThresholdX?: number;
+  /**
+   * Bias axis commitment toward VERTICAL for a binding that shares a surface
+   * with a native vertical scroller (the conversation transcript, #8929). When
+   * true, the MID-gesture X commit requires horizontal to STRICTLY dominate
+   * (`ax > ay`, not the widened 0.8 cone) and defers the X capture until a
+   * larger horizontal slop is crossed — so a real thumb SCROLL (whose first few
+   * px are usually a little diagonal) is never mistaken for a horizontal swipe,
+   * captured, and blocked from scrolling natively (the "can't scroll chat on
+   * mobile web" bug, #chat-scroll-web). Release-time swipe recognition is
+   * unchanged, so a deliberate horizontal flick still navigates. Default false
+   * keeps the grabber/home rail on the widened cone (#10715).
+   */
+  verticalScrollPriority?: boolean;
 }
 
 /** Movement (px) under which a release is treated as a tap, not a drag.
@@ -62,6 +75,13 @@ export const PULL_GESTURE_TAP_SLOP = 8;
 const TAP_SLOP = PULL_GESTURE_TAP_SLOP;
 /** Movement (px) at which the gesture commits to a single axis. */
 const AXIS_COMMIT_SLOP = 8;
+/**
+ * Larger axis-commit slop used when {@link PullGestureOptions.verticalScrollPriority}
+ * is set: the binding waits for a clearer horizontal intent before it commits
+ * (and captures) the X axis, so the browser's native vertical pan owns the first
+ * frames of a thumb scroll on the shared transcript surface (#chat-scroll-web).
+ */
+const AXIS_COMMIT_SLOP_SCROLL_SAFE = 16;
 
 export interface PullGestureBinding {
   onPointerDown: (event: React.PointerEvent) => void;
@@ -145,7 +165,15 @@ export function usePullGesture(
     velocityThreshold = 0.5,
     distanceThresholdX = 64,
     velocityThresholdX = 0.4,
+    verticalScrollPriority = false,
   } = options;
+
+  // On a scroll-priority surface the mid-gesture X commit needs a clearer
+  // horizontal intent (larger slop + strict dominance) so a thumb SCROLL is
+  // never captured as a swipe; release-time recognition is unchanged.
+  const midCommitSlop = verticalScrollPriority
+    ? AXIS_COMMIT_SLOP_SCROLL_SAFE
+    : AXIS_COMMIT_SLOP;
 
   const hasSwipe =
     swipeEnabled && Boolean(onSwipeLeft || onSwipeRight || onDragX);
@@ -256,15 +284,23 @@ export function usePullGesture(
       if (axis.current === null) {
         const ax = Math.abs(dx);
         const ay = Math.abs(dy);
-        if (Math.max(ax, ay) >= AXIS_COMMIT_SLOP) {
+        if (Math.max(ax, ay) >= midCommitSlop) {
           // Same widened cone as resolveSwipe (#10715): when this binding can
           // swipe, a deliberate diagonal (horizontal ≥ 0.8× vertical) commits
           // the X axis. A strict ax > ay here re-narrowed the cone to 45° at
           // the FIRST 8px of travel, so the exact diagonals the release-time
           // dominance check was widened for never reached it.
-          const horizontalWins = hasSwipe
-            ? ax >= ay * HORIZONTAL_DOMINANCE_RATIO
-            : ax > ay;
+          //
+          // EXCEPTION — `verticalScrollPriority` (the transcript, #chat-scroll-web):
+          // the surface is ALSO a native vertical scroller, so a mid-gesture X
+          // commit here would capture the pointer and BLOCK the scroll. Require
+          // horizontal to STRICTLY dominate (`ax > ay`) so a mostly-vertical
+          // thumb scroll stays on the Y axis (uncaptured → native scroll wins);
+          // release-time recognition still lands a deliberate horizontal flick.
+          const horizontalWins =
+            hasSwipe && !verticalScrollPriority
+              ? ax >= ay * HORIZONTAL_DOMINANCE_RATIO
+              : ax > ay;
           axis.current = horizontalWins ? "x" : "y";
           // Take over the pointer now that intent is clear (deferred-capture path).
           if (hasSwipe && !hasVerticalPull) {
@@ -301,7 +337,16 @@ export function usePullGesture(
         scheduleDrag("y", dy); // pre-commit: drive the vertical sheet
       }
     },
-    [hasSwipe, hasVerticalPull, onDragReset, onDragX, scheduleDrag, cancelDrag],
+    [
+      hasSwipe,
+      hasVerticalPull,
+      onDragReset,
+      onDragX,
+      scheduleDrag,
+      cancelDrag,
+      midCommitSlop,
+      verticalScrollPriority,
+    ],
   );
 
   const finish = React.useCallback(
