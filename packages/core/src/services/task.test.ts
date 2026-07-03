@@ -284,6 +284,50 @@ describe("TaskService tick re-arm", () => {
 		await vi.advanceTimersByTimeAsync(120_000);
 		expect(execute).toHaveBeenCalledTimes(5);
 	});
+
+	it("does not compound backoff and restores the original cadence when baseInterval was never set", async () => {
+		const { runtime, tasks, workers } = makeTaskRuntime();
+		let failuresLeft = 2;
+		const execute = vi.fn(async () => {
+			if (failuresLeft > 0) {
+				failuresLeft -= 1;
+				throw new Error("boom");
+			}
+			return undefined;
+		});
+		workers.set("FLAKY_NO_BASE", { name: "FLAKY_NO_BASE", execute });
+		tasks.set("t-nobase", {
+			id: "t-nobase" as UUID,
+			name: "FLAKY_NO_BASE",
+			agentId: AGENT_ID,
+			tags: ["queue", "repeat"],
+			// Deliberately NO baseInterval — the common createTask shape (e.g.
+			// createTestTasks). Backoff must still double off the ORIGINAL
+			// interval, not off the already-inflated updateInterval.
+			metadata: { updateInterval: 1_000, updatedAt: T0 },
+		});
+
+		service = (await TaskService.start(runtime)) as TaskService;
+
+		// Failure 1 at +1s: backoff to 2^1 * 1s = 2s.
+		await vi.advanceTimersByTimeAsync(1_000);
+		expect(execute).toHaveBeenCalledTimes(1);
+		expect(tasks.get("t-nobase")?.metadata?.updateInterval).toBe(2_000);
+
+		// Failure 2 at +3s: backoff must be 2^2 * ORIGINAL 1s = 4s, not
+		// 2^2 * the already-doubled 2s = 8s (exponential-of-exponential).
+		await vi.advanceTimersByTimeAsync(2_000);
+		expect(execute).toHaveBeenCalledTimes(2);
+		expect(tasks.get("t-nobase")?.metadata?.updateInterval).toBe(4_000);
+
+		// Success at +7s: cadence restored to the ORIGINAL 1s interval, not
+		// left permanently inflated at the last backoff value.
+		await vi.advanceTimersByTimeAsync(4_000);
+		expect(execute).toHaveBeenCalledTimes(3);
+		const meta = tasks.get("t-nobase")?.metadata;
+		expect(meta?.failureCount).toBe(0);
+		expect(meta?.updateInterval).toBe(1_000);
+	});
 });
 
 describe("AgentRuntime task mutations mark the local TaskService dirty", () => {

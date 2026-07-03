@@ -100,6 +100,51 @@ describe("computeNextCronRunAtMs - DST fall-back dedupe (#11046)", () => {
 	});
 });
 
+describe("computeNextCronRunAtMs - POSIX day-of-month/day-of-week OR semantics", () => {
+	// Standard (POSIX/Vixie) cron: when BOTH dom and dow are restricted, the
+	// job runs on days matching EITHER field. `0 0 13 * 5` = every 13th AND
+	// every Friday — not only Friday-the-13th.
+	const FRIDAY_JUL_3 = Date.UTC(2026, 6, 3, 12, 0, 0); // 2026-07-03 (a Friday)
+
+	it("sanity: the base date is a Friday", () => {
+		expect(new Date(FRIDAY_JUL_3).getUTCDay()).toBe(5);
+	});
+
+	it("fires on the next matching day-of-week even when the day-of-month has not arrived", () => {
+		// Next Friday (Jul 10) comes before the next 13th (Jul 13). AND
+		// semantics would instead wait months for a Friday-the-13th
+		// (2026-11-13).
+		expect(computeNextCronRunAtMs("0 0 13 * 5", FRIDAY_JUL_3)).toBe(
+			Date.UTC(2026, 6, 10, 0, 0, 0),
+		);
+	});
+
+	it("fires on the next matching day-of-month when it comes before the day-of-week", () => {
+		// `0 0 5 * 1`: the 5th (Sunday Jul 5) comes before the next Monday
+		// (Jul 6).
+		expect(computeNextCronRunAtMs("0 0 5 * 1", FRIDAY_JUL_3)).toBe(
+			Date.UTC(2026, 6, 5, 0, 0, 0),
+		);
+	});
+
+	it("keeps AND semantics when only one day field is restricted", () => {
+		// dom restricted, dow `*`: fire on the 13th regardless of weekday.
+		expect(computeNextCronRunAtMs("0 0 13 * *", FRIDAY_JUL_3)).toBe(
+			Date.UTC(2026, 6, 13, 0, 0, 0),
+		);
+		// dow restricted, dom `*`: fire on the next Monday.
+		expect(computeNextCronRunAtMs("0 0 * * 1", FRIDAY_JUL_3)).toBe(
+			Date.UTC(2026, 6, 6, 0, 0, 0),
+		);
+		// dom `*/2` starts with `*` => unrestricted for the OR rule (Vixie):
+		// dow must ALSO match, so the next fire is a Monday on an odd
+		// day-of-month (Jul 6 is Monday the 6th — even — so Jul 13 it is).
+		expect(computeNextCronRunAtMs("0 0 */2 * 1", FRIDAY_JUL_3)).toBe(
+			Date.UTC(2026, 6, 13, 0, 0, 0),
+		);
+	});
+});
+
 describe("computeNextCronRunAtMs - non-representable base guard (#11046)", () => {
 	it("returns null immediately for a base at/over the max representable Date", () => {
 		// Number.MAX_SAFE_INTEGER (~9.007e15) exceeds the max Date (±8.64e15), so

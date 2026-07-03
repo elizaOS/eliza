@@ -515,6 +515,12 @@ export class TaskService extends Service {
 				} else {
 					const baseInterval =
 						meta?.baseInterval ?? meta?.updateInterval ?? 1000;
+					// Persist the resolved base the FIRST time we back off. Without it,
+					// the next failure's fallback reads the already-doubled
+					// updateInterval (the exponential-of-exponential this branch exists
+					// to prevent) and a later success "restores" updateInterval to the
+					// inflated backoff value permanently instead of the original cadence.
+					newMeta.baseInterval = baseInterval;
 					newMeta.updateInterval = Math.min(
 						baseInterval * 2 ** failureCount,
 						300_000,

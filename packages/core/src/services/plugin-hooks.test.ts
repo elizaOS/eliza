@@ -68,6 +68,33 @@ describe("applyPluginFilter — deny list", () => {
 			"@elizaos/plugin-sql",
 		]);
 	});
+
+	it("matches exactly, never by substring: deny 'x' must not remove plugin-xai", () => {
+		// plugin-x (the X/Twitter connector) and plugin-xai (the xAI model
+		// provider) are both real plugins in this repo. A substring match makes
+		// `deny: ["x"]` silently drop plugin-xai too — and `allow: ["x"]`
+		// silently admit it past the whitelist.
+		const plugins = [
+			plugin("@elizaos/plugin-x"),
+			plugin("@elizaos/plugin-xai"),
+		];
+		expect(names(applyPluginFilter(plugins, { deny: ["x"] }))).toEqual([
+			"@elizaos/plugin-xai",
+		]);
+		expect(names(applyPluginFilter(plugins, { allow: ["x"] }))).toEqual([
+			"@elizaos/plugin-x",
+		]);
+	});
+
+	it("still matches a scopeless 'plugin-<name>' entry against the scoped package", () => {
+		const plugins = [
+			plugin("@elizaos/plugin-discord"),
+			plugin("@elizaos/plugin-telegram"),
+		];
+		expect(
+			names(applyPluginFilter(plugins, { deny: ["plugin-discord"] })),
+		).toEqual(["@elizaos/plugin-telegram"]);
+	});
 });
 
 describe("createPluginFilterHook", () => {
