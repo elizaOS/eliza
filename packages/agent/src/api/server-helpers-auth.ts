@@ -789,7 +789,9 @@ export function isWebSocketAuthorized(
   url: URL,
 ): boolean {
   const expected = getConfiguredApiToken();
-  if (!expected) return !isCloudProvisionedContainer();
+  if (!expected) {
+    return !isCloudProvisionedContainer() && isTrustedLocalRequest(request);
+  }
 
   const handshakeToken = extractWebSocketHandshakeToken(request, url);
   if (!handshakeToken) return false;
@@ -818,9 +820,9 @@ export function resolveWebSocketUpgradeRejection(
 
   const expected = getConfiguredApiToken();
   if (!expected) {
-    return isCloudProvisionedContainer()
-      ? { status: 401, reason: "Unauthorized" }
-      : null;
+    return !isCloudProvisionedContainer() && isTrustedLocalRequest(req)
+      ? null
+      : { status: 401, reason: "Unauthorized" };
   }
 
   // Note: we used to reject upgrades when a query token was present but

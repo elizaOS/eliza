@@ -1,7 +1,11 @@
 import http from "node:http";
 import { Socket } from "node:net";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { isTrustedLocalRequest } from "./server-helpers-auth.ts";
+import {
+  isTrustedLocalRequest,
+  isWebSocketAuthorized,
+  resolveWebSocketUpgradeRejection,
+} from "./server-helpers-auth.ts";
 
 /**
  * Pins that the agent's `isTrustedLocalRequest` wrapper binds its exact policy
@@ -11,11 +15,14 @@ import { isTrustedLocalRequest } from "./server-helpers-auth.ts";
  * bypass, these assertions break.
  */
 
-function makeReq(headers: http.IncomingHttpHeaders): http.IncomingMessage {
+function makeReq(
+  headers: http.IncomingHttpHeaders,
+  remoteAddress = "127.0.0.1",
+): http.IncomingMessage {
   const req = new http.IncomingMessage(new Socket());
   req.headers = { ...headers };
   Object.defineProperty(req.socket, "remoteAddress", {
-    value: "127.0.0.1",
+    value: remoteAddress,
     configurable: true,
   });
   return req;
@@ -83,5 +90,29 @@ describe("agent isTrustedLocalRequest wrapper (policy gates)", () => {
     expect(isTrustedLocalRequest(makeReq({ host: "127.0.0.1.evil.com" }))).toBe(
       false,
     );
+  });
+});
+
+describe("WebSocket auth no-token trust parity", () => {
+  beforeEach(clearEnv);
+  afterEach(clearEnv);
+
+  it("allows loopback WebSocket upgrades without a token in local mode", () => {
+    const req = localReq();
+    const url = new URL("http://localhost:2138/ws");
+
+    expect(isWebSocketAuthorized(req, url)).toBe(true);
+    expect(resolveWebSocketUpgradeRejection(req, url)).toBeNull();
+  });
+
+  it("rejects remote WebSocket upgrades without a token in local mode", () => {
+    const req = makeReq({ host: "203.0.113.10:2138" }, "203.0.113.10");
+    const url = new URL("http://203.0.113.10:2138/ws");
+
+    expect(isWebSocketAuthorized(req, url)).toBe(false);
+    expect(resolveWebSocketUpgradeRejection(req, url)).toEqual({
+      status: 401,
+      reason: "Unauthorized",
+    });
   });
 });
