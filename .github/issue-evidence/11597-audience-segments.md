@@ -4,7 +4,7 @@ Branch: `feat/11597-audience-segments`
 
 ## Implemented
 
-- Added `ad_audience_segments` storage with organization scoping, creator attribution, server-owned targeting JSON, metadata, timestamps, and migration `0165_ad_audience_segments.sql`.
+- Added `ad_audience_segments` storage with organization scoping, creator attribution, server-owned targeting JSON, metadata, timestamps, and migration `0166_ad_audience_segments.sql`.
 - Added advertising service APIs for list/get/create/update/delete/apply audience segments.
 - Added REST routes:
   - `GET|POST /api/v1/advertising/audience-segments`

@@ -109,7 +109,7 @@ describe("0164_pooled_credentials migration up (#11332)", () => {
     const journal = JSON.parse(
       readFileSync(join(migrationsDir, "meta", "_journal.json"), "utf8"),
     ) as { entries: Array<{ tag: string }> };
-    expect(journal.entries.at(-1)?.tag).toBe("0164_pooled_credentials");
+    expect(journal.entries.some((entry) => entry.tag === "0164_pooled_credentials")).toBe(true);
   });
 
   test("applies cleanly and creates both tables + the unique indexes", async () => {
