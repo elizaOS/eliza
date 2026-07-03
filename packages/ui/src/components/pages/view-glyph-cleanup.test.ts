@@ -23,8 +23,8 @@ describe("shared view glyph cleanup", () => {
     expect(source).not.toContain("✓");
   });
 
-  it("keeps Heartbeats status and delete controls on icon components instead of raw glyphs", () => {
-    const source = readPageSource("HeartbeatsView.tsx");
+  it("keeps Triggers status and delete controls on icon components instead of raw glyphs", () => {
+    const source = readPageSource("TriggersView.tsx");
 
     expect(source).not.toContain("✓");
     expect(source).not.toContain("✗");

@@ -29,7 +29,7 @@ import { FieldLabel } from "../ui/field";
 import { NewActionButton } from "../ui/new-action-button";
 import { StatusDot } from "../ui/status-badge";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
-import { HeartbeatForm } from "./HeartbeatForm";
+import { TriggerForm } from "./TriggerForm";
 import {
   BUILT_IN_TEMPLATES,
   buildCreateRequest,
@@ -38,7 +38,7 @@ import {
   formFromTrigger,
   getTemplateInstructions,
   getTemplateName,
-  type HeartbeatTemplate,
+  type TriggerTemplate,
   loadUserTemplates,
   localizedExecutionStatus,
   railMonogram,
@@ -47,7 +47,7 @@ import {
   type TriggerFormState,
   toneForLastStatus,
   validateForm,
-} from "./heartbeat-utils";
+} from "./trigger-form-utils";
 
 // ── Long-running host banner ──────────────────────────────────────
 //
@@ -121,7 +121,7 @@ function LongRunningHostBanner({ triggers }: { triggers: TriggerSummary[] }) {
 
 // ── View controller hook ───────────────────────────────────────────
 
-function useHeartbeatsViewController() {
+function useTriggersViewController() {
   const {
     triggers = [],
     triggersLoaded = false,
@@ -171,14 +171,14 @@ function useHeartbeatsViewController() {
   const [editorOpen, setEditorOpen] = useState(false);
   const lastSelectedTriggerIdRef = useRef<string | null>(null);
   const [userTemplates, setUserTemplates] =
-    useState<HeartbeatTemplate[]>(loadUserTemplates);
+    useState<TriggerTemplate[]>(loadUserTemplates);
   const [templateNotice, setTemplateNotice] = useState<string | null>(null);
   const didBootstrapDataRef = useRef(false);
 
   const saveFormAsTemplate = useCallback(() => {
     const name = form.displayName.trim();
     if (!name) return;
-    const template: HeartbeatTemplate = {
+    const template: TriggerTemplate = {
       id: `user_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
       name,
       instructions: form.instructions.trim(),
@@ -334,8 +334,8 @@ function useHeartbeatsViewController() {
   const onDelete = async () => {
     if (!editingId) return;
     const confirmed = await confirmDesktopAction({
-      title: t("heartbeatsview.deleteTitle"),
-      message: t("heartbeatsview.deleteMessage", { name: form.displayName }),
+      title: t("triggersview.deleteTitle"),
+      message: t("triggersview.deleteMessage", { name: form.displayName }),
       confirmLabel: t("common.delete"),
       cancelLabel: t("common.cancel"),
       type: "warning",
@@ -369,22 +369,22 @@ function useHeartbeatsViewController() {
   };
 
   const modalTitle = editingId
-    ? t("heartbeatsview.editTitle", {
-        name: form.displayName.trim() || t("common.heartbeat"),
+    ? t("triggersview.editTitle", {
+        name: form.displayName.trim() || t("common.trigger"),
       })
-    : t("heartbeatsview.newHeartbeat");
+    : t("triggersview.newTrigger");
   const editorEnabled =
     editingId != null
       ? (triggers.find((trigger) => trigger.id === editingId)?.enabled ??
         form.enabled)
       : form.enabled;
-  const hasHeartbeats = triggers.length > 0;
+  const hasTriggers = triggers.length > 0;
   const showFirstRunEmptyState =
-    !triggersLoading && !triggerError && !hasHeartbeats;
+    !triggersLoading && !triggerError && !hasTriggers;
   const showDetailPane = Boolean(
     editorOpen || editingId || resolvedSelectedTrigger,
   );
-  const newHeartbeatLabel = t("heartbeatsview.newHeartbeat");
+  const newTriggerLabel = t("triggersview.newTrigger");
 
   return {
     closeEditor,
@@ -394,10 +394,10 @@ function useHeartbeatsViewController() {
     editorOpen,
     form,
     formError,
-    hasHeartbeats,
+    hasTriggers,
     loadTriggerRuns,
     modalTitle,
-    newHeartbeatLabel,
+    newTriggerLabel,
     onDelete,
     onRunSelectedTrigger,
     onSubmit,
@@ -428,30 +428,30 @@ function useHeartbeatsViewController() {
   };
 }
 
-type HeartbeatsViewController = ReturnType<typeof useHeartbeatsViewController>;
+type TriggersViewController = ReturnType<typeof useTriggersViewController>;
 
-const HeartbeatsViewContext = createContext<HeartbeatsViewController | null>(
+const TriggersViewContext = createContext<TriggersViewController | null>(
   null,
 );
 
-function useHeartbeatsViewContext(): HeartbeatsViewController {
-  const context = useContext(HeartbeatsViewContext);
+function useTriggersViewContext(): TriggersViewController {
+  const context = useContext(TriggersViewContext);
   if (!context) {
-    throw new Error("Heartbeats view context is unavailable.");
+    throw new Error("Triggers view context is unavailable.");
   }
   return context;
 }
 
-function HeartbeatsViewProvider({ children }: { children: ReactNode }) {
-  const controller = useHeartbeatsViewController();
+function TriggersViewProvider({ children }: { children: ReactNode }) {
+  const controller = useTriggersViewController();
   return (
-    <HeartbeatsViewContext.Provider value={controller}>
+    <TriggersViewContext.Provider value={controller}>
       {children}
-    </HeartbeatsViewContext.Provider>
+    </TriggersViewContext.Provider>
   );
 }
 
-function HeartbeatsLayout() {
+function TriggersLayout() {
   const {
     closeEditor,
     deleteUserTemplate,
@@ -462,7 +462,7 @@ function HeartbeatsLayout() {
     formError,
     loadTriggerRuns,
     modalTitle,
-    newHeartbeatLabel,
+    newTriggerLabel,
     onDelete,
     onRunSelectedTrigger,
     onSubmit,
@@ -490,12 +490,12 @@ function HeartbeatsLayout() {
     triggersSaving,
     uiLanguage,
     userTemplates,
-  } = useHeartbeatsViewContext();
+  } = useTriggersViewContext();
   const [searchQuery, setSearchQuery] = useState("");
-  const searchLabel = t("heartbeatsview.searchHeartbeats", {
-    defaultValue: "Search heartbeats",
+  const searchLabel = t("triggersview.searchTriggers", {
+    defaultValue: "Search triggers",
   });
-  // The floating chat composer is this view's search box. While Heartbeats is
+  // The floating chat composer is this view's search box. While Triggers is
   // the active view it takes over the composer (placeholder + live draft) and
   // feeds each keystroke into the `searchQuery` filter — no in-page search input.
   const chatBinding = useMemo(
@@ -503,8 +503,8 @@ function HeartbeatsLayout() {
     [searchLabel],
   );
   useRegisterViewChatBinding(chatBinding);
-  const noMatchingHeartbeatsLabel = t("heartbeatsview.noMatchingHeartbeats", {
-    defaultValue: "No matching heartbeats",
+  const noMatchingTriggersLabel = t("triggersview.noMatchingTriggers", {
+    defaultValue: "No matching triggers",
   });
   const normalizedSearchQuery = searchQuery.trim().toLowerCase();
   const visibleTriggers = useMemo(() => {
@@ -547,9 +547,9 @@ function HeartbeatsLayout() {
     editorOpen || editingId
       ? modalTitle
       : (selectedTrigger?.displayName ??
-        t("nav.heartbeats", { defaultValue: "Heartbeats" }));
+        t("nav.triggers", { defaultValue: "Triggers" }));
 
-  const openCreateHeartbeat = () => {
+  const openCreateTrigger = () => {
     openCreateEditor();
     setSelectedTriggerId(null);
   };
@@ -561,21 +561,21 @@ function HeartbeatsLayout() {
     void loadTriggerRuns(triggerId);
   };
 
-  const newHeartbeatAgent = useAgentElement<HTMLButtonElement>({
-    id: "new-heartbeat",
+  const newTriggerAgent = useAgentElement<HTMLButtonElement>({
+    id: "new-trigger",
     role: "button",
-    label: newHeartbeatLabel,
-    group: "heartbeats-actions",
-    description: "Create a new heartbeat",
-    onActivate: openCreateHeartbeat,
+    label: newTriggerLabel,
+    group: "trigger-actions",
+    description: "Create a new trigger",
+    onActivate: openCreateTrigger,
   });
   const toggleEnabledAgent = useAgentElement<HTMLButtonElement>({
-    id: "toggle-heartbeat-enabled",
+    id: "toggle-trigger-enabled",
     role: "button",
     label: selectedTrigger?.enabled ? t("common.pause") : t("common.resume"),
-    group: "heartbeat-detail-actions",
+    group: "trigger-detail-actions",
     status: selectedTrigger?.enabled ? "active" : "inactive",
-    description: "Pause or resume the selected heartbeat",
+    description: "Pause or resume the selected trigger",
     onActivate: () => {
       if (selectedTrigger) {
         void onToggleTriggerEnabled(
@@ -585,22 +585,22 @@ function HeartbeatsLayout() {
       }
     },
   });
-  const editHeartbeatAgent = useAgentElement<HTMLButtonElement>({
-    id: "edit-heartbeat",
+  const editTriggerAgent = useAgentElement<HTMLButtonElement>({
+    id: "edit-trigger",
     role: "button",
     label: t("common.edit"),
-    group: "heartbeat-detail-actions",
-    description: "Edit the selected heartbeat",
+    group: "trigger-detail-actions",
+    description: "Edit the selected trigger",
     onActivate: () => {
       if (selectedTrigger) openEditEditor(selectedTrigger);
     },
   });
-  const duplicateHeartbeatAgent = useAgentElement<HTMLButtonElement>({
-    id: "duplicate-heartbeat",
+  const duplicateTriggerAgent = useAgentElement<HTMLButtonElement>({
+    id: "duplicate-trigger",
     role: "button",
-    label: t("heartbeatsview.duplicate"),
-    group: "heartbeat-detail-actions",
-    description: "Duplicate the selected heartbeat into a new draft",
+    label: t("triggersview.duplicate"),
+    group: "trigger-detail-actions",
+    description: "Duplicate the selected trigger into a new draft",
     onActivate: () => {
       if (!selectedTrigger) return;
       setForm({
@@ -613,11 +613,11 @@ function HeartbeatsLayout() {
     },
   });
   const runNowAgent = useAgentElement<HTMLButtonElement>({
-    id: "run-heartbeat-now",
+    id: "run-trigger-now",
     role: "button",
     label: t("triggersview.RunNow"),
-    group: "heartbeat-detail-actions",
-    description: "Run the selected heartbeat immediately",
+    group: "trigger-detail-actions",
+    description: "Run the selected trigger immediately",
     onActivate: () => {
       if (selectedTrigger) void onRunSelectedTrigger(selectedTrigger.id);
     },
@@ -626,26 +626,26 @@ function HeartbeatsLayout() {
     id: "refresh-run-history",
     role: "button",
     label: t("common.refresh"),
-    group: "heartbeat-detail-actions",
-    description: "Refresh the run history for the selected heartbeat",
+    group: "trigger-detail-actions",
+    description: "Refresh the run history for the selected trigger",
     onActivate: () => {
       if (selectedTrigger) void loadTriggerRuns(selectedTrigger.id);
     },
   });
 
-  const heartbeatsSidebar = (
+  const triggersSidebar = (
     <AppPageSidebar
-      testId="heartbeats-sidebar"
+      testId="trigger-sidebar"
       collapsible
-      contentIdentity="heartbeats"
-      collapseButtonTestId="heartbeats-sidebar-collapse-toggle"
-      expandButtonTestId="heartbeats-sidebar-expand-toggle"
-      collapseButtonAriaLabel="Collapse heartbeats"
-      expandButtonAriaLabel="Expand heartbeats"
+      contentIdentity="triggers"
+      collapseButtonTestId="trigger-sidebar-collapse-toggle"
+      expandButtonTestId="trigger-sidebar-expand-toggle"
+      collapseButtonAriaLabel="Collapse triggers"
+      expandButtonAriaLabel="Expand triggers"
       collapsedRailAction={
         <SidebarCollapsedActionButton
-          aria-label={newHeartbeatLabel}
-          onClick={openCreateHeartbeat}
+          aria-label={newTriggerLabel}
+          onClick={openCreateTrigger}
         >
           <Plus className="h-4 w-4" />
         </SidebarCollapsedActionButton>
@@ -670,12 +670,12 @@ function HeartbeatsLayout() {
       <SidebarScrollRegion>
         <SidebarPanel>
           <NewActionButton
-            ref={newHeartbeatAgent.ref}
+            ref={newTriggerAgent.ref}
             className="mb-3"
-            onClick={openCreateHeartbeat}
-            {...newHeartbeatAgent.agentProps}
+            onClick={openCreateTrigger}
+            {...newTriggerAgent.agentProps}
           >
-            {newHeartbeatLabel}
+            {newTriggerLabel}
           </NewActionButton>
           {triggerError && (
             <SidebarContent.Notice tone="danger" className="mb-1 text-xs">
@@ -695,7 +695,7 @@ function HeartbeatsLayout() {
           visibleTriggers.length === 0 &&
           !triggersLoading ? (
             <SidebarContent.EmptyState className="px-4 py-6">
-              {noMatchingHeartbeatsLabel}
+              {noMatchingTriggersLabel}
             </SidebarContent.EmptyState>
           ) : (
             visibleTriggers.map((trigger) => {
@@ -752,7 +752,7 @@ function HeartbeatsLayout() {
           <div className="mt-3 px-1 pb-1 pt-4">
             <SidebarContent.SectionHeader>
               <SidebarContent.SectionLabel>
-                {t("heartbeatsview.Templates", { defaultValue: "Templates" })}
+                {t("triggersview.Templates", { defaultValue: "Templates" })}
               </SidebarContent.SectionLabel>
             </SidebarContent.SectionHeader>
             {[...userTemplates, ...BUILT_IN_TEMPLATES].map((template) => {
@@ -775,7 +775,7 @@ function HeartbeatsLayout() {
                       setEditingId(null);
                       setSelectedTriggerId(null);
                       setTemplateNotice(
-                        t("heartbeatsview.TemplateLoadedNotice", {
+                        t("triggersview.TemplateLoadedNotice", {
                           defaultValue:
                             'Template "{{name}}" loaded. Customize and create.',
                           name: templateName,
@@ -788,7 +788,7 @@ function HeartbeatsLayout() {
                       {templateName}
                     </div>
                     <div className="mt-0.5 text-2xs text-muted/60">
-                      {t("heartbeatsview.EveryIntervalUnit", {
+                      {t("triggersview.EveryIntervalUnit", {
                         defaultValue: "Every {{interval}} {{unit}}",
                         interval: template.interval,
                         unit: template.unit,
@@ -797,7 +797,7 @@ function HeartbeatsLayout() {
                   </SidebarContent.Item>
                   {isUserTemplate && (
                     <SidebarContent.ItemAction
-                      aria-label={t("heartbeatsview.DeleteTemplate", {
+                      aria-label={t("triggersview.DeleteTemplate", {
                         defaultValue: "Delete template",
                       })}
                       onClick={(event) => {
@@ -818,11 +818,11 @@ function HeartbeatsLayout() {
   );
 
   return (
-    <ShellViewAgentSurface viewId="heartbeats">
+    <ShellViewAgentSurface viewId="triggers">
       <PageLayout
         className="h-full bg-transparent"
-        data-testid="heartbeats-shell"
-        sidebar={heartbeatsSidebar}
+        data-testid="trigger-shell"
+        sidebar={triggersSidebar}
         contentInnerClassName="mx-auto w-full max-w-[96rem]"
         mobileSidebarLabel={mobileSidebarLabel}
       >
@@ -844,7 +844,7 @@ function HeartbeatsLayout() {
           ) : null}
 
           <ChatSearchHint
-            noun="heartbeats"
+            noun="triggers"
             query={searchQuery}
             className="mb-3"
           />
@@ -852,7 +852,7 @@ function HeartbeatsLayout() {
           <LongRunningHostBanner triggers={triggers} />
 
           {editorOpen || editingId ? (
-            <HeartbeatForm
+            <TriggerForm
               form={form}
               editingId={editingId}
               editorEnabled={editorEnabled}
@@ -881,7 +881,7 @@ function HeartbeatsLayout() {
                 <div className="max-w-3xl space-y-3">
                   <div className="flex flex-wrap items-center gap-2">
                     <FieldLabel variant="kicker">
-                      {t("common.heartbeat")}
+                      {t("common.trigger")}
                     </FieldLabel>
                     <span
                       className={`inline-flex items-center gap-1.5 text-xs ${
@@ -924,17 +924,17 @@ function HeartbeatsLayout() {
                       : t("common.resume")}
                   </Button>
                   <Button
-                    ref={editHeartbeatAgent.ref}
+                    ref={editTriggerAgent.ref}
                     variant="outline"
                     size="sm"
                     className="h-8 px-3 text-xs"
                     onClick={() => openEditEditor(selectedTrigger)}
-                    {...editHeartbeatAgent.agentProps}
+                    {...editTriggerAgent.agentProps}
                   >
                     {t("common.edit")}
                   </Button>
                   <Button
-                    ref={duplicateHeartbeatAgent.ref}
+                    ref={duplicateTriggerAgent.ref}
                     variant="outline"
                     size="sm"
                     className="h-8 px-3 text-xs"
@@ -947,9 +947,9 @@ function HeartbeatsLayout() {
                       setEditingId(null);
                       setSelectedTriggerId(null);
                     }}
-                    {...duplicateHeartbeatAgent.agentProps}
+                    {...duplicateTriggerAgent.agentProps}
                   >
-                    {t("heartbeatsview.duplicate")}
+                    {t("triggersview.duplicate")}
                   </Button>
                   <Button
                     ref={runNowAgent.ref}
@@ -981,18 +981,18 @@ function HeartbeatsLayout() {
                   </dt>
                   <dd className="mt-1 font-medium text-txt">
                     {formatDateTime(selectedTrigger.lastRunAtIso, {
-                      fallback: t("heartbeatsview.notYetRun"),
+                      fallback: t("triggersview.notYetRun"),
                       locale: uiLanguage,
                     })}
                   </dd>
                 </PagePanel.SummaryCard>
                 <PagePanel.SummaryCard className="px-4 py-4">
                   <dt className="text-xs-tight font-semibold uppercase tracking-wider text-muted">
-                    {t("heartbeatsview.nextRun")}
+                    {t("triggersview.nextRun")}
                   </dt>
                   <dd className="mt-1 font-medium text-txt">
                     {formatDateTime(selectedTrigger.nextRunAtMs, {
-                      fallback: t("heartbeatsview.notScheduled"),
+                      fallback: t("triggersview.notScheduled"),
                       locale: uiLanguage,
                     })}
                   </dd>
@@ -1000,11 +1000,11 @@ function HeartbeatsLayout() {
                 {hasLoadedSelectedRuns && selectedRunCount > 0 ? (
                   <PagePanel.SummaryCard className="px-4 py-4">
                     <dt className="text-xs-tight font-semibold uppercase tracking-wider text-muted">
-                      {t("heartbeatsview.runStats")}
+                      {t("triggersview.runStats")}
                     </dt>
                     <dd className="mt-1 flex items-center gap-2 text-sm font-medium">
                       <span className="text-txt">
-                        {t("heartbeatsview.runCountPlural", {
+                        {t("triggersview.runCountPlural", {
                           count: selectedRunCount,
                         })}
                       </span>
@@ -1049,7 +1049,7 @@ function HeartbeatsLayout() {
                   </div>
                 ) : selectedRuns.length === 0 ? (
                   <div className="py-8 text-center text-sm text-muted/60">
-                    {t("heartbeatsview.noRunsYetMessage")}
+                    {t("triggersview.noRunsYetMessage")}
                   </div>
                 ) : (
                   <div className="space-y-2">
@@ -1087,8 +1087,8 @@ function HeartbeatsLayout() {
             <div className="flex min-h-0 flex-1 items-center justify-center px-8 py-10 text-center">
               <h3 className="text-lg font-semibold text-txt-strong">
                 {showFirstRunEmptyState
-                  ? t("heartbeatsview.createFirstHeartbeat")
-                  : t("heartbeatsview.selectAHeartbeat")}
+                  ? t("triggersview.createFirstTrigger")
+                  : t("triggersview.selectATrigger")}
               </h3>
             </div>
           )}
@@ -1098,18 +1098,18 @@ function HeartbeatsLayout() {
   );
 }
 
-export function HeartbeatsDesktopShell() {
+export function TriggersDesktopShell() {
   return (
-    <HeartbeatsViewProvider>
-      <HeartbeatsLayout />
-    </HeartbeatsViewProvider>
+    <TriggersViewProvider>
+      <TriggersLayout />
+    </TriggersViewProvider>
   );
 }
 
-export function HeartbeatsView() {
+export function TriggersView() {
   return (
-    <HeartbeatsViewProvider>
-      <HeartbeatsLayout />
-    </HeartbeatsViewProvider>
+    <TriggersViewProvider>
+      <TriggersLayout />
+    </TriggersViewProvider>
   );
 }

@@ -34,7 +34,7 @@ export const STATUS_BADGE: Record<
     className: "bg-muted/10 text-muted border-border/40",
   },
   failed: {
-    i18nKey: "heartbeatsview.statusFailed",
+    i18nKey: "triggersview.statusFailed",
     className: "bg-danger/10 text-danger border-danger/20",
   },
 };

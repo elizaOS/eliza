@@ -2382,10 +2382,7 @@ async function handleRequest(
     return;
   }
 
-  if (
-    pathname.startsWith("/api/triggers") ||
-    pathname.startsWith("/api/heartbeats")
-  ) {
+  if (pathname.startsWith("/api/triggers")) {
     const { handleTriggerRoutes } = await getOptionalPluginApi<{
       handleTriggerRoutes: (args: unknown) => Promise<boolean>;
     }>("workflow");

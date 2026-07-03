@@ -70,9 +70,9 @@ const CloudDashboard = lazyNamedView(
   () => import("@elizaos/ui/components/pages/ElizaCloudDashboard"),
   "CloudDashboard",
 );
-const HeartbeatsView = lazyNamedView(
-  () => import("@elizaos/ui/components/pages/HeartbeatsView"),
-  "HeartbeatsView",
+const TriggersView = lazyNamedView(
+  () => import("@elizaos/ui/components/pages/TriggersView"),
+  "TriggersView",
 );
 const ReleaseCenterView = lazyNamedView(
   () => import("@elizaos/ui/components/pages/ReleaseCenterView"),
@@ -225,7 +225,7 @@ function DetachedShellContent({ route }: DetachedShellRootProps): JSX.Element {
       return (
         <DetachedWorkspaceView chatScope="page-automations">
           <DetachedLazyBoundary>
-            <HeartbeatsView />
+            <TriggersView />
           </DetachedLazyBoundary>
         </DetachedWorkspaceView>
       );

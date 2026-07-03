@@ -223,7 +223,6 @@ export * from "./pages/DatabaseView";
 export * from "./pages/DocumentsView";
 export * from "./pages/ElizaCloudDashboard";
 export * from "./pages/FilesView";
-export * from "./pages/HeartbeatsView";
 export * from "./pages/LogsView";
 export * from "./pages/MediaGalleryView";
 export * from "./pages/MemoryDetailPanel";
@@ -239,6 +238,7 @@ export * from "./pages/SecretsView";
 export * from "./pages/TaskEditor";
 export * from "./pages/TasksPageView";
 export * from "./pages/TrajectoryDetailView";
+export * from "./pages/TriggersView";
 // VectorBrowserView lives in @elizaos/plugin-vector-browser — it is a heavy
 // three.js (WebGL) surface loaded dynamically so neither it nor three ship in
 // the always-loaded @elizaos/ui barrel. Its pure layout/parse helpers remain

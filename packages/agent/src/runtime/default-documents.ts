@@ -31,7 +31,7 @@ export interface DefaultDocumentDefinition {
 }
 
 export const ELIZA_OVERVIEW_TEXT =
-  "Eliza is an autonomous agent powered by elizaOS, the agent framework. Users can ask Eliza to write code, add new skills, and trigger recurring workflows with heartbeats that run at regular intervals. Eliza Cloud is an open source cloud backend that simplifies deploying and delivering Eliza.";
+  "Eliza is an autonomous agent powered by elizaOS, the agent framework. Users can ask Eliza to write code, add new skills, and run recurring workflows on scheduled triggers. Eliza Cloud is an open source cloud backend that simplifies deploying and delivering Eliza.";
 
 export const ELIZA_HISTORY_TEXT =
   "ELIZA was created by Joseph Weizenbaum at MIT in the mid-1960s and is widely regarded as one of the earliest chatbots. Its best-known script, DOCTOR, used pattern matching to imitate a Rogerian psychotherapist and showed how simple language rules could feel surprisingly conversational. ELIZA helped define the history of chatbots and influenced later work on conversational agents.";

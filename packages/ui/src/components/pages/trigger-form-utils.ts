@@ -1,7 +1,7 @@
 /**
- * heartbeat-utils.ts — Pure functions, types, and constants for the Heartbeats feature.
+ * trigger-form-utils.ts — Pure functions, types, and constants for the Triggers feature.
  *
- * Extracted from HeartbeatsView.tsx so tests and sibling components can
+ * Extracted from TriggersView.tsx so tests and sibling components can
  * import them directly instead of duplicating logic.
  */
 
@@ -30,22 +30,22 @@ export const DURATION_UNITS = [
   {
     unit: "seconds",
     ms: 1000,
-    labelKey: "heartbeatsview.durationUnitSeconds",
+    labelKey: "triggersview.durationUnitSeconds",
   },
   {
     unit: "minutes",
     ms: 60_000,
-    labelKey: "heartbeatsview.durationUnitMinutes",
+    labelKey: "triggersview.durationUnitMinutes",
   },
   {
     unit: "hours",
     ms: 3_600_000,
-    labelKey: "heartbeatsview.durationUnitHours",
+    labelKey: "triggersview.durationUnitHours",
   },
   {
     unit: "days",
     ms: 86_400_000,
-    labelKey: "heartbeatsview.durationUnitDays",
+    labelKey: "triggersview.durationUnitDays",
   },
 ] as const;
 
@@ -109,7 +109,7 @@ export const emptyForm: TriggerFormState = {
 
 // ── Template types & storage ───────────────────────────────────────
 
-export interface HeartbeatTemplate {
+export interface TriggerTemplate {
   id: string;
   name: string;
   instructions: string;
@@ -119,42 +119,42 @@ export interface HeartbeatTemplate {
   instructionsKey?: string;
 }
 
-export const TEMPLATES_STORAGE_KEY = "elizaos:heartbeat-templates";
+export const TEMPLATES_STORAGE_KEY = "elizaos:trigger-templates";
 
-export const BUILT_IN_TEMPLATES: HeartbeatTemplate[] = [
+export const BUILT_IN_TEMPLATES: TriggerTemplate[] = [
   {
     id: "__builtin_crypto",
     name: "Check crypto prices",
-    nameKey: "heartbeatsview.template.crypto.name",
+    nameKey: "triggersview.template.crypto.name",
     instructions:
       "Check the current prices of BTC, ETH, and SOL. Summarize any significant moves in the last hour.",
-    instructionsKey: "heartbeatsview.template.crypto.instructions",
+    instructionsKey: "triggersview.template.crypto.instructions",
     interval: "30",
     unit: "minutes",
   },
   {
     id: "__builtin_journal",
     name: "Daily journal prompt",
-    nameKey: "heartbeatsview.template.journal.name",
+    nameKey: "triggersview.template.journal.name",
     instructions:
       "Write a brief, thoughtful journal prompt for the user based on current events or seasonal themes. Keep it under 2 sentences.",
-    instructionsKey: "heartbeatsview.template.journal.instructions",
+    instructionsKey: "triggersview.template.journal.instructions",
     interval: "24",
     unit: "hours",
   },
   {
     id: "__builtin_trending",
     name: "Trending topics digest",
-    nameKey: "heartbeatsview.template.trending.name",
+    nameKey: "triggersview.template.trending.name",
     instructions:
       "Scan for trending topics on crypto Twitter and tech news. Give a 3-bullet summary of what's worth paying attention to.",
-    instructionsKey: "heartbeatsview.template.trending.instructions",
+    instructionsKey: "triggersview.template.trending.instructions",
     interval: "4",
     unit: "hours",
   },
 ];
 
-export function isValidTemplate(v: unknown): v is HeartbeatTemplate {
+export function isValidTemplate(v: unknown): v is TriggerTemplate {
   if (typeof v !== "object" || v == null) return false;
   const t = v as Record<string, unknown>;
   return (
@@ -166,7 +166,7 @@ export function isValidTemplate(v: unknown): v is HeartbeatTemplate {
   );
 }
 
-export function loadUserTemplates(): HeartbeatTemplate[] {
+export function loadUserTemplates(): TriggerTemplate[] {
   try {
     const raw = localStorage.getItem(TEMPLATES_STORAGE_KEY);
     if (!raw) return [];
@@ -178,7 +178,7 @@ export function loadUserTemplates(): HeartbeatTemplate[] {
   }
 }
 
-export function saveUserTemplates(templates: HeartbeatTemplate[]): void {
+export function saveUserTemplates(templates: TriggerTemplate[]): void {
   try {
     localStorage.setItem(TEMPLATES_STORAGE_KEY, JSON.stringify(templates));
   } catch {
@@ -187,7 +187,7 @@ export function saveUserTemplates(templates: HeartbeatTemplate[]): void {
 }
 
 export function getTemplateName(
-  template: HeartbeatTemplate,
+  template: TriggerTemplate,
   t: (key: string, options?: Record<string, unknown>) => string,
 ): string {
   return template.nameKey
@@ -196,7 +196,7 @@ export function getTemplateName(
 }
 
 export function getTemplateInstructions(
-  template: HeartbeatTemplate,
+  template: TriggerTemplate,
   t: (key: string, options?: Record<string, unknown>) => string,
 ): string {
   return template.instructionsKey
@@ -223,17 +223,17 @@ export function scheduleLabel(
   locale?: string,
 ): string {
   if (trigger.triggerType === "interval") {
-    return `${t("heartbeatsview.every")} ${formatDurationMs(trigger.intervalMs, { t })}`;
+    return `${t("triggersview.every")} ${formatDurationMs(trigger.intervalMs, { t })}`;
   }
   if (trigger.triggerType === "once") {
     return trigger.scheduledAtIso
-      ? t("heartbeatsview.onceAt", {
+      ? t("triggersview.onceAt", {
           time: formatDateTime(trigger.scheduledAtIso, { locale }),
         })
-      : t("heartbeatsview.once");
+      : t("triggersview.once");
   }
   if (trigger.triggerType === "cron") {
-    return `${t("heartbeatsview.cronPrefix")} ${trigger.cronExpression ?? "\u2014"}`;
+    return `${t("triggersview.cronPrefix")} ${trigger.cronExpression ?? "\u2014"}`;
   }
   if (trigger.triggerType === "event") {
     return `On ${humanizeEventKind(trigger.eventKind ?? "event")}`;
@@ -387,26 +387,26 @@ export function validateForm(
   t: TranslateFn,
 ): string | null {
   if (!form.displayName.trim()) {
-    return t("heartbeatsview.validationDisplayNameRequired");
+    return t("triggersview.validationDisplayNameRequired");
   }
   const kindError = validateTriggerKind(form, t);
   if (kindError) return kindError;
   if (form.triggerType === "interval") {
     const value = Number(form.durationValue);
     if (!Number.isFinite(value) || value <= 0) {
-      return t("heartbeatsview.validationIntervalPositive");
+      return t("triggersview.validationIntervalPositive");
     }
   }
   if (form.triggerType === "once") {
     const raw = form.scheduledAtIso.trim();
-    if (!raw) return t("heartbeatsview.validationScheduledTimeRequired");
+    if (!raw) return t("triggersview.validationScheduledTimeRequired");
     if (!Number.isFinite(Date.parse(raw))) {
-      return t("heartbeatsview.validationScheduledTimeInvalid");
+      return t("triggersview.validationScheduledTimeInvalid");
     }
   }
   if (form.triggerType === "cron") {
     const cronTrimmed = form.cronExpression.trim();
-    if (!cronTrimmed) return t("heartbeatsview.validationCronRequired");
+    if (!cronTrimmed) return t("triggersview.validationCronRequired");
     const cronResult = validateCronExpression(cronTrimmed);
     if (!cronResult.ok) {
       return `${t("triggers.cronError")} ${cronResult.message}`;
@@ -416,7 +416,7 @@ export function validateForm(
     return "Event is required.";
   }
   if (form.maxRuns.trim() && !parsePositiveInteger(form.maxRuns)) {
-    return t("heartbeatsview.validationMaxRunsPositive");
+    return t("triggersview.validationMaxRunsPositive");
   }
   return null;
 }
@@ -443,13 +443,13 @@ export function localizedExecutionStatus(
     case "completed":
       return t("common.completed");
     case "skipped":
-      return t("heartbeatsview.statusSkipped");
+      return t("triggersview.statusSkipped");
     case "queued":
       return t("common.queued");
     case "error":
       return t("common.error");
     case "failed":
-      return t("heartbeatsview.statusFailed");
+      return t("triggersview.statusFailed");
     default:
       return status;
   }
