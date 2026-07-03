@@ -1,12 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 import { AgentRuntime } from "../../runtime.ts";
+import type { UUID } from "../../types/primitives.ts";
 import type { IAgentRuntime } from "../../types/runtime.ts";
 import { Service, ServiceType } from "../../types/service.ts";
 import type {
 	ControlTransportMessage,
 	IControlTransportService,
 } from "../../types/service-interfaces.ts";
-import type { UUID } from "../../types/primitives.ts";
 import { createBasicCapabilitiesPlugin } from "./index.ts";
 
 describe("basic capabilities control transport", () => {
