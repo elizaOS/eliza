@@ -205,10 +205,14 @@ layout/theme/components.
 `@elizaos/plugin-personal-assistant` and `@elizaos/plugin-health` share one
 scheduled-item architecture. Reminders, check-ins, follow-ups, watchers,
 recaps, approvals, and outputs are all `ScheduledTask` records routed through a
-single runner (`plugins/plugin-personal-assistant/src/lifeops/scheduled-task/runner.ts`),
+single runner (`plugins/plugin-scheduling/src/scheduled-task/runner.ts`),
 which pattern-matches on structural fields (`kind`, `trigger`, `shouldFire`,
 `completionCheck`, `pipeline`, …), never on `promptInstructions` text. Health
 contributes through registries; LifeOps does not import its internals.
+
+For the full automation vocabulary — how a **workflow**, **trigger**, **task**,
+**scheduled item**, **coding task**, and **automation** differ and what fires
+each (one clock, two consumers) — see [`docs/automation-glossary.md`](docs/automation-glossary.md).
 
 **Do not add:** a second LifeOps scheduling mechanism, a second knowledge-graph
 store (use `EntityStore` / `RelationshipStore`), behavior driven by

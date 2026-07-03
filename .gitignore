@@ -710,6 +710,7 @@ reports/
 !packages/feed/apps/web/src/app/api/moderation/reports/**
 docs/*
 !docs/ELIZA_1_BUNDLE_EXTRAS.json
+!docs/automation-glossary.md
 !docs/tee-architecture-implementation-plan.md
 !docs/security/
 !docs/security/**

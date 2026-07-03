@@ -8,6 +8,8 @@ The canonical orchestration plugin for elizaOS task agents. Spawns local coding 
 
 > Naming: this plugin is *not* the same thing as `@elizaos/plugin-acp`. That package is Shaw's ACP gateway client (IDE bridge over a remote ACP gateway). `@elizaos/plugin-agent-orchestrator` is the *task backend* that runs coding agents as subprocesses on the same host as the runtime.
 
+> **Vocabulary:** the work items this plugin manages (`OrchestratorTaskRecord`, `orchestrator_tasks`) are **coding tasks** — always qualify them as such in prose and UI, never the bare word "task" (which is reserved for the core runtime `Task` primitive). A coding task has no cron/recurrence; scheduling belongs to the trigger layer, not here. See [`docs/automation-glossary.md`](../../docs/automation-glossary.md).
+
 ## What it does
 
 The plugin combines three concerns:
