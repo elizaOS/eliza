@@ -22,6 +22,7 @@ import {
   summarizeStability,
 } from "../../../testing/layout-stability.ts";
 import {
+  touchDragHold,
   touchLongPress,
   touchSwipe,
 } from "../../../testing/real-touch-gestures.ts";
@@ -512,19 +513,56 @@ try {
     `home settle is layout-stable (CLS ${stability.cls.toFixed(4)} ≤ 0.1, ${stability.shiftCount} shifts)`,
   );
 
-  // Real touch pull-DOWN on the notification zone opens the NotificationCenter
-  // sheet (#10706) — previously only jsdom synthetic pointer events covered it.
+  // The resting notification "pill"/grabber is gone — the redesign removed the
+  // always-visible top indicator; pulling down from anywhere is the affordance.
+  assert(
+    (await mobile.getByTestId("home-notification-grabber").count()) === 0,
+    "no resting notification pill/grabber (removed)",
+  );
+
+  // Mid-pull evidence: hold a partial downward drag from the dashboard body to
+  // reveal the LIVE pull affordance (the capsule that follows the finger and
+  // brightens past the open threshold), screenshot it, then CANCEL — a cancelled
+  // pull must not open the sheet.
+  {
+    const drag = await touchDragHold(
+      mobile,
+      '[data-testid="home-screen"]',
+      0,
+      72,
+      { steps: 8, stepDelayMs: 12 },
+    );
+    await mobile.waitForTimeout(80);
+    assert(
+      (await mobile
+        .getByTestId("home-notification-reveal")
+        .getAttribute("data-armed")) === "true",
+      "a partial downward pull arms the live reveal affordance (past threshold)",
+    );
+    await snap(mobile, "mobile-notification-pull-reveal");
+    await drag.cancel();
+    await mobile.waitForTimeout(150);
+    assert(
+      (await mobile.getByTestId("notification-sheet-close").count()) === 0,
+      "a CANCELLED pull leaves the sheet closed",
+    );
+  }
+
+  // iOS-style pull-down from ANYWHERE on the dashboard body opens the
+  // NotificationCenter sheet — a real touch drag down over the widget list
+  // (scrolled to the top), not just a thin top strip. This is the headline of
+  // the redesign, driven through the same CDP touch path as the rail swipes.
   assert(
     (await mobile.getByTestId("notification-sheet-close").count()) === 0,
     "notification sheet starts closed",
   );
-  await touchSwipeDown(mobile, "home-notification-pull-zone");
+  await touchSwipeDown(mobile, "home-screen");
   await mobile
     .getByTestId("notification-sheet-close")
     .waitFor({ state: "visible", timeout: 4000 });
   assert(
     await mobile.getByTestId("notification-sheet-close").isVisible(),
-    "real-touch pull-down opens the notification sheet",
+    "real-touch pull-down from the dashboard body opens the notification sheet",
   );
   // On-screen + horizontally centered: the sheet must sit within the viewport,
   // not clipped to one side. (A `position: fixed` sheet trapped in the
@@ -543,7 +581,9 @@ try {
     );
   }
   // Visual evidence of the mobile pull-down sheet shell (flat, full-width,
-  // safe-area aware) while it is open.
+  // safe-area aware) while it is open — let the slide-in settle first so the
+  // capture is the resting sheet, not a mid-animation frame.
+  await mobile.waitForTimeout(450);
   await snap(mobile, "mobile-notification-sheet");
   // Close it again (Escape — the sheet's documented dismiss) so the rail swipe
   // below starts from a clean, settled home.
@@ -555,6 +595,21 @@ try {
     (await mobile.getByTestId("notification-sheet-close").count()) === 0,
     "the notification sheet closes again (Escape)",
   );
+
+  // The top-edge band (the iOS-natural place to start a pull, and the click /
+  // keyboard entry point) still opens the sheet via a pull too.
+  await touchSwipeDown(mobile, "home-notification-pull-zone");
+  await mobile
+    .getByTestId("notification-sheet-close")
+    .waitFor({ state: "visible", timeout: 4000 });
+  assert(
+    await mobile.getByTestId("notification-sheet-close").isVisible(),
+    "a pull from the top-edge band also opens the notification sheet",
+  );
+  await mobile.keyboard.press("Escape");
+  await mobile
+    .getByTestId("notification-sheet-close")
+    .waitFor({ state: "detached", timeout: 4000 });
   await waitForSurfacePageSettled(mobile, "home");
 
   // Real touch left-swipe on the home half pages the outer rail to the

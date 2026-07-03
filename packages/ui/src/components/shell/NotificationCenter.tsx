@@ -39,6 +39,34 @@ import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 
 type NotificationSortMode = "priority" | "time";
 
+/**
+ * Entrance motion for the controlled shells. The mobile sheet SLIDES down from
+ * above the top edge — the iOS notification-center signature — so opening it
+ * (via the home pull-down, or the top-edge/tray/deep-link entry points) always
+ * reads as the center coming down. The desktop panel gets a subtler drop-in.
+ * Both are stilled under prefers-reduced-motion.
+ */
+const SHEET_ENTER_CSS = `
+@keyframes notif-sheet-in {
+  from { transform: translateY(-100%); }
+  to   { transform: translateY(0); }
+}
+@keyframes notif-panel-in {
+  from { transform: translateY(-8px); opacity: 0; }
+  to   { transform: none; opacity: 1; }
+}
+@keyframes notif-backdrop-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.notif-sheet-in { animation: notif-sheet-in 300ms cubic-bezier(0.22,1,0.36,1) both; }
+.notif-panel-in { animation: notif-panel-in 200ms cubic-bezier(0.22,1,0.36,1) both; }
+.notif-backdrop-in { animation: notif-backdrop-in 240ms ease-out both; }
+@media (prefers-reduced-motion: reduce) {
+  .notif-sheet-in, .notif-panel-in, .notif-backdrop-in { animation: none; }
+}
+`;
+
 const CATEGORY_LABEL: Record<NotificationCategory, string> = {
   reminder: "Reminders",
   task: "Tasks",
@@ -668,6 +696,7 @@ export function NotificationCenter({
     if (!open) return null;
     return overlayPortal(
       <>
+        <style>{SHEET_ENTER_CSS}</style>
         <button
           type="button"
           aria-label="Dismiss notifications"
@@ -679,7 +708,7 @@ export function NotificationCenter({
           tabIndex={-1}
           onClick={() => onOpenChange?.(false)}
           style={{ zIndex: Z_NOTIFICATION_BACKDROP }}
-          className="fixed inset-0 bg-black/40"
+          className="notif-backdrop-in fixed inset-0 bg-black/40"
         />
         <div
           ref={dialogRef}
@@ -696,7 +725,7 @@ export function NotificationCenter({
             // the wallpaper (flat — no drop shadow, app-wide direction); the
             // notification cards float inside it as translucent tiles. Short
             // landscape caps lower so it floats over the (already short) viewport.
-            "fixed inset-x-0 top-0 mx-auto flex w-[min(440px,calc(100vw-1rem))] flex-col overflow-hidden rounded-b-2xl border-x border-b border-white/10 bg-black/45 backdrop-blur-2xl outline-none",
+            "notif-sheet-in fixed inset-x-0 top-0 mx-auto flex w-[min(440px,calc(100vw-1rem))] flex-col overflow-hidden rounded-b-2xl border-x border-b border-white/10 bg-black/45 backdrop-blur-2xl outline-none",
             isShortLandscape ? "max-h-[75vh]" : "max-h-[85vh]",
             "pt-[var(--safe-area-top,0px)]",
             className,
@@ -731,6 +760,7 @@ export function NotificationCenter({
     if (!open) return null;
     return overlayPortal(
       <>
+        <style>{SHEET_ENTER_CSS}</style>
         <button
           type="button"
           aria-label="Dismiss notifications"
@@ -757,7 +787,7 @@ export function NotificationCenter({
           className={cn(
             // Same dark frosted-glass treatment as the mobile sheet so the two
             // surfaces can't drift (flat: 1px border, no shadow).
-            "fixed right-3 top-3 flex max-h-[min(560px,calc(100vh-1.5rem))] w-[400px] max-w-[calc(100vw-1.5rem)] flex-col overflow-hidden rounded-xl border border-white/10 bg-black/45 backdrop-blur-2xl outline-none",
+            "notif-panel-in fixed right-3 top-3 flex max-h-[min(560px,calc(100vh-1.5rem))] w-[400px] max-w-[calc(100vw-1.5rem)] flex-col overflow-hidden rounded-xl border border-white/10 bg-black/45 backdrop-blur-2xl outline-none",
             className,
           )}
         >
