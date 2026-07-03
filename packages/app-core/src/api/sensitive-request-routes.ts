@@ -1,6 +1,7 @@
 import type http from "node:http";
 import {
   defaultSensitiveRequestPolicy,
+  getTunnelService,
   resolveSensitiveRequestDelivery,
   type SensitiveRequest,
   type SensitiveRequestCallback,
@@ -294,14 +295,9 @@ export function isLocalSensitiveRequestAuthConfigured(
 function resolveTunnelStatus(
   state: CompatRuntimeState,
 ): { active: boolean; url?: string | null } | null {
-  const service = state.current?.getService?.("tunnel") as
-    | {
-        getStatus?: () => { active?: boolean; url?: string | null };
-        isActive?: () => boolean;
-        getUrl?: () => string | null;
-      }
-    | null
-    | undefined;
+  const runtime = state.current;
+  if (!runtime) return null;
+  const service = getTunnelService(runtime);
   if (!service) return null;
   const status = service.getStatus?.();
   return {

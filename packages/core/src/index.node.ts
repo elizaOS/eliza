@@ -333,6 +333,7 @@ export {
 } from "./testing/live-provider";
 export * from "./trajectory-context";
 export * from "./trajectory-utils";
+export * from "./tunnel-service";
 export type { ConnectorAccountCapability, ConnectorAccountRef } from "./types";
 // Export everything from types
 export * from "./types";

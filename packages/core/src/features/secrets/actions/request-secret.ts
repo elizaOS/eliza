@@ -13,6 +13,7 @@ import {
 	type SensitiveRequestDeliveryPlan,
 	sensitiveRequestEnvironmentFromSettings,
 } from "../../../sensitive-request-policy.ts";
+import { getTunnelService } from "../../../tunnel-service.ts";
 import {
 	ChannelType,
 	type HandlerCallback,
@@ -175,14 +176,7 @@ function buildSecretRequestEnvironment(
 	message: Memory,
 	params: Record<string, unknown>,
 ) {
-	const tunnelService = runtime.getService("tunnel") as {
-		getStatus?: () => {
-			active?: boolean;
-			url?: string | null;
-		};
-		getUrl?: () => string | null;
-		isActive?: () => boolean;
-	} | null;
+	const tunnelService = getTunnelService(runtime);
 	const tunnelStatus = tunnelService?.getStatus?.();
 	const tunnelUrl =
 		typeof tunnelStatus?.url === "string"

@@ -20,6 +20,7 @@ export interface ServiceTypeRegistry {
 	BROWSER: "browser";
 	PDF: "pdf";
 	REMOTE_FILES: "aws_s3";
+	TUNNEL: "tunnel";
 	WEB_SEARCH: "web_search";
 	EMAIL: "email";
 	TEE: "tee";
@@ -121,6 +122,7 @@ export const ServiceType = {
 	BROWSER: "browser",
 	PDF: "pdf",
 	REMOTE_FILES: "aws_s3",
+	TUNNEL: "tunnel",
 	WEB_SEARCH: "web_search",
 	EMAIL: "email",
 	TEE: "tee",
