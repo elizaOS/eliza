@@ -70,9 +70,17 @@ async function handler(
 
 export const joinMeetingAction: Action = {
   name: "JOIN_MEETING",
-  similes: ["INVITE_TO_MEETING", "ATTEND_MEETING"],
+  similes: [
+    "INVITE_TO_MEETING",
+    "ATTEND_MEETING",
+    "TAKE_MEETING_NOTES",
+    "TRANSCRIBE_MEETING",
+    "RECORD_MEETING",
+    "SEND_NOTETAKER",
+    "JOIN_CALL",
+  ],
   description:
-    "Join a Google Meet, Microsoft Teams, or Zoom meeting as a notetaker bot and transcribe it live into the Transcripts view. Requires a meeting URL in the message or a meetingUrl parameter.",
+    "Send the agent's notetaker bot into a live Google Meet, Microsoft Teams, or Zoom meeting to attend and transcribe it in real time. Use this WHENEVER the message contains a Meet / Teams / Zoom meeting link (meet.google.com, teams.microsoft.com / teams.live.com, zoom.us / app.zoom.us) and the user wants the agent to join, attend, sit in on, cover, take notes on, record, or transcribe that meeting or call. Prefer this over calendar, reminder, scheduling, or plain reply actions when a joinable meeting URL is present — those only schedule or acknowledge, whereas this actually joins the call now. Requires a meeting URL in the message or a meetingUrl parameter.",
   validate: async (_runtime, message, _state, options) =>
     resolveMeetingUrl(message, options) !== null,
   handler,
@@ -88,6 +96,36 @@ export const joinMeetingAction: Action = {
         name: "{{agent}}",
         content: {
           text: "Joining the Google Meet meeting abc-defg-hij as a notetaker — the live transcript will appear in the Transcripts view.",
+          actions: ["JOIN_MEETING"],
+        },
+      },
+    ],
+    [
+      {
+        name: "{{user}}",
+        content: {
+          text: "sit in on my zoom and transcribe it: https://us02web.zoom.us/j/84512339087?pwd=abcd",
+        },
+      },
+      {
+        name: "{{agent}}",
+        content: {
+          text: "On it — joining your Zoom meeting as a notetaker and transcribing live.",
+          actions: ["JOIN_MEETING"],
+        },
+      },
+    ],
+    [
+      {
+        name: "{{user}}",
+        content: {
+          text: "https://teams.microsoft.com/l/meetup-join/19%3ameeting_abc can you cover this one for me?",
+        },
+      },
+      {
+        name: "{{agent}}",
+        content: {
+          text: "Joining the Microsoft Teams meeting now — I'll capture the transcript for you.",
           actions: ["JOIN_MEETING"],
         },
       },
