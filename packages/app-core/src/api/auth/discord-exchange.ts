@@ -66,7 +66,7 @@ export function resolveDiscordExchange(
     return undefined;
   }
 
-  const doFetch: FetchLike = deps.fetch ?? (fetch as unknown as FetchLike);
+  const doFetch: FetchLike = deps.fetch ?? fetch;
   const tokenUrl = deps.tokenUrl ?? DISCORD_TOKEN_URL;
   const userUrl = deps.userUrl ?? DISCORD_USER_URL;
 
