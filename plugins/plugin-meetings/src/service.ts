@@ -32,6 +32,7 @@ import {
 } from "@elizaos/shared";
 import type { TranscriptSegment } from "@elizaos/shared/transcripts";
 import { MeetingEventEmitter } from "./events.js";
+import { resolveMeetingRuntimeSupport } from "./platform-support.js";
 import { MeetingTranscriptWriter } from "./transcripts/meeting-transcript-writer.js";
 import type {
   MeetingAudioSink,
@@ -57,6 +58,7 @@ export interface MeetingServiceDependencies {
 export type MeetingJoinErrorCode =
   | "invalid_url"
   | "unsupported_platform"
+  | "unsupported_host"
   | "already_joined";
 
 /** Validation/conflict failures of `requestJoin` — routes map these to 4xx. */
@@ -168,6 +170,17 @@ export class MeetingService extends Service {
       throw new MeetingJoinError(
         "unsupported_platform",
         `no platform adapter available for ${MEETING_PLATFORM_LABELS[parsed.platform]}`,
+      );
+    }
+
+    // Refuse cleanly on hosts that cannot run a browser bot (mobile, or no
+    // Chromium resolvable) instead of launching and crashing mid-join.
+    const support = resolveMeetingRuntimeSupport(this.runtime);
+    if (!support.supported) {
+      throw new MeetingJoinError(
+        "unsupported_host",
+        support.reason ??
+          "this host cannot run the meeting browser bot (no Chromium available)",
       );
     }
 

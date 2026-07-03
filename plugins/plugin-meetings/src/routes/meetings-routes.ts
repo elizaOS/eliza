@@ -41,6 +41,7 @@ export interface CreateMeetingRequest {
 const joinErrorStatus: Record<MeetingJoinError["code"], number> = {
   invalid_url: 400,
   unsupported_platform: 422,
+  unsupported_host: 422,
   already_joined: 409,
 };
 
