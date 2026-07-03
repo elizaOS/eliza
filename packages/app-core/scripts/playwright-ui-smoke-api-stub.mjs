@@ -66,6 +66,14 @@ const SMOKE_VOICE_REPLY = "Got it, this is the spoken reply.";
 // `tui` row with its own `/<id>/tui` path below.
 const smokeViewDeclarations = [
   [
+    "birdclaw",
+    "Birdclaw",
+    "plugin-birdclaw",
+    "/birdclaw",
+    "BirdclawView",
+    ["gui", "tui"],
+  ],
+  [
     "contacts",
     "Contacts",
     "plugin-contacts",
@@ -3478,6 +3486,25 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === "GET" && url.pathname === "/api/shopify/customers") {
     sendJson(req, res, 200, { customers: [], total: 0 });
+    return;
+  }
+
+  // Birdclaw (local birdclaw.sh Twitter/X archive): the zero-key smoke stack
+  // has no local archive, so the honest state is "not installed" — the view
+  // renders its real setup card (BirdclawView never fetches tweets/inbox when
+  // status.installed is false).
+  if (req.method === "GET" && url.pathname === "/api/birdclaw/status") {
+    sendJson(req, res, 200, {
+      status: {
+        installed: false,
+        version: null,
+        home: null,
+        counts: null,
+        transport: null,
+        message:
+          "birdclaw is not installed on this host. Install birdclaw.sh and run a sync to build the local archive.",
+      },
+    });
     return;
   }
 

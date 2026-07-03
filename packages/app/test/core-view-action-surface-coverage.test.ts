@@ -73,6 +73,13 @@ const CORE_SURFACE_OWNERS: Readonly<Record<string, CoreSurfaceOwner>> = {
     ],
     minAgentElements: 3,
   },
+  automations: {
+    viewId: "automations",
+    provider: "shell",
+    files: ["packages/ui/src/components/pages/AutomationsFeed.tsx"],
+    minAgentElements: 4,
+    requiredSnippets: ["action-new", "run-workflow-"],
+  },
   orchestrator: {
     viewId: "orchestrator",
     provider: "dynamic",
@@ -181,6 +188,10 @@ const SETTINGS_SECTION_OWNER_FILES: Readonly<
   runtime: ["packages/ui/src/components/settings/RuntimeSettingsSection.tsx"],
   appearance: [
     "packages/ui/src/components/settings/AppearanceSettingsSection.tsx",
+  ],
+  background: [
+    "packages/ui/src/components/settings/BackgroundSettingsSection.tsx",
+    "packages/ui/src/components/settings/BackgroundSettingsControls.tsx",
   ],
   "remote-plugins": [
     "packages/ui/src/components/settings/RemotePluginHostSection.tsx",

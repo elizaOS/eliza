@@ -45,13 +45,16 @@ import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 type NotificationSortMode = "priority" | "time";
 
 /**
- * Real frosted-glass surface for the controlled shells (sheet + panel): a
- * translucent dark base under heavy blur + saturation, a hairline border, a lit
- * top edge (inset highlight), and a soft drop shadow for depth — deliberately
- * NOT flat. The list cards float on top as their own lighter glass tiles.
+ * Glass-look surface for the controlled shells (sheet + panel): a mostly-opaque
+ * dark base, a hairline border, a lit top edge (inset highlight), and a soft
+ * drop shadow for depth — deliberately NOT flat. The list cards float on top as
+ * their own lighter tiles. NO GPU blur/saturate filter behind the surface: it
+ * re-samples the layer underneath every frame (#9141 battery decision,
+ * enforced by the ui-package no-blur gate test) — the high base opacity
+ * carries readability over live launcher content instead.
  */
 const GLASS_SURFACE =
-  "border border-white/15 bg-neutral-950/50 backdrop-blur-2xl backdrop-saturate-150 [box-shadow:inset_0_1px_0_0_rgba(255,255,255,0.18),0_24px_70px_-18px_rgba(0,0,0,0.8)]";
+  "border border-white/15 bg-neutral-950/[0.87] [box-shadow:inset_0_1px_0_0_rgba(255,255,255,0.18),0_24px_70px_-18px_rgba(0,0,0,0.8)]";
 
 /**
  * Finger travel (px) that maps to a fully-revealed sheet during a pull. The
@@ -147,10 +150,10 @@ function NotificationRow({
   );
 
   return (
-    // iOS-notification-center card: each notification is its own rounded glass
-    // tile floating on the blurred shell — a hairline border + a faint lit top
-    // edge give it depth without a second backdrop-blur (the shell carries the
-    // ONE blur; per-card blur would stack GPU filters on the phone).
+    // iOS-notification-center card: each notification is its own rounded
+    // tile floating on the dark shell — a hairline border + a faint lit top
+    // edge give it depth with zero GPU backdrop filtering (banned app-wide
+    // for battery, #9141; such filters re-rasterize per frame on the phone).
     <li
       className={cn(
         "group relative flex items-start gap-3 rounded-2xl border border-white/10 bg-white/[0.07] pr-9 transition-colors [box-shadow:inset_0_1px_0_0_rgba(255,255,255,0.08)] hover:bg-white/[0.12] pointer-coarse:pr-12",

@@ -26,6 +26,10 @@ const LEVELS = [
   // so this source file is guaranteed in the live graph.
   { name: "@elizaos/shared", file: "packages/shared/src/character-presets.ts" },
   {
+    name: "plugin view birdclaw",
+    file: "plugins/plugin-birdclaw/src/components/birdclaw/BirdclawView.tsx",
+  },
+  {
     name: "plugin view contacts",
     file: "plugins/plugin-contacts/src/components/ContactsAppView.tsx",
   },
@@ -189,9 +193,6 @@ const PLUGIN_VIEWS_IN_ROOT_GRAPH = new Set<string>([
   // main.tsx eagerly imports the @elizaos/plugin-phone barrel, which statically
   // re-exports PhoneView.
   "plugin view phone",
-  // main.tsx eagerly imports the @elizaos/plugin-training barrel, which
-  // statically re-exports FineTuningView.
-  "plugin view training",
 ]);
 
 function isNotInRootGraph(name: string): boolean {

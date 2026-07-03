@@ -71,6 +71,7 @@ type PluginViewManifestContract = {
 };
 
 const PLUGIN_VIEW_MANIFESTS = [
+  "plugins/plugin-birdclaw/src/plugin.ts",
   "plugins/plugin-contacts/src/plugin.ts",
   "plugins/plugin-hyperliquid/src/plugin.ts",
   "plugins/plugin-messages/src/plugin.ts",
@@ -107,6 +108,8 @@ const APP_SHELL_REGISTRATION_SOURCES = [
 ] as const;
 
 const NOT_APP_BOOT_LOADED_VIEW_MANIFESTS: Readonly<Record<string, string>> = {
+  "plugins/plugin-birdclaw/src/plugin.ts":
+    "Birdclaw is an opt-in agent runtime plugin (local birdclaw.sh archive); its view registers when the agent enables the plugin, not via the app boot loader.",
   "plugins/plugin-app-control/src/index.ts":
     "View manager routes are built into the app shell and tested through /views; this plugin supplies agent actions plus the manager view declaration.",
   "plugins/plugin-blocker/src/plugin.ts":
@@ -162,6 +165,12 @@ const BOOT_PLUGIN_VIEW_MANIFEST_BY_MODULE: Record<string, string | null> = {
 };
 
 const KNOWN_XR_VIEW_CASES: readonly PluginViewCase[] = [
+  {
+    manifestPath: "plugins/plugin-birdclaw/src/plugin.ts",
+    id: "birdclaw",
+    viewType: "xr",
+    path: "/birdclaw",
+  },
   {
     manifestPath: "plugins/plugin-contacts/src/plugin.ts",
     id: "contacts",

@@ -173,7 +173,9 @@ jobs:
         run: bun run --cwd packages/app test:e2e test/ui-smoke/voice-selftest-e2e.spec.ts test/ui-smoke/voice-desktop-selftest.spec.ts --project=chromium
 
       - name: Actual app voice workbench browser coverage
-        run: bun run --cwd packages/app test:e2e test/ui-smoke/voice-workbench-diarization.spec.ts test/ui-smoke/voice-workbench-entity-extraction.spec.ts test/ui-smoke/voice-workbench-eot.spec.ts test/ui-smoke/voice-workbench-multi-agent-room.spec.ts test/ui-smoke/voice-workbench-multi-speaker.spec.ts test/ui-smoke/voice-workbench-multi-voice.spec.ts test/ui-smoke/voice-workbench-pauses.spec.ts test/ui-smoke/voice-workbench-respond-no-respond.spec.ts test/ui-smoke/voice-workbench-transcription-mode.spec.ts test/ui-smoke/voice-workbench-voice-recognition.spec.ts --project=chromium
+        # Spec names track the #11442 browser-honest rescope renames
+        # (diarization->attribution-unavailable, eot->fragmented-turn-wiring, …).
+        run: bun run --cwd packages/app test:e2e test/ui-smoke/voice-workbench-agent-room-metadata.spec.ts test/ui-smoke/voice-workbench-attribution-unavailable.spec.ts test/ui-smoke/voice-workbench-fragmented-turn-wiring.spec.ts test/ui-smoke/voice-workbench-participant-sequence.spec.ts test/ui-smoke/voice-workbench-participant-voice-metadata.spec.ts test/ui-smoke/voice-workbench-response-state-sse.spec.ts test/ui-smoke/voice-workbench-speaker-label-metadata.spec.ts test/ui-smoke/voice-workbench-transcript-propagation.spec.ts test/ui-smoke/voice-workbench-turn-detail-metadata.spec.ts test/ui-smoke/voice-workbench-turn-pauses.spec.ts --project=chromium
 
       - name: Actual app real-audio voice button browser coverage
         run: bun run --cwd packages/app test:e2e test/ui-smoke/voice-realaudio.spec.ts test/ui-smoke/transcript-realaudio.spec.ts --project=chromium-voice-mic
