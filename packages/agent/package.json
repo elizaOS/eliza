@@ -347,7 +347,6 @@
     "crc-32": "^1.2.0",
     "diff3": "0.0.4",
     "drizzle-orm": "0.45.2",
-    "e2b": "^2.20.1",
     "esbuild": "^0.28.0",
     "ethers": "^6.16.0",
     "git-workspace-service": "0.4.5",

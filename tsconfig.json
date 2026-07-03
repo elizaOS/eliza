@@ -128,6 +128,9 @@
         "./plugins/plugin-native-settings/src/index.ts"
       ],
       "@elizaos/plugin-discord": ["./plugins/plugin-discord/index.ts"],
+      "@elizaos/plugin-e2b-sandbox": [
+        "./plugins/plugin-e2b-sandbox/index.ts"
+      ],
       "@elizaos/plugin-edge-tts": ["./plugins/plugin-edge-tts/src/index.ts"],
       "@elizaos/plugin-elizacloud": [
         "./plugins/plugin-elizacloud/src/index.ts"

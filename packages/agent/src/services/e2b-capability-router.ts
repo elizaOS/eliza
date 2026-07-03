@@ -5,6 +5,9 @@ import {
   type CapabilityAvailability,
   CapabilityError,
   type CapabilityName,
+  E2B_SANDBOX_FACTORY_SERVICE_TYPE,
+  type E2BSandboxClient,
+  type E2BSandboxFactoryService,
   type ElizaCapabilityRouter,
   type FileListParams,
   type FileListResult,
@@ -23,12 +26,22 @@ import {
   type JsonObject,
   type LocalModelStatusResult,
   logger,
+  normalizeSandboxEntryType,
   type RemotePluginCapability,
+  type SandboxCommandResult,
+  type SandboxCommandRunOptions,
+  type SandboxEntryInfo,
   Service,
   type TerminalRunParams,
   type TerminalRunResult,
 } from "@elizaos/core";
-import type { SandboxConnectOpts, SandboxOpts } from "e2b";
+
+export type {
+  E2BSandboxClient,
+  SandboxCommandResult,
+  SandboxCommandRunOptions,
+  SandboxEntryInfo,
+} from "@elizaos/core";
 
 const LOG_CONTEXT = { src: "service:e2b_remote_capability_router" } as const;
 const DEFAULT_E2B_WORKDIR = "/home/user";
@@ -84,179 +97,18 @@ export interface E2BSandboxFactory {
   create(config: E2BRemoteRunnerConfig): Promise<E2BSandboxClient>;
 }
 
-export interface SandboxEntryInfo {
-  path: string;
-  name: string;
-  type: "file" | "dir" | "symlink" | "other" | (string & {});
-  size: number;
-  mode?: number;
-  permissions?: string;
-  owner?: string;
-  group?: string;
-  modifiedTime?: Date;
-  symlinkTarget?: string;
-}
-
-export interface SandboxCommandRunOptions {
-  cwd?: string;
-  timeoutMs?: number;
-  requestTimeoutMs?: number;
-  envs?: Record<string, string>;
-  background?: false;
-}
-
-export interface SandboxCommandResult {
-  exitCode: number;
-  stdout: string;
-  stderr: string;
-  error?: string;
-}
-
-export interface E2BSandboxClient {
-  readonly sandboxId: string;
-  readonly workspacePrepared?: boolean;
-  readonly files: {
-    list(
-      path: string,
-      opts?: { depth?: number; requestTimeoutMs?: number },
-    ): Promise<SandboxEntryInfo[]>;
-    read(
-      path: string,
-      opts?: { format?: "text" | "bytes"; requestTimeoutMs?: number },
-    ): Promise<string | Uint8Array>;
-    write(
-      path: string,
-      data: string,
-      opts?: { requestTimeoutMs?: number },
-    ): Promise<{ path: string; name: string }>;
-  };
-  readonly commands: {
-    run(
-      cmd: string,
-      opts?: SandboxCommandRunOptions,
-    ): Promise<SandboxCommandResult>;
-  };
-  kill(opts?: { requestTimeoutMs?: number }): Promise<void>;
-}
-
-class DefaultE2BSandboxFactory implements E2BSandboxFactory {
-  async create(config: E2BRemoteRunnerConfig): Promise<E2BSandboxClient> {
-    const { Sandbox } = await import("e2b");
-    if (config.sandboxId) {
-      return new E2BSandboxSdkClient(
-        await Sandbox.connect(config.sandboxId, connectOptions(config)),
-      );
-    }
-    if (config.template) {
-      return new E2BSandboxSdkClient(
-        await Sandbox.create(config.template, createOptions(config)),
-      );
-    }
-    return new E2BSandboxSdkClient(await Sandbox.create(createOptions(config)));
-  }
-}
-
-type E2BSdkEntryInfo = {
-  path: string;
-  name: string;
-  type?: string;
-  size?: number;
-  mode?: number;
-  permissions?: string;
-  owner?: string;
-  group?: string;
-  modifiedTime?: Date;
-  symlinkTarget?: string;
-};
-
-type E2BSdkSandbox = {
-  readonly sandboxId: string;
-  readonly files: {
-    list(
-      path: string,
-      opts?: { depth?: number; requestTimeoutMs?: number },
-    ): Promise<E2BSdkEntryInfo[]>;
-    read(
-      path: string,
-      opts?: { format?: "text" | "bytes"; requestTimeoutMs?: number },
-    ): Promise<string | Uint8Array>;
-    write(
-      path: string,
-      data: string,
-      opts?: { requestTimeoutMs?: number },
-    ): Promise<{ path: string; name: string }>;
-  };
-  readonly commands: {
-    run(
-      cmd: string,
-      opts?: SandboxCommandRunOptions,
-    ): Promise<SandboxCommandResult>;
-  };
-  // The e2b SDK's Sandbox.kill() resolves to a boolean (was void in older SDK
-  // versions); match it so the SDK Sandbox stays structurally assignable here.
-  kill(opts?: { requestTimeoutMs?: number }): Promise<boolean>;
-};
-
-class E2BSandboxSdkClient implements E2BSandboxClient {
-  readonly files = {
-    list: (
-      path: string,
-      opts?: { depth?: number; requestTimeoutMs?: number },
-    ) => this.list(path, opts),
-    read: (
-      path: string,
-      opts?: { format?: "text" | "bytes"; requestTimeoutMs?: number },
-    ) => this.sandbox.files.read(path, opts),
-    write: (path: string, data: string, opts?: { requestTimeoutMs?: number }) =>
-      this.sandbox.files.write(path, data, opts),
-  };
-  readonly commands = {
-    run: (cmd: string, opts?: SandboxCommandRunOptions) =>
-      this.sandbox.commands.run(cmd, opts),
-  };
-
-  constructor(private readonly sandbox: E2BSdkSandbox) {}
-
-  get sandboxId(): string {
-    return this.sandbox.sandboxId;
-  }
-
-  async kill(opts?: { requestTimeoutMs?: number }): Promise<void> {
-    await this.sandbox.kill(opts);
-  }
-
-  private async list(
-    path: string,
-    opts?: { depth?: number; requestTimeoutMs?: number },
-  ): Promise<SandboxEntryInfo[]> {
-    const entries = await this.sandbox.files.list(path, opts);
-    return entries.map((entry) => ({
-      path: entry.path,
-      name: entry.name,
-      type: normalizeEntryType(entry.type),
-      size: entry.size ?? 0,
-      ...(entry.mode === undefined ? {} : { mode: entry.mode }),
-      ...(entry.permissions === undefined
-        ? {}
-        : { permissions: entry.permissions }),
-      ...(entry.owner === undefined ? {} : { owner: entry.owner }),
-      ...(entry.group === undefined ? {} : { group: entry.group }),
-      ...(entry.modifiedTime === undefined
-        ? {}
-        : { modifiedTime: entry.modifiedTime }),
-      ...(entry.symlinkTarget === undefined
-        ? {}
-        : { symlinkTarget: entry.symlinkTarget }),
-    }));
-  }
-}
-
+// The e2b (`e2b.dev`) SDK backend lives in `@elizaos/plugin-e2b-sandbox`, which
+// registers an `E2BSandboxFactoryService` under `E2B_SANDBOX_FACTORY_SERVICE_TYPE`.
+// The router keeps the provider-neutral selection here and the eliza-cloud /
+// home HTTP runners below; the `e2b` provider is only reachable when the plugin
+// service is registered.
 class DefaultSandboxFactory implements E2BSandboxFactory {
-  private readonly e2bFactory = new DefaultE2BSandboxFactory();
   private readonly remoteHttpFactory = new RemoteRunnerHttpFactory();
   private readonly cloudFactory = new ElizaCloudCodingContainerFactory(
     this.remoteHttpFactory,
   );
+
+  constructor(private readonly runtime: IAgentRuntime) {}
 
   async create(config: E2BRemoteRunnerConfig): Promise<E2BSandboxClient> {
     if (config.provider === "eliza-cloud") {
@@ -268,7 +120,19 @@ class DefaultSandboxFactory implements E2BSandboxFactory {
     if (config.provider === "home") {
       return this.remoteHttpFactory.create(config);
     }
-    return this.e2bFactory.create(config);
+    const factory = this.runtime.getService<E2BSandboxFactoryService>(
+      E2B_SANDBOX_FACTORY_SERVICE_TYPE,
+    );
+    if (!factory) {
+      throw new CapabilityError({
+        code: "CAPABILITY_UNAVAILABLE",
+        capability: "fs",
+        method: "sandbox.create",
+        message:
+          "E2B sandbox provider requires the @elizaos/plugin-e2b-sandbox plugin. Add it to the agent's plugins, or select the eliza-cloud or home remote runner instead.",
+      });
+    }
+    return factory.create(config);
   }
 }
 
@@ -610,17 +474,19 @@ export class E2BRemoteCapabilityRouterService
   private preparePromise: Promise<void> | null = null;
   private createdSandbox = false;
   private readonly routerConfig: E2BRemoteRunnerConfig;
+  private readonly factory: E2BSandboxFactory;
 
   constructor(
     runtime?: IAgentRuntime,
     routerConfig?: E2BRemoteRunnerConfig,
-    private readonly factory: E2BSandboxFactory = new DefaultSandboxFactory(),
+    factory?: E2BSandboxFactory,
   ) {
     if (!runtime) {
       throw new Error("E2BRemoteCapabilityRouterService requires a runtime.");
     }
     super(runtime);
     this.routerConfig = routerConfig ?? resolveE2BRemoteRunnerConfig(runtime);
+    this.factory = factory ?? new DefaultSandboxFactory(runtime);
   }
 
   static async start(runtime: IAgentRuntime): Promise<Service> {
@@ -1025,7 +891,7 @@ export class E2BRemoteCapabilityRouterService
 }
 
 export type E2BRegistrationResult =
-  | { registered: true }
+  | { registered: true; provider: SandboxRunnerProvider }
   | { registered: false; reason: "disabled" | "already-registered" };
 
 export async function registerE2BRemoteCapabilityRouterIfEnabled(
@@ -1037,7 +903,7 @@ export async function registerE2BRemoteCapabilityRouterIfEnabled(
     return { registered: false, reason: "already-registered" };
   }
   await runtime.registerService(E2BRemoteCapabilityRouterService);
-  return { registered: true };
+  return { registered: true, provider: config.provider };
 }
 
 export function resolveE2BRemoteRunnerConfig(
@@ -1125,30 +991,6 @@ export function resolveE2BRemoteRunnerConfig(
   };
 }
 
-function createOptions(config: E2BRemoteRunnerConfig): SandboxOpts {
-  return {
-    apiKey: config.apiKey,
-    accessToken: config.accessToken,
-    domain: config.domain,
-    envs: config.envs,
-    metadata: config.metadata,
-    timeoutMs: config.timeoutMs,
-    requestTimeoutMs: config.requestTimeoutMs,
-    allowInternetAccess: config.allowInternetAccess,
-    secure: true,
-  };
-}
-
-function connectOptions(config: E2BRemoteRunnerConfig): SandboxConnectOpts {
-  return {
-    apiKey: config.apiKey,
-    accessToken: config.accessToken,
-    domain: config.domain,
-    timeoutMs: config.timeoutMs,
-    requestTimeoutMs: config.requestTimeoutMs,
-  };
-}
-
 function hasRunnerCredentials(config: E2BRemoteRunnerConfig): boolean {
   if (config.provider === "eliza-cloud") {
     return Boolean(
@@ -1177,15 +1019,6 @@ function authHeaders(apiKey: string | undefined): Record<string, string> {
   return { authorization: `Bearer ${apiKey}` };
 }
 
-function normalizeEntryType(
-  type: string | undefined,
-): SandboxEntryInfo["type"] {
-  if (type === "dir" || type === "directory") return "dir";
-  if (type === "file") return "file";
-  if (type === "symlink") return "symlink";
-  return "other";
-}
-
 function remoteEntryType(entry: JsonObject): SandboxEntryInfo["type"] {
   const value =
     typeof entry.type === "string"
@@ -1195,7 +1028,7 @@ function remoteEntryType(entry: JsonObject): SandboxEntryInfo["type"] {
         : typeof entry.kind === "string"
           ? entry.kind
           : undefined;
-  return normalizeEntryType(value);
+  return normalizeSandboxEntryType(value);
 }
 
 function timeoutSignal(ms: number | undefined): {

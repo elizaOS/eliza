@@ -155,7 +155,6 @@
         "crc-32": "^1.2.0",
         "diff3": "0.0.4",
         "drizzle-orm": "0.45.2",
-        "e2b": "^2.20.1",
         "esbuild": "^0.28.0",
         "ethers": "^6.16.0",
         "git-workspace-service": "0.4.5",
@@ -2745,9 +2744,19 @@
         "@elizaos/capacitor-camera": "workspace:*",
       },
       "peerDependencies": {
+        "@capacitor/app": "^8.0.0",
+        "@elizaos/capacitor-agent": "workspace:*",
+        "@elizaos/capacitor-llama": "workspace:*",
+        "llama-cpp-capacitor": "^0.1.5",
         "react": "19.2.5",
         "react-dom": "19.2.5",
       },
+      "optionalPeers": [
+        "@capacitor/app",
+        "@elizaos/capacitor-agent",
+        "@elizaos/capacitor-llama",
+        "llama-cpp-capacitor",
+      ],
     },
     "packages/vault": {
       "name": "@elizaos/vault",
@@ -3367,6 +3376,21 @@
       "peerDependencies": {
         "react": "^19.0.0",
         "react-dom": "^19.0.0",
+      },
+    },
+    "plugins/plugin-e2b-sandbox": {
+      "name": "@elizaos/plugin-e2b-sandbox",
+      "version": "1.0.0",
+      "dependencies": {
+        "@elizaos/core": "workspace:*",
+        "e2b": "^2.20.1",
+      },
+      "devDependencies": {
+        "@biomejs/biome": "2.5.2",
+        "@types/node": "^25.0.3",
+        "bun-types": "^1.2.25",
+        "typescript": "^6.0.3",
+        "vitest": "^4.0.0",
       },
     },
     "plugins/plugin-edge-tts": {
@@ -6451,6 +6475,8 @@
     "@elizaos/plugin-discord-local": ["@elizaos/plugin-discord-local@workspace:plugins/plugin-discord-local"],
 
     "@elizaos/plugin-documents": ["@elizaos/plugin-documents@workspace:plugins/plugin-documents"],
+
+    "@elizaos/plugin-e2b-sandbox": ["@elizaos/plugin-e2b-sandbox@workspace:plugins/plugin-e2b-sandbox"],
 
     "@elizaos/plugin-edge-tts": ["@elizaos/plugin-edge-tts@workspace:plugins/plugin-edge-tts"],
 

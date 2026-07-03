@@ -96,12 +96,15 @@ import {
   createBasicCapabilitiesPlugin,
   createMessageMemory,
   drainAppRoutePluginLoaders,
+  E2B_SANDBOX_FACTORY_SERVICE_TYPE,
   EmbeddingDimensionProbeError,
   type Entity,
+  type IAgentRuntime,
   type LogEntry,
   logger,
   type Plugin,
   type Provider,
+  type ServiceClass,
   stringToUuid,
   subAgentCredentialsPlugin,
   type TargetInfo,
@@ -158,6 +161,26 @@ async function loadE2BCapabilityRouterModule(): Promise<E2BCapabilityRouterModul
   return (await import(
     /* @vite-ignore */ moduleId
   )) as E2BCapabilityRouterModule;
+}
+
+// The e2b (`e2b.dev`) SDK backend for the remote capability router lives in the
+// optional `@elizaos/plugin-e2b-sandbox` package — not in `@elizaos/agent`, so
+// the `e2b` dependency stays out of the trunk. When the router selects the
+// `e2b` provider we register the plugin's factory service so the router can
+// route filesystem / terminal / git into an e2b sandbox; if the plugin is not
+// installed we log and leave E2B unavailable rather than failing boot.
+async function registerE2BSandboxFactoryService(
+  runtime: IAgentRuntime,
+): Promise<boolean> {
+  if (runtime.getService(E2B_SANDBOX_FACTORY_SERVICE_TYPE)) return true;
+  const moduleId = "@elizaos/plugin-e2b-sandbox";
+  const mod = (await import(/* @vite-ignore */ moduleId)) as {
+    E2BSandboxFactoryService?: ServiceClass;
+  };
+  const ServiceClassRef = mod.E2BSandboxFactoryService;
+  if (!ServiceClassRef) return false;
+  await runtime.registerService(ServiceClassRef);
+  return true;
 }
 
 import {
@@ -4641,6 +4664,14 @@ export async function startEliza(
         await loadE2BCapabilityRouterModule();
       const result = await registerE2BRemoteCapabilityRouterIfEnabled(runtime);
       if (result.registered) {
+        if (result.provider === "e2b") {
+          const loaded = await registerE2BSandboxFactoryService(runtime);
+          if (!loaded) {
+            logger.warn(
+              "[eliza] E2B remote runner selected but @elizaos/plugin-e2b-sandbox is not installed; E2B filesystem/terminal/git will be unavailable until it is added.",
+            );
+          }
+        }
         logger.info("[eliza] Remote coding runner registered");
       }
     } catch (err) {
@@ -5726,7 +5757,11 @@ export async function startEliza(
             try {
               const { registerE2BRemoteCapabilityRouterIfEnabled } =
                 await loadE2BCapabilityRouterModule();
-              await registerE2BRemoteCapabilityRouterIfEnabled(newRuntime);
+              const result =
+                await registerE2BRemoteCapabilityRouterIfEnabled(newRuntime);
+              if (result.registered && result.provider === "e2b") {
+                await registerE2BSandboxFactoryService(newRuntime);
+              }
             } catch {
               // non-fatal
             }

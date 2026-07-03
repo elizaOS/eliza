@@ -1,5 +1,7 @@
 import type { JsonObject, JsonValue } from "../types/primitives";
 
+export * from "./sandbox-factory";
+
 export const CAPABILITY_ROUTER_SERVICE_TYPE = "capability-router" as const;
 
 export type CapabilityEnvironment =
