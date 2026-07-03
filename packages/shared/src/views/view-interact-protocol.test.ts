@@ -39,7 +39,9 @@ describe("view-interact protocol contract", () => {
   });
 
   it("keeps the standard and agent-surface capability id sets disjoint", () => {
-    const standard = new Set(Object.values(STANDARD_CAPABILITIES));
+    const standard: ReadonlySet<string> = new Set(
+      Object.values(STANDARD_CAPABILITIES),
+    );
     for (const id of AGENT_SURFACE_CAPABILITY_IDS) {
       expect(standard.has(id)).toBe(false);
     }

@@ -13,6 +13,10 @@
  * works from anywhere, not only on the Background view.
  */
 
+import {
+  BACKGROUND_APPLY_EVENT,
+  type BackgroundApplyPayload,
+} from "@elizaos/shared/events";
 import { useViewEvent } from "../hooks/useViewEvent";
 import {
   DEFAULT_BACKGROUND_COLOR,
@@ -27,12 +31,11 @@ import {
   type ShaderUniformValues,
 } from "./shader-schema";
 
-/** View-event type the BACKGROUND action broadcasts. Keep in sync with the
- * literal used in `plugins/plugin-app-control/src/actions/background.ts`. */
-export const BACKGROUND_APPLY_EVENT = "background:apply";
-
-/** Operation carried by a `background:apply` event payload. */
-export type BackgroundApplyOp = "set" | "undo" | "redo" | "reset";
+export type {
+  BackgroundApplyOp,
+  BackgroundApplyPayload,
+} from "@elizaos/shared/events";
+export { BACKGROUND_APPLY_EVENT };
 
 /** Pull a Partial<ShaderUniformValues> out of an untrusted payload field. */
 function readUniformPatch(
@@ -56,7 +59,7 @@ export function useBackgroundApplyChannel(): void {
   } = useBackgroundConfig();
 
   useViewEvent(BACKGROUND_APPLY_EVENT, (event) => {
-    const payload = event.payload;
+    const payload = event.payload as BackgroundApplyPayload;
     const op = typeof payload.op === "string" ? payload.op : "set";
 
     if (op === "undo") {

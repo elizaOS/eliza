@@ -112,6 +112,35 @@ export function dispatchNavigateViewEvent(detail: NavigateViewDetail): void {
   window.dispatchEvent(createNavigateViewEvent(detail));
 }
 
+// ── View event bus ──────────────────────────────────────────────────────
+export const BACKGROUND_APPLY_EVENT = "background:apply" as const;
+
+/** Operation carried by a {@link BACKGROUND_APPLY_EVENT} payload. */
+export type BackgroundApplyOp = "set" | "undo" | "redo" | "reset";
+
+/** Tunable GLSL uniform patch the BACKGROUND action can send to the renderer. */
+export interface BackgroundShaderUniformPatch {
+  u_speed?: number;
+  u_scale?: number;
+  u_intensity?: number;
+  u_seed?: number;
+}
+
+/** Payload broadcast on {@link BACKGROUND_APPLY_EVENT}. */
+export interface BackgroundApplyPayload extends Record<string, unknown> {
+  op: BackgroundApplyOp;
+  /** "shader" (color field), "image" (cover image), or "glsl" (programmable shader). */
+  mode?: "shader" | "image" | "glsl";
+  /** 6-digit hex for shader/glsl mode. */
+  color?: string;
+  /** Same-origin image URL (`/api/media/...`) for image mode. */
+  imageUrl?: string;
+  /** Named GLSL preset id; the renderer resolves this to source. */
+  presetId?: string;
+  /** Uniform patch for glsl mode. */
+  uniforms?: BackgroundShaderUniformPatch;
+}
+
 // ── Avatar / VRM ─────────────────────────────────────────────────────────
 export const VRM_TELEPORT_COMPLETE_EVENT =
   "eliza:vrm-teleport-complete" as const;
