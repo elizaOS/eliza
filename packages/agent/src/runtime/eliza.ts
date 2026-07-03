@@ -90,6 +90,7 @@ export {
 import {
   AgentRuntime,
   AutonomyService,
+  AUTONOMY_SERVICE_TYPE,
   addLogListener,
   ChannelType,
   type Component,
@@ -1649,7 +1650,7 @@ interface AutonomyServiceLike {
  * Uses a runtime property check to safely narrow the opaque Service return.
  */
 function getAutonomyService(runtime: AgentRuntime): AutonomyServiceLike | null {
-  const svc = runtime.getService("AUTONOMY") ?? runtime.getService("autonomy");
+  const svc = runtime.getService(AUTONOMY_SERVICE_TYPE);
   if (
     svc &&
     "enableAutonomy" in svc &&
@@ -1664,7 +1665,7 @@ async function startAndRegisterAutonomyService(
   runtime: AgentRuntime,
 ): Promise<AutonomyServiceLike> {
   const service = await AutonomyService.start(runtime);
-  runtime.services.set("AUTONOMY" as never, [service as never]);
+  runtime.services.set(AUTONOMY_SERVICE_TYPE as never, [service as never]);
   return service as AutonomyServiceLike;
 }
 
@@ -4929,7 +4930,7 @@ export async function startEliza(
   const startAutonomyServiceIfEnabled = async (
     autonomyEnabled: boolean,
   ): Promise<void> => {
-    if (autonomyEnabled && !runtime.getService("AUTONOMY")) {
+    if (autonomyEnabled && !runtime.getService(AUTONOMY_SERVICE_TYPE)) {
       try {
         await startAndRegisterAutonomyService(runtime);
         logger.info("[eliza] AutonomyService started for trigger dispatch");
@@ -5770,7 +5771,7 @@ export async function startEliza(
           // Ensure AutonomyService survives hot-reload; the loop remains opt-in.
           const hotReloadAutonomyLoopEnabled = isAutonomyEnabled();
 
-          if (!newRuntime.getService("AUTONOMY")) {
+          if (!newRuntime.getService(AUTONOMY_SERVICE_TYPE)) {
             try {
               await startAndRegisterAutonomyService(newRuntime);
             } catch (err) {

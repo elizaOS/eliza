@@ -71,6 +71,12 @@ export {
 	updateRoleAction,
 } from "./features/advanced-capabilities/actions/role";
 export * from "./features/advanced-memory";
+export {
+	AUTONOMY_SERVICE_TYPE,
+	AUTONOMY_TASK_NAME,
+	AUTONOMY_TASK_TAGS,
+	AutonomyService,
+} from "./features/autonomy";
 // Export capabilities and plugin creation
 export * from "./features/basic-capabilities/index";
 export * from "./features/credential-proxy/index.ts";

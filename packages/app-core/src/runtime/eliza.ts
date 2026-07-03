@@ -31,6 +31,7 @@ export { CUSTOM_PLUGINS_DIRNAME, resolvePackageEntry, scanDropInPlugins };
 import {
   type AgentRuntime,
   AutonomyService,
+  AUTONOMY_SERVICE_TYPE,
   ChannelType,
   CONNECTOR_TARGET_SOURCE_REGISTRY_SERVICE,
   isOptionalAppRoutePluginUnavailableError,
@@ -184,7 +185,8 @@ interface RuntimeAdapterAutonomyCompat {
 }
 
 function getAutonomyService(runtime: AgentRuntime): AutonomyServiceLike | null {
-  const svc = runtime.getService("AUTONOMY") ?? runtime.getService("autonomy");
+  const svc =
+    runtime.getService(AUTONOMY_SERVICE_TYPE) ?? runtime.getService("autonomy"); // Legacy lowercase serviceType fallback.
   if (isAutonomyService(svc)) {
     return svc;
   }
@@ -195,7 +197,7 @@ async function startAndRegisterAutonomyService(
   runtime: AgentRuntime,
 ): Promise<AutonomyServiceLike> {
   const service = await AutonomyService.start(runtime);
-  runtime.services.set("AUTONOMY" as never, [service as never]);
+  runtime.services.set(AUTONOMY_SERVICE_TYPE as never, [service as never]);
   return service;
 }
 
@@ -719,7 +721,7 @@ async function repairRuntimeAfterBoot(
     );
   }
 
-  if (!runtime.getService("AUTONOMY")) {
+  if (!runtime.getService(AUTONOMY_SERVICE_TYPE)) {
     try {
       await startAndRegisterAutonomyService(runtime);
       logger.info("[eliza] AutonomyService started and waiting");

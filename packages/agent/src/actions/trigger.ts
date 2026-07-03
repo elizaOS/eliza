@@ -21,6 +21,7 @@ import {
   type ActionExample,
   type ActionResult,
   asUUID,
+  AUTONOMY_SERVICE_TYPE,
   type HandlerCallback,
   type HandlerOptions,
   type IAgentRuntime,
@@ -327,7 +328,7 @@ async function opCreate(
     );
   }
 
-  const service = runtime.getService("AUTONOMY");
+  const service = runtime.getService(AUTONOMY_SERVICE_TYPE);
   const autonomyService = isAutonomyRoomService(service) ? service : null;
   const roomId = autonomyService?.getAutonomousRoomId?.() ?? message.roomId;
 

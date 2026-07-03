@@ -1,4 +1,8 @@
-import type { AgentRuntime, RouteRequestMeta } from "@elizaos/core";
+import {
+  AUTONOMY_SERVICE_TYPE,
+  type AgentRuntime,
+  type RouteRequestMeta,
+} from "@elizaos/core";
 import type { RouteHelpers } from "@elizaos/shared";
 import { PostAgentAutonomyRequestSchema } from "@elizaos/shared";
 import { detectRuntimeModel } from "./agent-model.ts";
@@ -137,8 +141,7 @@ export async function handleAgentLifecycleRoutes(
 
     // Set the property AND call the service method so the batcher
     // section is actually registered/unregistered.
-    const autonomySvc =
-      runtime.getService("AUTONOMY") ?? runtime.getService("autonomy");
+    const autonomySvc = runtime.getService(AUTONOMY_SERVICE_TYPE);
     if (isAutonomyToggleService(autonomySvc)) {
       if (enabled) {
         await autonomySvc.enableAutonomy();
