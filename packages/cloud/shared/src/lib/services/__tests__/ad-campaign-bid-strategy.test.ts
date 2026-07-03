@@ -184,6 +184,38 @@ describe("advertisingService bid controls persistence", () => {
     });
   });
 
+  test("createCampaign rejects TikTok bid controls before safety review, credits, or provider calls", async () => {
+    track(
+      spyOn(adAccountsRepository, "findById").mockResolvedValue({
+        id: ACCOUNT_ID,
+        organization_id: ORG_ID,
+        platform: "tiktok",
+        external_account_id: "act_1",
+        status: "active",
+      } as never),
+    );
+    const safety = track(spyOn(contentSafetyService, "assertSafeForPublicUse"));
+    const deduct = track(spyOn(creditsService, "deductCredits"));
+    const provider = stubProvider({ platform: "tiktok" });
+    const createOnProvider = track(spyOn(provider, "createCampaign"));
+    track(spyOn(advertisingService, "getProvider").mockReturnValue(provider));
+
+    await expect(
+      advertisingService.createCampaign(
+        makeCreateInput({
+          bidStrategy: "cpc",
+          optimizationGoal: "clicks",
+        }),
+      ),
+    ).rejects.toThrow(
+      "TikTok campaign creation does not support campaign-level bid strategy controls",
+    );
+
+    expect(safety).not.toHaveBeenCalled();
+    expect(deduct).not.toHaveBeenCalled();
+    expect(createOnProvider).not.toHaveBeenCalled();
+  });
+
   test("updateCampaign rejects bid-control changes before touching money or the platform", async () => {
     // No adapter applies bid-control changes to a live campaign, so the
     // service must fail closed instead of persisting metadata drift.

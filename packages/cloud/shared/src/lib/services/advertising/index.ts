@@ -7,6 +7,7 @@ import {
   adCreativesRepository,
   adTransactionsRepository,
 } from "../../../db/repositories";
+import { ValidationError } from "../../api/cloud-worker-errors";
 import { logger } from "../../utils/logger";
 import { type ContentSafetyReview, contentSafetyService } from "../content-safety";
 import { creditsService } from "../credits";
@@ -151,6 +152,17 @@ class AdvertisingService {
       throw new Error(`Advertising platform ${platform} is not supported`);
     }
     return provider;
+  }
+
+  private assertBidControlsSupported(
+    platform: AdPlatform,
+    input: Pick<CreateCampaignInput | UpdateCampaignInput, "bidStrategy" | "optimizationGoal">,
+  ): void {
+    if ((input.bidStrategy || input.optimizationGoal) && platform === "tiktok") {
+      throw ValidationError(
+        "TikTok campaign creation does not support campaign-level bid strategy controls through this adapter",
+      );
+    }
   }
 
   // ============================================
@@ -561,6 +573,7 @@ class AdvertisingService {
     if (dayparting) {
       this.assertProviderCanApplyDayparting(account.platform);
     }
+    this.assertBidControlsSupported(account.platform, input);
 
     await contentSafetyService.assertSafeForPublicUse({
       surface: "advertising_campaign",
@@ -742,7 +755,7 @@ class AdvertisingService {
     // Google/TikTok updates only push name/budget/dates). Reject explicitly
     // instead of persisting local metadata the platform never receives.
     if (input.bidStrategy !== undefined || input.optimizationGoal !== undefined) {
-      throw new Error(
+      throw ValidationError(
         "Bid strategy and optimization goal can only be set at campaign creation; ad platform adapters do not apply bid-control changes to live campaigns",
       );
     }
