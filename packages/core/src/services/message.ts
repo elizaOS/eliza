@@ -9166,7 +9166,7 @@ export class DefaultMessageService implements IMessageService {
 						error: errMsg,
 						stack: errStack,
 					},
-					"v5 message runtime failed; returning structured failure reply",
+					"v5 message runtime failed",
 				);
 				// Mirror to process.stderr so bench / orchestrator runs can see
 				// the underlying cause when runtime.logger output is buffered or
@@ -9182,17 +9182,54 @@ export class DefaultMessageService implements IMessageService {
 				} catch {
 					// stderr write must never throw the runtime.
 				}
-				shouldRespondToMessage = true;
-				terminalDecision = null;
-				strategyResult = await this.buildStructuredFailureReply(
+				// Rate limits and provider outages throw from the Stage 1 model
+				// call itself — before any RESPOND/IGNORE decision exists. For
+				// ambiguous group traffic the pre-failure outcome would have been
+				// IGNORE, so an unconditional failure reply spams rooms that never
+				// addressed the agent (observed live: 91 canned-failure sends in
+				// 2 days into relay rooms during a rate-limit window). Surface
+				// failure text only when the turn deterministically addressed the
+				// agent (DM/API/SELF channel, platform mention/reply, whitelisted
+				// source, name+tag address), the turn is autonomous, or an early
+				// ack already went out (the user saw the bot engage). Everything
+				// else stays silent, matching the IGNORE it would have gotten.
+				const failureGate = this.shouldRespond(
 					runtime,
 					message,
-					state,
-					responseId,
-					"running the native tool message runtime",
+					room ?? undefined,
+					mentionContext,
 				);
-				_usedV5Runtime = true;
-				state = strategyResult.state;
+				const addressedForFailureReply =
+					failureGate.shouldRespond ||
+					mentionContext?.isMention === true ||
+					mentionContext?.isReply === true ||
+					isAutonomous ||
+					earlyReplyMessages.length > 0;
+				if (addressedForFailureReply) {
+					shouldRespondToMessage = true;
+					terminalDecision = null;
+					strategyResult = await this.buildStructuredFailureReply(
+						runtime,
+						message,
+						state,
+						responseId,
+						"running the native tool message runtime",
+					);
+					_usedV5Runtime = true;
+					state = strategyResult.state;
+				} else {
+					runtime.logger.info(
+						{
+							src: "service:message",
+							agentId: runtime.agentId,
+							roomId: message.roomId,
+							reason: failureGate.reason,
+						},
+						"v5 runtime failed before a respond decision on an unaddressed message; suppressing failure reply",
+					);
+					shouldRespondToMessage = false;
+					terminalDecision = "IGNORE";
+				}
 			}
 		} else if (!hasTextGenerationHandler(runtime)) {
 			await runtime.applyPipelineHooks(
