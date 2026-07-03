@@ -120,12 +120,15 @@ function makeMessage(text = "graph op"): Memory {
   } as Memory;
 }
 
-async function call(parameters: Record<string, unknown>) {
+async function call(
+  parameters: Record<string, unknown>,
+  options: Partial<HandlerOptions> = {},
+) {
   return entityAction.handler(
     makeRuntime(),
     makeMessage(),
     undefined,
-    { parameters } as unknown as HandlerOptions,
+    { ...options, parameters } as unknown as HandlerOptions,
     async () => undefined,
   );
 }
@@ -227,7 +230,7 @@ describe("KNOWLEDGE_GRAPH action", () => {
     );
   });
 
-  it("set_identity observes then marks the asserted identity verified", async () => {
+  it("set_identity observes but does not verify without trusted proof", async () => {
     const observed = makeEntity({
       identities: [
         {
@@ -252,7 +255,11 @@ describe("KNOWLEDGE_GRAPH action", () => {
       handle: "@pat",
     });
 
-    expect(result?.success).toBe(true);
+    expect(result?.success).toBe(false);
+    expect(result?.data).toMatchObject({
+      error: "IDENTITY_VERIFICATION_REQUIRED",
+      mergedFrom: ["ent_2"],
+    });
     expect(stores.entityStore.observeIdentity).toHaveBeenCalledWith(
       expect.objectContaining({
         platform: "slack",
@@ -260,7 +267,45 @@ describe("KNOWLEDGE_GRAPH action", () => {
         confidence: 1,
       }),
     );
-    // The re-upsert must flip the matching identity to verified.
+    expect(stores.entityStore.upsert).not.toHaveBeenCalled();
+  });
+
+  it("set_identity marks verified only with trusted matching proof", async () => {
+    const observed = makeEntity({
+      identities: [
+        {
+          platform: "slack",
+          handle: "@pat",
+          verified: false,
+          confidence: 1,
+          addedAt: "2026-01-01T00:00:00.000Z",
+          addedVia: "platform_observation",
+          evidence: ["user_chat"],
+        } satisfies EntityIdentity,
+      ],
+    });
+    stores.entityStore.observeIdentity.mockResolvedValueOnce({
+      entity: observed,
+      mergedFrom: ["ent_2"],
+    });
+
+    const result = await call(
+      {
+        op: "set_identity",
+        platform: "slack",
+        handle: "@pat",
+      },
+      {
+        identityVerification: {
+          platform: "slack",
+          handle: "@pat",
+          verified: true,
+          evidence: "slack_oauth_subject_match",
+        },
+      } as Partial<HandlerOptions>,
+    );
+
+    expect(result?.success).toBe(true);
     const upsertArg = stores.entityStore.upsert.mock.calls.at(
       -1,
     )?.[0] as Entity;
@@ -268,6 +313,10 @@ describe("KNOWLEDGE_GRAPH action", () => {
       (identity) => identity.platform === "slack" && identity.handle === "@pat",
     );
     expect(reasserted?.verified).toBe(true);
+    expect(reasserted?.evidence).toEqual([
+      "user_chat",
+      "slack_oauth_subject_match",
+    ]);
     expect(result?.data).toMatchObject({ mergedFrom: ["ent_2"] });
   });
 
