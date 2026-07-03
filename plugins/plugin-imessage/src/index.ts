@@ -102,6 +102,14 @@ export {
 const imessagePlugin: Plugin = {
   name: "imessage",
   description: "iMessage plugin for Eliza agents (macOS only)",
+  connectorSources: [
+    {
+      source: "imessage",
+      aliases: ["imessage", "bluebubbles"],
+      sourceKind: "passive",
+      isPassive: true,
+    },
+  ],
 
   services: [IMessageService],
   actions: [],

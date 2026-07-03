@@ -54,6 +54,14 @@ export {
 const blueBubblesPlugin: Plugin = {
 	name: "bluebubbles",
 	description: "BlueBubbles iMessage bridge plugin for ElizaOS agents",
+	connectorSources: [
+		{
+			source: "imessage",
+			aliases: ["imessage", "bluebubbles"],
+			sourceKind: "passive",
+			isPassive: true,
+		},
+	],
 
 	services: [BlueBubblesService, BlueBubblesWorkflowCredentialProvider],
 	actions: [],

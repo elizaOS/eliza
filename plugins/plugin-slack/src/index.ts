@@ -12,6 +12,14 @@ import { SlackWorkflowCredentialProvider } from "./workflow-credential-provider"
 const slackPlugin: Plugin = {
   name: "slack",
   description: "Slack integration plugin for ElizaOS with Socket Mode support",
+  connectorSources: [
+    {
+      source: "slack",
+      aliases: ["slack"],
+      sourceKind: "passive",
+      isPassive: true,
+    },
+  ],
   services: [SlackService, SlackWorkflowCredentialProvider],
   actions: [],
   providers: [],

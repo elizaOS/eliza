@@ -357,6 +357,14 @@ function registerWechatMessageConnector(
 const wechatPlugin: Plugin = {
   name: "wechat",
   description: "WeChat messaging via proxy API",
+  connectorSources: [
+    {
+      source: "wechat",
+      aliases: ["wechat"],
+      sourceKind: "passive",
+      isPassive: true,
+    },
+  ],
 
   // Self-declared auto-enable: activate when the "wechat" connector is
   // configured under config.connectors. The hardcoded CONNECTOR_PLUGINS map

@@ -21,6 +21,14 @@ const discordPlugin: Plugin = {
 	name: "discord",
 	description:
 		"Discord service plugin for integration with Discord servers and channels",
+	connectorSources: [
+		{
+			source: "discord",
+			aliases: ["discord", "discord-local"],
+			sourceKind: "passive",
+			isPassive: true,
+		},
+	],
 	services: [
 		DiscordService,
 		DiscordOwnerPairingServiceImpl,

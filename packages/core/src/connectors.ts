@@ -6,31 +6,16 @@ export interface ConnectorSourceMetadata {
 	isPassive?: boolean;
 }
 
-const CONNECTOR_SOURCE_METADATA: Record<string, ConnectorSourceMetadata> = {
-	discord: {
-		aliases: ["discord", "discord-local"],
-		sourceKind: "passive",
-		isPassive: true,
-	},
-	imessage: {
-		aliases: ["imessage", "bluebubbles"],
-		sourceKind: "passive",
-		isPassive: true,
-	},
-	signal: { aliases: ["signal"], sourceKind: "passive", isPassive: true },
-	slack: { aliases: ["slack"], sourceKind: "passive", isPassive: true },
-	sms: { aliases: ["sms"], sourceKind: "passive", isPassive: true },
-	telegram: {
-		aliases: ["telegram", "telegram-account", "telegramaccount"],
-		sourceKind: "passive",
-		isPassive: true,
-	},
-	wechat: { aliases: ["wechat"], sourceKind: "passive", isPassive: true },
-	whatsapp: { aliases: ["whatsapp"], sourceKind: "passive", isPassive: true },
-	x: { aliases: ["x", "x_dm"], sourceKind: "passive", isPassive: true },
-};
+export interface ConnectorSourceDefinition extends ConnectorSourceMetadata {
+	source: string;
+}
 
-const registeredMetadata: Record<string, ConnectorSourceMetadata> = {};
+const DEFAULT_CONNECTOR_SOURCE_OWNER = "manual";
+
+const registeredMetadataByOwner = new Map<
+	string,
+	Map<string, ConnectorSourceMetadata>
+>();
 const rawToCanonical = new Map<string, string>();
 
 function mergeMetadata(
@@ -46,28 +31,33 @@ function mergeMetadata(
 	};
 }
 
+function listRegisteredCanonicalSources(): string[] {
+	const sources = new Set<string>();
+	for (const ownerMetadata of registeredMetadataByOwner.values()) {
+		for (const canonical of ownerMetadata.keys()) {
+			sources.add(canonical);
+		}
+	}
+	return [...sources];
+}
+
 function getMergedMetadata(canonical: string): ConnectorSourceMetadata {
-	return mergeMetadata(
-		CONNECTOR_SOURCE_METADATA[canonical],
-		registeredMetadata[canonical],
-	);
+	let merged: ConnectorSourceMetadata | undefined;
+	for (const ownerMetadata of registeredMetadataByOwner.values()) {
+		merged = mergeMetadata(merged, ownerMetadata.get(canonical));
+	}
+	return merged ?? {};
 }
 
 function rebuildRawToCanonical(): void {
 	rawToCanonical.clear();
 
-	const canonicalSources = new Set([
-		...Object.keys(CONNECTOR_SOURCE_METADATA),
-		...Object.keys(registeredMetadata),
-	]);
-	for (const canonical of canonicalSources) {
+	for (const canonical of listRegisteredCanonicalSources()) {
 		for (const alias of getMergedMetadata(canonical).aliases ?? [canonical]) {
 			rawToCanonical.set(alias, canonical);
 		}
 	}
 }
-
-rebuildRawToCanonical();
 
 export function registerConnectorSourceAliases(
 	canonical: string,
@@ -79,20 +69,46 @@ export function registerConnectorSourceAliases(
 export function registerConnectorSourceMetadata(
 	canonical: string,
 	metadata: ConnectorSourceMetadata,
+	owner = DEFAULT_CONNECTOR_SOURCE_OWNER,
 ): void {
 	const key = canonical.trim().toLowerCase();
 	if (!key) return;
 
-	const existing = registeredMetadata[key];
+	const ownerKey = owner.trim() || DEFAULT_CONNECTOR_SOURCE_OWNER;
+	let ownerMetadata = registeredMetadataByOwner.get(ownerKey);
+	if (!ownerMetadata) {
+		ownerMetadata = new Map();
+		registeredMetadataByOwner.set(ownerKey, ownerMetadata);
+	}
+
+	const existing = ownerMetadata.get(key);
 	const mergedAliases = new Set([
+		key,
 		...(existing?.aliases ?? []),
 		...(metadata.aliases ?? []).map((alias) => alias.trim().toLowerCase()),
 	]);
-	registeredMetadata[key] = {
+	ownerMetadata.set(key, {
 		...existing,
 		...metadata,
 		aliases: Array.from(mergedAliases),
-	};
+	});
+	rebuildRawToCanonical();
+}
+
+export function registerConnectorSourceDefinitions(
+	definitions: readonly ConnectorSourceDefinition[] | null | undefined,
+	owner = DEFAULT_CONNECTOR_SOURCE_OWNER,
+): void {
+	for (const definition of definitions ?? []) {
+		const { source, ...metadata } = definition;
+		registerConnectorSourceMetadata(source, metadata, owner);
+	}
+}
+
+export function unregisterConnectorSourceMetadataOwner(owner: string): void {
+	const ownerKey = owner.trim();
+	if (!ownerKey) return;
+	registeredMetadataByOwner.delete(ownerKey);
 	rebuildRawToCanonical();
 }
 

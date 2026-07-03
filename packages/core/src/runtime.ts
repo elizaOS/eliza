@@ -5,6 +5,7 @@ import {
 	withCanonicalProviderDocs,
 } from "./action-docs";
 import { ensureConnection as ensureConnectionStandalone } from "./connection";
+import { registerConnectorSourceDefinitions } from "./connectors";
 import { deriveKnownSecrets } from "./constants/secrets";
 import { InMemoryDatabaseAdapter } from "./database/inMemoryAdapter";
 import {
@@ -2038,6 +2039,12 @@ export class AgentRuntime implements IAgentRuntime {
 					pluginToRegister.priority,
 				);
 			}
+		}
+		if (pluginToRegister.connectorSources) {
+			registerConnectorSourceDefinitions(
+				pluginToRegister.connectorSources,
+				pluginToRegister.name,
+			);
 		}
 		if (pluginToRegister.routes) {
 			for (const route of pluginToRegister.routes) {

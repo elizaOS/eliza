@@ -1,3 +1,4 @@
+import { unregisterConnectorSourceMetadataOwner } from "./connectors";
 import { roleRank } from "./runtime/context-gates";
 import type { ContextRegistry } from "./runtime/context-registry";
 import type { AgentContext, RoleGate, RoleGateRole } from "./types/contexts";
@@ -613,6 +614,10 @@ function removeOwnedSendHandlers(
 	}
 }
 
+function removeOwnedConnectorSources(ownership: PluginOwnership): void {
+	unregisterConnectorSourceMetadataOwner(ownership.pluginName);
+}
+
 function removeOwnedComponents(
 	runtime: RuntimeWithPluginLifecycle,
 	ownership: PluginOwnership,
@@ -691,6 +696,7 @@ async function teardownPluginOwnership(
 		removeOwnedEvents(runtime, ownership);
 		removeOwnedRoutes(runtime, ownership);
 		removeOwnedModels(privateState, ownership);
+		removeOwnedConnectorSources(ownership);
 		removeOwnedComponents(runtime, ownership);
 		removeOwnedPlugins(runtime, ownership);
 	} catch (error) {

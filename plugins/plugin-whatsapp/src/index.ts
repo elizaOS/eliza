@@ -7,6 +7,14 @@ import { WhatsAppWorkflowCredentialProvider } from "./workflow-credential-provid
 const whatsappPlugin: Plugin = {
   name: "whatsapp",
   description: "WhatsApp integration for ElizaOS (Cloud API + Baileys)",
+  connectorSources: [
+    {
+      source: "whatsapp",
+      aliases: ["whatsapp"],
+      sourceKind: "passive",
+      isPassive: true,
+    },
+  ],
   actions: [],
   services: [WhatsAppConnectorService, WhatsAppWorkflowCredentialProvider],
   routes: whatsappSetupRoutes,

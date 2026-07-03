@@ -19,6 +19,14 @@ export const XPlugin: Plugin = {
   name: "x",
   description:
     "X (formerly Twitter) connector with posting, interactions, and timeline actions",
+  connectorSources: [
+    {
+      source: "x",
+      aliases: ["x", "x_dm"],
+      sourceKind: "passive",
+      isPassive: true,
+    },
+  ],
   actions: [],
   providers: [xIdentityProvider],
   services: [XService, XWorkflowCredentialProvider],

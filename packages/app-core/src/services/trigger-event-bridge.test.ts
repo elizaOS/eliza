@@ -22,8 +22,10 @@ import {
 import type { AgentRuntime, EventPayload, Task, UUID } from "@elizaos/core";
 import {
   EventType,
+  registerConnectorSourceDefinitions,
   registerConnectorSourceMetadata,
   stringToUuid,
+  unregisterConnectorSourceMetadataOwner,
 } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -147,10 +149,29 @@ describe("startTriggerEventBridge", () => {
     handle = makeRuntime();
     dispatch = vi.fn(async () => ({ status: "success", taskDeleted: false }));
     clock = { value: 1_000_000 };
+    registerConnectorSourceDefinitions(
+      [
+        {
+          source: "discord",
+          aliases: ["discord", "discord-local"],
+          sourceKind: "passive",
+          isPassive: true,
+        },
+        {
+          source: "x",
+          aliases: ["x", "x_dm"],
+          sourceKind: "passive",
+          isPassive: true,
+        },
+      ],
+      "trigger-event-bridge-test",
+    );
     delete process.env.ELIZA_TRIGGERS_ENABLED;
   });
 
   afterEach(() => {
+    unregisterConnectorSourceMetadataOwner("trigger-event-bridge-test");
+    unregisterConnectorSourceMetadataOwner("manual");
     delete process.env.ELIZA_TRIGGERS_ENABLED;
     vi.restoreAllMocks();
   });

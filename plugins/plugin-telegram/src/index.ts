@@ -20,6 +20,14 @@ import { TelegramTestSuite } from "./tests";
 const telegramPlugin: Plugin = {
   name: TELEGRAM_SERVICE_NAME,
   description: "Telegram client plugin",
+  connectorSources: [
+    {
+      source: "telegram",
+      aliases: ["telegram", "telegram-account", "telegramaccount"],
+      sourceKind: "passive",
+      isPassive: true,
+    },
+  ],
   // TelegramService must come before TelegramOwnerPairingServiceImpl so the
   // bot instance exists when the pairing service registers its command.
   services: [TelegramService, TelegramOwnerPairingServiceImpl],

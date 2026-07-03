@@ -14,6 +14,14 @@ import { SignalWorkflowCredentialProvider } from "./workflow-credential-provider
 const signalPlugin: Plugin = {
   name: "signal",
   description: "Signal messaging integration plugin for ElizaOS with end-to-end encryption",
+  connectorSources: [
+    {
+      source: "signal",
+      aliases: ["signal"],
+      sourceKind: "passive",
+      isPassive: true,
+    },
+  ],
   services: [SignalService, SignalWorkflowCredentialProvider],
   actions: [],
   providers: [],

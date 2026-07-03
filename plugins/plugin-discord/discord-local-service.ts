@@ -1268,6 +1268,14 @@ const discordLocalPlugin: Plugin = {
 	name: DISCORD_LOCAL_PLUGIN_NAME,
 	description:
 		"Local Discord desktop integration for Eliza via Discord RPC and macOS UI automation",
+	connectorSources: [
+		{
+			source: "discord",
+			aliases: ["discord", "discord-local"],
+			sourceKind: "passive",
+			isPassive: true,
+		},
+	],
 	services: [DiscordLocalService],
 };
 

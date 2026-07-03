@@ -4,6 +4,14 @@ export const appMessagesPlugin: Plugin = {
   name: "@elizaos/plugin-messages",
   description:
     "Android Messages overlay: read SMS conversations and compose text messages through the native SMS bridge.",
+  connectorSources: [
+    {
+      source: "sms",
+      aliases: ["sms"],
+      sourceKind: "passive",
+      isPassive: true,
+    },
+  ],
   views: [
     // ONE declaration → GUI + XR + TUI, all drawn from the single MessagesView
     // spatial source. `modalities` is a plain literal here (plugin.ts is not in

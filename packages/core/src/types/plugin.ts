@@ -1,4 +1,5 @@
 import type { AppPackageRouteContext } from "../api/route-helpers";
+import type { ConnectorSourceDefinition } from "../connectors";
 import type { ResponseHandlerEvaluator } from "../runtime/response-handler-evaluators";
 import type { ResponseHandlerFieldEvaluator } from "../runtime/response-handler-field-evaluator";
 import type { Character } from "./agent";
@@ -1196,6 +1197,13 @@ export interface Plugin {
 	};
 	events?: PluginEvents;
 	routes?: Route[];
+	/**
+	 * Connector source names and aliases owned by this plugin. The runtime
+	 * registers these during plugin registration so source normalization and
+	 * connector-source metadata live with the connector plugin instead of in
+	 * core/shared trunk maps.
+	 */
+	connectorSources?: ConnectorSourceDefinition[];
 	tests?: TestSuite[];
 
 	dependencies?: string[];
