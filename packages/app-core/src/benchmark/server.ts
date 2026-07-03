@@ -1,7 +1,9 @@
 import crypto from "node:crypto";
 import http from "node:http";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
+import { CORE_PLUGINS } from "@elizaos/agent/runtime/core-plugins";
+import { createElizaPlugin } from "@elizaos/agent/runtime/eliza-plugin";
+import { resolveElizaPluginImportSpecifier } from "@elizaos/agent/runtime/plugin-types";
 import {
   AgentRuntime,
   type ChatMessage,
@@ -19,8 +21,6 @@ import {
   type ToolDefinition,
 } from "@elizaos/core";
 import dotenv from "dotenv";
-import { CORE_PLUGINS } from "../../../agent/src/runtime/core-plugins.ts";
-import { createElizaPlugin } from "../../../agent/src/runtime/eliza-plugin.ts";
 import { autoWireCerebras } from "./cerebras-autowire.js";
 import {
   LifeOpsBenchHandler,
@@ -1615,24 +1615,9 @@ export async function startBenchmarkServer() {
       continue;
     }
     try {
-      let pluginModule: Record<string, unknown>;
-      try {
-        pluginModule = (await import(pluginName)) as Record<string, unknown>;
-      } catch (error) {
-        if (pluginName !== "@elizaos/plugin-sql") {
-          throw error;
-        }
-        const fallbackPath = path.resolve(
-          process.cwd(),
-          "../../plugins/plugin-sql/src/index.ts",
-        );
-        elizaLogger.warn(
-          `[bench] @elizaos/plugin-sql package entry is unavailable; falling back to workspace source at ${fallbackPath}`,
-        );
-        pluginModule = (await import(
-          pathToFileURL(fallbackPath).href
-        )) as Record<string, unknown>;
-      }
+      const pluginModule = (await import(
+        resolveElizaPluginImportSpecifier(pluginName)
+      )) as Record<string, unknown>;
       const plugin =
         pluginModule.default ?? pluginModule[Object.keys(pluginModule)[0]];
       if (plugin) {
@@ -1848,18 +1833,16 @@ export async function startBenchmarkServer() {
     try {
       process.env.COMPUTER_USE_ENABLED ??= "1";
       process.env.COMPUTERUSE_MODE ??= "local";
-      const localComputerusePath =
-        "../../../../plugins/plugin-computeruse/src/index.ts";
-      const computeruseModule = (await import(localComputerusePath)) as Record<
-        string,
-        unknown
-      >;
+      const computeruseName = "@elizaos/plugin-computeruse";
+      const computeruseModule = (await import(
+        resolveElizaPluginImportSpecifier(computeruseName)
+      )) as Record<string, unknown>;
       const computerusePlugin =
         computeruseModule.computerusePlugin ??
         computeruseModule.computerUsePlugin ??
         computeruseModule.default;
       if (computerusePlugin) {
-        plugins.push(toPlugin(computerusePlugin, localComputerusePath));
+        plugins.push(toPlugin(computerusePlugin, computeruseName));
         elizaLogger.info(
           "[bench] Loaded local plugin: @elizaos/plugin-computeruse",
         );
@@ -1902,12 +1885,8 @@ export async function startBenchmarkServer() {
     benchName === "social-alpha";
   if (enableSocialAlphaPlugin) {
     try {
-      const socialAlphaSrcPath = path.resolve(
-        process.cwd(),
-        "../../plugins/plugin-social-alpha/src/index.ts",
-      );
       const socialAlphaModule = (await import(
-        pathToFileURL(socialAlphaSrcPath).href
+        resolveElizaPluginImportSpecifier("@elizaos/plugin-social-alpha")
       )) as Record<string, unknown>;
       const socialAlphaPlugin =
         socialAlphaModule.socialAlphaPlugin ?? socialAlphaModule.default;
