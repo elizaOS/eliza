@@ -439,6 +439,12 @@ jobs:
           ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
           VAST_API_KEY: ${{ secrets.VAST_API_KEY }}
           VAST_BASE_URL: ${{ secrets.VAST_BASE_URL }}
+          # Platform key the Worker forwards as X-Steward-Platform-Key so per-org
+          # sandbox Steward tenants provision instead of collapsing onto the
+          # shared default tenant (#11461). publish_secret no-ops with a notice
+          # while unset, so this is safe before ops adds the GH env secret and
+          # keeps it published on every redeploy once they do.
+          STEWARD_PLATFORM_KEYS: ${{ secrets.STEWARD_PLATFORM_KEYS }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
@@ -480,7 +486,8 @@ jobs:
             FAL_KEY \
             ELEVENLABS_API_KEY \
             VAST_API_KEY \
-            VAST_BASE_URL
+            VAST_BASE_URL \
+            STEWARD_PLATFORM_KEYS
           do
             publish_secret "$name"
           done
