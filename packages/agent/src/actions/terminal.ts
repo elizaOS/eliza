@@ -28,7 +28,6 @@ import {
   stringToUuid,
 } from "@elizaos/core";
 import { resolveServerOnlyPort } from "@elizaos/shared";
-import { hasOwnerAccess } from "../security/access.ts";
 import { normalizeTerminalCommand } from "../utils/terminal-command.ts";
 
 const TERMINAL_ACTION_NAME = "TERMINAL_SHELL";
@@ -292,18 +291,6 @@ export const terminalAction: Action = {
           actionName: TERMINAL_ACTION_NAME,
           suppressPostActionContinuation: true,
           terminal: { storeBuildBlocked: true },
-        },
-      };
-    }
-
-    if (!(await hasOwnerAccess(runtime, message))) {
-      return {
-        success: false,
-        text: "Permission denied: only the owner may run terminal commands.",
-        data: {
-          actionName: TERMINAL_ACTION_NAME,
-          suppressPostActionContinuation: true,
-          terminal: { permissionDenied: true },
         },
       };
     }
