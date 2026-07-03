@@ -111,7 +111,7 @@ export interface AppBootConfig {
   defaultApps?: readonly string[];
   /** API base URL — replaces window.__ELIZAOS_API_BASE__. */
   apiBase?: string;
-  /** API auth token — replaces window.__ELIZAOS_API_TOKEN__. */
+  /** API auth token used by the browser API client. */
   apiToken?: string;
   /** Cloud API base URL — replaces window.__ELIZA_CLOUD_API_BASE__. */
   cloudApiBase?: string;

@@ -18,11 +18,9 @@ import { hydrateAndroidLocalAgentTokenForUrl } from "../first-run/local-agent-to
 import { isMobileLocalAgentIpcUrl } from "../first-run/mobile-runtime-mode";
 import {
   clearElizaApiBase,
-  clearElizaApiToken,
   getElizaApiBase,
   getElizaApiToken,
   setElizaApiBase,
-  setElizaApiToken,
 } from "../utils/eliza-globals";
 import { mergeStreamingText } from "../utils/streaming-text";
 import { androidNativeAgentTransportForUrl } from "./android-native-agent-transport";
@@ -626,14 +624,6 @@ export class ElizaClient {
     // Boot config is the canonical source. fetchWithCsrf and authBase read here.
     const config = getBootConfig();
     setBootConfig({ ...config, apiToken: this._token ?? undefined });
-    // Mirror to window globals for the Capacitor agent web fallback
-    // (native-plugins/agent/src/web.ts) and any direct readers via
-    // getElizaApiToken(). Parallels setBaseUrl()'s window-global mirror.
-    if (this._token) {
-      setElizaApiToken(this._token);
-    } else {
-      clearElizaApiToken();
-    }
     // A same-view sign-in/out (this is the only path that writes the token
     // without a page load) must refresh any mounted session gate — e.g. the
     // Apps tab — without a remount. `steward-token-sync` is the established

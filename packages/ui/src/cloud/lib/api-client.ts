@@ -184,7 +184,7 @@ function readLiveNativeStewardToken(token: string): string | null {
  * first (canonical, unchanged). On native/Electrobun ONLY, fall back to the
  * owner cloud API key: device-code sign-in never writes `STEWARD_TOKEN_KEY` —
  * it stores the cloud API key on the agent client, which mirrors it into boot
- * config + the `__ELIZA_API_TOKEN__` global (see `ElizaClient.setToken`). So
+ * config (see `ElizaClient.setToken`). So
  * without this fallback every native Apps API call left the WebView with NO
  * Authorization header and 401'd (#11930). The chain mirrors the canonical
  * `getCloudAuthToken()` in `../../api/client-cloud.ts` (steward JWT →

@@ -1,8 +1,8 @@
+import { getBootConfig, setBootConfig } from "../config/boot-config-store.js";
+
 export type ElizaWindow = Window & {
   __ELIZA_API_BASE__?: string;
-  __ELIZA_API_TOKEN__?: string;
   __ELIZAOS_API_BASE__?: string;
-  __ELIZAOS_API_TOKEN__?: string;
 };
 
 function getElizaWindow(): ElizaWindow | null {
@@ -26,11 +26,7 @@ export function getElizaApiBase(): string | undefined {
 }
 
 export function getElizaApiToken(): string | undefined {
-  const elizaWindow = getElizaWindow();
-  return (
-    readTrimmedString(elizaWindow?.__ELIZA_API_TOKEN__) ??
-    readTrimmedString(elizaWindow?.__ELIZAOS_API_TOKEN__)
-  );
+  return readTrimmedString(getBootConfig().apiToken);
 }
 
 export function setElizaApiBase(value: string): void {
@@ -50,17 +46,10 @@ export function clearElizaApiBase(): void {
 }
 
 export function setElizaApiToken(value: string): void {
-  const elizaWindow = getElizaWindow();
-  if (elizaWindow) {
-    elizaWindow.__ELIZAOS_API_TOKEN__ = value;
-    elizaWindow.__ELIZA_API_TOKEN__ = value;
-  }
+  setBootConfig({ ...getBootConfig(), apiToken: readTrimmedString(value) });
 }
 
 export function clearElizaApiToken(): void {
-  const elizaWindow = getElizaWindow();
-  if (elizaWindow) {
-    Reflect.deleteProperty(elizaWindow, "__ELIZAOS_API_TOKEN__");
-    Reflect.deleteProperty(elizaWindow, "__ELIZA_API_TOKEN__");
-  }
+  const { apiToken: _apiToken, ...config } = getBootConfig();
+  setBootConfig(config);
 }

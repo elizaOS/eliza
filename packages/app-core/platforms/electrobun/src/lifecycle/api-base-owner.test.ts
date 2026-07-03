@@ -88,7 +88,8 @@ describe("api-base-owner", () => {
     expect(injected).toContain(
       'window.__ELIZA_API_BASE__="http://127.0.0.1:31337";',
     );
-    expect(injected).toContain('"__ELIZA_API_TOKEN__"');
+    expect(injected).not.toContain("__ELIZA_API_TOKEN__");
+    expect(injected).toContain("apiToken");
     expect(injected).toContain("elizaos.app.boot-config");
   });
 

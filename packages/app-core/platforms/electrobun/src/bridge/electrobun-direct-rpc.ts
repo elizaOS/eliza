@@ -78,14 +78,6 @@ function dispatchMessage(messageName: string, payload: unknown): void {
     } else {
       Reflect.deleteProperty(window, "__ELIZA_DESKTOP_EXTERNAL_API_BASE__");
     }
-    if (apiBaseUpdate.token) {
-      Object.defineProperty(window, "__ELIZA_API_TOKEN__", {
-        value: apiBaseUpdate.token,
-        configurable: true,
-        writable: true,
-        enumerable: false,
-      });
-    }
     // Propagate to boot config so the appClient picks up port changes.
     // We modify it directly instead of importing @elizaos/app-core
     // to prevent bundling React and the entire UI layer into the preload script.
@@ -208,7 +200,6 @@ const electrobunRpc = {
 declare global {
   interface Window {
     __ELIZA_API_BASE__?: string;
-    __ELIZA_API_TOKEN__: string;
     __ELIZA_DESKTOP_EXTERNAL_API_BASE__?: string;
     __ELIZA_ELECTROBUN_RPC__?: typeof electrobunRpc;
   }

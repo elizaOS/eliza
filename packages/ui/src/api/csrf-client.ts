@@ -13,7 +13,6 @@
  * targets the dashboard API.
  */
 
-import { getElizaApiToken } from "@elizaos/shared";
 import { getBootConfig } from "../config/boot-config";
 import { hydrateAndroidLocalAgentTokenForUrl } from "../first-run/local-agent-token";
 import { resolveApiUrl } from "../utils/asset-url";
@@ -68,14 +67,7 @@ export async function fetchWithCsrf(
 
   if (!headers.has("Authorization")) {
     await hydrateAndroidLocalAgentTokenForUrl(url);
-    // Prefer the host-provided boot config token, then fall back to the token a
-    // cloud-provisioned agent injects into the served HTML via the
-    // `window.__ELIZA_API_TOKEN__` global. Without this fallback the auth probe
-    // (`/api/auth/me`) goes out with only cookies/CSRF, 401s, and the SPA wrongly
-    // renders the password LoginView even though the injected bearer would
-    // authenticate the request.
-    const apiToken =
-      getBootConfig().apiToken?.trim() || getElizaApiToken()?.trim();
+    const apiToken = getBootConfig().apiToken?.trim();
     if (apiToken) {
       headers.set("Authorization", `Bearer ${apiToken}`);
     }
