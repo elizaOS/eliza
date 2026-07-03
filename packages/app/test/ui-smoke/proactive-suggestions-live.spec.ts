@@ -20,8 +20,8 @@
 //      no second bubble, no second persisted memory.
 //   3. dismiss removes the bubble from the transcript.
 //   4. after the cooldown a fresh-surface switch admits again; "Do it" sends the
-//      real accept turn ("Yes, let's do it.") to the live agent and clears the
-//      bubble; the live agent answers the accepted offer.
+//      real accept turn ("Yes, let's do it.") to the live agent and consumes the
+//      accept affordance; the live agent answers the accepted offer.
 //   5. the real Settings → Capabilities "Proactive suggestions = Off" control
 //      kills the pipeline — a further switch renders and persists nothing new.
 //
@@ -40,9 +40,11 @@
 // same live judge labels offers medium-urgency and the chat rail is exercised.
 // The judge output itself stays entirely model-generated.
 //
-// Chattiness is set to "chatty" through the real Settings control so the global
-// cooldown is 60 s (the default "subtle" is 2 min) — the phases stay honest to
-// the shipped gate, just faster.
+// Chattiness is set to "chatty" through the real Settings control. By default
+// this uses the shipped 60 s global cooldown (the default "subtle" is 2 min).
+// For live-stack CI/harnesses that kill idle tests near 3 min, set
+// ELIZA_PROACTIVE_INTERACTIONS_TEST_COOLDOWN_MS to shorten only the global
+// cooldown through the same runtime gate resolver that production uses.
 //
 // LIVE_ONLY: needs the real runtime + a live provider. Local, keyless run:
 //   LD_LIBRARY_PATH=<build>/bin <build>/bin/llama-server \
@@ -52,6 +54,7 @@
 //   ELIZA_UI_SMOKE_LIVE_STACK=1 LOCAL_LLAMA_CPP_API_KEY=local \
 //   ELIZA_LIVE_TEST_LOCAL_LLAMA_CPP_BASE_URL=http://127.0.0.1:18811/v1 \
 //   ELIZA_LIVE_TEST_SMALL_MODEL=eliza-1-4b ELIZA_LIVE_TEST_LARGE_MODEL=eliza-1-4b \
+//   ELIZA_PROACTIVE_INTERACTIONS_TEST_COOLDOWN_MS=5000 \
 //     bun run --cwd packages/app test:e2e test/ui-smoke/proactive-suggestions-live.spec.ts
 
 import { mkdirSync } from "node:fs";
@@ -68,12 +71,36 @@ const LIVE_STACK = process.env.ELIZA_UI_SMOKE_LIVE_STACK === "1";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const OUT = path.join(HERE, "output", "proactive-suggestions");
 
-// "chatty" governance (packages/agent/src/services/proactive-interaction-gate.ts).
-const GLOBAL_COOLDOWN_MS = 60_000;
+function envMs(name: string, fallback: number): number {
+  const raw = process.env[name]?.trim();
+  if (!raw) return fallback;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  return Math.round(parsed);
+}
+
+// "chatty" governance is 60 s by default
+// (packages/agent/src/services/proactive-interaction-gate.ts).
+const GLOBAL_COOLDOWN_MS = envMs(
+  "ELIZA_PROACTIVE_INTERACTIONS_TEST_COOLDOWN_MS",
+  60_000,
+);
 // Live-judge latency ceiling on a local CPU ~4B model.
 const JUDGE_WAIT_MS = 160_000;
+const INITIAL_DECLINE_WAIT_MS = envMs(
+  "ELIZA_PROACTIVE_INTERACTIONS_TEST_INITIAL_DECLINE_WAIT_MS",
+  60_000,
+);
 // How long phase 2 watches for a (wrong) second bubble.
-const SUPPRESSION_WATCH_MS = 45_000;
+const SUPPRESSION_WATCH_MS = envMs(
+  "ELIZA_PROACTIVE_INTERACTIONS_TEST_SUPPRESSION_WATCH_MS",
+  Math.min(45_000, Math.max(8_000, GLOBAL_COOLDOWN_MS - 1_000)),
+);
+const OFF_WATCH_MS = envMs(
+  "ELIZA_PROACTIVE_INTERACTIONS_TEST_OFF_WATCH_MS",
+  Math.min(JUDGE_WAIT_MS / 2, Math.max(8_000, GLOBAL_COOLDOWN_MS + 2_000)),
+);
+const COOLDOWN_SETTLE_MS = GLOBAL_COOLDOWN_MS + 2_000;
 
 const CHAT_COMPOSER = '[data-testid="chat-composer-textarea"]';
 const SUGGESTION_BUBBLE = '[data-proactive-suggestion="true"]';
@@ -246,7 +273,8 @@ test.describe("proactive interaction suggestions — live pipeline", () => {
     expect(steered.ok).toBe(true);
     expect(steered.baseLen).toBeGreaterThan(0);
 
-    // Faster-but-honest governance: the real "chatty" config (60 s cooldown).
+    // Faster-but-honest governance: the real "chatty" config. In live CI the
+    // explicit test env can shorten the same runtime gate's global cooldown.
     await setProactiveChattiness(page, "chatty");
 
     // The client's `active-conversation` WS message anchors the conversation the
@@ -266,7 +294,7 @@ test.describe("proactive interaction suggestions — live pipeline", () => {
     // phase-1 wallet switch is an isolated change that settles cleanly (overlapping
     // switches confuse the settle gate while a CPU judge round-trip is in flight).
     expect(await reportViewSwitch(page, "settings", "/settings")).toBe(200);
-    await page.waitForTimeout(60_000);
+    await page.waitForTimeout(INITIAL_DECLINE_WAIT_MS);
 
     // Assertions are DELTA-based: the ui-smoke runtime persists conversations
     // across the session, so count the growth in persisted proactive memories,
@@ -328,13 +356,13 @@ test.describe("proactive interaction suggestions — live pipeline", () => {
     await shot(page, "05-after-dismiss.png");
 
     // ── Phase 4: after the cooldown a fresh surface admits again; accept ───
-    await page.waitForTimeout(GLOBAL_COOLDOWN_MS + 10_000);
+    await page.waitForTimeout(COOLDOWN_SETTLE_MS);
     const beforeP4 = await persistedCount();
     await switchAndExpectSuggestion(page, "todos", "/apps/todos");
     expect(await persistedCount()).toBe(beforeP4 + 1);
     await shot(page, "06-second-suggestion.png");
     await newestBubble().getByRole("button", { name: "Do it" }).click();
-    // Accept sends the real implied turn and clears the bubble.
+    // Accept sends the real implied turn and consumes the accept affordance.
     await expect(
       page
         .locator(USER_MESSAGE)
@@ -346,10 +374,10 @@ test.describe("proactive interaction suggestions — live pipeline", () => {
     // ── Phase 5: the real Off setting kills the pipeline ───────────────────
     await setProactiveChattiness(page, "off");
     await shot(page, "09-setting-off.png");
-    await page.waitForTimeout(GLOBAL_COOLDOWN_MS + 10_000);
+    await page.waitForTimeout(COOLDOWN_SETTLE_MS);
     const beforeOff = await persistedCount();
     expect(await reportViewSwitch(page, "inbox", "/apps/inbox")).toBe(200);
-    const offWatchUntil = Date.now() + JUDGE_WAIT_MS / 2;
+    const offWatchUntil = Date.now() + OFF_WATCH_MS;
     while (Date.now() < offWatchUntil) {
       // Off ⇒ the decider bails before the judge; no new memory is ever persisted.
       expect(await persistedCount()).toBe(beforeOff);

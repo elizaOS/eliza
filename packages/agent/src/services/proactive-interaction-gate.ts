@@ -32,6 +32,8 @@ export interface ProactiveGateConfig {
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+const TEST_GLOBAL_COOLDOWN_KEY =
+  "ELIZA_PROACTIVE_INTERACTIONS_TEST_COOLDOWN_MS";
 
 /** Tuning per chattiness level. `subtle` is the recommended default for new users. */
 export function configForChattiness(
@@ -94,7 +96,19 @@ export function resolveProactiveGateConfig(
   env: Record<string, string | undefined> = process.env,
   userSetting?: string | null,
 ): ProactiveGateConfig {
-  return configForChattiness(resolveProactiveChattiness(env, userSetting));
+  const config = configForChattiness(
+    resolveProactiveChattiness(env, userSetting),
+  );
+  const testCooldownMs = parsePositiveMs(env[TEST_GLOBAL_COOLDOWN_KEY]);
+  if (testCooldownMs === null || config.chattiness === "off") return config;
+  return { ...config, globalCooldownMs: testCooldownMs };
+}
+
+function parsePositiveMs(raw: string | undefined): number | null {
+  if (typeof raw !== "string" || raw.trim() === "") return null;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed <= 0) return null;
+  return Math.round(parsed);
 }
 
 export interface AdmitInput {

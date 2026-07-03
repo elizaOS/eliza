@@ -1,13 +1,42 @@
 {
   "conversationId": "cedd86c4-111d-4ede-a9c1-6322937f3342",
-  "wsProactiveFrames": [
-    "{\"type\":\"proactive-message\",\"conversationId\":\"cedd86c4-111d-4ede-a9c1-6322937f3342\",\"message\":{\"id\":\"e857fe79-eca9-49fc-984b-76d3cd9a770d\",\"role\":\"assistant\",\"text\":\"Want to see your latest balances?\",\"timestamp\":1783104333557,\"source\":\"proactive-interaction\"}}"
-  ],
-  "persisted": [
-    {
-      "text": "Want to see your latest balances?",
-      "source": "proactive-interaction"
-    }
-  ],
-  "bubbleCount": 1
+  "initialLiveEvidence": {
+    "date": "2026-07-03",
+    "stack": "packages/app-core/scripts/playwright-ui-live-stack.ts",
+    "provider": "local-llama-cpp",
+    "model": "eliza-1-4b",
+    "baseUrl": "http://127.0.0.1:18811/v1",
+    "wsProactiveFrames": [
+      "{\"type\":\"proactive-message\",\"conversationId\":\"cedd86c4-111d-4ede-a9c1-6322937f3342\",\"message\":{\"id\":\"e857fe79-eca9-49fc-984b-76d3cd9a770d\",\"role\":\"assistant\",\"text\":\"Want to see your latest balances?\",\"timestamp\":1783104333557,\"source\":\"proactive-interaction\"}}"
+    ],
+    "persisted": [
+      {
+        "text": "Want to see your latest balances?",
+        "source": "proactive-interaction"
+      }
+    ],
+    "bubbleCount": 1
+  },
+  "fullPlaywrightRun": {
+    "date": "2026-07-03",
+    "result": "1 passed (2.6m)",
+    "provider": "local-llama-cpp",
+    "model": "eliza-1-4b",
+    "baseUrl": "http://127.0.0.1:18812/v1",
+    "command": "E2E_RECORD=1 ELIZA_UI_SMOKE_LIVE_STACK=1 LOCAL_LLAMA_CPP_API_KEY=local ELIZA_LIVE_TEST_LOCAL_LLAMA_CPP_BASE_URL=http://127.0.0.1:18812/v1 ELIZA_LIVE_TEST_SMALL_MODEL=eliza-1-4b ELIZA_LIVE_TEST_LARGE_MODEL=eliza-1-4b ELIZA_PROACTIVE_INTERACTIONS_TEST_COOLDOWN_MS=5000 ELIZA_PROACTIVE_INTERACTIONS_TEST_INITIAL_DECLINE_WAIT_MS=15000 ELIZA_PROACTIVE_INTERACTIONS_TEST_SUPPRESSION_WATCH_MS=8000 ELIZA_PROACTIVE_INTERACTIONS_TEST_OFF_WATCH_MS=8000 LOG_LEVEL=debug bun run --cwd packages/app test:e2e test/ui-smoke/proactive-suggestions-live.spec.ts",
+    "artifacts": {
+      "video": "walkthrough.webm",
+      "screenshots": [
+        "screenshots/02-suggestion-rendered.png",
+        "screenshots/03-suggestion-mobile.png",
+        "screenshots/04-rate-limit-no-second-bubble.png",
+        "screenshots/05-after-dismiss.png",
+        "screenshots/06-second-suggestion.png",
+        "screenshots/07-accept-sent.png",
+        "screenshots/09-setting-off.png",
+        "screenshots/10-off-no-suggestion.png"
+      ]
+    },
+    "manualReview": "Generated screenshots were opened locally. Desktop and mobile suggestion bubbles render coherently; rate-limit/dismiss/second-suggestion/accept/off captures match the asserted phases."
+  }
 }

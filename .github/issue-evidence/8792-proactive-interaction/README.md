@@ -7,6 +7,28 @@ a **live local LLM** (llama.cpp `llama-server`, **eliza-1-4b** Q4 on CPU, port
 serves the runtime chat turns and the `TEXT_SMALL` proactive judge. No proxy, no
 mock, no injected frames.
 
+A follow-up full run on **2026-07-03** drove all five Playwright phases green
+against the same real stack and local 4B model on port **18812**:
+
+```bash
+E2E_RECORD=1 \
+ELIZA_UI_SMOKE_LIVE_STACK=1 \
+LOCAL_LLAMA_CPP_API_KEY=local \
+ELIZA_LIVE_TEST_LOCAL_LLAMA_CPP_BASE_URL=http://127.0.0.1:18812/v1 \
+ELIZA_LIVE_TEST_SMALL_MODEL=eliza-1-4b \
+ELIZA_LIVE_TEST_LARGE_MODEL=eliza-1-4b \
+ELIZA_PROACTIVE_INTERACTIONS_TEST_COOLDOWN_MS=5000 \
+ELIZA_PROACTIVE_INTERACTIONS_TEST_INITIAL_DECLINE_WAIT_MS=15000 \
+ELIZA_PROACTIVE_INTERACTIONS_TEST_SUPPRESSION_WATCH_MS=8000 \
+ELIZA_PROACTIVE_INTERACTIONS_TEST_OFF_WATCH_MS=8000 \
+LOG_LEVEL=debug \
+bun run --cwd packages/app test:e2e test/ui-smoke/proactive-suggestions-live.spec.ts
+```
+
+Result: **1 passed (2.6m)**. The test-only cooldown override exercises the same
+runtime gate resolver as production, but shortens only the global cooldown so the
+live lane can complete before local sandbox idle killers.
+
 The whole shipped pipeline runs for real:
 
 ```
@@ -35,7 +57,8 @@ real user view switch  (client reportUserViewSwitch POST, source:"user")
   chat transcript as a distinct Suggestion bubble** (`data-proactive-suggestion="true"`)
   with a **"Do it"** accept button and a **dismiss** (×) button — see
   `screenshots/02-suggestion-rendered.png`.
-- The **"Do it"** accept path was exercised (bubble cleared, implied turn sent).
+- The **"Do it"** accept path was exercised: the implied user turn was sent, the
+  accept button was consumed/disabled, and the live agent response began.
 
 ## Driving gesture (honest note)
 
@@ -65,7 +88,19 @@ errors, wallet/calendar/todos/inbox views registered.
   - `02-suggestion-rendered.png` — the governed **Suggestion** bubble with the
     live-model offer + **Do it** + dismiss.
   - `03-suggestion-mobile.png` — the SAME live suggestion at 390×844.
-  - `04-accept-sent.png` — after **Do it** (bubble cleared).
+  - `04-rate-limit-no-second-bubble.png` — immediate second view switch stayed
+    suppressed by the global cooldown.
+  - `05-after-dismiss.png` — dismiss removed the first suggestion from the live
+    transcript.
+  - `06-second-suggestion.png` — a fresh surface admitted after the cooldown.
+  - `07-accept-sent.png` — after **Do it**; the real implied user turn is in the
+    transcript and the suggestion accept button is consumed.
+  - `09-setting-off.png` — proactive suggestions set to off through config.
+  - `10-off-no-suggestion.png` — further view switch with off persisted no new
+    suggestion.
+- `walkthrough.webm` — full Playwright recording of the successful
+  view-switch → suggestion → cooldown suppression → dismiss → second suggestion
+  → accept → off-suppression run.
 - `logs/backend-proactive.log` — structured `[proactive-interaction] …` decider
   lines (admit for wallet, `nothing helpful` for settings, debounce/settle) plus
   `[ViewsRoutes] Navigate…` and `[OpenAI] Using TEXT_SMALL model: eliza-1-4b`.
@@ -82,10 +117,6 @@ errors, wallet/calendar/todos/inbox views registered.
 
 ## N/A rows
 
-- **Walkthrough video** — N/A: the passing run's Playwright video was not retained
-  by the harness on this host; the phase-ordered full-page screenshots above are
-  the rendered proof (desktop + mobile + accept), plus the WS frame and backend
-  decider logs showing the live code path firing.
 - **audit:app loop** — N/A for the suggestion state: the audit harness walks static
   views with no live agent pushing governed `proactive-message` frames, so the
   bubble can never exist in its captures (same justification as the merged #11425

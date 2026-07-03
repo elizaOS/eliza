@@ -151,4 +151,32 @@ describe("resolveProactiveChattiness — kill-switch + setting", () => {
       ).chattiness,
     ).toBe("off");
   });
+
+  it("allows the live e2e lane to shorten the global cooldown explicitly", () => {
+    const cfg = resolveProactiveGateConfig({
+      ELIZA_PROACTIVE_INTERACTIONS: "chatty",
+      ELIZA_PROACTIVE_INTERACTIONS_TEST_COOLDOWN_MS: "5000",
+    });
+    expect(cfg.chattiness).toBe("chatty");
+    expect(cfg.globalCooldownMs).toBe(5_000);
+    expect(cfg.perSurfaceCooldownMs).toBe(
+      configForChattiness("chatty").perSurfaceCooldownMs,
+    );
+  });
+
+  it("ignores invalid test cooldown overrides and never overrides off", () => {
+    expect(
+      resolveProactiveGateConfig({
+        ELIZA_PROACTIVE_INTERACTIONS: "chatty",
+        ELIZA_PROACTIVE_INTERACTIONS_TEST_COOLDOWN_MS: "not-a-number",
+      }).globalCooldownMs,
+    ).toBe(configForChattiness("chatty").globalCooldownMs);
+
+    const off = resolveProactiveGateConfig({
+      ELIZA_PROACTIVE_INTERACTIONS: "off",
+      ELIZA_PROACTIVE_INTERACTIONS_TEST_COOLDOWN_MS: "5000",
+    });
+    expect(off.chattiness).toBe("off");
+    expect(off.globalCooldownMs).toBe(Number.POSITIVE_INFINITY);
+  });
 });
