@@ -1,0 +1,28 @@
+{
+  "schema": "eliza_scenario_native_export",
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-03T18:57:12.073Z",
+  "runDir": "/Users/shawwalters/eliza-workspace/milady/eliza-wt-evidence/.github/issue-evidence/11355-active-view-agent-surface/live/run",
+  "trajectoriesDir": "/Users/shawwalters/eliza-workspace/milady/eliza-wt-evidence/.github/issue-evidence/11355-active-view-agent-surface/live/run/trajectories",
+  "jsonlPath": "/Users/shawwalters/eliza-workspace/milady/eliza-wt-evidence/.github/issue-evidence/11355-active-view-agent-surface/live/native.jsonl",
+  "manifestPath": "/Users/shawwalters/eliza-workspace/milady/eliza-wt-evidence/.github/issue-evidence/11355-active-view-agent-surface/live/native.manifest.json",
+  "counts": {
+    "trajectoryFiles": 1,
+    "parsedTrajectories": 1,
+    "skippedFiles": 0,
+    "rows": 3,
+    "passedRows": 3,
+    "failedRows": 0,
+    "skippedScenarioRows": 0,
+    "unknownOutcomeRows": 0
+  },
+  "runIds": [
+    "6229566b-66f6-457a-919f-f9177a4cf649"
+  ],
+  "scenarioIds": [
+    "live-active-view-agent-surface"
+  ],
+  "agentIds": [
+    "546ac3ab-0468-01a2-9d5b-52dfa34bf9cc"
+  ]
+}
