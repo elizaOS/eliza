@@ -20,7 +20,11 @@ import {
   TRIGGER_TASK_TAGS,
 } from "@elizaos/agent";
 import type { AgentRuntime, EventPayload, Task, UUID } from "@elizaos/core";
-import { EventType, stringToUuid } from "@elizaos/core";
+import {
+  EventType,
+  registerConnectorSourceMetadata,
+  stringToUuid,
+} from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { startTriggerEventBridge } from "./trigger-event-bridge.ts";
@@ -119,7 +123,7 @@ function makeRuntime(): BridgeRuntimeHandle {
       const enriched = {
         ...payload,
         runtime,
-        source: "runtime",
+        source: typeof payload.source === "string" ? payload.source : "runtime",
       } as unknown as EventPayload;
       for (const handler of set) {
         await handler(enriched);
@@ -199,6 +203,53 @@ describe("startTriggerEventBridge", () => {
     expect(forwarded).toMatchObject({ text: "hello" });
     expect(forwarded).not.toHaveProperty("runtime");
     expect(forwarded).not.toHaveProperty("source");
+  });
+
+  it("suppresses passive connector events using connector source metadata aliases", async () => {
+    const task = makeEventTriggerTask({ eventKind: "MESSAGE_RECEIVED" });
+    startTriggerEventBridge(handle.runtime, {
+      listTriggers: async () => [task],
+      dispatch: dispatch as never,
+      now: () => clock.value,
+    });
+
+    await handle.emit(EventType.MESSAGE_RECEIVED, { source: "discord-local" });
+    await handle.emit(EventType.MESSAGE_RECEIVED, { source: "x_dm" });
+
+    expect(dispatch).not.toHaveBeenCalled();
+  });
+
+  it("dispatches passive connector events when passive connector mode is disabled", async () => {
+    handle.setSetting("ELIZA_LIFEOPS_PASSIVE_CONNECTORS", "false");
+    const task = makeEventTriggerTask({ eventKind: "MESSAGE_RECEIVED" });
+    startTriggerEventBridge(handle.runtime, {
+      listTriggers: async () => [task],
+      dispatch: dispatch as never,
+      now: () => clock.value,
+    });
+
+    await handle.emit(EventType.MESSAGE_RECEIVED, { source: "discord-local" });
+
+    expect(dispatch).toHaveBeenCalledTimes(1);
+  });
+
+  it("suppresses custom connector events registered as passive metadata", async () => {
+    registerConnectorSourceMetadata("custom-passive", {
+      aliases: ["custom-passive-alias"],
+      isPassive: true,
+    });
+    const task = makeEventTriggerTask({ eventKind: "MESSAGE_RECEIVED" });
+    startTriggerEventBridge(handle.runtime, {
+      listTriggers: async () => [task],
+      dispatch: dispatch as never,
+      now: () => clock.value,
+    });
+
+    await handle.emit(EventType.MESSAGE_RECEIVED, {
+      source: "custom-passive-alias",
+    });
+
+    expect(dispatch).not.toHaveBeenCalled();
   });
 
   it("does not dispatch a trigger whose eventKind does not match the event", async () => {

@@ -36,6 +36,7 @@ import {
   type EventPayloadMap,
   EventType,
   type IAgentRuntime,
+  isPassiveConnectorSource,
   lifeOpsPassiveConnectorsEnabled,
   type Task,
   type UUID,
@@ -44,17 +45,6 @@ import {
 const DEFAULT_MIN_INTERVAL_MS = 1_000;
 /** TTL for caching trigger task list to avoid repeated DB queries on high-frequency events. */
 const TRIGGER_CACHE_TTL_MS = 500;
-const PASSIVE_CONNECTOR_SOURCES = new Set([
-  "discord",
-  "telegram",
-  "signal",
-  "imessage",
-  "whatsapp",
-  "wechat",
-  "slack",
-  "sms",
-  "x_dm",
-]);
 
 /**
  * Core `EventType`s the bridge subscribes to. Triggers created with an
@@ -133,7 +123,7 @@ function isPassiveConnectorEvent(
     return false;
   }
   const source = readPayloadSource(payload);
-  return source !== null && PASSIVE_CONNECTOR_SOURCES.has(source);
+  return source !== null && isPassiveConnectorSource(source);
 }
 
 export function startTriggerEventBridge(

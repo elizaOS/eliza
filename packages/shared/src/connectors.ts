@@ -1,28 +1,67 @@
-const CONNECTOR_SOURCE_ALIASES: Record<string, readonly string[]> = {
-  discord: ["discord", "discord-local"],
-  imessage: ["imessage", "bluebubbles"],
-  signal: ["signal"],
-  slack: ["slack"],
-  sms: ["sms"],
-  telegram: ["telegram", "telegram-account", "telegramaccount"],
-  wechat: ["wechat"],
-  whatsapp: ["whatsapp"],
+export type ConnectorSourceKind = "passive" | "active";
+
+export interface ConnectorSourceMetadata {
+  aliases?: readonly string[];
+  sourceKind?: ConnectorSourceKind;
+  isPassive?: boolean;
+}
+
+const CONNECTOR_SOURCE_METADATA: Record<string, ConnectorSourceMetadata> = {
+  discord: {
+    aliases: ["discord", "discord-local"],
+    sourceKind: "passive",
+    isPassive: true,
+  },
+  imessage: {
+    aliases: ["imessage", "bluebubbles"],
+    sourceKind: "passive",
+    isPassive: true,
+  },
+  signal: { aliases: ["signal"], sourceKind: "passive", isPassive: true },
+  slack: { aliases: ["slack"], sourceKind: "passive", isPassive: true },
+  sms: { aliases: ["sms"], sourceKind: "passive", isPassive: true },
+  telegram: {
+    aliases: ["telegram", "telegram-account", "telegramaccount"],
+    sourceKind: "passive",
+    isPassive: true,
+  },
+  wechat: { aliases: ["wechat"], sourceKind: "passive", isPassive: true },
+  whatsapp: { aliases: ["whatsapp"], sourceKind: "passive", isPassive: true },
+  x: { aliases: ["x", "x_dm"], sourceKind: "passive", isPassive: true },
 };
 
-const registeredAliases: Record<string, string[]> = {};
+const registeredMetadata: Record<string, ConnectorSourceMetadata> = {};
 const rawToCanonical = new Map<string, string>();
+
+function mergeMetadata(
+  base: ConnectorSourceMetadata | undefined,
+  registered: ConnectorSourceMetadata | undefined,
+): ConnectorSourceMetadata {
+  return {
+    aliases: Array.from(
+      new Set([...(base?.aliases ?? []), ...(registered?.aliases ?? [])]),
+    ),
+    sourceKind: registered?.sourceKind ?? base?.sourceKind,
+    isPassive: registered?.isPassive ?? base?.isPassive,
+  };
+}
+
+function getMergedMetadata(canonical: string): ConnectorSourceMetadata {
+  return mergeMetadata(
+    CONNECTOR_SOURCE_METADATA[canonical],
+    registeredMetadata[canonical],
+  );
+}
 
 function rebuildRawToCanonical(): void {
   rawToCanonical.clear();
 
-  for (const [canonical, aliases] of Object.entries(CONNECTOR_SOURCE_ALIASES)) {
-    for (const alias of aliases) {
-      rawToCanonical.set(alias, canonical);
-    }
-  }
-
-  for (const [canonical, aliases] of Object.entries(registeredAliases)) {
-    for (const alias of aliases) {
+  const canonicalSources = new Set([
+    ...Object.keys(CONNECTOR_SOURCE_METADATA),
+    ...Object.keys(registeredMetadata),
+  ]);
+  for (const canonical of canonicalSources) {
+    for (const alias of getMergedMetadata(canonical).aliases ?? [canonical]) {
       rawToCanonical.set(alias, canonical);
     }
   }
@@ -34,23 +73,31 @@ export function registerConnectorSourceAliases(
   canonical: string,
   aliases: readonly string[],
 ): void {
+  registerConnectorSourceMetadata(canonical, { aliases });
+}
+
+export function registerConnectorSourceMetadata(
+  canonical: string,
+  metadata: ConnectorSourceMetadata,
+): void {
   const key = canonical.trim().toLowerCase();
   if (!key) return;
 
-  const existing = registeredAliases[key] ?? [];
-  const merged = new Set([
-    ...existing,
-    ...aliases.map((alias) => alias.trim().toLowerCase()),
+  const existing = registeredMetadata[key];
+  const mergedAliases = new Set([
+    ...(existing?.aliases ?? []),
+    ...(metadata.aliases ?? []).map((alias) => alias.trim().toLowerCase()),
   ]);
-  registeredAliases[key] = Array.from(merged);
+  registeredMetadata[key] = {
+    ...existing,
+    ...metadata,
+    aliases: Array.from(mergedAliases),
+  };
   rebuildRawToCanonical();
 }
 
 function getMergedAliases(canonical: string): readonly string[] {
-  const hardcoded = CONNECTOR_SOURCE_ALIASES[canonical] ?? [];
-  const registered = registeredAliases[canonical] ?? [];
-  if (registered.length === 0) return hardcoded;
-  return Array.from(new Set([...hardcoded, ...registered]));
+  return getMergedMetadata(canonical).aliases ?? [];
 }
 
 export function normalizeConnectorSource(
@@ -78,6 +125,24 @@ export function getConnectorSourceAliases(
 
   const aliases = getMergedAliases(canonical);
   return [...(aliases.length > 0 ? aliases : [canonical])];
+}
+
+export function getConnectorSourceMetadata(
+  source: string | null | undefined,
+): ConnectorSourceMetadata | null {
+  const canonical = normalizeConnectorSource(source);
+  if (!canonical) {
+    return null;
+  }
+  const metadata = getMergedMetadata(canonical);
+  return Object.keys(metadata).length > 0 ? metadata : null;
+}
+
+export function isPassiveConnectorSource(
+  source: string | null | undefined,
+): boolean {
+  const metadata = getConnectorSourceMetadata(source);
+  return Boolean(metadata?.isPassive || metadata?.sourceKind === "passive");
 }
 
 export function expandConnectorSourceFilter(
