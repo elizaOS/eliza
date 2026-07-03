@@ -583,7 +583,7 @@ describe("POST /api/v1/apps (create)", () => {
     });
   });
 
-  test("403 rejects create-time monetization enablement before creating an app", async () => {
+  test("200 create-time monetization enablement is downgraded: app created, monetization off, review warning", async () => {
     const { status, json } = await req("POST", "/api/v1/apps", {
       key: KEY_A,
       body: {
@@ -593,14 +593,25 @@ describe("POST /api/v1/apps (create)", () => {
         inference_markup_percentage: 25,
       },
     });
-    expect(status).toBe(403);
-    expect(json.success).toBe(false);
-    expect(json.code).toBe("app_review_required");
-    expect(json.review_status).toBe("draft");
-    expect(createApp).not.toHaveBeenCalled();
-    expect(updateMonetizationSettings).not.toHaveBeenCalled();
-    expect([...store.values()].map((app) => app.name)).not.toContain(
-      "Metered App",
+    expect(status).toBe(200);
+    expect(json.success).toBe(true);
+    expect(createApp).toHaveBeenCalledTimes(1);
+    // Fail-closed: the requested enable is never honored at create time; the
+    // pricing default persists so approval needs no re-entry.
+    expect(updateMonetizationSettings).toHaveBeenCalledTimes(1);
+    expect(updateMonetizationSettings.mock.calls[0][1]).toMatchObject({
+      monetizationEnabled: false,
+      inferenceMarkupPercentage: 25,
+    });
+    const returned = json.app as App;
+    expect(returned.monetization_enabled).toBe(false);
+    expect(returned.inference_markup_percentage).toBe(25);
+    expect(returned.review_status).toBe("draft");
+    // The review requirement is surfaced instead of a dead 403 (#11863).
+    const warnings = json.warnings as string[];
+    expect(warnings.some((w) => w.includes("review"))).toBe(true);
+    expect(warnings.some((w) => w.includes("monetization disabled"))).toBe(
+      true,
     );
   });
 

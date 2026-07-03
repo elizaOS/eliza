@@ -5,6 +5,11 @@
  * (planner options win when present), calls the typed `client.createApp({...})`,
  * and replies with the created draft app and an offer to deploy it.
  *
+ * Monetization intent is passed through, but the server never enables
+ * monetization at create time — it creates the app with monetization off,
+ * persists any requested markup as a pricing default, and returns the review
+ * requirement in `warnings`, which this action relays to the user (#11863).
+ *
  * Security: the create response returns the app's plaintext API key ONCE. We do
  * NOT echo it into the chat reply (credentials must never transit a connector) —
  * the key lives in the user's dashboard.
@@ -273,6 +278,7 @@ export const createAppAction: Action = {
         data: {
           app: { id: app.id, name: app.name, slug: app.slug },
           monetization: app.monetization_enabled,
+          reviewStatus: app.review_status,
         },
       };
     } catch (err) {

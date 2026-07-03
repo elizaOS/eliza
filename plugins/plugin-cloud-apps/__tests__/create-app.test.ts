@@ -103,7 +103,12 @@ describe("CREATE_APP", () => {
     expect(reply).not.toContain("eliza_app_secret_do_not_leak");
   });
 
-  it("passes monetization config through to createApp", async () => {
+  it("passes monetization intent through and relays the server's review downgrade (#11863)", async () => {
+    // The server never enables monetization at create time: it creates the app
+    // with monetization off, keeps the markup as a pricing default, and
+    // returns the review requirement in `warnings`.
+    const reviewWarning =
+      "Monetization requires an approved app review, so the app was created with monetization disabled. Submit it for review (the Monetize tab in the dashboard, or POST /api/v1/apps/:id/review), then enable monetization after approval.";
     let received: CreateAppInput | null = null;
     setCreateApp((input) => {
       received = input;
@@ -111,24 +116,39 @@ describe("CREATE_APP", () => {
         success: true,
         app: makeApp({
           name: "Coin",
-          monetization_enabled: true,
+          monetization_enabled: false,
           inference_markup_percentage: 20,
+          review_status: "draft",
         }),
         apiKey: "k",
+        warnings: [reviewWarning],
       });
     });
 
-    await createAppAction.handler(
+    const cb = captureCallback();
+    const result = await createAppAction.handler(
       keyedRuntime(),
       makeMessage("create a monetized app called Coin with 20% markup"),
       undefined,
       undefined,
-      captureCallback().fn,
+      cb.fn,
     );
 
     const body = received as unknown as CreateAppInput;
     expect(body.monetization_enabled).toBe(true);
     expect(body.inference_markup_percentage).toBe(20);
+
+    // The app was still created — no dead 403 — and the reply surfaces the
+    // review requirement without claiming monetization is on.
+    expect(result?.success).toBe(true);
+    const reply = cb.calls[0]?.text ?? "";
+    expect(reply).toContain("Coin");
+    expect(reply).toContain(reviewWarning);
+    expect(reply).not.toContain("Monetization is on");
+    expect(result?.data).toMatchObject({
+      monetization: false,
+      reviewStatus: "draft",
+    });
   });
 
   it("asks for a name when none can be parsed (no create call)", async () => {

@@ -1,0 +1,10 @@
+=== fail-without-fix: apps-crud.integration.test.ts run at pre-fix route (origin/develop a747ced409) ===
+commit: a747ced4097145088d61286a48309cc8a0424ed6
+
+596 |     expect(status).toBe(200);
+error: expect(received).toBe(expected)
+Expected: 200
+Received: 403
+(fail) POST /api/v1/apps (create) > 200 create-time monetization enablement is downgraded: app created, monetization off, review warning [1.21ms]
+ 40 pass
+ 1 fail

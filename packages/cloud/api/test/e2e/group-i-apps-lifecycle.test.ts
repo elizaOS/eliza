@@ -266,11 +266,11 @@ describeE2E("POST /api/v1/apps", () => {
     if (body.app?.id) createdAppIds.push(body.app.id);
   });
 
-  test("monetization: create-time enable is rejected before review", async () => {
+  test("monetization: create-time enable is downgraded to disabled + review warning", async () => {
     const res = await api.post(
       "/api/v1/apps",
       {
-        name: uniqueName("Create-Time Monetization Rejected"),
+        name: uniqueName("Create-Time Monetization Downgraded"),
         description: "App CRUD lifecycle regression test",
         app_url: "https://example.com/app",
         website_url: "https://example.com",
@@ -281,13 +281,21 @@ describeE2E("POST /api/v1/apps", () => {
       },
       { headers: bearerHeaders() },
     );
-    expect(res.status).toBe(403);
-    const body = (await res.json()) as {
-      code?: string;
-      review_status?: string;
+    // The app is created (no dead 403 — #11863); monetization stays off until
+    // the app passes review, and the review path is surfaced as a warning.
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as CreateAppResponse & {
+      app?: AppDto & { review_status?: string };
     };
-    expect(body.code).toBe("app_review_required");
-    expect(body.review_status).toBe("draft");
+    expect(body.success).toBe(true);
+    expect(body.app?.monetization_enabled).toBe(false);
+    expect(body.app?.review_status).toBe("draft");
+    expect(body.warnings?.some((w) => w.includes("review"))).toBe(true);
+    if (body.app?.id) createdAppIds.push(body.app.id);
+
+    const fetched = await getApp(body.app?.id as string);
+    expect(fetched?.monetization_enabled).toBe(false);
+    expect(Number(fetched?.inference_markup_percentage)).toBe(25);
   });
 
   test("monetization: create-time pricing defaults persist while disabled", async () => {

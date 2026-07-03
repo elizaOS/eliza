@@ -28,11 +28,22 @@ const CreateAppSchema = z.object({
   allowed_origins: z.array(z.string()).optional(),
   logo_url: z.string().url().optional(),
   skipGitHubRepo: z.boolean().optional(),
-  // Optional monetization config applied immediately after creation. Enabling
-  // monetization still requires the same review approval as the PUT endpoint.
+  // Optional monetization config applied immediately after creation. A `true`
+  // enable request is never honored at create time — the app is created with
+  // monetization off and the review requirement is returned in `warnings`
+  // (enabling requires the same review approval as the PUT endpoint).
   monetization_enabled: z.boolean().optional(),
   inference_markup_percentage: z.number().min(0).max(1000).optional(),
 });
+
+/**
+ * Warning returned when a create request asks for `monetization_enabled: true`.
+ * Monetization requires an approved review, so the create is downgraded — the
+ * app still exists, monetization stays off, and this string tells the caller
+ * (human or agent) the exact next step (#11863).
+ */
+export const CREATE_TIME_MONETIZATION_WARNING =
+  "Monetization requires an approved app review, so the app was created with monetization disabled. Submit it for review (the Monetize tab in the dashboard, or POST /api/v1/apps/:id/review), then enable monetization after approval.";
 
 const app = new Hono<AppEnv>();
 
@@ -67,18 +78,17 @@ app.post("/", async (c) => {
     }
     const data = validationResult.data;
 
-    if (data.monetization_enabled === true) {
-      return c.json(
-        {
-          success: false,
-          error:
-            "Create the app, submit it for review, then enable monetization after approval.",
-          code: "app_review_required",
-          review_status: "draft",
-        },
-        403,
-      );
-    }
+    // Monetization can never be enabled at create time — it requires an
+    // approved review (the same gate as PUT /apps/:id/monetization). Rather
+    // than rejecting the whole request (which left agent/SDK "create a
+    // monetized app" flows with a dead 403 and no app — #11863), the app is
+    // created with monetization forced off and the review path is surfaced in
+    // `warnings`. Requested pricing defaults still persist so enabling after
+    // approval needs no re-entry.
+    const monetizationDeferred = data.monetization_enabled === true;
+    const monetizationEnabled = monetizationDeferred
+      ? false
+      : data.monetization_enabled;
 
     try {
       const result = await appFactoryService.createApp(
@@ -105,18 +115,21 @@ app.post("/", async (c) => {
       });
 
       const warnings = [...result.errors];
+      if (monetizationDeferred) {
+        warnings.push(CREATE_TIME_MONETIZATION_WARNING);
+      }
 
       // Persist pricing defaults at creation when requested. Enabling
-      // monetization is deliberately excluded here because it must pass the
-      // same approved-review gate as PUT /apps/:id/monetization.
+      // monetization is deliberately excluded (forced off above) because it
+      // must pass the same approved-review gate as PUT /apps/:id/monetization.
       if (
-        data.monetization_enabled !== undefined ||
+        monetizationEnabled !== undefined ||
         data.inference_markup_percentage !== undefined
       ) {
         try {
           await appCreditsService.updateMonetizationSettings(result.app.id, {
-            ...(data.monetization_enabled !== undefined && {
-              monetizationEnabled: data.monetization_enabled,
+            ...(monetizationEnabled !== undefined && {
+              monetizationEnabled,
             }),
             ...(data.inference_markup_percentage !== undefined && {
               inferenceMarkupPercentage: data.inference_markup_percentage,

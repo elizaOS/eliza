@@ -881,8 +881,10 @@ export interface CreateAppInput {
   /**
    * Persist create-time monetization defaults.
    *
-   * `true` is rejected with `app_review_required`; create the app, submit it
-   * for review, then enable monetization after approval.
+   * `true` is never honored at create time: the app is created with
+   * monetization disabled and the review requirement is returned in
+   * `warnings` (fail-closed until the app passes review). Submit the app for
+   * review, then enable monetization after approval.
    */
   monetization_enabled?: boolean;
   /** Inference markup percentage, 0–1000. */
