@@ -38,7 +38,8 @@ private let fullBunHostCallCallback: @convention(c) (
 ///   `ELIZA_MAX_PROTOCOL_LINE_BYTES` (16 MiB) cap prevents unbounded reads.
 /// - Host-call allowlist: only `llama_hardware_info`, `llama_load_model`,
 ///   `llama_generate`, `llama_free`, `llama_cancel`, `eliza_tts_synthesize`,
-///   and `eliza_asr_transcribe` are dispatched by
+///   `eliza_asr_transcribe`, `keep_awake_set`, `bg_download_start`,
+///   `bg_download_status`, and `bg_download_cancel` are dispatched by
 ///   `handleHostCall`. All other method names return `{"ok":false,"error":"..."}`.
 /// - `http_fetch` (JSContext compat path): loopback/local-agent URLs are
 ///   rejected at `HTTPBridge.isLocalLoopback` before a URLRequest is created.
@@ -407,6 +408,38 @@ final class FullBunEngineHost {
                 let enabled = boolValue(payload, "enabled") ?? false
                 KeepAwakeBridge.shared.setEnabled(enabled)
                 return encodeHostEnvelope(ok: true, result: ["enabled": NSNumber(value: enabled)])
+            case "bg_download_start":
+                // Route the large on-device model file through a native
+                // background URLSession so the ~5 GB transfer survives the app
+                // backgrounding / the device locking (#11841). The downloader
+                // polls `bg_download_status` for progress + completion.
+                guard let id = stringValue(payload, "id"), !id.isEmpty,
+                      let url = stringValue(payload, "url"), !url.isEmpty,
+                      let destPath = stringValue(payload, "destPath"), !destPath.isEmpty else {
+                    return encodeHostEnvelope(
+                        ok: false,
+                        error: "bg_download_start requires id, url, and destPath"
+                    )
+                }
+                let headers = stringMapValue(payload, "headers") ?? [:]
+                let total = int64Value(payload, "expectedTotalBytes") ?? 0
+                return encodeHostEnvelope(ok: true, result: BackgroundDownloadBridge.shared.start(
+                    id: id,
+                    urlString: url,
+                    headers: headers,
+                    destPath: destPath,
+                    expectedTotalBytes: total
+                ))
+            case "bg_download_status":
+                guard let id = stringValue(payload, "id"), !id.isEmpty else {
+                    return encodeHostEnvelope(ok: false, error: "bg_download_status requires id")
+                }
+                return encodeHostEnvelope(ok: true, result: BackgroundDownloadBridge.shared.status(id: id))
+            case "bg_download_cancel":
+                guard let id = stringValue(payload, "id"), !id.isEmpty else {
+                    return encodeHostEnvelope(ok: false, error: "bg_download_cancel requires id")
+                }
+                return encodeHostEnvelope(ok: true, result: BackgroundDownloadBridge.shared.cancel(id: id))
             default:
                 return encodeHostEnvelope(
                     ok: false,
@@ -662,6 +695,19 @@ final class FullBunEngineHost {
         if let value = payload[key] as? NSNumber { return value.floatValue }
         if let value = payload[key] as? String, let parsed = Float(value) { return parsed }
         return nil
+    }
+
+    private func stringMapValue(_ payload: [String: Any], _ key: String) -> [String: String]? {
+        guard let raw = payload[key] as? [String: Any] else { return nil }
+        var out: [String: String] = [:]
+        for (mapKey, value) in raw {
+            if let string = value as? String {
+                out[mapKey] = string
+            } else if let number = value as? NSNumber {
+                out[mapKey] = number.stringValue
+            }
+        }
+        return out
     }
 
     private func stringArrayValue(_ payload: [String: Any], _ key: String) -> [String]? {

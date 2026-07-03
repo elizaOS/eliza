@@ -549,6 +549,7 @@ async function startIosBridgeBackend(): Promise<IosBridgeBackend> {
 	const runtime = await bootRuntimeWithRetry(bootElizaRuntime);
 	installIosNativeLlamaHandlers(runtime);
 	installKeepAwakeBridge();
+	installBackgroundDownloadBridge();
 
 	maybeAutoRunModelGrind();
 
@@ -2605,6 +2606,31 @@ function installKeepAwakeBridge(): void {
 		);
 		return true;
 	};
+}
+
+/**
+ * Expose the native background-download host functions on the full-Bun engine's
+ * Bun global so the in-process model downloader can route the ~5 GB weight pull
+ * through a native background `URLSession` that survives the app backgrounding
+ * or the device locking (#11841). The native handlers (`bg_download_*` in
+ * `FullBunEngineHost` → `BackgroundDownloadBridge`) start the task and report
+ * progress/terminal state; the downloader starts a job then polls status until
+ * it is terminal. Each function resolves the native host envelope's `result`
+ * object; a rejection means the host call itself failed. Only defines the
+ * functions when the engine has not already installed them.
+ */
+function installBackgroundDownloadBridge(): void {
+	const g = globalThis as typeof globalThis & {
+		__ELIZA_BRIDGE__?: Record<string, unknown>;
+	};
+	g.__ELIZA_BRIDGE__ = g.__ELIZA_BRIDGE__ ?? {};
+	if (typeof g.__ELIZA_BRIDGE__.bg_download_start === "function") return;
+	g.__ELIZA_BRIDGE__.bg_download_start = (args: unknown): Promise<unknown> =>
+		callIosHost("bg_download_start", args, 60_000);
+	g.__ELIZA_BRIDGE__.bg_download_status = (args: unknown): Promise<unknown> =>
+		callIosHost("bg_download_status", args, 60_000);
+	g.__ELIZA_BRIDGE__.bg_download_cancel = (args: unknown): Promise<unknown> =>
+		callIosHost("bg_download_cancel", args, 60_000);
 }
 
 function installIosNativeLlamaHandlers(runtime: IAgentRuntime): void {

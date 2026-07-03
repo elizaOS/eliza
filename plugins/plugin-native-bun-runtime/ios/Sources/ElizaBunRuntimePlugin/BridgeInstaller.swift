@@ -22,6 +22,7 @@ public struct BridgeKit {
     public let process: ProcessBridge
     public let ui: UIBridge
     public let keepAwake: KeepAwakeBridge
+    public let backgroundDownload: BackgroundDownloadBridge
 }
 
 public enum BridgeInstaller {
@@ -73,6 +74,12 @@ public enum BridgeInstaller {
         let keepAwake = KeepAwakeBridge()
         keepAwake.install(into: ctx)
 
+        // The shared singleton owns the one background URLSession allowed per
+        // identifier per process (and is the instance the AppDelegate relaunch
+        // hook forwards completion events to).
+        let backgroundDownload = BackgroundDownloadBridge.shared
+        backgroundDownload.install(into: ctx)
+
         return BridgeKit(
             fs: fs,
             paths: pathsBridge,
@@ -83,7 +90,8 @@ public enum BridgeInstaller {
             log: log,
             process: process,
             ui: ui,
-            keepAwake: keepAwake
+            keepAwake: keepAwake,
+            backgroundDownload: backgroundDownload
         )
     }
 }

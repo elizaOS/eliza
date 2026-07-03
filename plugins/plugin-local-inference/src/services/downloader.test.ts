@@ -1376,3 +1376,175 @@ describe("local inference downloader keep-awake (idle-timer) wiring (#11841)", (
 		}
 	});
 });
+
+describe("local inference downloader native background URLSession path (#11841)", () => {
+	type BgArgs = {
+		id: string;
+		url: string;
+		headers: Record<string, string>;
+		destPath: string;
+		expectedTotalBytes: number;
+	};
+	type BgSnapshot = {
+		id: string;
+		state: "running" | "completed" | "failed" | "cancelled";
+		received: number;
+		total: number;
+		destPath: string;
+		error?: string;
+	};
+	type BgBridgeGlobal = {
+		__ELIZA_BRIDGE__?: Record<string, unknown>;
+	};
+
+	/**
+	 * Stand in for the native iOS `BackgroundDownloadBridge` the runtime installs
+	 * on `globalThis.__ELIZA_BRIDGE__`. Resolves each requested URL against the
+	 * fetch fixture bodies, writes the bytes straight to the downloader's staging
+	 * `destPath` (as the real native session's `didFinishDownloadingTo` move
+	 * does), and reports terminal state synchronously so the downloader's poll
+	 * loop observes completion on its first `bg_download_status` call.
+	 */
+	function installBackgroundDownloadFixture(files: Map<string, string>): {
+		starts: BgArgs[];
+		restore: () => void;
+	} {
+		const starts: BgArgs[] = [];
+		const jobs = new Map<string, BgSnapshot>();
+		const g = globalThis as BgBridgeGlobal;
+		const hadBridge = "__ELIZA_BRIDGE__" in g;
+		const priorBridge = g.__ELIZA_BRIDGE__;
+
+		g.__ELIZA_BRIDGE__ = {
+			...(priorBridge ?? {}),
+			bg_download_start: async (raw: unknown): Promise<BgSnapshot> => {
+				const args = raw as BgArgs;
+				starts.push(args);
+				const remotePath = remotePathOf(args.url);
+				const body = files.get(remotePath);
+				if (body === undefined) {
+					const snap: BgSnapshot = {
+						id: args.id,
+						state: "failed",
+						received: 0,
+						total: 0,
+						destPath: args.destPath,
+						error: `missing ${remotePath}`,
+					};
+					jobs.set(args.id, snap);
+					return snap;
+				}
+				fs.mkdirSync(path.dirname(args.destPath), { recursive: true });
+				fs.writeFileSync(args.destPath, body);
+				const size = Buffer.byteLength(body);
+				const snap: BgSnapshot = {
+					id: args.id,
+					state: "completed",
+					received: size,
+					total: size,
+					destPath: args.destPath,
+				};
+				jobs.set(args.id, snap);
+				return snap;
+			},
+			bg_download_status: async (raw: unknown): Promise<BgSnapshot> => {
+				const { id } = raw as { id: string };
+				return (
+					jobs.get(id) ?? {
+						id,
+						state: "failed",
+						received: 0,
+						total: 0,
+						destPath: "",
+						error: `unknown id ${id}`,
+					}
+				);
+			},
+			bg_download_cancel: async (raw: unknown): Promise<BgSnapshot> => {
+				const { id } = raw as { id: string };
+				const snap = jobs.get(id);
+				if (snap) snap.state = "cancelled";
+				return (
+					snap ?? {
+						id,
+						state: "cancelled",
+						received: 0,
+						total: 0,
+						destPath: "",
+					}
+				);
+			},
+		};
+
+		return {
+			starts,
+			restore: () => {
+				if (hadBridge) g.__ELIZA_BRIDGE__ = priorBridge;
+				else delete g.__ELIZA_BRIDGE__;
+			},
+		};
+	}
+
+	it("installs the bundle through the native bridge without any in-process fetch", async () => {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-download-test-"));
+		process.env.ELIZA_STATE_DIR = root;
+		const model = findCatalogModel("eliza-1-2b");
+		if (!model) throw new Error("missing test catalog model");
+
+		// Any in-process fetch on the native path is a routing bug — fail loudly.
+		const fetchSpy = vi.fn(async () => {
+			throw new Error(
+				"fetch must not be used when the native bridge is present",
+			);
+		});
+		globalThis.fetch = fetchSpy as unknown as typeof fetch;
+		const bg = installBackgroundDownloadFixture(freshBundleFixtureFiles());
+		try {
+			const downloader = new Downloader({
+				probeDeviceCaps: async () => cpuOnlyCaps,
+			});
+			const completed = waitForTerminal(downloader, model.id);
+			await downloader.start(model.id);
+			const job = await completed;
+
+			expect(job.state).toBe("completed");
+			expect(fetchSpy).not.toHaveBeenCalled();
+			// Every bundle file (manifest + weights) was pulled via the bridge.
+			expect(bg.starts.length).toBeGreaterThan(1);
+			const installed = (await listInstalledModels()).find(
+				(m) => m.id === model.id,
+			);
+			expect(installed).toBeDefined();
+		} finally {
+			bg.restore();
+		}
+	});
+
+	it("fails the job when the native bridge reports a failed transfer", async () => {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-download-test-"));
+		process.env.ELIZA_STATE_DIR = root;
+		const model = findCatalogModel("eliza-1-2b");
+		if (!model) throw new Error("missing test catalog model");
+
+		// Serve the manifest but drop the text weight so the native transfer for
+		// that file reports `failed` and the job surfaces the failure.
+		const files = freshBundleFixtureFiles();
+		files.delete(eliza1BundleRemotePath("text/eliza-1-2b-128k.gguf"));
+		globalThis.fetch = vi.fn(async () => {
+			throw new Error(
+				"fetch must not be used when the native bridge is present",
+			);
+		}) as unknown as typeof fetch;
+		const bg = installBackgroundDownloadFixture(files);
+		try {
+			const downloader = new Downloader({
+				probeDeviceCaps: async () => cpuOnlyCaps,
+			});
+			const completed = waitForTerminal(downloader, model.id);
+			await downloader.start(model.id);
+			await expect(completed).rejects.toThrow();
+		} finally {
+			bg.restore();
+		}
+	});
+});

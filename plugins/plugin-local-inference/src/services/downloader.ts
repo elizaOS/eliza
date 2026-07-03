@@ -170,6 +170,60 @@ const DISK_HEADROOM_GB = 0.5;
  */
 const SHA_MISMATCH_MAX_ATTEMPTS = 2;
 
+/** Poll interval while a native background download is in flight (#11841). */
+const BACKGROUND_DOWNLOAD_POLL_MS = 500;
+
+/**
+ * Native iOS background-`URLSession` download bridge, exposed by the full-Bun /
+ * JSContext runtime on `globalThis.__ELIZA_BRIDGE__` (#11841). Present only on
+ * iOS; absent (so the in-process fetch path is used) on desktop, Android, and
+ * in tests unless a fake is installed. Each function resolves the native
+ * host-call `result` object.
+ */
+interface NativeBackgroundDownloadBridge {
+	bg_download_start(args: {
+		id: string;
+		url: string;
+		headers: Record<string, string>;
+		destPath: string;
+		expectedTotalBytes: number;
+	}): unknown | Promise<unknown>;
+	bg_download_status(args: { id: string }): unknown | Promise<unknown>;
+	bg_download_cancel(args: { id: string }): unknown | Promise<unknown>;
+}
+
+interface NativeBackgroundDownloadStatus {
+	state: "running" | "completed" | "failed" | "cancelled";
+	received?: number;
+	total?: number;
+	destPath?: string;
+	error?: string;
+}
+
+function parseBackgroundStatus(raw: unknown): NativeBackgroundDownloadStatus {
+	const value =
+		raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+	const state =
+		value.state === "completed" ||
+		value.state === "failed" ||
+		value.state === "cancelled"
+			? value.state
+			: "running";
+	return {
+		state,
+		received: typeof value.received === "number" ? value.received : undefined,
+		total: typeof value.total === "number" ? value.total : undefined,
+		destPath: typeof value.destPath === "string" ? value.destPath : undefined,
+		error: typeof value.error === "string" ? value.error : undefined,
+	};
+}
+
+function makeAbortError(): Error {
+	const error = new Error("Download aborted");
+	error.name = "AbortError";
+	return error;
+}
+
 interface TerminalDownloadsFile {
 	version: 1;
 	jobs: DownloadJob[];
@@ -639,6 +693,134 @@ export class Downloader {
 		}
 	}
 
+	/**
+	 * The native iOS background-`URLSession` download bridge, when the runtime
+	 * has installed it (#11841). Present only on iOS; `undefined` everywhere
+	 * else, which keeps every other platform on the in-process fetch path.
+	 */
+	private backgroundDownloadBridge():
+		| NativeBackgroundDownloadBridge
+		| undefined {
+		const bridge = (
+			globalThis as {
+				__ELIZA_BRIDGE__?: Record<string, unknown>;
+			}
+		).__ELIZA_BRIDGE__;
+		if (
+			bridge &&
+			typeof bridge.bg_download_start === "function" &&
+			typeof bridge.bg_download_status === "function" &&
+			typeof bridge.bg_download_cancel === "function"
+		) {
+			return bridge as unknown as NativeBackgroundDownloadBridge;
+		}
+		return undefined;
+	}
+
+	/**
+	 * Download one whole remote file to `targetPath` through the native
+	 * background `URLSession` and resolve once the finished file is fully staged
+	 * there. The native session owns its own resume across app suspension / lock
+	 * (that is the point of #11841), so this path never sends a Range header —
+	 * it always targets the complete file and lets the OS resume as needed.
+	 * Progress is polled and mapped onto the job's cumulative byte counters; the
+	 * caller runs the existing sha256 gate on the staged file. `forceFresh`
+	 * discards any resumable/terminal native state for this id first, used when
+	 * the sha gate rejects a completed transfer and we must re-fetch from zero.
+	 */
+	private async transferViaBackgroundSession(args: {
+		bridge: NativeBackgroundDownloadBridge;
+		downloadId: string;
+		url: string;
+		headers: Record<string, string>;
+		targetPath: string;
+		record: ActiveJob;
+		baseBytes: number;
+		expectedTotalBytes: number;
+		forceFresh: boolean;
+	}): Promise<void> {
+		const {
+			bridge,
+			downloadId,
+			url,
+			headers,
+			targetPath,
+			record,
+			baseBytes,
+			expectedTotalBytes,
+			forceFresh,
+		} = args;
+
+		if (forceFresh) {
+			await Promise.resolve(
+				bridge.bg_download_cancel({ id: downloadId }),
+			).catch(() => undefined);
+		}
+
+		const started = parseBackgroundStatus(
+			await bridge.bg_download_start({
+				id: downloadId,
+				url,
+				headers,
+				destPath: targetPath,
+				expectedTotalBytes,
+			}),
+		);
+		if (started.state === "failed") {
+			throw new Error(
+				started.error ??
+					`native background download failed to start for ${downloadId}`,
+			);
+		}
+
+		let lastSampleBytes = record.job.received;
+		let lastSampleAt = Date.now();
+		for (;;) {
+			if (record.abortController.signal.aborted) {
+				await Promise.resolve(
+					bridge.bg_download_cancel({ id: downloadId }),
+				).catch(() => undefined);
+				throw makeAbortError();
+			}
+
+			const status = parseBackgroundStatus(
+				await bridge.bg_download_status({ id: downloadId }),
+			);
+			const received = status.received ?? 0;
+			if (status.total !== undefined && status.total > 0) {
+				record.job.total = Math.max(record.job.total, baseBytes + status.total);
+			}
+			record.job.received = baseBytes + received;
+
+			const now = Date.now();
+			const elapsed = now - lastSampleAt;
+			if (elapsed >= 1000) {
+				record.job.bytesPerSec =
+					((record.job.received - lastSampleBytes) * 1000) / elapsed;
+				record.job.etaMs =
+					record.job.bytesPerSec > 0
+						? ((record.job.total - record.job.received) * 1000) /
+							record.job.bytesPerSec
+						: null;
+				lastSampleAt = now;
+				lastSampleBytes = record.job.received;
+			}
+			this.throttleEmit(record);
+
+			if (status.state === "completed") return;
+			if (status.state === "cancelled") throw makeAbortError();
+			if (status.state === "failed") {
+				throw new Error(
+					status.error ?? `native background download failed for ${downloadId}`,
+				);
+			}
+
+			await new Promise((resolve) =>
+				setTimeout(resolve, BACKGROUND_DOWNLOAD_POLL_MS),
+			);
+		}
+	}
+
 	private async runJob(
 		catalogEntry: CatalogModel,
 		record: ActiveJob,
@@ -653,72 +835,91 @@ export class Downloader {
 			}
 
 			const url = buildHuggingFaceResolveUrl(catalogEntry);
-
-			const httpClient = await this.loadHttpClient();
-			const startByte = record.job.received;
-
 			const headers: Record<string, string> = {
 				"user-agent": "Eliza-LocalInference/1.0",
 				...resolveHfDownloadBase().authHeader,
 			};
-			if (startByte > 0) {
-				headers.range = `bytes=${startByte}-`;
-			}
 
-			const response = await httpClient.request(url, {
-				method: "GET",
-				headers,
-				signal: record.abortController.signal,
-			});
-
-			if (response.statusCode >= 400) {
-				throw new Error(
-					`HTTP ${response.statusCode} from model hub for ${catalogEntry.hfRepo}`,
-				);
-			}
-			let effectiveStartByte = startByte;
-			if (effectiveStartByte > 0 && response.statusCode !== 206) {
-				effectiveStartByte = 0;
+			const backgroundBridge = this.backgroundDownloadBridge();
+			if (backgroundBridge) {
+				// iOS: route the whole file through the native background
+				// URLSession so it survives the app backgrounding / device lock
+				// (#11841). The native session owns resume, so no Range header.
 				record.job.received = 0;
-			}
+				await this.transferViaBackgroundSession({
+					bridge: backgroundBridge,
+					downloadId: stagingFilename(record.job.modelId),
+					url,
+					headers,
+					targetPath: record.stagingPath,
+					record,
+					baseBytes: 0,
+					expectedTotalBytes: record.job.total,
+					forceFresh: false,
+				});
+			} else {
+				const httpClient = await this.loadHttpClient();
+				const startByte = record.job.received;
 
-			const contentLengthHeader = response.headers["content-length"];
-			const contentLength = Array.isArray(contentLengthHeader)
-				? Number.parseInt(contentLengthHeader[0] ?? "0", 10)
-				: Number.parseInt(contentLengthHeader ?? "0", 10);
-			if (Number.isFinite(contentLength) && contentLength > 0) {
-				record.job.total = effectiveStartByte + contentLength;
-			}
-
-			const writeStream: Writable = fs.createWriteStream(record.stagingPath, {
-				flags: effectiveStartByte > 0 ? "a" : "w",
-			});
-
-			let lastSampleBytes = record.job.received;
-			let lastSampleAt = Date.now();
-
-			const bodyStream = Readable.from(response.body);
-			bodyStream.on("data", (chunk: Buffer) => {
-				record.job.received += chunk.length;
-
-				const now = Date.now();
-				const elapsed = now - lastSampleAt;
-				if (elapsed >= 1000) {
-					record.job.bytesPerSec =
-						((record.job.received - lastSampleBytes) * 1000) / elapsed;
-					record.job.etaMs =
-						record.job.bytesPerSec > 0
-							? ((record.job.total - record.job.received) * 1000) /
-								record.job.bytesPerSec
-							: null;
-					lastSampleAt = now;
-					lastSampleBytes = record.job.received;
+				if (startByte > 0) {
+					headers.range = `bytes=${startByte}-`;
 				}
 
-				this.throttleEmit(record);
-			});
+				const response = await httpClient.request(url, {
+					method: "GET",
+					headers,
+					signal: record.abortController.signal,
+				});
 
-			await pipeline(bodyStream, writeStream);
+				if (response.statusCode >= 400) {
+					throw new Error(
+						`HTTP ${response.statusCode} from model hub for ${catalogEntry.hfRepo}`,
+					);
+				}
+				let effectiveStartByte = startByte;
+				if (effectiveStartByte > 0 && response.statusCode !== 206) {
+					effectiveStartByte = 0;
+					record.job.received = 0;
+				}
+
+				const contentLengthHeader = response.headers["content-length"];
+				const contentLength = Array.isArray(contentLengthHeader)
+					? Number.parseInt(contentLengthHeader[0] ?? "0", 10)
+					: Number.parseInt(contentLengthHeader ?? "0", 10);
+				if (Number.isFinite(contentLength) && contentLength > 0) {
+					record.job.total = effectiveStartByte + contentLength;
+				}
+
+				const writeStream: Writable = fs.createWriteStream(record.stagingPath, {
+					flags: effectiveStartByte > 0 ? "a" : "w",
+				});
+
+				let lastSampleBytes = record.job.received;
+				let lastSampleAt = Date.now();
+
+				const bodyStream = Readable.from(response.body);
+				bodyStream.on("data", (chunk: Buffer) => {
+					record.job.received += chunk.length;
+
+					const now = Date.now();
+					const elapsed = now - lastSampleAt;
+					if (elapsed >= 1000) {
+						record.job.bytesPerSec =
+							((record.job.received - lastSampleBytes) * 1000) / elapsed;
+						record.job.etaMs =
+							record.job.bytesPerSec > 0
+								? ((record.job.total - record.job.received) * 1000) /
+									record.job.bytesPerSec
+								: null;
+						lastSampleAt = now;
+						lastSampleBytes = record.job.received;
+					}
+
+					this.throttleEmit(record);
+				});
+
+				await pipeline(bodyStream, writeStream);
+			}
 
 			await fsp.rename(record.stagingPath, record.finalPath);
 
@@ -1013,88 +1214,111 @@ export class Downloader {
 		await fsp.mkdir(path.dirname(finalPath), { recursive: true });
 		await fsp.mkdir(path.dirname(stagingPath), { recursive: true });
 
+		const backgroundBridge = this.backgroundDownloadBridge();
 		const maxAttempts = expectedSha256 ? SHA_MISMATCH_MAX_ATTEMPTS : 1;
 		for (let attempt = 1; ; attempt++) {
-			let startByte = 0;
-			if (expectedSha256) {
-				startByte = await resumableStartByte(stagingPath, expectedSha256);
-				// Stamp the partial with the content hash it is being fetched
-				// against so a later resume can tell whether the .part still
-				// belongs to THIS content version.
-				await fsp.writeFile(
-					stagingMetaPath(stagingPath),
-					expectedSha256,
-					"utf8",
-				);
-			}
-			record.job.received = baseBytes + startByte;
-
 			const url = buildHuggingFaceResolveUrlForPath(catalogEntry, remotePath);
 			const headers: Record<string, string> = {
 				"user-agent": "Eliza-LocalInference/1.0",
 				...resolveHfDownloadBase().authHeader,
 			};
-			if (startByte > 0) {
-				headers.range = `bytes=${startByte}-`;
-			}
 
-			const httpClient = await this.loadHttpClient();
-			const response = await httpClient.request(url, {
-				method: "GET",
-				headers,
-				signal: record.abortController.signal,
-			});
-
-			if (response.statusCode >= 400) {
-				throw new Error(
-					`HTTP ${response.statusCode} from model hub for ${catalogEntry.hfRepo}/${remotePath}`,
-				);
-			}
-			if (startByte > 0 && response.statusCode !== 206) {
-				startByte = 0;
+			if (backgroundBridge) {
+				// iOS: the whole file goes through the native background
+				// URLSession, which owns its own resume across suspension /
+				// lock (#11841). A sha-mismatch retry (attempt > 1) re-fetches
+				// from zero; the first attempt may reuse a completed transfer
+				// that outlived a runtime restart.
 				record.job.received = baseBytes;
-			}
+				await this.transferViaBackgroundSession({
+					bridge: backgroundBridge,
+					downloadId: path.basename(stagingPath),
+					url,
+					headers,
+					targetPath: stagingPath,
+					record,
+					baseBytes,
+					expectedTotalBytes: 0,
+					forceFresh: attempt > 1,
+				});
+				await fsp.rename(stagingPath, finalPath);
+			} else {
+				let startByte = 0;
+				if (expectedSha256) {
+					startByte = await resumableStartByte(stagingPath, expectedSha256);
+					// Stamp the partial with the content hash it is being fetched
+					// against so a later resume can tell whether the .part still
+					// belongs to THIS content version.
+					await fsp.writeFile(
+						stagingMetaPath(stagingPath),
+						expectedSha256,
+						"utf8",
+					);
+				}
+				record.job.received = baseBytes + startByte;
 
-			const contentLengthHeader = response.headers["content-length"];
-			const contentLength = Array.isArray(contentLengthHeader)
-				? Number.parseInt(contentLengthHeader[0] ?? "0", 10)
-				: Number.parseInt(contentLengthHeader ?? "0", 10);
-			if (Number.isFinite(contentLength) && contentLength > 0) {
-				record.job.total = Math.max(
-					record.job.total,
-					baseBytes + startByte + contentLength,
-				);
-			}
-
-			const writeStream: Writable = fs.createWriteStream(stagingPath, {
-				flags: startByte > 0 ? "a" : "w",
-			});
-
-			let lastSampleBytes = record.job.received;
-			let lastSampleAt = Date.now();
-			const bodyStream = Readable.from(response.body);
-			bodyStream.on("data", (chunk: Buffer) => {
-				record.job.received += chunk.length;
-
-				const now = Date.now();
-				const elapsed = now - lastSampleAt;
-				if (elapsed >= 1000) {
-					record.job.bytesPerSec =
-						((record.job.received - lastSampleBytes) * 1000) / elapsed;
-					record.job.etaMs =
-						record.job.bytesPerSec > 0
-							? ((record.job.total - record.job.received) * 1000) /
-								record.job.bytesPerSec
-							: null;
-					lastSampleAt = now;
-					lastSampleBytes = record.job.received;
+				if (startByte > 0) {
+					headers.range = `bytes=${startByte}-`;
 				}
 
-				this.throttleEmit(record);
-			});
+				const httpClient = await this.loadHttpClient();
+				const response = await httpClient.request(url, {
+					method: "GET",
+					headers,
+					signal: record.abortController.signal,
+				});
 
-			await pipeline(bodyStream, writeStream);
-			await fsp.rename(stagingPath, finalPath);
+				if (response.statusCode >= 400) {
+					throw new Error(
+						`HTTP ${response.statusCode} from model hub for ${catalogEntry.hfRepo}/${remotePath}`,
+					);
+				}
+				if (startByte > 0 && response.statusCode !== 206) {
+					startByte = 0;
+					record.job.received = baseBytes;
+				}
+
+				const contentLengthHeader = response.headers["content-length"];
+				const contentLength = Array.isArray(contentLengthHeader)
+					? Number.parseInt(contentLengthHeader[0] ?? "0", 10)
+					: Number.parseInt(contentLengthHeader ?? "0", 10);
+				if (Number.isFinite(contentLength) && contentLength > 0) {
+					record.job.total = Math.max(
+						record.job.total,
+						baseBytes + startByte + contentLength,
+					);
+				}
+
+				const writeStream: Writable = fs.createWriteStream(stagingPath, {
+					flags: startByte > 0 ? "a" : "w",
+				});
+
+				let lastSampleBytes = record.job.received;
+				let lastSampleAt = Date.now();
+				const bodyStream = Readable.from(response.body);
+				bodyStream.on("data", (chunk: Buffer) => {
+					record.job.received += chunk.length;
+
+					const now = Date.now();
+					const elapsed = now - lastSampleAt;
+					if (elapsed >= 1000) {
+						record.job.bytesPerSec =
+							((record.job.received - lastSampleBytes) * 1000) / elapsed;
+						record.job.etaMs =
+							record.job.bytesPerSec > 0
+								? ((record.job.total - record.job.received) * 1000) /
+									record.job.bytesPerSec
+								: null;
+						lastSampleAt = now;
+						lastSampleBytes = record.job.received;
+					}
+
+					this.throttleEmit(record);
+				});
+
+				await pipeline(bodyStream, writeStream);
+				await fsp.rename(stagingPath, finalPath);
+			}
 
 			const stat = await fsp.stat(finalPath);
 			const sha256 = await hashFile(finalPath);
