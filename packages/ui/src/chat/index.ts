@@ -3,7 +3,11 @@
  * and the typed command registry.
  */
 
-import { type EnabledViewKinds, isViewVisible } from "@elizaos/core";
+import {
+  type EnabledViewKinds,
+  isViewVisible,
+  MESSAGE_SOURCE_CODING_AGENT,
+} from "@elizaos/core";
 import type { ViewRegistryEntry } from "../hooks/useAvailableViews";
 import type { Tab } from "../navigation";
 import type {
@@ -94,7 +98,7 @@ export function isRoutineCodingAgentMessage(message: {
   text: string;
 }): boolean {
   return (
-    message.source === "coding-agent" &&
+    message.source === MESSAGE_SOURCE_CODING_AGENT &&
     ROUTINE_CODING_AGENT_RE.test(message.text)
   );
 }

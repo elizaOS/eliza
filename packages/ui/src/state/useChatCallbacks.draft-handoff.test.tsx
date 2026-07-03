@@ -19,6 +19,7 @@
 // with a real setChatInput that mirrors useChatState (syncs chatInputRef), and
 // the real localStorage-backed draft helpers.
 
+import { MESSAGE_SOURCE_AGENT_GREETING } from "@elizaos/core";
 import { act, renderHook } from "@testing-library/react";
 import type { MutableRefObject } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -85,7 +86,7 @@ function greetingMessage(): ConversationMessage {
     role: "assistant",
     text: "hey — what's on your mind?",
     timestamp: 1,
-    source: "agent_greeting",
+    source: MESSAGE_SOURCE_AGENT_GREETING,
   };
 }
 

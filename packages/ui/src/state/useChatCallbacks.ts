@@ -5,6 +5,7 @@
  * greeting / conversation-management callbacks that depend on both.
  */
 
+import { MESSAGE_SOURCE_AGENT_GREETING } from "@elizaos/core";
 import { type MutableRefObject, useCallback, useEffect, useRef } from "react";
 import type {
   ChatTurnStatus,
@@ -88,7 +89,7 @@ function traceGreeting(phase: string, detail?: Record<string, unknown>): void {
 function isPersistedGreetingMessage(message: ConversationMessage): boolean {
   return (
     message.role === "assistant" &&
-    message.source === "agent_greeting" &&
+    message.source === MESSAGE_SOURCE_AGENT_GREETING &&
     message.text.trim().length > 0
   );
 }
@@ -341,7 +342,7 @@ export async function hydrateInitialConversation(
             role: "assistant",
             text: greetingText,
             timestamp: Date.now(),
-            source: "agent_greeting",
+            source: MESSAGE_SOURCE_AGENT_GREETING,
             ...(inlineGreeting?.localInference
               ? { localInference: inlineGreeting.localInference }
               : {}),
@@ -663,7 +664,7 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
                 prev.some(
                   (message) =>
                     message.role === "assistant" &&
-                    message.source === "agent_greeting" &&
+                    message.source === MESSAGE_SOURCE_AGENT_GREETING &&
                     message.text === data.text,
                 )
               ) {
@@ -676,7 +677,7 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
                   role: "assistant",
                   text: data.text,
                   timestamp: Date.now(),
-                  source: "agent_greeting",
+                  source: MESSAGE_SOURCE_AGENT_GREETING,
                   ...(data.localInference
                     ? { localInference: data.localInference }
                     : {}),
@@ -1023,7 +1024,7 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
               role: "assistant",
               text: greetingText,
               timestamp: Date.now(),
-              source: "agent_greeting",
+              source: MESSAGE_SOURCE_AGENT_GREETING,
               ...(greetingLocalInference
                 ? { localInference: greetingLocalInference }
                 : {}),

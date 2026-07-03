@@ -24,6 +24,7 @@ import {
   type Content,
   createMessageMemory,
   logger,
+  MESSAGE_SOURCE_AGENT_GREETING,
   MESSAGE_SOURCE_CLIENT_CHAT,
   type Memory,
   type RolesWorldMetadata,
@@ -1252,7 +1253,7 @@ async function ensureConversationGreetingStored(
     const content = memory.content as Record<string, unknown> | undefined;
     return (
       memory.entityId === runtime.agentId &&
-      content?.source === "agent_greeting" &&
+      content?.source === MESSAGE_SOURCE_AGENT_GREETING &&
       typeof content.text === "string" &&
       content.text.trim().length > 0
     );
@@ -1301,7 +1302,7 @@ async function ensureConversationGreetingStored(
         roomId: conv.roomId,
         content: {
           text: greeting,
-          source: "agent_greeting",
+          source: MESSAGE_SOURCE_AGENT_GREETING,
           channelType: ChannelType.DM,
         },
       }),

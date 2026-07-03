@@ -15,6 +15,7 @@ import {
   type ISwarmCoordinatorService,
   logger,
   MESSAGE_SOURCE_CLIENT_CHAT,
+  MESSAGE_SOURCE_CODING_AGENT,
   type Media,
   type SwarmCoordinatorTaskContext,
   type SwarmEvent,
@@ -118,7 +119,7 @@ export async function routeAutonomyTextToUser(
   // bridges, such as swarm synthesis, are persisted by the destination
   // connector when the actual platform message is observed.
   const ephemeralSources = new Set([
-    "coding-agent",
+    MESSAGE_SOURCE_CODING_AGENT,
     "coordinator",
     "action",
     "swarm_synthesis",
@@ -208,18 +209,26 @@ export function wireCodingAgentChatBridge(st: ServerState): boolean {
       const delivered = await routeTaskAgentTextToConnector(
         st.runtime,
         text,
-        source ?? "coding-agent",
+        source ?? MESSAGE_SOURCE_CODING_AGENT,
         routing,
       );
       if (!delivered) {
-        await routeAutonomyTextToUser(st, text, source ?? "coding-agent");
+        await routeAutonomyTextToUser(
+          st,
+          text,
+          source ?? MESSAGE_SOURCE_CODING_AGENT,
+        );
       }
     });
     return true;
   }
 
   coordinator.setChatCallback(async (text: string, source?: string) => {
-    await routeAutonomyTextToUser(st, text, source ?? "coding-agent");
+    await routeAutonomyTextToUser(
+      st,
+      text,
+      source ?? MESSAGE_SOURCE_CODING_AGENT,
+    );
   });
   return true;
 }
