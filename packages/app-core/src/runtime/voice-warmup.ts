@@ -1,15 +1,19 @@
 /**
- * voice-warmup — background "warm like embedding" for voice models.
+ * Background "warm like embedding" for voice models.
  *
- * Unlike embedding (which has a runtime-free `ensureModel` facade), the voice
- * models (local Whisper STT / Kokoro TTS, or cloud ElevenLabs) only load
- * through the live agent runtime's `useModel(TRANSCRIPTION | TEXT_TO_SPEECH, …)`
- * path — the Kokoro bridge auto-starts on the first TEXT_TO_SPEECH call, and
- * the cloud handler validates its connection. So we warm them AFTER the runtime
- * is ready by firing one tiny request at each, fire-and-forget. That actually
- * loads (not just downloads) the models, so the first real voice interaction is
- * instant — the embedding warmup's spirit, via the path voice already uses.
- * Nothing in the voice engine is touched.
+ * Voice models load only through the live agent runtime's
+ * `useModel(TRANSCRIPTION | TEXT_TO_SPEECH, …)` path, so we warm them AFTER the
+ * runtime is ready by firing one tiny request at each, fire-and-forget. That
+ * loads (not just downloads) the model the session will use, so the first real
+ * interaction is instant.
+ *
+ * The warmup call goes through the model router with NO pinned provider, so it
+ * exercises exactly the engine the session will use. It never picks the engine
+ * itself: the router fails closed for `TEXT_TO_SPEECH` (#12253), so a broken
+ * Kokoro surfaces its structured error here — logged at `warn` — instead of the
+ * router silently swapping in edge-tts and reporting a healthy warmup. Warmup is
+ * a first-use-latency optimization; a failure is non-fatal (the model loads on
+ * first real use) but is never masked by warming a different voice.
  *
  * Warmup is skipped for mobile, hot-reload respawns, explicit cloud-only
  * desktop runtimes, and ELIZA_SKIP_LOCAL_VOICE_WARMUP=1.

@@ -217,6 +217,21 @@ export interface QueueAssistantSpeechOptions {
   singing?: boolean;
 }
 
+/**
+ * A TTS engine failure that must be shown to the user rather than silently
+ * papered over with a different voice (#12253). The configured voice engine
+ * (Kokoro local-inference, ElevenLabs, or native talkmode) failed and the
+ * queue was stopped — no fallback voice was substituted.
+ */
+export interface VoiceTtsError {
+  /** Which engine failed: `local-inference`, `elevenlabs`, or `native-talkmode`. */
+  engine: "local-inference" | "elevenlabs" | "native-talkmode";
+  /** Human-readable failure message for a toast/banner. */
+  message: string;
+  /** UI monotonic timestamp (performance.now) when the failure surfaced. */
+  atMs: number;
+}
+
 export interface VoiceChatState {
   /** Whether voice input is currently active */
   isListening: boolean;
@@ -285,6 +300,15 @@ export interface VoiceChatState {
    * `standard` = browser / Edge voices or non-ElevenLabs provider.
    */
   assistantTtsQuality: "enhanced" | "standard";
+  /**
+   * Set when the configured TTS engine failed and the queue was stopped
+   * WITHOUT substituting a different voice (#12253). The voice UI surfaces this
+   * as a toast/banner. `null` when there is no outstanding failure; cleared on
+   * the next enqueue/stop. Optional on the interface so existing
+   * `VoiceChatState` mocks stay valid; `useVoiceChat` always returns a concrete
+   * value.
+   */
+  ttsError?: VoiceTtsError | null;
 }
 
 export interface SpeakTask {

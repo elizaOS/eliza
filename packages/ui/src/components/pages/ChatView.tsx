@@ -726,7 +726,7 @@ export function ChatView({
 
   const auxiliaryNode = (
     <>
-      {voiceStatusBarVisible ? (
+      {voiceStatusBarVisible || continuous.ttsError ? (
         <ChatVoiceStatusBar
           status={continuous.status}
           interimTranscript={continuous.interimTranscript}
@@ -735,7 +735,8 @@ export function ChatView({
           needsAudioUnlock={continuous.needsAudioUnlock}
           onUnlockAudio={continuous.unlockAudio}
           micReconnected={continuous.micReconnected}
-          visible
+          ttsError={continuous.ttsError}
+          visible={voiceStatusBarVisible}
           className={`mb-1 relative${isGameModal ? " pointer-events-auto" : ""}`}
           data-testid="chat-view-voice-status-bar"
         />

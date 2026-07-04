@@ -107,6 +107,36 @@ function modalityViableForSlot(
 }
 
 /**
+ * Whether the device tier permits running the local voice stack (TTS/ASR).
+ *
+ * This is a *policy* answer (configuration-by-hardware), not error recovery: a
+ * device that cannot run local voice legitimately gets a cloud voice as its
+ * configured default. That default is fine — but it must be *visible* (the
+ * status route surfaces this and the router logs it once per boot) so the UI
+ * can explain why Kokoro is not the active voice, rather than the engine
+ * silently swapping under the user (#12253).
+ */
+export interface VoiceModalityViability {
+	viable: boolean;
+	reason: string;
+}
+
+export function assessVoiceModality(
+	assessment: DeviceTierAssessment | null,
+): VoiceModalityViability {
+	if (!assessment) {
+		return { viable: false, reason: "device-tier-unknown" };
+	}
+	if (assessment.canRunLocalVoice) {
+		return { viable: true, reason: "device-can-run-local-voice" };
+	}
+	return {
+		viable: false,
+		reason: `device-tier-${assessment.tier.toLowerCase()}-cannot-run-local-voice`,
+	};
+}
+
+/**
  * Whether `auto` should default this slot to local: the modality must be viable
  * AND the device must be a generally local-first machine (recommended "local",
  * or a MAX/GOOD tier). A device that merely *can* run the modality but is steered

@@ -26,6 +26,7 @@ import {
   type VoiceContinuousMode,
   type VoiceContinuousStatus,
   type VoiceSpeakerMetadata,
+  type VoiceTtsError,
 } from "../voice/voice-chat-types";
 
 export interface ContinuousChatLatency {
@@ -107,6 +108,11 @@ export interface ContinuousChatState {
    * user gesture, clearing `needsAudioUnlock`. Safe to call when already unlocked.
    */
   unlockAudio: () => void;
+  /**
+   * Mirror of `voice.ttsError`: set when the configured TTS engine failed and
+   * the queue was stopped WITHOUT swapping voices (#12253). `null` otherwise.
+   */
+  ttsError: VoiceTtsError | null;
   /** Start a new optimistic turn (R11 cancellation contract surface). */
   startTurn: () => ContinuousChatCancellationToken;
   /** Manually stop continuous capture without resetting `mode`. */
@@ -356,6 +362,7 @@ export function useContinuousChat(
     needsAudioUnlock: voice.needsAudioUnlock ?? false,
     micReconnected: voice.micReconnected ?? false,
     unlockAudio: voice.unlockAudio ?? NOOP_UNLOCK_AUDIO,
+    ttsError: voice.ttsError ?? null,
     startTurn,
     pause,
     resume,

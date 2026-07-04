@@ -1,3 +1,5 @@
+import { ModelType } from "../../types/model";
+
 type ErrorWithStatus = {
 	status?: unknown;
 	statusCode?: unknown;
@@ -100,8 +102,20 @@ export function isAuthError(error: unknown): boolean {
  * This intentionally includes {@link isRateLimitError} so subscription-credit
  * exhaustion from CLI-SDK providers follows the same structural 429/session-limit
  * classifier as the graceful reply path.
+ *
+ * `modelType` gates the decision per slot. `TEXT_TO_SPEECH` never fails over:
+ * a voice swap is not a transient-recoverable condition, and a Kokoro
+ * model-download failure surfaces as `fetch failed`, which would otherwise match
+ * the transient heuristics below and silently rotate to a different voice engine
+ * (#12253). TTS fails closed — the configured voice errors loudly instead.
  */
-export function isModelProviderFallbackError(error: unknown): boolean {
+export function isModelProviderFallbackError(
+	error: unknown,
+	modelType?: string,
+): boolean {
+	if (modelType === ModelType.TEXT_TO_SPEECH) {
+		return false;
+	}
 	const unwrapped = unwrapRetryError(error);
 	if (isRateLimitError(error)) {
 		return true;

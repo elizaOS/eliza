@@ -73,7 +73,7 @@ import { localInferenceEngine } from "./engine";
 import { handlerRegistry } from "./handler-registry";
 import { probeHardware } from "./hardware";
 import { type LiveDeviceSignals, readLiveDeviceSignals } from "./live-signals";
-import { policyEngine } from "./routing-policy";
+import { assessVoiceModality, policyEngine } from "./routing-policy";
 import {
 	DEFAULT_ROUTING_POLICY,
 	type RoutingPolicy,
@@ -101,7 +101,15 @@ const DEVICE_TIER_TTL_MS = 30_000;
 let cachedDeviceTier: { at: number; assessment: DeviceTierAssessment } | null =
 	null;
 
-async function resolveDeviceTier(): Promise<DeviceTierAssessment | null> {
+/**
+ * Guards the once-per-boot warn emitted when a voice slot is routed to cloud
+ * because the device tier cannot run the local voice stack. The demotion is a
+ * legitimate configuration-by-hardware decision, but it must be announced so it
+ * can never masquerade as (or mask) a Kokoro artifact failure.
+ */
+let warnedVoiceModalityUnviable = false;
+
+export async function resolveDeviceTier(): Promise<DeviceTierAssessment | null> {
 	const now = Date.now();
 	if (cachedDeviceTier && now - cachedDeviceTier.at < DEVICE_TIER_TTL_MS) {
 		return cachedDeviceTier.assessment;
@@ -308,6 +316,30 @@ function makeRouterHandler(slot: AgentModelSlot): AnyHandler {
 			liveSignals = readLiveDeviceSignals();
 		}
 
+		// Voice-modality visibility (#12253): when a prefer-local/auto policy will
+		// route a voice slot to cloud because the device tier can't run the local
+		// voice stack, announce it once per boot. This is a configuration-by-
+		// hardware decision (kept), not error recovery — surfacing it keeps a
+		// genuine Kokoro artifact failure from hiding behind a "tier unviable" swap.
+		if (
+			(policy === "prefer-local" || policy === "auto") &&
+			(slot === "TEXT_TO_SPEECH" || slot === "TRANSCRIPTION")
+		) {
+			const voiceModality = assessVoiceModality(deviceTier);
+			if (!voiceModality.viable && !warnedVoiceModalityUnviable) {
+				warnedVoiceModalityUnviable = true;
+				logger.warn(
+					{
+						slot,
+						policy,
+						reason: voiceModality.reason,
+						tier: deviceTier?.tier ?? null,
+					},
+					`[LocalInferenceRouter] Local voice stack unviable on this device tier; ${slot} routes to a cloud voice by configuration (not error recovery)`,
+				);
+			}
+		}
+
 		const failedProviders = new Set<string>();
 		let lastError: unknown = null;
 
@@ -361,7 +393,35 @@ function makeRouterHandler(slot: AgentModelSlot): AnyHandler {
 				const hasAlternative = remaining.some(
 					(candidate) => candidate.provider !== pick.provider,
 				);
-				if (manualPreferred || !hasAlternative) {
+
+				// TTS fails closed (#12253): a configured voice may fail, but it must
+				// never be silently swapped for a different engine. Rotating providers
+				// on failure IS a silent voice swap (Kokoro → elizacloud → elevenlabs
+				// → … → edge-tts), so every automatic policy re-throws the structured
+				// error and lets the caller surface it (HTTP 502 / UI error state). The
+				// only legitimate multi-provider TTS chain is one the user explicitly
+				// configured via `manual` policy. Non-TTS slots keep transient failover.
+				const ttsFailsClosed =
+					slot === "TEXT_TO_SPEECH" && policy !== "manual";
+
+				if (manualPreferred || !hasAlternative || ttsFailsClosed) {
+					if (ttsFailsClosed && hasAlternative) {
+						logger.error(
+							{
+								provider: pick.provider,
+								slot,
+								policy,
+								error: err instanceof Error ? err.message : String(err),
+								errorCode:
+									err instanceof Error &&
+									typeof (err as { code?: unknown }).code === "string"
+										? (err as { code: string }).code
+										: undefined,
+								alternativesRefused: remaining.length - 1,
+							},
+							`[LocalInferenceRouter] ${pick.provider} failed for TEXT_TO_SPEECH; failing closed — refusing to swap to another voice engine`,
+						);
+					}
 					throw err;
 				}
 

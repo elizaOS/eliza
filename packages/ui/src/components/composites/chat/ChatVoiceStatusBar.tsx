@@ -10,15 +10,23 @@
  * - latency badge (speechEnd → voiceStart) with traffic-light colouring
  */
 
-import { Crown, RefreshCw, VolumeX } from "lucide-react";
+import { AlertTriangle, Crown, RefreshCw, VolumeX } from "lucide-react";
 import type * as React from "react";
 import type { ContinuousChatLatency } from "../../../hooks/useContinuousChat";
 import { cn } from "../../../lib/utils";
 import type {
   VoiceContinuousStatus,
   VoiceSpeakerMetadata,
+  VoiceTtsError,
 } from "../../../voice/voice-chat-types";
 import { Button } from "../../ui/button";
+
+/** User-facing label per failed engine for the fail-closed TTS banner (#12253). */
+const TTS_ERROR_ENGINE_LABEL: Record<VoiceTtsError["engine"], string> = {
+  "local-inference": "on-device voice",
+  elevenlabs: "ElevenLabs voice",
+  "native-talkmode": "voice",
+};
 
 export interface ChatVoiceStatusBarProps {
   status: VoiceContinuousStatus;
@@ -36,6 +44,12 @@ export interface ChatVoiceStatusBarProps {
   onUnlockAudio?: () => void;
   /** Transient pulse: browser speech recognition silently auto-reconnected. */
   micReconnected?: boolean;
+  /**
+   * Set when the configured TTS engine failed and playback was stopped WITHOUT
+   * substituting another voice (#12253). Rendered as a danger banner; forces the
+   * bar visible so a silent failure is never invisible.
+   */
+  ttsError?: VoiceTtsError | null;
   /** Visible only when continuous mode is on AND we have something to show. */
   visible?: boolean;
   className?: string;
@@ -91,11 +105,14 @@ export function ChatVoiceStatusBar({
   needsAudioUnlock = false,
   onUnlockAudio,
   micReconnected = false,
+  ttsError = null,
   visible = true,
   className,
   "data-testid": dataTestId,
 }: ChatVoiceStatusBarProps): React.ReactElement | null {
-  if (!visible) return null;
+  // A fail-closed TTS error must always show, even if the bar is otherwise
+  // hidden — a silenced voice with no explanation is exactly the bug (#12253).
+  if (!visible && !ttsError) return null;
 
   const speakerEntityId = speaker?.entityId ?? null;
   const isOwnerSpeaking =
@@ -132,6 +149,20 @@ export function ChatVoiceStatusBar({
       >
         {STATUS_LABEL[status]}
       </span>
+
+      {ttsError ? (
+        <span
+          className="inline-flex min-w-0 items-center gap-1 rounded-sm border border-danger/40 bg-danger/10 px-2 py-0.5 font-medium text-danger"
+          data-testid="chat-voice-tts-error"
+          data-engine={ttsError.engine}
+          title={ttsError.message}
+        >
+          <AlertTriangle className="h-3 w-3 shrink-0" aria-hidden="true" />
+          <span className="truncate">
+            {TTS_ERROR_ENGINE_LABEL[ttsError.engine]} unavailable
+          </span>
+        </span>
+      ) : null}
 
       {speakerName ? (
         <span

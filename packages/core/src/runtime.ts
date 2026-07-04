@@ -4836,8 +4836,11 @@ export class AgentRuntime implements IAgentRuntime {
 		);
 	}
 
-	private shouldFailOverModelProvider(error: unknown): boolean {
-		return isModelProviderFallbackError(error);
+	private shouldFailOverModelProvider(
+		error: unknown,
+		modelType: string,
+	): boolean {
+		return isModelProviderFallbackError(error, modelType);
 	}
 
 	private throwNoModelHandler(requestedModelKey: string): never {
@@ -5966,7 +5969,7 @@ export class AgentRuntime implements IAgentRuntime {
 					requestedProvider !== undefined ||
 					!nextModel ||
 					providerAttemptStartedOutput ||
-					!this.shouldFailOverModelProvider(error)
+					!this.shouldFailOverModelProvider(error, requestedModelKey)
 				) {
 					this.rethrowModelFailoverError(error);
 				}

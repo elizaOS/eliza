@@ -493,14 +493,25 @@ public class TalkModePlugin: CAPPlugin, CAPBridgedPlugin {
                     )
                     interrupted = pcmStopRequested
                 } catch {
-                    // Fallback to system TTS on ElevenLabs failure
-                    print("[TalkMode] ElevenLabs failed, falling back to system TTS: \(error)")
+                    // Fail closed (#12253): ElevenLabs is the configured voice, so
+                    // do NOT silently swap to the system AVSpeechSynthesizer. Emit
+                    // the error and stop — no audio plays. AVSpeechSynthesizer is
+                    // reachable only when the caller explicitly requests the system
+                    // engine (the `else` branch below), never as error recovery.
+                    print("[TalkMode] ElevenLabs failed; failing closed, no system-TTS swap: \(error)")
                     emitError(
                         code: "elevenlabs_failed",
                         message: error.localizedDescription,
                         recoverable: true
                     )
-                    try await speakWithSystemTts(text: text, language: language)
+                    call.resolve([
+                        "completed": false,
+                        "interrupted": false,
+                        "usedSystemTts": false,
+                        "error": error.localizedDescription
+                    ])
+                    finishSpeaking()
+                    return
                 }
             } else {
                 try await speakWithSystemTts(text: text, language: language)
