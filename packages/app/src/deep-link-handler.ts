@@ -43,6 +43,13 @@ export interface DeepLinkHandlerContext {
    * opens a tab on the mobile/Capacitor entrypoint). Injectable for tests.
    */
   dispatchNavigationIntent?: (intent: DeepLinkNavigationIntent) => void;
+  /**
+   * iOS keyboard app-handoff dictation (#12185): `<scheme>://keyboard-dictation`
+   * from the ElizaKeyboard extension starts an app-side record + transcribe
+   * session that publishes the transcript to the App Group. Wired to
+   * `startKeyboardDictationSession` in the live handler.
+   */
+  startKeyboardDictation?: (params: URLSearchParams) => void;
 }
 
 function defaultDispatchNavigationIntent(
@@ -124,6 +131,15 @@ export function createDeepLinkHandler(ctx: DeepLinkHandlerContext) {
         // one visible way in where the floating bell is hidden.
         dispatchOpenNotificationCenter();
         ctx.dispatchDeepLinkCallback(url);
+        break;
+      case "keyboard-dictation":
+        if (ctx.startKeyboardDictation) {
+          ctx.startKeyboardDictation(parsed.searchParams);
+        } else {
+          console.warn(
+            `${ctx.logPrefix} keyboard-dictation deep link received but no dictation handler is wired`,
+          );
+        }
         break;
       case "connect":
         handleConnect(parsed);

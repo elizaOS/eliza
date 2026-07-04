@@ -166,3 +166,30 @@ describe("createDeepLinkHandler — universal (https) app links", () => {
     expect(window.location.hash).toBe("");
   });
 });
+
+describe("createDeepLinkHandler — iOS keyboard app-handoff dictation (#12185)", () => {
+  it("dispatches keyboard-dictation links into the injected dictation session", () => {
+    const startKeyboardDictation = vi.fn();
+    const { handle } = makeHandler({ startKeyboardDictation });
+    handle("elizaos://keyboard-dictation?source=ios-keyboard&session=abc-123");
+    expect(startKeyboardDictation).toHaveBeenCalledTimes(1);
+    const params = startKeyboardDictation.mock.calls[0][0] as URLSearchParams;
+    expect(params.get("source")).toBe("ios-keyboard");
+    expect(params.get("session")).toBe("abc-123");
+    // Dictation is an in-app session, not a hash route.
+    expect(window.location.hash).toBe("");
+  });
+
+  it("warns loudly instead of silently dropping the link when no handler is wired", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const { handle } = makeHandler();
+      handle("elizaos://keyboard-dictation?source=ios-keyboard");
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining("keyboard-dictation deep link received"),
+      );
+    } finally {
+      warn.mockRestore();
+    }
+  });
+});
