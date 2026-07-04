@@ -141,7 +141,10 @@ export function tolerantJsonParse(
         return parsed as Record<string, unknown>;
       }
     } catch {
-      // try the next candidate
+      // error-policy:J3 untrusted-input sanitizing — LLM output is tried against
+      // several JSON-extraction candidates; a parse miss falls through to the
+      // next candidate, and an all-candidates-miss returns an explicit null
+      // (invalid signal) below, never a fabricated verdict.
     }
   }
   return null;

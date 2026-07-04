@@ -113,8 +113,10 @@ export function createSubprocessChannel(): WorkerChannel {
           const message = JSON.parse(line) as RemotePluginWorkerMessage;
           for (const subscriber of subscribers) subscriber(message);
         } catch {
-          // Malformed line; ignore. The host treats malformed worker
-          // output as a hard error via the subprocess's exit-handler.
+          // error-policy:J3 untrusted-input sanitizing — a malformed worker
+          // stdout line is skipped here; the failure still surfaces because the
+          // host treats malformed worker output as a hard error via the
+          // subprocess's exit-handler.
         }
       }
       newlineIndex = buffer.indexOf("\n");
