@@ -241,13 +241,30 @@ export async function stopBrowserCapture() {
   if (activeCaptureLoop) {
     try {
       await activeCaptureLoop;
-    } catch {}
+    } catch (err) {
+      // error-policy:J6 best-effort teardown — the capture loop is being torn
+      // down; a late frame-capture rejection is already surfaced inside the loop
+      // (see logger.warn above) and must not block shutdown.
+      logger.debug(
+        `[browser-capture] capture loop settled with error during stop: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
     activeCaptureLoop = null;
   }
   if (activeBrowser) {
     try {
       await activeBrowser.close();
-    } catch {}
+    } catch (err) {
+      // error-policy:J6 best-effort teardown — a browser that fails to close
+      // cleanly during shutdown cannot be recovered here; drop the reference.
+      logger.debug(
+        `[browser-capture] browser close failed during stop: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
     activeBrowser = null;
   }
   logger.info("[browser-capture] Stopped");

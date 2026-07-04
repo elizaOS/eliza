@@ -174,6 +174,9 @@ function decodeBrowserWorkspaceTabId(raw: string | undefined): string | null {
     const decoded = decodeURIComponent(raw).trim();
     return decoded ? decoded : null;
   } catch {
+    // error-policy:J3 untrusted-input sanitizing — decodeURIComponent throws on
+    // a malformed percent-encoding in a path param; null is the explicit
+    // "invalid tab id" signal (the route then 404s), never a fabricated id.
     return null;
   }
 }

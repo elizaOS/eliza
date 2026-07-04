@@ -77,14 +77,14 @@ function resolveSolanaKeypair(runtime: IAgentRuntime): Keypair | null {
     process.env.SOLANA_PRIVATE_KEY ??
     readSetting(runtime, "WALLET_PRIVATE_KEY") ??
     process.env.WALLET_PRIVATE_KEY;
+  // Absence (no key configured) is a legitimate null; a configured-but-malformed
+  // key is a misconfiguration that must surface. keypairFromSolanaSecret throws
+  // the typed SolanaPrivateKeyInvalidError — let it propagate rather than
+  // swallowing it into a null that reads identically to "no wallet configured".
   if (!raw) {
     return null;
   }
-  try {
-    return keypairFromSolanaSecret(raw);
-  } catch {
-    return null;
-  }
+  return keypairFromSolanaSecret(raw);
 }
 
 class LocalSolanaSigner implements SolanaSigner {
