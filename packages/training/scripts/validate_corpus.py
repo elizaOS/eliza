@@ -68,6 +68,7 @@ Exit codes:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import sys
@@ -141,6 +142,24 @@ def validate_native_v1(rec: dict) -> list[tuple[str, str]]:
     except Exception as e:  # noqa: BLE001
         errs.append(("native_v1_render_error", repr(e)))
     return errs
+
+
+def native_v1_content_key(rec: dict[str, Any]) -> str | None:
+    """Stable content key for native corpus dedup validation.
+
+    Provenance and metadata are intentionally excluded. The model boundary
+    that trains the corpus is request + response; request includes tool schemas
+    when present, so tool-shape changes stay distinct.
+    """
+    if rec.get("format") != ELIZA_NATIVE_FORMAT:
+        return None
+    payload = json.dumps(
+        {"request": rec.get("request"), "response": rec.get("response")},
+        sort_keys=True,
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 # task_types treated as `should_respond_with_context` for validation purposes.
 ROUTING_TASK_TYPES = {"should_respond_with_context", "should_respond",
@@ -609,6 +628,7 @@ def run(input_path: Path, report_path: Path, *, strict: bool,
     err_by_task: dict[str, Counter] = defaultdict(Counter)
     err_by_source: dict[str, Counter] = defaultdict(Counter)
     failing: list[dict[str, Any]] = []
+    seen_native_content: dict[str, int] = {}
 
     for line_no, rec in iter_records(input_path, max_records):
         total += 1
@@ -628,6 +648,18 @@ def run(input_path: Path, report_path: Path, *, strict: bool,
             continue
 
         errs = validate_record(rec)
+        native_key = native_v1_content_key(rec)
+        if native_key is not None:
+            first_line = seen_native_content.get(native_key)
+            if first_line is not None:
+                errs.append((
+                    "duplicate_native_content",
+                    "duplicate eliza_native_v1 training boundary; first seen "
+                    f"on line {first_line}. Re-run "
+                    "prepare_eliza1_trajectory_dataset.py with dedup enabled.",
+                ))
+            else:
+                seen_native_content[native_key] = line_no
         if not errs:
             valid += 1
             continue

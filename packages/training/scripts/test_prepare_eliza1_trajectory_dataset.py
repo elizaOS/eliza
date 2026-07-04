@@ -401,6 +401,8 @@ def test_prepare_dedupes_identical_native_rows(tmp_path: Path) -> None:
 
     manifest = json.loads((out_dir / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["droppedDuplicateNativeRows"] == 2
+    assert manifest["deduped_count"] == 2
+    assert manifest["unique_count"] == 1
     assert manifest["counts"]["train"] == 1
 
 
@@ -423,6 +425,8 @@ def test_prepare_no_dedup_keeps_duplicates(tmp_path: Path) -> None:
     assert len(train) == 3
     manifest = json.loads((out_dir / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["droppedDuplicateNativeRows"] == 0
+    assert manifest["deduped_count"] == 0
+    assert manifest["unique_count"] == 3
 
 
 def test_prepare_dedup_keeps_distinct_boundaries(tmp_path: Path) -> None:
@@ -444,6 +448,8 @@ def test_prepare_dedup_keeps_distinct_boundaries(tmp_path: Path) -> None:
     assert len(train) == 2
     manifest = json.loads((out_dir / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["droppedDuplicateNativeRows"] == 0
+    assert manifest["deduped_count"] == 0
+    assert manifest["unique_count"] == 2
 
 
 def test_prepare_strict_privacy_fails_on_any_redaction(tmp_path: Path) -> None:
