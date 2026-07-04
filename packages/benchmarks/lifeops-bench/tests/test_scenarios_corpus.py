@@ -346,3 +346,167 @@ def test_authoring_validator_rejects_fake_entity_id() -> None:
     )
     assert not results[0].is_valid
     assert any("event_99999" in i.message for i in results[0].issues)
+
+
+# ---------------------------------------------------------------------------
+# Systemic guard: nested scheduled-task shapes must match the REAL
+# plugin-scheduling zod contract. The manifest overlay declares
+# trigger/escalation/shouldFire/completionCheck as additionalProperties:true,
+# so the manifest-based validator can't catch a mis-shaped nested payload. This
+# strict structural check replicates
+# plugins/plugin-scheduling/src/scheduled-task/schema.ts and runs over EVERY
+# scenario's ground-truth actions so a schema-correct agent isn't penalized by
+# invalid ground truth. See issue #12186 adversarial review.
+# ---------------------------------------------------------------------------
+
+
+def test_persona_ground_truth_matches_real_zod_schema() -> None:
+    """HARD GATE: every issue-#12186 persona ground-truth action must match the
+    real plugin-scheduling zod schema (nested trigger / shouldFire /
+    completionCheck / escalation / subject shapes). This is the systemic guard
+    the adversarial review asked for — it prevents the schema drift (bare gate
+    objects, afterMinutes, top-level completion params, LIFE_CREATE triggers,
+    invalid subject kinds) from regressing in the persona packs.
+    """
+    from eliza_lifeops_bench.scenarios.personas import (
+        PERSONA_SCENARIOS,
+        check_scenario_actions,
+    )
+
+    bad: list[str] = []
+    for scenario in PERSONA_SCENARIOS:
+        bad.extend(check_scenario_actions(scenario.id, scenario.ground_truth_actions))
+    # Also cover the edge-expanded persona variants (same ground truth, so this
+    # is belt-and-suspenders against a builder change that only touches edges).
+    for scenario in ALL_SCENARIOS:
+        if scenario.id.startswith(("persona.", "live.persona.")):
+            bad.extend(
+                check_scenario_actions(scenario.id, scenario.ground_truth_actions)
+            )
+    assert not bad, (
+        "persona scheduled-task / LIFE_CREATE ground-truth shapes drift from the "
+        "real plugin-scheduling zod schema:\n" + "\n".join(bad[:40])
+    )
+
+
+def test_schema_check_flags_preexisting_nonpersona_drift() -> None:
+    """The strict checker is NOT vacuous: it detects real drift in the
+    pre-existing expanded/domain packs (bare afterMinutes/atIso triggers,
+    missing respectsGlobalPause, …). Those packs are owned elsewhere and are
+    out of scope for issue #12186; this test documents the debt and proves the
+    guard has teeth beyond the persona packs. If a future change fixes those
+    packs corpus-wide, promote the persona-scoped gate above to ALL_SCENARIOS
+    and delete this test.
+    """
+    from eliza_lifeops_bench.scenarios.personas import check_scenario_actions
+
+    non_persona_drift: list[str] = []
+    for scenario in ALL_SCENARIOS:
+        if scenario.id.startswith(("persona.", "live.persona.")):
+            continue
+        non_persona_drift.extend(
+            check_scenario_actions(scenario.id, scenario.ground_truth_actions)
+        )
+    assert non_persona_drift, (
+        "expected the strict schema checker to still flag pre-existing "
+        "non-persona drift; if this is now empty the corpus was fixed — promote "
+        "the persona gate to ALL_SCENARIOS"
+    )
+
+
+def test_schema_check_catches_afterMinutes_escalation() -> None:
+    """Deliberately-broken escalation step (afterMinutes instead of the real
+    delayMinutes) must be flagged."""
+    from eliza_lifeops_bench.scenarios.personas import check_action_shape
+    from eliza_lifeops_bench.types import Action
+
+    broken = Action(
+        name="SCHEDULED_TASK_CREATE",
+        kwargs={
+            "subaction": "create",
+            "kind": "reminder",
+            "promptInstructions": "x",
+            "trigger": {"kind": "during_window", "windowKey": "morning"},
+            "priority": "low",
+            "source": "user_chat",
+            "respectsGlobalPause": True,
+            "ownerVisible": True,
+            "escalation": {
+                "steps": [{"afterMinutes": 0, "channelKey": "in_app"}]
+            },
+        },
+    )
+    issues = check_action_shape(broken, "broken")
+    assert any("afterMinutes" in i or "delayMinutes" in i for i in issues), issues
+
+
+def test_schema_check_catches_bare_should_fire_gate() -> None:
+    """A bare gate object (no `gates` wrapper, params at top level) must be
+    flagged — the real ScheduledTaskShouldFire is `{gates: [{kind, params?}]}`."""
+    from eliza_lifeops_bench.scenarios.personas import check_action_shape
+    from eliza_lifeops_bench.types import Action
+
+    broken = Action(
+        name="SCHEDULED_TASK_CREATE",
+        kwargs={
+            "subaction": "create",
+            "kind": "reminder",
+            "promptInstructions": "x",
+            "trigger": {"kind": "during_window", "windowKey": "morning"},
+            "priority": "low",
+            "source": "user_chat",
+            "respectsGlobalPause": True,
+            "ownerVisible": True,
+            # BROKEN: bare gate object instead of {gates: [...]}.
+            "shouldFire": {"kind": "quiet_hours"},
+        },
+    )
+    issues = check_action_shape(broken, "broken")
+    assert any("shouldFire" in i for i in issues), issues
+
+
+def test_schema_check_catches_top_level_completion_param() -> None:
+    """completionCheck with a top-level lookbackMinutes (not under params) must
+    be flagged."""
+    from eliza_lifeops_bench.scenarios.personas import check_action_shape
+    from eliza_lifeops_bench.types import Action
+
+    broken = Action(
+        name="SCHEDULED_TASK_CREATE",
+        kwargs={
+            "subaction": "create",
+            "kind": "followup",
+            "promptInstructions": "x",
+            "trigger": {"kind": "during_window", "windowKey": "afternoon"},
+            "priority": "low",
+            "source": "user_chat",
+            "respectsGlobalPause": True,
+            "ownerVisible": True,
+            # BROKEN: lookbackMinutes must nest under params.
+            "completionCheck": {"kind": "user_replied_within", "lookbackMinutes": 1440},
+        },
+    )
+    issues = check_action_shape(broken, "broken")
+    assert any("completionCheck" in i for i in issues), issues
+
+
+def test_schema_check_catches_life_create_trigger() -> None:
+    """LIFE_CREATE reminders have no trigger field — a details.trigger must be
+    flagged (the trigger union belongs to ScheduledTask)."""
+    from eliza_lifeops_bench.scenarios.personas import check_action_shape
+    from eliza_lifeops_bench.types import Action
+
+    broken = Action(
+        name="LIFE_CREATE",
+        kwargs={
+            "subaction": "create",
+            "title": "x",
+            "details": {
+                "kind": "reminder",
+                "listId": "list_personal",
+                "trigger": {"kind": "during_window", "windowKey": "evening"},
+            },
+        },
+    )
+    issues = check_action_shape(broken, "broken")
+    assert any("trigger" in i for i in issues), issues

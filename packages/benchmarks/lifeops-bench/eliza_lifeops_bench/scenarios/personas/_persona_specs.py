@@ -51,6 +51,7 @@ from ...types import (
     Action,
     Disruption,
     Domain,
+    ExpectedWorldMutation,
     FirstQuestionFallback,
     Persona,
     Scenario,
@@ -68,15 +69,11 @@ from .._personas import (
 # Only ids that resolve in data/snapshots/medium_seed_2026.json. Fabricated ids
 # fail tests/test_scenarios_corpus.py::test_referenced_world_ids_exist_in_snapshot.
 LIST_PERSONAL = "list_personal"
-LIST_WORK = "list_work"
 CAL_PRIMARY = "cal_primary"
 CAL_WORK = "cal_work"
 CONTACT_A = "contact_00003"
 CONTACT_B = "contact_00007"
 CONTACT_C = "contact_00009"
-EVENT_A = "event_00040"
-SUB_A = "sub_003"
-CONV_A = "conv_0006"
 
 
 def _iso(day_offset: int, hour: int, minute: int = 0) -> str:
@@ -133,26 +130,6 @@ def _scheduled_task(
     if should_fire:
         kwargs["shouldFire"] = should_fire
     return Action(name="SCHEDULED_TASK_CREATE", kwargs=kwargs)
-
-
-def _life_reminder(
-    *,
-    title: str,
-    trigger: dict[str, Any] | None = None,
-    due_iso: str | None = None,
-    list_id: str = LIST_PERSONAL,
-) -> Action:
-    """A LIFE_CREATE reminder. Encodes the flexible trigger in details.trigger
-    when the persona demands a non-fixed-time recurrence."""
-    details: dict[str, Any] = {"kind": "reminder", "listId": list_id}
-    if trigger is not None:
-        details["trigger"] = trigger
-    if due_iso is not None:
-        details["due"] = due_iso
-    return Action(
-        name="LIFE_CREATE",
-        kwargs={"subaction": "create", "title": title, "details": details},
-    )
 
 
 def _calendar_create(
@@ -239,12 +216,17 @@ def _cron_owner_local(expression: str) -> dict[str, Any]:
     return {"kind": "cron", "expression": expression, "tz": "owner_local"}
 
 
+# Escalation step field name and shape follow the real
+# `escalationStepSchema` (plugin-scheduling/src/scheduled-task/schema.ts):
+# `{ delayMinutes, channelKey, intensity? }`. Ladder shape mirrors
+# plugin-personal-assistant/src/default-packs/escalation-ladders.ts.
+
 # Soft, non-shaming escalation ladder for low-energy / RSD-sensitive personas.
 _SOFT_LADDER: dict[str, Any] = {
     "ladderKey": "persona.soft_only",
     "steps": [
-        {"afterMinutes": 0, "channelKey": "in_app", "intensity": "soft"},
-        {"afterMinutes": 180, "channelKey": "in_app", "intensity": "soft"},
+        {"delayMinutes": 0, "channelKey": "in_app", "intensity": "soft"},
+        {"delayMinutes": 180, "channelKey": "in_app", "intensity": "soft"},
     ],
 }
 
@@ -253,15 +235,45 @@ _SOFT_LADDER: dict[str, Any] = {
 _ROTATING_LADDER: dict[str, Any] = {
     "ladderKey": "persona.rotating",
     "steps": [
-        {"afterMinutes": 0, "channelKey": "in_app", "intensity": "soft"},
-        {"afterMinutes": 20, "channelKey": "push", "intensity": "normal"},
-        {"afterMinutes": 60, "channelKey": "imessage", "intensity": "normal"},
+        {"delayMinutes": 0, "channelKey": "in_app", "intensity": "soft"},
+        {"delayMinutes": 20, "channelKey": "push", "intensity": "normal"},
+        {"delayMinutes": 60, "channelKey": "imessage", "intensity": "normal"},
     ],
 }
 
+
+def _gates(*gates: dict[str, Any], compose: str | None = None) -> dict[str, Any]:
+    """Build a `ScheduledTaskShouldFire` per the real
+    `scheduledTaskShouldFireSchema`: `{ compose?, gates: [{ kind, params? }] }`.
+    Gate-specific parameters live under `params`, never top-level.
+    """
+    should_fire: dict[str, Any] = {"gates": list(gates)}
+    if compose is not None:
+        should_fire["compose"] = compose
+    return should_fire
+
+
+def _gate(kind: str, **params: Any) -> dict[str, Any]:
+    """A single gate entry `{ kind, params? }` (params only when non-empty).
+
+    Param names match the production gate-registry / health packs:
+    - `no_recent_user_message_in` → `{ minutes }`
+    - `circadian_state_in`        → `{ states: [...] }`
+    - `during_window` (gate)      → `{ windows: [...] }`
+    - `quiet_hours` / `during_travel` → no params
+    """
+    entry: dict[str, Any] = {"kind": kind}
+    if params:
+        entry["params"] = params
+    return entry
+
+
 # Suppress when the user has been active recently (reads ActivitySignalBus) —
-# the "don't nag me when I'm already engaged" gate.
-_ACTIVE_SUPPRESS: dict[str, Any] = {"kind": "no_recent_user_message_in", "minutes": 45}
+# the "don't nag me when I'm already engaged" gate. Wrapped gates shape with
+# gate params under `params` per the real ScheduledTaskShouldFire.
+_ACTIVE_SUPPRESS: dict[str, Any] = _gates(
+    _gate("no_recent_user_message_in", minutes=45)
+)
 
 
 # ---------------------------------------------------------------------------
@@ -286,6 +298,10 @@ class FamilySpec:
     world_assertions: tuple[str, ...] = ()
     disruption: Callable[[int], Disruption] | None = None
     max_turns_base: int = 12
+    # LIVE scoring: suppression / defer families expect the world to end
+    # UNCHANGED, so leave this "unchanged" (not the auto-inferred "changed",
+    # which would invert the score and penalize a correctly-suppressing agent).
+    expected_world_mutation: ExpectedWorldMutation = "auto"
 
 
 @dataclass(frozen=True)
@@ -358,7 +374,11 @@ _ARI = PersonaAreaSpec(
                     prompt="Re-surface the design review I keep forgetting",
                     trigger=_during_window("morning"),
                     kind="checkin",
-                    subject={"kind": "reminder", "id": "reminder_00000"},
+                    # `reminder` is NOT a valid subject kind (the schema allows
+                    # entity/relationship/thread/document/calendar_event/self).
+                    # A personal re-surfacing check-in is about the user's own
+                    # pending item → subject.kind "self".
+                    subject={"kind": "self", "id": "self"},
                     completion_check={"kind": "subject_updated"},
                     should_fire=_ACTIVE_SUPPRESS,
                 ),
@@ -413,11 +433,17 @@ _ARI = PersonaAreaSpec(
             output_terms=("daily", "flexible"),
             builder=lambda v: [
                 # The core "do X daily but struggle to do it at the same time"
-                # case — during_window, NOT a fixed once/cron.
-                _life_reminder(
-                    title="Daily tidy-up",
-                    trigger=_during_window(("evening", "morning_or_evening", "afternoon", "morning", "night")[v]),
-                    list_id=LIST_PERSONAL,
+                # case — a ScheduledTask reminder on a during_window trigger,
+                # NOT a fixed once/cron and NOT a LIFE reminder (which has no
+                # trigger field).
+                _scheduled_task(
+                    slug="adhd.flexible_daily",
+                    variant=v,
+                    prompt="Daily tidy-up, but I can't do it at the same time each day",
+                    trigger=_during_window(
+                        ("evening", "morning_or_evening", "afternoon", "morning", "night")[v]
+                    ),
+                    kind="reminder",
                 ),
             ],
         ),
@@ -444,11 +470,18 @@ _ARI = PersonaAreaSpec(
             domain=Domain.MESSAGES,
             output_terms=("deadline", "reminder"),
             builder=lambda v: [
-                _message_draft_reply(body="Confirming I'll have it to you by the deadline."),
-                _life_reminder(
-                    title="Submit the thing before the deadline",
-                    trigger=_during_window("afternoon"),
-                    list_id=LIST_WORK,
+                _message_draft_reply(
+                    body=f"Confirming I'll have it to you by the deadline (item {v + 1}).",
+                ),
+                _scheduled_task(
+                    slug="adhd.context_deadline",
+                    variant=v,
+                    prompt="Submit the thing before the extracted deadline",
+                    trigger=_during_window(
+                        ("morning", "afternoon", "evening", "morning_or_evening", "afternoon")[v]
+                    ),
+                    kind="reminder",
+                    priority="high" if v % 2 else "medium",
                 ),
             ],
         ),
@@ -500,6 +533,9 @@ _ARI = PersonaAreaSpec(
             ),
             disruption=_new_message_disruption("adhd_active"),
             max_turns_base=12,
+            # Correct behavior is to suppress/defer — the world must stay
+            # UNCHANGED, so don't let auto-inference expect a changed world.
+            expected_world_mutation="unchanged",
         ),
     ),
 )
@@ -538,10 +574,15 @@ _NOA = PersonaAreaSpec(
             domain=Domain.REMINDERS,
             output_terms=("evening", "flexible"),
             builder=lambda v: [
-                _life_reminder(
-                    title="Wind-down routine",
-                    trigger=_during_window(("evening", "night", "morning_or_night", "evening", "night")[v]),
-                    list_id=LIST_PERSONAL,
+                _scheduled_task(
+                    slug="night_owl.evening_window",
+                    variant=v,
+                    prompt="Evening wind-down routine, floating within my evening",
+                    trigger=_during_window(
+                        ("evening", "night", "morning_or_night", "morning_or_evening", "afternoon")[v]
+                    ),
+                    kind="reminder",
+                    priority="low",
                 ),
             ],
         ),
@@ -574,7 +615,7 @@ _NOA = PersonaAreaSpec(
                     prompt="Morning brief, but only once I'm actually awake",
                     trigger=_during_window("morning"),
                     kind="recap",
-                    should_fire={"kind": "circadian_state_in", "states": ["awake"]},
+                    should_fire=_gates(_gate("circadian_state_in", states=["awake"])),
                 ),
             ],
             fallback=FirstQuestionFallback(
@@ -610,7 +651,7 @@ _NOA = PersonaAreaSpec(
                     prompt="Non-urgent errand reminder, but never during my sleep",
                     trigger=_during_window("afternoon"),
                     priority="low",
-                    should_fire={"kind": "quiet_hours"},
+                    should_fire=_gates(_gate("quiet_hours")),
                 ),
             ],
         ),
@@ -719,7 +760,7 @@ _TAO = PersonaAreaSpec(
                     prompt="Hold my routine reminders while I'm on the road",
                     trigger=_during_window("evening"),
                     priority="low",
-                    should_fire={"kind": "during_travel"},
+                    should_fire=_gates(_gate("during_travel")),
                 ),
             ],
             fallback=FirstQuestionFallback(
@@ -873,7 +914,10 @@ _CAM = PersonaAreaSpec(
                     trigger=_during_window("afternoon"),
                     kind="followup",
                     subject={"kind": "entity", "id": CONTACT_A},
-                    completion_check={"kind": "user_replied_within", "lookbackMinutes": 1440},
+                    completion_check={
+                        "kind": "user_replied_within",
+                        "params": {"lookbackMinutes": 1440},
+                    },
                 ),
             ],
         ),
@@ -903,7 +947,13 @@ _CAM = PersonaAreaSpec(
             output_terms=("critical", "draft"),
             builder=lambda v: [
                 _message_triage(source="gmail"),
-                _message_draft_reply(body="Thanks — confirming the critical item is handled first."),
+                _message_draft_reply(
+                    body=(
+                        "Thanks — confirming the critical item is handled first "
+                        f"(priority {v + 1})."
+                    ),
+                    message_id=("email_000002", "email_000010", "email_000002", "email_000010", "email_000002")[v],
+                ),
             ],
         ),
         FamilySpec(
@@ -954,6 +1004,9 @@ _CAM = PersonaAreaSpec(
             ),
             disruption=_new_message_disruption("high_comms_flood"),
             max_turns_base=14,
+            # Correct behavior triages/digests without spawning per-message
+            # world writes — the world should end UNCHANGED.
+            expected_world_mutation="unchanged",
         ),
         FamilySpec(
             slug="dropped_commitment_extract",
@@ -983,6 +1036,9 @@ _CAM = PersonaAreaSpec(
             ),
             disruption=_reminder_due_disruption("high_comms_boundary"),
             max_turns_base=13,
+            # Correct behavior respects the boundary and batches for later —
+            # no immediate world write, so the world should end UNCHANGED.
+            expected_world_mutation="unchanged",
         ),
     ),
 )
@@ -1002,10 +1058,16 @@ _DEL = PersonaAreaSpec(
             domain=Domain.REMINDERS,
             output_terms=("small", "step"),
             builder=lambda v: [
-                _life_reminder(
-                    title="One small kind thing today",
-                    trigger=_during_window(("afternoon", "morning_or_evening", "evening", "morning", "afternoon")[v]),
-                    list_id=LIST_PERSONAL,
+                _scheduled_task(
+                    slug="low_energy.tiny_next_action",
+                    variant=v,
+                    prompt="One small kind thing today, tiny and flexible",
+                    trigger=_during_window(
+                        ("afternoon", "morning_or_evening", "evening", "morning", "morning_or_night")[v]
+                    ),
+                    kind="checkin",
+                    priority="low",
+                    escalation=_SOFT_LADDER,
                 ),
             ],
             fallback=FirstQuestionFallback(
@@ -1077,10 +1139,16 @@ _DEL = PersonaAreaSpec(
             domain=Domain.REMINDERS,
             output_terms=("consistency", "gentle"),
             builder=lambda v: [
-                _life_reminder(
-                    title="Check in with myself, no streak pressure",
-                    trigger=_during_window(("evening", "afternoon", "morning", "evening", "night")[v]),
-                    list_id=LIST_PERSONAL,
+                _scheduled_task(
+                    slug="low_energy.no_streak",
+                    variant=v,
+                    prompt="Check in with myself, consistency not streaks, no pressure",
+                    trigger=_during_window(
+                        ("evening", "afternoon", "morning", "morning_or_evening", "night")[v]
+                    ),
+                    kind="checkin",
+                    priority="low",
+                    escalation=_SOFT_LADDER,
                 ),
             ],
         ),
@@ -1096,7 +1164,7 @@ _DEL = PersonaAreaSpec(
                     prompt="Gentle nudge, but respect my quiet hours completely",
                     trigger=_during_window("afternoon"),
                     priority="low",
-                    should_fire={"kind": "quiet_hours"},
+                    should_fire=_gates(_gate("quiet_hours")),
                     escalation=_SOFT_LADDER,
                 ),
             ],
@@ -1129,9 +1197,12 @@ _DEL = PersonaAreaSpec(
                 "The assistant does not escalate or repeat the request after being told no.",
             ),
             world_assertions=(
-                "Any task touched is deferred or snoozed, not force-completed or repeatedly re-fired.",
+                "The task is not force-completed and no new pressure task is created; it is left for later.",
             ),
             max_turns_base=14,
+            # Correct behavior honors 'not today' by leaving the task be — no
+            # forced completion or new task. World should end UNCHANGED.
+            expected_world_mutation="unchanged",
         ),
         FamilySpec(
             slug="flexible_low_pressure_daily",
@@ -1216,6 +1287,7 @@ def _live_scenario(area: PersonaAreaSpec, family: FamilySpec, variant: int) -> S
         success_criteria=list(family.success_criteria),
         world_assertions=list(family.world_assertions),
         disruptions=disruptions,
+        expected_world_mutation=family.expected_world_mutation,
     )
 
 

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from ...types import Scenario
 from ._persona_specs import PERSONA_AREA_SPECS, build_persona_area
+from .schema_check import check_action_shape, check_scenario_actions
 
 ADHD_SCENARIOS: list[Scenario] = build_persona_area(PERSONA_AREA_SPECS[0])
 NIGHT_OWL_SCENARIOS: list[Scenario] = build_persona_area(PERSONA_AREA_SPECS[1])
@@ -34,4 +35,6 @@ __all__ = [
     "NIGHT_OWL_SCENARIOS",
     "PERSONA_SCENARIOS",
     "TRAVEL_SCENARIOS",
+    "check_action_shape",
+    "check_scenario_actions",
 ]
