@@ -1,3 +1,9 @@
+/**
+ * Covers trajectory-persistence observability: when the observation-buffer
+ * flush or the by-source aggregation fails, the error is logged (warn carrying
+ * err + subsystem "trajectory-db") before an empty result is returned.
+ * Deterministic — a hand-built runtime whose adapter/model throw.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import {

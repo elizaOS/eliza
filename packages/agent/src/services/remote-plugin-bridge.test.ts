@@ -1,3 +1,11 @@
+/**
+ * Exercises RemotePluginBridge, which wires a worker-runtime channel to the host
+ * AgentRuntime: parsing worker-announce descriptors into Plugins whose surfaces
+ * proxy over worker-rpc, and zod-validating inbound host-rpc calls before touching
+ * the runtime. Deterministic harness — an in-memory TestChannel stands in for the
+ * worker transport with a stub runtime, while the real descriptor producer
+ * (buildAnnounceDescriptor) is used to prove schema parity.
+ */
 import type {
   Action,
   IAgentRuntime,

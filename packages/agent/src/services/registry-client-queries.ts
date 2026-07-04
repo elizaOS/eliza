@@ -1,3 +1,11 @@
+/**
+ * Pure query and projection helpers over an in-memory `RegistryPluginInfo` map:
+ * name/alias lookup (bare-name, `@elizaos/*` prefixing, and app route-slug
+ * resolution), relevance scoring for search, and mapping registry entries into
+ * the client DTOs — search results, app info (viewer/session/sandbox shaping and
+ * hero-image URL resolution), app entries, and plugin list items. No I/O; every
+ * input is an already-loaded registry map.
+ */
 import {
   hasAppInterface,
   packageNameToAppDisplayName,

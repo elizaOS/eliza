@@ -1,10 +1,12 @@
-// Error-path coverage for the page-scoped-context provider's fast-fail
-// conversion (#12265): a failing live-state subsection (task read throwing) and
-// a failing provider boundary must both surface through runtime.reportError
-// (feeding RECENT_ERRORS / owner escalation) while still degrading gracefully —
-// the provider omits the broken section / returns empty context rather than
-// aborting the turn. No mocking of the thing under test; the collaborators
-// (getRoom / getTasks) throw real errors.
+/**
+ * Error-path coverage for the page-scoped-context provider's fast-fail
+ * behavior (#12265): a failing live-state subsection (task read throwing) and a
+ * failing provider boundary must both surface through runtime.reportError
+ * (feeding RECENT_ERRORS / owner escalation) while still degrading gracefully —
+ * the provider omits the broken section / returns empty context rather than
+ * aborting the turn. The thing under test is real; only the collaborators
+ * (getRoom / getTasks) are stubbed to throw real errors.
+ */
 
 import type { IAgentRuntime, Memory, State, UUID } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";

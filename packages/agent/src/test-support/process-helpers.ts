@@ -1,3 +1,8 @@
+/**
+ * Fabricates a minimal in-memory `ChildProcess` for tests that exercise
+ * spawn-based code paths without launching a real process — the fake emits a
+ * scripted `error` or `close` (with optional stderr output) on the next tick.
+ */
 import type { ChildProcess } from "node:child_process";
 import { EventEmitter } from "node:events";
 

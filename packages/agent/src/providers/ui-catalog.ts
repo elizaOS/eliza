@@ -1,3 +1,11 @@
+/**
+ * Provider that injects the rich-UI authoring guide into the agent prompt: the
+ * four output methods (inline RFC 6902 JSONL patches, [CONFIG:pluginId] config
+ * forms, [FOLLOWUPS] suggestion chips, [FORM] inline forms) and a summary of the
+ * shared component catalog (detailed for a core set, brief for the rest). Emits
+ * only on DM/API/unset channels and sits behind an ADMIN role gate; cached
+ * per-agent since the catalog is static.
+ */
 import {
   ChannelType,
   type IAgentRuntime,
@@ -37,8 +45,7 @@ export const uiCatalogProvider: Provider = {
   contextGate: { anyOf: ["general"] },
   cacheStable: true,
   cacheScope: "agent",
-  // #12087 Item 14: was USER but the body enforced ADMIN (hasAdminAccess).
-  // Declared roleGate is now enforced by applyPluginRoleGating.
+  // ADMIN-gated: the declared roleGate is enforced by applyPluginRoleGating.
   roleGate: { minRole: "ADMIN" },
 
   get: async (_runtime: IAgentRuntime, message: Memory, _state: State) => {

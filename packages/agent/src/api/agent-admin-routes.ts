@@ -1,3 +1,12 @@
+/**
+ * Mounts the destructive agent-admin HTTP routes on the shared route state:
+ * POST /api/agent/restart re-initializes the runtime through the injected restart
+ * handler and refreshes the reported status, and POST /api/agent/reset stops the
+ * runtime, deletes the PGlite data directory (guarded to only ever remove a path
+ * whose basename is `.elizadb`), clears the persisted first-run config, and wipes
+ * the cloud vault entries so the next boot does not rehydrate a signed-in Eliza
+ * Cloud state. Sits behind the authenticated dashboard gate; not public.
+ */
 import path from "node:path";
 import type { AgentRuntime, RouteRequestMeta, UUID } from "@elizaos/core";
 import type { RouteHelpers } from "@elizaos/shared";
@@ -200,8 +209,6 @@ export async function handleAgentAdminRoutes(
             // Entry may not exist — fine.
           }
         }
-        // (No marker file to remove — vault-bootstrap is now keyed off
-        // per-key vault.has() checks and re-evaluates cleanly on every boot.)
       } catch (vaultErr) {
         logWarn(
           `[eliza-api] Reset: failed to wipe cloud vault entries: ${vaultErr instanceof Error ? vaultErr.message : String(vaultErr)}`,

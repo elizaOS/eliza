@@ -1,3 +1,10 @@
+/**
+ * Generates fresh local wallet key material for the agent: a random secp256k1 EVM
+ * private key with its EIP-55 checksummed address, and an ed25519 Solana keypair
+ * encoded as base58. deriveEvmAddress recovers the address from a private key, and
+ * setSolanaWalletEnv installs a Solana secret into the process env and re-syncs the
+ * derived public-key env var. Pure key generation — no persistence or network.
+ */
 import crypto from "node:crypto";
 import type { WalletKeys } from "@elizaos/shared/contracts/wallet";
 import { secp256k1 } from "@noble/curves/secp256k1.js";

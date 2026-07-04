@@ -1,3 +1,10 @@
+/**
+ * Unit coverage for the memory watchdog: env enable-flag parsing, config
+ * defaults/floors, and the tick/start/stop state machine that requests a clean
+ * restart after sustained over-threshold RSS (debounced on transient dips,
+ * one-shot, never process.exit). Deterministic — RSS is read from a mutable
+ * holder, timers are faked, and restart/log are spies.
+ */
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {

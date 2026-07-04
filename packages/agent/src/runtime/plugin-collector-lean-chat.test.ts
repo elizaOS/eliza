@@ -1,3 +1,10 @@
+/**
+ * Covers collectPluginNames() under the lean-chat plugin set (#8434): the
+ * minimal conversational seed is kept while heavy coding/browser/orchestrator/
+ * local-inference/wallet/workflow surfaces are force-dropped even when config
+ * allow-lists or env request them, and elizacloud stays for a cloud agent.
+ * Deterministic — env-driven over an in-memory ElizaConfig, no live model.
+ */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { ElizaConfig } from "../config/config.ts";

@@ -1,3 +1,11 @@
+/**
+ * Tests for registerClientChatSendHandler — the wiring that relays the agent's
+ * outbound messages back into dashboard / REST conversations. Covers which relay
+ * sources get a send handler, delivery into the matching conversation (including
+ * an unknown dashboard-origin source routed via the default fallback), not
+ * hijacking a real connector's own handler, and cross-conversation safety.
+ * Deterministic against an in-memory runtime + server-state stub.
+ */
 import crypto from "node:crypto";
 import type {
   Content,

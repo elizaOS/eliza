@@ -1,3 +1,10 @@
+/**
+ * Mounts POST `/api/plugins/load-from-directory`, which hot-loads a plugin from
+ * an absolute local path into the live runtime and broadcasts a plugin_reloaded
+ * view event so the dashboard refreshes the plugin's views. Gated behind the
+ * local-code-execution policy (blocked in locked-down store variants) and an
+ * available runtime; the directory must be an absolute path.
+ */
 import type http from "node:http";
 import path from "node:path";
 import {

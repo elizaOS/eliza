@@ -1,3 +1,12 @@
+/**
+ * Discovers installable plugins and apps from the local filesystem and merges
+ * them into the registry map that backs `GET /api/apps`. Scans monorepo
+ * `packages/`, `node_modules/@elizaos`, walked-up workspace roots, and the
+ * state-dir installed-plugin trees, reading `package.json`/`elizaos.plugin.json`
+ * to build `RegistryPluginInfo` entries (with app metadata for app packages).
+ * Plugin scans are deadline-bounded so a slow, hoisted workspace degrades to
+ * "fewer local plugins" rather than stalling the catalog request.
+ */
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

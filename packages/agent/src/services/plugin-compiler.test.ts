@@ -1,3 +1,9 @@
+/**
+ * Exercises PluginCompiler end to end against a real VirtualFilesystemService
+ * and a real esbuild build: compiling a tiny TS plugin from the VFS to importable
+ * ESM in the same VFS, rejecting path-traversal entries, and keeping @elizaos/*
+ * peers external (import statements preserved, source not inlined).
+ */
 import fsp from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";

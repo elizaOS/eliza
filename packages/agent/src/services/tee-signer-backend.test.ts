@@ -1,3 +1,9 @@
+/**
+ * Covers TeeSignerBackend's attestation gate: signing is delegated only when
+ * collected evidence satisfies the policy, and a failing policy rejects before
+ * the wrapped signer is invoked. Deterministic — the signer, evidence provider,
+ * and policy are all in-memory stubs; no real TEE is involved.
+ */
 import { describe, expect, it, vi } from "vitest";
 import type { SignerBackend } from "./remote-signing-service.ts";
 import { TeeSignerBackend } from "./tee-signer-backend.ts";

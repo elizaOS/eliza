@@ -1,18 +1,26 @@
-// apps routes extracted to @elizaos/plugin-app-manager.
-// Re-export the public surface so downstream callers that imported from
-// `@elizaos/agent` keep working during the transition. New callers
-// should import from `@elizaos/plugin-app-manager` directly.
+/**
+ * Public barrel for the agent HTTP API surface (`@elizaos/agent/api`):
+ * re-exports the route handlers, dispatch helpers, and transport types the
+ * server dispatcher and sibling `@elizaos/plugin-*` packages consume.
+ *
+ * App-manager and wallet routes live in their own plugins; the re-exports here
+ * preserve the historical `@elizaos/agent` import path. Wallet loads lazily so
+ * importing this barrel during server startup does not drag in the full
+ * wallet/trading stack before any wallet route is used.
+ */
+
+// Compatibility re-export: apps routes live in @elizaos/plugin-app-manager;
+// new callers should import from that package directly.
 export {
   type AppManagerLike,
   type AppsRouteContext,
   type FavoriteAppsStore,
   handleAppsRoutes,
 } from "@elizaos/plugin-app-manager";
-// wallet routes extracted to @elizaos/plugin-wallet.
-// Keep the compatibility surface, but lazy-load the wallet implementation.
-// The agent API barrel is loaded during local-server startup, and a static
-// re-export would make every runtime require the full wallet/trading stack
-// before any wallet route is used.
+// Compatibility re-export: wallet routes live in @elizaos/plugin-wallet.
+// Lazy-load the implementation — this barrel is imported during local-server
+// startup, and a static re-export would force every runtime to pull in the
+// full wallet/trading stack before any wallet route is used.
 export type {
   WalletAddressesSnapshot,
   WalletRouteContext,

@@ -1,3 +1,11 @@
+/**
+ * Covers the server-side web-search injection policy: provider-native search is
+ * explicit opt-in via ELIZA_SERVER_WEB_SEARCH, ELIZA_WEB_SEARCH acts as a master
+ * kill switch, injection is skipped when the caller already owns tools or
+ * structured output, and static SDK function properties are preserved when
+ * wrapping the patched call. Deterministic — mutates process.env and builds
+ * synthetic function objects; no live provider.
+ */
 import { afterEach, describe, expect, it } from "vitest";
 import {
   __copyStaticFunctionPropertiesForTests,

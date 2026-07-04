@@ -1,3 +1,11 @@
+/**
+ * Covers AgentMediaGenerationService routing for `generateMedia`/`canGenerateMedia`
+ * across image, video, and audio (music / TTS): cloud-selected paths dispatched
+ * through the registered model handlers vs own-key providers hit over HTTP, plus
+ * the cloud-image-unavailable error case. Deterministic — Eliza config and the
+ * cloud-selection check are mocked, `fetch`/`useModel` are stubbed; no live providers.
+ */
+
 import { type IAgentRuntime, ModelType } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 

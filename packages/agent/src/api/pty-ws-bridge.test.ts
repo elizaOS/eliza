@@ -1,11 +1,12 @@
-// Unit tests for the WS-side PTY plumbing extracted from server.ts:
-// 1. attachPtySessionWsBridge — session_output AND session_exit are bridged
-//    to the client (pty-output / pty-exit), filtered per session, and both
-//    listeners detach together. Before this, session_exit was never bridged,
-//    so a dead PTY looked alive to the dashboard forever.
-// 2. schedulePtySessionStopAfterGrace / cancelPendingPtySessionStop — a WS
-//    close schedules the reap after a grace window instead of killing the
-//    client's sessions instantly on a phone lock / network blip.
+/**
+ * Unit tests for the WS-side PTY plumbing extracted from server.ts, run against
+ * an in-memory EventEmitter bridge and fake timers (no real PTY).
+ * attachPtySessionWsBridge bridges session_output/session_exit to the client as
+ * pty-output/pty-exit frames, filtered per session, with both listeners
+ * detaching together; schedulePtySessionStopAfterGrace /
+ * cancelPendingPtySessionStop defer the session reap by a grace window so a
+ * phone lock or network blip does not kill the client's sessions instantly.
+ */
 import { EventEmitter } from "node:events";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {

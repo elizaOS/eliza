@@ -1,3 +1,15 @@
+/**
+ * `/api/config` route handler: serves the redacted Eliza config (GET), applies
+ * a validated partial config write (PUT), returns the settings JSON schema
+ * (GET /schema), and hot-reloads eliza.json into the running runtime
+ * (POST /reload). Sits behind the server's authenticated settings surface and
+ * adds its own write-side hardening: an allowlist of top-level keys, prototype-
+ * pollution rejection, stripping of step-up/wallet secrets and BLOCKED_ENV_KEYS
+ * so the persistence→restart path cannot be turned into RCE, and terminal-token
+ * authorization for stdio MCP servers. Writes split into hot-reloadable keys
+ * (applied to state.config live) vs restart-required keys (plugins, providers,
+ * models, database); provider API keys are synced into process.env.
+ */
 import type http from "node:http";
 import { type AgentRuntime, logger } from "@elizaos/core";
 import type { ReadJsonBodyOptions } from "@elizaos/shared";

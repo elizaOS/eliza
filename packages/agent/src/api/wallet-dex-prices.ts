@@ -1,3 +1,12 @@
+/**
+ * Fetches USD spot prices (and token logos) for wallet holdings from on-chain DEX
+ * aggregators: DexScreener is queried first in address batches per supported
+ * chain, with a DexPaprika per-token fallback for anything DexScreener misses.
+ * Exposes the chain-id → aggregator-slug maps, the wrapped-native token address
+ * per chain, and computeValueUsd — the balance × price money math (two-decimal,
+ * guarded against non-positive / unparseable inputs) rendered in the wallet
+ * portfolio view.
+ */
 import { logger } from "@elizaos/core";
 
 export const DEXSCREENER_CHAIN_MAP: Record<number, string> = {

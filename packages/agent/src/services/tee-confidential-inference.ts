@@ -1,3 +1,12 @@
+/**
+ * Confidential-inference unseal surface: releases the `model-key` through an
+ * attestation-gated key-release client and decrypts at-rest AES-256-GCM sealed
+ * weights — single-blob or streaming per-shard — in process memory for the
+ * in-domain model runtime. Every seam fails closed (policy gates, digest
+ * bindings, GCM auth tags), and plaintext weights/key material are zeroized and
+ * never touch disk, env, or the logger. See the block below for the hardware
+ * boundary: real TDX/CoVE quote verification is not yet enforced on this path.
+ */
 import {
   createCipheriv,
   createDecipheriv,

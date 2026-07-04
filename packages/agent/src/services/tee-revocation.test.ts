@@ -1,3 +1,10 @@
+/**
+ * Covers mergeTeeRevocationsIntoPolicy folding a revocation manifest's revoked
+ * measurements and security versions into an evidence policy (normalizing both
+ * entry objects and bare values), and confirms evaluateTeeEvidencePolicy then
+ * fails closed with reason "measurement-revoked" for a released artifact whose
+ * digest was revoked. Deterministic, in-memory.
+ */
 import { describe, expect, it } from "vitest";
 import { evaluateTeeEvidencePolicy } from "./tee-policy.ts";
 import { mergeTeeRevocationsIntoPolicy } from "./tee-revocation.ts";

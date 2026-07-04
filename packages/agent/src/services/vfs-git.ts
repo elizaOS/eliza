@@ -1,3 +1,13 @@
+/**
+ * Git backend for VFS projects, running isomorphic-git against a
+ * VirtualFilesystemService's on-disk filesRoot. createVfsGitService().run
+ * dispatches a PostWorkbenchVfsGitRequest to one of init/clone/status/add/
+ * remove/commit/log/branch/checkout/fetch/pull/push. Remotes are restricted to
+ * HTTP(S), filepaths are normalized and confined (no traversal/absolute),
+ * credentials come from the request or GITHUB_TOKEN/PAT, cloned URLs are
+ * redacted in results, and any symlinks introduced by clone/checkout/pull are
+ * removed and rejected — VFS projects hold no symlinks.
+ */
 import fs from "node:fs";
 import fsp from "node:fs/promises";
 import path from "node:path";

@@ -1,3 +1,9 @@
+/**
+ * Checks the release-plugin policy: runtime support packages ship in the bundle
+ * without being counted as bundled registry plugins, and
+ * `classifyRegistryPluginRelease` reports bundled vs post-release correctly.
+ * Deterministic — drives the pure policy functions over in-memory dependency lists.
+ */
 import { describe, expect, it } from "vitest";
 
 import {

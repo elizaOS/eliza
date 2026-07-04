@@ -1,3 +1,12 @@
+/**
+ * Keeps the deterministic mock-eval plugin-view journeys in lockstep with the
+ * two source-of-truth matrices: the app visual smoke matrix (`VIEW_CASES`) and
+ * the XR route-coverage ratchet (`KNOWN_XR_VIEW_CASES`), both parsed from their
+ * source files. Asserts one journey per case and that a deterministic mock view
+ * planner routes each journey's user message to the expected view / viewType /
+ * path. Harness realism: no live LLM — the planner is a keyword heuristic and
+ * all case data is read from repo source, so this is a pure lockstep guard.
+ */
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";

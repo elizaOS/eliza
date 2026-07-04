@@ -1,3 +1,10 @@
+/**
+ * Covers `evaluateTeeEvidencePolicy`: acceptance on a full match and fail-closed
+ * rejection for missing, stale, mismatched, or revoked evidence and unmet
+ * claims, plus the simulated-verifier detection that rejects DevMode/mock
+ * markers while admitting the real on-device `eliza-local-verifier`.
+ * Deterministic, pure-function assertions over inline evidence fixtures.
+ */
 import { describe, expect, it } from "vitest";
 import { evaluateTeeEvidencePolicy } from "./tee-policy.ts";
 

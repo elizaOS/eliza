@@ -1,3 +1,10 @@
+/**
+ * Structured telemetry for calls that cross an external integration boundary
+ * (cloud, wallet, marketplace, mcp, lifeops, browser-bridge). A telemetry span
+ * records elapsed duration and outcome, infers a sanitized error kind on
+ * failure, and emits a single `[integration]` JSON line to the logger — at info
+ * level for successes and known-transient failures, at warn level otherwise.
+ */
 import { logger } from "@elizaos/core";
 
 export type IntegrationBoundary =

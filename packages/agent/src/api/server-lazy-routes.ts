@@ -1,3 +1,12 @@
+/**
+ * Lazy route-group dispatch wrappers for the agent HTTP surface. Each exported
+ * `handle*Routes` shim first checks the request method/pathname against a cheap
+ * static guard and only on a match dynamically `import()`s the real route
+ * module, keeping the ~38 route modules (and the plugins they pull in) out of
+ * the static boot graph so each loads on first hit rather than every boot. Also
+ * carries the plugin-route path matcher (`matchPluginRoutePath`) and the
+ * public-route predicate that decides which runtime plugin routes skip auth.
+ */
 import type { AgentRuntime, Route } from "@elizaos/core";
 
 type RouteContext = {

@@ -1,3 +1,12 @@
+/**
+ * Pure trade-safety guards (#8801 — these gate real money movement but shipped
+ * untested). `assertQuoteFresh` is a fail-closed staleness check (a quote that
+ * can't be proven fresh must not execute), `recordAgentAutoTrade` caps
+ * autonomous agent trades per day, and `canUseLocalTradeExecution` is the
+ * local-private-key authorization gate. A regression in any of these either
+ * executes on a stale price, lets an agent over-trade, or hands an agent the
+ * user's local key — so each path is pinned here.
+ */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   AGENT_AUTO_MAX_DAILY_TRADES,
@@ -8,16 +17,6 @@ import {
   QUOTE_MAX_AGE_MS,
   recordAgentAutoTrade,
 } from "./trade-safety.ts";
-
-/**
- * Pure trade-safety guards (#8801 — these gate real money movement but shipped
- * untested). `assertQuoteFresh` is a fail-closed staleness check (a quote that
- * can't be proven fresh must not execute), `recordAgentAutoTrade` caps
- * autonomous agent trades per day, and `canUseLocalTradeExecution` is the
- * local-private-key authorization gate. A regression in any of these either
- * executes on a stale price, lets an agent over-trade, or hands an agent the
- * user's local key — so each path is pinned here.
- */
 
 /** Reset the module-level daily-trade counter so cases don't bleed into each other. */
 function resetCounter(resetDate = ""): void {

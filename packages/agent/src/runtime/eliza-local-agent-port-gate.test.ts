@@ -1,3 +1,10 @@
+/**
+ * Verifies the `ELIZA_API_EXPOSE_PORT` gate that keeps `startEliza`'s API port
+ * closed under Android local-agent (stdio) mode unless explicitly re-exposed
+ * (#12352, #12180). Deterministic and boot-free: a mirror of the gate predicate
+ * driven against the real `resolveApiExposePort`, plus regex assertions over
+ * `eliza.ts` source — the full agent + plugin graph is never imported.
+ */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { resolveApiExposePort } from "@elizaos/shared";

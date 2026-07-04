@@ -1,3 +1,8 @@
+/**
+ * Unit coverage for `sanitizeConversationMetadata` — a pure, deterministic
+ * sanitizer with no runtime or I/O. Pins each allowlist/guard branch of the
+ * untrusted-metadata → typed-DTO boundary.
+ */
 import { describe, expect, it } from "vitest";
 import { sanitizeConversationMetadata } from "./conversation-metadata.ts";
 

@@ -1,3 +1,9 @@
+/**
+ * Covers pruneStalePluginInstances() — the staging-dir GC that keeps the newest
+ * N sibling instance directories and deletes older ones, ignoring non-directory
+ * entries and returning silently for a missing path. Deterministic — real temp
+ * dirs with backdated mtimes, no live model.
+ */
 import fsp from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";

@@ -1,3 +1,12 @@
+/**
+ * Verifies resolveTeeRuntimePolicy's env-driven precedence: an inline policy
+ * JSON plus freshness env, a policy built from an OS release manifest path, the
+ * fail-closed required policy when only ELIZA_TEE_REQUIRED is set, runtime
+ * revocations merged into a release policy, and the signature gate that refuses
+ * an unsigned revocation manifest yet merges a correctly signed one under a
+ * configured authority key. Deterministic — injected env/readText, real
+ * node:crypto Ed25519.
+ */
 import { generateKeyPairSync, sign } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {

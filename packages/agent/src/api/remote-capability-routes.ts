@@ -1,3 +1,15 @@
+/**
+ * Mounts the remote-capability router API behind the authenticated gate. POST
+ * /api/capability-router/connect validates and connects a remote capability
+ * endpoint (direct, or an e2b / home-machine / mobile- / desktop-companion
+ * provider) or provisions a cloud sandbox, syncs the resulting remote plugins
+ * into the runtime, and persists endpoint config, per-endpoint module
+ * allowlists, trust policies, and a bounded trust-audit trail to the config env
+ * — redacting tokens from responses and from sanitized vars. GET/HEAD
+ * /api/capability-router/assets/... proxies remote UI assets, platform-gated for
+ * dynamic-loading and path-traversal-guarded. Endpoint baseUrls are SSRF-guarded
+ * against private/loopback/link-local/internal targets.
+ */
 import type http from "node:http";
 import net from "node:net";
 import {

@@ -1,3 +1,12 @@
+/**
+ * In-process shell that runs a whitelisted set of POSIX-like commands against a
+ * VirtualFilesystemService instead of spawning a host process. runVfsBuiltinShell
+ * resolves a `vfs://<projectId>/<path>` cwd URI, then either interprets an
+ * sh/bash `-c` script (splitting on `&&`/`;`, honoring `>`/`>>` redirects) or a
+ * single command. Supported commands: echo, printf, pwd, cat, ls, mkdir, rm, and
+ * grep/rg implemented over the VFS export (no host ripgrep). Unknown commands
+ * exit 127; all paths stay inside the project root and symlinks are rejected.
+ */
 import fsp from "node:fs/promises";
 import path from "node:path";
 import { createVirtualFilesystemService } from "./virtual-filesystem.ts";

@@ -1,3 +1,10 @@
+/**
+ * SSRF address classification: normalizes host/IP strings (bracket-stripping,
+ * scope-id removal, IPv4-mapped-IPv6 unwrapping) and decides whether a target is
+ * private, loopback, or link-local. This is the gate that keeps an
+ * agent-triggered fetch from reaching RFC1918, 127/8, or the 169.254 cloud
+ * metadata endpoint, including hex/dotted IPv4-mapped-IPv6 disguises of them.
+ */
 import net from "node:net";
 
 const ALWAYS_BLOCKED_IP_PATTERNS: RegExp[] = [

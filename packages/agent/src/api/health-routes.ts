@@ -1,3 +1,17 @@
+/**
+ * Health, status, and runtime-introspection routes for the local agent server:
+ * `GET /api/status` (agent state, active model, uptime, cloud-connection and
+ * pending-restart summary), `GET /api/health` (subsystem readiness — runtime,
+ * plugins loaded/failed, swarm coordinator, connector statuses), and
+ * `GET /api/runtime` (deep, memoized reflective snapshot of the runtime object
+ * graph for the debug UI).
+ *
+ * Read-only introspection; both status endpoints treat optional local-inference
+ * and cloud health as best-effort and degrade rather than 500. Also exports
+ * `computeCanRespond`, the shared "first-turn capability online" predicate
+ * (live runtime AND `running` AND a registered text-generation handler) reused
+ * by `/api/status`, `/api/health`, and the WS `status` broadcast.
+ */
 import type http from "node:http";
 import type { AgentRuntime } from "@elizaos/core";
 import {

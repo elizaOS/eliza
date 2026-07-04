@@ -1,3 +1,9 @@
+/**
+ * Extracts recent conversation lines used to ground action replies — pulls text
+ * from provider state (recentMessages, state text, recent-message memories),
+ * strips speaker-name prefixes, dedupes while preserving order, and optionally
+ * backfills from the room's message memories when state is thin.
+ */
 import type { IAgentRuntime, Memory, State } from "@elizaos/core";
 import { getRecentMessagesData } from "@elizaos/shared";
 

@@ -1,3 +1,13 @@
+/**
+ * Builds the config UI-schema response served to the settings surface. Emits a
+ * draft-07 JSON Schema from the zod ElizaSchema and pairs it with UI hints —
+ * per-field labels, help text, placeholders, and group labels/ordering. Marks
+ * sensitive fields (via the shared isSensitiveConfigKey predicate) so the client
+ * masks them, and merges plugin- and connector-supplied config schemas and UI
+ * hints (including heartbeat-target help that lists the known connectors) onto
+ * the base. The base schema/hints are computed once and cached; buildConfigSchema
+ * layers any plugin/connector metadata on top per call.
+ */
 import { CONNECTOR_IDS } from "@elizaos/shared/config/schema";
 import { VERSION } from "../runtime/version.ts";
 import { isSensitiveConfigKey } from "./sensitive-keys.ts";

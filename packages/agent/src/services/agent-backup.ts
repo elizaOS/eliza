@@ -1,3 +1,15 @@
+/**
+ * Content-hashed agent backup and restore. Captures a full agent snapshot — the
+ * database (a PGlite `dumpDataDir` archive, a PGlite file-set, or agent-scoped
+ * Postgres rows), the content-addressed media store, the vault (vault.json,
+ * `.vault-pglite`, audit log), the runtime character plus its config file, and
+ * remaining state-dir files — into a manifest whose every component carries a
+ * sha256, then restores each component verifying those hashes and refusing
+ * tampered bytes. Also writes, lists, and prunes KMS-encrypted local backup
+ * envelope files (`*.agent-backup.json`, AES-256-GCM via `@elizaos/security/kms`)
+ * under the state dir, keeping only the most recent few. Restore is destructive
+ * and returns `requiresRestart`.
+ */
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";

@@ -1,3 +1,9 @@
+/**
+ * Registers the FILES agent action, giving an owner-role agent read/CRUD access
+ * to the content-addressed media store through the runtime's IFileStorageService
+ * (ServiceType.REMOTE_FILES): list (recent files, optional query/limit), get
+ * (details + served URL by filename), and delete (confirm-gated).
+ */
 import type {
   Action,
   ActionResult,

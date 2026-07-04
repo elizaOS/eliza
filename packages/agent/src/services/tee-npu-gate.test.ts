@@ -1,3 +1,10 @@
+/**
+ * Pins the fail-closed NPU/GPU private-inference gate at the model-weights
+ * unseal seam: local topology requires `npuProtected` plus a non-empty
+ * `npuFirmware` digest, cloud topology requires the GPU equivalents.
+ * Deterministic and hardware-free — a fixture key-release client with locally
+ * sealed weights drives `assertNpuPrivateInferenceAllowed` and the unseal path.
+ */
 import { createCipheriv, createHash, randomBytes } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {

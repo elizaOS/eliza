@@ -1,3 +1,12 @@
+/**
+ * Resolves the configured "owner" contact for a message source and builds the
+ * routing hints used to reach the owner. resolveOwnerContactSource /
+ * resolveOwnerContactWithFallback map a source (with telegram alias handling and
+ * a chat/discord owner-entity fallback) to an OwnerContactEntry from
+ * agents.defaults.ownerContacts. loadOwnerContactRoutingHints enriches each
+ * contact from the relationships service (preferred channel, channel/room/entity
+ * ids), entity platform identities, and recent owner message history.
+ */
 import type { IAgentRuntime, UUID } from "@elizaos/core";
 import { logger, MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core";
 import { loadElizaConfig } from "./config.ts";

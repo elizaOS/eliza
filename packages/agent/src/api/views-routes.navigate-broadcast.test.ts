@@ -1,3 +1,12 @@
+/**
+ * Server half of the agent view-switch contract: POST /api/views/:id/navigate
+ * resolves a view (builtin registry, body path override, or synthetic ids) and
+ * broadcasts the shell navigate-view WS frame, threading action/alwaysOnTop/
+ * subview/split-layout fields, recording current-view state, and stamping a
+ * turn-scoped switch-freshness marker; also covers view:event broadcasts after a
+ * server-backed interact. Focused route unit tests with real body parsing — no
+ * PGLite, runtime, or LLM.
+ */
 import type http from "node:http";
 import { Readable } from "node:stream";
 import { SHELL_NAVIGATE_VIEW_WS_EVENT } from "@elizaos/shared";

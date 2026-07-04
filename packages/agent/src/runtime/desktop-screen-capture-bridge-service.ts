@@ -1,3 +1,11 @@
+/**
+ * Screen-capture service (ServiceType.SCREEN_CAPTURE) that proxies frame-capture
+ * start/stop to the desktop (Electrobun) host over an authenticated loopback
+ * HTTP bridge — the host owns the OS capture APIs, this runtime-side service
+ * only relays. Bridge config resolves only when both URL and bearer token are
+ * present and the URL is http loopback (127.0.0.1/localhost/::1); non-loopback
+ * or unauthenticated configs resolve to null and the service stays unregistered.
+ */
 import {
   type IAgentRuntime,
   IScreenCaptureService,

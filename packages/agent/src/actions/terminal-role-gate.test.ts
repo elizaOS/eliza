@@ -1,3 +1,9 @@
+/**
+ * Verifies the TERMINAL_SHELL action's owner role gate is enforced structurally
+ * by executePlannedToolCall: a non-owner (MEMBER) caller is rejected before the
+ * handler's transport is ever reached. Deterministic: stub runtime with a stubbed
+ * global fetch, so an escape past the gate would surface as a fetch call.
+ */
 import {
   executePlannedToolCall,
   type IAgentRuntime,

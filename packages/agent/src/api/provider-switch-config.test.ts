@@ -1,3 +1,11 @@
+/**
+ * Coverage for the first-run / provider-switch config mutators in
+ * provider-switch-config: subscription-provider selection, the full first-run
+ * reset (config + process.env + stored provider credentials), the third-party
+ * `OPENAI_BASE_URL` guard, and Cerebras / NEAR AI local-provider wiring.
+ * Deterministic: it drives the pure config mutators and asserts against
+ * process.env and the in-memory config object; no live provider is contacted.
+ */
 import {
   DIRECT_ACCOUNT_PROVIDER_ENV,
   DIRECT_ACCOUNT_PROVIDER_IDS,

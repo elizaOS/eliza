@@ -1,3 +1,11 @@
+/**
+ * Unit coverage for `tryHandleLifeOpsInboxFallback`, the PA-less
+ * `GET /api/lifeops/inbox` compatibility handler. Deterministic: drives the
+ * handler with a fake `ServerResponse`, asserting non-handling of unrelated
+ * paths, the empty-inbox wire shape with zeroed per-channel counts, and the
+ * shared `channels` query validation (400 on an unknown channel). No live
+ * server or PA plugin.
+ */
 import type { ServerResponse } from "node:http";
 import { describe, expect, it } from "vitest";
 import { tryHandleLifeOpsInboxFallback } from "./lifeops-inbox-fallback-routes.ts";

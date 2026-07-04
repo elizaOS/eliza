@@ -1,3 +1,11 @@
+/**
+ * Provider that injects recent messages from the terminal conversation linked
+ * to the current automation room, giving an automation-context agent visibility
+ * into the operator-facing terminal side. Reads the linked conversation id from
+ * the room's automation metadata, loads that room's latest messages, and renders
+ * them oldest-first. Gated to ADMIN and scoped to the automation /
+ * agent_internal contexts.
+ */
 import type {
   IAgentRuntime,
   Memory,

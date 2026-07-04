@@ -1,3 +1,9 @@
+/**
+ * Verifies collectPluginNames() resolves an enabled connector (WeChat) to its
+ * first-party plugin package through the generated CHANNEL_PLUGIN_MAP, rejecting
+ * the un-namespaced fallback name. Deterministic — a plain in-memory ElizaConfig,
+ * no live model or filesystem.
+ */
 import { describe, expect, it } from "vitest";
 
 import type { ElizaConfig } from "../config/config.ts";

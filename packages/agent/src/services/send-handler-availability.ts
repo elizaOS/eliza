@@ -1,3 +1,8 @@
+/**
+ * Helpers that gate outbound delivery on whether a runtime send handler is
+ * registered for a given source, plus a once-per-source log so a handler still
+ * missing during boot wiring is reported without flooding the log.
+ */
 import { type IAgentRuntime, logger } from "@elizaos/core";
 
 type RuntimeWithSendHandlers = IAgentRuntime & {

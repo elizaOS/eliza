@@ -1,12 +1,13 @@
+/**
+ * Coverage for the plugin-install input validators assertValidGitUrl /
+ * assertValidPackageName (#8801 / #9943). A malicious git URL or package name
+ * fed to the installer is a remote-code-execution vector, so these pure,
+ * deterministic checks must reject shell injection, SSH URLs, and path
+ * traversal. No network or child process is touched.
+ */
 import { describe, expect, it } from "vitest";
 import { assertValidGitUrl, assertValidPackageName } from "./plugin-installer";
 
-/**
- * Tests for the plugin-install input validators (#8801 / #9943). A malicious git
- * URL or package name fed to the installer is a remote-code-execution vector, so
- * assertValidGitUrl / assertValidPackageName must reject injection, SSH, and path
- * traversal — they were untested.
- */
 describe("assertValidGitUrl", () => {
   it("accepts a well-formed https .git URL", () => {
     expect(() =>

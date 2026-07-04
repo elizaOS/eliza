@@ -1,3 +1,11 @@
+/**
+ * Resolves the wallet's RPC endpoint set and provider selections across EVM, BSC,
+ * and Solana. Chooses between Eliza Cloud's managed RPC proxy (keyed by the cloud
+ * API key), operator-supplied custom endpoints, and public community fallbacks,
+ * then reports per-chain readiness. Also applies wallet-config updates (provider
+ * choices, network mode, credential env keys) back into ElizaConfig and
+ * `process.env`. Pure resolution logic consumed by the wallet routes and services.
+ */
 import {
   DEFAULT_WALLET_RPC_SELECTIONS,
   isElizaCloudServiceSelectedInConfig,

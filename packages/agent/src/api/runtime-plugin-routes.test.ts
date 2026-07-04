@@ -1,3 +1,11 @@
+/**
+ * Route unit tests for the runtime plugin-route bridge: isPublicRuntimePluginRoute
+ * (which plugin-declared routes bypass the local auth gate, plus the fail-closed
+ * rule that a public route must declare a publicReason) and
+ * tryHandleRuntimePluginRoute (dispatch plus the legacy res.json/res.send/
+ * status-chaining shims, without clobbering Express-like response helpers).
+ * Deterministic: a real loopback http server over a routes stub, auth forced open.
+ */
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 import type {

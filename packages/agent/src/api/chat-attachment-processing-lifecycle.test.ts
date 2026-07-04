@@ -1,3 +1,10 @@
+/**
+ * End-to-end lifecycle test for chat attachments (#10714): every supported
+ * upload MIME type is validated, persisted through the real content-addressed
+ * media store on a temp ELIZA_STATE_DIR, served back with correct headers and
+ * range support, and processed into text. Model calls (image-description,
+ * transcription) run against a stubbed runtime; storage and serving are real.
+ */
 import { Buffer } from "node:buffer";
 import fs from "node:fs";
 import type { ServerResponse } from "node:http";

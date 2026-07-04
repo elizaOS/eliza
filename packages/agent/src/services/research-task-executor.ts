@@ -1,3 +1,8 @@
+/**
+ * TaskExecutor for research-shaped work. Routes matching task specs through the
+ * runtime's RESEARCH model when one is available, otherwise decomposes the question
+ * into sub-questions, answers each via TEXT_LARGE, and synthesizes a final report.
+ */
 import { type IAgentRuntime, ModelType } from "@elizaos/core";
 import type { TaskExecutor, TaskResult, TaskSpec } from "./task-executor.ts";
 

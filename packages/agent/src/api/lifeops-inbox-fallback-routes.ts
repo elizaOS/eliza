@@ -1,3 +1,11 @@
+/**
+ * Compatibility fallback route for `GET /api/lifeops/inbox` on the local agent
+ * server. When no runtime plugin handled the request, it returns the stable
+ * empty inbox wire shape (no messages, no sources, `available: false`, zeroed
+ * per-channel counts) after applying the shared `channels` query validation, so
+ * builds without `@elizaos/plugin-personal-assistant` render the inbox view
+ * instead of looping on a 404.
+ */
 import type { ServerResponse } from "node:http";
 
 const LIFEOPS_INBOX_CHANNELS = [

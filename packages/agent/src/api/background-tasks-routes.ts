@@ -1,3 +1,11 @@
+/**
+ * HTTP route `POST /api/background/run-due-tasks` that forces the runtime's TASK
+ * service to run its due scheduled tasks on demand (e.g. from an external
+ * scheduler or a foreground nudge). Concurrent calls are coalesced through a
+ * single in-flight run so overlapping requests share one pass rather than
+ * stacking, and learn via the returned `coalesced` flag. Returns 503 when the
+ * runtime or task service is unavailable.
+ */
 import type http from "node:http";
 import { ServiceType } from "@elizaos/core";
 

@@ -1,3 +1,20 @@
+/**
+ * First-run onboarding HTTP routes for the local agent server: `GET
+ * /api/first-run/status`, `GET /api/first-run/options`, `GET /api/wallet/keys`
+ * (first-run only), and `POST /api/first-run`.
+ *
+ * The POST handler is the single writer that turns the onboarding form into a
+ * persisted `ElizaConfig`: character persona, UI preset/avatar/voice/theme,
+ * deployment target and service routing, provider credentials, connectors
+ * (Telegram/Discord/WhatsApp/Twilio/Blooio), GitHub token, inventory RPC keys,
+ * sandbox mode, and the `meta.firstRunComplete` marker; it also mirrors the
+ * character onto the live runtime and the agent DB row.
+ *
+ * Auth boundary: these routes are reachable before first-run state exists.
+ * `GET /api/wallet/keys` self-gates to 403 once first-run has persisted, and
+ * cloud-provisioned containers short-circuit `status` while seeding default
+ * character + voice presets so the frontend hydrates correctly.
+ */
 import type http from "node:http";
 import { logger, stringToUuid, type UUID } from "@elizaos/core";
 import type { ReadJsonBodyOptions } from "@elizaos/shared";

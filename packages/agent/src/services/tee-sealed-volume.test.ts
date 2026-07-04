@@ -1,3 +1,13 @@
+/**
+ * Drives the attestation-bound state-volume key path: unsealStateVolumeKey
+ * releasing a 32-byte key only on trusted evidence, the key changing when the
+ * measured agent/policy/device identity changes (so the AES-256-GCM metadata
+ * envelope round-trips under the golden key but fails the auth tag under a key
+ * derived from tampered evidence), and the fail-closed refusals (boot gate
+ * blocking secrets, untrusted decision, ungated required measurements, corrupted
+ * envelope). Deterministic — in-memory LocalTeeKeyReleaseClient over a shared
+ * host master secret.
+ */
 import { afterEach, describe, expect, it } from "vitest";
 import {
   clearTeeBootGateState,

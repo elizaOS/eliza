@@ -1,3 +1,13 @@
+/**
+ * Grab-bag of local control-API endpoints too small for their own module:
+ * process restart (POST /api/restart), the share-sheet ingest queue
+ * (POST | GET /api/ingest/share), agent event-stream ingestion into the WS
+ * broadcast buffer (POST /api/agent/event and the per-agent
+ * /api/agents/:id/event variant), authorized single-line terminal command
+ * execution (POST /api/terminal/run), and custom-action CRUD + NL generation +
+ * test (/api/custom-actions...). Terminal runs and shell/code custom actions
+ * sit behind the local-code-execution gate and terminal-authorization checks.
+ */
 import crypto from "node:crypto";
 import type http from "node:http";
 import {

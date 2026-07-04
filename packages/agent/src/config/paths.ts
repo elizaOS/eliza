@@ -1,3 +1,10 @@
+/**
+ * On-disk path resolution for agent state files, keyed off the canonical
+ * state-dir and namespace resolvers. Locates the active config file (honoring
+ * ELIZA_CONFIG_PATH and namespace-ordered filename candidates) and derives the
+ * per-provider models cache directory, the OAuth credential file, and the
+ * Steward credentials file.
+ */
 import fs from "node:fs";
 import path from "node:path";
 import {

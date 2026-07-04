@@ -1,3 +1,14 @@
+/**
+ * HTTP routes for the agent server's local auth boundary: `GET /api/auth/me`
+ * reports the caller's identity, session, and server-authoritative boundary
+ * role (OWNER for a trusted loopback owner or valid API token, else GUEST with
+ * a 401); `GET /api/auth/status` reports whether a token is required and the
+ * pairing-code state; `POST /api/auth/pair` exchanges a rate-limited,
+ * timing-safe pairing code for the configured connection token. These are the
+ * entry points a client hits before it is authenticated, so they front the
+ * rest of the API surface. In app-core the pair handler is shadowed by the
+ * compat route that mints a real machine session.
+ */
 import crypto from "node:crypto";
 import type {
   PostAuthPairResponse,

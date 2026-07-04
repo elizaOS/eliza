@@ -1,3 +1,10 @@
+/**
+ * Serves cached Discord avatar images: `GET`/`HEAD /api/avatar/discord/<file>`
+ * returns bytes from plugin-discord's on-disk avatar cache with path-traversal
+ * guards and immutable long-lived cache headers. The Discord plugin is
+ * lazy-imported only on the first such request so it is not pulled in at every
+ * agent boot.
+ */
 import fs from "node:fs";
 import type http from "node:http";
 import path from "node:path";
@@ -98,12 +105,10 @@ export async function handleAvatarRoutes(
     }
   }
 
-  // The custom VRM (`/api/avatar/vrm`) and custom background
-  // (`/api/avatar/background`) upload/serve routes were removed with the 3D
-  // companion feature (#10434): nothing renders an uploaded model or scene
-  // background anymore, so the routes only produced onboarding 404 noise from
-  // the startup existence probes. Only the Discord avatar cache route above
-  // remains. Bundled/content-pack avatars use `avatarIndex` (client-side).
+  // No custom-VRM (`/api/avatar/vrm`) or scene-background
+  // (`/api/avatar/background`) upload/serve route: nothing renders an uploaded
+  // model or scene background, so only the Discord avatar cache route above is
+  // served. Bundled/content-pack avatars use `avatarIndex` (client-side).
 
   return false;
 }

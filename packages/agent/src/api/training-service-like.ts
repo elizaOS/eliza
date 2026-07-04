@@ -1,3 +1,10 @@
+/**
+ * Structural contract (`TrainingServiceLike`) the training HTTP routes depend on
+ * without importing the concrete service implementation: run status, trajectory
+ * listing/lookup, dataset build/list, training-job start/cancel/get/list, model
+ * list/activate/benchmark, and Ollama import. `TrainingServiceWithRuntime` layers
+ * on the runtime-bound lifecycle (`initialize` and event `subscribe`).
+ */
 import type { Trajectory, TrajectoryListResult } from "../types/trajectory.ts";
 
 export interface TrainingServiceLike {

@@ -1,3 +1,10 @@
+/**
+ * Exercises importPluginModuleFromPath()'s cold-import-in-place fast-path (F4):
+ * the first import of a package name loads directly from its built dist/ root
+ * with no staging copy, while re-imports, dist-less packages, and eliza-source
+ * exports take their expected paths. Deterministic — real on-disk fixture
+ * packages under a temp ELIZA_STATE_DIR, no live model.
+ */
 import fsp from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";

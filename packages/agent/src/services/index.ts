@@ -1,3 +1,13 @@
+/**
+ * Public barrel for the agent's business-logic services — capability broker,
+ * permissions registry, plugin install/compile, the remote-capability/remote-
+ * plugin stack, sandbox engine, signing policy, shell-execution router, and
+ * related helpers. Some names are re-exported individually under stable aliases
+ * rather than via `export *` to avoid duplicate-symbol (`TS2308`) collisions
+ * between colliding registry-client / plugin-manager type sets; preserve those
+ * explicit blocks before adding broad `export *` lines.
+ */
+
 export * from "./agent-backup.ts";
 export * from "./agent-export.ts";
 export * from "./app-session-gate.ts";

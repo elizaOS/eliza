@@ -1,3 +1,10 @@
+/**
+ * Exercises the GET /api/views/:id/hero image route: packaged PNG heroes for
+ * builtin views, a generated image/svg+xml fallback for plugin views with no hero
+ * asset, and a 404 through the error helper for unknown ids. In-process route
+ * calls against a mock ServerResponse that captures writeHead/setHeader/end — no
+ * HTTP server, no runtime, no LLM.
+ */
 import type http from "node:http";
 import { Readable } from "node:stream";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

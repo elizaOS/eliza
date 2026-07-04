@@ -1,3 +1,9 @@
+/**
+ * Unit coverage for the crash-injection fault harness: spec parsing, the
+ * production safety gate (disarmed unless explicitly allowed), and per-point
+ * fault firing (throw/exit/restart/hang, fire-at-most-once). process.exit is
+ * spied, not called; no real process termination.
+ */
 import { RESTART_EXIT_CODE as SHARED_RESTART_EXIT_CODE } from "@elizaos/shared/restart";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {

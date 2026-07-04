@@ -1,3 +1,11 @@
+/**
+ * Unit coverage for the remote capability router client and fetch handler.
+ * Drives config resolution, endpoint dedup/validation, and capability routing
+ * with a stubbed `globalThis.fetch` (no real server): asserts the canonical
+ * HTTP invoke shapes, remote error passthrough, per-endpoint routing,
+ * multi-endpoint module aggregation, unsafe view-bundle rejection, and the
+ * server-side fetch handler (auth, invoke round-trips, asset serving).
+ */
 import type { IAgentRuntime, UUID } from "@elizaos/core";
 import { CapabilityError, UnavailableCapabilityRouter } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";

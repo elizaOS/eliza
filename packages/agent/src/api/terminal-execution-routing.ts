@@ -1,3 +1,11 @@
+/**
+ * Routes an agent terminal command to either the host or the sandbox: consults
+ * local-safe execution mode to choose the route, and — when local-safe mode is
+ * required but no SandboxManager is available — fails closed by returning a
+ * sandbox route with a null manager plus an error rather than silently running
+ * on the host. `toSandboxWorkdir` maps a host working directory onto its
+ * `/workspace`-rooted path inside the sandbox (undefined when it escapes it).
+ */
 import path from "node:path";
 import { logger } from "@elizaos/core";
 import { shouldUseSandboxExecution } from "../runtime/local-execution-mode.ts";

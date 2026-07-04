@@ -1,3 +1,12 @@
+/**
+ * Seeds a fixed set of bundled knowledge documents (Eliza overview, ELIZA
+ * history, Eliza Cloud basics/monetization) into the agent's `documents` and
+ * `document_fragments` memory tables so retrieval works before a user adds any
+ * knowledge. Ids are derived deterministically from agentId + document key and
+ * seeding is idempotent: documents and fragments are created, updated in place
+ * when their definition or version changes, and stale fragments are pruned.
+ * Fragment embeddings are reused when unchanged or computed on demand.
+ */
 import path from "node:path";
 import {
   type AgentRuntime,

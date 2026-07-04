@@ -1,20 +1,20 @@
+/**
+ * Drives the lazy-route wrapper `handleInboxAndCloudRelayRouteGroup` directly
+ * (mocked req/res/helpers, no live server) to prove its path guard forwards
+ * the `/api/notifications` namespace and `/api/inbox` to the real dispatch
+ * while still rejecting unrelated paths.
+ */
 import type http from "node:http";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { handleInboxAndCloudRelayRouteGroup } from "./server-lazy-routes";
 
 /**
- * Regression test for the lazy-route wrapper guard.
- *
  * `server.ts` dispatches `/api/notifications*` through the lazily-loaded
- * `handleInboxAndCloudRelayRouteGroup` wrapper. The wrapper gates which paths
- * are forwarded to the real dispatch module so it doesn't load the heavy
- * module for every request. When the notification routes were added to the
- * real dispatch, the wrapper's path guard still only allowed `/api/inbox` and
- * `/api/cloud/relay-status` — so `/api/notifications` (and `.../push-tokens`)
- * returned `false` and fell through to the server's 404. The unit tests for
- * the handlers called them directly and bypassed this guard; only an
- * on-device request surfaced it. This test exercises the wrapper itself so the
- * guard can't silently drop the notification namespace again.
+ * `handleInboxAndCloudRelayRouteGroup` wrapper, whose path guard decides which
+ * requests reach the heavy dispatch module. Handler-level unit tests call the
+ * handlers directly and bypass that guard, so this test drives the wrapper
+ * itself to ensure it keeps forwarding the notification namespace rather than
+ * dropping it to a 404.
  */
 function makeContext(pathname: string, method = "GET") {
   const json = vi.fn();

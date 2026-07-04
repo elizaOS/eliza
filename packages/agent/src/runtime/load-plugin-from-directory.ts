@@ -1,3 +1,13 @@
+/**
+ * Runtime (un)loader for built plugins that live in an on-disk package
+ * directory: it resolves the directory's built JS entry (an explicit relative
+ * path, or package.json `module`/`main`/`exports["."]` falling back to
+ * `dist/index.js`), guards that entry against escaping the plugin directory
+ * (including through a symlink), dynamically imports and registers it, and
+ * tracks the loaded set so it can later be unloaded. Built JS only — never a
+ * build step. Disk-directory sibling of `load-plugin-from-vfs.ts`, whose
+ * `extractPlugin` module→Plugin resolver it reuses.
+ */
 import { readFile, realpath } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";

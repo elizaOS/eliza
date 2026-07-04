@@ -1,3 +1,10 @@
+/**
+ * Registers the PLUGIN agent action — owner-only, package-level lifecycle for
+ * plugins and connectors. Manager-backed ops (install/uninstall/update/sync/
+ * eject/reinject) go through the plugin_manager service; configure/read_config/
+ * toggle/list/disconnect hit the local /api/plugins compat routes because their
+ * orchestration lives in @elizaos/app-core, which this layer cannot import.
+ */
 import type {
   Action,
   ActionExample,
@@ -735,7 +742,7 @@ export const pluginAction: Action = {
   contexts: ["admin", "settings", "connectors", "secrets", "code", "files"],
   roleGate: { minRole: "OWNER" },
   similes: [
-    // Old plugin-lifecycle action names
+    // Legacy plugin-lifecycle action names kept as aliases
     "INSTALL_PLUGIN",
     "UNINSTALL_PLUGIN",
     "UPDATE_PLUGIN",
@@ -745,14 +752,14 @@ export const pluginAction: Action = {
     "CONFIGURE_PLUGIN",
     "READ_PLUGIN_CONFIG",
     "TOGGLE_PLUGIN",
-    // Old connector-control action names
+    // Legacy connector-control action names kept as aliases
     "CONFIGURE_CONNECTOR",
     "SAVE_CONNECTOR_CONFIG",
     "SET_CONNECTOR_ENABLED",
     "TOGGLE_CONNECTOR",
     "DISCONNECT_CONNECTOR",
     "LIST_CONNECTORS",
-    // Existing intermediate parent (now folded in)
+    // Intermediate parent action, kept as an alias
     "CONNECTOR",
     // Coarse aliases planners may emit
     "PLUGIN_LIFECYCLE",

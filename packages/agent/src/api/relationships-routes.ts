@@ -1,3 +1,14 @@
+/**
+ * Mounts the relationships-graph API behind the authenticated gate:
+ * GET /api/relationships/{graph,people,activity}, GET
+ * /api/relationships/candidates, POST
+ * /api/relationships/candidates/:id/accept|reject, and POST
+ * /api/relationships/people/:id/link. Reads snapshots from the core
+ * RelationshipsGraphService (lazily enabling the native relationships feature
+ * on first use) and mutates identity-merge candidates via propose/accept/reject;
+ * returns 503 when the feature is unavailable. The activity feed also folds in
+ * recent extracted facts from runtime memory.
+ */
 import type {
   IAgentRuntime,
   RelationshipsGraphQuery,

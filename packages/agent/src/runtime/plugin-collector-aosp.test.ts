@@ -1,3 +1,11 @@
+/**
+ * Covers collectPluginNames platform gating for the local-execution / terminal
+ * plugins (shell, coding-tools, agent-orchestrator): included on AOSP
+ * (android + ELIZA_LOCAL_LLAMA=1) alongside the Android core set, excluded on
+ * stock Android and iOS even when config allow-lists request them, and stripped
+ * from store desktop builds. Deterministic, env-var driven — each test saves and
+ * restores the gating process.env keys.
+ */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { ElizaConfig } from "../config/config.ts";

@@ -1,3 +1,8 @@
+/**
+ * Boot phase timing primitives. Provides BootTimer — a lap-based stopwatch that
+ * logs per-phase and cumulative durations during startup — and the BootLap /
+ * BootSummary shapes its structured snapshot serializes into for telemetry.
+ */
 import { logger } from "@elizaos/core";
 
 /** A single recorded boot phase with its elapsed and cumulative durations. */

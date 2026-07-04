@@ -1,3 +1,10 @@
+/**
+ * Unit coverage for `handlePluginDirectoryRoutes` — the POST
+ * `/api/plugins/load-from-directory` handler. Deterministic: the directory-load
+ * helper, runtime, and WS broadcast are vi.fn stubs, asserting route gating
+ * (absolute-path requirement, local-code-execution policy) and the
+ * plugin_reloaded broadcast after a successful hot load.
+ */
 import type http from "node:http";
 import { describe, expect, it, vi } from "vitest";
 import { handlePluginDirectoryRoutes } from "./plugin-directory-routes.ts";

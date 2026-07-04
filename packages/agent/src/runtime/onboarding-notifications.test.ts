@@ -1,3 +1,10 @@
+/**
+ * Exercises seedOnboardingNotifications: it emits the full ONBOARDING_NOTIFICATIONS
+ * set exactly once per agent (flipping a cache guard flag), keeps a cleared inbox
+ * cleared on re-runs, and leaves the flag unset when no NotificationService is
+ * present so a later boot still seeds. Deterministic in-memory runtime double — a
+ * cache Map plus an optional capturing notify service, no real runtime.
+ */
 import type { AgentRuntime, NotificationInput } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {

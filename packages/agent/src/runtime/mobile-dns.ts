@@ -1,3 +1,13 @@
+/**
+ * Points the on-device agent's DNS at public resolvers when it runs on a mobile
+ * platform, where Android/iOS expose no /etc/resolv.conf for the musl-linked bun
+ * process to read. configureMobileDnsIfNeeded() installs three cooperating layers
+ * — dns.setServers, a dns.lookup patch backed by an explicit-server resolver, and
+ * a globalThis.fetch wrapper that routes external requests through node:http(s)
+ * (which honors the custom lookup) — so outbound cloud/inference/connector calls
+ * resolve. Idempotent and a no-op off mobile; loopback and IP literals always
+ * bypass the overrides.
+ */
 import dns, { type LookupAddress } from "node:dns";
 import http from "node:http";
 import https from "node:https";

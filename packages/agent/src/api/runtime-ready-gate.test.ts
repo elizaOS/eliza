@@ -1,3 +1,10 @@
+/**
+ * Unit tests for createRuntimeReadyGate, the boot barrier that lets HTTP callers
+ * await the AgentRuntime becoming available: resolves immediately when a value
+ * already exists, holds waiters until markReady then releases them all with the
+ * value, and resolves with the current value (possibly null) on timeout.
+ * Deterministic, with fake timers for the timeout path.
+ */
 import { describe, expect, it, vi } from "vitest";
 import { createRuntimeReadyGate } from "./runtime-ready-gate.ts";
 

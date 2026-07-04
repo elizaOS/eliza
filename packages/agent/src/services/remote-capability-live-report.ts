@@ -1,3 +1,13 @@
+/**
+ * Builds and persists the live-validation artifacts for the remote-capability
+ * suites. Summarizes a sync result and the resulting runtime surface (counts of
+ * actions/providers/evaluators/routes/models/events/services/views/... across
+ * registered remote plugins), fingerprints an endpoint URL as a SHA-256 so the
+ * raw URL and any credentials never land in an artifact, and captures the CI
+ * run context. `writeRemoteCapabilityLiveReport` writes one JSON file per run
+ * (write-exclusive) under ELIZA_REMOTE_CAPABILITY_LIVE_REPORT_DIR, validating
+ * the report name and cloud-vs-provider shape before writing.
+ */
 import { createHash } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";

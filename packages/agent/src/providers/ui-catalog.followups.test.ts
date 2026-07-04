@@ -1,3 +1,12 @@
+/**
+ * Coverage for uiCatalogProvider's followups/form marker instructions: the
+ * [FOLLOWUPS]/[FORM] grammar and its three followup kinds (reply / navigate /
+ * prompt) are taught on the dashboard (API) channel, the example block matches
+ * the exact regex the UI parser accepts (so the docs can't drift from the
+ * parser), and no markers leak onto connector-style group channels.
+ * Deterministic: the admin gate is forced open by mocking security/access; no
+ * live model.
+ */
 import {
   ChannelType,
   type IAgentRuntime,

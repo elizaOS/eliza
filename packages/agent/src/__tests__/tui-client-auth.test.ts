@@ -1,3 +1,9 @@
+/**
+ * Unit-tests the TUI client's auth-token helpers (`resolveTuiApiToken` /
+ * `buildTuiAuthHeaders`): pure functions over an env-like record that decide
+ * whether the terminal client sends a Bearer header past the backend's
+ * loopback-trust gate. No network or backend.
+ */
 import { describe, expect, it } from "vitest";
 import {
   buildTuiAuthHeaders,

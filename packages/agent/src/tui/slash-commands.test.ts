@@ -1,3 +1,11 @@
+/**
+ * Unit coverage for the TUI slash-command helpers (commandName,
+ * toSlashCommand/toSlashCommands, matchSlashInput, resolveSlashDispatch):
+ * name/alias derivation, argument-completion wiring from static choices, input
+ * matching, and the dispatch routing that decides whether a command runs
+ * locally in the terminal (clear/new/navigate-view) or is sent to the agent as
+ * literal slash text. Pure and deterministic — no runtime or network.
+ */
 import { describe, expect, it } from "vitest";
 import {
   commandName,
@@ -207,9 +215,9 @@ describe("resolveSlashDispatch", () => {
   });
 
   it("sends toggle-transcription to the agent (shared client action, no TUI behavior)", () => {
-    // toggle-transcription was missing from the old hand-synced TUI union; it is
-    // now part of the shared ClientCommandAction and must route like any other
-    // client action the terminal can't run locally (#12411).
+    // toggle-transcription is part of the shared ClientCommandAction; the
+    // terminal can't run it locally, so it routes to the agent like any other
+    // such client action (#12411).
     const command = makeCommand({
       key: "transcription",
       target: { kind: "client", clientAction: "toggle-transcription" },
@@ -220,8 +228,8 @@ describe("resolveSlashDispatch", () => {
   });
 
   it("carries source and views through the shared wire contract", () => {
-    // source and views are shared-contract fields the old TUI copy dropped; the
-    // TUI must accept them without a type error (#12411).
+    // source and views are shared-contract fields the TUI must carry through
+    // without a type error (#12411).
     const command = makeCommand({
       key: "calendar",
       source: "custom-action",

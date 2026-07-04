@@ -1,3 +1,9 @@
+/**
+ * Verifies the RUNTIME action's `self_status` op resolves the self-awareness
+ * registry solely from the AWARENESS_REGISTRY runtime service and fails closed
+ * when that service is absent or does not expose `getDetail`. Deterministic:
+ * drives the handler against a hand-built in-memory runtime stub, no live model.
+ */
 import type {
   ActionResult,
   HandlerCallback,
@@ -7,12 +13,6 @@ import type {
 } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { runtimeAction } from "./runtime.ts";
-
-/**
- * Item #8 (Refs #12091): the dead global awareness-registry fallback is gone.
- * `self_status` must resolve the registry solely from the AWARENESS_REGISTRY
- * runtime service and fail closed when it is not registered.
- */
 
 type AwarenessServiceLike = {
   getDetail: (

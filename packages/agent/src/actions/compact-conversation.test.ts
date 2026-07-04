@@ -1,3 +1,11 @@
+/**
+ * Exercises `compactConversationAction` (validate + handler) against hand-built
+ * in-memory runtime doubles: gating below the minimum-history threshold,
+ * persisting a room ledger + compaction point for an existing session, and
+ * windowing only the oldest fetched page in very long paged sessions.
+ * Deterministic — `useModel` returns a canned ledger JSON and the room is a
+ * plain object; no live model or database.
+ */
 import { describe, expect, it } from "vitest";
 import { compactConversationAction } from "./compact-conversation.ts";
 

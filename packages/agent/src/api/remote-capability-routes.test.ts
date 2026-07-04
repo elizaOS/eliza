@@ -1,3 +1,11 @@
+/**
+ * Exercises handleRemoteCapabilityRoutes — the POST
+ * /api/capability-router/connect surface (direct / url-provider / cloud endpoint
+ * connect, config persistence, token redaction, and SSRF / traversal /
+ * embedded-credential validation) plus the GET/HEAD remote-asset proxy. Mixes
+ * injected provider/cloud spies with real end-to-end connects driven against a
+ * stubbed globalThis.fetch and an in-memory plugin runtime.
+ */
 import type http from "node:http";
 import {
   CAPABILITY_ROUTER_SERVICE_TYPE,

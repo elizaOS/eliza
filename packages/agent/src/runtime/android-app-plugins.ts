@@ -1,3 +1,9 @@
+/**
+ * Android app-plugin registration. Eagerly imports the wifi/contacts/phone app
+ * plugins, wraps each in the hosted-app session gate, and registers them (with
+ * their providers) into the STATIC_ELIZA_PLUGINS registry so the mobile runtime
+ * resolves them by name.
+ */
 import { gatePluginSessionForHostedApp } from "../services/app-session-gate.ts";
 import { STATIC_ELIZA_PLUGINS } from "./plugin-types.ts";
 

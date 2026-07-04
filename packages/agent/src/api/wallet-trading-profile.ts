@@ -1,3 +1,12 @@
+/**
+ * On-disk ledger of BSC wallet swaps plus the derived trading-profile analytics.
+ * Persists normalized, deduped trade entries atomically under
+ * `${STATE_DIR}/wallet/trading-profile.v1.json` (bounded, with corrupt-file
+ * quarantine on parse failure) and enforces the allowed tx-status transitions.
+ * Computes the profile response — FIFO realized PnL, per-token breakdown, daily
+ * PnL/volume series, win/success rates, and recent swaps — filtered by time
+ * window and manual/agent source. Backs the wallet trading-profile route.
+ */
 import fs from "node:fs";
 import path from "node:path";
 import { writeJsonAtomicSync } from "@elizaos/auth/atomic-json";

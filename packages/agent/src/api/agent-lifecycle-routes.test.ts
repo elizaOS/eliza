@@ -1,3 +1,9 @@
+/**
+ * Covers handleAgentLifecycleRoutes: POST /api/agent/start moves the shared agent
+ * state to running and reports uptime/startedAt, and POST /api/agent/pause moves
+ * running → paused. Deterministic: mutates a plain in-memory state object with
+ * mocked json/error responders, no runtime or live model.
+ */
 import type http from "node:http";
 import { describe, expect, it, vi } from "vitest";
 import {

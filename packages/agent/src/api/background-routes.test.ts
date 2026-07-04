@@ -1,3 +1,12 @@
+/**
+ * Integration tests for `POST /api/background/upload-image`, the wallpaper
+ * re-host route: a valid image data URL lands in the content-addressed media
+ * store and returns a served `/api/media/<sha256>` URL, identical images
+ * de-dupe to one file, and non-image / oversized / undecodable payloads are
+ * rejected. Also verifies the wallpaper is pinned so the orphan GC never
+ * collects it despite having no message referent. Runs against a real temp
+ * state dir and the real media store — no mocks.
+ */
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";

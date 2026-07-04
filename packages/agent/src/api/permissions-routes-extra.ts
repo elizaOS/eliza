@@ -1,3 +1,11 @@
+/**
+ * Extra `/api/permissions` endpoints beyond the core native-permission set,
+ * behind the dashboard control-API auth gate: GET/PUT `automation-mode`
+ * (connectors-only vs full agent automation) and GET/PUT `trade-mode`
+ * (user-sign-only / manual-local-key / agent-auto). Reads from and mutates the
+ * persisted `ElizaConfig`, deriving execution-capability flags and persisting
+ * mode changes through injected helpers so the handler stays transport-agnostic.
+ */
 import type http from "node:http";
 import { logger } from "@elizaos/core";
 import type { AgentAutomationMode, ReadJsonBodyOptions } from "@elizaos/shared";

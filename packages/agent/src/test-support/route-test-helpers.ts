@@ -1,3 +1,10 @@
+/**
+ * Builds a deterministic invoker that drives an HTTP route handler in-process
+ * without a live server: it fabricates the request, a mock response, and the
+ * json/error/readJsonBody helpers a handler expects, then reports whether the
+ * route handled the call along with its status and captured payload. Lets route
+ * suites assert handler behavior against a fixed or per-call runtime.
+ */
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { createMockHttpResponse } from "./test-helpers.ts";
 

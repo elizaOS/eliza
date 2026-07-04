@@ -1,3 +1,12 @@
+/**
+ * Exercises the outgoing-media pipeline hook and reference-aware GC in
+ * api/media-runtime.ts against a real content-addressed store rooted at a temp
+ * ELIZA_STATE_DIR: the hook rewrites inline data: URLs to served URLs and
+ * SSRF-guards remote rehosts, collectReferencedMedia gathers attachment,
+ * thumbnail, and document references, and mediaFileRoute serves stored bytes
+ * (including Range requests). The runtime is a minimal mock that only captures
+ * the registered pipeline hook for direct invocation.
+ */
 import { Buffer } from "node:buffer";
 import fs from "node:fs";
 import os from "node:os";
@@ -259,8 +268,8 @@ describe("thumbnail GC protection (data-loss regression)", () => {
 
     gcUnreferencedMedia(collectReferencedMedia(memories));
 
-    // Pre-fix the thumbnail was orphaned and deleted (inline preview 404s);
-    // now the collector protects it exactly like the full image.
+    // The collector must protect the thumbnail exactly like the full image;
+    // otherwise the inline preview 404s once GC sweeps the orphaned thumbnail.
     expect(fs.existsSync(mediaPath(full.fileName))).toBe(true);
     expect(fs.existsSync(mediaPath(thumb.fileName))).toBe(true);
   });

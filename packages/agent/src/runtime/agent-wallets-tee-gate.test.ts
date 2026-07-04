@@ -1,3 +1,9 @@
+/**
+ * TEE boot-gate enforcement over the agent-wallet path. Verifies that a
+ * blocking gate refuses private-key reveal and suppresses the process.env
+ * bridge, while an inert (unset) gate permits both. Uses a real in-process
+ * vault (createTestVault); gate state is driven directly.
+ */
 import { createTestVault, type TestVault } from "@elizaos/vault";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { TeeBootGate } from "../services/tee-boot-gate.ts";

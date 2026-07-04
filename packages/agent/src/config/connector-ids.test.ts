@@ -1,3 +1,8 @@
+/**
+ * Checks that the agent package re-exports the shared CONNECTOR_IDS list by
+ * identity and that the list still contains the connector ids that once drifted
+ * out of the shared copy. Deterministic.
+ */
 import { CONNECTOR_IDS as SHARED_CONNECTOR_IDS } from "@elizaos/shared/config/schema";
 import { describe, expect, test } from "vitest";
 

@@ -1,3 +1,16 @@
+/**
+ * ElizaCapabilityRouter implementation that routes filesystem, terminal (pty),
+ * and Git capabilities to a remote coding runner instead of the local host.
+ * Three backends sit behind one provider-neutral surface: the `e2b` sandbox
+ * (via the @elizaos/plugin-e2b-sandbox factory service), an `eliza-cloud`
+ * coding container (provisioned over the Cloud API, then driven over its HTTP
+ * runner contract), and a `home` machine HTTP runner. `resolveE2BRemoteRunnerConfig`
+ * reads provider selection and credentials from runtime settings / env, and
+ * `registerE2BRemoteCapabilityRouterIfEnabled` installs the service under
+ * CAPABILITY_ROUTER_SERVICE_TYPE. Every path is mapped from the host workspace
+ * root into the remote workdir and rejected if it escapes that root; model and
+ * remote-plugin capabilities are intentionally unavailable on this router.
+ */
 import { randomUUID } from "node:crypto";
 import nodePath from "node:path";
 import {

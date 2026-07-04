@@ -1,3 +1,12 @@
+/**
+ * Drift check for the optional-plugin literal-import codegen: the generated
+ * importer map's keys/specifiers match OPTIONAL_STATIC_PLUGIN_PACKAGES, every
+ * entry is a literal-specifier import(), the bundled and unbundled lists stay
+ * disjoint, and every getOptionalPlugin(...) in eliza.ts's descriptor table has a
+ * literal importer or an explicit unbundled exemption. Reads the generated module
+ * and eliza.ts as TEXT so vitest never eagerly resolves the unbuilt optional
+ * specifiers.
+ */
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

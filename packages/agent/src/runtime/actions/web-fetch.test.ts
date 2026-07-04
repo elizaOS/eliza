@@ -1,3 +1,9 @@
+/**
+ * Behavioral tests for the WEB_FETCH action: capability gating via
+ * ELIZA_WEB_FETCH, SSRF/DNS safety, response-body capping, JSON-path
+ * extraction, and User-Agent defaults. Deterministic — DNS resolution and the
+ * pinned fetch are stubbed through the test seams, so no real network or DNS.
+ */
 import type {
   ActionParameters,
   ActionResult,

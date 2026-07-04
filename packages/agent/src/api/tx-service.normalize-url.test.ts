@@ -1,11 +1,11 @@
-import { describe, expect, it } from "vitest";
-import { normalizeJsonRpcUrl } from "./tx-service";
-
 /**
  * Tests for the EVM JSON-RPC URL validator (#8801 / #9943). normalizeJsonRpcUrl
  * gates the endpoint a wallet transaction talks to; it must reject empty,
  * unparseable, and non-http(s) URLs (e.g. ws://, ftp://) — and was untested.
  */
+import { describe, expect, it } from "vitest";
+import { normalizeJsonRpcUrl } from "./tx-service";
+
 describe("normalizeJsonRpcUrl", () => {
   it("accepts and normalizes an http(s) URL", () => {
     expect(normalizeJsonRpcUrl("https://eth.example.com/rpc")).toBe(

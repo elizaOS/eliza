@@ -1,3 +1,10 @@
+/**
+ * Guards the pre-auth surface: scans the real route source for `public: true`
+ * handlers (scanPublicRoutes / publicRouteKey) and pins the set against a
+ * reviewed baseline so any new unauthenticated route fails until it is justified
+ * and recorded. Runs against the on-disk source tree with real git change
+ * detection (mocked only in the fail-closed case) and real fixture files.
+ */
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { beforeAll, describe, expect, it, vi } from "vitest";

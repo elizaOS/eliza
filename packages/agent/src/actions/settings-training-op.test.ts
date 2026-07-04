@@ -1,3 +1,12 @@
+/**
+ * Exercises the SETTINGS action's `toggle_training` op, which the host dispatches
+ * to a TrainingConfigService registered under a well-known name rather than by
+ * importing @elizaos/plugin-training. Asserts the source carries no static/dynamic
+ * import of that plugin, reports unavailable when the service is absent or lacks
+ * the capability, validates input before touching the service, echoes the service
+ * summary, and maps a service throw to a stable error code. Deterministic: stub
+ * runtime plus a fake service, no live model.
+ */
 import type {
   ActionResult,
   HandlerOptions,

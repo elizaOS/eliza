@@ -1,3 +1,13 @@
+/**
+ * Mounts the Workbench virtual-filesystem routes under `/api/workbench/vfs/*`:
+ * project open/create, file read/write/delete, quota, directory listing,
+ * snapshots, diff, rollback, pure-JS git, plugin compile/load/unload, and
+ * promotion of a project bundle to a cloud coding container. Plugin
+ * compile/load/unload are gated off in store builds
+ * (`isLocalCodeExecutionAllowed`), and public views never expose host filesystem
+ * paths. Errors from the VFS and git services map to route status codes via
+ * `sendVfsError`.
+ */
 import crypto from "node:crypto";
 import type { AgentRuntime } from "@elizaos/core";
 import {

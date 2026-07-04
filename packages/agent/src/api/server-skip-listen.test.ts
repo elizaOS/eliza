@@ -1,3 +1,9 @@
+/**
+ * Verifies `startApiServer`'s `skipListen` guard (local-agent IPC transport,
+ * #12180) and the lazy screen-capture lookup (#12249): source-level assertions
+ * against server.ts plus a real Bun-subprocess boot that confirms the TCP port
+ * binds only when skipListen is unset. See the block below for harness realism.
+ */
 import { execFile, execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";

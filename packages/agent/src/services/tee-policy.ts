@@ -1,3 +1,13 @@
+/**
+ * Evidence-policy evaluator for the TEE trust path. `evaluateTeeEvidencePolicy`
+ * checks normalized attestation evidence against a `TeeEvidencePolicy` — allowed
+ * kinds/providers, required and revoked measurements, security-version floor and
+ * revocations, nonce freshness, timestamp window, and required boolean claims —
+ * and returns a fail-closed `TeeEvidencePolicyDecision`. Also carries the
+ * agent-side simulated/DevMode-evidence rejection (a dstack #608/#609
+ * compensating control) that flags self-declared non-production markers but does
+ * not verify quote signatures.
+ */
 import {
   normalizeTeeEvidence,
   type TeeClaims,

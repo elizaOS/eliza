@@ -1,5 +1,13 @@
 #!/usr/bin/env node
 
+/**
+ * Process entrypoint for the `eliza-autonomous` binary. Before any heavy import
+ * it enables Node's persistent V8 compile cache (anchored to the shared state
+ * dir) and configures mobile DNS, then pins the mobile/AOSP bundle anchors onto
+ * the bootstrap path so tree-shaking cannot drop the on-device inference and
+ * device-bridge plugins, and finally hands off to runAutonomousCli(). A fatal
+ * boot error is logged to the Android bin-debug file and exits non-zero.
+ */
 import * as _earlyFs from "node:fs";
 import { enableCompileCache } from "node:module";
 import { homedir as _earlyHomedir } from "node:os";

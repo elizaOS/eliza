@@ -1,3 +1,10 @@
+/**
+ * Boot seam that gates local model-weights loading behind TEE attestation,
+ * inert unless `ELIZA_CONFIDENTIAL_WEIGHTS` is set. Exposes the one call the
+ * local-inference boot makes right before handing weight bytes to the runtime,
+ * in single-blob and per-shard streaming forms, and fails closed if the boot
+ * gate has already blocked secrets.
+ */
 import { teeBootGateBlocksSecrets } from "./tee-boot-gate-state.ts";
 import {
   type InferenceTopology,

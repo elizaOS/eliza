@@ -1,3 +1,10 @@
+/**
+ * Verifies resolvePlugins() records plugins that import cleanly but export no
+ * valid Plugin object, surfaced through the typed getLastFailedPluginNames /
+ * getLastFailedPluginDetails accessors (a fresh copy per call) and never stashed
+ * on globalThis. Deterministic — a real on-disk fixture package under a temp
+ * workspace, no live model.
+ */
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";

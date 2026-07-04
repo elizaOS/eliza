@@ -1,3 +1,11 @@
+/**
+ * Resolves the running Eliza package version from the first available source:
+ * the build-injected `__ELIZA_VERSION__` global, the `ELIZA_BUNDLED_VERSION`
+ * env var, the package's `package.json`, then a `build-info.json` candidate,
+ * falling back to `"0.0.0"`. Module-not-found errors on the optional file
+ * lookups are swallowed so a stripped-down bundle still resolves; any other
+ * require error propagates.
+ */
 import { createRequire } from "node:module";
 import process from "node:process";
 

@@ -1,3 +1,9 @@
+/**
+ * Unit coverage for the credit/rate-limit error detectors re-exported from
+ * `credit-detection.ts`. Deterministic: asserts against plain objects and
+ * `Error` instances carrying a duck-typed `.status`, with no live provider or
+ * network in play.
+ */
 import { describe, expect, it } from "vitest";
 import {
   isInsufficientCreditsError,

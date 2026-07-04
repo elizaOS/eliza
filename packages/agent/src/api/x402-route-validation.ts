@@ -1,3 +1,10 @@
+/**
+ * Guard that detects whether any runtime-registered route declares an `x402`
+ * field (the payment-gating marker). A non-nullish `x402` — even a malformed or
+ * `false` value — means the route set must go through x402 validation before it
+ * is served, so callers fail closed rather than silently mounting an unvalidated
+ * paid route.
+ */
 import type { Route } from "@elizaos/core";
 
 type MaybeX402Route = Route & {

@@ -1,3 +1,10 @@
+/**
+ * Trigger draft/config construction and scheduling metadata. Normalizes raw
+ * trigger input into a validated `NormalizedTriggerDraft` (enforcing the fields
+ * each trigger type requires), builds the persisted `TriggerConfig`, derives a
+ * stable dedupe key, and computes the task metadata that carries the next-run
+ * timing. Re-exports the cron/interval timing primitives from `@elizaos/core`.
+ */
 import type { UUID } from "@elizaos/core";
 import {
   computeNextCronRunAtMs,

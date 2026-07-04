@@ -1,3 +1,13 @@
+/**
+ * Provider-routing coverage for the media generation factories
+ * (createAudioProvider / createImageProvider / createVideoProvider /
+ * createVisionProvider): own-key requests reach the correct third-party
+ * endpoint (ElevenLabs sound/TTS, FAL audio/image/video, OpenAI/Google/xAI
+ * vision) with the right URL, headers, and request-body shape; input is
+ * validated before any network call; and no direct Eliza Cloud fetch provider is
+ * exposed. Deterministic: `fetch` is stubbed with a fake that records calls and
+ * replays canned responses — no live models or network.
+ */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ElizaSchema } from "../config/zod-schema";
 import {

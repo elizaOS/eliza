@@ -1,3 +1,8 @@
+/**
+ * Verifies generateThumbnailBytes (api/media-thumbnail.ts) downscales oversized
+ * images to a ≤512px JPEG and returns null for in-bounds or non-thumbnailable
+ * inputs, using real PNG encode + JPEG decode (pngjs / jpeg-js).
+ */
 import type { Buffer } from "node:buffer";
 import { PNG } from "pngjs";
 import { describe, expect, it } from "vitest";

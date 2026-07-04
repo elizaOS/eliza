@@ -1,3 +1,11 @@
+/**
+ * Covers the per-view interact path POST /api/views/:id/interact end to end
+ * headlessly: capability validation against a view's declared allowlist plus
+ * standard capabilities, serverInteract dispatch returning a real result, and the
+ * completeness invariant that every affinity-mapped view id resolves to a
+ * non-empty action list. Deterministic in-process serverInteract stand-ins — no
+ * browser, WebSocket frontend, or loopback server.
+ */
 import type http from "node:http";
 import { Readable } from "node:stream";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

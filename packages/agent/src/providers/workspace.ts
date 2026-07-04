@@ -1,3 +1,13 @@
+/**
+ * Filesystem backing for the agent's workspace directory. Resolves and creates
+ * the workspace dir, seeds the inline init-file templates (AGENTS/TOOLS/IDENTITY/
+ * USER/HEARTBEAT/INIT plus MEMORY variants) without clobbering user edits, and
+ * git-inits a brand-new workspace. Loads those init files for prompt injection,
+ * detects unedited default boilerplate so it can be skipped, dedups the two
+ * MEMORY filename variants by realpath, and narrows the set to a subagent
+ * allowlist for subagent sessions. Also exports the timed command runner used
+ * for the git bootstrap. Consumed by the workspace provider and boot path.
+ */
 import { spawn } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";

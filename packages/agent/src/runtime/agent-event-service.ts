@@ -1,3 +1,10 @@
+/**
+ * Structural contract for the agent-event service plus a runtime resolver.
+ * Declares the event/heartbeat payload shapes and a duck-typed
+ * AgentEventServiceLike interface, and resolves that service off a runtime by
+ * probing the known service-type aliases — decoupling consumers from the
+ * concrete service class.
+ */
 import type { UUID } from "@elizaos/core";
 
 export interface AgentEventPayloadLike {

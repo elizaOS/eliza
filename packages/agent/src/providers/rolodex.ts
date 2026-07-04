@@ -1,3 +1,11 @@
+/**
+ * Provider that injects the agent's known contacts and relationships (the
+ * "Rolodex") into context: it reads a bounded snapshot from the relationships
+ * graph service and renders each person with platforms, preferred channel,
+ * aliases, last-interaction date, and fact count, plus overall totals. Absent
+ * when the graph service is unavailable; empty-state when there are no contacts.
+ * Gated to ADMIN (enforced by applyPluginRoleGating).
+ */
 import type {
   IAgentRuntime,
   Memory,
@@ -51,8 +59,8 @@ export const rolodexProvider: Provider = {
   contextGate: { anyOf: ["contacts", "memory"] },
   cacheStable: false,
   cacheScope: "turn",
-  // #12087 Item 14: was USER but the body enforced ADMIN (hasAdminAccess).
-  // Declared roleGate is now enforced by applyPluginRoleGating.
+  // roleGate ADMIN is enforced by applyPluginRoleGating (#12087 Item 14); the
+  // declared gate is authoritative, not the handler body.
   roleGate: { minRole: "ADMIN" },
 
   async get(

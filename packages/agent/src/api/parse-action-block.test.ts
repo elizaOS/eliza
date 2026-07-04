@@ -1,3 +1,10 @@
+/**
+ * Deterministic unit coverage for `parseActionBlock` and
+ * `stripActionBlockFromDisplay`: parsing fenced and bare action JSON (respond,
+ * ignore, permission_request), rejecting unknown/malformed/mixed blocks and
+ * unknown permission ids, and stripping the action block from user-visible
+ * display text.
+ */
 import { describe, expect, it } from "vitest";
 import {
   parseActionBlock,

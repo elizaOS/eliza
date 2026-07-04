@@ -1,3 +1,8 @@
+/**
+ * Zod schema for the agent Character config: name/username/bio/system text,
+ * adjective and topic lists, chat/post style arrays, and message/post examples.
+ * Every object is strict, so unknown keys are rejected at parse time.
+ */
 import * as zod from "zod";
 
 const z = (zod as typeof zod & { z?: typeof zod }).z ?? zod;

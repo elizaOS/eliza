@@ -1,3 +1,12 @@
+/**
+ * Pins that the agent's `isTrustedLocalRequest` wrapper binds its exact policy
+ * gates to the canonical `@elizaos/shared` parser: cloudCheck "container"
+ * (flag AND a provisioning token), ELIZA_REQUIRE_LOCAL_AUTH honoured, and NO
+ * dev-auth bypass. If the wrapper swaps cloudCheck to "env" or enables the dev
+ * bypass, these assertions break. Also covers isWebSocketAuthorized /
+ * resolveWebSocketUpgradeRejection loopback parity and resolveBoundaryRole
+ * (OWNER for trusted loopback, GUEST fail-closed for remote tokenless callers).
+ */
 import http from "node:http";
 import { Socket } from "node:net";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -7,14 +16,6 @@ import {
   resolveBoundaryRole,
   resolveWebSocketUpgradeRejection,
 } from "./server-helpers-auth.ts";
-
-/**
- * Pins that the agent's `isTrustedLocalRequest` wrapper binds its exact policy
- * gates to the canonical `@elizaos/shared` parser: cloudCheck "container"
- * (flag AND a provisioning token), ELIZA_REQUIRE_LOCAL_AUTH honoured, and NO
- * dev-auth bypass. If the wrapper swaps cloudCheck to "env" or enables the dev
- * bypass, these assertions break.
- */
 
 function makeReq(
   headers: http.IncomingHttpHeaders,
@@ -86,8 +87,8 @@ describe("agent isTrustedLocalRequest wrapper (policy gates)", () => {
   });
 
   it("rejects a DNS-rebinding Host header (strict shared classifier)", () => {
-    // The agent's prior hand-rolled parser accepted any 127.*-prefixed host;
-    // the strict canonical parser correctly rejects this rebinding host.
+    // The strict canonical parser rejects a rebinding host like
+    // "127.0.0.1.evil.com" that a naive 127.*-prefix check would wrongly accept.
     expect(isTrustedLocalRequest(makeReq({ host: "127.0.0.1.evil.com" }))).toBe(
       false,
     );

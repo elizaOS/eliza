@@ -1,3 +1,11 @@
+/**
+ * Permission-aware document-augmentation test: proves the requester's
+ * AccessContext is honored end-to-end through chat-augmentation into the
+ * DocumentService search post-filter, so an owner-private fragment reaches a
+ * privileged OWNER but never an unprivileged USER or an unauthenticated (blank
+ * entityId) turn. Runs against an in-memory runtime with deterministic BM25
+ * keyword recall (no embedding model registered), exercising the real filter.
+ */
 import {
   type AgentRuntime,
   type createMessageMemory,

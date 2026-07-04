@@ -1,3 +1,10 @@
+/**
+ * Compatibility fallback for `GET /music-player/status` used when
+ * plugin-music-player is not loaded and its own route is absent. Reports the
+ * active guild's current track from a duck-typed music service if one is
+ * registered, otherwise returns a stable `available:false` payload so the
+ * polling desktop UI degrades gracefully instead of hammering a 404 loop.
+ */
 import type { ServerResponse } from "node:http";
 import type { AgentRuntime } from "@elizaos/core";
 

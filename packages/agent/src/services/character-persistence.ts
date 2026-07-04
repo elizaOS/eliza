@@ -1,3 +1,11 @@
+/**
+ * ElizaCharacterPersistenceService — the runtime service that writes character
+ * edits through three sinks: the on-disk Eliza config (primary agent entry plus
+ * the UI assistant name), the agent DB row's `metadata.character`, and the
+ * character-history log. `syncCharacterIntoConfig` and `buildPersistedCharacterData`
+ * shape the config/DB payloads; `persistCharacter` applies all three and returns
+ * a success/error result rather than throwing.
+ */
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
 import {
   type ElizaConfig,

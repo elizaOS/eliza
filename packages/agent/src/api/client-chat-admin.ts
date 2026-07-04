@@ -1,3 +1,10 @@
+/**
+ * Resolves the admin/owner entity id for the local client-chat surface. Prefers
+ * the runtime's canonical owner id, then a previously resolved id, then the
+ * configured `agents.defaults.adminEntityId`, falling back to a deterministic
+ * UUID derived from the agent name; the resolved id is written back onto state
+ * as both `adminEntityId` and `chatUserId`.
+ */
 import {
   type IAgentRuntime,
   logger,

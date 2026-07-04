@@ -1,3 +1,12 @@
+/**
+ * Default backend for `ServiceType.REMOTE_FILES` — the file-storage contract
+ * the rest of the runtime resolves via `runtime.getService(REMOTE_FILES)`
+ * (`api/files-routes.ts` and the `actions/files.ts` FILES tool both go through
+ * it). Persists bytes into the single content-addressed agent media store and
+ * returns served `/api/media/<sha256>.<ext>` handles, so a cloud-backed
+ * implementation can fill the same slot later without changing callers.
+ */
+
 import { Buffer } from "node:buffer";
 import {
   type IAgentRuntime,

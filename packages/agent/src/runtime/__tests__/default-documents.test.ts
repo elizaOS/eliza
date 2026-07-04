@@ -1,3 +1,10 @@
+/**
+ * Unit coverage for listFragmentIdsForDocument: it must exclude embeddings from
+ * every fragment lookup and paginate by row offset (not the createdAt `start`
+ * filter), collecting only ids that belong to the requested document. Drives a
+ * deterministic in-memory runtime stub whose getMemories serves paged
+ * fragments — no SQL adapter.
+ */
 import type { AgentRuntime, Memory, UUID } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 

@@ -1,3 +1,10 @@
+/**
+ * Integration test binding E2BRemoteCapabilityRouterService to the real
+ * coding-remote-runner HTTP handler (cloud/services/coding-remote-runner):
+ * global fetch is redirected to the in-process handler backed by a real temp
+ * workspace, so commands and file reads exercise the actual remote-runner
+ * contract and land on disk rather than on the caller host.
+ */
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import nodePath from "node:path";

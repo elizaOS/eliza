@@ -1,3 +1,12 @@
+/**
+ * Exercises verifyTeeRevocationManifest's fail-closed signature checks over a
+ * revocation manifest: an unsigned manifest is allowed only when no trusted
+ * authority is anchored, a claimed authority without an anchor is rejected, a
+ * correctly signed manifest verifies, and tampered / unknown-authority /
+ * unsigned-with-anchor manifests are refused. Also pins that
+ * canonicalizeRevocationBody is key-order independent. Deterministic — real
+ * node:crypto Ed25519 keys generated in-memory.
+ */
 import { generateKeyPairSync, sign } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {

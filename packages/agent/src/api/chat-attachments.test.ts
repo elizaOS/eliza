@@ -1,3 +1,9 @@
+/**
+ * Deterministic unit tests for chat-attachment plumbing: `serializeMessageAttachments`
+ * (which URLs survive into a serialized message and which unpersisted placeholders
+ * are dropped) and `validateChatImages` (accepted MIME types, the raw-base64
+ * requirement, and the count and per-item size caps).
+ */
 import { describe, expect, it } from "vitest";
 import { serializeMessageAttachments } from "./conversation-routes.ts";
 import { validateChatImages } from "./server-helpers.ts";

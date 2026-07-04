@@ -1,3 +1,10 @@
+/**
+ * Provider that surfaces the user's most recent messages across every connected
+ * platform: it scans the entity's rooms, pulls the latest messages, and renders
+ * them newest-first with source tag, relative time, and speaker label.
+ * Suppressed inside automation and page-scoped rooms, which carry their own
+ * context. Gated to ADMIN (enforced by applyPluginRoleGating).
+ */
 import type {
   IAgentRuntime,
   Memory,
@@ -41,9 +48,8 @@ export const recentConversationsProvider: Provider = {
   contextGate: { anyOf: ["memory", "messaging"] },
   cacheStable: false,
   cacheScope: "turn",
-  // #12087 Item 14: enforced by applyPluginRoleGating (declared roleGate is
-  // short-circuited at execution). Previously declared USER but the body enforced
-  // ADMIN via hasAdminAccess — the declaration was decorative and wrong.
+  // roleGate ADMIN is enforced by applyPluginRoleGating (#12087 Item 14); the
+  // declared gate is authoritative, not the handler body.
   roleGate: { minRole: "ADMIN" },
 
   async get(

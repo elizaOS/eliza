@@ -1,3 +1,10 @@
+/**
+ * Handler for the read-only Workbench overview surface. Delegates the VFS routes
+ * to `handleWorkbenchVfsRoutes`, then serves `GET /api/workbench/overview` — an
+ * aggregate of runtime todos (from `getTasks`) and triggers with summary counts.
+ * Todo CRUD lives in `@elizaos/plugin-workflow`; this file owns only the overview
+ * plus the VFS delegation.
+ */
 import type { TriggerSummary } from "../triggers/types.ts";
 
 export type { WorkbenchRouteContext } from "./workbench-context.ts";
@@ -29,10 +36,9 @@ export async function handleWorkbenchRoutes(
   }
 
   // ── GET /api/workbench/overview ──────────────────────────────────────
-  // Workbench surfaces todos + triggers. Tasks were unified into workflows;
-  // workflow listings live at /api/automations now. The `tasks: []` field is
-  // kept in the response for backward compatibility with existing clients
-  // that still read it.
+  // Workbench surfaces todos + triggers. Workflow listings live at
+  // /api/automations; the `tasks: []` / `tasksAvailable: false` fields remain in
+  // the response for backward compatibility with clients that still read them.
   if (method === "GET" && pathname === "/api/workbench/overview") {
     const triggers: TriggerSummary[] = [];
     const todos: WorkbenchTodoView[] = [];

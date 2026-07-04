@@ -1,3 +1,12 @@
+/**
+ * The owner-only `COMPACT_CONVERSATION` Eliza action. On an explicit request it
+ * loads the room's message history (paged, capped, synthetic-artifact-filtered),
+ * finds a safe compaction boundary above the preserved tail, runs the
+ * hybrid-ledger compactor to roll older turns into a persisted room ledger, and
+ * records a compaction point plus a history entry so the pruned turns drop out
+ * of later prompt context. Refuses (validate returns false) until enough prior
+ * history exists to be worth compacting.
+ */
 import type {
   Action,
   ActionResult,

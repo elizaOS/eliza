@@ -1,3 +1,9 @@
+/**
+ * Trigger type surface for the package: re-exports the canonical trigger config
+ * and request/summary types from core and shared, and defines the persisted
+ * task-metadata shape (`TriggerTaskMetadata`) plus the normalized draft shape
+ * (`NormalizedTriggerDraft`) used when building a trigger from user input.
+ */
 import type { TriggerConfig, TriggerRunRecord } from "@elizaos/core";
 
 export {

@@ -1,3 +1,11 @@
+/**
+ * Exercises handlePushTokenRoute (register/list/unregister device push tokens
+ * under /api/notifications/push-tokens) against a real NotificationPushService
+ * and PushTokenRegistry backed by an in-memory Map cache — covering 201
+ * register, 400 validation, GET count with per-platform breakdown, DELETE
+ * existence reporting, and the 503 returned when the push service is
+ * unregistered.
+ */
 import type http from "node:http";
 import { createMockRuntime } from "@elizaos/core/testing";
 import { beforeEach, describe, expect, it, vi } from "vitest";

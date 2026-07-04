@@ -1,3 +1,12 @@
+/**
+ * Merges a plugin-owned static diagnostic descriptor with host-resolved runtime
+ * status into the `PluginEntry` shape the dashboard diagnostics card renders.
+ * The generic `buildPluginDiagnosticEntry` carries no plugin-specific literals —
+ * the descriptor supplies identity, config keys, tags, and prerequisite labels;
+ * the status supplies live enabled/configured/capability state.
+ * `resolveWalletDiagnosticStatus` is the one wallet-aware resolver, mapping the
+ * wallet capability snapshot onto that generic status contract.
+ */
 import type { AgentRuntime, PluginDiagnosticDescriptor } from "@elizaos/core";
 import type { ElizaConfig } from "../config/config.ts";
 import type { PluginEntry } from "./server-types.ts";

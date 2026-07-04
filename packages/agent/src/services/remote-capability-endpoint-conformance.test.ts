@@ -1,3 +1,10 @@
+/**
+ * Unit tests for the remote-capability endpoint conformance harness against a
+ * mocked capability-router `fetch` backed by the shared protocol fixture.
+ * Verify the happy path exercises every surface, that missing/weak evidence and
+ * mismatched view-asset content type/integrity fail, and that required surfaces
+ * spread and backfill across multiple modules.
+ */
 import { createHash } from "node:crypto";
 import { CAPABILITY_ROUTER_PROTOCOL_FIXTURE } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";

@@ -1,3 +1,10 @@
+/**
+ * Unit coverage for z.ai plugin collection: resolvePluginPackageAlias normalizes
+ * the legacy external @homunculuslabs/plugin-zai reference to the first-party
+ * @elizaos/plugin-zai, and collectPluginNames selects it from either the
+ * canonical ZAI_API_KEY or the legacy Z_AI_API_KEY. Deterministic env-driven
+ * collection — env is snapshotted/restored, no plugin modules are loaded.
+ */
 import { afterEach, describe, expect, it } from "vitest";
 import type { ElizaConfig } from "../../config/config";
 import {

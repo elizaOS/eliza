@@ -1,3 +1,20 @@
+/**
+ * Layers the agent's plugin-ownership and view-registry bookkeeping over
+ * @elizaos/core's base plugin lifecycle. installRuntimePluginLifecycle() wraps a
+ * runtime's registerPlugin / registerAction / registerProvider / registerModel /
+ * registerEvent / registerService / registerDatabaseAdapter (plus unload and
+ * reload) so every component a plugin registers is attributed to its owning
+ * plugin. That attribution enables clean teardown on unload, reload, or a failed
+ * registration — stopping owned services, dropping owned models/events/routes/
+ * send-handlers/components, and restoring the prior database adapter.
+ *
+ * When core already installed its own lifecycle, only installPluginViewSync()
+ * goes on top: it syncs each plugin's declared views into the /api/views
+ * registry and re-applies owner-tier provider role gating at registration and
+ * reload time, so plugins hot-installed after boot (plugin manager, VFS) are
+ * gated identically to boot plugins. Registered actions are also wrapped with the
+ * lazily-built per-runtime tool-call cache.
+ */
 import { AsyncLocalStorage } from "node:async_hooks";
 import type {
   AgentContext,

@@ -1,3 +1,9 @@
+/**
+ * Verifies the sensitive-config-key predicate and its downstream consumers:
+ * isSensitiveConfigKey classification (secrets vs. non-secret token-count
+ * settings), server-side redactConfigSecrets, and the sensitive marking of
+ * plugin config UI hints by buildConfigSchema. Pure in-process assertions.
+ */
 import { describe, expect, it } from "vitest";
 import { redactConfigSecrets } from "../api/server-helpers-config.ts";
 import { buildConfigSchema } from "./schema.ts";

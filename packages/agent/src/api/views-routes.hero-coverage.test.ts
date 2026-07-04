@@ -1,3 +1,14 @@
+/**
+ * Launcher "every view has an image" guarantee, asserted at the API layer: the
+ * Launcher renders a tile for every registered view via GET /api/views/:id/hero,
+ * so that route must NEVER 404 for a registered view and must ALWAYS return a
+ * non-empty image — a packaged hero file (the builtin PNGs) or the deterministic
+ * branded SVG fallback (`generateViewHeroSvg`). This spec enumerates the live
+ * registry and proves the contract for EVERY view, mixing real-hero builtins
+ * with synthetic fallback-plugin views. Companion to views-routes.hero.test.ts,
+ * which checks the individual code paths (one fallback view, the builtin PNG
+ * set, the 404-for-unknown-id case). Drives the handler in-process (no server).
+ */
 import type http from "node:http";
 import { Readable } from "node:stream";
 import { logger } from "@elizaos/core";
@@ -14,20 +25,6 @@ import {
   handleViewsRoutes,
   type ViewsRouteContext,
 } from "./views-routes.ts";
-
-// Launcher "every view has an image" guarantee, asserted at the API layer.
-//
-// The Launcher renders a tile image for every registered view by hitting
-// GET /api/views/:id/hero. The server-side contract is that this route NEVER
-// 404s for a registered view and ALWAYS returns a non-empty image response —
-// either a packaged hero file (e.g. the builtin PNGs) or the deterministic
-// branded SVG fallback (`generateViewHeroSvg`). This test enumerates the live
-// registry and proves that contract for EVERY view.
-//
-// Companion to views-routes.hero.test.ts: that file checks the individual code
-// paths (one fallback view, the builtin PNG set, the 404-for-unknown-id case).
-// This file adds the missing "iterate ALL registered views" coverage with a
-// mix of real-hero (builtin) and fallback (plugin, no hero file) entries.
 
 // Two plugins each declaring views with NO hero file on disk. Registering them
 // under process.cwd() (which has no assets/hero.* nor the declared heroImagePath)

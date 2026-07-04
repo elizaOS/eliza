@@ -1,3 +1,12 @@
+/**
+ * Unit coverage for the pending-permissions provider and its formatters:
+ * formatPendingPermissionLine (denied / not-determined / restricted states with
+ * relative timing and last-blocked-feature attribution),
+ * buildPendingPermissionsContext (the PENDING PERMISSIONS section, empty when
+ * nothing is pending), and pendingPermissionsProvider itself (silent when the
+ * permissions registry is absent or empty, populated otherwise, registered at
+ * position -5). Deterministic: the registry and runtime are in-memory vi fakes.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import type { IPermissionsRegistry, PermissionState } from "@elizaos/shared";
 import { describe, expect, it, vi } from "vitest";

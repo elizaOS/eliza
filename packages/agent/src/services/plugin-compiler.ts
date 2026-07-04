@@ -1,3 +1,11 @@
+/**
+ * Compiles a project's TypeScript plugin source out of its
+ * VirtualFilesystemService into bundled JS written back to the same VFS, so it
+ * can be loaded via dynamic import of a real on-disk file. Uses esbuild, falling
+ * back to Bun.Transpiler or the TypeScript compiler when esbuild's native binary
+ * is unusable, and leaves @elizaos/* peers external so the host runtime supplies
+ * them. Path-traversal safety is delegated to the VFS.
+ */
 import path from "node:path";
 import * as esbuild from "esbuild";
 import type { VirtualFilesystemService } from "./virtual-filesystem.ts";

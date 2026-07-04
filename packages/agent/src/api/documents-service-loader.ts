@@ -1,3 +1,12 @@
+/**
+ * Canonical type surface and lazy resolver for the runtime "documents" service.
+ * Defines the shared vocabulary (visibility scopes, added-by roles, sources,
+ * search modes, and the `DocumentsServiceLike` shape) that route helpers and
+ * `@elizaos/plugin-documents` agree on, plus `getDocumentsService()`, which
+ * returns the already-registered service or awaits its load promise up to an
+ * env-tunable timeout (`DOCUMENTS_SERVICE_TIMEOUT_MS`, default 10s, cap 60s),
+ * reporting a typed `DocumentsLoadFailReason` on miss instead of throwing.
+ */
 import type {
   AccessContext,
   AgentRuntime,

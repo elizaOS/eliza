@@ -1,3 +1,14 @@
+/**
+ * Executes the agent's scheduled/event triggers and wires them into the task
+ * scheduler. Registers the TRIGGER_DISPATCH task worker, dispatches each fire to
+ * either a workflow (the WORKFLOW_DISPATCH service, idempotency-keyed) or a
+ * prompt automation (a synthetic-entity turn through the message service), then
+ * records the run, recomputes next-fire metadata, deletes one-shot/exhausted
+ * tasks, and hands the per-fire re-arm interval back so varying-cadence triggers
+ * don't drift. Tracks per-agent execution metrics, surfaces success/failure on
+ * the notification rail, and projects tasks into read-only trigger/heartbeat
+ * summaries and a health snapshot for the API.
+ */
 import crypto from "node:crypto";
 import type { IAgentRuntime, Memory, Service, Task, UUID } from "@elizaos/core";
 import { ServiceType, stringToUuid } from "@elizaos/core";

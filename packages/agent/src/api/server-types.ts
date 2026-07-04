@@ -1,3 +1,12 @@
+/**
+ * Transport and server-state type definitions shared across the agent HTTP API.
+ * Defines `ServerState` — the mutable per-process state the route handlers read
+ * and mutate (runtime, config, agent lifecycle state, conversations, WebSocket
+ * broadcast hooks, connector and pairing sessions) — plus the `PluginEntry` DTO
+ * the dashboard renders, conversation/share/attachment shapes, and the
+ * connector route-handler signature. Type-only; also re-exports shared
+ * conversation and stream-event types for API consumers.
+ */
 import type http from "node:http";
 import type { AgentRuntime, Media, UUID } from "@elizaos/core";
 import type { CloudManager } from "@elizaos/plugin-elizacloud/host-routes";

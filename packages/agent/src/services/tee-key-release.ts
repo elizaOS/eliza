@@ -1,3 +1,14 @@
+/**
+ * TEE key-release clients: turn a passing attestation into released key
+ * material. `LocalTeeKeyReleaseClient` is a hardware-free HMAC KDF for dev and
+ * unit tests; `HttpTeeKeyReleaseClient` is the production path that talks to an
+ * RA-TLS KMS, binding each request to a fresh ephemeral X25519 key and
+ * `report_data = SHA256(nonce || epk_pub)` so a passively captured quote or
+ * wrapped key cannot be replayed. Also defines the
+ * `x25519-hkdf-sha256-aes-256-gcm` wrap format plus the `wrapTeeReleaseKey`
+ * and unwrap helpers a real KMS adapter reuses. Consumed by the
+ * confidential-inference unseal path (`tee-confidential-inference.ts`).
+ */
 import {
   createCipheriv,
   createDecipheriv,

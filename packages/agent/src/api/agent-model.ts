@@ -1,3 +1,11 @@
+/**
+ * Derives the human-facing model/provider label the API surface reports for a
+ * runtime. detectRuntimeModel resolves in priority order: the character/settings
+ * model, the configured service-routing transport (direct / remote / cloud-proxy),
+ * the config default model, a loaded provider plugin name, then an env provider
+ * signal (API-key or base-URL presence, including ELIZA_LOCAL_LLAMA on AOSP).
+ * resolveProviderFromModel maps a model string to a provider display name.
+ */
 import type { AgentRuntime } from "@elizaos/core";
 import {
   normalizeFirstRunProviderId,

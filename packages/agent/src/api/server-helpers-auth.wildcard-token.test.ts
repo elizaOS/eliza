@@ -1,22 +1,20 @@
+/**
+ * M7 (#12228): a wildcard bind (0.0.0.0 / ::) relaxes both the DNS-rebind Host
+ * check (`isAllowedHost`) and the CORS origin check (`resolveCorsOrigin` reflects
+ * any origin with credentials). Left tokenless on a wildcard bind — with
+ * `ELIZA_DISABLE_AUTO_API_TOKEN=1` and no explicit `ELIZA_API_TOKEN` — the server
+ * would listen on every interface with no authenticated boundary and both
+ * browser-origin protections off, so `ensureApiTokenForBindHost` REFUSES that
+ * combo and forces a generated token. The disable flag is still honored for
+ * loopback and specific (non-wildcard) non-loopback IP binds, which keep the
+ * Host + CORS guards enforced.
+ */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   ensureApiTokenForBindHost,
   getConfiguredApiToken,
 } from "./server-helpers-auth.ts";
 
-/**
- * M7 (#12228): a wildcard bind (0.0.0.0 / ::) relaxes both the DNS-rebind Host
- * check (`isAllowedHost`) and the CORS origin check (`resolveCorsOrigin`
- * reflects any origin with credentials). With `ELIZA_DISABLE_AUTO_API_TOKEN=1`
- * and no explicit `ELIZA_API_TOKEN`, the pre-fix code silently returned with no
- * token — leaving the server listening on every interface with *no*
- * authenticated boundary and both browser-origin protections off.
- *
- * `ensureApiTokenForBindHost` must now REFUSE that combo: force a generated
- * token so a real auth boundary exists. The disable flag is still honored for
- * loopback and specific (non-wildcard) non-loopback IP binds, which keep the
- * Host + CORS guards enforced.
- */
 const ENV_KEYS = [
   "ELIZA_API_BIND",
   "ELIZA_API_TOKEN",

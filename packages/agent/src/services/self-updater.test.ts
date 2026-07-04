@@ -1,3 +1,8 @@
+/**
+ * Verifies the self-updater's pure mapping from install method + release channel to
+ * a display update command and action plan (authority, next action, and whether the
+ * update can run from the current context). Deterministic — no process spawns.
+ */
 import { describe, expect, it } from "vitest";
 import { buildUpdateCommand, getUpdateActionPlan } from "./self-updater.ts";
 

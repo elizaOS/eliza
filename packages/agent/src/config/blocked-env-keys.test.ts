@@ -1,3 +1,10 @@
+/**
+ * Verifies BLOCKED_ENV_KEYS is the single secret-key denylist shared by API env
+ * writes and startup env collection: it must be the same Set instance the
+ * plugin-discovery helpers use, cover the canonical secret keys, and make
+ * collectConfigEnvVars drop those keys while passing safe ones through.
+ * Deterministic, no live services.
+ */
 import { describe, expect, it } from "vitest";
 import { BLOCKED_ENV_KEYS } from "./blocked-env-keys";
 import { collectConfigEnvVars } from "./env-vars";

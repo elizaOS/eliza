@@ -1,3 +1,11 @@
+/**
+ * Covers the owner-only role gate on the SETTINGS action's backend ops
+ * (show_backends / set_backend) alongside the pure helpers behind them:
+ * coding-backend normalization and aliasing, ELIZA_BACKEND_ROUTING parsing
+ * (including the operator allow lock-list), loaded text-provider detection, and
+ * set_backend refusal to persist a backend outside the effective allow-list.
+ * Deterministic: assertions against helpers and stub runtimes, no live model.
+ */
 import { ModelType, satisfiesRoleGate } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {

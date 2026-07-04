@@ -1,3 +1,13 @@
+/**
+ * Translates the persisted runtime ElizaConfig into the initial in-memory
+ * Character identity used to boot the agent: resolving name/bio/system prompt
+ * (config entry, then bundled style preset, then language default), collecting
+ * provider and connector secrets from process.env, bridging Matrix public
+ * identifiers as plain settings so the redaction layer leaves them intact,
+ * gating the advanced-memory capability set (off for the lean-chat cloud plugin
+ * set), and appending capability hints to the system prompt. This is the
+ * boot-time identity, not the persisted agent database record.
+ */
 import {
   type Character,
   type CharacterInput,

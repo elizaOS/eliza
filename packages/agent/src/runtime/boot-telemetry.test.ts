@@ -1,3 +1,9 @@
+/**
+ * Verifies boot/restart telemetry persistence: the native startup trace id
+ * (ELIZA_STARTUP_TRACE_ID) is trimmed and written into both the boot
+ * latest.json and the restart events.json under the state dir. Uses a real temp
+ * ELIZA_STATE_DIR and reads the files back off disk.
+ */
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";

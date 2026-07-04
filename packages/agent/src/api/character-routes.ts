@@ -1,3 +1,13 @@
+/**
+ * HTTP routes for reading and editing the running agent's character. Mounts the
+ * `/api/character` surface: GET the merged character, PUT edits (validated,
+ * persisted to the agent row so they survive restart, mirrored into the config
+ * file, and journaled to character history), GET `/history`, GET `/random-name`,
+ * GET `/schema` (the editable-field descriptor the dashboard renders), and POST
+ * `/generate` (LLM-authored bio/system/style/examples via TEXT_SMALL). Renaming
+ * rewrites speaker names and `{{agentName}}`/`{{name}}` tokens in the message
+ * examples so the persona stays self-consistent.
+ */
 import type { AgentRuntime } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
 import type { RouteRequestContext } from "@elizaos/shared";

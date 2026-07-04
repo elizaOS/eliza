@@ -1,3 +1,10 @@
+/**
+ * Unit coverage for `handleCommandsRoutes` (the GET /api/commands catalog),
+ * driving the real handler with stubbed req/res and json/error spies — no HTTP
+ * server, deterministic, runtime null or a bare `{ agentId }` stub. Pins surface
+ * scoping, gui-only exclusion, auth/dynamic-choice pass-through, and #8798
+ * view-scoped command visibility.
+ */
 import { describe, expect, it, vi } from "vitest";
 
 import { handleCommandsRoutes } from "./commands-routes.ts";

@@ -1,3 +1,15 @@
+/**
+ * Optional-route fallbacks: minimal, safe-default handlers for endpoints whose
+ * real implementations live in plugins/features that may not be loaded in every
+ * deployment (mobile bundles, cloud-agent containers, lightweight runtimes).
+ * Every handler degrades to an inert snapshot (empty list / `unavailable` /
+ * `off`) rather than a 404, so the dashboard SPA can render without exploding
+ * when computer-use, the apps catalog, streaming settings, or coding-agent
+ * tooling are absent. Covers runtime-mode reporting, computer-use approvals
+ * (+ SSE stream) and approval-mode, stream settings (served by the streaming
+ * plugin or an in-process mobile shim), catalog/apps, drop status, coding-agent
+ * preflight/coordinator, and lifeops activity-signals.
+ */
 import type http from "node:http";
 import { readRequestBody, sendJson, sendJsonError } from "@elizaos/core";
 import type { StreamVisualSettings } from "@elizaos/plugin-streaming";
@@ -6,16 +18,6 @@ import {
   normalizeDeploymentTargetConfig,
 } from "@elizaos/shared";
 import { loadElizaConfig } from "../config/config.ts";
-
-/**
- * Optional-route fallbacks: minimal, safe-default handlers for endpoints whose
- * "real" implementations live in plugins/features that may not be loaded in
- * every deployment (mobile bundles, cloud-agent containers, lightweight
- * runtimes). Every handler degrades to an inert snapshot (empty list /
- * `unavailable` / `off`) rather than 404, so the dashboard SPA can render
- * without exploding when, e.g., computer-use, the apps catalog, or coding-agent
- * tooling are absent.
- */
 
 type StreamingSettingsModule = {
   readStreamSettings: () => StreamVisualSettings;

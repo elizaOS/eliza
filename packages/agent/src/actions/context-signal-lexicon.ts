@@ -1,3 +1,13 @@
+/**
+ * Central lexicon mapping each context-signal key (affirmative, negative, the
+ * lifeops_* family, calendar, gmail, web_search, send_message, and so on) to
+ * its localized strong/weak keyword terms and a per-signal context-window limit.
+ * `resolveContextSignalSpec` / `getContextSignalTerms` resolve a signal to
+ * concrete terms for the requested character locale, drawing the raw phrase
+ * lists from `@elizaos/shared`'s validation-keyword registry. Consumed by the
+ * providers and action validators that decide when to widen or narrow the
+ * context pulled into a prompt.
+ */
 import {
   type CharacterLanguage,
   getValidationKeywordTerms,

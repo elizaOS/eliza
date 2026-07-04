@@ -1,3 +1,9 @@
+/**
+ * Drives runShell's routing between host execution and sandbox backends across
+ * runtime modes (local-yolo / local-safe / cloud / mobile) and vfs:// working
+ * directories. Runs real host child processes for the host path and pairs a fake
+ * SandboxManager with a real VirtualFilesystemService for the sandbox paths.
+ */
 import fsp from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";

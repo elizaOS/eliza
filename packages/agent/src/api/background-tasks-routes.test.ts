@@ -1,3 +1,11 @@
+/**
+ * Unit tests for `handleBackgroundTasksRoute` (`POST /api/background/run-due-tasks`):
+ * it drives the task service's `runDueTasks`, coalesces a concurrent second run
+ * into the in-flight one, reports `runtime_unavailable` /
+ * `task_service_unavailable` with 503 when either is missing, and declines
+ * unrelated routes. Uses mock runtime and services — deterministic, no live
+ * task scheduler.
+ */
 import type http from "node:http";
 import { describe, expect, it, vi } from "vitest";
 import { handleBackgroundTasksRoute } from "./background-tasks-routes";

@@ -1,3 +1,13 @@
+/**
+ * Applies a plugin-config or plugin-set change to a live runtime by the
+ * least-disruptive path: in-place `applyPluginConfig` (config_apply), a hot
+ * unload+register of the changed packages (plugin_reload), or a full runtime
+ * restart when adapter plugins change or lifecycle hooks are unsupported
+ * (runtime_reload / restart_required). If a hot reload throws partway, a
+ * two-phase rollback unregisters what was newly registered and re-registers
+ * what was unloaded, restoring the previous plugin graph. Consumed by the
+ * config/plugin mutation routes to keep the in-memory plugin graph consistent.
+ */
 import { type AgentRuntime, logger } from "@elizaos/core";
 import type { ElizaConfig } from "../config/config.ts";
 import { supportsRuntimePluginLifecycle } from "../runtime/plugin-lifecycle.ts";

@@ -1,23 +1,22 @@
+/**
+ * Weights a plugin view's related actions up in the planner's tool catalogue
+ * while the user is looking at that view — kept at full parameter detail so they
+ * can be invoked reliably — even when the user's message contains no intent
+ * keyword (e.g. "do it" while staring at the wallet).
+ *
+ * Complements the intent-based weighting in prompt-compaction.ts: intent looks
+ * at *what the user said*, this looks at *where the user is*. Both feed the same
+ * full-param action set the planner sees.
+ *
+ * The active view is reported by the shell via POST /api/views/:id/navigate and
+ * stored here (set by views-routes) so the prompt-optimization layer can read it
+ * without importing the HTTP route module. Also derives the view→action affinity
+ * map, validates it for drift against registered actions/views, and renders the
+ * active-view awareness block injected into planner prompts.
+ */
 import { getView, listViews } from "../api/views-registry.ts";
 
 const VIEW_TYPES = ["gui", "xr", "tui"] as const;
-
-/**
- * View-scoped action affinity.
- *
- * When the user is looking at a plugin view, the actions relevant to that view
- * should be weighted up in the planner's tool catalogue — kept at full
- * parameter detail so they can be invoked reliably — even when the user's
- * message contains no intent keyword (e.g. "do it" while staring at the wallet).
- *
- * This complements the intent-based weighting in prompt-compaction.ts: intent
- * looks at *what the user said*, this looks at *where the user is*. Both feed
- * the same full-param action set the planner sees.
- *
- * The active view is reported by the shell via POST /api/views/:id/navigate and
- * stored here (set by views-routes) so the prompt-optimization layer can read
- * it without importing the HTTP route module.
- */
 
 /**
  * One addressable element in the active view, as reported by the shell's

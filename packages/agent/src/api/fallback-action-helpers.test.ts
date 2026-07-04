@@ -1,3 +1,10 @@
+/**
+ * Unit coverage for `executeFallbackParsedActions`: when the runtime parses
+ * fallback tool calls out of a model response, each action's raw callback text
+ * is rewritten through a TEXT_SMALL model pass into a natural reply before it is
+ * appended. Deterministic — the runtime, services, and `useModel` are vitest
+ * mocks; no live model.
+ */
 import type { Action, AgentRuntime } from "@elizaos/core";
 import { createMessageMemory, ModelType, stringToUuid } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";

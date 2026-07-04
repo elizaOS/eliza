@@ -1,3 +1,12 @@
+/**
+ * Mounts the self-update HTTP surface: GET /api/update/status reports the current
+ * version, resolved release channel, detected install method, and the computed
+ * update action plan (authority, next action, command/instructions — with
+ * remote-vs-trusted-local display gated by `isTrustedLocalRequest`), plus the
+ * latest versions per channel; PUT /api/update/channel switches the
+ * stable/beta/nightly channel and persists it. Dispatched behind the API
+ * server's auth layer.
+ */
 import type http from "node:http";
 import type { ReadJsonBodyOptions } from "@elizaos/core";
 import { PutUpdateChannelRequestSchema } from "@elizaos/shared";

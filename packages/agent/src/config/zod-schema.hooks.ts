@@ -1,3 +1,12 @@
+/**
+ * Zod schemas for the workspace hooks config surface. Validates external hook
+ * mappings (path/source matchers that wake the agent or dispatch a message,
+ * with delivery channel, message/text templating, and an optional transform
+ * module), the internal hook handler/entry registry and install records, and
+ * the Gmail push-hook config (label/topic/subscription plus local or tailscale
+ * serve/funnel exposure). `allowUnsafeExternalContent` gates whether hook
+ * payloads are treated as trusted input.
+ */
 import * as zod from "zod";
 
 const z = (zod as typeof zod & { z?: typeof zod }).z ?? zod;

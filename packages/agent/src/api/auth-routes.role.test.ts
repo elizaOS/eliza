@@ -1,3 +1,9 @@
+/**
+ * Unit test for the boundary role reported by `GET /api/auth/me`: an authorized
+ * loopback request resolves to OWNER, an unauthorized request to GUEST with a
+ * 401. The auth helpers (`isAuthorized`, `resolveBoundaryRole`) are mocked so
+ * the assertions exercise the route's role mapping in isolation.
+ */
 import { describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -8,9 +14,9 @@ const mocks = vi.hoisted(() => ({
 vi.mock("./server-helpers-auth.ts", () => ({
   isAuthorized: mocks.isAuthorized,
   isTrustedLocalRequest: mocks.isTrustedLocalRequest,
-  // #12087 Item 13: auth-routes now derives the response role from the single
+  // #12087 Item 13: auth-routes derives the response role from the single
   // resolveBoundaryRole helper. Mirror its real one-line impl (authorized →
-  // OWNER, else GUEST) off the mocked isAuthorized so these assertions still
+  // OWNER, else GUEST) off the mocked isAuthorized so these assertions
   // exercise the true boundary-role mapping.
   resolveBoundaryRole: (req: unknown) =>
     mocks.isAuthorized(req) ? "OWNER" : "GUEST",

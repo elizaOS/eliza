@@ -1,3 +1,11 @@
+/**
+ * Presentation helpers for rendering conversation memories into provider/prompt
+ * text. formatSpeakerLabel resolves a Memory's author to a display label — the
+ * character name for the agent, otherwise a display/username pair pulled from
+ * message metadata (source-specific keys first). roomSourceTag renders a
+ * "[source] name" room tag, and formatRelativeTimestamp renders a createdAt as a
+ * coarse "just now / Nm / Nh / Nd ago" string.
+ */
 import type { IAgentRuntime, Memory, Room } from "@elizaos/core";
 import { asNonEmptyString, asRecord } from "@elizaos/shared";
 

@@ -1,3 +1,9 @@
+/**
+ * Public barrel for the tool-call result cache: re-exports the ToolCallCache
+ * store, cache-key building and JSON canonicalization, the default privacy
+ * redactor, the cacheable-tool registry (descriptor lookup + isCacheable), and
+ * the shared cache types.
+ */
 export type { ToolCallCacheOptions } from "./cache.ts";
 export { ToolCallCache } from "./cache.ts";
 export { buildCacheKey, canonicalizeJson } from "./key.ts";

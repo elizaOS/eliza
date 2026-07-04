@@ -1,3 +1,12 @@
+/**
+ * Shared zod schema building blocks composed by the other config schemas.
+ * Covers the model layer (provider/model definitions, API dialects, per-model
+ * cost and context-window shapes), group/DM policy enums, identity, TTS, media
+ * understanding and media generation (image/video/audio/vision), CLI-backend
+ * definitions, message queue/debounce/retry, markdown rendering, and shared
+ * refinement helpers (`requireOpenAllowFrom`, `normalizeAllowFrom`) reused to
+ * gate an "open" DM policy behind an explicit `allowFrom: ["*"]`.
+ */
 import { isSafeExecutableValue } from "@elizaos/shared";
 import * as zod from "zod";
 import {

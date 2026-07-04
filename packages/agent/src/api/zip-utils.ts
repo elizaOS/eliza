@@ -1,3 +1,11 @@
+/**
+ * Minimal dependency-free ZIP archive writer. Packs entries with the STORE method
+ * (no compression), computing a CRC32 and DOS date/time per entry and emitting
+ * local file headers, the central directory, and the end-of-central-directory
+ * record. Entry names are normalized and path-traversal, null-byte, and absolute
+ * paths are rejected. Used to bundle files (e.g. VFS/plugin exports) into a
+ * downloadable ZIP.
+ */
 interface ZipEntryInput {
   name: string;
   data: Buffer | Uint8Array | string;

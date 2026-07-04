@@ -1,3 +1,9 @@
+/**
+ * Boot-gate fail-closed behavior under test: evaluateTeeBootGate maps
+ * env-configured policy plus collected evidence to a single secrets-enabled
+ * decision, and assertTeeBootGateAllowsSecrets throws when secrets are disabled.
+ * Deterministic — evidence comes from in-memory providers, no TEE hardware.
+ */
 import { describe, expect, it } from "vitest";
 import {
   assertTeeBootGateAllowsSecrets,

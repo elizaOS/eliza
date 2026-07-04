@@ -1,3 +1,10 @@
+/**
+ * Unit tests for E2BRemoteCapabilityRouterService: runner-config resolution from
+ * runtime settings across the e2b / eliza-cloud / home providers (and the
+ * disabled vercel / cloudflare / rivet ones), plus fs/pty/git routing,
+ * host↔sandbox path mapping, and cloud coding-container provisioning. Uses fake
+ * sandbox factories and fetch-mocked remote-runner / cloud HTTP servers.
+ */
 import nodePath from "node:path";
 import {
   CapabilityError,

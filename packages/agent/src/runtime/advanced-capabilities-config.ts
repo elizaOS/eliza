@@ -1,3 +1,10 @@
+/**
+ * Advanced-capabilities toggle helpers. Manages the shared on/off state for the
+ * experience/todos/personality plugin set: resolves the effective enabled flag
+ * from a config's plugin entries (defaulting on when unset), writes that flag
+ * back across all three entries, and mirrors it into the ADVANCED_CAPABILITIES /
+ * ENABLE_EXTENDED_CAPABILITIES character settings.
+ */
 import type { ElizaConfig } from "../config/config.ts";
 
 export const ADVANCED_CAPABILITY_PLUGIN_IDS = [

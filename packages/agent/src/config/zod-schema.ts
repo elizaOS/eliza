@@ -1,3 +1,12 @@
+/**
+ * Assembles the top-level `ElizaSchema` zod validator for the on-disk Eliza
+ * config, alongside the standalone `CharacterSchema`. Composes the split
+ * sub-schema modules (agent-runtime, core, hooks, provider-core, session) into
+ * one strict object spanning connectors, streaming, memory, gateway, auth,
+ * diagnostics, logging, browser, skills, plugins, and the rest of the config
+ * tree, and cross-validates that every `broadcast` target names an agent id
+ * declared in `agents.list`.
+ */
 import * as zod from "zod";
 import {
   AgentDefaultsSchema,
@@ -48,7 +57,7 @@ import {
 
 const z = (zod as typeof zod & { z?: typeof zod }).z ?? zod;
 
-// --- Agents (merged from zod-schema.agents.ts) ---
+// --- Agents ---
 
 const AgentsSchema = z
   .object({
@@ -103,7 +112,7 @@ const AudioSchema = z
   .strict()
   .optional();
 
-// --- Approvals (merged from zod-schema.approvals.ts) ---
+// --- Approvals ---
 
 const ExecApprovalForwardTargetSchema = z
   .object({

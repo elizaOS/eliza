@@ -1,3 +1,9 @@
+/**
+ * Provider that flags whether the current speaker is the canonical agent OWNER,
+ * signalling that their contact/identity claims may be treated as trusted. Emits
+ * the resolved owner id and speaker role, revealing the owner id only to
+ * admin-visible callers. Gated to ADMIN.
+ */
 import type {
   IAgentRuntime,
   Memory,

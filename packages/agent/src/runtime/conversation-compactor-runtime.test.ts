@@ -1,3 +1,10 @@
+/**
+ * Unit coverage for the runtime-facing conversation-compaction layer:
+ * prompt<->transcript parse/serialize round-trips, applying compaction to
+ * conversation and message-history state, the message-history compaction hook,
+ * env-driven strategy selection, and the prompt-optimization integration plus
+ * its telemetry. Deterministic — model calls are fakes, no live LLM.
+ */
 import { getMessageHistoryCompactionHook, type Memory } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { CompactorModelCall } from "./conversation-compactor.types.ts";

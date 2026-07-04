@@ -1,3 +1,10 @@
+/**
+ * Guards the mobile bundle against reintroducing write-only globalThis plugin
+ * pins: asserts bin.ts and android-app-plugins.ts keep their plugin modules alive
+ * through consumed side effects (the STATIC_ELIZA_PLUGINS Object.assign and
+ * bin.ts's literal-specifier anchor imports) rather than dead pinning globals.
+ * Deterministic source-text scan — reads the two files as strings, no bundling.
+ */
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -12,11 +19,11 @@ function read(rel: string): string {
 }
 
 /**
- * The mobile bootstrap used to pin plugin functions to write-only globalThis
- * keys purely to defeat Bun tree-shaking; nothing read them (#12091 item 29).
- * Modules stay in the bundle via consumed side effects — the STATIC_ELIZA_PLUGINS
- * Object.assign and the literal-specifier anchor imports — so the globals are
- * gone. These are source guards against reintroducing the dead pins.
+ * Write-only globalThis keys that pin plugin functions purely to defeat Bun
+ * tree-shaking are forbidden — nothing reads them (#12091 item 29). Modules stay
+ * in the bundle via consumed side effects (the STATIC_ELIZA_PLUGINS Object.assign
+ * and the literal-specifier anchor imports), so no such pin is needed. This list
+ * guards against reintroducing the dead pins.
  */
 const DEAD_GLOBALS = [
   "__eliza" + "AospLlamaLoader",

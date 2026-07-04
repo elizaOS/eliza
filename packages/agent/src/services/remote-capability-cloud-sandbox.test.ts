@@ -1,3 +1,10 @@
+/**
+ * Deterministic unit tests for the cloud capability sandbox provisioner with a
+ * mocked `fetch`: immediate vs job-polled provisioning, legacy bridge-URL
+ * fields, availability waiting, timeout/failure paths, and a full
+ * connect-and-sync that registers a remote plugin's every surface into a stub
+ * runtime.
+ */
 import {
   CAPABILITY_ROUTER_SERVICE_TYPE,
   type IAgentRuntime,

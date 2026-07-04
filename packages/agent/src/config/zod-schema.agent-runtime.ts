@@ -1,3 +1,13 @@
+/**
+ * Zod schemas validating the per-agent and agent-defaults slice of the eliza
+ * config: heartbeat scheduling with active-hours windows, sandbox execution
+ * (docker/browser/prune), tool profiles and allow/deny policies (with the
+ * conflicting-allowlist refinement), semantic memory search, media/link
+ * understanding tools, owner contacts, escalation, and inbox triage. Composes
+ * the shared building blocks from zod-schema.core.ts into `AgentEntrySchema`
+ * (one configured agent) and `AgentDefaultsSchema` (fallbacks applied to every
+ * agent). `.strict()` throughout, so unknown keys surface as validation errors.
+ */
 import * as zod from "zod";
 import { parseDurationMs } from "../../../shared/src/cli/parse-duration.ts";
 import {

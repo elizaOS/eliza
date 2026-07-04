@@ -1,3 +1,8 @@
+/**
+ * Covers filesAction over the content-addressed file store: op validation,
+ * newest-first listing, query filter, get-by-name, and delete confirm-gating,
+ * plus graceful degradation when storage is absent. The store is a vi.fn fake.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { filesAction } from "./files.ts";

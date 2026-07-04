@@ -1,3 +1,10 @@
+/**
+ * Covers `handleNotificationRoute` — the `/api/notifications` surface (list,
+ * create, mark-read, read-all, delete, clear plus filter query params) —
+ * driven against a real `NotificationService` over an in-memory cache-backed
+ * fake runtime with mocked response helpers, including the service-absent
+ * empty-inbox and 503 fallbacks.
+ */
 import type http from "node:http";
 import type { IAgentRuntime } from "@elizaos/core";
 import { NotificationService, ServiceType } from "@elizaos/core";

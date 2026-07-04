@@ -1,3 +1,11 @@
+/**
+ * Prompt compaction decides which action schemas keep full param detail and
+ * strips conversation noise for non-coding chat. Getting intent detection wrong
+ * either bloats the prompt (cost/latency) or strips the very params the planner
+ * must fill — so detection, the full-param set expansion, and the
+ * history-preservation guards for coding/wallet turns are pinned here.
+ * Deterministic — pure-function tests over crafted prompt strings, no live model.
+ */
 import { describe, expect, it } from "vitest";
 import {
   buildFullParamActionSet,
@@ -7,14 +15,6 @@ import {
   UNIVERSAL_ACTIONS,
   validateIntentActionMap,
 } from "./prompt-compaction.ts";
-
-/**
- * Prompt compaction decides which action schemas keep full param detail and
- * strips conversation noise for non-coding chat. Getting intent detection wrong
- * either bloats the prompt (cost/latency) or strips the very params the planner
- * must fill — so detection, the full-param set expansion, and the
- * history-preservation guards for coding/wallet turns are pinned here.
- */
 
 const received = (msg: string) => `# Received Message\n${msg}\n`;
 

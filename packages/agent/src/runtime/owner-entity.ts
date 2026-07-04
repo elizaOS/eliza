@@ -1,3 +1,10 @@
+/**
+ * Resolves the entity id representing an agent's owner: prefers the canonical
+ * configured owner id, otherwise scans the agent's rooms for a world whose
+ * metadata carries ownership.ownerId, and finally falls back to a deterministic
+ * synthetic id derived from the character name. Used to attribute owner-scoped
+ * trust and permissions.
+ */
 import {
   type IAgentRuntime,
   logger,

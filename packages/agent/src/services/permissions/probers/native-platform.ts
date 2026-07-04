@@ -1,3 +1,10 @@
+/**
+ * Probers for the permission ids that only carry meaning on native mobile
+ * platforms (speech-recognition, photos, phone, messages, wifi, bluetooth,
+ * usage-access, overlay, and the like). On this desktop host each one resolves
+ * to a platform-unsupported state for both check() and request(), so the
+ * registry reports them uniformly instead of leaving them unregistered.
+ */
 import type { PermissionId, Prober } from "../contracts.js";
 import { platformUnsupportedState } from "./_bridge.js";
 

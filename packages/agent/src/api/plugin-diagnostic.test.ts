@@ -1,3 +1,10 @@
+/**
+ * Deterministic unit coverage for the plugin-diagnostic card builders:
+ * `buildPluginDiagnosticEntry` (descriptor + status → UI card, with defensive
+ * array copies) and `resolveWalletDiagnosticStatus` (wallet capability →
+ * loaded / auto-enabled / blocked / missing-prerequisites / disabled), driven
+ * with `resolveWalletCapabilityStatus` mocked so wallet state is fixture-set.
+ */
 import type { PluginDiagnosticDescriptor } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import type { ElizaConfig } from "../config/config";

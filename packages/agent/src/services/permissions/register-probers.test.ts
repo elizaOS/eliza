@@ -1,3 +1,8 @@
+/**
+ * Verifies registerAllProbers() feeds every exported prober into a permissions
+ * registry exactly once and in declared order, using a vi.fn registerProber
+ * double in place of a real PermissionRegistry.
+ */
 import { describe, expect, it, vi } from "vitest";
 
 import type { IPermissionsRegistry, Prober } from "./contracts.js";

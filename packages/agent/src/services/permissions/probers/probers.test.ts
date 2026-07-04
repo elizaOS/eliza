@@ -1,3 +1,12 @@
+/**
+ * Contract coverage for the permission prober set: exactly one prober per
+ * PermissionId, PROBERS_BY_ID indexing, the required PermissionState shape, and
+ * the native-status mapping tables (AV / notification / EventKit-Contacts
+ * codes) plus embedded-provisioning entitlement detection. Also source-scans the
+ * AppleScript- and native-dylib-backed probers to enforce that check() stays
+ * read-only (no osascript prompts), and exercises real darwin vs non-darwin
+ * behaviour through IS_DARWIN branches.
+ */
 import {
   mkdirSync,
   mkdtempSync,

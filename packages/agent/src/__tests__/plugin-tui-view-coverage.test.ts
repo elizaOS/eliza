@@ -1,3 +1,15 @@
+/**
+ * Guards terminal (TUI) parity for every bundled plugin view. Statically parses
+ * each plugin manifest's `views:` declarations from source, asserts every
+ * declared TUI component has a terminal parity-capability entry and that every
+ * gui view ships a matching tui override (minus explicit GUI-only exemptions),
+ * then registers the parsed declarations through the real views-registry and
+ * drives navigate / interact / capability dispatch through `handleViewsRoutes`
+ * in gui, tui, and xr modes. Harness realism: manifests are read off disk and
+ * the registry + route dispatch are the real modules; a fake `IncomingMessage`
+ * and a `resolveViewInteractResult` stub stand in for the async view-interact
+ * round-trip that a live shell client would complete.
+ */
 import { EventEmitter } from "node:events";
 import { existsSync, readFileSync } from "node:fs";
 import type http from "node:http";

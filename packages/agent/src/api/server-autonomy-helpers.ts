@@ -1,3 +1,10 @@
+/**
+ * Server-side autonomy helpers for the agent HTTP surface. Recognizes the
+ * LifeOps cloud plugin routes, and forwards autonomy assistant-stream agent
+ * events into the user's conversation as proactive text — dropping empty
+ * payloads, client-chat echoes, and events whose room is already tracked by an
+ * open conversation, then handing the rest to routeAutonomyTextToUser.
+ */
 import { MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core";
 import type { AgentEventPayloadLike } from "../runtime/agent-event-service.ts";
 import { routeAutonomyTextToUser } from "./server-helpers-swarm.ts";

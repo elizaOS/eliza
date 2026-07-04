@@ -1,3 +1,10 @@
+/**
+ * Covers the proactive-interaction gate — the UX governance that decides whether
+ * a proactive comment is allowed: global and per-surface cooldowns, textual
+ * dedup, daily cap, burst debounce/settling, and the chattiness/kill-switch
+ * config resolution (env + user setting). Pure and deterministic — the gate is
+ * driven with explicit injected `now` timestamps, no clock or model.
+ */
 import { describe, expect, it } from "vitest";
 import {
   configForChattiness,

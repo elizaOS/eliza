@@ -1,3 +1,10 @@
+/**
+ * Validates and normalizes user-defined Telegram bot menu commands. Lowercases
+ * and strips a leading slash from each command name, enforces Telegram's name
+ * pattern, and rejects entries that collide with reserved/native commands,
+ * duplicate an earlier entry, or lack a description — returning the accepted
+ * commands alongside per-entry issues for the config UI to surface.
+ */
 export const TELEGRAM_COMMAND_NAME_PATTERN = /^[a-z0-9_]{1,32}$/;
 
 export type TelegramCustomCommandInput = {

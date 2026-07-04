@@ -1,3 +1,14 @@
+/**
+ * Provisions and connects a cloud-hosted capability sandbox as a remote
+ * capability endpoint. Creates a stateful cloud agent, provisions its
+ * capability-router URL/token (resolving either an immediate payload or by
+ * polling a provisioning job to completion), waits until the endpoint reports
+ * plugin availability, then adapts it through the shared endpoint-provider path
+ * so its remote plugin modules register as local runtime
+ * actions/providers/routes. `cloudCapabilityEndpointProvider` is the
+ * `RemoteCapabilityEndpointProvider` implementation and
+ * `connectCloudCapabilitySandbox` is the end-to-end entry point.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import {
   buildRemoteCapabilityEndpointTrustPolicy,

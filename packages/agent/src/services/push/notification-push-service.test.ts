@@ -1,3 +1,11 @@
+/**
+ * Covers the notification push service: it subscribes to the agent event bus,
+ * routes notification-stream events to per-platform providers (ios→apns,
+ * android→fcm) only when configured, carries notification id/deepLink/category
+ * in the push data, prunes dead tokens on an unregistered error, and
+ * subscribes/unsubscribes cleanly. Harness is in-memory — a fake network-free
+ * provider, an in-memory event bus, and a Map-backed cache — no real push send.
+ */
 import type {
   AgentEventListener,
   AgentEventPayload,

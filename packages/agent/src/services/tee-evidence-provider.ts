@@ -1,3 +1,11 @@
+/**
+ * Registration seam for the TEE attestation-evidence provider: the confidential-
+ * VM deployment plugin registers its evidence-provider factory here, and the boot
+ * gate resolves that registration (or undefined) rather than importing the
+ * dstack/CoVE stack directly, so non-TEE builds never compile it. Fail-closed —
+ * an unregistered provider under a required policy is treated as untrusted. See
+ * the block below for the deployment rationale.
+ */
 import type { TeeEvidenceProvider } from "./tee-evidence.ts";
 
 /**

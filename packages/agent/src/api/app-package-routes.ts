@@ -1,3 +1,11 @@
+/**
+ * Dispatches dynamic `/api/apps/<slug>/...` requests to the route module that
+ * ships with each installed app package. Reserved top-level slugs (info,
+ * installed, launch, …) are excluded so they fall through to their own
+ * handlers; for any other slug it lazy-imports the app's route module, resolves
+ * either its `handleAppRoutes` export or a legacy `handleApps<Slug>Routes`
+ * name, and calls it with a `readJsonBody` pre-bound to the current request.
+ */
 import type {
   AppPackageRouteContext,
   AppPackageRouteDispatchContext,

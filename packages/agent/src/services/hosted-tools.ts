@@ -1,3 +1,11 @@
+/**
+ * HTTP client wrappers for Eliza Cloud's hosted agent tools: web search,
+ * page extraction, and headless browser sessions (create/list/get/navigate/
+ * snapshot/command/delete). Every call is authenticated with the
+ * `ELIZAOS_CLOUD_API_KEY` Bearer token against the resolved cloud API base URL;
+ * `isHostedCloudToolingConfigured` gates whether these tools are available.
+ */
+
 export interface BrowserWorkspaceTab {
   id: string;
   [key: string]: unknown;

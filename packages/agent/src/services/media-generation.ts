@@ -1,3 +1,12 @@
+/**
+ * Fills `ServiceType.MEDIA_GENERATION` for the agent runtime. Routes image,
+ * video, and audio (music / TTS / SFX) generation requests down one of two
+ * paths per the media config: cloud-selected model handlers invoked through
+ * `runtime.useModel` (`ModelType.IMAGE`/`VIDEO`/`AUDIO`/`TEXT_TO_SPEECH`), or
+ * an own-key direct provider built by the media-provider factories. Also
+ * answers `canGenerateMedia` so callers can probe availability before asking.
+ */
+
 import { Buffer } from "node:buffer";
 import {
   type IAgentRuntime,

@@ -1,3 +1,13 @@
+/**
+ * `/api/connectors` route handler: lists configured connectors (merging
+ * eliza.json entries with those detected from env vars), upserts a connector
+ * config (POST), and removes one (DELETE /:name). Config writes are persisted
+ * through saveElizaConfig with in-memory rollback if the disk write throws, so a
+ * failed save never reports success. Every disconnect path emits the
+ * `connector_disconnected` runtime event (and an optional host callback) so
+ * service-owned caches self-invalidate without the agent reaching across package
+ * boundaries. Blocked object keys are rejected to prevent prototype pollution.
+ */
 import type http from "node:http";
 import type {
   EventPayload,
@@ -213,13 +223,10 @@ export async function handleConnectorRoutes(
       );
       return true;
     }
-    // Only treat this POST as a disconnect when the incoming payload
-    // explicitly sets `enabled: false`. The second clause that read
-    // `state.config.connectors[connectorName]` would have been evaluated
-    // AFTER the new (cloned) config was written above, making it equivalent
-    // to checking the incoming payload — but firing on every config-only
-    // update that happens to omit `enabled` while the connector was active.
-    // That false-positive purge silently broke live connectors.
+    // Treat this POST as a disconnect only when the incoming payload explicitly
+    // sets `enabled: false`. Inspecting the post-write config value instead
+    // would fire on every config-only update that omits `enabled` while the
+    // connector is active, wrongly purging live connectors.
     const isDisconnect = (config as ConnectorConfig).enabled === false;
     if (isDisconnect) {
       try {

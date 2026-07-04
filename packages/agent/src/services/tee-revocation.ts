@@ -1,3 +1,12 @@
+/**
+ * Revocation-manifest layer for the TEE attestation policy: verifies a
+ * manifest's detached Ed25519 signature against configured trusted-authority
+ * keys (fail-closed — a signed manifest with no anchor, or one whose body was
+ * tampered, is refused), canonicalizes the manifest body to deterministic bytes
+ * that the signer and verifier agree on, then normalizes and merges revoked
+ * measurements and security versions into a TeeEvidencePolicy so evaluation
+ * rejects revoked released artifacts.
+ */
 import { createPublicKey, type KeyObject, verify } from "node:crypto";
 import type { TeeMeasurementName } from "./tee-evidence.ts";
 import type { TeeEvidencePolicy } from "./tee-policy.ts";

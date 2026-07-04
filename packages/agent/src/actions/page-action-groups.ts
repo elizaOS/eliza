@@ -1,3 +1,11 @@
+/**
+ * Defines PAGE_DELEGATE, the owner-only main-chat parent action that routes a
+ * request to a context-scoped child action for a named page (browser, wallet,
+ * character, settings, connectors, automation, phone, owner). Resolves the child
+ * by name + allowed-context set from the runtime's registered actions and
+ * forwards the call, accepting both the nested and the flat (auto-lifted)
+ * parameter shapes.
+ */
 import type {
   Action,
   ActionParameters,

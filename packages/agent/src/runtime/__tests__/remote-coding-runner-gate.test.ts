@@ -1,3 +1,11 @@
+/**
+ * Unit coverage for shouldLoadRemoteCodingRunnerForBoot — the boot-time gate
+ * deciding whether to load the optional remote coding-runner module. Verifies it
+ * skips when nothing is configured, loads for explicit provider settings (so an
+ * invalid provider can still be rejected downstream), loads for the legacy E2B
+ * opt-in only when truthy, and loads when a cloud/home runner URL implies a
+ * provider. Deterministic — feeds a settings/env stub.
+ */
 import { describe, expect, it } from "vitest";
 
 import { shouldLoadRemoteCodingRunnerForBoot } from "../remote-coding-runner-gate.ts";

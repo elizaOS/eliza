@@ -1,3 +1,12 @@
+/**
+ * Mounts POST /api/provider/switch behind the authenticated API gate. Switches
+ * the agent's active model provider: validates the request, writes the provider
+ * API key into the vault-backed secrets manager (so the secret never lands on
+ * disk in plaintext), applies the first-run connection config, saves it, and
+ * drives the switch plus runtime restart through the idempotent
+ * RuntimeOperationManager — reporting accepted (202), deduped, or rejected-busy
+ * (409). elizacloud is handled as a cloud-managed connection.
+ */
 import type http from "node:http";
 import { logger } from "@elizaos/core";
 import type { ReadJsonBodyOptions } from "@elizaos/shared";

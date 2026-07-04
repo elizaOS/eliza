@@ -1,3 +1,12 @@
+/**
+ * Resolves the runtime TeeEvidencePolicy from environment variables, in
+ * precedence order: an inline policy JSON, a policy file path, an inline or
+ * file-path release manifest, or a bare ELIZA_TEE_REQUIRED fail-closed policy;
+ * returns undefined when TEE is unconfigured. Applies freshness options
+ * (expected nonce, max age, clock) and folds in a runtime revocation manifest —
+ * signature-verified against a configured authority key before merge, so an
+ * unsigned or forged revocation list is refused rather than silently applied.
+ */
 import { readFile } from "node:fs/promises";
 import type { TeeEvidencePolicy } from "./tee-policy.ts";
 import {

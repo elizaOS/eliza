@@ -1,3 +1,12 @@
+/**
+ * Behavioural coverage for the PermissionRegistry singleton: the default state
+ * returned for unknown ids, prober registration and check()/request() state
+ * transitions, openSettings delegation, recordBlock stamping, the pending()
+ * filter, subscriber notify/unsubscribe, and persistence hydrate round-trips.
+ * Runs against an in-memory persistence double and vi.fn-backed mock probers (no
+ * real native permission dialogs), with a real tmpdir standing in for
+ * ELIZA_STATE_DIR.
+ */
 import { mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";

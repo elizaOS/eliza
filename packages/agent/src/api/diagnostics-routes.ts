@@ -1,3 +1,14 @@
+/**
+ * Diagnostics and observability HTTP routes for the local control API. Mounts:
+ * GET/DELETE `/api/logs` (filtered read + clear of the in-memory log buffer),
+ * POST `/api/logs/export` (validated JSON/CSV download), GET `/api/agent/events`
+ * (replayable autonomy/heartbeat event feed with runId/seq/after cursors), GET
+ * `/api/security/audit` (filtered audit feed as a JSON snapshot or a live SSE
+ * stream), and GET `/api/extension/status` (browser-bridge relay reachability).
+ * All reads come from process-local buffers/feeds supplied by the caller; the
+ * export and audit paths validate and clamp every query/body parameter before
+ * it is used.
+ */
 import type http from "node:http";
 import type {
   ReadJsonBodyOptions,

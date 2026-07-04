@@ -1,3 +1,15 @@
+/**
+ * Conformance harness that drives every standard remote-plugin RPC surface
+ * (action, provider, route, view asset, model, lifecycle, event, service, app
+ * bridge, evaluator, and both response-handler evaluator stages) through the
+ * capability-router client against a live endpoint and asserts each returns
+ * real, non-empty evidence. Spreads required surfaces across the endpoint's
+ * modules, backfills any module left uncovered by another exercisable surface,
+ * verifies view-asset content type and subresource-integrity digests against
+ * both the manifest and the returned bytes, and returns a detailed report of
+ * what was exercised. Used to prove a provisioned endpoint actually serves a
+ * conformant plugin before its surface is trusted as local runtime surface.
+ */
 import { createHash } from "node:crypto";
 import {
   CAPABILITY_ROUTER_SERVICE_TYPE,

@@ -1,3 +1,10 @@
+/**
+ * Unit test for POST /api/views/:id/activate. Contract: `{ elementId }` resolves
+ * the element against the active-view snapshot (for context) and dispatches the
+ * standard CLICK_ELEMENT capability through the same interact path as `/interact`
+ * — a `serverInteract` handler when present. Drives the route handler in-process
+ * (no HTTP server) with a mocked serverInteract and the real views registry.
+ */
 import type http from "node:http";
 import { Readable } from "node:stream";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -15,12 +22,6 @@ import {
   handleViewsRoutes,
   type ViewsRouteContext,
 } from "./views-routes.ts";
-
-// Unit test for POST /api/views/:id/activate.
-//
-// Contract: { elementId } resolves the element against the active-view snapshot
-// (for context) and dispatches the standard CLICK_ELEMENT capability through the
-// same interact path as /interact — a `serverInteract` handler when present.
 
 const TEST_PLUGIN = "@test/views-activate";
 

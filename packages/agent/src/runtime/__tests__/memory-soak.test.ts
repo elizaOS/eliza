@@ -1,3 +1,9 @@
+/**
+ * Unit coverage for the runSoak leak-slope harness: it must flag a genuinely
+ * leaking workload (retained allocations) as unbounded heap growth and report a
+ * drop-everything workload as far flatter. Runs the real harness against live
+ * heap allocations with forced GC between samples — no mocks.
+ */
 import { describe, expect, it } from "vitest";
 
 import { runSoak } from "../memory-soak.ts";

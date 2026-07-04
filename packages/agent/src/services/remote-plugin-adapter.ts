@@ -1,3 +1,15 @@
+/**
+ * Adapts remote capability modules into locally registrable elizaOS plugins.
+ * Fetches `RemotePluginModuleManifest` descriptors from the capability router and
+ * synthesizes a `Plugin` per module whose actions, providers, evaluators, routes,
+ * services, models, events, app-bridge, and views forward each invocation over the
+ * router's RPC surface instead of running in-process. Before registration it
+ * evaluates the configured trust policy (endpoint/module allowlists plus ed25519
+ * provenance signature and content-digest verification) and rejects
+ * name/service/model/route/view/widget/nav-tab collisions against existing local
+ * and remote plugins. Also drives register / sync / unload lifecycle so the live
+ * plugin set tracks the router's advertised modules.
+ */
 import {
   createHash,
   createPublicKey,

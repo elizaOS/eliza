@@ -1,11 +1,12 @@
-// Server half of the #12178 runtime-switch contract. POST /api/runtime/
-// model-switch applies the switch through the existing local-inference routes
-// (injected loopbackFetch) and broadcasts shell:model-switch; POST
-// /api/runtime/agent-switch broadcasts shell:switch-agent and resolves against
-// a frontend result callback. The frontend halves are covered in packages/ui.
-//
-// Focused route unit test: real body parsing (Readable), a fake loopback fetch
-// standing in for the local-inference routes, no PGLite/runtime/LLM.
+/**
+ * Route unit tests for the #12178 runtime-switch contract. POST
+ * /api/runtime/model-switch applies the switch through the existing
+ * local-inference routes (injected loopbackFetch) and broadcasts
+ * shell:model-switch; POST /api/runtime/agent-switch broadcasts shell:switch-agent
+ * and resolves against a frontend result callback (the frontend halves live in
+ * packages/ui). Deterministic: real stream body parsing (Readable), a fake
+ * loopback fetch standing in for the local-inference routes, no PGLite/runtime/LLM.
+ */
 
 import type http from "node:http";
 import { Readable } from "node:stream";

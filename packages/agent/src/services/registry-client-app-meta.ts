@@ -1,3 +1,11 @@
+/**
+ * App-metadata shaping for the plugin/app registry. Sanitizes iframe `sandbox`
+ * attributes down to a fixed allowlist of tokens (untrusted values fall back to
+ * a safe default), deep-merges base/patch `RegistryAppMeta` — including nested
+ * viewer and session sub-objects — and applies hardcoded local app overrides
+ * (e.g. pointing `@elizaos/app-hyperfy` at its dev server). Consumed by
+ * registry-client-local.ts when building catalog entries for discovered apps.
+ */
 import { logger } from "@elizaos/core";
 import { packageNameToAppDisplayName } from "@elizaos/shared";
 import type {

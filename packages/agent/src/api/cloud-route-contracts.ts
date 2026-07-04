@@ -1,3 +1,10 @@
+/**
+ * Shared TypeScript contracts for the agent-side cloud route handlers: the
+ * request-context and route-state shapes (proxy, billing/compat, relay, and
+ * status) plus the handler function signatures they dispatch through. Types
+ * only — the concrete implementations live in the cloud route modules and the
+ * lazily loaded @elizaos/plugin-elizacloud.
+ */
 import type http from "node:http";
 import type { RouteHelpers } from "@elizaos/core";
 import type { createIntegrationTelemetrySpan } from "../diagnostics/integration-observability.ts";

@@ -1,3 +1,11 @@
+/**
+ * Covers the agent host-bridge seam (`host-bridge.ts`) that lets a host inject
+ * platform capabilities (account pool, vault bootstrap/shared vault, build
+ * variant, cloud-pair route) into `@elizaos/agent`: the no-op default when no
+ * host has installed a bridge, `ELIZA_BUILD_VARIANT`-driven build-variant flags,
+ * and get/set/reset of an installed bridge. Deterministic and in-process — the
+ * real default bridge plus a hand-built stub, no actual host.
+ */
 import { afterEach, describe, expect, it } from "vitest";
 import {
   _resetAgentHostBridge,

@@ -1,3 +1,8 @@
+/**
+ * Covers the DATABASE action's `search_vectors` op: it must embed the text query
+ * and pass only the resulting vector (never the raw query) into `searchMemories`.
+ * Deterministic — runtime, embedding model, and memory search are vi.fn stubs.
+ */
 import type { ActionResult, IAgentRuntime, Memory } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";

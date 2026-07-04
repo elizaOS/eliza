@@ -1,3 +1,9 @@
+/**
+ * Covers runVfsBuiltinShell driving a real VirtualFilesystemService over a
+ * vfs:// cwd: pwd/cat/mkdir/ls/rm plus an `sh -c` redirect, and grep/rg search
+ * without host ripgrep. Real on-disk VFS rooted at a temp ELIZA_STATE_DIR; no
+ * host shell is spawned.
+ */
 import fsp from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";

@@ -1,3 +1,14 @@
+/**
+ * Drives the agent terminal TUI (`startAgentTerminalTui`) end to end: a
+ * bottom-pinned composer that stays visible while a registered terminal view is
+ * mounted inline, quick-open and `/`-search view switching, slash-command
+ * `/navigate` dispatch, focused-control activation posted back to the agent, the
+ * `tui-smoke` CLI boot marker, and a real `@lydell/node-pty` spawn of
+ * `bin.ts tui`. Harness realism: view rendering and the CLI/PTY code paths run
+ * for real against a `TestTerminal`; only the agent HTTP backend is a local mock
+ * (a `vi.fn` fetch or an in-process `node:http` server) returning canned
+ * views/commands/conversation payloads and recording the outbound calls.
+ */
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer, type IncomingMessage } from "node:http";
 import { tmpdir } from "node:os";

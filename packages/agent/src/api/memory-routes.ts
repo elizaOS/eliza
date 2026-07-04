@@ -1,3 +1,16 @@
+/**
+ * Memory + knowledge HTTP endpoints for the agent's dashboard/control API,
+ * mounted behind that API's auth layer (returns 503 when no runtime is
+ * attached).
+ *
+ * Hash-memory notes: POST /api/memory/remember stores a note, GET
+ * /api/memory/search BM25-ranks them. GET /api/context/quick answers a query
+ * over both hash-memory notes and documents via a TEXT_SMALL model call.
+ * Memory viewer: GET /api/memories/feed | /browse | /by-entity/:id | /stats
+ * read across the messages/memories/facts/documents tables; DELETE and PATCH
+ * /api/memories/:id delete or edit-and-re-embed a single row (the id must look
+ * like a UUID, keeping the literal sibling routes unambiguous).
+ */
 import crypto from "node:crypto";
 import {
   type AgentRuntime,
@@ -108,9 +121,9 @@ async function ensureMemoryConnection(
  * returning each item with a [0,1] max-normalized relevance score in input order.
  *
  * Corpus-aware IDF down-weights filler/stop words and TF saturation + length
- * normalization rank genuinely-relevant text first; the previous `scoreMemoryText`
- * was a pairwise substring count with no IDF, so a doc that merely contained a
- * common query word ("the") tied with a real hit. We use the `search.ts` BM25
+ * normalization rank genuinely-relevant text first; a naive pairwise substring
+ * count with no IDF would let a doc that merely contains a common query word
+ * ("the") tie with a real hit. We use the `search.ts` BM25
  * (not the documents `bm25Scores`) specifically for its **Porter2 stemming** —
  * short typed chat queries are usually base forms ("configure") while stored
  * messages carry inflected forms ("configuring"/"configured"/"configuration"),
@@ -353,8 +366,8 @@ async function fetchMemoriesFromTables(
     200,
   );
   // Read every table concurrently — they are independent queries, and a
-  // sequential loop made the feed's first paint wait on N round-trips. Promise.all
-  // preserves input order, so the flattened result matches the old ordering.
+  // sequential loop would make the feed's first paint wait on N round-trips.
+  // Promise.all preserves input order, so the flattened result is order-stable.
   const perTableMemories = await Promise.all(
     tables.map(async (tableName) => {
       const memories = await runtime.getMemories({

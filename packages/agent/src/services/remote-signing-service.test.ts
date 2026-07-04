@@ -1,3 +1,9 @@
+/**
+ * Covers createTeeGatedRemoteSigningService: a signer wrapper that refuses to
+ * construct when the TEE boot gate blocks secrets and re-attests TEE evidence on
+ * every sign when a policy demands it. Deterministic harness — vi-mocked signer
+ * backend and evidence provider over in-memory boot-gate state; no real TEE.
+ */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createTeeGatedRemoteSigningService,

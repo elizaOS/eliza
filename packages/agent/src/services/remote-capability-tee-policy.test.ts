@@ -1,3 +1,11 @@
+/**
+ * Unit coverage for TEE trust enforcement on remote capability endpoints.
+ * Asserts `connectRemoteCapabilityEndpointProvider` fails closed before plugin
+ * sync when required TEE evidence is missing or its measurements do not match
+ * the policy, and that a `dstack` provider collects evidence and only syncs the
+ * remote plugin after the policy passes. Uses a stubbed fetch and in-memory
+ * runtime; the TEE evidence is a fixture, not a real attestation.
+ */
 import {
   CAPABILITY_ROUTER_SERVICE_TYPE,
   type IAgentRuntime,

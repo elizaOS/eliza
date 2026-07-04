@@ -1,3 +1,12 @@
+/**
+ * Runtime (un)loader for plugins sourced from a project's virtual filesystem:
+ * given a VFS entry it optionally compiles the TS/TSX with `PluginCompiler`,
+ * imports the emitted JS (cache-busted so a recompile hot-reloads), and
+ * registers the plugin with the runtime, then supports unload-by-name and tracks
+ * the loaded set — exposing a host-path-free view for the public API. Also the
+ * home of `extractPlugin`, the shared module→Plugin resolver reused by the
+ * on-disk directory loader.
+ */
 import { pathToFileURL } from "node:url";
 import type { AgentRuntime, Plugin } from "@elizaos/core";
 import { PluginCompiler } from "../services/plugin-compiler.ts";

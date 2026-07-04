@@ -1,3 +1,11 @@
+/**
+ * Covers the content-addressed media store (api/media-store.ts) end to end
+ * against a real temp-dir filesystem: content-addressed persistence + dedup,
+ * data-URL decoding, mime→extension mapping, the SVG/markup download-vs-inline
+ * serve security headers, Range serving over both the HTTP and in-process/iOS
+ * paths, LRU eviction selection, orphan GC, and typed fast-fail on genuine fs
+ * I/O errors (induced on the real fs, not mocked).
+ */
 import { Buffer } from "node:buffer";
 import fs from "node:fs";
 import type { ServerResponse } from "node:http";

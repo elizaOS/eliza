@@ -1,3 +1,12 @@
+/**
+ * Locks the embedding-dimension boot ordering inside `runDeferredBoot`
+ * (`eliza.ts`) for the managed cloud boot path: the dimension probe must run
+ * after the deferred cloud plugin waves register the TEXT_EMBEDDING handler and
+ * before bundled documents are seeded. Deterministic and boot-free — brace-
+ * matches the closure out of `eliza.ts` source and reproduces the plugin-sql
+ * insert guard with an in-memory fake adapter; no live runtime, model, or DB.
+ * The regression rationale for the ordering is in the #8769 note below.
+ */
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

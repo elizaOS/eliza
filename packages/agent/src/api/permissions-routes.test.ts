@@ -1,3 +1,10 @@
+/**
+ * Covers `handlePermissionRoutes` — the `/api/permissions/*` read, request,
+ * and open-settings surface — over a fake runtime whose permissions registry
+ * is a mocked `IPermissionsRegistry`. Deterministic and in-memory: asserts
+ * canonical-id resolution from persisted state, registry delegation with
+ * feature metadata, and rejection of unknown permission ids.
+ */
 import type { AgentRuntime } from "@elizaos/core";
 import type {
   IPermissionsRegistry,

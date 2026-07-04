@@ -1,3 +1,12 @@
+/**
+ * Command dispatch for the `eliza-autonomous` CLI. Reads argv[2] and routes to
+ * the matching subcommand — serve/start (boot the backend server, install
+ * process crash guards, optionally attach the terminal TUI), runtime (boot with
+ * no API/CLI wrapper), tui / tui-smoke, ios-bridge, android-bridge, and
+ * benchmark — lazy-importing each command's heavy dependencies only when
+ * invoked. Also handles --version/--help. SmokeTerminal is the headless
+ * terminal used by tui-smoke to capture one rendered frame.
+ */
 import { createRequire } from "node:module";
 import process from "node:process";
 

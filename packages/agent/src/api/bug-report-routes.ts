@@ -1,3 +1,12 @@
+/**
+ * HTTP routes for user-submitted bug reports. Mounts `GET /api/bug-report/info`
+ * (advertises node/platform and the active submission mode) and
+ * `POST /api/bug-report` (accepts a report). Submissions are rate-limited per
+ * client IP, sanitized, and secret-redacted, then routed to one of three sinks
+ * depending on environment: a remote intake API, direct GitHub issue creation
+ * when `GITHUB_TOKEN` is present, or a fallback "new issue" URL the client
+ * opens itself.
+ */
 import os from "node:os";
 import { logger, type RouteRequestContext } from "@elizaos/core";
 import { PostBugReportRequestSchema } from "@elizaos/shared";

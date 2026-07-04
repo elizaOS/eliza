@@ -1,3 +1,10 @@
+/**
+ * Exercises the host-node JsRuntimeBridge (the `node:vm`-backed implementation)
+ * through the real resolver: expression evaluation and JsValue marshalling,
+ * `globalThis.process` sandbox isolation, `timeoutMs` enforcement, and importing
+ * a real `.mjs` fixture from a temp dir. Deterministic; no mocks.
+ */
+
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";

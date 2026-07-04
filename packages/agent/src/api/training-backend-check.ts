@@ -1,3 +1,9 @@
+/**
+ * Detects which local model-training backends are usable on this host — MLX
+ * (macOS with an importable python `mlx`), CUDA (a working `nvidia-smi`), and
+ * CPU (always available) — by probing each with a short-lived child process and
+ * caching the result for a minute. Backs the training routes' backend selection.
+ */
 import { execFile } from "node:child_process";
 
 export interface BackendAvailability {

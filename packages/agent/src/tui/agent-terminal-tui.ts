@@ -1,3 +1,13 @@
+/**
+ * Terminal UI for driving a running agent over its local HTTP API. Renders a
+ * shell with a mounted view block on top and a pinned chat composer below:
+ * lists and opens registered `viewType: "tui"` views (rendering plugin views
+ * inline when a terminal factory is registered), routes keyboard focus between
+ * the view and the composer, sends chat + slash commands to the conversations
+ * API, and posts view navigate/activate events back to the runtime. Resolves
+ * the API base URL and an optional bearer token for non-loopback (tunneled)
+ * sessions.
+ */
 import {
   resolveApiBindHost,
   resolveDesktopApiPort,

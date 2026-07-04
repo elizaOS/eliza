@@ -1,3 +1,10 @@
+/**
+ * Derives model-selection identifiers from an ElizaConfig: the primary model id
+ * (agents.defaults.model.primary), the preferred provider id (from the resolved
+ * service-routing llmText transport/backend, falling back to a model-name hint),
+ * and the plugin package that provider maps to. Returns undefined when nothing is
+ * explicitly configured, so elizaOS falls back to whichever model plugin loads.
+ */
 import {
   getFirstRunProviderOption,
   normalizeFirstRunProviderId,

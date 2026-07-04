@@ -1,3 +1,10 @@
+/**
+ * In-process registry mapping hook event keys to handler lists, plus the
+ * dispatch that fans an event out through them. Keys are matched specific-first
+ * ("command:new") then general ("command"); handler failures are isolated and
+ * logged rather than thrown, so one bad hook cannot abort the rest.
+ * `createHookEvent` builds the payloads that flow through `triggerHook`.
+ */
 import { logger } from "@elizaos/core";
 import type { HookEvent, HookHandler } from "./types.ts";
 

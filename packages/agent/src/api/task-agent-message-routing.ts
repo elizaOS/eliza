@@ -1,3 +1,11 @@
+/**
+ * Routes task-agent chat text back to the connector the task originated on.
+ * Resolves the swarm coordinator's task context — session id to thread to room —
+ * from explicit routing hints, or failing that by matching a `"<label>" needs a
+ * provider login` message (or a single in-flight task), then delivers the text
+ * through `runtime.sendMessageToTarget` on the resolved room's source connector.
+ * Returns false when no room can be resolved.
+ */
 import {
   type AgentRuntime,
   getSwarmCoordinatorService,

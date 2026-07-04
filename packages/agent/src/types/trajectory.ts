@@ -1,3 +1,9 @@
+/**
+ * Agent-local aliases for the trajectory record types owned by `@elizaos/core`,
+ * giving the API and services shorter names (Trajectory, TrajectoryStep,
+ * TrajectoryLlmCall, TrajectoryListResult, ...) over the canonical Core*Record
+ * shapes, and re-exporting the shared TRAJECTORY_STEP_SCRIPT_MAX_CHARS cap.
+ */
 import {
   type TrajectoryCacheStatsRecord as CoreTrajectoryCacheStatsRecord,
   type TrajectoryDetailRecord as CoreTrajectoryDetailRecord,

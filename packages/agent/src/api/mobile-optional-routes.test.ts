@@ -1,3 +1,10 @@
+/**
+ * Exercises handleMobileOptionalRoutes — the inert fallback handlers used when
+ * optional plugins/features are absent — with a mocked config loader and a
+ * stubbed streaming plugin: runtime-mode reporting (mobile-local vs cloud
+ * controller), empty computer-use approvals + SSE stream, approval-mode
+ * rejection, and in-process stream-settings validate/store round-trips.
+ */
 import type http from "node:http";
 import { Readable } from "node:stream";
 import { afterEach, describe, expect, it, vi } from "vitest";

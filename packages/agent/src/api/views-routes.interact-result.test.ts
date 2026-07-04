@@ -1,3 +1,11 @@
+/**
+ * Verifies POST /api/views/interact-result and the pending-request handshake it
+ * completes: an interact on a serverInteract-less view parks on the module-level
+ * pending map and broadcasts a requestId, which interact-result then resolves so
+ * the parked interact route echoes the posted result. Also covers an orphan
+ * requestId ack and a missing-requestId rejection. In-process route calls with
+ * real body parsing — no HTTP server, no runtime.
+ */
 import type http from "node:http";
 import { Readable } from "node:stream";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

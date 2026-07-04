@@ -1,3 +1,13 @@
+/**
+ * Grouped request handlers for several `/api/*` namespaces, invoked by the
+ * server's route dispatcher. Covers inbox/notifications/approvals/push-tokens
+ * and cloud relay-status; cloud billing/compat/core routes; the compute-use
+ * sandbox surface; database routes; the conversation and chat-completions path
+ * (`/api/conversations`, `/v1/*`, per-agent `POST /api/agents/:id/message`);
+ * and LifeOps runtime plugin routes. The heavy plugin owners
+ * (`@elizaos/plugin-computeruse`, `@elizaos/plugin-elizacloud`) load through
+ * memoized lazy imports so they stay out of the static boot graph.
+ */
 import type http from "node:http";
 import { createIntegrationTelemetrySpan } from "../diagnostics/integration-observability.ts";
 import { handleApprovalRoute } from "./approval-routes.ts";

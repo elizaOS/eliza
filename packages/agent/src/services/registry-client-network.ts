@@ -1,3 +1,15 @@
+/**
+ * Network-fetch layer for the plugin/app marketplace registry. Loads the
+ * registry from the cloud over HTTP, preferring the richer generated registry
+ * over the flat index registry, and normalizes each entry into a
+ * `RegistryPluginInfo` map (including app metadata). Both fetches race under a
+ * single short timeout and are gated by a cloud-reachability probe; any network
+ * absence, 404, or timeout is treated as an expected fallback
+ * (`RegistryNetworkFallbackError`) so the caller can fall back to a local
+ * snapshot. Every attempt runs inside a marketplace telemetry span, and callers
+ * supply the local-workspace / node-module overlay hooks that merge on-disk
+ * plugins into the result.
+ */
 import { isCloudReachable } from "@elizaos/shared";
 import { createIntegrationTelemetrySpan } from "../diagnostics/integration-observability.ts";
 import type { RegistryPluginInfo } from "./registry-client-types.ts";

@@ -1,3 +1,8 @@
+/**
+ * Public barrel for the workspace hook subsystem: re-exports hook discovery
+ * (`loadHooks`) and the in-process event registry (`createHookEvent`,
+ * `triggerHook`).
+ */
 export {
   type LoadHooksOptions,
   loadHooks,

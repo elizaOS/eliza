@@ -1,3 +1,8 @@
+/**
+ * Defines the TaskExecutor contract — task spec/result shapes and the executor
+ * interface (canHandle / execute / abort) — plus a registry that resolves the best
+ * executor for a spec, preferring an explicit type match over capability probing.
+ */
 import type { IAgentRuntime, Memory } from "@elizaos/core";
 
 /** Specification for a task to be executed */

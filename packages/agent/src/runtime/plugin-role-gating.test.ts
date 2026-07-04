@@ -1,3 +1,11 @@
+/**
+ * Exercises `applyPluginRoleGating`: wrapping providers by their own declared
+ * `roleGate`, in-flight role-check dedup per message, rank thresholds, and the
+ * fail-open (undeclared provider stays public) / fail-closed (unwrappable
+ * sensitive provider is withheld from everyone) boundaries. The roles module is
+ * mocked, so role decisions are stubbed deterministically rather than resolved
+ * live.
+ */
 import type {
   IAgentRuntime,
   Memory,

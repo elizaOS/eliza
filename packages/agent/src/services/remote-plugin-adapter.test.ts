@@ -1,3 +1,16 @@
+/**
+ * Exhaustive coverage for the remote plugin adapter — the layer that
+ * materializes remote capability module manifests into local runtime plugin
+ * contributions (actions/providers/evaluators/response-handlers/routes/views/
+ * widgets/nav-tabs/models/services/events/app-bridges). Covers manifest
+ * materialization, malformed-result rejection, collision/duplicate guards
+ * against both the sync batch and the existing local runtime surface,
+ * trust-policy enforcement (provenance signatures + TEE), the per-endpoint
+ * sync/unload lifecycle, and bootstrap from persisted config.env. Most cases
+ * use a stubbed fetch and in-memory runtime; one raises a real local capability
+ * HTTP server and (behind ELIZA_REMOTE_PLUGIN_BUILD_SMOKE) esbuilds a real view
+ * bundle.
+ */
 import { type ChildProcessByStdio, execFile, spawn } from "node:child_process";
 import {
   createHash,

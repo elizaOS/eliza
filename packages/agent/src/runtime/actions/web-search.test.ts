@@ -1,3 +1,9 @@
+/**
+ * Behavioral tests for the WEB_SEARCH action: inline-vs-server capability
+ * gating, provider fallback (parallel → exa), JSON-RPC and SSE response
+ * parsing, error-envelope rejection, and result-length capping. Deterministic —
+ * DNS and the pinned fetch to each MCP endpoint are stubbed, so no real network.
+ */
 import type {
   ActionParameters,
   ActionResult,

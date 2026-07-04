@@ -1,3 +1,8 @@
+/**
+ * Unit tests for the SSRF IP/host classifier in `network-policy.ts`. Pure,
+ * deterministic, and in-process — no DNS resolution, sockets, or real network;
+ * every assertion feeds a fixed string straight to the classifier.
+ */
 import { describe, expect, it } from "vitest";
 import {
   decodeIpv6MappedHex,

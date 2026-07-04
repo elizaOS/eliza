@@ -1,3 +1,10 @@
+/**
+ * Provider that surfaces the owner's recent Eliza-app (client_chat)
+ * conversation into the agent's context so it carries continuity across
+ * platforms. Resolves the canonical owner, scans their most-active client_chat
+ * rooms, and renders the newest messages oldest-first within a character
+ * budget. Gated to ADMIN — returns empty for callers without admin access.
+ */
 import type {
   IAgentRuntime,
   Memory,

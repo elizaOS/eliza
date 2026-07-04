@@ -1,3 +1,12 @@
+/**
+ * Pure helpers for the OpenAI- and Anthropic-compatible chat endpoints: flatten
+ * a message `content` field (string, part arrays, or `{ text }` objects) to
+ * plain text, collapse a request's `messages` to the joined system/developer
+ * prompt plus the last user turn (so stateless clients that resend full history
+ * do not duplicate server-side room memory), and resolve a stable room key from
+ * whichever conversation identifier the client supplied. No I/O — the compat
+ * route modules call these to normalize inbound bodies.
+ */
 import { asRecord } from "@elizaos/shared";
 
 function readString(value: unknown): string {

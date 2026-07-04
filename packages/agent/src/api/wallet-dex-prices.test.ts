@@ -1,12 +1,12 @@
-import { describe, expect, it } from "vitest";
-import { computeValueUsd } from "./wallet-dex-prices";
-
 /**
  * Tests for the wallet USD value math (#8801 / #9943). computeValueUsd renders a
  * money figure shown to the user; the cents rounding and the guards against
  * non-positive / unparseable inputs are finance-correctness concerns, and it was
  * untested.
  */
+import { describe, expect, it } from "vitest";
+import { computeValueUsd } from "./wallet-dex-prices";
+
 describe("computeValueUsd", () => {
   it("multiplies balance by price to two decimals", () => {
     expect(computeValueUsd("2", "1.50")).toBe("3.00");

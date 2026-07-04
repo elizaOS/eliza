@@ -1,3 +1,10 @@
+/**
+ * Covers VaultSignerBackend: deriving the EVM address from a vault-stored key,
+ * producing a signature that ethers parses back to the same address, failing
+ * closed (no key reveal) when the TEE boot gate blocks secrets, and rejecting an
+ * empty agentId at construction. Real ethers signing/verification over a
+ * deterministic test key; the Vault and boot-gate state are in-memory stubs.
+ */
 import type { Vault } from "@elizaos/vault";
 import { ethers } from "ethers";
 import { afterEach, describe, expect, it, vi } from "vitest";

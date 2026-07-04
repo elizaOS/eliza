@@ -1,3 +1,10 @@
+/**
+ * Unit-tests `isWalletContextAugmentationIntent`, the heuristic gate deciding
+ * whether an incoming prompt warrants injecting wallet / on-chain context. Pins
+ * that it fires on explicit wallet or on-chain phrasing and stays quiet on
+ * lookalike developer vocabulary (token/address/send/approve/transfer used
+ * non-financially). Pure function; deterministic, no runtime.
+ */
 import { describe, expect, it } from "vitest";
 
 import { isWalletContextAugmentationIntent } from "../api/server-helpers.ts";

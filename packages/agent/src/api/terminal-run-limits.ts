@@ -1,3 +1,8 @@
+/**
+ * Resolves the guardrails for agent terminal runs — max concurrent runs and max
+ * wall-clock duration — from `ELIZA_TERMINAL_MAX_CONCURRENT` and
+ * `ELIZA_TERMINAL_MAX_DURATION_MS`, each clamped to a default and a hard ceiling.
+ */
 import { parseClampedInteger } from "@elizaos/shared";
 
 const TERMINAL_RUN_MAX_CONCURRENT_DEFAULT = 2;

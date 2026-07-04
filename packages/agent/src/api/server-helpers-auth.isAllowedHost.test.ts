@@ -1,15 +1,14 @@
+/**
+ * `isAllowedHost` is the DNS-rebinding / Host-header guard on the agent's HTTP
+ * API (#8801). On a loopback bind it must accept only loopback / configured /
+ * explicitly-allowed Host headers and REJECT an attacker-controlled host (the
+ * rebinding vector that lets a malicious page in a browser reach the local
+ * agent). The accept/reject paths and IPv6 parsing are pinned here.
+ */
 import type http from "node:http";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { isAllowedHost } from "./server-helpers-auth.ts";
 
-/**
- * `isAllowedHost` is the DNS-rebinding / Host-header guard on the agent's HTTP
- * API (#8801 — shipped untested). On a loopback bind it must accept only
- * loopback / configured / explicitly-allowed Host headers and REJECT an
- * attacker-controlled host (the rebinding vector that lets a malicious page in a
- * browser reach the local agent). The accept/reject paths + IPv6 parsing are
- * pinned here.
- */
 const ENV_KEYS = ["ELIZA_API_BIND", "ELIZA_ALLOWED_HOSTS"] as const;
 let saved: Record<string, string | undefined>;
 

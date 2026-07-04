@@ -1,3 +1,12 @@
+/**
+ * Key-release clients under test: LocalTeeKeyReleaseClient derives key material
+ * only after evidence satisfies policy and binds it to agent/policy measurements;
+ * HttpTeeKeyReleaseClient posts nonce/epk/report_data-bound evidence to a
+ * verifier/KMS, unwraps the returned key, and rejects replayed nonces, forged
+ * epk bindings, unbound report_data, KMS denials, and insecure transport under
+ * the production profile. Real node:crypto against fixture providers and a
+ * mocked KMS fetch — no live KMS or TEE hardware.
+ */
 import { generateKeyPairSync } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 import {

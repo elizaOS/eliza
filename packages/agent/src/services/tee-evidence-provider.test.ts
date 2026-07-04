@@ -1,3 +1,10 @@
+/**
+ * Evidence-provider registration seam under test: register/has/clear/resolve for
+ * the deployment factory, env-option passthrough, and the boot-gate fail-closed
+ * rule — a required policy with no registered provider disables secrets, while a
+ * registered provider yielding trusted evidence enables them. Deterministic; the
+ * factory is an in-memory stub, not a real dstack/CoVE provider.
+ */
 import { afterEach, describe, expect, it } from "vitest";
 import { evaluateTeeBootGate } from "./tee-boot-gate.ts";
 import type { TeeEvidence } from "./tee-evidence.ts";

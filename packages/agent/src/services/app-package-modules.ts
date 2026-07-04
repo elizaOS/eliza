@@ -1,3 +1,13 @@
+/**
+ * Resolution and dynamic loading of app-package modules. Given an app identifier
+ * (package name or short slug), locates the package across workspace roots,
+ * dynamically-installed plugin dirs, and the plugin registry, then imports its
+ * app route/bridge module and its `Plugin` object; also maintains the in-process
+ * registry of runtime-registered app route modules. Route-module lookup prefers
+ * workspace-local overrides, then the package's `bridgeExport`/`./app`/`./routes`
+ * entrypoints, then the plugin's `appBridge`; plugin lookup prefers the
+ * React-free `./plugin` subpath so UI imports never reach the Node agent.
+ */
 import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";

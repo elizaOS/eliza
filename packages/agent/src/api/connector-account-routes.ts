@@ -1,3 +1,15 @@
+/**
+ * Route handler for the connector-account namespace under
+ * `/api/connectors/:provider/{accounts,oauth,audit}`: lists/creates/patches/
+ * deletes stored connector accounts, drives the OAuth start/status/callback
+ * flow, marks a default account, and reads redacted audit events. Every path
+ * except the OAuth callback (which arrives from the external provider and is
+ * left open) must pass the host `authorize` callback — absent an authorizer the
+ * default is Forbidden. Owner-role assignment and privacy escalations require an
+ * explicit client confirmation. Server-owned policy fields (owner bindings,
+ * access gates, credential refs) are never accepted from HTTP bodies, and
+ * secret-shaped metadata keys are stripped on write and redacted on read.
+ */
 import type http from "node:http";
 import {
   type ConnectorAccount,

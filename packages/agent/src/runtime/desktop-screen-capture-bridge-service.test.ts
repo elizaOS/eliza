@@ -1,3 +1,9 @@
+/**
+ * Unit coverage for the desktop screen-capture bridge service: loopback+token
+ * config resolution, the authenticated frame-capture start request shape, and
+ * runtime service registration. Uses a mocked fetch and a stub runtime — no
+ * real desktop host.
+ */
 import { ServiceType } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {

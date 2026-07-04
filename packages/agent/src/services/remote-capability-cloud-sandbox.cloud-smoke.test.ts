@@ -1,3 +1,10 @@
+/**
+ * Live cloud smoke test for the capability sandbox provisioner — gated behind
+ * `ELIZA_REMOTE_CAPABILITY_CLOUD_LIVE` + `ELIZAOS_CLOUD_API_KEY` and skipped
+ * otherwise. Provisions a real elizaCloud sandbox agent, waits for endpoint
+ * availability, runs full conformance, syncs the remote plugin into a stub
+ * runtime, writes a live report, and deletes the agent on teardown.
+ */
 import {
   CAPABILITY_ROUTER_SERVICE_TYPE,
   type IAgentRuntime,

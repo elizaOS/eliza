@@ -1,3 +1,12 @@
+/**
+ * Sandboxed per-project filesystem rooted at
+ * `${STATE_DIR}/agent-vfs/projects/<projectId>/files`. VirtualFilesystemService
+ * exposes read/write/list/delete plus snapshot/diff/rollback and quota
+ * accounting, mapping caller-facing virtual paths onto disk while enforcing the
+ * sandbox: project-id sanitization, per-path traversal rejection, symlink denial
+ * on every access, a per-file byte cap, and a total-project quota. Backs the VFS
+ * builtin shell and git services and the workbench routes.
+ */
 import crypto from "node:crypto";
 import fsp from "node:fs/promises";
 import os from "node:os";

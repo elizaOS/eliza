@@ -1,13 +1,13 @@
-import { describe, expect, it } from "vitest";
-import { isSafeResetStateDir } from "./server-helpers-config";
-
 /**
  * Tests for the destructive-reset guard (#8801 / #9943). isSafeResetStateDir
  * decides whether a path may be wiped by the "reset state" operation. A bug here
  * could erase the filesystem root, $HOME, or an unrelated directory — so the
  * guard (under-home AND contains an "eliza" segment, never root/home itself) is
- * pinned. It was untested.
+ * pinned.
  */
+import { describe, expect, it } from "vitest";
+import { isSafeResetStateDir } from "./server-helpers-config";
+
 describe("isSafeResetStateDir", () => {
   const home = "/home/user";
 

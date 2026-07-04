@@ -1,3 +1,10 @@
+/**
+ * Canonical TEE attestation-evidence data model and its runtime normalizer:
+ * TeeEvidence (kind, provider, measurements, freshness, claims, quote, ...) plus
+ * isTeeEvidence and normalizeTeeEvidence, which validate and coerce an untrusted
+ * evidence document at the boundary, and the digest helpers used to compare
+ * measurements. Shared shape across the tee-* boot-gate, policy, and unseal stack.
+ */
 export type TeeKind =
   | "tdx"
   | "sev-snp"

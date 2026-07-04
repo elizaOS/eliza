@@ -1,3 +1,11 @@
+/**
+ * Mounts the plugin-registry read/refresh API behind the authenticated gate:
+ * GET /api/registry/plugins (registry entries annotated with installed / loaded
+ * / bundled state, installed and latest versions, and release-channel
+ * compatibility), GET /api/registry/plugins/:name, GET /api/registry/search,
+ * and POST /api/registry/refresh. Reads through the injected plugin manager;
+ * upstream failures surface as 502.
+ */
 import type { RouteHelpers, RouteRequestMeta } from "@elizaos/core";
 import { parseClampedInteger } from "@elizaos/shared";
 import type {

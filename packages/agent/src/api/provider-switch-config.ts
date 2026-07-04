@@ -1,3 +1,13 @@
+/**
+ * First-run and provider-switch configuration mutators for `ElizaConfig`.
+ * Translates a chosen connection (Eliza Cloud managed, remote provider, local
+ * provider, or subscription) into config slots, `env.vars`, and `process.env`
+ * so the runtime routes inference at the selected backend. Also owns the full
+ * first-run reset — wiping onboarding-derived config, provider env vars, and
+ * stored provider credentials — and the third-party `OPENAI_BASE_URL` guard that
+ * keeps openai.com default model ids off non-openai upstreams. Mutations are
+ * applied in place; consumed by the first-run / config API routes.
+ */
 import {
   applySubscriptionCredentials,
   deleteProviderCredentials,

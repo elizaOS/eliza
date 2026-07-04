@@ -1,3 +1,11 @@
+/**
+ * Serves `GET /api/models`, the model-catalog endpoint behind the dashboard
+ * control-API auth gate. Returns provider model lists from an on-disk cache:
+ * `?provider=` narrows to one provider, `?refresh=true` busts the cache (a
+ * single provider's file, or every cached `.json` for an all-providers fetch)
+ * before refetching. Filesystem and fetch access are injected through the
+ * route context so the handler stays transport-agnostic and unit-testable.
+ */
 import type { RouteHelpers, RouteRequestMeta } from "@elizaos/core";
 
 export interface ModelsRouteContext

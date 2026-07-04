@@ -1,3 +1,10 @@
+/**
+ * Unit coverage for cloud-provisioned runtime configuration in eliza.ts:
+ * applyCloudConfigToEnv wiring cloud embeddings/inference into the environment
+ * (#8769), provisioned-container topology resolution (#9887), and the guard
+ * that prevents stale vault/config keys from clobbering live cloud settings
+ * (#11038). Asserts env mutations directly; no live cloud calls.
+ */
 import { logger } from "@elizaos/core";
 import { resolveElizaCloudTopology } from "@elizaos/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -10,10 +17,9 @@ import {
 } from "./eliza.ts";
 import { collectPluginNames } from "./plugin-collector.ts";
 
-// applyCloudConfigToEnv is the #8769 source change: a cloud-provisioned container
-// MUST use cloud (1536-dim) embeddings, never plugin-local-inference's 384-dim
-// gte-small — otherwise every memory insert is dropped on a dimension mismatch.
-// This was previously uncovered.
+// applyCloudConfigToEnv (#8769): a cloud-provisioned container MUST use cloud
+// (1536-dim) embeddings, never plugin-local-inference's 384-dim gte-small —
+// otherwise every memory insert is dropped on a dimension mismatch.
 const ENV_KEYS = [
   "ELIZA_CLOUD_PROVISIONED",
   "ELIZAOS_CLOUD_USE_INFERENCE",

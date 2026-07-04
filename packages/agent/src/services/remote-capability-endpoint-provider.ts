@@ -1,3 +1,15 @@
+/**
+ * Provisions remote capability endpoints and wires them onto the agent runtime.
+ * `connectRemoteCapabilityEndpointProvider` runs a provider's `provision` step,
+ * normalizes the endpoint URL, installs a `RemoteCapabilityRouterService` into
+ * the runtime service map, lists the endpoint's plugin modules, filters them
+ * against the allow-list, and syncs the trusted set as local plugins. Trust is
+ * enforced before sync: provenance issuer / public-key / signature options are
+ * normalized into a `RemotePluginTrustPolicy`, and any required TEE evidence is
+ * evaluated (failing closed) via `evaluateTeeEvidencePolicy`. The `direct` and
+ * `dstack` (TEE) providers live here; URL-backed providers live alongside in
+ * remote-capability-url-endpoint-providers.ts.
+ */
 import {
   CAPABILITY_ROUTER_SERVICE_TYPE,
   type IAgentRuntime,

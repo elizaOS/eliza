@@ -1,3 +1,10 @@
+/**
+ * Covers the push-token registry: register/list/count/unregister, idempotent
+ * upsert, moving a token between platforms, whitespace trimming and empty-token
+ * rejection, platform filtering, cache-backed persistence with rehydration, and
+ * dropping malformed records on hydrate. Backed by a Map-backed mock runtime
+ * cache — no real storage.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import { createMockRuntime } from "@elizaos/core/testing";
 import { beforeEach, describe, expect, it } from "vitest";

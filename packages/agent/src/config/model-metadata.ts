@@ -1,3 +1,11 @@
+/**
+ * Normalizes model-definition config (context window, max output tokens, cost,
+ * input modality) and resolves per-model token metadata for the runtime. Given
+ * an ElizaConfig and a model id, resolveModelTokenMetadata returns the context
+ * window and max-output tokens, preferring an explicit model-config entry, then
+ * the agent-defaults context budget, then the built-in runtime defaults, and
+ * reports which source won.
+ */
 import type {
   ElizaConfig,
   ModelDefinitionConfig,

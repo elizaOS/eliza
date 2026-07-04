@@ -1,3 +1,9 @@
+/**
+ * Unit and property tests for the API server-helpers: prototype-pollution key
+ * sanitization, conversation-greeting persona selection, and avatar-to-preset
+ * mirroring. Deterministic — fast-check fuzzing and a mocked `Math.random`
+ * sweep drive the real helpers with a cast-fake runtime, no live model.
+ */
 import type { AgentRuntime } from "@elizaos/core";
 import { resolveStylePresetById } from "@elizaos/shared";
 import fc from "fast-check";

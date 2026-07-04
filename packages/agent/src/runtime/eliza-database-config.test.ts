@@ -1,3 +1,10 @@
+/**
+ * Exercises the database-config env resolution in `eliza.ts`
+ * (`applyDatabaseConfigToEnv`) and the `getSetting` binding installed by
+ * `installRuntimeMethodBindings`: POSTGRES_URL/DATABASE_URL promotion and the
+ * local-state PGlite-vs-shared-Postgres locality boundary (#8771/#8783).
+ * Deterministic — mutates `process.env` around a stub runtime object, no live DB.
+ */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { ElizaConfig } from "../config/config.ts";

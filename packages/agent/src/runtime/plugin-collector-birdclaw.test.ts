@@ -1,3 +1,11 @@
+/**
+ * Covers collectPluginNames' birdclaw gate: off by default on a hermetic host
+ * (no binary on PATH, no data root), forced on/off by ELIZA_BIRDCLAW, auto-loaded
+ * when BIRDCLAW_HOME points at an existing data root, config birdclaw:true/false
+ * overriding auto-detection, and never loaded on mobile even when env forces it.
+ * Deterministic, env-var driven with a nonexistent HOME/PATH; saves and restores
+ * process.env.
+ */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { ElizaConfig } from "../config/config.ts";

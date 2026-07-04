@@ -1,3 +1,11 @@
+/**
+ * URL-backed remote capability endpoint providers. Wraps a bare base URL (plus
+ * optional endpoint id, token, and allowed-module list) into a
+ * `RemoteCapabilityEndpointProvider` whose `provision` validates the URL
+ * (http/https only, no embedded credentials, no path/query separators in the
+ * endpoint id) and returns a normalized endpoint. Exports ready-made providers
+ * for the e2b, home-machine, mobile-companion, and desktop-companion runtimes.
+ */
 import type {
   ProvisionedRemoteCapabilityEndpoint,
   RemoteCapabilityEndpointProvider,

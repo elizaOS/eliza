@@ -1,3 +1,8 @@
+/**
+ * Covers notifyAction against a real NotificationService (in-memory cache + stub
+ * event bus): validate gating, creating a notification from params, invalid
+ * category/priority fallback, and failure on missing title or absent service.
+ */
 import type {
   HandlerCallback,
   IAgentRuntime,

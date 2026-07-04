@@ -1,3 +1,10 @@
+/**
+ * Covers collectPluginNames() model-provider policy across deployment-target
+ * runtimes — cloud exposes only the cloud provider, remote never falls back to
+ * cloud/local providers, local-only keeps local providers — plus the mobile
+ * provider allow-list and coding-agent orchestrator gating. Deterministic —
+ * env plus in-memory ElizaConfig, no live model.
+ */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { ElizaConfig } from "../config/config.ts";

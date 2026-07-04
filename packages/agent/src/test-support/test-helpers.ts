@@ -1,3 +1,9 @@
+/**
+ * Shared unit-test utilities for the package: an env-var save/restore sandbox,
+ * plugin-shape predicates and dynamic-import probes (with an optional-import
+ * error classifier for missing native/optional plugins), mock HTTP
+ * request/response factories for handler tests, and small async/timing helpers.
+ */
 import { EventEmitter } from "node:events";
 import { existsSync } from "node:fs";
 import * as http from "node:http";
@@ -5,10 +11,6 @@ import { createRequire } from "node:module";
 import { Socket } from "node:net";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-
-/**
- * Test helper utilities shared across unit tests.
- */
 
 const OPTIONAL_IMPORT_ERROR_MARKERS = [
   "Cannot find module",

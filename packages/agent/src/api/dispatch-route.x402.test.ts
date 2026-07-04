@@ -1,3 +1,10 @@
+/**
+ * Unit coverage for the x402 payment-guard helpers in `dispatch-route.ts`
+ * (`vetX402Module` / `selectX402Handler`): only a module exposing both payment
+ * helpers wraps a priced route, missing plugins and the mobile null stub fall
+ * through to the unwrapped handler, and an already-wrapped route is not
+ * double-wrapped. Loads the real mobile null-plugin stub artifact, not a fake.
+ */
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import type { LegacyRouteHandler, Route } from "@elizaos/core";

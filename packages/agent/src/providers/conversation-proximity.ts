@@ -1,3 +1,9 @@
+/**
+ * Provider that summarizes who else has recently spoken in the current room:
+ * co-participants (excluding the sender and the agent itself) over the last
+ * window of messages, each with a recent-message count and last-seen timestamp,
+ * ordered most-recent first.
+ */
 import type {
   IAgentRuntime,
   Memory,

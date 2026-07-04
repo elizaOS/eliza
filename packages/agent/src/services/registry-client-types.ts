@@ -1,3 +1,11 @@
+/**
+ * Shared type definitions for the plugin/app marketplace registry: the internal
+ * `RegistryPluginInfo` / `RegistryAppMeta` shapes carried through fetch and
+ * projection, plus the `RegistrySearchResult` and `RegistryPluginListItem` DTOs
+ * returned to clients. App-facing metadata (viewer, session, ui-extension,
+ * catalog/visibility flags) reuses the canonical app config types from
+ * `@elizaos/shared`.
+ */
 import type {
   AppSessionConfig,
   AppSessionFeature,

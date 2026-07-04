@@ -1,3 +1,12 @@
+/**
+ * Coverage for relevantConversationsProvider's recall paths: the shared per-turn
+ * embed (embedRecallQuery) failing open to `null` (no vector search issued,
+ * empty result), resolving to a vector (drives searchMemories), lexical
+ * hash-memory recall surfacing even when the embed fails open, and short
+ * messages short-circuiting before any embed. Deterministic: @elizaos/core is
+ * partially mocked to drive embedRecallQuery, and the runtime's
+ * searchMemories / getMemories are in-memory vi fakes.
+ */
 import type { IAgentRuntime, Memory, Room, State } from "@elizaos/core";
 import { createMockRuntime } from "@elizaos/core/testing";
 import { afterEach, describe, expect, it, vi } from "vitest";

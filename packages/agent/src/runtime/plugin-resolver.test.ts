@@ -1,3 +1,10 @@
+/**
+ * Covers resolveRuntimePluginImportSpecifier() (rewriting core app plugins to
+ * their /plugin runtime entrypoint while leaving other package roots intact) and
+ * resolvePlugins() manifest discovery that auto-enables third-party scoped
+ * plugin-* packages via their autoEnable module. Deterministic — a real on-disk
+ * fixture package under a temp workspace, no live model.
+ */
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";

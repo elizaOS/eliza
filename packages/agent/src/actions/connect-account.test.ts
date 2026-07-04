@@ -1,3 +1,11 @@
+/**
+ * Exercises `connectAccountAction` (validate + handler): matching
+ * add / connect-another-account intents while rejecting lookalikes (bare
+ * add/connect verbs or account references without an add intent), and stamping
+ * the `accountConnect` provider offer — Claude subscription, OpenAI Codex, or
+ * both — onto the callback Content and the returned ActionResult. Deterministic:
+ * empty runtime/state, no OAuth flow or network.
+ */
 import type {
   ActionResult,
   Content,

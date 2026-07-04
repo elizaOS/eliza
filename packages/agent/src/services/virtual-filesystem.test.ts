@@ -1,3 +1,9 @@
+/**
+ * Covers VirtualFilesystemService: read/write/list/delete within a project root,
+ * traversal and symlink escape rejection, project-id validation, missing-delete
+ * error mapping, per-file and project quota enforcement, and snapshot diff /
+ * rollback. Real on-disk filesystem rooted at a temp stateDir; deterministic.
+ */
 import fsp from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";

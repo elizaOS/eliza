@@ -1,3 +1,13 @@
+/**
+ * Unit tests for the swarm synthesis + autonomy relay helpers behind the agent
+ * HTTP surface. handleSwarmSynthesis: turning completed sub-agent task results
+ * into user-visible text (coordinator summary over raw jsonl, tool-output
+ * envelope stripping with evidence URLs preserved, connector replies split by
+ * originating external message, workdir artifacts attached/renamed, input files
+ * not re-uploaded). routeAutonomyTextToUser: persist-vs-ephemeral delivery and
+ * duplicate suppression. Deterministic: in-memory runtime/state stubs with real
+ * temp-dir files for the artifact cases.
+ */
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";

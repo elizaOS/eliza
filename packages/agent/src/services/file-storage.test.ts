@@ -1,3 +1,10 @@
+/**
+ * Exercises LocalFileStorageService against a real on-disk media store rooted at
+ * a temp `ELIZA_STATE_DIR` (no mocks): store, content-hash dedup, base64 data-URL
+ * ingest, list metadata, existence, `getUrl`, and delete — including traversal-safe
+ * rejection of malformed file names.
+ */
+
 import { Buffer } from "node:buffer";
 import fs from "node:fs";
 import os from "node:os";

@@ -1,3 +1,10 @@
+/**
+ * The non-negotiable production floor for confidential-AI TEE trust: the claim
+ * set, simulated-evidence rejection, and freshness ceiling a deployment cannot
+ * accidentally relax. `mergeTeeProductionProfile` intersects it into the
+ * resolved boot policy, only ever tightening. Does not by itself assert hardware
+ * trust — quote-signature verification is still blocked on hardware.
+ */
 import type { TeeClaims } from "./tee-evidence.ts";
 import type { TeeEvidencePolicy } from "./tee-policy.ts";
 

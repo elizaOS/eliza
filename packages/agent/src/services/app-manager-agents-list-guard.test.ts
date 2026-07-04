@@ -1,3 +1,7 @@
+/**
+ * Unit tests for `shouldRestoreAgentsListAfterAppLaunch` — a pure, deterministic
+ * predicate; each case is a fixed before/after agents-list pair.
+ */
 import { describe, expect, it } from "vitest";
 import { shouldRestoreAgentsListAfterAppLaunch } from "./app-manager-agents-list-guard.ts";
 

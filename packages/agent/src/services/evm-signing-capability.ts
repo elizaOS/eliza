@@ -1,5 +1,3 @@
-import type { EvmSigningCapabilityKind } from "@elizaos/shared";
-
 /**
  * EVM signing capability resolver.
  *
@@ -22,6 +20,9 @@ import type { EvmSigningCapabilityKind } from "@elizaos/shared";
  *
  * The UI surfaces `reason` verbatim, so it should be short and user-facing.
  */
+
+import type { EvmSigningCapabilityKind } from "@elizaos/shared";
+
 export type { EvmSigningCapabilityKind };
 
 export interface EvmSigningCapability {

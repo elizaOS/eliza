@@ -1,16 +1,16 @@
+/**
+ * Coverage for the tiered plugin-reload pipeline in `applyPluginRuntimeMutation`.
+ * Exercises config_apply, plugin_reload (unload+register), runtime_reload
+ * escalation for adapter plugins, and the two-phase ROLLBACK path that restores
+ * the previous plugin graph when registerPlugin throws mid-reload so the
+ * in-memory graph is never left half-torn-down. Deterministic: the runtime and
+ * its lifecycle methods are vi.fn stubs; no live plugins are loaded.
+ */
 import type { AgentRuntime } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ElizaConfig } from "../config/config.ts";
 import type { ResolvedPlugin } from "../runtime/plugin-types.ts";
 import { applyPluginRuntimeMutation } from "./plugin-runtime-apply.ts";
-
-/**
- * Coverage for the core tiered plugin-reload pipeline — previously ZERO tests
- * (audit Wave 0.3 / HIGH gap H). Exercises config_apply, plugin_reload
- * (unload+register), runtime_reload escalation for adapter plugins, and — the
- * correctness fix — two-phase ROLLBACK when registerPlugin throws mid-reload so
- * the in-memory plugin graph is never left half-torn-down.
- */
 
 type LifecycleRuntime = AgentRuntime & {
   applyPluginConfig: ReturnType<typeof vi.fn>;

@@ -1,3 +1,9 @@
+/**
+ * Tests buildCharacterFromConfig's translation of an ElizaConfig into a runtime
+ * Character: the Matrix connector secret/settings boundary (public identifiers
+ * stay plain settings, credentials become redacted secrets) and passthrough of
+ * per-agent settings and knowledge directories.
+ */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { ElizaConfig } from "../config/config.ts";

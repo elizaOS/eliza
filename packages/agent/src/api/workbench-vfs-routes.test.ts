@@ -1,3 +1,11 @@
+/**
+ * End-to-end coverage for the Workbench VFS routes (`handleWorkbenchRoutes` →
+ * `handleWorkbenchVfsRoutes`): project create, file write/read, snapshot + diff,
+ * pure-JS git, store-build gating of plugin compile/load, and cloud promotion
+ * through the canonical container service slot. Drives the real handlers against
+ * a real tmpdir state dir with a hand-built request context and fake runtime — no
+ * HTTP server stood up.
+ */
 import fsp from "node:fs/promises";
 import type http from "node:http";
 import os from "node:os";

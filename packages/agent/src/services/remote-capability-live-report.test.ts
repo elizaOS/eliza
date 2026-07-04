@@ -1,3 +1,10 @@
+/**
+ * Unit coverage for the live-report summarizers and writer. Uses a synthetic
+ * fully-populated plugin and a temp dir (no live endpoint) to assert every
+ * remote plugin surface is counted, that URL fingerprints are credential-free
+ * and normalize away token/hash/trailing slash, and that the writer enforces
+ * safe names and the cloud-vs-provider report shape and writes exactly once.
+ */
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";

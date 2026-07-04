@@ -1,3 +1,14 @@
+/**
+ * Conversation-metadata sanitization and room-persistence helpers. The
+ * untrusted-input boundary is `sanitizeConversationMetadata`, which allowlists
+ * the conversation `scope` and `automationType`, coerces id/name fields through
+ * a non-empty-string guard, validates the waifu-chat owner wallet as a 0x
+ * address, and drops everything else — so a client cannot smuggle an unknown
+ * scope or a non-string id into the conversation system. The remaining helpers
+ * fold sanitized metadata into a room's `webConversation` record, read it back
+ * out (optionally pinned to a conversation id), and classify a scope as
+ * automation- or page-scoped.
+ */
 import type { JsonValue, Room } from "@elizaos/core";
 import { asNonEmptyString, asRecord } from "@elizaos/shared";
 import type {

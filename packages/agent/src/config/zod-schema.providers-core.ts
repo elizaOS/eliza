@@ -1,3 +1,12 @@
+/**
+ * Zod schemas validating the messaging-connector (`channels.*`) config for each
+ * supported platform: Telegram, Discord, Google Chat, Slack, Signal, iMessage,
+ * MS Teams, WhatsApp, Twitter/X, Twitch, and the live-streaming destinations
+ * (Twitch/YouTube/custom-RTMP/Pumpfun/X). Each connector carries account,
+ * group/channel, DM/group policy, per-scope tool policy, and delivery/streaming
+ * knobs; refinements enforce that an "open" DM policy includes `allowFrom: ["*"]`
+ * and that HTTP webhooks declare a signing secret.
+ */
 import * as zod from "zod";
 import {
   normalizeTelegramCommandDescription,

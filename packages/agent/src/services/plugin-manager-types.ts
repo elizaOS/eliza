@@ -1,3 +1,11 @@
+/**
+ * Shared type surface for the config plugin-manager: registry plugin/search
+ * metadata (app viewer/session/UI-extension shapes), the install / uninstall /
+ * eject / sync / reinject result records, install option and progress payloads,
+ * and the structural PluginManagerLike / CoreManagerLike interfaces plus their
+ * runtime duck-type guards used to accept a manager passed across a package
+ * boundary.
+ */
 import type {
   AppUiExtensionConfig,
   RegistryAppMeta,

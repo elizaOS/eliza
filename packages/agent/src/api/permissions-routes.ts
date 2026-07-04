@@ -1,3 +1,15 @@
+/**
+ * Mounts the `/api/permissions` REST surface behind the dashboard control-API
+ * auth gate: GET the full permission map or a single permission, POST refresh,
+ * per-permission request and open-settings, and PUT shell-access and
+ * client-probed permission state. Reads live state through the runtime's
+ * permissions registry when present, falls back to the persisted map or an
+ * unavailable-permission stub, and validates client-pushed states (fail
+ * closed) before persisting. A `PUT /state` also auto-enables capability
+ * plugins whose required permissions are now granted and can schedule a
+ * runtime restart. Shell access is surfaced as a synthetic permission derived
+ * from config, never probed.
+ */
 import type { AgentRuntime, RouteRequestContext } from "@elizaos/core";
 import type {
   IPermissionsRegistry,

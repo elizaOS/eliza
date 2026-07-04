@@ -1,3 +1,10 @@
+/**
+ * Character-modification history. Builds normalized snapshots of a runtime
+ * character, diffs consecutive snapshots field-by-field, and records each change
+ * set as a CUSTOM memory in the `character_modifications` table (tagged manual /
+ * agent / restore). Also parses those memory rows back into typed history
+ * entries and lists them newest-first for the character-history surface.
+ */
 import { type IAgentRuntime, type Memory, MemoryType } from "@elizaos/core";
 
 export const CHARACTER_HISTORY_TABLE = "character_modifications";

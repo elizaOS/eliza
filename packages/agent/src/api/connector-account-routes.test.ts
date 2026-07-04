@@ -1,3 +1,10 @@
+/**
+ * Coverage for the connector-account route handler. `@elizaos/core` is mocked
+ * with an in-memory connector-account storage + manager (no DB, no live OAuth
+ * provider), so the tests exercise the real route logic — authorization gating,
+ * role/privacy confirmation, metadata sanitization, OAuth start/callback, and
+ * audit redaction — against deterministic fakes.
+ */
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { ReadJsonBodyOptions } from "@elizaos/shared";
 import { beforeEach, describe, expect, it, vi } from "vitest";

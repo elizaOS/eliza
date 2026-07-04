@@ -1,3 +1,10 @@
+/**
+ * Reads and writes the configured owner display name, persisted at `ui.ownerName`
+ * in the Eliza config. Both accessors normalize the value (coerce to trimmed
+ * string, drop empties, cap at `OWNER_NAME_MAX_LENGTH`) and swallow config
+ * load/save failures, returning null / false rather than throwing.
+ */
+
 import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
 
 export const OWNER_NAME_MAX_LENGTH = 60;

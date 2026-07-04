@@ -1,3 +1,11 @@
+/**
+ * Confidential-inference unseal paths under test: unsealModelWeights (single
+ * blob) and unsealModelWeightsStreaming (per-shard) release the model-key and
+ * decrypt weights in memory only when evidence satisfies the policy, and fail
+ * closed on tampered ciphertext, a wrong key, digest mismatch, or a policy that
+ * fails to gate the required measurements. Real AES-256-GCM crypto against an
+ * in-memory fixture KMS — hardware quote verification is out of scope.
+ */
 import { createCipheriv, createHash, randomBytes } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {

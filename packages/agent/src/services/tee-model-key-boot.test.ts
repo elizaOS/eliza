@@ -1,3 +1,11 @@
+/**
+ * Covers the confidential model-weights boot seam
+ * (`prepareConfidentialModelWeights` and its streaming variant): the
+ * `ELIZA_CONFIDENTIAL_WEIGHTS` flag gate, the fail-closed boot-gate refusal,
+ * and happy-path in-memory unseal. Deterministic and hardware-free — a fixture
+ * key-release client and locally sealed AES-256-GCM weights stand in for a real
+ * KMS and attestation.
+ */
 import { createCipheriv, createHash, randomBytes } from "node:crypto";
 import { afterEach, describe, expect, it } from "vitest";
 import {

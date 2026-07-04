@@ -1,3 +1,12 @@
+/**
+ * Projects the eliza config's env and connector settings into flat
+ * environment-variable records for plugins. CONNECTOR_ENV_MAP maps each
+ * connector's config fields to the env keys its plugin expects;
+ * collectConfigEnvVars flattens config.env (nested vars + top-level) and
+ * collectConnectorEnvVars walks the configured connectors, normalizing
+ * string/number/boolean/array values and mirroring the Discord token aliases.
+ * Both drop any key in the BLOCKED_ENV_KEYS secret denylist.
+ */
 import { BLOCKED_ENV_KEYS } from "./blocked-env-keys.ts";
 import type { ElizaConfig } from "./types.ts";
 

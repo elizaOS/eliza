@@ -1,3 +1,15 @@
+/**
+ * Provider that injects operational context for a page-scoped dashboard chat —
+ * the per-view chat surfaces (Browser, Character, Apps, Connectors, Plugins,
+ * Settings, Automations, Wallet, and the automation-draft room). For the
+ * conversation's scope it emits a static "brief" describing that view's action
+ * vocabulary and guardrails, appends live state pulled from the local agent API
+ * (running apps, wallet balances, browser tabs/bridge, character summary,
+ * automation tasks), and a short tail of the originating main-chat conversation.
+ * Gated to OWNER (enforced by applyPluginRoleGating). Subsection and
+ * provider-boundary failures degrade gracefully and are routed to reportError so
+ * they still surface through the RECENT_ERRORS provider.
+ */
 import type {
   IAgentRuntime,
   Memory,
@@ -617,8 +629,8 @@ export const pageScopedContextProvider: Provider = {
   },
   cacheStable: false,
   cacheScope: "turn",
-  // #12087 Item 14: was USER but the body enforced OWNER (hasOwnerAccess).
-  // Declared roleGate is now enforced by applyPluginRoleGating.
+  // roleGate OWNER is enforced by applyPluginRoleGating (#12087 Item 14); the
+  // declared gate is authoritative, not the handler body.
   roleGate: { minRole: "OWNER" },
 
   async get(runtime: IAgentRuntime, message: Memory): Promise<ProviderResult> {

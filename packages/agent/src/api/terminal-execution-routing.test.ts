@@ -1,3 +1,9 @@
+/**
+ * Unit tests for `resolveTerminalExecutionRoute`: default host/yolo routing, the
+ * `local-safe` mode that requires a SandboxManager (erroring when absent), and
+ * routing to the SandboxManager when one is present. Deterministic — driven by
+ * `ELIZA_RUNTIME_MODE` with a fake SandboxManager, no real shell execution.
+ */
 import { afterEach, describe, expect, it } from "vitest";
 import { resolveTerminalExecutionRoute } from "./terminal-execution-routing.ts";
 

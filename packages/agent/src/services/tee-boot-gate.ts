@@ -1,3 +1,11 @@
+/**
+ * Boot-time TEE trust gate for @elizaos/agent: evaluates attestation trust once
+ * at startup and reports whether high-value secret, model-key-release, signing,
+ * and remote-plugin-sync capabilities may be enabled. Fail-closed by contract —
+ * a required-but-untrusted (or provider-less) decision disables secrets while
+ * still allowing a degraded, secret-less boot. See the TeeBootGate type below
+ * for the decision fields and the fail-closed invariant it carries.
+ */
 import { logger } from "@elizaos/core";
 import type { TeeEvidenceProvider } from "./tee-evidence.ts";
 import {

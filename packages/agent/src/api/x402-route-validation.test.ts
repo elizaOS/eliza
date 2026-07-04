@@ -1,3 +1,9 @@
+/**
+ * Coverage for the x402 route-validation guard. Deterministic checks confirming
+ * that a nullish `x402` field means no validation is required, while any present
+ * value — enabled, malformed, or even `false` — forces the route set through
+ * x402 validation.
+ */
 import type { Route } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {

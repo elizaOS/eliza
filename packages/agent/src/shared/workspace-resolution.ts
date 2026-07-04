@@ -1,3 +1,13 @@
+/**
+ * Resolves the agent's default workspace directory — the folder the runtime
+ * treats as the user's project root for hooks, skills, and init files.
+ * Precedence: an explicit `ELIZA_WORKSPACE_DIR` override, the desktop-picked
+ * folder persisted to `<stateDir>/workspace-folder.json`, the current working
+ * directory when it looks like a real project (and no `ELIZA_STATE_DIR` is
+ * pinned), then a per-profile `workspace` folder under the state dir. Also
+ * decides whether the cwd counts as a project workspace and whether init files
+ * should be bootstrapped, excluding packaged desktop runtime directories.
+ */
 import { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";

@@ -1,3 +1,10 @@
+/**
+ * Coverage for `handleConnectorRoutes` config persistence. Drives the real
+ * handler with an in-memory harness whose `saveElizaConfig` throws, asserting
+ * that a failed disk write is surfaced as a 500 and the in-memory connector
+ * config (and legacy `channels` mirror) is rolled back — never reported as a
+ * successful update.
+ */
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { describe, expect, it, vi } from "vitest";
 import type { ConnectorRouteContext } from "./connector-routes";

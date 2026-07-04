@@ -1,3 +1,10 @@
+/**
+ * Covers the FCM push provider: config gating from a service-account JSON env
+ * var, RS256 OAuth-assertion JWT construction (header, iss/scope/aud/iat/exp),
+ * and the FCM v1 message body shape (string-coerced data). Crypto is real — a
+ * throwaway RSA key pair is generated per test and the assertion signature is
+ * verified against the public key; no network calls to Google.
+ */
 import { createVerify, generateKeyPairSync, type KeyObject } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { FcmProvider, readServiceAccount } from "./fcm-provider.ts";

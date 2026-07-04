@@ -1,3 +1,12 @@
+/**
+ * Zod schemas for session and messaging-behavior config. `SessionSchema` shapes
+ * conversation session scoping (per-sender vs global, DM scope granularity),
+ * reset triggers and schedules (daily/idle, per chat-type, per channel), typing
+ * behavior, send policy, and agent-to-agent ping-pong bounds. `MessagesSchema`
+ * covers message/response prefixes, group chat, the inbound queue and debounce,
+ * ack reactions, and TTS; `CommandsSchema` toggles the built-in slash/native
+ * command set.
+ */
 import * as zod from "zod";
 import {
   GroupChatSchema,

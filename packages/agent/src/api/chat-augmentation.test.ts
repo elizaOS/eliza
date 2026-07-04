@@ -1,3 +1,10 @@
+/**
+ * Unit tests for `maybeAugmentChatMessageWithDocuments`: the optional document
+ * context must stay off the critical chat path — the lookup and LLM
+ * query-recovery calls are time-bounded and aborted, recovery only fires when
+ * weak candidates exist, and an empty corpus short-circuits before any
+ * embed/search. Uses a mocked documents service and useModel; no live model.
+ */
 import type { AgentRuntime, createMessageMemory } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 

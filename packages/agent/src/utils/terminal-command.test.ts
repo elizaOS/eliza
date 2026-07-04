@@ -1,3 +1,10 @@
+/**
+ * Unit coverage for normalizeTerminalCommand: trimming of ordinary single-line
+ * commands and the CDATA-script path that base64-encodes a multi-line shell
+ * body into a single `bash -lc "$(printf %s ... | base64 -d)"` invocation,
+ * asserting round-trip fidelity through shell metacharacters and blank-content
+ * handling. Deterministic — no shell is spawned.
+ */
 import { describe, expect, it } from "vitest";
 import { normalizeTerminalCommand } from "./terminal-command.ts";
 

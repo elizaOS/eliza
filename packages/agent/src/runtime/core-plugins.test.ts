@@ -1,3 +1,9 @@
+/**
+ * Guards the default plugin partition in core-plugins.ts: plugin-google and
+ * plugin-personal-assistant (heavy native/cloud deps) stay out of the default
+ * core and deferred load sets and remain opt-in via OPTIONAL_CORE_PLUGINS. Pure
+ * assertions over the exported name lists.
+ */
 import { describe, expect, it } from "vitest";
 
 import {

@@ -1,3 +1,9 @@
+/**
+ * Covers the process-global TEE boot-gate state (set/get/clear and
+ * teeBootGateBlocksSecrets), asserting it stays inert until a gate is published and
+ * blocks secrets only when the gate is required and secrets are disabled.
+ * Deterministic in-memory module state.
+ */
 import { afterEach, describe, expect, it } from "vitest";
 import type { TeeBootGate } from "./tee-boot-gate.ts";
 import {

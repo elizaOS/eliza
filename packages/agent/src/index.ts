@@ -1,3 +1,13 @@
+/**
+ * Public barrel for `@elizaos/agent` — the surface that sibling
+ * `@elizaos/plugin-*` packages and the app shell import. Re-exports the HTTP API,
+ * runtime boot and plugin resolution, long-lived services (including the TEE
+ * stack), config and character schemas, auth, security, triggers, providers, and
+ * diagnostics. Cloud route handlers are lazy wrappers that dynamically import
+ * `@elizaos/plugin-elizacloud`. Many re-exports are deliberately named rather
+ * than `export *` to dodge duplicate-symbol (TS2308) collisions and to keep
+ * heavy plugins lazy-loaded — read the inline notes before widening any of them.
+ */
 import type {
   AgentCloudBillingRouteHandler,
   AgentCloudCompatRouteHandler,

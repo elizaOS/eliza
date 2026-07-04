@@ -1,3 +1,11 @@
+/**
+ * Covers view-action affinity: the derived view→action map, the active-view
+ * context/element snapshot lifecycle, the awareness block rendered into planner
+ * prompts, the drift/coverage validators, and the end-to-end weave with
+ * prompt-compaction. Deterministic — synthetic plugin views registered in the
+ * live views-registry, plus a source-static git-grep drift guard over
+ * plugins/ and packages/agent/src.
+ */
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -147,7 +155,7 @@ describe("view-action-affinity", () => {
   });
 
   it("covers the major plugin views (expanded map)", () => {
-    // wallet / trading / xr surfaces now boost their plugin actions.
+    // wallet / trading / xr surfaces boost their plugin actions.
     expect(viewScopedActionNames("wallet").has("EVM_SWAP")).toBe(true);
     expect(viewScopedActionNames("wallet").has("SOLANA_TRANSFER")).toBe(true);
     expect(viewScopedActionNames("polymarket").has("POLYMARKET_STATUS")).toBe(
@@ -236,8 +244,8 @@ describe("view-action-affinity", () => {
   // ── #8798: view-coverage completeness ─────────────────────────────────────
 
   it("documents view has a domain-action affinity entry", () => {
-    // documents was the one CONTEXT_VIEWS surface previously missing from the
-    // map; #8798 added OWNER_DOCUMENTS.
+    // The documents view (a CONTEXT_VIEWS surface) maps the OWNER_DOCUMENTS
+    // domain action (#8798).
     expect(viewActionAffinityMap().documents).toContain("OWNER_DOCUMENTS");
   });
 

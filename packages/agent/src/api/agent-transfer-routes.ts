@@ -1,3 +1,14 @@
+/**
+ * HTTP routes for full-agent backup and restore: `POST /api/agent/export`
+ * streams a password-encrypted `.eliza-agent` bundle as a download,
+ * `GET /api/agent/export/estimate` reports the projected bundle size, and
+ * `POST /api/agent/import` restores from an uploaded bundle. The import body is
+ * a raw binary frame — a 4-byte big-endian password length, the UTF-8 password,
+ * then the file bytes — so it bypasses JSON parsing and enforces its own size
+ * and password-length bounds. Encryption, packaging, and validation are
+ * delegated to the injected export/import helpers; the routes only run behind a
+ * live runtime and the server's owner-auth boundary.
+ */
 import type http from "node:http";
 import type { AgentRuntime } from "@elizaos/core";
 import { readRequestBodyBuffer } from "@elizaos/core";

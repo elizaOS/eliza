@@ -1,3 +1,10 @@
+/**
+ * Config-only PluginManagerLike used before a live runtime plugin-manager
+ * service exists. Read paths (list installed, registry refresh / search /
+ * lookup) are served from the static Eliza config and the registry client;
+ * every mutating operation (install, uninstall, eject, sync, reinject) throws,
+ * since those require a running agent runtime.
+ */
 import type { ElizaConfig } from "../config/types.eliza.ts";
 import type {
   EjectResult,

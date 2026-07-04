@@ -1,3 +1,10 @@
+/**
+ * Unit coverage for the conversation compactor strategies (naive, structured,
+ * hierarchical, hybrid-ledger) and findSafeCompactionBoundary: boundary safety,
+ * round-trip fidelity, multi-cycle drift, parsing tolerance, ledger cap
+ * semantics, degenerate inputs, and artifact stats. Compactor model calls are
+ * deterministic fakes — no live LLM.
+ */
 import { describe, expect, it } from "vitest";
 
 import {

@@ -1,3 +1,10 @@
+/**
+ * Covers the APNs push provider: config gating from env credentials, ES256
+ * provider-JWT minting (header alg/kid, claims, TTL caching), and the APNs
+ * alert payload shape. Crypto is real — a throwaway P-256 key pair is generated
+ * per test and the minted signature is verified against the public key; no
+ * network calls to Apple.
+ */
 import { createVerify, generateKeyPairSync, type KeyObject } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { ApnsProvider, readApnsConfig } from "./apns-provider.ts";

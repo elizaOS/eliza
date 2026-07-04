@@ -1,3 +1,11 @@
+/**
+ * Covers the proactive-interaction decider: how view-switch/shortcut/slash-command
+ * events are turned into (or suppressed from) a proactive agent comment, judge
+ * output parsing, prompt construction, per-event surface policy, and delivery
+ * routing (chat vs notify) through `registerProactiveInteractionDecider`.
+ * Deterministic — the LLM judge is an inline stub and the runtime is
+ * `createMockRuntime`; no live model, real timers only where faked explicitly.
+ */
 import type {
   IAgentRuntime,
   ShortcutFiredPayload,

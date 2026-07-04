@@ -1,3 +1,9 @@
+/**
+ * Unit tests for `writeChatStatusSse` (#8813): each in-turn phase in the shared
+ * ChatTurnStatus contract renders to a single `type: status` SSE frame carrying
+ * only the provided fields, and nothing is written once the response is ended.
+ * Uses a ServerResponse stand-in capturing wire bytes; fully deterministic.
+ */
 import type http from "node:http";
 import type { ChatTurnStatus } from "@elizaos/shared";
 import { describe, expect, it, vi } from "vitest";

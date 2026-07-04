@@ -1,3 +1,12 @@
+/**
+ * Provider that recalls conversation snippets relevant to the current message,
+ * re-ranked by similarity, from across all platforms. It combines a lexical
+ * "hash memory" scan (mirroring the /api/memory/remember writer, so recall works
+ * even when no embedding model is registered) with semantic search over the
+ * shared per-turn recall-query embed; on embed failure it fails open to the
+ * lexical hits alone. Current-room messages are filtered out to avoid echo, and
+ * hash-memory hits win on id overlap. Gated to USER.
+ */
 import type {
   IAgentRuntime,
   Memory,

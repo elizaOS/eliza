@@ -1,3 +1,11 @@
+/**
+ * Unit tests for the remote-capability endpoint-provider adapter with a mocked
+ * capability-router `fetch`: trust-policy construction, adapting a
+ * provider-specific provisioner into the canonical router + plugin-sync path,
+ * allowlist gating (skip/unload of shared-endpoint modules), the uniform
+ * endpoint contract across E2B/home-machine/mobile/direct providers, and
+ * endpoint URL normalization/validation.
+ */
 import {
   CAPABILITY_ROUTER_SERVICE_TYPE,
   type IAgentRuntime,

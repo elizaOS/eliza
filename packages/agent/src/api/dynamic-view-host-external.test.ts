@@ -1,3 +1,11 @@
+/**
+ * Unit coverage for the host-external view-bundle factory transform
+ * (`dynamic-view-host-external.mjs`) shared by the agent bundle route
+ * (`views-routes.ts`) and the Playwright UI-smoke stub. Pure string-in/out:
+ * wraps sample bundles and evaluates them against a stub `hostImport`, and
+ * checks the `parseHostExternalSpecifiers` query parsing — no server, no real
+ * bundle build.
+ */
 import { describe, expect, it } from "vitest";
 import {
   HOST_IMPORT_PARAM,

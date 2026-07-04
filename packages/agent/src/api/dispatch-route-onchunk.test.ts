@@ -1,15 +1,14 @@
-import type { IAgentRuntime, Route } from "@elizaos/core";
-import { describe, expect, it } from "vitest";
-import { dispatchRoute } from "./dispatch-route.ts";
-
 /**
- * Covers the incremental `onChunk` sink added for the Android stdio switch
- * (#12352): a legacy Express-shaped SSE handler flushes body fragments via
- * `res.write(...)`, and the sink must forward each fragment the instant it is
- * written — not only after `res.end()` — while the buffered
+ * Exercises the incremental `onChunk` sink of `dispatchRoute` used by the
+ * Android stdio switch (#12352): a legacy Express-shaped SSE handler flushes
+ * body fragments via `res.write(...)`, and the sink must forward each fragment
+ * the instant it is written — not only after `res.end()` — while the buffered
  * `RouteHandlerResult` still carries the full body. Drives the real
  * `dispatchRoute` with a minimal fake runtime; no server boot.
  */
+import type { IAgentRuntime, Route } from "@elizaos/core";
+import { describe, expect, it } from "vitest";
+import { dispatchRoute } from "./dispatch-route.ts";
 
 function runtimeWithRoutes(routes: Route[]): IAgentRuntime {
   return { routes } as unknown as IAgentRuntime;

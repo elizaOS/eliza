@@ -1,3 +1,11 @@
+/**
+ * Covers the non-negotiable TEE production floor: the `teeProductionProfile`
+ * shape (required claims, simulated-evidence rejection, max-age ceiling) for
+ * local vs cloud inference, and `mergeTeeProductionProfile` only ever tightening
+ * a resolved policy (clamping `maxAgeMs`, forcing claims). Deterministic
+ * assertions plus a few end-to-end evaluations through
+ * `evaluateTeeEvidencePolicy`.
+ */
 import { describe, expect, it } from "vitest";
 import { evaluateTeeEvidencePolicy } from "./tee-policy.ts";
 import {

@@ -1,3 +1,11 @@
+/**
+ * Fetches plugin metadata from user-configured custom registry endpoints and
+ * folds it into the plugin map. Every endpoint URL passes an SSRF guard before
+ * any request: https-only, literal/private/link-local hosts blocked, DNS
+ * resolved and pinned, then re-resolved immediately before fetch to defeat
+ * rebinding. Fetches run in parallel with a short timeout and no redirects;
+ * custom entries never override a name already present in the map.
+ */
 import { lookup as dnsLookup } from "node:dns/promises";
 import net from "node:net";
 import { logger } from "@elizaos/core";

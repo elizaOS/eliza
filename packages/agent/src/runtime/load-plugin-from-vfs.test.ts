@@ -1,3 +1,11 @@
+/**
+ * End-to-end coverage of the VFS plugin (un)loader (`load-plugin-from-vfs.ts`):
+ * compiling TS source out of a project VFS then importing/registering it, and
+ * the pre-built-JS no-compile path, plus unload and load tracking. Real harness
+ * — a live `AgentRuntime`, a real `VirtualFilesystemService` over an OS temp
+ * state dir, actual `PluginCompiler` output, and genuine ESM import; nothing
+ * mocked.
+ */
 import fsp from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";

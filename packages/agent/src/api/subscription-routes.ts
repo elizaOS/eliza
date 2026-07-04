@@ -1,3 +1,13 @@
+/**
+ * Mounts the `/api/subscription/*` routes that manage LLM-provider subscription
+ * logins (Anthropic OAuth plus setup-token, OpenAI/Codex OAuth): a status
+ * endpoint that joins live auth rows with each account's `LinkedAccountConfig`,
+ * the OAuth start/exchange endpoints, and a DELETE that revokes a provider and
+ * unwires it from config defaults and service routing. Credentials persist
+ * through the lazily-loaded `@elizaos/auth` module and mutate `ElizaConfig`; the
+ * Anthropic setup token is stored for task-agent CLI use only, never applied to
+ * `process.env` (TOS restriction).
+ */
 import type { AnthropicFlow } from "@elizaos/auth/anthropic";
 import type { CodexFlow } from "@elizaos/auth/openai-codex";
 import {

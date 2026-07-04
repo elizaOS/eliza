@@ -1,3 +1,11 @@
+/**
+ * Unit tests for the `/api/approvals` GET handler and the
+ * `approvalTaskToPendingAction` projection: pending user actions are merged
+ * newest-first and de-duplicated across the approval queue, the ApprovalService
+ * task rows, and the pending-prompts service, and missing services yield empty
+ * arrays. Runs against a mock runtime and a real ApprovalService backed by an
+ * in-memory task store — no live model or HTTP.
+ */
 import type http from "node:http";
 import type { PendingUserAction, Task, UUID } from "@elizaos/core";
 import { ApprovalService, ServiceType } from "@elizaos/core";

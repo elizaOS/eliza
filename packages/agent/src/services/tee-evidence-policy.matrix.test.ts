@@ -1,3 +1,10 @@
+/**
+ * Exhaustive decision matrix for evaluateTeeEvidencePolicy: a table of golden
+ * evidence/policy fixtures asserts each reason in the TeeEvidencePolicyDecision
+ * union (allowed, staleness, nonce, kind/provider/measurement/claim/version
+ * mismatch and revocation, simulated-evidence rejection, ...) and that every
+ * union member is covered. Deterministic — fixed clock and in-memory fixtures.
+ */
 import { describe, expect, it } from "vitest";
 import type { TeeEvidence } from "./tee-evidence.ts";
 import {

@@ -1,3 +1,10 @@
+/**
+ * Exercises checkRateLimit / resetRateLimits (api/rate-limiter.ts) under fake
+ * timers: allow up to maxRequests then reject with a retry hint, allow again
+ * once the sliding window ages out the oldest request, and isolation of the
+ * periodic cleanup sweep so a short-window key cannot wipe a longer-window
+ * bucket.
+ */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { checkRateLimit, resetRateLimits } from "./rate-limiter.ts";
 

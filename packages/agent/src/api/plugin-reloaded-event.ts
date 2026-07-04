@@ -1,3 +1,8 @@
+/**
+ * Builds the `plugin_reloaded` `view:event` broadcast — the shared payload shape
+ * (plugin name, source directory, originating source) that tells dashboard
+ * clients to refresh a hot-reloaded plugin's views.
+ */
 export const PLUGIN_RELOADED_VIEW_EVENT_TYPE = "plugin_reloaded";
 
 export interface PluginReloadedViewEventInput {

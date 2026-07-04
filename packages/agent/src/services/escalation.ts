@@ -1,3 +1,13 @@
+/**
+ * EscalationService — escalates an unacknowledged agent message to the owner
+ * across the configured ordered channels (client_chat first, then paired
+ * connectors), retrying on a wait/backoff timer until the owner responds or the
+ * retry budget is exhausted. State is module-level (one active escalation at a
+ * time, coalescing new reasons into it) and persisted to the runtime cache so it
+ * survives restarts; owner-contact config and routing hints resolve the delivery
+ * target per channel. `registerEscalationChannel` appends newly paired channels
+ * to the escalation order in eliza.json.
+ */
 import type { IAgentRuntime, UUID } from "@elizaos/core";
 import { logger, MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core";
 import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";

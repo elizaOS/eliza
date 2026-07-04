@@ -1,3 +1,10 @@
+/**
+ * Covers trajectory PII redaction: redactTrajectoryText masks emails, API keys,
+ * and ETH addresses (and passes non-strings through), normalizeLlmCallPayload
+ * redacts sensitive payload fields while leaving benign ones intact, and
+ * shouldEnableTrajectoryLoggingByDefault stays off in production unless
+ * ELIZA_TRAJECTORY_LOGGING opts in. Deterministic pure-function checks.
+ */
 import { describe, expect, it } from "vitest";
 import {
   normalizeLlmCallPayload,

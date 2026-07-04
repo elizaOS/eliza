@@ -1,3 +1,9 @@
+/**
+ * Verifies collectPluginNames() enables the Vercel AI Gateway plugin purely from
+ * an AI_GATEWAY_API_KEY env signal, recording the load reason without probing
+ * cwd-relative or node_modules package paths. Deterministic — a real temp cwd
+ * asserted to be package-free, no live model.
+ */
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";

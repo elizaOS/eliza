@@ -1,3 +1,9 @@
+/**
+ * Checks fetchNearAIModels (api/model-provider-helpers.ts) parses the NEAR AI
+ * /models catalog — both the current `data[]` / `is_ready` shape and the legacy
+ * `models[]` / `metadata` shape — skips not-ready models, and derives chat vs
+ * image categories, with global fetch stubbed.
+ */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fetchNearAIModels } from "./model-provider-helpers";
 

@@ -1,3 +1,11 @@
+/**
+ * SignerBackend decorator that gates every signing operation behind a TEE
+ * attestation check. Before delegating signMessage/signTransaction to the
+ * wrapped signer, it collects evidence from the configured TeeEvidenceProvider
+ * and runs it through evaluateTeeEvidencePolicy; a non-trusted decision throws
+ * so the underlying signer never sees the request. Address reads pass through
+ * ungated, and an optional onDecision hook observes each policy verdict.
+ */
 import type {
   SignerBackend,
   UnsignedTransaction,

@@ -1,3 +1,11 @@
+/**
+ * Translates a release manifest's `tee` block into a TeeEvidencePolicy the
+ * attestation gate can evaluate. A disabled or absent block yields a
+ * non-required policy; an enabled block maps declared providers to allowed TEE
+ * kinds, measurement digests to required measurements, boolean claims to
+ * required claims, and carries the optional minimum security version plus
+ * caller-supplied freshness options (expected nonce, max age, evaluation clock).
+ */
 import type { TeeClaims, TeeKind, TeeMeasurementName } from "./tee-evidence.ts";
 import type { TeeEvidencePolicy } from "./tee-policy.ts";
 

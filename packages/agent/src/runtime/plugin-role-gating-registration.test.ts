@@ -1,3 +1,9 @@
+/**
+ * Verifies sensitive-provider role gating is applied when a plugin registers
+ * through the plugin-lifecycle `registerPlugin` wrapper (hot-install path), not
+ * only during the one-shot boot pass. Drives the deterministic in-memory test
+ * runtime and asserts the `__roleGate` wrap marker on the provider.
+ */
 import type { Plugin, Provider } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { createTestRuntime } from "../__tests__/plugin-lifecycle-test-utils.ts";

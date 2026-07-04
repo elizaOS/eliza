@@ -1,3 +1,8 @@
+/**
+ * Unit coverage for `buildPluginReloadedViewEvent`, pinning the exact
+ * `view:event` payload shape the dashboard's plugin-refresh path consumes.
+ * Deterministic pure-function assertion.
+ */
 import { describe, expect, it } from "vitest";
 import { buildPluginReloadedViewEvent } from "./plugin-reloaded-event";
 

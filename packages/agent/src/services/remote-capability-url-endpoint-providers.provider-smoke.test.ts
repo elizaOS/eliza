@@ -1,3 +1,12 @@
+/**
+ * Live smoke test for the URL-backed endpoint providers (e2b, home-machine,
+ * mobile-companion, desktop-companion). Skipped unless
+ * ELIZA_REMOTE_CAPABILITY_PROVIDER_LIVE=1 and the per-provider ...URL env is
+ * set; when live it connects a real endpoint, treats its remote plugin as local
+ * runtime surface, runs the full endpoint conformance sweep, and writes a
+ * provider live report. The runtime is an in-memory stub but the endpoint and
+ * its remote plugin are real.
+ */
 import {
   CAPABILITY_ROUTER_SERVICE_TYPE,
   type IAgentRuntime,

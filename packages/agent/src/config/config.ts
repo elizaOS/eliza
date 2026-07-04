@@ -1,3 +1,14 @@
+/**
+ * Loads and persists the eliza.json runtime config. loadElizaConfig() merges
+ * the base config file with the persisted overlay, resolves $include
+ * directives, migrates legacy shapes, folds in skills.json extra dirs, and
+ * hydrates env/connector vars into process.env (vault sentinels skipped;
+ * secrets in config.env are applied to the process without being serialized
+ * back to eliza.json). Values saved from the app win over stale .env/shell
+ * values. saveElizaConfig() strips include directives and — when the OS
+ * keystore is enabled — wallet private keys, then writes atomically via a temp
+ * file + rename with 0600 permissions.
+ */
 import fs from "node:fs";
 import path from "node:path";
 import { logger } from "@elizaos/core";

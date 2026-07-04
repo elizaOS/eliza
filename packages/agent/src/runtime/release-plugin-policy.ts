@@ -1,3 +1,12 @@
+/**
+ * Release-channel gating policy for bundled plugins: classifies each `@elizaos/*`
+ * package as shipped inside the baseline runtime bundle versus only installable
+ * after release, and on which surface (runtime installer vs app catalog).
+ * `getBundledRuntimePackages`/`getBundledRuntimePluginIds` intersect the baseline
+ * lists with the dependencies actually present, and `classifyRegistryPluginRelease`
+ * turns that into the availability and install-requirement flags the registry
+ * surface renders.
+ */
 import { CORE_PLUGINS, OPTIONAL_CORE_PLUGINS } from "./core-plugins.ts";
 
 const BASELINE_RUNTIME_SUPPORT_PACKAGES = [

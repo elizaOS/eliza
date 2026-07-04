@@ -1,12 +1,17 @@
+/**
+ * Unit coverage for `parseRowsPagination` (database.ts), the guard that turns
+ * raw `offset`/`limit` query strings into SQL-safe integers before they reach
+ * the `LIMIT ... OFFSET ...` clause. Deterministic, no server or DB.
+ */
 import { describe, expect, it } from "vitest";
 import { parseRowsPagination } from "./database.ts";
 
 /**
  * GET /api/database/tables/:table/rows interpolates `offset`/`limit` straight
  * into the SQL `LIMIT ... OFFSET ...` clause, so the parser must only ever
- * return safe non-negative integers. The old inline parse used
- * `Math.max(0, Number(raw))`, which propagates NaN (`?offset=abc` →
- * `OFFSET NaN` → SQL error → 500) and passes through floats and Infinity.
+ * return safe non-negative integers. A naive `Math.max(0, Number(raw))` would
+ * propagate NaN (`?offset=abc` → `OFFSET NaN` → SQL error → 500) and pass
+ * through floats and Infinity.
  */
 describe("parseRowsPagination", () => {
   it("defaults when params are absent", () => {

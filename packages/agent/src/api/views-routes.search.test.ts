@@ -1,3 +1,10 @@
+/**
+ * Exercises the GET /api/views/search keyword-scoring path with no runtime
+ * attached, so ranking is fully deterministic (semantic weight 0): exact-label
+ * beats a partial match, exact-tag matches, empty/whitespace queries short-circuit
+ * to no results, limit clamps to [1,20], and viewType filters to tui views. No
+ * embeddings, PGLite, or LLM.
+ */
 import type http from "node:http";
 import { Readable } from "node:stream";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

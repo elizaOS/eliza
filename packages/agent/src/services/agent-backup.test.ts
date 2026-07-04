@@ -1,3 +1,9 @@
+/**
+ * Tests for the agent-backup service: snapshot capture + restore and the
+ * KMS-encrypted local backup envelope. Exercised against a real tmpdir
+ * filesystem, a real in-memory KMS backend, and the real PGlite `dumpDataDir`
+ * path via a stub adapter — deterministic, no network.
+ */
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";

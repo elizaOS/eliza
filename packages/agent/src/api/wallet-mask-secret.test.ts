@@ -1,3 +1,9 @@
+/**
+ * Coverage for `maskSecret`, the redaction applied to wallet secrets in logs/UI.
+ * Deterministic and run against the real implementation — the load-bearing case
+ * is that short secrets stay fully masked so the 4+4 preview never leaks a whole
+ * value.
+ */
 import { describe, expect, it } from "vitest";
 import { maskSecret } from "./wallet.ts";
 

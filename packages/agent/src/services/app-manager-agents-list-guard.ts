@@ -1,3 +1,9 @@
+/**
+ * Pure predicate deciding whether the persisted agents list should be restored
+ * after launching an app mutated it: restore when an app populates a
+ * previously-empty list or replaces the user's existing first agent, but not
+ * when it merely appends a supplemental agent.
+ */
 type AgentsListSnapshot = unknown[] | undefined;
 
 function agentsListEntriesEqual(left: unknown, right: unknown): boolean {

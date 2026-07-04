@@ -1,3 +1,18 @@
+/**
+ * Client and server halves of the remote capability protocol. On the client,
+ * `RemoteCapabilityRouterService` is the `CAPABILITY_ROUTER_SERVICE_TYPE`
+ * singleton implementing `ElizaCapabilityRouter`: it fans fs/pty/git/model and
+ * remote-plugin calls out over HTTP (`POST /v1/capabilities/invoke`,
+ * `GET /v1/capabilities`) to one or more configured endpoints, resolving which
+ * endpoint owns a call by explicit `endpointId` or by the module→endpoint map
+ * learned from `plugin.modules.list`, with bearer auth, request timeouts,
+ * dedup of endpoint ids/URLs, and structured `CapabilityError` decoding. On the
+ * server, `createRemoteCapabilityFetchHandler` exposes a router as those same
+ * HTTP endpoints behind optional bearer auth, dispatching each method to the
+ * local router and serving remote plugin view assets. Config is resolved from
+ * runtime settings / env (`ELIZA_CAPABILITY_ROUTER_*`). Remote view bundle
+ * paths and URLs are validated before any browser import URL is exposed.
+ */
 import {
   CAPABILITY_ROUTER_SERVICE_TYPE,
   type CapabilityAvailability,

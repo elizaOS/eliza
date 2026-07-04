@@ -1,3 +1,11 @@
+/**
+ * Renders the agent's user-facing reply for an action (LifeOps/Gmail/calendar) by
+ * prompting TEXT_SMALL with grounded context — recent conversation, a summary of
+ * recent action results, the active trajectory, and optional character voice —
+ * and falls back to a canonical reply when the model errors or emits a structured
+ * (non-prose) response. Also exports the State-mining helpers (action results,
+ * recent messages, state data records) used to assemble that context.
+ */
 import type { ActionResult, IAgentRuntime, Memory, State } from "@elizaos/core";
 import {
   getTrajectoryContext,

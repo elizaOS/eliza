@@ -1,3 +1,8 @@
+/**
+ * Checks that handleMiscRoutes accepts POST /api/agent/event notification-stream
+ * events — buffering the envelope and broadcasting it over WS — using a fully
+ * mocked route context (vi.fn spies for json/error/readJsonBody and broadcast).
+ */
 import type http from "node:http";
 import type { AgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";

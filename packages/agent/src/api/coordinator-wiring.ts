@@ -1,3 +1,14 @@
+/**
+ * Polling-based wiring of the swarm-coordinator bridges into the API server's
+ * mutable state. Runs fire-and-forget during boot/restart: attempts to wire the
+ * chat, WebSocket, event-routing, and swarm-synthesis bridges immediately, then
+ * polls `runtime.getService()` for the coding-agent orchestrator's
+ * SWARM_COORDINATOR service to appear and retries the still-unwired bridges.
+ * Reports degradation precisely — distinguishing "orchestrator not installed"
+ * (debug) from "service registered but never became discoverable / ACP stream
+ * never bound" (warn + a `system-warning` WS broadcast) — so a dead coding-agent
+ * supervision surface is never silently reported as success.
+ */
 import {
   type AgentRuntime,
   getSwarmCoordinatorService,

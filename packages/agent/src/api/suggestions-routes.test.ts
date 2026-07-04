@@ -1,3 +1,10 @@
+/**
+ * Unit tests for the `/api/suggestions` route helpers: bullet/quote cleaning,
+ * request-body parsing and validation, heuristic suggestion synthesis, and the
+ * handler's method guard plus degrade-to-heuristic behavior. Deterministic — a
+ * fake runtime with a stubbed `useModel` drives the model tier and its
+ * heuristic fallback, no live LLM.
+ */
 import { Readable } from "node:stream";
 import { describe, expect, it, vi } from "vitest";
 

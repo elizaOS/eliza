@@ -1,3 +1,10 @@
+/**
+ * Covers `teePolicyFromReleaseManifest`: translating an OS release manifest's
+ * TEE section (providers, golden measurements, required claims, min security
+ * version) plus caller freshness options into an agent evidence policy, and
+ * yielding a not-required policy when the manifest disables TEE. Deterministic,
+ * pure-mapping assertions.
+ */
 import { describe, expect, it } from "vitest";
 import { teePolicyFromReleaseManifest } from "./tee-release-policy.ts";
 

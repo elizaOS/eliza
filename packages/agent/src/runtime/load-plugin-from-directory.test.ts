@@ -1,3 +1,10 @@
+/**
+ * End-to-end coverage of the on-disk directory plugin (un)loader
+ * (`load-plugin-from-directory.ts`): entry resolution from package.json, the
+ * `dist/index.js` fallback, view registration, and the path-escape / symlink and
+ * bad-export rejections. Real harness — a live `AgentRuntime`, plugins
+ * scaffolded into OS temp dirs, and genuine ESM dynamic import; nothing mocked.
+ */
 import fsp from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";

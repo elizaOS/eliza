@@ -1,3 +1,11 @@
+/**
+ * Tests for the CapabilityBroker — the process-wide policy gate that allows or
+ * denies fs / net / shell / sandbox operations based on run mode (cloud,
+ * local-yolo, local-safe) and distribution profile (unrestricted, store), and
+ * appends every decision to a JSONL audit log. Deterministic: brokers run
+ * against throwaway temp state dirs, the cached singleton is reset between
+ * cases, and the audit file is read back from disk.
+ */
 import {
   existsSync,
   mkdtempSync,
