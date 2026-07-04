@@ -1,3 +1,4 @@
+/** Unit test with `@elizaos/core` mocked: asserts `register-routes.ts` registers its app-route plugin loader under the `@elizaos/plugin-wallet:routes` key on import. */
 import { describe, expect, it, vi } from "vitest";
 
 const { registerAppRoutePluginLoader } = vi.hoisted(() => ({

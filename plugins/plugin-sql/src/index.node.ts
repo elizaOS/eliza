@@ -1,3 +1,12 @@
+/**
+ * Node/Bun entry point for `@elizaos/plugin-sql`: registers either a
+ * `PgDatabaseAdapter` (when `postgresUrl` is set, with per-RLS-server-id
+ * connection-pool reuse) or a `PgliteDatabaseAdapter` (per-agent PGlite
+ * singleton), both drawn from the process-global singleton cache under
+ * `Symbol.for("elizaos.plugin-sql.global-singletons")`. Also re-exports the
+ * Drizzle query-helper subpath, RLS management functions, and the PGlite
+ * live-query / Electric Sync status/reset/close accessors used by hosts.
+ */
 import { mkdirSync } from "node:fs";
 import type { IDatabaseAdapter, UUID } from "@elizaos/core";
 import { type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
@@ -128,12 +137,10 @@ export function createDatabaseAdapter(
       );
     }
 
-    // Initialize connection managers map if needed
     if (!globalSingletons.postgresConnectionManagers) {
       globalSingletons.postgresConnectionManagers = new Map();
     }
 
-    // Get or create connection manager for this server_id
     let manager = globalSingletons.postgresConnectionManagers.get(managerKey);
     if (!shouldReusePostgresManager(manager)) {
       logger.debug(

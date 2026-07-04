@@ -1,3 +1,9 @@
+/**
+ * Solana counterpart of the EVM confirmation helper: `confirmationRequired`
+ * builds the staged-but-unsigned response shape that asks the user to
+ * confirm before an on-chain Solana action executes. See `isConfirmed` for
+ * why LLM-supplied confirmation flags are never trusted.
+ */
 import type { ActionResult, HandlerCallback } from "@elizaos/core";
 
 type ConfirmationValue =

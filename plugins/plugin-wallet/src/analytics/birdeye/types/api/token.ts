@@ -1,6 +1,6 @@
+/** Request/response shapes for Birdeye's per-token endpoints: trades, listings, security, overview, creation info, trending, metadata, market data/stats, holders, mint/burn events, new listings, top traders, markets, and volume-by-owner. */
 import type { TimeInterval, TokenTradeData } from "./common";
 
-// Token Trades Types
 export interface TokenTradesParams {
   address: string;
   limit?: number;
@@ -41,7 +41,6 @@ export interface TokenListParams {
   min_liquidity?: number;
 }
 
-// Token List Types
 export interface TokenListResponse {
   success: boolean;
   data: {
@@ -59,7 +58,6 @@ export interface TokenListResponse {
   };
 }
 
-// Token Security Types
 export interface TokenSecurityParams {
   address: string;
 }
@@ -98,7 +96,6 @@ export interface TokenSecurityResponse {
   };
 }
 
-// Token Overview Types
 export interface TokenOverviewParams {
   address: string;
 }
@@ -314,7 +311,6 @@ export interface TokenOverviewResponse {
   };
 }
 
-// Token Creation Info Types
 export interface TokenCreationInfoParams {
   address: string;
 }
@@ -339,7 +335,6 @@ export interface TokenTrendingParams {
   limit?: number;
 }
 
-// Token Trending Types
 export interface TokenTrendingResponse {
   success: boolean;
   data: {
@@ -360,7 +355,6 @@ export interface TokenTrendingResponse {
   };
 }
 
-// Token List V2 Types
 export interface TokenListV2Params {
   offset?: number;
   limit?: number;
@@ -409,7 +403,6 @@ export interface TokenTradeDataMultiResponse {
   };
 }
 
-// Token Metadata Single Types
 export interface TokenMetadataSingleParams {
   address: string;
 }
@@ -432,7 +425,6 @@ export interface TokenMetadataSingleResponse {
   };
 }
 
-// Token Market Data Types
 export interface TokenMarketDataParams {
   address: string;
 }
@@ -450,7 +442,6 @@ export interface TokenMarketDataResponse {
   };
 }
 
-// Token Trade Data Single Types
 export interface TokenTradeDataSingleParams {
   address: string;
 }
@@ -460,7 +451,6 @@ export interface TokenTradeDataSingleResponse {
   data: TokenTradeData;
 }
 
-// Token Market Stats Types
 export interface TokenMarketStatsResponse {
   success: boolean;
   data: {
@@ -474,7 +464,6 @@ export interface TokenMarketStatsResponse {
   };
 }
 
-// Token Holders Types
 export interface TokenHoldersParams {
   address: string;
   offset?: number;
@@ -495,7 +484,6 @@ export interface TokenHoldersResponse {
   };
 }
 
-// Token Mint Burn Types
 export interface MintBurnParams {
   address: string;
   sort_by: "block_time";
@@ -526,7 +514,6 @@ export interface MintBurnResponse {
   };
 }
 
-// New Listing Types
 export interface NewListingParams {
   time_to: number;
   meme_platform_enabled: boolean;
@@ -549,7 +536,6 @@ export interface NewListingResponse {
   };
 }
 
-// Top Traders Types
 export interface TopTradersParams {
   address: string;
   time_frame?: TimeInterval;
@@ -572,7 +558,6 @@ export interface TopTradersResponse {
   };
 }
 
-// All Markets Types
 export interface AllMarketsParams {
   address: string;
   time_frame: TimeInterval;
@@ -614,7 +599,6 @@ export interface AllMarketsResponse {
   };
 }
 
-// Token Volume By Owner Types
 export interface TokenVolumeByOwnerResponse {
   success: boolean;
   data: {

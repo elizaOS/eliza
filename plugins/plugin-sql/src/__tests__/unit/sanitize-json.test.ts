@@ -1,20 +1,17 @@
+/**
+ * Unit tests for `sanitizeJsonObject`. The sanitized value is always
+ * serialized with `JSON.stringify` before being bound as a `$1::jsonb`
+ * parameter, so JSON escaping is already handled by the serializer;
+ * `sanitizeJsonObject` must therefore only strip NUL characters (PostgreSQL/
+ * PGlite jsonb rejects the escape JSON.stringify emits for them) and break
+ * circular references — nothing else. A prior implementation also doubled
+ * every backslash not followed by an allowlisted escape character and
+ * mangled non-hex unicode-escape sequences, so a Windows path like
+ * "C:\Users" round-tripped corrupted with doubled backslashes.
+ */
 import { describe, expect, it } from "vitest";
 import { sanitizeJsonObject } from "../../utils";
 
-/**
- * Unit tests for sanitizeJsonObject.
- *
- * The sanitized value is always serialized with JSON.stringify before being
- * bound as a `$1::jsonb` parameter, so JSON escaping is already handled by
- * the serializer. sanitizeJsonObject must therefore:
- *  - strip NUL characters (PostgreSQL/PGlite jsonb rejects the `\u0000`
- *    escape JSON.stringify emits for them), and
- *  - break circular references,
- * and it must NOT rewrite anything else. The previous implementation also
- * doubled every backslash not followed by ["\/bfnrtu] and mangled non-hex
- * `\u` sequences, so a value like "C:\Users" was stored and read back as
- * "C:\\Users" — silent corruption of any string containing a backslash.
- */
 describe("sanitizeJsonObject", () => {
   it("preserves backslashes exactly (no double-escaping)", () => {
     // "C:\Users\dev" — backslash followed by chars outside ["\/bfnrtu]

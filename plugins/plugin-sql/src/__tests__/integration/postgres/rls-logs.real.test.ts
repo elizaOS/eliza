@@ -1,24 +1,15 @@
+/**
+ * PostgreSQL RLS integration tests for the `logs` table's STRICT entity
+ * isolation: logs hold sensitive activity data (model usage, embeddings)
+ * and must be visible only to entities participating in the log's room, with
+ * zero rows returned when no entity context is set. All connections use the
+ * `eliza_test` role (not superuser); `application_name` supplies the server
+ * context for RLS.
+ */
 import { Client } from "pg";
 import { v4 as uuidv4 } from "uuid";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { bootstrapPostgresRlsSchema } from "./rls-test-helpers";
-
-/**
- * PostgreSQL RLS Logs Integration Tests
- *
- * These tests verify that the `logs` table has STRICT Entity RLS isolation.
- * Logs contain sensitive user activity data (model usage, embeddings, etc.)
- * and must be isolated by entity participation in rooms.
- *
- * Tests verify:
- * - Logs are isolated by entity (user can only see their own logs)
- * - Logs from shared rooms are visible to all participants
- * - Logs from non-participant rooms are blocked
- * - withEntityContext() is required for log insertion
- *
- * Uses eliza_test user for ALL connections (not superuser) - the application_name
- * provides server context for RLS.
- */
 
 describe.skipIf(!process.env.POSTGRES_URL)("PostgreSQL RLS - Logs Isolation (STRICT)", () => {
   let setupClient: Client; // Setup client with server context
@@ -160,9 +151,8 @@ describe.skipIf(!process.env.POSTGRES_URL)("PostgreSQL RLS - Logs Isolation (STR
   });
 
   afterAll(async () => {
-    // Cleanup test data (need entity context for STRICT tables)
+    // Deletes need entity context because logs is a STRICT-RLS table.
     try {
-      // Delete logs with entity context
       await setupClient.query("BEGIN");
       await setupClient.query(`SET LOCAL app.entity_id = '${aliceId}'`);
       await setupClient.query(`DELETE FROM logs WHERE room_id IN ($1, $2)`, [
@@ -176,7 +166,6 @@ describe.skipIf(!process.env.POSTGRES_URL)("PostgreSQL RLS - Logs Isolation (STR
       await setupClient.query(`DELETE FROM logs WHERE room_id = $1`, [bobPrivateRoomId]);
       await setupClient.query("COMMIT");
 
-      // Delete other data (non-STRICT tables)
       await setupClient.query(`DELETE FROM participants WHERE room_id IN ($1, $2, $3)`, [
         sharedRoomId,
         alicePrivateRoomId,
@@ -194,7 +183,6 @@ describe.skipIf(!process.env.POSTGRES_URL)("PostgreSQL RLS - Logs Isolation (STR
       console.warn("[RLS Logs Test] Cleanup failed:", err);
     }
 
-    // Close connections
     if (setupClient) await setupClient.end();
     if (aliceClient) await aliceClient.end();
     if (bobClient) await bobClient.end();
@@ -226,7 +214,6 @@ describe.skipIf(!process.env.POSTGRES_URL)("PostgreSQL RLS - Logs Isolation (STR
   });
 
   it("should isolate Alice logs from Bob (Alice sees 2, Bob sees 1)", async () => {
-    // Alice should see her 2 logs (shared room + private room)
     await aliceClient.query("BEGIN");
     await aliceClient.query(`SET LOCAL app.entity_id = '${aliceId}'`);
     const aliceResult = await aliceClient.query(
@@ -243,7 +230,6 @@ describe.skipIf(!process.env.POSTGRES_URL)("PostgreSQL RLS - Logs Isolation (STR
     expect(aliceResult.rows).toHaveLength(2);
     expect(aliceResult.rows.every((row) => row.entity_id === aliceId)).toBe(true);
 
-    // Bob should see his 1 log (private room only)
     await bobClient.query("BEGIN");
     await bobClient.query(`SET LOCAL app.entity_id = '${bobId}'`);
     const bobResult = await bobClient.query(

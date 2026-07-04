@@ -1,3 +1,13 @@
+/**
+ * Shared setup helpers for `plugin-sql` integration/migration tests: each
+ * builds a real `AgentRuntime` wired to a real `PgliteDatabaseAdapter` (or, if
+ * `POSTGRES_URL` is set, a real `PgDatabaseAdapter`) — no mocked adapters —
+ * running the actual dynamic migration system against a scratch schema/temp
+ * dir, plus a `cleanup()` to tear it down. `createIsolatedTestDatabase`/
+ * `createTestDatabase` also seed a mock agent row and run all plugin
+ * migrations; `createIsolatedTestDatabaseForMigration` skips migrations so
+ * migration tests can drive that process themselves.
+ */
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -34,8 +44,7 @@ export async function createTestDatabase(
   cleanup: () => Promise<void>;
 }> {
   if (process.env.POSTGRES_URL) {
-    // PostgreSQL testing - use superuser for full permissions
-    // Transform URL to use postgres:postgres credentials
+    // Superuser credentials give tests full DDL permissions (schema create/drop).
     const originalUrl = process.env.POSTGRES_URL;
     const superuserUrl = new URL(originalUrl);
     superuserUrl.username = "postgres";
@@ -56,7 +65,6 @@ export async function createTestDatabase(
     const schemaName = `test_${testAgentId.replace(/-/g, "_")}`;
     const db = connectionManager.getDatabase();
 
-    // Drop schema if it exists to ensure clean state
     await db.execute(sql.raw(`DROP SCHEMA IF EXISTS ${schemaName} CASCADE`));
     await db.execute(sql.raw(`CREATE SCHEMA IF NOT EXISTS ${schemaName}`));
     await db.execute(sql.raw(`SET search_path TO ${schemaName}, public`));
@@ -83,7 +91,6 @@ export async function createTestDatabase(
 
     return { adapter, runtime, cleanup };
   } else {
-    // PGlite testing
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-test-"));
     const connectionManager = new PGliteClientManager({ dataDir: tempDir });
     await connectionManager.initialize();
@@ -138,14 +145,11 @@ export async function createIsolatedTestDatabase(
   cleanup: () => Promise<void>;
   testAgentId: UUID;
 }> {
-  // Generate a unique agent ID for this test
   const testAgentId = v4() as UUID;
   const testId = testName.replace(/[^a-zA-Z0-9]/g, "_").toLowerCase();
 
   if (process.env.POSTGRES_URL) {
-    // PostgreSQL - use superuser for full control over schema
-    // Transform URL to use postgres:postgres credentials (superuser)
-    // This ensures tests have full permissions to create/drop tables
+    // Superuser credentials give tests full permissions to create/drop tables.
     const originalUrl = process.env.POSTGRES_URL;
     const superuserUrl = new URL(originalUrl);
     superuserUrl.username = "postgres";
@@ -159,13 +163,12 @@ export async function createIsolatedTestDatabase(
 
     const db = connectionManager.getDatabase();
 
-    // Clean up custom schemas and migration tables for fresh start
     await db.execute(sql.raw(`DROP SCHEMA IF EXISTS migrations CASCADE`));
     await db.execute(sql.raw(`DROP TABLE IF EXISTS _snapshots CASCADE`));
     await db.execute(sql.raw(`DROP TABLE IF EXISTS _journal CASCADE`));
     await db.execute(sql.raw(`DROP TABLE IF EXISTS _migrations CASCADE`));
 
-    // Drop ALL tables in public schema for clean slate
+    // Drop every table in public for a clean slate before migrations run.
     await db.execute(
       sql.raw(`
       DO $$ DECLARE
@@ -185,13 +188,11 @@ export async function createIsolatedTestDatabase(
     });
     runtime.registerDatabaseAdapter(adapter);
 
-    // Run migrations on clean database
     const migrationService = new DatabaseMigrationService();
     await migrationService.initializeWithDatabase(db);
     migrationService.discoverAndRegisterPluginSchemas([sqlPlugin, ...testPlugins]);
     await migrationService.runAllPluginMigrations();
 
-    // Create test agent
     const created = await adapter.createAgent({
       ...mockCharacter,
       id: testAgentId,
@@ -202,16 +203,14 @@ export async function createIsolatedTestDatabase(
       throw new Error(`Failed to create test agent in createIsolatedTestDatabase (${testAgentId})`);
     }
 
+    // Tables are dropped at the start of the *next* test, not here, so tests
+    // can run in any order without depending on a prior test's teardown.
     const cleanup = async () => {
-      // Just close the connection - don't drop tables
-      // Tables are dropped at the START of each test, not at the end
-      // This ensures tests can run in any order
       await adapter.close();
     };
 
     return { adapter, runtime, cleanup, testAgentId };
   } else {
-    // PGLite - use unique directory per test
     const tempDir = path.join(os.tmpdir(), `eliza-test-${testId}-${Date.now()}`);
     console.log(`[TEST] Creating isolated PGLite database: ${tempDir}`);
 
@@ -227,13 +226,11 @@ export async function createIsolatedTestDatabase(
     });
     runtime.registerDatabaseAdapter(adapter);
 
-    // Run migrations
     const migrationService = new DatabaseMigrationService();
     await migrationService.initializeWithDatabase(adapter.getDatabase() as DrizzleDatabase);
     migrationService.discoverAndRegisterPluginSchemas([sqlPlugin, ...testPlugins]);
     await migrationService.runAllPluginMigrations();
 
-    // Create test agent
     const created = await adapter.createAgent({
       ...mockCharacter,
       id: testAgentId,
@@ -275,8 +272,7 @@ export async function createIsolatedTestDatabaseForMigration(testName: string): 
   const testId = testName.replace(/[^a-zA-Z0-9]/g, "_").toLowerCase();
 
   if (process.env.POSTGRES_URL) {
-    // PostgreSQL - use superuser for migration tests (needs DROP SCHEMA permissions)
-    // Transform the URL to use postgres:postgres credentials
+    // Migration tests need DROP SCHEMA permissions, so use superuser credentials.
     const originalUrl = process.env.POSTGRES_URL;
     const url = new URL(originalUrl);
     url.username = "postgres";
@@ -291,14 +287,11 @@ export async function createIsolatedTestDatabaseForMigration(testName: string): 
 
     const db = connectionManager.getDatabase();
 
-    // Drop custom schemas first (like polymarket, migrations)
-    // These are created by plugin tests and need to be cleaned
+    // Custom schemas created by plugin tests (e.g. polymarket) need cleanup too.
     await db.execute(sql.raw(`DROP SCHEMA IF EXISTS polymarket CASCADE`));
     await db.execute(sql.raw(`DROP SCHEMA IF EXISTS migrations CASCADE`));
 
-    // Drop ALL tables in public schema for clean slate
-    // This ensures each test starts fresh without leftover state from previous tests
-    // WARNING: This is destructive - only use for testing!
+    // Destructive: drops every table in public so each test starts from a clean slate.
     await db.execute(
       sql.raw(`
       DO $$ DECLARE
@@ -311,24 +304,21 @@ export async function createIsolatedTestDatabaseForMigration(testName: string): 
     `)
     );
 
-    // Ensure grants for eliza_test user (PostgreSQL 15+ requires explicit grants on public schema)
-    // These must be set at the start of each test to ensure eliza_test can create tables
+    // PostgreSQL 15+ requires explicit grants on the public schema; reissue them each test.
     await db.execute(sql.raw(`GRANT ALL ON SCHEMA public TO eliza_test`));
     await db.execute(sql.raw(`GRANT USAGE ON SCHEMA public TO eliza_test`));
     await db.execute(sql.raw(`GRANT CREATE ON SCHEMA public TO eliza_test`));
 
     const cleanup = async () => {
       try {
-        // Clean up custom schemas
         await db.execute(sql.raw(`DROP SCHEMA IF EXISTS polymarket CASCADE`));
         await db.execute(sql.raw(`DROP SCHEMA IF EXISTS migrations CASCADE`));
-        // Clean up migration tables in public schema
         await db.execute(sql.raw(`DROP TABLE IF EXISTS _snapshots CASCADE`));
         await db.execute(sql.raw(`DROP TABLE IF EXISTS _journal CASCADE`));
         await db.execute(sql.raw(`DROP TABLE IF EXISTS _migrations CASCADE`));
 
-        // Restore grants for eliza_test user (PostgreSQL 15+ requires explicit grants on public schema)
-        // This is needed because migration tests run as superuser and may affect schema ownership
+        // Migration tests run as superuser and can change schema ownership,
+        // so restore eliza_test's grants before the next test runs.
         await db.execute(sql.raw(`GRANT ALL ON SCHEMA public TO eliza_test`));
         await db.execute(sql.raw(`GRANT USAGE ON SCHEMA public TO eliza_test`));
         await db.execute(sql.raw(`GRANT CREATE ON SCHEMA public TO eliza_test`));
@@ -340,7 +330,6 @@ export async function createIsolatedTestDatabaseForMigration(testName: string): 
 
     return { db, adapter, cleanup, testAgentId };
   } else {
-    // PGLite - use unique directory per test
     const tempDir = path.join(os.tmpdir(), `eliza-migration-test-${testId}-${Date.now()}`);
     console.log(`[MIGRATION TEST] Creating isolated PGLite database: ${tempDir}`);
 
@@ -379,22 +368,17 @@ export async function createIsolatedTestDatabaseForSchemaEvolutionTests(testName
   testAgentId: UUID;
   originalDestructiveSetting?: string;
 }> {
-  // Save original environment variable
   const originalDestructiveSetting = process.env.ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS;
 
-  // Get the base setup
   const baseSetup = await createIsolatedTestDatabaseForMigration(testName);
 
-  // Enhance cleanup to restore environment variable
   const enhancedCleanup = async () => {
-    // Restore original environment variable
     if (originalDestructiveSetting !== undefined) {
       process.env.ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS = originalDestructiveSetting;
     } else {
       delete process.env.ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS;
     }
 
-    // Call original cleanup
     await baseSetup.cleanup();
   };
 

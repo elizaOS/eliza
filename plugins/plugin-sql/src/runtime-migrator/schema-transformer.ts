@@ -1,3 +1,13 @@
+/**
+ * Derives the per-plugin PostgreSQL schema name a non-core plugin's tables
+ * should live in (so plugins don't collide in `public`), and provides
+ * `createPluginSchema` for plugins to declare their tables namespaced from
+ * the start. `transformPluginSchema` only warns about tables that aren't
+ * already namespaced — it can't safely rewrite an existing table's schema
+ * without reconstructing all its column/constraint definitions, so plugins
+ * are expected to use `createPluginSchema` / `pgSchema` directly instead of
+ * being auto-migrated into a namespace.
+ */
 import { logger } from "@elizaos/core";
 import { getTableConfig, type PgTable, pgSchema } from "drizzle-orm/pg-core";
 
@@ -17,15 +27,12 @@ interface PgSchemaObject {
  * Other plugins get their tables wrapped in a namespaced schema
  */
 export function transformPluginSchema(pluginName: string, schema: DrizzleSchema): DrizzleSchema {
-  // Core plugin uses public schema - no transformation needed
   if (pluginName === "@elizaos/plugin-sql") {
     return schema;
   }
 
-  // Derive schema name from plugin name
   const schemaName = deriveSchemaName(pluginName);
 
-  // If schema is already using pgSchema, return as-is
   if (isAlreadyNamespaced(schema, schemaName)) {
     logger.debug(
       { src: "plugin:sql", pluginName, schemaName },
@@ -36,18 +43,15 @@ export function transformPluginSchema(pluginName: string, schema: DrizzleSchema)
 
   logger.info({ src: "plugin:sql", pluginName, schemaName }, "Transforming plugin to use schema");
 
-  // Transform the schema object
   const transformed: DrizzleSchema = {};
 
   for (const [key, value] of Object.entries(schema)) {
     if (isPgTable(value)) {
-      // Get the table configuration
       const config = getTableConfig(value as PgTable);
 
-      // If the table doesn't have a schema or is in public, warn about it
+      // Can't rewrite an existing table's schema without reconstructing all
+      // its column/constraint definitions, so this only warns.
       if (!config.schema || config.schema === "public") {
-        // Can't easily transform existing tables to different schema
-        // (would require reconstructing all column definitions, constraints, etc.)
         logger.warn(
           {
             src: "plugin:sql",
@@ -59,21 +63,16 @@ export function transformPluginSchema(pluginName: string, schema: DrizzleSchema)
         );
         transformed[key] = value;
       } else {
-        // Table already has a schema, keep it as-is
         transformed[key] = value;
       }
     } else if (typeof value === "object" && value !== null) {
-      // Check if this is a schema object (created with pgSchema)
       const obj = value as PgSchemaObject;
       if (obj._schema && obj.table) {
-        // This is already a pgSchema object, keep it
         transformed[key] = value;
       } else {
-        // Regular object, keep as-is
         transformed[key] = value;
       }
     } else {
-      // Not a table, keep as-is
       transformed[key] = value;
     }
   }
@@ -85,28 +84,25 @@ export function transformPluginSchema(pluginName: string, schema: DrizzleSchema)
  * Derive a valid PostgreSQL schema name from a plugin name
  */
 export function deriveSchemaName(pluginName: string): string {
-  // Remove common prefixes and convert to lowercase with underscores
   let schemaName = pluginName
-    .replace(/^@[^/]+\//, "") // Remove npm scope like @elizaos/
-    .replace(/^plugin-/, "") // Remove plugin- prefix
+    .replace(/^@[^/]+\//, "") // strip npm scope, e.g. @elizaos/
+    .replace(/^plugin-/, "") // strip plugin- prefix
     .toLowerCase();
 
-  // Replace non-alphanumeric characters with underscores (avoid polynomial regex)
   schemaName = normalizeSchemaName(schemaName);
 
-  // Ensure schema name is valid (not empty, not a reserved word)
+  // Reject empty or reserved names, falling back to a safe derived name.
   const reserved = ["public", "pg_catalog", "information_schema", "migrations"];
   if (!schemaName || reserved.includes(schemaName)) {
-    // Fallback to using the full plugin name with safe characters
     schemaName = `plugin_${normalizeSchemaName(pluginName.toLowerCase())}`;
   }
 
-  // Ensure it starts with a letter (PostgreSQL requirement)
+  // PostgreSQL identifiers must start with a letter.
   if (!/^[a-z]/.test(schemaName)) {
     schemaName = `p_${schemaName}`;
   }
 
-  // Truncate if too long (PostgreSQL identifier limit is 63 chars)
+  // PostgreSQL identifier length limit is 63 characters.
   if (schemaName.length > 63) {
     schemaName = schemaName.substring(0, 63);
   }
@@ -115,8 +111,9 @@ export function deriveSchemaName(pluginName: string): string {
 }
 
 /**
- * Normalize a string to be a valid PostgreSQL identifier
- * Avoids polynomial regex by using string manipulation instead
+ * Normalize a string to be a valid PostgreSQL identifier.
+ * Uses plain string manipulation (not a single regex) to avoid a
+ * catastrophic-backtracking pattern on adversarial input.
  */
 function normalizeSchemaName(input: string): string {
   const chars: string[] = [];
@@ -129,17 +126,13 @@ function normalizeSchemaName(input: string): string {
       chars.push(char);
       prevWasUnderscore = false;
     } else if (!prevWasUnderscore) {
-      // Only add underscore if previous char wasn't already an underscore
       chars.push("_");
       prevWasUnderscore = true;
     }
-    // Skip consecutive non-alphanumeric characters
   }
 
-  // Remove leading and trailing underscores
   const result = chars.join("");
 
-  // Trim underscores from start and end efficiently
   let start = 0;
   let end = result.length;
 
@@ -162,8 +155,8 @@ function isPgTable(value: unknown): value is PgTable {
     return false;
   }
 
-  // Check for table-like properties
-  // This is a heuristic since we can't use instanceof across module boundaries
+  // instanceof doesn't work across module boundaries, so probe for the
+  // table config shape instead.
   try {
     const config = getTableConfig(value as PgTable);
     return config && typeof config.name === "string";

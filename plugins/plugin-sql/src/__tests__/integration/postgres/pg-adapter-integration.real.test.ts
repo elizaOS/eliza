@@ -1,3 +1,9 @@
+/**
+ * Direct integration tests for `PgliteDatabaseAdapter`/`PGliteClientManager`
+ * against a real in-process PGlite instance (Postgres-compatible surface):
+ * raw SQL, transactions, JSON/array/timestamp operations, error recovery,
+ * and adapter shutdown.
+ */
 import { PGlite } from "@electric-sql/pglite";
 import type { UUID } from "@elizaos/core";
 import { sql } from "drizzle-orm";
@@ -22,7 +28,6 @@ describe("PostgreSQL Adapter Direct Integration Tests", () => {
       adapter = new PgliteDatabaseAdapter(testAgentId, manager);
       await adapter.init();
 
-      // Run migrations
       const migrationService = new DatabaseMigrationService();
       const db = adapter.getDatabase() as DrizzleDatabase;
       await migrationService.initializeWithDatabase(db);
@@ -33,7 +38,6 @@ describe("PostgreSQL Adapter Direct Integration Tests", () => {
     });
 
     afterAll(async () => {
-      // Clean up test data
       const db = adapter.getDatabase() as DrizzleDatabase;
       await db.execute(sql`DELETE FROM agents WHERE id = ${testAgentId}`);
       await adapter.close();
@@ -77,7 +81,6 @@ describe("PostgreSQL Adapter Direct Integration Tests", () => {
       it("should handle transactions through adapter", async () => {
         const db = adapter.getDatabase() as DrizzleDatabase;
 
-        // Create test table
         await db.execute(sql`
           CREATE TABLE IF NOT EXISTS pg_adapter_test (
             id SERIAL PRIMARY KEY,
@@ -86,7 +89,6 @@ describe("PostgreSQL Adapter Direct Integration Tests", () => {
         `);
 
         try {
-          // Test transaction
           await db.transaction(async (tx) => {
             await tx.execute(sql`INSERT INTO pg_adapter_test (value) VALUES (100)`);
             await tx.execute(sql`INSERT INTO pg_adapter_test (value) VALUES (200)`);
@@ -98,7 +100,6 @@ describe("PostgreSQL Adapter Direct Integration Tests", () => {
 
           expect(Number(result.rows[0].total)).toBe(300);
         } finally {
-          // Clean up
           await db.execute(sql`DROP TABLE IF EXISTS pg_adapter_test`);
         }
       });
@@ -154,7 +155,6 @@ describe("PostgreSQL Adapter Direct Integration Tests", () => {
       it("should handle multiple operations", async () => {
         const db = adapter.getDatabase() as DrizzleDatabase;
 
-        // Execute multiple operations
         const results = await Promise.all([
           db.execute(sql`SELECT 1 as id`),
           db.execute(sql`SELECT 2 as id`),
@@ -186,14 +186,12 @@ describe("PostgreSQL Adapter Direct Integration Tests", () => {
       it("should maintain connection after error", async () => {
         const db = adapter.getDatabase() as DrizzleDatabase;
 
-        // Cause an error
         try {
           await db.execute(sql`INVALID SQL`);
         } catch (_e) {
-          // Expected error
+          // Expected — the query itself is invalid.
         }
 
-        // Connection should still work
         const result = await db.execute(sql`SELECT 1 as value`);
         expect(result.rows[0].value).toBe(1);
       });
@@ -272,16 +270,13 @@ describe("PostgreSQL Adapter Direct Integration Tests", () => {
 
     describe("Adapter Shutdown", () => {
       it("should handle close gracefully", async () => {
-        // Create a temporary adapter
         const tempClient = new PGlite();
         const tempManager = new PGliteClientManager(tempClient);
         const tempAdapter = new PgliteDatabaseAdapter(uuidv4() as UUID, tempManager);
         await tempAdapter.init();
 
-        // Close it
         await tempAdapter.close();
 
-        // Should not be ready after close
         const isReady = await tempAdapter.isReady();
         expect(isReady).toBe(false);
       });

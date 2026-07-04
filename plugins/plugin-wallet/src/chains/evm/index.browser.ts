@@ -1,3 +1,8 @@
+/**
+ * Browser build facade for the EVM plugin: real EVM signing needs Node-only
+ * dependencies, so the browser bundle swaps in this no-op stub that only
+ * warns and directs callers to a server proxy.
+ */
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 

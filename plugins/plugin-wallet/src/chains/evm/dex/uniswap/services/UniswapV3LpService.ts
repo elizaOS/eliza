@@ -1,3 +1,10 @@
+/**
+ * `UniswapV3LpService` implements `IEvmLpService` for Uniswap V3 across
+ * Ethereum, Base, Arbitrum, Polygon, and Optimism: concentrated-liquidity
+ * pool reads via the factory/pool contracts, and NFT-position mint/decrease/
+ * collect/burn writes through the nonfungible position manager, with
+ * per-chain RPC clients and ERC-20 approval handled inline.
+ */
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
 import {
   type Address,
@@ -66,7 +73,6 @@ export class UniswapV3LpService extends Service implements IEvmLpService {
   }
 
   private initializeRpcUrls(): void {
-    // Try to get RPC URLs from settings
     const rpcSettings: Record<number, string[]> = {
       1: ["ETHEREUM_RPC_URL", "ETH_RPC_URL", "EVM_PROVIDER_MAINNET"],
       8453: ["BASE_RPC_URL", "EVM_PROVIDER_BASE"],
@@ -233,7 +239,6 @@ export class UniswapV3LpService extends Service implements IEvmLpService {
         }),
       ]);
 
-      // Get token info
       const [symbol0, decimals0, symbol1, decimals1] = await Promise.all([
         client
           .readContract({
@@ -315,18 +320,15 @@ export class UniswapV3LpService extends Service implements IEvmLpService {
       const publicClient = this.getPublicClient(params.chainId);
       const walletClient = this.getWalletClient(params.chainId, params.wallet.privateKey);
 
-      // Get pool info
       const poolInfo = await this.getPoolInfo(params.chainId, params.poolAddress);
       if (!poolInfo) {
         return { success: false, error: "Pool not found" };
       }
 
-      // Calculate min amounts with slippage
       const slippageMultiplier = BigInt(10000 - params.slippageBps);
       const amount0Min = (params.tokenAAmount * slippageMultiplier) / 10000n;
       const amount1Min = ((params.tokenBAmount ?? 0n) * slippageMultiplier) / 10000n;
 
-      // Approve tokens if needed
       await this.approveToken(
         params.chainId,
         params.wallet.privateKey,
@@ -347,11 +349,10 @@ export class UniswapV3LpService extends Service implements IEvmLpService {
 
       const deadline = params.deadline ?? BigInt(Math.floor(Date.now() / 1000) + 1800); // 30 min default
 
-      // Determine tick range
       const tickLower = params.tickLower ?? poolInfo.currentTick! - 1000;
       const tickUpper = params.tickUpper ?? poolInfo.currentTick! + 1000;
 
-      // Align ticks to tick spacing
+      // Align ticks to the pool's spacing so the position is valid on-chain.
       const tickSpacing = poolInfo.tickSpacing ?? 60;
       const alignedTickLower = Math.floor(tickLower / tickSpacing) * tickSpacing;
       const alignedTickUpper = Math.ceil(tickUpper / tickSpacing) * tickSpacing;
@@ -426,13 +427,11 @@ export class UniswapV3LpService extends Service implements IEvmLpService {
       const publicClient = this.getPublicClient(params.chainId);
       const walletClient = this.getWalletClient(params.chainId, params.wallet.privateKey);
 
-      // Get position info
       const position = await this.getPositionFromContract(params.chainId, params.tokenId);
       if (!position) {
         return { success: false, error: "Position not found" };
       }
 
-      // Calculate liquidity to remove
       let liquidityToRemove = position.liquidity;
       if (params.percentageToRemove && params.percentageToRemove < 100) {
         liquidityToRemove = (position.liquidity * BigInt(params.percentageToRemove)) / 100n;
@@ -441,7 +440,8 @@ export class UniswapV3LpService extends Service implements IEvmLpService {
       const deadline = params.deadline ?? BigInt(Math.floor(Date.now() / 1000) + 1800);
       const _slippageMultiplier = BigInt(10000 - params.slippageBps);
 
-      // First, decrease liquidity
+      // Removing liquidity is a two-step position-manager protocol: decrease
+      // liquidity first, then collect the freed tokens as a separate call.
       const decreaseParams = {
         tokenId: params.tokenId,
         liquidity: liquidityToRemove,
@@ -461,7 +461,6 @@ export class UniswapV3LpService extends Service implements IEvmLpService {
       const decreaseHash = await walletClient.writeContract(decreaseRequest);
       await publicClient.waitForTransactionReceipt({ hash: decreaseHash });
 
-      // Then collect the tokens
       const collectParams = {
         tokenId: params.tokenId,
         recipient: params.wallet.address,
@@ -568,7 +567,6 @@ export class UniswapV3LpService extends Service implements IEvmLpService {
   ): Promise<EvmPositionDetails | null> {
     if (!this.supportsChain(chainId)) return null;
 
-    // If we have a token ID, get that specific position
     if (tokenId) {
       const position = await this.getPositionFromContract(chainId, tokenId);
       if (!position) return null;
@@ -576,7 +574,6 @@ export class UniswapV3LpService extends Service implements IEvmLpService {
       const client = this.getPublicClient(chainId);
       const _chain = getViemChain(chainId);
 
-      // Get token info
       const [symbol0, decimals0, symbol1, decimals1] = await Promise.all([
         client
           .readContract({
@@ -642,7 +639,6 @@ export class UniswapV3LpService extends Service implements IEvmLpService {
       };
     }
 
-    // Otherwise, find positions for this owner in this pool
     const positions = await this.getAllPositions(chainId, owner);
     return positions.find((p) => p.poolId.toLowerCase() === poolAddress.toLowerCase()) ?? null;
   }
@@ -674,7 +670,6 @@ export class UniswapV3LpService extends Service implements IEvmLpService {
 
         const position = await this.getPositionFromContract(chainId, tokenId as bigint);
         if (position && position.liquidity > 0n) {
-          // Find the pool address
           const poolAddress = await client.readContract({
             address: addresses.factory,
             abi: UNISWAP_V3_FACTORY_ABI,
@@ -709,7 +704,6 @@ export class UniswapV3LpService extends Service implements IEvmLpService {
     const result: Record<string, Partial<EvmPoolInfo>> = {};
 
     for (const address of poolAddresses) {
-      // Try each supported chain
       for (const chainId of this.getSupportedChainIds()) {
         try {
           const poolInfo = await this.getPoolInfo(chainId, address);
@@ -740,7 +734,6 @@ export class UniswapV3LpService extends Service implements IEvmLpService {
       throw new Error("Wallet account is required to approve token spending.");
     }
 
-    // Check current allowance
     const allowance = await publicClient.readContract({
       address: tokenAddress,
       abi: ERC20_ABI,

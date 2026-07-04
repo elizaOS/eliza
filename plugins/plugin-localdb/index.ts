@@ -1,3 +1,12 @@
+/**
+ * Node plugin entry: `FileStorage` implements `IStorage` on top of a single
+ * JSON file (`<dataDir>/localdb.json`), wrapped by `InMemoryDatabaseAdapter`
+ * for a durable, restart-safe `IDatabaseAdapter`. Writes are serialized
+ * through a chained promise and committed via a temp-file-then-rename swap,
+ * so concurrent mutations can't interleave and a crash mid-write can't
+ * corrupt the live file. The `init` hook is opt-in — it leaves any adapter
+ * already registered on the runtime in place.
+ */
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type {

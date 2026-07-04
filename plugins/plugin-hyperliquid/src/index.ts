@@ -1,3 +1,4 @@
+/** Public package entry: registers the automation-node contributor as a side effect and re-exports the plugin, action, client, routes, and views. */
 import { registerHyperliquidAutomationNodeContributor } from "./automation-node-contributor";
 
 registerHyperliquidAutomationNodeContributor();

@@ -1,3 +1,10 @@
+/**
+ * Client wrapper for the mutual-stake escrow contracts: deploys a new
+ * `StakeVault` via the factory (`createEscrow`), and provides typed
+ * read/write helpers over a vault's lifecycle (fund, fulfill, challenge,
+ * resolve) keyed by `TaskStatus`. Verifier addresses and encoding are
+ * delegated to `verifiers.ts`.
+ */
 import type { Address, Hex, PublicClient, WalletClient } from "viem";
 import type {
   CreateEscrowParams,

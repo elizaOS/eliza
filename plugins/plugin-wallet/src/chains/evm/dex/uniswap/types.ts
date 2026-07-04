@@ -1,8 +1,7 @@
-import type { Address } from "viem";
-
 /**
  * Uniswap V3 specific types
  */
+import type { Address } from "viem";
 
 export const UNISWAP_V3_FEE_TIERS = {
   LOWEST: 100, // 0.01%

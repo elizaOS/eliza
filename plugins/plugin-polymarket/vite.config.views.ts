@@ -1,3 +1,4 @@
+/** Vite config for the `dist/views/bundle.js` view build (`build:views`), driven by the shared view-bundle preset. */
 import { createViewBundleConfig } from "../../packages/scripts/view-bundle-vite.config.ts";
 
 export default createViewBundleConfig({

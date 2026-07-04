@@ -1,3 +1,10 @@
+/**
+ * Shared types for the runtime migrator: the Drizzle-compatible journal and
+ * migration-metadata shapes, the `SchemaSnapshot` schema-representation
+ * tree (tables/columns/indexes/constraints/enums) used for diffing, the raw
+ * `pg_catalog`/`information_schema` row shapes returned by introspection
+ * queries, and the public `RuntimeMigrationOptions` for `RuntimeMigrator.migrate()`.
+ */
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import type { PgliteDatabase } from "drizzle-orm/pglite";
 
@@ -24,7 +31,6 @@ export interface MigrationMeta {
   bps: boolean;
 }
 
-// Schema column definition
 export interface SchemaColumn {
   name: string;
   type: string;
@@ -36,7 +42,6 @@ export interface SchemaColumn {
   uniqueType?: string;
 }
 
-// Index column definition
 export interface IndexColumn {
   expression: string;
   isExpression: boolean;
@@ -44,7 +49,6 @@ export interface IndexColumn {
   nulls?: string;
 }
 
-// Index definition
 export interface SchemaIndex {
   name: string;
   columns: IndexColumn[];
@@ -54,7 +58,6 @@ export interface SchemaIndex {
   concurrently?: boolean;
 }
 
-// Foreign key definition
 export interface SchemaForeignKey {
   name: string;
   tableFrom: string;
@@ -67,26 +70,22 @@ export interface SchemaForeignKey {
   onUpdate?: string;
 }
 
-// Primary key definition
 export interface SchemaPrimaryKey {
   name: string;
   columns: string[];
 }
 
-// Unique constraint definition
 export interface SchemaUniqueConstraint {
   name: string;
   columns: string[];
   nullsNotDistinct?: boolean;
 }
 
-// Check constraint definition
 export interface SchemaCheckConstraint {
   name: string;
   value: string;
 }
 
-// Table definition
 export interface SchemaTable {
   name: string;
   schema: string;
@@ -98,14 +97,12 @@ export interface SchemaTable {
   checkConstraints: Record<string, SchemaCheckConstraint>;
 }
 
-// Enum definition
 export interface SchemaEnum {
   name: string;
   schema: string;
   values: string[];
 }
 
-// Meta information
 export interface SchemaMeta {
   schemas: Record<string, string>;
   tables: Record<string, string>;
@@ -122,7 +119,7 @@ export interface SchemaSnapshot {
   internal?: Record<string, unknown>;
 }
 
-// Database introspection row types
+// Raw row shapes returned by DatabaseIntrospector's pg_catalog/information_schema queries.
 export interface TableInfoRow {
   table_schema: string;
   table_name: string;

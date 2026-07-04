@@ -1,3 +1,10 @@
+/**
+ * Integration tests for the PGlite live query extension (`pg.live`), each
+ * against a real `PGliteClientManager` in a temp directory with the
+ * plugin-sql Drizzle migrations applied. Verifies `liveNs.query()`'s
+ * reactive callback firing on INSERT/UPDATE/DELETE and its unsubscribe
+ * cleanup.
+ */
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -8,19 +15,6 @@ import { DatabaseMigrationService } from "../../migration-service";
 import { PGliteClientManager } from "../../pglite/manager";
 import * as schema from "../../schema";
 import type { DrizzleDatabase } from "../../types";
-
-/**
- * Integration tests for the PGlite live query extension (`pg.live`).
- *
- * Verifies three core behaviors of `liveNs.query()`:
- *  1. Reactive results — callbacks push updated rows after mutations.
- *  2. INSERT / UPDATE / DELETE — each mutation type triggers a callback.
- *  3. Unsubscribe cleanup — after unsubscribe(), no further callbacks fire.
- *
- * Each test creates its own PGlite instance in a temp directory, runs the
- * plugin-sql Drizzle migrations, and then exercises `live.query()` directly
- * on the `PGliteClientManager`.
- */
 
 function createTempDir(prefix: string): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));

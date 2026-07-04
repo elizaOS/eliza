@@ -1,5 +1,3 @@
-import { bigint, index, jsonb, pgTable, text } from "drizzle-orm/pg-core";
-
 /**
  * Append-only audit row for every sensitive auth action.
  *
@@ -7,6 +5,8 @@ import { bigint, index, jsonb, pgTable, text } from "drizzle-orm/pg-core";
  * Token-shaped values in `metadata` MUST be redacted before insert by the
  * caller.
  */
+import { bigint, index, jsonb, pgTable, text } from "drizzle-orm/pg-core";
+
 export const authAuditEventTable = pgTable(
   "auth_audit_events",
   {

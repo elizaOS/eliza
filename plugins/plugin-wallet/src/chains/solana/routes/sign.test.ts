@@ -1,3 +1,9 @@
+/**
+ * Unit tests for the Solana browser-signing HTTP routes: auth-token
+ * validation (bearer/header token, origin checks) and request/response
+ * shaping. `resolveWalletBackend` is mocked, so no real Solana signer or RPC
+ * is exercised.
+ */
 import type { IAgentRuntime, RouteRequest, RouteResponse } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { solanaSignRoutes } from "./sign";

@@ -1,3 +1,14 @@
+/**
+ * IDatabaseAdapter implementation for standard PostgreSQL, used whenever POSTGRES_URL
+ * is configured (the non-serverless, non-PGlite path). Wraps a PostgresConnectionManager
+ * (a pg Pool singleton) and delegates all core persistence logic to BaseDrizzleAdapter,
+ * re-exposing a handful of base methods directly so the public class surface documents
+ * the adapter's full capability set even where the implementation is inherited unchanged.
+ *
+ * withEntityContext forwards to the manager's transaction-scoped Row Level Security
+ * context (see PostgresConnectionManager), which is a no-op unless ENABLE_DATA_ISOLATION
+ * is set.
+ */
 import {
   type Agent,
   type Component,

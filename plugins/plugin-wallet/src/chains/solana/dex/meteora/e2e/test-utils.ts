@@ -1,3 +1,9 @@
+/**
+ * Scenario-test helpers for the Meteora E2E suite: `setupScenario` creates a
+ * fresh world/user/room against a live `IAgentRuntime`, and
+ * `sendMessageAndWaitForResponse` emits a `MESSAGE_RECEIVED` event and
+ * resolves once the agent's response callback fires.
+ */
 import { strict as assert } from "node:assert";
 import {
   asUUID,

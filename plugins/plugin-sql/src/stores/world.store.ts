@@ -1,3 +1,4 @@
+/** CRUD store for the `worlds` table. */
 import { randomUUID } from "node:crypto";
 import type { UUID, World } from "@elizaos/core";
 import { eq } from "drizzle-orm";

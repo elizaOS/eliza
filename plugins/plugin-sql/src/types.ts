@@ -1,3 +1,4 @@
+/** Shared Drizzle DB type (Postgres or PGlite) and small adapter/result helpers used across the store layer. */
 import type { IDatabaseAdapter } from "@elizaos/core";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import type { PgliteDatabase } from "drizzle-orm/pglite";

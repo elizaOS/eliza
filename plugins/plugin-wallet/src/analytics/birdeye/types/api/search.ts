@@ -1,6 +1,6 @@
+/** Request/response shapes for Birdeye's combined token+market search endpoint. */
 import type { BirdeyeSupportedChain } from "../shared";
 
-// Search Types
 export interface TokenMarketSearchParams {
   chain?: BirdeyeSupportedChain | "all";
   keyword?: string;

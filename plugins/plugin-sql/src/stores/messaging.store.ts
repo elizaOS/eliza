@@ -1,3 +1,11 @@
+/**
+ * Store for the messaging-server domain: `MessageServer` (an external
+ * platform connection), its `Channel`s, channel participants, and the
+ * `Message` rows within them. Distinct from `RoomStore`/`ParticipantStore`,
+ * which model the agent-facing conversation surface — this store models the
+ * underlying connector-side server/channel/message structure that rooms are
+ * synced from.
+ */
 import { randomUUID } from "node:crypto";
 import { ChannelType, type Metadata, type UUID } from "@elizaos/core";
 import { and, desc, eq, lt, sql } from "drizzle-orm";

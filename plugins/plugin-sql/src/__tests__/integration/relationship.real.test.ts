@@ -1,3 +1,8 @@
+/**
+ * Integration tests for entity relationship create/update/retrieve against a
+ * real isolated PGlite/Postgres adapter, including duplicate-pair dedup and
+ * tag-scoped lookups.
+ */
 import type { AgentRuntime, Entity, UUID } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -22,11 +27,9 @@ describe("Relationship Integration Tests", () => {
     cleanup = setup.cleanup;
     testAgentId = setup.testAgentId;
 
-    // Generate random UUIDs for test data
     testEntityId = uuidv4() as UUID;
     testTargetEntityId = uuidv4() as UUID;
 
-    // Create test entities
     await adapter.createEntities([
       {
         id: testEntityId,

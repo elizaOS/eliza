@@ -1,3 +1,11 @@
+/**
+ * Default (Node/Bun) build of the plugin's platform-specific helpers, used by
+ * `./index.ts`; resolves the PGlite data directory by walking up from cwd to
+ * find a `.env` file and to detect whether cwd is inside the elizaOS
+ * monorepo, then falls back to `<cwd>/.eliza/.elizadb`. Kept in sync with
+ * `./utils.node.ts` (used by `./index.node.ts`); `./utils.browser.ts` stubs
+ * the filesystem-dependent parts for the browser build.
+ */
 import { existsSync } from "node:fs";
 import path from "node:path";
 import dotenv from "dotenv";
@@ -38,7 +46,7 @@ export function resolvePgliteDir(dir?: string, fallbackDir?: string): string {
   if (existsSync(path.join(process.cwd(), "packages", "core"))) {
     monoPath = process.cwd();
   } else {
-    const twoUp = path.resolve(process.cwd(), "../.."); // assuming running from package
+    const twoUp = path.resolve(process.cwd(), "../..");
     if (existsSync(path.join(twoUp, "packages", "core"))) {
       monoPath = twoUp;
     }
@@ -60,13 +68,12 @@ export function sanitizeJsonObject(value: unknown, seen: WeakSet<object> = new W
   }
 
   if (typeof value === "string") {
-    // Strip NUL characters: PostgreSQL/PGlite jsonb rejects the `\u0000`
-    // escape JSON.stringify emits for them. Nothing else needs rewriting —
-    // the sanitized value is serialized with JSON.stringify, which already
-    // escapes backslashes and control characters correctly. (This function
-    // used to double every backslash not followed by ["\/bfnrtu] and mangle
-    // non-hex `\u` sequences, so a value like "C:\Users" came back as
-    // "C:\\Users" after a write/read round-trip — silent data corruption.)
+    // Strips NUL characters: PostgreSQL/PGlite jsonb rejects the `\u0000`
+    // escape JSON.stringify emits for them. Nothing else needs rewriting here —
+    // the value is serialized with JSON.stringify, which already escapes
+    // backslashes and control characters correctly; re-escaping them here
+    // would corrupt already-escaped strings (e.g. "C:\Users") on a
+    // write/read round-trip.
     return value.replace(new RegExp(String.fromCharCode(0), "g"), "");
   }
 

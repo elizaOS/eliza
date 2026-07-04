@@ -1,3 +1,9 @@
+/**
+ * Package-level vitest config: aliases `@elizaos/app-core`, `@elizaos/core`,
+ * and `@elizaos/logger` to source so tests resolve without a pre-built dist,
+ * and excludes live/opt-in suites (funded-wallet transfer tests, guarded
+ * post-merge-only suites) from the default run.
+ */
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";

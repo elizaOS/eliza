@@ -1,3 +1,4 @@
+/** Storage-backend contracts (`IStorage`, `IVectorStorage`) that `InMemoryDatabaseAdapter` is built against, plus the fixed set of collection names it operates on. */
 export interface IStorage {
   init(): Promise<void>;
   close(): Promise<void>;

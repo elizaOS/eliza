@@ -1,3 +1,10 @@
+/**
+ * Unit tests for `normalizePgSslMode`: rewrites the `prefer`/`require`/
+ * `verify-ca` sslmode aliases to explicit `verify-full` (pinning today's
+ * pg-connection-string behavior ahead of its libpq-semantics change), while
+ * leaving `uselibpqcompat=true` connection strings and other sslmode values
+ * untouched. Pure string transform, no database involved.
+ */
 import { describe, expect, it } from "vitest";
 import { normalizePgSslMode } from "../pg/sslmode";
 

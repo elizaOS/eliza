@@ -1,3 +1,4 @@
+/** Resolves a Postgres connection string's sslmode alias to today's explicit TLS behavior, ahead of node-postgres parsing it. */
 const PG_SSLMODE_CURRENT_TLS_ALIASES = new Set(["prefer", "require", "verify-ca"]);
 
 /**

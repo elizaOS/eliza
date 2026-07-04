@@ -1,3 +1,11 @@
+/**
+ * SDK barrel: re-exports the ERC-6551 wallet-core primitives (ABIs,
+ * `createWallet`, spend-policy/transfer/budget helpers), x402 micropayment
+ * types and client, and adds higher-level agent-wallet conveniences on top —
+ * `agentExecute`/`getPendingApprovals`/`approveTransaction` for the
+ * queue-or-execute spend-policy flow, plus budget forecasting, wallet health
+ * checks, batch transfers, and on-chain activity history queries.
+ */
 import type { JsonValue } from "@elizaos/core";
 import {
   type Address,
@@ -57,7 +65,7 @@ export type {
   X402SettlementResponse,
   X402TransactionLog,
 } from "./x402/index.js";
-// [MAX-ADDED] x402 protocol support
+// x402 protocol support
 export {
   createX402Client,
   createX402Fetch,
@@ -266,11 +274,11 @@ export async function getWalletAddress(config: {
   ]) as Promise<Address>;
 }
 
-// ─── [MAX-ADDED] Value-Add Features for Agent Customers ───
+// ─── Value-Add Features for Agent Customers ───
 
 /**
- * [MAX-ADDED] Budget forecast with period-aware remaining capacity.
- * Why: Agents need to know not just "how much is left" but "when does budget reset"
+ * Budget forecast with period-aware remaining capacity.
+ * Agents need to know not just "how much is left" but "when does budget reset"
  * so they can plan spending across time windows and avoid unnecessary queuing.
  */
 export async function getBudgetForecast(
@@ -303,8 +311,8 @@ export async function getBudgetForecast(
 }
 
 /**
- * [MAX-ADDED] Wallet health check — diagnostic snapshot for agent self-monitoring.
- * Why: Agents need a single-call way to verify their wallet is properly configured,
+ * Wallet health check — diagnostic snapshot for agent self-monitoring.
+ * Agents need a single-call way to verify their wallet is properly configured,
  * check operator status, and monitor queue depth before executing transactions.
  */
 export async function getWalletHealth(
@@ -354,8 +362,8 @@ export async function getWalletHealth(
 }
 
 /**
- * [MAX-ADDED] Batch agent token transfers — multiple transfers in sequential calls.
- * Why: Agents often need to pay multiple recipients (tips, fees, splits). This helper
+ * Batch agent token transfers — multiple transfers in sequential calls.
+ * Agents often need to pay multiple recipients (tips, fees, splits). This helper
  * reduces boilerplate and returns all tx hashes. Each is a separate on-chain tx
  * (true batching would need a multicall contract, but this is the safe SDK-level helper).
  */
@@ -378,8 +386,8 @@ export async function batchAgentTransfer(
 }
 
 /**
- * [MAX-ADDED] Activity history — query past wallet events for self-auditing.
- * Why: Agents need to verify what happened on-chain (transfers, operator changes,
+ * Activity history — query past wallet events for self-auditing.
+ * Agents need to verify what happened on-chain (transfers, operator changes,
  * policy updates) without relying on external indexers. This queries event logs directly.
  */
 export async function getActivityHistory(

@@ -1,9 +1,8 @@
-import type { Address } from "viem";
-
 /**
  * PancakeSwap V3 specific types
  * PancakeSwap V3 is based on Uniswap V3 with some modifications
  */
+import type { Address } from "viem";
 
 export const PANCAKESWAP_V3_FEE_TIERS = {
   LOWEST: 100, // 0.01%

@@ -1,3 +1,12 @@
+/**
+ * `BaseDrizzleAdapter` is the shared `IDatabaseAdapter` implementation that
+ * `PgDatabaseAdapter` and `PgliteDatabaseAdapter` both extend: every runtime
+ * persistence operation (agents, entities, rooms, memories, relationships,
+ * tasks, logs, cache, connector accounts/OAuth flow state, pairing) is
+ * implemented once here against Drizzle, backend-agnostically, with
+ * `withDatabase`/`withEntityContext` retry and Row Level Security wiring
+ * left to the concrete Postgres/PGlite subclasses.
+ */
 import {
   type AccessContext,
   type Agent,

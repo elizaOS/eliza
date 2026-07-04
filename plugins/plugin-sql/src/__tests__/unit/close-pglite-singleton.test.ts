@@ -1,12 +1,15 @@
+/**
+ * Unit tests for `closePgliteSingleton()` / `getPgliteSingletonCache()`, the
+ * public accessors that let hosts recover or pre-seed the process-global
+ * PGlite manager without hand-copying the private
+ * `Symbol.for("elizaos.plugin-sql.global-singletons")`. Exercises the
+ * in-memory cache object directly with fake manager stubs — no real PGlite
+ * instance is created.
+ */
 import { afterEach, describe, expect, it } from "vitest";
 import { closePgliteSingleton, getPgliteSingletonCache } from "../../index.node";
 import { pgliteManagerCacheKey } from "../../pglite/manager-cache";
 
-/**
- * closePgliteSingleton() / getPgliteSingletonCache() are the public accessors
- * that let hosts recover or pre-seed the process-global PGlite manager without
- * hand-copying the private `Symbol.for("elizaos.plugin-sql.global-singletons")`.
- */
 describe("closePgliteSingleton", () => {
   afterEach(() => {
     const cache = getPgliteSingletonCache() as ReturnType<typeof getPgliteSingletonCache> & {

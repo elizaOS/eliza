@@ -1,3 +1,10 @@
+/**
+ * Owns the `migrations` Postgres schema and its three bookkeeping tables —
+ * `_migrations` (per-plugin hash + timestamp of the last applied migration,
+ * mirroring Drizzle's `__drizzle_migrations`), `_journal`, and `_snapshots`
+ * — replacing the on-disk `_journal.json` / snapshot-file approach with
+ * database-backed state so migration history survives across environments.
+ */
 import { sql } from "drizzle-orm";
 import { getRow } from "../../types";
 import type { DrizzleDB } from "../types";
@@ -10,10 +17,8 @@ export class MigrationTracker {
   }
 
   async ensureTables(): Promise<void> {
-    // Ensure schema exists
     await this.ensureSchema();
 
-    // Create migrations table (like Drizzle's __drizzle_migrations)
     await this.db.execute(sql`
       CREATE TABLE IF NOT EXISTS migrations._migrations (
         id SERIAL PRIMARY KEY,
@@ -23,7 +28,6 @@ export class MigrationTracker {
       )
     `);
 
-    // Create journal table (replaces _journal.json)
     await this.db.execute(sql`
       CREATE TABLE IF NOT EXISTS migrations._journal (
         plugin_name TEXT PRIMARY KEY,
@@ -33,7 +37,6 @@ export class MigrationTracker {
       )
     `);
 
-    // Create snapshots table (replaces snapshot JSON files)
     await this.db.execute(sql`
       CREATE TABLE IF NOT EXISTS migrations._snapshots (
         id SERIAL PRIMARY KEY,

@@ -1,3 +1,4 @@
+/** Shared `@elizaos/core` mock (logger only) imported by this package's vitest suites. */
 import { vi } from "vitest";
 
 vi.mock("@elizaos/core", () => ({

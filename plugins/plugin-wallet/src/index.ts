@@ -1,3 +1,9 @@
+/**
+ * Package barrel for `@elizaos/plugin-wallet`: re-exports the wallet plugin
+ * object, all chain/analytics/LP services, providers, routes, the SDK
+ * (ERC-6551/x402/CCTP/escrow), and supporting types. Consumers should import
+ * from here rather than reaching into subpaths.
+ */
 import "./core-augmentation.js";
 import { registerWalletAutomationNodeContributor } from "./automation-node-contributor.js";
 import { walletRouteRegistration } from "./register-routes.js";

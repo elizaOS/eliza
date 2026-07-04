@@ -1,3 +1,4 @@
+/** TEE vendor registry: `getVendor` looks up a `TeeVendorInterface` by `TeeVendorName`; Phala is the only registered vendor today. */
 import { PhalaVendor } from "./phala";
 import {
   type TeeVendorInterface,

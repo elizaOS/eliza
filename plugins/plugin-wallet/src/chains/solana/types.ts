@@ -1,3 +1,9 @@
+/**
+ * Shared type surface for the Solana chain sub-package: wallet portfolio and
+ * token-account shapes, HTTP response DTOs for the Solana REST routes,
+ * Jupiter quote/swap types, and RPC notification/cache-entry shapes used
+ * across the service, provider, and routes.
+ */
 import type { Keypair, PublicKey } from "@solana/web3.js";
 
 export interface Item {

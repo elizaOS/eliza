@@ -1,3 +1,10 @@
+/**
+ * Standalone helpers for the TEE plugin: hex/byte conversion, SHA-256 hashing,
+ * `getTeeEndpoint` mode-to-URL resolution (LOCAL/DOCKER simulator vs no
+ * endpoint for PRODUCTION), and `uploadAttestationQuote`, which POSTs a raw
+ * attestation quote to Phala's public verification service
+ * (proof.t16z.com) and requires outbound network access.
+ */
 import { createHash } from "node:crypto";
 
 export function hexToUint8Array(hex: string): Uint8Array {

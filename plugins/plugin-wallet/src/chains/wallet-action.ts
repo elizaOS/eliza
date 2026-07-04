@@ -1,3 +1,16 @@
+/**
+ * Defines `walletRouterAction`, the single `WALLET` action that dispatches
+ * every wallet subaction (`transfer`, `swap`, `bridge`, `gov`, `pump_fun_buy`,
+ * `token_info`, `search_address`) and absorbs the legacy per-verb similes
+ * (`SWAP`, `TRANSFER`, `CROSS_CHAIN_TRANSFER`, `WALLET_GOV`, `PUMP_FUN_BUY`,
+ * `TOKEN_INFO`, `BIRDEYE_SEARCH`, …) so older prompts keep working. It parses
+ * and validates raw params via `parseWalletRouterParams`, routes financial
+ * subactions through the `wallet-context-safety` recipient/injection guards
+ * and the `wallet-financial-confirmation` gate before touching
+ * `WalletBackendService`, and dispatches the two read-only analytics
+ * subactions (`token_info`, `search_address`) directly to their handlers
+ * without the financial confirmation gate.
+ */
 import type {
   Action,
   ActionResult,

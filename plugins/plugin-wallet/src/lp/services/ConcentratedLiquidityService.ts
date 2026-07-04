@@ -1,3 +1,7 @@
+/**
+ * ConcentratedLiquidityService exposes the concentrated-liquidity surface while
+ * DEX-specific providers add position creation and rebalancing support.
+ */
 import { type IAgentRuntime, Service } from "@elizaos/core";
 import type {
   IConcentratedLiquidityService,
@@ -5,10 +9,6 @@ import type {
   IRangeParams,
 } from "../types";
 
-/**
- * ConcentratedLiquidityService exposes the concentrated-liquidity surface while
- * DEX-specific providers add position creation and rebalancing support.
- */
 export class ConcentratedLiquidityService
   extends Service
   implements IConcentratedLiquidityService

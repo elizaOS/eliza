@@ -1,3 +1,11 @@
+/**
+ * `PostgresConnectionManager` wraps a single `pg` `Pool` (env-tunable size,
+ * SSL mode normalized) behind the shared connection-manager surface used by
+ * `PgDatabaseAdapter`: exposes the pool and a Drizzle handle, tracks
+ * shutdown state so in-flight and new work is rejected during `close()`,
+ * and runs callbacks inside a transaction that sets the Row Level Security
+ * `app.entity_id` config when data isolation is enabled.
+ */
 import { logger, type UUID, validateUuid } from "@elizaos/core";
 import { sql } from "drizzle-orm";
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";

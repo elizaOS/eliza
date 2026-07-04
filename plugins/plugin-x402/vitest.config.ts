@@ -1,3 +1,4 @@
+/** Vitest config for plugin-x402: node environment, 60s timeouts, shared core mock setup. */
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({

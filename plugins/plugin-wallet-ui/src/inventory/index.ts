@@ -1,3 +1,4 @@
+/** Barrel re-export for the `inventory/` module: chain config, row/item constants, `<TokenLogo>`, and `useInventoryData`. */
 export {
   CHAIN_CONFIGS,
   type ChainConfig,

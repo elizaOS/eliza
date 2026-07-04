@@ -1,3 +1,9 @@
+/**
+ * Registers the `birdeye_tokens` search category (`registerBirdeyeSearchCategories`)
+ * and implements its dispatch (`searchBirdeyeTokens`): auto-detects symbol vs
+ * contract-address queries, then fans out to Birdeye's search/overview/
+ * market-data/security/trade-data endpoints and renders a compact result table.
+ */
 import type { IAgentRuntime, SearchCategoryRegistration } from "@elizaos/core";
 import { BirdeyeProvider } from "./birdeye";
 import { BIRDEYE_SERVICE_NAME } from "./constants";

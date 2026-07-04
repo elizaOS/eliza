@@ -1,3 +1,9 @@
+/**
+ * Verifies core entity CRUD (create, update, delete, name search, metadata
+ * round-trip) plus create-is-not-upsert idempotency and batch-with-duplicate
+ * handling. Runs against a real Postgres or PGlite backend via
+ * `createIsolatedTestDatabase`.
+ */
 import type { Entity, Metadata, UUID } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";

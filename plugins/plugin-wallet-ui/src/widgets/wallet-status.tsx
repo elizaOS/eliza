@@ -1,3 +1,9 @@
+/**
+ * `WalletStatusSidebarWidget` — the chat-sidebar widget showing abbreviated
+ * EVM/Solana addresses, per-chain badges, asset count, and total USD value.
+ * Renders `null` when `walletEnabled` is false; lazily loads wallet config
+ * and balances the first time it mounts with data missing.
+ */
 import {
   Button,
   type ChatSidebarWidgetProps,

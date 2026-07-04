@@ -1,3 +1,11 @@
+/**
+ * Vitest config for plugin-wallet-ui. Forces a single React/ReactDOM copy via
+ * explicit aliases (avoids duplicate-React errors across workspace packages),
+ * collapses `@elizaos/ui/<subpath>` imports to the single built `@elizaos/ui`
+ * package so subpath resolution doesn't depend on the ui package's dist
+ * layout, and redirects a plugin-health subpath import to source since that
+ * package publishes no matching subpath export.
+ */
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

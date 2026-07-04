@@ -1,3 +1,9 @@
+/**
+ * CRUD store for the `relationships` table (directed, tagged edges between
+ * entities). `getAll` runs raw SQL to filter by overlapping tags and to match
+ * either side of the relationship, since the Drizzle query builder doesn't
+ * cover the `&&` array-overlap operator used here.
+ */
 import { randomUUID } from "node:crypto";
 import { logger, type Metadata, type Relationship, type UUID } from "@elizaos/core";
 import { and, eq, type SQL, sql } from "drizzle-orm";

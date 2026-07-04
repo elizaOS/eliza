@@ -1,3 +1,11 @@
+/**
+ * End-to-end Electric Sync integration test against a real Postgres +
+ * Electric stack (`docker compose -f plugins/plugin-sql/docker-compose.electric-test.yml up -d`).
+ * Exercises the full data flow — Postgres (source) → Electric (shape server)
+ * → PGlite (`syncShapesToTables`) — including per-agent isolation and sync
+ * status transitions. All tests skip gracefully when the containers are not
+ * running.
+ */
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -8,23 +16,6 @@ import { DatabaseMigrationService } from "../../migration-service";
 import { PGliteClientManager } from "../../pglite/manager";
 import * as schema from "../../schema";
 import type { DrizzleDatabase } from "../../types";
-
-/**
- * End-to-end Electric Sync integration test.
- *
- * Requires a local Postgres + Electric stack. Start it with:
- *   docker compose -f plugins/plugin-sql/docker-compose.electric-test.yml up -d
- *
- * Tests the full data flow:
- *   Postgres (source) → Electric (shape server) → PGlite (syncShapesToTables)
- *
- * Verifies:
- *   1. Data inserted in Postgres flows to PGlite via Electric sync.
- *   2. Per-agent isolation: agentA's PGlite receives only agentA's rows.
- *   3. Sync status transitions from "syncing" → "synced".
- *
- * All tests skip gracefully when the Electric containers are not running.
- */
 
 const ELECTRIC_HEALTH_URL = "http://localhost:3000/api/health";
 const ELECTRIC_SYNC_URL = "http://localhost:3000";

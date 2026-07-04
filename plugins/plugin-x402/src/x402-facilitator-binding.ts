@@ -1,3 +1,10 @@
+/**
+ * Binds a facilitator's payment-verification response to the specific route
+ * it was requested for, so a valid-but-unrelated 200 cannot unlock a
+ * different resource. Strict mode requires the response to echo `resource`,
+ * route, price, and payment config; relaxed mode only rejects fields that
+ * are present and mismatched.
+ */
 import type {
   FacilitatorVerificationResponse,
   FacilitatorVerifyContext,

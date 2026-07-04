@@ -1,3 +1,10 @@
+/**
+ * Real smoke test for the TEE plugin's pure utilities (issue #9943: the plugin
+ * shipped with zero tests). The plugin's index eagerly loads the Phala dstack
+ * SDK at module-eval, so this targets the dependency-free utils sub-module —
+ * the hex/SHA-256/endpoint helpers that every attestation path relies on — with
+ * real assertions (known vectors, round-trips, and the documented error cases).
+ */
 import { describe, expect, it } from "vitest";
 import {
   calculateSHA256,
@@ -7,13 +14,6 @@ import {
   uint8ArrayToHex,
 } from "../utils";
 
-/**
- * Real smoke test for the TEE plugin's pure utilities (issue #9943: the plugin
- * shipped with zero tests). The plugin's index eagerly loads the Phala dstack
- * SDK at module-eval, so this targets the dependency-free utils sub-module —
- * the hex/SHA-256/endpoint helpers that every attestation path relies on — with
- * real assertions (known vectors, round-trips, and the documented error cases).
- */
 describe("plugin-tee utils", () => {
   it("round-trips bytes through hex", () => {
     const bytes = new Uint8Array([0x00, 0x0f, 0xa0, 0xff, 0x42]);

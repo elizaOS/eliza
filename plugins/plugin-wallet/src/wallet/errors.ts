@@ -1,3 +1,8 @@
+/**
+ * Error types for the `WalletBackend` signing path: missing key configuration,
+ * an unreachable Steward backend, a pending human approval that must be
+ * resolved before signing continues, and malformed Solana key material.
+ */
 import type { PendingApproval } from "./pending.js";
 
 export type WalletBackendNotConfiguredCode =

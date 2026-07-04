@@ -1,3 +1,10 @@
+/**
+ * Unit tests for the wallet financial confirmation gate: verifies that a
+ * caller-supplied `confirmed` option is never treated as authorization, that
+ * a first on-chain attempt is held pending until the user replies to
+ * confirm, and that pending keys normalize equivalent transfer params. Uses
+ * an in-memory fake `IAgentRuntime` cache (no real runtime or chain).
+ */
 import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { isConfirmed } from "../../chains/evm/actions/helpers.js";

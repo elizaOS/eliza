@@ -1,8 +1,14 @@
+/**
+ * `TestSuite` of conversational E2E scenarios for the LP manager plugin
+ * (onboarding, yield optimization, rebalancing, …), run against a live
+ * `IAgentRuntime` through `setupScenario`/`sendMessageAndWaitForResponse` —
+ * exercises the real agent message pipeline, asserting on the agent's actual
+ * response text.
+ */
 import { strict as assert } from "node:assert";
 import type { IAgentRuntime, TestSuite } from "@elizaos/core";
 import { sendMessageAndWaitForResponse, setupScenario } from "./test-utils.ts";
 
-// Mock services are registered in setupScenario; this hook is called for backward compatibility.
 async function setupMockLpData(_runtime: IAgentRuntime) {}
 
 /**

@@ -1,3 +1,9 @@
+/**
+ * Unit tests for `buildSwapDetails`'s relative-amount resolution
+ * (absolute/half/max/percent → concrete token amount from wallet balance).
+ * The intent-extraction LLM call is mocked to return fixed JSON so each case
+ * isolates the arithmetic and validation, not model behavior.
+ */
 import type { IAgentRuntime, Memory, State } from "@elizaos/core";
 import { base } from "viem/chains";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

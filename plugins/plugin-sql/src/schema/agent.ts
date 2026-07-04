@@ -1,12 +1,12 @@
+/**
+ * The `agents` table: one row per agent, storing its Character definition
+ * (bio, examples, topics, adjectives, knowledge refs, plugins list, settings,
+ * style) alongside runtime flags (`enabled`, `server_id` for RLS isolation).
+ */
 import type { CharacterSettings, MessageExample } from "@elizaos/core";
 import { sql } from "drizzle-orm";
 import { boolean, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 
-/**
- * Represents a table for storing agent data.
- *
- * @type {Table}
- */
 export const agentTable = pgTable("agents", {
   id: uuid("id").primaryKey().defaultRandom(),
   enabled: boolean("enabled").default(true).notNull(),
@@ -15,7 +15,6 @@ export const agentTable = pgTable("agents", {
 
   updatedAt: timestamp("updated_at", { withTimezone: true }).default(sql`now()`).notNull(),
 
-  // Character
   name: text("name").notNull(),
   username: text("username"),
   system: text("system").default(""),

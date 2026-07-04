@@ -1,3 +1,9 @@
+/**
+ * Fixture agent/room/entity/memory/embedding records for the embedding
+ * integration tests — deterministic (fixed UUIDs, seeded IDs) so query
+ * results are stable across runs, covering the 384/512/768-dim embedding
+ * cases.
+ */
 import {
   type Agent,
   AgentStatus,
@@ -8,17 +14,15 @@ import {
   type UUID,
 } from "@elizaos/core";
 
-// Generate fixed UUIDs for testing to avoid type issues
+// Fixed UUID so fixtures are stable across runs instead of type-widened strings.
 const fixedUuid = (n: number): UUID =>
   `${"0".repeat(8)}-${"0".repeat(4)}-${"0".repeat(4)}-${"0".repeat(4)}-${n.toString().padStart(12, "0")}`;
 
-// Test IDs
 export const embeddingTestAgentId = fixedUuid(1);
 export const embeddingTestRoomId = fixedUuid(2);
 export const embeddingTestEntityId = fixedUuid(3);
 export const embeddingTestWorldId = fixedUuid(4);
 
-// Random vector generator for testing
 export const generateRandomVector = (size: number): number[] => {
   return Array.from({ length: size }, () => (Math.random() * 2 - 1) * 0.1);
 };
@@ -51,7 +55,6 @@ export const embeddingTestAgent = {
   },
 } as Agent;
 
-// Test Entity
 export const embeddingTestEntity: Entity = {
   id: embeddingTestEntityId,
   names: ["Test Entity"],
@@ -61,7 +64,6 @@ export const embeddingTestEntity: Entity = {
   },
 };
 
-// Test Room
 export const embeddingTestRoom: Room = {
   id: embeddingTestRoomId,
   name: "Embedding Test Room",
@@ -71,12 +73,11 @@ export const embeddingTestRoom: Room = {
   worldId: embeddingTestWorldId,
 };
 
-// Interface that extends Memory to include the type field for the database
+/** Memory shape used by these fixtures, with the DB-only `type` column made explicit. */
 export interface TestMemory extends Memory {
   type: string;
 }
 
-// Sample test memories
 export const embeddingTestMemories: TestMemory[] = [
   {
     id: fixedUuid(10),
@@ -122,7 +123,6 @@ export const embeddingTestMemories: TestMemory[] = [
   },
 ];
 
-// Embedding test data interface
 interface EmbeddingTestDataItem {
   id: UUID;
   memoryId: UUID;
@@ -132,7 +132,6 @@ interface EmbeddingTestDataItem {
   dim768?: number[];
 }
 
-// Sample embeddings of different dimensions
 export const embeddingTestData: EmbeddingTestDataItem[] = [
   {
     id: fixedUuid(30),
@@ -154,7 +153,6 @@ export const embeddingTestData: EmbeddingTestDataItem[] = [
   },
 ];
 
-// Memory with embedding
 export const embeddingTestMemoriesWithEmbedding: (TestMemory & {
   embedding: number[];
 })[] = [

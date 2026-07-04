@@ -1,3 +1,8 @@
+/**
+ * `OrcaService` — placeholder lifecycle service registered for the Orca DEX
+ * adapter (`ORCA_SERVICE`). Currently does no RPC or pool work itself; it
+ * exists so the Orca sub-plugin has a service to register and dispose.
+ */
 import { type IAgentRuntime, Service } from "@elizaos/core";
 
 export class OrcaService extends Service {

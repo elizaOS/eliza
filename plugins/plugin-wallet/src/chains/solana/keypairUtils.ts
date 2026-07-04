@@ -1,3 +1,11 @@
+/**
+ * Resolves the agent's Solana keypair or public key from runtime settings
+ * (base58 or base64 encoded `SOLANA_PRIVATE_KEY`/`WALLET_PRIVATE_KEY`, or
+ * `SOLANA_PUBLIC_KEY`/`WALLET_PUBLIC_KEY` for the public-key-only path). If
+ * no key is configured, `getWalletKey` generates a new keypair, persists it
+ * to runtime settings, and logs the new address so the operator can fund it
+ * — callers should not assume a missing key means failure.
+ */
 import { type IAgentRuntime, logger } from "@elizaos/core";
 import { Keypair, PublicKey } from "@solana/web3.js";
 import bs58 from "bs58";

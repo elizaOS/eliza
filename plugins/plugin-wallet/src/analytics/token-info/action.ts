@@ -1,3 +1,7 @@
+/**
+ * Folded into WALLET as `action=token_info`. Routes token-info queries through
+ * the registered TokenInfoService providers (DexScreener, Birdeye, CoinGecko).
+ */
 import type {
   ActionResult,
   HandlerCallback,
@@ -24,10 +28,6 @@ function unavailable(
   };
 }
 
-/**
- * Folded into WALLET as `action=token_info`. Routes token-info queries through
- * the registered TokenInfoService providers (DexScreener, Birdeye, CoinGecko).
- */
 export async function tokenInfoHandler(
   runtime: IAgentRuntime,
   message: Memory,

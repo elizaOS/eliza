@@ -1,3 +1,8 @@
+/**
+ * `<ChainIcon>` renders an inline SVG logo for a resolved chain key. Only
+ * ethereum/base/bsc/avax/solana have art; unrecognized or unlisted chains
+ * render nothing (`null`) rather than falling back to a generic icon.
+ */
 import type * as React from "react";
 import { resolveChainKey } from "./chainConfig.ts";
 

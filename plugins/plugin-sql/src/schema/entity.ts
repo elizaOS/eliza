@@ -1,12 +1,16 @@
+/**
+ * Drizzle table for entities — the participants (users, agents, personas) an
+ * agent can hold memories and relationships about. Scoped to an owning agent
+ * via a cascading `agent_id` foreign key, with a compound unique constraint on
+ * (id, agentId) so other tables can enforce agent-scoped foreign keys against
+ * this table. `metadata` carries free-form per-entity data; `names` tracks
+ * known aliases.
+ */
 import type { Metadata } from "@elizaos/core";
 import { sql } from "drizzle-orm";
 import { jsonb, pgTable, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
 import { agentTable } from "./agent";
 
-/**
- * Represents an entity table in the database.
- * Includes columns for id, agentId, createdAt, names, and metadata.
- */
 export const entityTable = pgTable(
   "entities",
   {

@@ -1,3 +1,12 @@
+/**
+ * Builds, simulates, prioritizes, and submits a versioned Solana transaction
+ * for the Orca DEX adapter, retrying send + status polling until confirmed
+ * or a 90s timeout. Compute unit limit is derived from simulation (with a
+ * 30% safety margin) and the priority fee from the 95th-percentile recent
+ * prioritization fee, both added as compute-budget instructions ahead of the
+ * caller's instructions. Adapted from the pattern documented at
+ * https://orca-so.github.io/whirlpools/Whirlpools%20SDKs/Whirlpools/Send%20Transaction.
+ */
 import { elizaLogger } from "@elizaos/core";
 import {
   ComputeBudgetProgram,
@@ -8,7 +17,6 @@ import {
   VersionedTransaction,
 } from "@solana/web3.js";
 
-// For more information: https://orca-so.github.io/whirlpools/Whirlpools%20SDKs/Whirlpools/Send%20Transaction
 export async function sendTransaction(
   connection: Connection,
   instructions: TransactionInstruction[],
@@ -16,28 +24,24 @@ export async function sendTransaction(
 ): Promise<string> {
   const latestBlockhash = await connection.getLatestBlockhash();
 
-  // Create a new TransactionMessage with the instructions
   const messageV0 = new TransactionMessage({
     payerKey: wallet.publicKey,
     recentBlockhash: latestBlockhash.blockhash,
     instructions,
   }).compileToV0Message();
 
-  // Estimate compute units
   const simulatedTx = new VersionedTransaction(messageV0);
   simulatedTx.sign([wallet]);
   const simulation = await connection.simulateTransaction(simulatedTx);
   const computeUnits = simulation.value.unitsConsumed || 200_000;
   const safeComputeUnits = Math.ceil(Math.max(computeUnits * 1.3, computeUnits + 100_000));
 
-  // Get prioritization fee
   const recentPrioritizationFees = await connection.getRecentPrioritizationFees();
   const prioritizationFee =
     recentPrioritizationFees.map((fee) => fee.prioritizationFee).sort((a, b) => a - b)[
       Math.ceil(0.95 * recentPrioritizationFees.length) - 1
     ] ?? 0;
 
-  // Add compute budget instructions
   const computeBudgetInstructions = [
     ComputeBudgetProgram.setComputeUnitLimit({ units: safeComputeUnits }),
     ComputeBudgetProgram.setComputeUnitPrice({
@@ -45,7 +49,6 @@ export async function sendTransaction(
     }),
   ];
 
-  // Create final transaction
   const finalMessage = new TransactionMessage({
     payerKey: wallet.publicKey,
     recentBlockhash: latestBlockhash.blockhash,
@@ -55,7 +58,6 @@ export async function sendTransaction(
   const transaction = new VersionedTransaction(finalMessage);
   transaction.sign([wallet]);
 
-  // Send and confirm transaction
   const timeoutMs = 90000;
   const startTime = Date.now();
 

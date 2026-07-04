@@ -1,3 +1,4 @@
+/** CRUD over the `migrations._snapshots` table: one JSONB `SchemaSnapshot` row per (plugin, migration index), used by `RuntimeMigrator` to diff against the previously applied schema. */
 import { sql } from "drizzle-orm";
 import type { DrizzleDB, SchemaSnapshot } from "../types";
 

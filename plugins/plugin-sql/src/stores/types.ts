@@ -1,3 +1,4 @@
+/** Shared `Store`/`StoreContext` contract every domain store in this directory implements. */
 import type { UUID } from "@elizaos/core";
 import type { EmbeddingDimensionColumn } from "../schema/embedding";
 import type { DrizzleDatabase } from "../types";

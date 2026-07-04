@@ -1,11 +1,11 @@
-import { sql } from "drizzle-orm";
-import { index, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
-import { agentTable } from "./agent";
-
 /**
  * Represents the allowlist of approved senders for each channel.
  * Senders in this list are permitted to send DMs to the bot.
  */
+import { sql } from "drizzle-orm";
+import { index, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { agentTable } from "./agent";
+
 export const pairingAllowlistTable = pgTable(
   "pairing_allowlist",
   {
@@ -24,9 +24,7 @@ export const pairingAllowlistTable = pgTable(
       .references(() => agentTable.id, { onDelete: "cascade" }),
   },
   (table) => [
-    // Index for looking up allowlist by channel and agent
     index("pairing_allowlist_channel_agent_idx").on(table.channel, table.agentId),
-    // Unique constraint to prevent duplicate entries
     uniqueIndex("pairing_allowlist_sender_channel_agent_idx").on(
       table.senderId,
       table.channel,

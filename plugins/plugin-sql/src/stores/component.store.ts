@@ -1,3 +1,8 @@
+/**
+ * CRUD store for the `components` table (entity attachments scoped by type,
+ * and optionally by world/source-entity), mapping DB rows to the runtime's
+ * `Component` domain type.
+ */
 import type { Component, UUID } from "@elizaos/core";
 import { and, eq } from "drizzle-orm";
 import { componentTable } from "../schema/index";

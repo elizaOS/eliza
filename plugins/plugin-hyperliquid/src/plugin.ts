@@ -1,3 +1,12 @@
+/**
+ * The `@elizaos/plugin-hyperliquid` `Plugin` object: registers the
+ * `PERPETUAL_MARKET` action, `PerpetualMarketService`, the read-only
+ * `/api/hyperliquid/*` routes (all POST routes 501 — execution is disabled),
+ * and the single Hyperliquid view rendered across GUI/XR/TUI modalities.
+ * Route handlers bridge the elizaOS `RouteRequest`/`RouteResponse` shape to
+ * Node's `http.IncomingMessage`/`http.ServerResponse`, which is what
+ * `handleHyperliquidRoute` in `routes.ts` expects.
+ */
 import type http from "node:http";
 import type {
   IAgentRuntime,

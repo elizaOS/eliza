@@ -1,3 +1,10 @@
+/**
+ * Every memory READ path (`getMemories`, `getMemoriesByRoomIds`,
+ * `getMemoryById`, `getMemoriesByIds`) must map the stored `worldId` back
+ * onto the returned `Memory`, against a real isolated PGlite/Postgres
+ * adapter — consumers that round-trip a fetched memory (e.g. agent-export
+ * restore, which remaps `mem.worldId`) depend on every path agreeing.
+ */
 import {
   ChannelType,
   type Entity,
@@ -12,15 +19,6 @@ import type { PgDatabaseAdapter } from "../../pg/adapter";
 import type { PgliteDatabaseAdapter } from "../../pglite/adapter";
 import { createIsolatedTestDatabase } from "../test-helpers";
 
-/**
- * Every memory READ path must return the stored `worldId`.
- *
- * Pre-fix, only searchMemoriesByEmbedding mapped `worldId` back onto the
- * returned Memory; getMemories / getMemoriesByRoomIds / getMemoryById /
- * getMemoriesByIds silently dropped it, so consumers that round-trip a
- * fetched memory (e.g. agent-export -> restore, which remaps `mem.worldId`)
- * permanently lost every memory→world association.
- */
 describe("Memory worldId round-trip", () => {
   let adapter: PgliteDatabaseAdapter | PgDatabaseAdapter;
   let cleanup: () => Promise<void>;

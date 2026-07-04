@@ -1,3 +1,13 @@
+/**
+ * Composes `lpManagerPlugin`, the LP (liquidity provisioning) sub-plugin:
+ * registers the LP services (management, vault, user profile, yield
+ * optimization, concentrated liquidity, DEX interaction) and the
+ * `liquidityAction`, then on `init` detects which chains/DEXes are
+ * configured (Solana private key/RPC → Raydium/Orca/Meteora; EVM RPCs →
+ * Uniswap/PancakeSwap/Aerodrome) and dynamically imports + initializes only
+ * those DEX plugins. Also re-exports the DEX plugins/services and LP types
+ * for direct consumption.
+ */
 import {
   type IAgentRuntime,
   logger,
@@ -13,10 +23,8 @@ import { LpManagementService } from "./services/LpManagementService.ts";
 import { UserLpProfileService } from "./services/UserLpProfileService.ts";
 import { VaultService } from "./services/VaultService.ts";
 import { YieldOptimizationService } from "./services/YieldOptimizationService.ts";
-// LpAutoRebalanceTask import removed - file doesn't exist
 import type { EvmDex, SolanaDex } from "./types.ts";
 
-// It's good practice to define a unique name for the plugin
 export const LP_MANAGER_PLUGIN_NAME = "@elizaos/plugin-lp-manager";
 
 /**

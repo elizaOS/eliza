@@ -1,3 +1,9 @@
+/**
+ * Side-effect module: wires the Hyperliquid view into hosts that bypass the
+ * network-served `DynamicViewLoader` — the terminal engine (Node agent, no
+ * DOM) and native iOS/Android (which disable `DynamicViewLoader` and need the
+ * already-bundled component registered as an app-shell page).
+ */
 import { registerAppShellPage } from "@elizaos/ui/app-shell-registry";
 
 // In a terminal host (the Node agent, no DOM), register the Hyperliquid view so

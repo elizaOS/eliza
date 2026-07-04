@@ -1,3 +1,8 @@
+/**
+ * Browser build of `./utils`: filesystem-backed path resolution has no
+ * meaning in-browser, so these are fixed-value stubs; `sanitizeJsonObject` is
+ * the real, shared implementation (mirrored in `./utils.node.ts`).
+ */
 export function expandTildePath(filepath: string): string {
   return filepath;
 }
@@ -16,13 +21,12 @@ export function sanitizeJsonObject(value: unknown, seen: WeakSet<object> = new W
   }
 
   if (typeof value === "string") {
-    // Strip NUL characters: PostgreSQL/PGlite jsonb rejects the `\u0000`
-    // escape JSON.stringify emits for them. Nothing else needs rewriting --
-    // the sanitized value is serialized with JSON.stringify, which already
-    // escapes backslashes and control characters correctly. (This function
-    // used to double every backslash not followed by ["\/bfnrtu] and mangle
-    // non-hex `\u` sequences, so a value like "C:\Users" came back as
-    // "C:\\Users" after a write/read round-trip -- silent data corruption.)
+    // Strips NUL characters: PostgreSQL/PGlite jsonb rejects the `\u0000`
+    // escape JSON.stringify emits for them. Nothing else needs rewriting here --
+    // the value is serialized with JSON.stringify, which already escapes
+    // backslashes and control characters correctly; re-escaping them here
+    // would corrupt already-escaped strings (e.g. "C:\Users") on a
+    // write/read round-trip.
     return value.replace(new RegExp(String.fromCharCode(0), "g"), "");
   }
 

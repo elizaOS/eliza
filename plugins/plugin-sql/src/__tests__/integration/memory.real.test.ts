@@ -1,3 +1,10 @@
+/**
+ * Integration tests for the memory CRUD/retrieval/search surface against a
+ * real isolated PGlite/Postgres adapter: create/update/delete, partial and
+ * nested-partial metadata updates, room/id-list/pagination reads, embedding
+ * search, document+fragment cascade delete, and Memory<->MemoryModel field
+ * mapping.
+ */
 import {
   ChannelType,
   type Content,
@@ -45,7 +52,6 @@ describe("Memory Integration Tests", () => {
       cleanup = setup.cleanup;
       testAgentId = setup.testAgentId;
 
-      // Use random UUIDs to avoid conflicts
       testRoomId = v4() as UUID;
       testEntityId = v4() as UUID;
       testWorldId = v4() as UUID;
@@ -76,7 +82,7 @@ describe("Memory Integration Tests", () => {
       await adapter.addParticipant(testEntityId, testRoomId);
     } catch (error) {
       console.error("Failed to create test database for memory tests:", error);
-      throw error; // Fail the test instead of continuing
+      throw error;
     }
   });
 
@@ -211,10 +217,8 @@ describe("Memory Integration Tests", () => {
     });
 
     it("should perform partial updates without affecting other fields", async () => {
-      // Create a complete memory first with content, metadata and embedding
       const memory = {
         ...memoryTestMemoriesWithEmbedding[0],
-        // Override with correct test IDs
         agentId: testAgentId,
         entityId: testEntityId,
         roomId: testRoomId,
@@ -228,7 +232,6 @@ describe("Memory Integration Tests", () => {
 
       const memoryId = await adapter.createMemory(memory, "memories");
 
-      // Update only content
       const contentUpdate = {
         id: memoryId,
         content: {
@@ -239,7 +242,6 @@ describe("Memory Integration Tests", () => {
 
       await adapter.updateMemory(contentUpdate);
 
-      // Verify only content changed, embedding and metadata preserved
       const afterContentUpdate = await adapter.getMemoryById(memoryId);
       expect(afterContentUpdate).not.toBeNull();
       if (!afterContentUpdate) throw new Error("Memory should exist");
@@ -250,7 +252,6 @@ describe("Memory Integration Tests", () => {
       );
       expect(afterContentUpdate.metadata).toEqual(memory.metadata);
 
-      // Update only one field in metadata
       const metadataUpdate = {
         id: memoryId,
         metadata: {
@@ -263,7 +264,6 @@ describe("Memory Integration Tests", () => {
 
       await adapter.updateMemory(metadataUpdate);
 
-      // Verify partial metadata update behaves as expected
       const afterMetadataUpdate = await adapter.getMemoryById(memoryId);
       expect(afterMetadataUpdate).not.toBeNull();
       if (!afterMetadataUpdate) throw new Error("Memory should exist");
@@ -278,10 +278,8 @@ describe("Memory Integration Tests", () => {
     });
 
     it("should perform nested partial updates without overriding existing fields", async () => {
-      // Create a memory with rich content and metadata
       const originalMemory = {
         ...memoryTestMemoriesWithEmbedding[0],
-        // Override with correct test IDs
         agentId: testAgentId,
         entityId: testEntityId,
         roomId: testRoomId,
@@ -313,7 +311,6 @@ describe("Memory Integration Tests", () => {
 
       await adapter.updateMemory(contentTextUpdate);
 
-      // Verify content was updated but metadata preserved
       const afterContentTextUpdate = await adapter.getMemoryById(memoryId);
       expect(afterContentTextUpdate).not.toBeNull();
       if (!afterContentTextUpdate) throw new Error("Memory should exist");
@@ -337,7 +334,6 @@ describe("Memory Integration Tests", () => {
 
       await adapter.updateMemory(sourceUpdate);
 
-      // Verify metadata was updated and content preserved
       const afterSourceUpdate = await adapter.getMemoryById(memoryId);
       expect(afterSourceUpdate).not.toBeNull();
       if (!afterSourceUpdate || !afterContentTextUpdate) throw new Error("Memory should exist");
@@ -427,11 +423,9 @@ describe("Memory Integration Tests", () => {
     });
 
     it("should retrieve memories by ID list", async () => {
-      // Create test memories and collect their IDs
       const memoryIds: UUID[] = [];
 
       for (const memory of memoryTestMemories.slice(0, 2)) {
-        // Override with correct test IDs
         const testMemory = {
           ...memory,
           agentId: testAgentId,
@@ -442,7 +436,6 @@ describe("Memory Integration Tests", () => {
         memoryIds.push(memoryId);
       }
 
-      // Retrieve memories by IDs
       const memories = await adapter.getMemoriesByIds(memoryIds, "memories");
 
       expect(memories).toHaveLength(2);
@@ -450,9 +443,7 @@ describe("Memory Integration Tests", () => {
     });
 
     it("should retrieve memories with pagination", async () => {
-      // Create test memories
       for (const memory of memoryTestMemories) {
-        // Override with correct test IDs
         const testMemory = {
           ...memory,
           agentId: testAgentId,
@@ -462,7 +453,6 @@ describe("Memory Integration Tests", () => {
         await adapter.createMemory(testMemory, "memories");
       }
 
-      // Retrieve first page (limit to 2)
       const firstPage = await adapter.getMemories({
         roomId: testRoomId,
         tableName: "memories",
@@ -471,20 +461,15 @@ describe("Memory Integration Tests", () => {
 
       expect(firstPage).toHaveLength(2);
 
-      // Test second page (remaining memories)
       const secondPage = await adapter.getMemories({
         roomId: testRoomId,
         tableName: "memories",
       });
 
-      // There should be at least 3 memories total
       expect(secondPage.length).toBeGreaterThanOrEqual(memoryTestMemories.length);
     });
 
     it("should apply a LIMIT clause when only `limit` is passed (not `count`)", async () => {
-      // Regression: getMemories previously only honored `count`, so callers that
-      // passed the canonical `limit` param (recent-messages provider, attachments,
-      // autonomy history, etc.) received the full unbounded result set.
       for (const content of ["lim1", "lim2", "lim3", "lim4", "lim5"]) {
         await adapter.createMemory(createTestMemory({ text: content }), "memories");
       }
@@ -511,13 +496,11 @@ describe("Memory Integration Tests", () => {
     });
 
     it("should retrieve memories with offset for pagination", async () => {
-      // Create 5 test memories with known content
       const memoryContents = ["mem1", "mem2", "mem3", "mem4", "mem5"];
       for (const content of memoryContents) {
         await adapter.createMemory(createTestMemory({ text: content }), "memories");
       }
 
-      // First page: get first 2 memories
       const firstPage = await adapter.getMemories({
         roomId: testRoomId,
         tableName: "memories",
@@ -526,7 +509,6 @@ describe("Memory Integration Tests", () => {
       });
       expect(firstPage).toHaveLength(2);
 
-      // Second page: skip first 2, get next 2
       const secondPage = await adapter.getMemories({
         roomId: testRoomId,
         tableName: "memories",
@@ -535,7 +517,6 @@ describe("Memory Integration Tests", () => {
       });
       expect(secondPage).toHaveLength(2);
 
-      // Third page: skip first 4, get remaining
       const thirdPage = await adapter.getMemories({
         roomId: testRoomId,
         tableName: "memories",
@@ -544,26 +525,22 @@ describe("Memory Integration Tests", () => {
       });
       expect(thirdPage).toHaveLength(1);
 
-      // Verify no overlap between pages
       const allIds = [...firstPage, ...secondPage, ...thirdPage].map((m) => m.id);
       const uniqueIds = new Set(allIds);
       expect(allIds.length).toBe(uniqueIds.size);
     });
 
     it("should handle offset without count parameter", async () => {
-      // Create 5 test memories
       for (let i = 0; i < 5; i++) {
         await adapter.createMemory(createTestMemory({ text: `mem${i}` }), "memories");
       }
 
-      // Get all memories
       const allMemories = await adapter.getMemories({
         roomId: testRoomId,
         tableName: "memories",
       });
       expect(allMemories.length).toBe(5);
 
-      // Get memories with only offset (skip first 2)
       const withOffset = await adapter.getMemories({
         roomId: testRoomId,
         tableName: "memories",
@@ -571,19 +548,16 @@ describe("Memory Integration Tests", () => {
       });
       expect(withOffset.length).toBe(3);
 
-      // Verify the offset memories are the last 3 of all memories
       const lastThreeIds = allMemories.slice(2).map((m) => m.id);
       const offsetIds = withOffset.map((m) => m.id);
       expect(offsetIds).toEqual(lastThreeIds);
     });
 
     it("should handle edge cases for offset pagination", async () => {
-      // Create 3 test memories
       for (let i = 0; i < 3; i++) {
         await adapter.createMemory(createTestMemory({ text: `mem${i}` }), "memories");
       }
 
-      // Offset beyond available memories
       const beyondOffset = await adapter.getMemories({
         roomId: testRoomId,
         tableName: "memories",
@@ -612,10 +586,8 @@ describe("Memory Integration Tests", () => {
     });
 
     it("should reject negative offset values", async () => {
-      // Create a test memory
       await adapter.createMemory(createTestMemory({ text: "test" }), "memories");
 
-      // Attempt to use negative offset
       await expect(
         adapter.getMemories({
           roomId: testRoomId,
@@ -624,7 +596,6 @@ describe("Memory Integration Tests", () => {
         })
       ).rejects.toThrow("offset must be a non-negative number");
 
-      // Attempt to use another negative offset
       await expect(
         adapter.getMemories({
           roomId: testRoomId,
@@ -636,17 +607,14 @@ describe("Memory Integration Tests", () => {
     });
 
     it("should maintain consistent pagination results with countMemories", async () => {
-      // Create 10 test memories
       const totalMemories = 10;
       for (let i = 0; i < totalMemories; i++) {
         await adapter.createMemory(createTestMemory({ text: `mem${i}` }), "memories");
       }
 
-      // Get total count
       const totalCount = await adapter.countMemories(testRoomId, false, "memories");
       expect(totalCount).toBe(totalMemories);
 
-      // Paginate through all memories
       const pageSize = 3;
       const totalPages = Math.ceil(totalCount / pageSize);
       const allPaginatedMemories: Memory[] = [];
@@ -661,10 +629,8 @@ describe("Memory Integration Tests", () => {
         allPaginatedMemories.push(...pageMemories);
       }
 
-      // Verify we got all memories through pagination
       expect(allPaginatedMemories.length).toBe(totalMemories);
 
-      // Verify all IDs are unique (no duplicates from pagination)
       const ids = allPaginatedMemories.map((m) => m.id);
       const uniqueIds = new Set(ids);
       expect(ids.length).toBe(uniqueIds.size);
@@ -699,7 +665,6 @@ describe("Memory Integration Tests", () => {
 
   describe("Document and Fragment Operations", () => {
     it("should create a document with fragments", async () => {
-      // Create the document with correct test IDs
       const testDocument = {
         ...memoryTestDocument,
         agentId: testAgentId,
@@ -708,7 +673,6 @@ describe("Memory Integration Tests", () => {
       };
       await adapter.createMemory(testDocument, "documents");
 
-      // Create fragments that reference the document with correct test IDs
       for (const fragment of memoryTestFragments) {
         const testFragment = {
           ...fragment,
@@ -719,7 +683,6 @@ describe("Memory Integration Tests", () => {
         await adapter.createMemory(testFragment, "fragments");
       }
 
-      // Retrieve fragments for the document
       const fragments = await adapter.getMemories({
         tableName: "fragments",
         roomId: testRoomId,
@@ -729,7 +692,6 @@ describe("Memory Integration Tests", () => {
     });
 
     it("should delete a document and its fragments", async () => {
-      // Create the document with correct test IDs
       const testDocument = {
         ...memoryTestDocument,
         agentId: testAgentId,
@@ -738,7 +700,6 @@ describe("Memory Integration Tests", () => {
       };
       await adapter.createMemory(testDocument, "documents");
 
-      // Create fragments that reference the document with correct test IDs
       for (const fragment of memoryTestFragments) {
         const testFragment = {
           ...fragment,
@@ -749,14 +710,12 @@ describe("Memory Integration Tests", () => {
         await adapter.createMemory(testFragment, "fragments");
       }
 
-      // Delete the document (should cascade to fragments)
+      // Deleting the document must cascade to its fragments.
       await adapter.deleteMemory(documentMemoryId);
 
-      // Verify document is deleted
       const document = await adapter.getMemoryById(documentMemoryId);
       expect(document).toBeNull();
 
-      // Verify fragments are also deleted
       const fragments = await adapter.getMemories({
         tableName: "fragments",
         roomId: testRoomId,
@@ -775,15 +734,12 @@ describe("Memory Integration Tests", () => {
         roomId: testRoomId,
       };
 
-      // Create the memory
       await adapter.createMemory(testMemory, "memories");
 
-      // Retrieve it from database
       const retrievedMemory = await adapter.getMemoryById(testMemory.id as UUID);
       expect(retrievedMemory).not.toBeNull();
       if (!retrievedMemory) throw new Error("Memory should exist");
 
-      // Verify all fields were properly mapped
       expect(retrievedMemory.id).toBe(testMemory.id as UUID);
       expect(retrievedMemory.entityId).toBe(testMemory.entityId);
       expect(retrievedMemory.roomId).toBe(testMemory.roomId);
@@ -797,10 +753,8 @@ describe("Memory Integration Tests", () => {
     });
 
     it("should handle partial Memory objects in mapToMemoryModel", async () => {
-      // Create a unique entity ID for this test to avoid conflicts
       const uniqueEntityId = v4() as UUID;
 
-      // Create the required entity first to avoid foreign key constraint violations
       await adapter.createEntities([
         {
           id: uniqueEntityId,
@@ -809,9 +763,8 @@ describe("Memory Integration Tests", () => {
         } as Entity,
       ]);
 
-      // Create a partial memory object
       const partialMemory: Partial<Memory> = {
-        id: memoryTestAgentId, // Using a known UUID
+        id: memoryTestAgentId,
         entityId: uniqueEntityId,
         roomId: testRoomId,
         agentId: testAgentId,
@@ -821,15 +774,12 @@ describe("Memory Integration Tests", () => {
         },
       };
 
-      // Create the memory
       await adapter.createMemory(partialMemory as Partial<Memory>, "memories");
 
-      // Retrieve it from database
       const retrievedMemory = await adapter.getMemoryById(partialMemory.id as UUID);
       expect(retrievedMemory).not.toBeNull();
       if (!retrievedMemory) throw new Error("Memory should exist");
 
-      // Verify fields were properly mapped with defaults where applicable
       expect(retrievedMemory.id).toBe(partialMemory.id);
       expect(retrievedMemory.entityId).toBe(partialMemory.entityId);
       expect(retrievedMemory.roomId).toBe(partialMemory.roomId);
@@ -843,10 +793,8 @@ describe("Memory Integration Tests", () => {
 
   describe("Memory Batch Operations", () => {
     it("should delete all memories in a room", async () => {
-      // Create a unique entity ID for this test to avoid conflicts
       const uniqueEntityId = v4() as UUID;
 
-      // Create the required entity first to avoid foreign key constraint violations
       await adapter.createEntities([
         {
           id: uniqueEntityId,
@@ -855,7 +803,6 @@ describe("Memory Integration Tests", () => {
         } as Entity,
       ]);
 
-      // Create test memories with correct entity IDs
       for (const memory of memoryTestMemories) {
         const testMemory = {
           ...memory,
@@ -866,14 +813,11 @@ describe("Memory Integration Tests", () => {
         await adapter.createMemory(testMemory, "memories");
       }
 
-      // Verify memories exist
       const countBefore = await adapter.countMemories(testRoomId, true, "memories");
       expect(countBefore).toBeGreaterThan(0);
 
-      // Delete all memories
       await adapter.deleteAllMemories(testRoomId, "memories");
 
-      // Verify memories were deleted
       const countAfter = await adapter.countMemories(testRoomId, true, "memories");
       expect(countAfter).toBe(0);
     });
@@ -891,17 +835,14 @@ describe("Memory Integration Tests", () => {
         },
       ]);
 
-      // Create memories in the first room
       await adapter.createMemory(createTestMemory({ text: "mem1-room1" }), "memories");
       await adapter.createMemory(createTestMemory({ text: "mem2-room1" }), "memories");
 
-      // Create memories in the second room
       await adapter.createMemory(
         { ...createTestMemory({ text: "mem3-room2" }), roomId: secondRoomId },
         "memories"
       );
 
-      // Retrieve memories from both rooms
       const memories = await adapter.getMemoriesByRoomIds({
         roomIds: [testRoomId, secondRoomId],
         tableName: "memories",
@@ -912,8 +853,6 @@ describe("Memory Integration Tests", () => {
   });
 
   it("should properly convert metadata objects to JSON when updating only metadata", async () => {
-    // This test specifically verifies the fix for the bug where metadata objects
-    // were being sent as [object Object] instead of proper JSON
     await adapter.ensureEmbeddingDimension(768);
     const memory = {
       entityId: testEntityId,
@@ -936,7 +875,6 @@ describe("Memory Integration Tests", () => {
     const memoryId = await adapter.createMemory(memory, "memory");
     expect(memoryId).toBeDefined();
 
-    // Update only metadata with a complex object
     const complexMetadata = {
       type: "updated",
       source: "test-update",
@@ -960,12 +898,11 @@ describe("Memory Integration Tests", () => {
 
     expect(updateResult).toBe(true);
 
-    // Verify the metadata was properly stored
     const updated = await adapter.getMemoryById(memoryId);
     expect(updated).not.toBeNull();
     if (!updated) throw new Error("Memory should exist");
     expect(updated.metadata).toEqual(complexMetadata);
     const content = updated.content as Record<string, unknown>;
-    expect(content.text).toBe("Initial content"); // Content should be unchanged
+    expect(content.text).toBe("Initial content");
   });
 });

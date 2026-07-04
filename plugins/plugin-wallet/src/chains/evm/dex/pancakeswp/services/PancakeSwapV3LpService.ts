@@ -1,3 +1,10 @@
+/**
+ * `PancakeSwapV3LpService` implements `IEvmLpService` for PancakeSwap V3
+ * across BSC, Ethereum, Arbitrum, and Base: concentrated-liquidity pool
+ * reads via the factory/pool contracts, and NFT-position mint/decrease/
+ * collect/burn writes through the nonfungible position manager, with
+ * per-chain RPC clients and ERC-20 approval handled inline.
+ */
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
 import {
   type Address,

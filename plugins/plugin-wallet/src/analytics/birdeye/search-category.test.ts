@@ -1,3 +1,8 @@
+/**
+ * Unit tests for the Birdeye search-category registration and
+ * `searchBirdeyeTokens` dispatch (symbol vs address mode), against a mocked
+ * runtime and mocked `BirdeyeProvider` fetch methods — no live API calls.
+ */
 import type { IAgentRuntime, SearchCategoryRegistration } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import type { BirdeyeProvider } from "./birdeye";

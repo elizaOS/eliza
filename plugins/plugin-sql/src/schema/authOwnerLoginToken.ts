@@ -1,7 +1,3 @@
-import { bigint, foreignKey, index, pgTable, text } from "drizzle-orm/pg-core";
-import { authIdentityTable } from "./authIdentity";
-import { authOwnerBindingTable } from "./authOwnerBinding";
-
 /**
  * Single-use DM-link login tokens for the connector-owner convenience flow.
  *
@@ -15,6 +11,10 @@ import { authOwnerBindingTable } from "./authOwnerBinding";
  * `consumed_at` and the row is preserved for audit. Rows older than
  * `expires_at + 24h` are eligible for cleanup.
  */
+import { bigint, foreignKey, index, pgTable, text } from "drizzle-orm/pg-core";
+import { authIdentityTable } from "./authIdentity";
+import { authOwnerBindingTable } from "./authOwnerBinding";
+
 export const authOwnerLoginTokenTable = pgTable(
   "auth_owner_login_tokens",
   {

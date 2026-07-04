@@ -1,3 +1,11 @@
+/**
+ * Integration tests for PGlite live query latency: measures end-to-end time
+ * from INSERT to callback fire on the same `live.query()` pipeline the
+ * `/api/database/status/events` SSE/WebSocket endpoints use to push reactive
+ * table counts. Uses `live.query()` rather than `incrementalQuery` because
+ * these single-table tests use plain `COUNT(*)` aggregates with no stable
+ * row identifier, unlike the production UNION ALL query.
+ */
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -8,21 +16,6 @@ import { DatabaseMigrationService } from "../../migration-service";
 import { PGliteClientManager } from "../../pglite/manager";
 import * as schema from "../../schema";
 import type { DrizzleDatabase } from "../../types";
-
-/**
- * Integration tests for the PGlite live query latency.
- *
- * The SSE endpoint at /api/database/status/events and the WebSocket
- * endpoint at ws://host:PORT/api/database/status/events both use
- * live queries to push reactive table counts. These tests exercise
- * the same `live.query()` pipeline directly, measuring end-to-end
- * latency from INSERT to callback fire.
- *
- * Note: we use `live.query()` (not `incrementalQuery`) because the
- * production pipeline uses a UNION ALL query with a `table_name` key
- * column to identify rows, while these single-table tests use simple
- * COUNT(*) aggregates without a stable row identifier.
- */
 
 function createTempDir(prefix: string): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));

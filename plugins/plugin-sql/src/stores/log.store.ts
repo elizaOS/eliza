@@ -1,3 +1,9 @@
+/**
+ * Store for the `logs` table: append-only event records (actions, evaluators,
+ * model calls, embedding events) plus `getAgentRunSummaries`, which
+ * reconstructs per-run status/timing/counts by aggregating `run_event` and
+ * related log rows rather than reading from a dedicated runs table.
+ */
 import type {
   AgentRunCounts,
   AgentRunSummary,

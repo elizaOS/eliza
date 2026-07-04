@@ -1,6 +1,3 @@
-import { describe, expect, it } from "vitest";
-import { parseAmount, toHuman, toRaw } from "./decimals.ts";
-
 /**
  * Token-amount decimal conversion (#8801 — money-critical, shipped untested).
  * `toRaw` turns a human amount into raw on-chain base units and `toHuman`
@@ -8,6 +5,9 @@ import { parseAmount, toHuman, toRaw } from "./decimals.ts";
  * the floor-on-excess-precision behavior, the round-trip, and the
  * reject-malformed-input path.
  */
+import { describe, expect, it } from "vitest";
+import { parseAmount, toHuman, toRaw } from "./decimals.ts";
+
 describe("toRaw", () => {
   it("scales integer and fractional amounts by decimals", () => {
     expect(toRaw("100", 6)).toBe(100_000_000n);

@@ -1,22 +1,14 @@
+/**
+ * PostgreSQL RLS integration tests for server-level isolation between
+ * different elizaOS instances sharing one database: enforced for
+ * non-superuser accounts, using the `eliza_test` role for all connections
+ * (`application_name` supplies each server's RLS context). Verifies data is
+ * completely isolated between servers.
+ */
 import { Client } from "pg";
 import { v4 as uuidv4 } from "uuid";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { bootstrapPostgresRlsSchema } from "./rls-test-helpers";
-
-/**
- * PostgreSQL RLS Server Integration Tests
- *
- * These tests require a real PostgreSQL database with RLS enabled.
- * Run with: docker-compose up -d postgres
- *
- * Tests verify:
- * - Server-level isolation between different elizaOS instances
- * - RLS policies are enforced for non-superuser accounts
- * - Data is completely isolated between servers
- *
- * Uses eliza_test user for ALL connections (not superuser) - the application_name
- * provides server context for RLS. Each server's data is set up via its own connection.
- */
 
 // Skip these tests if POSTGRES_URL is not set (e.g., in CI without PostgreSQL)
 describe.skipIf(!process.env.POSTGRES_URL)("PostgreSQL RLS Server Integration", () => {

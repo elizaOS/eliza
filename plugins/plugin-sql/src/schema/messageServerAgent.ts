@@ -1,3 +1,4 @@
+/** Join table linking agents to the message servers they participate in; composite PK prevents duplicate membership and cascade-deletes with either side. */
 import { pgTable, primaryKey, uuid } from "drizzle-orm/pg-core";
 import { agentTable } from "./agent";
 import { messageServerTable } from "./messageServer";

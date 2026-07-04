@@ -1,3 +1,9 @@
+/**
+ * Shared setup/assertion helpers for the LP manager's `TestSuite` scenarios
+ * (`scenarios.ts`, `real-token-tests.ts`): builds a world/user/room against a
+ * live `IAgentRuntime` and sends a message through the real agent pipeline,
+ * waiting for its response.
+ */
 import { strict as assert } from "node:assert";
 import {
   asUUID,

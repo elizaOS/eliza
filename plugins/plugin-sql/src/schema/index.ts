@@ -1,3 +1,8 @@
+/**
+ * Barrel re-exporting every Drizzle table schema in this plugin, assembled
+ * into the plugin's `schema` export so `DatabaseMigrationService` can
+ * auto-migrate all of them at startup.
+ */
 export { agentTable } from "./agent";
 export { approvalRequestTable } from "./approvalRequests";
 export type { AuthAuditOutcome } from "./authAuditEvent";

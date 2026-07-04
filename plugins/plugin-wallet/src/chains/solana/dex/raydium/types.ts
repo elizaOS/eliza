@@ -1,3 +1,9 @@
+/**
+ * Quote/swap request-response shapes consumed by `RaydiumService`. Named
+ * `Jupiter*` because they mirror the Jupiter aggregator quote API shape, not
+ * because Raydium calls Jupiter — `RaydiumService` hits `api.raydium.io`
+ * directly and parses responses into these types.
+ */
 export interface JupiterQuoteParams {
   inputMint: string;
   outputMint: string;

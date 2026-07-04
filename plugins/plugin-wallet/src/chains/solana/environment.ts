@@ -1,3 +1,9 @@
+/**
+ * Zod schema and validator for required Solana runtime settings (RPC URL,
+ * slippage, and either a private key + public key pair or a secret salt for
+ * TEE-derived keys). `validateSolanaConfig` throws a combined, human-readable
+ * error listing every missing/invalid field.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import { z } from "zod";
 

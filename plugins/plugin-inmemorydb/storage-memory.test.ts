@@ -1,3 +1,4 @@
+/** Unit tests for `MemoryStorage` — readiness gating, collection isolation, and CRUD — run against the real in-memory implementation, no mocks. */
 import { describe, expect, it } from "vitest";
 import { MemoryStorage } from "./storage-memory";
 

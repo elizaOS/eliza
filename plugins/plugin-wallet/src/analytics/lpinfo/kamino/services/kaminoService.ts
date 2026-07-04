@@ -1,10 +1,17 @@
+/**
+ * `KAMINO_SERVICE`: client for Kamino's lending-adjacent REST API. As with
+ * the sibling `KaminoLiquidityService`, the API has no direct
+ * markets/positions/reserves endpoints, so `discoverMarkets`,
+ * `getUserPositions`, `getMarketOverview`, and `getAvailableReserves`
+ * synthesize results from `/v2/staking-yields` and `/limo/trades`. Fields like
+ * TVL, borrow APY, and utilization that the API doesn't expose are
+ * heuristic estimates (see the `estimate*`/`calculate*` helpers below), not
+ * exact on-chain values.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger, Service } from "@elizaos/core";
 
-// Kamino API constants
 const KAMINO_API_BASE_URL = "https://api.kamino.finance";
-
-// Kamino Lend Program constants (for reference)
 const KAMINO_LEND_PROGRAM_ID = "GzFgdRJXmawPhGeBsyRCDLx4jAKPsvbUqoqitzppkzkW";
 const KAMINO_MULTISIG = "6hhBGCtmg7tPWUSgp3LG6X2rsmYWAc4tNsA6G4CnfQbM";
 
@@ -135,10 +142,6 @@ function formatLogError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-/**
- * Kamino Lending Protocol Service
- * Handles interactions with Kamino lending protocol using the official API
- */
 export class KaminoService extends Service {
   private isRunning = false;
   private apiBaseUrl: string;
@@ -161,9 +164,6 @@ export class KaminoService extends Service {
     logger.log(`Program ID: ${KAMINO_LEND_PROGRAM_ID}`);
   }
 
-  /**
-   * Make a rate-limited API request to Kamino
-   */
   private async makeApiRequest<T>(
     endpoint: string,
     options: RequestInit = {},
@@ -194,15 +194,12 @@ export class KaminoService extends Service {
     }
   }
 
-  /**
-   * Get all user positions (lending and borrowing) for a wallet address
-   */
   async getUserPositions(walletAddress: string): Promise<KaminoUserPositions> {
     try {
       logger.log(`Fetching user positions for wallet: ${walletAddress}`);
 
-      // Since the API doesn't have direct user position endpoints,
-      // we'll return a structure based on available market data
+      // No direct user-position endpoint exists; build a positions structure
+      // from discovered markets instead.
       const markets = await this.discoverMarkets();
       logger.log(`Discovered ${markets.length} Kamino markets`);
 
@@ -236,16 +233,12 @@ export class KaminoService extends Service {
     }
   }
 
-  /**
-   * Discover all Kamino markets by querying available API endpoints
-   */
   async discoverMarkets(): Promise<string[]> {
     try {
       logger.log("Discovering Kamino markets...");
 
       const markets: string[] = [];
 
-      // Get staking yields to discover available tokens
       try {
         const stakingYields =
           await this.makeApiRequest<KaminoStakingYield[]>("/v2/staking-yields");
@@ -262,7 +255,6 @@ export class KaminoService extends Service {
         logger.warn("Error fetching staking yields:", formatLogError(error));
       }
 
-      // Get Limo trades to discover trading pairs
       try {
         const limoTrades =
           await this.makeApiRequest<KaminoLimoTrade[]>("/limo/trades");
@@ -290,9 +282,6 @@ export class KaminoService extends Service {
     }
   }
 
-  /**
-   * Get market overview and statistics
-   */
   async getMarketOverview(): Promise<KaminoMarketOverview> {
     try {
       logger.log("Fetching market overview...");
@@ -308,22 +297,17 @@ export class KaminoService extends Service {
         multisig: KAMINO_MULTISIG,
       };
 
-      // Get staking yields for market data
       try {
         const stakingYields =
           await this.makeApiRequest<KaminoStakingYield[]>("/v2/staking-yields");
         overview.stakingYields = stakingYields.length;
 
-        // Calculate total TVL estimate from staking yields using real market data
         overview.totalTvl = stakingYields.reduce((sum, stakingYield) => {
           const apy = parseFloat(stakingYield.apy || "0");
-          // Use real APY data to estimate TVL
-          // Higher APY typically indicates lower supply (inverse relationship)
           const estimatedTvl = this.estimateTvlFromApy(apy);
           return sum + estimatedTvl;
         }, 0);
 
-        // Add market statistics from real data
         overview.avgApy =
           stakingYields.reduce(
             (sum, stakingYield) => sum + parseFloat(stakingYield.apy || "0"),
@@ -348,7 +332,6 @@ export class KaminoService extends Service {
         );
       }
 
-      // Get Limo trades for volume data
       try {
         const limoTrades =
           await this.makeApiRequest<KaminoLimoTrade[]>("/limo/trades");
@@ -363,7 +346,6 @@ export class KaminoService extends Service {
         );
       }
 
-      // Create market entries
       for (const market of markets) {
         overview.markets.push({
           address: market,
@@ -394,9 +376,6 @@ export class KaminoService extends Service {
     }
   }
 
-  /**
-   * Get available reserves for lending/borrowing
-   */
   async getAvailableReserves(): Promise<KaminoReserve[]> {
     try {
       logger.log("Fetching available reserves...");
@@ -404,7 +383,6 @@ export class KaminoService extends Service {
       const _markets = await this.discoverMarkets();
       const reserves: KaminoReserve[] = [];
 
-      // Get staking yields to understand available lending opportunities
       try {
         const stakingYields =
           await this.makeApiRequest<KaminoStakingYield[]>("/v2/staking-yields");
@@ -434,7 +412,6 @@ export class KaminoService extends Service {
         );
       }
 
-      // Get Limo trades to understand trading opportunities
       try {
         const limoTrades =
           await this.makeApiRequest<KaminoLimoTrade[]>("/limo/trades");
@@ -475,9 +452,6 @@ export class KaminoService extends Service {
     }
   }
 
-  /**
-   * Get program account info for debugging
-   */
   async getProgramInfo(): Promise<KaminoProgramInfo> {
     try {
       logger.log("Fetching program info...");
@@ -500,9 +474,6 @@ export class KaminoService extends Service {
     }
   }
 
-  /**
-   * Calculate borrow APY based on supply APY
-   */
   private calculateBorrowApy(supplyApy: number): number {
     try {
       // Borrow APY is typically lower than supply APY
@@ -515,9 +486,6 @@ export class KaminoService extends Service {
     }
   }
 
-  /**
-   * Estimate total supply based on staking yield data
-   */
   private estimateTotalSupply(stakingYield: KaminoStakingYield): number {
     try {
       const apy = parseFloat(stakingYield.apy || "0");
@@ -533,9 +501,6 @@ export class KaminoService extends Service {
     }
   }
 
-  /**
-   * Estimate total borrow based on staking yield data
-   */
   private estimateTotalBorrow(stakingYield: KaminoStakingYield): number {
     try {
       const totalSupply = this.estimateTotalSupply(stakingYield);
@@ -547,9 +512,6 @@ export class KaminoService extends Service {
     }
   }
 
-  /**
-   * Calculate utilization rate based on staking yield data
-   */
   private calculateUtilization(stakingYield: KaminoStakingYield): number {
     try {
       const totalSupply = this.estimateTotalSupply(stakingYield);
@@ -560,9 +522,6 @@ export class KaminoService extends Service {
     }
   }
 
-  /**
-   * Calculate Limo supply APY based on real market data
-   */
   private async calculateLimoSupplyApy(
     trade: KaminoLimoTrade,
   ): Promise<number> {
@@ -570,19 +529,15 @@ export class KaminoService extends Service {
       const sizeUsd = parseFloat(trade.sizeUsd || "0");
       const tipAmount = parseFloat(trade.tipAmountUsd || "0");
 
-      // Get real staking yields to find base APY for the input token
       const stakingYields =
         await this.makeApiRequest<KaminoStakingYield[]>("/v2/staking-yields");
 
-      // Find matching staking yield for the input token
       const matchingYield = stakingYields.find(
         (stakingYield) => stakingYield.tokenMint === trade.inMint,
       );
 
       if (matchingYield) {
         const baseApy = parseFloat(matchingYield.apy ?? "0") * 100; // Convert to percentage
-
-        // Adjust based on trade characteristics
         let adjustedApy = baseApy;
 
         // Higher trade volume might indicate better rates
@@ -608,9 +563,6 @@ export class KaminoService extends Service {
     }
   }
 
-  /**
-   * Calculate Limo borrow APY based on trade data
-   */
   private async calculateLimoBorrowApy(
     trade: KaminoLimoTrade,
   ): Promise<number> {
@@ -624,9 +576,6 @@ export class KaminoService extends Service {
     }
   }
 
-  /**
-   * Estimate Limo borrow amount based on trade data
-   */
   private estimateLimoBorrow(trade: KaminoLimoTrade): number {
     try {
       const sizeUsd = parseFloat(trade.sizeUsd || "0");
@@ -638,9 +587,6 @@ export class KaminoService extends Service {
     }
   }
 
-  /**
-   * Calculate Limo utilization rate based on trade data
-   */
   private calculateLimoUtilization(trade: KaminoLimoTrade): number {
     try {
       const sizeUsd = parseFloat(trade.sizeUsd || "0");
@@ -657,15 +603,10 @@ export class KaminoService extends Service {
     }
   }
 
-  /**
-   * Estimate TVL from APY using real market data patterns
-   */
   private estimateTvlFromApy(apy: number): number {
     try {
-      // Use real market data patterns to estimate TVL
-      // Higher APY typically indicates lower supply (inverse relationship)
-      // This is based on typical DeFi market dynamics
-
+      // Heuristic: higher APY typically indicates lower supply (inverse
+      // relationship), per typical DeFi market dynamics.
       if (apy > 0.5) return 50000; // Very high APY = very low supply
       if (apy > 0.3) return 100000; // High APY = low supply
       if (apy > 0.2) return 250000; // Medium-high APY
@@ -678,9 +619,6 @@ export class KaminoService extends Service {
     }
   }
 
-  /**
-   * Test connection and basic functionality
-   */
   async testConnection(): Promise<KaminoConnectionTestResult> {
     try {
       logger.log("Testing Kamino service connection...");
@@ -695,7 +633,6 @@ export class KaminoService extends Service {
         timestamp: new Date().toISOString(),
       };
 
-      // Test basic API connection
       try {
         const stakingYields =
           await this.makeApiRequest<KaminoStakingYield[]>("/v2/staking-yields");
@@ -708,7 +645,6 @@ export class KaminoService extends Service {
         logger.error("API connection test failed:", formatLogError(error));
       }
 
-      // Test Limo trades endpoint
       try {
         const limoTrades =
           await this.makeApiRequest<KaminoLimoTrade[]>("/limo/trades");
@@ -720,7 +656,6 @@ export class KaminoService extends Service {
         logger.error("Limo trades test failed:", formatLogError(error));
       }
 
-      // Test market discovery
       try {
         const markets = await this.discoverMarkets();
         results.marketCount = markets.length;
@@ -765,7 +700,6 @@ export class KaminoService extends Service {
     try {
       logger.log("Starting KaminoService...");
 
-      // Test connection on startup
       const testResults = await this.testConnection();
       logger.log({ testResults }, "Startup connection test results");
 

@@ -1,15 +1,22 @@
+/**
+ * Schema-evolution test against the real elizaOS production schemas (with
+ * their actual foreign-key graph): proves `RuntimeMigrator` detects dropping
+ * the `memories` table — and dropping several interconnected tables at once
+ * (entities/memories/relationships/embeddings) — as data-losing, blocks it in
+ * development and production without `ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS`,
+ * and surfaces what happens (including FK-constraint failures from
+ * `embeddings`) when the override is set.
+ */
 import { sql } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { RuntimeMigrator } from "../../../runtime-migrator/runtime-migrator";
 import type { DrizzleDB } from "../../../runtime-migrator/types";
 import { createIsolatedTestDatabaseForSchemaEvolutionTests } from "../../test-helpers";
 
-// Helper types for database query result rows
 interface ExistsRow {
   exists: boolean;
 }
 
-// Helper function to safely cast query result rows
 function asExistsRow(row: unknown): ExistsRow {
   return row as ExistsRow;
 }
@@ -23,7 +30,6 @@ interface StatsRow {
   [key: string]: unknown;
 }
 
-// Import ALL production schemas
 import { agentTable } from "../../../schema/agent";
 import { cacheTable } from "../../../schema/cache";
 import { channelTable } from "../../../schema/channel";
@@ -42,19 +48,11 @@ import { roomTable } from "../../../schema/room";
 import { taskTable } from "../../../schema/tasks";
 import { worldTable } from "../../../schema/world";
 
-/**
- * Schema Evolution Test 2: Dropping Tables with Foreign Key Relationships
- *
- * This test uses the ACTUAL elizaOS production schemas with their
- * complex foreign key relationships to verify cascade behavior.
- */
-
 describe("Schema Evolution Test: Drop Table with Production Relationships", () => {
   let db: DrizzleDB;
   let migrator: RuntimeMigrator;
   let cleanup: () => Promise<void>;
 
-  // Full production schema
   const getFullSchemaV1 = () => ({
     agents: agentTable,
     memories: memoryTable,
@@ -93,16 +91,13 @@ describe("Schema Evolution Test: Drop Table with Production Relationships", () =
   });
 
   it("should handle dropping memories table with cascade effects on production schema", async () => {
-    // Apply full production schema
     const schemaV1 = getFullSchemaV1();
 
     console.log("🚀 Migrating full production schema...");
     await migrator.migrate("@elizaos/production-schema-v1", schemaV1);
 
-    // Insert interconnected production data
     console.log("\n📝 Creating interconnected production data...");
 
-    // 1. Create agents
     const agent1Id = "550e8400-e29b-41d4-a716-446655440001";
     const agent2Id = "550e8400-e29b-41d4-a716-446655440002";
 
@@ -139,7 +134,6 @@ describe("Schema Evolution Test: Drop Table with Production Relationships", () =
       },
     ]);
 
-    // 2. Create entities
     const entity1Id = "660e8400-e29b-41d4-a716-446655440001";
     const entity2Id = "660e8400-e29b-41d4-a716-446655440002";
 
@@ -158,7 +152,6 @@ describe("Schema Evolution Test: Drop Table with Production Relationships", () =
       },
     ]);
 
-    // 3. Create rooms
     const room1Id = "770e8400-e29b-41d4-a716-446655440001";
     const room2Id = "770e8400-e29b-41d4-a716-446655440002";
     const channelId1 = "990e8400-e29b-41d4-a716-446655440001";
@@ -186,7 +179,7 @@ describe("Schema Evolution Test: Drop Table with Production Relationships", () =
       },
     ]);
 
-    // 4. Create memories (with foreign keys to agents, entities, rooms)
+    // Memories carry FKs to agents, entities, and rooms.
     await db.insert(memoryTable).values([
       {
         id: "880e8400-e29b-41d4-a716-446655440001",
@@ -220,7 +213,6 @@ describe("Schema Evolution Test: Drop Table with Production Relationships", () =
       },
     ]);
 
-    // 5. Create relationships
     await db.insert(relationshipTable).values([
       {
         sourceEntityId: entity1Id,
@@ -231,10 +223,9 @@ describe("Schema Evolution Test: Drop Table with Production Relationships", () =
       },
     ]);
 
-    // Skip embeddings creation as it's complex with vectors
-    // The key test is whether dropping memories table is detected
+    // Embeddings are skipped here (vector setup is complex); the case under
+    // test is whether dropping the memories table itself is detected.
 
-    // Verify all relationships are in place
     console.log("\n📊 Production data created:");
     const counts = await db.execute(sql`
       SELECT 
@@ -252,11 +243,10 @@ describe("Schema Evolution Test: Drop Table with Production Relationships", () =
     console.log(`  - Memories: ${stats.memories} (with FKs to agents, entities, rooms)`);
     console.log(`  - Relationships: ${stats.relationships}`);
 
-    // Create V2 schema WITHOUT memories table (destructive!)
-    // This will break foreign key relationships from embeddings
+    // V2 omits `memories` — a destructive drop — while `embeddings` still
+    // holds foreign keys pointing at it, which is the cascade case under test.
     const schemaV2 = {
       agents: agentTable,
-      // memories: memoryTable, // REMOVED - this will cause cascade issues!
       entities: entityTable,
       relationships: relationshipTable,
       rooms: roomTable,
@@ -267,14 +257,13 @@ describe("Schema Evolution Test: Drop Table with Production Relationships", () =
       channels: channelTable,
       channelParticipants: channelParticipantsTable,
       components: componentTable,
-      embeddings: embeddingTable, // Still has references to memories!
+      embeddings: embeddingTable,
       logs: logTable,
       cache: cacheTable,
       tasks: taskTable,
       messageServerAgents: messageServerAgentsTable,
     };
 
-    // Test 1: Check for data loss warnings
     console.log("\n🔍 Checking migration for cascade effects...");
     const dataLossCheck = await migrator.checkMigration("@elizaos/production-schema-v1", schemaV2);
 
@@ -291,7 +280,6 @@ describe("Schema Evolution Test: Drop Table with Production Relationships", () =
       });
     }
 
-    // Test 2: Should block without environment variable
     process.env.NODE_ENV = "development";
     delete process.env.ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS;
 
@@ -307,7 +295,7 @@ describe("Schema Evolution Test: Drop Table with Production Relationships", () =
     expect(blockedError?.message).toContain("Destructive migration blocked");
     console.log(`  ✅ Table drop blocked without env var`);
 
-    // Test 3: Production mode should also block
+    // Production mode blocks the same drop.
     process.env.NODE_ENV = "production";
 
     console.log("\n🛡️  Testing production protection...");
@@ -323,7 +311,6 @@ describe("Schema Evolution Test: Drop Table with Production Relationships", () =
     expect(productionError?.message).toContain("ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS");
     console.log(`  ✅ Table drop blocked in production`);
 
-    // Verify table still exists
     const tableExists = await db.execute(
       sql`SELECT EXISTS (
         SELECT FROM information_schema.tables 
@@ -332,17 +319,15 @@ describe("Schema Evolution Test: Drop Table with Production Relationships", () =
     );
     expect(asExistsRow(tableExists.rows[0]).exists).toBe(true);
 
-    // Test 4: Force drop with environment variable
     process.env.NODE_ENV = "development";
     process.env.ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS = "true";
 
     console.log("\n⚠️  Attempting migration with ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS=true...");
 
-    // This might fail due to foreign key constraints from embeddings
+    // May fail here due to the embeddings table's FK constraint on memories.
     try {
       await migrator.migrate("@elizaos/production-schema-v1", schemaV2);
 
-      // If successful, verify consequences
       const tableExistsAfter = await db.execute(
         sql`SELECT EXISTS (
           SELECT FROM information_schema.tables 
@@ -368,7 +353,6 @@ describe("Schema Evolution Test: Drop Table with Production Relationships", () =
 
     await migrator.migrate("@elizaos/production-cascade-test", schemaV1);
 
-    // Insert minimal data to test cascade detection
     const agentId = "aa0e8400-e29b-41d4-a716-446655440001";
     await db.insert(agentTable).values({
       id: agentId,
@@ -386,11 +370,10 @@ describe("Schema Evolution Test: Drop Table with Production Relationships", () =
       style: {},
     });
 
-    // Schema V2: Drop multiple interconnected tables
+    // V2 omits entities, memories, relationships, and embeddings — all
+    // interconnected by foreign keys.
     const schemaV2 = {
       agents: agentTable,
-      // Dropped: entities, memories, relationships, embeddings
-      // These all have complex FK relationships
       rooms: roomTable,
       worlds: worldTable,
       participants: participantTable,

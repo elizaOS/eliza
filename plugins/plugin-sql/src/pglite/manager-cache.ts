@@ -1,3 +1,9 @@
+/**
+ * Keyed cache for per-agent/per-data-dir PGlite manager singletons, backing
+ * the process-global store at `Symbol.for("elizaos.plugin-sql.global-singletons")`.
+ * Lets multiple agents share one manager per (dataDir, agentId) pair while
+ * exposing only a narrow, private-implementation-safe surface to hosts.
+ */
 export interface ReusablePgliteManager {
   isShuttingDown(): boolean;
 }

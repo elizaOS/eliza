@@ -1,3 +1,16 @@
+/**
+ * IDatabaseAdapter implementation for Neon's serverless Postgres driver, used when the
+ * runtime targets serverless/edge hosts (Vercel, Cloudflare Workers) instead of a
+ * long-lived pg Pool. Wraps a NeonConnectionManager (WebSocket-based connection) and
+ * delegates all shared query logic to BaseDrizzleAdapter, overriding only the
+ * connection lifecycle and RLS isolation-context methods that differ from the
+ * node-postgres adapter.
+ *
+ * Entity-level Row Level Security is applied via withIsolationContext, which sets
+ * both server and entity Postgres session context inside a transaction before
+ * running the callback; this mirrors the semantics of PgDatabaseAdapter/
+ * PostgresConnectionManager so callers can treat the two adapters interchangeably.
+ */
 import { type Agent, type Entity, logger, type Memory, type UUID } from "@elizaos/core";
 import type { NeonDatabase } from "drizzle-orm/neon-serverless";
 import { BaseDrizzleAdapter } from "../base";

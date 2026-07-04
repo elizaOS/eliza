@@ -1,12 +1,11 @@
+/** Fixture agent/entity/relationship records for the relationship-store integration tests. */
 import type { Agent, Entity, Metadata, Relationship, UUID } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
 
-// Test IDs for relationship tests
 export const relationshipTestAgentId = uuidv4() as UUID;
 export const relationshipTestSourceEntityId = uuidv4() as UUID;
 export const relationshipTestTargetEntityId = uuidv4() as UUID;
 
-// Test data for relationship integration tests
 export const relationshipTestAgent: Agent = {
   id: relationshipTestAgentId,
   name: "Relationship Test Agent",
@@ -40,7 +39,6 @@ export const relationshipTestTargetEntity: Entity = {
   },
 };
 
-// Test relationships
 export const relationshipTestRelationships: Relationship[] = [
   {
     id: uuidv4() as UUID,
@@ -68,7 +66,6 @@ export const relationshipTestRelationships: Relationship[] = [
   },
 ];
 
-// Helper function to create a relationship with custom tags and metadata
 export const createTestRelationship = (
   sourceId: UUID,
   target: UUID,

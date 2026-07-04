@@ -1,3 +1,10 @@
+/**
+ * Core client for an existing ERC-6551 `AgentAccountV2` wallet: connects a
+ * viem `WalletClient`/`PublicClient` pair to the account contract and
+ * exposes `setSpendPolicy`/`agentTransferToken`/`checkBudget` and related
+ * read/write helpers. Supports Base, Base Sepolia, Ethereum, Arbitrum, and
+ * Polygon.
+ */
 import {
   type Address,
   type Chain,

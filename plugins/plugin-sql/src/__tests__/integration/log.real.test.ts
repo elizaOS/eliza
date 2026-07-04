@@ -1,3 +1,9 @@
+/**
+ * Integration tests for log create/get/delete against a real isolated
+ * PGlite/Postgres adapter, covering the `limit`/legacy-`count` param
+ * contract, JSON-body escaping (backslashes, NUL stripping), and filtering
+ * by type.
+ */
 import { type AgentRuntime, ChannelType, type Entity, type Room, type UUID } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -78,8 +84,6 @@ describe("Log Integration Tests", () => {
     });
 
     it("honors the `limit` param from the IDatabaseAdapter contract (not just legacy `count`)", async () => {
-      // 15 logs; the pre-fix adapter only read `count` and silently capped any
-      // `limit` caller (runtime.getLogs, agent-export) at the default 10.
       for (let i = 0; i < 15; i++) {
         await adapter.log({
           body: { seq: i },
@@ -122,8 +126,8 @@ describe("Log Integration Tests", () => {
         type: "backslash_test",
       });
       expect(logs).toHaveLength(1);
-      // Pre-fix, sanitizeJsonObject doubled backslashes not followed by
-      // ["\/bfnrtu], so `path` came back as "C:\\\\Users\\dev\\project".
+      // sanitizeJsonObject must not double a backslash that isn't followed
+      // by a valid JSON escape char (["\/bfnrtu]).
       expect(logs[0].body).toEqual(body);
     });
 

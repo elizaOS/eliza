@@ -1,3 +1,9 @@
+/**
+ * Derives canonical, encoding-independent replay keys from x402 payment
+ * proofs and facilitator payment IDs, so the same underlying EVM tx, Solana
+ * signature, or EIP-712 intent is recognized as a replay whether the proof
+ * arrives raw, base64-wrapped, or nested in a JSON payload.
+ */
 import { createHash } from "node:crypto";
 
 function sha256Utf8(s: string): string {

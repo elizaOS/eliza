@@ -1,6 +1,13 @@
+/**
+ * End-to-end simulation of how `RuntimeMigrator` behaves across the real
+ * multi-plugin boot sequence — separate migrator instances per plugin (as
+ * each plugin's `init` would create), a simulated app restart, and a single
+ * migrator shared across plugins — asserting migrations stay idempotent and
+ * both plugin schemas (`@elizaos/plugin-sql`, `polymarket`) coexist. Runs
+ * against a real Postgres/PGlite database via `createIsolatedTestDatabaseForMigration`.
+ */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-// Helper types for database query result rows
 interface MigrationRow {
   plugin_name: string;
   hash: string;
@@ -66,21 +73,17 @@ describe("Actual Runtime Scenario - Plugin Loading Simulation", () => {
     console.log("SCENARIO: Application Startup");
     console.log("=".repeat(80));
 
-    // Step 1: Application starts and initializes the database adapter (plugin-sql)
     console.log("\n📦 Step 1: Loading plugin-sql (database adapter)...");
 
-    // This is what happens in plugin-sql's initialization
     const sqlPluginMigrator = new RuntimeMigrator(db);
     await sqlPluginMigrator.initialize();
 
-    // Plugin-sql migrates its own schema
     await sqlPluginMigrator.migrate("@elizaos/plugin-sql", coreSchema, {
       verbose: false,
     });
 
     console.log("✅ plugin-sql loaded and migrated");
 
-    // Check migration state after plugin-sql
     const afterSqlPlugin = await db.execute(sql`
       SELECT plugin_name, hash, created_at 
       FROM migrations._migrations 
@@ -91,16 +94,11 @@ describe("Actual Runtime Scenario - Plugin Loading Simulation", () => {
       console.log(`  - ${m.plugin_name}`);
     }
 
-    // Step 2: Application loads other plugins (polymarket)
     console.log("\n📦 Step 2: Loading polymarket plugin...");
-
-    // This is what would happen in polymarket plugin's initialization
-    // IMPORTANT: In real runtime, would polymarket create its own migrator instance?
-    // Or would it use a shared one? Let's test both scenarios.
 
     console.log("\n--- Testing Scenario A: Polymarket creates its own migrator ---");
     const polymarketMigrator = new RuntimeMigrator(db);
-    // initialize() is idempotent - detects existing migration tables
+    // initialize() is idempotent: it detects the existing migration tables.
     await polymarketMigrator.initialize();
 
     await polymarketMigrator.migrate("polymarket", testPolymarketSchema, {
@@ -109,7 +107,6 @@ describe("Actual Runtime Scenario - Plugin Loading Simulation", () => {
 
     console.log("✅ polymarket loaded and migrated (own migrator)");
 
-    // Check migration state after polymarket
     const afterPolymarket = await db.execute(sql`
       SELECT plugin_name, hash, created_at 
       FROM migrations._migrations 
@@ -122,18 +119,16 @@ describe("Actual Runtime Scenario - Plugin Loading Simulation", () => {
 
     expect(afterPolymarket.rows.length).toBe(2);
 
-    // Step 3: Simulate app restart - what happens?
     console.log(`\n${"=".repeat(80)}`);
     console.log("SCENARIO: Application Restart");
     console.log("=".repeat(80));
 
     console.log("\n🔄 Simulating application restart...");
 
-    // Create new migrator instances (as would happen on restart)
+    // New migrator instances, as each plugin's init would create on restart.
     const sqlPluginMigrator2 = new RuntimeMigrator(db);
     await sqlPluginMigrator2.initialize();
 
-    // Plugin-sql tries to migrate again
     await sqlPluginMigrator2.migrate("@elizaos/plugin-sql", coreSchema, {
       verbose: false,
     });
@@ -141,12 +136,11 @@ describe("Actual Runtime Scenario - Plugin Loading Simulation", () => {
     const polymarketMigrator2 = new RuntimeMigrator(db);
     await polymarketMigrator2.initialize();
 
-    // Polymarket tries to migrate again
     await polymarketMigrator2.migrate("polymarket", testPolymarketSchema, {
       verbose: false,
     });
 
-    // Should still be only 2 migrations
+    // Re-migrating on restart must stay idempotent: still exactly 2 rows.
     const afterRestart = await db.execute(sql`
       SELECT plugin_name, hash, created_at 
       FROM migrations._migrations 
@@ -159,7 +153,6 @@ describe("Actual Runtime Scenario - Plugin Loading Simulation", () => {
     console.log("DIAGNOSTICS");
     console.log("=".repeat(80));
 
-    // Detailed diagnostic information
     console.log("\n🔍 Checking snapshots:");
     const snapshots = await db.execute(sql`
       SELECT plugin_name, COUNT(*) as count 
@@ -170,7 +163,6 @@ describe("Actual Runtime Scenario - Plugin Loading Simulation", () => {
       console.log(`  - ${s.plugin_name}: ${s.count} snapshots`);
     }
 
-    // Check if schemas are correctly created
     console.log("\n🔍 Checking schemas:");
     const schemas = await db.execute(sql`
       SELECT schema_name 
@@ -180,7 +172,6 @@ describe("Actual Runtime Scenario - Plugin Loading Simulation", () => {
     `);
     console.log("Schemas:", schemas.rows.map((r: SchemaRow) => r.schema_name).join(", "));
 
-    // Verify tables in each schema
     console.log("\n🔍 Tables per schema:");
     const tablesPerSchema = await db.execute(sql`
       SELECT schemaname, COUNT(*) as table_count 
@@ -199,13 +190,11 @@ describe("Actual Runtime Scenario - Plugin Loading Simulation", () => {
     console.log("SCENARIO: Shared Migrator Instance");
     console.log("=".repeat(80));
 
-    // Clear all existing data from previous test
     console.log("\n🧹 Cleaning up database from previous test...");
 
-    // Drop polymarket schema if it exists
     await db.execute(sql`DROP SCHEMA IF EXISTS polymarket CASCADE`);
 
-    // Drop all tables in public schema (except the migration tables which we'll handle separately)
+    // Migration tables (`migrations` schema) are dropped separately below.
     const tables = await db.execute(sql`
       SELECT tablename FROM pg_tables 
       WHERE schemaname = 'public' 
@@ -220,28 +209,24 @@ describe("Actual Runtime Scenario - Plugin Loading Simulation", () => {
       await db.execute(sql.raw(`DROP TABLE IF EXISTS public."${table.tablename}" CASCADE`));
     }
 
-    // Drop migrations schema entirely (it will be recreated)
+    // Dropped entirely; `initialize()` below recreates it.
     await db.execute(sql`DROP SCHEMA IF EXISTS migrations CASCADE`);
 
     console.log("\n🔄 Testing with shared migrator instance...");
 
-    // Single migrator instance shared across plugins
     const sharedMigrator = new RuntimeMigrator(db);
     await sharedMigrator.initialize();
 
-    // Plugin-sql uses shared migrator
     console.log("\n📦 plugin-sql using shared migrator...");
     await sharedMigrator.migrate("@elizaos/plugin-sql", coreSchema, {
       verbose: false,
     });
 
-    // Polymarket uses same shared migrator
     console.log("📦 polymarket using shared migrator...");
     await sharedMigrator.migrate("polymarket", testPolymarketSchema, {
       verbose: false,
     });
 
-    // Check final state
     const finalMigrations = await db.execute(sql`
       SELECT plugin_name, hash, created_at 
       FROM migrations._migrations 
@@ -255,7 +240,6 @@ describe("Actual Runtime Scenario - Plugin Loading Simulation", () => {
 
     expect(finalMigrations.rows.length).toBe(2);
 
-    // Test if both schemas exist
     const schemasExist = await db.execute(sql`
       SELECT 
         EXISTS (SELECT 1 FROM information_schema.schemata WHERE schema_name = 'public') as public_exists,

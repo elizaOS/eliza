@@ -1,3 +1,8 @@
+/**
+ * Shared TEE domain types: mode/vendor/attestation-type enums, key-derivation
+ * and attestation result shapes, and the `parseTeeMode` / `parseTeeVendor`
+ * validators used by `teePlugin.init` to reject unrecognized config values.
+ */
 export enum TeeMode {
   LOCAL = "LOCAL",
   DOCKER = "DOCKER",

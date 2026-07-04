@@ -1,3 +1,9 @@
+/**
+ * Real-PGlite tests proving `RuntimeMigrator` never loses existing rows when
+ * a schema changes underneath it — column additions, safe type widenings,
+ * foreign-key tables, JSON/array columns, large (1000-row) batches, and a
+ * destructive rename that must be rejected while leaving prior data intact.
+ */
 import { PGlite } from "@electric-sql/pglite";
 import { vector } from "@electric-sql/pglite/vector";
 import { sql } from "drizzle-orm";
@@ -18,10 +24,6 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { RuntimeMigrator } from "../../runtime-migrator/runtime-migrator";
 import type { DrizzleDB } from "../../runtime-migrator/types";
 
-/**
- * Comprehensive data persistence tests to ensure data is never lost
- * during migrations, even in complex scenarios
- */
 describe("Data Persistence Through Migrations", () => {
   let pgClient: PGlite;
   let db: DrizzleDB;
@@ -40,7 +42,6 @@ describe("Data Persistence Through Migrations", () => {
 
   describe("Critical Data Persistence Scenarios", () => {
     it("should preserve ALL data through column additions", async () => {
-      // Step 1: Create a table with production data
       await db.execute(sql`
         CREATE TABLE customers (
           id SERIAL PRIMARY KEY,
@@ -50,7 +51,6 @@ describe("Data Persistence Through Migrations", () => {
         )
       `);
 
-      // Insert significant amount of data
       const customerData: Array<{ id: number; name: string; email: string }> = [];
       for (let i = 1; i <= 100; i++) {
         customerData.push({
@@ -67,17 +67,14 @@ describe("Data Persistence Through Migrations", () => {
         `);
       }
 
-      // Verify initial data
       const initialCount = await db.execute(sql`SELECT COUNT(*) as count FROM customers`);
       expect(Number(initialCount.rows[0].count)).toBe(100);
 
-      // Step 2: Define schema with new columns
       const customersTable = pgTable("customers", {
         id: integer("id").primaryKey().generatedByDefaultAsIdentity(),
         name: text("name").notNull(),
         email: text("email").notNull().unique(),
         created_at: timestamp("created_at").defaultNow(),
-        // New columns
         phone: varchar("phone", { length: 20 }),
         address: text("address"),
         is_active: boolean("is_active").default(true),
@@ -86,13 +83,11 @@ describe("Data Persistence Through Migrations", () => {
 
       const schema = { customers: customersTable };
 
-      // Step 3: Run migration with force to allow type changes
       await migrator.migrate("@elizaos/plugin-sql", schema, {
         verbose: false,
         force: true,
       });
 
-      // Step 4: Verify ALL data is preserved
       const afterMigration = await db.execute(sql`
         SELECT * FROM customers 
         ORDER BY id
@@ -100,21 +95,18 @@ describe("Data Persistence Through Migrations", () => {
 
       expect(afterMigration.rows).toHaveLength(100);
 
-      // Verify each record
       for (let i = 0; i < 100; i++) {
         const row = afterMigration.rows[i];
         expect(row.id).toBe(i + 1);
         expect(row.name).toBe(`Customer ${i + 1}`);
         expect(row.email).toBe(`customer${i + 1}@example.com`);
         expect(row.created_at).toBeDefined();
-        // New columns should have defaults
         expect(row.is_active).toBe(true);
         expect(row.phone).toBeNull();
         expect(row.address).toBeNull();
         expect(row.metadata).toBeNull();
       }
 
-      // Step 5: Verify migration metadata is correct
       const status = await migrator.getStatus("@elizaos/plugin-sql");
       expect(status.hasRun).toBe(true);
       expect(status.snapshots).toBeGreaterThan(0);
@@ -123,7 +115,6 @@ describe("Data Persistence Through Migrations", () => {
     });
 
     it("should preserve data through column type changes that are safe", async () => {
-      // Create table with numeric data
       await db.execute(sql`
         CREATE TABLE products (
           id SERIAL PRIMARY KEY,
@@ -133,7 +124,6 @@ describe("Data Persistence Through Migrations", () => {
         )
       `);
 
-      // Insert product data
       const products = [
         { name: "Product A", price: 1999, stock: 100 },
         { name: "Product B", price: 2999, stock: 50 },
@@ -149,7 +139,6 @@ describe("Data Persistence Through Migrations", () => {
         `);
       }
 
-      // Define schema with type changes
       const productsTable = pgTable("products", {
         id: integer("id").primaryKey().generatedByDefaultAsIdentity(),
         name: text("name").notNull(),
@@ -160,13 +149,11 @@ describe("Data Persistence Through Migrations", () => {
 
       const schema = { products: productsTable };
 
-      // Run migration
       await migrator.migrate("@elizaos/plugin-sql", schema, {
         verbose: false,
         force: true,
       });
 
-      // Verify data is preserved and correctly converted
       const result = await db.execute(sql`
         SELECT * FROM products ORDER BY id
       `);
@@ -180,7 +167,6 @@ describe("Data Persistence Through Migrations", () => {
     });
 
     it("should preserve data in related tables with foreign keys", async () => {
-      // Create related tables with data
       await db.execute(sql`
         CREATE TABLE departments (
           id SERIAL PRIMARY KEY,
@@ -200,7 +186,6 @@ describe("Data Persistence Through Migrations", () => {
         )
       `);
 
-      // Insert department data
       const deptIds: number[] = [];
       const departments = ["Engineering", "Sales", "Marketing", "HR"];
       for (const dept of departments) {
@@ -212,7 +197,6 @@ describe("Data Persistence Through Migrations", () => {
         deptIds.push(result.rows[0].id as number);
       }
 
-      // Insert employee data
       for (let i = 1; i <= 50; i++) {
         const deptId = deptIds[Math.floor(Math.random() * deptIds.length)];
         await db.execute(sql`
@@ -226,14 +210,12 @@ describe("Data Persistence Through Migrations", () => {
         `);
       }
 
-      // Verify initial state
       const empCount = await db.execute(sql`SELECT COUNT(*) as count FROM employees`);
       expect(Number(empCount.rows[0].count)).toBe(50);
 
       const deptCount = await db.execute(sql`SELECT COUNT(*) as count FROM departments`);
       expect(Number(deptCount.rows[0].count)).toBe(4);
 
-      // Define schemas with modifications
       const departmentsTable = pgTable("departments", {
         id: integer("id").primaryKey().generatedByDefaultAsIdentity(),
         name: text("name").notNull(),
@@ -258,13 +240,11 @@ describe("Data Persistence Through Migrations", () => {
         employees: employeesTable,
       };
 
-      // Run migration
       await migrator.migrate("@elizaos/plugin-sql", schema, {
         verbose: false,
         force: true,
       });
 
-      // Verify all relationships are preserved
       const employeesAfter = await db.execute(sql`
         SELECT e.*, d.name as dept_name 
         FROM employees e
@@ -274,14 +254,12 @@ describe("Data Persistence Through Migrations", () => {
 
       expect(employeesAfter.rows).toHaveLength(50);
 
-      // Verify all employees still have valid department references
       for (const emp of employeesAfter.rows) {
         expect(emp.dept_name).toBeDefined();
         expect(departments).toContain(emp.dept_name as string);
         expect(emp.is_active).toBe(true); // New column should have default
       }
 
-      // Verify departments data
       const deptsAfter = await db.execute(sql`
         SELECT * FROM departments ORDER BY id
       `);
@@ -292,7 +270,6 @@ describe("Data Persistence Through Migrations", () => {
     });
 
     it("should handle migration rollback on failure without data loss", async () => {
-      // Create table with critical data
       await db.execute(sql`
         CREATE TABLE transactions (
           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -302,7 +279,6 @@ describe("Data Persistence Through Migrations", () => {
         )
       `);
 
-      // Insert transaction data
       const transactionIds: string[] = [];
       for (let i = 1; i <= 10; i++) {
         const result = await db.execute(sql`
@@ -313,43 +289,39 @@ describe("Data Persistence Through Migrations", () => {
         transactionIds.push(result.rows[0].id as string);
       }
 
-      // Verify initial state
       const initialData = await db.execute(sql`
         SELECT * FROM transactions ORDER BY amount
       `);
       expect(initialData.rows).toHaveLength(10);
 
-      // Try a migration that will fail (conflicting column type)
+      // `id: integer` conflicts with the existing UUID column, so this
+      // migration must be rejected as destructive rather than applied.
       const badSchema = pgTable("transactions", {
-        id: integer("id").primaryKey(), // Wrong type - will conflict
+        id: integer("id").primaryKey(),
         amount: numeric("amount", { precision: 10, scale: 2 }).notNull(),
         status: text("status").notNull(),
         created_at: timestamp("created_at").defaultNow(),
       });
 
-      // This should fail but not lose data
       try {
         await migrator.migrate(
           "@elizaos/plugin-sql",
           { transactions: badSchema },
           {
             verbose: false,
-            force: false, // Don't force destructive changes
+            force: false,
           }
         );
-        expect(true).toBe(false); // Should not reach here
+        expect(true).toBe(false); // Unreachable: migrate() above must throw.
       } catch (error) {
-        // Expected to fail
         expect((error as Error).message).toContain("Destructive migration blocked");
       }
 
-      // Verify data is still intact after failed migration
       const afterFailure = await db.execute(sql`
         SELECT * FROM transactions ORDER BY amount
       `);
       expect(afterFailure.rows).toHaveLength(10);
 
-      // Verify each transaction is unchanged
       for (let i = 0; i < 10; i++) {
         expect(afterFailure.rows[i].amount).toBe(`${String(100 * (i + 1))}.00`); // Numeric includes precision
         expect(afterFailure.rows[i].status).toBe("completed");
@@ -358,7 +330,6 @@ describe("Data Persistence Through Migrations", () => {
     });
 
     it("should correctly track migration history through multiple changes", async () => {
-      // Create initial table
       const ordersV1 = pgTable("orders", {
         id: serial("id").primaryKey(),
         total: integer("total").notNull(),
@@ -366,14 +337,13 @@ describe("Data Persistence Through Migrations", () => {
 
       await migrator.migrate("@elizaos/plugin-sql", { orders: ordersV1 }, { verbose: false });
 
-      // Insert data
       for (let i = 1; i <= 5; i++) {
         await db.execute(sql`
           INSERT INTO orders (total) VALUES (${i * 100})
         `);
       }
 
-      // Version 2: Add customer_name
+      // V2: adds customer_name.
       const ordersV2 = pgTable("orders", {
         id: serial("id").primaryKey(),
         total: integer("total").notNull(),
@@ -382,7 +352,7 @@ describe("Data Persistence Through Migrations", () => {
 
       await migrator.migrate("@elizaos/plugin-sql", { orders: ordersV2 }, { verbose: false });
 
-      // Version 3: Add status and created_at
+      // V3: adds status and created_at.
       const ordersV3 = pgTable("orders", {
         id: serial("id").primaryKey(),
         total: integer("total").notNull(),
@@ -393,7 +363,6 @@ describe("Data Persistence Through Migrations", () => {
 
       await migrator.migrate("@elizaos/plugin-sql", { orders: ordersV3 }, { verbose: false });
 
-      // Verify data persisted through all migrations
       const finalData = await db.execute(sql`
         SELECT * FROM orders ORDER BY id
       `);
@@ -405,13 +374,11 @@ describe("Data Persistence Through Migrations", () => {
         expect(finalData.rows[i].status).toBe("pending"); // Default value
       }
 
-      // Verify complete migration history
       const status = await migrator.getStatus("@elizaos/plugin-sql");
       expect(status.hasRun).toBe(true);
-      expect(status.journal?.entries).toHaveLength(3); // Three migrations
-      expect(status.snapshots).toBe(3); // Three snapshots
+      expect(status.journal?.entries).toHaveLength(3); // One per migrate() call above.
+      expect(status.snapshots).toBe(3);
 
-      // Verify each snapshot was saved correctly
       const journalEntries = status.journal?.entries || [];
       expect(journalEntries[0].idx).toBe(0);
       expect(journalEntries[1].idx).toBe(1);
@@ -419,7 +386,6 @@ describe("Data Persistence Through Migrations", () => {
     });
 
     it("should handle complex data with JSON and arrays correctly", async () => {
-      // Create table with complex data types
       await db.execute(sql`
         CREATE TABLE user_profiles (
           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -430,7 +396,6 @@ describe("Data Persistence Through Migrations", () => {
         )
       `);
 
-      // Insert complex data
       const profiles = [
         {
           username: "user1",
@@ -453,8 +418,7 @@ describe("Data Persistence Through Migrations", () => {
       ];
 
       for (const profile of profiles) {
-        // Handle arrays and JSONB properly for PostgreSQL
-        // Arrays need to be inserted as a PostgreSQL array literal
+        // Postgres array literals need the `{"a","b"}` text form, not JSON.
         const tagsLiteral = profile.tags
           ? `{${profile.tags.map((t) => `"${t}"`).join(",")}}`
           : "{}";
@@ -472,7 +436,6 @@ describe("Data Persistence Through Migrations", () => {
         );
       }
 
-      // Define schema with modifications
       const userProfilesTable = pgTable("user_profiles", {
         id: uuid("id").primaryKey().defaultRandom(),
         username: text("username").notNull(),
@@ -485,20 +448,17 @@ describe("Data Persistence Through Migrations", () => {
 
       const schema = { user_profiles: userProfilesTable };
 
-      // Run migration
       await migrator.migrate("@elizaos/plugin-sql", schema, {
         verbose: false,
         force: true,
       });
 
-      // Verify complex data is preserved
       const result = await db.execute(sql`
         SELECT * FROM user_profiles ORDER BY username
       `);
 
       expect(result.rows).toHaveLength(3);
 
-      // Verify user1 data
       const user1 = result.rows[0];
       expect(user1.username).toBe("user1");
       expect(user1.settings).toEqual({
@@ -513,7 +473,6 @@ describe("Data Persistence Through Migrations", () => {
       });
       expect(user1.is_verified).toBe(false); // New column default
 
-      // Verify user2 data
       const user2 = result.rows[1];
       expect(user2.username).toBe("user2");
       expect(user2.settings).toEqual({
@@ -523,7 +482,6 @@ describe("Data Persistence Through Migrations", () => {
       });
       expect(user2.tags).toEqual(["user", "beta-tester"]);
 
-      // Verify user3 with null metadata
       const user3 = result.rows[2];
       expect(user3.username).toBe("user3");
       expect(user3.metadata).toBeNull();
@@ -531,7 +489,6 @@ describe("Data Persistence Through Migrations", () => {
     });
 
     it("should handle large-scale data migration efficiently", async () => {
-      // Create table with substantial amount of data
       await db.execute(sql`
         CREATE TABLE events (
           id SERIAL PRIMARY KEY,
@@ -541,7 +498,6 @@ describe("Data Persistence Through Migrations", () => {
         )
       `);
 
-      // Insert 1000 events
       const eventTypes = ["click", "view", "purchase", "signup", "logout"];
       const batchSize = 100;
 
@@ -563,11 +519,9 @@ describe("Data Persistence Through Migrations", () => {
         );
       }
 
-      // Verify initial count
       const initialCount = await db.execute(sql`SELECT COUNT(*) as count FROM events`);
       expect(Number(initialCount.rows[0].count)).toBe(1000);
 
-      // Define schema with new columns and indexes
       const eventsTable = pgTable("events", {
         id: integer("id").primaryKey().generatedByDefaultAsIdentity(),
         event_type: text("event_type").notNull(),
@@ -580,17 +534,14 @@ describe("Data Persistence Through Migrations", () => {
 
       const schema = { events: eventsTable };
 
-      // Run migration
       await migrator.migrate("@elizaos/plugin-sql", schema, {
         verbose: false,
         force: true,
       });
 
-      // Verify all data is preserved
       const finalCount = await db.execute(sql`SELECT COUNT(*) as count FROM events`);
       expect(Number(finalCount.rows[0].count)).toBe(1000);
 
-      // Spot check some records
       const sample = await db.execute(sql`
         SELECT * FROM events 
         WHERE id IN (1, 100, 500, 999, 1000)
@@ -605,7 +556,6 @@ describe("Data Persistence Through Migrations", () => {
         expect(row.processed).toBe(false); // New column default
       }
 
-      // Verify migration completed successfully
       const status = await migrator.getStatus("@elizaos/plugin-sql");
       expect(status.hasRun).toBe(true);
       expect(status.lastMigration).toBeDefined();

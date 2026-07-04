@@ -1,3 +1,8 @@
+/**
+ * Registers this plugin's automation-catalog node contributor with app-core,
+ * so the Hyperliquid action and order-event trigger show up as nodes in the
+ * automation builder whenever the Hyperliquid plugin is loaded.
+ */
 import {
   type AutomationNodeContributorContext,
   buildRuntimeCapabilityNodes,

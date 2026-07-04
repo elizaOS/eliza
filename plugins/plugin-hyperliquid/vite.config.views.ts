@@ -1,3 +1,4 @@
+/** Vite config for the standalone Hyperliquid view bundle (`dist/views/bundle.js`), built from the shared view-bundle preset. */
 import { createViewBundleConfig } from "../../packages/scripts/view-bundle-vite.config.ts";
 
 export default createViewBundleConfig({

@@ -1,3 +1,4 @@
+/** Vitest config for the EVM chain subpackage; excludes live/real/e2e suites from the default run. */
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({

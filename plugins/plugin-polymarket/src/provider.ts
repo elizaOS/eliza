@@ -1,3 +1,7 @@
+/**
+ * `POLYMARKET_STATUS` provider: injects per-turn Polymarket readiness text
+ * (from `derivePolymarketStatusText`) into `finance`/`crypto` contexts only.
+ */
 import type {
   IAgentRuntime,
   Memory,

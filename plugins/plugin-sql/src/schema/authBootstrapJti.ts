@@ -1,5 +1,3 @@
-import { bigint, index, pgTable, text } from "drizzle-orm/pg-core";
-
 /**
  * Replay-defence set for bootstrap-token `jti` claims. A row exists for every
  * bootstrap token successfully verified on this instance; subsequent
@@ -8,6 +6,8 @@ import { bigint, index, pgTable, text } from "drizzle-orm/pg-core";
  * Rows are kept until natural `exp` of the original token plus a buffer; the
  * cleanup job lives in the auth-store.
  */
+import { bigint, index, pgTable, text } from "drizzle-orm/pg-core";
+
 export const authBootstrapJtiSeenTable = pgTable(
   "auth_bootstrap_jti_seen",
   {

@@ -1,3 +1,10 @@
+/**
+ * Solana sub-plugin composed into `walletPlugin`: registers `SolanaService` +
+ * `SolanaWalletService`, the Solana wallet provider, and the Solana REST/sign
+ * routes. Init is a no-op when `SOLANA_RPC_URL` is unset. If an `INTEL_CHAIN`
+ * service is present it registers Solana with it opportunistically (failure
+ * to register is logged, not fatal).
+ */
 import type { IAgentRuntime, Plugin, ServiceTypeName } from "@elizaos/core";
 import { SOLANA_SERVICE_NAME } from "./constants";
 import { walletProvider } from "./providers/wallet";

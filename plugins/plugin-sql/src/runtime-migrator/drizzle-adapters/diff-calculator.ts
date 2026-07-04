@@ -1,3 +1,11 @@
+/**
+ * Diffs two `SchemaSnapshot`s (previous vs. current) into a structured
+ * `SchemaDiff` describing every created/deleted/modified table, column,
+ * index, foreign key, and constraint. Feeds the SQL generator, which turns
+ * the diff into the actual migration statements. Type comparison is
+ * normalized (e.g. `serial` vs `integer`, `timestamp with/without time zone`)
+ * so equivalent Postgres type spellings don't register as spurious changes.
+ */
 import type {
   IndexColumn,
   SchemaCheckConstraint,
@@ -209,15 +217,13 @@ export async function calculateDiff(
     },
   };
 
-  // If no previous snapshot, all tables are new
+  // If no previous snapshot, all tables (and their indexes/foreign keys) are new.
   if (!previousSnapshot) {
     diff.tables.created = Object.keys(currentSnapshot.tables);
 
-    // Also track indexes and foreign keys from new tables
     for (const tableName in currentSnapshot.tables) {
       const table = currentSnapshot.tables[tableName];
 
-      // Add indexes
       if (table.indexes) {
         for (const indexName in table.indexes) {
           diff.indexes.created.push({
@@ -227,7 +233,6 @@ export async function calculateDiff(
         }
       }
 
-      // Add foreign keys
       if (table.foreignKeys) {
         for (const fkName in table.foreignKeys) {
           diff.foreignKeys.created.push(table.foreignKeys[fkName]);
@@ -241,14 +246,12 @@ export async function calculateDiff(
   const prevTables = previousSnapshot.tables || {};
   const currTables = currentSnapshot.tables || {};
 
-  // Find created tables
   for (const tableName in currTables) {
     if (!(tableName in prevTables)) {
       diff.tables.created.push(tableName);
 
       const table = currTables[tableName];
 
-      // Add indexes for new table
       if (table.indexes) {
         for (const indexName in table.indexes) {
           diff.indexes.created.push({
@@ -258,7 +261,6 @@ export async function calculateDiff(
         }
       }
 
-      // Add unique constraints for new table
       if (table.uniqueConstraints) {
         for (const uqName in table.uniqueConstraints) {
           diff.uniqueConstraints.created.push({
@@ -268,7 +270,6 @@ export async function calculateDiff(
         }
       }
 
-      // Add check constraints for new table
       if (table.checkConstraints) {
         for (const checkName in table.checkConstraints) {
           diff.checkConstraints.created.push({
@@ -278,7 +279,6 @@ export async function calculateDiff(
         }
       }
 
-      // Add foreign keys for new table
       if (table.foreignKeys) {
         for (const fkName in table.foreignKeys) {
           diff.foreignKeys.created.push(table.foreignKeys[fkName]);
@@ -287,21 +287,19 @@ export async function calculateDiff(
     }
   }
 
-  // Find deleted tables
   for (const tableName in prevTables) {
     if (!(tableName in currTables)) {
       diff.tables.deleted.push(tableName);
     }
   }
 
-  // Find modified tables (check columns, indexes, foreign keys)
   for (const tableName in currTables) {
     if (tableName in prevTables) {
       const prevTable = prevTables[tableName];
       const currTable = currTables[tableName];
 
-      // Early check: if the table schemas are identical, skip it entirely
-      // This prevents false positives when other tables are modified
+      // Skip the table entirely if its schema is unchanged, so an unrelated
+      // in-place edit elsewhere in the JSON doesn't register a false positive.
       const prevTableJson = JSON.stringify({
         columns: prevTable.columns || {},
         indexes: prevTable.indexes || {},
@@ -318,16 +316,13 @@ export async function calculateDiff(
         checkConstraints: currTable.checkConstraints || {},
       });
 
-      // If tables are identical, skip all processing for this table
       if (prevTableJson === currTableJson) {
         continue;
       }
 
-      // Compare columns
       const prevColumns = prevTable.columns || {};
       const currColumns = currTable.columns || {};
 
-      // Find added columns
       for (const colName in currColumns) {
         if (!(colName in prevColumns)) {
           diff.columns.added.push({
@@ -338,7 +333,6 @@ export async function calculateDiff(
         }
       }
 
-      // Find deleted columns
       for (const colName in prevColumns) {
         if (!(colName in currColumns)) {
           diff.columns.deleted.push({
@@ -348,14 +342,11 @@ export async function calculateDiff(
         }
       }
 
-      // Find modified columns
       for (const colName in currColumns) {
         if (colName in prevColumns) {
           const prevCol = prevColumns[colName];
           const currCol = currColumns[colName];
 
-          // Check for changes in column properties
-          // Use normalized type comparison
           const typeChanged = normalizeType(prevCol.type) !== normalizeType(currCol.type);
           const hasChanges =
             typeChanged ||
@@ -376,28 +367,23 @@ export async function calculateDiff(
         }
       }
 
-      // Compare indexes
       const prevIndexes = prevTable.indexes || {};
       const currIndexes = currTable.indexes || {};
 
-      // Find new, deleted, and altered indexes
       for (const indexName in currIndexes) {
         if (!(indexName in prevIndexes)) {
-          // New index
           diff.indexes.created.push({
             ...currIndexes[indexName],
             table: tableName,
           } as SchemaIndex & { table: string });
         } else {
-          // Check if index definition changed
           const prevIndex = prevIndexes[indexName];
           const currIndex = currIndexes[indexName];
 
-          // Deep comparison of index properties
           const indexChanged = isIndexChanged(prevIndex, currIndex);
 
           if (indexChanged) {
-            // Index definition changed - need to drop and recreate
+            // Same name, different definition: drop and recreate rather than ALTER.
             diff.indexes.altered.push({
               old: {
                 ...prevIndex,
@@ -414,7 +400,6 @@ export async function calculateDiff(
         }
       }
 
-      // Find deleted indexes (not altered)
       for (const indexName in prevIndexes) {
         if (!(indexName in currIndexes)) {
           diff.indexes.deleted.push({
@@ -424,11 +409,9 @@ export async function calculateDiff(
         }
       }
 
-      // Compare unique constraints
       const prevUniqueConstraints = prevTable.uniqueConstraints || {};
       const currUniqueConstraints = currTable.uniqueConstraints || {};
 
-      // Find new unique constraints
       for (const uqName in currUniqueConstraints) {
         if (!(uqName in prevUniqueConstraints)) {
           diff.uniqueConstraints.created.push({
@@ -438,7 +421,6 @@ export async function calculateDiff(
         }
       }
 
-      // Find deleted unique constraints
       for (const uqName in prevUniqueConstraints) {
         if (!(uqName in currUniqueConstraints)) {
           diff.uniqueConstraints.deleted.push({
@@ -448,11 +430,9 @@ export async function calculateDiff(
         }
       }
 
-      // Compare check constraints
       const prevCheckConstraints = prevTable.checkConstraints || {};
       const currCheckConstraints = currTable.checkConstraints || {};
 
-      // Find new check constraints
       for (const checkName in currCheckConstraints) {
         if (!(checkName in prevCheckConstraints)) {
           diff.checkConstraints.created.push({
@@ -462,7 +442,6 @@ export async function calculateDiff(
         }
       }
 
-      // Find deleted check constraints
       for (const checkName in prevCheckConstraints) {
         if (!(checkName in currCheckConstraints)) {
           diff.checkConstraints.deleted.push({
@@ -472,28 +451,23 @@ export async function calculateDiff(
         }
       }
 
-      // Compare foreign keys
       const prevFKs = prevTable.foreignKeys || {};
       const currFKs = currTable.foreignKeys || {};
 
-      // Find new, deleted, and altered foreign keys
       for (const fkName in currFKs) {
         if (!(fkName in prevFKs)) {
-          // New FK
           diff.foreignKeys.created.push(currFKs[fkName]);
         } else {
-          // Check if FK definition changed (CASCADE behavior, etc.)
           const prevFK = prevFKs[fkName];
           const currFK = currFKs[fkName];
 
-          // Compare FK properties
           const prevOnDelete = prevFK.onDelete || "no action";
           const currOnDelete = currFK.onDelete || "no action";
           const prevOnUpdate = prevFK.onUpdate || "no action";
           const currOnUpdate = currFK.onUpdate || "no action";
 
           if (prevOnDelete !== currOnDelete || prevOnUpdate !== currOnUpdate) {
-            // FK CASCADE behavior changed - need to drop and recreate
+            // CASCADE behavior changed: drop and recreate rather than ALTER.
             diff.foreignKeys.altered.push({
               old: prevFK,
               new: currFK,
@@ -502,7 +476,6 @@ export async function calculateDiff(
         }
       }
 
-      // Find deleted foreign keys (not altered)
       for (const fkName in prevFKs) {
         if (!(fkName in currFKs)) {
           const prevFK = prevFKs[fkName];

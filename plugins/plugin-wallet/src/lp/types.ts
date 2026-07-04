@@ -1,3 +1,11 @@
+/**
+ * Shared type surface for the LP (liquidity provisioning) subsystem: chain
+ * and DEX identifiers, per-chain RPC/wallet configuration, and the
+ * position/pool/vault/yield-optimization domain types consumed by the LP
+ * services and `liquidityAction`. Re-exports the core LP types
+ * (`ILpService`, `PoolInfo`, `LpPositionDetails`, `TransactionResult`,
+ * `TokenBalance`) alongside package-specific extensions.
+ */
 import type {
   IAgentRuntime,
   ILpService,
@@ -10,7 +18,6 @@ import type {
 import type { Keypair as SolanaKeypair } from "@solana/web3.js";
 import type { Address, Hash } from "viem";
 
-// Re-export types from core with modern syntax
 export type {
   ILpService,
   LpPositionDetails,

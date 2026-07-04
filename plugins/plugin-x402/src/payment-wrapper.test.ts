@@ -1,3 +1,9 @@
+/**
+ * Unit tests for `applyPaymentProtection`'s route-wrapping and 402-response
+ * behavior. Runtime, request, and response objects are hand-built fakes and
+ * `fetch` is stubbed where exercised — no real HTTP dispatch, facilitator,
+ * or on-chain verification is involved.
+ */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   applyPaymentProtection,

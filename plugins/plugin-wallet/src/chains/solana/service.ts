@@ -1,3 +1,22 @@
+/**
+ * `SolanaService` is the Solana chain runtime: it owns the RPC `Connection`,
+ * lazily loads the signing keypair (`getWalletKey`), and implements the
+ * `WalletChainHandler` contract (`getWalletChainHandler`/
+ * `executeWalletRouterAction`) so `WalletBackendService` can route `transfer`
+ * and `swap` subactions here. Beyond routing, it covers the full surface a
+ * Solana wallet needs: SOL/SPL transfer and Jupiter-quoted swap execution
+ * (with Token-2022 support), portfolio aggregation with Birdeye price
+ * enrichment and disk-backed caching (`updateWalletData`/`getCachedData`),
+ * token metadata/decimals/symbol resolution (including Token-2022 metadata
+ * pointer parsing), address validation and private-key detection in
+ * free-form strings, and account subscription management over the RPC
+ * websocket.
+ *
+ * `SolanaWalletService` is a deprecated thin compatibility adapter that
+ * forwards `getPortfolio`/`getBalance`/`transferSol` to a live `SolanaService`
+ * instance looked up by `chain_solana`; new code should depend on
+ * `SolanaService` directly.
+ */
 import { type IAgentRuntime, logger, Service, type ServiceTypeName } from "@elizaos/core";
 
 export interface WalletAsset {

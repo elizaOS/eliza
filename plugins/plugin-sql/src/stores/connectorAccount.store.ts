@@ -1,3 +1,15 @@
+/**
+ * Store for connector accounts (linked external identities like a Discord or
+ * Telegram account), their vault credential references, owner bindings,
+ * audit log, and OAuth flow state — backing the connector-account tables in
+ * `../schema`.
+ *
+ * OAuth flow state is looked up by a SHA-256 hash of the opaque `state`
+ * value rather than the value itself, so the raw state never round-trips
+ * through storage. Audit-event metadata is recursively redacted against
+ * `CONNECTOR_AUDIT_SECRET_KEY_PATTERN` before being persisted, since callers
+ * may pass through arbitrary provider payloads.
+ */
 import { createHash } from "node:crypto";
 import type {
   AppendConnectorAccountAuditEventParams,

@@ -1,3 +1,13 @@
+/**
+ * `useInventoryData` turns raw wallet API responses (balances, addresses,
+ * config, NFTs) into the sorted/filtered `TokenRow[]` and `NftItem[]` the
+ * inventory view renders, plus derived state (single-chain focus, per-chain
+ * errors, totals). EVM chains with a known address but no balance data yet
+ * are synthesized as zero-balance native rows so every configured chain has
+ * a row even before the balance fetch resolves; rows with zero balance and
+ * zero USD value are dropped. All sorting/filtering is memoized on the raw
+ * inputs and the user's sort/filter selections.
+ */
 import type {
   EvmChainBalance,
   WalletAddresses,

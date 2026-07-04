@@ -1,3 +1,11 @@
+/**
+ * Installs Postgres extensions (e.g. `vector`, `fuzzystrmatch`) required by
+ * plugin schemas. Extension names are allowlist-validated before being
+ * interpolated as an SQL identifier, since `CREATE EXTENSION` doesn't support
+ * parameterized identifiers. A failed or unavailable extension only logs a
+ * warning — it doesn't abort the migration, since not every deployment target
+ * has every optional extension available.
+ */
 import { logger } from "@elizaos/core";
 import { sql } from "drizzle-orm";
 import type { DrizzleDB } from "./types";
@@ -8,8 +16,6 @@ export class ExtensionManager {
   async installRequiredExtensions(extensions: string[]): Promise<void> {
     for (const extension of extensions) {
       try {
-        // Validate extension name to prevent SQL injection
-        // Extension names should only contain alphanumeric characters, underscores, and hyphens
         if (!/^[a-zA-Z0-9_-]+$/.test(extension)) {
           logger.warn(
             { src: "plugin:sql", extension },
@@ -18,7 +24,6 @@ export class ExtensionManager {
           continue;
         }
 
-        // Use sql.identifier for safe escaping of SQL identifiers
         await this.db.execute(sql`CREATE EXTENSION IF NOT EXISTS ${sql.identifier(extension)}`);
         logger.debug({ src: "plugin:sql", extension }, "Extension installed");
       } catch (error) {
@@ -27,8 +32,6 @@ export class ExtensionManager {
           { src: "plugin:sql", extension, error: errorMessage },
           "Could not install extension"
         );
-        // Some extensions might not be available or already installed
-        // This shouldn't stop the migration process
       }
     }
   }

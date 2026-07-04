@@ -1,3 +1,13 @@
+/**
+ * EVM token swap: `SwapAction` shops a quote across Li.Fi, Bebop, and
+ * KyberSwap (best-price-first, with slippage escalation and per-quote error
+ * recovery across `slippageLevels`), handles ERC-20 approval when needed, and
+ * submits the winning route's transaction. `buildSwapDetails` turns the LLM's
+ * structured intent into concrete `SwapParams`, resolving relative amounts
+ * (half/max/percent) against the wallet's live chain balance. `swapAction` is
+ * the `WALLET`/`swap` subaction entry point and always runs through
+ * `gateWalletFinancialExecution` before submission.
+ */
 import type { ActionResult, HandlerCallback, IAgentRuntime, Memory, State } from "@elizaos/core";
 import {
   gateWalletFinancialExecution,

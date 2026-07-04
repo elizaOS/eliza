@@ -1,3 +1,9 @@
+/**
+ * Vitest config for this plugin's unit/component tests. Aliases React/ReactDOM
+ * to their real installed copies (avoiding duplicate-instance dedup issues)
+ * and anchors a couple of cross-plugin subpaths to source for the keyless
+ * test lane.
+ */
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

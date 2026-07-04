@@ -1,3 +1,8 @@
+/**
+ * Solana REST routes (address, balance, and related wallet queries) mounted
+ * directly on the plugin's `routes` array. Each handler looks up `SolanaService`
+ * from the runtime and returns a uniform `ApiResponse<T>` success/error envelope.
+ */
 import type { LegacyRouteHandler, Route } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { SOLANA_WALLET_DATA_CACHE_KEY } from "../constants";

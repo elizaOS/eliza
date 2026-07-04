@@ -1,3 +1,13 @@
+/**
+ * PostgreSQL RLS entity-isolation integration tests against a real Postgres
+ * with RLS enabled (`docker-compose up -d postgres`). Verifies entity-level
+ * isolation (user privacy), participant-based access control (room
+ * membership), Entity RLS composing with Server RLS (double isolation), and
+ * that `PostgresConnectionManager.withEntityContext()` sets the RLS entity
+ * context via the parameterized, transaction-scoped
+ * `set_config('app.entity_id', $1, true)` form — this exercises the real
+ * production code path, not a raw-interpolation stand-in.
+ */
 import { stringToUuid, type UUID } from "@elizaos/core";
 import { sql } from "drizzle-orm";
 import { Client } from "pg";
@@ -5,24 +15,6 @@ import { v4 as uuidv4 } from "uuid";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { PostgresConnectionManager } from "../../../pg/manager";
 import { bootstrapPostgresRlsSchema, toPostgresSuperuserUrl } from "./rls-test-helpers";
-
-/**
- * PostgreSQL RLS Entity Integration Tests
- *
- * These tests require a real PostgreSQL database with RLS enabled.
- * Run with: docker-compose up -d postgres
- *
- * Tests verify:
- * - Entity-level isolation (user privacy)
- * - Participant-based access control (room membership)
- * - Entity RLS works with Server RLS (double isolation)
- * - withEntityContext() correctly sets entity context (regression test for the
- *   parameterized set_config() RLS context)
- *
- * IMPORTANT: Uses PostgresConnectionManager.withEntityContext() to test the actual
- * production code path. This exercises the parameterized set_config('app.entity_id', $1, true)
- * form (transaction-scoped), so the entity context applies without raw interpolation.
- */
 
 // Skip these tests if POSTGRES_URL is not set (e.g., in CI without PostgreSQL)
 describe.skipIf(!process.env.POSTGRES_URL)("PostgreSQL RLS Entity Integration", () => {
@@ -209,9 +201,8 @@ describe.skipIf(!process.env.POSTGRES_URL)("PostgreSQL RLS Entity Integration", 
   });
 
   it("should allow Alice to see room1 memories (tests withEntityContext + sql.raw fix)", async () => {
-    // This test verifies the production code path works:
-    // withEntityContext() -> sql.raw(`SET LOCAL app.entity_id = '${entityId}'`)
-    // Before the fix, this would fail with "syntax error at or near $1"
+    // Exercises the production path: withEntityContext() ->
+    // sql.raw(`SET LOCAL app.entity_id = '${entityId}'`).
     const result = await manager.withEntityContext(aliceId as UUID, async (tx) => {
       return await tx.execute(sql`SELECT id, room_id, content FROM memories`);
     });

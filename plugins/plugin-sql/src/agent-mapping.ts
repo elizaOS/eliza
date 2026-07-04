@@ -1,3 +1,9 @@
+/**
+ * Bidirectional mappers between the runtime's `Agent`-facing message-example
+ * and document/knowledge shapes and the legacy nested-array / string forms
+ * stored in the agents table's JSONB columns, so older rows keep loading
+ * under the current `MessageExampleGroup[]` / `DocumentSourceItem[]` types.
+ */
 import type { DocumentSourceItem, MessageExample, MessageExampleGroup } from "@elizaos/core";
 
 function isRecord(value: unknown): value is Record<string, unknown> {

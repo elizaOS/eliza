@@ -1,6 +1,15 @@
+/**
+ * End-to-end `RuntimeMigrator` tests against a real isolated Postgres
+ * database, covering: migration-infrastructure init, running the core
+ * plugin-sql schema and tracking it in `_migrations`/`_journal`/`_snapshots`,
+ * column type/FK/unique/check-constraint/index creation, idempotent re-runs,
+ * dry-run and reset, error handling for an invalid schema, and — critically —
+ * that migrating plugin-sql never drops or alters tables/columns belonging
+ * to other plugins that happen to share the public schema. Accumulates a
+ * pass/fail summary logged in `afterAll` alongside the vitest assertions.
+ */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-// Helper types for database query result rows
 interface ExistsRow {
   exists: boolean;
 }
@@ -67,14 +76,12 @@ describe("Runtime Migrator - PostgreSQL Integration Tests", () => {
     db = testSetup.db;
     cleanup = testSetup.cleanup;
 
-    // Initialize the runtime migrator
     migrator = new RuntimeMigrator(db);
 
-    // We're already in an isolated schema, so no cleanup needed
     console.log("🗑️  Test environment ready...");
 
     try {
-      // Drop migrations schema if exists (in case of previous test failure)
+      // Guards against a leftover `migrations` schema from a previous failed run.
       await db.execute(sql`DROP SCHEMA IF EXISTS migrations CASCADE`);
 
       console.log("✅ Test environment cleaned\n");
@@ -84,7 +91,6 @@ describe("Runtime Migrator - PostgreSQL Integration Tests", () => {
   });
 
   afterAll(async () => {
-    // Print test summary
     console.log(`\n${"=".repeat(80)}`);
     console.log("📊 RUNTIME MIGRATOR TEST SUMMARY");
     console.log(`${"=".repeat(80)}\n`);
@@ -112,7 +118,6 @@ describe("Runtime Migrator - PostgreSQL Integration Tests", () => {
     it("should initialize migration tables", async () => {
       await migrator.initialize();
 
-      // Check migrations schema exists
       const schemaResult = await db.execute(
         sql`SELECT EXISTS (
           SELECT 1 FROM information_schema.schemata 
@@ -129,7 +134,6 @@ describe("Runtime Migrator - PostgreSQL Integration Tests", () => {
         testResults.failed.push("Migration schema not created");
       }
 
-      // Check all migration tables exist
       const tables = ["_migrations", "_journal", "_snapshots"];
 
       for (const tableName of tables) {
@@ -155,10 +159,8 @@ describe("Runtime Migrator - PostgreSQL Integration Tests", () => {
 
   describe("Schema Migration Execution", () => {
     it("should run initial migration for plugin-sql schema", async () => {
-      // Run the migration with the actual schema
       await migrator.migrate("plugin-sql", schema, { verbose: true });
 
-      // Check that tables were created in public schema
       const tablesResult = await db.execute(
         sql`SELECT tablename FROM pg_tables 
             WHERE schemaname = 'public' 
@@ -168,7 +170,6 @@ describe("Runtime Migrator - PostgreSQL Integration Tests", () => {
       const createdTables = tablesResult.rows.map((r: TableInfoRow) => r.tablename);
       console.log(`\n📋 Tables created: ${createdTables.length}`);
 
-      // Expected tables from schema
       const expectedTables = [
         "agents",
         "cache",
@@ -347,10 +348,8 @@ describe("Runtime Migrator - PostgreSQL Integration Tests", () => {
 
   describe("Idempotency", () => {
     it("should handle running the same migration twice", async () => {
-      // Run migration again - should not fail or create duplicates
       await migrator.migrate("plugin-sql", schema);
 
-      // Check that we still have only one migration record
       const result = await db.execute(
         sql`SELECT COUNT(*) as count
             FROM migrations._migrations
@@ -416,7 +415,6 @@ describe("Runtime Migrator - PostgreSQL Integration Tests", () => {
 
   describe("Index Creation", () => {
     it("should create indexes on tables", async () => {
-      // First, let's see ALL indexes
       const allIndexes = await db.execute(
         sql`SELECT schemaname, tablename, indexname
             FROM pg_indexes
@@ -424,7 +422,6 @@ describe("Runtime Migrator - PostgreSQL Integration Tests", () => {
       );
       console.log("All indexes in public schema:", allIndexes.rows);
 
-      // Then check for idx_ prefixed ones
       const result = await db.execute(
         sql`SELECT COUNT(*) as count
             FROM pg_indexes
@@ -435,14 +432,13 @@ describe("Runtime Migrator - PostgreSQL Integration Tests", () => {
       const indexCount = parseInt(String((result.rows[0] as unknown as CountRow).count), 10);
       console.log("Count of idx_ indexes:", indexCount);
 
-      // Our schema does create indexes with idx_ prefix
       if (indexCount > 0) {
         testResults.passed.push(`Indexes created: ${indexCount}`);
       } else {
         testResults.failed.push("🔴 CRITICAL GAP: No indexes created");
       }
 
-      // We expect indexes to be created (memories table has idx_ indexes)
+      // The memories table's idx_-prefixed indexes are the ones asserted here.
       expect(indexCount).toBeGreaterThan(0);
     });
   });
@@ -458,14 +454,13 @@ describe("Runtime Migrator - PostgreSQL Integration Tests", () => {
 
       const checkCount = parseInt(String((result.rows[0] as unknown as CountRow).count), 10);
 
-      // Our schema does create check constraints (e.g., in memories table)
       if (checkCount > 0) {
         testResults.passed.push(`Check constraints created: ${checkCount}`);
       } else {
         testResults.failed.push("🟡 GAP: No check constraints created");
       }
 
-      // We expect check constraints to be created
+      // The memories table's check constraints are the ones asserted here.
       expect(checkCount).toBeGreaterThan(0);
     });
   });
@@ -487,7 +482,6 @@ describe("Runtime Migrator - PostgreSQL Integration Tests", () => {
     });
 
     it("should handle errors gracefully", async () => {
-      // Try to migrate with invalid schema
       let _errorCaught = false;
 
       try {
@@ -498,12 +492,10 @@ describe("Runtime Migrator - PostgreSQL Integration Tests", () => {
         _errorCaught = true;
       }
 
-      // The migrator now records empty schemas for plugins with no tables
-      // So we need to check if it was recorded as an empty migration
+      // A schema with no real tables is still recorded and considered "hasRun",
+      // but must not create any table matching the bogus entry.
       const _status = await migrator.getStatus("invalid-plugin");
 
-      // An empty schema is still considered "hasRun"
-      // but it should not have created any real tables
       const tablesResult = await db.execute(
         sql`SELECT COUNT(*) as count
             FROM information_schema.tables
@@ -525,7 +517,7 @@ describe("Runtime Migrator - PostgreSQL Integration Tests", () => {
 
   describe("Table Filtering - Ignoring Other Plugin Tables", () => {
     it("should ignore tables in public schema that are not in plugin-sql schema", async () => {
-      // Create a table that is NOT in the plugin-sql schema (simulating another plugin)
+      // Simulates another plugin's table living alongside plugin-sql's own tables.
       await db.execute(
         sql`CREATE TABLE IF NOT EXISTS public.custom_analytics (
           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -536,23 +528,19 @@ describe("Runtime Migrator - PostgreSQL Integration Tests", () => {
         )`
       );
 
-      // Create an index on the custom table
       await db.execute(
         sql`CREATE INDEX IF NOT EXISTS idx_custom_analytics_event_type
             ON public.custom_analytics(event_type)`
       );
 
-      // Insert some test data
       await db.execute(
         sql`INSERT INTO public.custom_analytics (event_type, user_id, data)
             VALUES ('page_view', gen_random_uuid(), '{"page": "/home"}'::jsonb)`
       );
 
-      // Now run migration again with plugin-sql schema
-      // This should NOT try to drop the custom_analytics table
+      // Must not drop custom_analytics — it isn't part of the plugin-sql schema.
       await migrator.migrate("plugin-sql", schema, { verbose: true });
 
-      // Verify custom_analytics table still exists
       const tableExists = await db.execute(
         sql`SELECT EXISTS (
           SELECT 1 FROM pg_tables
@@ -570,7 +558,6 @@ describe("Runtime Migrator - PostgreSQL Integration Tests", () => {
         testResults.failed.push("Table filtering: custom_analytics table was deleted!");
       }
 
-      // Verify the data is still there
       const dataResult = await db.execute(
         sql`SELECT COUNT(*) as count FROM public.custom_analytics`
       );
@@ -587,12 +574,11 @@ describe("Runtime Migrator - PostgreSQL Integration Tests", () => {
         testResults.failed.push("Table filtering: custom_analytics data was deleted!");
       }
 
-      // Clean up
       await db.execute(sql`DROP TABLE IF EXISTS public.custom_analytics CASCADE`);
     });
 
     it("should not schedule DROP for tables from other plugins in public schema", async () => {
-      // Create a table simulating another plugin's data
+      // Simulates another plugin's data table living in the shared public schema.
       await db.execute(
         sql`CREATE TABLE IF NOT EXISTS public.other_plugin_data (
           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -603,10 +589,8 @@ describe("Runtime Migrator - PostgreSQL Integration Tests", () => {
         )`
       );
 
-      // Run migration
       await migrator.migrate("plugin-sql", schema, { verbose: true });
 
-      // Verify the table still exists and was not touched
       const tableExists = await db.execute(
         sql`SELECT EXISTS (
           SELECT 1 FROM pg_tables
@@ -618,8 +602,8 @@ describe("Runtime Migrator - PostgreSQL Integration Tests", () => {
       const exists = (tableExists.rows[0] as ExistsRow).exists;
       expect(exists).toBe(true);
 
-      // Also verify the server_id column was not dropped by RuntimeMigrator
-      // (migrations.ts might drop it, but RuntimeMigrator should not)
+      // migrations.ts (which runs before RuntimeMigrator) may drop server_id,
+      // but RuntimeMigrator itself must never touch this foreign table.
       const columnExists = await db.execute(
         sql`SELECT EXISTS (
           SELECT 1 FROM information_schema.columns
@@ -629,8 +613,6 @@ describe("Runtime Migrator - PostgreSQL Integration Tests", () => {
         ) as exists`
       );
 
-      // The column might be dropped by migrations.ts (runs before RuntimeMigrator)
-      // but RuntimeMigrator itself should not touch this table
       const _serverIdExists = (columnExists.rows[0] as ExistsRow).exists;
 
       if (exists) {
@@ -643,19 +625,16 @@ describe("Runtime Migrator - PostgreSQL Integration Tests", () => {
         );
       }
 
-      // Clean up
       await db.execute(sql`DROP TABLE IF EXISTS public.other_plugin_data CASCADE`);
     });
   });
 
   describe("Development Features", () => {
     it("should support dry-run mode", async () => {
-      // Test dry-run doesn't actually execute
       await migrator.migrate("dry-run-test", schema, {
         dryRun: true,
       });
 
-      // Check no tables were created
       const result = await db.execute(
         sql`SELECT COUNT(*) as count
             FROM migrations._migrations
@@ -673,13 +652,10 @@ describe("Runtime Migrator - PostgreSQL Integration Tests", () => {
     });
 
     it("should support reset for development", async () => {
-      // Create a test migration
       await migrator.migrate("reset-test", { testTable: {} });
 
-      // Reset it
       await migrator.reset("reset-test");
 
-      // Check it's gone
       const status = await migrator.getStatus("reset-test");
       expect(status.hasRun).toBe(false);
 

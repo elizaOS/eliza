@@ -1,3 +1,9 @@
+/**
+ * Exercises PgliteDatabaseAdapter and PGliteClientManager against a real
+ * in-memory PGlite instance (WASM Postgres) with migrations run through
+ * DatabaseMigrationService — connection lifecycle, withDatabase error
+ * propagation, and agent CRUD.
+ */
 import { PGlite } from "@electric-sql/pglite";
 import type { Agent, UUID } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";

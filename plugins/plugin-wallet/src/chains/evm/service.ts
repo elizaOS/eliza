@@ -1,3 +1,11 @@
+/**
+ * `EVMService` owns the periodic refresh of the agent's EVM wallet
+ * address/balances into runtime cache (`EVM_WALLET_DATA_CACHE_KEY`), on a
+ * `CACHE_REFRESH_INTERVAL_MS` timer plus on-demand `forceUpdate`.
+ * `getCachedData` serves the cache and transparently refreshes when stale;
+ * `evmWalletProvider` (`providers/wallet.ts`) reads through this service
+ * before falling back to a direct fetch.
+ */
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
 import {
   CACHE_REFRESH_INTERVAL_MS,

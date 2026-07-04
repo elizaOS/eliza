@@ -1,3 +1,4 @@
+/** Shared contracts between `TokenInfoService`, its providers, and the `token_info` action handler. */
 import type {
   ActionResult,
   HandlerCallback,

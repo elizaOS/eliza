@@ -1,3 +1,4 @@
+/** Error-message normalization for DexScreener HTTP/fetch failures. */
 interface DexScreenerFetchErr {
   readonly response?: { readonly data?: { readonly message?: string } };
   readonly message?: string;

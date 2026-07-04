@@ -1,4 +1,9 @@
 #!/usr/bin/env bun
+/**
+ * Build script for the Solana chain subpackage: bundles `index.ts` with
+ * `Bun.build`, externalizing every declared dependency from `package.json`,
+ * then runs `tsc --noCheck` to emit type declarations.
+ */
 
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";

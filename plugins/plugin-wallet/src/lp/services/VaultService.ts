@@ -1,3 +1,9 @@
+/**
+ * Generates and caches per-user Solana vault keypairs for LP operations,
+ * encrypting the secret key as a hex string for storage by the caller. The
+ * public-key cache here is in-memory only; callers are responsible for
+ * durable storage of `secretKeyEncrypted`.
+ */
 import { type IAgentRuntime, Service } from "@elizaos/core";
 import { TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import {

@@ -1,3 +1,14 @@
+/**
+ * The `PREDICTION_MARKET` action and its backing `PredictionMarketService`:
+ * an extensible provider registry that today registers a single Polymarket
+ * provider. The action parses `action`/`kind`/legacy-simile params into a
+ * normalized `{ op, target }` pair, then routes through
+ * `PredictionMarketService.route()` to the matching provider (`execute()`),
+ * so a future non-Polymarket provider (e.g. Manifold) plugs in via
+ * `registerProvider()` without touching the action itself. Read operations
+ * call the local dashboard API (`/api/polymarket/*`); `place_order` only ever
+ * reports trading readiness, since signed CLOB order placement is disabled.
+ */
 import type {
   Action,
   ActionResult,

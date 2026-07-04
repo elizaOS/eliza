@@ -1,3 +1,10 @@
+/**
+ * Browser entry point for `@elizaos/plugin-sql`: registers a PGlite
+ * (WASM-only) `IDatabaseAdapter`, backed by a process-global, per-agent
+ * `PGliteClientManager` singleton cache so repeated imports never spin up
+ * duplicate PGlite instances. No PostgreSQL support — see `index.node.ts`
+ * for the Node/Bun entry that adds it.
+ */
 import {
   type IAgentRuntime,
   type IDatabaseAdapter,

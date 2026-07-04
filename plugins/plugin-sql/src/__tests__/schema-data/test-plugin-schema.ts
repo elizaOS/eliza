@@ -1,3 +1,9 @@
+/**
+ * Fixture plugin schema used by migration tests to exercise a realistic
+ * multi-table, cross-schema-namespaced ("polymarket") Drizzle schema with
+ * foreign keys, a unique constraint, and an index — distinct from the core
+ * elizaOS schema.
+ */
 import { sql } from "drizzle-orm";
 import {
   boolean,

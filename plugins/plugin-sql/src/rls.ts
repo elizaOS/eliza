@@ -1,3 +1,12 @@
+/**
+ * PostgreSQL Row Level Security (RLS) setup and teardown for two independent
+ * isolation layers: per-server isolation (via a `server_id` column + the
+ * `current_server_id()` session function) and per-entity isolation (via
+ * `entity_id`/`author_id`/`room_id` + `current_entity_id()`). Installs SQL
+ * functions/policies that apply automatically to every existing and future
+ * table, so new schema tables need no manual RLS wiring. PGlite has no RLS
+ * support, so these helpers are only invoked on the Postgres adapter.
+ */
 import { type IDatabaseAdapter, logger, validateUuid } from "@elizaos/core";
 import { eq, sql } from "drizzle-orm";
 import { agentTable } from "./schema/agent";

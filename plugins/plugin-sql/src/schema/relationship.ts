@@ -1,3 +1,10 @@
+/**
+ * Drizzle schema for `relationships` — a directed edge between two entities,
+ * scoped to a single agent, carrying free-form `tags` and `metadata`. The
+ * `unique_relationship` constraint enforces at most one row per
+ * (source, target, agent) triple; direction matters, so A→B and B→A are
+ * distinct rows.
+ */
 import { sql } from "drizzle-orm";
 import {
   foreignKey,
@@ -12,10 +19,6 @@ import {
 import { agentTable } from "./agent";
 import { entityTable } from "./entity";
 
-/**
- * Defines the relationshipTable containing information about relationships between entities and agents.
- * @type {import('knex').TableBuilder}
- */
 export const relationshipTable = pgTable(
   "relationships",
   {

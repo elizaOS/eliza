@@ -1,3 +1,12 @@
+/**
+ * Scale test for the keyword (`textContains`) search path on `getMemories`.
+ * Seeds a large fixture (>=2k rooms / >=200k message rows) and proves the
+ * keyword search is a single pushed-down SQL `ILIKE` predicate — not a
+ * "fetch every row, scan in JS" pattern — returns correct rows across
+ * conversations, reaches a hit far outside the recent window, and stays
+ * bounded in latency. Default mode is PGlite (WASM, in-process); set
+ * `POSTGRES_URL` to run against a real Postgres instead.
+ */
 import { ChannelType, type Entity, type Room, type UUID, type World } from "@elizaos/core";
 import { v4 } from "uuid";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -6,19 +15,6 @@ import type { PgliteDatabaseAdapter } from "../../pglite/adapter";
 import { memoryTable } from "../../schema";
 import type { DrizzleDatabase } from "../../types";
 import { createIsolatedTestDatabase } from "../test-helpers";
-
-/**
- * Scale test for the keyword (`textContains`) search path on `getMemories`.
- *
- * Seeds a large fixture (≥2k rooms / ≥200k message rows) and proves that the
- * keyword search is backed by a single pushed-down SQL `ILIKE` predicate — not
- * a "fetch every row, scan in JS" pattern — that it returns correct rows across
- * conversations, that it reaches a hit far outside the recent window, and that
- * the query stays bounded in latency.
- *
- * Default mode: PGlite (WASM, in-process). Set `POSTGRES_URL` to run against a
- * real Postgres for a higher row count / tighter latency assertions.
- */
 
 const ROOMS = Number(process.env.KEYWORD_SEARCH_TEST_ROOMS ?? 2_000);
 const MESSAGES_PER_ROOM = Number(process.env.KEYWORD_SEARCH_TEST_MESSAGES_PER_ROOM ?? 100);

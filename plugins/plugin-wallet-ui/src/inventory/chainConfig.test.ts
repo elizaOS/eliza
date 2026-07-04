@@ -1,3 +1,9 @@
+/**
+ * Chain config drives explorer links + address validation in the wallet UI.
+ * Lookups are case-insensitive and null for unknown chains; explorer URLs
+ * embed the hash/address; token URLs reject addresses failing the chain's
+ * address regex (so a bad address never produces a misleading link).
+ */
 import { describe, expect, it } from "vitest";
 import {
   getChainConfig,
@@ -6,13 +12,6 @@ import {
   getNativeLogoUrl,
   resolveChainKey,
 } from "./chainConfig.js";
-
-/**
- * Chain config drives explorer links + address validation in the wallet UI.
- * Lookups are case-insensitive and null for unknown chains; explorer URLs
- * embed the hash/address; token URLs reject addresses failing the chain's
- * address regex (so a bad address never produces a misleading link).
- */
 
 describe("getChainConfig / resolveChainKey", () => {
   it("resolves known chains case-insensitively, null for unknown", () => {

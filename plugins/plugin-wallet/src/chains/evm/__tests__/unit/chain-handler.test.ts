@@ -1,3 +1,9 @@
+/**
+ * Unit tests for `createEvmWalletChainHandler`'s prepare/execute transfer and
+ * swap paths, and for the router's dedup of transfer/swap planner actions.
+ * The wallet client and its `sendTransaction` are faked — no real signing or
+ * network calls.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import { parseEther } from "viem";
 import { base, mainnet } from "viem/chains";

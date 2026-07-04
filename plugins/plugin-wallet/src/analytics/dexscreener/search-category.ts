@@ -1,3 +1,9 @@
+/**
+ * Registers DexScreener as a search category so the runtime's generic search
+ * surface can dispatch token/pair queries to `DexScreenerService`.
+ * `registerDexScreenerSearchCategory` is idempotent — safe to call on every
+ * plugin init.
+ */
 import type { IAgentRuntime, SearchCategoryRegistration } from "@elizaos/core";
 
 export const DEXSCREENER_SEARCH_CATEGORY: SearchCategoryRegistration = {

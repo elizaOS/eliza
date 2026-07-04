@@ -1,3 +1,12 @@
+/**
+ * Default (`@elizaos/plugin-sql`) entry point — the same Postgres/PGlite
+ * dual-adapter registration as `index.node.ts`, but resolving its data
+ * directory via `./utils` instead of `./utils.node`. Registers either a
+ * `PgDatabaseAdapter` (when `postgresUrl` is set, with a shared
+ * process-global connection-pool singleton) or a per-agent
+ * `PgliteDatabaseAdapter`, and re-exports the RLS management functions plus
+ * PGlite live-query / Electric Sync status/reset/close accessors.
+ */
 import { mkdirSync } from "node:fs";
 import type { IDatabaseAdapter, UUID } from "@elizaos/core";
 import { type IAgentRuntime, logger, type Plugin } from "@elizaos/core";

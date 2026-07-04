@@ -1,3 +1,13 @@
+/**
+ * Meteora DLMM adapter implementing the wallet plugin's DEX/LP surface
+ * (`getPools`, `addLiquidity`, `removeLiquidity`, `getLpPositionDetails`,
+ * `getMarketDataForPools`) against Meteora's public API and on-chain DLMM
+ * program. Pool metadata comes from the Meteora DLMM API; liquidity math and
+ * transaction building go through the `DLMM` SDK wrapper. Simplifications to
+ * be aware of: `addLiquidity` always uses a fixed +/-10 bin spot strategy,
+ * `removeLiquidity` always removes 100% of the first position found for the
+ * pool, and USD valuation is not computed (no price oracle wired).
+ */
 import * as anchor from "@coral-xyz/anchor";
 import {
   type IAgentRuntime,

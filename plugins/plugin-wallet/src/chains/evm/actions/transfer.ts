@@ -1,3 +1,10 @@
+/**
+ * EVM native/token transfer: `TransferAction.transfer` sends a native-value
+ * transaction (with optional calldata) through the resolved wallet client.
+ * `buildTransferDetails` turns the LLM's structured reply into validated
+ * `TransferParams`, checking the target chain against the wallet's
+ * configured chains before returning.
+ */
 import {
   composePromptFromState,
   type IAgentRuntime,

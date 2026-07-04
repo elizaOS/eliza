@@ -1,11 +1,10 @@
+/** Fixture agent/entity/world records for the world-store integration tests, including owner/role metadata variants. */
 import { type Agent, type Entity, Role, type UUID, type World } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
 
-// Test IDs
 export const worldTestAgentId = uuidv4() as UUID;
 export const worldTestEntityId = uuidv4() as UUID;
 
-// Test data for world integration tests
 export const worldTestAgent: Agent = {
   id: worldTestAgentId,
   name: "World Test Agent",
@@ -29,7 +28,6 @@ export const worldTestEntity: Entity = {
   },
 };
 
-// Basic test worlds
 export const worldTestWorlds: World[] = [
   {
     id: uuidv4() as UUID,

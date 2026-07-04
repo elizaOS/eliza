@@ -1,18 +1,18 @@
+/**
+ * Regression guard for a per-reply hang: `evmWalletProvider.get()` runs inside
+ * `composeState` on every message and is awaited before the agent replies, so
+ * a balance RPC against a slow/unreachable endpoint must bound itself rather
+ * than block the turn until `composeState`'s provider timeout fires.
+ * `getWalletBalanceForChain` is expected to resolve to `null` (same as any RPC
+ * error) instead of hanging. Uses fake timers and a mocked public client — no
+ * real RPC calls.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import { generatePrivateKey } from "viem/accounts";
 import { mainnet } from "viem/chains";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { WalletProvider } from "../../providers/wallet";
 
-/**
- * Regression guard for the dedicated-agent "~28s per reply" hang.
- *
- * evmWalletProvider.get() runs inside composeState on every message and is
- * awaited before the agent replies. A balance RPC against a slow/unreachable
- * endpoint used to hang until composeState's 30s provider cap fired, blocking the
- * whole turn. getWalletBalanceForChain now bounds the RPC and must resolve to
- * null (handled like any RPC error) instead of hanging.
- */
 function makeRuntime(): IAgentRuntime {
   return {
     getCache: vi.fn(async () => null),

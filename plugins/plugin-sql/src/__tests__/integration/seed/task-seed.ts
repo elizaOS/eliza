@@ -1,13 +1,12 @@
+/** Fixture task records for the task-store integration tests, covering room/tag filtering and name search. */
 import type { Task, UUID } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
 
-// Test IDs
 export const taskTestAgentId = uuidv4() as UUID;
 export const taskTestRoomId = uuidv4() as UUID;
 export const taskTestWorldId = uuidv4() as UUID;
 export const taskTestEntityId = uuidv4() as UUID;
 
-// Sample test tasks
 export const taskTestTasks: Task[] = [
   {
     id: uuidv4() as UUID,
@@ -67,12 +66,11 @@ export const taskTestTasks: Task[] = [
   },
 ];
 
-// Sample task with different room
 export const taskTestTaskDifferentRoom: Task = {
   id: uuidv4() as UUID,
   name: "Task Different Room",
   description: "This task belongs to a different room for filter testing",
-  roomId: uuidv4() as UUID, // Different room ID
+  roomId: uuidv4() as UUID,
   worldId: taskTestWorldId,
   tags: ["test", "different-room"],
   metadata: {
@@ -81,7 +79,6 @@ export const taskTestTaskDifferentRoom: Task = {
   },
 };
 
-// Test task with specific tags for filtering tests
 export const taskTestTaskWithSpecificTags: Task = {
   id: uuidv4() as UUID,
   name: "Task With Specific Tags",

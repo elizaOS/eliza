@@ -1,3 +1,12 @@
+/**
+ * `WalletBackend` implementation that signs with raw private keys read
+ * directly from settings/env (`EVM_PRIVATE_KEY`, `SOLANA_PRIVATE_KEY` /
+ * `WALLET_PRIVATE_KEY`) — the desktop/local-agent default when no Steward
+ * credentials are configured. Does not autogenerate keys; construction
+ * throws `WalletBackendNotConfiguredError` if neither chain has a usable key.
+ * `LocalSolanaSigner` wraps a `Keypair` to satisfy the `SolanaSigner`
+ * interface for transaction and message signing.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import {
   Keypair,

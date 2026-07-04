@@ -1,3 +1,14 @@
+/**
+ * `PGliteClientManager` owns the lifecycle of a single embedded PGlite
+ * (WASM Postgres) instance: WASM extension loading, a cross-process data-dir
+ * lock (with PID/boot-id/proc-start-tick reuse detection so a recycled PID or
+ * an unclean container shutdown can't permanently brick boot), optional
+ * Electric Sync bootstrapping for the local-cloud read path, and forwarding
+ * local writes to `WriteBackService` for the cloud write path. Mobile
+ * embedded runtimes (iOS/Android local backend) are single-tenant and get a
+ * carve-out from the liveness heuristics since a leftover lock there is
+ * always stale.
+ */
 import {
   closeSync,
   existsSync,
@@ -628,16 +639,9 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
       return "missing";
     }
 
-    // iOS embedded mode is single-tenant: Bun runs as a thread inside the
-    // host app process, and ElizaBunRuntime serializes engine starts. Any
-    // leftover postmaster.pid is by definition stale — either from a prior
-    // app launch, or from a prior Bun thread in this same process that
-    // already exited. The standard `process.kill(pid, 0)` heuristic
-    // produces false positives here because the recorded PID matches the
-    // current iOS app PID.
     // Mobile embedded modes (iOS and Android) are single-tenant: each app
     // launch spawns a fresh Bun process, so any leftover postmaster.pid is
-    // always stale.  The process.kill(pid, 0) heuristic below can produce
+    // always stale. The process.kill(pid, 0) heuristic below can produce
     // false positives on both platforms (iOS: same-process PID; Android:
     // EPERM instead of ESRCH for cross-UID pids), so clear unconditionally.
     if (

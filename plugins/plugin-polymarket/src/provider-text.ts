@@ -1,3 +1,8 @@
+/**
+ * Pure env-to-text helper for `polymarketStatusProvider`: checks trading
+ * credential env vars (and their legacy aliases) and formats the per-turn
+ * status block without touching the network or the runtime.
+ */
 import {
   POLYMARKET_CLOB_API_BASE,
   POLYMARKET_DATA_API_BASE,

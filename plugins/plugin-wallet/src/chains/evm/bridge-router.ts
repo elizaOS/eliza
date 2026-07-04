@@ -1,3 +1,13 @@
+/**
+ * Cross-chain EVM bridging via Li.Fi: `BridgeAction` quotes routes, executes
+ * the selected route through the LiFi SDK's `EVM` provider (wired to the
+ * wallet's own signer/chain-switch through the adapter functions above),
+ * tracks in-flight route status in `activeRoutes`, and polls the bridge
+ * status endpoint until the route completes or times out. `routeEvmBridge`
+ * is the `WALLET`/`bridge` subaction entry point: it returns a `prepare`
+ * quote (no signing) or drives a full `execute` bridge and returns the
+ * submitted transaction.
+ */
 import { logger } from "@elizaos/core";
 import {
   createConfig,

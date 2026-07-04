@@ -1,3 +1,9 @@
+/**
+ * Unit tests for `BirdeyeService` market-data methods against a mocked
+ * `fetch` and an in-memory cache map: covers chain-scoped cache hits, cache
+ * writes with timed wrappers, and per-chain header propagation across the
+ * three requests that back single-token market data.
+ */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BirdeyeService } from "./service";
 

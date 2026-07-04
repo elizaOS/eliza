@@ -1,3 +1,7 @@
+/**
+ * Covers `registerDexScreenerSearchCategory` idempotency and registered
+ * metadata against a mocked `IAgentRuntime` (no real search-category registry).
+ */
 import type { IAgentRuntime, SearchCategoryRegistration } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import {

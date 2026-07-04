@@ -1,3 +1,9 @@
+/**
+ * Persists the per-plugin Drizzle-compatible migration journal (a JSONB
+ * list of `JournalEntry` records) into the `migrations._journal` table, one
+ * row per plugin. `RuntimeMigrator` calls `updateJournal` after each applied
+ * migration to append an entry with the next index.
+ */
 import { sql } from "drizzle-orm";
 import { getRow } from "../../types";
 import type { DrizzleDB, Journal, JournalEntry } from "../types";
@@ -45,22 +51,18 @@ export class JournalStorage {
   }
 
   async addEntry(pluginName: string, entry: JournalEntry): Promise<void> {
-    // First, get the current journal
     let journal = await this.loadJournal(pluginName);
 
-    // If no journal exists, create a new one
     if (!journal) {
       journal = {
-        version: "7", // Latest Drizzle version
+        version: "7", // Latest Drizzle journal version
         dialect: "postgresql",
         entries: [],
       };
     }
 
-    // Add the new entry
     journal.entries.push(entry);
 
-    // Save the updated journal
     await this.saveJournal(pluginName, journal);
   }
 

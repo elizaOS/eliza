@@ -1,3 +1,8 @@
+/**
+ * Unit tests for the Hyperliquid automation-node contributor: registration,
+ * and the enabled/disabled state of its nodes based on loaded plugins/actions.
+ * Runtime context is a plain in-memory stub — no live model or agent.
+ */
 import {
   type AutomationNodeContributorContext,
   clearAutomationNodeContributorsForTests,

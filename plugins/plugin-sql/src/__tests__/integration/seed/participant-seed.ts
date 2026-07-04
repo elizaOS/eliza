@@ -1,3 +1,4 @@
+/** Fixture agent/entity/world/room records for the room-participant integration tests. */
 import {
   type Agent,
   ChannelType,
@@ -8,13 +9,11 @@ import {
 } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
 
-// Test IDs
 export const participantTestAgentId = uuidv4() as UUID;
 export const participantTestEntityId = uuidv4() as UUID;
 export const participantTestRoomId = uuidv4() as UUID;
 export const participantTestWorldId = uuidv4() as UUID;
 
-// Test data for participant integration tests
 export const participantTestAgent: Agent = {
   id: participantTestAgentId,
   name: "Participant Test Agent",

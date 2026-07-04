@@ -1,3 +1,9 @@
+/**
+ * Loads a Solana connection plus signer or public key from runtime settings
+ * for the Meteora DEX adapters. Private keys are accepted as base58 or
+ * base64; TEE-derived keys are not wired up here (no DeriveKeyProvider) —
+ * the wallet always comes from the configured private/public key settings.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import { Connection, Keypair, PublicKey } from "@solana/web3.js";
 import bs58 from "bs58";

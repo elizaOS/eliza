@@ -1,3 +1,10 @@
+/**
+ * Top-level `wallet` provider: injects the agent's live EVM + Solana
+ * addresses into planner context whenever a finance/crypto/wallet context is
+ * active. Reads addresses through `WalletBackendService` (never raw key env
+ * vars) and degrades to a plain status message if the service is unavailable
+ * or the backend isn't configured yet.
+ */
 import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
 import type { WalletBackendService } from "../services/wallet-backend-service.js";
 import {

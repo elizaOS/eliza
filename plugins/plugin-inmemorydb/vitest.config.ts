@@ -1,3 +1,4 @@
+/** Vitest config for this plugin's unit tests (node environment, no source aliasing needed). */
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({

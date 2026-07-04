@@ -1,12 +1,11 @@
+/**
+ * Wire types for the DeFi news sub-plugin: CoinGecko DeFi/crypto market
+ * data, DEX pair and OHLCV data, NewsData.io real-world articles, and the
+ * request/response/service contracts that tie them together.
+ */
 import type { IAgentRuntime, Memory, State } from "@elizaos/core";
 
-/**
- * DeFi News data types
- */
-
-// ============================================
-// CoinGecko DeFi Market Data Types
-// ============================================
+// CoinGecko DeFi market data
 
 export interface GlobalDefiData {
   defi_market_cap: string;
@@ -95,9 +94,7 @@ export interface OHLCVData {
   volume?: number;
 }
 
-// ============================================
-// NewsData.io Real World Events Types
-// ============================================
+// NewsData.io real-world events
 
 export interface RealWorldNewsArticle {
   article_id: string;
@@ -130,9 +127,7 @@ export interface RealWorldNewsResponse {
   nextPage?: string;
 }
 
-// ============================================
-// Request/Response Types
-// ============================================
+// Request/response types
 
 export interface DefiNewsRequest {
   tokenId?: string;
@@ -173,12 +168,9 @@ export interface DefiNewsResponse {
   error?: string;
 }
 
-// ============================================
-// Service Interfaces
-// ============================================
+// Service interfaces
 
 export interface DefiNewsService {
-  // CoinGecko DeFi Data
   getGlobalDefiData(): Promise<GlobalDefiData>;
   getGlobalCryptoData(): Promise<GlobalCryptoData>;
   getTokenData(
@@ -192,7 +184,6 @@ export interface DefiNewsService {
   getDexPairs(tokenId: string): Promise<DexPairData[]>;
   getOHLCVData(tokenId: string, days: number): Promise<OHLCVData[]>;
 
-  // Real World News
   getRealWorldNews(
     query: string,
     options?: {
@@ -203,9 +194,7 @@ export interface DefiNewsService {
   ): Promise<RealWorldNewsArticle[]>;
 }
 
-// ============================================
-// Action Types
-// ============================================
+// Action types
 
 export interface ActionRequest {
   runtime: IAgentRuntime;

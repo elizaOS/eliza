@@ -1,4 +1,10 @@
 #!/usr/bin/env bun
+/**
+ * Build script for the EVM chain subpackage: bundles `index.ts` with
+ * `Bun.build` (externalizing `@elizaos/core` and the on-chain SDK deps),
+ * then runs `tsc --noCheck` to emit type declarations, writing a fallback
+ * `index.d.ts` barrel if `tsc` doesn't produce one.
+ */
 
 import { existsSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";

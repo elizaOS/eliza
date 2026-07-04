@@ -1,3 +1,9 @@
+/**
+ * Typed venue / data-source adapter. Canonical actions dispatch into concrete
+ * provider classes registered on the runtime provider registry.
+ *
+ * See docs/architecture/wallet-and-trading.md §B.3.
+ */
 import type {
   IAgentRuntime,
   Memory,
@@ -7,12 +13,6 @@ import type {
 
 export type HealthStatus = { ok: true } | { ok: false; reason: string };
 
-/**
- * Typed venue / data-source adapter. Canonical actions dispatch into concrete
- * provider classes registered on the runtime provider registry.
- *
- * See docs/architecture/wallet-and-trading.md §B.3.
- */
 export interface CanonicalProvider {
   readonly name: string;
   readonly contextBudgetTokens: number;

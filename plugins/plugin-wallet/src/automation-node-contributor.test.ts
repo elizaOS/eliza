@@ -1,3 +1,8 @@
+/**
+ * Covers `registerWalletAutomationNodeContributor`'s node availability logic
+ * (disabled by default, enabled once the wallet plugin or a matching action
+ * is present) against a hand-built runtime context — no real agent runtime.
+ */
 import {
   type AutomationNodeContributorContext,
   clearAutomationNodeContributorsForTests,

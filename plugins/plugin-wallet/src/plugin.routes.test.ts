@@ -1,3 +1,4 @@
+/** Unit test asserting `walletPlugin.routes` exposes the full expected set of EVM and Solana browser-signing route names (no live server, just the static route table). */
 import { describe, expect, it } from "vitest";
 import { walletPlugin } from "./plugin";
 

@@ -1,3 +1,9 @@
+/**
+ * Unit tests for the hardened wallet-export guard: nonce-based replay
+ * protection, audit-log recording, and rate-limiting behavior, driven with
+ * fake timers and a synthetic `IncomingMessage`. No real HTTP server or
+ * wallet key material is involved.
+ */
 import type http from "node:http";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {

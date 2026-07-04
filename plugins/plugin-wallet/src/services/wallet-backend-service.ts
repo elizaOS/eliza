@@ -1,3 +1,17 @@
+/**
+ * Top-level signing and chain-routing service for the wallet plugin. On
+ * start it resolves the active {@link WalletBackend} (local EOA or Steward,
+ * via `resolveWalletBackend`) and registers all default chain handlers
+ * (`registerDefaultWalletChainHandlers`). `routeWalletAction` is the single
+ * entry point every wallet subaction (`transfer`, `swap`, `bridge`, `gov`,
+ * `pump_fun_buy`, …) dispatches through: it resolves the chain handler by
+ * alias, validates required params, and for `dryRun`/`mode=prepare` requests
+ * returns metadata without invoking the handler's `execute()` (bridge is an
+ * exception — it always calls `execute()` so Li.Fi/CCTP routing can surface
+ * a real quote). If backend resolution fails at boot, the service still
+ * starts so metadata/dry-run stays available; `getWalletBackend()` throws the
+ * captured error only when a caller actually needs signing.
+ */
 import {
   type IAgentRuntime,
   type ITokenDataService,

@@ -1,3 +1,9 @@
+/**
+ * Fixture agent/entity/world/room/memory records for the memory integration
+ * tests, including embedding vectors and helpers (`generateEmbedding`,
+ * `createSimilarMemoryVector`) for exercising vector-similarity search and
+ * document/fragment relationships.
+ */
 import {
   type Agent,
   ChannelType,
@@ -9,13 +15,11 @@ import {
 } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
 
-// Test IDs
 export const memoryTestAgentId = uuidv4() as UUID;
 export const memoryTestEntityId = uuidv4() as UUID;
 export const memoryTestRoomId = uuidv4() as UUID;
 export const memoryTestWorldId = uuidv4() as UUID;
 
-// Test data for memory integration tests
 export const memoryTestAgent: Agent = {
   id: memoryTestAgentId,
   name: "Memory Test Agent",
@@ -58,17 +62,14 @@ export const memoryTestRoom: Room = {
   metadata: {},
 };
 
-// Helper function to generate random embedding vectors
 export const generateEmbedding = (dimension: number = 384): number[] => {
   const vector = Array(dimension)
     .fill(0)
     .map(() => Math.random() * 2 - 1);
-  // Normalize
   const magnitude = Math.sqrt(vector.reduce((sum, val) => sum + val * val, 0));
   return vector.map((val) => Number((val / magnitude).toFixed(6)));
 };
 
-// Basic memory test objects
 export const memoryTestMemories: Memory[] = [
   {
     id: uuidv4() as UUID,
@@ -120,7 +121,6 @@ export const memoryTestMemories: Memory[] = [
   },
 ];
 
-// Memory test objects with embeddings
 export const memoryTestMemoriesWithEmbedding: Memory[] = [
   {
     ...memoryTestMemories[0],
@@ -151,7 +151,6 @@ export const memoryTestMemoriesWithEmbedding: Memory[] = [
   },
 ];
 
-// Document and fragments for testing document operations
 export const documentMemoryId = uuidv4() as UUID;
 export const memoryTestDocument: Memory = {
   id: documentMemoryId,
@@ -173,7 +172,6 @@ export const memoryTestDocument: Memory = {
   },
 };
 
-// Fragment memories that belong to the document
 export const memoryTestFragments: Memory[] = Array(3)
   .fill(0)
   .map((_, index) => ({
@@ -196,23 +194,19 @@ export const memoryTestFragments: Memory[] = Array(3)
     },
   }));
 
-// Helper function to create similar memory for vector similarity testing
+/** Blends `baseMemory`'s embedding with noise so the result has the given cosine similarity to it, for vector-similarity-search tests. */
 export const createSimilarMemoryVector = (baseMemory: Memory, similarity: number): Memory => {
-  // Only works if baseMemory has an embedding
   if (!baseMemory.embedding || !Array.isArray(baseMemory.embedding)) {
     throw new Error("Base memory must have an embedding");
   }
 
-  // Create a somewhat similar vector (higher similarity means more similar)
   const dimension = baseMemory.embedding.length;
   const noise = generateEmbedding(dimension);
 
-  // Blend the original vector with noise based on similarity
   const blendedVector = baseMemory.embedding.map((value, idx) => {
     return value * similarity + noise[idx] * (1 - similarity);
   });
 
-  // Normalize the resulting vector
   const magnitude = Math.sqrt(blendedVector.reduce((sum, val) => sum + val * val, 0));
   const normalizedVector = blendedVector.map((val) => Number((val / magnitude).toFixed(6)));
 

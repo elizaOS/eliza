@@ -1,5 +1,3 @@
-import type { PluginDiagnosticDescriptor } from "@elizaos/core";
-
 /**
  * Static diagnostic descriptor for the EVM wallet plugin. The agent host reads
  * this to render the plugin's diagnostic card generically instead of
@@ -10,6 +8,8 @@ import type { PluginDiagnosticDescriptor } from "@elizaos/core";
  * This module is a dependency-free leaf so the host can import it eagerly
  * without pulling in the plugin's runtime (viem, services, etc.).
  */
+import type { PluginDiagnosticDescriptor } from "@elizaos/core";
+
 export const walletDiagnosticDescriptor: PluginDiagnosticDescriptor = {
   id: "evm",
   name: "Plugin EVM",

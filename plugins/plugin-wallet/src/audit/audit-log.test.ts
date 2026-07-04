@@ -1,3 +1,10 @@
+/**
+ * Wallet audit log integrity (#8801 — shipped untested). Each row is a SHA-256
+ * over its canonical fields, chained via `prevHash`, so the log is tamper-
+ * evident: `verifyAuditLogRow` must accept an untouched row and REJECT any row
+ * whose content, prevHash, or stored hash was altered after the fact. That
+ * tamper-detection is the whole point of the log, so it is pinned here.
+ */
 import { describe, expect, it } from "vitest";
 import {
   type AuditLogRow,
@@ -6,13 +13,6 @@ import {
   verifyAuditLogRow,
 } from "./audit-log.ts";
 
-/**
- * Wallet audit log integrity (#8801 — shipped untested). Each row is a SHA-256
- * over its canonical fields, chained via `prevHash`, so the log is tamper-
- * evident: `verifyAuditLogRow` must accept an untouched row and REJECT any row
- * whose content, prevHash, or stored hash was altered after the fact. That
- * tamper-detection is the whole point of the log, so it is pinned here.
- */
 const input = (over: Partial<AuditLogRowInput> = {}): AuditLogRowInput =>
   ({
     actor: "agent",

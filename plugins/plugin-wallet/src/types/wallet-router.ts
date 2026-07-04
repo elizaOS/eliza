@@ -1,3 +1,13 @@
+/**
+ * Contract types for the wallet router: `WalletRouterParams` /
+ * `WalletRouterResult` are the request/response shapes `WalletBackendService`
+ * dispatches, and `WalletChainHandler` is the interface every chain
+ * implementation (EVM, Solana, pump.fun, …) must satisfy to plug into
+ * `registerDefaultWalletChainHandlers`. Also defines the Zod schema
+ * (`WalletRouterParamsSchema`) that parses and normalizes raw action input
+ * (string/number coercion, comma-separated array parsing, truthy-string
+ * booleans) into a validated `WalletRouterParams`.
+ */
 import type {
   IAgentRuntime,
   ITokenDataService,

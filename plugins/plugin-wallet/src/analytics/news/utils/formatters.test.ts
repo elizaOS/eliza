@@ -1,3 +1,8 @@
+/**
+ * DeFi news formatters render financial figures and validate token addresses.
+ * Magnitude suffixes, percent sign/emoji, and address-shape validation must be
+ * exact — isValidTokenAddress in particular gates EVM/Solana address inputs.
+ */
 import { describe, expect, it } from "vitest";
 import {
   extractTokenSymbol,
@@ -9,12 +14,6 @@ import {
   stripHtml,
   truncateText,
 } from "./formatters.js";
-
-/**
- * DeFi news formatters render financial figures and validate token addresses.
- * Magnitude suffixes, percent sign/emoji, and address-shape validation must be
- * exact — isValidTokenAddress in particular gates EVM/Solana address inputs.
- */
 
 describe("formatCurrency", () => {
   it("scales with T/B/M/K suffixes", () => {

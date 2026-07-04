@@ -1,3 +1,9 @@
+/**
+ * Shared constants for EVM wallet operations: service/cache keys, gas and
+ * slippage tuning, the sentinel native-token address (plus KyberSwap's
+ * distinct native sentinel), per-aggregator chain-name maps, and the
+ * default chain set.
+ */
 export const EVM_SERVICE_NAME = "evmService" as const;
 export const EVM_WALLET_DATA_CACHE_KEY = "evm_wallet_data" as const;
 export const CACHE_REFRESH_INTERVAL_MS = 60000;

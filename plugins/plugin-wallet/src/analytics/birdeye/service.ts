@@ -1,3 +1,15 @@
+/**
+ * `BirdeyeService` — the registered Birdeye client service (`serviceType:
+ * "birdeye"`). Wraps direct Birdeye REST calls (trending tokens, market data,
+ * security, token search, wallet portfolio/tx history) behind
+ * `resolveCloudRoute`, so requests use a local `BIRDEYE_API_KEY` or fall back
+ * to the Eliza Cloud `/apis/birdeye` proxy. Most lookups are cached via
+ * `runtime.getCache`/`setCache` with per-method TTLs (see `CACHE_DEFAULTS`),
+ * and `getTokensMarketData` batches uncached addresses into groups of 100 to
+ * respect Birdeye's multi-price endpoint limit. `start` also registers a
+ * recurring `BIRDEYE_SYNC_WALLET` task when `BIRDEYE_WALLET_ADDR` is set, and
+ * opportunistically registers Birdeye with `INTEL_DATAPROVIDER` if present.
+ */
 import {
   type RouteSpec,
   resolveCloudRoute,
@@ -45,17 +57,13 @@ export const BIRDEYE_ROUTE_SPEC: RouteSpec = {
   localKeyAuth: { kind: "header", headerName: "X-API-KEY" },
 };
 
-// Cache defaults for backwards compatibility
 const CACHE_DEFAULTS = {
-  // Token trade data cache (30 minutes)
   TOKEN_TRADE_DATA_TTL: 30 * 60 * 1000,
-  // Token security data cache (30 minutes)
   TOKEN_SECURITY_DATA_TTL: 30 * 60 * 1000,
-  // Token price/liquidity cache (30 seconds)
   TOKEN_MARKET_DATA_TTL: 30 * 1000,
 };
 
-// 'solana' | 'base' | 'ethereum'
+/** A Birdeye chain identifier, e.g. `"solana"` | `"base"` | `"ethereum"`. */
 type Chain = string;
 
 type CacheWrapper<T> = {
@@ -241,9 +249,8 @@ export class BirdeyeService extends Service {
     );
   }
 
-  // definitely should take a list of chains
+  /** Solana-only trending cache read; use `getTrendingTokens` for other chains. */
   async getTrending() {
-    //console.log('birdeye needs to get trending data');
     return this.runtime.getCache<IToken[]>(`tokens_solana`);
   }
 
@@ -251,7 +258,6 @@ export class BirdeyeService extends Service {
     chain: Chain,
     options?: { notOlderThan?: number; total?: number },
   ): Promise<CacheWrapper<IToken[]>> {
-    // Validate chain using extractChain
     let validatedChain: BirdeyeSupportedChain;
     try {
       validatedChain = extractChain(undefined, chain);
@@ -297,7 +303,6 @@ export class BirdeyeService extends Service {
     );
 
     const birdeyeFetchOptions: RequestInit = this.getBirdeyeFetchOptions(chain);
-    // Build all offset requests inline (no inner function)
     const settled = await Promise.allSettled(
       OFFSETS.map(async (offset) => {
         const res = await fetch(
@@ -369,8 +374,6 @@ export class BirdeyeService extends Service {
     return output;
   }
 
-  // options.depth 5
-  // options.notOlderThanMsecs
   async getTrendingTokens(
     chains: Chain[],
     options?: { notOlderThan?: number },
@@ -380,11 +383,10 @@ export class BirdeyeService extends Service {
         chains.map((chain) => this.getTrendingTokensForChain(chain, options)),
       );
 
-      // key output per chain - unwrap CacheWrapper to get IToken[] arrays
       const out: Record<string, IToken[]> = {};
       for (const i in chains) {
         const c = chains[i];
-        out[c] = results[i].data; // Extract data from CacheWrapper<IToken[]>
+        out[c] = results[i].data;
       }
 
       return out;
@@ -443,7 +445,6 @@ export class BirdeyeService extends Service {
         this.runtime.logger.warn(
           `getTokenMarketData - cant save result for ${tokenAddress}: ${JSON.stringify(data)}`,
         );
-        //logger.warn('getTokenMarketData - cant save result', data, 'for', tokenAddress);
         return false;
       }
 
@@ -460,39 +461,10 @@ export class BirdeyeService extends Service {
       this.runtime.logger.error(
         `Error fetching token market data: ${error instanceof Error ? error.message : String(error)}`,
       );
-      //this.runtime.logger.error({ error },'Error fetching token market data:');
       return false;
     }
   }
 
-  // we can do singles
-
-  // Token - Market Data (Multiple) max 20 (BUSINESS $700/mo)
-  // https://public-api.birdeye.so/defi/v3/token/market-data/multiple
-  // liq,price,supply, circulating,fdv,mcap
-
-  // Token - Trade Data (Multiple) max 20 (BUSINESS $700/mo)
-  // https://public-api.birdeye.so/defi/v3/token/trade-data/multiple
-  // has a lot of data
-
-  /*
-  async getTokensTradeData(chain: string, tokenAddresses: string[]): Promise<unknown> {
-    const tokenDb: Record<string, unknown> = {};
-    const chunkArray = (arr: string[], size: number) =>
-      arr.map((_, i) => (i % size === 0 ? arr.slice(i, i + size) : null)).filter(Boolean);
-    const twenties = chunkArray(tokenAddresses, 20);
-    const multipricePs = twenties.map((addresses) => {
-      const listStr = addresses.join(',');
-      return fetch(
-        `${this.birdeyeUrl('defi/v3/token/trade-data/multiple')}`,
-        this.getBirdeyeFetchOptions('solana')
-      );
-    });
-  }
-  */
-
-  // https://public-api.birdeye.so/defi/token_overview might be a better target
-  // what does this provide? 24h volume
   async getTokenTradeData(
     chain: string,
     tokenAddress: string,
@@ -504,7 +476,6 @@ export class BirdeyeService extends Service {
     const notOlderThan =
       options.notOlderThan ?? CACHE_DEFAULTS.TOKEN_TRADE_DATA_TTL;
 
-    // Check cache
     const cached = await this.getCacheTimed<TokenTradeDataSingleResponse>(key, {
       notOlderThan,
     });
@@ -512,7 +483,6 @@ export class BirdeyeService extends Service {
       return cached;
     }
 
-    // Fetch fresh data
     try {
       const resp = await fetch(
         `${this.birdeyeUrl("defi/v3/token/trade-data/single")}?address=${tokenAddress}&frames=${frames}`,
@@ -531,47 +501,12 @@ export class BirdeyeService extends Service {
     }
   }
 
-  // [Defi] Price Volume - Multi max 50 (premium $200/mo)
-  // https://public-api.birdeye.so/defi/price_volume/multi
-  // getting 500s
-  /*
-  async getTokensPriceVolume(tokenAddresses: string[], type = '24h'): Promise<unknown> {
-    const tokenDb: Record<string, unknown> = {};
-    const chunkArray = (arr: string[], size: number) =>
-      arr.map((_, i) => (i % size === 0 ? arr.slice(i, i + size) : null)).filter(Boolean);
-    const fities = chunkArray(tokenAddresses, 50);
-    this.runtime.logger?.debug(`getTokensPriceVolume - batches: ${fities.length}`);
-
-    // not sure we want to do this with rate limits...
-    const multipricePs = fities.map((addresses) => {
-      const listStr = addresses.join(',');
-      this.runtime.logger?.debug(`getTokensPriceVolume - batch addresses: ${listStr}`);
-      return fetch(
-        `${this.birdeyeUrl('defi/price_volume/multi')}?list_address=${listStr}&type=${type}`,
-        {...this.getBirdeyeFetchOptions('solana'), method: 'POST' }
-      );
-    });
-    const multipriceResps = await Promise.all(multipricePs); // wait for the requests to finish
-    const multipriceData = await Promise.all(
-      multipriceResps.map(async (resp) => {
-        if (!resp.ok) {
-          const text = await resp.text();
-          this.runtime.logger?.error(`API error: ${resp.status} - ${text}`);
-          return undefined;
-        }
-        return resp.json();
-      })
-    );
-
-    for (const mpd of multipriceData) {
-      this.runtime.logger?.debug('getTokensPriceVolume - response:', mpd);
-    }
-  }
-  */
-
-  // [Defi] Price - Multiple max 100 (all)
-  // https://public-api.birdeye.so/defi/multi_price
-  // Batch CU Cost = N^0.8 × 5 (base cost of a single call) (n_max: 100)
+  /**
+   * Fetches `[Defi] Price - Multiple` (`defi/multi_price`, max 100 addresses
+   * per call; Batch CU cost = N^0.8 × 5). Uncached addresses are chunked into
+   * batches of 100; a failed batch caches every address in it as `undefined`
+   * data rather than leaving them uncached.
+   */
   async getTokensMarketData(
     chain: string,
     tokenAddresses: string[],
@@ -626,9 +561,7 @@ export class BirdeyeService extends Service {
           .filter((chunk): chunk is string[] => chunk !== null);
 
       const hundos = chunkArray(uncachedAddresses, 100);
-      //console.log('getTokensMarketData hundos', hundos)
 
-      // Track batches with their addresses for cache management
       const batchesWithAddresses = hundos
         .map((addresses) => {
           if (addresses !== null) {
@@ -657,13 +590,10 @@ export class BirdeyeService extends Service {
         ),
       );
 
-      //const now = Date.now()
-
       for (let i = 0; i < multipriceData.length; i++) {
         const mpd = multipriceData[i];
         const batchAddresses = batchesWithAddresses[i].addresses;
 
-        // Guard against undefined/null mpd or missing data
         if (!mpd?.data || !mpd.success) {
           this.runtime.logger.warn(
             `birdeye:getTokensMarketData - batch failed (${batchAddresses.length} addresses), caching all as failed`,
@@ -680,26 +610,11 @@ export class BirdeyeService extends Service {
           continue;
         }
 
-        // Process data from successful batch
         for (const ca of batchAddresses) {
           const t = mpd.data[ca];
 
           if (t && typeof t.value === "number") {
-            /*
-            t {
-              isScaledUiToken: false,
-              value: 0.011726789622156722,
-              updateUnixTime: 1751591014,
-              updateHumanTime: "2025-07-04T01:03:34",
-              priceInNative: 0.00007683147650766234,
-              priceChange24h: -12.453478899440487,
-              liquidity: 1323844.6216610295,
-            }
-            */
             const marketSnapshot: BirdeyeTokenMarketSnapshot = {
-              //provider: 'birdeye',
-              //chain: 'solana',
-              //address: ca,
               priceUsd: t.value,
               priceSol: t.priceInNative,
               liquidity: t.liquidity ?? 0,
@@ -710,7 +625,6 @@ export class BirdeyeService extends Service {
                 t.mc,
                 t.realMc,
               ),
-              //volume24hUSD
             };
             tokenDb[ca] = marketSnapshot;
             this.runtime.logger.debug(
@@ -724,7 +638,6 @@ export class BirdeyeService extends Service {
               setAt: tsInMs,
             });
           } else {
-            // Token was in batch but has no valid data (or not in response)
             this.runtime.logger.warn(
               `${ca} no valid data in response: ${JSON.stringify(t)}`,
             );
@@ -743,13 +656,10 @@ export class BirdeyeService extends Service {
       this.runtime.logger.error(
         `Error fetching multiple tokens market data: ${error instanceof Error ? error.message : String(error)}`,
       );
-      //this.runtime.logger.error({ error }, 'Error fetching multiple tokens market data:', error);
       return tokenDb;
     }
   }
 
-  // Token - Security (single) all
-  // https://public-api.birdeye.so/defi/token_security
   async getTokenSecurityData(
     chain: string,
     tokenAddress: string,
@@ -760,7 +670,6 @@ export class BirdeyeService extends Service {
     const notOlderThan =
       options.notOlderThan ?? CACHE_DEFAULTS.TOKEN_SECURITY_DATA_TTL;
 
-    // Check cache
     const cached = await this.getCacheTimed<TokenSecurityResponse>(key, {
       notOlderThan,
     });
@@ -768,7 +677,6 @@ export class BirdeyeService extends Service {
       return cached;
     }
 
-    // Fetch fresh data
     try {
       const resp = await fetch(
         `${this.birdeyeUrl("defi/token_security")}?address=${tokenAddress}`,
@@ -787,14 +695,6 @@ export class BirdeyeService extends Service {
     }
   }
 
-  /*
-  async getToken(chain, ca) {
-    console.log('birdeye:srv getToken', chain, ca)
-    return getTokenMarketData(ca)
-  }
-  */
-
-  // lookup token
   async lookupToken(
     chain: string,
     ca: string,
@@ -803,9 +703,8 @@ export class BirdeyeService extends Service {
     try {
       const key = `birdeye_token_${chain}_${ca}`;
       const tsInMs = options.tsInMs ?? Date.now(); // only syscall if absolutely needed
-      const notOlderThan = options.notOlderThan ?? 30 * 1000; // a reasonable length (in ms)
+      const notOlderThan = options.notOlderThan ?? 30 * 1000;
 
-      // check cache
       const cache = await this.getCacheTimed<BirdeyeTokenMarketSnapshot>(key, {
         notOlderThan,
       });
@@ -835,14 +734,13 @@ export class BirdeyeService extends Service {
     options: GetCacheTimedOptions = {},
   ): Promise<Record<string, BirdeyeTokenMarketSnapshot | undefined>> {
     try {
-      // Lookup all tokens in parallel
       const results = await Promise.all(
         chainAndAddresses.map((cAA) =>
           this.lookupToken(cAA.chain, cAA.address, options),
         ),
       );
 
-      // Transform results into keyed object: key = `${chain}_${address}`
+      // Keyed by `${chain}_${address}`.
       const keyedResults: Record<
         string,
         BirdeyeTokenMarketSnapshot | undefined
@@ -880,12 +778,10 @@ export class BirdeyeService extends Service {
     symbol: string,
     options: GetCacheTimedOptions = {},
   ): Promise<TokenMarketSearchResponse["data"]["items"] | false> {
-    // set up cache
     const key = `birdeye_symbol_${symbol}`;
     const tsInMs = options.tsInMs ?? Date.now();
     const notOlderThan = options.notOlderThan ?? 30 * 1000;
 
-    // check cache
     const cache = await this.getCacheTimed<
       TokenMarketSearchResponse["data"]["items"]
     >(key, { notOlderThan });
@@ -907,18 +803,16 @@ export class BirdeyeService extends Service {
     return data;
   }
 
+  /** Fetches the wallet's entire token portfolio. */
   async fetchWalletTokenList(
     chain: BirdeyeSupportedChain,
     publicKey: string,
     options: GetCacheTimedOptions = {},
   ): Promise<WalletPortfolioResponse["data"] | false> {
-    // Get entire portfolio
-    // set up cache
     const key = `birdeye_walletTokenList_${chain}_${publicKey}`;
     const tsInMs = options.tsInMs ?? Date.now();
     const notOlderThan = options.notOlderThan ?? 30 * 1000;
 
-    // check cache
     const cache = await this.getCacheTimed<WalletPortfolioResponse["data"]>(
       key,
       { notOlderThan },
@@ -926,7 +820,6 @@ export class BirdeyeService extends Service {
     if (cache) {
       return cache;
     }
-    // get data
     const birdeyeFetchOptions: RequestInit = this.getBirdeyeFetchOptions(chain);
     const res = await fetch(
       `${this.birdeyeUrl("v1/wallet/token_list")}?wallet=${publicKey}`,
@@ -946,19 +839,16 @@ export class BirdeyeService extends Service {
     publicKey: string,
     options: GetCacheTimedOptions = {},
   ): Promise<WalletTransaction[] | false> {
-    // set up cache
     const key = `birdeye_walletTxList_${chain}_${publicKey}`;
     const tsInMs = options.tsInMs ?? Date.now();
     const notOlderThan = options.notOlderThan ?? 30 * 1000;
 
-    // check cache
     const cache = await this.getCacheTimed<WalletTransaction[]>(key, {
       notOlderThan,
     });
     if (cache) {
       return cache;
     }
-    // get data
     const birdeyeFetchOptions: RequestInit = this.getBirdeyeFetchOptions(chain);
     const res = await fetch(
       `${this.birdeyeUrl("v1/wallet/tx_list")}?wallet=${publicKey}&limit=100`,
@@ -1087,13 +977,10 @@ export class BirdeyeService extends Service {
     if (options.notOlderThan) {
       const now = options.tsInMs ?? Date.now();
       const diff = now - wrapper.setAt;
-      //console.log('checking notOlderThan', diff + 'ms', 'setAt', wrapper.setAt, 'asking', options.notOlderThan)
       if (diff > options.notOlderThan) {
-        // no data
         return false;
       }
     }
-    // return data
     return wrapper.data;
   }
 

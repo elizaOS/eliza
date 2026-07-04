@@ -1,9 +1,8 @@
-import type { Address } from "viem";
-
 /**
  * Aerodrome DEX specific types
  * Aerodrome is a ve(3,3) DEX on Base, fork of Velodrome
  */
+import type { Address } from "viem";
 
 export type AerodromePoolType = "volatile" | "stable";
 

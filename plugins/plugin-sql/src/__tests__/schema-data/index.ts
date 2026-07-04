@@ -1,3 +1,4 @@
+/** Shared deterministic `Character` fixture used across plugin-sql integration tests. */
 import type { Character } from "@elizaos/core";
 
 export const mockCharacter: Character = {

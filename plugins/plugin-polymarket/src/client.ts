@@ -1,3 +1,9 @@
+/**
+ * Typed fetch helpers for the Polymarket REST routes, patched directly onto
+ * `ElizaClient.prototype` so `PolymarketClient` is a plain type intersection
+ * rather than a subclass. Consumers cast an `ElizaClient` instance to
+ * `PolymarketClient` to get these methods.
+ */
 import { ElizaClient } from "@elizaos/ui";
 import type {
   PolymarketDisabledResponse,

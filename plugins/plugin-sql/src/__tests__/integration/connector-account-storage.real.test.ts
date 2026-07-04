@@ -1,3 +1,10 @@
+/**
+ * Verifies connector-account storage end to end against a real isolated
+ * database: plugin-sql migrations create the connector/OAuth tables
+ * idempotently, account upsert stores only credential refs (never plaintext
+ * secrets), audit metadata is redacted before insert, and OAuth flow state is
+ * single-use and expiry-aware.
+ */
 import type { UUID } from "@elizaos/core";
 import { sql } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";

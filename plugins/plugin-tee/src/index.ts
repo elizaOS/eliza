@@ -1,3 +1,11 @@
+/**
+ * `teePlugin` entry point: wires the default (Phala) vendor's actions and
+ * providers, registers `TEEService`, and validates `TEE_MODE` at init. Vendor
+ * selection (`TEE_VENDOR`) only affects which vendor's providers/actions are
+ * registered here — `TEEService` itself always uses the Phala key-derivation
+ * provider regardless of vendor.
+ */
+// biome-ignore-all assist/source/organizeImports: preserve current develop's export grouping in this comments-only pass.
 import { type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
 import { TEEService } from "./services/tee";
 import { getVendor, TeeVendorNames } from "./vendors";

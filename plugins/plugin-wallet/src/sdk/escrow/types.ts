@@ -1,3 +1,8 @@
+/**
+ * Type surface for the mutual-stake escrow SDK: on-chain task lifecycle
+ * (`TaskStatus`), verifier selection, and the parameter/result/detail shapes
+ * used by `MutualStakeEscrow.ts` and `verifiers.ts`.
+ */
 import type { Address, Hash, Hex } from "viem";
 
 /** Mirrors the on-chain TaskStatus enum */

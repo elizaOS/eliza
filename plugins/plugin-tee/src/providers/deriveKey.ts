@@ -1,3 +1,11 @@
+/**
+ * Phala TappdClient-backed key derivation: `PhalaDeriveKeyProvider` derives
+ * raw bytes, an Ed25519 (Solana) keypair, or an ECDSA (EVM) keypair from a
+ * `path`/`subject` pair, each accompanied by a TDX remote-attestation quote
+ * over the derived public key. `phalaDeriveKeyProvider` is the runtime
+ * `Provider` wrapper that reads `TEE_MODE`/`WALLET_SECRET_SALT` from
+ * settings and injects `solana_public_key`/`evm_address` into context.
+ */
 import crypto from "node:crypto";
 import {
   type IAgentRuntime,

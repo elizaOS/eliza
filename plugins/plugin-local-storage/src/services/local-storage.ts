@@ -1,3 +1,10 @@
+/**
+ * `LocalFileStorageService`: filesystem-backed `ServiceType.REMOTE_FILES`
+ * implementation, wrapping `@brighter/storage-adapter-local`. Every storage
+ * key is normalized to a safe relative path (rejects absolute paths and
+ * `..` traversal) before touching disk, and parent directories are created
+ * on demand so nested keys don't fail with ENOENT.
+ */
 import { promises as fsp } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";

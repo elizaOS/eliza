@@ -1,3 +1,9 @@
+/**
+ * Shared inventory row/item types (`TokenRow`, `NftItem`) and the small
+ * formatting/matching helpers used across the wallet inventory UI: chain
+ * name normalization and badge codes, balance display formatting, address
+ * lowercasing, and lenient numeric parsing for untrusted balance strings.
+ */
 export const BSC_GAS_READY_THRESHOLD = 0.005;
 export const BSC_GAS_THRESHOLD = 0.005;
 export const HEX_ADDRESS_RE = /^0x[a-fA-F0-9]{40}$/;

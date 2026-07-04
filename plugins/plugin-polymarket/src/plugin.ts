@@ -1,3 +1,12 @@
+/**
+ * The exported `polymarketPlugin` Plugin object: wires the PREDICTION_MARKET
+ * action, PredictionMarketService, status provider, the seven
+ * `/api/polymarket/*` REST routes, and the single adaptive view declaration
+ * (GUI/XR/TUI from one spatial component) into the agent runtime. Route
+ * handlers here only adapt the framework's `RouteRequest`/`RouteResponse` to
+ * the real Node `http.IncomingMessage`/`ServerResponse` that `routes.ts`
+ * expects; all route logic itself lives in `handlePolymarketRoute`.
+ */
 import type http from "node:http";
 import type {
   IAgentRuntime,

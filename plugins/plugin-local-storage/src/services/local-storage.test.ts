@@ -1,3 +1,9 @@
+/**
+ * Unit tests for `LocalFileStorageService`: storage-root precedence,
+ * upload/download/exists/delete, key normalization, and signed-URL
+ * generation. Runs real filesystem I/O against temp directories; only the
+ * `IAgentRuntime` is stubbed.
+ */
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";

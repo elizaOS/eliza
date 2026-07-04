@@ -1,3 +1,11 @@
+/**
+ * Schema-evolution tests covering `RuntimeMigrator` column type-change
+ * handling with real data present: JSONB→text (lossy), text→integer
+ * (fails on non-numeric values), boolean→text, and two regression cases —
+ * varchar→uuid and boolean→integer — that require the generated `ALTER
+ * COLUMN ... USING ...` clause to use the correct cast, since Postgres
+ * rejects direct casts for these type pairs.
+ */
 import { boolean, integer, jsonb, pgTable, text, uuid, varchar } from "drizzle-orm/pg-core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { RuntimeMigrator } from "../../../runtime-migrator/runtime-migrator";
@@ -5,13 +13,6 @@ import type { DrizzleDB } from "../../../runtime-migrator/types";
 import { createIsolatedTestDatabaseForSchemaEvolutionTests } from "../../test-helpers";
 
 type ContentObject = Record<string, unknown>;
-
-/**
- * Schema Evolution Test 3: Type Changes with Incompatible Data
- *
- * This test verifies handling of column type changes that could
- * cause data loss, conversion errors, or precision loss.
- */
 
 describe("Schema Evolution Test: Type Changes with Data", () => {
   let db: DrizzleDB;
@@ -28,7 +29,7 @@ describe("Schema Evolution Test: Type Changes with Data", () => {
     migrator = new RuntimeMigrator(db);
     await migrator.initialize();
 
-    // Set environment variable for tests since they all test destructive operations
+    // Every test here exercises a destructive type change.
     process.env.ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS = "true";
   });
 
@@ -51,7 +52,6 @@ describe("Schema Evolution Test: Type Changes with Data", () => {
 
     await migrator.migrate("@elizaos/schema-evolution-test-types-v1", schemaV1);
 
-    // Insert complex JSON data
     await db.insert(memoryTableV1).values([
       {
         id: "110e8400-e29b-41d4-a716-446655440001",
@@ -116,7 +116,6 @@ describe("Schema Evolution Test: Type Changes with Data", () => {
 
     const schemaV2 = { memories: memoryTableV2 };
 
-    // Check migration warnings
     const check = await migrator.checkMigration(
       "@elizaos/schema-evolution-test-types-v1",
       schemaV2
@@ -130,21 +129,17 @@ describe("Schema Evolution Test: Type Changes with Data", () => {
       console.log(`  • ${warning}`);
     });
 
-    // Migration allowed because ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS is set in beforeEach
     await migrator.migrate("@elizaos/schema-evolution-test-types-v1", schemaV2);
 
-    // Check converted data
     const afterData = await db.select().from(memoryTableV2);
 
     console.log("\n📊 After type conversion:");
     console.log(`  - Content is now: ${typeof afterData[0].content}`);
     console.log(`  - First 100 chars: ${(afterData[0].content as string).substring(0, 100)}...`);
 
-    // Verify JSON was converted to string representation
     expect(typeof afterData[0].content).toBe("string");
     expect(afterData[0].content).toContain("{"); // Should be JSON string
 
-    // Try to parse it back to verify it's valid JSON string
     let _parsed: unknown;
     try {
       _parsed = JSON.parse(afterData[0].content as string);
@@ -167,7 +162,6 @@ describe("Schema Evolution Test: Type Changes with Data", () => {
 
     await migrator.migrate("@elizaos/schema-evolution-test-text-to-int-v1", schemaV1);
 
-    // Insert mixed data - some valid, some invalid for integer conversion
     await db.insert(userTableV1).values([
       {
         name: "User 1",
@@ -207,7 +201,6 @@ describe("Schema Evolution Test: Type Changes with Data", () => {
 
     const schemaV2 = { users: userTableV2 };
 
-    // This should warn about potential conversion issues
     const check = await migrator.checkMigration(
       "@elizaos/schema-evolution-test-text-to-int-v1",
       schemaV2
@@ -226,7 +219,6 @@ describe("Schema Evolution Test: Type Changes with Data", () => {
       console.log(`  • ${warning}`);
     });
 
-    // Attempting migration should fail due to invalid data
     let migrationError: Error | null = null;
     try {
       await migrator.migrate("@elizaos/schema-evolution-test-text-to-int-v1", schemaV2);
@@ -234,15 +226,14 @@ describe("Schema Evolution Test: Type Changes with Data", () => {
       migrationError = error as Error;
     }
 
-    // Should fail because 'unknown' and 'N/A' can't convert to integer
+    // Expected to fail: "unknown" and "N/A" can't cast to integer, and even
+    // "30.5" is rejected as not a valid integer literal.
     if (migrationError) {
       console.log("\n❌ Migration failed as expected:");
       console.log(`  Error: ${migrationError.message}`);
-      // The actual error is about decimal "30.5" not being valid integer
       expect(migrationError.message.toLowerCase()).toMatch(/failed query|invalid|error/);
     } else {
       console.log("\n⚠️  Migration succeeded with USING clause for conversion");
-      // If migration succeeded, check what happened to the data
       const afterData = await db.select().from(userTableV2);
       console.log("  Converted data:");
       afterData.forEach((row) => {
@@ -265,7 +256,6 @@ describe("Schema Evolution Test: Type Changes with Data", () => {
 
     await migrator.migrate("@elizaos/schema-evolution-test-bool-v1", schemaV1);
 
-    // Insert boolean data
     await db.insert(settingsTableV1).values([
       { name: "Setting 1", enabled: true, verified: true, active: true },
       { name: "Setting 2", enabled: false, verified: false, active: false },
@@ -301,7 +291,6 @@ describe("Schema Evolution Test: Type Changes with Data", () => {
       );
     });
 
-    // Verify conversion results
     expect(afterTextData[0].enabled).toBe("true");
     expect(afterTextData[1].enabled).toBe("false");
     expect(afterTextData[2].active).toBeNull();

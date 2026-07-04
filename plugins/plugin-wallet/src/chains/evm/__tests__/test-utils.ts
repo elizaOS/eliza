@@ -1,3 +1,8 @@
+/**
+ * Test-only runtime factory for EVM chain tests: wraps the core PGlite-backed
+ * test runtime helper and tracks each runtime's cleanup function in a WeakMap so
+ * callers can tear it down without holding onto the closure themselves.
+ */
 import type { AgentRuntime } from "@elizaos/core";
 
 import { createTestRuntime as createPgliteRuntime } from "../../../../../../packages/core/test/helpers/pglite-runtime";

@@ -1,3 +1,9 @@
+/**
+ * Central message store (`central_messages`) for a channel — one row per
+ * message across every connector, with a self-referencing
+ * `inReplyToRootMessageId` for threading and free-form `rawMessage`/`metadata`
+ * JSON for connector-specific payloads. Cascade-deletes with its channel.
+ */
 import { sql } from "drizzle-orm";
 import { type AnyPgColumn, jsonb, pgTable, text, timestamp } from "drizzle-orm/pg-core";
 import { channelTable } from "./channel";

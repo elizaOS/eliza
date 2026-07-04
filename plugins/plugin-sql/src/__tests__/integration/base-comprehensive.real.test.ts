@@ -1,3 +1,9 @@
+/**
+ * Broader real-database coverage of `BaseDrizzleAdapter` beyond the basic CRUD
+ * suite: exact-match name search, cascade deletes, multi-room memory queries,
+ * component lifecycle, room/world relationships, embedding search, cached
+ * embeddings, and batch-create edge cases.
+ */
 import type {
   AgentRuntime,
   ChannelType,

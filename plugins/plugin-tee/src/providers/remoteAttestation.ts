@@ -1,3 +1,9 @@
+/**
+ * Phala TappdClient-backed TDX remote attestation: `PhalaRemoteAttestationProvider`
+ * generates a quote over arbitrary report data; `phalaRemoteAttestationProvider`
+ * is the runtime `Provider` wrapper that quotes the current message payload
+ * and injects `quote`/`timestamp` into context.
+ */
 import {
   type IAgentRuntime,
   logger,

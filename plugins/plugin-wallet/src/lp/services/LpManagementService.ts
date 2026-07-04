@@ -1,3 +1,11 @@
+/**
+ * Top-level LP orchestrator: owns the registry of `LpProtocolProvider`
+ * adapters (Solana DEXes via `ILpService`, EVM DEXes via `IEvmLpService`) and
+ * dispatches `listPools`/`openPosition`/`closePosition`/`repositionPosition`/
+ * position-lookup calls to the provider matching a request's chain/DEX. Other
+ * LP services (`DexInteractionService` and callers needing a shared instance)
+ * resolve it through `getLpManagementService`.
+ */
 import {
   type IAgentRuntime,
   type ILpService,

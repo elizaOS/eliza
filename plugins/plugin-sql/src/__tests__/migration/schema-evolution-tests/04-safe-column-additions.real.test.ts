@@ -1,3 +1,10 @@
+/**
+ * Schema-evolution tests proving `RuntimeMigrator` treats additive column
+ * changes as safe (no data-loss warnings, no destructive-migration block):
+ * nullable columns, `NOT NULL` columns backed by a default, columns whose
+ * default is a non-column-referencing SQL expression, and adding a dozen
+ * columns in a single migration. Runs against a real isolated database.
+ */
 import { sql } from "drizzle-orm";
 import { boolean, integer, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -8,13 +15,6 @@ import { createIsolatedTestDatabaseForSchemaEvolutionTests } from "../../test-he
 type AgentRow = Record<string, unknown>;
 type EntityRow = Record<string, unknown>;
 type ColumnRow = Record<string, unknown>;
-
-/**
- * Schema Evolution Test 4 & 5: Safe Column Additions
- *
- * This test verifies that adding nullable columns and columns with defaults
- * works correctly without data loss warnings.
- */
 
 describe("Schema Evolution Test: Safe Column Additions", () => {
   let db: DrizzleDB;
@@ -48,11 +48,9 @@ describe("Schema Evolution Test: Safe Column Additions", () => {
 
     const schemaV1 = { agents: agentTableV1 };
 
-    // Apply V1 and add data
     console.log("📦 Creating initial schema...");
     await migrator.migrate("@elizaos/safe-additions-v1", schemaV1);
 
-    // Insert test data
     await db.insert(agentTableV1).values([
       { name: "Agent Alpha", enabled: true },
       { name: "Agent Beta", enabled: false },
@@ -75,7 +73,6 @@ describe("Schema Evolution Test: Safe Column Additions", () => {
 
     const schemaV2 = { agents: agentTableV2 };
 
-    // Check migration - should have no warnings
     console.log("\n🔍 Checking for data loss warnings...");
     const check = await migrator.checkMigration("@elizaos/safe-additions-v1", schemaV2);
 
@@ -87,12 +84,11 @@ describe("Schema Evolution Test: Safe Column Additions", () => {
       console.log("  ✅ No changes detected that would cause data loss");
     }
 
-    // Apply migration - should succeed without any environment variable
+    // No ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS needed — purely additive.
     console.log("\n📦 Applying safe migration...");
     await migrator.migrate("@elizaos/safe-additions-v1", schemaV2);
     console.log("  ✅ Migration completed successfully");
 
-    // Verify data is preserved and new columns are null
     const afterData = await db.execute(sql`SELECT * FROM agents ORDER BY name`);
 
     expect(afterData.rows.length).toBe(2);
@@ -120,7 +116,6 @@ describe("Schema Evolution Test: Safe Column Additions", () => {
     console.log("📦 Creating initial schema...");
     await migrator.migrate("@elizaos/defaults-test-v1", schemaV1);
 
-    // Insert test data
     await db
       .insert(entityTableV1)
       .values([{ name: "Entity One" }, { name: "Entity Two" }, { name: "Entity Three" }]);
@@ -141,7 +136,6 @@ describe("Schema Evolution Test: Safe Column Additions", () => {
 
     const schemaV2 = { entities: entityTableV2 };
 
-    // Check migration - should have no warnings
     console.log("\n🔍 Checking for data loss warnings...");
     const check = await migrator.checkMigration("@elizaos/defaults-test-v1", schemaV2);
 
@@ -150,12 +144,10 @@ describe("Schema Evolution Test: Safe Column Additions", () => {
       console.log("  ✅ No data loss (defaults protect existing rows)");
     }
 
-    // Apply migration
     console.log("\n📦 Applying migration with NOT NULL + defaults...");
     await migrator.migrate("@elizaos/defaults-test-v1", schemaV2);
     console.log("  ✅ Migration completed successfully");
 
-    // Verify defaults were applied to existing rows
     const afterData = await db.execute(sql`SELECT * FROM entities ORDER BY name`);
 
     expect(afterData.rows.length).toBe(3);
@@ -187,24 +179,21 @@ describe("Schema Evolution Test: Safe Column Additions", () => {
 
     await db.insert(testTableV1).values([{ name: "Test Record 1" }, { name: "Test Record 2" }]);
 
-    // V2: Add columns with DEFAULT expressions (that don't reference columns)
-    // and GENERATED columns (that can reference columns)
+    // Adds columns backed by DEFAULT expressions — these must not reference
+    // other columns; GENERATED ALWAYS AS expressions (e.g. to_tsvector, which
+    // can reference columns) aren't fully supported and are out of scope here.
     const testTableV2 = pgTable("test_complex", {
       id: uuid("id").primaryKey().defaultRandom(),
       name: text("name").notNull(),
-      // DEFAULT expressions (no column references allowed)
       createdAt: timestamp("created_at").default(sql`now()`).notNull(),
       status: text("status").default("active").notNull(),
       randomValue: integer("random_value").default(sql`floor(random() * 100)`),
       timestampWithOffset:
         timestamp("timestamp_with_offset").default(sql`now() + interval '1 hour'`),
-      // Using only valid DEFAULT expressions that don't reference columns
-      // (generatedAlwaysAs for expressions like to_tsvector isn't fully supported)
     });
 
     const schemaV2 = { test_complex: testTableV2 };
 
-    // Check and apply migration
     console.log("\n🔍 Testing complex column defaults...");
     const check = await migrator.checkMigration("@elizaos/complex-columns-v1", schemaV2);
 
@@ -215,7 +204,6 @@ describe("Schema Evolution Test: Safe Column Additions", () => {
 
     await migrator.migrate("@elizaos/complex-columns-v1", schemaV2);
 
-    // Verify defaults worked
     const afterData = await db.execute(sql`SELECT * FROM test_complex ORDER BY name`);
 
     for (const row of afterData.rows) {
@@ -244,10 +232,9 @@ describe("Schema Evolution Test: Safe Column Additions", () => {
     console.log("📦 Creating minimal initial schema...");
     await migrator.migrate("@elizaos/multi-column-v1", schemaV1);
 
-    // V2: Add many columns at once
+    // Adds 12 columns in a single migration.
     const tableV2 = pgTable("multi_test", {
       id: uuid("id").primaryKey().defaultRandom(),
-      // Add 10+ columns in one migration
       name: text("name").default("unnamed").notNull(),
       description: text("description"),
       enabled: boolean("enabled").default(true).notNull(),
@@ -274,7 +261,6 @@ describe("Schema Evolution Test: Safe Column Additions", () => {
 
     await migrator.migrate("@elizaos/multi-column-v1", schemaV2);
 
-    // Verify all columns exist
     const columns = await db.execute(
       sql`SELECT column_name, data_type, is_nullable, column_default 
           FROM information_schema.columns 
@@ -285,7 +271,6 @@ describe("Schema Evolution Test: Safe Column Additions", () => {
     expect(columns.rows.length).toBe(13); // id + 12 new columns
     console.log(`  ✅ All ${columns.rows.length} columns created successfully`);
 
-    // List all columns
     for (const col of columns.rows) {
       const column = col as ColumnRow;
       const nullable = column.is_nullable === "YES" ? "NULL" : "NOT NULL";

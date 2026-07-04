@@ -1,3 +1,8 @@
+/**
+ * Task-store CRUD and query (tags/room/name) tests against a real PGlite (or
+ * Postgres, if `POSTGRES_URL` is set) adapter via `createIsolatedTestDatabase`
+ * — no mocks.
+ */
 import { ChannelType, type Entity, type Room, type Task, type UUID } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -21,12 +26,10 @@ describe("Task Integration Tests", () => {
     cleanup = setup.cleanup;
     testAgentId = setup.testAgentId;
 
-    // Generate random UUIDs for test data
     testRoomId = uuidv4() as UUID;
     testWorldId = uuidv4() as UUID;
     testEntityId = uuidv4() as UUID;
 
-    // Create test world
     await adapter.createWorld({
       id: testWorldId,
       agentId: testAgentId,
@@ -34,7 +37,6 @@ describe("Task Integration Tests", () => {
       messageServerId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" as UUID,
     });
 
-    // Create test room
     await adapter.createRooms([
       {
         id: testRoomId,
@@ -46,7 +48,6 @@ describe("Task Integration Tests", () => {
       } as Room,
     ]);
 
-    // Create test entity
     await adapter.createEntities([
       {
         id: testEntityId,

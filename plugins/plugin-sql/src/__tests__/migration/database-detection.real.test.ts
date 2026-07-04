@@ -1,33 +1,30 @@
+/**
+ * Tests for `RuntimeMigrator`'s private `isRealPostgresDatabase` connection-
+ * string sniffer, which decides whether a URL points at real Postgres (vs.
+ * PGlite/SQLite/in-memory/other engines) across the connection-string shapes
+ * used by major managed-Postgres providers. A thin subclass re-exposes the
+ * private method so it can be exercised directly; no real database connects.
+ */
 import { describe, expect, it } from "vitest";
 import { RuntimeMigrator } from "../../runtime-migrator";
 import type { DrizzleDB } from "../../runtime-migrator/types";
 
-/**
- * Unit tests for the isRealPostgresDatabase method
- * Testing the improved database detection logic that handles various PostgreSQL connection formats
- */
 describe("RuntimeMigrator - Database Detection", () => {
-  // Create a test helper to access the private method
-  // Since isRealPostgresDatabase is private, we'll test it through a minimal wrapper
-  // Test interface for accessing private methods
   interface TestableRuntimeMigrator extends RuntimeMigrator {
     isRealPostgresDatabase(url: string): boolean;
   }
 
-  // Helper function to access private method
   function getTestableMigrator(migrator: RuntimeMigrator): TestableRuntimeMigrator {
     return migrator as TestableRuntimeMigrator;
   }
 
   class TestRuntimeMigrator extends RuntimeMigrator {
     constructor() {
-      // Pass a dummy db object since we're only testing the detection logic
-      // Create a minimal mock that satisfies DrizzleDB interface
+      // The detection logic under test never touches the db handle.
       const mockDb: Partial<DrizzleDB> = {};
       super(mockDb as DrizzleDB);
     }
 
-    // Expose the private method for testing
     public testIsRealPostgresDatabase(url: string): boolean {
       return getTestableMigrator(this).isRealPostgresDatabase(url);
     }
@@ -302,12 +299,11 @@ describe("RuntimeMigrator - Database Detection", () => {
     });
 
     it("should handle whitespace appropriately", () => {
-      // URLs with leading/trailing whitespace
       expect(migrator.testIsRealPostgresDatabase("  postgres://localhost:5432/mydb  ")).toBe(true);
       expect(migrator.testIsRealPostgresDatabase("\tpostgresql://localhost/db\n")).toBe(true);
       expect(migrator.testIsRealPostgresDatabase("  localhost:5432/mydb  ")).toBe(true);
 
-      // But reject truly empty strings
+      // Whitespace-only strings are still empty for detection purposes.
       expect(migrator.testIsRealPostgresDatabase("   ")).toBe(false);
     });
   });

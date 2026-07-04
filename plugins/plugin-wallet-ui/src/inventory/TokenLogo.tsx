@@ -1,3 +1,9 @@
+/**
+ * `<TokenLogo>` renders a token's logo image, preferring `preferredLogoUrl`
+ * over the chain's native/contract CDN lookup, and falling back to a
+ * monogram badge (first letter of the symbol) on load failure or when no URL
+ * resolves.
+ */
 import { useState } from "react";
 import { getContractLogoUrl, getNativeLogoUrl } from "./chainConfig.ts";
 import { chainIcon } from "./constants.ts";

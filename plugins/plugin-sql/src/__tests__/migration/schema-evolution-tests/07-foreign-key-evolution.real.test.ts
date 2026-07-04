@@ -1,3 +1,12 @@
+/**
+ * Schema-evolution tests covering `RuntimeMigrator` handling of foreign-key
+ * changes against real data: adding an FK where orphaned rows must first be
+ * cleaned up, changing `onDelete` behavior (CASCADE to SET NULL) on an
+ * existing relationship, adding a web of FKs with mixed CASCADE/SET NULL
+ * behaviors (including a composite FK) across four interconnected tables,
+ * and a one-directional manager-reference FK exercising constraint
+ * enforcement and SET NULL on delete.
+ */
 import { sql } from "drizzle-orm";
 import { foreignKey, pgTable, text, unique, uuid } from "drizzle-orm/pg-core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -9,13 +18,6 @@ type CountRow = { count: number };
 type ChildRow = Record<string, unknown>;
 type StatsRow = Record<string, unknown>;
 type DepartmentRow = Record<string, unknown>;
-
-/**
- * Schema Evolution Test 11 & 12: Foreign Key Evolution
- *
- * Tests adding foreign keys to existing data and modifying CASCADE behavior.
- * These operations can fail if there are orphaned records.
- */
 
 describe("Schema Evolution Test: Foreign Key Evolution", () => {
   let db: DrizzleDB;
@@ -32,7 +34,6 @@ describe("Schema Evolution Test: Foreign Key Evolution", () => {
     migrator = new RuntimeMigrator(db);
     await migrator.initialize();
 
-    // Enable for tests that need it
     process.env.ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS = "true";
   });
 
@@ -63,7 +64,6 @@ describe("Schema Evolution Test: Foreign Key Evolution", () => {
     console.log("📦 Creating tables without foreign keys...");
     await migrator.migrate("@elizaos/fk-test-v1", schemaV1);
 
-    // Create valid agents
     const agent1Id = "550e8400-e29b-41d4-a716-446655440001";
     const agent2Id = "550e8400-e29b-41d4-a716-446655440002";
 
@@ -72,7 +72,6 @@ describe("Schema Evolution Test: Foreign Key Evolution", () => {
       { id: agent2Id, name: "Agent 2" },
     ]);
 
-    // Create memories - some with valid agent IDs, some orphaned
     await db.insert(memoryTableV1).values([
       { agentId: agent1Id, content: "Memory 1 - Valid" },
       { agentId: agent2Id, content: "Memory 2 - Valid" },
@@ -118,7 +117,6 @@ describe("Schema Evolution Test: Foreign Key Evolution", () => {
       }
     }
 
-    // Try to apply - should fail due to orphaned records
     console.log("\n❌ Attempting to add FK with orphaned records...");
     let migrationError: Error | null = null;
     try {
@@ -132,7 +130,6 @@ describe("Schema Evolution Test: Foreign Key Evolution", () => {
       console.log(`  Error: ${migrationError.message.substring(0, 100)}...`);
     }
 
-    // Find and fix orphaned records
     console.log("\n🔧 Finding orphaned records...");
     const orphaned = await db.execute(
       sql`SELECT m.* FROM memories m 
@@ -141,7 +138,6 @@ describe("Schema Evolution Test: Foreign Key Evolution", () => {
     );
     console.log(`  Found ${orphaned.rows.length} orphaned memories`);
 
-    // Clean up orphaned records
     await db.execute(
       sql`DELETE FROM memories 
           WHERE agent_id NOT IN (SELECT id FROM agents) 
@@ -149,12 +145,10 @@ describe("Schema Evolution Test: Foreign Key Evolution", () => {
     );
     console.log("  ✅ Deleted orphaned records");
 
-    // Now migration should succeed
     console.log("\n📦 Retrying FK addition after cleanup...");
     await migrator.migrate("@elizaos/fk-test-v1", schemaV2);
     console.log("  ✅ Foreign key constraint added successfully");
 
-    // Verify FK is enforced
     let insertError: Error | null = null;
     try {
       await db.execute(
@@ -194,7 +188,6 @@ describe("Schema Evolution Test: Foreign Key Evolution", () => {
     console.log("📦 Creating tables with CASCADE delete...");
     await migrator.migrate("@elizaos/cascade-test-v1", schemaV1);
 
-    // Create test data
     const parent1Id = "110e8400-e29b-41d4-a716-446655440001";
     const parent2Id = "110e8400-e29b-41d4-a716-446655440002";
 
@@ -211,7 +204,6 @@ describe("Schema Evolution Test: Foreign Key Evolution", () => {
 
     console.log("  ✅ Created 2 parents with 3 children");
 
-    // Test CASCADE delete behavior
     console.log("\n🔍 Testing current CASCADE behavior...");
     await db.execute(sql`DELETE FROM parents WHERE id = ${parent1Id}`);
     const remainingChildren = await db.execute(
@@ -259,7 +251,6 @@ describe("Schema Evolution Test: Foreign Key Evolution", () => {
     await migrator.migrate("@elizaos/cascade-test-v1", schemaV2);
     console.log("  ✅ CASCADE behavior changed to SET NULL");
 
-    // Test new SET NULL behavior
     console.log("\n🔍 Testing new SET NULL behavior...");
     await db.execute(sql`DELETE FROM parents WHERE id = ${parent2Id}`);
     const orphanedChildren = await db.execute(sql`SELECT * FROM children WHERE parent_id IS NULL`);
@@ -305,7 +296,6 @@ describe("Schema Evolution Test: Foreign Key Evolution", () => {
     console.log("📦 Creating complex structure without FKs...");
     await migrator.migrate("@elizaos/complex-fk-v1", schemaV1);
 
-    // Create interconnected data
     const worldId = "220e8400-e29b-41d4-a716-446655440001";
     const agentId = "330e8400-e29b-41d4-a716-446655440001";
     const roomId = "440e8400-e29b-41d4-a716-446655440001";
@@ -382,10 +372,9 @@ describe("Schema Evolution Test: Foreign Key Evolution", () => {
     await migrator.migrate("@elizaos/complex-fk-v1", schemaV2);
     console.log("  ✅ Complex foreign keys added");
 
-    // Test CASCADE behaviors
     console.log("\n🔍 Testing complex CASCADE behaviors...");
 
-    // Delete world should cascade to everything
+    // Deleting the world must cascade through agents, rooms, and memories.
     await db.execute(sql`DELETE FROM worlds WHERE id = ${worldId}`);
 
     const counts = await db.execute(sql`
@@ -425,7 +414,6 @@ describe("Schema Evolution Test: Foreign Key Evolution", () => {
     console.log("📦 Creating tables for manager reference test...");
     await migrator.migrate("@elizaos/circular-fk-v1", schemaV1);
 
-    // Create data
     const dept1Id = "550e8400-e29b-41d4-a716-446655440001";
     const emp1Id = "660e8400-e29b-41d4-a716-446655440001";
     const emp2Id = "660e8400-e29b-41d4-a716-446655440002";
@@ -468,10 +456,8 @@ describe("Schema Evolution Test: Foreign Key Evolution", () => {
     await migrator.migrate("@elizaos/circular-fk-v1", schemaV2);
     console.log("  ✅ Manager reference foreign key created successfully");
 
-    // Test that constraints work
     console.log("\n🔍 Testing manager reference constraints...");
 
-    // Try to insert invalid manager
     let insertError: Error | null = null;
     try {
       await db.execute(
@@ -485,7 +471,6 @@ describe("Schema Evolution Test: Foreign Key Evolution", () => {
     expect(insertError).not.toBeNull();
     console.log("  ✅ Invalid manager reference blocked");
 
-    // Delete employee who is a manager
     await db.execute(sql`DELETE FROM employees WHERE id = ${emp1Id}`);
     const deptAfter = await db.execute(
       sql`SELECT manager_id FROM departments WHERE id = ${dept1Id}`

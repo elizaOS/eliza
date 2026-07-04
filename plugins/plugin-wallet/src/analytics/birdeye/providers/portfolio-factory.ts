@@ -1,3 +1,11 @@
+/**
+ * `createBirdeyePortfolioProvider` builds a Birdeye wallet-portfolio provider
+ * (optionally including recent trades) for a configured `BIRDEYE_WALLET_ADDR`,
+ * used by `agentPortfolioProvider`. `formatPortfolio` renders a portfolio
+ * response as a compact JSON holdings table; both handle legacy
+ * (`{ data: { items } }`) and unwrapped portfolio response shapes. Display
+ * symbols are sanitized before injection into planner context.
+ */
 import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
 import { sanitizeWalletDisplayLabel } from "../../../security/wallet-context-safety.js";
 import { BIRDEYE_SERVICE_NAME } from "../constants";

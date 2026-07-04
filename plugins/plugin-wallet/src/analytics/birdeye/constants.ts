@@ -1,3 +1,8 @@
+/**
+ * Birdeye API constants: retry/backoff tuning, the public API base URL, and
+ * `BIRDEYE_ENDPOINTS` mapping each wrapped endpoint to its path and Birdeye
+ * API reference doc.
+ */
 export const DEFAULT_MAX_RETRIES = 3;
 
 export const BIRDEYE_SERVICE_NAME = "birdeye";

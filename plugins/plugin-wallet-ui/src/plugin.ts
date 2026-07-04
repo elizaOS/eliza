@@ -1,3 +1,8 @@
+/**
+ * `walletAppPlugin` — the plugin descriptor registering the wallet inventory
+ * shell page, the shared GUI/XR/TUI wallet view, and the chat-sidebar wallet
+ * status widget.
+ */
 import type { Plugin } from "@elizaos/core";
 
 export const walletAppPlugin: Plugin = {

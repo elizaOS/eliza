@@ -1,3 +1,8 @@
+/**
+ * Birdeye client support: supported-chain/alias tables, address/timeframe/limit
+ * extraction from free-form user text, response formatting for chat display,
+ * and the shared `fetch` wrapper (`makeApiRequest`) used by the Birdeye service.
+ */
 import { logger } from "@elizaos/core";
 import { sanitizeWalletDisplayLabel } from "../../security/wallet-context-safety.js";
 import type { BirdeyeApiParams } from "./types/api/common";
@@ -8,7 +13,6 @@ import type {
 import type { TokenMetadataSingleResponse } from "./types/api/token";
 import type { BaseAddress, BirdeyeSupportedChain } from "./types/shared";
 
-// Constants
 export const BASE_URL = "https://public-api.birdeye.so";
 
 export const BIRDEYE_SUPPORTED_CHAINS = [
@@ -25,44 +29,23 @@ export const BIRDEYE_SUPPORTED_CHAINS = [
   "evm", // EVM-compatible chains but we don't know the chain
 ] as const;
 
-// Chain abbreviations and alternative names mapping
+/** Maps common chain abbreviations/alternative names to a canonical Birdeye chain id. */
 export const CHAIN_ALIASES: Record<string, BirdeyeSupportedChain> = {
-  // Solana
   sol: "solana",
-
-  // Ethereum
   eth: "ethereum",
   ether: "ethereum",
-
-  // Arbitrum
   arb: "arbitrum",
   arbitrumone: "arbitrum",
-
-  // Avalanche
   avax: "avalanche",
-
-  // BSC
   bnb: "bsc",
   binance: "bsc",
   "binance smart chain": "bsc",
-
-  // Optimism
   op: "optimism",
   opti: "optimism",
-
-  // Polygon
   matic: "polygon",
   poly: "polygon",
-
-  // Base
-  // no common abbreviations
-
-  // zkSync
   zks: "zksync",
   zk: "zksync",
-
-  // Sui
-  // no common abbreviations
 } as const;
 
 export class BirdeyeApiError extends Error {
@@ -81,7 +64,6 @@ export interface ApiResponse<T> {
   error?: string;
 }
 
-// Time-related types and constants
 export const TIME_UNITS = {
   second: 1,
   minute: 60,
@@ -109,22 +91,18 @@ export const TIMEFRAME_KEYWORDS = {
 export type TimeUnit = keyof typeof TIME_UNITS;
 export type Timeframe = keyof typeof TIMEFRAME_KEYWORDS;
 
-// Helper functions
 /**
- * Extract blockchain chain from address with optional explicit chain setting
- * @param text - The wallet address to analyze (optional if explicitChain is provided)
- * @param explicitChain - Optional explicit chain specification (from BIRDEYE_CHAIN setting)
- * @returns The detected or specified chain
- * @throws Error if address format is invalid or EVM address without explicit chain
+ * Detects the chain for an address, preferring an explicit chain/alias
+ * (from the `BIRDEYE_CHAIN` setting) when given. Throws for an unrecognized
+ * explicit chain, an empty address, or an EVM-shaped address with no explicit
+ * chain (since the 0x format alone can't disambiguate the EVM chain).
  */
 export const extractChain = (
   text?: string,
   explicitChain?: string,
 ): BirdeyeSupportedChain => {
-  // First, check for explicit chain setting
   if (explicitChain) {
     const normalizedChain = explicitChain.toLowerCase();
-    // Check if it's a valid chain or alias
     if (
       BIRDEYE_SUPPORTED_CHAINS.includes(
         normalizedChain as BirdeyeSupportedChain,
@@ -234,15 +212,12 @@ export const extractAddresses = (text: string): BaseAddress[] => {
   return addresses;
 };
 
-// Time extraction and analysis
 export const extractTimeframe = (text: string): Timeframe => {
-  // First, check for explicit timeframe mentions
   const timeframe = Object.keys(TIMEFRAME_KEYWORDS).find((tf) =>
     text.toLowerCase().includes(tf.toLowerCase()),
   );
   if (timeframe) return timeframe as Timeframe;
 
-  // Check for semantic timeframe hints
   const semanticMap = {
     "short term": "15m",
     "medium term": "1h",
@@ -261,18 +236,16 @@ export const extractTimeframe = (text: string): Timeframe => {
     }
   }
 
-  // Analyze for time-related words
   if (text.match(/minute|min|minutes/i)) return "15m";
   if (text.match(/hour|hourly|hours/i)) return "1h";
   if (text.match(/day|daily|24h/i)) return "1d";
   if (text.match(/week|weekly/i)) return "1w";
 
-  // Default based on context
   if (text.match(/trade|trades|trading|recent/i)) return "15m";
   if (text.match(/trend|analysis|analyze/i)) return "1h";
   if (text.match(/history|historical|long|performance/i)) return "1d";
 
-  return "1h"; // Default timeframe
+  return "1h";
 };
 
 export const extractTimeRange = (
@@ -280,7 +253,6 @@ export const extractTimeRange = (
 ): { start: number; end: number } => {
   const now = Math.floor(Date.now() / 1000);
 
-  // Check for specific date ranges
   const dateRangeMatch = text.match(
     /from\s+(\d{4}-\d{2}-\d{2})\s+to\s+(\d{4}-\d{2}-\d{2})/i,
   );
@@ -290,7 +262,6 @@ export const extractTimeRange = (
     return { start, end };
   }
 
-  // Check for relative time expressions
   const timeRegex = /(\d+)\s*(second|minute|hour|day|week|month)s?\s*ago/i;
   const match = text.match(timeRegex);
   if (match) {
@@ -300,7 +271,6 @@ export const extractTimeRange = (
     return { start, end: now };
   }
 
-  // Check for semantic time ranges
   const semanticRanges: Record<string, number> = {
     today: TIME_UNITS.day,
     "this week": TIME_UNITS.week,
@@ -319,43 +289,37 @@ export const extractTimeRange = (
     }
   }
 
-  // Analyze context for appropriate default range
   if (text.match(/trend|analysis|performance/i)) {
-    return { start: now - TIME_UNITS.week, end: now }; // 1 week for analysis
+    return { start: now - TIME_UNITS.week, end: now };
   }
   if (text.match(/trade|trades|trading|recent/i)) {
-    return { start: now - TIME_UNITS.day, end: now }; // 1 day for trading
+    return { start: now - TIME_UNITS.day, end: now };
   }
   if (text.match(/history|historical|long term/i)) {
-    return { start: now - TIME_UNITS.month, end: now }; // 1 month for history
+    return { start: now - TIME_UNITS.month, end: now };
   }
 
-  // Default to last 24 hours
   return { start: now - TIME_UNITS.day, end: now };
 };
 
 export const extractLimit = (text: string): number => {
-  // Check for explicit limit mentions
   const limitMatch = text.match(/\b(show|display|get|fetch|limit)\s+(\d+)\b/i);
   if (limitMatch) {
     const limit = Number.parseInt(limitMatch[2], 10);
-    return Math.min(Math.max(limit, 1), 100); // Clamp between 1 and 100
+    return Math.min(Math.max(limit, 1), 100);
   }
 
-  // Check for semantic limit hints
   if (text.match(/\b(all|everything|full|complete)\b/i)) return 100;
   if (text.match(/\b(brief|quick|summary|overview)\b/i)) return 5;
   if (text.match(/\b(detailed|comprehensive)\b/i)) return 50;
 
-  // Default based on context
   if (text.match(/\b(trade|trades|trading)\b/i)) return 10;
   if (text.match(/\b(analysis|analyze|trend)\b/i)) return 24;
   if (text.match(/\b(history|historical)\b/i)) return 50;
 
-  return 10; // Default limit
+  return 10;
 };
 
-// Formatting helpers
 export const formatValue = (value?: number): string => {
   if (!value) return "N/A";
   if (value && value >= 1_000_000_000) {
@@ -425,7 +389,6 @@ export const formatJsonTable = (
   return lines.join("\n");
 };
 
-// API helpers
 export async function makeApiRequest<T>(
   url: string,
   options: {
@@ -474,7 +437,6 @@ export async function makeApiRequest<T>(
   }
 }
 
-// Formatting helpers
 export const formatTokenInfo = (
   token: TokenResult,
   metadata?: TokenMetadataSingleResponse,
@@ -524,7 +486,6 @@ export const formatTokenInfo = (
     `🔄 Trades: ${trades}\n` +
     `🔗 Address: ${token.address}`;
 
-  // Add metadata if available
   if (metadata?.success) {
     const { extensions } = metadata.data;
     const links: string[] = [];
@@ -548,7 +509,6 @@ export const formatTokenInfo = (
   return output;
 };
 
-// Extract symbols from text
 export const extractSymbols = (
   text: string,
   // loose mode will try to extract more symbols but may include false positives
@@ -558,7 +518,6 @@ export const extractSymbols = (
   if (!text.matchAll) return [];
   const symbols = new Set<string>();
 
-  // Match patterns
   const patterns =
     mode === "strict"
       ? [
@@ -570,16 +529,15 @@ export const extractSymbols = (
           /\$([A-Z0-9]{2,10})\b/gi,
           // After articles (a/an)
           /\b(?:a|an)\s+([A-Z0-9]{2,10})\b/gi,
-          // // Standalone caps
+          // Standalone caps
           /\b[A-Z0-9]{2,10}\b/g,
-          // // Quoted symbols
+          // Quoted symbols
           /["']([A-Z0-9]{2,10})["']/gi,
-          // // Common price patterns
+          // Common price patterns
           /\b([A-Z0-9]{2,10})\/USD\b/gi,
           /\b([A-Z0-9]{2,10})-USD\b/gi,
         ];
 
-  // Extract all matches
   patterns.forEach((pattern) => {
     const matches = Array.from(text.matchAll(pattern));
     for (const match of matches) {
@@ -626,7 +584,6 @@ export const formatMetadataResponse = (
 
   let response = `Token Metadata for ${tokenData.name} (${tokenData.symbol}) on ${chainName}\n\n`;
 
-  // Basic Information
   response += "📝 Basic Information\n";
   response += `• Name: ${tokenData.name}\n`;
   response += `• Symbol: ${tokenData.symbol}\n`;
@@ -636,11 +593,9 @@ export const formatMetadataResponse = (
     response += `• Explorer: [View on ${chainName} Explorer](${chainExplorer})\n`;
   }
 
-  // Social Links
   response += "\n🔗 Social Links & Extensions\n";
   response += `${formatSocialLinks(tokenData)}\n`;
 
-  // Logo
   if (tokenData.logo_uri) {
     response += "\n🖼️ Logo\n";
     response += tokenData.logo_uri;

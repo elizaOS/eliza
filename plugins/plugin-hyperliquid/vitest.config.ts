@@ -1,3 +1,9 @@
+/**
+ * Vitest config for this plugin's unit tests. Aliases React and every
+ * `@elizaos/plugin-*` / `@elizaos/app-core` / `@elizaos/core` / `@elizaos/shared`
+ * import to source (or an in-package test shim) so tests run against a
+ * pre-built dist-less workspace.
+ */
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

@@ -1,3 +1,12 @@
+/**
+ * DexScreener HTTP client (`Service` of type `"dexscreener"`): pair/token
+ * search, trending/new-pair discovery, boosted tokens, and price/order
+ * lookups. Several methods are proxies over endpoints DexScreener doesn't
+ * expose directly (trending, new pairs) — see inline notes per method.
+ * Resolves its base URL + auth headers from Eliza Cloud routing when no
+ * direct `DEXSCREENER_API_URL` is configured, and self rate-limits between
+ * requests via `DEXSCREENER_RATE_LIMIT_DELAY`.
+ */
 import {
   cloudServiceApisBaseUrl,
   toRuntimeSettings,
@@ -197,18 +206,16 @@ export class DexScreenerService extends Service {
     try {
       await this.rateLimit();
 
-      // DexScreener doesn't have a direct trending endpoint
-      // We'll use the boosted tokens endpoint as a proxy for trending
+      // DexScreener has no direct trending endpoint; use top boosted tokens
+      // as a proxy signal.
       const responseData = await this.get<
         DexScreenerBoostedToken[] | DexScreenerBoostedToken
       >(`/token-boosts/top/v1`);
 
-      // The boosted tokens response is an array of boosted tokens
       const boostedTokens = Array.isArray(responseData)
         ? responseData
         : [responseData];
 
-      // For each boosted token, we need to get the actual pair data
       const pairPromises = boostedTokens
         .slice(0, params.limit || 10)
         .map(async (token) => {
@@ -250,7 +257,8 @@ export class DexScreenerService extends Service {
     try {
       await this.rateLimit();
 
-      // Use search API with chain filter
+      // DexScreener has no chain-scoped listing endpoint, so search by chain
+      // name and filter the results down to that chain.
       const data = await this.get<{ pairs?: DexScreenerPair[] }>(
         `/latest/dex/search`,
         { q: params.chain },
@@ -258,12 +266,10 @@ export class DexScreenerService extends Service {
 
       let pairs: DexScreenerPair[] = data.pairs || [];
 
-      // Filter to only include pairs from the specified chain
       pairs = pairs.filter(
         (pair) => pair.chainId.toLowerCase() === params.chain.toLowerCase(),
       );
 
-      // Sort by specified criteria
       if (params.sortBy) {
         pairs.sort((a, b) => {
           switch (params.sortBy) {
@@ -284,7 +290,6 @@ export class DexScreenerService extends Service {
         });
       }
 
-      // Limit results
       const limitedPairs = params.limit
         ? pairs.slice(0, params.limit)
         : pairs.slice(0, 20);
@@ -309,25 +314,22 @@ export class DexScreenerService extends Service {
     try {
       await this.rateLimit();
 
-      // DexScreener doesn't have a direct new pairs endpoint
-      // We'll use the latest token profiles as a proxy for new tokens
+      // DexScreener has no direct new-pairs endpoint; use the latest token
+      // profiles as a proxy for newly listed tokens.
       const responseData = await this.get<
         DexScreenerProfile[] | DexScreenerProfile
       >(`/token-profiles/latest/v1`);
 
-      // The latest token profiles response is an array of profiles
       const profiles = Array.isArray(responseData)
         ? responseData
         : [responseData];
 
-      // Filter by chain if specified
       const filteredProfiles = params.chain
         ? profiles.filter(
             (p) => p.chainId.toLowerCase() === params.chain?.toLowerCase(),
           )
         : profiles;
 
-      // For each profile, we need to get the actual pair data
       const pairPromises = filteredProfiles
         .slice(0, params.limit || 10)
         .map(async (profile) => {
@@ -336,7 +338,6 @@ export class DexScreenerService extends Service {
               `/tokens/v1/${profile.chainId}/${profile.tokenAddress}`,
             );
             const pairs = Array.isArray(pairData) ? pairData : [];
-            // Return the first pair with 'new' label
             if (pairs.length > 0) {
               return {
                 ...pairs[0],
@@ -377,8 +378,8 @@ export class DexScreenerService extends Service {
   ): Promise<DexScreenerServiceResponse<DexScreenerProfile>> {
     try {
       await this.rateLimit();
-      // Token profiles are available through the latest profiles endpoint
-      // We need to fetch all and find the matching one
+      // No lookup-by-address endpoint exists; fetch the latest profiles and
+      // find the matching token address.
       const responseData = await this.get<
         DexScreenerProfile[] | DexScreenerProfile
       >(`/token-profiles/latest/v1`);

@@ -1,3 +1,9 @@
+/**
+ * Unit tests for the PREDICTION_MARKET action: context-routing validation
+ * (structured `__contextRouting`/`selectedContexts`, no keyword-bank matching)
+ * and the disabled-trading-readiness shape of `place_order`. No network or
+ * runtime dependencies — `runtime`/`state` are plain fixtures.
+ */
 import type { IAgentRuntime, Memory, State } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { polymarketAction } from "./actions";
@@ -66,7 +72,6 @@ describe("PREDICTION_MARKET validate (#10471 — structured context, no keyword 
   });
 
   it("does NOT validate on market keyword text alone — the keyword bank is gone", async () => {
-    // Previously the multilingual READ/TRADE keyword banks matched these.
     expect(
       await polymarketAction.validate?.(
         runtime,

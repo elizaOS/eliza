@@ -1,3 +1,9 @@
+/**
+ * Raydium CLMM LP sub-plugin: registers the Raydium position provider and
+ * `RaydiumService`, plugs Raydium into the shared `LpManagementService`
+ * protocol registry, and (if a Solana service with an exchange registry is
+ * present) registers itself there too.
+ */
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
 import {
   createSolanaLpProtocolProvider,

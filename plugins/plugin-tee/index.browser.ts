@@ -1,3 +1,9 @@
+/**
+ * Browser-unavailable stand-in for `teePlugin`: TEE attestation requires a
+ * server-side dstack SDK connection, so this entry only warns and does not
+ * wire up services/providers. Not referenced by package `exports` — the
+ * plugin is Node-only per `registry-entry.json`.
+ */
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 

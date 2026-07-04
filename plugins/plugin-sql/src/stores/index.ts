@@ -1,3 +1,4 @@
+/** Barrel re-exporting every domain store and the shared `Store`/`StoreContext` types. */
 export * from "./agent.store";
 export * from "./cache.store";
 export * from "./component.store";

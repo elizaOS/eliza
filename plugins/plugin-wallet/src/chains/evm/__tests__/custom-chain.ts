@@ -1,7 +1,11 @@
+/**
+ * EVM test-chain fixtures: viem chain definitions and well-known local/testnet
+ * accounts shared across the EVM wallet test suites. The private keys here are
+ * the public, well-known Anvil default-mnemonic keys — never real funds.
+ */
 import { defineChain } from "viem";
 import { arbitrumSepolia, baseSepolia, hardhat, optimismSepolia, sepolia } from "viem/chains";
 
-// Export the actual testnets we'll use
 export { arbitrumSepolia, baseSepolia, hardhat, optimismSepolia, sepolia };
 
 // Local Anvil chain configuration

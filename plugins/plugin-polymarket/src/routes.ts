@@ -1,3 +1,13 @@
+/**
+ * `handlePolymarketRoute()` — all HTTP logic for the `/api/polymarket/*`
+ * routes. Reads flow through the public Gamma (markets), CLOB (orderbook),
+ * and Data (positions) APIs and are normalized into the `Polymarket*`
+ * response contracts; upstream payloads are untyped JSON, so every field is
+ * read defensively (`readString`/`readBoolean`/`readNumericString`/…) rather
+ * than trusted. The orders route always returns 501 — signed trading is
+ * disabled in this app integration, mirrored by `buildStatusResponse`'s
+ * `trading.ready: false`.
+ */
 import type http from "node:http";
 import { sendJson, sendJsonError } from "@elizaos/app-core/api/response";
 import { logger } from "@elizaos/core";

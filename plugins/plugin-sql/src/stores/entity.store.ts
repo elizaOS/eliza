@@ -1,3 +1,10 @@
+/**
+ * CRUD + lookup store for the `entities` table, with helpers to fetch an
+ * entity's `components` via join and to resolve room membership through
+ * `participants`. Name matching (`getByNames`, `searchByName`) runs as raw
+ * SQL against the `names` text array rather than through the Drizzle query
+ * builder.
+ */
 import { randomUUID } from "node:crypto";
 import { type Component, type Entity, logger, type UUID } from "@elizaos/core";
 import { and, eq, inArray, or, sql } from "drizzle-orm";

@@ -1,3 +1,9 @@
+/**
+ * Automation catalog nodes owned by the wallet plugin. These cover EVM + Solana
+ * swaps and cross-chain bridges backed by the wallet plugin's runtime actions.
+ * They live here (not hardcoded in app-core) so a wallet action rename or plugin
+ * name change updates the node in one place with the code it gates.
+ */
 import {
   type AutomationNodeContributorContext,
   buildRuntimeCapabilityNodes,
@@ -6,12 +12,6 @@ import {
 } from "@elizaos/app-core/api/automation-node-contributors";
 import type { AutomationNodeDescriptor } from "@elizaos/ui";
 
-/**
- * Automation catalog nodes owned by the wallet plugin. These cover EVM + Solana
- * swaps and cross-chain bridges backed by the wallet plugin's runtime actions.
- * They live here (not hardcoded in app-core) so a wallet action rename or plugin
- * name change updates the node in one place with the code it gates.
- */
 const WALLET_AUTOMATION_NODE_SPECS: RuntimeCapabilityNodeSpec[] = [
   {
     id: "crypto:evm.swap",

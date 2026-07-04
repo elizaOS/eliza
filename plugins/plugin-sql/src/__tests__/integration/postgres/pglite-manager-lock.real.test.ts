@@ -1,3 +1,11 @@
+/**
+ * Tests for `PGliteClientManager`'s file-backed single-writer lock: rejects
+ * a second manager while the first is confirmed live, reclaims a lock left
+ * by a dead or reused PID, and reclaims unconditionally in mobile embedded
+ * mode where the liveness probe is unusable. Writes real lock files to a
+ * temp dir and exercises the real manager constructor — no mocked lock
+ * logic, only `readLinuxProcessStartedAtMs` is spied for the PID-reuse case.
+ */
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";

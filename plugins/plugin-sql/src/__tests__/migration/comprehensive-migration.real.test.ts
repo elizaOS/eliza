@@ -1,3 +1,12 @@
+/**
+ * End-to-end `RuntimeMigrator` coverage against a real Postgres/PGlite
+ * database (via `createIsolatedTestDatabaseForMigration`): a purpose-built
+ * schema exercising every constraint kind the migrator must diff and apply —
+ * dependency-ordered table creation, `vector` columns, foreign keys, unique
+ * and check constraints, actual constraint enforcement on insert, idempotent
+ * re-migration, empty schemas, and non-table schema exports that must be
+ * ignored rather than migrated.
+ */
 import { sql } from "drizzle-orm";
 import {
   boolean,
@@ -15,7 +24,6 @@ import {
 } from "drizzle-orm/pg-core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-// Helper types for database query result rows
 interface VectorColumnRow {
   data_type: string;
   column_name: string;
@@ -49,7 +57,6 @@ import { RuntimeMigrator } from "../../runtime-migrator";
 import type { DrizzleDatabase } from "../../types";
 import { createIsolatedTestDatabaseForMigration } from "../test-helpers";
 
-// Test schema with all possible scenarios
 const testBaseTable = pgTable(
   "base_entities",
   {
@@ -144,7 +151,7 @@ describe("Comprehensive Dynamic Migration Tests", () => {
     db = testSetup.db;
     cleanup = testSetup.cleanup;
 
-    // Vector extension is already installed by adapter.init()
+    // The vector extension is already installed by adapter.init().
   });
 
   afterAll(async () => {
@@ -154,7 +161,6 @@ describe("Comprehensive Dynamic Migration Tests", () => {
   });
 
   describe("Migration Execution", () => {
-    // Clean up any existing schemas before migration tests
     beforeAll(async () => {
       try {
         await db.execute(sql`DROP SCHEMA IF EXISTS migrations CASCADE`);
@@ -165,16 +171,13 @@ describe("Comprehensive Dynamic Migration Tests", () => {
         console.log("[TEST CLEANUP] Schema cleanup failed:", error);
       }
 
-      // Initialize RuntimeMigrator
       migrator = new RuntimeMigrator(db);
       await migrator.initialize();
     });
 
     it("should create all tables in correct dependency order", async () => {
-      // Run the migration
       await migrator.migrate("test-plugin", testSchema, { verbose: true });
 
-      // Verify all tables were created
       const result = await db.execute(
         sql`SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name`
       );
@@ -187,7 +190,6 @@ describe("Comprehensive Dynamic Migration Tests", () => {
     });
 
     it("should create vector columns with correct types", async () => {
-      // Check vector column types
       const result = await db.execute(
         sql`SELECT column_name, data_type 
             FROM information_schema.columns 
@@ -200,14 +202,13 @@ describe("Comprehensive Dynamic Migration Tests", () => {
       const vectorColumns = result.rows as VectorColumnRow[];
       expect(vectorColumns).toHaveLength(3);
 
-      // All vector columns should have USER-DEFINED type (vector extension)
+      // The pgvector extension reports its column type as USER-DEFINED.
       vectorColumns.forEach((col) => {
         expect(col.data_type).toBe("USER-DEFINED");
       });
     });
 
     it("should create foreign key constraints properly", async () => {
-      // Check that foreign key constraints exist
       const result = await db.execute(
         sql`SELECT tc.constraint_name, tc.table_name, kcu.column_name, ccu.table_name AS referenced_table
             FROM information_schema.table_constraints AS tc
@@ -223,7 +224,6 @@ describe("Comprehensive Dynamic Migration Tests", () => {
       const foreignKeys = result.rows as ForeignKeyRow[];
       expect(foreignKeys.length).toBeGreaterThan(0);
 
-      // Check specific foreign keys
       const dependentFk = foreignKeys.find(
         (fk) =>
           fk.table_name === "dependent_entities" &&
@@ -234,7 +234,6 @@ describe("Comprehensive Dynamic Migration Tests", () => {
     });
 
     it("should create unique constraints properly", async () => {
-      // Check that unique constraints exist
       const result = await db.execute(
         sql`SELECT tc.constraint_name, tc.table_name
             FROM information_schema.table_constraints AS tc
@@ -246,7 +245,6 @@ describe("Comprehensive Dynamic Migration Tests", () => {
       const uniqueConstraints = result.rows as UniqueConstraintRow[];
       expect(uniqueConstraints.length).toBeGreaterThan(0);
 
-      // Check specific unique constraints
       const baseNameUnique = uniqueConstraints.find(
         (uc) =>
           uc.table_name === "base_entities" && uc.constraint_name === "base_entities_name_unique"
@@ -255,7 +253,6 @@ describe("Comprehensive Dynamic Migration Tests", () => {
     });
 
     it("should create check constraints properly", async () => {
-      // Check that check constraints exist
       const result = await db.execute(
         sql`SELECT tc.constraint_name, tc.table_name
             FROM information_schema.table_constraints AS tc
@@ -267,7 +264,6 @@ describe("Comprehensive Dynamic Migration Tests", () => {
       const checkConstraints = result.rows as CheckConstraintRow[];
       expect(checkConstraints.length).toBeGreaterThan(0);
 
-      // Check specific check constraints
       const valuePositive = checkConstraints.find(
         (cc) => cc.table_name === "dependent_entities" && cc.constraint_name === "value_positive"
       );
@@ -275,13 +271,11 @@ describe("Comprehensive Dynamic Migration Tests", () => {
     });
 
     it("should support vector similarity operations", async () => {
-      // Insert test data with vector embeddings
       await db.execute(
         sql`INSERT INTO public.base_entities (id, name) VALUES 
             ('550e8400-e29b-41d4-a716-446655440000', 'test-entity')`
       );
 
-      // Insert vector embedding
       const testVector = Array(384)
         .fill(0)
         .map(() => Math.random())
@@ -291,7 +285,6 @@ describe("Comprehensive Dynamic Migration Tests", () => {
             ('550e8400-e29b-41d4-a716-446655440000', '[${sql.raw(testVector)}]')`
       );
 
-      // Test vector similarity query
       const result = await db.execute(
         sql`SELECT entity_id, dim_384 <=> '[${sql.raw(testVector)}]' as distance 
             FROM public.vector_embeddings 
@@ -309,7 +302,7 @@ describe("Comprehensive Dynamic Migration Tests", () => {
 
   describe("Data Integrity", () => {
     it("should enforce foreign key constraints", async () => {
-      // Try to insert dependent entity with non-existent base_id
+      // Inserting a dependent row against a non-existent base_id must fail.
       let errorThrown = false;
       try {
         await db.execute(
@@ -323,13 +316,12 @@ describe("Comprehensive Dynamic Migration Tests", () => {
     });
 
     it("should enforce unique constraints", async () => {
-      // Insert a base entity
       await db.execute(
         sql`INSERT INTO public.base_entities (id, name) VALUES 
             ('550e8400-e29b-41d4-a716-446655440001', 'unique-test')`
       );
 
-      // Try to insert another with the same name
+      // A second row with the same name must violate the unique constraint.
       let errorThrown = false;
       try {
         await db.execute(
@@ -343,13 +335,12 @@ describe("Comprehensive Dynamic Migration Tests", () => {
     });
 
     it("should enforce check constraints", async () => {
-      // Insert base entity first
       await db.execute(
         sql`INSERT INTO public.base_entities (id, name) VALUES 
             ('550e8400-e29b-41d4-a716-446655440003', 'check-test')`
       );
 
-      // Try to insert dependent with negative value (should fail)
+      // A negative value must violate the "value_positive" check constraint.
       let errorThrown = false;
       try {
         await db.execute(
@@ -365,7 +356,6 @@ describe("Comprehensive Dynamic Migration Tests", () => {
 
   describe("Edge Cases", () => {
     it("should handle idempotent migrations (running same migration twice)", async () => {
-      // Run migration again - should not fail
       let errorThrown = false;
       let _errorDetails: unknown = null;
       try {
@@ -377,7 +367,6 @@ describe("Comprehensive Dynamic Migration Tests", () => {
       }
       expect(errorThrown).toBe(false);
 
-      // Tables should still exist
       const result = await db.execute(
         sql`SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'`
       );
@@ -398,7 +387,7 @@ describe("Comprehensive Dynamic Migration Tests", () => {
     });
 
     it("should handle schema with non-table exports", async () => {
-      // Create a simple table just for this test to avoid conflicts
+      // A dedicated table avoids name conflicts with tables from other tests.
       const testMixedTable = pgTable("mixed_test_table", {
         id: uuid("id").primaryKey().defaultRandom(),
         name: text("name").notNull(),
@@ -423,11 +412,10 @@ describe("Comprehensive Dynamic Migration Tests", () => {
       }
       expect(errorThrown).toBe(false);
 
-      // Should only create the actual table
+      // Only the real table should be created; non-table exports are ignored.
       const result = await db.execute(
         sql`SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'`
       );
-      // Should have mixed_test_table plus any tables from previous tests
       const mixedTableExists = result.rows.some(
         (row) => (row as { table_name: string }).table_name === "mixed_test_table"
       );

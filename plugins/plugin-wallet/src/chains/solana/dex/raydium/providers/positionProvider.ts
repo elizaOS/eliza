@@ -1,3 +1,10 @@
+/**
+ * Raydium CLMM position provider: injects the agent wallet's current Raydium
+ * positions (pool, in-range status, distance/width in bps) into planner
+ * context. Loads the Raydium SDK's `Clmm`/`Position` namespaces dynamically
+ * and degrades to an empty position list (with a warning) if the installed
+ * SDK version doesn't expose the expected position-lookup functions.
+ */
 import {
   type IAgentRuntime,
   logger,
@@ -141,7 +148,6 @@ export const raydiumPositionProvider: Provider = {
         };
       }
 
-      // Decode the private key to get public address
       const bs58 = await import("bs58");
       const { Keypair } = await import("@solana/web3.js");
       const secretKey = bs58.default.decode(privateKey);
@@ -191,15 +197,12 @@ const fetchPositions = async (
     if (!api) return [];
     const { clmm, position: positionApi } = api;
 
-    // Get all positions for the owner
     const positions = (await positionApi.getPositionsByOwner(connection, ownerAddress))
       .map(toRaydiumPositionRecord)
       .filter((position): position is RaydiumPositionRecord => position !== null);
 
-    // Fetch all unique pools
     const poolsMap = new Map<string, RaydiumClmmPoolInfo>();
 
-    // First pass: collect all pool addresses
     for (const position of positions) {
       if (!poolsMap.has(position.poolId.toString())) {
         const poolInfo = await clmm.getPool(connection, position.poolId);
@@ -214,17 +217,14 @@ const fetchPositions = async (
           throw new Error(`Missing pool metadata for pool ID ${position.poolId.toString()}`);
         }
 
-        // Calculate price and range information
         const currentPrice = pool.currentPrice;
         const positionLowerPrice = pool.tickArrayLower;
         const positionUpperPrice = pool.tickArrayUpper;
 
-        // Check if position is in range
         const inRange =
           position.tickLower <= pool.currentTickIndex &&
           pool.currentTickIndex <= position.tickUpper;
 
-        // Calculate position metrics
         const positionCenterPrice = (positionLowerPrice + positionUpperPrice) / 2;
         const distanceCenterPositionFromPoolPriceBps =
           (Math.abs(currentPrice - positionCenterPrice) / currentPrice) * 10000;

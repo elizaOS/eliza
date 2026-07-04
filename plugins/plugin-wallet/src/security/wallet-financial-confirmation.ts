@@ -1,3 +1,17 @@
+/**
+ * Confirmation gate that every on-chain wallet write (`transfer`, `swap`,
+ * `bridge`, `gov`, `pump_fun_buy`) must pass through before submission
+ * (GHSA-rqm7-f4jc-84x3). `gateWalletFinancialExecution` calls core's
+ * `requireConfirmation` with a stable pending key derived from the request
+ * params (`walletFinancialPendingKey`) and a human-readable preview of the
+ * pending action (`walletFinancialPreview`); it only proceeds once the user
+ * has replied to confirm in a later turn. `mode=execute` and `dryRun=false`
+ * alone are not sufficient — the LLM cannot bypass this gate by setting
+ * request params, since confirmation state lives in runtime cache and is
+ * keyed off the actual transfer/swap/bridge parameters, not caller-supplied
+ * flags. `dryRun=true` requests skip the gate entirely (no signing occurs).
+ * Do not remove or short-circuit this gate from calling code.
+ */
 import type {
   ActionResult,
   ConfirmationDecision,

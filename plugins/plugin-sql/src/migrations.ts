@@ -1,14 +1,22 @@
+/**
+ * One-off, idempotent Postgres schema migration (`migrateToEntityRLS`) that
+ * runs on every startup ahead of `RuntimeMigrator`: it moves a database from
+ * the old owner-based RLS scheme to Server RLS + Entity RLS (renaming
+ * `server_id` → `message_server_id`, converting TEXT ids to UUID, dropping
+ * obsolete RLS columns/indexes), then leaves RLS enabled or disables it
+ * depending on `ENABLE_DATA_ISOLATION`. Detects and no-ops on non-Postgres
+ * backends and on databases that already carry the migrated (snake_case)
+ * columns.
+ */
 import { type IDatabaseAdapter, logger } from "@elizaos/core";
 import { sql } from "drizzle-orm";
 import { getDb } from "./types";
 
-// Column info row for schema introspection queries
 interface ColumnInfoRow {
   column_name: string;
   data_type: string;
 }
 
-// Table info row for schema introspection queries
 interface TableInfoRow {
   table_name: string;
 }
@@ -20,19 +28,7 @@ function getRows<T>(result: { rows: unknown[] }): T[] {
   return result.rows as T[];
 }
 
-/**
- * TEMPORARY MIGRATION: pre-1.6.5 → 1.6.5+ schema migration
- *
- * This migration runs automatically on startup and is idempotent.
- * It handles the migration from Owner RLS to Server RLS + Entity RLS, including:
- * - Disabling old RLS policies temporarily
- * - Renaming server_id → message_server_id in channels, worlds, rooms
- * - Converting TEXT → UUID where needed
- * - Dropping old server_id columns for RLS
- * - Cleaning up indexes
- *
- * @param adapter - Database adapter
- */
+/** Migrates a pre-1.6.5 database to the 1.6.5+ Server RLS + Entity RLS schema. */
 export async function migrateToEntityRLS(adapter: IDatabaseAdapter): Promise<void> {
   const db = getDb(adapter);
 

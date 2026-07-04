@@ -1,13 +1,13 @@
+/**
+ * Drizzle table for structured runtime logs (`body` as free-form JSON,
+ * `type` as a category tag) attributed to the entity and room that produced
+ * them. Both `entityId` and `roomId` cascade delete, so logs are pruned
+ * automatically when their owning entity or room is removed.
+ */
 import { sql } from "drizzle-orm";
 import { foreignKey, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { entityTable } from "./entity";
 import { roomTable } from "./room";
-
-/**
- * Represents a PostgreSQL table for storing logs.
- *
- * @type {Table}
- */
 
 export const logTable = pgTable(
   "logs",

@@ -1,3 +1,10 @@
+/**
+ * Drizzle schema for `pairing_requests` — short-lived DM pairing codes that let a
+ * user on a messaging channel (Telegram, Discord, WhatsApp, etc.) link their
+ * account to an agent before being approved. Rows are expected to be cleaned up
+ * once a request is approved or expires; the unique indexes enforce one active
+ * code and one active request per sender per channel/agent.
+ */
 import { sql } from "drizzle-orm";
 import { index, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { agentTable } from "./agent";

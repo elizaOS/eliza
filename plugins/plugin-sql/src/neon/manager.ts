@@ -1,3 +1,13 @@
+/**
+ * Owns the WebSocket-based connection to a Neon serverless Postgres database:
+ * a @neondatabase/serverless Pool for raw access plus a Drizzle NeonDatabase handle
+ * consumed by NeonDatabaseAdapter. Connection pooling itself is delegated to Neon's
+ * edge proxy, so this manager is deliberately thinner than PostgresConnectionManager.
+ *
+ * withIsolationContext applies Row Level Security by running set_config() calls
+ * inside a transaction before invoking the caller's callback, using parameterized
+ * queries to avoid SQL injection through the server/entity id values.
+ */
 import { logger, type UUID, validateUuid } from "@elizaos/core";
 import { neonConfig, Pool } from "@neondatabase/serverless";
 import { sql } from "drizzle-orm";

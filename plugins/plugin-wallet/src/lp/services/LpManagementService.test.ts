@@ -1,3 +1,9 @@
+/**
+ * Unit tests for `LpManagementService`'s provider-routing logic (matching a
+ * request to the right registered DEX provider, error on no match). Providers
+ * are hand-built `vi.fn()` stubs — no real Solana/EVM RPC or DEX program is
+ * exercised.
+ */
 import { describe, expect, it, vi } from "vitest";
 import {
   LpManagementService,

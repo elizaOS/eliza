@@ -1,3 +1,4 @@
+/** Plugin definition registering `LocalFileStorageService` as the agent's zero-config, filesystem-backed file storage — the default fallback when Eliza Cloud storage is not connected. */
 import type { Plugin } from "@elizaos/core";
 
 import { LocalFileStorageService } from "./services/local-storage";

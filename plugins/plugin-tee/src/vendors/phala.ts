@@ -1,3 +1,8 @@
+/**
+ * Phala Network TEE vendor implementation. Registers no actions (remote
+ * attestation is exposed as a provider, not an action) and wires the
+ * derive-key and remote-attestation providers.
+ */
 import type { Action, Provider } from "@elizaos/core";
 import {
   phalaDeriveKeyProvider,

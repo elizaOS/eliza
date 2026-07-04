@@ -1,3 +1,9 @@
+/**
+ * World-store CRUD tests against a real PGlite (or Postgres, if
+ * `POSTGRES_URL` is set) adapter via `createIsolatedTestDatabase` — no mocks.
+ * Covers UUID edge cases (nil UUID, non-RFC-version server ids) and
+ * duplicate-id rejection.
+ */
 import type { UUID, World } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -27,7 +33,6 @@ describe("World Integration Tests", () => {
 
   describe("World Tests", () => {
     beforeEach(async () => {
-      // Clean up worlds table before each test
       await (adapter.getDatabase() as DrizzleDatabase).delete(worldTable);
     });
 

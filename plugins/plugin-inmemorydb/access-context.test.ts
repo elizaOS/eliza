@@ -1,14 +1,16 @@
+/**
+ * Pins the guarantee that the optional `accessContext` parameter on
+ * `getMemories`/`getMemoriesByRoomIds`/`searchMemories` is accepted by the
+ * types but does not (yet) filter results — permission-aware retrieval reads
+ * it in a later stage. Runs against a real in-memory `InMemoryDatabaseAdapter`
+ * + `MemoryStorage`, no mocks.
+ */
 import { randomUUID } from "node:crypto";
 import type { AccessContext, Memory, UUID } from "@elizaos/core";
 import { beforeEach, describe, expect, it } from "vitest";
 import { InMemoryDatabaseAdapter } from "./adapter";
 import { MemoryStorage } from "./storage-memory";
 
-/**
- * PR 1 of permission-aware retrieval threads an optional `accessContext` through
- * the memory-read API but does not yet read it. These tests pin the guarantee
- * that passing one is accepted by the types and changes nothing at runtime.
- */
 describe("accessContext is a no-op on memory retrieval (PR 1)", () => {
   const agentId = randomUUID() as UUID;
   const ownerEntity = randomUUID() as UUID;
