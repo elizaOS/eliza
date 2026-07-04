@@ -948,6 +948,32 @@ MEETING_PROOF_REQUIRED_GENERATED_ARTIFACT_SCORE_IDS = {
     "source_grounding",
 }
 
+_MEETING_PROOF_REQUIRED_PARITY_LANES = {
+    "local_asr_local_llm_local_tts",
+    "local_asr_cloud_llm_local_tts",
+    "cloud_asr_cloud_llm_cloud_tts",
+    "cloud_asr_local_llm_local_tts",
+    "native_talkmode_stt_tts",
+    "browser_web_speech_fallback",
+    "offline_mode",
+    "degraded_network_mode",
+    "mobile_bridge_local_inference",
+}
+
+_MEETING_PROOF_REQUIRED_PARITY_EVIDENCE_PLATFORMS = {"cloud", "desktop", "mobile"}
+_MEETING_PROOF_REQUIRED_PARITY_ARTIFACT_SCHEMA = {
+    "baseline_comparison",
+    "metrics_json",
+    "privacy_mode",
+    "resource_logs",
+    "transcript_artifact",
+}
+_MEETING_PROOF_REQUIRED_PARITY_EVIDENCE = {
+    "baseline_comparison",
+    "metrics_json",
+    "resource_logs",
+}
+
 
 def _score_from_meeting_transcription_proof_json(data: JSONValue) -> ScoreExtraction:
     """Extract the #12486 meeting transcription proof score.
@@ -1029,6 +1055,11 @@ def _score_from_meeting_transcription_proof_json(data: JSONValue) -> ScoreExtrac
         qa_human_pass_count = sum(
             1 for item in qa_items if isinstance(item, dict) and item.get("verdict") == "pass"
         )
+    parity_summary_raw = root.get("parity_matrix_summary")
+    parity_summary = parity_summary_raw if isinstance(parity_summary_raw, dict) else {}
+    parity_pass_count = int(parity_summary.get("pass_count") or 0)
+    parity_fail_count = int(parity_summary.get("fail_count") or 0)
+    parity_skip_count = int(parity_summary.get("skip_count") or 0)
     publishable = root.get("publishable") is True
     if lane == "real_product":
         if not publishable:
@@ -1083,6 +1114,120 @@ def _score_from_meeting_transcription_proof_json(data: JSONValue) -> ScoreExtrac
             raise ValueError("meeting_transcription_proof: real lane requires QA checklist verdicts")
         if qa_machine_pass_count != qa_count or qa_human_pass_count != qa_count:
             raise ValueError("meeting_transcription_proof: real lane requires passing QA checklist verdicts")
+        parity_matrix = expect_list(
+            get_required(root, "parity_matrix", ctx="meeting_transcription_proof:root"),
+            ctx="meeting_transcription_proof:parity_matrix",
+        )
+        parity_summary = expect_dict(
+            get_required(root, "parity_matrix_summary", ctx="meeting_transcription_proof:root"),
+            ctx="meeting_transcription_proof:parity_matrix_summary",
+        )
+        parity_lane_ids: set[str] = set()
+        row_evidence_platforms: set[str] = set()
+        for index, row_raw in enumerate(parity_matrix):
+            row = expect_dict(row_raw, ctx=f"meeting_transcription_proof:parity_matrix[{index}]")
+            lane_id = str(get_required(row, "id", ctx=f"meeting_transcription_proof:parity_matrix[{index}]"))
+            parity_lane_ids.add(lane_id)
+            status = str(get_required(row, "status", ctx=f"meeting_transcription_proof:parity_matrix[{index}]"))
+            if status != "pass":
+                raise ValueError("meeting_transcription_proof: real lane requires all parity rows to pass")
+            artifact_schema = {
+                str(item)
+                for item in expect_list(
+                    get_required(
+                        row,
+                        "artifact_schema",
+                        ctx=f"meeting_transcription_proof:parity_matrix[{index}]",
+                    ),
+                    ctx=f"meeting_transcription_proof:parity_matrix[{index}].artifact_schema",
+                )
+            }
+            missing_artifact_schema = _MEETING_PROOF_REQUIRED_PARITY_ARTIFACT_SCHEMA - artifact_schema
+            if missing_artifact_schema:
+                raise ValueError(
+                    "meeting_transcription_proof: real lane parity row missing artifact schema "
+                    f"{sorted(missing_artifact_schema)}"
+                )
+            evidence = {
+                str(item)
+                for item in expect_list(
+                    get_required(row, "evidence", ctx=f"meeting_transcription_proof:parity_matrix[{index}]"),
+                    ctx=f"meeting_transcription_proof:parity_matrix[{index}].evidence",
+                )
+            }
+            missing_evidence = _MEETING_PROOF_REQUIRED_PARITY_EVIDENCE - evidence
+            if missing_evidence:
+                raise ValueError(
+                    "meeting_transcription_proof: real lane parity row missing evidence "
+                    f"{sorted(missing_evidence)}"
+                )
+            baseline = expect_dict(
+                get_required(row, "baseline", ctx=f"meeting_transcription_proof:parity_matrix[{index}]"),
+                ctx=f"meeting_transcription_proof:parity_matrix[{index}].baseline",
+            )
+            if baseline.get("regression") is True:
+                raise ValueError("meeting_transcription_proof: real lane parity row has baseline regression")
+            row_platforms = {
+                str(item)
+                for item in expect_list(
+                    get_required(
+                        row,
+                        "evidence_platforms",
+                        ctx=f"meeting_transcription_proof:parity_matrix[{index}]",
+                    ),
+                    ctx=f"meeting_transcription_proof:parity_matrix[{index}].evidence_platforms",
+                )
+            }
+            row_evidence_platforms.update(row_platforms)
+        missing_parity_lanes = _MEETING_PROOF_REQUIRED_PARITY_LANES - parity_lane_ids
+        if missing_parity_lanes:
+            raise ValueError(
+                "meeting_transcription_proof: real lane requires parity lanes "
+                f"{sorted(missing_parity_lanes)}"
+            )
+        unknown_parity_lanes = parity_lane_ids - _MEETING_PROOF_REQUIRED_PARITY_LANES
+        if unknown_parity_lanes:
+            raise ValueError(
+                "meeting_transcription_proof: real lane has unknown parity lanes "
+                f"{sorted(unknown_parity_lanes)}"
+            )
+        parity_pass_count = int(
+            expect_float(
+                get_required(parity_summary, "pass_count", ctx="meeting_transcription_proof:parity_matrix_summary"),
+                ctx="meeting_transcription_proof:parity_matrix_summary.pass_count",
+            )
+        )
+        parity_fail_count = int(
+            expect_float(
+                get_required(parity_summary, "fail_count", ctx="meeting_transcription_proof:parity_matrix_summary"),
+                ctx="meeting_transcription_proof:parity_matrix_summary.fail_count",
+            )
+        )
+        parity_skip_count = int(
+            expect_float(
+                get_required(parity_summary, "skip_count", ctx="meeting_transcription_proof:parity_matrix_summary"),
+                ctx="meeting_transcription_proof:parity_matrix_summary.skip_count",
+            )
+        )
+        if (
+            parity_pass_count != len(_MEETING_PROOF_REQUIRED_PARITY_LANES)
+            or parity_fail_count != 0
+            or parity_skip_count != 0
+            or parity_summary.get("publishable") is not True
+        ):
+            raise ValueError("meeting_transcription_proof: real lane requires complete parity matrix")
+        evidence_platforms = expect_list(
+            get_required(parity_summary, "evidence_platforms", ctx="meeting_transcription_proof:parity_matrix_summary"),
+            ctx="meeting_transcription_proof:parity_matrix_summary.evidence_platforms",
+        )
+        missing_platforms = _MEETING_PROOF_REQUIRED_PARITY_EVIDENCE_PLATFORMS - (
+            {str(platform) for platform in evidence_platforms} | row_evidence_platforms
+        )
+        if missing_platforms:
+            raise ValueError(
+                "meeting_transcription_proof: real lane requires parity evidence platforms "
+                f"{sorted(missing_platforms)}"
+            )
     elif publishable:
         raise ValueError("meeting_transcription_proof: mocked lane cannot be publishable")
 
@@ -1124,6 +1269,9 @@ def _score_from_meeting_transcription_proof_json(data: JSONValue) -> ScoreExtrac
             "room_feed_heuristic_recall": metrics.get("room_feed_heuristic_recall") or 0,
             "visual_acoustic_disagreement_rate": metrics.get("visual_acoustic_disagreement_rate") or 0,
             **generated_artifact_metrics,
+            "parity_pass_count": parity_pass_count,
+            "parity_fail_count": parity_fail_count,
+            "parity_skip_count": parity_skip_count,
             "provider_mode": root.get("provider_mode") or "",
         },
     )

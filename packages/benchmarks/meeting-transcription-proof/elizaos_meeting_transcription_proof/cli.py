@@ -409,6 +409,54 @@ RATIO_METRICS = {
 }
 LATENCY_METRICS = {"end_of_turn_latency_ms", "barge_in_latency_ms", "p95_end_to_end_latency_ms"}
 KNOWN_METRICS = REQUIRED_QUALITY_METRICS | REQUIRED_DETAILED_METRICS
+REQUIRED_PARITY_LANES = {
+    "local_asr_local_llm_local_tts",
+    "local_asr_cloud_llm_local_tts",
+    "cloud_asr_cloud_llm_cloud_tts",
+    "cloud_asr_local_llm_local_tts",
+    "native_talkmode_stt_tts",
+    "browser_web_speech_fallback",
+    "offline_mode",
+    "degraded_network_mode",
+    "mobile_bridge_local_inference",
+}
+PARITY_LANE_STATUSES = {"pass", "fail", "skip"}
+REQUIRED_PARITY_ARTIFACT_SCHEMA = {
+    "baseline_comparison",
+    "metrics_json",
+    "privacy_mode",
+    "resource_logs",
+    "transcript_artifact",
+}
+REQUIRED_PARITY_EVIDENCE = {
+    "baseline_comparison",
+    "metrics_json",
+    "resource_logs",
+}
+PARITY_REQUIRED_EVIDENCE_PLATFORMS = {"cloud", "desktop", "mobile"}
+PARITY_EVIDENCE_PLATFORMS = PARITY_REQUIRED_EVIDENCE_PLATFORMS | {"browser", "native"}
+PARITY_RATIO_METRICS = {"wer", "cer", "der", "jer", "cp_wer", "wder", "failure_rate", "dropout_rate"}
+PARITY_NON_NEGATIVE_METRICS = {
+    "ttfa_ms",
+    "final_transcript_latency_ms",
+    "first_note_latency_ms",
+    "cpu_percent",
+    "memory_mb",
+    "cloud_cost_usd",
+    "network_bytes",
+    "retry_count",
+}
+PARITY_NUMERIC_METRICS = PARITY_RATIO_METRICS | PARITY_NON_NEGATIVE_METRICS | {"battery_percent_delta"}
+PARITY_STRING_METRICS = {"thermal_state", "privacy_mode"}
+REQUIRED_PARITY_METRICS = PARITY_NUMERIC_METRICS | PARITY_STRING_METRICS
+PARITY_PRIVACY_MODES = {
+    "browser_fallback",
+    "cloud_processed",
+    "hybrid_local_cloud",
+    "local_only",
+    "native_device",
+    "offline_local",
+}
 
 
 def _package_root() -> Path:
@@ -427,6 +475,12 @@ def _as_set(value: Any, *, field: str) -> set[str]:
     if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
         raise ValueError(f"{field} must be a string array")
     return {item for item in value if item}
+
+
+def _require_string(value: Any, *, field: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{field} must be a non-empty string")
+    return value
 
 
 def _require_number(metrics: dict[str, Any], key: str) -> float:
@@ -1292,6 +1346,193 @@ def _validate_qa_review_checklist(manifest: dict[str, Any]) -> tuple[list[dict[s
     return sorted(normalized, key=lambda item: item["id"]), referenced_evidence
 
 
+def _validate_parity_metrics(raw_metrics: Any, *, field: str) -> dict[str, float | str]:
+    if not isinstance(raw_metrics, dict):
+        raise ValueError(f"{field} must be an object")
+    missing_metrics = REQUIRED_PARITY_METRICS - set(raw_metrics)
+    if missing_metrics:
+        raise ValueError(f"{field} missing metrics: {sorted(missing_metrics)}")
+
+    metrics: dict[str, float | str] = {}
+    for key in sorted(PARITY_RATIO_METRICS):
+        metrics[key] = _require_ratio_value(f"{field}.{key}", raw_metrics.get(key))
+    for key in sorted(PARITY_NON_NEGATIVE_METRICS):
+        value = raw_metrics.get(key)
+        if isinstance(value, bool) or not isinstance(value, int | float):
+            raise ValueError(f"{field}.{key} must be numeric")
+        number = float(value)
+        if number < 0:
+            raise ValueError(f"{field}.{key} must be non-negative")
+        metrics[key] = number
+    battery_delta = raw_metrics.get("battery_percent_delta")
+    if isinstance(battery_delta, bool) or not isinstance(battery_delta, int | float):
+        raise ValueError(f"{field}.battery_percent_delta must be numeric")
+    if float(battery_delta) < -100 or float(battery_delta) > 100:
+        raise ValueError(f"{field}.battery_percent_delta must be in [-100, 100]")
+    metrics["battery_percent_delta"] = float(battery_delta)
+
+    thermal_state = _require_string(raw_metrics.get("thermal_state"), field=f"{field}.thermal_state")
+    metrics["thermal_state"] = thermal_state
+    privacy_mode = _require_string(raw_metrics.get("privacy_mode"), field=f"{field}.privacy_mode")
+    if privacy_mode not in PARITY_PRIVACY_MODES:
+        raise ValueError(f"{field}.privacy_mode must be one of {sorted(PARITY_PRIVACY_MODES)}")
+    metrics["privacy_mode"] = privacy_mode
+    return metrics
+
+
+def _validate_parity_baseline(raw_baseline: Any, *, field: str, status: str) -> dict[str, Any]:
+    if not isinstance(raw_baseline, dict):
+        raise ValueError(f"{field} must be an object")
+    baseline_id = _require_string(raw_baseline.get("baseline_id"), field=f"{field}.baseline_id")
+    comparison_report = _require_string(raw_baseline.get("comparison_report"), field=f"{field}.comparison_report")
+    regression = raw_baseline.get("regression")
+    if not isinstance(regression, bool):
+        raise ValueError(f"{field}.regression must be a boolean")
+    if status == "pass" and regression:
+        raise ValueError(f"{field}.regression cannot be true for a passing parity lane")
+    return {
+        "baseline_id": baseline_id,
+        "comparison_report": comparison_report,
+        "regression": regression,
+    }
+
+
+def _validate_parity_matrix(manifest: dict[str, Any], *, lane: str) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    matrix = manifest.get("parity_matrix")
+    if not isinstance(matrix, list) or not matrix:
+        raise ValueError("parity_matrix must be a non-empty array")
+
+    lane_ids: set[str] = set()
+    pass_count = 0
+    fail_count = 0
+    skip_count = 0
+    baseline_regression_count = 0
+    evidence_platforms: set[str] = set()
+    reference_scenario_ids: set[str] | None = None
+    reference_artifact_schema: set[str] | None = None
+    normalized: list[dict[str, Any]] = []
+
+    for index, row in enumerate(matrix):
+        if not isinstance(row, dict):
+            raise ValueError(f"parity_matrix[{index}] must be an object")
+        lane_id = _require_string(row.get("id"), field=f"parity_matrix[{index}].id")
+        lane_ids.add(lane_id)
+        status = _require_string(row.get("status"), field=f"parity_matrix[{index}].status")
+        if status not in PARITY_LANE_STATUSES:
+            raise ValueError(f"parity_matrix[{index}].status must be one of {sorted(PARITY_LANE_STATUSES)}")
+
+        scenario_ids = _as_set(row.get("scenario_ids"), field=f"parity_matrix[{index}].scenario_ids")
+        if not scenario_ids:
+            raise ValueError(f"parity_matrix[{index}].scenario_ids must be non-empty")
+        unknown_scenarios = scenario_ids - REQUIRED_SCENARIOS
+        if unknown_scenarios:
+            raise ValueError(f"parity_matrix[{index}] references unknown scenarios: {sorted(unknown_scenarios)}")
+
+        artifact_schema = _as_set(row.get("artifact_schema"), field=f"parity_matrix[{index}].artifact_schema")
+        if not artifact_schema:
+            raise ValueError(f"parity_matrix[{index}].artifact_schema must be non-empty")
+
+        normalized_row: dict[str, Any] = {
+            "id": lane_id,
+            "status": status,
+            "scenario_ids": sorted(scenario_ids),
+            "artifact_schema": sorted(artifact_schema),
+        }
+
+        if status == "skip":
+            skip_count += 1
+            normalized_row["skip_reason"] = _require_string(
+                row.get("skip_reason"),
+                field=f"parity_matrix[{index}].skip_reason",
+            )
+            normalized.append(normalized_row)
+            continue
+
+        if scenario_ids != REQUIRED_SCENARIOS:
+            missing_scenarios = REQUIRED_SCENARIOS - scenario_ids
+            raise ValueError(f"parity_matrix[{index}] missing required scenarios: {sorted(missing_scenarios)}")
+        missing_artifact_schema = REQUIRED_PARITY_ARTIFACT_SCHEMA - artifact_schema
+        if missing_artifact_schema:
+            raise ValueError(f"parity_matrix[{index}] missing artifact schema: {sorted(missing_artifact_schema)}")
+
+        if reference_scenario_ids is None:
+            reference_scenario_ids = set(scenario_ids)
+        elif scenario_ids != reference_scenario_ids:
+            raise ValueError("parity_matrix non-skipped lanes must use the same scenario ids")
+        if reference_artifact_schema is None:
+            reference_artifact_schema = set(artifact_schema)
+        elif artifact_schema != reference_artifact_schema:
+            raise ValueError("parity_matrix non-skipped lanes must use the same artifact schema")
+
+        metrics = _validate_parity_metrics(row.get("metrics"), field=f"parity_matrix[{index}].metrics")
+        baseline = _validate_parity_baseline(
+            row.get("baseline"),
+            field=f"parity_matrix[{index}].baseline",
+            status=status,
+        )
+        if baseline["regression"]:
+            baseline_regression_count += 1
+        evidence = _as_set(row.get("evidence"), field=f"parity_matrix[{index}].evidence")
+        missing_evidence = REQUIRED_PARITY_EVIDENCE - evidence
+        if missing_evidence:
+            raise ValueError(f"parity_matrix[{index}] missing evidence: {sorted(missing_evidence)}")
+        row_platforms = _as_set(row.get("evidence_platforms"), field=f"parity_matrix[{index}].evidence_platforms")
+        if not row_platforms:
+            raise ValueError(f"parity_matrix[{index}].evidence_platforms must be non-empty")
+        unknown_platforms = row_platforms - PARITY_EVIDENCE_PLATFORMS
+        if unknown_platforms:
+            raise ValueError(f"parity_matrix[{index}] references unknown evidence platforms: {sorted(unknown_platforms)}")
+        evidence_platforms.update(row_platforms)
+
+        if status == "pass":
+            pass_count += 1
+        else:
+            fail_count += 1
+        normalized_row.update(
+            {
+                "metrics": metrics,
+                "baseline": baseline,
+                "evidence": sorted(evidence),
+                "evidence_platforms": sorted(row_platforms),
+            }
+        )
+        normalized.append(normalized_row)
+
+    missing_lanes = REQUIRED_PARITY_LANES - lane_ids
+    if missing_lanes:
+        raise ValueError(f"parity_matrix missing lanes: {sorted(missing_lanes)}")
+    unknown_lanes = lane_ids - REQUIRED_PARITY_LANES
+    if unknown_lanes:
+        raise ValueError(f"parity_matrix contains unknown lanes: {sorted(unknown_lanes)}")
+    if len(lane_ids) != len(matrix):
+        raise ValueError("parity_matrix contains duplicate lanes")
+    if reference_scenario_ids is None:
+        raise ValueError("parity_matrix must have at least one non-skipped lane")
+    missing_platforms = PARITY_REQUIRED_EVIDENCE_PLATFORMS - evidence_platforms
+    if lane == "real_product" and missing_platforms:
+        raise ValueError(f"parity_matrix missing evidence platforms: {sorted(missing_platforms)}")
+
+    summary = {
+        "required_lane_count": len(REQUIRED_PARITY_LANES),
+        "pass_count": pass_count,
+        "fail_count": fail_count,
+        "skip_count": skip_count,
+        "non_skipped_lane_count": pass_count + fail_count,
+        "scenario_count": len(reference_scenario_ids),
+        "artifact_schema": sorted(reference_artifact_schema or []),
+        "evidence_platforms": sorted(evidence_platforms),
+        "baseline_regression_count": baseline_regression_count,
+        "publishable": (
+            pass_count == len(REQUIRED_PARITY_LANES)
+            and fail_count == 0
+            and skip_count == 0
+            and baseline_regression_count == 0
+            and not (PARITY_REQUIRED_EVIDENCE_PLATFORMS - evidence_platforms)
+        ),
+    }
+    return sorted(normalized, key=lambda row: row["id"]), summary
+
+
 def validate_manifest(manifest: dict[str, Any], *, lane: str, manifest_path: Path) -> dict[str, Any]:
     if lane not in LANES:
         raise ValueError(f"lane must be one of {sorted(LANES)}")
@@ -1357,6 +1598,7 @@ def validate_manifest(manifest: dict[str, Any], *, lane: str, manifest_path: Pat
     qa_review_checklist, qa_evidence_types = _validate_qa_review_checklist(manifest)
 
     metric_values = _validate_metrics(manifest.get("metrics"), lane=lane)
+    parity_matrix, parity_matrix_summary = _validate_parity_matrix(manifest, lane=lane)
 
     evidence_files: dict[str, str] = {}
     provider_mode = str(manifest.get("provider_mode") or "").strip().lower()
@@ -1421,6 +1663,8 @@ def validate_manifest(manifest: dict[str, Any], *, lane: str, manifest_path: Pat
         "adversarial_cases": adversarial_cases,
         "qa_review_checklist": qa_review_checklist,
         "metrics": metric_values,
+        "parity_matrix": parity_matrix,
+        "parity_matrix_summary": parity_matrix_summary,
         "evidence_files": evidence_files,
         "provider_mode": provider_mode,
     }
@@ -1435,7 +1679,7 @@ def build_report(*, lane: str, manifest_path: Path) -> dict[str, Any]:
         publishable = False
     else:
         score = min(metrics[key] for key in REQUIRED_QUALITY_METRICS)
-        publishable = True
+        publishable = validation["parity_matrix_summary"]["publishable"]
     return {
         "kind": "meeting_transcription_proof_report",
         "version": 1,

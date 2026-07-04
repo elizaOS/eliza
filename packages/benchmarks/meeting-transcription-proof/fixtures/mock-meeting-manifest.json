@@ -1030,6 +1030,125 @@
       "failure_policy": "share controls must distinguish transcript, notes, audio, and generated artifacts"
     }
   ],
+  "parity_matrix": [
+    {
+      "id": "local_asr_local_llm_local_tts",
+      "status": "pass",
+      "scenario_ids": [
+        "clean_single_speaker",
+        "zoom_bot",
+        "zoom_bot_free",
+        "google_meet_bot",
+        "google_meet_bot_free",
+        "on_device_capture",
+        "cloud_agent_capture",
+        "hybrid_local_cloud",
+        "multiple_people_single_stream",
+        "shared_room_microphone",
+        "speech_over_music",
+        "speech_over_noise",
+        "speech_over_babble",
+        "overlapped_speech",
+        "far_field_room",
+        "known_speaker_recognition",
+        "unknown_speaker_creation",
+        "speaker_name_correction",
+        "voice_profile_deletion",
+        "transcript_sharing_export_delete"
+      ],
+      "artifact_schema": [
+        "baseline_comparison",
+        "metrics_json",
+        "privacy_mode",
+        "resource_logs",
+        "transcript_artifact"
+      ],
+      "metrics": {
+        "wer": 0.0,
+        "cer": 0.0,
+        "der": 0.0,
+        "jer": 0.0,
+        "cp_wer": 0.0,
+        "wder": 0.0,
+        "ttfa_ms": 0,
+        "final_transcript_latency_ms": 0,
+        "first_note_latency_ms": 0,
+        "cpu_percent": 0,
+        "memory_mb": 0,
+        "battery_percent_delta": 0,
+        "thermal_state": "fixture",
+        "cloud_cost_usd": 0.0,
+        "network_bytes": 0,
+        "failure_rate": 0.0,
+        "retry_count": 0,
+        "dropout_rate": 0.0,
+        "privacy_mode": "local_only"
+      },
+      "baseline": {
+        "baseline_id": "fixture-parity-baseline",
+        "comparison_report": "fixture-baseline-comparison.json",
+        "regression": false
+      },
+      "evidence": ["metrics_json", "resource_logs", "baseline_comparison"],
+      "evidence_platforms": ["desktop", "mobile", "cloud"]
+    },
+    {
+      "id": "local_asr_cloud_llm_local_tts",
+      "status": "skip",
+      "scenario_ids": ["clean_single_speaker"],
+      "artifact_schema": ["baseline_comparison", "metrics_json", "privacy_mode", "resource_logs", "transcript_artifact"],
+      "skip_reason": "mock fixture does not call cloud LLM providers"
+    },
+    {
+      "id": "cloud_asr_cloud_llm_cloud_tts",
+      "status": "skip",
+      "scenario_ids": ["clean_single_speaker"],
+      "artifact_schema": ["baseline_comparison", "metrics_json", "privacy_mode", "resource_logs", "transcript_artifact"],
+      "skip_reason": "mock fixture does not call cloud ASR, LLM, or TTS providers"
+    },
+    {
+      "id": "cloud_asr_local_llm_local_tts",
+      "status": "skip",
+      "scenario_ids": ["clean_single_speaker"],
+      "artifact_schema": ["baseline_comparison", "metrics_json", "privacy_mode", "resource_logs", "transcript_artifact"],
+      "skip_reason": "mock fixture does not call cloud ASR providers"
+    },
+    {
+      "id": "native_talkmode_stt_tts",
+      "status": "skip",
+      "scenario_ids": ["clean_single_speaker"],
+      "artifact_schema": ["baseline_comparison", "metrics_json", "privacy_mode", "resource_logs", "transcript_artifact"],
+      "skip_reason": "mock fixture does not drive native TalkMode"
+    },
+    {
+      "id": "browser_web_speech_fallback",
+      "status": "skip",
+      "scenario_ids": ["clean_single_speaker"],
+      "artifact_schema": ["baseline_comparison", "metrics_json", "privacy_mode", "resource_logs", "transcript_artifact"],
+      "skip_reason": "mock fixture does not invoke browser Web Speech"
+    },
+    {
+      "id": "offline_mode",
+      "status": "skip",
+      "scenario_ids": ["clean_single_speaker"],
+      "artifact_schema": ["baseline_comparison", "metrics_json", "privacy_mode", "resource_logs", "transcript_artifact"],
+      "skip_reason": "mock fixture does not disable networking or prove offline execution"
+    },
+    {
+      "id": "degraded_network_mode",
+      "status": "skip",
+      "scenario_ids": ["clean_single_speaker"],
+      "artifact_schema": ["baseline_comparison", "metrics_json", "privacy_mode", "resource_logs", "transcript_artifact"],
+      "skip_reason": "mock fixture does not apply network shaping"
+    },
+    {
+      "id": "mobile_bridge_local_inference",
+      "status": "skip",
+      "scenario_ids": ["clean_single_speaker"],
+      "artifact_schema": ["baseline_comparison", "metrics_json", "privacy_mode", "resource_logs", "transcript_artifact"],
+      "skip_reason": "mock fixture does not run a mobile bridge or local inference runtime"
+    }
+  ],
   "metrics": {
     "transcript_quality": 1.0,
     "diarization_quality": 1.0,

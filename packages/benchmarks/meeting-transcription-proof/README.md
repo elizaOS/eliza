@@ -176,6 +176,21 @@ and malformed artifact shapes. QA checklist rows must produce machine-readable
 verdicts for permission denied, capture stopped, speaker correction, delete
 audio, and share/privacy state.
 
+Real manifests must include a `parity_matrix` for the cloud/local/hybrid lanes
+from #12501: local ASR+LLM+TTS, local ASR+cloud LLM+local TTS, cloud
+ASR+LLM+TTS, cloud ASR+local LLM+local TTS, native TalkMode STT/TTS, browser
+Web Speech fallback, offline mode, degraded network mode, and mobile
+bridge/local inference. Every non-skipped lane must use the same scenario ids
+and artifact schema, cover the full required scenario corpus, include WER, CER,
+DER, JER, cpWER, WDER, TTFA, final transcript latency, first note latency, CPU,
+memory, battery, thermal state, cloud cost, network bytes, failure/retry/dropout
+rates, and privacy mode, plus a baseline comparison. A passing lane cannot carry
+a baseline regression. Skipped lanes must set `status: "skip"` and a non-empty
+`skip_reason`; skips are never counted as passes. Real reports are publishable
+only when all nine parity lanes pass, no lane is skipped or failed, no baseline
+regression is present, and the evidence platforms cover desktop, mobile, and
+cloud captures.
+
 ## Fixture Manifest
 
 `fixtures/mock-meeting-manifest.json` describes the minimum canonical meeting

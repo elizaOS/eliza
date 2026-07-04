@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from elizaos_meeting_transcription_proof.cli import build_report
+from elizaos_meeting_transcription_proof.cli import REQUIRED_PARITY_LANES, build_report
 
 
 FIXTURE_MANIFEST = Path(__file__).resolve().parents[1] / "fixtures" / "mock-meeting-manifest.json"
@@ -51,6 +51,85 @@ def _fixture_qa_review_checklist() -> list[object]:
     return json.loads(FIXTURE_MANIFEST.read_text(encoding="utf-8"))["qa_review_checklist"]
 
 
+def _fixture_parity_matrix() -> list[object]:
+    return json.loads(FIXTURE_MANIFEST.read_text(encoding="utf-8"))["parity_matrix"]
+
+
+def _parity_metrics(lane_id: str) -> dict[str, object]:
+    privacy_mode_by_lane = {
+        "browser_web_speech_fallback": "browser_fallback",
+        "cloud_asr_cloud_llm_cloud_tts": "cloud_processed",
+        "cloud_asr_local_llm_local_tts": "hybrid_local_cloud",
+        "degraded_network_mode": "hybrid_local_cloud",
+        "local_asr_cloud_llm_local_tts": "hybrid_local_cloud",
+        "local_asr_local_llm_local_tts": "local_only",
+        "mobile_bridge_local_inference": "native_device",
+        "native_talkmode_stt_tts": "native_device",
+        "offline_mode": "offline_local",
+    }
+    cloud_lanes = {"cloud_asr_cloud_llm_cloud_tts", "cloud_asr_local_llm_local_tts", "degraded_network_mode"}
+    return {
+        "wer": 0.09,
+        "cer": 0.04,
+        "der": 0.18,
+        "jer": 0.22,
+        "cp_wer": 0.13,
+        "wder": 0.2,
+        "ttfa_ms": 420,
+        "final_transcript_latency_ms": 1300,
+        "first_note_latency_ms": 2500,
+        "cpu_percent": 42.5,
+        "memory_mb": 768,
+        "battery_percent_delta": 2.5,
+        "thermal_state": "nominal",
+        "cloud_cost_usd": 0.021 if lane_id in cloud_lanes else 0.0,
+        "network_bytes": 348160 if lane_id in cloud_lanes else 8192,
+        "failure_rate": 0.0,
+        "retry_count": 0,
+        "dropout_rate": 0.0,
+        "privacy_mode": privacy_mode_by_lane[lane_id],
+    }
+
+
+def _all_pass_parity_matrix() -> list[object]:
+    scenario_ids = [scenario["id"] for scenario in _fixture_scenarios() if isinstance(scenario, dict)]
+    artifact_schema = [
+        "baseline_comparison",
+        "metrics_json",
+        "privacy_mode",
+        "resource_logs",
+        "transcript_artifact",
+    ]
+    platform_by_lane = {
+        "browser_web_speech_fallback": ["browser", "desktop"],
+        "cloud_asr_cloud_llm_cloud_tts": ["cloud", "desktop"],
+        "cloud_asr_local_llm_local_tts": ["cloud", "desktop"],
+        "degraded_network_mode": ["cloud", "desktop"],
+        "local_asr_cloud_llm_local_tts": ["cloud", "desktop"],
+        "local_asr_local_llm_local_tts": ["desktop", "native"],
+        "mobile_bridge_local_inference": ["mobile", "native"],
+        "native_talkmode_stt_tts": ["mobile", "native"],
+        "offline_mode": ["desktop", "mobile", "native"],
+    }
+    return [
+        {
+            "id": lane_id,
+            "status": "pass",
+            "scenario_ids": scenario_ids,
+            "artifact_schema": artifact_schema,
+            "metrics": _parity_metrics(lane_id),
+            "baseline": {
+                "baseline_id": "meeting-parity-2026-07",
+                "comparison_report": f"baseline-comparison-{lane_id}.json",
+                "regression": False,
+            },
+            "evidence": ["metrics_json", "resource_logs", "baseline_comparison"],
+            "evidence_platforms": platform_by_lane[lane_id],
+        }
+        for lane_id in sorted(REQUIRED_PARITY_LANES)
+    ]
+
+
 def _base_manifest(provider_mode: str = "real_zoom_meet") -> dict[str, object]:
     return {
         "provider_mode": provider_mode,
@@ -82,6 +161,7 @@ def _base_manifest(provider_mode: str = "real_zoom_meet") -> dict[str, object]:
         "baseline_comparisons": _fixture_baseline_comparisons(),
         "adversarial_cases": _fixture_adversarial_cases(),
         "qa_review_checklist": _fixture_qa_review_checklist(),
+        "parity_matrix": _all_pass_parity_matrix(),
         "metrics": {
             "transcript_quality": 0.91,
             "diarization_quality": 0.82,
@@ -144,6 +224,107 @@ def test_mocked_plumbing_fixture_is_not_publishable() -> None:
     assert len(report["baseline_comparisons"]) == len(_fixture_baseline_comparisons())
     assert len(report["adversarial_cases"]) == len(_fixture_adversarial_cases())
     assert len(report["qa_review_checklist"]) == len(_fixture_qa_review_checklist())
+    assert report["parity_matrix_summary"]["pass_count"] == 1
+    assert report["parity_matrix_summary"]["skip_count"] == len(REQUIRED_PARITY_LANES) - 1
+    assert report["parity_matrix_summary"]["publishable"] is False
+
+
+def test_mocked_plumbing_fixture_reports_explicit_parity_skips() -> None:
+    report = build_report(lane="mocked_plumbing", manifest_path=FIXTURE_MANIFEST)
+
+    skipped = [row for row in report["parity_matrix"] if row["status"] == "skip"]
+
+    assert skipped
+    assert all(row.get("skip_reason") for row in skipped)
+    assert report["parity_matrix_summary"]["pass_count"] < len(REQUIRED_PARITY_LANES)
+
+
+def test_real_lane_requires_parity_matrix_all_lanes(tmp_path: Path) -> None:
+    manifest_data = _base_manifest()
+    manifest_data["parity_matrix"] = [
+        row for row in _all_pass_parity_matrix() if isinstance(row, dict) and row["id"] != "offline_mode"
+    ]
+    manifest = _write_manifest(tmp_path, manifest_data)
+
+    with pytest.raises(ValueError, match="parity_matrix missing lanes"):
+        build_report(lane="real_product", manifest_path=manifest)
+
+
+def test_parity_matrix_rejects_unknown_lane(tmp_path: Path) -> None:
+    manifest_data = _base_manifest()
+    matrix = _all_pass_parity_matrix()
+    matrix.append({**matrix[0], "id": "imaginary_lane"})
+    manifest_data["parity_matrix"] = matrix
+    manifest = _write_manifest(tmp_path, manifest_data)
+
+    with pytest.raises(ValueError, match="parity_matrix contains unknown lanes"):
+        build_report(lane="real_product", manifest_path=manifest)
+
+
+def test_parity_matrix_requires_skip_reason(tmp_path: Path) -> None:
+    manifest_data = _base_manifest()
+    matrix = _all_pass_parity_matrix()
+    assert isinstance(matrix[0], dict)
+    matrix[0] = {**matrix[0], "status": "skip"}
+    manifest_data["parity_matrix"] = matrix
+    manifest = _write_manifest(tmp_path, manifest_data)
+
+    with pytest.raises(ValueError, match=r"parity_matrix\[0\]\.skip_reason must be a non-empty string"):
+        build_report(lane="real_product", manifest_path=manifest)
+
+
+def test_parity_matrix_requires_same_scenario_corpus(tmp_path: Path) -> None:
+    manifest_data = _base_manifest()
+    matrix = _all_pass_parity_matrix()
+    assert isinstance(matrix[0], dict)
+    scenario_ids = matrix[0]["scenario_ids"]
+    assert isinstance(scenario_ids, list)
+    matrix[0] = {**matrix[0], "scenario_ids": scenario_ids[:-1]}
+    manifest_data["parity_matrix"] = matrix
+    manifest = _write_manifest(tmp_path, manifest_data)
+
+    with pytest.raises(ValueError, match="missing required scenarios"):
+        build_report(lane="real_product", manifest_path=manifest)
+
+
+def test_parity_matrix_requires_same_artifact_schema(tmp_path: Path) -> None:
+    manifest_data = _base_manifest()
+    matrix = _all_pass_parity_matrix()
+    assert isinstance(matrix[0], dict)
+    artifact_schema = matrix[0]["artifact_schema"]
+    assert isinstance(artifact_schema, list)
+    matrix[0] = {**matrix[0], "artifact_schema": [*artifact_schema, "lane_specific_extra"]}
+    manifest_data["parity_matrix"] = matrix
+    manifest = _write_manifest(tmp_path, manifest_data)
+
+    with pytest.raises(ValueError, match="non-skipped lanes must use the same artifact schema"):
+        build_report(lane="real_product", manifest_path=manifest)
+
+
+def test_parity_matrix_requires_baseline_comparison(tmp_path: Path) -> None:
+    manifest_data = _base_manifest()
+    matrix = _all_pass_parity_matrix()
+    assert isinstance(matrix[0], dict)
+    matrix[0] = {key: value for key, value in matrix[0].items() if key != "baseline"}
+    manifest_data["parity_matrix"] = matrix
+    manifest = _write_manifest(tmp_path, manifest_data)
+
+    with pytest.raises(ValueError, match=r"parity_matrix\[0\]\.baseline must be an object"):
+        build_report(lane="real_product", manifest_path=manifest)
+
+
+def test_parity_matrix_rejects_pass_with_regression(tmp_path: Path) -> None:
+    manifest_data = _base_manifest()
+    matrix = _all_pass_parity_matrix()
+    assert isinstance(matrix[0], dict)
+    baseline = matrix[0]["baseline"]
+    assert isinstance(baseline, dict)
+    matrix[0] = {**matrix[0], "baseline": {**baseline, "regression": True}}
+    manifest_data["parity_matrix"] = matrix
+    manifest = _write_manifest(tmp_path, manifest_data)
+
+    with pytest.raises(ValueError, match="regression cannot be true for a passing parity lane"):
+        build_report(lane="real_product", manifest_path=manifest)
 
 
 def test_real_lane_requires_non_mock_provider(tmp_path: Path) -> None:
@@ -767,6 +948,10 @@ def test_real_lane_scores_lowest_required_quality_and_resolves_evidence(tmp_path
     assert report["score"] == pytest.approx(0.77)
     assert report["metrics"]["wer"] == pytest.approx(0.09)
     assert report["metrics"]["p95_end_to_end_latency_ms"] == pytest.approx(1300)
+    assert report["parity_matrix_summary"]["pass_count"] == len(REQUIRED_PARITY_LANES)
+    assert report["parity_matrix_summary"]["fail_count"] == 0
+    assert report["parity_matrix_summary"]["skip_count"] == 0
+    assert report["parity_matrix_summary"]["publishable"] is True
     assert {dataset["id"] for dataset in report["dataset_sources"]} >= {"musan", "libricss", "chime6", "misp_meeting"}
     assert {path["id"] for path in report["capture_paths"]} >= {"zoom_bot", "google_meet_bot_free", "on_device_capture"}
     assert {operation["id"] for operation in report["speaker_operations"]} >= {

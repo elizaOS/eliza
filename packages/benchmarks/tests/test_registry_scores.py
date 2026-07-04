@@ -212,6 +212,45 @@ def _meeting_transcription_real_evidence() -> dict[str, str]:
     }
 
 
+def _meeting_transcription_parity_lanes() -> list[str]:
+    return [
+        "browser_web_speech_fallback",
+        "cloud_asr_cloud_llm_cloud_tts",
+        "cloud_asr_local_llm_local_tts",
+        "degraded_network_mode",
+        "local_asr_cloud_llm_local_tts",
+        "local_asr_local_llm_local_tts",
+        "mobile_bridge_local_inference",
+        "native_talkmode_stt_tts",
+        "offline_mode",
+    ]
+
+
+def _meeting_transcription_parity_matrix() -> list[dict[str, object]]:
+    return [
+        {
+            "id": lane,
+            "status": "pass",
+            "scenario_ids": ["zoom_bot_free"],
+            "artifact_schema": [
+                "baseline_comparison",
+                "metrics_json",
+                "privacy_mode",
+                "resource_logs",
+                "transcript_artifact",
+            ],
+            "baseline": {
+                "baseline_id": "meeting-parity-2026-07",
+                "comparison_report": f"baseline-comparison-{lane}.json",
+                "regression": False,
+            },
+            "evidence": ["baseline_comparison", "metrics_json", "resource_logs"],
+            "evidence_platforms": ["cloud", "desktop", "mobile"],
+        }
+        for lane in _meeting_transcription_parity_lanes()
+    ]
+
+
 def _meeting_transcription_real_report() -> dict[str, object]:
     return {
         "kind": "meeting_transcription_proof_report",
@@ -231,6 +270,15 @@ def _meeting_transcription_real_report() -> dict[str, object]:
         "baseline_comparisons": _meeting_baseline_comparisons(),
         "adversarial_cases": _meeting_adversarial_cases(),
         "qa_review_checklist": _meeting_qa_checklist(),
+        "parity_matrix": _meeting_transcription_parity_matrix(),
+        "parity_matrix_summary": {
+            "required_lane_count": 9,
+            "pass_count": 9,
+            "fail_count": 0,
+            "skip_count": 0,
+            "publishable": True,
+            "evidence_platforms": ["cloud", "desktop", "mobile"],
+        },
     }
 
 
@@ -343,6 +391,38 @@ def test_meeting_transcription_real_lane_requires_passing_qa_verdicts() -> None:
         _score_from_meeting_transcription_proof_json(report)
 
 
+def test_meeting_transcription_real_lane_requires_parity_matrix() -> None:
+    report = _meeting_transcription_real_report()
+    report.pop("parity_matrix")
+
+    with pytest.raises(ValueError, match="parity_matrix"):
+        _score_from_meeting_transcription_proof_json(report)
+
+
+def test_meeting_transcription_real_lane_rejects_skipped_parity_lanes() -> None:
+    report = _meeting_transcription_real_report()
+    summary = report["parity_matrix_summary"]
+    assert isinstance(summary, dict)
+    summary["pass_count"] = 8
+    summary["skip_count"] = 1
+    summary["publishable"] = False
+
+    with pytest.raises(ValueError, match="complete parity matrix"):
+        _score_from_meeting_transcription_proof_json(report)
+
+
+def test_meeting_transcription_real_lane_rejects_malformed_parity_rows() -> None:
+    report = _meeting_transcription_real_report()
+    parity_matrix = report["parity_matrix"]
+    assert isinstance(parity_matrix, list)
+    first = parity_matrix[0]
+    assert isinstance(first, dict)
+    first.pop("status")
+
+    with pytest.raises(ValueError, match="status"):
+        _score_from_meeting_transcription_proof_json(report)
+
+
 def test_meeting_transcription_real_lane_score_is_publishable_with_evidence() -> None:
     extraction = _score_from_meeting_transcription_proof_json(_meeting_transcription_real_report())
 
@@ -363,3 +443,5 @@ def test_meeting_transcription_real_lane_score_is_publishable_with_evidence() ->
     assert extraction.metrics["qa_checklist_count"] == 5
     assert extraction.metrics["qa_machine_pass_count"] == 5
     assert extraction.metrics["qa_human_pass_count"] == 5
+    assert extraction.metrics["parity_pass_count"] == 9
+    assert extraction.metrics["parity_skip_count"] == 0
