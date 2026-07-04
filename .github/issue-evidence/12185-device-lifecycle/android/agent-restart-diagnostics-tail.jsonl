@@ -1,0 +1,11 @@
+{"_comment":"tail of files/agent/agent-restart-diagnostics.jsonl pulled from ai.elizaos.app on emulator-5584, 2026-07-03. Shows the service-onStartCommand -> extract-failed loop. reasonCode 16 = PACKAGE_UPDATED (the UI-only APK reinstall that bumped the mtime and triggered the wipe)."}
+{"ts":1783125377360,"event":"historical-process-exit","status":"starting","detachedAgentMode":false,"restartAttempts":0,"details":{"trigger":"service-onCreate","pid":"21906","processName":"ai.elizaos.app","reason":"PACKAGE_UPDATED","reasonCode":"16","description":"stop ai.elizaos.app due to installPackageLI"}}
+{"ts":1783125377796,"event":"service-onStartCommand","status":"starting","detachedAgentMode":false,"restartAttempts":0,"details":{"action":"app.eliza.action.START_AGENT","startId":"1"}}
+{"ts":1783125390986,"event":"service-onStartCommand","status":"extract-failed","detachedAgentMode":false,"restartAttempts":0,"details":{"action":"app.eliza.action.START_AGENT","startId":"2"}}
+{"ts":1783125408094,"event":"service-onStartCommand","status":"starting","detachedAgentMode":false,"restartAttempts":0,"details":{"action":"app.eliza.action.START_AGENT","startId":"1"}}
+{"ts":1783125408289,"event":"service-onStartCommand","status":"extract-failed","detachedAgentMode":false,"restartAttempts":0,"details":{"action":"app.eliza.action.START_AGENT","startId":"2"}}
+{"ts":1783125412918,"event":"service-onStartCommand","status":"extract-failed","detachedAgentMode":false,"restartAttempts":0,"details":{"action":"app.eliza.action.START_AGENT","startId":"3"}}
+{"ts":1783125752951,"event":"service-onCreate","status":"starting","detachedAgentMode":false,"restartAttempts":0}
+{"ts":1783125753238,"event":"service-onStartCommand","status":"starting","detachedAgentMode":false,"restartAttempts":0,"details":{"action":"app.eliza.action.START_AGENT","startId":"1"}}
+{"ts":1783125760102,"event":"service-onStartCommand","status":"extract-failed","detachedAgentMode":false,"restartAttempts":0,"details":{"action":"app.eliza.action.START_AGENT","startId":"2"}}
+{"ts":1783125763054,"event":"service-onStartCommand","status":"extract-failed","detachedAgentMode":false,"restartAttempts":0,"details":{"action":"app.eliza.action.START_AGENT","startId":"3"}}
