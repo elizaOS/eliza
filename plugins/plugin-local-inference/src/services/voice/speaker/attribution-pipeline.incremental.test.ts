@@ -77,6 +77,10 @@ function makeDiarizer(): Diarizer & { inputs: number[] } {
 	};
 }
 
+async function flushPromises(): Promise<void> {
+	await new Promise<void>((resolve) => setImmediate(resolve));
+}
+
 afterEach(() => {
 	stores.length = 0;
 });
@@ -221,5 +225,44 @@ describe("VoiceAttributionPipeline windowed long turns", () => {
 		// Exactly one diarizer decode — the whole (sub-window) turn.
 		expect(diarizer.inputs).toEqual([shortPcm.length]);
 		expect(out.observation).not.toBeNull();
+	});
+
+	it("observes abandoned speculative encoder failures without changing result rejection", async () => {
+		const unhandled: unknown[] = [];
+		const onUnhandledRejection = (reason: unknown) => {
+			unhandled.push(reason);
+		};
+		const encoder: SpeakerEncoder = {
+			embeddingDim: 256,
+			sampleRate: SR,
+			modelId: MODEL,
+			async encode() {
+				throw new Error("speculative encoder failed");
+			},
+			async dispose() {},
+		};
+		const pipeline = new VoiceAttributionPipeline({
+			encoder,
+			diarizer: makeDiarizer(),
+			profileStore: await freshStore(),
+		});
+
+		process.on("unhandledRejection", onUnhandledRejection);
+		try {
+			const attributor = pipeline.beginTurn({
+				turnId: "t-spec-reject",
+				startedAtMs: 0,
+			});
+			await attributor.pushWindow(new Float32Array(WINDOW_SAMPLES), 0);
+			await flushPromises();
+			await flushPromises();
+
+			expect(unhandled).toEqual([]);
+			await expect(attributor.speculativeMatch.result).rejects.toThrow(
+				"speculative encoder failed",
+			);
+		} finally {
+			process.off("unhandledRejection", onUnhandledRejection);
+		}
 	});
 });

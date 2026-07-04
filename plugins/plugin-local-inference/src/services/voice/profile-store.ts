@@ -469,6 +469,9 @@ export class VoiceProfileStore {
 				if (args.signal) args.signal.removeEventListener("abort", onAbort);
 			}
 		})();
+		// `result` is returned unchanged; this only observes abandoned speculative
+		// handles so their encoder/store failures do not hit process-level handlers.
+		void result.catch(() => undefined);
 		return {
 			result,
 			current: () => current,
