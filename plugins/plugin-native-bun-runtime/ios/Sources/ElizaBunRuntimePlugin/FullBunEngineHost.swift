@@ -38,9 +38,10 @@ private let fullBunHostCallCallback: @convention(c) (
 ///   `ELIZA_MAX_PROTOCOL_LINE_BYTES` (16 MiB) cap prevents unbounded reads.
 /// - Host-call allowlist: only `llama_hardware_info`, `llama_load_model`,
 ///   `llama_generate`, `llama_free`, `llama_cancel`, `eliza_tts_synthesize`,
-///   `eliza_asr_transcribe`, `keep_awake_set`, `bg_download_start`,
-///   `bg_download_status`, and `bg_download_cancel` are dispatched by
-///   `handleHostCall`. All other method names return `{"ok":false,"error":"..."}`.
+///   `eliza_asr_transcribe`, `keep_awake_set`, `stream_emit`,
+///   `bg_download_start`, `bg_download_status`, and `bg_download_cancel` are
+///   dispatched by `handleHostCall`. All other method names return
+///   `{"ok":false,"error":"..."}`.
 /// - `http_fetch` (JSContext compat path): loopback/local-agent URLs are
 ///   rejected at `HTTPBridge.isLocalLoopback` before a URLRequest is created.
 ///   External fetches go through URLSession with the standard iOS ATS policy.
@@ -92,6 +93,12 @@ final class FullBunEngineHost {
     private var callFn: CallFn?
     private var freeFn: FreeFn?
     private var running = false
+
+    /// Delivers one `agentStream*` event to the WebView. Set by the plugin so
+    /// the `stream_emit` host-call (fired per token while `http_request_stream`
+    /// is in flight) reaches `CAPPlugin.notifyListeners` (#12354). Nil until the
+    /// plugin wires it; a stream emit with no sink is a no-op envelope.
+    var streamEventSink: ((_ eventName: String, _ data: [String: Any]) -> Void)?
 
     private init() {}
 
@@ -408,6 +415,13 @@ final class FullBunEngineHost {
                 let enabled = boolValue(payload, "enabled") ?? false
                 KeepAwakeBridge.shared.setEnabled(enabled)
                 return encodeHostEnvelope(ok: true, result: ["enabled": NSNumber(value: enabled)])
+            case "stream_emit":
+                // One chat-stream event (response head / token chunk / complete)
+                // fired by the bridge's `http_request_stream` handler while it
+                // runs. Forward it to the WebView as the matching `agentStream*`
+                // Capacitor event so the TS adapter reconstructs a live
+                // ReadableStream (#12354).
+                return handleStreamEmit(payload)
             case "bg_download_start":
                 // Route the large on-device model file through a native
                 // background URLSession so the ~5 GB transfer survives the app
@@ -553,6 +567,54 @@ final class FullBunEngineHost {
             "cancelled": true,
             "context_id": NSNumber(value: contextId),
         ])
+    }
+
+    /// Translate one `stream_emit` frame into the matching `agentStream*`
+    /// Capacitor event and hand it to the WebView. The frame `kind` mirrors the
+    /// Android streaming contract so `createNativeStreamingResponse` consumes it
+    /// unmodified: `response` → `agentStreamResponse`, `chunk` →
+    /// `agentStreamChunk`, `complete` → `agentStreamComplete` (#12354).
+    private func handleStreamEmit(_ payload: [String: Any]) -> String {
+        guard let streamId = stringValue(payload, "streamId"), !streamId.isEmpty else {
+            return encodeHostEnvelope(ok: false, error: "stream_emit requires streamId")
+        }
+        guard let kind = stringValue(payload, "kind") else {
+            return encodeHostEnvelope(ok: false, error: "stream_emit requires kind")
+        }
+        guard let sink = streamEventSink else {
+            // No WebView listener is wired (e.g. a smoke harness). Acknowledge so
+            // the bridge keeps streaming rather than tearing the turn down.
+            return encodeHostEnvelope(ok: true, result: ["delivered": false])
+        }
+
+        switch kind {
+        case "response":
+            var data: [String: Any] = [
+                "streamId": streamId,
+                "status": NSNumber(value: intValue(payload, "status") ?? 200),
+            ]
+            if let statusText = stringValue(payload, "statusText") {
+                data["statusText"] = statusText
+            }
+            if let headers = stringMapValue(payload, "headers") {
+                data["headers"] = headers
+            }
+            sink("agentStreamResponse", data)
+        case "chunk":
+            guard let dataBase64 = stringValue(payload, "dataBase64") else {
+                return encodeHostEnvelope(ok: false, error: "stream_emit chunk requires dataBase64")
+            }
+            sink("agentStreamChunk", ["streamId": streamId, "dataBase64": dataBase64])
+        case "complete":
+            var data: [String: Any] = ["streamId": streamId]
+            if let error = stringValue(payload, "error") {
+                data["error"] = error
+            }
+            sink("agentStreamComplete", data)
+        default:
+            return encodeHostEnvelope(ok: false, error: "stream_emit unknown kind: \(kind)")
+        }
+        return encodeHostEnvelope(ok: true, result: ["delivered": true])
     }
 
     private func handleTtsSynthesize(_ payload: [String: Any]) -> String {

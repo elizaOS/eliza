@@ -119,12 +119,26 @@ Required native host-call methods today:
 - `llama_generate`
 - `llama_free`
 - `llama_cancel`
+- `stream_emit` — one chat-stream event pushed from the bridge while an
+  `http_request_stream` call is in flight. Payload:
+  `{ streamId, kind: "response" | "chunk" | "complete", ... }`. The native host
+  forwards it to the WebView as the matching `agentStream*` event
+  (`agentStreamResponse` / `agentStreamChunk` / `agentStreamComplete`), mirroring
+  the Android streaming contract. Returns `{ "delivered": true|false }`.
 
 Required methods today:
 
 - `status` -> `{ "ready": true, "engine": "bun", "transport": "bun-host-ipc", "bridgeVersion": "bun-ios:3" }`
 - `http_request` / `http_fetch` with `{ method, path, headers, body,
   timeoutMs }` -> `{ status, statusText, headers, body }`
+- `http_request_stream` with `{ method, path, headers, body, streamId,
+  timeoutMs }` -> `{ streamId, done: true }`. Streams the response body as
+  ordered `stream_emit` host-calls (response head → token chunks → complete)
+  rather than buffering; the caller pre-allocates `streamId` and attaches its
+  `agentStream*` listeners before invoking, because the call blocks until the
+  stream completes. Only `POST /api/conversations/:id/messages/stream` streams;
+  any other path returns a `501` stream so the caller falls back to buffered
+  `http_request`.
 - `send_message` with `{ message, conversationId? }` -> `{ reply, text,
   conversationId, response }`
 
