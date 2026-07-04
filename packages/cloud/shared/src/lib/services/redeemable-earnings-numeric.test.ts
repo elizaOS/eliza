@@ -111,4 +111,19 @@ describe("money-out fail-open regression (secure token-redemption insufficient-b
     expect(availableBalance.lt(deductionAmount)).toBe(true); // $10 < $50 -> insufficient, correctly denied
     expect(availableBalance.lt(5)).toBe(false); // $10 >= $5 -> sufficient, correctly allowed
   });
+
+  test("the same parser protects the other redeemable-earnings debit gates", () => {
+    const corruptAvailableBalance = Number("NaN");
+
+    // These mirror lockForRedemption(), convertToCredits(), and
+    // reduceEarnings({ requireSufficientBalance: true }) before they parse the
+    // locked available_balance. A bare Decimal(NaN) comparison reports
+    // "not less than", so the insufficient-balance branch would be skipped.
+    expect(new Decimal(corruptAvailableBalance).lt(5)).toBe(false);
+    expect(new Decimal(corruptAvailableBalance).lessThan(5)).toBe(false);
+
+    expect(() => parseRedeemableEarningsNumber("NaN", "available_balance")).toThrow(
+      CorruptRedeemableEarningsNumberError,
+    );
+  });
 });

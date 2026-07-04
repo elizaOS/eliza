@@ -518,15 +518,21 @@ class RedeemableEarningsService {
       // Fail-closed money-out guard (computed under the row lock, on the
       // primary): never floor-and-pass when the caller requires the full
       // amount to be debitable.
-      if (requireSufficientBalance && new Decimal(earnings.available_balance).lessThan(amount)) {
-        return {
-          earnings: null,
-          ledgerEntryId: "",
-          skipped: false,
-          insufficient: true,
-          deduplicated: false,
-          currentBalance: Number(earnings.available_balance),
-        };
+      if (requireSufficientBalance) {
+        const currentBalance = parseRedeemableEarningsNumber(
+          earnings.available_balance,
+          "available_balance",
+        );
+        if (new Decimal(currentBalance).lessThan(amount)) {
+          return {
+            earnings: null,
+            ledgerEntryId: "",
+            skipped: false,
+            insufficient: true,
+            deduplicated: false,
+            currentBalance,
+          };
+        }
       }
 
       // Determine the source column
@@ -673,7 +679,9 @@ class RedeemableEarningsService {
         throw new Error("No earnings record found");
       }
 
-      const available = new Decimal(earnings.available_balance);
+      const available = new Decimal(
+        parseRedeemableEarningsNumber(earnings.available_balance, "available_balance"),
+      );
       const requested = new Decimal(amountDecimal);
 
       // Check sufficient balance
@@ -917,7 +925,9 @@ class RedeemableEarningsService {
         }
       }
 
-      const available = new Decimal(earnings.available_balance);
+      const available = new Decimal(
+        parseRedeemableEarningsNumber(earnings.available_balance, "available_balance"),
+      );
       if (available.lt(amountDecimal)) {
         throw new Error(
           `Insufficient redeemable balance. Available: $${available.toFixed(4)}, Requested: $${amount.toFixed(4)}`,
