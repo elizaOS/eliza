@@ -1,19 +1,14 @@
-// Defines the group chat handoff proposal LifeOps scenario-runner spec.
+/**
+ * Live-model group-chat handoff proposal (#9310): the capability under test is
+ * proposing a handoff INSTEAD of sending. Asserts (1) the intro draft was
+ * materialized through a real messaging action whose captured arguments carry both
+ * counterparties (selectedActionArguments — Maya AND Jordan in the action args,
+ * not just the reply), and (2) nothing was dispatched on an external send channel
+ * before approval — the negative space is the assertion.
+ */
 import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
-/**
- * OUTCOME rewrite of the routing-only group-chat-handoff scenario (#9310):
- * the old file only asserted planner keywords and reply echoes ("group chat",
- * "handoff", "draft" — all present in the user's own turn text).
- *
- * The capability under test is proposing a handoff INSTEAD of sending: the
- * asserted outcomes are (1) the intro draft was materialized through a real
- * messaging action whose captured arguments carry both counterparties
- * (`selectedActionArguments` — Maya AND Jordan must be in the action args,
- * not just the reply), and (2) NOTHING was dispatched on an external send
- * channel before approval — the negative space is the assertion.
- */
 export default scenario({
   lane: "live-only",
   id: "group-chat-handoff-proposal",

@@ -1,21 +1,15 @@
-// Defines the family trust beneficiary briefing LifeOps scenario-runner spec.
+/**
+ * Live-model family-trust beneficiary briefing (#9310): seeds real inputs through
+ * the LifeOps definition API (the Corven family trust distribution review, the
+ * Weyland & Marsh counsel question list, and a confidential beneficiary-conflict
+ * note) and asserts the prep is grounded in them, tokens absent from every user
+ * turn, while the conflict party's name stays out of the neutral update. Seeds
+ * re-verified via definitionCountDelta; both drafts stay staged via a
+ * no-external-send predicate.
+ */
 import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
-/**
- * OUTCOME rewrite of the routing-only trust-briefing scenario (#9310): the
- * old file only asserted planner keywords plus reply echoes ("trust",
- * "distribution", "counsel", "beneficiaries" — all present in the user's own
- * turn text), so a prompt-parroting reply passed against zero owner state.
- *
- * This version seeds REAL briefing inputs through the LifeOps definition API
- * (the Corven family trust distribution review, the Weyland & Marsh counsel
- * question list, and a confidential beneficiary-conflict note) and asserts
- * the prep is GROUNDED in them: the seeded tokens never appear in any user
- * turn, so an echo cannot pass, while the private conflict-party's name stays
- * out of the neutral update. Seeds are re-verified via definitionCountDelta
- * and both drafts stay staged via a no-external-send predicate.
- */
 export default scenario({
   lane: "live-only",
   id: "family-trust-beneficiary-briefing",

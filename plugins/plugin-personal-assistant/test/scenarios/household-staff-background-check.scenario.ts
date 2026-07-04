@@ -1,21 +1,14 @@
-// Defines the household staff background check LifeOps scenario-runner spec.
+/**
+ * Live-model household-staff vetting flow (#9310): seeds real vetting state through
+ * the LifeOps definition API (the finalist Renate Sohlberg's reference check, the
+ * Cleargate Screening vendor, and a private household-address packet) and asserts
+ * the plan is grounded in them, tokens absent from every user turn, while the
+ * address stays out of the recruiter update. Seeds re-verified via
+ * definitionCountDelta; updates stay staged via a no-external-send predicate.
+ */
 import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
-/**
- * OUTCOME rewrite of the routing-only staff-vetting scenario (#9310): the old
- * file only asserted planner keywords plus reply echoes ("references",
- * "background-check", "NDA", "recruiter" — all present in the user's own turn
- * text), so a prompt-parroting reply passed against zero vetting state.
- *
- * This version seeds REAL vetting state through the LifeOps definition API
- * (the finalist Renate Sohlberg's reference check, the Cleargate Screening
- * vendor, and a private household-address packet) and asserts the vetting
- * plan is GROUNDED in it: the seeded tokens never appear in any user turn, so
- * an echo cannot pass, while the address stays out of the recruiter update.
- * Seeds are re-verified via definitionCountDelta and the updates stay staged
- * via a no-external-send predicate.
- */
 export default scenario({
   lane: "live-only",
   id: "household-staff-background-check",

@@ -1,19 +1,13 @@
-// Defines the estate insurance inventory LifeOps scenario-runner spec.
+/**
+ * Live-model estate insurance-inventory update (#9310): seeds real inventory work
+ * — the appraiser ("Delacroix Fine Appraisals") and broker ("Whitmore Insurance
+ * Brokerage") appear in no user turn — and asserts the update is grounded in that
+ * seeded state. The broker turn is a privacy gate: the storage location planted in
+ * the seed never surfaces, and nothing is dispatched before approval.
+ */
 import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
-/**
- * OUTCOME rewrite of the routing-only insurance-inventory scenario (#9310):
- * the old file only asserted planner keywords plus reply echoes ("art",
- * "appraisal", "broker", "itemized" — all present in the user's own turn
- * text), so a prompt-parroting reply passed against zero seeded state.
- *
- * This version seeds REAL inventory work — the appraiser ("Delacroix Fine
- * Appraisals") and the broker ("Whitmore Insurance Brokerage") appear in NO
- * user turn — and asserts the update is grounded in them. The broker turn is
- * a privacy gate: the storage location planted in the seed must never
- * surface, and nothing may be dispatched before approval.
- */
 export default scenario({
   lane: "live-only",
   id: "estate-insurance-inventory",

@@ -1,10 +1,9 @@
-// Defines the ipo lockup liquidity window LifeOps scenario-runner spec.
-import { scenario } from "@elizaos/scenario-runner/schema";
-import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
-
 /**
  * Live-model scenario (live-only lane): Lockup window plan grounds in seeded liquidity state; no trade is authorized.
  */
+import { scenario } from "@elizaos/scenario-runner/schema";
+import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
+
 export default scenario({
   lane: "live-only",
   id: "ipo-lockup-liquidity-window",

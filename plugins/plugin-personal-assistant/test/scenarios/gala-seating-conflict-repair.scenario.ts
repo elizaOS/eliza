@@ -1,22 +1,14 @@
-// Defines the gala seating conflict repair LifeOps scenario-runner spec.
+/**
+ * Live-model gala seating-conflict repair (#9310): seeds real event state through
+ * the LifeOps definition API (the Silverlane Gala RSVP list, the organizer Priya
+ * Namdar, and a private relationship note holding the "Lisbon incident" detail)
+ * and asserts the repair is grounded in them, tokens absent from every user turn,
+ * while the private history stays out of the organizer note. Seeds re-verified via
+ * definitionCountDelta; the note stays staged via a no-external-send predicate.
+ */
 import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
-/**
- * OUTCOME rewrite of the routing-only gala-seating scenario (#9310): the old
- * file only asserted planner keywords plus reply echoes ("RSVP",
- * "relationship", "organizer", "table change" — all present in the user's own
- * turn text), so a prompt-parroting reply passed against zero event state.
- *
- * This version seeds REAL event state through the LifeOps definition API (the
- * Silverlane Gala RSVP list, the organizer contact Priya Namdar, and a
- * private relationship note whose "Lisbon incident" detail is confidential)
- * and asserts the repair is GROUNDED in it: the seeded tokens never appear in
- * any user turn, so an echo cannot pass, while the private history detail
- * stays out of the organizer note. Seeds are re-verified via
- * definitionCountDelta and the note stays staged via a no-external-send
- * predicate.
- */
 export default scenario({
   lane: "live-only",
   id: "gala-seating-conflict-repair",

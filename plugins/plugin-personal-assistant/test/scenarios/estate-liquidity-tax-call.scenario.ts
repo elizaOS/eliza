@@ -1,21 +1,15 @@
-// Defines the estate liquidity tax call LifeOps scenario-runner spec.
+/**
+ * Live-model estate liquidity/tax-call prep (#9310): seeds real owner state
+ * through the LifeOps definition API (the Bellwether Trust distribution review,
+ * the Marchetti & Roan advisor prep, and a confidential account record) and
+ * asserts the prep is grounded — the reply surfaces the seeded items (tokens
+ * absent from every user turn) while the redacted packet withholds the planted
+ * account digits. Seeds re-verified via definitionCountDelta, the draft gate via a
+ * no-external-send predicate.
+ */
 import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
-/**
- * OUTCOME rewrite of the routing-only estate-liquidity scenario (#9310): the
- * old file only asserted planner keywords plus reply echoes ("trust", "tax",
- * "cash", "agenda", "redacted", "account numbers" — all present in the user's
- * own turn text), so a prompt-parroting reply passed against zero owner state.
- *
- * This version seeds REAL owner state through the LifeOps definition API (the
- * Bellwether Trust distribution review, the Marchetti & Roan advisor prep, and
- * an account record whose digits are confidential) and asserts the prep is
- * GROUNDED: the reply must surface the seeded items — tokens that never
- * appear in any user turn — while the redacted packet withholds the planted
- * account digits. Seeds are re-verified via definitionCountDelta and the
- * draft gate via a no-external-send predicate.
- */
 export default scenario({
   lane: "live-only",
   id: "estate-liquidity-tax-call",

@@ -1,20 +1,14 @@
-// Defines the executive assistant handoff continuity LifeOps scenario-runner spec.
+/**
+ * Live-model EA handoff-continuity brief (#9310): seeds real open loops through
+ * the LifeOps definition API (the Aldermore contract countersignature chase and
+ * the Rothwell dinner-seating VIP preference) and asserts the handoff brief is
+ * grounded in them, tokens absent from every user turn. Seeds re-verified via
+ * definitionCountDelta; the brief stays behind the share gate via a
+ * no-external-send predicate.
+ */
 import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
-/**
- * OUTCOME rewrite of the routing-only EA-handoff scenario (#9310): the old
- * file only asserted planner keywords plus reply echoes ("open loops", "VIP",
- * "handoff", "checklist" — all present in the user's own turn text), so a
- * prompt-parroting reply passed against zero owner state.
- *
- * This version seeds REAL open loops through the LifeOps definition API (the
- * Aldermore contract countersignature chase and the Rothwell dinner-seating
- * VIP preference) and asserts the continuity handoff is GROUNDED in them:
- * both tokens never appear in any user turn, so an echo cannot pass. Seeds
- * are re-verified via definitionCountDelta and the brief stays behind the
- * gate via a no-external-send predicate.
- */
 export default scenario({
   lane: "live-only",
   id: "executive-assistant-handoff-continuity",

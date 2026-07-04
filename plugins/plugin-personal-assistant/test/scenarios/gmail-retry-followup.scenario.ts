@@ -1,19 +1,13 @@
-// Defines the gmail retry followup LifeOps scenario-runner spec.
+/**
+ * Live-model Gmail retry/refinement scenario (#9310): runs against the loopback
+ * Gmail mock (seeded inbox) and asserts the WIRE outcome — the initial search, the
+ * retry, and the unread refinement each actually hit the Gmail API (the mock's
+ * request ledger must contain the list calls, gmailMockRequest), nothing is sent
+ * (gmailMessageSent:false), and every write is provably constrained to the
+ * loopback mock (gmailNoRealWrite).
+ */
 import { scenario } from "@elizaos/scenario-runner/schema";
 
-/**
- * OUTCOME rewrite of the routing-only Gmail retry scenario (#9310): the old
- * file only asserted planner text ("gmail_action", "suran") with no proof any
- * Gmail request was ever made — a planner that named the action but never
- * executed it passed.
- *
- * This version runs against the loopback Gmail mock (seeded inbox) and
- * asserts the WIRE outcome: the initial search, the retry, and the unread
- * refinement each had to actually hit the Gmail API — the mock's request
- * ledger must contain the list calls (`gmailMockRequest`), nothing may be
- * sent (`gmailMessageSent: false`), and every write is provably constrained
- * to the loopback mock (`gmailNoRealWrite`).
- */
 export default scenario({
   lane: "live-only",
   id: "gmail-retry-followup",

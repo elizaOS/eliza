@@ -1,20 +1,14 @@
-// Defines the executive device loss response LifeOps scenario-runner spec.
+/**
+ * Live-model executive device-loss response (#9310): seeds real device-exposure
+ * state through the LifeOps definition API (the Project Nightjar sensitive meeting
+ * held on the lost phone and the Halberd vault credential-rotation list) and
+ * asserts the response plan is grounded in them, tokens absent from every user
+ * turn. Seeds re-verified via definitionCountDelta; the staged notifications never
+ * leave via a no-external-send predicate.
+ */
 import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
-/**
- * OUTCOME rewrite of the routing-only device-loss scenario (#9310): the old
- * file only asserted planner keywords plus reply echoes ("driver", "MDM",
- * "security", "confirmation" — all present in the user's own turn text), so a
- * prompt-parroting reply passed against zero owner state.
- *
- * This version seeds REAL device-exposure state through the LifeOps
- * definition API (the Project Nightjar sensitive meeting held on the lost
- * phone and the Halberd vault credential-rotation list) and asserts the
- * response plan is GROUNDED in it: both tokens never appear in any user turn,
- * so an echo cannot pass. Seeds are re-verified via definitionCountDelta and
- * the staged notifications never leave via a no-external-send predicate.
- */
 export default scenario({
   lane: "live-only",
   id: "executive-device-loss-response",

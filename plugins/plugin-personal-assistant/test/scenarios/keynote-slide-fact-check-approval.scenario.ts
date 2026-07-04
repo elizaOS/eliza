@@ -1,4 +1,6 @@
-// Defines the keynote slide fact check approval LifeOps scenario-runner spec.
+/**
+ * Live-model scenario (live-only lane): Keynote signoff is rejected until fact-check passes; embargoed metric never leaks.
+ */
 import { scenario } from "@elizaos/scenario-runner/schema";
 import {
   expectApprovalRejectedNoSideEffect,
@@ -6,9 +8,6 @@ import {
   expectPendingApprovalSeeded,
 } from "./_helpers/approval-outcome.ts";
 
-/**
- * Live-model scenario (live-only lane): Keynote signoff is rejected until fact-check passes; embargoed metric never leaks.
- */
 export default scenario({
   lane: "live-only",
   id: "keynote-slide-fact-check-approval",

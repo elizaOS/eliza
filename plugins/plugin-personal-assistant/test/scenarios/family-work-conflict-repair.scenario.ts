@@ -1,22 +1,15 @@
-// Defines the family work conflict repair LifeOps scenario-runner spec.
+/**
+ * Live-model family/work conflict repair (#9310): seeds the two real colliding
+ * commitments through the LifeOps definition API (the Greenbriar Academy pickup
+ * and the Ostrander renewal call) and asserts the repair is grounded in them,
+ * tokens absent from every user turn; the work-facing note stays grounded in the
+ * Ostrander meeting while an overshare judge keeps school details out of the
+ * customer draft. Seeds re-verified via definitionCountDelta; the draft stays
+ * staged via a no-external-send predicate.
+ */
 import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
-/**
- * OUTCOME rewrite of the routing-only conflict-repair scenario (#9310): the
- * old file only asserted planner keywords plus reply echoes ("pickup",
- * "conflict", "draft", "meeting" — all present in the user's own turn text),
- * so a prompt-parroting reply passed with no calendar state to reconcile.
- *
- * This version seeds the two REAL colliding commitments through the LifeOps
- * definition API (the Greenbriar Academy pickup and the Ostrander renewal
- * call) and asserts the repair is GROUNDED in them: both tokens never appear
- * in any user turn, so an echo cannot pass; the work-facing note stays
- * grounded in the Ostrander meeting while the family-overshare judge enforces
- * that school details stay out of the customer draft. Seeds are re-verified
- * via definitionCountDelta and the draft stays staged via a no-external-send
- * predicate.
- */
 export default scenario({
   lane: "live-only",
   id: "family-work-conflict-repair",

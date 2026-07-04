@@ -1,10 +1,9 @@
-// Defines the investor diligence followup LifeOps scenario-runner spec.
-import { scenario } from "@elizaos/scenario-runner/schema";
-import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
-
 /**
  * Live-model scenario (live-only lane): Diligence follow-up is scheduled with real arguments and the legal hold gate holds.
  */
+import { scenario } from "@elizaos/scenario-runner/schema";
+import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
+
 export default scenario({
   lane: "live-only",
   id: "investor-diligence-followup",

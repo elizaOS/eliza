@@ -1,20 +1,14 @@
-// Defines the hiring loop candidate coordination LifeOps scenario-runner spec.
+/**
+ * Live-model hiring-loop candidate coordination (#9310): seeds the real interview
+ * panels through the LifeOps definition API (the product panel with Arjen Velt and
+ * the engineering panel with Moira Castellan) and asserts the coordination is
+ * grounded in them, tokens absent from every user turn. Seeds re-verified via
+ * definitionCountDelta; the candidate email stays staged via a no-external-send
+ * predicate.
+ */
 import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
-/**
- * OUTCOME rewrite of the routing-only hiring-loop scenario (#9310): the old
- * file only asserted planner keywords plus reply echoes ("slots", "draft",
- * "candidate", "prep" — all present in the user's own turn text), so a
- * prompt-parroting reply passed with no interviewer state to schedule around.
- *
- * This version seeds the REAL interview panels through the LifeOps definition
- * API (the product panel with Arjen Velt and the engineering panel with Moira
- * Castellan) and asserts the coordination is GROUNDED in them: both tokens
- * never appear in any user turn, so an echo cannot pass. Seeds are
- * re-verified via definitionCountDelta and the candidate email stays staged
- * via a no-external-send predicate.
- */
 export default scenario({
   lane: "live-only",
   id: "hiring-loop-candidate-coordination",

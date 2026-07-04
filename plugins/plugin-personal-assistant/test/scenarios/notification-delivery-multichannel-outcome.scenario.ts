@@ -1,69 +1,17 @@
-// Defines the notification delivery multichannel outcome LifeOps scenario-runner spec.
+/**
+ * Live-model outcome scenario for the LifeOps reminder notification-delivery
+ * fan-out: a multi-channel reminder plan is processed per channel at its own
+ * offset through the real `/api/lifeops/reminders/process` path. Asserts the
+ * durable per-channel result read back via LifeOpsService.inspectReminder — the
+ * in_app channel delivers at least twice (plan step + escalation), discord and
+ * telegram are genuinely attempted and resolve `blocked_connector` in the
+ * credential-less runtime, and a `reminder_delivered` audit persists.
+ */
 import type {
   ScenarioCheckResult,
   ScenarioContext,
 } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
-
-/**
- * Outcome-asserting scenario for the LifeOps `reminder_dispatch` /
- * notification-delivery capability.
- *
- * Supersedes the routing-only `reminder-dispatch-capability.scenario.ts`, which
- * only proved a single `in_app` reminder reaches the delivery path and the
- * process response said "delivered" + "in_app". That file never proved the
- * multi-step, multi-channel fan-out: that EACH plan step is processed on its own
- * channel at its own offset, that the deliverable channel actually delivered
- * more than once (escalation sequencing), and that the per-channel dispatch
- * RESULT was persisted. This scenario asserts the durable delivery outcome, not
- * routing.
- *
- * GROUNDING — what actually delivers in the scenario runtime (verified in code):
- *   - The reminder service dispatches via `dispatchReminderAttempt`
- *     (`plugins/plugin-personal-assistant/src/lifeops/domains/reminders-service.ts`).
- *     The `in_app` channel always resolves to `connectorRef: "system:in_app"`
- *     and records `outcome: "delivered"` with NO external connector — so it is
- *     the deterministically-deliverable channel (same as the template).
- *   - Non-`in_app` channels are dispatched through
- *     `runtime.sendMessageToTarget(target, payload)`. In core
- *     (`packages/core/src/runtime.ts`) that THROWS when no send handler is
- *     registered for the source, and the scenario executor
- *     (`packages/scenario-runner/src/executor.ts`) only `ensureConnection`s
- *     rooms — it never registers send handlers — so `discord` / `telegram`
- *     attempts are genuinely ATTEMPTED on their channel and resolve to
- *     `outcome: "blocked_connector"` (the truthful result: those connectors are
- *     not wired in a credential-less runtime). We assert that real per-channel
- *     dispatch result, NOT a fabricated "delivered" we cannot produce here.
- *   - `priority: 1` maps to `critical` urgency
- *     (`priorityToUrgency`, `service-helpers-misc.ts`), so every channel passes
- *     `isReminderChannelAllowedForUrgency` — the non-`in_app` attempts are real
- *     dispatch attempts, not urgency-gated skips.
- *   - The channel policies (allowReminders + allowEscalation, with a
- *     `metadata.roomId`) make `resolveRuntimeReminderTarget` return a target so
- *     the dispatch path reaches `sendMessageToTarget` instead of being
- *     short-circuited by policy as `blocked_policy`.
- *
- * The OUTCOME is asserted three ways, none of which is routing:
- *   1. `POST /api/lifeops/reminders/process` `assertResponse` — the process
- *      response (`LifeOpsReminderProcessingResult.attempts[]`) must carry a
- *      `delivered` `in_app` attempt AND attempts on both other channels.
- *   2. `GET /api/lifeops/reminders/inspection` `assertResponse` — the persisted
- *      attempts + `reminder_delivered` audit are read back per occurrence.
- *   3. a `custom` finalCheck predicate reads the persisted reminder attempts +
- *      audits back through `LifeOpsService.inspectReminder` (agent-scoped, the
- *      same read the route uses) and asserts the actual per-channel delivery
- *      result: >= 2 delivered `in_app` attempts (plan step + escalation step),
- *      both `discord` and `telegram` attempted, and a persisted
- *      `reminder_delivered` audit. That is the durable artifact, not the planner.
- *
- * Routes / shapes exercised (all confirmed in
- * `plugins/plugin-personal-assistant/src/routes/lifeops-routes.ts` and the
- * `@elizaos/shared` `personal-assistant` contracts):
- *   - POST /api/lifeops/channel-policies   (UpsertLifeOpsChannelPolicyRequest -> 201)
- *   - POST /api/lifeops/definitions        (CreateLifeOpsDefinitionRequest -> 201)
- *   - POST /api/lifeops/reminders/process  (ProcessLifeOpsRemindersRequest -> 200)
- *   - GET  /api/lifeops/reminders/inspection (LifeOpsReminderInspection -> 200)
- */
 
 const REMINDER_TITLE = "Multi-channel meds reminder";
 

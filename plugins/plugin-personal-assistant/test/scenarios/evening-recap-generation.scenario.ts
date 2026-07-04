@@ -1,20 +1,13 @@
-// Defines the evening recap generation LifeOps scenario-runner spec.
+/**
+ * Live-model evening-recap flow (#8795 item 6, de-larped for #9310): seeds real
+ * owner state through the LifeOps definition API — a commitment that slipped today
+ * ("File Brightline expense report") and one still ahead ("Review Ondine draft
+ * agenda") — and asserts the recap surfaces the seeded "Brightline" and "Ondine"
+ * items, absent from every user turn. The carry-forward turn reschedules the
+ * slipped item as a real captured scheduled action (selectedActionArguments).
+ */
 import { scenario } from "@elizaos/scenario-runner/schema";
 
-/**
- * OUTCOME rewrite of the routing-only evening-recap scenario (#8795 item 6,
- * de-larped for #9310): the old file only asserted the planner said BRIEF and
- * the reply echoed prompt keywords ("finished", "slipped", "tomorrow" — all
- * present in the user's own turn text).
- *
- * This version seeds REAL owner state through the LifeOps definition API — a
- * commitment that slipped today ("File Brightline expense report", due two
- * hours ago) and one still ahead ("Review Ondine draft agenda") — and asserts
- * the recap is GROUNDED in it: the reply must surface the seeded "Brightline"
- * and "Ondine" items, tokens that never appear in any user turn. The
- * carry-forward turn must then reschedule the slipped item as a real captured
- * scheduled action (`selectedActionArguments`).
- */
 export default scenario({
   lane: "live-only",
   id: "evening-recap-generation",

@@ -1,10 +1,9 @@
-// Defines the media embargo briefing LifeOps scenario-runner spec.
-import { scenario } from "@elizaos/scenario-runner/schema";
-import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
-
 /**
  * Live-model scenario (live-only lane): Embargo briefing grounds in seeded embargo state; embargoed figure stays withheld.
  */
+import { scenario } from "@elizaos/scenario-runner/schema";
+import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
+
 export default scenario({
   lane: "live-only",
   id: "media-embargo-briefing",

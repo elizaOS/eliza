@@ -1,19 +1,13 @@
-// Defines the executive security travel protocol LifeOps scenario-runner spec.
+/**
+ * Live-model executive security-travel plan (#9310): seeds real trip state through
+ * the LifeOps definition API (the Pemberton hotel alias at the Clervaux and the
+ * Anselm driver handoff) and asserts the plan is grounded in them, tokens absent
+ * from every user turn. Seeds re-verified via definitionCountDelta; the
+ * need-to-know drafts stay staged via a no-external-send predicate.
+ */
 import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
-/**
- * OUTCOME rewrite of the routing-only security-travel scenario (#9310): the
- * old file only asserted planner keywords plus reply echoes ("flight",
- * "driver", "hotel", "draft" — all present in the user's own turn text), so a
- * prompt-parroting reply passed against zero trip state.
- *
- * This version seeds REAL trip state through the LifeOps definition API (the
- * Pemberton hotel alias at the Clervaux and the Anselm driver handoff) and
- * asserts the plan is GROUNDED in it: neither token appears in any user turn,
- * so an echo cannot pass. Seeds are re-verified via definitionCountDelta and
- * the need-to-know drafts stay staged via a no-external-send predicate.
- */
 export default scenario({
   lane: "live-only",
   id: "executive-security-travel-protocol",

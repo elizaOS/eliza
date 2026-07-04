@@ -1,21 +1,15 @@
-// Defines the home repair contractor coordination LifeOps scenario-runner spec.
+/**
+ * Live-model contractor-coordination flow (#9310): seeds real bid state through
+ * the LifeOps definition API (the Bracken & Sons and Yardley Mechanical
+ * leak-repair bids plus a confidential keypad-code note) and asserts the
+ * coordination is grounded in them, tokens absent from every user turn, while the
+ * door code stays out of chat until the owner approves. Seeds re-verified via
+ * definitionCountDelta; the access note stays staged via a no-external-send
+ * predicate.
+ */
 import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
-/**
- * OUTCOME rewrite of the routing-only contractor scenario (#9310): the old
- * file only asserted planner keywords plus reply echoes ("windows",
- * "contractor", "insurance", "door code" — all present in the user's own turn
- * text), so a prompt-parroting reply passed against zero bid state.
- *
- * This version seeds REAL bid state through the LifeOps definition API (the
- * Bracken & Sons and Yardley Mechanical leak-repair bids, plus a confidential
- * keypad-code note) and asserts the coordination is GROUNDED in it: the
- * seeded tokens never appear in any user turn, so an echo cannot pass, while
- * the door code stays out of chat until the owner approves. Seeds are
- * re-verified via definitionCountDelta and the access note stays staged via a
- * no-external-send predicate.
- */
 export default scenario({
   lane: "live-only",
   id: "home-repair-contractor-coordination",

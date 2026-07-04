@@ -1,11 +1,9 @@
-// Defines the missed call repair reschedule LifeOps scenario-runner spec.
-import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
-import { scenario } from "@elizaos/scenario-runner/schema";
-import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
-
 /**
  * Live-model scenario (live-only lane): Missed-call repair enqueues a real approval-gated note and sends nothing.
  */
+import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/scenario-runner/schema";
+import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 type CapturedActionLite = ScenarioContext["actionsCalled"][number];
 

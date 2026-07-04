@@ -1,20 +1,14 @@
-// Defines the expat payroll shadow tax LifeOps scenario-runner spec.
+/**
+ * Live-model expat-payroll shadow-tax review (#9310): seeds real assignment state
+ * through the LifeOps definition API (the Tarrow & Lys tax-equalization memo
+ * review and the Clementi Rise housing-allowance review) and asserts the gathered
+ * inputs are grounded in them, tokens absent from every user turn. Seeds
+ * re-verified via definitionCountDelta; the advisor drafts stay staged via a
+ * no-external-send predicate.
+ */
 import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
-/**
- * OUTCOME rewrite of the routing-only expat-payroll scenario (#9310): the old
- * file only asserted planner keywords plus reply echoes ("tax", "housing",
- * "payroll", "compensation" — all present in the user's own turn text), so a
- * prompt-parroting reply passed against zero owner state.
- *
- * This version seeds REAL assignment state through the LifeOps definition API
- * (the Tarrow & Lys tax-equalization memo review and the Clementi Rise
- * housing-allowance review) and asserts the gathered inputs are GROUNDED in
- * it: neither token appears in any user turn, so an echo cannot pass. Seeds
- * are re-verified via definitionCountDelta and the advisor drafts stay staged
- * via a no-external-send predicate.
- */
 export default scenario({
   lane: "live-only",
   id: "expat-payroll-shadow-tax",

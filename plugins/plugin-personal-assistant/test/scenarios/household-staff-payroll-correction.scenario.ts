@@ -1,22 +1,14 @@
-// Defines the household staff payroll correction LifeOps scenario-runner spec.
+/**
+ * Live-model household-staff payroll correction (#9310): seeds real payroll state
+ * through the LifeOps definition API (the shorted caregiver Marisol Etxeberria's
+ * timesheet review, the Brightledger provider ticket, and a confidential wage-rate
+ * memo) and asserts the correction is grounded in them, tokens absent from every
+ * user turn, while the wage rate stays gated. Seeds re-verified via
+ * definitionCountDelta; nothing is paid or sent via a no-external-send predicate.
+ */
 import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
-/**
- * OUTCOME rewrite of the routing-only payroll-correction scenario (#9310):
- * the old file only asserted planner keywords plus reply echoes
- * ("timesheets", "payroll", "correction", "compensation" — all present in the
- * user's own turn text), so a prompt-parroting reply passed against zero
- * payroll state.
- *
- * This version seeds REAL payroll state through the LifeOps definition API
- * (the shorted caregiver Marisol Etxeberria's timesheet review, the
- * Brightledger provider ticket, and a confidential wage-rate memo) and
- * asserts the correction is GROUNDED in it: the seeded tokens never appear in
- * any user turn, so an echo cannot pass, while the wage rate stays out of
- * chat pending approval. Seeds are re-verified via definitionCountDelta and
- * nothing is paid or sent via a no-external-send predicate.
- */
 export default scenario({
   lane: "live-only",
   id: "household-staff-payroll-correction",

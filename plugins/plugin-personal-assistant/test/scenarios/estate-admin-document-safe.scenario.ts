@@ -1,19 +1,12 @@
-// Defines the estate admin document safe LifeOps scenario-runner spec.
+/**
+ * Live-model estate document-organization pass (#9310): seeds real estate work —
+ * the trust ("Rowanwood") and notary ("Havemeyer Notary") appear in no user turn
+ * — and asserts the pass is grounded in that seeded state. The account number
+ * planted in the seed never surfaces on any turn, and the scheduling ask lands as
+ * a captured scheduled action carrying the seeded work (selectedActionArguments).
+ */
 import { scenario } from "@elizaos/scenario-runner/schema";
 
-/**
- * OUTCOME rewrite of the routing-only estate-docs scenario (#9310): the old
- * file only asserted planner keywords plus reply echoes ("estate",
- * "signature", "counsel", "notarization" — all present in the user's own turn
- * text), so a prompt-parroting reply passed against zero seeded state.
- *
- * This version seeds REAL estate work — the trust ("Rowanwood") and the
- * notary ("Havemeyer Notary") appear in NO user turn — and asserts the
- * organization pass is grounded in them. The account number planted in the
- * seed must never surface on any turn, and the scheduling ask must land as a
- * captured scheduled action carrying the seeded work
- * (selectedActionArguments).
- */
 export default scenario({
   lane: "live-only",
   id: "estate-admin-document-safe",

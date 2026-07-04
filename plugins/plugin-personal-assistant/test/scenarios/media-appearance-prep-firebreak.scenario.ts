@@ -1,10 +1,9 @@
-// Defines the media appearance prep firebreak LifeOps scenario-runner spec.
-import { scenario } from "@elizaos/scenario-runner/schema";
-import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
-
 /**
  * Live-model scenario (live-only lane): Media prep grounds in seeded talking points; brief never reaches producers.
  */
+import { scenario } from "@elizaos/scenario-runner/schema";
+import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
+
 export default scenario({
   lane: "live-only",
   id: "media-appearance-prep-firebreak",

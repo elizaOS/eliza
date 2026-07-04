@@ -1,20 +1,14 @@
-// Defines the household insurance renewal gap LifeOps scenario-runner spec.
+/**
+ * Live-model household insurance-renewal gap (#9310): seeds real policy state
+ * through the LifeOps definition API (the lapsing Ashgrove Mutual homeowners
+ * policy and the broker Delia Fairbairn) and asserts the gap-finding is grounded
+ * in them, tokens absent from every user turn. Seeds re-verified via
+ * definitionCountDelta; the payment/binding gate holds via a no-external-send
+ * predicate.
+ */
 import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
-/**
- * OUTCOME rewrite of the routing-only insurance-gap scenario (#9310): the old
- * file only asserted planner keywords plus reply echoes ("lapse", "broker",
- * "coverage", "payment" — all present in the user's own turn text), so a
- * prompt-parroting reply passed against zero policy state.
- *
- * This version seeds REAL policy state through the LifeOps definition API
- * (the lapsing Ashgrove Mutual homeowners policy and the broker contact Delia
- * Fairbairn) and asserts the gap-finding is GROUNDED in it: both tokens never
- * appear in any user turn, so an echo cannot pass. Seeds are re-verified via
- * definitionCountDelta and the payment/binding gate holds via a
- * no-external-send predicate.
- */
 export default scenario({
   lane: "live-only",
   id: "household-insurance-renewal-gap",

@@ -1,20 +1,14 @@
-// Defines the family office quarterly board book LifeOps scenario-runner spec.
+/**
+ * Live-model family-office quarterly board-book assembly (#9310): seeds real
+ * inputs through the LifeOps definition API (the Larkspur Foundation pledge
+ * timing, the Windmere Holdings entity resolution, and a confidential beneficiary
+ * distribution note) and asserts the assembled book is grounded in them while the
+ * beneficiary name stays redacted. Seeds re-verified via definitionCountDelta;
+ * review requests stay staged via a no-external-send predicate.
+ */
 import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
-/**
- * OUTCOME rewrite of the routing-only board-book scenario (#9310): the old
- * file only asserted planner keywords plus reply echoes ("investment", "tax",
- * "counsel", "redacted" — all present in the user's own turn text), so a
- * prompt-parroting reply passed against zero owner state.
- *
- * This version seeds REAL board-book inputs through the LifeOps definition
- * API (the Larkspur Foundation pledge timing, the Windmere Holdings entity
- * resolution, and a beneficiary distribution note whose name is confidential)
- * and asserts the assembled book is GROUNDED in them while the beneficiary
- * name stays redacted. Seeds are re-verified via definitionCountDelta and the
- * review requests stay staged via a no-external-send predicate.
- */
 export default scenario({
   lane: "live-only",
   id: "family-office-quarterly-board-book",

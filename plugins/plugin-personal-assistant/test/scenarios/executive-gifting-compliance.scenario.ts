@@ -1,4 +1,11 @@
-// Defines the executive gifting compliance LifeOps scenario-runner spec.
+/**
+ * Live-model gifting-compliance approval (#9310): seeds a real pending
+ * sign_document approval on the live queue for the holiday gift-approval matrix,
+ * resolves it through the live RESOLVE_REQUEST action, and asserts the queue
+ * outcome (pending -> approved/executing/done). The confidential budget ceiling
+ * planted in the seeded context never surfaces in chat, and no order is
+ * dispatched.
+ */
 import { scenario } from "@elizaos/scenario-runner/schema";
 import {
   expectApprovalResolvedApproved,
@@ -6,18 +13,6 @@ import {
   expectPendingApprovalSeeded,
 } from "./_helpers/approval-outcome.ts";
 
-/**
- * OUTCOME rewrite of the routing-only gifting scenario (#9310): the old file
- * only asserted planner keywords plus reply echoes ("recipient", "policy",
- * "matrix", "vendor" — all present in the user's own turn text), so a
- * prompt-parroting reply passed with no approval ever created or resolved.
- *
- * This version seeds a REAL pending sign_document approval on the live queue
- * for the holiday gift approval matrix, resolves it through the live
- * RESOLVE_REQUEST action, and asserts the queue outcome (pending ->
- * approved/executing/done). The confidential budget ceiling planted in the
- * seeded context must never surface in chat, and no order is dispatched.
- */
 export default scenario({
   lane: "live-only",
   id: "executive-gifting-compliance",

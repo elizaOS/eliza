@@ -1,20 +1,13 @@
-// Defines the insurance claim paperwork LifeOps scenario-runner spec.
+/**
+ * Live-model luggage insurance-claim packet (#9310): seeds real claim inputs
+ * through the LifeOps definition API (the Aerolane AL218 receipts and the
+ * Concordia Assurance policy window) and asserts the packet is grounded in them,
+ * tokens absent from every user turn. Seeds re-verified via definitionCountDelta;
+ * the claim stays unsubmitted via a no-external-send predicate.
+ */
 import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
-/**
- * OUTCOME rewrite of the routing-only luggage-claim scenario (#9310): the old
- * file only asserted planner keywords plus reply echoes ("claim", "packet",
- * "receipts", "draft" — all present in the user's own turn text), so a
- * prompt-parroting reply passed against zero claim state.
- *
- * This version seeds REAL claim inputs through the LifeOps definition API
- * (the Aerolane AL218 receipts and the Concordia Assurance policy window) and
- * asserts the packet is GROUNDED in them: both tokens never appear in any
- * user turn, so an echo cannot pass. Seeds are re-verified via
- * definitionCountDelta and the claim stays unsubmitted via a
- * no-external-send predicate.
- */
 export default scenario({
   lane: "live-only",
   id: "insurance-claim-paperwork",

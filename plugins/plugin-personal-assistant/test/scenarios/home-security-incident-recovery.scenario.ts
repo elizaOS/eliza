@@ -1,23 +1,15 @@
-// Defines the home security incident recovery LifeOps scenario-runner spec.
+/**
+ * Live-model home-security incident recovery (#9310): seeds real household state
+ * through the LifeOps definition API (the Kestrel Watch security-vendor line, the
+ * house-manager briefing for Bruno Okafor, and a private note holding the family's
+ * Marrakesh trip dates) and asserts the plan is grounded in them, tokens absent
+ * from every user turn, while the travel detail stays out of vendor drafts. Seeds
+ * re-verified via definitionCountDelta; drafts stay staged via a no-external-send
+ * predicate.
+ */
 import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
-/**
- * OUTCOME rewrite of the routing-only security-incident scenario (#9310): the
- * old file only asserted planner keywords plus reply echoes ("security
- * vendor", "access logs", "house manager", "approve" — all present in the
- * user's own turn text), so a prompt-parroting reply passed against zero
- * household state.
- *
- * This version seeds REAL household state through the LifeOps definition API
- * (the Kestrel Watch security-vendor line, the house-manager briefing for
- * Bruno Okafor, and a private note holding the family's Marrakesh trip dates)
- * and asserts the response plan is GROUNDED in it: the seeded tokens never
- * appear in any user turn, so an echo cannot pass, while the travel detail
- * stays out of the vendor drafts. Seeds are re-verified via
- * definitionCountDelta and the drafts stay staged via a no-external-send
- * predicate.
- */
 export default scenario({
   lane: "live-only",
   id: "home-security-incident-recovery",

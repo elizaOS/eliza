@@ -1,44 +1,18 @@
-// Defines the inbox triage classification outcome LifeOps scenario-runner spec.
+/**
+ * Live-model outcome scenario for the LifeOps `inbox_triage` capability: seeds
+ * three cross-channel inbound messages, runs the REAL LLM triage classifier
+ * (InboxService.triage -> classifyMessages, purpose:"inbox_triage") via the
+ * apply(ctx) seed seam, and asserts the persisted classification — the
+ * production-outage Discord DM lands `urgent`, the newsletter lands low-priority
+ * noise, the Telegram question lands `needs_reply`. Verified by reading entries
+ * back (InboxRepository.getByClassification) and via the inboxTriage provider
+ * surfacing the urgent sender.
+ */
 import type {
   ScenarioCheckResult,
   ScenarioContext,
 } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
-
-/**
- * Outcome-asserting scenario for the LifeOps `inbox_triage` capability.
- *
- * Supersedes the routing-only `inbox-triage-capability.scenario.ts`, which only
- * proved that "show me my inbox" intents reach the `INBOX` umbrella action. That
- * file never checked the *classification result* — the thing inbox triage
- * actually produces. This scenario seeds three cross-channel inbound messages,
- * runs the REAL LLM triage classifier (`InboxService.triage` ->
- * `classifyMessages`, tagged `purpose: "inbox_triage"`), and then asserts the
- * persisted classification: the production-outage Discord DM lands `urgent`, the
- * automated newsletter lands as low-priority noise (`ignore` / `info` /
- * `notify`), and the Telegram question lands `needs_reply` (or `urgent`).
- *
- * Why a custom seed runs the classifier: the urgent/ignore classification lives
- * only in `InboxService.triage()` (plugin-inbox); there is no runtime action,
- * HTTP route, or scheduler tick the harness can call to trigger it standalone
- * without a live Gmail connector. The documented `apply(ctx)` seed seam
- * (executor `runCustomSeeds`) hands the real `ctx.runtime` to the real plugin
- * service, so the live model does the classification and `storeTriage` persists
- * one `app_inbox.life_inbox_triage_entries` row per message.
- *
- * The OUTCOME is asserted two ways, neither of which is routing:
- *   1. a custom `finalCheck` predicate reads the persisted entries back through
- *      `InboxRepository.getByClassification` and asserts the actual decision per
- *      message (urgent vs noise vs needs_reply);
- *   2. a `message` turn whose answer is shaped by the `inboxTriage` provider,
- *      which injects the persisted `urgent` / `needs_reply` entries into owner
- *      context — so the agent surfaces the urgent sender and not the newsletter.
- *
- * `@elizaos/plugin-personal-assistant` (always registered by the scenario
- * runtime factory) auto-registers `@elizaos/plugin-inbox` via
- * `ensureLifeOpsInboxPluginRegistered`, which creates the `app_inbox` schema, so
- * the triage table exists for the seed write and the readback.
- */
 
 // Stable source-message ids so the seed write and the finalCheck readback agree.
 const URGENT_MSG_ID = "scenario-inbox-urgent-outage";

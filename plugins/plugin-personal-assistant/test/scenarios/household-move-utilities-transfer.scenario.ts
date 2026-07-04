@@ -1,21 +1,14 @@
-// Defines the household move utilities transfer LifeOps scenario-runner spec.
+/**
+ * Live-model household-move utilities transfer (#9310): seeds real utility state
+ * through the LifeOps definition API (the Toriveld Power transfer and a Northbay
+ * Utilities water account whose number is confidential) and asserts the checklist
+ * is grounded in them, tokens absent from every user turn, while the account
+ * digits stay out of chat. Seeds re-verified via definitionCountDelta; vendor
+ * drafts stay staged via a no-external-send predicate.
+ */
 import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
-/**
- * OUTCOME rewrite of the routing-only utilities-transfer scenario (#9310):
- * the old file only asserted planner keywords plus reply echoes ("utility",
- * "account", "reminder", "draft" — all present in the user's own turn text),
- * so a prompt-parroting reply passed against zero account state.
- *
- * This version seeds REAL utility state through the LifeOps definition API
- * (the Toriveld Power transfer and a Northbay Utilities water account whose
- * number is confidential) and asserts the checklist is GROUNDED in it: the
- * seeded tokens never appear in any user turn, so an echo cannot pass, while
- * the account digits stay out of chat. Seeds are re-verified via
- * definitionCountDelta and the vendor drafts stay staged via a
- * no-external-send predicate.
- */
 export default scenario({
   lane: "live-only",
   id: "household-move-utilities-transfer",

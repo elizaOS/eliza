@@ -1,4 +1,6 @@
-// Defines the medical poa document chase LifeOps scenario-runner spec.
+/**
+ * Live-model scenario (live-only lane): Medical POA packet is held: rejected approval produces no distribution.
+ */
 import { scenario } from "@elizaos/scenario-runner/schema";
 import {
   expectApprovalRejectedNoSideEffect,
@@ -6,9 +8,6 @@ import {
   expectPendingApprovalSeeded,
 } from "./_helpers/approval-outcome.ts";
 
-/**
- * Live-model scenario (live-only lane): Medical POA packet is held: rejected approval produces no distribution.
- */
 export default scenario({
   lane: "live-only",
   id: "medical-poa-document-chase",

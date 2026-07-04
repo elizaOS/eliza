@@ -1,57 +1,19 @@
-// Defines the inbox triage capability LifeOps scenario-runner spec.
+/**
+ * Live-model behavior scenario for the cross-channel INBOX routing surface
+ * fronting the `inbox_triage` LifeOps capability (#11383). Seeds scenario-scoped
+ * Discord/Gmail/Telegram adapters with real inbound content, then asserts each
+ * intent routes to the right INBOX subaction (list/summarize/search/triage), the
+ * capability prompt actually fires under the live model (modelCallOccurred with
+ * purpose:"inbox_triage"), and the organic planner-driven run persisted one triage
+ * entry per seeded message. Classification quality is graded by the sibling
+ * inbox-triage-classification-outcome scenario.
+ */
 import type { MessageAdapter, MessageRef, MessageSource } from "@elizaos/core";
 import type {
   ScenarioCheckResult,
   ScenarioContext,
 } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
-
-/**
- * Behavior scenario for the cross-channel INBOX routing surface that fronts
- * the `inbox_triage` LifeOps capability.
- *
- * Routing reality (verified against the promoted-action registry):
- * `@elizaos/plugin-personal-assistant` registers the INBOX umbrella via
- * `promoteSubactionsToActions(inboxAction)`, so the planner sees the umbrella
- * `INBOX` plus per-subaction virtuals `INBOX_LIST` / `INBOX_SEARCH` /
- * `INBOX_SUMMARIZE` / `INBOX_TRIAGE` / ... . Each virtual injects the
- * discriminator (`"action":"list"` etc.) into the dispatched parameters, so
- * the planner-trace assertions below match either routing shape: the promoted
- * virtual name OR the umbrella with a structured `action` parameter.
- *
- * The `triage` subaction is the capability entrypoint (#11383): it fetches
- * fresh cross-channel messages through the same fan-out `list` uses, runs the
- * REAL LLM triage classifier over the ones without a persisted entry
- * (`InboxService.triage` -> `classifyMessages`, model calls tagged
- * `purpose: "inbox_triage"` — the optimized-prompt consumer that
- * `resolveOptimizedPromptForRuntime(..., "inbox_triage", ...)` feeds), and
- * persists one `app_inbox.life_inbox_triage_entries` row per message. A live
- * "triage my inbox" request therefore reaches the capability prompt through
- * the planner — no HTTP route or custom seed shim required.
- *
- * The seed registers scenario-scoped message adapters (Discord / Gmail /
- * Telegram) on the core triage service so the INBOX fan-out has real inbound
- * content to classify: a production-outage DM, an automated newsletter, and a
- * scheduling question. The adapters answer only this scenario's runtime
- * (matched by agentId), so the global registry cannot bleed into sibling
- * scenarios that share the process.
- *
- * Load-bearing checks:
- *   1. planner-trace assertions prove each intent routes to the right INBOX
- *      subaction (list / summarize / search / triage) and not MESSAGE or
- *      CALENDAR;
- *   2. a `modelCallOccurred` finalCheck fails the scenario when no trajectory
- *      model call carries `purpose: "inbox_triage"` — the capability prompt
- *      must actually fire under the live model;
- *   3. a custom finalCheck reads the persisted triage entries back through
- *      `InboxRepository` and asserts the organic planner-driven run persisted
- *      one entry per seeded message, with the outage classified as an act-now
- *      item.
- *
- * Classification *quality* (urgent vs noise vs needs_reply, per message) is
- * graded by the sibling `inbox-triage-classification-outcome` scenario; this
- * scenario is the organic planner-path regression.
- */
 
 // Stable source-message ids so the seed adapters and the finalCheck readback
 // agree.
