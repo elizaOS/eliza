@@ -203,6 +203,19 @@ export class MeetingTranscriptWriter {
         nativeMeetingId: input.nativeMeetingId,
         sessionId: input.sessionId,
         participants: [],
+        capture: { mode: "bot" },
+        policy: { state: "allowed" },
+        permission: { state: "not_required" },
+        retention: {
+          state: "transcript_only",
+          sourceAudioDeleted: false,
+        },
+        sharing: {
+          transcript: "owner_private",
+          notes: "owner_private",
+          sourceAudio: "disabled",
+          artifacts: "owner_private",
+        },
       },
     };
     const { content, metadata } = transcriptContentAndMetadata(transcript);
@@ -329,6 +342,16 @@ export class MeetingTranscriptWriter {
         ...this.transcript.metadata,
         endReason: input.endReason,
         participants: input.participants,
+        retention: {
+          state: audioUrl ? "audio_retained" : "transcript_only",
+          sourceAudioDeleted: false,
+        },
+        sharing: {
+          transcript: "owner_private",
+          notes: "owner_private",
+          sourceAudio: audioUrl ? "owner_private" : "disabled",
+          artifacts: "owner_private",
+        },
       },
     };
 

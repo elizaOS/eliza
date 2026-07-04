@@ -94,6 +94,93 @@ export interface TranscriptSummaryMeetingMeta {
   participantCount: number;
 }
 
+export const TRANSCRIPT_CAPTURE_MODES = [
+  "bot",
+  "platform_import",
+  "bot_free_tab_system",
+  "local_mic",
+  "mobile_room_mic",
+  "benchmark_import",
+  "imported_artifact",
+  "unknown",
+] as const;
+
+export type TranscriptCaptureMode = (typeof TRANSCRIPT_CAPTURE_MODES)[number];
+
+export const TRANSCRIPT_CONSENT_STATES = [
+  "not_required",
+  "pending",
+  "granted",
+  "denied",
+  "revoked",
+  "unknown",
+] as const;
+
+export type TranscriptConsentState = (typeof TRANSCRIPT_CONSENT_STATES)[number];
+
+export const TRANSCRIPT_POLICY_STATES = [
+  "allowed",
+  "org_blocked",
+  "user_blocked",
+  "unknown",
+] as const;
+
+export type TranscriptPolicyState = (typeof TRANSCRIPT_POLICY_STATES)[number];
+
+export const TRANSCRIPT_PERMISSION_STATES = [
+  "prompt",
+  "granted",
+  "denied",
+  "stopped",
+  "revoked",
+  "not_required",
+  "unknown",
+] as const;
+
+export type TranscriptPermissionState =
+  (typeof TRANSCRIPT_PERMISSION_STATES)[number];
+
+export const TRANSCRIPT_RETENTION_STATES = [
+  "audio_retained",
+  "audio_deleted_transcript_retained",
+  "transcript_only",
+  "delete_pending",
+  "unknown",
+] as const;
+
+export type TranscriptRetentionState =
+  (typeof TRANSCRIPT_RETENTION_STATES)[number];
+
+export const TRANSCRIPT_SHARING_STATES = [
+  "owner_private",
+  "restricted",
+  "shared",
+  "public",
+  "disabled",
+  "unknown",
+] as const;
+
+export type TranscriptSharingState = (typeof TRANSCRIPT_SHARING_STATES)[number];
+
+export interface TranscriptCaptureSharingState {
+  transcript?: TranscriptSharingState;
+  notes?: TranscriptSharingState;
+  sourceAudio?: TranscriptSharingState;
+  artifacts?: TranscriptSharingState;
+}
+
+export interface TranscriptCapturePrivacyState {
+  captureMode?: TranscriptCaptureMode;
+  consentState?: TranscriptConsentState;
+  policyState?: TranscriptPolicyState;
+  permissionState?: TranscriptPermissionState;
+  retentionState?: TranscriptRetentionState;
+  sharing: TranscriptCaptureSharingState;
+  sourceAudioDeleted: boolean;
+  /** True only when metadata explicitly carried policy/privacy fields. */
+  hasExplicitState: boolean;
+}
+
 /** Compact list-row projection for the transcripts index. */
 export interface TranscriptSummary {
   id: string;
@@ -184,6 +271,139 @@ function summarizeMeetingMeta(
   return platform === undefined
     ? { participantCount }
     : { platform, participantCount };
+}
+
+function recordProp(
+  metadata: Record<string, unknown> | undefined,
+  key: string,
+): Record<string, unknown> | undefined {
+  const value = metadata?.[key];
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+  return value as Record<string, unknown>;
+}
+
+function stringProp(
+  metadata: Record<string, unknown> | undefined,
+  key: string,
+): string | undefined {
+  const value = metadata?.[key];
+  return typeof value === "string" ? value : undefined;
+}
+
+function booleanProp(
+  metadata: Record<string, unknown> | undefined,
+  key: string,
+): boolean | undefined {
+  const value = metadata?.[key];
+  return typeof value === "boolean" ? value : undefined;
+}
+
+function enumProp<const Values extends readonly string[]>(
+  value: string | undefined,
+  values: Values,
+): Values[number] | undefined {
+  return value !== undefined && values.includes(value) ? value : undefined;
+}
+
+function sharingState(
+  metadata: Record<string, unknown> | undefined,
+  sharing: Record<string, unknown> | undefined,
+  key: keyof TranscriptCaptureSharingState,
+): TranscriptSharingState | undefined {
+  const flatKey =
+    key === "sourceAudio" ? "sourceAudioSharingState" : `${key}SharingState`;
+  return enumProp(
+    stringProp(metadata, flatKey) ?? stringProp(sharing, key),
+    TRANSCRIPT_SHARING_STATES,
+  );
+}
+
+/**
+ * Normalize capture/consent/privacy/retention metadata from a transcript.
+ *
+ * Writers may store either flat fields (`captureMode`, `retentionState`) or
+ * nested groups (`capture.mode`, `retention.state`, `sharing.transcript`).
+ * The UI renders this normalized server-provided state; it does not derive
+ * policy or privacy from raw metadata on its own.
+ */
+export function transcriptCapturePrivacyState(
+  transcript: Transcript,
+): TranscriptCapturePrivacyState {
+  const metadata = transcript.metadata;
+  const capture = recordProp(metadata, "capture");
+  const consent = recordProp(metadata, "consent");
+  const policy = recordProp(metadata, "policy");
+  const permission = recordProp(metadata, "permission");
+  const retention = recordProp(metadata, "retention");
+  const sharing = recordProp(metadata, "sharing");
+
+  const captureMode = enumProp(
+    stringProp(metadata, "captureMode") ?? stringProp(capture, "mode"),
+    TRANSCRIPT_CAPTURE_MODES,
+  );
+  const consentState = enumProp(
+    stringProp(metadata, "consentState") ?? stringProp(consent, "state"),
+    TRANSCRIPT_CONSENT_STATES,
+  );
+  const policyState = enumProp(
+    stringProp(metadata, "policyState") ?? stringProp(policy, "state"),
+    TRANSCRIPT_POLICY_STATES,
+  );
+  const permissionState = enumProp(
+    stringProp(metadata, "permissionState") ?? stringProp(permission, "state"),
+    TRANSCRIPT_PERMISSION_STATES,
+  );
+  const sourceAudioDeleted =
+    booleanProp(metadata, "sourceAudioDeleted") ??
+    booleanProp(retention, "sourceAudioDeleted") ??
+    false;
+  const explicitRetentionState = enumProp(
+    stringProp(metadata, "retentionState") ?? stringProp(retention, "state"),
+    TRANSCRIPT_RETENTION_STATES,
+  );
+  const retentionState =
+    explicitRetentionState ??
+    (sourceAudioDeleted
+      ? "audio_deleted_transcript_retained"
+      : transcript.audioUrl
+        ? "audio_retained"
+        : undefined);
+
+  const normalizedSharing: TranscriptCaptureSharingState = {
+    ...(sharingState(metadata, sharing, "transcript")
+      ? { transcript: sharingState(metadata, sharing, "transcript") }
+      : {}),
+    ...(sharingState(metadata, sharing, "notes")
+      ? { notes: sharingState(metadata, sharing, "notes") }
+      : {}),
+    ...(sharingState(metadata, sharing, "sourceAudio")
+      ? { sourceAudio: sharingState(metadata, sharing, "sourceAudio") }
+      : {}),
+    ...(sharingState(metadata, sharing, "artifacts")
+      ? { artifacts: sharingState(metadata, sharing, "artifacts") }
+      : {}),
+  };
+
+  return {
+    ...(captureMode ? { captureMode } : {}),
+    ...(consentState ? { consentState } : {}),
+    ...(policyState ? { policyState } : {}),
+    ...(permissionState ? { permissionState } : {}),
+    ...(retentionState ? { retentionState } : {}),
+    sharing: normalizedSharing,
+    sourceAudioDeleted,
+    hasExplicitState: Boolean(
+      captureMode ||
+        consentState ||
+        policyState ||
+        permissionState ||
+        explicitRetentionState ||
+        sourceAudioDeleted ||
+        Object.keys(normalizedSharing).length > 0,
+    ),
+  };
 }
 
 /** Project a full transcript to its list-row summary. */

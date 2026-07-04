@@ -19,9 +19,14 @@ import {
 } from "@elizaos/shared";
 import type {
   Transcript,
+  TranscriptCapturePrivacyState,
+  TranscriptConsentState,
+  TranscriptRetentionState,
+  TranscriptSharingState,
   TranscriptStatus,
   TranscriptSummary,
 } from "@elizaos/shared/transcripts";
+import { transcriptCapturePrivacyState } from "@elizaos/shared/transcripts";
 import { AudioLines } from "lucide-react";
 import type * as React from "react";
 import { useAgentElement } from "../../agent-surface";
@@ -93,6 +98,60 @@ const STATUS_LABEL: Record<TranscriptStatus, string> = {
   processing: "Processing",
   ready: "",
   failed: "Failed",
+};
+
+const CAPTURE_MODE_LABEL: Record<string, string> = {
+  bot: "Bot",
+  platform_import: "Platform import",
+  bot_free_tab_system: "Bot-free tab/system",
+  local_mic: "Local mic",
+  mobile_room_mic: "Mobile room mic",
+  benchmark_import: "Benchmark",
+  imported_artifact: "Imported artifact",
+  unknown: "Unknown capture",
+};
+
+const CONSENT_LABEL: Record<TranscriptConsentState, string> = {
+  not_required: "Not required",
+  pending: "Pending",
+  granted: "Granted",
+  denied: "Denied",
+  revoked: "Revoked",
+  unknown: "Unknown",
+};
+
+const POLICY_LABEL: Record<string, string> = {
+  allowed: "Allowed",
+  org_blocked: "Org blocked",
+  user_blocked: "User blocked",
+  unknown: "Unknown",
+};
+
+const PERMISSION_LABEL: Record<string, string> = {
+  prompt: "Prompt",
+  granted: "Granted",
+  denied: "Denied",
+  stopped: "Stopped",
+  revoked: "Revoked",
+  not_required: "Not required",
+  unknown: "Unknown",
+};
+
+const RETENTION_LABEL: Record<TranscriptRetentionState, string> = {
+  audio_retained: "Audio retained",
+  audio_deleted_transcript_retained: "Audio deleted, transcript retained",
+  transcript_only: "Transcript only",
+  delete_pending: "Delete pending",
+  unknown: "Unknown",
+};
+
+const SHARING_LABEL: Record<TranscriptSharingState, string> = {
+  owner_private: "Private",
+  restricted: "Restricted",
+  shared: "Shared",
+  public: "Public",
+  disabled: "Disabled",
+  unknown: "Unknown",
 };
 
 /** Small accent dot + label shown on live meeting rows/headers. */
@@ -230,6 +289,107 @@ function MeetingDetailHeader({
   );
 }
 
+function MeetingCapturePrivacyStrip({
+  transcript,
+}: {
+  transcript: Transcript;
+}): React.JSX.Element | null {
+  const state = transcriptCapturePrivacyState(transcript);
+  const chips = capturePrivacyChips(state);
+  if (chips.length === 0) return null;
+
+  return (
+    <div
+      data-testid="meeting-capture-privacy-state"
+      className="flex flex-wrap gap-1.5 text-xs"
+    >
+      {chips.map((chip) => (
+        <span
+          key={`${chip.label}:${chip.value}`}
+          data-testid={`meeting-privacy-chip-${agentSafeId(chip.label)}`}
+          className={cn(
+            "rounded-sm border px-1.5 py-0.5",
+            chip.alert
+              ? "border-destructive/40 text-destructive"
+              : "border-border text-muted",
+          )}
+        >
+          <span className="font-medium text-txt">{chip.label}:</span>{" "}
+          {chip.value}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function capturePrivacyChips(
+  state: TranscriptCapturePrivacyState,
+): Array<{ label: string; value: string; alert?: boolean }> {
+  const chips: Array<{ label: string; value: string; alert?: boolean }> = [];
+  if (state.captureMode) {
+    chips.push({
+      label: "Capture",
+      value: CAPTURE_MODE_LABEL[state.captureMode] ?? state.captureMode,
+    });
+  }
+  if (state.consentState) {
+    chips.push({
+      label: "Consent",
+      value: CONSENT_LABEL[state.consentState],
+      alert:
+        state.consentState === "denied" || state.consentState === "revoked",
+    });
+  }
+  if (state.policyState) {
+    chips.push({
+      label: "Policy",
+      value: POLICY_LABEL[state.policyState] ?? state.policyState,
+      alert:
+        state.policyState === "org_blocked" ||
+        state.policyState === "user_blocked",
+    });
+  }
+  if (state.permissionState) {
+    chips.push({
+      label: "Permission",
+      value: PERMISSION_LABEL[state.permissionState] ?? state.permissionState,
+      alert:
+        state.permissionState === "denied" ||
+        state.permissionState === "revoked",
+    });
+  }
+  if (state.retentionState) {
+    chips.push({
+      label: "Retention",
+      value: RETENTION_LABEL[state.retentionState],
+      alert: state.retentionState === "delete_pending",
+    });
+  }
+  if (state.sharing.transcript) {
+    chips.push({
+      label: "Transcript",
+      value: SHARING_LABEL[state.sharing.transcript],
+    });
+  }
+  if (state.sharing.notes) {
+    chips.push({ label: "Notes", value: SHARING_LABEL[state.sharing.notes] });
+  }
+  if (state.sharing.sourceAudio) {
+    chips.push({
+      label: "Source audio",
+      value: SHARING_LABEL[state.sharing.sourceAudio],
+      alert: state.sourceAudioDeleted,
+    });
+  }
+  if (state.sharing.artifacts) {
+    chips.push({
+      label: "Artifacts",
+      value: SHARING_LABEL[state.sharing.artifacts],
+    });
+  }
+  return chips;
+}
+
 export function TranscriptsView({
   transcripts,
   selectedId,
@@ -332,7 +492,10 @@ export function TranscriptsView({
                   ) : null}
                 </div>
                 {selected.source === "meeting" ? (
-                  <MeetingDetailHeader transcript={selected} />
+                  <>
+                    <MeetingDetailHeader transcript={selected} />
+                    <MeetingCapturePrivacyStrip transcript={selected} />
+                  </>
                 ) : null}
                 {selectedIsLiveMeeting ? (
                   <LiveMeetingPane transcript={selected} />

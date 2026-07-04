@@ -13,6 +13,7 @@ import {
   type Transcript,
   type TranscriptSegment,
   type TranscriptWord,
+  transcriptCapturePrivacyState,
   transcriptDurationMs,
   transcriptPlainText,
   transcriptPreview,
@@ -207,6 +208,115 @@ describe("summarizeTranscript", () => {
       metadata: {},
     };
     expect(summarizeTranscript(bare).meeting).toEqual({ participantCount: 0 });
+  });
+});
+
+describe("transcriptCapturePrivacyState", () => {
+  it("normalizes flat capture, consent, retention, policy, permission, and sharing metadata", () => {
+    const transcript: Transcript = {
+      id: "m-policy",
+      title: "Policy sync",
+      createdAt: 4000,
+      durationMs: 1000,
+      audioUrl: "/api/media/source.wav",
+      segments: segs.slice(0, 1),
+      source: "meeting",
+      scope: "owner-private",
+      status: "ready",
+      speakerCount: 1,
+      metadata: {
+        captureMode: "bot_free_tab_system",
+        consentState: "granted",
+        policyState: "allowed",
+        permissionState: "granted",
+        retentionState: "audio_retained",
+        transcriptSharingState: "owner_private",
+        notesSharingState: "restricted",
+        sourceAudioSharingState: "disabled",
+        artifactsSharingState: "shared",
+      },
+    };
+
+    expect(transcriptCapturePrivacyState(transcript)).toEqual({
+      captureMode: "bot_free_tab_system",
+      consentState: "granted",
+      policyState: "allowed",
+      permissionState: "granted",
+      retentionState: "audio_retained",
+      sharing: {
+        transcript: "owner_private",
+        notes: "restricted",
+        sourceAudio: "disabled",
+        artifacts: "shared",
+      },
+      sourceAudioDeleted: false,
+      hasExplicitState: true,
+    });
+  });
+
+  it("normalizes nested metadata and derives audio-deleted transcript retention", () => {
+    const transcript: Transcript = {
+      id: "m-deleted",
+      title: "Deleted audio",
+      createdAt: 5000,
+      durationMs: 1000,
+      segments: segs.slice(0, 1),
+      source: "meeting",
+      scope: "owner-private",
+      status: "ready",
+      speakerCount: 1,
+      metadata: {
+        capture: { mode: "platform_import" },
+        consent: { state: "not_required" },
+        policy: { state: "org_blocked" },
+        permission: { state: "denied" },
+        retention: { sourceAudioDeleted: true },
+        sharing: {
+          transcript: "owner_private",
+          sourceAudio: "disabled",
+        },
+      },
+    };
+
+    expect(transcriptCapturePrivacyState(transcript)).toEqual({
+      captureMode: "platform_import",
+      consentState: "not_required",
+      policyState: "org_blocked",
+      permissionState: "denied",
+      retentionState: "audio_deleted_transcript_retained",
+      sharing: {
+        transcript: "owner_private",
+        sourceAudio: "disabled",
+      },
+      sourceAudioDeleted: true,
+      hasExplicitState: true,
+    });
+  });
+
+  it("derives retained audio from audioUrl and ignores unknown enum values", () => {
+    const transcript: Transcript = {
+      id: "m-audio",
+      title: "Audio retained",
+      createdAt: 6000,
+      durationMs: 1000,
+      audioUrl: "/api/media/retained.wav",
+      segments: segs.slice(0, 1),
+      source: "meeting",
+      scope: "owner-private",
+      status: "ready",
+      speakerCount: 1,
+      metadata: {
+        captureMode: "made_up_mode",
+        sharing: { transcript: "public" },
+      },
+    };
+
+    expect(transcriptCapturePrivacyState(transcript)).toEqual({
+      retentionState: "audio_retained",
+      sharing: { transcript: "public" },
+      sourceAudioDeleted: false,
+      hasExplicitState: true,
+    });
   });
 });
 

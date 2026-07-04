@@ -10,6 +10,7 @@ import type { Memory, UUID } from "@elizaos/core";
 import {
   summarizeTranscript,
   type Transcript,
+  transcriptCapturePrivacyState,
   transcriptPreview,
 } from "@elizaos/shared/transcripts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -76,6 +77,20 @@ describe("MeetingTranscriptWriter — record shape golden", () => {
     expect(summarizeTranscript(recording as Transcript).id).toBe(
       writer.transcriptId,
     );
+    expect(transcriptCapturePrivacyState(recording as Transcript)).toEqual({
+      captureMode: "bot",
+      policyState: "allowed",
+      permissionState: "not_required",
+      retentionState: "transcript_only",
+      sharing: {
+        transcript: "owner_private",
+        notes: "owner_private",
+        sourceAudio: "disabled",
+        artifacts: "owner_private",
+      },
+      sourceAudioDeleted: false,
+      hasExplicitState: true,
+    });
 
     // Incremental update: preview text + timing metadata stay consistent.
     const segments = [
@@ -112,6 +127,22 @@ describe("MeetingTranscriptWriter — record shape golden", () => {
       nativeMeetingId: "abc-defg-hij",
       endReason: "normal_completion",
     });
+    expect(transcriptCapturePrivacyState(readBack as Transcript)).toMatchObject(
+      {
+        captureMode: "bot",
+        policyState: "allowed",
+        permissionState: "not_required",
+        retentionState: "transcript_only",
+        sharing: {
+          transcript: "owner_private",
+          notes: "owner_private",
+          sourceAudio: "disabled",
+          artifacts: "owner_private",
+        },
+        sourceAudioDeleted: false,
+        hasExplicitState: true,
+      },
+    );
     // Local reader helper agrees with the view reader.
     expect(readTranscriptRow(finalRow)).toEqual(readBack);
     // Knowledge mirror: tag "transcript", clientDocumentId = transcript id, textBacked.
@@ -206,6 +237,15 @@ describe("MeetingTranscriptWriter — finalize edges", () => {
       });
       expect(finalB.audioUrl).toMatch(/^\/api\/media\/[0-9a-f]{64}\.wav$/);
       expect(finalB.audioContentType).toBe("audio/wav");
+      expect(transcriptCapturePrivacyState(finalB)).toMatchObject({
+        retentionState: "audio_retained",
+        sharing: {
+          transcript: "owner_private",
+          notes: "owner_private",
+          sourceAudio: "owner_private",
+          artifacts: "owner_private",
+        },
+      });
       const hash = finalB.audioUrl?.slice("/api/media/".length) as string;
       expect(existsSync(join(dir, "media", hash))).toBe(true);
 

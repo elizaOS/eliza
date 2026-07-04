@@ -214,6 +214,50 @@ describe("TranscriptsView", () => {
     expect(screen.queryByTestId("live-meeting-pane")).toBeNull();
   });
 
+  it("shows capture, consent, retention, and sharing states from meeting metadata", () => {
+    const archivedMeeting: Transcript = {
+      ...selected,
+      id: "m1",
+      title: "Weekly sync",
+      source: "meeting",
+      status: "ready",
+      metadata: {
+        ...meetingDetailMetadata,
+        captureMode: "bot_free_tab_system",
+        consentState: "granted",
+        policyState: "org_blocked",
+        permissionState: "denied",
+        retentionState: "audio_deleted_transcript_retained",
+        transcriptSharingState: "owner_private",
+        notesSharingState: "restricted",
+        sourceAudioSharingState: "disabled",
+        artifactsSharingState: "shared",
+        sourceAudioDeleted: true,
+      },
+    };
+    render(
+      <TranscriptsView
+        transcripts={[{ ...meetingSummary, status: "ready" }]}
+        selectedId="m1"
+        selected={archivedMeeting}
+        onSelect={vi.fn()}
+      />,
+    );
+
+    const state = screen.getByTestId("meeting-capture-privacy-state");
+    expect(state.textContent).toContain("Capture: Bot-free tab/system");
+    expect(state.textContent).toContain("Consent: Granted");
+    expect(state.textContent).toContain("Policy: Org blocked");
+    expect(state.textContent).toContain("Permission: Denied");
+    expect(state.textContent).toContain(
+      "Retention: Audio deleted, transcript retained",
+    );
+    expect(state.textContent).toContain("Transcript: Private");
+    expect(state.textContent).toContain("Notes: Restricted");
+    expect(state.textContent).toContain("Source audio: Disabled");
+    expect(state.textContent).toContain("Artifacts: Shared");
+  });
+
   it("renders the join bar and forwards a join request", () => {
     const onJoinMeeting = vi.fn();
     render(
