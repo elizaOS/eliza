@@ -27,6 +27,19 @@ python -m benchmarks.orchestrator run \
   --extra '{"lane":"mocked_plumbing"}'
 ```
 
+## QMSum / MeetingBank Adapter Contract
+
+`elizaos_meeting_transcription_proof.dataset_adapters` defines the P0 adapter
+contract for QMSum and MeetingBank without committing raw external data. The
+contract records source URLs, license/access notes, selected splits, row
+selection policy, required content hashes, `elizaos.meeting_artifact.v1` output
+schema, scenario-runner metadata, score JSON metrics, and eval-only separation.
+
+These contracts are not publishable evidence by themselves. A publishable run
+must download the selected rows at runtime, record source revisions and hashes,
+produce meeting artifacts and score JSON, and attach real provider/model outputs
+with manually reviewed representative successes and failures.
+
 ## Report Contract
 
 The CLI writes `meeting-transcription-proof-report.json`. The scorer accepts two
