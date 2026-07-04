@@ -17,6 +17,7 @@ import {
   type NewConversation,
   type NewConversationMessage,
 } from "../schemas/conversations";
+import { parseConversationCostNumber } from "./conversations-numeric";
 
 export type { Conversation, ConversationMessage, NewConversation, NewConversationMessage };
 
@@ -325,12 +326,25 @@ export class ConversationsRepository {
       });
 
       if (conversation) {
+        // Fail closed on the total_cost read-modify-write: a corrupt stored
+        // accumulator or a present-but-non-finite message cost must throw
+        // (rolling back this transaction) rather than write "NaN" back into the
+        // notNull NUMERIC total_cost column and permanently poison it. A
+        // missing/empty per-message cost is a legitimate $0 contribution
+        // (preserves the prior `data.cost || 0` semantics); only a present,
+        // non-finite cost fails closed.
+        const priorTotalCost = parseConversationCostNumber(conversation.total_cost, "total_cost");
+        const messageCost =
+          data.cost === null || data.cost === undefined || String(data.cost).trim() === ""
+            ? 0
+            : parseConversationCostNumber(data.cost, "message cost");
+
         await tx
           .update(conversations)
           .set({
             message_count: conversation.message_count + 1,
             last_message_at: new Date(),
-            total_cost: String(Number(conversation.total_cost) + Number(data.cost || 0)),
+            total_cost: String(priorTotalCost + messageCost),
             updated_at: new Date(),
           })
           .where(eq(conversations.id, conversationId));
