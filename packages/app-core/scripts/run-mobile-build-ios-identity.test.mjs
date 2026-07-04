@@ -1,3 +1,9 @@
+/**
+ * applyIosAppIdentity against the real committed iOS template: brand rewrite of
+ * app/extension bundle ids and app-group entitlements (including ElizaWidgets),
+ * plus ELIZAOS_VERSION_NAME/CODE → MARKETING_VERSION/CURRENT_PROJECT_VERSION
+ * threading (#12185). Stages the template into a temp dir; no mocks.
+ */
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
