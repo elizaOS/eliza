@@ -134,6 +134,7 @@ export function AppsSection({ headerAction }: AppsSectionProps = {}) {
           3000,
         );
       } catch (err) {
+        // error-policy:J4 failure surfaces as an action notice
         setActionNotice(
           err instanceof Error
             ? err.message
@@ -162,6 +163,7 @@ export function AppsSection({ headerAction }: AppsSectionProps = {}) {
           3500,
         );
       } catch (err) {
+        // error-policy:J4 failure surfaces as an action notice
         setActionNotice(
           err instanceof Error
             ? err.message
@@ -184,6 +186,7 @@ export function AppsSection({ headerAction }: AppsSectionProps = {}) {
           3000,
         );
       } catch (err) {
+        // error-policy:J4 failure surfaces as an action notice
         setActionNotice(
           err instanceof Error
             ? err.message
@@ -232,6 +235,7 @@ export function AppsSection({ headerAction }: AppsSectionProps = {}) {
               2600,
             );
           } catch {
+            // error-policy:J4 popup blocked — surfaced as an action notice
             setActionNotice(
               t("appsview.PopupBlockedOpen", {
                 name: app.displayName ?? app.name,
@@ -255,6 +259,7 @@ export function AppsSection({ headerAction }: AppsSectionProps = {}) {
           4000,
         );
       } catch (err) {
+        // error-policy:J4 failure surfaces as an action notice
         setActionNotice(
           t("appsview.LaunchFailed", {
             name: app.displayName ?? app.name,

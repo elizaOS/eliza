@@ -84,7 +84,7 @@ export function TasksEventsPanel({
         return Math.min(Math.max(parsed, WIDGETS_MIN_WIDTH), WIDGETS_MAX_WIDTH);
       }
     } catch {
-      /* ignore */
+      // error-policy:J3 corrupt/blocked localStorage — default width
     }
     return WIDGETS_DEFAULT_WIDTH;
   });
@@ -93,7 +93,8 @@ export function TasksEventsPanel({
     try {
       window.localStorage.setItem(WIDGETS_WIDTH_KEY, String(next));
     } catch {
-      /* ignore */
+      // error-policy:J6 best-effort persistence — width still applies for
+      // this session; private-mode storage may reject writes
     }
   }, []);
   const collapseThreshold = Math.max(WIDGETS_MIN_WIDTH - 40, 80);
@@ -107,7 +108,8 @@ export function TasksEventsPanel({
       try {
         target.setPointerCapture(event.pointerId);
       } catch {
-        /* ignore */
+        // error-policy:J6 pointer capture is an enhancement — the drag still
+        // works via the window listeners below
       }
       const onMove = (ev: PointerEvent) => {
         const delta = ev.clientX - startX;
@@ -129,7 +131,7 @@ export function TasksEventsPanel({
         try {
           target.releasePointerCapture(event.pointerId);
         } catch {
-          /* ignore */
+          // error-policy:J6 teardown — capture may already be released
         }
         window.removeEventListener("pointermove", onMove);
         window.removeEventListener("pointerup", onUp);

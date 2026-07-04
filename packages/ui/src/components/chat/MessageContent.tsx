@@ -193,6 +193,7 @@ export function InlinePluginConfig({
       const found = plugins.find((p) => p.id === pluginId);
       setPlugin(found ?? null);
     } catch {
+      // error-policy:J4 load failure renders the card's error state
       if (mountedRef.current) {
         setError(
           t("messagecontent.LoadPluginInfoFailed", {
@@ -233,6 +234,7 @@ export function InlinePluginConfig({
       if (mountedRef.current) setSaved(true);
       await fetchPlugin();
     } catch (e: unknown) {
+      // error-policy:J4 save failure renders the card's error state
       if (mountedRef.current) {
         setError(
           e instanceof Error
@@ -293,6 +295,7 @@ export function InlinePluginConfig({
         // Wait for agent restart then refresh (with cleanup on unmount)
         refreshTimerRef.current = setTimeout(() => void fetchPlugin(), 3000);
       } catch (e: unknown) {
+        // error-policy:J4 toggle failure renders the card's error state
         if (mountedRef.current) {
           setError(
             e instanceof Error
@@ -504,6 +507,7 @@ export function MessageUiSpecBlock({
               `[Plugin ${pluginId} configuration saved successfully]`,
             ),
           )
+          // error-policy:J4 the failure is surfaced as a chat action message
           .catch((err: unknown) =>
             sendActionMessage(
               `[Failed to save plugin config: ${err instanceof Error ? err.message : "unknown error"}]`,
@@ -519,7 +523,12 @@ export function MessageUiSpecBlock({
               `[Plugin ${params.pluginId} enabled. Restart required.]`,
             ),
           )
-          .catch(() => sendActionMessage(`[Failed to enable plugin]`));
+          // error-policy:J4 the failure is surfaced as a chat action message
+          .catch((err: unknown) =>
+            sendActionMessage(
+              `[Failed to enable plugin: ${err instanceof Error ? err.message : "unknown error"}]`,
+            ),
+          );
         return;
       }
       if (action === "plugin:test" && params?.pluginId) {
@@ -654,7 +663,8 @@ export function SensitiveRequestBlock({
           try {
             normalized = normalizeRemoteAgentUrl(values.url ?? "");
           } catch (caught) {
-            // A typo'd URL must not flip the block to "failed" (which unmounts
+            // error-policy:J4 a typo'd URL must not flip the block to "failed"
+            // (which unmounts
             // the form) — surface the message and keep the form editable.
             setError(
               caught instanceof Error
@@ -702,6 +712,7 @@ export function SensitiveRequestBlock({
         setValues({});
         setStatus("saved");
       } catch (caught) {
+        // error-policy:J4 submit failure renders the form's error state
         setError(
           caught instanceof Error
             ? caught.message
@@ -878,12 +889,14 @@ export function SensitiveRequestBlock({
               try {
                 popup.opener = null;
               } catch {
-                // Some browsers throw when reassigning opener cross-origin;
-                // `noreferrer` already mitigates this. Swallow.
+                // error-policy:J6 best-effort hardening — some browsers throw
+                // when reassigning opener cross-origin; `noreferrer` already
+                // mitigates this.
               }
               setAuthorizing(true);
               setError(null);
             } catch (caught) {
+              // error-policy:J4 failure renders the block's error state
               setError(
                 caught instanceof Error
                   ? caught.message
@@ -1013,7 +1026,8 @@ export function MessageContent({
     try {
       return parseSegments(message.text, analysisMode);
     } catch {
-      // If parsing fails, just show plain text
+      // error-policy:J3 malformed message markup — render the raw text as-is
+      // rather than dropping the message
       return [{ kind: "text" as const, text: message.text }];
     }
   }, [message.text, analysisMode]);
@@ -1043,6 +1057,7 @@ export function MessageContent({
       await client.startLocalInferenceDownload(modelId);
       setLocalDownloadState("queued");
     } catch (error) {
+      // error-policy:J4 failure renders the download card's error state
       setLocalDownloadError(
         error instanceof Error ? error.message : "Failed to start download",
       );

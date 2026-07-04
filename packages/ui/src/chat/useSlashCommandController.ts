@@ -234,6 +234,7 @@ export function useSlashCommandController(
       // made #11112 needlessly hard to diagnose.
       const catalog: SlashCommandCatalogItem[] = await client
         .listCommands("gui")
+        // error-policy:J4 degrade to an empty catalog with the failure logged
         .catch((error: unknown) => {
           console.error(
             "[useSlashCommandController] Failed to load the slash-command catalog; slash menu will be empty",
@@ -243,6 +244,7 @@ export function useSlashCommandController(
         });
       const customActions: CustomActionDef[] = await client
         .listCustomActions()
+        // error-policy:J4 omit custom actions with the failure logged
         .catch((error: unknown) => {
           console.error(
             "[useSlashCommandController] Failed to load custom actions; omitting them from the slash menu",

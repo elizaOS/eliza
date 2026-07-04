@@ -87,6 +87,7 @@ export interface TranscriptViewerOverlayProps {
 
 type LoadState =
   | { status: "loading" }
+  | { status: "error"; message: string }
   | {
       status: "ready";
       title: string;
@@ -117,7 +118,7 @@ function copyButtonLabel(status: CopyStatus): string {
  */
 async function readInlineText(
   att: MessageAttachment,
-): Promise<{ transcriptId?: string; text: string }> {
+): Promise<{ transcriptId?: string; text: string; loadFailed?: boolean }> {
   if (att.text?.trim()) return splitTranscriptMarker(att.text);
   const src = resolveUrl(att.url);
   if (src.startsWith("data:")) {
@@ -130,16 +131,19 @@ async function readInlineText(
         : decodeURIComponent(payload);
       return splitTranscriptMarker(raw);
     } catch {
-      return { text: "" };
+      // error-policy:J3 corrupt inline payload — flag the failure so the
+      // viewer can render an error instead of a healthy-empty transcript
+      return { text: "", loadFailed: true };
     }
   }
   try {
     const res = await fetch(src);
     if (res.ok) return splitTranscriptMarker(await res.text());
   } catch {
-    // fall through to empty
+    // error-policy:J4 transport failure — flagged below; the viewer renders
+    // an error state when no stored record covers for it
   }
-  return { text: "" };
+  return { text: "", loadFailed: true };
 }
 
 /**
@@ -241,10 +245,20 @@ export function TranscriptViewerOverlay({
           setValue(text);
           return;
         } catch {
-          // record gone/unreachable — fall back to the inline text.
+          // error-policy:J4 record gone/unreachable — fall back to the inline
+          // text below (or the error render when that failed too).
         }
       }
       if (!live) return;
+      if (inline.loadFailed && !inline.text) {
+        // Never render "(empty transcript)" for a transcript we failed to
+        // read — loading, empty, and error must stay distinguishable.
+        setLoad({
+          status: "error",
+          message: "Couldn't load this transcript. Close and try again.",
+        });
+        return;
+      }
       setLoad({
         status: "ready",
         title: attachment.title?.trim() || "Transcript",
@@ -300,7 +314,8 @@ export function TranscriptViewerOverlay({
         await nav.share({ title, text: value });
         return;
       } catch (err) {
-        // User-cancelled share is not an error; anything else falls to copy.
+        // error-policy:J4 user-cancelled share is not an error; anything else
+        // falls through to the copy path below.
         if (err instanceof DOMException && err.name === "AbortError") return;
       }
     }
@@ -360,6 +375,8 @@ export function TranscriptViewerOverlay({
         }
       }
     } catch (err) {
+      // error-policy:J4 cancelled share ends the flow; failures fall through
+      // to the URL-share / download fallbacks below.
       if (err instanceof DOMException && err.name === "AbortError") return;
     }
     // Fall back to sharing the URL, then to downloading it.
@@ -369,6 +386,8 @@ export function TranscriptViewerOverlay({
         return;
       }
     } catch (err) {
+      // error-policy:J4 cancelled share ends the flow; failures fall through
+      // to the plain download.
       if (err instanceof DOMException && err.name === "AbortError") return;
     }
     handleDownloadAudio();
@@ -392,6 +411,8 @@ export function TranscriptViewerOverlay({
       try {
         await client.deleteTranscript(resolvedId);
       } catch (err) {
+        // error-policy:J4 failed delete renders the error line and keeps the
+        // overlay open — the transcript never silently looks deleted
         setSaveError(err instanceof Error ? err.message : "Couldn't delete");
         return;
       }
@@ -418,6 +439,7 @@ export function TranscriptViewerOverlay({
       await client.updateTranscript(resolvedId, { segments });
       onClose();
     } catch (err) {
+      // error-policy:J4 failed save renders the error line; the edit stays
       setSaveError(err instanceof Error ? err.message : "Couldn't save");
       setSaving(false);
     }
@@ -512,6 +534,13 @@ export function TranscriptViewerOverlay({
             <div className="flex items-center gap-2 py-8 text-sm text-muted">
               <Spinner size={16} /> Loading transcript…
             </div>
+          ) : load.status === "error" ? (
+            <p
+              className="py-8 text-sm text-[color:var(--danger,#f87171)]"
+              data-testid="transcript-load-error"
+            >
+              {load.message}
+            </p>
           ) : editing ? (
             <Textarea
               value={value}

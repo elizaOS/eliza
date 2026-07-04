@@ -53,6 +53,7 @@ export function InlineWidgetText({ content }: { content: string }): ReactNode {
     try {
       return parseSegments(content, false);
     } catch {
+      // error-policy:J3 malformed markup — render the raw text as-is
       return [{ kind: "text", text: content }];
     }
   }, [content]);

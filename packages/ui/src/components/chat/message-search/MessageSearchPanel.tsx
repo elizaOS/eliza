@@ -62,6 +62,8 @@ export function MessageSearchPanel({
         setResults(found);
         setStatus("ready");
       } catch (err) {
+        // error-policy:J4 aborted searches are expected; real failures render
+        // the panel's error state
         if (
           controller.signal.aborted ||
           (err as Error)?.name === "AbortError"

@@ -225,7 +225,7 @@ export function ConversationsSidebar({
         );
       }
     } catch {
-      /* ignore */
+      // error-policy:J3 corrupt/blocked localStorage — default width
     }
     return CHAT_SIDEBAR_DEFAULT_WIDTH;
   });
@@ -234,7 +234,8 @@ export function ConversationsSidebar({
     try {
       window.localStorage.setItem(CHAT_SIDEBAR_WIDTH_KEY, String(next));
     } catch {
-      /* ignore */
+      // error-policy:J6 best-effort persistence — width still applies for
+      // this session; private-mode storage may reject writes
     }
   }, []);
   const toggleSectionCollapsed = useCallback((key: string) => {
@@ -269,7 +270,8 @@ export function ConversationsSidebar({
         })),
       );
     } catch {
-      // Keep the last successful snapshot on transient failures.
+      // error-policy:J4 poll — keep the last successful snapshot on transient
+      // failures; the next tick refreshes.
     }
   }, []);
 
@@ -403,6 +405,7 @@ export function ConversationsSidebar({
       setState("activeTerminalSessionId", sessionId);
       setTab("chat");
     } catch (err) {
+      // error-policy:J4 failure surfaces as an action notice
       setActionNotice(
         t("conversations.newTerminalFailed", {
           defaultValue: "Failed to start terminal: {{message}}",
@@ -632,6 +635,8 @@ export function ConversationsSidebar({
           }),
         );
       } catch (err) {
+        // error-policy:J4 failure surfaces as an action notice — the optimistic
+        // row state was not applied
         setActionNotice(
           t("conversations.muteFailed", {
             defaultValue: "Failed to update mute state: {{message}}",

@@ -186,7 +186,8 @@ function attachmentPath(url: string): string {
   try {
     return new URL(u, "http://x").pathname;
   } catch {
-    // Strip query/hash manually for malformed-but-extension-bearing strings.
+    // error-policy:J3 malformed URL — strip query/hash manually for
+    // malformed-but-extension-bearing strings
     return u.split(/[?#]/)[0] ?? u;
   }
 }
@@ -272,7 +273,7 @@ function attachmentLabel(att: MessageAttachment): string {
     const base = u.split("/").filter(Boolean).at(-1);
     if (base) return decodeURIComponent(base);
   } catch {
-    // fall through
+    // error-policy:J3 malformed URL/escape — generic label below
   }
   return "attachment";
 }
@@ -671,6 +672,7 @@ function Model3dTile({
         setStatus("ready");
         animate();
       } catch {
+        // error-policy:J4 failed model load renders the error/fallback body
         if (!disposed) setStatus("error");
       }
     })();
@@ -682,7 +684,7 @@ function Model3dTile({
         renderer?.domElement?.remove();
         renderer?.dispose?.();
       } catch {
-        // best-effort teardown
+        // error-policy:J6 best-effort teardown
       }
     };
   }, [inlineable, src]);
