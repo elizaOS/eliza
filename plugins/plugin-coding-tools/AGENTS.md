@@ -71,14 +71,19 @@ plugins/plugin-coding-tools/
 
 ## Commands
 
+Scripts are defined in `package.json`; run them from the repo root with `bun run --cwd`:
+
 ```bash
-bun run --cwd plugins/plugin-coding-tools build        # compile to dist/
-bun run --cwd plugins/plugin-coding-tools dev          # hot-rebuild
-bun run --cwd plugins/plugin-coding-tools test         # vitest run
-bun run --cwd plugins/plugin-coding-tools typecheck    # tsgo --noEmit
-bun run --cwd plugins/plugin-coding-tools lint:check   # biome check
-bun run --cwd plugins/plugin-coding-tools check        # typecheck + test
-bun run --cwd plugins/plugin-coding-tools clean        # rm -rf dist .turbo
+bun run --cwd plugins/plugin-coding-tools clean         # remove build output
+bun run --cwd plugins/plugin-coding-tools build         # build package artifacts
+bun run --cwd plugins/plugin-coding-tools dev           # development build/watch lane
+bun run --cwd plugins/plugin-coding-tools typecheck     # TypeScript typecheck
+bun run --cwd plugins/plugin-coding-tools check         # package check alias
+bun run --cwd plugins/plugin-coding-tools lint          # mutating Biome check
+bun run --cwd plugins/plugin-coding-tools lint:check    # read-only Biome check
+bun run --cwd plugins/plugin-coding-tools format        # write formatting
+bun run --cwd plugins/plugin-coding-tools format:check  # read-only formatting check
+bun run --cwd plugins/plugin-coding-tools test          # run package tests
 ```
 
 ## Config / env vars

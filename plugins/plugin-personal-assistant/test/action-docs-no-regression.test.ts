@@ -2,12 +2,12 @@ import { allActionDocs } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { credentialsAction } from "../src/actions/credentials.ts";
 import { ownerDocumentsAction } from "../src/actions/document.ts";
-import { scheduledTaskAction } from "../src/actions/scheduled-task.ts";
 import {
   ownerRemindersAction,
   ownerTodosAction,
   personalAssistantAction,
 } from "../src/actions/owner-surfaces.ts";
+import { scheduledTaskAction } from "../src/actions/scheduled-task.ts";
 
 /**
  * arch-audit #12092 item 29 — no-regression proof.

@@ -121,15 +121,21 @@ src/
 
 ## Commands
 
+Scripts are defined in `package.json`; run them from the repo root with `bun run --cwd`:
+
 ```bash
-bun run --cwd plugins/plugin-health test          # vitest run
-bun run --cwd plugins/plugin-health build         # build:js (tsup) + build:views (vite) + build:types (tsc)
-bun run --cwd plugins/plugin-health build:js      # tsup only
-bun run --cwd plugins/plugin-health build:views   # vite build for UI views
-bun run --cwd plugins/plugin-health build:types   # tsc --noCheck
-bun run --cwd plugins/plugin-health clean         # rm -rf dist
-bun run --cwd plugins/plugin-health lint          # biome check --write --unsafe
-bun run --cwd plugins/plugin-health lint:check    # biome check (read-only)
+bun run --cwd plugins/plugin-health clean           # remove build output
+bun run --cwd plugins/plugin-health build           # build package artifacts
+bun run --cwd plugins/plugin-health build:js        # js build lane
+bun run --cwd plugins/plugin-health build:views     # views build lane
+bun run --cwd plugins/plugin-health build:types     # types build lane
+bun run --cwd plugins/plugin-health typecheck       # TypeScript typecheck
+bun run --cwd plugins/plugin-health lint            # mutating Biome check
+bun run --cwd plugins/plugin-health lint:check      # read-only Biome check
+bun run --cwd plugins/plugin-health format          # write formatting
+bun run --cwd plugins/plugin-health format:check    # read-only formatting check
+bun run --cwd plugins/plugin-health test            # run package tests
+bun run --cwd plugins/plugin-health test:scenarios  # scenarios test lane
 ```
 
 ## Config / env vars

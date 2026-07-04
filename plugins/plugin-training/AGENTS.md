@@ -134,16 +134,28 @@ src/
 
 ## Commands
 
+Scripts are defined in `package.json`; run them from the repo root with `bun run --cwd`:
+
 ```bash
-bun run --cwd plugins/plugin-training train             # Run native optimizer CLI
-bun run --cwd plugins/plugin-training collect          # Run data collection (CLI)
-bun run --cwd plugins/plugin-training test             # Run vitest suite
-bun run --cwd plugins/plugin-training test:watch       # Vitest in watch mode
-bun run --cwd plugins/plugin-training build            # Full build (JS + views + types)
-bun run --cwd plugins/plugin-training build:js         # tsup JS bundle only
-bun run --cwd plugins/plugin-training build:views      # Vite views bundle only
-bun run --cwd plugins/plugin-training build:types      # TypeScript declarations
-bun run --cwd plugins/plugin-training clean            # Remove dist/
+bun run --cwd plugins/plugin-training clean                  # remove build output
+bun run --cwd plugins/plugin-training build                  # build package artifacts
+bun run --cwd plugins/plugin-training build:js               # js build lane
+bun run --cwd plugins/plugin-training build:views            # views build lane
+bun run --cwd plugins/plugin-training build:types            # types build lane
+bun run --cwd plugins/plugin-training typecheck              # TypeScript typecheck
+bun run --cwd plugins/plugin-training lint                   # mutating Biome check
+bun run --cwd plugins/plugin-training lint:check             # read-only Biome check
+bun run --cwd plugins/plugin-training format                 # write formatting
+bun run --cwd plugins/plugin-training format:check           # read-only formatting check
+bun run --cwd plugins/plugin-training test                   # run package tests
+bun run --cwd plugins/plugin-training test:watch             # watch test lane
+bun run --cwd plugins/plugin-training train                  # optimizer CLI
+bun run --cwd plugins/plugin-training collect                # data collection CLI
+bun run --cwd plugins/plugin-training trajectories:review    # bun --conditions=eliza-source scripts/trajectory-quality-review.ts
+bun run --cwd plugins/plugin-training verify:view-switching  # bun run scripts/verify-view-switching.ts
+bun run --cwd plugins/plugin-training gepa:view-context      # bun run scripts/gepa-view-context.ts
+bun run --cwd plugins/plugin-training lifeops:gepa           # bun run scripts/lifeops-gepa-loop.ts
+bun run --cwd plugins/plugin-training lifeops:gepa-seed      # bun --conditions=eliza-source scripts/lifeops-gepa-seed.ts
 ```
 
 ## Config / env vars

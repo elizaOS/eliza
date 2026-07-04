@@ -159,34 +159,28 @@ src/
 
 ## Commands
 
-Only scripts that exist in `package.json`:
+Scripts are defined in `package.json`; run them from the repo root with `bun run --cwd`:
 
 ```bash
-bun run --cwd plugins/plugin-computeruse build       # Bun.build (build.ts) → dist/
-bun run --cwd plugins/plugin-computeruse test        # vitest run
-bun run --cwd plugins/plugin-computeruse typecheck   # tsgo --noEmit
-bun run --cwd plugins/plugin-computeruse validate:platform-evidence
-                                                     # validate all platform evidence manifests
-bun run --cwd plugins/plugin-computeruse validate:ios-device-evidence
-                                                     # validate iOS device evidence manifest
-bun run --cwd plugins/plugin-computeruse validate:android-device-evidence
-                                                     # validate Android consumer evidence manifest
-bun run --cwd plugins/plugin-computeruse validate:android-aosp-evidence
-                                                     # validate Android AOSP/system evidence manifest
-bun run --cwd plugins/plugin-computeruse capture:macos-desktop-evidence
-                                                     # capture macOS desktop evidence artifacts for issue #9581
-bun run --cwd plugins/plugin-computeruse validate:macos-desktop-evidence
-                                                     # validate macOS desktop evidence manifest
-bun run --cwd plugins/plugin-computeruse validate:linux-desktop-evidence
-                                                     # validate Linux desktop evidence manifest
-bun run --cwd plugins/plugin-computeruse capture:windows-desktop-evidence
-                                                     # capture Windows desktop evidence artifacts for issue #9581
-                                                     # (non-disruptive: drives a controlled Notepad window, not the user's apps)
-bun run --cwd plugins/plugin-computeruse validate:windows-desktop-evidence
-                                                     # validate Windows desktop evidence manifest
+bun run --cwd plugins/plugin-computeruse build                              # build package artifacts
+bun run --cwd plugins/plugin-computeruse typecheck                          # TypeScript typecheck
+bun run --cwd plugins/plugin-computeruse lint                               # mutating Biome check
+bun run --cwd plugins/plugin-computeruse lint:check                         # read-only Biome check
+bun run --cwd plugins/plugin-computeruse format                             # write formatting
+bun run --cwd plugins/plugin-computeruse format:check                       # read-only formatting check
+bun run --cwd plugins/plugin-computeruse test                               # run package tests
+bun run --cwd plugins/plugin-computeruse capture:macos-desktop-evidence     # macos-desktop-evidence evidence capture
+bun run --cwd plugins/plugin-computeruse capture:windows-desktop-evidence   # windows-desktop-evidence evidence capture
+bun run --cwd plugins/plugin-computeruse postinstall                        # postinstall setup
+bun run --cwd plugins/plugin-computeruse record:windows-cua-input           # bun scripts/record-windows-cua-input.mjs
+bun run --cwd plugins/plugin-computeruse validate:android-aosp-evidence     # android-aosp-evidence evidence validation
+bun run --cwd plugins/plugin-computeruse validate:android-device-evidence   # android-device-evidence evidence validation
+bun run --cwd plugins/plugin-computeruse validate:ios-device-evidence       # ios-device-evidence evidence validation
+bun run --cwd plugins/plugin-computeruse validate:linux-desktop-evidence    # linux-desktop-evidence evidence validation
+bun run --cwd plugins/plugin-computeruse validate:macos-desktop-evidence    # macos-desktop-evidence evidence validation
+bun run --cwd plugins/plugin-computeruse validate:platform-evidence         # platform-evidence evidence validation
+bun run --cwd plugins/plugin-computeruse validate:windows-desktop-evidence  # windows-desktop-evidence evidence validation
 ```
-
-`postinstall` runs `scripts/ensure-platform-deps.mjs` to check native dep availability (nutjs binaries, cliclick, xdotool).
 
 ## Config / env vars
 

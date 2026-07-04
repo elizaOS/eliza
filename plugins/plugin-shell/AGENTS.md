@@ -56,17 +56,19 @@ plugins/plugin-shell/
 
 ## Commands
 
-Only scripts that exist in `package.json`:
+Scripts are defined in `package.json`; run them from the repo root with `bun run --cwd`:
 
 ```bash
-bun run --cwd plugins/plugin-shell build          # bun build → dist/
-bun run --cwd plugins/plugin-shell dev            # hot-reload build (bun --hot)
-bun run --cwd plugins/plugin-shell test           # vitest run
-bun run --cwd plugins/plugin-shell typecheck      # tsgo --noEmit
-bun run --cwd plugins/plugin-shell lint           # biome check
-bun run --cwd plugins/plugin-shell clean          # rm -rf dist .turbo
-bun run --cwd plugins/plugin-shell format         # biome format --write
-bun run --cwd plugins/plugin-shell format:check   # biome format (check only)
+bun run --cwd plugins/plugin-shell clean         # remove build output
+bun run --cwd plugins/plugin-shell build         # build package artifacts
+bun run --cwd plugins/plugin-shell build:ts      # ts build lane
+bun run --cwd plugins/plugin-shell dev           # development build/watch lane
+bun run --cwd plugins/plugin-shell typecheck     # TypeScript typecheck
+bun run --cwd plugins/plugin-shell lint          # mutating Biome check
+bun run --cwd plugins/plugin-shell lint:check    # read-only Biome check
+bun run --cwd plugins/plugin-shell format        # write formatting
+bun run --cwd plugins/plugin-shell format:check  # read-only formatting check
+bun run --cwd plugins/plugin-shell test          # run package tests
 ```
 
 ## Config / env vars

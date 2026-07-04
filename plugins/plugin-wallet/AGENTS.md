@@ -135,13 +135,19 @@ plugins/plugin-wallet/
 
 ## Commands
 
+Scripts are defined in `package.json`; run them from the repo root with `bun run --cwd`:
+
 ```bash
-bun run --cwd plugins/plugin-wallet build        # Bun.build + tsc declarations → dist/
-bun run --cwd plugins/plugin-wallet check        # tsc --noEmit type check
-bun run --cwd plugins/plugin-wallet lint         # biome check --write --unsafe
-bun run --cwd plugins/plugin-wallet test         # vitest run
-bun run --cwd plugins/plugin-wallet test:watch   # vitest watch
-bun run --cwd plugins/plugin-wallet clean        # rm -rf dist
+bun run --cwd plugins/plugin-wallet clean         # remove build output
+bun run --cwd plugins/plugin-wallet build         # build package artifacts
+bun run --cwd plugins/plugin-wallet typecheck     # TypeScript typecheck
+bun run --cwd plugins/plugin-wallet check         # package check alias
+bun run --cwd plugins/plugin-wallet lint          # mutating Biome check
+bun run --cwd plugins/plugin-wallet lint:check    # read-only Biome check
+bun run --cwd plugins/plugin-wallet format        # write formatting
+bun run --cwd plugins/plugin-wallet format:check  # read-only formatting check
+bun run --cwd plugins/plugin-wallet test          # run package tests
+bun run --cwd plugins/plugin-wallet test:watch    # watch test lane
 ```
 
 ## Config / env vars

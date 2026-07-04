@@ -9,11 +9,11 @@ import type { IAgentRuntime } from "@elizaos/core";
 import { Keypair } from "@solana/web3.js";
 import bs58 from "bs58";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { LocalEoaBackend } from "./local-eoa-backend";
 import {
   SolanaPrivateKeyInvalidError,
   WalletBackendNotConfiguredError,
 } from "./errors";
+import { LocalEoaBackend } from "./local-eoa-backend";
 
 const KEY_ENV_VARS = [
   "EVM_PRIVATE_KEY",

@@ -31,12 +31,12 @@
  * that have never seeded anywhere — flows through the spine registry.
  */
 
+import type { IAgentRuntime } from "@elizaos/core";
 import type {
   DefaultTaskPack,
   ScheduledTaskInput as SpineScheduledTaskInput,
 } from "@elizaos/plugin-scheduling";
 import { registerDefaultTaskPack } from "@elizaos/plugin-scheduling";
-import type { IAgentRuntime } from "@elizaos/core";
 import type {
   ConnectorRegistryContract,
   ScheduledTaskSeed,

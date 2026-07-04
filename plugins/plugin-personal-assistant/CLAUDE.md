@@ -182,15 +182,30 @@ src/
 
 ## Commands
 
+Scripts are defined in `package.json`; run them from the repo root with `bun run --cwd`:
+
 ```bash
-bun run --cwd plugins/plugin-personal-assistant build              # Full build (JS + types)
-bun run --cwd plugins/plugin-personal-assistant build:js           # tsup bundling only
-bun run --cwd plugins/plugin-personal-assistant build:types        # tsc declaration emit
-bun run --cwd plugins/plugin-personal-assistant test               # Unit tests (vitest)
-bun run --cwd plugins/plugin-personal-assistant test:background-real  # Long-running real e2e tests
-bun run --cwd plugins/plugin-personal-assistant lint:default-packs # Validate default-pack definitions
-bun run --cwd plugins/plugin-personal-assistant verify             # lint:default-packs + build:types + test
-bun run --cwd plugins/plugin-personal-assistant clean              # Remove dist/
+bun run --cwd plugins/plugin-personal-assistant clean                         # remove build output
+bun run --cwd plugins/plugin-personal-assistant build                         # build package artifacts
+bun run --cwd plugins/plugin-personal-assistant build:js                      # js build lane
+bun run --cwd plugins/plugin-personal-assistant build:types                   # types build lane
+bun run --cwd plugins/plugin-personal-assistant typecheck                     # TypeScript typecheck
+bun run --cwd plugins/plugin-personal-assistant verify                        # package verification lane
+bun run --cwd plugins/plugin-personal-assistant lint                          # mutating Biome check
+bun run --cwd plugins/plugin-personal-assistant lint:check                    # read-only Biome check
+bun run --cwd plugins/plugin-personal-assistant lint:default-packs            # node scripts/lint-default-packs.mjs
+bun run --cwd plugins/plugin-personal-assistant format                        # write formatting
+bun run --cwd plugins/plugin-personal-assistant format:check                  # read-only formatting check
+bun run --cwd plugins/plugin-personal-assistant test                          # run package tests
+bun run --cwd plugins/plugin-personal-assistant pretest                       # pre-test generated checks
+bun run --cwd plugins/plugin-personal-assistant test:integration              # integration test lane
+bun run --cwd plugins/plugin-personal-assistant test:scenarios                # scenarios test lane
+bun run --cwd plugins/plugin-personal-assistant test:scenarios:list           # scenarios:list test lane
+bun run --cwd plugins/plugin-personal-assistant test:scenarios:lifeops-spine  # scenarios:lifeops-spine test lane
+bun run --cwd plugins/plugin-personal-assistant test:app-state                # app-state test lane
+bun run --cwd plugins/plugin-personal-assistant test:background-real          # background-real test lane
+bun run --cwd plugins/plugin-personal-assistant bench:work-threads            # work-threads benchmark lane
+bun run --cwd plugins/plugin-personal-assistant verify:live-schedule          # bun run ./scripts/verify-live-schedule-data.ts
 ```
 
 ## Config / env vars

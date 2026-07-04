@@ -6,8 +6,8 @@
  */
 
 export {
-  decideDispatchPolicy,
   type DispatchFailureReason,
   type DispatchPolicyContext,
   type DispatchPolicyDecision,
+  decideDispatchPolicy,
 } from "@elizaos/plugin-scheduling";

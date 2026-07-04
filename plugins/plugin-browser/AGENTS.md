@@ -99,11 +99,31 @@ auto-enable.ts                     Standalone shouldEnable check (no transitive 
 
 ## Commands
 
+Scripts are defined in `package.json`; run them from the repo root with `bun run --cwd`:
+
 ```bash
-bun run --cwd plugins/plugin-browser typecheck   # tsgo --noEmit type check
-bun run --cwd plugins/plugin-browser test        # vitest run
-bun run --cwd plugins/plugin-browser build       # tsup + tsc types into dist/
-bun run --cwd plugins/plugin-browser clean       # rm -rf dist
+bun run --cwd plugins/plugin-browser clean                           # remove build output
+bun run --cwd plugins/plugin-browser build                           # build package artifacts
+bun run --cwd plugins/plugin-browser build:js                        # js build lane
+bun run --cwd plugins/plugin-browser build:types                     # types build lane
+bun run --cwd plugins/plugin-browser typecheck                       # TypeScript typecheck
+bun run --cwd plugins/plugin-browser lint                            # mutating Biome check
+bun run --cwd plugins/plugin-browser lint:check                      # read-only Biome check
+bun run --cwd plugins/plugin-browser format                          # write formatting
+bun run --cwd plugins/plugin-browser format:check                    # read-only formatting check
+bun run --cwd plugins/plugin-browser test                            # run package tests
+bun run --cwd plugins/plugin-browser test:real-chromium              # real-chromium test lane
+bun run --cwd plugins/plugin-browser test:real:chromium              # real:chromium test lane
+bun run --cwd plugins/plugin-browser test:real:external              # real:external test lane
+bun run --cwd plugins/plugin-browser test:real:grounding             # real:grounding test lane
+bun run --cwd plugins/plugin-browser test:real:miniwob               # real:miniwob test lane
+bun run --cwd plugins/plugin-browser bench:miniwob                   # miniwob benchmark lane
+bun run --cwd plugins/plugin-browser bench:miniwob:chromium          # miniwob:chromium benchmark lane
+bun run --cwd plugins/plugin-browser bench:miniwob:chromium:capture  # miniwob:chromium:capture benchmark lane
+bun run --cwd plugins/plugin-browser bench:miniwob:chromium:record   # miniwob:chromium:record benchmark lane
+bun run --cwd plugins/plugin-browser bench:external                  # external benchmark lane
+bun run --cwd plugins/plugin-browser bench:external:chromium         # external:chromium benchmark lane
+bun run --cwd plugins/plugin-browser bench:grounding:chromium        # grounding:chromium benchmark lane
 ```
 
 ## Config / env vars
