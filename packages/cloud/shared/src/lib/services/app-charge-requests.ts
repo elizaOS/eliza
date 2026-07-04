@@ -108,8 +108,8 @@ function toChargeRequest(payment: CryptoPayment): AppChargeRequest | null {
     return null;
   }
 
-  // Fail closed on a corrupt stored amount. create() enforces $1–$10,000 at
-  // write-time (normalizeAmount), so a non-finite or non-positive
+  // Fail closed on a corrupt stored amount. create() enforces $1-$10,000 at
+  // write-time (normalizeAmount), so an out-of-range or non-finite
   // expected_amount on a charge-request row is always data corruption. The old
   // bare `Number(payment.expected_amount)` let NaN flow into Stripe checkout
   // (`Math.round(NaN * 100)` unit_amount, `credits: "NaN"` metadata) and the
@@ -120,7 +120,7 @@ function toChargeRequest(payment: CryptoPayment): AppChargeRequest | null {
   // Number(), not parseFloat(): parseFloat("12garbage") is 12, silently
   // accepting a mangled value; Number() rejects any non-purely-numeric string.
   const amountUsd = Number(payment.expected_amount);
-  if (!Number.isFinite(amountUsd) || amountUsd <= 0) {
+  if (!Number.isFinite(amountUsd) || amountUsd < 1 || amountUsd > 10000) {
     logger.error("[AppCharges] Refusing to read charge request with corrupt expected_amount", {
       chargeRequestId: payment.id,
       appId: metadata.app_id,

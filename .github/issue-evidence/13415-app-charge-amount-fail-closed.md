@@ -23,9 +23,10 @@ Before:
 After:
 
 - `toChargeRequest` parses with `Number(...)` (not `parseFloat` — parseFloat
-  accepts `"12garbage"` as `12`) and requires finite AND positive. `create()`
-  enforces $1–$10,000 at write-time (`normalizeAmount`), so a bad value at
-  read-time is always corruption.
+  accepts `"12garbage"` as `12`) and requires a finite in-range value. `create()`
+  enforces $1–$10,000 at write-time (`normalizeAmount`), so the read gate
+  mirrors those `$1 <= amount <= $10,000` bounds; any value outside them is
+  always corruption.
 - A corrupt row reads as `null`, which every payment endpoint already treats
   as "Charge request not found" — the corrupt charge is unpayable. List
   endpoints (`listForApp`) drop the corrupt row and keep serving the org's
@@ -43,15 +44,15 @@ log preserves observability.
 `bun test --isolate src/lib/services/__tests__/app-charge-amount-fail-closed.test.ts`:
 
 ```
- 7 pass
+ 8 pass
  0 fail
- 8 expect() calls
-Ran 7 tests across 1 file. [1.51s]
+ 9 expect() calls
+Ran 8 tests across 1 file. [1.51s]
 ```
 
 Covers: healthy row reads verbatim; non-numeric / null / zero / negative /
-partially-numeric (`"12abc"`) amounts read as null; a corrupt row cannot enter
-the Stripe checkout path (`Charge request not found`).
+oversized / partially-numeric (`"12abc"`) amounts read as null; a corrupt row
+cannot enter the Stripe checkout path (`Charge request not found`).
 
 Adjacent suite unchanged and green:
 `app-charge-callback-cross-tenant.test.ts` → 7 pass / 0 fail (real-PGlite).

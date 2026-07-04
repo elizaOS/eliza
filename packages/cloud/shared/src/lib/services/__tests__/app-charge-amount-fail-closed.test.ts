@@ -2,8 +2,8 @@
  * Fail-closed charge-amount reads in app-charge-requests (#13415).
  *
  * `toChargeRequest` materializes `amountUsd` from the DB row's
- * `expected_amount`. create() enforces $1–$10,000 at write-time, so a
- * non-finite or non-positive value at read-time is always corruption. The old
+ * `expected_amount`. create() enforces $1-$10,000 at write-time, so a
+ * out-of-range or non-finite value at read-time is always corruption. The old
  * bare `Number(payment.expected_amount)` let NaN flow into Stripe checkout
  * (`Math.round(NaN * 100)` unit_amount, `credits: "NaN"` metadata) and the
  * OxaPay checkout amount. These tests pin the strict behavior: a corrupt row
@@ -96,6 +96,12 @@ describe("app-charge-requests — corrupt expected_amount fails closed", () => {
 
   test("negative expected_amount reads as null", async () => {
     findFirst.mockResolvedValue(chargeRow({ expected_amount: "-5.00" }));
+    const request = await appChargeRequestsService.getForApp(APP_ID, CHARGE_ID);
+    expect(request).toBeNull();
+  });
+
+  test("oversized expected_amount reads as null (create() enforces <= $10,000)", async () => {
+    findFirst.mockResolvedValue(chargeRow({ expected_amount: "10000.01" }));
     const request = await appChargeRequestsService.getForApp(APP_ID, CHARGE_ID);
     expect(request).toBeNull();
   });
