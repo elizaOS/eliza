@@ -54,11 +54,8 @@ export function CustomActionsView() {
       setActions(result);
       setLoadFailed(false);
     } catch (err) {
-      // error-policy:J4 a 404 means the custom-actions surface isn't hosted
-      // on this runtime — the designed empty state is correct there. Anything
-      // else (5xx, transport, parse) must render the explicit error state
-      // below instead of masquerading as the healthy "create your first
-      // action" empty state.
+      // error-policy:J4 a 404 means the custom-actions surface is unavailable
+      // on this runtime; other failures must not collapse into healthy-empty.
       setActions([]);
       setLoadFailed(!(isApiError(err) && err.status === 404));
     } finally {
@@ -102,8 +99,8 @@ export function CustomActionsView() {
           ),
         );
       } catch {
-        // The switch is not flipped optimistically, so the displayed state is
-        // still the server's; surface the failure instead of staying silent.
+        // The switch is not flipped optimistically, so the row still reflects
+        // server-confirmed state.
         setActionError(
           t("customactionspanel.UpdateFailed", {
             defaultValue: "Couldn't update this action. Try again.",
@@ -132,8 +129,7 @@ export function CustomActionsView() {
         await client.deleteCustomAction(id);
         setActions((prev) => prev.filter((action) => action.id !== id));
       } catch {
-        // The item stays visible for retry; tell the user why it's still
-        // there rather than failing silently.
+        // The item stays visible for retry because deletion was not confirmed.
         setActionError(
           t("customactionspanel.DeleteFailed", {
             defaultValue: "Couldn't delete this action. Try again.",
@@ -211,8 +207,7 @@ export function CustomActionsView() {
     );
   }
 
-  // Load failure (non-404): an explicit error state with a retry path — never
-  // the designed "create your first action" empty state below.
+  // Non-404 load failures get a retry path instead of healthy-empty UI.
   if (loadFailed) {
     return (
       <div

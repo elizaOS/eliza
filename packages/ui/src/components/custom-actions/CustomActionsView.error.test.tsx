@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
-//
-// Three-state guard for the full-page custom actions view (#12784): a failed
-// listCustomActions load must render an explicit error state with a retry
-// path — never the designed "create your first action" empty state. A 404
-// (the custom-actions surface isn't hosted on this runtime) IS the designed
-// empty state. Toggle/delete failures must surface a visible error banner
-// instead of failing silently.
+
+/**
+ * Three-state coverage for full-page custom action loading and row mutations.
+ *
+ * Transport failures render an explicit retry state, a runtime-level 404 stays
+ * the designed empty state, and per-row write failures surface an alert while
+ * keeping the server-confirmed row state visible.
+ */
 
 import {
   cleanup,
@@ -89,7 +90,6 @@ describe("CustomActionsView three-state rendering", () => {
     expect(
       screen.getByTestId("custom-actions-load-error").textContent,
     ).toContain("Couldn't load custom actions.");
-    // The designed empty state must NOT render on a broken endpoint.
     expect(screen.queryByText("customactionsview.EmptyTitle")).toBeNull();
   });
 
@@ -168,7 +168,6 @@ describe("CustomActionsView three-state rendering", () => {
     expect(
       screen.getByTestId("custom-actions-action-error").textContent,
     ).toContain("Couldn't update this action.");
-    // The failed toggle must not lie about the server state.
     expect(screen.getByRole("switch").getAttribute("aria-checked")).toBe(
       "true",
     );
