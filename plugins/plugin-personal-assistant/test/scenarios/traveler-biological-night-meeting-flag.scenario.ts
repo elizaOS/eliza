@@ -13,7 +13,8 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 export default scenario({
   lane: "live-only",
   id: "traveler-biological-night-meeting-flag",
-  title: "Traveler: a meeting in her biological night is flagged, not silently taken",
+  title:
+    "Traveler: a meeting in her biological night is flagged, not silently taken",
   domain: "lifeops.calendar",
   tags: ["lifeops", "traveler", "personas", "12283"],
   status: "active",
