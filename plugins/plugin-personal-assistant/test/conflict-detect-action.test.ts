@@ -180,8 +180,11 @@ describe("CONFLICT_DETECT umbrella action — proactive calendar scans", () => {
       const [{ start, end }] = seen;
       expect(start).toBeTruthy();
       expect(end).toBeTruthy();
+      if (!start || !end) {
+        throw new Error("Expected scan_week to pass a populated date range.");
+      }
       const days =
-        (Date.parse(end!) - Date.parse(start!)) / (24 * 60 * 60 * 1000);
+        (Date.parse(end) - Date.parse(start)) / (24 * 60 * 60 * 1000);
       expect(days).toBeGreaterThanOrEqual(6.9);
       expect(days).toBeLessThanOrEqual(8.1);
     });

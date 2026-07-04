@@ -135,8 +135,14 @@ function applyConsolidation(
 
   const result: SimulatedFire[][] = [...standalone];
   for (const [key, anchorFires] of byKey) {
-    const anchor = key.split("@")[0]!;
-    const policy = policyByAnchor.get(anchor)!;
+    const anchor = key.split("@")[0];
+    if (!anchor) {
+      throw new Error(`Invalid default-pack fire key: ${key}`);
+    }
+    const policy = policyByAnchor.get(anchor);
+    if (!policy) {
+      throw new Error(`Missing delivery policy for anchor: ${anchor}`);
+    }
     if (policy.mode === "merge") {
       const sorted = [...anchorFires].sort(
         (left, right) =>

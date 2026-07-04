@@ -97,9 +97,13 @@ describe("WorkflowStepRegistry", () => {
   it("rejects duplicate registration", () => {
     const registry = createWorkflowStepRegistry();
     registerDefaultWorkflowStepPack(registry);
-    expect(() =>
-      registry.register(APP_LIFEOPS_WORKFLOW_STEP_CONTRIBUTIONS[0]!),
-    ).toThrow(/already registered/);
+    const firstContribution = APP_LIFEOPS_WORKFLOW_STEP_CONTRIBUTIONS[0];
+    if (!firstContribution) {
+      throw new Error("Expected at least one workflow step contribution.");
+    }
+    expect(() => registry.register(firstContribution)).toThrow(
+      /already registered/,
+    );
   });
 
   it("registers a synthetic third-party step kind and dispatches it via execute", async () => {

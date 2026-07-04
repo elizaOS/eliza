@@ -153,7 +153,10 @@ function runHarness(fixture: string): {
   }
   // Convert the TS object literal to JSON: drop trailing commas, quote
   // unquoted keys.
-  const jsLiteral = arrayBodyMatch[1]!;
+  const jsLiteral = arrayBodyMatch[1];
+  if (!jsLiteral) {
+    throw new Error("Generated harness array literal was empty.");
+  }
   // The harness emits valid JSON-shaped object literals with quoted keys via
   // `JSON.stringify` on every value; the only TS-isms are unquoted property
   // keys and trailing commas. Convert to JSON.
