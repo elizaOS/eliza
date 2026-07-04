@@ -5,10 +5,9 @@
 //
 //   - `resolveLocalInferenceLoadArgs` — catalog + manifest + overrides merge,
 //     including the separate-drafter MTP rule: a hosted-MTP tier (eliza-1-2b
-//     declares `runtime.mtp.drafterFile`) with NO drafter GGUF on disk falls
-//     back to a plain non-speculative load (warn, no MTP args) — a
-//     pre-cutover install must never be bricked over the perf-only drafter
-//     (#11517 back-compat).
+//     declares `runtime.mtp.drafterFile`) with NO drafter GGUF on disk fails
+//     closed for managed Eliza-1 bundles, while external/bare installs remain
+//     outside the bundle contract and load without speculative args.
 //   - `validateLocalInferenceLoadArgs` — differential fuzz against an oracle
 //     mirroring the documented acceptance rules (stock vs fork KV cache
 //     types, contextSize/gpuLayers integrality, kvOffload shapes).
@@ -30,6 +29,7 @@ import {
 	isForkOnlyKvCacheType,
 	isStockKvCacheType,
 	type LocalInferenceLoadArgs,
+	MissingMtpDrafterError,
 	resolveLocalInferenceLoadArgs,
 	validateLocalInferenceLoadArgs,
 } from "./active-model";
@@ -123,7 +123,11 @@ function manifestWithMtp(mtpPaths: string[]): Eliza1Manifest {
 			cache: [{ path: "cache/voice-preset-default.bin", sha256: SHA_A }],
 			vad: [{ path: "vad/silero-vad-v5.gguf", sha256: SHA_A }],
 		},
-		kernels: { required: [], optional: [], verifiedBackends: {} },
+		kernels: {
+			required: ["turboquant_q4", "mtp"],
+			optional: [],
+			verifiedBackends: {},
+		},
 		evals: {
 			textEval: { score: 0.71, passed: true },
 			voiceRtf: { rtf: 0.42, passed: true },
@@ -151,32 +155,16 @@ describe("resolveLocalInferenceLoadArgs — separate-drafter MTP resolution", ()
 		expect(catalog2b?.runtime?.mtp?.drafterFile).toMatch(/drafter-2b\.gguf$/);
 	});
 
-	it("falls back to a non-speculative load when the declared drafter GGUF is missing under bundleRoot", async () => {
-		// #11517 back-compat: a bundle installed before the Gemma-4 MTP cutover
-		// has no mtp/drafter-2b.gguf. The drafter is perf-only — the text model
-		// must still load (warn + plain decode), never throw.
-		const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-		try {
-			const bundle = makeTempBundle({ tier: "2b", hasDrafter: false });
-			const installed = installedModel({
-				id: "eliza-1-2b",
-				path: bundle.textPath,
-				bundleRoot: bundle.bundleRoot,
-			});
-			const resolved = await resolveLocalInferenceLoadArgs(installed);
-			expect(resolved.modelPath).toBe(bundle.textPath);
-			expect(resolved.draftModelPath).toBeUndefined();
-			expect(resolved.draftMin).toBeUndefined();
-			expect(resolved.draftMax).toBeUndefined();
-			expect(resolved.mobileSpeculative).toBeUndefined();
-			expect(warnSpy).toHaveBeenCalledWith(
-				expect.stringContaining(
-					"Re-download the model to enable the MTP drafter",
-				),
-			);
-		} finally {
-			warnSpy.mockRestore();
-		}
+	it("fails closed when a managed hosted-MTP bundle is missing its drafter GGUF", async () => {
+		const bundle = makeTempBundle({ tier: "2b", hasDrafter: false });
+		const installed = installedModel({
+			id: "eliza-1-2b",
+			path: bundle.textPath,
+			bundleRoot: bundle.bundleRoot,
+		});
+		await expect(resolveLocalInferenceLoadArgs(installed)).rejects.toThrow(
+			MissingMtpDrafterError,
+		);
 	});
 
 	it("does not throw for an external-scan install (no bundleRoot); MTP stays fully unset", async () => {
@@ -253,10 +241,25 @@ describe("resolveLocalInferenceLoadArgs — separate-drafter MTP resolution", ()
 		).rejects.toThrow(/gpuLayers/);
 	});
 
-	it("accepts fork-only KV cache types at resolve time (allowFork) and normalizes case/space", async () => {
+	it("rejects legacy head_dim-coupled KV cache overrides for Gemma tiers", async () => {
 		const bundle = makeTempBundle({ tier: "2b", hasDrafter: true });
 		const installed = installedModel({
 			id: "eliza-1-2b",
+			path: bundle.textPath,
+			bundleRoot: bundle.bundleRoot,
+		});
+		await expect(
+			resolveLocalInferenceLoadArgs(installed, {
+				cacheTypeK: "q4_polar",
+				cacheTypeV: "  Q8_0  ",
+			}),
+		).rejects.toThrow(/Gemma.*stock KV/);
+	});
+
+	it("accepts fork-only KV cache types for non-Gemma dev models at resolve time", async () => {
+		const bundle = makeTempBundle({ tier: "2b", hasDrafter: false });
+		const installed = installedModel({
+			id: "custom-generic-gguf",
 			path: bundle.textPath,
 			bundleRoot: bundle.bundleRoot,
 		});

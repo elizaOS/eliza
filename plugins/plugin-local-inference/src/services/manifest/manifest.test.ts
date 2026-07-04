@@ -115,12 +115,12 @@ describe("Eliza-1 manifest schema constants", () => {
 		expect(Object.keys(REQUIRED_KERNELS_BY_TIER)).toEqual(
 			expect.arrayContaining(["2b", "4b"]),
 		);
-		// Gemma 4 cutover: the only REQUIRED kernel is the geometry-agnostic
-		// turboquant_q4 weight-quant. The KV-cache kernels (qjl/polarquant/
+		// Gemma 4 cutover: REQUIRED is the geometry-agnostic turboquant_q4
+		// weight-quant plus native MTP. The KV-cache kernels (qjl/polarquant/
 		// turbo3_tcq) are head_dim=128-coupled and OPTIONAL for Gemma's stock
 		// q8_0 KV path.
 		for (const tier of ELIZA_1_TIERS) {
-			expect(REQUIRED_KERNELS_BY_TIER[tier]).toEqual(["turboquant_q4"]);
+			expect(REQUIRED_KERNELS_BY_TIER[tier]).toEqual(["turboquant_q4", "mtp"]);
 			expect(REQUIRED_KERNELS_BY_TIER[tier]).not.toContain("turbo3_tcq");
 		}
 	});
@@ -203,6 +203,7 @@ describe("validateManifest — valid input", () => {
 		expect([...REQUIRED_KERNELS_BY_TIER["2b"]] as string[]).not.toContain(
 			"specDecode",
 		);
+		expect([...REQUIRED_KERNELS_BY_TIER["2b"]] as string[]).toContain("mtp");
 		expect(result.ok).toBe(true);
 		if (result.ok) {
 			expect(result.manifest.kernels.specDecode?.capability).toBe(
@@ -364,13 +365,14 @@ describe("validateManifest — schema-level rejections", () => {
 describe("validateManifest — contract rejections", () => {
 	it("rejects a manifest missing a required kernel for its tier", () => {
 		const m = baseManifest("9b");
-		// Gemma required set is turboquant_q4; drop it (leaving only optional
-		// KV kernels) to trip the missing-required-kernel check.
+		// Gemma required set is turboquant_q4 + mtp; drop both (leaving only
+		// optional KV kernels) to trip the missing-required-kernel check.
 		m.kernels.required = ["qjl", "polarquant"];
 		const result = validateManifest(m);
 		expect(result.ok).toBe(false);
 		if (!result.ok) {
 			expect(result.errors.some((e) => e.includes("turboquant_q4"))).toBe(true);
+			expect(result.errors.some((e) => e.includes("mtp"))).toBe(true);
 		}
 	});
 

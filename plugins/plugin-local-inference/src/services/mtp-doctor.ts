@@ -30,6 +30,9 @@ export async function runMtpDoctor(): Promise<MtpDoctorReport> {
 	const mtpCatalogEntries = MODEL_CATALOG.filter(
 		(entry) => entry.runtime?.mtp !== undefined,
 	);
+	const hostedMtpTierCount: number = ELIZA_1_HOSTED_MTP_TIER_IDS.length;
+	const mtpTierCount: number = ELIZA_1_MTP_TIER_IDS.length;
+	const allMtpDraftersHosted = hostedMtpTierCount === mtpTierCount;
 
 	checks.push({
 		label: "catalog metadata",
@@ -42,6 +45,14 @@ export async function runMtpDoctor(): Promise<MtpDoctorReport> {
 			mtpCatalogEntries.length > 0
 				? undefined
 				: "publish Gemma drafter GGUFs at bundles/<tier>/mtp/drafter-<tier>.gguf before enabling runtime MTP",
+	});
+	checks.push({
+		label: "Gemma MTP drafter coverage",
+		status: allMtpDraftersHosted ? "pass" : "fail",
+		detail: `${hostedMtpTierCount}/${mtpTierCount} Eliza-1 tiers host drafter GGUFs (${ELIZA_1_HOSTED_MTP_TIER_IDS.join(", ") || "none"})`,
+		fix: allMtpDraftersHosted
+			? undefined
+			: "publish and manifest mtp/drafter-<tier>.gguf for every remaining Eliza-1 tier before claiming full Stage 6 MTP coverage",
 	});
 
 	try {

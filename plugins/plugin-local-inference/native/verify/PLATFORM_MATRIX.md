@@ -13,6 +13,27 @@
 
 ## Verify status as of 2026-05-12 (post multi-agent wave)
 
+### 2026-07-04 Stage 6 contract update — Gemma runtime path
+
+The 8/8 QJL / PolarQuant / `turbo3_tcq` fixture gates remain valuable
+regression coverage for legacy head_dim=128 KV-cache routes and shared FFI
+symbols, but they are **not** evidence that the shipped Gemma 4 product graph
+runs those KV kernels. The Gemma path is now represented separately in the
+machine-readable contract (`kernel-contract.json` `gemmaRuntimeDispatch`) and
+in code by
+`plugins/plugin-local-inference/src/services/active-model.ts::assertGemmaRuntimeDispatchContract`:
+managed Eliza-1 bundles must resolve to `turboquant_q4` in the manifest,
+flash-attention on, stock KV (`q8_0` / f16 headroom upgrade), and drafter-backed
+`draft-mtp` whenever the manifest/catalog claims MTP.
+
+Current MTP artifact coverage is partial: `eliza-1-2b` and `eliza-1-4b` host
+`mtp/drafter-<tier>.gguf`; `9b`, `27b`, and `27b-256k` still need hosted
+Gemma drafter GGUFs plus non-zero acceptance evidence. `runMtpDoctor()` now
+fails the "Gemma MTP drafter coverage" check until all five tiers are hosted.
+Android Adreno/Mali, iOS weight-backed, native Windows, ROCm, linux-aarch64,
+and LiteRT NPU rows remain real-device blockers until recordable JSON evidence
+with `passRecordable: true` is produced on those targets.
+
 Re-ran the full integration verify matrix on this box (Intel Arrow Lake CPU +
 Intel ARL/ANV Vulkan + RTX 5080 / sm_120 CUDA, with a full-corpus SFT job
 holding ~12 GB VRAM concurrently — no OOM contention on the short verify runs):

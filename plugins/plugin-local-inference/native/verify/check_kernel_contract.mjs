@@ -467,11 +467,10 @@ if (!listEq(sortedUnique(mappedRuntimeKeys), sortedUnique(contract.requiredRunti
 }
 
 // 2. Build-script capability gate must stay aligned with the inference contract.
-const requiredMarker = "function requiredKernelsMissing";
 const requiredCapabilityKeys = extractStringArrayAfter(
-  buildScript.slice(buildScript.indexOf(requiredMarker)),
-  "const required",
-  "requiredKernelsMissing required",
+  buildScript,
+  "const REQUIRED_KERNELS",
+  "REQUIRED_KERNELS",
 );
 if (
   !listEq(

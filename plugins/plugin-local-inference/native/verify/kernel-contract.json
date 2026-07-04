@@ -56,6 +56,17 @@
       "windows": "verify/windows_runner.ps1 -Report <path>"
     }
   },
+  "gemmaRuntimeDispatch": {
+    "status": "code-gated-pending-hardware",
+    "requiredPath": [
+      "turboquant_q4_manifest",
+      "flash_attention_head_dim_512",
+      "stock_kv_q8_0_or_f16",
+      "draft_mtp"
+    ],
+    "assertion": "plugins/plugin-local-inference/src/services/active-model.ts assertGemmaRuntimeDispatchContract refuses managed Gemma bundles that omit turboquant_q4/mtp, disable flash attention, select legacy head_dim=128 KV cache types, or claim MTP without drafter-backed load args.",
+    "legacyKvScope": "QJL, PolarQuant, and turbo3_tcq 8/8 fixture/runtime gates remain valid only for legacy/non-Gemma KV-cache routes and shared FFI symbols. They do not prove the shipped Gemma decode graph, which uses stock KV plus Gemma flash attention."
+  },
   "runtimeSmoke": {
     "vulkanBuiltForkGraph": {
       "makeTarget": "vulkan-dispatch-smoke",
@@ -338,6 +349,8 @@
         "turbo3_tcq"
       ],
       "requiredWhen": "ctx > 65536",
+      "runtimeRouteScope": "legacy-tier-only",
+      "gemma4Status": "not-routed; Gemma uses stock KV with flash attention, not the head_dim=128 TCQ KV-cache path",
       "fixtures": [
         {
           "path": "verify/fixtures/turbo3_tcq.json",
@@ -386,6 +399,8 @@
       "runtimeCapabilityKeys": [
         "qjl_full"
       ],
+      "runtimeRouteScope": "legacy-tier-only",
+      "gemma4Status": "not-routed; Gemma uses stock KV with flash attention, not the head_dim=128 QJL K-cache path",
       "fixtures": [
         {
           "path": "verify/fixtures/qjl.json",
@@ -434,6 +449,8 @@
       "runtimeCapabilityKeys": [
         "polarquant"
       ],
+      "runtimeRouteScope": "legacy-tier-only",
+      "gemma4Status": "not-routed; Gemma uses stock KV with flash attention, not the head_dim=128 PolarQuant V-cache path",
       "fixtures": [
         {
           "path": "verify/fixtures/polar.json",

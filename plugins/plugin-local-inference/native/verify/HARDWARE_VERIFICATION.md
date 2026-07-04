@@ -12,6 +12,15 @@ The required distinction:
   a real GGUF model, then grep the backend log. That is the minimum acceptable
   runtime graph-dispatch smoke until a deeper per-op profiler is wired.
 
+Stage 6 Gemma caveat (2026-07-04): the cache-family graph smokes below are
+legacy KV-cache route evidence. Shipped Gemma 4 tiers do **not** route QJL,
+PolarQuant, or `turbo3_tcq` KV at runtime; they use stock KV plus Gemma
+flash-attention and drafter-backed MTP. The enforceable local gate for that
+path is `assertGemmaRuntimeDispatchContract` in
+`plugins/plugin-local-inference/src/services/active-model.ts`; real device
+evidence must still include a Gemma bundle load log showing flash-attention,
+stock KV, `--spec-type draft-mtp`, and non-zero MTP acceptance.
+
 ## Shared graph-smoke contract
 
 All GPU runners require a small GGUF model:

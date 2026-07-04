@@ -466,6 +466,11 @@ function applyCatalogDefaults(
 	if (runtime?.optimizations?.mlock !== undefined && args.mlock === undefined) {
 		args.mlock = runtime.optimizations.mlock;
 	}
+
+	if (isEliza1GemmaCatalogEntry(installed, catalog)) {
+		args.cacheTypeK ??= "q8_0";
+		args.cacheTypeV ??= "q8_0";
+	}
 }
 
 function installedWeightMb(
@@ -603,6 +608,63 @@ function resolveMtpDrafterPath(
 	return candidate;
 }
 
+function expectedMtpDrafterPath(
+	installed: InstalledModel,
+	catalog: CatalogModel | undefined,
+	manifest: Eliza1Manifest | null,
+): string | undefined {
+	const manifestPath = manifest?.files?.mtp?.[0]?.path;
+	const catalogFile =
+		catalog?.runtime?.mtp?.drafterFile ??
+		catalog?.sourceModel?.components?.mtp?.file;
+	const expected = manifestPath ?? catalogFile;
+	if (!expected) return undefined;
+	const local = stripBundlePrefix(expected, installed.id);
+	return installed.bundleRoot ? pathJoin(installed.bundleRoot, local) : local;
+}
+
+function isEliza1GemmaCatalogEntry(
+	installed: InstalledModel,
+	catalog: CatalogModel | undefined,
+): boolean {
+	return (
+		installed.id.startsWith("eliza-1-") && catalog?.tokenizerFamily === "gemma4"
+	);
+}
+
+function shouldRequireMtpDrafterOnDisk(
+	installed: InstalledModel,
+	catalog: CatalogModel | undefined,
+	manifest: Eliza1Manifest | null,
+): boolean {
+	return Boolean(
+		manifest?.files?.mtp?.length ||
+			(catalog?.runtime?.mtp?.drafterFile &&
+				installed.source === "eliza-download" &&
+				installed.bundleRoot),
+	);
+}
+
+/**
+ * Refusal raised when a managed Eliza-1 bundle advertises separate-drafter MTP
+ * but the drafter GGUF is absent from disk. Hosted Gemma tiers must not degrade
+ * from `--spec-type draft-mtp` into plain greedy decode; external single-file
+ * scans remain outside this bundle contract.
+ */
+export class MissingMtpDrafterError extends Error {
+	readonly modelId: string;
+	readonly expectedPath: string | undefined;
+
+	constructor(args: { modelId: string; expectedPath: string | undefined }) {
+		super(
+			`Model "${args.modelId}" declares drafter-backed MTP but the drafter GGUF was not found${args.expectedPath ? ` at ${args.expectedPath}` : ""}. Refusing to activate a degraded Gemma path; re-download the complete Eliza-1 bundle.`,
+		);
+		this.name = "MissingMtpDrafterError";
+		this.modelId = args.modelId;
+		this.expectedPath = args.expectedPath;
+	}
+}
+
 /**
  * Strip the `bundles/<tier-slug>/` prefix the catalog uses for HF
  * paths so the remaining string is bundle-root-relative. When the
@@ -656,6 +718,7 @@ export async function resolveLocalInferenceLoadArgs(
 	const catalog = findCatalogModel(installed.id);
 	const runtime = catalog?.runtime;
 	const manifestLoader = options.manifestLoader ?? defaultManifestLoader;
+	const manifest = manifestLoader(installed.id, installed);
 
 	applyCatalogDefaults(
 		args,
@@ -689,17 +752,19 @@ export async function resolveLocalInferenceLoadArgs(
 			? undefined
 			: resolveMtpDrafterPath(installed, catalog, manifestLoader);
 		if (!sameFileMtp && !drafterPath) {
-			// Back-compat with pre-MTP-cutover installs (#11517): bundles
-			// downloaded before the tier's gemma4-assistant drafter was hosted
-			// (and single-file installs with no bundleRoot) have no
-			// `mtp/drafter-<tier>.gguf` on disk. The drafter is a perf-only
-			// speculative-decoding artifact — never brick an installed model
-			// over it. Load without MTP; re-downloading the bundle picks the
-			// drafter up.
+			if (shouldRequireMtpDrafterOnDisk(installed, catalog, manifest)) {
+				throw new MissingMtpDrafterError({
+					modelId: installed.id,
+					expectedPath: expectedMtpDrafterPath(installed, catalog, manifest),
+				});
+			}
+			// Back-compat with external/bare installs that reuse an Eliza-1 id but
+			// are not managed bundles: no bundle root means no manifest contract to
+			// satisfy, so leave MTP unset rather than half-configuring a drafter.
 			console.warn(
 				`[local-inference] ${installed.id} declares a separate-drafter MTP but no drafter GGUF was found${
 					installed.bundleRoot ? ` under ${installed.bundleRoot}` : ""
-				}; loading without speculative decoding. Re-download the model to enable the MTP drafter.`,
+				}; loading external/bare model without speculative decoding. Install the complete Eliza-1 bundle to enable the MTP drafter.`,
 			);
 		} else {
 			args.useGpu = true;
@@ -733,6 +798,11 @@ export async function resolveLocalInferenceLoadArgs(
 
 	if (args.cacheTypeK) args.cacheTypeK = args.cacheTypeK.trim().toLowerCase();
 	if (args.cacheTypeV) args.cacheTypeV = args.cacheTypeV.trim().toLowerCase();
+
+	assertGemmaRuntimeDispatchContract(installed, args, {
+		catalog,
+		manifest,
+	});
 
 	// Validate the final merged args. The route layer is the one
 	// that calls `validateLocalInferenceLoadArgs` with `allowFork: false`
@@ -1040,6 +1110,27 @@ export class MissingRequiredKernelsError extends Error {
 }
 
 /**
+ * Refusal raised when the resolved load arguments for a Gemma-backed Eliza-1
+ * bundle would dispatch a path other than the shipped product graph:
+ * TurboQuant weight-quant from the manifest, flash-attention on Gemma's
+ * 512-dim attention path, stock KV cache, and drafter-backed MTP when the
+ * manifest/catalog declares it.
+ */
+export class GemmaRuntimeDispatchContractError extends Error {
+	readonly modelId: string;
+	readonly failures: ReadonlyArray<string>;
+
+	constructor(args: { modelId: string; failures: ReadonlyArray<string> }) {
+		super(
+			`Model "${args.modelId}" resolved a non-shipping Gemma dispatch path: ${args.failures.join("; ")}`,
+		);
+		this.name = "GemmaRuntimeDispatchContractError";
+		this.modelId = args.modelId;
+		this.failures = args.failures;
+	}
+}
+
+/**
  * Activation kernel gate (native/CLAUDE.md §3#5). When the installed bundle
  * ships a manifest, verify it declares every kernel its tier requires; throw
  * `MissingRequiredKernelsError` otherwise. A bundle with no manifest (bare
@@ -1061,6 +1152,73 @@ export function assertRequiredKernelsPresent(
 		modelId: installed.id,
 		tier: manifest.tier,
 		missing,
+	});
+}
+
+export function assertGemmaRuntimeDispatchContract(
+	installed: InstalledModel,
+	args: LocalInferenceLoadArgs,
+	options: {
+		catalog?: CatalogModel | undefined;
+		manifest?: Eliza1Manifest | null;
+	} = {},
+): void {
+	const catalog = options.catalog ?? findCatalogModel(installed.id);
+	if (!isEliza1GemmaCatalogEntry(installed, catalog)) return;
+
+	const manifest = options.manifest ?? null;
+	const failures: string[] = [];
+	const manifestRequired = new Set(manifest?.kernels.required ?? []);
+	if (manifest) {
+		if (!manifestRequired.has("turboquant_q4")) {
+			failures.push("manifest kernels.required must include turboquant_q4");
+		}
+		if (!manifestRequired.has("mtp")) {
+			failures.push("manifest kernels.required must include mtp");
+		}
+	}
+	if (args.flashAttention !== true) {
+		failures.push("flashAttention=true is required for the Gemma FA path");
+	}
+	for (const field of ["cacheTypeK", "cacheTypeV"] as const) {
+		const value = args[field];
+		if (value && isForkOnlyKvCacheType(value)) {
+			failures.push(
+				`${field}=${value} selects a head_dim=128 legacy KV path; Gemma must use stock KV`,
+			);
+		}
+	}
+
+	const manifestClaimsMtp =
+		manifestRequired.has("mtp") || Boolean(manifest?.files?.mtp?.length);
+	const requiresDrafterBackedMtp =
+		shouldRequireMtpDrafterOnDisk(installed, catalog, manifest) ||
+		manifestClaimsMtp ||
+		Boolean(args.draftModelPath);
+	if (requiresDrafterBackedMtp) {
+		if (!args.draftModelPath) {
+			failures.push("draftModelPath is required for --spec-type draft-mtp");
+		}
+		if (
+			typeof args.draftMin !== "number" ||
+			typeof args.draftMax !== "number" ||
+			args.draftMin <= 0 ||
+			args.draftMax < args.draftMin
+		) {
+			failures.push("draftMin/draftMax must describe a positive MTP window");
+		}
+		if (args.speculativeSamples !== args.draftMax) {
+			failures.push("speculativeSamples must match the MTP draftMax window");
+		}
+		if (args.mobileSpeculative !== true) {
+			failures.push("mobileSpeculative=true is required for MTP dispatch");
+		}
+	}
+
+	if (failures.length === 0) return;
+	throw new GemmaRuntimeDispatchContractError({
+		modelId: installed.id,
+		failures,
 	});
 }
 
@@ -1351,6 +1509,7 @@ export class ActiveModelCoordinator {
 		}
 		const resolved = await resolveLocalInferenceLoadArgs(installed, overrides, {
 			hardware: probe,
+			manifestLoader: opts.manifestLoader,
 		});
 		// WS2: warn one-shot when the tier declares vision but the
 		// per-tier mmproj GGUF isn't on disk yet. The text load still

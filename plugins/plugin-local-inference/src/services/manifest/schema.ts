@@ -58,9 +58,9 @@ export const ELIZA_1_TIERS = ["2b", "4b", "9b", "27b", "27b-256k"] as const;
 export type Eliza1Tier = (typeof ELIZA_1_TIERS)[number];
 
 // Manifest-level kernel capability names. Per AGENTS.md §3:
-// `turboquant_q3`, `turboquant_q4`, `qjl`, `polarquant` are
-// the named optimizations the bundle declares. `turbo3_tcq` is required
-// for any long-context text variant. The C-level llama.cpp kernel handles in
+// `turboquant_q3`, `turboquant_q4`, `qjl`, `polarquant`, and `mtp` are
+// the named optimizations the bundle declares. `turbo3_tcq` is required for
+// legacy long-context text variants. The C-level llama.cpp kernel handles in
 // `../types.ts` are an implementation detail of the runtime; the manifest
 // speaks in terms of the optimization, not the .metal/.comp file.
 //
@@ -74,13 +74,13 @@ export const ELIZA_1_KERNELS = [
 	"turboquant_q4",
 	"qjl",
 	"polarquant",
+	"mtp",
 	"turbo3_tcq",
 ] as const;
 export type Eliza1Kernel = (typeof ELIZA_1_KERNELS)[number];
-export type Eliza1RequiredRuntimeKernel = Exclude<
-	LocalRuntimeKernel,
-	"openvino"
->;
+export type Eliza1RequiredRuntimeKernel =
+	| Exclude<LocalRuntimeKernel, "openvino">
+	| "mtp";
 
 // Manifest-kernel ↔ runtime-kernel bridge.
 //
@@ -94,6 +94,7 @@ export type Eliza1RequiredRuntimeKernel = Exclude<
 //   turboquant_q4  ↔ turbo4       (Q4 KV-cache quant kernel)
 //   qjl            ↔ qjl_full     (QuIP#-JL fused-attention kernel)
 //   polarquant     ↔ polarquant   (same name on both layers)
+//   mtp            ↔ mtp          (native speculative-decode capability)
 //   turbo3_tcq     ↔ turbo3_tcq   (same name on both layers)
 //
 // Every Eliza-1 custom-kernel member is covered (both are total maps over the
@@ -109,6 +110,7 @@ export const ELIZA1_TO_RUNTIME_KERNEL: Readonly<
 	turboquant_q4: "turbo4",
 	qjl: "qjl_full",
 	polarquant: "polarquant",
+	mtp: "mtp",
 	turbo3_tcq: "turbo3_tcq",
 };
 
@@ -119,6 +121,7 @@ export const RUNTIME_TO_ELIZA1_KERNEL: Readonly<
 	turbo4: "turboquant_q4",
 	qjl_full: "qjl",
 	polarquant: "polarquant",
+	mtp: "mtp",
 	turbo3_tcq: "turbo3_tcq",
 };
 
@@ -133,10 +136,13 @@ export type Eliza1Backend = (typeof ELIZA_1_BACKENDS)[number];
 
 // Required-kernel set per tier. Mirrors the active Gemma 4 Eliza-1 release
 // policy:
-// - Every tier requires only the geometry-agnostic GGUF weight-quant
-//   (`turboquant_q4`). Weight quant operates on (out_features, in_features)
-//   matmul tensors and is independent of attention head geometry, so it
-//   applies to Gemma's dense MQA backbone unchanged.
+// - Every tier requires the geometry-agnostic GGUF weight-quant
+//   (`turboquant_q4`) plus native MTP speculative decoding (`mtp`). Weight
+//   quant operates on (out_features, in_features) matmul tensors and is
+//   independent of attention head geometry, so it applies to Gemma's dense
+//   MQA backbone unchanged. MTP is not a KV-cache kernel; it is listed here
+//   because the shipped Gemma path must load a drafter-backed speculative
+//   decode graph rather than silently running plain greedy decode.
 // - The KV-cache kernels (`qjl`, `polarquant`, `turbo3_tcq`, and the
 //   `turbo3`/`turbo4` runtime handles) are 128-element FWHT-group kernels
 //   that are head_dim-coupled. They do NOT match Gemma's MQA geometry
@@ -148,11 +154,11 @@ export type Eliza1Backend = (typeof ELIZA_1_BACKENDS)[number];
 export const REQUIRED_KERNELS_BY_TIER: Readonly<
 	Record<Eliza1Tier, ReadonlyArray<Eliza1Kernel>>
 > = {
-	"2b": ["turboquant_q4"],
-	"4b": ["turboquant_q4"],
-	"9b": ["turboquant_q4"],
-	"27b": ["turboquant_q4"],
-	"27b-256k": ["turboquant_q4"],
+	"2b": ["turboquant_q4", "mtp"],
+	"4b": ["turboquant_q4", "mtp"],
+	"9b": ["turboquant_q4", "mtp"],
+	"27b": ["turboquant_q4", "mtp"],
+	"27b-256k": ["turboquant_q4", "mtp"],
 };
 
 // KV-cache kernels that remain available but are NOT required for any Gemma 4
