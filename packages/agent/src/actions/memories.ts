@@ -1,3 +1,11 @@
+/**
+ * MEMORY action: model-driven create/search/update/delete over the agent's
+ * stored memories. Reads MUST match the scope the FACTS provider uses —
+ * identity-cluster-expanded entity ids — or a fact the provider surfaces
+ * reads back as "0 stored items" here, and deletion becomes unreachable.
+ * All model-supplied ids are parsed before touching the database so a bad
+ * id becomes a clean handled result, never a raw SQL error in model context.
+ */
 import type {
   Action,
   ActionResult,
@@ -6,7 +14,13 @@ import type {
   Memory,
   UUID,
 } from "@elizaos/core";
-import { MemoryType as CoreMemoryType, logger, ModelType } from "@elizaos/core";
+import {
+  MemoryType as CoreMemoryType,
+  getRelatedEntityIds,
+  logger,
+  ModelType,
+  validateUuid,
+} from "@elizaos/core";
 
 const MEMORY_OPS = ["create", "search", "update", "delete"] as const;
 type MemoryOp = (typeof MEMORY_OPS)[number];
@@ -42,6 +56,34 @@ interface MemoryListItem {
 
 function fail(text: string, error: string): ActionResult {
   return { success: false, text, data: { error } };
+}
+
+type UuidParamName = "entityId" | "roomId" | "memoryId";
+
+type ParsedUuidParam =
+  | { ok: true; id: UUID | undefined }
+  | { ok: false; result: ActionResult };
+
+// error-policy:J3 model-supplied ids arrive as free text ("general", partial
+// uuids); parsing before any query keeps drizzle from throwing — and from
+// echoing the failed SQL statement back into model context.
+function parseUuidParam(
+  value: string | undefined,
+  name: UuidParamName,
+): ParsedUuidParam {
+  const trimmed = value?.trim();
+  if (!trimmed) return { ok: true, id: undefined };
+  const id = validateUuid(trimmed);
+  if (!id) {
+    return {
+      ok: false,
+      result: fail(
+        `${name} "${trimmed}" is not a valid UUID. Omit it or use an id from a previous search result.`,
+        "MEMORY_INVALID_UUID",
+      ),
+    };
+  }
+  return { ok: true, id };
 }
 
 function normalizeMemoryOp(params: MemoryParams): MemoryOp | undefined {
@@ -156,25 +198,38 @@ async function doCreate(
   };
 }
 
-async function doSearch(
-  runtime: IAgentRuntime,
-  params: MemoryParams,
-): Promise<ActionResult> {
-  const type =
-    params.type && MEMORY_TYPES.includes(params.type) ? params.type : undefined;
-  const entityId = params.entityId?.trim() as UUID | undefined;
-  const roomId = params.roomId?.trim() as UUID | undefined;
-  const query = params.query?.trim();
-  const limit = clampLimit(params.limit, 50);
+interface MemoryCandidate {
+  memory: Memory;
+  type: MemoryType;
+}
 
-  const tables: readonly MemoryType[] = type ? [type] : MEMORY_TYPES;
-  const perTable = Math.max(limit * 2, 200);
-  const collected: { memory: Memory; type: MemoryType }[] = [];
+/**
+ * Shared read scope for search and delete-by-query. The entity filter is
+ * identity-cluster expanded via getRelatedEntityIds — the same expansion the
+ * FACTS provider applies — so a fact stored under a cluster sibling of the
+ * requested entityId is in scope. A strict-equality filter here made the same
+ * fact the provider had just surfaced report as "0 stored items".
+ */
+async function collectCandidates(
+  runtime: IAgentRuntime,
+  scope: {
+    type?: MemoryType;
+    entityId?: UUID;
+    roomId?: UUID;
+    query?: string;
+    limit: number;
+  },
+): Promise<MemoryCandidate[]> {
+  const tables: readonly MemoryType[] = scope.type
+    ? [scope.type]
+    : MEMORY_TYPES;
+  const perTable = Math.max(scope.limit * 2, 200);
+  const collected: MemoryCandidate[] = [];
 
   for (const tableName of tables) {
     const memories = await runtime.getMemories({
       agentId: runtime.agentId as UUID,
-      roomId,
+      roomId: scope.roomId,
       tableName,
       limit: perTable,
     });
@@ -186,10 +241,17 @@ async function doSearch(
     return typeof text === "string" && text.trim().length > 0;
   });
 
-  if (entityId)
-    filtered = filtered.filter((c) => c.memory.entityId === entityId);
+  if (scope.entityId) {
+    const clusterIds = new Set<string>(
+      await getRelatedEntityIds(runtime, scope.entityId),
+    );
+    filtered = filtered.filter(
+      (c) => c.memory.entityId != null && clusterIds.has(c.memory.entityId),
+    );
+  }
 
-  if (query) {
+  if (scope.query) {
+    const query = scope.query;
     filtered = filtered.filter((c) => {
       const text =
         (c.memory.content as { text?: string } | undefined)?.text ?? "";
@@ -200,6 +262,29 @@ async function doSearch(
   filtered.sort(
     (a, b) => (b.memory.createdAt ?? 0) - (a.memory.createdAt ?? 0),
   );
+  return filtered;
+}
+
+async function doSearch(
+  runtime: IAgentRuntime,
+  params: MemoryParams,
+): Promise<ActionResult> {
+  const type =
+    params.type && MEMORY_TYPES.includes(params.type) ? params.type : undefined;
+  const entityParam = parseUuidParam(params.entityId, "entityId");
+  if (!entityParam.ok) return entityParam.result;
+  const roomParam = parseUuidParam(params.roomId, "roomId");
+  if (!roomParam.ok) return roomParam.result;
+  const query = params.query?.trim();
+  const limit = clampLimit(params.limit, 50);
+
+  const filtered = await collectCandidates(runtime, {
+    type,
+    entityId: entityParam.id,
+    roomId: roomParam.id,
+    query,
+    limit,
+  });
 
   const total = filtered.length;
   const items = filtered
@@ -230,7 +315,9 @@ async function doUpdate(
   runtime: IAgentRuntime,
   params: MemoryParams,
 ): Promise<ActionResult> {
-  const memoryId = params.memoryId?.trim() as UUID | undefined;
+  const memoryParam = parseUuidParam(params.memoryId, "memoryId");
+  if (!memoryParam.ok) return memoryParam.result;
+  const memoryId = memoryParam.id;
   const text = typeof params.text === "string" ? params.text.trim() : "";
   if (!memoryId) return fail("memoryId is required.", "MEMORY_MISSING_ID");
   if (!text) return fail("text is required.", "MEMORY_MISSING_TEXT");
@@ -282,8 +369,13 @@ async function doDelete(
   runtime: IAgentRuntime,
   params: MemoryParams,
 ): Promise<ActionResult> {
-  const memoryId = params.memoryId?.trim() as UUID | undefined;
-  if (!memoryId) return fail("memoryId is required.", "MEMORY_MISSING_ID");
+  const memoryParam = parseUuidParam(params.memoryId, "memoryId");
+  if (!memoryParam.ok) return memoryParam.result;
+  const memoryId = memoryParam.id;
+  const query = params.query?.trim();
+  if (!memoryId && !query) {
+    return fail("memoryId or query is required.", "MEMORY_MISSING_ID");
+  }
   if (params.confirm !== true) {
     return fail(
       "Refusing to delete: pass confirm:true to acknowledge this destructive action.",
@@ -291,17 +383,108 @@ async function doDelete(
     );
   }
 
-  const existing = await runtime.getMemoryById(memoryId);
-  if (!existing) {
-    return fail(`Memory ${memoryId} was not found.`, "MEMORY_NOT_FOUND");
+  if (memoryId) {
+    const existing = await runtime.getMemoryById(memoryId);
+    if (!existing) {
+      return fail(`Memory ${memoryId} was not found.`, "MEMORY_NOT_FOUND");
+    }
+
+    await runtime.deleteMemory(memoryId);
+    return {
+      success: true,
+      text: `Forgot memory ${memoryId}.`,
+      values: { memoryId },
+      data: { actionName: "MEMORY", op: "delete" as const, memoryId },
+    };
   }
 
-  await runtime.deleteMemory(memoryId);
+  if (!query) {
+    return fail("memoryId or query is required.", "MEMORY_MISSING_ID");
+  }
+  return doDeleteByQuery(runtime, params, query);
+}
+
+/**
+ * Delete-by-query: "remove that fact" carries no memoryId, so resolve the
+ * memory through the same cluster-expanded read scope search uses, then
+ * delete. Reflection dedup failures leave several rows with identical text —
+ * one logical fact — so all rows of the single matched text are removed.
+ * A query that strongly matches more than one distinct text is ambiguous:
+ * refuse and list the candidates so the model can delete by exact id.
+ */
+async function doDeleteByQuery(
+  runtime: IAgentRuntime,
+  params: MemoryParams,
+  query: string,
+): Promise<ActionResult> {
+  const type =
+    params.type && MEMORY_TYPES.includes(params.type) ? params.type : undefined;
+  const entityParam = parseUuidParam(params.entityId, "entityId");
+  if (!entityParam.ok) return entityParam.result;
+  const roomParam = parseUuidParam(params.roomId, "roomId");
+  if (!roomParam.ok) return roomParam.result;
+
+  const limit = clampLimit(params.limit, 50);
+  const candidates = await collectCandidates(runtime, {
+    type,
+    entityId: entityParam.id,
+    roomId: roomParam.id,
+    query,
+    limit,
+  });
+
+  // Deletion needs a stronger bar than search ranking: scoreText >= 1 means
+  // the whole phrase matched or every query term matched.
+  const matched = candidates.filter((c) => {
+    const text =
+      (c.memory.content as { text?: string } | undefined)?.text ?? "";
+    return scoreText(text, query) >= 1;
+  });
+
+  if (matched.length === 0) {
+    return fail(`No stored memory matches "${query}".`, "MEMORY_NOT_FOUND");
+  }
+
+  const normalize = (c: MemoryCandidate) =>
+    ((c.memory.content as { text?: string } | undefined)?.text ?? "")
+      .trim()
+      .toLowerCase();
+  const distinctTexts = new Set(matched.map(normalize));
+  if (distinctTexts.size > 1) {
+    const lines = matched
+      .slice(0, 10)
+      .map((c) => toListItem(c.memory, c.type))
+      .map((m) => `- [${m.type}] ${m.id}: ${m.text.slice(0, 120)}`);
+    return {
+      success: false,
+      text: [
+        `Query "${query}" matches ${distinctTexts.size} distinct memories. Delete by memoryId instead:`,
+        ...lines,
+      ].join("\n"),
+      data: { error: "MEMORY_AMBIGUOUS_QUERY" },
+    };
+  }
+
+  const deleted: MemoryListItem[] = [];
+  for (const c of matched) {
+    const id = c.memory.id;
+    if (!id) continue;
+    await runtime.deleteMemory(id);
+    deleted.push(toListItem(c.memory, c.type));
+  }
+
   return {
     success: true,
-    text: `Forgot memory ${memoryId}.`,
-    values: { memoryId },
-    data: { actionName: "MEMORY", op: "delete" as const, memoryId },
+    text: `Forgot ${deleted.length} memory record(s) matching "${query}": ${
+      deleted[0]?.text.slice(0, 120) ?? ""
+    }`,
+    values: { deletedCount: deleted.length },
+    data: {
+      actionName: "MEMORY",
+      op: "delete" as const,
+      query,
+      deleted,
+    },
   };
 }
 
@@ -327,13 +510,15 @@ export const memoryAction: Action = {
     "BROWSE_MEMORIES",
     "FILTER_MEMORIES",
     "FIND_MEMORIES",
+    "LIST_MEMORIES",
+    "SEARCH_MEMORY",
     "REMOVE_MEMORY",
     "MODIFY_MEMORY",
   ],
   description:
-    "Manage agent memory records. op:create stores a new memory; op:search filters by type/entityId/roomId/query; op:update edits text and re-embeds (requires confirm:true); op:delete removes a memory (requires confirm:true).",
+    "Manage agent memory records. op:create stores a new memory; op:search filters by type/entityId/roomId/query; op:update edits text and re-embeds (requires confirm:true); op:delete removes a memory by memoryId or by query text match (requires confirm:true).",
   descriptionCompressed:
-    "manage agent memory create search update delete; update/delete require confirm:true",
+    "manage agent memory create search update delete; delete by memoryId or query; update/delete require confirm:true",
   routingHint:
     "store/search/edit the agent's OWN memory records about the user or conversation -> MEMORY; do NOT use for open-web lookups -> WEB_SEARCH, for reading messages already in a channel -> MESSAGE (action=search), or for the skill catalog -> SKILL",
   validate: async () => true,
@@ -422,7 +607,7 @@ export const memoryAction: Action = {
     {
       name: "query",
       description:
-        "search: case-insensitive text match against memory content.",
+        "search/delete: case-insensitive text match against memory content. delete: resolves the memory to remove when memoryId is unknown.",
       required: false,
       schema: { type: "string" as const },
     },
@@ -434,7 +619,8 @@ export const memoryAction: Action = {
     },
     {
       name: "memoryId",
-      description: "update/delete: id of the memory to mutate.",
+      description:
+        "update/delete: id of the memory to mutate. delete: optional when query is provided.",
       required: false,
       schema: { type: "string" as const },
     },
