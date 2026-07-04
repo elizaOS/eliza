@@ -105,6 +105,9 @@ export async function selectCodingAccount(
   try {
     selection = await bridge.select(agentType, opts);
   } catch {
+    // error-policy:J4 designed degrade — a select fault degrades to
+    // single-account (null); the degraded-vs-benign distinction is surfaced to
+    // operators by diagnoseCodingAccountFallback (#9960), not swallowed here.
     return null;
   }
   if (!selection) return null;
@@ -133,6 +136,9 @@ export function diagnoseCodingAccountFallback(
   try {
     rows = bridge.describe()[agentType.toLowerCase()] ?? [];
   } catch {
+    // error-policy:J4 designed degrade — if the pool cannot be described there
+    // is no healthy/total signal to diagnose, so no false single-account
+    // warning is raised (benign path returns null; see header).
     return null;
   }
   const total = rows.reduce((sum, r) => sum + r.total, 0);

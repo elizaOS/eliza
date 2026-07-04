@@ -59,6 +59,8 @@ async function loadActivityTrackerModule(): Promise<ActivityTrackerModule | null
       "@elizaos/native-activity-tracker"
     )) as ActivityTrackerModule;
   } catch {
+    // error-policy:J4 optional native dependency; when the platform-specific
+    // module is absent the tracker is unavailable (null), a designed degrade.
     return null;
   }
 }

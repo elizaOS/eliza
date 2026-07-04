@@ -64,6 +64,9 @@ function supportedTimeZoneValues(): string[] {
   try {
     return valuesFn("timeZone");
   } catch {
+    // error-policy:J3 runtime-capability probe; an engine that lacks
+    // Intl.supportedValuesOf("timeZone") yields an empty enumeration, and
+    // callers fall back to their own timezone list.
     return [];
   }
 }

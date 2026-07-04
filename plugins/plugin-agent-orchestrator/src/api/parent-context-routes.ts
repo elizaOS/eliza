@@ -81,6 +81,8 @@ function parseSessionId(raw: string): string | null {
   try {
     decoded = decodeURIComponent(raw);
   } catch {
+    // error-policy:J3 untrusted-input sanitizing; a malformed percent-encoding
+    // is an explicit invalid session id (null), rejected by the caller.
     return null;
   }
   if (!decoded || decoded.includes("/") || decoded.includes("..")) {
@@ -423,6 +425,9 @@ export async function handleParentContextRoutes(
     sendJson(res, await withBridgeTimeout(listActiveWorkspaceContext(ctx)));
     return true;
   } catch (error) {
+    // error-policy:J1 route boundary — translate any failure into a structured
+    // HTTP error response (typed BridgeRouteError code, else a 503), never a
+    // success; `return true` means "request handled", not "succeeded".
     if (error instanceof BridgeRouteError) {
       sendBridgeError(res, error.code, error.message, error.status);
       return true;

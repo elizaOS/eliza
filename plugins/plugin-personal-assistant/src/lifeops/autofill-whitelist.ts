@@ -23,6 +23,8 @@ export function extractRegistrableDomain(input: string): string | null {
     try {
       host = new URL(trimmed).hostname;
     } catch {
+      // error-policy:J3 URL parse of untrusted input; an unparseable URL yields
+      // an explicit "no registrable domain" (null).
       return null;
     }
   } else {

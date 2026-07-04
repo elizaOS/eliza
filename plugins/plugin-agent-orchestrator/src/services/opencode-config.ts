@@ -125,6 +125,7 @@ function isCerebrasBaseUrl(value: string | undefined): boolean {
     const hostname = new URL(value).hostname.toLowerCase();
     return hostname === "cerebras.ai" || hostname.endsWith(".cerebras.ai");
   } catch {
+    // error-policy:J3 URL parse; an unparseable base URL is not a Cerebras host.
     return false;
   }
 }

@@ -490,6 +490,8 @@ function readJsonFile(filePath: string): unknown {
   try {
     return JSON.parse(fs.readFileSync(filePath, "utf8"));
   } catch {
+    // error-policy:J3 read+parse of an optional config/credentials file; a
+    // missing or malformed file is an explicit null the callers guard on.
     return null;
   }
 }
@@ -550,6 +552,8 @@ function hasClaudeSubscriptionAuth(): boolean {
     if (!raw) return false;
     return Boolean(extractOauthAccessToken(JSON.parse(raw)));
   } catch {
+    // error-policy:J3 keychain-credential probe; no entry / lookup failure means
+    // no subscription auth is present (false), not a swallowed error.
     return false;
   }
 }
@@ -625,6 +629,8 @@ function hasBinaryOnPath(binaryName: string): boolean {
     });
     return true;
   } catch {
+    // error-policy:J3 binary existence probe (`which`/`where`); a non-zero exit
+    // or missing command means the binary is absent (false).
     return false;
   }
 }

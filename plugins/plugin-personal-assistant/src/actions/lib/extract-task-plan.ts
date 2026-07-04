@@ -602,6 +602,8 @@ export async function extractUnlockModeWithLlm(args: {
           : undefined,
     };
   } catch {
+    // error-policy:J3 extraction from untrusted model output; a model or parse
+    // failure yields an explicit "no unlock plan" (null), never a fabricated one.
     return null;
   }
 }

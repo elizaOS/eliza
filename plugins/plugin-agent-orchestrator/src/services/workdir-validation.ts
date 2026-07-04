@@ -48,6 +48,8 @@ export async function resolveAllowedWorkdir(
   rawWorkdir: string,
 ): Promise<string> {
   const resolved = path.resolve(rawWorkdir);
+  // error-policy:J3 existence probe — a non-resolvable path is an explicit
+  // "absent" (null); the failure is surfaced by the throw immediately below.
   const resolvedReal = await realpath(resolved).catch(() => null);
   if (!resolvedReal) {
     throw new Error("workdir must exist");

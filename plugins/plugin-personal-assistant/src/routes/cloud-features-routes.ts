@@ -110,7 +110,7 @@ interface FetchCloudFeaturesResult {
   readonly error: string | null;
 }
 
-async function fetchCloudFeatures(
+export async function fetchCloudFeatures(
   state: CloudFeaturesRouteState,
 ): Promise<FetchCloudFeaturesResult> {
   const apiKey = resolveProxyApiKey(state);
@@ -139,7 +139,23 @@ async function fetchCloudFeatures(
       error: body || `Cloud features request failed (${upstream.status})`,
     };
   }
-  const payload = await upstream.json().catch(() => null);
+  let payload: unknown;
+  try {
+    payload = await upstream.json();
+  } catch (error) {
+    // A 200 whose body is not valid JSON is an upstream contract violation, not
+    // an empty feature set. Surfacing it as a 502 keeps "sync failed"
+    // distinguishable from "synced, zero features": a silent `[]` here would
+    // report success while skipping every flag the corrupt response omitted
+    // (parent #12182 — "not loaded" must never read as "empty").
+    return {
+      status: 502,
+      rows: [],
+      error: `Cloud features response was not valid JSON (${
+        error instanceof Error ? error.message : String(error)
+      }).`,
+    };
+  }
   return { status: 200, rows: parseCloudFeatures(payload), error: null };
 }
 

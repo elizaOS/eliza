@@ -18,6 +18,8 @@ export function parseJsonObjectResponse<T = Record<string, unknown>>(
     }
     return parsed as T;
   } catch {
+    // error-policy:J3 parse of untrusted model output; unparseable text is an
+    // explicit "no object" (null) the caller handles, never a fake object.
     return null;
   }
 }

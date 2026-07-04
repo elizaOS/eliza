@@ -69,6 +69,9 @@ export function parseAcpMcpServersEnv(
   try {
     parsed = JSON.parse(raw);
   } catch {
+    // error-policy:J3 untrusted-input sanitizing — a malformed opt-in env value
+    // is dropped to the documented empty default (see header), never a fake
+    // config; the common (unset) path already returns [] above.
     return [];
   }
   if (!Array.isArray(parsed)) return [];
@@ -238,6 +241,8 @@ export class NativeAcpClient {
         },
         this.opts.timeoutMs,
         () => {
+          // error-policy:J6 best-effort teardown — cancelling a timed-out
+          // prompt; a cancel that itself fails cannot rescue the turn.
           void this.cancel(sessionId).catch(() => undefined);
         },
       ),
@@ -248,12 +253,17 @@ export class NativeAcpClient {
   }
 
   async cancel(sessionId: string): Promise<void> {
+    // error-policy:J6 best-effort teardown — if the request/cancel round-trip
+    // fails, fall back to a fire-and-forget cancel notification; neither path
+    // can do more than ask a possibly-dead subprocess to stop.
     await this.request("session/cancel", { sessionId }, 5_000).catch(() => {
       void this.notify("session/cancel", { sessionId }).catch(() => undefined);
     });
   }
 
   async closeSession(sessionId: string): Promise<void> {
+    // error-policy:J6 best-effort teardown — closing an ACP session; a failed
+    // close leaves nothing the caller can act on.
     await this.request("session/close", { sessionId }, 5_000).catch(
       () => undefined,
     );

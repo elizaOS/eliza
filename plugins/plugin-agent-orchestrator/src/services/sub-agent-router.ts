@@ -381,6 +381,7 @@ function isLoopbackUrl(url: string): boolean {
     const host = new URL(url).hostname.toLowerCase();
     return host === "localhost" || host === "::1" || host.startsWith("127.");
   } catch {
+    // error-policy:J3 URL parse of untrusted input; unparseable = not loopback.
     return false;
   }
 }
@@ -425,6 +426,7 @@ function isTelemetryReportUrl(url: string): boolean {
       parsed.pathname.startsWith("/report/")
     );
   } catch {
+    // error-policy:J3 URL parse of untrusted input; unparseable = no match.
     return false;
   }
 }
@@ -445,6 +447,7 @@ function filterToReferencedAppRoute(
       const pathname = new URL(url).pathname;
       return [...routePrefixes].some((prefix) => pathname.startsWith(prefix));
     } catch {
+      // error-policy:J3 URL parse of untrusted input; unparseable = no match.
       return false;
     }
   });
@@ -895,6 +898,7 @@ export class SubAgentRouter extends Service {
           });
           this.loopState = state;
           if (decision.kind === "already_terminal") {
+            // error-policy:J6 best-effort teardown of an already-dead session.
             await acp.stopSession(sessionId).catch(() => {});
             return;
           }
@@ -905,12 +909,14 @@ export class SubAgentRouter extends Service {
             );
             if (respawned) {
               this.verifyRetryHandedOffSessions.add(sessionId);
+              // error-policy:J6 best-effort teardown; the respawn is authoritative.
               await acp.stopSession(sessionId).catch(() => {});
               return;
             }
           } else if (decision.kind === "terminal_failure") {
             accountFailoverExhausted = failureKind;
             accountFailoverCount = decision.count;
+            // error-policy:J6 best-effort teardown of the failed session.
             await acp.stopSession(sessionId).catch(() => {});
           }
         }
@@ -936,6 +942,7 @@ export class SubAgentRouter extends Service {
         // Cap exhausted and already reported once for this lineage: stop the
         // dead session and drop silently — the user already got one honest
         // failure (eliza#7967).
+        // error-policy:J6 best-effort teardown of an already-dead session.
         await acp.stopSession(sessionId).catch(() => {});
         return;
       }
@@ -945,6 +952,8 @@ export class SubAgentRouter extends Service {
         // the user is not left with a silent hang. The completion-claim slot is
         // task_complete-only, so an error never routes through it.
         stateLostRespawnCount = decision.count;
+        // error-policy:J6 best-effort teardown; the forced terminal narration
+        // below is the authoritative user-facing outcome.
         await acp.stopSession(sessionId).catch(() => {});
         this.log(
           "warn",
@@ -967,6 +976,7 @@ export class SubAgentRouter extends Service {
         const respawned = await this.respawnStateLost(session);
         if (respawned) {
           this.verifyRetryHandedOffSessions.add(sessionId);
+          // error-policy:J6 best-effort teardown; the respawn is authoritative.
           await acp.stopSession(sessionId).catch(() => {});
           return;
         }
@@ -1883,6 +1893,8 @@ Do not report done until every referenced URL in the final page resolves without
           sessionId,
           `parent-agent bridge: round-trip cap (${this.loopState.roundTripCap}) reached for this session; not running further USE_SKILL parent-agent requests.`,
         )
+        // error-policy:J6 best-effort final notice; the cap is already enforced
+        // by the `return` below, so a failed notice changes nothing.
         .catch(() => undefined);
       return;
     }
@@ -3226,6 +3238,8 @@ async function detectCachedMiss(
   const bustedRes = await safeFetch(busted.toString(), {
     method: "GET",
     signal,
+    // error-policy:J3 existence probe; an unreachable cache-bust URL is an
+    // explicit "unknown" (null), handled by the guard below — not a fake hit.
   }).catch(() => null);
   if (!bustedRes) return null;
   return bustedRes.status >= 200 && bustedRes.status < 300

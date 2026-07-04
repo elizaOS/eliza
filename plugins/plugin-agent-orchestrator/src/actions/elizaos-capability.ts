@@ -75,6 +75,8 @@ async function isExecutable(path: string): Promise<boolean> {
     await access(path, constants.X_OK);
     return true;
   } catch {
+    // error-policy:J3 existence/permission probe; not-executable is exactly the
+    // false result the caller wants, not a swallowed failure.
     return false;
   }
 }

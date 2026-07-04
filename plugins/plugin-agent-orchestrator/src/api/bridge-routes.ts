@@ -144,6 +144,8 @@ function decodeSegment(raw: string): string | null {
   try {
     decoded = decodeURIComponent(raw);
   } catch {
+    // error-policy:J3 untrusted-input sanitizing; a malformed percent-encoding
+    // is an explicit invalid segment (null), rejected by the caller.
     return null;
   }
   if (!decoded || decoded.includes("/") || decoded.includes("..")) return null;

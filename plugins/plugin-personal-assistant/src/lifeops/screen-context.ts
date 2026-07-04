@@ -303,6 +303,8 @@ async function readOcrText(
     const text = await ocr.extractText(frameBytes);
     return normalizeText(text) || null;
   } catch {
+    // error-policy:J4 best-effort OCR degrade; a failed extraction yields "no
+    // text read" (null) and screen context proceeds without OCR, by design.
     return null;
   }
 }

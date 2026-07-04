@@ -500,6 +500,8 @@ function parseRanking(raw: unknown): readonly RawRankingEntry[] {
     try {
       return JSON.parse(slice);
     } catch {
+      // error-policy:J3 parse of untrusted model output; unparseable ranking
+      // text is an explicit null (→ empty ranking), never a fabricated ranking.
       return null;
     }
   })();

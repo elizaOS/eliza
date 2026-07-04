@@ -353,6 +353,9 @@ export function createAgentOrchestratorPlugin(): Plugin {
                   const svc = runtime.getService<AcpService>(
                     AcpService.serviceType,
                   );
+                  // error-policy:J3 session lookup on a deferred flush timer; a
+                  // missing/failed lookup degrades to null and the guard below
+                  // treats it as "terminal", cancelling the flush cleanly.
                   const session = svc
                     ? await svc.getSession(sessionId).catch(() => null)
                     : null;
@@ -1291,6 +1294,8 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
     label: string,
   ): Promise<string> => {
     try {
+      // error-policy:J3 session lookup for a best-effort ack label; an
+      // unavailable session degrades to the passed `label`, never a fake ack.
       const session = await acp.getSession(sessionId).catch(() => null);
       const meta = (session?.metadata ?? {}) as Record<string, unknown>;
       const task =

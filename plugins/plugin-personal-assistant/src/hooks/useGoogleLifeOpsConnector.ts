@@ -506,6 +506,8 @@ function parseRefreshEnvelope(rawValue: string): RefreshEnvelope | null {
   try {
     return readRefreshEnvelope(JSON.parse(rawValue));
   } catch {
+    // error-policy:J3 parse of a stored/untrusted envelope string; a malformed
+    // value is an explicit "no envelope" (null), never a fabricated one.
     return null;
   }
 }

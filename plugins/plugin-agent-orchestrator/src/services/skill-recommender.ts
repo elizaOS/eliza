@@ -384,6 +384,8 @@ function parseLlmScores(raw: string): LlmScoreEntry[] {
   try {
     parsed = JSON.parse(payload);
   } catch {
+    // error-policy:J3 parse of untrusted model output; unparseable text yields
+    // an explicit empty recommendation set, never fabricated recommendations.
     return [];
   }
   if (!Array.isArray(parsed)) return [];

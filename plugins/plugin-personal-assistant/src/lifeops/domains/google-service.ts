@@ -105,6 +105,9 @@ export class GoogleDomain {
     try {
       return getConnectorAccountManager(this.ctx.runtime);
     } catch {
+      // error-policy:J4 designed degrade; when no connector-account manager is
+      // registered the Google domain reports "unavailable" (null), never a fake
+      // manager. Callers render an explicit unavailable connector state.
       return null;
     }
   }
