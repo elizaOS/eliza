@@ -162,7 +162,10 @@ export class ExperienceRelationshipManager {
 				other.outcome !== experience.outcome &&
 				other.domain === experience.domain;
 
-			if (sameActionDifferentOutcome || explicitContradictionIds.has(other.id)) {
+			if (
+				sameActionDifferentOutcome ||
+				explicitContradictionIds.has(other.id)
+			) {
 				contradictions.push(other);
 			}
 		}
