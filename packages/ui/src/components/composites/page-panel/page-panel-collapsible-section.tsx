@@ -1,3 +1,9 @@
+/**
+ * A page-panel section that expands/collapses a body under its header, usable
+ * controlled (`expanded`) or uncontrolled (`defaultExpanded`). Clicks on the
+ * header action slot never toggle the section, and the whole collapsed surface
+ * can act as the expand trigger when `expandOnCollapsedSurfaceClick` is set.
+ */
 import * as React from "react";
 
 import { cn } from "../../../lib/utils";

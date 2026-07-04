@@ -1,3 +1,9 @@
+/**
+ * One conversation row in the chat sidebar: title (truncated with tooltip when
+ * clipped), rename/delete actions, and active-state styling. On touch devices
+ * the row's action menu opens via press-and-hold; click suppression keeps a
+ * completed long-press from also firing the row's select handler.
+ */
 import { MoreHorizontal, PencilLine, X } from "lucide-react";
 import type React from "react";
 import { memo, useCallback, useLayoutEffect, useRef, useState } from "react";

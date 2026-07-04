@@ -1,3 +1,8 @@
+/**
+ * Horizontal strip of pending attachment thumbnails shown above the chat
+ * composer, each with a remove control. Image items render a preview tile;
+ * audio/video/document items render a labelled icon tile.
+ */
 import { FileText, Film, Music } from "lucide-react";
 import type * as React from "react";
 import { Button } from "../../ui/button";

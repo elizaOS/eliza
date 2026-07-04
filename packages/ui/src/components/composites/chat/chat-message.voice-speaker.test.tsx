@@ -1,5 +1,9 @@
 // @vitest-environment jsdom
-
+/**
+ * Renders ChatMessage in jsdom to assert voice-speaker surfacing: the speaker
+ * badge appears only when a distinct speaker name is present, the owner gets a
+ * crown, and assistant messages never show the badge.
+ */
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 

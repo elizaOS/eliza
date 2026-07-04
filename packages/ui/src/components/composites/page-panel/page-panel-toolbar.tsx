@@ -1,3 +1,7 @@
+/**
+ * Wrapping action bar for a page panel — a flex row of controls (filters,
+ * buttons, search) laid out above the panel body.
+ */
 import * as React from "react";
 
 import { cn } from "../../../lib/utils";

@@ -1,3 +1,8 @@
+/**
+ * Modal dialog for renaming a chat conversation, with an optional "suggest a
+ * title" affordance backed by the caller's `onSuggest` handler. The parent
+ * owns the draft value and open state; this component is purely controlled.
+ */
 import { Sparkles } from "lucide-react";
 
 import { Button } from "../../ui/button";

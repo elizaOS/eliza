@@ -1,3 +1,8 @@
+/**
+ * Chat empty-state that offers tappable recommendation chips; tapping a chip
+ * loads its prompt into the composer via {@link useChatPrefill}. Rendered by
+ * the chat surface when a conversation has no messages yet.
+ */
 import type { LucideIcon } from "lucide-react";
 import { useChatPrefill } from "../../../hooks/useChatPrefill";
 import { cn } from "../../../lib/utils";

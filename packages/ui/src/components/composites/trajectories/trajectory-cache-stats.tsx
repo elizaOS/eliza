@@ -1,3 +1,8 @@
+/**
+ * Trajectory-viewer panel listing prompt-cache metrics (hits, tokens saved,
+ * etc.) for one agent run. Presentational: the parent formats and passes the
+ * metric rows; renders an empty-state when none were captured.
+ */
 import type * as React from "react";
 
 import { PagePanel } from "../page-panel";

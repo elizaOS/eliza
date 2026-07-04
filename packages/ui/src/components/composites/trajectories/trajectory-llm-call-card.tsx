@@ -1,3 +1,8 @@
+/**
+ * Expandable card for one LLM call within a trajectory: model, latency, and
+ * token metrics up top, then the system/input prompts and response rendered as
+ * copyable TrajectoryCodeBlocks. The system prompt collapses independently.
+ */
 import { ChevronDown, ChevronRight } from "lucide-react";
 import * as React from "react";
 

@@ -1,3 +1,8 @@
+/**
+ * Vertical timeline of trajectory events (per stage), each with a status glyph
+ * (queued/running/success/failure/skipped/info), label, and timestamp. The
+ * parent supplies formatted events; this renders the ordered list.
+ */
 import { CheckCircle, Circle, Clock3, XCircle } from "lucide-react";
 import type * as React from "react";
 

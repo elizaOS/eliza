@@ -1,3 +1,10 @@
+/**
+ * Renders the ordered list of chat messages, keying rows by stable message id
+ * and wrapping each in memoized ChatMessage so streaming a token into the last
+ * row re-renders only that row (perf lock in chat-transcript.render-count.test).
+ * Supports carryover (faded prior-turn) messages and proactive suggestion
+ * bubbles with accept/dismiss handlers.
+ */
 import type * as React from "react";
 
 import { memo, useEffect, useMemo, useRef } from "react";

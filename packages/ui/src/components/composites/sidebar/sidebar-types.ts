@@ -1,3 +1,8 @@
+/**
+ * Shared prop and variant types for the sidebar composite parts (root, header,
+ * body, content, panel, rails). Kept separate so components import contracts
+ * without cross-importing each other's modules.
+ */
 import type * as React from "react";
 
 export type SidebarVariant = "default" | "game-modal" | "mobile";

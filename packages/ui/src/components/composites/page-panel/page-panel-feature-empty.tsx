@@ -1,3 +1,8 @@
+/**
+ * Empty-state for a feature page: a lead icon, title, and description over a
+ * list of feature bullets (each with its own icon). Shown when a feature has
+ * no data yet, to preview what it will offer.
+ */
 import type { ComponentType, HTMLAttributes, ReactNode } from "react";
 import { cn } from "../../../lib/utils";
 import { PagePanelRoot } from "./page-panel-root";

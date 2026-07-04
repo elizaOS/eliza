@@ -1,3 +1,8 @@
+/**
+ * Text search input with a leading magnifier and a trailing clear button that
+ * appears once there is a value; can show a loading spinner in place of the
+ * icon. Used for filter fields inside sidebars (e.g. the chat conversation list).
+ */
 import { Search, X } from "lucide-react";
 import * as React from "react";
 import { cn } from "../../../lib/utils";
