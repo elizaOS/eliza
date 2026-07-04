@@ -3,6 +3,7 @@ export type BrandEnvAliasPair = readonly [brandKey: string, elizaKey: string];
 interface BrandEnvAliasDefinition {
   readonly brandSuffix: string;
   readonly elizaKey: string;
+  readonly syncElizaKey?: string;
   readonly vite?: boolean;
 }
 
@@ -95,7 +96,11 @@ export const BRAND_ENV_ALIAS_DEFINITIONS = [
   },
   { brandSuffix: "DISABLE_EDGE_TTS", elizaKey: "ELIZA_DISABLE_EDGE_TTS" },
   // Ports
-  { brandSuffix: "PORT", elizaKey: "ELIZA_PORT" },
+  {
+    brandSuffix: "PORT",
+    elizaKey: "ELIZA_PORT",
+    syncElizaKey: "ELIZA_UI_PORT",
+  },
   { brandSuffix: "UI_PORT", elizaKey: "ELIZA_UI_PORT" },
   { brandSuffix: "API_PORT", elizaKey: "ELIZA_API_PORT" },
   { brandSuffix: "HOME_PORT", elizaKey: "ELIZA_HOME_PORT" },
@@ -125,5 +130,16 @@ export function buildBrandEnvAliases(prefix: string): BrandEnvAliasPair[] {
         ? `VITE_${normalizedPrefix}_${definition.brandSuffix}`
         : `${normalizedPrefix}_${definition.brandSuffix}`;
     return [brandKey, definition.elizaKey] as const;
+  });
+}
+
+export function buildBrandEnvSyncAliases(prefix: string): BrandEnvAliasPair[] {
+  const normalizedPrefix = normalizeBrandEnvPrefix(prefix);
+  return BRAND_ENV_ALIAS_DEFINITIONS.map((definition) => {
+    const brandKey =
+      "vite" in definition && definition.vite
+        ? `VITE_${normalizedPrefix}_${definition.brandSuffix}`
+        : `${normalizedPrefix}_${definition.brandSuffix}`;
+    return [brandKey, definition.syncElizaKey ?? definition.elizaKey] as const;
   });
 }

@@ -49,7 +49,7 @@ import {
   syncElizaEnvToBrand,
 } from "../config/boot-config.js";
 import {
-  buildBrandEnvAliases,
+  buildBrandEnvSyncAliases,
   normalizeBrandEnvPrefix,
 } from "../config/brand-env-aliases.js";
 
@@ -72,7 +72,7 @@ export interface SyncElizaEnvAliasOptions {
 function buildEnvPairs(
   brandedPrefix: string,
 ): Array<readonly [string, string]> {
-  return buildBrandEnvAliases(brandedPrefix);
+  return buildBrandEnvSyncAliases(brandedPrefix);
 }
 
 /**

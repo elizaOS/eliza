@@ -5,7 +5,10 @@
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { getBootConfig, setBootConfig } from "../config/boot-config.js";
-import { buildBrandEnvAliases } from "../config/brand-env-aliases.js";
+import {
+  buildBrandEnvAliases,
+  buildBrandEnvSyncAliases,
+} from "../config/brand-env-aliases.js";
 import {
   DEFAULT_APP_ROUTE_PLUGIN_MODULES,
   isEnvDisabled,
@@ -228,8 +231,8 @@ describe("syncElizaEnvAliases", () => {
     }
   });
 
-  it("materializes every canonical brand alias target from the shared table", () => {
-    const aliases = buildBrandEnvAliases("BRAND");
+  it("materializes every sync brand alias target from the shared table", () => {
+    const aliases = buildBrandEnvSyncAliases("BRAND");
     const defaultedKeys = [
       "ELIZA_CLOUD_MANAGED_AGENTS_API_SEGMENT",
       "ELIZA_APP_ROUTE_PLUGIN_MODULES",
@@ -252,6 +255,38 @@ describe("syncElizaEnvAliases", () => {
       for (const [from, to] of aliases) {
         expect(process.env[to]).toBe(`${from}-value`);
       }
+    } finally {
+      for (const [key, value] of previous) {
+        if (value === undefined) {
+          delete process.env[key];
+        } else {
+          process.env[key] = value;
+        }
+      }
+    }
+  });
+
+  it("keeps legacy BRAND_PORT sync pointed at the UI port", () => {
+    const runtimeAliases = new Map(buildBrandEnvAliases("BRAND"));
+    const syncAliases = new Map(buildBrandEnvSyncAliases("BRAND"));
+    expect(runtimeAliases.get("BRAND_PORT")).toBe("ELIZA_PORT");
+    expect(syncAliases.get("BRAND_PORT")).toBe("ELIZA_UI_PORT");
+
+    const keys = ["BRAND_PORT", "ELIZA_PORT", "ELIZA_UI_PORT"];
+    const previous = new Map(
+      keys.map((key) => [key, process.env[key]] as const),
+    );
+
+    try {
+      for (const key of keys) {
+        delete process.env[key];
+      }
+      process.env.BRAND_PORT = "4100";
+
+      syncElizaEnvAliases({ brandedPrefix: "BRAND" });
+
+      expect(process.env.ELIZA_UI_PORT).toBe("4100");
+      expect(process.env.ELIZA_PORT).toBeUndefined();
     } finally {
       for (const [key, value] of previous) {
         if (value === undefined) {
