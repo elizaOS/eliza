@@ -50,8 +50,12 @@ export {
 } from "./constants";
 export { isElizaCloudServiceSelectedInConfig } from "./contracts/cloud-topology";
 export {
+	getDirectAccountProviderForFirstRunProvider,
+	getFirstRunProviderOption,
+	getStoredFirstRunProviderId,
 	isCloudInferenceSelectedInConfig,
 	migrateLegacyRuntimeConfig,
+	normalizeFirstRunProviderId,
 	type StylePreset,
 } from "./contracts/first-run-options";
 export {

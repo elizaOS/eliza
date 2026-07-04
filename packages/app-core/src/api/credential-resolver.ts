@@ -23,16 +23,14 @@ import {
   isSubscriptionProvider,
 } from "@elizaos/auth/types";
 import {
-  logger,
-  MODEL_PROVIDER_SECRETS,
-  SECRET_KEY_ALIASES,
-} from "@elizaos/core";
-import {
   getDirectAccountProviderForFirstRunProvider,
   getFirstRunProviderOption,
   getStoredFirstRunProviderId,
+  logger,
+  MODEL_PROVIDER_SECRETS,
   normalizeFirstRunProviderId,
-} from "@elizaos/core/contracts/first-run-options";
+  SECRET_KEY_ALIASES,
+} from "@elizaos/core";
 import { getDefaultAccountPool } from "../account-pool.js";
 
 // ── Credential source registry ───────────────────────────────────────

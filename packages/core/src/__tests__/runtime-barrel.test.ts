@@ -15,6 +15,27 @@ describe("@elizaos/core runtime barrel", () => {
 		}
 	});
 
+	it("re-exports first-run provider helpers consumed as runtime values (#12794)", () => {
+		// dist/contracts/ ships .d.ts only (contracts are not build entrypoints),
+		// so runtime consumers (e.g. app-core's credential-resolver) must import
+		// these VALUES from the barrel; the "@elizaos/core/contracts/*" subpath
+		// resolves to a non-existent .js and breaks `bun run dev` boot.
+		const barrel = readFileSync(resolve(sourceRoot, "index.node.ts"), "utf8");
+		const firstRunExport = barrel.match(
+			/export\s*\{([^}]*)\}\s*from\s*["']\.\/contracts\/first-run-options["']/,
+		);
+
+		expect(firstRunExport).not.toBeNull();
+		for (const name of [
+			"getDirectAccountProviderForFirstRunProvider",
+			"getFirstRunProviderOption",
+			"getStoredFirstRunProviderId",
+			"normalizeFirstRunProviderId",
+		]) {
+			expect(firstRunExport?.[1]).toContain(name);
+		}
+	});
+
 	it("does not ship the filesystem-probing plugin-loader (workspace probing is host/CLI concern)", () => {
 		// The loader that probed sibling packages' unbuilt src/ trees and imported
 		// them by variable specifier is gone; core resolves plugins only through
