@@ -187,7 +187,7 @@ class LifecycleRunner:
             return self._reply_via_bridge(
                 turn=turn, task_id=task_id, scenario_id=scenario_id
             )
-        return _simulate_turn(turn.message)
+        return _simulate_turn(turn)
 
     def _reply_via_bridge(
         self, *, turn: ScenarioTurn, task_id: str, scenario_id: str
@@ -271,7 +271,7 @@ def _is_retryable_bridge_failure(text: str) -> bool:
 # ----------------------------------------------------------------------
 # Deterministic simulator (smoke-test mode only — never scored)
 # ----------------------------------------------------------------------
-def _simulate_turn(message: str) -> TurnRecord:
+def _simulate_turn(turn: ScenarioTurn) -> TurnRecord:
     """Deterministic ideal-orchestrator stand-in for offline smoke tests.
 
     Emits the typed lifecycle events a correct orchestrator would emit for
@@ -279,7 +279,8 @@ def _simulate_turn(message: str) -> TurnRecord:
     vocabulary contract with the evaluator — a simulator (or agent) that
     only *says* things without emitting the events fails evaluation.
     """
-    msg = message.lower()
+    msg = turn.message.lower()
+    expected = set(turn.expected_behaviors)
 
     def record(reply: str, events: list[str]) -> TurnRecord:
         return TurnRecord(
@@ -327,10 +328,13 @@ def _simulate_turn(message: str) -> TurnRecord:
     if any(
         token in msg for token in ("fix", "test", "shell", "code", "implement", "research")
     ):
+        events = ["spawn"]
+        if "report_active_subagent_status" in expected:
+            events.append("status_query")
         return record(
             "I have put a dedicated worker on this and will flag anything "
             "notable as it lands.",
-            ["spawn"],
+            events,
         )
     if "change" in msg or "scope" in msg or "replan" in msg or "re-plan" in msg:
         return record(

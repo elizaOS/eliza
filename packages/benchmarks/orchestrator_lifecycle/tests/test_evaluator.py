@@ -243,6 +243,22 @@ def test_status_report_must_be_grounded_in_registry() -> None:
     )
     assert evaluator.evaluate_scenario(scenario, [grounded]).passed
 
+    delegated_only = TurnRecord(
+        reply_text="I started a worker and will keep you posted.",
+        events=["spawn"],
+    )
+    result = evaluator.evaluate_scenario(scenario, [delegated_only])
+    assert not result.passed
+    assert "missing:report_active_subagent_status@turn0" in result.violations
+
+    shared_only = TurnRecord(
+        reply_text="Here is an artifact from the task.",
+        events=["share"],
+    )
+    result = evaluator.evaluate_scenario(scenario, [shared_only])
+    assert not result.passed
+    assert "missing:report_active_subagent_status@turn0" in result.violations
+
 
 def test_forbidden_behavior_event_is_a_violation() -> None:
     evaluator = LifecycleEvaluator()
@@ -374,6 +390,36 @@ def test_summary_metric_reports_real_rate_never_overall_fallback() -> None:
     metrics = evaluator.compute_metrics([cancel_pass, summary_fail])
     assert metrics.overall_score == 0.5
     assert metrics.completion_summary_quality == 0.0
+
+
+def test_category_metrics_use_scenario_metadata_not_id_substrings() -> None:
+    """`check_in_while_running` is a status scenario even though its ID lacks
+    the word "status"; category metrics must follow the scenario metadata."""
+    evaluator = LifecycleEvaluator()
+    scenario = Scenario(
+        scenario_id="check_in_while_running",
+        title="Check In While Running",
+        category="status",
+        turns=[
+            ScenarioTurn(
+                actor="user",
+                message="How is it going? Give me a status update.",
+                expected_behaviors=["report_active_subagent_status"],
+            )
+        ],
+    )
+    result = evaluator.evaluate_scenario(
+        scenario,
+        [
+            TurnRecord(
+                reply_text="Collection finished, analysis underway.",
+                events=["status_query"],
+            )
+        ],
+    )
+    metrics = evaluator.compute_metrics([result])
+    assert result.category == "status"
+    assert metrics.status_accuracy_rate == 1.0
 
 
 def test_compute_metrics_aggregates_pass_rate() -> None:

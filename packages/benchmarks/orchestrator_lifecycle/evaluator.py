@@ -22,7 +22,7 @@ _WORK_STARTING_EVENTS = frozenset({"spawn", "send"})
 # Events that apply new/changed direction to an in-flight task.
 _SCOPE_APPLY_EVENTS = frozenset({"send", "spawn", "resume"})
 # Events that ground a status report / summary in the real task registry.
-_STATUS_GROUNDING_EVENTS = frozenset({"status_query", "spawn", "share"})
+_STATUS_GROUNDING_EVENTS = frozenset({"status_query"})
 _SUMMARY_GROUNDING_EVENTS = frozenset({"status_query", "share"})
 
 
