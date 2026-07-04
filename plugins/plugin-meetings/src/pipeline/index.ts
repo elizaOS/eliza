@@ -12,6 +12,8 @@ export {
   type AsrBackend,
   type AsrTranscribeOptions,
   type AsrTranscribeResult,
+  findLocalTranscriptionProvider,
+  LocalRuntimeAsrBackend,
   RuntimeModelAsrBackend,
   type RuntimeModelAsrBackendConfig,
 } from "./transcriber";

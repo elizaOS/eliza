@@ -5,7 +5,7 @@
  * real model.
  */
 import type { Buffer } from "node:buffer";
-import type { IAgentRuntime, UUID } from "@elizaos/core";
+import { type IAgentRuntime, ModelType, type UUID } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   MeetingPipelineOptions,
@@ -73,6 +73,73 @@ describe("createMeetingTranscriptionPipeline", () => {
   });
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it("pins default interim ASR to the local provider instead of higher-priority cloud ASR", async () => {
+    const useModel = vi.fn().mockResolvedValue("meter safe meeting notes");
+    const runtime = {
+      getModelRegistrations: vi.fn(() => [
+        {
+          modelType: ModelType.TRANSCRIPTION,
+          provider: "openai",
+          priority: 100,
+          registrationOrder: 1,
+        },
+        {
+          modelType: ModelType.TRANSCRIPTION,
+          provider: "eliza-local-inference",
+          priority: 0,
+          registrationOrder: 2,
+        },
+      ]),
+      useModel,
+    } as unknown as IAgentRuntime;
+    const pipeline = createMeetingTranscriptionPipeline(
+      options({ runtime, language: "en" }),
+    );
+
+    pipeline.pushSpeakerAudio("t0", seconds(2));
+    await tick(2000);
+
+    expect(useModel).toHaveBeenCalledTimes(1);
+    const [modelType, params, provider] = useModel.mock.calls[0] as [
+      string,
+      Record<string, unknown>,
+      string,
+    ];
+    expect(modelType).toBe(ModelType.TRANSCRIPTION);
+    expect(provider).toBe("eliza-local-inference");
+    expect(params.pcm).toBeInstanceOf(Float32Array);
+    expect((params.pcm as Float32Array).length).toBe(2 * SR);
+    expect(params.sampleRateHz).toBe(SR);
+    expect(params.language).toBe("en");
+    expect("audio" in params).toBe(false);
+    expect("audioUrl" in params).toBe(false);
+
+    pipeline.pushSpeakerAudio("t0", seconds(2));
+    await tick(2000);
+    const segments = await pipeline.finalize();
+    expect(segments.map((s) => s.text)).toEqual(["meter safe meeting notes"]);
+  });
+
+  it("fails closed when no local transcription provider is registered", () => {
+    const useModel = vi.fn();
+    const runtime = {
+      getModelRegistrations: vi.fn(() => [
+        {
+          modelType: ModelType.TRANSCRIPTION,
+          provider: "openai",
+          priority: 100,
+          registrationOrder: 1,
+        },
+      ]),
+      useModel,
+    } as unknown as IAgentRuntime;
+
+    expect(() => createMeetingTranscriptionPipeline(options({ runtime }))).toThrow(
+      "Local TRANSCRIPTION provider is required",
+    );
+    expect(useModel).not.toHaveBeenCalled();
   });
 
   it("transcribes a speaker window through the backend with prompt continuity", async () => {
