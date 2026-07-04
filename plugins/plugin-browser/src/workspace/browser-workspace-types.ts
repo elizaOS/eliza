@@ -1,10 +1,14 @@
+/**
+ * Browser workspace command, tab, result, and runtime-state types.
+ *
+ * These contracts are shared by in-process web mode, desktop bridge mode,
+ * Stagehand targets, route handlers, and benchmark executors.
+ */
 import type { JSDOM } from "jsdom";
 
-// "chromium" is emitted only by the real-Chromium benchmark executor
-// (src/benchmark/chromium-executor.ts, #10333) — never by
-// executeBrowserWorkspaceCommand, which stays "cloud" | "desktop" | "web". It
-// lets the benchmark's BrowserWorkspaceCommandResult carry an accurate engine
-// tag without a parallel result type.
+// "chromium" is emitted only by the real-Chromium benchmark executor; command
+// execution stays "cloud" | "desktop" | "web" so benchmark results do not need
+// a parallel result type.
 export type BrowserWorkspaceMode = "chromium" | "cloud" | "desktop" | "web";
 
 export type BrowserWorkspaceTabKind = "internal" | "standard";

@@ -1,3 +1,9 @@
+/**
+ * Browser workspace snapshot-helper tests for export and diff utilities.
+ *
+ * They pin PDF text escaping, snapshot-change detection, and DOM storage/cookie
+ * extraction.
+ */
 import { describe, expect, it } from "vitest";
 import {
   diffBrowserWorkspaceSnapshots,
@@ -6,13 +12,6 @@ import {
   readBrowserWorkspaceStorage,
 } from "./browser-workspace-snapshots.js";
 import type { BrowserWorkspaceSnapshotRecord } from "./browser-workspace-types.js";
-
-/**
- * Browser-workspace snapshot helpers. PDF-text escaping must neutralize the
- * `\ ( )` metacharacters (avoids malformed/injected PDF content streams),
- * snapshot diffing flags any title/url/body change, and storage/cookie parsing
- * must round-trip key/value pairs from the DOM surfaces.
- */
 
 describe("escapeBrowserWorkspacePdfText", () => {
   it("escapes backslash and parentheses", () => {

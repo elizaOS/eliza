@@ -1,3 +1,9 @@
+/**
+ * Browser workspace route tests for connector-account privacy gates.
+ *
+ * They pin account role, status, privacy, and partition requirements before
+ * connector-backed browser sessions can run commands.
+ */
 import {
   getConnectorAccountManager,
   type IAgentRuntime,

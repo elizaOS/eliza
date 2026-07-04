@@ -1,3 +1,9 @@
+/**
+ * Web-mode browser workspace tests for the real command router.
+ *
+ * They drive routed documents through navigation, forms, screenshots, DOM reads,
+ * and structured clicks without replacing the workspace command path.
+ */
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   __resetBrowserWorkspaceStateForTests,

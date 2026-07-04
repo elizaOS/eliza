@@ -1,3 +1,8 @@
+/**
+ * Browser bridge companion bearer-auth tests.
+ *
+ * They cover active tokens, pending rotation tokens, expiry, and revocation.
+ */
 import { describe, expect, it } from "vitest";
 import { authenticateBrowserBridgeCompanionCredential } from "./companion-auth.js";
 

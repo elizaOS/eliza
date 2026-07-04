@@ -1,3 +1,9 @@
+/**
+ * Network routing and request recording for browser workspace tabs.
+ *
+ * It matches synthetic routes, applies workspace headers and credentials, and
+ * captures request metadata for HAR-like inspection.
+ */
 import {
   browserWorkspacePageFetch,
   DEFAULT_TIMEOUT_MS,

@@ -1,3 +1,9 @@
+/**
+ * URL wait-predicate tests for browser navigation workflows.
+ *
+ * They pin substring matching, regex literals, invalid-regex fallback, and
+ * empty-pattern behavior.
+ */
 import { describe, expect, it } from "vitest";
 import { buildWaitForUrlPredicate } from "./wait-for-url-predicate.js";
 

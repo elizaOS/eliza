@@ -1,3 +1,9 @@
+/**
+ * Snapshot and export helpers for browser workspace documents.
+ *
+ * They build synthetic screenshots, minimal PDFs, normalized text snapshots,
+ * and serializable storage/cookie state.
+ */
 import { normalizeBrowserWorkspaceText } from "./browser-workspace-helpers.js";
 import type { BrowserWorkspaceSnapshotRecord } from "./browser-workspace-types.js";
 

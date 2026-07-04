@@ -1,3 +1,9 @@
+/**
+ * In-memory state for web-mode browser workspace tabs.
+ *
+ * It tracks tabs, runtime settings, element refs, clipboard text, traces, and a
+ * lock that serializes mutations across concurrent commands.
+ */
 import type { JSDOM } from "jsdom";
 import type {
   BrowserWorkspaceDomElementSummary,
@@ -28,10 +34,8 @@ export function setBrowserWorkspaceClipboardText(value: string): void {
   browserWorkspaceClipboardText = value;
 }
 
-/**
- * Simple async mutex to serialise mutations to webWorkspaceState.
- * Prevents concurrent requests from corrupting tab state or history.
- */
+// Serializes mutations to webWorkspaceState so concurrent requests do not
+// corrupt tab state or history.
 let webStateLock: Promise<void> = Promise.resolve();
 export function withWebStateLock<T>(fn: () => T | Promise<T>): Promise<T> {
   const next = webStateLock.then(fn, fn);

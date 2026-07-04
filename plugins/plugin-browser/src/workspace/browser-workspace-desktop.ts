@@ -1,3 +1,9 @@
+/**
+ * Desktop bridge client for browser workspace commands.
+ *
+ * It resolves the local bridge configuration, forwards tab requests over HTTP,
+ * and generates in-page scripts for desktop-owned browser tabs.
+ */
 import { createBrowserWorkspaceError } from "./browser-workspace-errors.js";
 import {
   assertBrowserWorkspaceConnectorSecretsNotExported,

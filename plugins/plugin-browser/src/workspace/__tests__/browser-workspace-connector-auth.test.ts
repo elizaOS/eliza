@@ -1,3 +1,9 @@
+/**
+ * Browser workspace connector-session tests for account partition isolation.
+ *
+ * They verify stable partition derivation, session reuse, and secret-export
+ * denial for connector-backed browser tabs.
+ */
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   __resetBrowserWorkspaceStateForTests,

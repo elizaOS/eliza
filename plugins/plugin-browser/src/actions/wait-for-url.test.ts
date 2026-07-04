@@ -1,10 +1,14 @@
+/**
+ * Deterministic wait-for-URL tests for browser navigation workflows.
+ *
+ * The fake clock keeps polling synchronous while covering match, timeout, and
+ * unreadable-current-URL paths.
+ */
 import { describe, expect, it, vi } from "vitest";
 import { waitForUrl } from "./wait-for-url.js";
 
-/**
- * Deterministic fake clock: `now()` advances only when `sleep(ms)` is called,
- * so the poll loop runs synchronously with no real timers.
- */
+// `now()` advances only when `sleep(ms)` is called, so the poll loop runs
+// synchronously with no real timers.
 function fakeClock(start = 0) {
   let current = start;
   return {

@@ -1,3 +1,9 @@
+/**
+ * DOM element selection and inspection helpers for browser workspace commands.
+ *
+ * They build stable selectors, resolve semantic selectors, and summarize
+ * interactive elements for snapshots and agent actions.
+ */
 import type { JSDOM } from "jsdom";
 import {
   buildBrowserWorkspaceCssStringLiteral,

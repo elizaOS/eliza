@@ -1,3 +1,9 @@
+/**
+ * Shared LifeOps browser-session contracts for browser bridge route services.
+ *
+ * The types describe session ownership, companion routing, action progress, and
+ * completion payloads without importing LifeOps internals.
+ */
 import type { BrowserBridgeAction, BrowserBridgeKind } from "./contracts.js";
 
 export type LifeOpsBrowserSessionStatus =

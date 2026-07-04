@@ -1,3 +1,9 @@
+/**
+ * Browser Bridge route tests for companion revocation and request validation.
+ *
+ * They exercise route-level auth and malformed-input handling before service
+ * mutation.
+ */
 import type http from "node:http";
 import type { AgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";

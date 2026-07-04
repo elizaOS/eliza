@@ -1,3 +1,9 @@
+/**
+ * Record factories for browser bridge companion, tab, and page-context data.
+ *
+ * They centralize generated ids and timestamp defaults before records enter
+ * route-service storage.
+ */
 import crypto from "node:crypto";
 import type {
   BrowserBridgeCompanionStatus,

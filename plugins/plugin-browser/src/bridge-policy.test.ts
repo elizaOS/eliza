@@ -1,3 +1,9 @@
+/**
+ * Browser bridge policy tests for pairing-token and domain helpers.
+ *
+ * They pin environment fallback order, expiry generation, and web-only domain
+ * normalization.
+ */
 import { describe, expect, it } from "vitest";
 import {
   browserBridgeDomainFromUrl,

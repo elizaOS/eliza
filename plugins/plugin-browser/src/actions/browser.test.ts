@@ -1,3 +1,9 @@
+/**
+ * BROWSER action tests for command normalization and service dispatch.
+ *
+ * They use an injected browser service to verify aliases, target overrides,
+ * progress callbacks, and error handling without a real browser target.
+ */
 import type { HandlerCallback } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { BROWSER_SERVICE_TYPE } from "../browser-service.js";

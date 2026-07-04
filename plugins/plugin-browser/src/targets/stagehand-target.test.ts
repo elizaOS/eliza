@@ -1,3 +1,9 @@
+/**
+ * Stagehand browser target tests for mobile platform gating.
+ *
+ * They verify the optional Playwright backend stays explicit on mobile and
+ * remains available for desktop routing.
+ */
 import { describe, expect, it } from "vitest";
 import { maybeCreateStagehandTarget } from "./stagehand-target.js";
 

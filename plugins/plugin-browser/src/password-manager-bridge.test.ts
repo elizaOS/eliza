@@ -1,3 +1,8 @@
+/**
+ * Password-manager bridge tests for fixture and explicit-none backends.
+ *
+ * They ensure test mode never writes real clipboard contents.
+ */
 import { afterEach, describe, expect, it } from "vitest";
 import {
   clearPasswordManagerBackendCache,

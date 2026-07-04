@@ -1,3 +1,9 @@
+/**
+ * JSDOM runtime setup for the web-mode browser workspace.
+ *
+ * It locates jsdom in Bun-hoisted installs, installs browser-like APIs, and
+ * wires runtime state into each tab document.
+ */
 import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import * as path from "node:path";

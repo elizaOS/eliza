@@ -1,3 +1,8 @@
+/**
+ * Browser workspace script-policy tests for web and desktop backends.
+ *
+ * They pin the default ban on user scripts and the explicit desktop opt-in.
+ */
 import { describe, expect, it } from "vitest";
 import { createDesktopBrowserWorkspaceCommandScript } from "../browser-workspace-desktop.js";
 import {

@@ -1,3 +1,9 @@
+/**
+ * BROWSER action surface for workspace, bridge, and Stagehand targets.
+ *
+ * It normalizes user-facing subactions, delegates execution through
+ * BrowserService when available, and falls back to the in-process workspace.
+ */
 import type {
   Action,
   ActionExample,

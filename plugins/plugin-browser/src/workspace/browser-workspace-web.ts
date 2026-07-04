@@ -1,3 +1,9 @@
+/**
+ * Web-mode browser workspace command executor for JSDOM-backed tabs.
+ *
+ * It owns tab selection, utility commands, DOM interactions, storage/network
+ * state, and structured alternatives to arbitrary script execution.
+ */
 import * as fsp from "node:fs/promises";
 import * as path from "node:path";
 import {

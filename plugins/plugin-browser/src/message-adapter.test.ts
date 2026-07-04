@@ -1,3 +1,9 @@
+/**
+ * Browser bridge message-adapter tests for triage integration.
+ *
+ * They verify availability without a route service and page-context projection
+ * into the shared message adapter shape.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { BrowserBridgeAdapter } from "./message-adapter.js";

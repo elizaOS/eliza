@@ -1,3 +1,9 @@
+/**
+ * Shared browser workspace helpers for command input, partitions, and errors.
+ *
+ * They normalize user-supplied values, protect connector-backed sessions from
+ * raw secret export, and enforce the user-script execution policy.
+ */
 import * as fsp from "node:fs/promises";
 import * as path from "node:path";
 import { createBrowserWorkspaceError } from "./browser-workspace-errors.js";

@@ -1,3 +1,9 @@
+/**
+ * Global hook registry for browser workspace operations supplied by host shells.
+ *
+ * The runtime plugin calls through this boundary when desktop or app surfaces
+ * own the actual browser tabs.
+ */
 import type {
   BrowserWorkspaceTab,
   EvaluateBrowserWorkspaceTabRequest,

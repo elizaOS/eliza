@@ -1,3 +1,9 @@
+/**
+ * Browser bridge readiness resolver for companion-driven browser control.
+ *
+ * It folds settings, pause windows, companion recency, and permissions into a
+ * route-facing readiness state.
+ */
 import type {
   BrowserBridgeCompanionStatus,
   BrowserBridgePermissionState,

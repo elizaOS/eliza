@@ -1,14 +1,15 @@
+/**
+ * Browser workspace input-helper tests for untrusted command arguments.
+ *
+ * They pin numeric coercion and whitespace normalization used before browser
+ * bridge commands act on user-supplied values.
+ */
 import { describe, expect, it } from "vitest";
 import {
   normalizeBrowserWorkspaceText,
   parseBrowserWorkspaceNumberLike,
 } from "./browser-workspace-helpers";
 
-/**
- * Tests for the browser-workspace input helpers (#10333 / #8801). These coerce
- * untrusted command arguments (numbers, text) the browser bridge acts on, and
- * were untested.
- */
 describe("parseBrowserWorkspaceNumberLike", () => {
   it("passes a finite number through", () => {
     expect(parseBrowserWorkspaceNumberLike(42)).toBe(42);

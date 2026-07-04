@@ -1,3 +1,8 @@
+/**
+ * Web-mode browser workspace security tests for user-script rejection.
+ *
+ * They prove eval and scripted waits fail before JSDOM can run arbitrary code.
+ */
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   __resetBrowserWorkspaceStateForTests,

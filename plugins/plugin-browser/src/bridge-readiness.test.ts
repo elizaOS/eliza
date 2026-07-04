@@ -1,3 +1,8 @@
+/**
+ * Browser bridge readiness tests for settings, permissions, and companion age.
+ *
+ * They keep route-facing state names aligned with the bridge policy helpers.
+ */
 import { describe, expect, it } from "vitest";
 import {
   browserBridgeCompanionIsRecent,

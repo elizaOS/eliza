@@ -1,3 +1,9 @@
+/**
+ * Browser workspace HTTP route tests for tab and command endpoints.
+ *
+ * They cover snapshot reads, malformed payloads, encoded tab ids, desktop
+ * bridge errors, and command routing responses.
+ */
 import * as fsp from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";

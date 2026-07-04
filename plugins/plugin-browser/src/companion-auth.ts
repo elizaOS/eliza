@@ -1,3 +1,9 @@
+/**
+ * Companion pairing-token authentication for Browser Bridge routes.
+ *
+ * It accepts active or pending rotation tokens and returns typed failures for
+ * invalid, expired, or revoked credentials.
+ */
 export type BrowserBridgeCompanionCredentialLike = {
   companion: {
     pairingTokenExpiresAt?: string | null;

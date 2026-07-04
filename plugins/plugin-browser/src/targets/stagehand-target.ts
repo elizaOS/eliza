@@ -1,3 +1,9 @@
+/**
+ * Optional Stagehand target for BrowserService routing.
+ *
+ * It discovers a local or remote Stagehand command endpoint, gates mobile
+ * registration, and normalizes command responses into workspace results.
+ */
 import { execFileSync, execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";

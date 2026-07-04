@@ -1,15 +1,15 @@
+/**
+ * Browser workspace command-normalization tests for aliases and timeouts.
+ *
+ * They pin recursive step normalization so legacy command shapes route to the
+ * intended browser operation.
+ */
 import { describe, expect, it } from "vitest";
 import type { BrowserWorkspaceCommand } from "../actions/browser.ts";
 import { normalizeBrowserWorkspaceCommand } from "./browser-workspace-helpers.ts";
 
-/**
- * `normalizeBrowserWorkspaceCommand` canonicalizes a browser workspace command
- * before it is dispatched (#10333 — shipped untested). It resolves subaction
- * aliases (goto→navigate, read→get) case-insensitively, coalesces the
- * timeout from `timeoutMs` / `ms` / `milliseconds`, and recurses into nested
- * `steps`. A regression here silently routes a command to the wrong browser op
- * or drops a timeout, so each path is pinned.
- */
+// A regression here silently routes a command to the wrong browser operation or
+// drops a timeout, so each path is pinned.
 const cmd = (o: Record<string, unknown>): BrowserWorkspaceCommand =>
   o as unknown as BrowserWorkspaceCommand;
 

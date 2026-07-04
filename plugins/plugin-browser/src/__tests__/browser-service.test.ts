@@ -1,3 +1,9 @@
+/**
+ * Browser target-routing tests for the pluggable browser service.
+ *
+ * They cover priority selection, fallback, pinned-target behavior, and mobile
+ * registration context without launching real browser backends.
+ */
 import { ElizaError } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BrowserService, type BrowserTarget } from "../browser-service.js";

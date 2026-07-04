@@ -1,3 +1,9 @@
+/**
+ * Message adapter that exposes the current browser page to triage workflows.
+ *
+ * It reads page context through the route service and maps it into the shared
+ * MessageRef contract.
+ */
 import {
   BaseMessageAdapter,
   type IAgentRuntime,

@@ -1,3 +1,9 @@
+/**
+ * Browser workspace error tests for typed command failures.
+ *
+ * They pin error classification, idempotent tagging, and helper-created errors
+ * used by HTTP routes and command execution.
+ */
 import { describe, expect, it } from "vitest";
 import {
   type BrowserWorkspaceErrorCode,
@@ -16,7 +22,7 @@ import {
   resolveBrowserWorkspaceCommandElementRefs,
 } from "../browser-workspace-helpers.ts";
 
-/** Capture the Error thrown by a thunk. */
+// Capture the Error thrown by a thunk.
 function thrown(fn: () => unknown): unknown {
   try {
     fn();

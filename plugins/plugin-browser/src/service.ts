@@ -1,3 +1,9 @@
+/**
+ * Route-service contract for Browser Bridge and LifeOps browser sessions.
+ *
+ * Runtime hosts implement this service so plugin routes can manage settings,
+ * companions, page context, packages, and browser-session progress.
+ */
 import type { Service, UUID } from "@elizaos/core";
 import type {
   BrowserBridgeCompanionAutoPairResponse,

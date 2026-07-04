@@ -1,18 +1,15 @@
+/**
+ * Browser workspace selector-parser tests for user-authored selectors.
+ *
+ * They pin quoted values, semantic selector kinds, role names, and clean
+ * failures for unsupported selector forms.
+ */
 import { describe, expect, it } from "vitest";
 import {
   normalizeBrowserWorkspaceSelectorSyntax,
   parseBrowserWorkspaceSemanticSelector,
   trimBrowserWorkspaceQuotedValue,
 } from "./browser-workspace-elements.js";
-
-/**
- * The semantic selector parser turns an LLM-/user-authored selector string
- * (e.g. `role=button[name="Submit"]`, `text=Hello`, `label: Email`) into a
- * structured find command. It must strip quotes / has-text() wrappers, accept
- * both `:` and `=` separators, route each kind to the right findBy, and return
- * null for unknown kinds or selectors with no value (so a bad selector fails
- * cleanly instead of silently matching the wrong element).
- */
 
 describe("trimBrowserWorkspaceQuotedValue", () => {
   it("unwraps single/double quotes and has-text()", () => {

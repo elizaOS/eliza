@@ -1,3 +1,9 @@
+/**
+ * Browser parity-matrix tests for promoted actions and schema values.
+ *
+ * They compare the live plugin action surface with the declared capability
+ * matrix so browser command drift fails in CI.
+ */
 import { listSubactionsFromParameters } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { browserAction } from "../actions/browser.js";

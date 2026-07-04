@@ -1,3 +1,8 @@
+/**
+ * Global hook registry for browser capture operations supplied by host shells.
+ *
+ * The runtime plugin reads these hooks without importing desktop capture code.
+ */
 import type { BrowserCaptureConfig } from "./workspace/browser-capture.js";
 
 export interface BrowserCaptureHooks {

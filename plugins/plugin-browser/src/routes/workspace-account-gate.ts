@@ -1,3 +1,9 @@
+/**
+ * Connector-account policy guard for browser workspace routes and commands.
+ *
+ * It validates account role, status, privacy, and partition ownership before a
+ * connector-backed browser session can expose browser state.
+ */
 import {
   type ConnectorAccount,
   type ConnectorAccountAccessGate,

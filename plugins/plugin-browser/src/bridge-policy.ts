@@ -1,3 +1,9 @@
+/**
+ * Browser bridge policy helpers for companion focus and pairing-token limits.
+ *
+ * These functions stay pure so routes and services can share the same TTL and
+ * domain-normalization behavior.
+ */
 export const MAX_BROWSER_FOCUS_WINDOW_MS = 2 * 60 * 1000;
 export const DEFAULT_BROWSER_COMPANION_PAIRING_TOKEN_TTL_MS =
   30 * 24 * 60 * 60 * 1000;

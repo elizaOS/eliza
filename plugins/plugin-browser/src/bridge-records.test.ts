@@ -1,3 +1,8 @@
+/**
+ * Browser bridge record-factory tests for companion, tab, and page records.
+ *
+ * They pin generated ids, timestamp defaults, and pairing-token defaults.
+ */
 import { describe, expect, it } from "vitest";
 import {
   createBrowserBridgeCompanionStatus,

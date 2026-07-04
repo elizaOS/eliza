@@ -1,3 +1,9 @@
+/**
+ * Web-mode form, control, and activation helpers for browser workspace tabs.
+ *
+ * They mutate JSDOM-backed documents the same command router uses for clicks,
+ * typing, scrolling, navigation, and form submission.
+ */
 import type { JSDOM } from "jsdom";
 import {
   buildBrowserWorkspaceElementSelector,
