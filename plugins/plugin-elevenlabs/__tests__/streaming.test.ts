@@ -224,6 +224,27 @@ describe("plugin-elevenlabs TTS streaming", () => {
     ).rejects.toThrow(/upstream 503/);
   });
 
+  // Malformed provider response: the SDK resolves with no stream. The handler
+  // must throw rather than fabricate an empty audio buffer (issue #12797).
+  it.each([
+    null,
+    undefined,
+  ])("throws on an empty TTS stream body (%s) instead of returning fake audio", async (emptyBody) => {
+    streamMock.mockReset();
+    streamMock.mockResolvedValueOnce(emptyBody);
+
+    const { elevenLabsPlugin } = await import("../src/index.js");
+    const ttsHandler = elevenLabsPlugin.models?.TEXT_TO_SPEECH;
+    const runtime = createTestRuntime();
+
+    await expect(
+      ttsHandler?.(
+        runtime as unknown as Parameters<NonNullable<typeof ttsHandler>>[0],
+        "no stream",
+      ),
+    ).rejects.toThrow("Empty response body from ElevenLabs SDK");
+  });
+
   it.each([
     "",
     " \n\t ",
@@ -477,6 +498,49 @@ describe("plugin-elevenlabs STT transcription", () => {
       "ELEVENLABS_STT_NUM_SPEAKERS must be an integer between 1 and 32",
     );
     expect(convertMock).not.toHaveBeenCalled();
+  });
+
+  // Provider rejection: the SDK throws. The handler must surface the failure to
+  // the caller rather than returning a fabricated/empty transcript (#12797).
+  it("propagates STT SDK errors instead of returning an empty transcript", async () => {
+    convertMock.mockReset();
+    convertMock.mockRejectedValueOnce(new Error("stt upstream 500"));
+
+    const { elevenLabsPlugin } = await import("../src/index.js");
+    const transcriptionHandler = elevenLabsPlugin.models?.TRANSCRIPTION;
+    const runtime = createTestRuntime();
+
+    await expect(
+      transcriptionHandler?.(
+        runtime as unknown as Parameters<
+          NonNullable<typeof transcriptionHandler>
+        >[0],
+        Buffer.from([1, 2, 3]),
+      ),
+    ).rejects.toThrow(/stt upstream 500/);
+  });
+
+  // Malformed provider response: the SDK resolves with no payload. The handler
+  // must throw rather than return an empty-string transcript (#12797).
+  it.each([
+    null,
+    undefined,
+  ])("throws on an empty STT response (%s) instead of returning fake text", async (emptyResponse) => {
+    convertMock.mockReset();
+    convertMock.mockResolvedValueOnce(emptyResponse);
+
+    const { elevenLabsPlugin } = await import("../src/index.js");
+    const transcriptionHandler = elevenLabsPlugin.models?.TRANSCRIPTION;
+    const runtime = createTestRuntime();
+
+    await expect(
+      transcriptionHandler?.(
+        runtime as unknown as Parameters<
+          NonNullable<typeof transcriptionHandler>
+        >[0],
+        Buffer.from([1, 2, 3]),
+      ),
+    ).rejects.toThrow("Empty response from ElevenLabs STT API");
   });
 
   it("supports browser object URL input without a global Buffer", async () => {

@@ -114,6 +114,9 @@ async function requestEmbeddings(
   });
 
   if (!response.ok) {
+    // error-policy:J2 context-adding — the request already failed (non-2xx); a
+    // body that is itself unreadable must not mask the HTTP error we are about to
+    // throw, so fall back to a placeholder for the message only.
     const errorText = await response.text().catch(() => "Unknown error");
     throw new Error(
       `Embedding API error: ${response.status} ${response.statusText} - ${errorText}`

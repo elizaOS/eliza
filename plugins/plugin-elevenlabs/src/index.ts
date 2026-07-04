@@ -121,6 +121,8 @@ function validateAudioUrl(value: unknown): string {
   try {
     parsed = new URL(url);
   } catch {
+    // error-policy:J3 untrusted-input sanitizing — an unparseable caller-supplied
+    // URL is an explicit validation failure, not a swallowed error.
     throw new Error("ElevenLabs transcription audioUrl must be a valid URL");
   }
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
@@ -133,7 +135,11 @@ function validateAudioUrl(value: unknown): string {
  * Voice settings configuration for ElevenLabs API
  */
 interface VoiceSettings {
-  apiKey: string;
+  // `undefined` when no key is configured — never a fabricated "" that would
+  // read as "a key is present". The real API call resolves the key separately
+  // via getElevenLabsClientConfig (which throws when it is required and absent);
+  // this field only drives the inline test suite's presence checks.
+  apiKey: string | undefined;
   voiceId: string;
   model: string;
   stability: string;
@@ -145,7 +151,8 @@ interface VoiceSettings {
 }
 
 interface TranscriptionSettings {
-  apiKey: string;
+  // See VoiceSettings.apiKey — `undefined` when unset, never a fabricated "".
+  apiKey: string | undefined;
   modelId: string;
   languageCode?: string;
   timestampsGranularity: string;
@@ -214,7 +221,7 @@ function getElevenLabsClientConfig(runtime: IAgentRuntime): {
  */
 function getVoiceSettings(runtime: IAgentRuntime): VoiceSettings {
   return {
-    apiKey: getApiKey(runtime) || "",
+    apiKey: getApiKey(runtime),
     voiceId: getSetting(runtime, "ELEVENLABS_VOICE_ID", "EXAVITQu4vr4xnSDxMaL"),
     model: getSetting(runtime, "ELEVENLABS_MODEL_ID", "eleven_monolingual_v1"),
     stability: getSetting(runtime, "ELEVENLABS_VOICE_STABILITY", "0.5"),
@@ -232,7 +239,7 @@ function getVoiceSettings(runtime: IAgentRuntime): VoiceSettings {
     ),
     style: getSetting(runtime, "ELEVENLABS_VOICE_STYLE", "0"),
     speakerBoost: parseBooleanFromText(
-      `${getSetting(runtime, "ELEVENLABS_VOICE_USE_SPEAKER_BOOST", "true") ?? "true"}`,
+      getSetting(runtime, "ELEVENLABS_VOICE_USE_SPEAKER_BOOST", "true"),
     ),
   };
 }
@@ -253,7 +260,7 @@ function getTranscriptionSettings(
   }
 
   return {
-    apiKey: getApiKey(runtime) || "",
+    apiKey: getApiKey(runtime),
     modelId: getSetting(runtime, "ELEVENLABS_STT_MODEL_ID", "scribe_v1"),
     languageCode: languageCode || undefined,
     timestampsGranularity: getSetting(
@@ -262,11 +269,11 @@ function getTranscriptionSettings(
       "word",
     ),
     diarize: parseBooleanFromText(
-      `${getSetting(runtime, "ELEVENLABS_STT_DIARIZE", "false") ?? "false"}`,
+      getSetting(runtime, "ELEVENLABS_STT_DIARIZE", "false"),
     ),
     numSpeakers,
     tagAudioEvents: parseBooleanFromText(
-      `${getSetting(runtime, "ELEVENLABS_STT_TAG_AUDIO_EVENTS", "false") ?? "false"}`,
+      getSetting(runtime, "ELEVENLABS_STT_TAG_AUDIO_EVENTS", "false"),
     ),
   };
 }
@@ -339,32 +346,26 @@ async function fetchSpeech(
     latency: string;
   },
 ): Promise<Uint8Array> {
-  try {
-    const client = new ElevenLabsClient(getElevenLabsClientConfig(runtime));
+  const client = new ElevenLabsClient(getElevenLabsClientConfig(runtime));
 
-    const stream = await client.textToSpeech.stream(params.voiceId, {
-      text: params.text,
-      modelId: params.modelId,
-      outputFormat: parseTtsOutputFormat(params.outputFormat),
-      optimizeStreamingLatency: Number(params.latency) || 0,
-      voiceSettings: {
-        stability: Number(params.stability) || 0,
-        similarityBoost: Number(params.similarity) || 0,
-        style: Number(params.style) || 0,
-        useSpeakerBoost: !!params.speakerBoost,
-      },
-    });
+  const stream = await client.textToSpeech.stream(params.voiceId, {
+    text: params.text,
+    modelId: params.modelId,
+    outputFormat: parseTtsOutputFormat(params.outputFormat),
+    optimizeStreamingLatency: Number(params.latency) || 0,
+    voiceSettings: {
+      stability: Number(params.stability) || 0,
+      similarityBoost: Number(params.similarity) || 0,
+      style: Number(params.style) || 0,
+      useSpeakerBoost: !!params.speakerBoost,
+    },
+  });
 
-    if (!stream) {
-      throw new Error("Empty response body from ElevenLabs SDK");
-    }
-
-    return readStreamToUint8Array(stream);
-  } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : String(error);
-    logger.error(`ElevenLabs fetchSpeech error: ${msg}`);
-    throw error instanceof Error ? error : new Error(msg);
+  if (!stream) {
+    throw new Error("Empty response body from ElevenLabs SDK");
   }
+
+  return readStreamToUint8Array(stream);
 }
 
 async function fetchTranscription(
@@ -379,45 +380,39 @@ async function fetchTranscription(
     tagAudioEvents: boolean;
   },
 ): Promise<string> {
-  try {
-    const client = new ElevenLabsClient(getElevenLabsClientConfig(runtime));
+  const client = new ElevenLabsClient(getElevenLabsClientConfig(runtime));
 
-    const body: BodySpeechToTextV1SpeechToTextPost = {
-      modelId: parseSttModelId(params.modelId),
-      file: params.audioFile,
-    };
+  const body: BodySpeechToTextV1SpeechToTextPost = {
+    modelId: parseSttModelId(params.modelId),
+    file: params.audioFile,
+  };
 
-    if (params.languageCode) {
-      body.languageCode = params.languageCode;
-    }
-
-    body.timestampsGranularity = parseSttTimestampsGranularity(
-      params.timestampsGranularity,
-    );
-
-    if (params.diarize) {
-      body.diarize = true;
-      if (params.numSpeakers !== undefined) {
-        body.numSpeakers = params.numSpeakers;
-      }
-    }
-
-    if (params.tagAudioEvents) {
-      body.tagAudioEvents = true;
-    }
-
-    const response = await client.speechToText.convert(body);
-
-    if (!response) {
-      throw new Error("Empty response from ElevenLabs STT API");
-    }
-
-    return extractTranscript(response);
-  } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : String(error);
-    logger.error(`ElevenLabs fetchTranscription error: ${msg}`);
-    throw error instanceof Error ? error : new Error(msg);
+  if (params.languageCode) {
+    body.languageCode = params.languageCode;
   }
+
+  body.timestampsGranularity = parseSttTimestampsGranularity(
+    params.timestampsGranularity,
+  );
+
+  if (params.diarize) {
+    body.diarize = true;
+    if (params.numSpeakers !== undefined) {
+      body.numSpeakers = params.numSpeakers;
+    }
+  }
+
+  if (params.tagAudioEvents) {
+    body.tagAudioEvents = true;
+  }
+
+  const response = await client.speechToText.convert(body);
+
+  if (!response) {
+    throw new Error("Empty response from ElevenLabs STT API");
+  }
+
+  return extractTranscript(response);
 }
 
 // Note: WAV header utilities removed to ensure browser safety. Prefer mp3 output.
@@ -505,9 +500,13 @@ export const elevenLabsPlugin: Plugin = {
         });
         return stream;
       } catch (error: unknown) {
-        const msg = error instanceof Error ? error.message : String(error);
-        logger.error(`ElevenLabs model error: ${msg}`);
-        throw error instanceof Error ? error : new Error(msg);
+        // error-policy:J1 model-slot boundary — log once at the TTS handler edge,
+        // then rethrow so the runtime planner loop surfaces the failure to the
+        // model. Never returns a fabricated/empty audio buffer.
+        logger.error(
+          `[ElevenLabs] TEXT_TO_SPEECH failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
+        throw error;
       }
     },
     [ModelType.TRANSCRIPTION]: async (
@@ -553,9 +552,13 @@ export const elevenLabsPlugin: Plugin = {
 
         return transcript;
       } catch (error: unknown) {
-        const msg = error instanceof Error ? error.message : String(error);
-        logger.error(`ElevenLabs transcription error: ${msg}`);
-        throw error instanceof Error ? error : new Error(msg);
+        // error-policy:J1 model-slot boundary — log once at the TRANSCRIPTION
+        // handler edge, then rethrow so the runtime planner loop surfaces the
+        // failure to the model. Never returns a fabricated/empty transcript.
+        logger.error(
+          `[ElevenLabs] TRANSCRIPTION failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
+        throw error;
       }
     },
   },
