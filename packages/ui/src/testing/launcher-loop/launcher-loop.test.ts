@@ -135,6 +135,8 @@ async function runLoop(
   });
   await fc.assert(
     fc.asyncProperty(commands, async (cmds) => {
+      const generated = Array.from(cmds);
+      expect(generated).toHaveLength(opts.maxCommands);
       surface.page = "home";
       surface.notificationOpen = false;
       surface.launchCount = 0;
@@ -143,7 +145,7 @@ async function runLoop(
         model: { ...INITIAL_MODEL_STATE },
         real: surface,
       });
-      await fc.asyncModelRun(setup, cmds);
+      await fc.asyncModelRun(setup, generated);
     }),
     { seed: opts.seed, numRuns: opts.numRuns, endOnFailure: true },
   );

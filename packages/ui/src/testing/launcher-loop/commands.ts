@@ -76,13 +76,20 @@ class RailSwipeCommand extends LauncherCommandBase {
       committed: this.committed,
     };
   }
-  check(model: Readonly<LauncherModelState>): boolean {
-    // A committed swipe only makes sense where a transition exists; a rejected
-    // swipe is valid anywhere (it must settle back and change nothing).
-    if (!this.committed) return true;
-    return this.direction === "left" ? canGoNext(model) : canGoPrev(model);
+  check(): boolean {
+    return true;
   }
-  async drive(_model: LauncherModelState, driver: Driver): Promise<void> {
+  async drive(model: LauncherModelState, driver: Driver): Promise<void> {
+    // `fc.commands` precondition skips make a "50 command" loop silently run
+    // fewer actions. Keep every generated command executable; when a committed
+    // swipe has no destination, it is a safe no-op attempt and the invariants
+    // still prove the surface stayed put.
+    if (
+      this.committed &&
+      !(this.direction === "left" ? canGoNext(model) : canGoPrev(model))
+    ) {
+      return;
+    }
     await driver.railSwipe(this.direction, this.committed);
   }
   toString(): string {
@@ -100,10 +107,13 @@ class RailEdgeButtonCommand extends LauncherCommandBase {
   action(): LauncherAction {
     return { kind: "rail-edge-button", direction: this.direction };
   }
-  check(model: Readonly<LauncherModelState>): boolean {
-    return this.direction === "next" ? canGoNext(model) : canGoPrev(model);
+  check(): boolean {
+    return true;
   }
-  async drive(_model: LauncherModelState, driver: Driver): Promise<void> {
+  async drive(model: LauncherModelState, driver: Driver): Promise<void> {
+    if (!(this.direction === "next" ? canGoNext(model) : canGoPrev(model))) {
+      return;
+    }
     await driver.railEdgeButton(this.direction);
   }
   toString(): string {
@@ -121,10 +131,11 @@ class TileTapCommand extends LauncherCommandBase {
   action(): LauncherAction {
     return { kind: "tile-tap", tileId: this.tileId };
   }
-  check(model: Readonly<LauncherModelState>): boolean {
-    return model.page === "launcher";
+  check(): boolean {
+    return true;
   }
-  async drive(_model: LauncherModelState, driver: Driver): Promise<void> {
+  async drive(model: LauncherModelState, driver: Driver): Promise<void> {
+    if (model.page !== "launcher") return;
     await driver.tapTile(this.tileId);
   }
   toString(): string {
@@ -142,10 +153,11 @@ class TileLongPressCommand extends LauncherCommandBase {
   action(): LauncherAction {
     return { kind: "tile-long-press", tileId: this.tileId };
   }
-  check(model: Readonly<LauncherModelState>): boolean {
-    return model.page === "launcher";
+  check(): boolean {
+    return true;
   }
-  async drive(_model: LauncherModelState, driver: Driver): Promise<void> {
+  async drive(model: LauncherModelState, driver: Driver): Promise<void> {
+    if (model.page !== "launcher") return;
     await driver.longPressTile(this.tileId);
   }
   toString(): string {
@@ -163,10 +175,11 @@ class GridScrollCommand extends LauncherCommandBase {
   action(): LauncherAction {
     return { kind: "grid-scroll", dy: this.dy };
   }
-  check(model: Readonly<LauncherModelState>): boolean {
-    return model.page === "launcher";
+  check(): boolean {
+    return true;
   }
-  async drive(_model: LauncherModelState, driver: Driver): Promise<void> {
+  async drive(model: LauncherModelState, driver: Driver): Promise<void> {
+    if (model.page !== "launcher") return;
     await driver.scrollGrid(this.dy);
   }
   toString(): string {
@@ -184,10 +197,11 @@ class WidgetScrollCommand extends LauncherCommandBase {
   action(): LauncherAction {
     return { kind: "vertical-widget-scroll", dy: this.dy };
   }
-  check(model: Readonly<LauncherModelState>): boolean {
-    return model.page === "home";
+  check(): boolean {
+    return true;
   }
-  async drive(_model: LauncherModelState, driver: Driver): Promise<void> {
+  async drive(model: LauncherModelState, driver: Driver): Promise<void> {
+    if (model.page !== "home") return;
     await driver.scrollWidgets(this.dy);
   }
   toString(): string {
@@ -205,10 +219,11 @@ class NotificationPullCommand extends LauncherCommandBase {
   action(): LauncherAction {
     return { kind: "notification-pull", committed: this.committed };
   }
-  check(model: Readonly<LauncherModelState>): boolean {
-    return model.page === "home" && !model.notificationOpen;
+  check(): boolean {
+    return true;
   }
-  async drive(_model: LauncherModelState, driver: Driver): Promise<void> {
+  async drive(model: LauncherModelState, driver: Driver): Promise<void> {
+    if (model.page !== "home" || model.notificationOpen) return;
     await driver.notificationPull(this.committed);
   }
   toString(): string {
@@ -220,10 +235,11 @@ class NotificationDismissCommand extends LauncherCommandBase {
   action(): LauncherAction {
     return { kind: "notification-dismiss" };
   }
-  check(model: Readonly<LauncherModelState>): boolean {
-    return model.notificationOpen;
+  check(): boolean {
+    return true;
   }
-  async drive(_model: LauncherModelState, driver: Driver): Promise<void> {
+  async drive(model: LauncherModelState, driver: Driver): Promise<void> {
+    if (!model.notificationOpen) return;
     await driver.dismissNotification();
   }
   toString(): string {
@@ -352,12 +368,13 @@ export function launcherCommands(
     });
   }
 
-  // `fc.commands` takes an array of command arbitraries; the weighting is folded
-  // into a single `fc.oneof` so the whole alphabet is one weighted draw.
+  // Keep the generated sequence exact-length. `fc.commands({ maxCommands })`
+  // generates "up to" maxCommands, which made a requested 50/500-action loop
+  // silently run much shorter while still reporting the requested count.
   const [first, ...rest] = entries;
-  return fc.commands([fc.oneof(first, ...rest)], {
-    size: "+1",
-    maxCommands: options.maxCommands ?? DEFAULT_MAX_COMMANDS,
+  return fc.array(fc.oneof(first, ...rest), {
+    minLength: options.maxCommands ?? DEFAULT_MAX_COMMANDS,
+    maxLength: options.maxCommands ?? DEFAULT_MAX_COMMANDS,
   });
 }
 
