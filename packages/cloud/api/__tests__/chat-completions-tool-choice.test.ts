@@ -17,8 +17,12 @@ import { describe, expect, test } from "bun:test";
 
 import { __nativeToolingTestHooks } from "../v1/chat/completions/route";
 
-const { mapToolChoice, convertTools, computeEffectiveMaxTokens } =
-  __nativeToolingTestHooks;
+const {
+  mapToolChoice,
+  convertTools,
+  computeEffectiveMaxTokens,
+  toOpenAiFinishReason,
+} = __nativeToolingTestHooks;
 
 // Mirror of MIN_RESPONSE_TOKENS in route.ts. Kept as a literal here so the test
 // fails loudly if the production floor changes without intent.
@@ -180,5 +184,28 @@ describe("computeEffectiveMaxTokens", () => {
         "temperature",
       ]),
     ).toBe(50);
+  });
+});
+
+describe("toOpenAiFinishReason", () => {
+  test("maps AI-SDK finish reasons to valid OpenAI enum values", () => {
+    // The streaming path used to emit these raw — "content-filter" (hyphen),
+    // "error", "unknown" are NOT OpenAI values and break strict clients.
+    expect(toOpenAiFinishReason("content-filter")).toBe("content_filter");
+    expect(toOpenAiFinishReason("tool-calls")).toBe("tool_calls");
+    expect(toOpenAiFinishReason("length")).toBe("length");
+    expect(toOpenAiFinishReason("stop")).toBe("stop");
+  });
+
+  test("collapses unknown / error / undefined reasons to 'stop'", () => {
+    expect(toOpenAiFinishReason("error")).toBe("stop");
+    expect(toOpenAiFinishReason("unknown")).toBe("stop");
+    expect(toOpenAiFinishReason("other")).toBe("stop");
+    expect(toOpenAiFinishReason(undefined)).toBe("stop");
+  });
+
+  test("passes through already-normalized values idempotently", () => {
+    expect(toOpenAiFinishReason("tool_calls")).toBe("tool_calls");
+    expect(toOpenAiFinishReason("content_filter")).toBe("content_filter");
   });
 });

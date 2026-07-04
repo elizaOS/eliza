@@ -2047,8 +2047,7 @@ async function handleStreamingRequest(
             {
               index: 0,
               delta: {},
-              finish_reason:
-                finishReason === "tool-calls" ? "tool_calls" : finishReason,
+              finish_reason: toOpenAiFinishReason(finishReason),
             },
           ],
         };
@@ -2390,10 +2389,37 @@ export default honoRouter;
  * shape conversion helpers without spinning up the Hono router or hitting
  * any model provider.
  */
+/**
+ * Normalize an AI-SDK finish reason to an OpenAI `finish_reason` enum value.
+ * The streaming path previously emitted the raw SDK value verbatim, leaking
+ * non-OpenAI tokens like `content-filter` (hyphen), `error`, and `unknown`
+ * into the wire field — strict OpenAI-compatible clients reject or mishandle
+ * them. The non-streaming path already maps these; this keeps the two paths in
+ * agreement.
+ */
+function toOpenAiFinishReason(
+  raw: string | undefined,
+): "stop" | "length" | "tool_calls" | "content_filter" {
+  switch (raw) {
+    case "tool-calls":
+    case "tool_calls":
+      return "tool_calls";
+    case "length":
+      return "length";
+    case "content-filter":
+    case "content_filter":
+      return "content_filter";
+    // "stop" / "error" / "other" / "unknown" / undefined → the OpenAI default.
+    default:
+      return "stop";
+  }
+}
+
 export const __nativeToolingTestHooks = {
   mapToolChoice,
   convertTools,
   computeEffectiveMaxTokens,
+  toOpenAiFinishReason,
 } as const;
 
 /**
