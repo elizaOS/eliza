@@ -240,3 +240,8 @@ def test_registry_owns_per_tier_grad_clip() -> None:
     assert get("gemma4-e4b").max_grad_norm == 1.0
     assert get("gemma4-12b").max_grad_norm == 0.5
     assert get("gemma4-31b").max_grad_norm == 0.5
+
+
+def test_registry_train_dtype_is_explicit_and_supported() -> None:
+    for key in VERIFIED_KEYS:
+        assert get(key).train_dtype == "bf16"

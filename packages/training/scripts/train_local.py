@@ -257,8 +257,9 @@ def build_dataset(
 _TRACKED_DESTS = (
     "model", "batch_size", "grad_accum", "max_seq_len", "optimizer",
     "apollo_rank", "max_samples", "epochs", "memory_budget_gb",
-    "max_grad_norm",
+    "max_grad_norm", "train_dtype",
 )
+_SUPPORTED_TRAIN_DTYPES = {"bf16"}
 
 _FALLBACK_DEFAULTS: dict[str, Any] = {
     "model": "google/gemma-4-E2B",
@@ -270,6 +271,7 @@ _FALLBACK_DEFAULTS: dict[str, Any] = {
     "max_samples": 0,
     "epochs": 3.0,
     "max_grad_norm": 1.0,
+    "train_dtype": "bf16",
     # memory_budget_gb intentionally stays None — downstream treats None
     # as "no enforcement", matching the original behavior.
 }
@@ -324,6 +326,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Gradient clipping norm forwarded to TRL SFTConfig. Default "
              "None falls back to the registry tier value, or 1.0 when no "
              "registry key is set. Pass 0 to disable HF Trainer clipping."
+    )
+    ap.add_argument(
+        "--train-dtype", default=None,
+        help="Training dtype. Default None falls back to the registry tier "
+             "value, or bf16 when no registry key is set. Only bf16 is "
+             "implemented in this entrypoint; other values fail loud."
     )
     ap.add_argument("--lr", type=float, default=2e-4)
     ap.add_argument(
@@ -452,10 +460,12 @@ def apply_resolved_defaults(args: argparse.Namespace) -> None:
             args.memory_budget_gb = entry.train_mem_gb_budget
         if not user_passed["max_grad_norm"]:
             args.max_grad_norm = entry.max_grad_norm
-        log.info("registry %s → model=%s batch=%d accum=%d seq=%d optimizer=%s budget=%.0fGB max_grad_norm=%.3g",
+        if not user_passed["train_dtype"]:
+            args.train_dtype = entry.train_dtype
+        log.info("registry %s → model=%s batch=%d accum=%d seq=%d optimizer=%s budget=%.0fGB max_grad_norm=%.3g dtype=%s",
                  entry.short_name, args.model, args.batch_size, args.grad_accum,
                  args.max_seq_len, args.optimizer, args.memory_budget_gb or 0,
-                 args.max_grad_norm)
+                 args.max_grad_norm, args.train_dtype)
 
     # --low-vram-smoke overrides applied AFTER the registry merge so the
     # preset wins regardless of which registry key was passed. The numbers
@@ -486,6 +496,14 @@ def apply_resolved_defaults(args: argparse.Namespace) -> None:
     for dest, fallback in _FALLBACK_DEFAULTS.items():
         if getattr(args, dest) is None:
             setattr(args, dest, fallback)
+
+    if args.train_dtype not in _SUPPORTED_TRAIN_DTYPES:
+        raise SystemExit(
+            f"--train-dtype {args.train_dtype!r} is not implemented in "
+            "train_local.py. Supported dtype(s): "
+            + ", ".join(sorted(_SUPPORTED_TRAIN_DTYPES))
+            + ". Update the dtype path before changing the registry."
+        )
 
     if args.low_vram_smoke:
         log.info(
@@ -631,8 +649,9 @@ def main() -> int:
     # to its own GPU before FSDP shards, causing avoidable OOM risk.
     in_distributed = "RANK" in os.environ
     use_device_map = device == "cuda" and not in_distributed
-    # MPS supports bfloat16 on PyTorch 2.x; cpu falls back to float32
-    train_dtype = torch.bfloat16 if device in ("cuda", "mps") else torch.float32
+    # bf16 is the only implemented training dtype; CPU still loads fp32 so the
+    # preflight/test path does not pretend to exercise bf16 kernels.
+    train_dtype = torch.bfloat16 if args.train_dtype == "bf16" and device in ("cuda", "mps") else torch.float32
     model_kwargs = dict(
         torch_dtype=train_dtype,
         trust_remote_code=True,
@@ -783,7 +802,7 @@ def main() -> int:
         lr_scheduler_type="cosine",
         warmup_ratio=0.03,
         weight_decay=0.0,
-        bf16=device == "cuda",
+        bf16=args.train_dtype == "bf16" and device == "cuda",
         logging_steps=10,
         save_steps=500,
         save_total_limit=3,

@@ -20,6 +20,8 @@ Slice covered here:
   quantization, or publish stages.
 - Extends finite-guard tests with tiny local checkpoint shards covering finite
   checkpoints, non-finite tensors, and missing tensor-shard failures.
+- Threads registry-owned `train_dtype` through `train_local.py` and fails loud
+  for unsupported future dtype declarations instead of silently training bf16.
 
 Verification run from repo root:
 
@@ -40,7 +42,7 @@ git diff --check
 python3 -m pytest \
   packages/training/scripts/training/test_model_registry.py \
   packages/training/scripts/test_train_local_low_vram_smoke.py -q
-# 37 passed
+# 40 passed
 
 python3 -m py_compile \
   packages/training/scripts/train_local.py \
