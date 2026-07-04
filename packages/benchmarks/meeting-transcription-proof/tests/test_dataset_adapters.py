@@ -81,3 +81,18 @@ def test_validator_rejects_publishable_mock_or_raw_data_contracts() -> None:
         "adapters[0].score_json.publishable_requires_real_provider must be true",
         "adapters[0].training_eval_separation must be eval-only",
     ]
+
+
+def test_validator_rejects_malformed_nested_sections_without_throwing() -> None:
+    contract = build_adapter_contract()
+    contract["adapters"][0]["license_access"] = "MIT"
+    contract["adapters"][0]["row_selection"] = []
+    contract["adapters"][0]["score_json"] = None
+    contract["adapters"][0]["training_eval_separation"] = "eval-only"
+
+    errors = validate_adapter_contract(contract)
+
+    assert "adapters[0].license_access must be an object" in errors
+    assert "adapters[0].row_selection must be an object" in errors
+    assert "adapters[0].score_json must be an object" in errors
+    assert "adapters[0].training_eval_separation must be an object" in errors

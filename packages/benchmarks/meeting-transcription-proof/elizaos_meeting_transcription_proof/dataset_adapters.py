@@ -188,9 +188,16 @@ def validate_adapter_contract(contract: dict[str, Any]) -> list[str]:
             seen_ids.add(adapter_id)
         if adapter.get("output_schema") != MEETING_ARTIFACT_SCHEMA:
             errors.append(f"adapters[{index}].output_schema must be {MEETING_ARTIFACT_SCHEMA}")
-        if adapter.get("license_access", {}).get("raw_data_policy") != "downloaded-eval":
+        license_access = adapter.get("license_access")
+        if not isinstance(license_access, dict):
+            errors.append(f"adapters[{index}].license_access must be an object")
+            license_access = {}
+        if license_access.get("raw_data_policy") != "downloaded-eval":
             errors.append(f"adapters[{index}].license_access.raw_data_policy must be downloaded-eval")
-        row_selection = adapter.get("row_selection", {})
+        row_selection = adapter.get("row_selection")
+        if not isinstance(row_selection, dict):
+            errors.append(f"adapters[{index}].row_selection must be an object")
+            row_selection = {}
         if row_selection.get("raw_rows_committed") is not False:
             errors.append(f"adapters[{index}].row_selection.raw_rows_committed must be false")
         row_count = row_selection.get("row_count")
@@ -199,14 +206,21 @@ def validate_adapter_contract(contract: dict[str, Any]) -> list[str]:
         required_hashes = adapter.get("required_hashes")
         if not isinstance(required_hashes, list) or "adapter_config_sha256" not in required_hashes:
             errors.append(f"adapters[{index}].required_hashes must include adapter_config_sha256")
-        score_json = adapter.get("score_json", {})
-        metrics = set(score_json.get("metrics", []))
+        score_json = adapter.get("score_json")
+        if not isinstance(score_json, dict):
+            errors.append(f"adapters[{index}].score_json must be an object")
+            score_json = {}
+        metrics_raw = score_json.get("metrics")
+        metrics = set(metrics_raw) if isinstance(metrics_raw, list) else set()
         missing_metrics = REQUIRED_SCORE_METRICS - metrics
         if missing_metrics:
             errors.append(f"adapters[{index}].score_json missing metrics: {sorted(missing_metrics)}")
         if score_json.get("publishable_requires_real_provider") is not True:
             errors.append(f"adapters[{index}].score_json.publishable_requires_real_provider must be true")
-        separation = adapter.get("training_eval_separation", {})
+        separation = adapter.get("training_eval_separation")
+        if not isinstance(separation, dict):
+            errors.append(f"adapters[{index}].training_eval_separation must be an object")
+            separation = {}
         if separation.get("eval_only") is not True or separation.get("training_allowed") is not False:
             errors.append(f"adapters[{index}].training_eval_separation must be eval-only")
     return errors
