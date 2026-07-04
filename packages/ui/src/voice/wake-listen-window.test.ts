@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for the wake listen-window state machine (when the mic should be
+ * open after a wake). Pure functions, no mic.
+ */
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_WAKE_WINDOW_CONFIG,

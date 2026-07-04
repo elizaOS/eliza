@@ -1,3 +1,7 @@
+/**
+ * Global keyboard-shortcut registry: descriptors with stable ids reported to the
+ * agent as SHORTCUT_FIRED, matched against keydown and scoped per surface.
+ */
 export interface ShortcutDescriptor {
   /** Stable kebab-case id reported to the agent as SHORTCUT_FIRED (#8792). */
   id: string;

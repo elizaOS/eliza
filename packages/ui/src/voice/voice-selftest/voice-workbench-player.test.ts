@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for the voice workbench self-test player (local ASR readiness +
+ * transcribe round-trip) against a stubbed client. No real device.
+ */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ElizaClient } from "../../api/client-base";
 import {

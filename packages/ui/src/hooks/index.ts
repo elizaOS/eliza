@@ -1,3 +1,6 @@
+/**
+ * Barrel for the shared hooks surface (@elizaos/ui/hooks).
+ */
 export { BugReportProvider } from "./BugReportProvider";
 export * from "./frame-budget";
 export * from "./useActivityEvents";

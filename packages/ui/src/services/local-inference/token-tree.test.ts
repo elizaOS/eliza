@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for the token-trie builder used by grammar-constrained decode
+ * (terminals, unique continuations, byte estimates). Pure functions, no engine.
+ */
 import { describe, expect, it, vi } from "vitest";
 import {
   buildTokenTreeDescriptor,

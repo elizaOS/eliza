@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for the local-inference model handler registry against a minimal
+ * runtime double. No real engine.
+ */
 import type {
   IAgentRuntime,
   ModelRegisteredEventPayload,

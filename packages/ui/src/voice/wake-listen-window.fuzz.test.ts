@@ -1,3 +1,7 @@
+/**
+ * Fuzz coverage for the wake listen-window: randomized events must keep the
+ * mic-open predicate consistent. Pure, no mic.
+ */
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_WAKE_WINDOW_CONFIG,

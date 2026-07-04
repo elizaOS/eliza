@@ -1,3 +1,7 @@
+/**
+ * Disk-space probing (statfs) and download advice: warns low/critical against a
+ * safety margin so a model download never fills the volume.
+ */
 import { statfsSync } from "node:fs";
 
 const BYTES_PER_GB = 1024 ** 3;

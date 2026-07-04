@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for deriving the home widget's model status (ready/downloading/
+ * loading/not-required) from readiness + download state. Pure function, no engine.
+ */
 import { describe, expect, it } from "vitest";
 
 import { deriveHomeModelStatus } from "./home-model-status";

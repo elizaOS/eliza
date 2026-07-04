@@ -1,3 +1,7 @@
+/**
+ * Barrel for the voice surface (@elizaos/ui/voice): capture, config, ASR/TTS
+ * helpers, and the wake/turn logic.
+ */
 export {
   type AecLoopControl,
   type AecLoopResult,

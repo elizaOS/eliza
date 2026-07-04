@@ -1,3 +1,7 @@
+/**
+ * Derives the home widget's compact model-status kind from local-inference
+ * readiness and slot state.
+ */
 import type {
   LocalInferenceReadiness,
   LocalInferenceSlotReadiness,

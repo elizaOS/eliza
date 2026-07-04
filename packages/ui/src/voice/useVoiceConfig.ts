@@ -1,3 +1,7 @@
+/**
+ * Hook that loads, applies defaults to, and persists the character's voice
+ * config, staying in sync via VOICE_CONFIG_UPDATED_EVENT.
+ */
 import * as React from "react";
 
 import { client } from "../api/client";

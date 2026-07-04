@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for first-run hardware assessment and model fit scoring from a
+ * hardware probe. Pure functions, no device.
+ */
 import { tmpdir } from "node:os";
 import { describe, expect, it } from "vitest";
 import {

@@ -1,3 +1,7 @@
+/**
+ * Resolves the connector send-as account context for a message: which account a
+ * reply is sent as, gated by account usability. Consumed by the composer.
+ */
 import { useCallback, useMemo } from "react";
 import type {
   ConnectorAccountActionResult,

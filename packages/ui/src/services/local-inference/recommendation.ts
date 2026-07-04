@@ -1,3 +1,7 @@
+/**
+ * First-run model recommendation: picks the best-fitting eligible Eliza-1 tier
+ * for the probed hardware and computes catalog download sizes.
+ */
 import {
   DEFAULT_ELIGIBLE_MODEL_IDS,
   type Eliza1TierId,

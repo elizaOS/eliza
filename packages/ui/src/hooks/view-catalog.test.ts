@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for the view-catalog merge/collapse logic (registry entries →
+ * displayable view entries across modalities). Pure functions, no harness.
+ */
 import { describe, expect, it } from "vitest";
 import type { RegistryAppInfo } from "../api";
 import type { ViewRegistryEntry } from "./useAvailableViews";

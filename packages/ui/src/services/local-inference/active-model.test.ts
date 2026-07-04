@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for local-inference load-arg resolution and KV-cache-type
+ * validation (stock vs fork-only). Pure functions over a temp dir, no engine.
+ */
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join as pathJoin } from "node:path";

@@ -1,3 +1,7 @@
+/**
+ * Barrel for the local-inference service: catalog, readiness, assignments,
+ * downloader, and engine surface.
+ */
 export {
   computeGenerationThroughput,
   type GenerationCounters,

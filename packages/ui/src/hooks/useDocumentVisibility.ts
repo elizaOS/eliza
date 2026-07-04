@@ -1,3 +1,7 @@
+/**
+ * Boolean hook tracking document visibility (foreground/background), for pausing
+ * polls and animations when the tab/app is hidden.
+ */
 import { useEffect, useRef, useState } from "react";
 
 export function useDocumentVisibility(): boolean {

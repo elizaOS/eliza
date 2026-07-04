@@ -1,3 +1,7 @@
+/**
+ * Bridges the chat avatar's mouth/speaking animation to voice events, driving
+ * lip-sync from the CHAT_AVATAR_VOICE_EVENT stream.
+ */
 import { useEffect, useRef } from "react";
 import {
   CHAT_AVATAR_VOICE_EVENT,

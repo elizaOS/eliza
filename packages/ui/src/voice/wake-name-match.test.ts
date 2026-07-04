@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for wake-name matching: normalization, Levenshtein tolerance, and
+ * wake-phrase detection. Pure functions, no mic.
+ */
 import { describe, expect, it } from "vitest";
 import {
   isWakePhrase,

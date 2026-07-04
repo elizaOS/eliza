@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for the should-respond decision over a voice turn (real question/
+ * command vs noise). Pure function, no live ASR.
+ */
 import { describe, expect, it } from "vitest";
 
 import { shouldRespondToVoiceTurn } from "./should-respond";

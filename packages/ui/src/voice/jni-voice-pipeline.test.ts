@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for the Android JNI talk-mode voice pipeline against mocked
+ * native plugins. No real device.
+ */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   ElizaVoicePluginLike,

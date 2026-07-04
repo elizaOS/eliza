@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for local-ASR capture helpers: WAV encoding, silence detection,
+ * and audio measurement. Pure functions over PCM buffers, no mic.
+ */
 import { describe, expect, it } from "vitest";
 import {
   createLocalAsrAutoStopDetector,

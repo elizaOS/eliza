@@ -1,3 +1,8 @@
+/**
+ * Horizontal paging gesture for the home↔launcher rail: axis-lock, half-viewport
+ * commit threshold, and velocity-aware settle so a flick commits early and a
+ * slow drag springs back. Tuned for the iOS carousel feel.
+ */
 import * as React from "react";
 import {
   isRealCaptureLoss,

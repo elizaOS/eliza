@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for the model-hub compatibility search shims. Fetch stubbed, no
+ * live hubs.
+ */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   searchHuggingFaceGguf,

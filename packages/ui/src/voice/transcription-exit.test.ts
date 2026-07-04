@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for transcription start/exit phrase detection and stripping.
+ * Pure functions, no live ASR.
+ */
 import { describe, expect, it } from "vitest";
 import {
   isTranscriptionExitPhrase,

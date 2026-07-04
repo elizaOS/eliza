@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for the model catalog: tier ids, eligible defaults, lookup, and
+ * first-run recommendation. Pure data, no downloads.
+ */
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_ELIGIBLE_MODEL_IDS,

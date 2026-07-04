@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for text-generation readiness derivation from active/download/
+ * installed state. Pure function, no engine.
+ */
 import { describe, expect, it } from "vitest";
 import { buildTextGenerationReadiness } from "./readiness";
 import type { ActiveModelState, DownloadJob, InstalledModel } from "./types";

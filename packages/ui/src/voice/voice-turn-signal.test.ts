@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for building the voice-turn signal (complete + addressed →
+ * agent speaks). Pure function, no live ASR.
+ */
 import { describe, expect, it } from "vitest";
 
 import { buildVoiceTurnSignal } from "./voice-turn-signal";
