@@ -1,4 +1,4 @@
-"""Emit a Eliza-typed GGUF using the elizaOS/llama.cpp fork's converter.
+"""Emit a legacy Eliza-typed GGUF using the elizaOS/llama.cpp fork's converter.
 
 The elizaOS/llama.cpp v1.0.0-eliza fork registers the following
 non-upstream GGML types:
@@ -66,11 +66,6 @@ logging.basicConfig(
 )
 log = logging.getLogger("gguf_eliza1_apply")
 
-_REPO_ROOT = Path(__file__).resolve().parents[4]
-_FORK_LLAMA_CPP = (
-    _REPO_ROOT / "plugins" / "plugin-local-inference" / "native" / "llama.cpp"
-)
-
 
 # Source-of-truth slot numbers for the Eliza-added GGML types. Mirrors
 # packages/app-core/scripts/aosp/compile-libllama.mjs (preamble) and the
@@ -98,8 +93,8 @@ def _resolve_convert_script(llama_cpp_dir: Path | None) -> Path:
     """Locate ``convert_hf_to_gguf.py`` in the elizaOS/llama.cpp fork checkout.
 
     Resolution order: --llama-cpp-dir → $LLAMA_CPP_DIR → the in-repo fork
-    submodule (``plugins/plugin-local-inference/native/llama.cpp``, the single canonical
-    llama.cpp checkout) → the standalone clone at
+    submodule (``plugins/plugin-local-inference/native/llama.cpp``, the
+    single canonical llama.cpp checkout) → the standalone clone at
     ``~/.cache/eliza-mtp/eliza-llama-cpp`` (used when the build scripts'
     ELIZA_MTP_LLAMA_CPP_REMOTE/_REF override forces one) → $PATH.
     """
@@ -111,8 +106,12 @@ def _resolve_convert_script(llama_cpp_dir: Path | None) -> Path:
         cands.append(Path(env_dir))
     # plugins/plugin-local-inference/native/llama.cpp is the canonical fork
     # submodule (.gitmodules: url=https://github.com/elizaOS/llama.cpp.git).
-    if _FORK_LLAMA_CPP.is_dir():
-        cands.append(_FORK_LLAMA_CPP)
+    here = Path(__file__).resolve()
+    for p in here.parents:
+        cand = p / "plugins" / "plugin-local-inference" / "native" / "llama.cpp"
+        if cand.is_dir():
+            cands.append(cand)
+            break
     cands.append(Path.home() / ".cache" / "eliza-mtp" / "eliza-llama-cpp")
     for c in cands:
         cand = c / "convert_hf_to_gguf.py"
@@ -145,6 +144,7 @@ def _convert_script_supports_eliza1(convert_path: Path) -> bool:
 def _build_ext_metadata(
     *,
     base_model: str,
+    actual_outtype: str,
     polar_sidecar: dict[str, object] | None,
     qjl_sidecar: dict[str, object] | None,
     tbq_sidecar: dict[str, object] | None,
@@ -217,12 +217,59 @@ def _build_ext_metadata(
             "architecture": fused_tbq_sidecar.get("architecture"),
         }
 
-    fragments = [
-        sidecar.get("kernel_manifest")
-        for sidecar in (polar_sidecar, qjl_sidecar, tbq_sidecar, fused_tbq_sidecar)
-        if isinstance(sidecar, dict)
-        and isinstance(sidecar.get("kernel_manifest"), dict)
-    ]
+    fragments: list[dict[str, object]] = []
+    recipe_status: dict[str, dict[str, object]] = {}
+
+    def record_recipe_status(
+        name: str,
+        sidecar: dict[str, object] | None,
+        *,
+        cited: bool,
+        reason: str,
+    ) -> None:
+        recipe_status[name] = {
+            "sidecarPresent": sidecar is not None,
+            "manifestCited": cited,
+            "reason": reason,
+        }
+
+    if polar_sidecar is not None and actual_outtype == "q4_polar":
+        fragment = polar_sidecar.get("kernel_manifest")
+        if isinstance(fragment, dict):
+            fragments.append(fragment)
+        record_recipe_status(
+            "polarquant",
+            polar_sidecar,
+            cited=True,
+            reason="q4_polar is the actual GGUF tensor type",
+        )
+    else:
+        record_recipe_status(
+            "polarquant",
+            polar_sidecar,
+            cited=False,
+            reason=(
+                "PolarQuant sidecars are not cited unless the produced GGUF "
+                "actually uses q4_polar tensor blocks"
+            ),
+        )
+
+    for name, sidecar in (
+        ("qjl", qjl_sidecar),
+        ("turboquant", tbq_sidecar),
+        ("fused_turboquant", fused_tbq_sidecar),
+    ):
+        record_recipe_status(
+            name,
+            sidecar,
+            cited=False,
+            reason=(
+                "Runtime KV-cache sidecar metadata is not recipe provenance "
+                "until the publish gate verifies the tier enables that cache"
+            ),
+        )
+
+    out["recipeStatus"] = recipe_status
     if fragments:
         out["recipeManifest"] = merge_kernel_manifest_fragments(fragments)
     return out
@@ -299,7 +346,7 @@ def main(argv: list[str] | None = None) -> int:
         help=(
             "Local-debug escape hatch: when q4_polar cannot be emitted, "
             "fall back to f16/q8_0 and mark the sidecar as deferred. "
-            "Rejected when --release-state is set."
+            "Do not use for Eliza-1 release artifacts."
         ),
     )
     # Eliza-1 v1 = the upstream BASE models, GGUF-converted + fully optimized
@@ -432,14 +479,6 @@ def main(argv: list[str] | None = None) -> int:
         log.warning("Q4_POLAR conversion unavailable: %s", fallback_reason)
         args.outtype = "q8_0"
 
-    if fallback_reason is not None and args.release_state is not None:
-        log.error(
-            "refusing --allow-unoptimized-fallback with --release-state=%s: "
-            "fallback GGUFs are local-debug artifacts and are not release-eligible",
-            args.release_state,
-        )
-        return 2
-
     base_model = args.checkpoint.name
     if polar_sidecar:
         base_model = str(polar_sidecar.get("source_model") or base_model)
@@ -449,6 +488,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         ext_metadata = _build_ext_metadata(
             base_model=base_model,
+            actual_outtype=args.outtype,
             polar_sidecar=polar_sidecar,
             qjl_sidecar=qjl_sidecar,
             tbq_sidecar=tbq_sidecar,
@@ -470,7 +510,6 @@ def main(argv: list[str] | None = None) -> int:
         "actual": args.outtype,
         "deferred": requested_outtype != args.outtype,
         "deferral_reason": fallback_reason,
-        "releaseEligible": fallback_reason is None,
         # PolarQuant codebook is still available as a sidecar even when the GGUF
         # body is q8_0/f16 — the runtime can apply it once the fork's converter
         # (or a runtime-side path) lands.

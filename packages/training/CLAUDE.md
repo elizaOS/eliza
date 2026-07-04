@@ -80,62 +80,65 @@ is published.
 
 ---
 
-## 3. Quantization (mandatory recipes)
+## 3. Quantization (recipe reality)
 
-Quantization is not optional for Eliza-1. Every published bundle MUST
-flow through every recipe that is actually applicable to the tier and
-runtime. The active Gemma 4 release path uses stock llama.cpp GGUF
-weight quantization (`llama-quantize` Q4_K_M today) for the shipped
-text GGUF unless a recipe below is explicitly applied and verified for
-that tier. Sidecar presence is not proof that a recipe touched the
-bytes.
+Quantization is not optional for Eliza-1, but the active Gemma release
+line does not use the old fused Qwen-style recipe stack as its shipping
+weight artifact. The shipping Gemma weight quant is stock
+`llama-quantize` Q4_K_M produced through
+`scripts/quantization/gguf-q4_k_m_apply.py` from the canonical fork at
+`plugins/plugin-local-inference/native/llama.cpp`. Higher-quality ladder
+rungs (`Q6_K`, `Q8_0`) are produced the same way when a tier explicitly
+requires them.
 
-Pipeline order (binding):
+Recipe roles, as implemented:
 
-```
-fp16/bf16 checkpoint
-   │
-   ├── Stock GGUF weight quantization (shipping Gemma path today)
-   │     convert_hf_to_gguf.py → llama-quantize Q4_K_M
-   │
-   ├── TurboQuant Q3 or Q4 KV-cache compression (V-cache)
-   │     scripts/quantization/turboquant_apply.py
-   │     scripts/quantization/fused_turboquant_apply.py
-   │
-   ├── QJL projection matrices baked into KV-cache layout
-   │     scripts/quantization/qjl_apply.py
-   │
-   ├── PolarQuant weight quantization (linear weights)
-   │     scripts/quantization/polarquant_apply.py
-   │
-   └── (long-context-only) Trellis-coded TCQ KV K-type
-         scripts/quantization/turboquant_apply.py --trellis
-```
+| Recipe | What it actually changes | Entry point |
+| ------ | ------------------------ | ----------- |
+| GGUF K-quant | Weight tensors in the produced GGUF (`Q4_K_M` today for shipping Gemma) | `scripts/quantization/gguf-q4_k_m_apply.py` |
+| TurboQuant | Runtime KV-cache compressor for V-cache blocks; weights are unchanged | `scripts/quantization/turboquant_apply.py` / `fused_turboquant_apply.py` |
+| QJL | Runtime K-cache compressor with JL projection geometry; weights are unchanged | `scripts/quantization/qjl_apply.py` |
+| PolarQuant | Weight quantizer for `nn.Linear` tensors, emitting reconstructed weights plus `polarquant_artifacts.safetensors`; not a Gemma default release gate today | `scripts/quantization/polarquant_apply.py` |
+| TCQ | Long-context TurboQuant K-cache type (`turbo3_tcq`); weights are unchanged | `scripts/quantization/turboquant_apply.py --trellis` |
+
+TurboQuant is a runtime KV-cache compressor. QJL is a runtime K-cache compressor.
+PolarQuant is a weight quantizer. Do not describe
+TurboQuant as weight quantization or PolarQuant as a KV-cache pass.
 
 Hard rules:
 
-- Each recipe MUST emit a quantization manifest sidecar consumed by
-  the inference manifest builder. The sidecar records: kernel target,
-  block layout version, codebook hash, expected per-block tolerance.
-- Each recipe MUST run its `test_*.py` against the produced artifact
-  before exit. A failing test is a publish-blocking error.
-- If a recipe is asked to run on weights that do not satisfy its
-  preconditions (wrong layer count, wrong dtype, missing rotation), it
-  MUST fail loudly. No silent passes, no skip-and-continue.
+- A sidecar is provenance only for a recipe that actually ran against
+  the artifact or is explicitly enabled for that tier. Sidecar presence
+  alone is not proof. A recipe that is not applied to a tier MUST NOT
+  contribute `recipeManifest` metadata for that tier.
+- Every applied recipe MUST emit a quantization manifest fragment
+  consumed by the inference manifest builder. The fragment records:
+  kernel target, block layout version, real source-content sha256,
+  expected per-block tolerance, and target class (`weights` or
+  `kv-cache`).
+- Every applied recipe MUST run its real-artifact test before exit. For
+  the shipping Q4_K_M path, `gguf-q4_k_m_apply.py` runs a
+  `llama-cli` load-smoke against the produced GGUF and refuses to write
+  a release-suitable sidecar when it fails. A failing test is a
+  publish-blocking error.
+- If a recipe is asked to run on weights or cache geometry that do not
+  satisfy its preconditions (wrong layer count, wrong dtype, missing
+  rotation, unsupported layer type, missing converter/kernel), it MUST
+  fail loudly. No silent passes, no skip-and-continue.
 
-Gemma note: Gemma 4's KV cache is already minimal (MQA + windowed-SWA +
-shared-KV), and its dual head dims do not match the older head_dim=128
-QJL/Polar KV assumptions. QJL and TurboQuant KV passes are optional for
-Gemma tiers until revalidated per tier. PolarQuant is a weight recipe,
-not a KV-cache recipe. The shipping Gemma text GGUF currently uses stock
-Q4_K_M weight quantization; if PolarQuant is enabled for a tier, the
-produced GGUF and manifest must prove those bytes are PolarQuant bytes.
+Gemma note: QJL/PolarQuant are low-ROI on Gemma 4's already-minimal KV
+(MQA + windowed-SWA + shared-KV), so the KV-cache QJL/TurboQuant passes
+and PolarQuant weight path are optional-and-currently-unused on Gemma
+release tiers unless a tier explicitly opts in and carries real
+recipe-test evidence.
 
 The reference implementations and on-device kernels live in
+`plugins/plugin-local-inference/native/{reference,verify}` and
 `packages/native/plugins/{qjl-cpu,polarquant-cpu}`. The Python recipes here
 MUST stay byte-for-byte compatible with those references — when a
 recipe's block layout, codebook, or sign-vector seed changes, the
-references and kernels must be updated in lockstep, in the same PR.
+references, kernels, and `_kernel_manifest.py` sha256 pins must be
+updated in lockstep, in the same PR.
 
 ---
 

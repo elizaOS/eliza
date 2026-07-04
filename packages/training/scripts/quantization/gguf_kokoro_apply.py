@@ -43,24 +43,24 @@ from __future__ import annotations
 
 import argparse
 import logging
-import os
 import shlex
-import shutil
 import subprocess
 import sys
 from pathlib import Path
 
 _HERE = Path(__file__).resolve().parent
-# packages/training/scripts/quantization/ -> repo root is four parents up.
-_REPO_ROOT = _HERE.parents[3]
-_FORK_LLAMA_CPP = (
-    _REPO_ROOT / "plugins" / "plugin-local-inference" / "native" / "llama.cpp"
+if str(_HERE) not in sys.path:
+    sys.path.insert(0, str(_HERE))
+
+from _common import (  # noqa: E402
+    DEFAULT_LLAMA_CPP_DIR,
+    find_llama_convert_script,
+    find_llama_quantize_binary,
+    llama_cpp_vendor_hint,
 )
-_VENDOR_HINT = (
-    "Build the Eliza-1 llama.cpp fork first:\n"
-    "  cd plugins/plugin-local-inference && bun run build:native\n"
-    "Or set LLAMA_CPP_DIR to the fork root."
-)
+
+_FORK_LLAMA_CPP = DEFAULT_LLAMA_CPP_DIR
+_VENDOR_HINT = llama_cpp_vendor_hint()
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s"
@@ -75,43 +75,11 @@ DEFAULT_QUANT = "Q4_K_M"
 
 
 def _find_quantize_binary(llama_cpp_dir: Path | None) -> Path:
-    candidates: list[Path] = []
-    if llama_cpp_dir is not None:
-        candidates.extend([
-            llama_cpp_dir / "build" / "bin" / "llama-quantize",
-            llama_cpp_dir / "llama-quantize",
-        ])
-    env_dir = os.environ.get("LLAMA_CPP_DIR")
-    if env_dir:
-        candidates.extend([
-            Path(env_dir) / "build" / "bin" / "llama-quantize",
-            Path(env_dir) / "llama-quantize",
-        ])
-    candidates.extend([
-        _FORK_LLAMA_CPP / "build" / "bin" / "llama-quantize",
-        _FORK_LLAMA_CPP / "llama-quantize",
-    ])
-    which = shutil.which("llama-quantize")
-    if which:
-        candidates.append(Path(which))
-    for c in candidates:
-        if c.exists() and os.access(c, os.X_OK):
-            return c
-    raise SystemExit("llama-quantize binary not found.\n" + _VENDOR_HINT)
+    return find_llama_quantize_binary(llama_cpp_dir)
 
 
 def _find_convert_script(llama_cpp_dir: Path | None) -> Path:
-    candidates: list[Path] = []
-    if llama_cpp_dir is not None:
-        candidates.append(llama_cpp_dir / "convert_hf_to_gguf.py")
-    env_dir = os.environ.get("LLAMA_CPP_DIR")
-    if env_dir:
-        candidates.append(Path(env_dir) / "convert_hf_to_gguf.py")
-    candidates.append(_FORK_LLAMA_CPP / "convert_hf_to_gguf.py")
-    for c in candidates:
-        if c.exists():
-            return c
-    raise SystemExit("convert_hf_to_gguf.py not found.\n" + _VENDOR_HINT)
+    return find_llama_convert_script(llama_cpp_dir)
 
 
 def _run(cmd: list[str | Path]) -> None:

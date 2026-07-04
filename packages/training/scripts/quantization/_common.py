@@ -12,6 +12,8 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
+import shutil
 from pathlib import Path
 from typing import TYPE_CHECKING, Mapping
 
@@ -28,6 +30,76 @@ if TYPE_CHECKING:
     from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 
 log = logging.getLogger(__name__)
+
+
+REPO_ROOT = Path(__file__).resolve().parents[4]
+LLAMA_CPP_RELATIVE_DIR = Path("plugins/plugin-local-inference/native/llama.cpp")
+DEFAULT_LLAMA_CPP_DIR = REPO_ROOT / LLAMA_CPP_RELATIVE_DIR
+
+
+def llama_cpp_vendor_hint() -> str:
+    """Actionable setup text for callers that need the in-repo llama.cpp fork."""
+    rel = LLAMA_CPP_RELATIVE_DIR.as_posix()
+    return (
+        "The llama.cpp fork submodule should already be checked out. If it's "
+        "missing:\n"
+        f"  git submodule update --init {rel}\n"
+        "Then build the llama-quantize + llama-cli binaries from it "
+        "(one-shot, CPU-only is enough):\n"
+        f"  cmake -S {rel} -B {rel}/build \\\n"
+        "        -DCMAKE_BUILD_TYPE=Release -DLLAMA_CURL=OFF "
+        "-DGGML_NATIVE=OFF -DBUILD_SHARED_LIBS=OFF\n"
+        f"  cmake --build {rel}/build --target llama-quantize llama-cli "
+        '-j"$(nproc)"\n'
+        "Or pass --llama-cpp-dir <path-to-checkout> / set LLAMA_CPP_DIR / "
+        "put the binaries on PATH.\n"
+        "(convert_hf_to_gguf.py needs the `gguf` + `mistral_common` python "
+        f"deps; `uv pip install -r {rel}/requirements/"
+        "requirements-convert_hf_to_gguf.txt`.)"
+    )
+
+
+def _llama_cpp_dirs(llama_cpp_dir: Path | None) -> list[Path]:
+    """Candidate llama.cpp checkout roots in release-safe resolution order."""
+    candidates: list[Path] = []
+    if llama_cpp_dir is not None:
+        candidates.append(llama_cpp_dir)
+    env_dir = os.environ.get("LLAMA_CPP_DIR")
+    if env_dir:
+        candidates.append(Path(env_dir))
+    candidates.append(DEFAULT_LLAMA_CPP_DIR)
+    return candidates
+
+
+def find_llama_convert_script(llama_cpp_dir: Path | None) -> Path:
+    """Locate ``convert_hf_to_gguf.py`` from the canonical fork or PATH."""
+    candidates = [d / "convert_hf_to_gguf.py" for d in _llama_cpp_dirs(llama_cpp_dir)]
+    which = shutil.which("convert_hf_to_gguf.py")
+    if which:
+        candidates.append(Path(which))
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    raise SystemExit("convert_hf_to_gguf.py not found.\n" + llama_cpp_vendor_hint())
+
+
+def find_llama_quantize_binary(llama_cpp_dir: Path | None) -> Path:
+    """Locate ``llama-quantize`` from the canonical fork build or PATH."""
+    candidates: list[Path] = []
+    for directory in _llama_cpp_dirs(llama_cpp_dir):
+        candidates.extend(
+            [
+                directory / "build" / "bin" / "llama-quantize",
+                directory / "llama-quantize",
+            ]
+        )
+    which = shutil.which("llama-quantize")
+    if which:
+        candidates.append(Path(which))
+    for candidate in candidates:
+        if candidate.exists() and os.access(candidate, os.X_OK):
+            return candidate
+    raise SystemExit("llama-quantize binary not found.\n" + llama_cpp_vendor_hint())
 
 
 def is_lora_dir(path: Path) -> bool:
@@ -107,10 +179,14 @@ def write_sidecar(output_dir: Path, filename: str, payload: Mapping[str, object]
 # while unit tests can import the helper without pulling in transformers.
 from _kernel_manifest import (  # noqa: E402,F401
     KERNEL_BLOCK_LAYOUT_VERSIONS,
+    KERNEL_CODEBOOK_HASH_SOURCES,
     KERNEL_CODEBOOK_HASHES,
     KERNEL_PER_BLOCK_TOLERANCE,
+    KERNEL_RECIPE_TARGET_CLASSES,
     KERNEL_TARGETS,
+    PINNED_KERNEL_CODEBOOK_SHA256,
     kernel_manifest_fragment,
+    verify_kernel_codebook_hashes,
 )
 
 

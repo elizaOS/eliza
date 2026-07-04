@@ -7,7 +7,8 @@ references at:
   * ``eliza/packages/native/plugins/qjl-cpu/include/qjl/qjl.h``
   * ``eliza/packages/native/plugins/qjl-cpu/src/qjl_quantize_ref.c``
   * ``eliza/packages/native/plugins/qjl-cpu/src/qjl_score_ref.c``
-  * ``eliza/plugins/plugin-local-inference/native/verify/qjl_polar_ref.c`` (verify harness)
+  * ``eliza/plugins/plugin-local-inference/native/verify/qjl_polar_ref.c``
+    (verify harness)
 
 The ``block_qjl1_256`` on-cache layout is 32 packed sign bytes (LSB-first
 within each byte) followed by a uint16 bf16 norm — 34 bytes total. The

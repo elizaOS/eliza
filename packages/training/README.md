@@ -31,11 +31,15 @@ arXiv:2412.05270), not LoRA.
 | gemma4-12b   | eliza-1-9b    | google/gemma-4-12B | workstation | 80 GB-class GPU                     | apollo       |
 | gemma4-31b   | eliza-1-27b   | google/gemma-4-31B | cloud       | 2x H200 / B200                      | apollo       |
 
-After training, the Gemma publish path produces GGUF q4/q6/q8 release
-artifacts and MTP drafter manifests for speculative decoding. The older KV
-compression recipes (**PolarQuant**, **TurboQuant**, and **QJL**) remain in
-the tree for legacy experiments, but Gemma 4's MQA + windowed SWA KV layout
-makes them optional rather than required release gates.
+After training, the Gemma publish path produces stock llama.cpp GGUF
+K-quant release artifacts (`Q4_K_M` for the shipping local tier, plus
+`Q6_K` / `Q8_0` where a tier explicitly requires them) and MTP drafter
+manifests for speculative decoding. The older recipe stack is split by
+what it actually changes: **TurboQuant** and **QJL** are runtime KV-cache
+compressors, while **PolarQuant** is a weight quantizer. Gemma 4's MQA +
+windowed SWA KV layout makes those optional rather than default release
+gates, and a sidecar is not publish provenance unless the recipe actually
+ran for that tier.
 
 A unified pipeline runner (`scripts/run_pipeline.py`) chains:
 
@@ -79,7 +83,7 @@ data/raw/* ──▶ normalize.py ──▶ data/normalized/<slug>.jsonl
                                   ▼
               ┌─────────────┬─────┴─────┬─────────────┐
               ▼             ▼           ▼             ▼
-       GGUF release staging  MTP drafter verify  optional legacy KV recipes
+       GGUF release K-quant  MTP drafter verify  optional recipe experiments
                                   │
                                   ▼
                           native_tool_call_bench.py

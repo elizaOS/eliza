@@ -30,7 +30,6 @@ from __future__ import annotations
 import argparse
 import json
 import logging
-import os
 import shlex
 import shutil
 import subprocess
@@ -41,7 +40,13 @@ _HERE = Path(__file__).resolve().parent
 if str(_HERE) not in sys.path:
     sys.path.insert(0, str(_HERE))
 
-from _common import write_sidecar  # noqa: E402
+from _common import (  # noqa: E402
+    DEFAULT_LLAMA_CPP_DIR,
+    find_llama_convert_script,
+    find_llama_quantize_binary,
+    llama_cpp_vendor_hint,
+    write_sidecar,
+)
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s"
@@ -54,32 +59,8 @@ log = logging.getLogger("gguf_q4_k_m_apply")
 QUANT_LEVEL = "Q4_K_M"
 
 
-# The in-repo llama.cpp fork submodule — the single canonical llama.cpp
-# checkout for the whole repo (.gitmodules: plugins/plugin-local-inference/native/llama.cpp,
-# url=https://github.com/elizaOS/llama.cpp.git). From this file
-# (packages/training/scripts/quantization/) the repo root is four parents up.
-_REPO_ROOT = _HERE.parents[3]
-_FORK_LLAMA_CPP = (
-    _REPO_ROOT / "plugins" / "plugin-local-inference" / "native" / "llama.cpp"
-)
-
-_VENDOR_HINT = (
-    "The llama.cpp fork submodule should already be checked out. If it's "
-    "missing:\n"
-    "  git submodule update --init plugins/plugin-local-inference/native/llama.cpp\n"
-    "Then build the llama-quantize + llama-cli binaries from it (one-shot, "
-    "CPU-only is enough):\n"
-    "  cmake -S plugins/plugin-local-inference/native/llama.cpp -B plugins/plugin-local-inference/native/llama.cpp/build \\\n"
-    "        -DCMAKE_BUILD_TYPE=Release -DLLAMA_CURL=OFF -DGGML_NATIVE=OFF "
-    "-DBUILD_SHARED_LIBS=OFF\n"
-    "  cmake --build plugins/plugin-local-inference/native/llama.cpp/build --target llama-quantize "
-    "llama-cli -j\"$(nproc)\"\n"
-    "Or pass --llama-cpp-dir <path-to-checkout> / set LLAMA_CPP_DIR / put the "
-    "binaries on PATH.\n"
-    "(convert_hf_to_gguf.py needs the `gguf` + `mistral_common` python deps; "
-    "`uv pip install -r plugins/plugin-local-inference/native/llama.cpp/requirements/"
-    "requirements-convert_hf_to_gguf.txt`.)"
-)
+_FORK_LLAMA_CPP = DEFAULT_LLAMA_CPP_DIR
+_VENDOR_HINT = llama_cpp_vendor_hint()
 
 
 def _find_convert_script(llama_cpp_dir: Path | None) -> Path:
@@ -87,23 +68,11 @@ def _find_convert_script(llama_cpp_dir: Path | None) -> Path:
 
     Resolution order: ``--llama-cpp-dir`` (explicit), ``$LLAMA_CPP_DIR``
     (env override), the in-repo llama.cpp fork submodule
-    (``plugins/plugin-local-inference/native/llama.cpp``, the canonical checkout), then a
+    (``plugins/plugin-local-inference/native/llama.cpp``, the canonical
+    checkout), then a
     system PATH install (e.g. the llama-cpp-python wheel).
     """
-    candidates: list[Path] = []
-    if llama_cpp_dir is not None:
-        candidates.append(llama_cpp_dir / "convert_hf_to_gguf.py")
-    env_dir = os.environ.get("LLAMA_CPP_DIR")
-    if env_dir:
-        candidates.append(Path(env_dir) / "convert_hf_to_gguf.py")
-    candidates.append(_FORK_LLAMA_CPP / "convert_hf_to_gguf.py")
-    which = shutil.which("convert_hf_to_gguf.py")
-    if which:
-        candidates.append(Path(which))
-    for c in candidates:
-        if c.exists():
-            return c
-    raise SystemExit("convert_hf_to_gguf.py not found.\n" + _VENDOR_HINT)
+    return find_llama_convert_script(llama_cpp_dir)
 
 
 def _find_quantize_binary(llama_cpp_dir: Path | None) -> Path:
@@ -114,35 +83,7 @@ def _find_quantize_binary(llama_cpp_dir: Path | None) -> Path:
     ``build/bin`` (a one-shot CPU cmake build — see :data:`_VENDOR_HINT`),
     then PATH.
     """
-    candidates: list[Path] = []
-    if llama_cpp_dir is not None:
-        candidates.extend(
-            [
-                llama_cpp_dir / "build" / "bin" / "llama-quantize",
-                llama_cpp_dir / "llama-quantize",
-            ]
-        )
-    env_dir = os.environ.get("LLAMA_CPP_DIR")
-    if env_dir:
-        candidates.extend(
-            [
-                Path(env_dir) / "build" / "bin" / "llama-quantize",
-                Path(env_dir) / "llama-quantize",
-            ]
-        )
-    candidates.extend(
-        [
-            _FORK_LLAMA_CPP / "build" / "bin" / "llama-quantize",
-            _FORK_LLAMA_CPP / "llama-quantize",
-        ]
-    )
-    which = shutil.which("llama-quantize")
-    if which:
-        candidates.append(Path(which))
-    for c in candidates:
-        if c.exists() and os.access(c, os.X_OK):
-            return c
-    raise SystemExit("llama-quantize binary not found.\n" + _VENDOR_HINT)
+    return find_llama_quantize_binary(llama_cpp_dir)
 
 
 def _resolve_output_basename(model_id_or_path: str, output_dir: Path) -> str:
@@ -201,9 +142,11 @@ def main(argv: list[str] | None = None) -> int:
         "--no-smoke-load",
         dest="smoke_load",
         action="store_false",
-        help="Skip the post-quantize llama-cli load-smoke. This is a local "
-             "debug escape hatch; release/publish runs must keep the default "
-             "artifact load test enabled.",
+        help=(
+            "Local-debug escape hatch: skip the post-quantize llama-cli "
+            "load-smoke. Release-suitable Q4_K_M sidecars are only written "
+            "when this smoke test runs and passes."
+        ),
     )
     ap.set_defaults(smoke_load=True)
     ap.add_argument("--dry-run", action="store_true")
@@ -257,8 +200,8 @@ def main(argv: list[str] | None = None) -> int:
         smoke = {
             "ok": False,
             "skipped": True,
-            "releaseEligible": False,
-            "reason": "--no-smoke-load was passed",
+            "release_eligible": False,
+            "error": "--no-smoke-load was used; no real-artifact recipe test ran",
         }
 
     sidecar = {
@@ -273,6 +216,13 @@ def main(argv: list[str] | None = None) -> int:
         if args.calibration and args.calibration.suffix == ".imatrix"
         else None,
         "smoke_load": smoke,
+        "recipe_test": {
+            "name": "llama-cli-load-smoke",
+            "status": "passed" if smoke and smoke.get("ok") else "skipped",
+            "release_eligible": bool(smoke and smoke.get("ok")),
+            "artifact": str(quant_path),
+            "details": smoke,
+        },
         "notes": (
             "Q4_K_M is the standard sweet-spot K-quant for llama.cpp / Ollama "
             "/ LM Studio. ~4.5 bits per weight on average (mixed precision) "
