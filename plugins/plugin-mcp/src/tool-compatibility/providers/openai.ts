@@ -1,3 +1,10 @@
+/**
+ * OpenAI MCP tool-schema fixup: strips keywords older or reasoning OpenAI models
+ * reject (format, and more for reasoning models), applied only when the model
+ * lacks structured-output support or is a reasoning model. The reasoning-model
+ * variant additionally folds the dropped constraints into an IMPORTANT note in
+ * the description.
+ */
 import { McpToolCompatibility, type SchemaConstraints } from "../base";
 
 interface OpenAIConstraints {

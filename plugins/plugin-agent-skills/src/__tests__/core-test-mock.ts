@@ -1,3 +1,9 @@
+/**
+ * Vitest setup file that stubs @elizaos/core with a deterministic in-memory
+ * double — no-op trajectory hooks, a byte-capped `captureSkillInvocationIO`,
+ * and a minimal Service base class — so unit tests run without the full runtime.
+ */
+
 import { vi } from "vitest";
 
 vi.mock("@elizaos/core", () => {

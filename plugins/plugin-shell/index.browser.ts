@@ -1,3 +1,8 @@
+/**
+ * Browser build stub for plugin-shell: exports a no-op Plugin whose init() warns
+ * that shell execution is unsupported in browsers. Selected in place of index.ts
+ * for the browser bundle target.
+ */
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 

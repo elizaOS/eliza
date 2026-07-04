@@ -1,3 +1,4 @@
+/** Unit tests for the execution query route handlers against a mocked WorkflowService (deterministic). */
 import { describe, expect, mock, test } from 'bun:test';
 import type { RouteRequest, RouteResponse } from '@elizaos/core';
 import { executionRoutes } from '../../../src/routes/executions';

@@ -1,3 +1,9 @@
+/**
+ * Workflow validation and repair helpers: validates node inputs, parameters, and
+ * output references against the node catalog, corrects option parameters and
+ * expression prefixes, and lays out node positions. Consumed by the generation
+ * pipeline's validate/repair loop and the validation route.
+ */
 import { logger } from '@elizaos/core';
 import type {
   NodeDefinition,

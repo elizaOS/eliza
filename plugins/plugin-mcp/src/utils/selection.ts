@@ -1,3 +1,9 @@
+/**
+ * Two-step model-driven tool selection: createToolSelectionName picks a server
+ * and tool, then createToolSelectionArgument fills arguments against that tool's
+ * input schema. Both run through withModelRetry, re-prompting with feedback until
+ * the output validates or retries are exhausted.
+ */
 import {
   composePromptFromState,
   type HandlerCallback,

@@ -1,3 +1,8 @@
+/**
+ * Framework tab row inside the coding-agent settings panel — a segmented group
+ * of the available agent frameworks, each tab carrying its install/auth state
+ * (preflight result → status icon).
+ */
 import {
   type AgentPreflightResult,
   Button,

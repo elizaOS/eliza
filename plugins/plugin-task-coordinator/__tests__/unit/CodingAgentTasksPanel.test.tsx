@@ -1,9 +1,8 @@
 // @vitest-environment jsdom
 //
 // Behavioral + data-display tests for CodingAgentTasksPanel (the task-coordinator
-// gui/xr view, src/CodingAgentTasksPanel.tsx). Previously this view had ZERO
-// in-plugin coverage — only an out-of-plugin Playwright spec. Here we render it
-// with realistic CodingAgentTaskThread / CodingAgentTaskThreadDetail fixtures and
+// gui/xr view, src/CodingAgentTasksPanel.tsx). Renders it with realistic
+// CodingAgentTaskThread / CodingAgentTaskThreadDetail fixtures and
 // assert: (a) the populated list shows specific titles/subtitles + total/active/
 // done count chips + session/decision chips; (b) typing in search re-fetches
 // with that search; (c) the show-archived toggle re-fetches with includeArchived

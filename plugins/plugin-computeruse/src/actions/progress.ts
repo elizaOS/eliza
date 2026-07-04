@@ -1,3 +1,8 @@
+/**
+ * Per-step progress and approval-relay plumbing for computer-use actions. Wraps a
+ * handler so each dispatched sub-action emits structured progress content and
+ * pending-approval snapshots to the message callback.
+ */
 import {
   type Content,
   type HandlerCallback,

@@ -1,3 +1,6 @@
+// Covers the `/orchestrator-status` slash command: view-scoped/agent-target
+// registration, slash-only validate(), the deterministic callback reply with no
+// LLM call, and the gui/tui wire serialization. Deterministic, no live model.
 import type { IAgentRuntime, Memory } from "@elizaos/core";
 import {
   commandVisibleForSurface,

@@ -1,3 +1,7 @@
+/**
+ * Screenshot-quality helper: analyzePngScreenshot + assertScreenshotBase64NotBlank
+ * over deflate-built PNGs. Deterministic unit test.
+ */
 import { deflateSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
 import {

@@ -1,3 +1,14 @@
+/**
+ * HTTP route handlers for the skill-management surface mounted under
+ * /api/skills/*: workspace/marketplace skill CRUD, catalog install/uninstall,
+ * security-scan acknowledgement, and enable/disable persistence. The agent's
+ * HTTP server dispatches to these via `handleSkillsRoutes`.
+ *
+ * Enable/disable state persists in the agent database under a cache key;
+ * workspace discovery resolves the agent workspace dir from ELIZA_WORKSPACE_DIR,
+ * persisted folder config, cwd project markers, then the state dir.
+ */
+
 import fs from "node:fs";
 import type http from "node:http";
 import os from "node:os";

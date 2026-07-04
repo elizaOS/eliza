@@ -1,3 +1,7 @@
+/**
+ * COMPUTER_USE action handler over a mocked ComputerUseService: param resolution,
+ * approval snapshots, and result shaping. Deterministic.
+ */
 import type { HandlerCallback, IAgentRuntime, Memory } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { useComputerAction } from "../actions/use-computer.js";

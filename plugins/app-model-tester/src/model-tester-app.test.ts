@@ -1,3 +1,5 @@
+/** Verifies model-tester-app.ts registers the overlay app and shell page on import; the UI registries are mocked, so this is a deterministic registration check. */
+
 import { describe, expect, it, vi } from "vitest";
 
 const registerAppShellPage = vi.hoisted(() => vi.fn());

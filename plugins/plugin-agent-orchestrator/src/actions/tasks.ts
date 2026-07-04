@@ -3,8 +3,8 @@
  * task-agent lifecycle, workspace lifecycle, GitHub issue management, and
  * coding-task archive/reopen surface.
  *
- * Old leaf actions live as similes; their handlers were folded into per-action
- * runners on this file.
+ * Each sub-action is exposed as a simile of the parent and dispatched to a
+ * per-action runner in this file.
  *
  * Actions:
  *   create               — CREATE_AGENT_TASK / START_CODING_TASK
@@ -332,9 +332,9 @@ function connectorMessageIdFromMemory(
  * On the FIRST spawn it is the connector message id (Discord/connectors) or,
  * when none exists (dashboard/web), the user message id. SubAgentRouter stamps
  * this id back onto every synthetic re-spawn inbound as `spawnRootMessageId`,
- * so a request that re-spawns resolves the SAME id on EVERY transport — the
- * connector-less dashboard/web path previously produced no key at all, so the
- * cap silently never fired there. Kept as a pure exported fn so the record
+ * so a request that re-spawns resolves the SAME id on EVERY transport. The
+ * connector-less dashboard/web path falls back to the user message id, so the
+ * per-origin cap fires there too. Kept as a pure exported fn so the record
  * (SubAgentRouter) and enforce (this action) sides can be proven to agree.
  */
 export function spawnRootIdFor(
@@ -1072,9 +1072,9 @@ async function runSpawnAgent(
     // Backend routing (see resolveCodingBackend): an explicit user ask wins,
     // then declared `character.routing.coding` policy, then the operator pin
     // (ELIZA_ACP_DEFAULT_AGENT), then the planner's heuristic `agentType` guess.
-    // The pin no longer unconditionally overrides — declaring character routing
-    // or naming a backend now takes effect, while a bare planner guess still
-    // sits below the pin (it routinely guesses from context tokens).
+    // The pin does not unconditionally override: declared character routing or
+    // an explicitly named backend takes precedence over it, while a bare
+    // planner guess sits below the pin (it routinely guesses from context tokens).
     const routed = resolveCodingBackendLogged({
       runtime,
       explicit: pickString(params, content, "requestedBackend"),
@@ -2172,8 +2172,7 @@ async function runControl(
 
   // Archive / reopen / pause are durable task-lifecycle operations, not ACP
   // session controls — route them to the durable task service (see
-  // runTaskLifecycleControl). Previously this branch hard-failed with
-  // UNSUPPORTED_OPERATION even though the service supports all three.
+  // runTaskLifecycleControl), which supports all three.
   if (action === "archive" || action === "reopen" || action === "pause") {
     return runTaskLifecycleControl(runtime, params, content, callback, action);
   }

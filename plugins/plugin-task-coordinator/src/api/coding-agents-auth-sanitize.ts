@@ -10,8 +10,8 @@
  * compromised adapter from smuggling a `javascript:` / `data:` /
  * `file:` URL into an `<a href>`.
  *
- * Extracted into its own module so the sanitizer is unit-testable
- * without spinning up the whole HTTP server.
+ * A standalone module so the sanitizer is unit-testable without
+ * spinning up the whole HTTP server.
  */
 
 export interface SanitizedAuthResult {

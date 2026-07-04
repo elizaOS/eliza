@@ -1,3 +1,8 @@
+/**
+ * Per-session FIFO queue that serializes `blocked` / `turn_complete` ACP events
+ * so a single session's handlers run one at a time in arrival order, while
+ * distinct sessions drain concurrently.
+ */
 import { logger } from "@elizaos/core";
 
 export interface QueuedEvent {

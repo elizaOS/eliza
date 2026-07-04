@@ -1,3 +1,8 @@
+/**
+ * End-to-end tests for ShellService and shellHistoryProvider driving a real
+ * spawned shell in a temp directory (no mocks) — command execution, session
+ * tracking, and history-provider context injection.
+ */
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";

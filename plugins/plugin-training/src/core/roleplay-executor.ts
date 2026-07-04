@@ -1,3 +1,9 @@
+/**
+ * Executes roleplay episodes turn-by-turn against the runtime model, capturing
+ * each turn as a trajectory and bucketizing the episodes into a report plus
+ * exported trajectory files for downstream optimization.
+ */
+
 import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";

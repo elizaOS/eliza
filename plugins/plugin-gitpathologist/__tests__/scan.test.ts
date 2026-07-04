@@ -1,3 +1,9 @@
+/**
+ * Covers normalizeSince window translation and scan against a real toy git
+ * repository (built with the git binary): commit ordering, file-touch line
+ * counts, parents, headSha, and the empty-surface case.
+ */
+
 import { rmSync } from "node:fs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { headSha, normalizeSince, scan } from "../src/pipeline/scan.ts";

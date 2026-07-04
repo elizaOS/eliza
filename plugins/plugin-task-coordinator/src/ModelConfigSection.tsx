@@ -1,3 +1,8 @@
+/**
+ * Model-selection controls for the active framework tab in the coding-agent
+ * settings panel — picks the model per provider, offering the fallback model
+ * lists when the provider exposes none.
+ */
 import {
   Select,
   SelectContent,

@@ -1,10 +1,9 @@
 /**
  * Pure presentational vocabulary for the orchestrator workbench (#9960):
  * status/session/verification/plan-step icon + tone maps, the label helpers,
- * and the small glyph components. Extracted from OrchestratorWorkbench.tsx (the
- * 3,931-line monolith) — these are stateless, runtime-free, and shared across
- * the header, task cards, inspector, and timeline, so they live here on their
- * own and are imported back. No data-layer, no `client`, no hooks.
+ * and the small glyph components. Stateless, runtime-free, and shared across the
+ * header, task cards, inspector, and timeline of OrchestratorWorkbench.tsx, so
+ * they live here on their own. No data-layer, no `client`, no hooks.
  */
 
 import type {

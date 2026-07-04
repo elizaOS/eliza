@@ -1,3 +1,15 @@
+/**
+ * Plugin entry for the ChatGPT Codex model provider: registers the TEXT_*,
+ * RESPONSE_HANDLER, and ACTION_PLANNER model handlers that route generation
+ * through a user's ChatGPT subscription via the codex CLI OAuth cache. Every
+ * handler delegates to a single per-runtime CodexBackend (held in a WeakMap so
+ * calls on one runtime serialize through the backend's FIFO queue).
+ *
+ * Auto-enables only when an auth profile selects provider "codex-cli"; there is
+ * no env-key trigger. Tool- or message-bearing calls return native tool calls
+ * rather than a plain string, and streaming calls attach toolCalls so the
+ * planner still sees tool-only responses.
+ */
 import type { GenerateTextParams, IAgentRuntime, Plugin, TextStreamResult } from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
 import {

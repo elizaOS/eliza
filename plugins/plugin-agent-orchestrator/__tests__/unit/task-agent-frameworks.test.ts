@@ -1,3 +1,7 @@
+/**
+ * Verifies getTaskAgentFrameworkState.
+ * Runs against a real temporary filesystem with a stubbed runtime; no live model.
+ */
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";

@@ -1,3 +1,12 @@
+/**
+ * The OSWORLD umbrella action mirroring the OSWorld desktop-control benchmark's
+ * GUI operation vocabulary (click, double_click, right_click, type, key,
+ * scroll, drag, screenshot, wait, done, fail). Each operation is captured as a
+ * typed subaction so fine-tuning traces carry stable `OSWORLD_<op>` names after
+ * promotion via `promoteSubactionsToActions` in src/index.ts. The handler is a
+ * vocabulary shim: it validates and echoes structured parameters rather than
+ * driving a real desktop.
+ */
 import type {
   Action,
   ActionResult,

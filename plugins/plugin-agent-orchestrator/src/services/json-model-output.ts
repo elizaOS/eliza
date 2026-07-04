@@ -1,3 +1,7 @@
+/**
+ * Extracts a single JSON object from a model's text reply, tolerating code
+ * fences and surrounding prose; returns null when no object parses.
+ */
 export function parseJsonObjectResponse<T = Record<string, unknown>>(
   raw: string,
 ): T | null {

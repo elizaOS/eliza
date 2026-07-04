@@ -1,3 +1,4 @@
+/** Vitest config for the live e2e suite under test/ — long timeouts for the real dev-stack/CLI runs it drives. */
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({

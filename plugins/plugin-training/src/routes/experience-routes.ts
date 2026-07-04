@@ -1,8 +1,6 @@
 /**
- * Experience HTTP routes.
- *
- * Migrated from `packages/agent/src/api/experience-routes.ts` so the experience
- * service surface lives next to the rest of the training/trajectory plumbing.
+ * Experience HTTP routes — the experience-service surface, colocated with the
+ * rest of the training/trajectory plumbing.
  *
  * The runtime mounts these routes through the plugin route registry; see
  * `setup-routes.ts` for the registered Plugin and the `rawPath: true` paths.

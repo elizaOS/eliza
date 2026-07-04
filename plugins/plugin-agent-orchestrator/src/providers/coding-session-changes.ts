@@ -9,8 +9,6 @@
  * workspace-diff) and persisted on session.metadata.lastChangeSet. This
  * provider reads the freshest one within a recency window so a stale build
  * from days ago doesn't bleed into an unrelated conversation.
- *
- * @module providers/coding-session-changes
  */
 
 import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";

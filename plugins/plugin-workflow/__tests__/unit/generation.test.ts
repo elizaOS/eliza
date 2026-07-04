@@ -1,3 +1,4 @@
+/** Unit tests for the RAG generation helpers (keyword extraction, intent, field/parameter correction) with a mocked model. */
 import { describe, expect, mock, test } from 'bun:test';
 import type {
   NodeDefinition,

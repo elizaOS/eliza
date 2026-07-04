@@ -1,3 +1,7 @@
+/**
+ * Scenario-runner (pr-deterministic) scenario asserting the task supervisor's
+ * cross-task digest surfaces the state of several concurrent orchestrator tasks.
+ */
 import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
 import {

@@ -1,3 +1,4 @@
+/** Vitest config for plugin-shell: aliases @elizaos/* imports to workspace source. */
 import path from "node:path";
 import { defineConfig } from "vitest/config";
 

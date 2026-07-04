@@ -1,3 +1,8 @@
+/**
+ * Terminal-capability detection: enumerates known terminal tool names, detects
+ * whether a usable terminal/shell exists in the environment, resolves the shell
+ * and executables to run, and reports the missing tool for a given command.
+ */
 import fs from "node:fs";
 import path from "node:path";
 

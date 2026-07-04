@@ -1,3 +1,11 @@
+/**
+ * React hook that polls `/api/trajectories` (and the per-id detail route) every
+ * 700 ms and returns the active and most-recently-completed trajectory plus
+ * their details. Uses an `AbortController` to cancel in-flight requests on
+ * unmount. Distinguishes a genuine fetch error from the routes being absent
+ * (404/503 when `@elizaos/plugin-training` is not mounted) via a separate
+ * `unavailable` flag, so the view can degrade instead of showing an error.
+ */
 import { useEffect, useState } from "react";
 import {
   fetchTrajectoryDetail,

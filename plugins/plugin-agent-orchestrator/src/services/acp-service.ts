@@ -1,3 +1,19 @@
+/**
+ * `AcpService` (serviceType `ACP_SUBPROCESS_SERVICE`) owns the lifecycle of
+ * coding-agent subprocesses driven over the Agent Client Protocol (ACP). It
+ * spawns a chosen backend CLI (elizaos, pi-agent, claude, codex, opencode),
+ * speaks ACP over the native transport, tracks per-session state and emits the
+ * session events the SubAgentRouter and task store consume, and cancels or tears
+ * sessions down on stop or process shutdown.
+ *
+ * Spawns are configured for the runtime environment: a per-spawn model-gateway
+ * lease routes the sub-agent's inference through the parent (revoked when the
+ * session ends), credential-proxy and model-gateway env is injected while
+ * denied environment keys are stripped, and Codex runs get sandbox/approval
+ * configuration with a Landlock-availability fallback. A single process-wide
+ * SIGTERM/SIGINT handler fans out to every live instance so multi-tenant hosts,
+ * test runners, and hot-reload cycles don't leak per-instance listeners.
+ */
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";

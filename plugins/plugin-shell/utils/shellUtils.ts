@@ -1,6 +1,7 @@
 /**
- * Shell Utilities - Platform-specific shell configuration and helpers
- * Ported from otto shell-utils.ts and bash-tools.shared.ts
+ * Platform-specific shell helpers shared across the plugin: resolving the shell
+ * config, spawning with a PTY-to-cross-spawn fallback, killing sessions,
+ * sanitizing binary output, and slicing captured log lines.
  */
 
 import type {

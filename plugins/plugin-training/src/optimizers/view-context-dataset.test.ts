@@ -1,3 +1,9 @@
+/**
+ * Validates the view-context fixture rows are well-formed eliza_native_v1
+ * planner examples and that the view-selection scorer reads them
+ * (fixture-driven).
+ */
+
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";

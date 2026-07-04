@@ -1,3 +1,8 @@
+/**
+ * Unit coverage for the LifeOps GEPA seed script's pure helpers — argument
+ * bounds parsing, the seed-task table, and the persist gate that only promotes an
+ * optimized prompt when it beats the baseline. No model calls.
+ */
 import { describe, expect, it } from "vitest";
 import {
   parseBoundedIntegerArg,

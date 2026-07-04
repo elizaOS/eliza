@@ -1,3 +1,17 @@
+/**
+ * SubAgentRouter service: subscribes to `AcpService` session events and routes a
+ * sub-agent's terminal output back into the elizaOS runtime as synthetic inbound
+ * memories, so the planner reacts to sub-agent progress and completion as if it
+ * were a normal inbound message. Owns completion synthesis — diff capture,
+ * screenshot delivery, built-app registration, and SSRF-guarded URL
+ * verification — and the loop backstops that stop runaway ping-pong and respawn
+ * cascades (see router-loop-guard.ts).
+ *
+ * On a lost or crashed session it recovers inside the router (respawn,
+ * verify-retry, or account failover) and suppresses the dead session's
+ * narration, so one task yields one user-facing completion rather than one per
+ * lineage generation.
+ */
 import { createHash, randomUUID } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";

@@ -1,3 +1,7 @@
+/**
+ * Verifies runTaskWithSmithers (durable Smithers-backed coding task).
+ * Deterministic unit test of pure helpers; no runtime, no live model.
+ */
 import { describe, expect, it } from "vitest";
 import { runTaskWithSmithers } from "../../src/services/smithers-task-runner";
 import type {

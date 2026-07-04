@@ -1,3 +1,7 @@
+// Coverage for `buildConversation` — the pure transform turning polled message +
+// event records into the ordered conversation blocks the room renders (turn
+// separation, chunk merging, identity preservation) — plus the markdown
+// renderer. Deterministic: static React render, no live model.
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";

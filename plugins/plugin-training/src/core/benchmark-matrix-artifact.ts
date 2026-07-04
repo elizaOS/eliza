@@ -1,3 +1,8 @@
+/**
+ * Builds the benchmark-matrix artifact: aggregates per-tier Eliza-1 results
+ * (2b/4b/9b/27b, base vs trained) into a single schema-tagged JSON artifact.
+ */
+
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {

@@ -1,3 +1,14 @@
+/**
+ * Runs a durable multi-turn coding task by spawning a Bun subprocess that hosts
+ * the Smithers workflow engine, and bridging its provision/turn/approval/submit
+ * steps back to the parent over stdio. Each step the subprocess needs executed
+ * is sent as a `StepRequest`, dispatched to the in-process `TaskStepExecutor`,
+ * and answered with a `StepResponse`; turns are bounded by `DEFAULT_MAX_TURNS`.
+ *
+ * The run executes under Bun (Smithers imports `bun:sqlite`), and the task's
+ * storage backend — sqlite, postgres, or PGlite — is resolved from environment
+ * and threaded into the subprocess payload.
+ */
 import { spawn } from "node:child_process";
 import { mkdir, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";

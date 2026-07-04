@@ -1,3 +1,4 @@
+/** Test stub for `@elizaos/plugin-discord`'s avatar-cache and profile helpers, keeping the training suite free of a real Discord dependency. */
 import os from "node:os";
 import path from "node:path";
 

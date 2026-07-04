@@ -1,3 +1,7 @@
+/**
+ * Verifies background initial task prompt timeout.
+ * Deterministic unit test of pure helpers; no runtime, no live model.
+ */
 import { describe, expect, it } from "vitest";
 import { resolveInitialTaskPromptTimeoutMs } from "../services/acp-service.ts";
 

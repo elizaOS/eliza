@@ -1,3 +1,8 @@
+/**
+ * Plugin-relative route handlers for querying workflow executions, mounted under
+ * `/workflow/executions`. Reads the execution log through WorkflowService; the
+ * runtime prefixes these non-rawPath routes with the plugin name.
+ */
 import type { IAgentRuntime, Route, RouteRequest, RouteResponse } from '@elizaos/core';
 import { getService, validateLimit } from './_helpers';
 

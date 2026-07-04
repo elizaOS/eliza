@@ -11,12 +11,11 @@
  *     };
  *
  * The upstream `coding-agent-adapters` package types the auth field
- * as `unknown`. Before this normalizer, the route handlers just cast
- * the raw value to `Record<string, unknown>` and forwarded it, which
- * meant a shape drift in the adapter would silently break the UI's
- * `needsAuth` check (`preflightByAgent[agent]?.auth?.status === "unauthenticated"`).
- * TypeScript would still compile, but the Authenticate button would
- * never render. Normalizing at the boundary pins the contract.
+ * as `unknown`. Normalizing at the boundary pins the contract, so a
+ * shape drift in the adapter cannot silently break the UI's `needsAuth`
+ * check (`preflightByAgent[agent]?.auth?.status === "unauthenticated"`):
+ * a raw cast-and-forward would still compile yet leave the Authenticate
+ * button unrendered.
  */
 
 export type PreflightAuthStatus =

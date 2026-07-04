@@ -1,3 +1,4 @@
+/** Unit tests for `buildConversationContext` message flattening (deterministic). */
 import { describe, expect, test } from 'bun:test';
 import { buildConversationContext } from '../../src/utils/context';
 import { createMockMessage, createMockState } from '../helpers/mockRuntime';

@@ -1,3 +1,9 @@
+/**
+ * Task-scoped bridge that runs LifeOps skill actions on behalf of a spawned
+ * sub-agent and rewrites their raw results into readable prose via a small
+ * model call. Exposes the `lifeops-context` skill manifest entry and its
+ * request runner — the LifeOps sibling of the general parent-agent broker.
+ */
 import type {
   Action,
   ActionParameters,

@@ -1,3 +1,9 @@
+/**
+ * Covers gitPathologyAction.validate: it claims code-history prompts and
+ * explicit surface/action params but declines generic "when did" questions.
+ * Uses a stub runtime object; no real service, git, or model.
+ */
+
 import { describe, expect, it } from "vitest";
 import { gitPathologyAction } from "../src/actions/git-pathology.ts";
 

@@ -1,3 +1,7 @@
+/**
+ * OCR-provider registry (register/select/list/unregister) and the iOS Vision
+ * provider factory. Deterministic unit test over the provider seam.
+ */
 import { beforeEach, describe, expect, it } from "vitest";
 import type { IosComputerUseBridge } from "./ios-bridge.js";
 import {

@@ -1,3 +1,7 @@
+/**
+ * Verifies bridge-routes — credential bridge.
+ * Deterministic unit test with a stubbed runtime; no live model.
+ */
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { Readable } from "node:stream";
 import {

@@ -1,3 +1,8 @@
+/**
+ * Covers the Eliza-1-vs-Cerebras runner's tier list and subprocess-arg
+ * assembly — pure, no subprocess is spawned.
+ */
+
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {

@@ -1,3 +1,7 @@
+/**
+ * Verifies pruneOldestTracked.
+ * Deterministic unit test of pure helpers; no runtime, no live model.
+ */
 import { describe, expect, it } from "vitest";
 import { pruneOldestTracked } from "../../src/services/sub-agent-router.js";
 

@@ -1,3 +1,7 @@
+/**
+ * VisionContextProvider snapshot + task-goal cache, with the process-list and
+ * window-list platform modules mocked. Deterministic unit test.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import type { Scene } from "../scene/scene-types.js";

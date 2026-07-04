@@ -1,3 +1,9 @@
+/**
+ * Covers the privacy-filtered export bundle builder end to end on a temp
+ * filesystem, asserting PII is stripped and per-task JSONL is emitted; the HTTP
+ * upload path is stubbed (deterministic).
+ */
+
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import type http from "node:http";
 import { tmpdir } from "node:os";

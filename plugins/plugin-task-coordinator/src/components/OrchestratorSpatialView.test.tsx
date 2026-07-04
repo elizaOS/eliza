@@ -1,3 +1,7 @@
+// Pins the one-source/three-modality contract of OrchestratorSpatialView: the
+// TUI render honors the terminal width budget (via renderViewToLines), and the
+// GUI/XR DOM render exposes the enriched action bar with XR scaled up.
+// Deterministic — typed snapshot in, rendered primitives out, no live model.
 import { visibleWidth } from "@elizaos/tui";
 import { SpatialSurface } from "@elizaos/ui/spatial";
 import {

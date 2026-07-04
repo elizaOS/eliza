@@ -1,3 +1,10 @@
+/**
+ * Plugin object export for @elizaos/plugin-shell: registers ShellService and
+ * ExecApprovalService plus the SHELL_HISTORY provider, and gates auto-enable by
+ * platform (never on iOS or store builds; Android only under local-yolo mode).
+ * Registers no actions — the agent-facing SHELL action lives in
+ * @elizaos/plugin-coding-tools and consumes ShellService.
+ */
 import type { Plugin } from "@elizaos/core";
 import { ExecApprovalService } from "./approvals";
 import { shellHistoryProvider } from "./providers";

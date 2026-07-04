@@ -12,10 +12,8 @@
  */
 
 export { USE_SKILL_ACTION_NAME, useSkillAction } from "./actions/use-skill";
-// Consolidated skill code from packages/agent.
-// HTTP route handlers + supporting services moved from packages/agent/src/api/
-// and packages/agent/src/services/. The agent's server.ts now imports them
-// from this barrel instead of co-locating them with the runtime.
+// HTTP route handlers and their supporting services live under ./api and
+// ./services; the agent's server imports them from this barrel.
 export { handleCuratedSkillsRoutes } from "./api/curated-skills-routes";
 export {
 	discoverSkills,

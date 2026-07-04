@@ -5,8 +5,7 @@
  *
  * The single `index.ts` entry is bundled for Node with an external sourcemap.
  * Declarations are emitted via tsconfig.build.json (tolerated on failure), and
- * the root `index.d.ts` alias is written as a hand-rolled re-export. The emitted
- * `dist/` is byte-identical to the previous hand-rolled build.
+ * the root `index.d.ts` alias is written as a hand-rolled re-export.
  */
 import { buildPlugin } from "../plugin-build";
 

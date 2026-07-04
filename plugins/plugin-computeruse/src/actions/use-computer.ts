@@ -1,3 +1,10 @@
+/**
+ * COMPUTER_USE parent action — the umbrella desktop verb (screenshot, click, type,
+ * key, scroll, drag, open, launch, …). Resolves params, enforces the OWNER role
+ * and approval gate, dispatches through ComputerUseService, and returns a
+ * screenshot-bearing result. Subactions are promoted to virtual top-level actions
+ * (COMPUTER_USE_CLICK, …) at registration.
+ */
 import type {
   Action,
   ActionResult,

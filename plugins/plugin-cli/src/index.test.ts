@@ -1,3 +1,9 @@
+/**
+ * Exercises the plugin's public program surface — buildProgram, runCli, and
+ * command registration through the Commander root. Deterministic: commands and
+ * runtime are stubbed with vitest, no live model or process spawning.
+ */
+
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	buildProgram,

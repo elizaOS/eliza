@@ -1,3 +1,4 @@
+/** Unit tests for node output-schema loading and field-path/operation lookups (deterministic). */
 import { describe, expect, test } from 'bun:test';
 import type { SchemaContent } from '../../src/types/index';
 import {

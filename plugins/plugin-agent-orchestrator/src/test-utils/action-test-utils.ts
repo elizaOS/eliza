@@ -1,3 +1,8 @@
+/**
+ * Test fixtures for the TASKS action suite.
+ * Builders for fake `SessionInfo` records and a stubbed ACP service/runtime so
+ * action handlers can be driven without spawning a real subprocess.
+ */
 import type { IAgentRuntime, Memory, State } from "@elizaos/core";
 import { vi } from "vitest";
 import type { SessionInfo } from "../services/types.js";

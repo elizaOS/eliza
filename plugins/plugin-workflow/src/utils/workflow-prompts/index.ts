@@ -1,3 +1,4 @@
+/** Barrel for the workflow LLM prompt templates. */
 export { ACTION_RESPONSE_SYSTEM_PROMPT } from './actionResponse';
 export { DRAFT_INTENT_SYSTEM_PROMPT } from './draftIntent';
 export { FEASIBILITY_CHECK_PROMPT } from './feasibilityCheck';

@@ -1,3 +1,7 @@
+/**
+ * Verifies provisionWorkspace command-injection gate (#10980 follow-up).
+ * Deterministic unit test with a stubbed runtime; no live model.
+ */
 import { existsSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";

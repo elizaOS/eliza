@@ -1,3 +1,7 @@
+/**
+ * Scenario-runner (pr-deterministic) twin of the live grilling scenario: a
+ * no-evidence 'done' is grilled, then verified once passing test output is pasted.
+ */
 import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
 import {

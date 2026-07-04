@@ -1,3 +1,12 @@
+/**
+ * The unified MCP action: a single entry point that routes an agent request to
+ * call_tool or read_resource (search_actions / list_connections are cloud-only
+ * and rejected here). The op is taken from structured parameters when present,
+ * else inferred from message text. Tool and resource selection are model-driven
+ * with retry/feedback; results are synthesized back to the user and persisted as
+ * memories. validate() gates the action on there being at least one connected
+ * server that exposes a tool or resource.
+ */
 import {
   type Action,
   type ActionResult,

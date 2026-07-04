@@ -1,3 +1,8 @@
+/**
+ * Formats a workflow execution into the fields the run UI renders — per-node run
+ * rows, a status label with tone, duration in the right unit, and the first
+ * surfaced node error.
+ */
 import type { WorkflowExecution } from '../types/index';
 
 export type WorkflowExecutionTone = 'success' | 'danger' | 'warning' | 'muted';

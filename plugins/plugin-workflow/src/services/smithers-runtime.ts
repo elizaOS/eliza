@@ -1,3 +1,14 @@
+/**
+ * Adapter that runs a workflow's node graph through the Smithers orchestrator.
+ * Translates the plugin's WorkflowDefinition into the Smithers execution plan,
+ * spawns a Bun worker (Smithers needs `bun:sqlite`) to run it, and maps the
+ * result back to a WorkflowExecution with engine metrics.
+ *
+ * Consumed by EmbeddedWorkflowService as the node-execution backend. Reads
+ * optional `SMITHERS_DB_*`, `ELIZA_SMITHERS_RUN_PAYLOAD`, and `BUN_BIN` env
+ * vars. Failed delegated nodes are echoed before Smithers' wrapper error so
+ * execution diagnostics retain the original node error.
+ */
 import { spawn } from 'node:child_process';
 import { mkdir, readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';

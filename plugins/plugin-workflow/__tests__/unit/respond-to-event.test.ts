@@ -1,3 +1,4 @@
+/** Unit tests for EmbeddedWorkflowService event-triggered runs against a real PGlite-backed store, capturing emitted memories. */
 import { describe, expect, mock, test } from 'bun:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';

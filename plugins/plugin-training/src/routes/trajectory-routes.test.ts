@@ -1,3 +1,8 @@
+/**
+ * Coverage for the `/api/trajectories/*` route handler (`handleTrajectoryRoute`),
+ * with `@elizaos/agent`'s storage and zip helpers mocked so the routing, export,
+ * and streaming branches are exercised without a real trajectory store.
+ */
 import type http from "node:http";
 import { Readable } from "node:stream";
 import type { Trajectory } from "@elizaos/agent";

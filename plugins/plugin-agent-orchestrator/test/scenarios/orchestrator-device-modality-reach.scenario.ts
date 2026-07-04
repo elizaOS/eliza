@@ -1,3 +1,7 @@
+/**
+ * Scenario-runner scenario asserting which device modalities can spawn a local
+ * coding agent versus receiving the sandbox stub, read from the device-support matrix.
+ */
 import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
 import {

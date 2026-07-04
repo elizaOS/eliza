@@ -1,3 +1,7 @@
+/**
+ * Verifies register-routes — bundler-safe sentinel export.
+ * Deterministic unit test with a stubbed runtime; no live model.
+ */
 import { describe, expect, it, vi } from "vitest";
 
 // Force the registration branch to run: by default `isLocalCodeExecutionAllowed`

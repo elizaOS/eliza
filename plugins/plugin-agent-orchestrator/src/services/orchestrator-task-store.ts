@@ -865,7 +865,7 @@ export class RuntimeDbTaskStore {
     const searchText = buildSearchText(doc);
     // Portable upsert. Postgres/pglite need ON CONFLICT DO UPDATE; sqlite
     // ≥3.24 accepts the same syntax. Named-column DO UPDATE avoids the
-    // sqlite-only INSERT OR REPLACE form we used to emit.
+    // sqlite-only INSERT OR REPLACE form.
     await this.exec().run(
       `INSERT INTO orchestrator_tasks
        (id, status, archived, priority, title, search_text, updated_at, last_activity_at, document)

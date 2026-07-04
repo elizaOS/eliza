@@ -1,3 +1,9 @@
+/**
+ * Tier and variant vocabulary for Eliza-1 benchmarks (2b/4b/9b/27b ×
+ * base/trained), plus the canonical tier-sort and action-pair helpers the
+ * runners and artifact builders share.
+ */
+
 export const ELIZA_ONE_BENCHMARK_TIERS = ["2b", "4b", "9b", "27b"] as const;
 
 export type ElizaOneBenchmarkTier = (typeof ELIZA_ONE_BENCHMARK_TIERS)[number];

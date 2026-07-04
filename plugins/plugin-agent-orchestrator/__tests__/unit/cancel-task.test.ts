@@ -1,5 +1,9 @@
+/**
+ * Verifies TASKS:cancel.
+ * Deterministic unit test with a stubbed runtime; no live model.
+ */
 import { describe, expect, it, vi } from "vitest";
-// Post-consolidation: CANCEL_TASK is `TASKS { action: "cancel" }`.
+// CANCEL_TASK is `TASKS { action: "cancel" }`.
 import { cancelTaskAction } from "../../src/actions/tasks.js";
 import {
   callback,

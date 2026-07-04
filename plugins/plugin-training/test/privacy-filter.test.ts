@@ -1,3 +1,8 @@
+/**
+ * Coverage for the mandatory trajectory privacy filter — asserts
+ * `applyPrivacyFilter` strips PII/credentials and `createHashAnonymizer` stably
+ * pseudonymizes identifiers before any export. Pure, no I/O.
+ */
 import { describe, expect, it } from "vitest";
 import {
   applyPrivacyFilter,

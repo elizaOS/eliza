@@ -1,3 +1,9 @@
+/**
+ * Unit coverage for the pure claude/codex vendor-CLI spawn-spec builders and
+ * PATH-based bin resolvers (`lib/vendor-cli-spec.ts`): plain interactive launch,
+ * credential-passthrough env, and override/PATH resolution via an injected
+ * `exists` predicate — no real CLI spawned.
+ */
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {

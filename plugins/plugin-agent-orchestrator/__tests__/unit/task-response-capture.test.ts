@@ -1,3 +1,7 @@
+/**
+ * Verifies captureTaskResponse / peekTaskResponse.
+ * Deterministic unit test of pure helpers; no runtime, no live model.
+ */
 import { describe, expect, it } from "vitest";
 import {
   captureTaskResponse,

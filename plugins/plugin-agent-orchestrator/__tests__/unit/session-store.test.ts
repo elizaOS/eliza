@@ -1,3 +1,7 @@
+/**
+ * Verifies InMemorySessionStore.
+ * Runs against a real temporary filesystem with a stubbed runtime; no live model.
+ */
 import { mkdtemp, readFile, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";

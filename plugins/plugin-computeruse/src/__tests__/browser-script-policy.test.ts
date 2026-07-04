@@ -1,3 +1,7 @@
+/**
+ * Pins the browser-script policy: arbitrary page.evaluate is never allowed.
+ * Deterministic unit test over the policy predicate.
+ */
 import { describe, expect, it } from "vitest";
 import {
   assertBrowserExecuteAllowed,

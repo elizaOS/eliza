@@ -1,3 +1,7 @@
+/**
+ * Scenario-runner scenario asserting a failed verification re-spawns the task with
+ * the prior failure's reflection injected into the next sub-agent's goal prompt.
+ */
 import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
 import {

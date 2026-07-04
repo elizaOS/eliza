@@ -1,3 +1,8 @@
+/**
+ * Internal terminal-session management (spawn shell, run command, buffer output)
+ * behind the dangerous-command guard. Not exposed as an agent action — the SHELL
+ * action owns user-facing terminal access.
+ */
 import { execFile } from "node:child_process";
 import os from "node:os";
 import type { TerminalActionResult } from "../types.js";

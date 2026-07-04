@@ -1,3 +1,7 @@
+/**
+ * Desktop platform-capability detection and the parity matrix it exposes.
+ * Deterministic unit test across simulated host OSes.
+ */
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

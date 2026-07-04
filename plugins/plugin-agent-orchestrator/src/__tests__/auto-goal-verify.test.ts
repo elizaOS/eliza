@@ -1,3 +1,7 @@
+/**
+ * Verifies shouldAutoVerifyGoal.
+ * Deterministic unit test with a stubbed runtime; no live model.
+ */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AcpService } from "../services/acp-service.js";
 import {

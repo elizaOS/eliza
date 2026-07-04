@@ -1,3 +1,9 @@
+/**
+ * Workspace-root discovery and the default bun command used when the training
+ * runners shell out to sibling packages, resolving the monorepo root by walking
+ * up for workspace markers.
+ */
+
 import { existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 

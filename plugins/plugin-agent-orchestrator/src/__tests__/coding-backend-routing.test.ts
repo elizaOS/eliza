@@ -1,3 +1,7 @@
+/**
+ * Verifies readCodingRouting.
+ * Deterministic unit test of pure helpers; no runtime, no live model.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {

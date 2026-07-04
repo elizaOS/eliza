@@ -1,6 +1,8 @@
 /**
- * PTY Key Encoding - Terminal key sequence encoding utilities
- * Ported from otto pty-keys.ts and pty-dsr.ts
+ * Encodes keyboard input into the escape sequences a PTY expects — bracketed
+ * paste, control keys, and named key sequences — and strips terminal DSR
+ * (device-status-report) requests from output. Used when driving interactive
+ * PTY sessions.
  */
 
 const ESC = "\x1b";

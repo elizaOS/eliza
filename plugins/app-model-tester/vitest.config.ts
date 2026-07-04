@@ -1,3 +1,9 @@
+/**
+ * Vitest config for app-model-tester: pins a single react/react-dom copy from the
+ * workspace UI package (the plugin declares neither directly) and aliases a
+ * statically-imported plugin-health subpath to source for the keyless test lane.
+ */
+
 import { createRequire } from "node:module";
 import path from "node:path";
 import { defineConfig } from "vitest/config";

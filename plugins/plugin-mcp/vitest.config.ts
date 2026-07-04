@@ -1,3 +1,8 @@
+/**
+ * Vitest config for plugin-mcp: aliases @elizaos/* to workspace source so tests
+ * run against live package code, discovers the root and colocated test suites,
+ * and runs them in a Node environment.
+ */
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";

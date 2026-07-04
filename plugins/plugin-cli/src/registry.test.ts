@@ -1,3 +1,9 @@
+/**
+ * Covers the module-level command registry: register/unregister/lookup,
+ * priority-sorted listing, duplicate-name replacement, and bulk registration
+ * against a real Commander instance. Deterministic; the core logger is mocked.
+ */
+
 import { logger } from "@elizaos/core";
 import { Command } from "commander";
 import { beforeEach, describe, expect, it, vi } from "vitest";

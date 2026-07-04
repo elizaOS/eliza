@@ -1,3 +1,8 @@
+/**
+ * Renders the presentational `TrajectoryLoggerSpatialView` to both static DOM
+ * markup and real terminal lines (via the spatial TUI registry), asserting the
+ * one source produces sane output across GUI and TUI surfaces.
+ */
 import { visibleWidth } from "@elizaos/tui";
 import { SpatialSurface } from "@elizaos/ui/spatial";
 import {

@@ -1,3 +1,8 @@
+/**
+ * Covers the training CLI: parsing run-collection options from argv and
+ * formatting the preflight/run/list summaries (pure string logic).
+ */
+
 import { describe, expect, it } from "vitest";
 import {
   buildRunCollectionOptionsFromCliArgs,

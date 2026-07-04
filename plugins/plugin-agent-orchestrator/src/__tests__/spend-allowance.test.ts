@@ -1,3 +1,7 @@
+/**
+ * Verifies estimateSelfSpendCostUsd.
+ * Deterministic unit test of pure helpers; no runtime, no live model.
+ */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   addSessionSpendUsd,

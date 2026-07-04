@@ -1,3 +1,10 @@
+/**
+ * `/api/training/*` HTTP route handler for the fine-tuning dashboard: trajectory
+ * listing and export, dataset build, backend/job/model management, benchmark
+ * runs, and dataset/roleplay generation. `handleTrainingRoutes(ctx)` returns
+ * `true` once it has matched and responded, `false` otherwise, and reads the
+ * live TrainingService from the in-process registry.
+ */
 import type { Trajectory } from "@elizaos/agent";
 import type {
   AgentRuntime,

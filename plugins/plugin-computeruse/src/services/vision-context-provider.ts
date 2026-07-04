@@ -1,3 +1,8 @@
+/**
+ * VisionContextProvider (serviceType "vision-context") — surfaces a VisionContext
+ * snapshot (open apps, focused window, recent actions, current task goal) for
+ * downstream consumers such as plugin-vision.
+ */
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
 import { listProcesses } from "../platform/process-list.js";
 import { listWindows } from "../platform/windows-list.js";

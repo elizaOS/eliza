@@ -1,3 +1,11 @@
+/**
+ * Overlay React view for the Model Tester: fetches per-probe status, dispatches
+ * individual and run-all probe requests against `/api/model-tester/*`, and renders
+ * results (text, embedding preview, generated images, TTS audio) with image/audio
+ * asset pickers and prompt presets. Each control is wired to the agent-surface
+ * registry so an Eliza agent can address it.
+ */
+
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import type { OverlayAppContext } from "@elizaos/ui/components/apps/overlay-app-api";
 import { Button } from "@elizaos/ui/components/ui/button";

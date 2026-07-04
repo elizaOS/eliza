@@ -1,3 +1,10 @@
+/**
+ * Shared HTTP plumbing for the orchestrator route modules: the `RouteContext`
+ * bundle (runtime plus the ACP and workspace services), request-body parsing,
+ * typed value coercers for untrusted JSON fields, and the JSON / error /
+ * service-unavailable response senders.
+ */
+
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { IAgentRuntime } from "@elizaos/core";
 import type { AcpActionService } from "../actions/common.js";

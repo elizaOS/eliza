@@ -1,3 +1,9 @@
+/**
+ * Audits how each registered action/provider resolves to `AgentContext`
+ * categories, cross-checking the live runtime plugin set against the static
+ * context catalog to surface unmapped or stale entries.
+ */
+
 import type { AgentRuntime, Plugin } from "@elizaos/core";
 import {
   ALL_CONTEXTS,

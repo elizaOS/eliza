@@ -1,9 +1,8 @@
 // @vitest-environment jsdom
 //
-// Wrapper test for the orchestrator workbench's extracted live-data layer
-// (#9960). The stateful data flow previously lived inline in the 3.9k-line
-// OrchestratorWorkbench with no test; this exercises useOrchestratorData in
-// isolation against a mocked client: list+status on mount, detail+timeline on
+// Wrapper test for the orchestrator workbench's live-data layer (#9960).
+// Exercises useOrchestratorData in isolation against a mocked client:
+// list+status on mount, detail+timeline on
 // selection, the loud-failure (actionError) path of runMutation, and timeline
 // paging.
 

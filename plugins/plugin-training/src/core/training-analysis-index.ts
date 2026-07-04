@@ -1,3 +1,9 @@
+/**
+ * Scans the training state dir for collection/benchmark/dataset artifacts and
+ * builds a single schema-tagged index over them — the manifest that the
+ * readiness report and dashboard read to understand what training data exists.
+ */
+
 import { createReadStream, existsSync } from "node:fs";
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import {

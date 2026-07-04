@@ -1,3 +1,9 @@
+/**
+ * Trigger route helpers and shared types for the trigger surface (cron/schedule
+ * triggers and task-to-workflow promotion). Exposes `handleTriggerRoutes`, which
+ * the route dispatcher consults, plus the metadata/summary shapes describing a
+ * trigger task's persisted state and its list view.
+ */
 import crypto from 'node:crypto';
 import {
   type TriggerRunRecord as CoreTriggerRunRecord,

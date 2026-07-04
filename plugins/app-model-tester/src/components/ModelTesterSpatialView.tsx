@@ -9,8 +9,8 @@
  * It is purely presentational (a snapshot + an action callback in, primitives
  * out) and imports only the cross-modality primitives, so it is safe to render
  * in the Node agent process where the terminal lives (no browser/Capacitor
- * runtime import). The rich `ModelTesterAppView` React view is untouched; this
- * is an additive sibling that mirrors the same probe data.
+ * runtime import). It mirrors the same probe data as the rich
+ * `ModelTesterAppView` React view.
  */
 
 import {

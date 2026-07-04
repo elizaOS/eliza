@@ -1,3 +1,17 @@
+/**
+ * Response-handler evaluator that decides what the planner does with a verified
+ * sub-agent `task_complete` synthetic memory: relay the sub-agent's answer
+ * directly to the user, or step aside for a concrete planner follow-up.
+ *
+ * Most of this file is the heuristics that separate a real deliverable from
+ * router/tool-transcript noise — captured `[tool output: …]` envelopes, raw
+ * path/transcript leaks, loopback-vs-user-facing URLs, empty-completion
+ * placeholders, and failure markers reported without positive evidence. A short
+ * clean answer, or a degenerate (`length` / `content_filter`) completion, is
+ * relayed once instead of re-spawned; that is the guard against the weak-model
+ * re-spawn loop (elizaOS/eliza#8875). Its failure-side twin is
+ * `sub-agent-failure.ts`.
+ */
 import {
   type AgentContext,
   MESSAGE_SOURCE_SUB_AGENT,

@@ -1,5 +1,9 @@
+/**
+ * Verifies TASKS:list_agents.
+ * Deterministic unit test of pure helpers; no runtime, no live model.
+ */
 import { describe, expect, it } from "vitest";
-// Post-consolidation: LIST_AGENTS is `TASKS { action: "list_agents" }`.
+// LIST_AGENTS is `TASKS { action: "list_agents" }`.
 import { listAgentsAction } from "../../src/actions/tasks.js";
 import {
   callback,

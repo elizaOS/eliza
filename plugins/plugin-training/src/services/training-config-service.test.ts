@@ -1,3 +1,8 @@
+/**
+ * Coverage for TrainingConfigService and its registration helper — the settings
+ * extension the host SETTINGS action dispatches `toggle_training` to — using an
+ * in-memory config, no disk or host runtime.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {

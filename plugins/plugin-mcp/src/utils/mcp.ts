@@ -1,3 +1,9 @@
+/**
+ * Provider-data assembly and memory persistence for MCP: buildMcpProviderData
+ * turns the connected-server list into the provider's structured data plus a
+ * markdown summary, and createMcpMemory records tool/resource use as an embedded
+ * agent memory.
+ */
 import type { IAgentRuntime, Memory } from "@elizaos/core";
 import type {
   McpProvider,

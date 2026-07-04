@@ -1,3 +1,8 @@
+/**
+ * Unit tests for the JS/TS code scanner — asserts it flags code-execution and
+ * exfiltration patterns in skill source. Deterministic, no live model.
+ */
+
 import { describe, expect, it } from "vitest";
 import { scanSkillPackage } from ".";
 import { isScannableCode, scanCodeSource } from "./skill-scanner";

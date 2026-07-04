@@ -1,3 +1,4 @@
+/** JSON schema for the keyword-extraction LLM call: up to five node-search keywords. */
 export const keywordExtractionSchema = {
   type: 'object',
   properties: {

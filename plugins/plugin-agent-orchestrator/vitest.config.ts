@@ -1,3 +1,6 @@
+/**
+ * Vitest configuration for the orchestrator package: Node environment, shared setup file, and the unit + `src` test globs.
+ */
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({

@@ -1,3 +1,4 @@
+/** Vitest config for the unit suite — aliases sibling plugin and package `src` dirs so tests resolve them from source. */
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";

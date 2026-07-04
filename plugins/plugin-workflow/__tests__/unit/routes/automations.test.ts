@@ -1,3 +1,4 @@
+/** Unit tests for the `/api/automations` combined-view builder over an in-memory task/room runtime (deterministic). */
 import { beforeEach, describe, expect, mock, test } from 'bun:test';
 import type { ServerResponse } from 'node:http';
 import type { AgentRuntime, Room, Task, UUID } from '@elizaos/core';

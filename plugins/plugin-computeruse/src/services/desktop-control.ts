@@ -1,3 +1,8 @@
+/**
+ * Low-level desktop-control primitives (screenshot, pointer, key input) plus
+ * capability detection shared by the service and the sandbox backends. Detects
+ * whether a headful GUI is reachable and degrades without throwing.
+ */
 import { execFileSync } from "node:child_process";
 import { readFileSync, unlinkSync } from "node:fs";
 import { platform, tmpdir } from "node:os";

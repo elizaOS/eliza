@@ -1,3 +1,5 @@
+/** Barrel re-exporting the native optimizers, scorers, and shared optimizer types. */
+
 export {
   type BootstrapFewshotInput,
   type BootstrapFewshotOptions,

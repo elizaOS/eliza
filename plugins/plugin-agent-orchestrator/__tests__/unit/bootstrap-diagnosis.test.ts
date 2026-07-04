@@ -1,3 +1,7 @@
+/**
+ * Verifies diagnoseWorkspaceBootstrapFailure.
+ * Deterministic unit test of pure helpers; no runtime, no live model.
+ */
 import { describe, expect, it } from "vitest";
 import { diagnoseWorkspaceBootstrapFailure } from "../../src/services/repo-input.js";
 

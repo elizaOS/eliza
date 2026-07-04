@@ -1,3 +1,9 @@
+/**
+ * Runs the feed-generation stage of the training-collection pipeline: spawns
+ * the feed generator, collects the emitted feed files, and records a
+ * schema-tagged artifact summarizing what was produced.
+ */
+
 import { spawn } from "node:child_process";
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";

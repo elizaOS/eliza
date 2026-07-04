@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 //
 // Behavioral tests for the terminal-task action-bar guards in
-// `TaskInspector` (src/OrchestratorWorkbench.tsx). The inspector is mature
-// (4142 LOC); we test it directly via the exported `TaskInspector` symbol with
-// a hand-built detail fixture so the test is fast and does not need the
+// `TaskInspector` (src/OrchestratorWorkbench.tsx). We test it directly via the
+// exported `TaskInspector` symbol with a hand-built detail fixture so the test
+// is fast and does not need the
 // surrounding workbench, network mocks, or the conversation timeline.
 //
 // What's locked here (see

@@ -1,3 +1,8 @@
+/**
+ * Covers the test-trajectory collector's dedupe and manifest writing on a temp
+ * filesystem (deterministic).
+ */
+
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";

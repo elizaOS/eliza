@@ -1,3 +1,7 @@
+/**
+ * Verifies resolveOriginatingRequestText.
+ * Runs against a real temporary filesystem with a stubbed runtime; no live model.
+ */
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";

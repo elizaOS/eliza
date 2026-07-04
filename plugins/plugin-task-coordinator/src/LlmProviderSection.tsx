@@ -1,3 +1,8 @@
+/**
+ * LLM-provider selector sub-section of the coding-agent settings panel — chooses
+ * between subscription, API-keys, and Eliza Cloud provider modes and renders the
+ * matching credential inputs.
+ */
 import { Button, SettingsControls, useAppSelector } from "@elizaos/ui";
 import {
   AlertTriangle,

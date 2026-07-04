@@ -1,3 +1,12 @@
+/**
+ * The VENDING_MACHINE umbrella action mirroring the vending-bench benchmark's
+ * operating vocabulary (view_state, view_suppliers, place_order, restock_slot,
+ * set_price, collect_cash, update_notes, check_deliveries, advance_day). Each
+ * operation is captured as a typed subaction promoted to a stable
+ * `VENDING_MACHINE_<op>` virtual via `promoteSubactionsToActions` in
+ * src/index.ts. The handler is a vocabulary shim that validates and echoes
+ * structured parameters rather than running a real vending simulation.
+ */
 import type {
   Action,
   ActionResult,

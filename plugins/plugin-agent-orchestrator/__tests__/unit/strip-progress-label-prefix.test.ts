@@ -1,3 +1,7 @@
+/**
+ * Verifies stripProgressLabelPrefix.
+ * Deterministic unit test of pure helpers; no runtime, no live model.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {

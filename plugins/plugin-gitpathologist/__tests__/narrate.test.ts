@@ -1,3 +1,9 @@
+/**
+ * Covers the narrate phase: deterministic rot-cause fallback when no model is
+ * present, and budget-capped model narration that falls back for drifts beyond
+ * budget. The model is a vi.fn stub, not a live LLM.
+ */
+
 import { describe, expect, it, vi } from "vitest";
 import { narrate } from "../src/pipeline/narrate.ts";
 import type { CommitHealthPoint, InflectionPoint } from "../src/types.ts";

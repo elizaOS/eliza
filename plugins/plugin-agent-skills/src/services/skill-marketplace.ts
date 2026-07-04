@@ -1,3 +1,12 @@
+/**
+ * Skill marketplace client: installs, uninstalls, lists, and searches skills
+ * sourced from the ClawHub registry via shallow, sparse git checkouts.
+ *
+ * Skill names and git refs are validated against strict allow-patterns and all
+ * git/dependency work runs through `execFile` (never a shell), keeping
+ * untrusted registry input from escaping into command execution.
+ */
+
 import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";

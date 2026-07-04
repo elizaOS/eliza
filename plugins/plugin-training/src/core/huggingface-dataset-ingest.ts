@@ -1,3 +1,9 @@
+/**
+ * Ingests the Eliza-1 HuggingFace training dataset: downloads the configured
+ * dataset files into the training state dir, hashes each for a receipt, and
+ * writes a schema-tagged ingest manifest the collection pipeline consumes.
+ */
+
 import { createHash } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";

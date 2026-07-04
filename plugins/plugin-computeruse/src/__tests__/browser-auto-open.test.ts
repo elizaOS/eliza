@@ -1,3 +1,7 @@
+/**
+ * Auto-open browser behavior of the computer-use flow, driven against a mocked
+ * platform/browser module (deterministic, no real CDP).
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 

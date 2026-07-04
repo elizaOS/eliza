@@ -1,3 +1,4 @@
+/** Unit tests for the node-catalog search/lookup helpers over the bundled catalog (deterministic). */
 import { describe, expect, test } from 'bun:test';
 import {
   filterNodesByIntegrationSupport,

@@ -1,9 +1,8 @@
 /**
  * Skill discovery and preference persistence helpers.
  *
- * Extracted from server.ts. Handles loading/saving skill preferences,
- * discovering skills from filesystem and AgentSkillsService, and
- * Binance skill exposure filtering.
+ * Handles loading/saving skill preferences, discovering skills from the
+ * filesystem and AgentSkillsService, and Binance skill exposure filtering.
  */
 
 import fs from "node:fs";

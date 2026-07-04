@@ -1,3 +1,7 @@
+/**
+ * Verifies isDeniedSubAgentEnvKey (customCredentials deny-list).
+ * Deterministic unit test of pure helpers; no runtime, no live model.
+ */
 import { describe, expect, it } from "vitest";
 import { isDeniedSubAgentEnvKey } from "../../src/services/acp-service.ts";
 

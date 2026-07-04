@@ -1,3 +1,11 @@
+/**
+ * Native ACP client: speaks the Agent Client Protocol as JSON-RPC over a
+ * spawned agent subprocess's stdio — the default transport for `AcpService`
+ * (the alternative is the legacy `acpx` CLI wrapper). Owns the child-process
+ * lifecycle, the `initialize` / `session/new` / `session/prompt` handshake, MCP
+ * server forwarding so a sub-agent inherits the parent's tools, and permission
+ * prompts resolved against the session's approval preset.
+ */
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { lstat, mkdir, readFile, realpath, writeFile } from "node:fs/promises";
 import path from "node:path";

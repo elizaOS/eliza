@@ -1,3 +1,10 @@
+/**
+ * Detects whether a runtime can host local coding-agent orchestration and which
+ * shell/CLI tools are reachable. `detectOrchestratorTerminalSupport` /
+ * `classifyTerminalSupport` are the single gate the plugin and the checked-in
+ * device support matrix both consult, so a change here moves both together
+ * (see orchestrator-device-support-matrix.ts, issue #9146).
+ */
 import { accessSync, constants } from "node:fs";
 import path from "node:path";
 

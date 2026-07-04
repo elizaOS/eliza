@@ -1,3 +1,17 @@
+/**
+ * In-process workflow execution engine and persistence layer. A single
+ * `Service` (type `embedded_workflow_service`) is simultaneously the CRUD store
+ * for workflow definitions, credentials, tags, and revisions, and the runtime
+ * that executes node graphs — there is no external sidecar or HTTP boundary.
+ *
+ * Node execution delegates to the Smithers orchestrator (see smithers-runtime);
+ * sandboxed JS steps run through QuickJS via `evalQuickJsCode`. The service owns
+ * the scheduler for cron/interval triggers (scheduling idempotency keys guard
+ * against duplicate concurrent runs) and the webhook matcher that route handlers
+ * dispatch inbound requests to. Persistence is Drizzle-over-Postgres against the
+ * tables in ../db/schema; the trigger task-name/tag contract is mirrored from
+ * `packages/agent` to avoid a dependency cycle.
+ */
 import { createHash, randomUUID } from 'node:crypto';
 import {
   type IAgentRuntime,

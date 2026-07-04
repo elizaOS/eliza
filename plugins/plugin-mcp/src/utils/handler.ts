@@ -1,3 +1,7 @@
+/**
+ * Builds the ActionResult for the "no suitable tool" outcome: replies to the user
+ * that no MCP tool matched and falls back to direct assistance.
+ */
 import type { ActionResult, HandlerCallback } from "@elizaos/core";
 
 interface ToolSelectionResult {

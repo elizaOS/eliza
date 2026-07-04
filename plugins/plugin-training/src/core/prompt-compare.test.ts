@@ -1,3 +1,8 @@
+/**
+ * Covers the prompt A/B comparison harness (`comparePrompts` +
+ * `formatComparisonSummary`) with a deterministic in-memory LM adapter.
+ */
+
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";

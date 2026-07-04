@@ -1,3 +1,7 @@
+/**
+ * Verifies TaskSupervisorService digest sinks (#8902 AC2).
+ * Deterministic unit test with a stubbed runtime; no live model.
+ */
 import type { Content, IAgentRuntime, UUID } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { TaskSupervisorService } from "../services/task-supervisor-service.ts";

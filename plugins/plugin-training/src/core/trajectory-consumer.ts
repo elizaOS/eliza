@@ -1,3 +1,8 @@
+/**
+ * Parses trajectory export payloads and extracts the per-call entries and
+ * `eliza_native_v1` rows that the optimizers and dataset builders consume.
+ */
+
 import type {
   Trajectory,
   TrajectoryLlmCall,

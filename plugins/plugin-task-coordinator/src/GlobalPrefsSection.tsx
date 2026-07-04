@@ -1,3 +1,8 @@
+/**
+ * Global coding-agent preference controls in the settings panel: the default
+ * coding directory, the agent selection strategy, the approval preset, and the
+ * multi-account strategy.
+ */
 import {
   Select,
   SelectContent,

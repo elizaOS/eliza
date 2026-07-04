@@ -1,3 +1,13 @@
+/**
+ * Drizzle schema for the plugin's Postgres tables, grouped under the `workflow`
+ * pgSchema: credential mappings, workflows, workflow revisions, executions,
+ * embedded credentials, and tags.
+ *
+ * Registered on the plugin's `schema` field so the runtime provisions and
+ * migrates these tables. EmbeddedWorkflowService reads and writes them directly
+ * as both the CRUD store and the execution log; WorkflowCredentialStore owns the
+ * (userId, credType) → credential-id mappings table.
+ */
 import { sql } from 'drizzle-orm';
 import {
   boolean,

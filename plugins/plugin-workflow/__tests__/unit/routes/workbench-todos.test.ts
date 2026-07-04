@@ -1,3 +1,4 @@
+/** Unit tests for the workbench-todos route handler against an in-memory task-backed runtime (deterministic). */
 import { beforeEach, describe, expect, test } from 'bun:test';
 import type { AgentRuntime, Task, UUID } from '@elizaos/core';
 import { handleWorkbenchTodosRoutes } from '../../../src/routes/workbench-todos';

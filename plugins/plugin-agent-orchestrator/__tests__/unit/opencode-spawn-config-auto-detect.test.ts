@@ -1,3 +1,7 @@
+/**
+ * Verifies buildOpencodeSpawnConfig.
+ * Deterministic unit test with a stubbed runtime; no live model.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildOpencodeSpawnConfig } from "../../src/services/opencode-config.js";

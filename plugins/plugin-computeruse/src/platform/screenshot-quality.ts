@@ -1,3 +1,8 @@
+/**
+ * Pure PNG screenshot-quality classifier: decodes width/height and samples pixel
+ * color distribution to detect blank or single-color captures. Gates the
+ * real-driver screenshot lanes without needing a live display.
+ */
 import { inflateSync } from "node:zlib";
 
 type PngColorType = 0 | 2 | 6;

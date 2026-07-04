@@ -1,3 +1,4 @@
+/** Structural interface the route layer depends on for a training service, decoupling the `/api/training/*` handlers from the concrete TrainingService implementation. */
 import type { Trajectory, TrajectoryListResult } from "@elizaos/agent";
 
 export interface TrainingServiceLike {

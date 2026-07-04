@@ -1,3 +1,8 @@
+/**
+ * Path and command security checks for computer-use: validates file targets
+ * against allowed roots (resolving symlinks), flags dangerous shell commands, and
+ * sanitizes the child-process environment before any spawn.
+ */
 import fs from "node:fs";
 import { lstat, realpath } from "node:fs/promises";
 import os from "node:os";

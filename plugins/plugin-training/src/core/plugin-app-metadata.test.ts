@@ -1,3 +1,8 @@
+/**
+ * Asserts the plugin's package.json publishes the fine-tuning dashboard app
+ * metadata used for local app discovery (reads the manifest, deterministic).
+ */
+
 import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 

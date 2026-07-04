@@ -1,3 +1,4 @@
+/** Unit tests for the node-catalog route handlers over the bundled catalog (deterministic). */
 import { describe, expect, test } from 'bun:test';
 import type { RouteRequest, RouteResponse } from '@elizaos/core';
 import { nodeRoutes } from '../../../src/routes/nodes';

@@ -1,3 +1,8 @@
+/**
+ * Resolves the credentials a generated workflow's nodes need — matching each
+ * required credential type against the user's stored mappings and reporting the
+ * connections still missing so the action can prompt the user to connect them.
+ */
 import { logger } from '@elizaos/core';
 import type {
   CredentialProvider,

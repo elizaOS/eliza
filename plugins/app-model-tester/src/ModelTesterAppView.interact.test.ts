@@ -1,3 +1,5 @@
+/** Covers the TUI `interact()` capability handler — status fetch, run-* capability-to-test mapping, param coercion, and error propagation — against a stubbed fetch (no live server). */
+
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { interact } from "./ModelTesterAppView.interact.js";
 

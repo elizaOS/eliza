@@ -1,3 +1,4 @@
+/** Integration test that spawns the smithers-runtime fixture as a child process and asserts on its real Smithers execution output. */
 import { describe, expect, it } from 'bun:test';
 import { spawn } from 'node:child_process';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';

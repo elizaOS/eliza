@@ -1,3 +1,9 @@
+/**
+ * Unit coverage for the pure eliza-code cerebras spawn-spec builder and bin
+ * resolver (`lib/eliza-code-spec.ts`): env/model/tier wiring, base-URL defaults,
+ * and resolver override + workspace walk-up, driven with an injected `exists`
+ * predicate — no real PTY or process spawn.
+ */
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {

@@ -1,3 +1,5 @@
+/** Barrel re-exporting the DSPy-style optimizers (BootstrapFewshot, COPRO, MIPROv2). */
+
 export {
   type DspyBootstrapFewshotOptions,
   runDspyBootstrapFewshot,

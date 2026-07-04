@@ -1,3 +1,9 @@
+/**
+ * Guards that each `LIFEOPS_OPTIMIZED_PROMPT_TASKS` entry declared in core has a
+ * real consumer referenced in the source tree (static source scan), catching
+ * orphaned optimization tasks.
+ */
+
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";

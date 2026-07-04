@@ -1,3 +1,9 @@
+/**
+ * Detects which local fine-tuning backends are usable (`mlx`, `cuda`, `cpu`) by
+ * probing for the relevant toolchains with short-timeout subprocesses, caching
+ * the result for a minute so route handlers can report backend availability
+ * cheaply.
+ */
 import { execFile } from "node:child_process";
 
 export interface BackendAvailability {

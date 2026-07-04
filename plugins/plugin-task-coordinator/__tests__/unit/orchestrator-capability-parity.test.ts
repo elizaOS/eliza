@@ -1,3 +1,6 @@
+// Guards that the orchestrator view's declared capability manifest in
+// src/index.ts stays in exact lockstep with the ids runOrchestratorCapability
+// actually dispatches. Deterministic: reads and parses source text, no runtime.
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import type { ViewCapability } from "@elizaos/core";

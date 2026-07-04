@@ -1,3 +1,7 @@
+/**
+ * Verifies SubAgentRouter round-trip getters (#8901).
+ * Deterministic unit test with a stubbed runtime; no live model.
+ */
 import type { Content, Memory } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { DEFAULT_ROUND_TRIP_CAP } from "../../src/services/router-loop-guard.js";

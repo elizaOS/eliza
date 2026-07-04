@@ -1,3 +1,4 @@
+/** Prompt that judges whether a workflow request is fulfillable given the restricted set of available integrations. */
 export const FEASIBILITY_CHECK_PROMPT = `You are evaluating whether a user's workflow request can be fulfilled with a restricted set of integrations.
 
 Some integrations the user might need are NOT available on this platform. You must decide if the request is still feasible with what IS available.

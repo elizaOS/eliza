@@ -1,3 +1,9 @@
+/**
+ * Covers peak and drift detection in findInflections over hand-built health
+ * timelines: peak selection with a minimum threshold and sustained-drop drift
+ * onset. Pure, deterministic.
+ */
+
 import { describe, expect, it } from "vitest";
 import { findInflections } from "../src/pipeline/inflect.ts";
 import type { CommitHealthPoint } from "../src/types.ts";

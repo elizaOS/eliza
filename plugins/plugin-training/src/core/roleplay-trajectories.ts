@@ -1,3 +1,9 @@
+/**
+ * Turns training samples into roleplay episodes and serializes them to the
+ * on-disk manifest/export shape the roleplay executor and dataset builders
+ * consume.
+ */
+
 import { randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";

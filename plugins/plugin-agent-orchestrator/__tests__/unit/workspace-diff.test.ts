@@ -1,3 +1,7 @@
+/**
+ * Verifies workspace-diff — real git capture.
+ * Drives a real subprocess against a temporary git workspace; deterministic (no live model).
+ */
 import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";

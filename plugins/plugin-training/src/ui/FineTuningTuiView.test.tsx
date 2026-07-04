@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
 
+/**
+ * Integration coverage for the fine-tuning dashboard driven through its TUI
+ * `interact()` path: renders the real FineTuningView with the panels stubbed and
+ * exercises multi-step flows against a mocked UI client (no live training
+ * backend). Async utility timeouts are widened for saturated CI runners.
+ */
 import { openExternalUrl } from "@elizaos/ui/utils";
 import {
   cleanup,

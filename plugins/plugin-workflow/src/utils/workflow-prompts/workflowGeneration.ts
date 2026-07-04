@@ -1,3 +1,4 @@
+/** System prompt defining the workflow JSON schema and generation rules the model follows to produce a runnable workflow. */
 export const WORKFLOW_GENERATION_SYSTEM_PROMPT = `## Workflow AI Definition: Core Concepts
 
 ### 1. **Workflow**

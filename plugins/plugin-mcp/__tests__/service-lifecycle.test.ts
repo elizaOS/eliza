@@ -1,3 +1,7 @@
+/**
+ * Tests McpService teardown: connections and connection state are cleaned up even
+ * when a transport/client close rejects. Uses stubbed transport/client doubles.
+ */
 import { describe, expect, it, vi } from "vitest";
 import { McpService } from "../src/service";
 

@@ -1,3 +1,4 @@
+/** Unit tests for WORKFLOW_DISPATCH service creation, registration, and dispatch (deterministic, mocked core). */
 import { beforeEach, describe, expect, it, mock } from 'bun:test';
 import * as actualCore from '@elizaos/core';
 import { logger } from '@elizaos/core';

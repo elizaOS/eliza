@@ -1,3 +1,8 @@
+/**
+ * Unit tests for the phase classifier (`summarizePhases` /
+ * `extractShouldRespondDecision`) over hand-built trajectory fixtures — pure
+ * functions, no runtime or network.
+ */
 import { describe, expect, it } from "vitest";
 import type {
   TrajectoryDetail,

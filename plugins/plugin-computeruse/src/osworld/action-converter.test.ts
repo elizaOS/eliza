@@ -1,3 +1,7 @@
+/**
+ * Round-trips OSWorld / PyAutoGUI actions through the converter to and from
+ * DesktopActionParams. Deterministic unit test.
+ */
 import { describe, expect, it } from "vitest";
 import type { DesktopActionParams } from "../types.js";
 import {

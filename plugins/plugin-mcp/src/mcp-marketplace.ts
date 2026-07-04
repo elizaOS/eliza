@@ -1,3 +1,9 @@
+/**
+ * Read-only client for the public MCP registry (registry.modelcontextprotocol.io):
+ * lists/searches published servers (latest versions only, classified as remote or
+ * stdio) and fetches a single server's details. Browse/discovery only — it does
+ * not install anything. Consumed by the marketplace routes in routes-mcp.ts.
+ */
 const MCP_REGISTRY_BASE_URL = "https://registry.modelcontextprotocol.io";
 
 export interface McpRegistryServer {

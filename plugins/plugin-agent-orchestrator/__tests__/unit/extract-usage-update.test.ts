@@ -1,3 +1,7 @@
+/**
+ * Verifies extractUsageUpdate.
+ * Deterministic unit test of pure helpers; no runtime, no live model.
+ */
 import { describe, expect, it } from "vitest";
 import { extractUsageUpdate } from "../../src/services/acp-service.js";
 

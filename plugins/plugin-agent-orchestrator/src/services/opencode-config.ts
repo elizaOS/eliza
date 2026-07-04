@@ -1,3 +1,10 @@
+/**
+ * Builds the OpenCode-specific ACP spawn configuration and environment: the
+ * provider/model wiring (Eliza Cloud OpenAI-compatible endpoint or Cerebras),
+ * the vendored OpenCode shim path, and the read-only web-fetch/web-search
+ * permission grant a spawned sub-agent needs to reach the network under the
+ * non-interactive approval preset.
+ */
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

@@ -1,3 +1,12 @@
+/**
+ * Inert integration-telemetry span factory plus the default agent-workspace
+ * directory resolver, shimmed here so route/service code can depend on them
+ * without pulling @elizaos/agent into the bundle. The telemetry spans are
+ * no-ops; `resolveDefaultAgentWorkspaceDir` honours ELIZA_WORKSPACE_DIR /
+ * ELIZA_STATE_DIR / ELIZA_PROFILE and otherwise falls back to a
+ * project-marker check on the runtime cwd.
+ */
+
 import { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";

@@ -1,3 +1,4 @@
+/** System and user prompts that repair an invalid `$json` field reference to a valid path from the source node's output schema. */
 export const FIELD_CORRECTION_SYSTEM_PROMPT = `Fix the workflows field reference to use a valid field path.
 
 You will receive:

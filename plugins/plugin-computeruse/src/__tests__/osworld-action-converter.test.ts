@@ -1,3 +1,7 @@
+/**
+ * OSWorld action conversion + adapter, with the screenshot platform mocked.
+ * Deterministic unit test of the OSWorld to ComputerInterface translation.
+ */
 import { describe, expect, it, vi } from "vitest";
 import {
   fromOSWorldAction,

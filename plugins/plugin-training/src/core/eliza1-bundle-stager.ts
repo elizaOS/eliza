@@ -1,3 +1,9 @@
+/**
+ * Stages a model bundle for an Eliza-1 benchmark run: builds the stage
+ * manifest and subprocess args, then shells out to place the checkpoint and
+ * tokenizer files where the benchmark harness expects them.
+ */
+
 import { spawn } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";

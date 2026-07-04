@@ -1,3 +1,8 @@
+/**
+ * Covers the scenario-runner wrapper's command assembly and workspace-root
+ * discovery on a temp filesystem — deterministic, no agent is spawned.
+ */
+
 import { existsSync } from "node:fs";
 import { readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";

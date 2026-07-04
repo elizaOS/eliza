@@ -1,3 +1,15 @@
+/**
+ * Phase classification for a trajectory's LLM calls, tool events, and provider
+ * accesses. `phaseOf()` maps each call's `stepType`/`purpose` onto one of the
+ * four canonical phases (HANDLE / PLAN / ACTION / EVALUATE); `summarizePhases()`
+ * folds a `TrajectoryDetail` into an ordered per-phase status summary the view
+ * and TUI render, and `extractShouldRespondDecision()` pulls the respond/ignore
+ * verdict out of the HANDLE step.
+ *
+ * Consumed by the polling hook and the spatial view. Classification is a
+ * hard-coded heuristic: a call matching no phase set is silently omitted from
+ * every summary, so new step types must be registered here to appear.
+ */
 import type {
   TrajectoryDetail,
   UIEvaluationEvent,

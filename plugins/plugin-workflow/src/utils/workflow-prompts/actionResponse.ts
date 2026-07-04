@@ -1,3 +1,4 @@
+/** System prompt that formats the workflow assistant's user-facing replies (preview, clarification, deploy-success, auth-required). */
 export const ACTION_RESPONSE_SYSTEM_PROMPT = `You format responses for a workflow assistant.
 
 Rules:

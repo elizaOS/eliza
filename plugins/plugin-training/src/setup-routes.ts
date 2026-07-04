@@ -1,9 +1,7 @@
 /**
- * Training and trajectory HTTP routes for the app-training plugin.
- *
- * These routes were previously dispatched from
- * `packages/agent/src/api/server.ts`. They are now registered through the
- * plugin route registry with `rawPath: true`.
+ * `trainingPlugin` definition — registers the training and trajectory HTTP
+ * routes (with `rawPath: true`) and the fine-tuning views through the plugin
+ * route registry.
  *
  * The handlers read the live TrainingService from the in-process registry
  * (`getActiveTrainingService`), which server.ts startup populates after it

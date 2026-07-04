@@ -1,3 +1,8 @@
+/**
+ * Covers the action-benchmark runner's command/env assembly and report parsing
+ * on a temp filesystem — deterministic, no model is spawned.
+ */
+
 import { existsSync } from "node:fs";
 import { readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";

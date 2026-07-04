@@ -1,3 +1,8 @@
+/**
+ * Shared `validate` factory for the skill catalog actions — gates each action
+ * on the AGENT_SKILLS_SERVICE being registered on the runtime.
+ */
+
 import type { Action, IAgentRuntime } from "@elizaos/core";
 import type { AgentSkillsService } from "../services/skills";
 

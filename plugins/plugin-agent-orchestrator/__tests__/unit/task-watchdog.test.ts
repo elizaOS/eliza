@@ -1,3 +1,7 @@
+/**
+ * Verifies detectStalledSessions (#8901).
+ * Deterministic unit test with a stubbed runtime; no live model.
+ */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   addSessionSpendUsd,

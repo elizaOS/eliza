@@ -5,8 +5,6 @@
  * their current status. This provider reads from the workspace service and ACP
  * service to build a live context summary that's always
  * available in the prompt.
- *
- * @module providers/active-workspace-context
  */
 
 import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";

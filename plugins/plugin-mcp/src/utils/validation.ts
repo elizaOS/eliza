@@ -1,3 +1,9 @@
+/**
+ * Validators for model-produced tool/resource selections and the feedback prompts
+ * used to re-prompt on failure. A selection must target a connected server and an
+ * existing tool/resource, and tool arguments must satisfy the tool's own input
+ * schema; an explicit noTool/noResourceAvailable signal is accepted as valid.
+ */
 import type { State } from "@elizaos/core";
 import {
   type McpProviderData,

@@ -1,3 +1,4 @@
+/** Vitest config for the trajectory-logger plugin: aliases React and testing-library to the workspace UI package's copies so the peer-dep-only components and jsdom render tests resolve without a per-package dependency. */
 import { createRequire } from "node:module";
 import path from "node:path";
 import { defineConfig } from "vitest/config";

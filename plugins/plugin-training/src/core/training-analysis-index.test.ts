@@ -1,3 +1,8 @@
+/**
+ * Covers the training-analysis index builder over synthesized artifact trees on
+ * a temp filesystem, including the HTML report rendering (deterministic).
+ */
+
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
@@ -856,10 +861,10 @@ describe("training analysis index", () => {
 
     // The embedded report <script> must be syntactically valid. A broken regex
     // in hrefForPath (`:///i`, parsed by the browser as a regex literal + a `//`
-    // line comment) previously left an unclosed `if (` and turned the ENTIRE
-    // <script> into a SyntaxError, disabling all report interactivity (filters,
-    // sorting, clickable source-file links). new Function() compiles without
-    // executing, so it surfaces a SyntaxError without needing a DOM.
+    // line comment) can leave an unclosed `if (` and turn the ENTIRE <script>
+    // into a SyntaxError, disabling all report interactivity (filters, sorting,
+    // clickable source-file links). new Function() compiles without executing,
+    // so it surfaces a SyntaxError without needing a DOM.
     const clientScript = html.match(/<script>([\s\S]*?)<\/script>/)?.[1];
     expect(clientScript, "report client <script> not found").toBeTruthy();
     expect(() => new Function(clientScript as string)).not.toThrow();

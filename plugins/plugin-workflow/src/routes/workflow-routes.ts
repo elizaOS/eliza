@@ -1,3 +1,14 @@
+/**
+ * Central dispatcher for the rawPath `/api/workflow/*` surface: workflow CRUD,
+ * draft generation, clarification resolution, activate/deactivate, executions,
+ * and engine status. `handleWorkflowRoutes` inspects method + pathname and
+ * delegates to WorkflowService, building responses directly in-process with no
+ * proxy or HTTP sidecar.
+ *
+ * These routes are registered verbatim (no plugin-name prefix) via
+ * plugin-routes.ts and the app-route-plugin-registry; clarification handling
+ * threads pending catalog snapshots through the workflow-clarification lib.
+ */
 import type http from 'node:http';
 import type { AgentRuntime } from '@elizaos/core';
 import {

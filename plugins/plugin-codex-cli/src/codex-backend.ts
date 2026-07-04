@@ -1,3 +1,15 @@
+/**
+ * HTTP client for the ChatGPT Codex `/responses` SSE endpoint, plus the
+ * provider-neutral message/tool translation it needs. CodexBackend loads the
+ * codex CLI OAuth token, posts a Responses-API request, and consumes the event
+ * stream into text, native tool calls, finish reason, and token usage.
+ *
+ * Calls on one instance serialize through a FIFO tail promise with optional
+ * pre-request jitter. A 401 triggers exactly one OAuth refresh-and-retry. The
+ * base URL is restricted to chatgpt.com or localhost to prevent token
+ * exfiltration, and temperature/max_output_tokens are never sent because the
+ * gpt-5.x reasoning models reject them with a 400.
+ */
 import { logger, type ChatMessage, type JsonValue, type ToolCall, type ToolDefinition } from "@elizaos/core";
 import { parseSSE } from "./sse-parser";
 import { toOpenAITool, type OpenAITool } from "./tool-format-openai";

@@ -1,13 +1,11 @@
 /**
- * TrainingTriggerService LifeOps coverage (#8795).
- *
- * Before the fix, `tasksForTrajectory` only recognized the six generic
- * runtime tasks, so a LifeOps-tagged trajectory (purpose calendar_extract,
- * inbox_triage, …) fell through to the default `response` bucket and the
- * per-task LifeOps thresholds could never fire. These tests prove:
+ * TrainingTriggerService LifeOps coverage (#8795). Asserts that
+ * `tasksForTrajectory` routes a LifeOps-tagged trajectory (purpose
+ * calendar_extract, inbox_triage, …) to its own per-task bucket rather than the
+ * generic `response` bucket, so per-task thresholds can fire:
  *
  *   - a LifeOps-purpose trajectory increments its own per-task counter,
- *   - a LifeOps per-task threshold actually fires `triggerTraining`,
+ *   - a LifeOps per-task threshold fires `triggerTraining`,
  *   - the bootstrap task set includes the LifeOps capabilities from
  *     `LIFEOPS_OPTIMIZED_PROMPT_TASKS` in `@elizaos/core`.
  */

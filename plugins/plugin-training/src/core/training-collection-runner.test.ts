@@ -1,3 +1,8 @@
+/**
+ * Covers the full collection pipeline runner with stubbed stage subprocesses
+ * and a local HTTP fixture on a temp filesystem — deterministic, no live model.
+ */
+
 import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";

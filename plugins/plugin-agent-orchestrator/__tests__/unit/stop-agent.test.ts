@@ -1,5 +1,9 @@
+/**
+ * Verifies TASKS:stop_agent.
+ * Deterministic unit test with a stubbed runtime; no live model.
+ */
 import { describe, expect, it, vi } from "vitest";
-// Post-consolidation: STOP_AGENT is `TASKS { action: "stop_agent" }`.
+// STOP_AGENT is `TASKS { action: "stop_agent" }`.
 import { stopAgentAction } from "../../src/actions/tasks.js";
 import {
   callback,

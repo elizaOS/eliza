@@ -1,5 +1,12 @@
 // @vitest-environment jsdom
 
+/**
+ * Drives the ModelTesterAppView overlay through the rendered DOM: status
+ * population, ready-count math, prompt presets, per-probe and run-all dispatch,
+ * result rendering (embedding/TTS/image/failure), and the asset pickers. The
+ * @elizaos/ui surfaces and fetch are mocked, so the harness is deterministic.
+ */
+
 import {
   cleanup,
   fireEvent,

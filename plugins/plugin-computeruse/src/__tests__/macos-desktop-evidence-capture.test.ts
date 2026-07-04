@@ -1,3 +1,7 @@
+/**
+ * Classifier that maps macOS Accessibility/TCC blocker messages to
+ * requires-device-evidence in the capture harness. Deterministic unit test.
+ */
 import { describe, expect, it } from "vitest";
 import { isMacosAccessibilityEvidenceBlocker } from "../../scripts/capture-macos-desktop-evidence.mjs";
 

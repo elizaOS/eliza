@@ -1,3 +1,7 @@
+/**
+ * Verifies buildDefaultAcceptanceCriteria (#8896).
+ * Deterministic unit test of pure helpers; no runtime, no live model.
+ */
 import { afterEach, describe, expect, it } from "vitest";
 import {
   buildDefaultAcceptanceCriteria,

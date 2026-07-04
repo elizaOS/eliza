@@ -1,3 +1,4 @@
+/** JSON schema for the workflow-matching LLM call: matched workflow id, confidence, and scored candidates. */
 export const workflowMatchingSchema = {
   type: 'object',
   properties: {

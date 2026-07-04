@@ -1,3 +1,9 @@
+/**
+ * LLM steps of the workflow RAG pipeline: keyword extraction, feasibility check,
+ * draft-intent classification, workflow generation, and the field/parameter
+ * correction passes. Each call pairs a prompt template with its structured-output
+ * schema and runs through `runtime.useModel`.
+ */
 import type { GenerateTextParams } from '@elizaos/core';
 import { type IAgentRuntime, logger, ModelType } from '@elizaos/core';
 import {

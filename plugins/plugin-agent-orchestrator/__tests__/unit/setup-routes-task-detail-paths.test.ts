@@ -1,3 +1,7 @@
+/**
+ * Verifies setup-routes — task detail + control path templates are registered.
+ * Deterministic unit test of pure helpers; no runtime, no live model.
+ */
 import { describe, expect, it } from "vitest";
 import { codingAgentRoutePlugin } from "../../src/setup-routes.ts";
 

@@ -1,3 +1,7 @@
+/**
+ * Verifies collectScreenshotPaths (#8904).
+ * Deterministic unit test with a stubbed runtime; no live model.
+ */
 import { logger } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import {

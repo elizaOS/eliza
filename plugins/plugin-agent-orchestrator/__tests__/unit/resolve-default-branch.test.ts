@@ -1,3 +1,7 @@
+/**
+ * Verifies resolveDefaultBranch.
+ * Deterministic unit test with a stubbed runtime; no live model.
+ */
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 // #9146 — resolveDefaultBranch runs `git ls-remote --symref` to find a repo's

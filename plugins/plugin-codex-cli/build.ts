@@ -2,8 +2,7 @@
 /**
  * Build script for @elizaos/plugin-codex-cli (Node + Browser).
  * Orchestration lives in the shared driver (plugins/plugin-build.ts); this lists
- * only what differs. The emitted `dist/` is byte-identical to the previous
- * hand-rolled build.
+ * only what differs.
  */
 import { buildPlugin } from "../plugin-build";
 

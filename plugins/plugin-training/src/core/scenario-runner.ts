@@ -1,3 +1,9 @@
+/**
+ * Wraps the scenario-runner harness: builds the subprocess command that runs
+ * scenario blueprints through the real agent and collects the resulting
+ * trajectories for the training-collection pipeline.
+ */
+
 import { spawn } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";

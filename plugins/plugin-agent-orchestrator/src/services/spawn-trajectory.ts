@@ -1,3 +1,9 @@
+/**
+ * Links a spawned sub-agent's trajectory to the parent orchestrator step. Wraps
+ * `spawnWithTrajectoryLink` to stamp parent/child trajectory step ids onto
+ * session metadata and child-process env, so a sub-agent's recorded decisions
+ * attach to the parent turn that spawned it.
+ */
 import {
   type IAgentRuntime,
   type SpawnTrajectoryHandle,

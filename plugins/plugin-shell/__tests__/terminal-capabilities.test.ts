@@ -1,3 +1,8 @@
+/**
+ * Tests for terminal-capability detection — detectTerminalSupport,
+ * resolveTerminalShell/resolveExecutable, and missingTerminalToolForCommand —
+ * using real files on disk (temp executables, chmod) rather than mocks.
+ */
 import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";

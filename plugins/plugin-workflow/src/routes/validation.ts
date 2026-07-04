@@ -1,3 +1,8 @@
+/**
+ * Plugin-relative route handler for `POST /workflow/workflows/validate`, which
+ * validates a workflow definition (nodes, connections, parameters, inputs)
+ * without deploying it and returns the collected errors.
+ */
 import type { IAgentRuntime, Route, RouteRequest, RouteResponse } from '@elizaos/core';
 import type { WorkflowDefinition } from '../types/index';
 import { validateNodeInputs, validateNodeParameters, validateWorkflow } from '../utils/workflow';

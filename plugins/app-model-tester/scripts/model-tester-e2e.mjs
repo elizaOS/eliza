@@ -1,5 +1,13 @@
 #!/usr/bin/env node
 
+/**
+ * End-to-end probe runner for the Model Tester routes: against a live agent server
+ * it asserts the static shell renders (and carries no Vite/HMR code), the status
+ * endpoint lists every probe, and each probe runs — treating a known-unavailable
+ * backend as a skip while requiring text-small, text-large, embedding, and vad to
+ * pass. Configured via MODEL_TESTER_BASE_URL / MODEL_TESTER_REQUIRE_ALL.
+ */
+
 const baseUrl = process.env.MODEL_TESTER_BASE_URL ?? "http://127.0.0.1:31337";
 const requireAll = process.env.MODEL_TESTER_REQUIRE_ALL === "1";
 

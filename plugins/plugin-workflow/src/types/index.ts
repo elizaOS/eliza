@@ -1,3 +1,8 @@
+/**
+ * Core workflow domain and transport types (WorkflowDefinition, WorkflowNode,
+ * WorkflowExecution, drafts, credential-resolution shapes), the error classes,
+ * and the service-type and event-name constants shared across the plugin.
+ */
 import type { EventPayload } from '@elizaos/core';
 import type {
   INode,

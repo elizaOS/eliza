@@ -1,3 +1,12 @@
+/**
+ * The VISUALWEBBENCH_TASK umbrella action mirroring the VisualWebBench vision
+ * task vocabulary (web_caption, webqa, heading_ocr, element_ocr, element_ground,
+ * action_prediction, action_ground). Each task type is captured as a typed
+ * subaction promoted to a stable `VISUALWEBBENCH_TASK_<task>` virtual via
+ * `promoteSubactionsToActions` in src/index.ts. The handler is a vocabulary
+ * shim that validates and echoes structured parameters rather than performing
+ * real vision inference.
+ */
 import type {
   Action,
   ActionResult,

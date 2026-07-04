@@ -1,3 +1,4 @@
+/** Side-panel variant wrapper around PtyConsoleBase. */
 import type { CodingAgentSession } from "@elizaos/ui";
 import { PtyConsoleBase } from "./PtyConsoleBase";
 

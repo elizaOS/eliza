@@ -1,3 +1,7 @@
+/**
+ * Verifies activeSubAgentsProvider.
+ * Deterministic unit test with a stubbed runtime; no live model.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { activeSubAgentsProvider } from "../../src/providers/active-sub-agents.js";

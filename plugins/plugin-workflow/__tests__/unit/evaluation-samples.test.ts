@@ -1,3 +1,4 @@
+/** Unit tests for `buildWorkflowEvaluationSuite` JSONL sampling from executions (deterministic). */
 import { describe, expect, test } from 'bun:test';
 import { buildWorkflowEvaluationSuite } from '../../src/utils/evaluation-samples';
 import { createExecution, createWorkflowResponse } from '../fixtures/workflows';

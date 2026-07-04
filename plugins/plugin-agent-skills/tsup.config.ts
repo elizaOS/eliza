@@ -1,3 +1,5 @@
+/** tsup build config: bundles the barrel entry to ESM, keeping runtime-provided @elizaos/* and node deps external. */
+
 import { defineConfig } from "tsup";
 
 export default defineConfig({

@@ -1,3 +1,14 @@
+/**
+ * Broker that lets a spawned coding sub-agent ask the running parent Eliza
+ * agent to use its own loaded capabilities — actions, providers, connectors,
+ * the confirmation flow, and Eliza Cloud commands — via `USE_SKILL parent-agent`.
+ * Exposes the skill manifest entry and the request runner.
+ *
+ * Mutating, paid, or destructive Cloud commands require an explicit human "yes"
+ * on a follow-up turn; fixed-cost self-spend commands may auto-authorize within
+ * the configured spend cap (see spend-allowance.ts), while variable-cost ones
+ * always demand confirmation because a child-declared price cannot be trusted.
+ */
 import type {
   HandlerCallback,
   IAgentRuntime,

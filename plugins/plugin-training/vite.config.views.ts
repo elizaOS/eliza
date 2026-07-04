@@ -1,3 +1,4 @@
+/** Vite config for the `training` view bundle, delegating to the shared view-bundle builder. */
 import { createViewBundleConfig } from "../../packages/scripts/view-bundle-vite.config.ts";
 
 export default createViewBundleConfig({

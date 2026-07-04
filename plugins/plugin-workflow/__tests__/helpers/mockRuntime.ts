@@ -1,3 +1,4 @@
+/** Deterministic mock `IAgentRuntime` plus message/state builders for unit tests — services, settings, and `useModel` are stubbed. */
 import { mock } from 'bun:test';
 import type { IAgentRuntime, Memory, State } from '@elizaos/core';
 

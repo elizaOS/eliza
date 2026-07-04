@@ -1,3 +1,4 @@
+/** Unit tests for `resolveCredentials` matching required node credentials against stored mappings (deterministic, mocked store). */
 import { describe, expect, mock, test } from 'bun:test';
 import type {
   CredentialProvider,

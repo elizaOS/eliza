@@ -1,3 +1,5 @@
+/** Guards ModelTesterAppView.tsx against redundant header copy and paragraph metadata by scanning its source text (deterministic filesystem read, no render). */
+
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";

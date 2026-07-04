@@ -1,3 +1,7 @@
+/**
+ * Normalized 0-1000 coordinate-space conversions (point + box, clamp, center) for
+ * Computer Use x Vision. Deterministic unit test.
+ */
 import { describe, expect, it } from "vitest";
 import {
   boxFromNormalized,

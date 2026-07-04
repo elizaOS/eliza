@@ -1,3 +1,7 @@
+/**
+ * Verifies SubAgentInbox.
+ * Deterministic unit test of pure helpers; no runtime, no live model.
+ */
 import { describe, expect, it } from "vitest";
 import { SubAgentInbox } from "../../src/services/sub-agent-inbox.js";
 

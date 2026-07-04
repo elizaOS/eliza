@@ -1,3 +1,7 @@
+/**
+ * `workflow_status` provider: lists each user's workflows with their last
+ * execution status for the automation/connectors contexts (ADMIN-gated).
+ */
 import { type IAgentRuntime, logger, type Memory, type Provider, type State } from '@elizaos/core';
 import { WORKFLOW_SERVICE_TYPE, type WorkflowService } from '../services/index';
 

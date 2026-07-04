@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 //
 // The account-health panel (#9960) surfaces the multi-account pool's per-account
-// health + the server readiness verdict inside the orchestrator workbench (it
-// previously lived only in the chat sidebar). These tests pin: it fetches the
+// health + the server readiness verdict inside the orchestrator workbench (the
+// same accounts view the chat sidebar reuses). These tests pin: it fetches the
 // four sources, renders the reused accounts view, and renders the readiness
 // banner verbatim from the server DTO (ready vs degraded-with-problems).
 

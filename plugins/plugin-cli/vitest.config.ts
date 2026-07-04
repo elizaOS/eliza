@@ -1,3 +1,9 @@
+/**
+ * Vitest configuration for the CLI plugin: node environment, serial execution
+ * (single worker, no file parallelism) so the module-level command registry
+ * stays isolated between suites, with the core logger mock loaded as a setup file.
+ */
+
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({

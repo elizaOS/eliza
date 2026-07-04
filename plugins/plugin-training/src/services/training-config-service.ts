@@ -2,12 +2,10 @@
  * TrainingConfigService — the plugin-training-owned settings extension the host
  * SETTINGS action dispatches `toggle_training` to.
  *
- * Previously the host action (`@elizaos/agent`) reached into this plugin via a
- * computed-specifier `import("@elizaos/plugin-training")` to call
- * `loadTrainingConfig`/`saveTrainingConfig` — a reverse dependency edge (host →
- * plugin) that the agent package did not even declare. That business logic now
- * lives here, behind a runtime service the host looks up by name: the plugin
- * contributes the capability, the host stays a dispatcher.
+ * The training-config business logic (`loadTrainingConfig` / `saveTrainingConfig`)
+ * lives here, behind a runtime service the host looks up by name, so the host
+ * stays a dispatcher and does not depend on this plugin: the plugin contributes
+ * the capability, the host resolves it without a reverse dependency edge.
  *
  * Service identifier: `TRAINING_CONFIG_SERVICE` (`"training_config_service"`).
  */

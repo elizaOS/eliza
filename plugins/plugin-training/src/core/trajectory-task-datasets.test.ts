@@ -1,3 +1,8 @@
+/**
+ * Covers per-task `eliza_native_v1` extraction and JSONL writing from recorded
+ * trajectories on a temp filesystem (deterministic).
+ */
+
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";

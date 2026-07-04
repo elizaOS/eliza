@@ -1,3 +1,7 @@
+/**
+ * Verifies TASKS:provision_workspace.
+ * Deterministic unit test with a stubbed runtime; no live model.
+ */
 import { describe, expect, it, vi } from "vitest";
 import { provisionWorkspaceAction } from "../../src/actions/tasks.js";
 import { CodingWorkspaceService } from "../../src/services/workspace-service.js";

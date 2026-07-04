@@ -1,3 +1,11 @@
+/**
+ * Orchestrates the full training-data collection pipeline end to end:
+ * HuggingFace dataset ingest, feed generation, scenario runs, and action
+ * benchmarks, writing each stage's artifact plus a schema-tagged run summary
+ * and collection index. This is the top-level entry the CLI and auto-train
+ * trigger call to assemble a training corpus.
+ */
+
 import { existsSync } from "node:fs";
 import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";

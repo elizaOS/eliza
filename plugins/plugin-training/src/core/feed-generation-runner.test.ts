@@ -1,3 +1,8 @@
+/**
+ * Covers the feed-generation runner's arg assembly and artifact recording with
+ * a stub feed generator on a temp filesystem.
+ */
+
 import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";

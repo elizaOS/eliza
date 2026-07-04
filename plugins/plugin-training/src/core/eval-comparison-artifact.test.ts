@@ -1,3 +1,8 @@
+/**
+ * Verifies the eval-comparison artifact payload builder against fixed
+ * base/candidate inputs on a temp filesystem (deterministic).
+ */
+
 import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";

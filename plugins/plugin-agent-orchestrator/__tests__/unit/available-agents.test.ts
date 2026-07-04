@@ -1,3 +1,7 @@
+/**
+ * Verifies availableAgentsProvider.
+ * Deterministic unit test of pure helpers; no runtime, no live model.
+ */
 import { describe, expect, it } from "vitest";
 import { availableAgentsProvider } from "../../src/providers/available-agents.js";
 import {

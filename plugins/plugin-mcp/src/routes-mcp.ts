@@ -1,3 +1,11 @@
+/**
+ * HTTP handler for /api/mcp/* on the host server: marketplace search/details
+ * (proxying registry.modelcontextprotocol.io), config CRUD over
+ * settings.mcp.servers, and runtime connection status. The host injects a
+ * McpRouteContext supplying request/response helpers plus config-security guards
+ * (prototype-pollution key blocking, stdio terminal authorization, per-server
+ * validation); stdio config changes require terminal authorization and a restart.
+ */
 import type http from "node:http";
 import { logger, type ReadJsonBodyOptions } from "@elizaos/core";
 import { getMcpServerDetails, searchMcpMarketplace } from "./mcp-marketplace.js";

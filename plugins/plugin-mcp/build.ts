@@ -7,11 +7,10 @@
  * - CJS (Node): dist/cjs/index.cjs
  * - Types: dist/index.d.ts + dist/node/index.d.ts + dist/cjs/index.d.ts
  *
- * Migrated onto the shared `buildPlugin` driver (issue #10078). The CJS bundle
- * is renamed `index.js` -> `index.cjs` with a plain rename (its sibling
- * `index.js.map` is intentionally left unrenamed so the emitted
- * `//# sourceMappingURL=index.js.map` reference stays valid), byte-identical to
- * the prior hand-rolled build.
+ * Runs on the shared `buildPlugin` driver. The CJS bundle is renamed
+ * `index.js` -> `index.cjs` with a plain rename; its sibling `index.js.map` is
+ * intentionally left unrenamed so the emitted `//# sourceMappingURL=index.js.map`
+ * reference stays valid.
  */
 import { buildPlugin } from "../plugin-build";
 
@@ -24,7 +23,7 @@ await buildPlugin({
   clean: true,
   externals: "auto",
   externalsOptions: {
-    // Transitive workspace + native deps the hand-list relied on.
+    // Transitive workspace + native deps that must stay external.
     extra: ["@elizaos/shared", "@elizaos/agent", "@node-llama-cpp", "node-llama-cpp"],
   },
   targets: [
@@ -49,8 +48,8 @@ await buildPlugin({
       renames: [["index.js", "index.cjs"]],
     },
   ],
-  // --noCheck because plugin-mcp transitively imports @elizaos/agent which has
-  // pre-existing migration debt outside our scope.
+  // Type-emit uses a dedicated project because plugin-mcp transitively imports
+  // @elizaos/agent, whose type errors are outside this package's control.
   dtsProject: "tsconfig.build.json",
   dtsShims: [
     { path: "index.d.ts", content: reexport("./node/index") },

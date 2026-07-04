@@ -1,3 +1,8 @@
+/**
+ * Test helper re-exporting the screenshot-quality classifier plus
+ * assertScreenshotBase64NotBlank, so real-driver screenshot lanes can assert a
+ * capture is not blank.
+ */
 import { expect } from "vitest";
 
 export {

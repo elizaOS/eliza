@@ -1,3 +1,7 @@
+/**
+ * Verifies AcpService.
+ * Drives a real ACP subprocess; deterministic harness (no live model).
+ */
 import { spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
 import path from "node:path";

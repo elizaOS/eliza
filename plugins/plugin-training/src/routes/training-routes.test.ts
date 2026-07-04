@@ -1,3 +1,7 @@
+/**
+ * Coverage for the `/api/training/*` route handler (`handleTrainingRoutes`),
+ * driving it against an in-memory fake TrainingService — no live backend.
+ */
 import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import type http from "node:http";
 import { tmpdir } from "node:os";

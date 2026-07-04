@@ -1,3 +1,9 @@
+/**
+ * Covers the deterministic EMA scorer: clean features outscore WIP dumps, test
+ * touches earn a bonus, the running average stays bounded, and a revert of a
+ * recent commit back-penalizes its target. Pure, no git or model.
+ */
+
 import { describe, expect, it } from "vitest";
 import { classify } from "../src/pipeline/classify.ts";
 import { score } from "../src/pipeline/score.ts";

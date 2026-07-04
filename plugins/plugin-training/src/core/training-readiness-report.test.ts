@@ -1,3 +1,8 @@
+/**
+ * Covers the training-readiness report builder over synthetic analysis-index
+ * inputs (pure).
+ */
+
 import { describe, expect, it } from "vitest";
 import type { TrainingAnalysisIndex } from "./training-analysis-index.js";
 import {

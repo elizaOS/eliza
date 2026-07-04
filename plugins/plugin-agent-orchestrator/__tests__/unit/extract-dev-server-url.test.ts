@@ -1,3 +1,7 @@
+/**
+ * Verifies extractDevServerUrl.
+ * Deterministic unit test of pure helpers; no runtime, no live model.
+ */
 import { describe, expect, it } from "vitest";
 import { extractDevServerUrl } from "../../src/services/ansi-utils.js";
 

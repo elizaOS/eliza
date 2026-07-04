@@ -1,3 +1,11 @@
+/**
+ * Action that shells out to the elizaOS device capability runner
+ * (`/usr/local/lib/elizaos/capability-runner`, overridable via
+ * `ELIZAOS_CAPABILITY_RUNNER`) to report or toggle host state: capability
+ * status, privacy mode, root status, and opening persistent storage. Only
+ * meaningful on elizaOS-provisioned OS builds where that runner is installed.
+ */
+
 import { execFile } from "node:child_process";
 import { constants } from "node:fs";
 import { access } from "node:fs/promises";

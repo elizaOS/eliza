@@ -1,3 +1,8 @@
+/**
+ * JSON Schema objects and matching TypeScript types plus type guards for the
+ * three model-produced selection shapes: tool selection-name, tool-arguments, and
+ * resource selection. Shared by the selection prompts and validators.
+ */
 export const toolSelectionNameSchema = {
   type: "object",
   required: ["serverName", "toolName"],

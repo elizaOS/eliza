@@ -6,9 +6,8 @@
  * eligibility, dispatches to script execution or guidance retrieval, and
  * annotates the active trajectory step with the skill that ran.
  *
- * The older fragmented actions (RUN_SKILL_SCRIPT, GET_SKILL_GUIDANCE) have
- * been removed. RUN_SKILL and INVOKE_SKILL are listed as similes so callers
- * still emitting those legacy names continue to resolve to USE_SKILL.
+ * RUN_SKILL and INVOKE_SKILL are registered as similes so callers emitting
+ * those names resolve to USE_SKILL.
  */
 
 import { spawn } from "node:child_process";

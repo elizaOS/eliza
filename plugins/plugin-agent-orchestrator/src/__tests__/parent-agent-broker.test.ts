@@ -1,3 +1,7 @@
+/**
+ * Verifies runParentAgentBroker.
+ * Deterministic unit test with a stubbed runtime; no live model.
+ */
 import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { runParentAgentBroker } from "../services/parent-agent-broker.js";

@@ -1,3 +1,9 @@
+/**
+ * Append-only NDJSON audit log for orchestrator spawn / send / stop / cancel
+ * decisions, emitted as `TASK_AUDIT` runtime events and persisted to disk. The
+ * log self-rotates once it crosses a byte cap so a long-lived runtime cannot
+ * grow it unbounded.
+ */
 import { appendFile, mkdir, rename, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";

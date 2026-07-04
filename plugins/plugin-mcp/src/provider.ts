@@ -1,3 +1,8 @@
+/**
+ * MCP provider: injects a compact summary of connected servers, their status,
+ * tools, and resources into agent context each turn. Reads McpService provider
+ * data and caps servers/tools/resources per turn to bound prompt size.
+ */
 import type { IAgentRuntime, Memory, Provider, ProviderResult, State } from "@elizaos/core";
 import type { McpService } from "./service";
 import type { McpProviderData } from "./types";

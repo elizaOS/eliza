@@ -1,3 +1,8 @@
+/**
+ * Exercises handleMcpRoutes against a synthetic McpRouteContext (marketplace
+ * module mocked): asserts config CRUD, prototype-pollution key blocking, and
+ * marketplace routing. Route logic is real; the registry client is stubbed.
+ */
 import type http from "node:http";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { getMcpServerDetails, searchMcpMarketplace } from "../src/mcp-marketplace.js";

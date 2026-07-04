@@ -1,3 +1,8 @@
+/**
+ * Test fixture run as a child process by the smithers-runtime suite: executes a
+ * workflow through `runWorkflowWithSmithers` and prints a prefixed result line the
+ * parent parses. Exercises the real Smithers execution adapter.
+ */
 import { writeFile } from 'node:fs/promises';
 import {
   runWorkflowWithSmithers,

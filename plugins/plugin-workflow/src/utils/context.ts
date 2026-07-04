@@ -1,3 +1,4 @@
+/** Conversation-context helpers for workflow actions: flattens recent messages into a prompt string and resolves a user's tag name. */
 import type { IAgentRuntime, Memory, State, UUID } from '@elizaos/core';
 
 export function buildConversationContext(message: Memory, state: State | undefined): string {

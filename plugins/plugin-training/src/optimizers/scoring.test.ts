@@ -1,3 +1,8 @@
+/**
+ * Covers the native scorers: planner action/view extraction and the view-aware
+ * agreement score (pure).
+ */
+
 import { describe, expect, it } from "vitest";
 import {
   extractPlannerAction,

@@ -1,3 +1,4 @@
+/** Barrel for the plugin's HTTP route handlers: training, Vast.ai, trajectory, and experience. */
 export {
   EXPERIENCE_ROUTE_PATHS,
   type ExperienceRouteContext,

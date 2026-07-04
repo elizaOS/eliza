@@ -1,3 +1,9 @@
+/**
+ * Derives a training-readiness report from the analysis index: which tiers have
+ * datasets, benchmarks, and eval coverage, and what action a caller must take
+ * to close each gap. Emitted as a schema-tagged artifact for the dashboard.
+ */
+
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {

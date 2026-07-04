@@ -1,3 +1,9 @@
+/**
+ * JSON helpers for parsing and validating model-produced tool/resource
+ * selections: parseJSON strips code fences and surrounding prose then parses with
+ * JSON5 leniency, and validateJsonSchema gates a value against a JSON Schema via
+ * Ajv. Used on the untrusted-model-output boundary in the selection flow.
+ */
 import Ajv from "ajv";
 import JSON5 from "json5";
 

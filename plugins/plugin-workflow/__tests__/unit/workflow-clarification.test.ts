@@ -1,3 +1,4 @@
+/** Unit tests for clarification coercion, resolution application, and dot-path set helpers (deterministic). */
 import { describe, expect, test } from 'bun:test';
 import {
   applyResolutions,

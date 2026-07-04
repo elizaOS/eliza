@@ -1,3 +1,9 @@
+/**
+ * Plugin-relative route handlers for trigger-node webhooks, mounted under
+ * `/workflow/webhooks/:path` for every HTTP method. Inbound requests are handed
+ * to the EmbeddedWorkflowService, which matches the path against active webhook
+ * trigger nodes and starts the corresponding execution.
+ */
 import type { IAgentRuntime, Route, RouteRequest, RouteResponse } from '@elizaos/core';
 import {
   EMBEDDED_WORKFLOW_SERVICE_TYPE,

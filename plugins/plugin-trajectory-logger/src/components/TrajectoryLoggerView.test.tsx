@@ -4,8 +4,8 @@
 // the bundle exports for the "gui" and "xr" modalities. Asserts it mounts the
 // one presentational TrajectoryLoggerSpatialView inside a SpatialSurface, polls
 // real-shape trajectory data into the snapshot, and routes the spatial action
-// ids (`back`, `select:<slot>:<phase>`, `refresh`) — functional parity with the
-// retired hand-written GUI/TUI surfaces.
+// ids (`back`, `select:<slot>:<phase>`, `refresh`) across the GUI and TUI
+// surfaces.
 
 import { NAVIGATE_VIEW_EVENT } from "@elizaos/ui/events";
 import { SpatialSurface } from "@elizaos/ui/spatial";

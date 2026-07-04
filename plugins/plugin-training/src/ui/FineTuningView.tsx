@@ -1,3 +1,12 @@
+/**
+ * FineTuningView — the fine-tuning dashboard's rich GUI/XR React component: the
+ * status, trajectories, datasets, backends, jobs, models, benchmark, and
+ * analysis-coverage panels wired to the `/api/training/*` endpoints through the
+ * shared UI client. Pure formatting/parsing helpers live in
+ * `FineTuningView.helpers.ts` and the `interact` capability handler in
+ * `FineTuningView.interact.ts`, so this file exports only React components and
+ * stays Fast-Refresh-compatible.
+ */
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import type {
   HuggingFaceDatasetIngestResponse,

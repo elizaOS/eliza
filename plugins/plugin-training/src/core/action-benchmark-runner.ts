@@ -1,3 +1,10 @@
+/**
+ * Runs the Eliza-1 action-selection benchmark by spawning the app-core
+ * `action-selection.real.test.ts` vitest against a real model, then reads the
+ * emitted text/JSON reports back into a structured result. Consumed by the
+ * training-collection pipeline and the model-benchmark route.
+ */
+
 import { spawn } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";

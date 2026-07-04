@@ -1,3 +1,8 @@
+/**
+ * Configures the gitpathologist Vitest suite; aliases @elizaos/core and
+ * @elizaos/logger to their TypeScript sources so tests run without a built dist.
+ */
+
 import path from "node:path";
 import { defineConfig } from "vitest/config";
 

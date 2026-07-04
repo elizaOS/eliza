@@ -1,3 +1,10 @@
+/**
+ * Extracts per-task training examples from recorded trajectories and writes
+ * them as `eliza_native_v1` JSONL, one file per training task. Reward/quality
+ * signals (scenario status, judge score) ride along so failed scenarios are not
+ * cloned as gold supervision. Shared by the export bundle and the nightly cron.
+ */
+
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Trajectory, TrajectoryLlmCall } from "@elizaos/agent";

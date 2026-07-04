@@ -1,3 +1,8 @@
+/**
+ * Real computer-use lane: drives useComputerAction/windowAction through a live
+ * ComputerUseService and the real platform driver, asserting non-blank
+ * screenshots. Skips where no headful display is available.
+ */
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";

@@ -1,3 +1,8 @@
+/**
+ * Resolves how a spawn is routed: normalizes a caller's backend/adapter name to
+ * a known adapter type and picks the working directory for a new coding session
+ * from the configured workspace-root env keys and per-label routing rules.
+ */
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";

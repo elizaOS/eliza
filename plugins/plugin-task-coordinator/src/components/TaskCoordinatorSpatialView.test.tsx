@@ -1,3 +1,7 @@
+// Pins the one-source/three-modality contract of TaskCoordinatorSpatialView: the
+// TUI render honors the terminal width budget (via renderViewToLines), the
+// GUI/XR DOM render mounts with agent hooks (XR scaled up), and the view
+// registers into the terminal registry the agent terminal mounts. Deterministic.
 import { visibleWidth } from "@elizaos/tui";
 import { SpatialSurface } from "@elizaos/ui/spatial";
 import {

@@ -1,3 +1,10 @@
+/**
+ * Idempotent cron-job registration on the runtime TaskService: `ensureNamedCronJob`
+ * creates a repeat task once and skips if one with the same name already exists,
+ * and `registerRuntimeEventOnce` guards a runtime event subscription against
+ * duplicate registration across boots.
+ */
+
 interface MinimalLogger {
   info: (message: string) => void;
   warn: (message: string) => void;

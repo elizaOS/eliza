@@ -1,3 +1,7 @@
+/**
+ * Verifies codingSessionChangesProvider — staleness guard.
+ * Deterministic unit test of pure helpers; no runtime, no live model.
+ */
 import { describe, expect, it } from "vitest";
 
 import { codingSessionChangesProvider } from "../../src/providers/coding-session-changes.js";

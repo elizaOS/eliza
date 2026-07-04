@@ -1,4 +1,11 @@
 #!/usr/bin/env bun
+/**
+ * Captures real macOS desktop-control evidence — probes platform capabilities,
+ * screenshot capture, clipboard, and browser availability against a live headful
+ * session, then writes a structured evidence manifest. Accessibility/TCC blockers
+ * are classified as requires-device-evidence rather than failures. Produces the
+ * macOS validation artifacts consumed by validate-platform-evidence.
+ */
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";

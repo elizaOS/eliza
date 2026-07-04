@@ -1,3 +1,5 @@
+/** Vitest config: runs the plugin's test files under Node with the core-mock setup file. */
+
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({

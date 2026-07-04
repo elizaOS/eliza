@@ -1,3 +1,4 @@
+/** Barrel for the plugin's runtime services: backend detection, training config, trigger, TrainingService, Vast orchestration, and the active-service registry. */
 export {
   type BackendAvailability,
   clearBackendCache,

@@ -1,6 +1,11 @@
 /**
- * Enhanced Shell Service with PTY, background execution, and session management
- * Migrated from otto bash-tools.exec.ts, bash-tools.process.ts
+ * ShellService — the shell plugin's core command executor. Runs commands via
+ * executeCommand() (simple, timeout-bounded) or exec() (PTY, background/yield,
+ * session tracking), and manages live sessions through processAction().
+ *
+ * Short-circuits in cloud mode and routes through SandboxManager under sandbox
+ * mode; PTY spawn (@lydell/node-pty) is optional and degrades to cross-spawn
+ * when the native module is unavailable.
  */
 
 import type { ChildProcessWithoutNullStreams } from "node:child_process";

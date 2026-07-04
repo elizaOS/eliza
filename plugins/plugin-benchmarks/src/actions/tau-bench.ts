@@ -1,3 +1,10 @@
+/**
+ * The TAU_BENCH_TOOL umbrella action mirroring the tau-bench retail/airline
+ * tool-calling benchmark. Its `tool_name` is free-text rather than a fixed
+ * enum, so no per-tool virtual subactions are promoted — a single umbrella
+ * action carries the tool name plus its arguments. The handler validates and
+ * echoes the structured call rather than executing a real tool.
+ */
 import type {
   Action,
   ActionResult,

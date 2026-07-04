@@ -1,3 +1,9 @@
+/**
+ * Coverage for `PtySessionStore` + `PtyConsoleBridge`: bridge output/exit
+ * routing, keystroke/resize forwarding, scrollback buffering, the session cap,
+ * cwd confinement, and idle/exit reaping — driven with an injected fake PTY
+ * (`makeFakeSpawn`), no OS process.
+ */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SessionOutputEvent } from "../services/pty-contract";
 import {

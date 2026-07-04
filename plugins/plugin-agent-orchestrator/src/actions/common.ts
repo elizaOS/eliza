@@ -1,3 +1,10 @@
+/**
+ * Shared helpers for the TASKS sub-action runners: the ACP service accessor,
+ * message/parameter extraction, originating-request text resolution, session
+ * lookup and selection, spawn-slot gating, approval-preset parsing, and
+ * error/result formatting. Keeps the per-action runners in `tasks.ts` thin.
+ */
+
 import type {
   ActionResult,
   HandlerCallback,

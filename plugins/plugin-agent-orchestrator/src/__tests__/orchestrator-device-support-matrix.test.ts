@@ -1,3 +1,7 @@
+/**
+ * Verifies orchestrator device support matrix (#9146).
+ * Deterministic unit test of pure helpers; no runtime, no live model.
+ */
 import { describe, expect, it } from "vitest";
 import {
   buildOrchestratorDeviceSupportMatrix,

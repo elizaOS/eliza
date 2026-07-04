@@ -1,3 +1,7 @@
+// Live end-to-end test that drives the real `codex` CLI to generate an artifact
+// (game.js/index.html/styles.css) and asserts the files land on disk. Gated on
+// the `codex` binary being in PATH and `~/.codex/auth.json` existing, so it
+// skips cleanly otherwise — run via `test:e2e:manual`.
 import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";

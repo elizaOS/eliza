@@ -1,3 +1,9 @@
+/**
+ * Defines `modelTesterPlugin` — the `Plugin` object that mounts the Model Tester
+ * dashboard surface: the three probe routes (delegated to `handleModelTesterRoute`)
+ * and a single view declaration spanning the GUI, XR, and TUI modalities.
+ */
+
 import type http from "node:http";
 import type { Plugin, Route, RouteRequest, RouteResponse } from "@elizaos/core";
 import { handleModelTesterRoute } from "./routes.js";

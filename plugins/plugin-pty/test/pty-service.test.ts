@@ -1,3 +1,8 @@
+/**
+ * Wiring coverage for `PtyService` (the `PTY_SERVICE` registration):
+ * start/stop/list/hasSession lifecycle and cwd confinement, driven with an
+ * injected fake spawn — no real PTY.
+ */
 import os from "node:os";
 import { describe, expect, it } from "vitest";
 import { PtyService } from "../services/pty-service";

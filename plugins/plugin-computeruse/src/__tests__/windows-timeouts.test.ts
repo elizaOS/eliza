@@ -1,3 +1,7 @@
+/**
+ * psSpawnTimeoutMs env-override and floor behavior for Windows PowerShell spawns.
+ * Deterministic unit test.
+ */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   PS_SPAWN_TIMEOUT_ENV,

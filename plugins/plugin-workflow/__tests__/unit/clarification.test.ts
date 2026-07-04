@@ -1,3 +1,4 @@
+/** Unit tests for clarification coercion and catalog-clarification detection helpers (deterministic). */
 import { describe, expect, test } from 'bun:test';
 import type { ClarificationRequest } from '../../src/types';
 import {

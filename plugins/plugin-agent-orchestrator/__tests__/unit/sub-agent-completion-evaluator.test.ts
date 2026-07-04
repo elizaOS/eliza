@@ -1,3 +1,7 @@
+/**
+ * Verifies subAgentCompletionResponseEvaluator.
+ * Deterministic unit test of pure helpers; no runtime, no live model.
+ */
 import type {
   Memory,
   MessageHandlerResult,

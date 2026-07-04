@@ -1,3 +1,7 @@
+/**
+ * App-shell header chip showing the live coding-agent session count with a
+ * stop-all control. Fills the `@elizaos/ui` control-chip slot.
+ */
 import {
   Button,
   type CodingAgentSession,

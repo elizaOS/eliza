@@ -1,3 +1,7 @@
+/**
+ * Exercises the validate-platform-evidence CLI over temp manifests via spawnSync,
+ * asserting accept/reject on the platform-contract rules.
+ */
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -204,7 +208,7 @@ describe("platform evidence validator", () => {
     );
     // windows-desktop is intentionally NOT asserted here: it is fully
     // device-verified (#9581, 9/9 passed) and its release manifest is promoted to
-    // `passed`, so it no longer trips the complete gate. The gate still fails
+    // `passed`, so it does not trip the complete gate. The gate still fails
     // overall on iOS/Android/macOS/Linux below.
     expect(result.stderr).toContain(
       "--require-complete: check mediaProjectionCapture is requires_device_evidence",

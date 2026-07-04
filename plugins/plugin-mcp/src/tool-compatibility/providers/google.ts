@@ -1,3 +1,9 @@
+/**
+ * Google (Gemini) MCP tool-schema fixup: Gemini ignores most validation
+ * keywords, so string/number/array/object constraints are stripped from the
+ * schema and re-expressed as explicit natural-language rules appended to each
+ * property description.
+ */
 import { McpToolCompatibility, type SchemaConstraints } from "../base";
 
 interface GoogleConstraints {

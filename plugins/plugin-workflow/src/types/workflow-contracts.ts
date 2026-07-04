@@ -1,3 +1,8 @@
+/**
+ * n8n-style node contract types (INode, INodeProperties, INodeTypeDescription,
+ * INodeCredentials, IWorkflowSettings) describing the shape of catalog nodes and
+ * their parameters, mirroring the vendor node schema the generator targets.
+ */
 export type GenericValue = string | object | number | boolean | undefined | null;
 
 export type NodeParameterValue = string | number | boolean | undefined | null;

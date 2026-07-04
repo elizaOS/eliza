@@ -1,3 +1,9 @@
+/**
+ * Covers the rule-based commit classifier: conventional-prefix mapping,
+ * WIP/revert/merge detection, and risk flags (large-churn, wide-blast,
+ * breaking). Pure functions, no git or model.
+ */
+
 import { describe, expect, it } from "vitest";
 import { classify, classifyOne } from "../src/pipeline/classify.ts";
 import type { RawCommit } from "../src/types.ts";

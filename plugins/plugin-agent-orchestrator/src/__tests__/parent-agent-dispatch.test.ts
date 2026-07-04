@@ -1,3 +1,7 @@
+/**
+ * Verifies extractParentAgentDirective.
+ * Deterministic unit test of pure helpers; no runtime, no live model.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {

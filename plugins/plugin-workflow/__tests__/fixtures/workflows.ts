@@ -1,3 +1,4 @@
+/** Builders for workflow definitions, nodes, executions, and match results used across the plugin's tests. */
 import type {
   WorkflowCredential,
   WorkflowDefinition,

@@ -1,3 +1,12 @@
+/**
+ * Per-framework coding-agent settings panel — the tabbed configuration surface
+ * (elizaOS, Pi Agent, OpenCode, Claude, Codex) for auth, model, and
+ * approval-preset settings. Fills the `@elizaos/ui` settings-section slot and
+ * composes AgentTabsSection, GlobalPrefsSection, LlmProviderSection,
+ * ModelConfigSection, and GitHubConnectionCard. Preferences persist through the
+ * agent prefs API, keyed by the env-prefix constants in
+ * coding-agent-settings-shared.
+ */
 import { type AgentPreflightResult, client, useAppSelector } from "@elizaos/ui";
 import { ExternalLink, Terminal } from "lucide-react";
 import {
@@ -229,9 +238,8 @@ export function CodingAgentSettingsSection() {
   // path that bypasses the `cloud.apiKey` contract.
   //
   // `.catch()` surfaces failed saves in an inline error banner so a
-  // failed POST no longer silently drops the user's typed API key on
-  // restart. (SaveFooter used to own this surface; we replaced it with
-  // debounced auto-save and lost the error-feedback path until now.)
+  // failed POST does not silently drop the user's typed API key on
+  // restart.
   const [autoSaveError, setAutoSaveError] = useState<string | null>(null);
   const autoSaveArmedRef = useRef(false);
   useEffect(() => {

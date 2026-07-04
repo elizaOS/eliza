@@ -1,3 +1,4 @@
+/** Unit test that importing `register-routes` registers the plugin's app route loader (mocked core registry). */
 import { describe, expect, it, mock } from 'bun:test';
 
 const registerAppRoutePluginLoader = mock(() => {});

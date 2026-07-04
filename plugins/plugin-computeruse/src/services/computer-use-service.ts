@@ -1,3 +1,13 @@
+/**
+ * ComputerUseService (serviceType "computeruse") — the plugin's central service.
+ * Owns input dispatch, screenshot capture, the browser CDP session, window
+ * operations, approval-manager wiring, and the SceneBuilder lifecycle, exposing
+ * them to the actions and providers.
+ *
+ * This is the single seam between the agent-facing action surface and the platform
+ * drivers: it resolves the active driver, enforces the approval gate before
+ * executing input, and caches per-turn scene state.
+ */
 import os from "node:os";
 import path from "node:path";
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";

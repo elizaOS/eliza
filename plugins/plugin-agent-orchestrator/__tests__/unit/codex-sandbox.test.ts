@@ -1,3 +1,7 @@
+/**
+ * Verifies codex ACP sandbox helpers.
+ * Deterministic unit test of pure helpers; no runtime, no live model.
+ */
 import { describe, expect, it } from "vitest";
 import {
   appendCodexAcpSandboxConfig,

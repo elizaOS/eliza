@@ -1,3 +1,9 @@
+/**
+ * Manual demonstration of the tool-compatibility layer: builds mock runtimes for
+ * each model provider, runs a deliberately constraint-heavy JSON Schema through
+ * transformToolSchema, and logs what each provider strips or rewrites. A runnable
+ * example, not part of the vitest suite.
+ */
 import { createCharacter, type IAgentRuntime } from "@elizaos/core";
 import type { JSONSchema7 } from "json-schema";
 import { createMcpToolCompatibility, detectModelProvider } from "./index";

@@ -1,3 +1,4 @@
+/** Barrel re-export of the shell plugin's utility surface. */
 export { DEFAULT_FORBIDDEN_COMMANDS, loadShellConfig } from "./config";
 export {
   extractBaseCommand,

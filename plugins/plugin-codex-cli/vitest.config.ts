@@ -1,3 +1,4 @@
+/** Vitest config: aliases @elizaos/core to its built node dist and skips the live/real-model suites. */
 import path from "node:path";
 import { defineConfig } from "vitest/config";
 

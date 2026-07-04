@@ -1,3 +1,15 @@
+/**
+ * McpService — owns the lifecycle of every MCP server connection: validates each
+ * config through @elizaos/security, builds the stdio or HTTP-SSE transport,
+ * connects the SDK client, and discovers its tools, resources, and resource
+ * templates.
+ *
+ * Stdio connections are health-checked with a periodic ping and reconnected with
+ * exponential backoff; HTTP/SSE connections rely on transport error/close events
+ * instead. Exposes callTool / readResource / getServers / getProviderData /
+ * restartConnection to the action and route layers. Tool input schemas are
+ * rewritten per model provider via the tool-compatibility layer.
+ */
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
 import { validateMcpServerConfig } from "@elizaos/security/mcp-server-config";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";

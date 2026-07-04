@@ -1,3 +1,8 @@
+/**
+ * Covers the Eliza-1 bundle stager's manifest and subprocess-arg assembly and
+ * its schema — deterministic, no shell-out.
+ */
+
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {

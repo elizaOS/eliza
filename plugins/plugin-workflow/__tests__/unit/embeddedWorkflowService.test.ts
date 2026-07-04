@@ -1,3 +1,4 @@
+/** Unit tests for EmbeddedWorkflowService CRUD and persistence against a real PGlite-backed Drizzle store. */
 import { describe, expect, test } from 'bun:test';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';

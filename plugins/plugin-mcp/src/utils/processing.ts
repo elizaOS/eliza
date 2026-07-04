@@ -1,3 +1,9 @@
+/**
+ * Post-call processing for MCP results: flattens tool output (text, base64 image
+ * attachments, embedded resources) and resource contents into text, then drives
+ * the model to synthesize a user-facing reply, persists the exchange as memory,
+ * and invokes the callback. Also sends the initial acknowledgement.
+ */
 import {
   type Content,
   ContentType,

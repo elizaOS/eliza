@@ -1,3 +1,8 @@
+/**
+ * Shared type definitions for plugin-shell: command results and history entries,
+ * running/finished session shapes, exec options and results, and the shell
+ * config contract used across the services, providers, and utils.
+ */
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
 
 export interface CommandResult {

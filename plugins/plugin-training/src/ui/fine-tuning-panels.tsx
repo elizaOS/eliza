@@ -1,3 +1,9 @@
+/**
+ * Presentational panel components for the fine-tuning dashboard (status,
+ * datasets, jobs, models, backends, and controls), consumed by FineTuningView.
+ * Non-component constants and the streamed-event parser live in
+ * `fine-tuning-panels.helpers.ts` to keep this file Fast-Refresh-compatible.
+ */
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import type {
   TrainingDatasetRecord,

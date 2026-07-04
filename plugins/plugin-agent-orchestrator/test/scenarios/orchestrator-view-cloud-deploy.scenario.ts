@@ -1,3 +1,7 @@
+/**
+ * Scenario-runner scenario asserting a view-plugin coding task surfaces the cloud
+ * deploy guidance and mock cloud-deploy result the planner needs.
+ */
 import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
 import {

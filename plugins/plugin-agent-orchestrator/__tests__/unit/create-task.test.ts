@@ -1,6 +1,10 @@
+/**
+ * Verifies TASKS:create.
+ * Deterministic unit test with a stubbed runtime; no live model.
+ */
 import * as os from "node:os";
 import { describe, expect, it, vi } from "vitest";
-// Post-consolidation: CREATE_AGENT_TASK is `TASKS { action: "create" }` (default action).
+// CREATE_AGENT_TASK is `TASKS { action: "create" }` (the default action).
 import { createTaskAction } from "../../src/actions/tasks.js";
 import { codingAgentExamplesProvider } from "../../src/providers/action-examples.js";
 import {

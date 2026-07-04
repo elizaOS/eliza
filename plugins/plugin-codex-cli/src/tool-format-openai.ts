@@ -1,3 +1,8 @@
+/**
+ * Maps elizaOS ToolDefinition objects to the OpenAI Responses function-tool
+ * shape. Strict tools are normalized to satisfy the codex backend's schema
+ * rules (see makeStrictSchema below); loose tools pass through verbatim.
+ */
 import type { ToolDefinition } from "@elizaos/core";
 
 export interface OpenAITool {

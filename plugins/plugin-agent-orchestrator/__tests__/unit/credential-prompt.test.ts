@@ -1,3 +1,7 @@
+/**
+ * Verifies emitCredentialPrompt (#8907).
+ * Deterministic unit test with a stubbed runtime; no live model.
+ */
 import { describe, expect, it, vi } from "vitest";
 import {
   emitCredentialPrompt,

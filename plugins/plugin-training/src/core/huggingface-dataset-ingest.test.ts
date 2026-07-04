@@ -1,3 +1,8 @@
+/**
+ * Covers the HuggingFace dataset ingest manifest and per-file receipts with
+ * mocked downloads on a temp filesystem (no network).
+ */
+
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";

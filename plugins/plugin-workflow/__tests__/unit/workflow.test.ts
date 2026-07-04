@@ -1,3 +1,4 @@
+/** Unit tests for the workflow validation and repair helpers (node inputs, parameters, output refs, positioning) — deterministic. */
 import { describe, expect, test } from 'bun:test';
 import type { WorkflowDefinition, WorkflowNode } from '../../src/types/index';
 import {

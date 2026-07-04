@@ -1,3 +1,7 @@
+/**
+ * resolveSafeFileTarget path-security checks against real temp directories and
+ * symlinks. Deterministic; exercises the real fs.
+ */
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";

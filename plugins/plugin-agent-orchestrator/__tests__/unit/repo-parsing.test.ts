@@ -1,3 +1,7 @@
+/**
+ * Verifies parseOwnerRepo.
+ * Deterministic unit test of pure helpers; no runtime, no live model.
+ */
 import { describe, expect, it } from "vitest";
 import { stripAnsi } from "../../src/services/ansi-utils.js";
 import { normalizeRepositoryInput } from "../../src/services/repo-input.js";

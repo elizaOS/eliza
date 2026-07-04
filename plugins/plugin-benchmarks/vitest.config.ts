@@ -1,3 +1,4 @@
+/** Vitest config for this package: Node environment, globals on, test files under __tests__. */
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({

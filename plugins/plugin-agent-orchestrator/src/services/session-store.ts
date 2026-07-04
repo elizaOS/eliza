@@ -1,3 +1,13 @@
+/**
+ * Tiered persistence for ACP sub-agent session records. Three backends share
+ * one `SessionStore` contract and are selected in order: a runtime SQL adapter
+ * (`RuntimeDbSessionStore`) when the runtime exposes one, else a lock-guarded
+ * JSON file (`FileSessionStore`), else process memory (`InMemorySessionStore`).
+ *
+ * The file backend extends the in-memory one, adding a cross-process file lock
+ * and atomic rename-based writes; the DB backend tolerates both a raw SQL
+ * adapter shape and the drizzle-based `@elizaos/plugin-sql` adapter.
+ */
 import {
   mkdir,
   open,
@@ -799,7 +809,7 @@ export class RuntimeDbSessionStore implements SessionStore {
   private async upsert(session: SessionInfo): Promise<void> {
     // Portable upsert. Postgres/pglite need ON CONFLICT DO UPDATE; sqlite
     // ≥3.24 accepts the same syntax. Named-column DO UPDATE avoids the
-    // sqlite-only INSERT OR REPLACE form we used to emit.
+    // sqlite-only INSERT OR REPLACE form.
     await this.exec().run(
       `INSERT INTO acp_sessions (
         id, name, agent_type, workdir, status, acpx_record_id, acpx_session_id, agent_session_id,

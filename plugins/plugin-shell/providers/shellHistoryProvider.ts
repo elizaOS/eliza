@@ -1,3 +1,9 @@
+/**
+ * SHELL_HISTORY provider — injects recent shell activity into agent context: the
+ * last commands with stdout/stderr/exit codes, the current and allowed working
+ * directories, and recent file operations. Fires only in terminal/code contexts
+ * and reads its state from ShellService.
+ */
 import {
   addHeader,
   type IAgentRuntime,

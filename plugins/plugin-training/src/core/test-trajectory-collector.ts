@@ -1,3 +1,9 @@
+/**
+ * Collects trajectories emitted by test runs into the training state dir,
+ * deduping by content hash and writing a schema-tagged collection manifest the
+ * analysis index consumes.
+ */
+
 import { existsSync } from "node:fs";
 import {
   copyFile,

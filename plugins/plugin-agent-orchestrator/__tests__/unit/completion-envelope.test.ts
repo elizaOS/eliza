@@ -1,3 +1,7 @@
+/**
+ * Verifies parseCompletionEnvelope (#8895).
+ * Deterministic unit test of pure helpers; no runtime, no live model.
+ */
 import { describe, expect, it } from "vitest";
 import {
   COMPLETION_ENVELOPE_INSTRUCTION,

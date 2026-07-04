@@ -1,3 +1,7 @@
+/**
+ * Verifies sub-agent completion: degenerate finish-reason relay (issue #8875).
+ * Deterministic unit test of pure helpers; no runtime, no live model.
+ */
 import type { Memory, MessageHandlerResult, UUID } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { subAgentCompletionResponseEvaluator } from "../evaluators/sub-agent-completion.js";

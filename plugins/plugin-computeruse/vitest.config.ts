@@ -1,3 +1,7 @@
+/**
+ * Vitest configuration for plugin-computeruse: aliases core/logger to source and
+ * excludes the live/real/e2e lanes from the default run.
+ */
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";

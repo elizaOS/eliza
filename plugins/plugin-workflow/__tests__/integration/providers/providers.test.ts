@@ -1,3 +1,4 @@
+/** Integration coverage for the three workflow providers against a mocked WorkflowService (deterministic, no live model). */
 import { describe, expect, mock, test } from 'bun:test';
 import { activeWorkflowsProvider } from '../../../src/providers/activeWorkflows';
 import { pendingDraftProvider } from '../../../src/providers/pendingDraft';

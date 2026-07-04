@@ -1,3 +1,9 @@
+/**
+ * Unit tests for the Binance direct-skill dispatch fast path and its chat
+ * pre-handler wrapper; restores the real @elizaos/core module over the global
+ * test stub so ModelType and friends resolve.
+ */
+
 import type { Action, IAgentRuntime, Memory } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { runDirectBinanceSkillDispatch } from "./direct-dispatch";

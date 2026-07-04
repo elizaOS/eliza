@@ -1,12 +1,12 @@
 /**
  * useOrchestratorData — the orchestrator workbench's live-data layer (#9960).
  *
- * Extracted from the OrchestratorWorkbench monolith: owns all task/session DATA
- * state (status, tasks, the selected task's detail + timeline) and the fetch /
- * poll / SSE-stream / mutation logic that keeps it live. The component keeps the
- * UI state (selection, filters, drawers) and feeds it in; everything that talks
- * to `client` and holds server data lives here, so the data flow is testable in
- * isolation (use-orchestrator-data.test.ts) without rendering the 3.6k-line view.
+ * Owns all task/session DATA state (status, tasks, the selected task's detail +
+ * timeline) and the fetch / poll / SSE-stream / mutation logic that keeps it
+ * live. OrchestratorWorkbench keeps the UI state (selection, filters, drawers)
+ * and feeds it in; everything that talks to `client` and holds server data lives
+ * here, so the data flow is testable in isolation (use-orchestrator-data.test.ts)
+ * without rendering the full workbench view.
  */
 
 import {

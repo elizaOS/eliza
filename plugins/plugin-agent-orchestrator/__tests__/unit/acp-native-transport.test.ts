@@ -1,3 +1,7 @@
+/**
+ * Verifies NativeAcpClient JSON-RPC lifecycle.
+ * Runs against a real temporary filesystem with a stubbed runtime; no live model.
+ */
 import { spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { mkdir, mkdtemp, readFile, symlink, writeFile } from "node:fs/promises";

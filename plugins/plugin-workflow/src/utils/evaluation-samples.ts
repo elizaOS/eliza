@@ -1,3 +1,8 @@
+/**
+ * Builds compact evaluation suites from a workflow's past executions — sampling
+ * node inputs/outputs into bounded JSONL cases for the Smithers eval / GEPA
+ * optimize flows. Preview and depth/size limits keep each case small.
+ */
 import type {
   WorkflowDefinitionResponse,
   WorkflowEvaluationSample,

@@ -1,3 +1,9 @@
+/**
+ * Route-handler coverage for the PTY spawn/list/buffered-output/stop endpoints,
+ * driven against a real `PtyService` backed by an injected fake spawn
+ * (`makeFakeSpawn`) — no OS PTY. Exercises the terminal-token gate, the
+ * interactive/vendor enable flags, session-kind validation, and error responses.
+ */
 import { fileURLToPath } from "node:url";
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";

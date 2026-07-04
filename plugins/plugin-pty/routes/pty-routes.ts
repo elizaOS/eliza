@@ -1,3 +1,14 @@
+/**
+ * HTTP route handlers for the PTY plugin: spawn / list / buffered-output / stop
+ * for interactive terminal sessions, mounted at `/api/pty/*` via `rawPath`.
+ *
+ * Spawning is gated three ways: HTTP callers must present the terminal step-up
+ * token (`ELIZA_TERMINAL_RUN_TOKEN`) while trusted in-process/loopback cockpit
+ * calls pass without it; `PTY_INTERACTIVE_ENABLED` (and store builds) gate all
+ * spawning; and the vendor `claude`/`codex` tier requires the separate
+ * `PTY_VENDOR_CLI_ENABLED` gate on top. The spawn handler never logs the
+ * request body — it can carry an Eliza Cloud API key.
+ */
 import { timingSafeEqual } from "node:crypto";
 import {
   type IAgentRuntime,

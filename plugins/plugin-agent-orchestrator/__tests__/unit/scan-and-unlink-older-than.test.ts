@@ -1,3 +1,7 @@
+/**
+ * Verifies scanAndUnlinkOlderThan.
+ * Deterministic unit test of pure helpers; no runtime, no live model.
+ */
 import { mkdir, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";

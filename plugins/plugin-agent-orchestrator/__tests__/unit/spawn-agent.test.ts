@@ -1,5 +1,9 @@
+/**
+ * Verifies TASKS:spawn_agent.
+ * Deterministic unit test with a stubbed runtime; no live model.
+ */
 import { describe, expect, it, vi } from "vitest";
-// Post-consolidation: SPAWN_AGENT is `TASKS { action: "spawn_agent" }`.
+// SPAWN_AGENT is `TASKS { action: "spawn_agent" }`.
 import { spawnAgentAction } from "../../src/actions/tasks.js";
 import {
   callback,

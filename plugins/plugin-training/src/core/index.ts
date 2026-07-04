@@ -1,3 +1,5 @@
+/** Barrel re-exporting the training-core runners, artifact builders, and config helpers. */
+
 export {
   type ActionBenchmarkRunOptions,
   type ActionBenchmarkRunResult,

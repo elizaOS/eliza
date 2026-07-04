@@ -1,3 +1,7 @@
+/**
+ * Verifies sendServiceUnavailable.
+ * Deterministic unit test with a stubbed runtime; no live model.
+ */
 import type { ServerResponse } from "node:http";
 import { describe, expect, it } from "vitest";
 import {

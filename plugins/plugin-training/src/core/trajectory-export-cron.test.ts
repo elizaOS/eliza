@@ -1,3 +1,8 @@
+/**
+ * Covers the nightly trajectory-export cron's paging and per-task bucketization
+ * with a stub trajectory service on a temp filesystem (deterministic).
+ */
+
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";

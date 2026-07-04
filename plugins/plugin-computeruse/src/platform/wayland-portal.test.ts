@@ -1,3 +1,7 @@
+/**
+ * Wayland screenshot-portal helpers: session detection and parsing of portal
+ * request handles and screenshot responses. Deterministic unit test.
+ */
 import { describe, expect, it } from "vitest";
 import {
   isWaylandSession,

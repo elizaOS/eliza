@@ -1,3 +1,7 @@
+/**
+ * COMPUTER_USE action's approval-relay wiring — pending-approval snapshots reach
+ * the message callback. Deterministic; no real desktop.
+ */
 import { describe, expect, it, vi } from "vitest";
 import { useComputerAction } from "../actions/use-computer.js";
 import type { ApprovalSnapshot } from "../types.js";

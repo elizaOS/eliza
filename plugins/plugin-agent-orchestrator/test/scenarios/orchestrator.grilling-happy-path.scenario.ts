@@ -1,3 +1,10 @@
+/**
+ * Live-model scenario for the OrchestratorTaskService grilling loop (#8932): a
+ * sub-agent's evidence-free "done" is grilled and rejected, then verified once
+ * it re-reports with pasted passing test output. The verifier judgement runs
+ * against the scenario's live model, so this is the `live-only` lane; the same
+ * loop is asserted deterministically in `orchestrator-scenario-logic` for CI.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import { scenario } from "@elizaos/scenario-runner/schema";
 import { runGrillingHappyPathCheck } from "./_helpers/grilling-scenario";

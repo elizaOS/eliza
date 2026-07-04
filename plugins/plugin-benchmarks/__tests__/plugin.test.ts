@@ -1,3 +1,8 @@
+/**
+ * Deterministic vitest suite over the assembled `benchmarksPlugin`: asserts the
+ * default/named export identity, the total action count (umbrellas plus
+ * promoted virtuals), and the expected umbrella names. No runtime or model.
+ */
 import { describe, expect, it } from "vitest";
 
 import benchmarksPlugin, {

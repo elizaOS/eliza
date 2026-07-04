@@ -1,3 +1,7 @@
+/**
+ * Verifies writeWorkspaceIdentity.
+ * Runs against a real temporary filesystem; deterministic.
+ */
 import {
   existsSync,
   mkdtempSync,

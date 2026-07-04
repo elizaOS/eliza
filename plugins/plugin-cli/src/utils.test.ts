@@ -1,3 +1,9 @@
+/**
+ * Tests the CLI utility helpers — duration/timeout parsing, byte and duration
+ * formatting, command formatting, CLI-name resolution, and the progress
+ * wrapper. Deterministic, with fast-check property tests over the parsers.
+ */
+
 import fc from "fast-check";
 import { describe, expect, it, vi } from "vitest";
 import {

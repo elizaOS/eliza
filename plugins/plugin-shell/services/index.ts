@@ -1,3 +1,4 @@
+/** Barrel re-export of the module-level process-registry session API. */
 export {
   addSession,
   appendOutput,

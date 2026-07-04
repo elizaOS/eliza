@@ -1,3 +1,9 @@
+/**
+ * Full HTTP route table for computer-use: approval listing, the SSE approval
+ * stream, approval-mode changes, and approve/deny of pending actions. Node http
+ * handlers; the compat wrapper in computer-use-compat-routes wires these into the
+ * plugin entry.
+ */
 import type http from "node:http";
 
 const EMPTY_APPROVAL_SNAPSHOT = {

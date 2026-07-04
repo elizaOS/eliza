@@ -1,3 +1,4 @@
+/** System prompt that matches a user request to the best of their existing workflows with a confidence grade. */
 export const WORKFLOW_MATCHING_SYSTEM_PROMPT = `Match the user's request to the most appropriate workflow from their available workflows.
 
 Consider:

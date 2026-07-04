@@ -1,3 +1,4 @@
+/** Assertions locking in the name-to-id resolution rules embedded in the WORKFLOW_GENERATION_SYSTEM_PROMPT string (deterministic). */
 import { describe, expect, test } from 'bun:test';
 import { WORKFLOW_GENERATION_SYSTEM_PROMPT } from '../../src/utils/workflow-prompts/workflowGeneration';
 

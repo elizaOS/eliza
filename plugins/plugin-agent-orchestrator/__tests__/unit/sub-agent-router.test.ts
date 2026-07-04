@@ -1,3 +1,7 @@
+/**
+ * Verifies SubAgentRouter.
+ * Drives a real subprocess against a temporary git workspace; deterministic (no live model).
+ */
 import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";

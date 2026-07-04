@@ -1,3 +1,7 @@
+/**
+ * Verifies extractShortToolDeliverable.
+ * Deterministic unit test of pure helpers; no runtime, no live model.
+ */
 import { describe, expect, it } from "vitest";
 import { extractShortToolDeliverable } from "../services/sub-agent-router";
 

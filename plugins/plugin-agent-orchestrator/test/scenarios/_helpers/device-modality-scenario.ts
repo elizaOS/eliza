@@ -1,3 +1,8 @@
+/**
+ * Scenario helper that builds device-support evidence from the checked-in
+ * orchestrator device-support matrix and asserts every unsupported device profile
+ * exposes only the sandbox stub action with the matrix's expected refusal reason.
+ */
 import {
   createTerminalUnsupportedTasksAction,
   tasksSandboxStubAction,

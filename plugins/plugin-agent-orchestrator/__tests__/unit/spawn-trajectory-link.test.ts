@@ -1,3 +1,7 @@
+/**
+ * Verifies buildLinkedSpawnMetadata.
+ * Deterministic unit test of pure helpers; no runtime, no live model.
+ */
 import { describe, expect, it } from "vitest";
 import type { SpawnTrajectoryHandle } from "../../src/services/spawn-trajectory.js";
 import {

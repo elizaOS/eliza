@@ -1,3 +1,8 @@
+/**
+ * Loads and zod-validates the shell configuration from environment variables
+ * into a ShellConfig, applying defaults and merging DEFAULT_FORBIDDEN_COMMANDS.
+ * Throws when SHELL_ALLOWED_DIRECTORY is missing or does not exist on disk.
+ */
 import fs from "node:fs";
 import path from "node:path";
 import { logger } from "@elizaos/core";

@@ -1,3 +1,8 @@
+/**
+ * Covers the Eliza-1 benchmark tier/variant vocabulary and the canonical
+ * tier-sort and action-pair helpers (pure).
+ */
+
 import { describe, expect, it } from "vitest";
 import {
   canonicalElizaOneTierSort,

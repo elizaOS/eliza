@@ -1,3 +1,7 @@
+/**
+ * Verifies AcpService.updateSessionMetadata.
+ * Runs against a real temporary filesystem with a stubbed runtime; no live model.
+ */
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";

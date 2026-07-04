@@ -1,3 +1,11 @@
+/**
+ * Base class for per-model-provider MCP tool-schema fixup, plus provider
+ * detection. transformToolSchema walks a JSON Schema and, per node type, drops
+ * the provider's unsupported keywords (subclasses declare which) and folds the
+ * dropped constraints into the description so the model still sees them.
+ * detectModelProvider infers the provider (openai/anthropic/google/openrouter)
+ * and capability flags from the runtime's model id.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import type { JSONSchema7 } from "json-schema";
 

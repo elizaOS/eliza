@@ -1,3 +1,9 @@
+/**
+ * Builds the eval-comparison artifact: runs a base-vs-candidate eval subprocess
+ * and folds the two result sets into one schema-tagged JSON artifact used to
+ * decide prompt/model promotion.
+ */
+
 import { spawn } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";

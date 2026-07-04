@@ -1,3 +1,5 @@
+/** Canonical `AgentContext` category union shared by the context catalog, audit, and roleplay dataset builders. */
+
 export const AGENT_CONTEXTS = [
   "general",
   "finance",

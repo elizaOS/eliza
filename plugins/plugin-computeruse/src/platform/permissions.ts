@@ -1,3 +1,8 @@
+/**
+ * Classifies OS permission-denied failures (Screen Recording, Accessibility, Input
+ * Monitoring) into a typed PermissionDeniedError so callers can surface the exact
+ * grant the user must enable rather than a generic failure.
+ */
 import { execFileSync } from "node:child_process";
 import type { PermissionType } from "../types.js";
 

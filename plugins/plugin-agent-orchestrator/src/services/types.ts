@@ -1,3 +1,8 @@
+/**
+ * Shared type vocabulary for the ACP session layer: agent/backend kinds,
+ * approval presets, session status and lifecycle events, spawn options, and the
+ * `SessionStore` contract the persistence tiers implement.
+ */
 export type AgentType =
   | "elizaos"
   | "pi-agent"

@@ -8,9 +8,9 @@ import {
   scorePlannerAction,
 } from "./scoring.js";
 
-// Wires the view-switching action_planner eval dataset (previously an orphan
-// fixture referenced nowhere) into the test graph: every row must be a valid
-// eliza_native_v1 planner example, and the view-aware scorer must read it.
+// Wires the view-switching action_planner eval dataset into the test graph:
+// every row must be a valid eliza_native_v1 planner example, and the view-aware
+// scorer must read it.
 
 const DATASET_PATH = join(
   dirname(fileURLToPath(import.meta.url)),

@@ -1,3 +1,18 @@
+/**
+ * Request handler and probe logic behind the Model Tester HTTP surface: serves the
+ * standalone static tester shell at `GET /model-tester`, reports per-probe readiness
+ * at `GET /api/model-tester/status`, and runs one live model probe per
+ * `POST /api/model-tester/run` (text, embedding, image, image-description,
+ * transcription, text-to-speech, and pure-JS voice-activity detection).
+ *
+ * Every probe follows the same fallthrough: try the direct local-inference engine
+ * first (via `@elizaos/plugin-local-inference/services`, activated lazily and once
+ * through `ensureLocalEngineActive`), then registered cloud providers, collecting
+ * each failure into an `attempts` array rather than throwing on the first miss.
+ * `runModelTest` returns plain serialisable objects; the outermost handler wraps
+ * them in `{ ok, test, durationMs, output }`.
+ */
+
 import type http from "node:http";
 import { readCompatJsonBody } from "@elizaos/app-core/api/compat-route-shared";
 import { sendJson, sendJsonError } from "@elizaos/app-core/api/response";

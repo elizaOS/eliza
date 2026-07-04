@@ -1,3 +1,5 @@
+// Coverage for the pure LCS `lineDiff` behind the tool-call file-change cards:
+// context/add/remove classification and independent old/new line numbering.
 import { describe, expect, it } from "vitest";
 import { lineDiff } from "../../src/orchestrator-diff.helpers";
 

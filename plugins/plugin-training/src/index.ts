@@ -1,3 +1,4 @@
+/** Public entry point: re-exports the plugin's backends, CLI, optimizers, routes, services, and views. */
 export * from "./backends/native.js";
 export * from "./cli/train.js";
 export * from "./core/cli.js";

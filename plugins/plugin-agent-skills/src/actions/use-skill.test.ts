@@ -1,3 +1,9 @@
+/**
+ * Unit tests for the USE_SKILL action. Mocks only the @elizaos/core trajectory
+ * hooks; drives real script execution against temp SKILL dirs on disk, with the
+ * shell-shebang cases skipped on Windows.
+ */
+
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";

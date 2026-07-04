@@ -1,3 +1,9 @@
+/**
+ * Spawns the Eliza-1-vs-Cerebras comparison benchmark, assembling the tier
+ * list and subprocess args that pit each local tier against the Cerebras eval
+ * model.
+ */
+
 import { spawn } from "node:child_process";
 import { mkdir } from "node:fs/promises";
 import { join, resolve } from "node:path";

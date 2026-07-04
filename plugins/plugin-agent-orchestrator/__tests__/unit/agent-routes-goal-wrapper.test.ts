@@ -1,3 +1,7 @@
+/**
+ * Verifies agent-routes goal wrapper.
+ * Deterministic unit test with a stubbed runtime; no live model.
+ */
 import { EventEmitter } from "node:events";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { describe, expect, it, vi } from "vitest";

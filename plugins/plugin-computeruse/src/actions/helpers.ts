@@ -1,3 +1,7 @@
+/**
+ * Shared helpers for the computer-use actions: normalizes handler parameters,
+ * shapes native results into ActionResult, and builds screenshot attachments.
+ */
 import type { ActionResult, HandlerOptions, Memory } from "@elizaos/core";
 
 export interface NativeComputerUseResult {

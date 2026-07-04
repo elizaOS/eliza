@@ -1,3 +1,7 @@
+/**
+ * Live smoke test that drives a real native ACP adapter subprocess through a tiny
+ * prompt end to end. Gated behind `RUN_LIVE_NATIVE_ACP=1`; skipped in keyless CI.
+ */
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";

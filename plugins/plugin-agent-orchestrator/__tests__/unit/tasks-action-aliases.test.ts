@@ -1,3 +1,7 @@
+/**
+ * Verifies TASKS action aliases.
+ * Deterministic unit test of pure helpers; no runtime, no live model.
+ */
 import { describe, expect, it } from "vitest";
 import { tasksSandboxStubAction } from "../../src/actions/sandbox-stub.js";
 import { tasksAction } from "../../src/actions/tasks.js";

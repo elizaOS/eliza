@@ -1,4 +1,10 @@
 #!/usr/bin/env bun
+/**
+ * Captures real Windows desktop-control evidence in validator-contract order —
+ * capability probe, screenshot capture, clipboard, input, and window ops against
+ * a live session — and emits the structured manifest consumed by
+ * validate-platform-evidence. Check ids mirror docs/windows-desktop-validation.json.
+ */
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";

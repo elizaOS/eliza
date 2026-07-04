@@ -1,3 +1,8 @@
+/**
+ * Internal file primitives (read/write/list) behind path-security checks. Not
+ * exposed as an agent action — the FILE action owns user-facing file access;
+ * these back internal computer-use flows only.
+ */
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { FileActionResult, FileEntry } from "../types.js";

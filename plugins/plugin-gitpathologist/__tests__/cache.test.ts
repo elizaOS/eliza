@@ -1,3 +1,9 @@
+/**
+ * Exercises the on-disk report cache and makeCacheKey against a real temp
+ * directory: round-trip read/write, atomic-write cleanup, malformed-file
+ * tolerance, newest-first listing, and HEAD-sha freshness.
+ */
+
 import { mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";

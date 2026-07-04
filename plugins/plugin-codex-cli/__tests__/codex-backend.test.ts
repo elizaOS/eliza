@@ -1,3 +1,8 @@
+/**
+ * Unit coverage for the Codex provider: plugin model metadata, JWT expiry, the
+ * SSE parser, tool-schema translation, and CodexBackend request/stream handling
+ * driven by a fake fetch (no live model or network).
+ */
 import { afterEach, describe, expect, it } from "vitest";
 import { __INTERNAL_buildCodexGenerateParams, codexCliPlugin } from "../index";
 import {

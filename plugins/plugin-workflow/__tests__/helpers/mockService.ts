@@ -1,3 +1,4 @@
+/** Builds a mock `WorkflowService` with stubbed generation/CRUD methods for route and provider tests. */
 import { mock } from 'bun:test';
 import type { WorkflowService } from '../../src/services/workflow-service';
 import { createExecution, createWorkflowResponse } from '../fixtures/workflows';

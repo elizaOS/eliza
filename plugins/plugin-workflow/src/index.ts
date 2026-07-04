@@ -1,3 +1,11 @@
+/**
+ * Plugin definition and init for the in-process workflow engine. Wires the
+ * WORKFLOW/EVAL_CODE actions, the workflow providers, the Drizzle schema, and the
+ * services (WorkflowService, EmbeddedWorkflowService, credential store,
+ * WORKFLOW_DISPATCH). init registers the dispatch service so trigger tasks can
+ * fire workflows without the agent action layer; dispose stops long-lived
+ * services. Default-enabled (opt out with `workflow.enabled: false`).
+ */
 import { type IAgentRuntime, logger, type Plugin } from '@elizaos/core';
 import { evalCodeAction, workflowAction } from './actions/index';
 import * as dbSchema from './db/index';

@@ -9,11 +9,10 @@ import { buildPlugin } from "../plugin-build";
  * - CJS (Node): dist/cjs/index.cjs
  * - Types: dist/index.d.ts + dist/node/index.d.ts + dist/cjs/index.d.ts
  *
- * Migrated onto the shared `buildPlugin` driver (issue #10078). The CJS bundle
- * is renamed `index.js` -> `index.cjs` with a plain rename (its sibling
- * `index.js.map` is intentionally left unrenamed so the emitted
- * `//# sourceMappingURL=index.js.map` reference stays valid), byte-identical to
- * the prior hand-rolled build.
+ * Runs on the shared `buildPlugin` driver. The CJS bundle's `index.js` is
+ * renamed to `index.cjs`; its sibling `index.js.map` is intentionally left
+ * unrenamed so the emitted `//# sourceMappingURL=index.js.map` reference stays
+ * valid.
  */
 const reexport = (from: string) => `export * from "${from}";\nexport { default } from "${from}";\n`;
 

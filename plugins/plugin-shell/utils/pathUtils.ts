@@ -1,3 +1,8 @@
+/**
+ * Path and command-safety guards: validatePath() confines a resolved path to the
+ * allowed directory, while isForbiddenCommand/isSafeCommand/extractBaseCommand
+ * gate which commands the shell will run (the command-injection boundary).
+ */
 import path from "node:path";
 import { logger } from "@elizaos/core";
 

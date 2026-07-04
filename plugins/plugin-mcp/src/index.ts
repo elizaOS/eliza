@@ -1,3 +1,8 @@
+/**
+ * Plugin entry for @elizaos/plugin-mcp: registers McpService, the unified MCP
+ * action (widened with the connector/automation/knowledge contexts), and the MCP
+ * provider. Also re-exports handleMcpRoutes for host servers wiring /api/mcp/*.
+ */
 import {
   type Action,
   type IAgentRuntime,

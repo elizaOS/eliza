@@ -1,3 +1,4 @@
+/** JSON schema for the feasibility-check LLM call: `{ feasible, reason }`. */
 export const feasibilitySchema = {
   type: 'object',
   properties: {

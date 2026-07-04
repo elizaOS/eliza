@@ -1,3 +1,4 @@
+/** System and user prompts that remap generated node parameters onto the node's valid property names and structure. */
 export const PARAM_CORRECTION_SYSTEM_PROMPT = `Fix workflows node parameters to match the node's property definition.
 
 You receive:

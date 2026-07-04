@@ -1,3 +1,11 @@
+/**
+ * Shared type definitions and runtime config guards for the MCP plugin:
+ * transport config shapes (stdio / HTTP-SSE) and their `isMcpSettings` guard,
+ * connection/server/provider models, tool-and-resource result shapes, JSON
+ * Schema types, and the tool/resource selection schemas the model must satisfy.
+ * Also holds ping/backoff constants and small assertion helpers. Consumed across
+ * the service, provider, action handler, and selection/validation utils.
+ */
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import type { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import type { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";

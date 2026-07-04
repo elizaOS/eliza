@@ -249,7 +249,7 @@ describe("DefaultComputerInterface — driver delegation", () => {
         ],
       ],
     ]);
-    // The old start→end collapse no longer fires.
+    // A multi-point path does not collapse into a single start→end driver.drag.
     expect(calls.drag).toHaveLength(0);
   });
 

@@ -1,3 +1,4 @@
+/** Unit tests for the WORKFLOW action's op dispatch against a mocked WorkflowService (deterministic). */
 import { describe, expect, mock, test } from 'bun:test';
 import type { HandlerCallback, HandlerOptions, IAgentRuntime, Memory } from '@elizaos/core';
 import { workflowAction } from '../../src/actions/workflow';

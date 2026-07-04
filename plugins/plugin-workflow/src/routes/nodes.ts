@@ -1,3 +1,9 @@
+/**
+ * Plugin-relative route handlers for the node catalog, mounted under
+ * `/workflow/nodes`. Serves the bundled catalog (search, list, per-type lookup)
+ * filtered by integration support, augmented with the node types the
+ * EmbeddedWorkflowService has registered at runtime.
+ */
 import type { IAgentRuntime, Route, RouteRequest, RouteResponse } from '@elizaos/core';
 import {
   EMBEDDED_WORKFLOW_SERVICE_TYPE,

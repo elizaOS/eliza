@@ -1,3 +1,13 @@
+/**
+ * PTY output streamer for a coding-agent session, rendered in drawer,
+ * side-panel, or full variant. Subscribes to `pty-output` WS events and shows
+ * the buffered + streamed scrollback with a single-line input and
+ * interrupt/stop controls.
+ *
+ * Scrollback is capped at `MAX_BUFFER_CHARS` (200,000) — older output is
+ * silently trimmed from the head. Backs the PtyConsoleDrawer /
+ * PtyConsoleSidePanel wrappers and fills the `@elizaos/ui` PtyConsoleBase slot.
+ */
 import { Button, type CodingAgentSession, client } from "@elizaos/ui";
 import { Input } from "@elizaos/ui/components/ui/input";
 import { Send, Square, Terminal, X } from "lucide-react";

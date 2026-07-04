@@ -1,3 +1,9 @@
+/**
+ * Grid-builder + accuracy-gate coverage for the view-switching verification
+ * harness, over a hand-built fixture that deliberately omits one
+ * view×language×modality combination so the grid must report an "absent" cell
+ * rather than inventing a status. Pure and deterministic — no model, no server.
+ */
 import { describe, expect, it } from "vitest";
 import {
   buildResultGrid,

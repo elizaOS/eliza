@@ -1,3 +1,7 @@
+/**
+ * Verifies OrchestratorTaskStore backend selection.
+ * Runs against a real temporary filesystem; deterministic.
+ */
 import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";

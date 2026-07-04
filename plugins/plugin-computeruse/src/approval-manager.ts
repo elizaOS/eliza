@@ -1,3 +1,11 @@
+/**
+ * ComputerUseApprovalManager — queues pending desktop actions and gates them by
+ * the active approval mode (full_control / smart_approve / approve_all / off),
+ * auto-allowing read-only safe commands and persisting the mode to disk.
+ *
+ * The approval mode read back from disk or the API is untrusted input; isApprovalMode
+ * validates it before it can relax the safety gate.
+ */
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";

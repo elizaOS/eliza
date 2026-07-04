@@ -1,4 +1,11 @@
 #!/usr/bin/env node
+/**
+ * Validates an iOS device-evidence manifest against the required check-id
+ * contract (ReplayKit foreground start, broadcast-extension handshake, Vision
+ * OCR, app-intent invocations, Foundation-model generation, memory-pressure
+ * probe). Fails when a required check is missing or carries a status outside
+ * the allowed set.
+ */
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

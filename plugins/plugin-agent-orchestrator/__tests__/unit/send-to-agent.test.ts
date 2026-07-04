@@ -1,6 +1,10 @@
+/**
+ * Verifies TASKS:send.
+ * Deterministic unit test with a stubbed runtime; no live model.
+ */
 import { describe, expect, it, vi } from "vitest";
-// Post-consolidation: SEND_TO_AGENT is `TASKS { action: "send" }`. The action
-// variable still imports as `sendToAgentAction` (alias on the parent).
+// SEND_TO_AGENT is `TASKS { action: "send" }`; the action variable imports as
+// `sendToAgentAction` (an alias on the parent).
 import { sendToAgentAction } from "../../src/actions/tasks.js";
 import {
   callback,

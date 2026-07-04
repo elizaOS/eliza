@@ -1,3 +1,8 @@
+/**
+ * Source-level regression guard: reads the view file's text and asserts its
+ * visible copy carries no raw glyphs that break terminal width or read poorly
+ * across surfaces. No render — a static read of the component source.
+ */
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";

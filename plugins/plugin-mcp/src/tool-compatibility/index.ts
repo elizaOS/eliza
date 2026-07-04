@@ -1,3 +1,9 @@
+/**
+ * Factory that selects the MCP tool-compatibility implementation for the
+ * runtime's model provider. createMcpToolCompatibilitySync uses require() so it
+ * can run inside the synchronous tool-listing path; the async variant uses
+ * dynamic import. Returns null for providers needing no schema fixup.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import { detectModelProvider, type McpToolCompatibility } from "./base";
 

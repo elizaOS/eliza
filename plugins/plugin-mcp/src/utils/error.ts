@@ -1,3 +1,9 @@
+/**
+ * MCP error handling: handleMcpError logs the failure, optionally asks the model
+ * for a user-friendly explanation via the error-analysis prompt, and returns a
+ * failed ActionResult. McpError is a coded error type with named constructors for
+ * the common MCP failure modes.
+ */
 import type { State } from "@elizaos/core";
 import {
   type ActionResult,

@@ -1,3 +1,7 @@
+/**
+ * Live end-to-end: spawns a real runtime child process with the plugin loaded and
+ * drives it over HTTP. Real process + real routes, no mocks.
+ */
 import { spawn } from "node:child_process";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import net from "node:net";

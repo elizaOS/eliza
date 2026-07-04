@@ -1,6 +1,8 @@
 /**
- * Process Registry - Manages running and finished shell sessions
- * Ported from otto bash-process-registry.ts
+ * Module-level registry of shell process sessions — both running and finished —
+ * backing ShellService's session tracking. State lives in module-scope Maps, so
+ * tests reset it via resetProcessRegistryForTests(). Enforces per-session output
+ * caps and a TTL sweep that evicts finished-session records.
  */
 
 import type { FinishedSession, ProcessSession, ProcessStatus } from "../types";

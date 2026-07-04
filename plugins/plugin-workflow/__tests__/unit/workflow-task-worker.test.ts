@@ -1,3 +1,4 @@
+/** Unit tests for the workflow trigger task worker firing scheduled runs against a real PGlite-backed EmbeddedWorkflowService. */
 import { describe, expect, setDefaultTimeout, test } from 'bun:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';

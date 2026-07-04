@@ -1,3 +1,7 @@
+/**
+ * Browser build entry: MCP clients need Node stdio/SSE transports, so this warns
+ * and registers a no-op plugin. Use a server-side proxy to reach MCP servers.
+ */
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 

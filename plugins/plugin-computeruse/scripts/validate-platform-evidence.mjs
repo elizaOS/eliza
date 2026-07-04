@@ -1,4 +1,10 @@
 #!/usr/bin/env node
+/**
+ * Validates a desktop/mobile platform evidence manifest against its per-platform
+ * contract (required target keys and complete-evidence keys), enforcing that
+ * every check reports an allowed status and that passed platforms carry the
+ * device metadata the contract demands.
+ */
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

@@ -1,3 +1,8 @@
+/**
+ * Desktop platform-capability detection — resolves which computer-use surfaces
+ * (screenshot, input, window control, browser, clipboard) are available on the
+ * host OS and their parity classification. iOS/Android live in mobile/, not here.
+ */
 import type { PlatformCapabilities } from "../types.js";
 import type { PlatformOS } from "./helpers.js";
 

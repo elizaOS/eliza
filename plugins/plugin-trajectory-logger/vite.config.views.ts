@@ -1,3 +1,4 @@
+/** Vite config that builds the standalone view bundle (dist/views/bundle.js) from the view-bundle entry, exposing `TrajectoryLoggerView` for the overlay view loader. */
 import { createViewBundleConfig } from "../../packages/scripts/view-bundle-vite.config.ts";
 
 export default createViewBundleConfig({

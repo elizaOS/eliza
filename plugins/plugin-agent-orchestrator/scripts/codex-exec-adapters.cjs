@@ -1,3 +1,8 @@
+/**
+ * Codex ACP exec adapter tables consumed when spawning Codex coding sub-agents.
+ * Maps each approval preset to Codex CLI sandbox flags and web-search settings,
+ * enumerates the valid sandbox modes, and pins the task-agent reasoning effort.
+ */
 "use strict";
 
 const adapters = require("coding-agent-adapters");

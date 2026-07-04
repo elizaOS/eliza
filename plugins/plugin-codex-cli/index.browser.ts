@@ -1,3 +1,8 @@
+/**
+ * Browser build stub for the node-only Codex provider. Its model handlers throw
+ * because authentication reads ~/.codex/auth.json; the working implementation
+ * lives in index.ts and is only reachable in a node runtime.
+ */
 import type { Plugin } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
 

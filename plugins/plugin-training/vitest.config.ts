@@ -1,3 +1,4 @@
+/** Vitest config for the training plugin, extending the workspace default and wiring source aliases for the local workspace plugin/package dependencies. */
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

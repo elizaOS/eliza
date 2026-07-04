@@ -1,3 +1,9 @@
+/**
+ * Anthropic MCP tool-schema fixup: Claude accepts most JSON Schema keywords, so
+ * only `additionalProperties` is stripped from objects; dropped constraints
+ * (additionalProperties, format=date-time, pattern) are restated as natural-
+ * language hints appended to the property description.
+ */
 import { McpToolCompatibility, type SchemaConstraints } from "../base";
 
 interface AnthropicConstraints {

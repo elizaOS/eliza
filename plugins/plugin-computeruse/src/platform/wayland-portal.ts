@@ -1,3 +1,9 @@
+/**
+ * xdg-desktop-portal screenshot sidecar for Wayland sessions, where direct
+ * framebuffer capture is blocked. Drives the org.freedesktop.portal.Screenshot
+ * D-Bus method via an embedded Python helper and returns the captured file,
+ * raising a typed permission error when the portal denies the request.
+ */
 import { execFileSync } from "node:child_process";
 import { copyFileSync } from "node:fs";
 import { commandExists } from "./helpers.js";

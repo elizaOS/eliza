@@ -1,3 +1,5 @@
+// Coverage for `sanitizeAuthResult`: the field whitelist and URL-scheme check
+// applied to an adapter `triggerAuth()` response before it reaches the browser.
 import { describe, expect, it } from "vitest";
 import { sanitizeAuthResult } from "./coding-agents-auth-sanitize.js";
 

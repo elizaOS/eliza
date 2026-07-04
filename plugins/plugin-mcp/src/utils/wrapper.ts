@@ -1,3 +1,8 @@
+/**
+ * withModelRetry: parse-and-validate a model response, and on failure re-prompt
+ * the model with a caller-built feedback prompt up to the configured retry limit
+ * (settings.mcp.maxRetries, default 2), returning null once exhausted.
+ */
 import {
   type HandlerCallback,
   type IAgentRuntime,

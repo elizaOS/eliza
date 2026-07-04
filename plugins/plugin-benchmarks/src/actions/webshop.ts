@@ -1,3 +1,11 @@
+/**
+ * The WEBSHOP umbrella action mirroring the WebShop benchmark's navigation
+ * vocabulary (search, click, select_option, back, buy). Each operation is
+ * captured as a typed subaction promoted to a stable `WEBSHOP_<op>` virtual via
+ * `promoteSubactionsToActions` in src/index.ts. The handler is a vocabulary
+ * shim that validates and echoes structured parameters rather than driving a
+ * real storefront.
+ */
 import type {
   Action,
   ActionResult,

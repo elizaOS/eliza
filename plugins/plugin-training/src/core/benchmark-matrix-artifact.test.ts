@@ -1,3 +1,8 @@
+/**
+ * Verifies the benchmark-matrix artifact builder and its schema against fixed
+ * per-tier inputs on a temp filesystem (deterministic).
+ */
+
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";

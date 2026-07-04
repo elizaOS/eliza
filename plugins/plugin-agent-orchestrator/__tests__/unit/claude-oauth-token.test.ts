@@ -1,3 +1,7 @@
+/**
+ * Verifies isClaudeOAuthSubscriptionToken.
+ * Deterministic unit test of pure helpers; no runtime, no live model.
+ */
 import { describe, expect, it } from "vitest";
 import { isClaudeOAuthSubscriptionToken } from "../../src/services/acp-service.js";
 

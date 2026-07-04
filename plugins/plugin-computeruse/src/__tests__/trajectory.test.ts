@@ -1,3 +1,7 @@
+/**
+ * Trajectory recording for the computer-use agent loop, with the screenshot and
+ * a11y platform modules mocked. Deterministic unit test.
+ */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../platform/screenshot.js", () => ({

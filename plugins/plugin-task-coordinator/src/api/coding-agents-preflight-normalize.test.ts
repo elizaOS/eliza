@@ -1,3 +1,5 @@
+// Coverage for `normalizePreflightAuth`: status normalization, the display-field
+// whitelist, and the undefined result for absent or malformed auth rows.
 import { describe, expect, it } from "vitest";
 import { normalizePreflightAuth } from "./coding-agents-preflight-normalize.js";
 

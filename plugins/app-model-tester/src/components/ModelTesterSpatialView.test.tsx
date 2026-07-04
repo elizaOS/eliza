@@ -1,3 +1,5 @@
+/** Renders the one ModelTesterSpatialView across all three modalities — TUI terminal lines under the width contract, GUI/XR DOM via react-dom/server, and the terminal registry — from a fixed snapshot (deterministic, no live models). */
+
 import { visibleWidth } from "@elizaos/tui";
 import { SpatialSurface } from "@elizaos/ui/spatial";
 import {

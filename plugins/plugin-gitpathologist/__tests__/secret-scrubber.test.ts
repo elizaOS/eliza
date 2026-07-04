@@ -1,3 +1,9 @@
+/**
+ * Covers the secret scrubber: redaction of Anthropic, OpenAI, GitHub, AWS, and
+ * Bearer tokens plus env-name=value patterns, benign-text passthrough, and the
+ * deep object and array walk. Pure string transforms.
+ */
+
 import { describe, expect, it } from "vitest";
 import { scrubSecrets, scrubSecretsDeep } from "../src/secret-scrubber.ts";
 

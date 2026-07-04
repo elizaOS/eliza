@@ -1,3 +1,9 @@
+/**
+ * Shared harness for the orchestrator scenario suite.
+ * Installs a plugin exposing synthetic orchestrator actions backed by a real
+ * AcpService and OrchestratorTaskService/store over a temp workspace, and
+ * registers the verifier/judge fixtures the deterministic and live scenarios share.
+ */
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";

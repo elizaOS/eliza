@@ -1,3 +1,8 @@
+/**
+ * Coverage for TrainingService — asserts it reads trajectories from the runtime
+ * and hands the right set plus metadata to the export-bundle builder, with the
+ * bundle builder mocked so nothing is written to disk.
+ */
 import type { Trajectory } from "@elizaos/agent";
 import type { AgentRuntime } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";

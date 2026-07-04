@@ -1,3 +1,8 @@
+/**
+ * Unit tests for `installSkillDependency` command-injection safety — asserts
+ * malicious package names are rejected before reaching the package manager.
+ */
+
 import { describe, expect, it } from "vitest";
 import { installSkillDependency } from "./install";
 

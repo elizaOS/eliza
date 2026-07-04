@@ -1,3 +1,11 @@
+/**
+ * Builds the privacy-filtered trajectory export bundle: runs recorded
+ * trajectories through the mandatory privacy filter, buckets them into per-task
+ * JSONL plus an HTML preview, and records privacy stats and optional cloud
+ * upload metadata. This is the single sanitized-write path — no code writes raw
+ * trajectories to disk or upload.
+ */
+
 import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Trajectory } from "@elizaos/agent";

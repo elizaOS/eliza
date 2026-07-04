@@ -1,3 +1,8 @@
+/**
+ * Renders a PathologyReport into the Markdown the GIT_PATHOLOGY action returns:
+ * a header block, the peak and drift inflection lists, and the rot post-mortem.
+ */
+
 import type { InflectionPoint, PathologyReport, RotCause } from "./types.ts";
 
 function short(sha: string): string {

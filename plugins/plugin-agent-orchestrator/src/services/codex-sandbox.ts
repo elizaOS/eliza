@@ -1,3 +1,9 @@
+/**
+ * Codex ACP sandbox configuration: normalizes `sandbox_mode` / `approval_policy`
+ * overrides and probes Linux Landlock availability so the orchestrator can hand
+ * a spawned Codex agent a safe-but-workable filesystem sandbox, falling back to
+ * `danger-full-access` where Landlock is unavailable.
+ */
 import { existsSync, readFileSync } from "node:fs";
 import { platform } from "node:os";
 

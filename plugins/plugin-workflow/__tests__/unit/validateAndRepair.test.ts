@@ -1,3 +1,4 @@
+/** Unit tests for `validateAndRepair` node and output validation over fixture node definitions (deterministic). */
 import { describe, expect, test } from 'bun:test';
 import type { NodeDefinition, RuntimeContext, WorkflowDefinition } from '../../src/types/index';
 import { validateAndRepair } from '../../src/utils/validateAndRepair';

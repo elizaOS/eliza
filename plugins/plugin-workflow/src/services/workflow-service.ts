@@ -1,3 +1,17 @@
+/**
+ * Public-facing WorkflowService (type `workflow`): the RAG generation pipeline
+ * and CRUD facade the `WORKFLOW` action and rawPath routes call into. Turns a
+ * natural-language prompt into a runnable workflow via keyword extraction →
+ * catalog search → LLM generation → validate/repair → deploy, then persists and
+ * activates it.
+ *
+ * Generation and modification both run up to three LLM-retry passes through
+ * `validateAndRepair` + `fixWorkflowErrors` to correct typeVersion
+ * hallucinations, missing credential blocks, and invalid output references
+ * before deploy. Deployment and execution are delegated to the
+ * EmbeddedWorkflowService; credential resolution goes through the registered
+ * WorkflowCredentialStore.
+ */
 import { type IAgentRuntime, logger, Service } from '@elizaos/core';
 import type {
   NodeDefinition,

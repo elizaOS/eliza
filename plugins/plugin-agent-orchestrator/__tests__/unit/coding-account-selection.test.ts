@@ -1,3 +1,7 @@
+/**
+ * Verifies isMultiAccountAgentType.
+ * Deterministic unit test with a stubbed runtime; no live model.
+ */
 import { CODING_AGENT_SELECTOR_BRIDGE_SYMBOL as BRIDGE_SYMBOL } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {

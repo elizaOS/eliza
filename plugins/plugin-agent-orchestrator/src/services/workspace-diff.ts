@@ -1,3 +1,11 @@
+/**
+ * Computes the real git changeset for a coding session's workspace: captures a
+ * baseline SHA and dirty state at spawn, then renders the bounded diff and
+ * changed-file list that back the `CODING_SESSION_CHANGES` provider's answers to
+ * "show me the diff" queries. Output is capped by file count and character
+ * budget, and an unborn HEAD (a fresh repo with zero commits) is diffed against
+ * the canonical empty-tree hash so the whole working tree reads as added.
+ */
 import { spawnSync } from "node:child_process";
 import {
   existsSync,

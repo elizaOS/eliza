@@ -1,11 +1,9 @@
 /**
- * CockpitSessionPane — the coding cockpit's drill-in surface (Step 2 of the
- * gap-fill plan).
+ * CockpitSessionPane — the coding cockpit's drill-in surface.
  *
  * Tapping a room on the deck drills into THIS single-room detail view. It is a
  * pure composition of pieces that already exist in the orchestrator workbench,
- * lifted out of the 3.9k-line monolith so the cockpit can embed one room without
- * the list+filter chrome:
+ * reused so the cockpit can embed one room without the list+filter chrome:
  *
  *   • {@link useOrchestratorData} — the live data layer (detail + timeline,
  *     fast-poll while active, SSE near-live, loud-failure mutations).
@@ -16,8 +14,8 @@
  *     restart/validate/add-agent/stop-agent/…), wired to the same client calls
  *     the workbench uses, with `setSelectedId(null)` swapped for `onBack()`.
  *
- * It also unifies the drill-in with the floating-composer bubble binding (Step
- * 1): while this pane is open it registers a {@link useRegisterViewChatBinding}
+ * It also unifies the drill-in with the floating-composer bubble binding: while
+ * this pane is open it registers a {@link useRegisterViewChatBinding}
  * `onSubmit` that routes the composer's text to THIS task's room via
  * `postOrchestratorTaskMessage`, so the one bubble drives the focused room.
  *

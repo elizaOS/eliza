@@ -1,3 +1,13 @@
+/**
+ * Response-handler evaluator that fires when a coding sub-agent dies without
+ * delivering — a hard ACP error, an exhausted state-recovery budget, or a
+ * force-stopped ping-pong loop — as stamped onto a synthetic inbound memory by
+ * the SubAgentRouter. It synthesizes a planner-ready failure turn so the parent
+ * agent replies with the outcome instead of leaving the user staring at the
+ * spawn acknowledgement in silence. The success counterpart is the
+ * `task_complete` completion evaluator; this covers the terminal-failure events
+ * that otherwise had no response handler.
+ */
 import {
   MESSAGE_SOURCE_SUB_AGENT,
   type Memory,

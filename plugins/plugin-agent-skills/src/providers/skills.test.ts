@@ -1,3 +1,8 @@
+/**
+ * Unit tests for the skill summary, instructions, and catalog-awareness
+ * providers, driven against a hand-built runtime stub (no live model).
+ */
+
 import type { IAgentRuntime, Memory, State } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import type { SkillCatalogEntry } from "../types";

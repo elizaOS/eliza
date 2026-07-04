@@ -1,3 +1,8 @@
+/**
+ * Covers the training orchestrator's per-task baseline loading against the
+ * declared training-task set (pure).
+ */
+
 import { describe, expect, it } from "vitest";
 import { ALL_TRAINING_TASKS } from "./training-config.js";
 import { loadBaselineForTask } from "./training-orchestrator.js";
