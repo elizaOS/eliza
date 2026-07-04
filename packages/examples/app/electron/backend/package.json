@@ -8,9 +8,12 @@
     "copy-renderer": "node -e \"import('node:fs/promises').then(async fs=>{const {cp,rm,mkdir}=fs;await rm('renderer',{recursive:true,force:true});await mkdir('renderer',{recursive:true});await cp('../frontend/dist','renderer',{recursive:true});})\"",
     "start": "bun run build && bun run copy-renderer && electron .",
     "dev": "bun run build && ELECTRON_RENDERER_URL=http://localhost:5177 electron .",
-    "test": "vitest run --passWithNoTests",
+    "test": "bun test smoke.test.js",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
-    "typecheck": "tsc --noEmit"
+    "lint:check": "bunx @biomejs/biome check .",
+    "typecheck": "tsc --noEmit",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format ."
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",

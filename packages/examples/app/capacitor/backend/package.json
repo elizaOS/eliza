@@ -5,10 +5,13 @@
   "scripts": {
     "dev": "bun --watch run src/server.ts",
     "start": "bun run src/server.ts",
-    "test": "vitest run --passWithNoTests",
+    "test": "bun test smoke.test.js",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
     "typecheck": "tsc --noEmit",
-    "build": "bun run typecheck"
+    "build": "bun build src/server.ts --outdir=dist --target=bun --format=esm --packages=external",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format ."
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",

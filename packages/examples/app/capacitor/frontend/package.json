@@ -8,7 +8,10 @@
     "preview": "bun --bun vite preview",
     "test": "bun test",
     "typecheck": "tsc --noEmit",
-    "lint": "bunx @biomejs/biome check --write --unsafe ."
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format ."
   },
   "dependencies": {
     "react": "19.2.3",
