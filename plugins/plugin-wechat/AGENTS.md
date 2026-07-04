@@ -53,9 +53,13 @@ plugins/plugin-wechat/
 
 ```bash
 bun run --cwd plugins/plugin-wechat build       # tsup + tsc declaration emit
-bun run --cwd plugins/plugin-wechat check       # tsc type-check (no emit)
+bun run --cwd plugins/plugin-wechat typecheck   # tsgo --noEmit -p tsconfig.json
 bun run --cwd plugins/plugin-wechat test        # vitest run
 bun run --cwd plugins/plugin-wechat test:watch  # vitest watch
+bun run --cwd plugins/plugin-wechat lint        # biome check --write --unsafe
+bun run --cwd plugins/plugin-wechat lint:check  # biome check (read-only)
+bun run --cwd plugins/plugin-wechat format      # biome format --write
+bun run --cwd plugins/plugin-wechat format:check # biome format (read-only)
 bun run --cwd plugins/plugin-wechat clean       # rm -rf dist
 ```
 
