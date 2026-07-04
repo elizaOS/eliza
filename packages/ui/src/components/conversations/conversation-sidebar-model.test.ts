@@ -1,3 +1,5 @@
+/** Unit tests for `buildConversationsSidebarModel`: row shaping, time-bucketed sections, and source/world scope options over synthetic conversations + inbox chats (no rendering). */
+
 import { describe, expect, it } from "vitest";
 import type { Conversation } from "../../api/client-types-chat";
 import type { TranslateFn } from "../../types";

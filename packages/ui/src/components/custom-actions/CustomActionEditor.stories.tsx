@@ -1,3 +1,5 @@
+/** Storybook stories for CustomActionEditor across handler types and create/edit modes, under a stub AppContext supplying `t`. */
+
 import type { CustomActionDef } from "@elizaos/shared";
 import type { Meta, StoryObj } from "@storybook/react";
 import type { AppContextValue } from "../../state/types";

@@ -1,3 +1,12 @@
+/**
+ * UI-language picker: a flag + language-code trigger opening a checkmarked
+ * dropdown of the supported `UiLanguage`s. The host owns the value —
+ * `setUiLanguage` is called on select. `variant` skins it for the three mount
+ * contexts (native settings, in-chat companion overlay, window titlebar); the
+ * companion variant raises z-index above overlay chrome. `data-no-camera-drag`
+ * exempts the control from the home-screen pan gesture.
+ */
+
 import { Check, ChevronDown } from "lucide-react";
 import { useState } from "react";
 import type { UiLanguage } from "../../i18n/messages";

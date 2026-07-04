@@ -1,3 +1,5 @@
+/** Storybook stories for ConversationsSidebar over a seeded app-context conversation set (fixed clock for stable relative-time buckets). */
+
 import type { Meta, StoryObj } from "@storybook/react";
 import type { Conversation } from "../../api/client-types-chat";
 import { seedAppValue } from "../../state/app-store";

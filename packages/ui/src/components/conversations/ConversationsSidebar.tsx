@@ -1,3 +1,19 @@
+/**
+ * The chat surface's left rail: a unified, source-scoped list of conversations.
+ * It merges three streams into one flat, time-bucketed model — dashboard
+ * conversations, connector inbox chats (Discord, Telegram, …, polled every few
+ * seconds), and Terminal PTY sessions — each carrying a namespaced id
+ * (`inbox:` / `terminal:`) so selection stays unambiguous against dashboard
+ * UUIDs. A source/world scope dropdown filters the list; the keyword-search
+ * panel (`MessageSearchPanel`) can jump to a message, loading a window centered
+ * on an out-of-view hit before scrolling to it.
+ *
+ * List shaping (sections, scope options, bucket ranks) lives in
+ * `conversation-sidebar-model.ts`; this component owns fetching, polling,
+ * selection, rename/delete, collapsed/expanded rail rendering, and the mobile
+ * drawer. Barrel-exported and mounted inside the chat panel layout.
+ */
+
 import {
   MessagesSquare,
   Plus,

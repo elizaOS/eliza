@@ -1,5 +1,12 @@
 // @vitest-environment jsdom
 
+/**
+ * Render + interaction tests for ConversationsSidebar's dashboard-conversation
+ * path: list render, new-chat, selection, and the rename/delete menu flows,
+ * plus the mobile variant. Drives the real component with mocked app state +
+ * client and an inert inbox poll so only the conversation path is exercised.
+ */
+
 import {
   cleanup,
   fireEvent,

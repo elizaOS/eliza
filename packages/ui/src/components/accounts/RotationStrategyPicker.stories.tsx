@@ -1,3 +1,5 @@
+/** Storybook stories for RotationStrategyPicker across the account rotation strategies, under a stub AppContext supplying `t`. */
+
 import type { Meta, StoryObj } from "@storybook/react";
 import type { AppContextValue } from "../../state/types";
 import { AppContext } from "../../state/useApp";

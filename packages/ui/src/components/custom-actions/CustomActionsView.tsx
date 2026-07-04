@@ -1,3 +1,11 @@
+/**
+ * Full-page management view for custom actions (barrel-exported, routed as an
+ * app surface). Lists actions with search, per-row enable/disable and delete,
+ * bulk JSON import/export, and hosts the `CustomActionEditor` modal for
+ * create/edit. All persistence goes through `client.*CustomAction*`; the list
+ * refreshes after each mutation.
+ */
+
 import type { CustomActionDef } from "@elizaos/shared";
 import { useCallback, useEffect, useId, useState } from "react";
 import { client } from "../../api/client";

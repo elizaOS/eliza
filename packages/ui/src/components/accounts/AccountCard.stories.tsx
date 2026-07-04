@@ -1,3 +1,5 @@
+/** Storybook stories for AccountCard across provider/health/usage states, under a stub AppContext supplying `t`. */
+
 import type { Meta, StoryObj } from "@storybook/react";
 import type { AccountWithCredentialFlag } from "../../api/client-agent";
 import type { AppContextValue } from "../../state/types";

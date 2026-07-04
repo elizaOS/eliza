@@ -1,3 +1,11 @@
+/**
+ * Stateful rename dialog for a conversation: owns the draft title and the
+ * suggest/save pending flags, wiring the presentational
+ * `ChatConversationRenameDialog` to the app-store `handleRenameConversation` /
+ * `suggestConversationTitle` handlers. "Suggest" asks the agent for a title and
+ * fills the draft; "Save" persists a non-empty trimmed title and closes.
+ */
+
 import { useEffect, useState } from "react";
 import { useAppSelector } from "../../state";
 import { ChatConversationRenameDialog } from "../composites/chat/chat-conversation-rename-dialog";

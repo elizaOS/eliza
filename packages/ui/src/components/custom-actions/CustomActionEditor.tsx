@@ -1,3 +1,12 @@
+/**
+ * Modal form for authoring/editing a single custom action: name, similes,
+ * description, parameters, and the handler (HTTP request, shell command, or
+ * inline code). Field parsing/validation lives in `custom-action-form.ts`; this
+ * component owns the form state and calls `onSave` with the assembled
+ * `CustomActionDef`. It can seed itself from a natural-language description via
+ * the client's action generation, then let the user refine the parsed result.
+ */
+
 import type { CustomActionDef, CustomActionHandler } from "@elizaos/shared";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { useEffect, useState } from "react";

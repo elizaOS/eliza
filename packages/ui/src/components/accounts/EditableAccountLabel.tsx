@@ -1,3 +1,11 @@
+/**
+ * Click-to-edit label used for an account's display name inside `AccountCard`.
+ * Shows the value with a pencil affordance; entering edit mode swaps in an
+ * inline input that commits on Enter/blur and reverts on Escape. Persistence is
+ * the caller's — `onSubmit(label)` may be async; an empty, unchanged, or
+ * rejected value reverts to the previous label.
+ */
+
 import { Pencil } from "lucide-react";
 import {
   type FormEvent,

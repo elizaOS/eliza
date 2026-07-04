@@ -1,3 +1,10 @@
+/**
+ * Small presentational primitives shared across the Release Center sections: a
+ * `StatusPill` mapping a neutral/good/warning tone onto the `StatusBadge`
+ * variants, and a `DefinitionRow` (label + value with an "Unavailable"
+ * fallback).
+ */
+
 import { useAppSelector } from "../../state";
 import { StatusBadge, type StatusVariant } from "../ui/status-badge";
 

@@ -1,3 +1,11 @@
+/**
+ * Slide-out panel listing the agent's custom actions with search, an
+ * enable/disable switch per action, and delete. Fetches via
+ * `client.listCustomActions` when opened; editing is delegated upward through
+ * `onOpenEditor` (the parent owns the `CustomActionEditor` modal). This is the
+ * overlay presentation of the same data the full-page `CustomActionsView` owns.
+ */
+
 import type { CustomActionDef } from "@elizaos/shared";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { client } from "../../api/client";

@@ -1,3 +1,12 @@
+/**
+ * Pure form model behind the custom-action editor: field types, the editor's
+ * shared class names, name/alias/parameter/method normalizers, and parsers that
+ * coerce a loosely-typed generated payload into a validated `ParsedGeneration`
+ * (one branch per handler kind: http/shell/code, each rejecting missing required
+ * fields). No React — the editor imports these to normalize input and to seed
+ * itself from `client.generateCustomAction`.
+ */
+
 import type { CustomActionHandler } from "@elizaos/shared";
 
 /* ── Types ─────────────────────────────────────────────────────────── */

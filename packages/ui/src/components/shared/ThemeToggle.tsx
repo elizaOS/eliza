@@ -1,3 +1,11 @@
+/**
+ * Sun/moon icon button that flips the UI between light and dark. The host owns
+ * the value — `setUiTheme` is called with the opposite theme on click.
+ * `variant` skins it for the native settings, in-chat companion, and titlebar
+ * mount contexts; `data-no-camera-drag` exempts it from the home-screen pan
+ * gesture.
+ */
+
 import { Moon, Sun } from "lucide-react";
 import { useCallback } from "react";
 import type { UiTheme } from "../../state/persistence";

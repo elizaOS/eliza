@@ -1,3 +1,13 @@
+/**
+ * Opinionated wrapper over the composite `Sidebar` for in-page left rails
+ * (conversations, wallet, config, etc.), applying the app's chromeless page
+ * skin: no right-edge hairline, transparent background, an inline collapse
+ * button in the footer. Adds width + collapsed persistence keyed by
+ * `contentIdentity`/`syncId` in localStorage, and supports both controlled and
+ * uncontrolled collapsed/width. The desktop `default` variant resizes and
+ * persists; `mobile`/`game-modal` variants inherit the base sidebar behavior.
+ */
+
 import { PanelLeftClose } from "lucide-react";
 import * as React from "react";
 import { useCallback, useMemo, useState } from "react";

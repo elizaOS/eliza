@@ -1,3 +1,11 @@
+/**
+ * Presentation helpers for the conversations sidebar: localized title fallback
+ * ("New Chat"), a stable avatar index hashed from a conversation id, provider
+ * label resolution from a model string, an embedding/utility-model classifier,
+ * and the browser/computer capability plugin-id sets used to badge rows. Pure
+ * and framework-free (re-exports `formatRelativeTime` for callers).
+ */
+
 import { VRM_COUNT } from "../../state";
 import { formatRelativeTime } from "../../utils/format";
 

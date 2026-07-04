@@ -1,3 +1,12 @@
+/**
+ * A collapsible labeled group inside a sidebar: a toggle header (chevron +
+ * optional icon/indicator + optional add-action), and a body that shows its
+ * children, an empty-state label, or nothing when collapsed. Collapse state is
+ * owned by the caller (`collapsed` + `onToggleCollapsed(sectionKey)`) so a
+ * sidebar can persist many sections under one key. On desktop the chevron and
+ * add-button fade in on section hover unless `hoverActionsOnDesktop` is off.
+ */
+
 import { ChevronDown, ChevronRight, Plus } from "lucide-react";
 import * as React from "react";
 import { Button } from "../ui/button";
