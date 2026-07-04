@@ -1899,7 +1899,8 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
           // Native mobile (Android/iOS Capacitor): route the reply through the
           // native TalkMode engine (Kotlin AudioTrack / on-device local-inference
           // TTS) per the Android TTS-owner decision, instead of the WebView
-          // AudioContext path. Falls through to the web TTS path on a native error.
+          // AudioContext path. Native errors fail closed below so the configured
+          // voice is not silently swapped for a different engine.
           if (Capacitor.isNativePlatform()) {
             const trimmed = task.text.trim();
             if (!trimmed) continue;

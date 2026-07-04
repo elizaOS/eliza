@@ -48,4 +48,3 @@ stdout | src/services/router-tts-fail-closed.test.ts > non-TTS slots keep transi
       Tests  27 passed (27)
    Start at  21:23:21
    Duration  3.39s (transform 7.41s, setup 0ms, import 9.75s, tests 14ms, environment 0ms)
-
