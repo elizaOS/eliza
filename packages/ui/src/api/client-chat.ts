@@ -41,6 +41,7 @@ import type {
   McpServerStatus,
   MemoryBrowseQuery,
   MemoryBrowseResponse,
+  MemoryDeleteResponse,
   MemoryFeedQuery,
   MemoryFeedResponse,
   MemoryRememberResponse,
@@ -531,6 +532,7 @@ declare module "./client-base" {
       documentId: string,
     ): Promise<DocumentFragmentsResponse>;
     rememberMemory(text: string): Promise<MemoryRememberResponse>;
+    deleteMemory(memoryId: string): Promise<MemoryDeleteResponse>;
     searchMemory(
       query: string,
       options?: { limit?: number },
@@ -1427,6 +1429,15 @@ ElizaClient.prototype.rememberMemory = async function (
   return this.fetch("/api/memory/remember", {
     method: "POST",
     body: JSON.stringify({ text }),
+  });
+};
+
+ElizaClient.prototype.deleteMemory = async function (
+  this: ElizaClient,
+  memoryId,
+) {
+  return this.fetch(`/api/memories/${encodeURIComponent(memoryId)}`, {
+    method: "DELETE",
   });
 };
 
