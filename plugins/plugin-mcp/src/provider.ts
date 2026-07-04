@@ -66,14 +66,18 @@ export const provider: Provider = {
         text: formatMcpServersForPrompt(mcp),
       };
     } catch (error) {
-      // error-policy:J7 provider must not kill the turn; surface the failure via
-      // reportError (RECENT_ERRORS + owner escalation) and render a distinguishable
-      // error state instead of masking it as a healthy "no servers" result.
-      runtime.reportError("MCP.provider", error);
+      // error-policy:J4 explicit degrade — a McpService read failure must not
+      // masquerade as the designed "No MCP servers are available." empty
+      // state: the planner would treat a broken MCP subsystem as a clean
+      // no-servers world. Render a distinguishable error line and surface the
+      // failure via reportError (RECENT_ERRORS / owner-escalation).
+      runtime.reportError?.("MCP.provider", error);
+      const message = error instanceof Error ? error.message : String(error);
+      const text = `MCP server status is unavailable (error reading MCP state: ${message}).`;
       return {
-        values: {},
-        data: { error: error instanceof Error ? error.message : String(error) },
-        text: "MCP server information is temporarily unavailable due to an error.",
+        values: { mcpServers: text },
+        data: { error: message },
+        text,
       };
     }
   },

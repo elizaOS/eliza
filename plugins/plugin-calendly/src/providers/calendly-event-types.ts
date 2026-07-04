@@ -59,11 +59,17 @@ export const calendlyEventTypesProvider: Provider = {
     try {
       eventTypes = await service.listEventTypes(accountId);
     } catch (err) {
+      // error-policy:J4 explicit degrade — a Calendly API/auth/network failure
+      // renders a distinguishable error line (empty text here was
+      // indistinguishable from the designed not-connected state, so the
+      // planner read a broken Calendly read as "nothing to show"), and
+      // reportError surfaces the failure to RECENT_ERRORS / owner-escalation.
+      runtime.reportError?.("calendlyEventTypes.provider", err);
       const message = err instanceof Error ? err.message : String(err);
       return {
         data: { calendlyConnected: true, error: message },
         values: { calendlyConnected: true, calendlyError: message },
-        text: "",
+        text: "Error retrieving Calendly event types",
       };
     }
     const entries: CalendlyEventTypeEntry[] = eventTypes

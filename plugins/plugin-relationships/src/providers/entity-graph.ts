@@ -23,6 +23,7 @@ import type {
   ProviderResult,
   State,
 } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import { SELF_ENTITY_ID } from "@elizaos/shared";
 
 import { RELATIONSHIPS_CONTEXTS, RELATIONSHIPS_LOG_PREFIX } from "../types.js";
@@ -123,13 +124,23 @@ export const entityGraphProvider: Provider = {
         },
       };
     } catch (error) {
-      // error-policy:J4 explicit user-facing degrade — a knowledge-graph read
-      // failure omits the graph projection from planner context (an empty
-      // projection, never a fabricated "no known entities"), and reportError
-      // makes the underlying failure observable in RECENT_ERRORS +
-      // owner-escalation instead of being silently swallowed at debug level.
-      runtime.reportError?.(`${RELATIONSHIPS_LOG_PREFIX} ENTITY_GRAPH`, error);
-      return { text: "", data: { entities: [], relationships: [] } };
+      // error-policy:J4 explicit degrade — a knowledge-graph store failure
+      // (DB read, projection) must not render the designed "empty graph"
+      // shape: the degraded result carries an error marker so consumers can
+      // tell a broken graph read from a legitimately empty graph, and
+      // reportError surfaces the failure to RECENT_ERRORS / owner-escalation
+      // instead of a log line nothing reads.
+      const message = error instanceof Error ? error.message : String(error);
+      logger.error(
+        `${RELATIONSHIPS_LOG_PREFIX} ENTITY_GRAPH projection failed:`,
+        message,
+      );
+      runtime.reportError?.("ENTITY_GRAPH.provider", error);
+      return {
+        text: "Error retrieving entity graph",
+        data: { entities: [], relationships: [], error: message },
+        values: { entityGraphError: message },
+      };
     }
   },
 };

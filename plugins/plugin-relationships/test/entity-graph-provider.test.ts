@@ -3,8 +3,11 @@
  *
  * Mocks `@elizaos/agent`'s `resolveKnowledgeGraphService` so the provider
  * projects a fake EntityStore/RelationshipStore. Asserts the empty-graph
- * fallback, the service-absent fallback, and the populated projection (entity
- * lines + ego-network edge lines with resolved target names, `self` excluded).
+ * fallback, the service-absent fallback, the populated projection (entity
+ * lines + ego-network edge lines with resolved target names, `self` excluded),
+ * and the failure path (#12744: a store read failure must render a
+ * distinguishable degraded shape + surface via `runtime.reportError`, never
+ * the designed empty-graph result).
  */
 
 import type { IAgentRuntime, Memory, State, UUID } from "@elizaos/core";
@@ -69,7 +72,11 @@ function makeService(args: {
   };
 }
 
-const runtime = { agentId: "agent-1" as UUID } as unknown as IAgentRuntime;
+const reportError = vi.fn();
+const runtime = {
+  agentId: "agent-1" as UUID,
+  reportError,
+} as unknown as IAgentRuntime;
 const message = { id: "m1" as UUID, content: { text: "" } } as Memory;
 const state = {} as State;
 
@@ -93,39 +100,6 @@ describe("ENTITY_GRAPH provider", () => {
     const result = await entityGraphProvider.get(runtime, message, state);
     expect(result.text).toBe("");
     expect(result.data).toEqual({ entities: [], relationships: [] });
-  });
-
-  it("reports the failure and degrades to empty when a store read rejects", async () => {
-    const boom = new Error("entity store unavailable");
-    const service = {
-      getEntityStore: () => ({
-        list: vi.fn(async () => {
-          throw boom;
-        }),
-      }),
-      getRelationshipStore: () => ({ list: vi.fn(async () => []) }),
-    };
-    mocks.resolveKnowledgeGraphService.mockReturnValue(service);
-    const reportError = vi.fn();
-    const failingRuntime = {
-      agentId: "agent-1" as UUID,
-      reportError,
-    } as unknown as IAgentRuntime;
-
-    const result = await entityGraphProvider.get(
-      failingRuntime,
-      message,
-      state,
-    );
-
-    // Failure surfaces observably — never a silent debug-swallow.
-    expect(reportError).toHaveBeenCalledTimes(1);
-    expect(reportError.mock.calls[0]?.[1]).toBe(boom);
-    // Degrades to an empty projection (never a fabricated populated graph).
-    expect(result).toEqual({
-      text: "",
-      data: { entities: [], relationships: [] },
-    });
   });
 
   it("projects entities + ego edges and resolves target names", async () => {
@@ -177,5 +151,45 @@ describe("ENTITY_GRAPH provider", () => {
       expect.objectContaining({ fromEntityId: "self" }),
     );
     expect(entityStore.list).toHaveBeenCalled();
+  });
+
+  it("renders a degraded error shape and reports when the store read fails", async () => {
+    const boom = new Error("graph db unavailable");
+    const service = {
+      getEntityStore: () => ({
+        list: vi.fn(async () => {
+          throw boom;
+        }),
+      }),
+      getRelationshipStore: () => ({ list: vi.fn(async () => []) }),
+    };
+    mocks.resolveKnowledgeGraphService.mockReturnValue(service);
+
+    const result = await entityGraphProvider.get(runtime, message, state);
+
+    // NOT the designed empty-graph shape: the non-empty error text is
+    // prompt-visible (the runtime only injects non-empty provider text) and
+    // the error marker distinguishes a broken graph read from a legitimately
+    // empty graph.
+    expect(result.text).toBe("Error retrieving entity graph");
+    expect(result.data).toEqual({
+      entities: [],
+      relationships: [],
+      error: "graph db unavailable",
+    });
+    expect(result.values).toEqual({
+      entityGraphError: "graph db unavailable",
+    });
+    // The failure is observable in RECENT_ERRORS / owner-escalation.
+    expect(reportError).toHaveBeenCalledWith("ENTITY_GRAPH.provider", boom);
+  });
+
+  it("does not report designed-absence or empty-graph states", async () => {
+    mocks.resolveKnowledgeGraphService.mockReturnValue(null);
+    await entityGraphProvider.get(runtime, message, state);
+    const { service } = makeService({ entities: [], relationships: [] });
+    mocks.resolveKnowledgeGraphService.mockReturnValue(service);
+    await entityGraphProvider.get(runtime, message, state);
+    expect(reportError).not.toHaveBeenCalled();
   });
 });
