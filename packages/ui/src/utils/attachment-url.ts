@@ -13,13 +13,18 @@
  * A URL is considered safe ONLY when it is one of:
  *  - an `http://` or `https://` URL;
  *  - a root-relative / app URL (begins with `/`, e.g. `/api/media/<hash>`);
+ *  - the on-device local-agent IPC scheme `eliza-local-agent://ipc/…`, which is
+ *    how a served `/api/media/<hash>` path resolves in mobile/desktop local mode
+ *    (no HTTP port): a native scheme handler serves the bytes over IPC. This is
+ *    the ONLY custom scheme permitted, and only for its fixed `ipc` authority;
+ *    it is a same-app capability, not an attacker-controlled `foo://` sink;
  *  - a `blob:` URL;
  *  - a `data:` URL whose media type is in the allowlist
  *    (`image/*`, `audio/*`, `video/*`, `application/pdf`, `text/plain`).
  *
  * Everything else returns `false`: other/unknown schemes (`javascript:`,
- * `vbscript:`, `file:`, `mailto:`, custom `foo://`, ...), `data:` URLs with a
- * non-allowlisted media type (notably `data:text/html` and
+ * `vbscript:`, `file:`, `mailto:`, any other custom `foo://`, ...), `data:` URLs
+ * with a non-allowlisted media type (notably `data:text/html` and
  * `data:image/svg+xml`, both script-capable), empty / whitespace-only input,
  * and malformed input.
  *
@@ -43,6 +48,36 @@ const SAFE_DATA_MEDIA_TYPES_EXACT = new Set<string>([
 
 // Disallowed even though they would match a prefix above: both can run script.
 const UNSAFE_DATA_MEDIA_TYPES = new Set<string>(["image/svg+xml", "text/html"]);
+
+/**
+ * The on-device local-agent IPC identity, kept in sync with
+ * `MOBILE_LOCAL_AGENT_IPC_BASE` in `first-run/mobile-runtime-mode.ts`. A served
+ * `/api/media/<hash>` path resolves to `eliza-local-agent://ipc/api/media/…`
+ * when the app runs the bundled agent over IPC (no HTTP port). Duplicated as a
+ * bare constant here so this guard stays a zero-import leaf (it is imported into
+ * hot render paths); the value is a frozen wire identity, not a moving target.
+ */
+const LOCAL_AGENT_IPC_SCHEME = "eliza-local-agent";
+const LOCAL_AGENT_IPC_HOST = "ipc";
+
+/**
+ * True for `eliza-local-agent://ipc` and `eliza-local-agent://ipc/…` only.
+ * `sanitized` is the whitespace/control-stripped, scheme-sanitized input; the
+ * scheme is already known to be `eliza-local-agent`. Chromium treats this
+ * non-special authority as path data (`eliza-local-agent://ipc/x` →
+ * authority-less, `//ipc/x` in the path), so match on the literal
+ * `//<host>` prefix rather than trusting `URL.hostname`.
+ */
+function isLocalAgentIpcUrl(sanitized: string): boolean {
+  const afterScheme = sanitized
+    .slice(`${LOCAL_AGENT_IPC_SCHEME}:`.length)
+    .toLowerCase();
+  const authority = `//${LOCAL_AGENT_IPC_HOST}`;
+  if (afterScheme === authority) return true;
+  // Only `/`, `?`, or `#` may follow the fixed authority — never another host
+  // char (which would make `//ipcevil/…` a different, disallowed authority).
+  return /^\/\/ipc(?:[/?#]|$)/.test(afterScheme);
+}
 
 /**
  * Strip ASCII whitespace and C0/DEL control characters the way a browser does
@@ -107,6 +142,11 @@ export function isSafeAttachmentUrl(url: string): boolean {
     case "https":
     case "blob":
       return true;
+    case LOCAL_AGENT_IPC_SCHEME:
+      // The bundled on-device agent's media, served over IPC in local mode.
+      // Restricted to the fixed `ipc` authority; any other authority is a
+      // different, untrusted target and stays rejected.
+      return isLocalAgentIpcUrl(sanitized);
     case "data": {
       // Parse the media type out of `data:[<media type>][;base64],<data>`.
       // Use the sanitized string so control-char obfuscation inside the
