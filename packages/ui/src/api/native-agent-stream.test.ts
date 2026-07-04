@@ -15,13 +15,22 @@ import {
  * `agentStream*` events on demand — exactly how the native bridge will emit them
  * via Capacitor `notifyListeners`.
  */
-function makeFakeAgent(streamId = "s1", completion?: Promise<unknown>) {
+function makeFakeAgent(
+  streamId = "s1",
+  completion?: Promise<unknown>,
+  options: { addListenerDelayMs?: number } = {},
+) {
   const listeners = new Map<string, Array<(e: unknown) => void>>();
   const agent: NativeStreamingAgentPlugin = {
     async requestStream() {
       return { streamId, completion };
     },
     async addListener(eventName, listener) {
+      if (options.addListenerDelayMs) {
+        await new Promise((resolve) =>
+          setTimeout(resolve, options.addListenerDelayMs),
+        );
+      }
       const arr = listeners.get(eventName) ?? [];
       arr.push(listener);
       listeners.set(eventName, arr);
@@ -151,6 +160,20 @@ describe("createNativeStreamingResponse", () => {
       path: "/x",
     });
     await expect(responsePromise).rejects.toThrow("native boot failed");
+  });
+
+  it("removes listener handles that resolve after an early native completion rejection", async () => {
+    const completion = Promise.reject(new Error("native boot failed"));
+    const { agent, listenerCount } = makeFakeAgent("s1", completion, {
+      addListenerDelayMs: 5,
+    });
+    const responsePromise = createNativeStreamingResponse(agent, {
+      path: "/x",
+    });
+    await expect(responsePromise).rejects.toThrow("native boot failed");
+    await flush();
+    await flush();
+    expect(listenerCount()).toBe(0);
   });
 
   it("errors the body when the native stream call rejects after the head", async () => {
