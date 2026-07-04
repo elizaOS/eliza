@@ -25,5 +25,6 @@ describe("buildBrandEnvAliases", () => {
     expect(aliases.get("ACME_PORT")).toBe("ELIZA_PORT");
     expect(aliases.get("ACME_UI_PORT")).toBe("ELIZA_UI_PORT");
     expect(aliases.get("ACME_API_PORT")).toBe("ELIZA_API_PORT");
+    expect(aliases.get("ACME_PLATFORM")).toBe("ELIZA_PLATFORM");
   });
 });

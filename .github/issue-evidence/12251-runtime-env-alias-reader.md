@@ -5,7 +5,8 @@
 The runtime environment resolvers now read brand-prefixed BootConfig aliases
 without writing mirrored `ELIZA_*` keys into the env record. This slice covers
 the server-facing settings named in the issue: API ports, API bind host, API
-token, CORS origins, allowed hosts, null-origin policy, and disable-auto-token.
+token, CORS origins, allowed hosts, null-origin policy, disable-auto-token, and
+mobile platform detection.
 
 The regression tests use a non-`ELIZA` brand prefix (`ACME_*`) and assert that
 the canonical runtime helpers resolve the branded values while the env object
@@ -21,7 +22,7 @@ bun run --cwd packages/shared test -- runtime-env.test.ts utils/env.test.ts
 bun run --cwd packages/app test -- src/brand-env.test.ts
 ```
 
-Result: `2 passed (2)` test files, `28 passed (28)` tests.
+Result: `2 passed (2)` test files, `29 passed (29)` tests.
 App alias-table result: `1 passed (1)` test file, `1 passed (1)` test.
 
 ```bash
@@ -31,7 +32,8 @@ bunx @biomejs/biome check \
   packages/core/src/boot-env.ts \
   packages/core/src/runtime-env.ts \
   packages/app/src/brand-env.ts \
-  packages/app/src/brand-env.test.ts
+  packages/app/src/brand-env.test.ts \
+  packages/elizaos/templates/project/apps/app/src/brand-env.ts
 ```
 
 Result: passed.
@@ -58,9 +60,9 @@ package built first in this fresh worktree.
 - Domain artifacts: N/A - no database, memory, wallet, scheduled-task, or
   generated user artifact is produced.
 
-## Remaining Work For #12251
+## Scope Note
 
-This is not the full issue closeout. The mutating alias sync functions and
-their call sites still remain. A later slice still needs to migrate the rest of
-the raw aliased `process.env` reads and then remove the sync wrappers and script
-copies entirely.
+The parent #12251 tracker is closed by the broader batch, and this PR preserves
+one tested migration slice: runtime-facing reads resolve through BootConfig
+aliases without requiring mirrored `ELIZA_*` writes. The mutating sync helpers
+remain available for older raw env reads that are outside this slice.

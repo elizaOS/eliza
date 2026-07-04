@@ -8,7 +8,9 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { getBootConfig, setBootConfig } from "./config/boot-config";
 import {
   firstWinningEnvString,
+  isAndroidMobile,
   isLoopbackBindHost,
+  isMobilePlatform,
   isWildcardBindHost,
   resolveApiExposePort,
   resolveApiSecurityConfig,
@@ -86,7 +88,7 @@ describe("runtime env alias resolution", () => {
     ["ACME_ALLOWED_HOSTS", "ELIZA_ALLOWED_HOSTS"],
     ["ACME_ALLOW_NULL_ORIGIN", "ELIZA_ALLOW_NULL_ORIGIN"],
     ["ACME_DISABLE_AUTO_API_TOKEN", "ELIZA_DISABLE_AUTO_API_TOKEN"],
-    ["ACME_API_EXPOSE_PORT", "ELIZA_API_EXPOSE_PORT"],
+    ["ACME_PLATFORM", "ELIZA_PLATFORM"],
   ];
 
   beforeEach(() => {
@@ -167,5 +169,15 @@ describe("runtime env alias resolution", () => {
 
     expect(resolveApiExposePort(env)).toBe(true);
     expect(env).not.toHaveProperty("ELIZA_API_EXPOSE_PORT");
+  });
+
+  it("resolves mobile platform checks from a branded alias", () => {
+    const env = {
+      ACME_PLATFORM: "android",
+    };
+
+    expect(isMobilePlatform(env)).toBe(true);
+    expect(isAndroidMobile(env)).toBe(true);
+    expect(env).not.toHaveProperty("ELIZA_PLATFORM");
   });
 });
