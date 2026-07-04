@@ -1,3 +1,6 @@
+/**
+ * DEPLOY_FRONTEND action tests: frontend hosting deploy. The @elizaos/cloud-sdk client is faked (helpers.ts, SDK boundary only); the action runs for real.
+ */
 import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
 import { promises as fs } from "node:fs";
 import { tmpdir } from "node:os";

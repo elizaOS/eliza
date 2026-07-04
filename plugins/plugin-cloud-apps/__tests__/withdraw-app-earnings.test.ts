@@ -1,3 +1,6 @@
+/**
+ * WITHDRAW_APP_EARNINGS action tests: the money-out two-phase confirm and the frozen-snapshot guard. The @elizaos/cloud-sdk client is faked (helpers.ts, SDK boundary only); the action runs for real.
+ */
 import { beforeEach, describe, expect, it, mock } from "bun:test";
 import type { WithdrawAppEarningsRequest } from "@elizaos/cloud-sdk";
 import type { ConnectorCta } from "../src/safety.ts";

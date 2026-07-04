@@ -1,3 +1,6 @@
+/**
+ * Tests for the two-phase confirm state machine (readStructuredConfirmation and the conflicting-target/amount/domain guards). Pure — planner-boolean parsing, never prose. No SDK.
+ */
 import { describe, expect, it } from "bun:test";
 import {
   buildConnectorCta,

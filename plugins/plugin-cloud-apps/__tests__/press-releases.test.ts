@@ -1,3 +1,6 @@
+/**
+ * Press-release action tests (DRAFT_PRESS_RELEASE and related growth actions). The @elizaos/cloud-sdk client is faked (helpers.ts, SDK boundary only); the action runs for real.
+ */
 import { beforeEach, describe, expect, it, mock } from "bun:test";
 import type {
   CreatePressReleaseInput,

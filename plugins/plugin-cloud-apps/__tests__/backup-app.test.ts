@@ -1,3 +1,6 @@
+/**
+ * BACKUP_APP action tests: on-demand app backup snapshots. The @elizaos/cloud-sdk client is faked (helpers.ts, SDK boundary only); the action runs for real.
+ */
 import { beforeEach, describe, expect, it, mock } from "bun:test";
 import {
   captureCallback,

@@ -63,8 +63,8 @@ const GATEWAY_DOWN_STATUSES = new Set([502, 503, 504]);
  * the container is up and serving; a network error / abort (no status at all) is
  * NOT reachable. Using this instead of a strict-2xx check keeps the DEPLOY_APP
  * completion gate from contradicting the server's own live decision (an
- * auth-gated app, or one with no `/health` route, is live per the server but was
- * previously reported "not live").
+ * auth-gated app, or one with no `/health` route, is live per the server but a
+ * strict-2xx check would report "not live").
  */
 export function respondedLive(result: ReachabilityResult): boolean {
   return (

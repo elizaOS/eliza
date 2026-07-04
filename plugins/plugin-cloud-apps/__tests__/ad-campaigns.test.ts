@@ -1,3 +1,6 @@
+/**
+ * Ad-campaign management action tests (SET_AD_CAMPAIGN_DAYPARTING, performance reports). The @elizaos/cloud-sdk client is faked (helpers.ts, SDK boundary only); the action runs for real.
+ */
 import { beforeEach, describe, expect, it, mock } from "bun:test";
 import type {
   DuplicateAdCampaignInput,

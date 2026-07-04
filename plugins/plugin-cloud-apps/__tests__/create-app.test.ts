@@ -1,3 +1,6 @@
+/**
+ * CREATE_APP tests covering the pure parseCreateAppIntent parser and the action end to end. The @elizaos/cloud-sdk client is faked (helpers.ts, SDK boundary only); the action runs for real.
+ */
 import { beforeEach, describe, expect, it, mock } from "bun:test";
 import type { CreateAppInput } from "@elizaos/cloud-sdk";
 import {

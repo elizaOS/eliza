@@ -1,3 +1,6 @@
+/**
+ * Tests for the pure reachability probe (probeReachable, respondedLive, healthUrl) with an injected fetch. Asserts the probe uses redirect:"manual" to mirror the server's live decision. No SDK or runtime.
+ */
 import { describe, expect, it } from "bun:test";
 import {
   type FetchLike,
@@ -44,10 +47,10 @@ describe("probeReachable", () => {
   });
 
   it("REGRESSION: does NOT follow redirects — mirrors the server's probe (redirect: manual)", async () => {
-    // A redirecting /health used to be chased with redirect:"follow"; if the
-    // redirect target failed, the client probe contradicted the server's READY
-    // with a false "not live". The server's probeUrlReachable uses
-    // redirect:"manual" and treats the 3xx itself as "the app answered".
+    // The probe must not follow redirects: it uses redirect:"manual" and treats
+    // a 3xx as "the app answered", mirroring the server's probeUrlReachable.
+    // Following redirects would let a failed redirect target contradict the
+    // server's READY with a false "not live".
     let seenInit: Parameters<FetchLike>[1];
     const result = await probeReachable("https://app.example/health", {
       fetchImpl: (_url, init) => {

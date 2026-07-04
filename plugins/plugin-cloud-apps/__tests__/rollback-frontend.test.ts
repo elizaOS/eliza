@@ -1,3 +1,6 @@
+/**
+ * ROLLBACK_FRONTEND tests covering the pure selectRollbackTarget selector and the action. The @elizaos/cloud-sdk client is faked (helpers.ts, SDK boundary only); the action runs for real.
+ */
 import { beforeEach, describe, expect, it, mock } from "bun:test";
 import type { AppFrontendDeploymentDto } from "@elizaos/cloud-sdk";
 import {

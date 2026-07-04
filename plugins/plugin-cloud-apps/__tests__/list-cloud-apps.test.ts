@@ -1,3 +1,6 @@
+/**
+ * LIST_CLOUD_APPS action tests: the user's app inventory (name / url / status). The @elizaos/cloud-sdk client is faked (helpers.ts, SDK boundary only); the action runs for real.
+ */
 import { beforeEach, describe, expect, it, mock } from "bun:test";
 import {
   captureCallback,

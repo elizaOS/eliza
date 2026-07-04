@@ -1,3 +1,6 @@
+/**
+ * UPDATE_MONETIZATION tests covering the pure parseMonetizationIntent parser and the range-guarded action. The @elizaos/cloud-sdk client is faked (helpers.ts, SDK boundary only); the action runs for real.
+ */
 import { beforeEach, describe, expect, it, mock } from "bun:test";
 import type { UpdateAppMonetizationInput } from "@elizaos/cloud-sdk";
 import {

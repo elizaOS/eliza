@@ -1,3 +1,6 @@
+/**
+ * Tests for the pure deploy-gate logic — classifyDeployStatus and runDeployGate with injected status/probe functions. No SDK or runtime.
+ */
 import { describe, expect, it } from "bun:test";
 import type { AppDeployStatusResponse, AppResponse } from "@elizaos/cloud-sdk";
 import {
