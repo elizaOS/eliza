@@ -41,6 +41,7 @@ function getClient(): PostHog | null {
       requestTimeout: 5000,
     });
   } catch {
+    // error-policy:J7 analytics side-channel init; failure disables tracking (same no-op as the no-key path above) and must never break agent trading
     return null;
   }
   return client;

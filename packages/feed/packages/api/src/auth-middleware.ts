@@ -320,13 +320,14 @@ export async function optionalAuth(
       };
     }
   } catch {
-    // fall through
+    // error-policy:J3 not a valid agent session → fall through to Steward verification (untrusted-token discrimination)
   }
 
   try {
     const payload = await verifyStewardToken(token);
     return resolveUserFromStewardPayload(payload);
   } catch {
+    // error-policy:J3 token fails verification → treated as unauthenticated (fail-closed); null is the explicit "no valid identity" signal
     return null;
   }
 }
@@ -346,13 +347,14 @@ export async function optionalAuthFromHeaders(
       return { userId: agentSession.agentId, isAgent: true };
     }
   } catch {
-    // fall through
+    // error-policy:J3 not a valid agent session → fall through to Steward verification (untrusted-token discrimination)
   }
 
   try {
     const payload = await verifyStewardToken(token);
     return resolveUserFromStewardPayload(payload);
   } catch {
+    // error-policy:J3 token fails verification → treated as unauthenticated (fail-closed); null is the explicit "no valid identity" signal
     return null;
   }
 }

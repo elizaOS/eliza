@@ -192,6 +192,7 @@ export async function handleNonCritical<T>(
   try {
     return await operation();
   } catch (error) {
+    // error-policy:J7 designed non-critical wrapper: the failure is surfaced via logger.error; null lets a supplementary step be skipped without killing the tick
     logger.error(context, { error: formatError(error) }, service);
     return null;
   }

@@ -322,6 +322,7 @@ function parseStoredSnapshot(
           : new Date().toISOString(),
     };
   } catch {
+    // error-policy:J3 parse of a persisted snapshot blob; malformed/legacy shape is invalid, null re-derives from source
     return null;
   }
 }

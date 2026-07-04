@@ -17,7 +17,9 @@ async function ensureExtensionsDownloaded(): Promise<void> {
   try {
     await access(metamaskDir);
     return;
-  } catch {}
+  } catch {
+    // error-policy:J3 existence probe — absence (not failure) means the extension is not yet downloaded; fall through to download it
+  }
   await new Promise<void>((resolve, _reject) => {
     const child = spawn(
       "npx",

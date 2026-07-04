@@ -120,6 +120,7 @@ export function verifyNotificationUnsubscribeToken(
       exp: payload.exp,
     };
   } catch {
+    // error-policy:J3 undecodable/malformed unsubscribe token is invalid input; null is the explicit "invalid token" signal
     return null;
   }
 }

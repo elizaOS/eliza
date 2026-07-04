@@ -526,6 +526,7 @@ function extractRequestedBalanceUnits(
       }
     }
   } catch {
+    // error-policy:J3 parse of an untrusted description blob; malformed JSON means no requested-units field, null is the explicit "absent" signal (matches the non-`{` early return above)
     return null;
   }
 

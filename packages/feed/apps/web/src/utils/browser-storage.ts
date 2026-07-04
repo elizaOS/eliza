@@ -8,6 +8,7 @@ function getStorage(type: BrowserStorageType): Storage | null {
   try {
     return window[type];
   } catch {
+    // error-policy:J4 storage access throws in private-mode / blocked-cookie browsers; feature degrades to no-storage
     return null;
   }
 }
@@ -22,6 +23,7 @@ export function readStorageItem(
   try {
     return storage.getItem(key);
   } catch {
+    // error-policy:J4 getItem can throw under storage pressure / privacy modes; feature degrades to absent value
     return null;
   }
 }
@@ -36,6 +38,7 @@ export function readStorageJson<T>(
   try {
     return JSON.parse(stored) as T;
   } catch {
+    // error-policy:J3 stored value is untrusted (may be stale/corrupt); unparseable JSON is invalid, null is the explicit "no usable value" signal
     return null;
   }
 }
@@ -52,6 +55,7 @@ export function writeStorageItem(
     storage.setItem(key, value);
     return true;
   } catch {
+    // error-policy:J4 setItem throws on quota-exceeded / private mode; false lets the caller degrade without crashing the UI
     return false;
   }
 }
@@ -67,6 +71,7 @@ export function removeStorageItem(
     storage.removeItem(key);
     return true;
   } catch {
+    // error-policy:J4 removeItem throws in private mode / blocked storage; false lets the caller degrade without crashing the UI
     return false;
   }
 }
@@ -83,6 +88,7 @@ export function listStorageKeys(type: BrowserStorageType): string[] {
     }
     return keys;
   } catch {
+    // error-policy:J4 storage enumeration throws in private mode / blocked storage; empty list degrades the feature without crashing the UI
     return [];
   }
 }

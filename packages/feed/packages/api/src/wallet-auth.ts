@@ -14,6 +14,7 @@ function safeDecodeJwtPayload(token: string): Record<string, number> | null {
     const padded = payload + "=".repeat((4 - (payload.length % 4)) % 4);
     return JSON.parse(atob(padded)) as Record<string, number>;
   } catch {
+    // error-policy:J3 malformed/undecodable JWT payload is invalid input; null is the explicit "not a readable token" signal
     return null;
   }
 }

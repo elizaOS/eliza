@@ -148,6 +148,7 @@ export function attemptJsonRepair(jsonStr: string): string | null {
     JSON.parse(repaired);
     return repaired;
   } catch {
+    // error-policy:J3 probe of untrusted model output; unparseable repair is invalid, null is the explicit "not valid JSON" signal
     return null;
   }
 }

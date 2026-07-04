@@ -169,6 +169,7 @@ class SnowflakeGenerator {
       SnowflakeGenerator.parse(idBigInt);
       return true;
     } catch {
+      // error-policy:J3 validation predicate over untrusted input; unparseable id is invalid, false is the explicit result
       return false;
     }
   }
