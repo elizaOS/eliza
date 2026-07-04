@@ -262,6 +262,6 @@ behavior, **re-capture** evidence; stale proof is worse than none.
 **Capture & manually review for this package — UI surface:**
 - Before/after **full-page** screenshots — desktop **and** mobile, portrait **and** landscape, rest **and** hover (`bun run --cwd packages/app audit:app` where applicable) — not desktop-only-happy-path (see #9950).
 - A **video walkthrough** of the whole view/flow, plus browser console + network logs showing the real request/response and state change.
-- Empty, loading, error, and permission-denied states — and fill the per-view manual-review verdict (`good`/`needs-work`/`needs-eyeball`/`broken`); no page ships `needs-work`/`broken`.
+- Empty, loading, error, and permission-denied states — review the per-view manual-review notes (`good`/`needs-work`/`needs-eyeball`/`broken` guidance); no computed page verdict ships `needs-work`/`broken`.
 - The backend trajectory/logs behind anything the UI triggered.
 <!-- END: evidence-and-e2e-mandate -->

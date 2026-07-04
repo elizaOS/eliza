@@ -8,10 +8,8 @@ name: App Aesthetic Audit
 # This is the agent app's equivalent of cloud-frontend's `audit:cloud`. Until
 # this workflow existed the audit ran in NO CI lane (honor-system per the PR
 # template, #9304). It hard-fails on any uncaught page error (a real crash) and
-# uploads all artifacts. To additionally gate on `broken` verdicts (console
-# errors / blank renders / empty views), capture the current set into
-# AESTHETIC_VERDICT_DEBT (in all-views-aesthetic-audit.spec.ts) from this
-# workflow's first clean run, then set ELIZA_AUDIT_APP_STRICT=1 below.
+# uploads all artifacts. It also gates computed `broken` and `needs-work`
+# verdicts against AESTHETIC_VERDICT_DEBT (in all-views-aesthetic-audit.spec.ts).
 
 on:
   pull_request:
@@ -19,13 +17,10 @@ on:
     paths:
       - "packages/app/**"
       - "packages/ui/**"
+      - "packages/shared/**"
+      - "plugins/**"
       - ".github/workflows/app-aesthetic-audit.yml"
   workflow_dispatch:
-    inputs:
-      strict:
-        description: "Fail on non-exempt broken verdicts (ELIZA_AUDIT_APP_STRICT)"
-        type: boolean
-        default: false
 
 concurrency:
   group: app-aesthetic-audit-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -45,7 +40,6 @@ jobs:
     env:
       # Keyless: the ui-smoke stub is forced when CI=true (shouldForceStubStack).
       ELIZA_UI_SMOKE_FORCE_STUB: "1"
-      ELIZA_AUDIT_APP_STRICT: ${{ github.event.inputs.strict == 'true' && '1' || '0' }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
