@@ -1,3 +1,8 @@
+/**
+ * Drives the real ENTITY_JOINED handler from createBasicCapabilitiesPlugin plus
+ * the real roles.ts hasRoleAccess resolution against the exact world metadata the
+ * handler writes, so DM-world owner grants are checked end to end with nothing mocked.
+ */
 import { describe, expect, it } from "vitest";
 import { hasRoleAccess } from "../../roles.ts";
 import type { IAgentRuntime, Memory } from "../../types";

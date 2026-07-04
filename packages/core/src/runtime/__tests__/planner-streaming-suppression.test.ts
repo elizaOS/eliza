@@ -1,10 +1,3 @@
-import { describe, expect, it, vi } from "vitest";
-import {
-	getStreamingContext,
-	runWithStreamingContext,
-} from "../../streaming-context";
-import { runPlannerLoop } from "../planner-loop";
-
 /**
  * The planner pass must NOT stream its internals (raw reasoning, the forced
  * PLAN_ACTIONS envelope) to the chat SSE callback — only the structured
@@ -16,6 +9,13 @@ import { runPlannerLoop } from "../planner-loop";
  * token stream AND pass every other test — so this guards it directly. The
  * positive control proves the negative assertion is not vacuous.
  */
+import { describe, expect, it, vi } from "vitest";
+import {
+	getStreamingContext,
+	runWithStreamingContext,
+} from "../../streaming-context";
+import { runPlannerLoop } from "../planner-loop";
+
 describe("planner streaming suppression", () => {
 	it("swallows the planner model's stream chunks so they never reach the chat SSE sink", async () => {
 		const chatSseSink = vi.fn();

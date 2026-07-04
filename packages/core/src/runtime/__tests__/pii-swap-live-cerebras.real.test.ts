@@ -1,3 +1,17 @@
+/**
+ * LIVE end-to-end proof for the PII pseudonymization layer (#10469 / #7007)
+ * against a REAL model provider (Cerebras `gpt-oss-120b`) — not a mock.
+ *
+ * It boots a runtime with `ELIZA_PII_SWAP_ENABLED`, sends a prompt containing a
+ * real person, org, and street address, and captures the EXACT text the provider
+ * received. It asserts the provider saw only realistic surrogates (zero real
+ * PII) and that the live model's own response references the surrogate — then
+ * runs the execution boundary and asserts the real values are restored into the
+ * tool-call args. Every artifact is written to
+ * `.github/issue-evidence/10469-pii-ner/` for manual review.
+ *
+ * Gated on CEREBRAS_API_KEY (post-merge / manual lane); skips cleanly otherwise.
+ */
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
@@ -19,20 +33,6 @@ import {
 } from "../../types";
 import { executePlannedToolCall } from "../execute-planned-tool-call";
 
-/**
- * LIVE end-to-end proof for the PII pseudonymization layer (#10469 / #7007)
- * against a REAL model provider (Cerebras `gpt-oss-120b`) — not a mock.
- *
- * It boots a runtime with `ELIZA_PII_SWAP_ENABLED`, sends a prompt containing a
- * real person, org, and street address, and captures the EXACT text the provider
- * received. It asserts the provider saw only realistic surrogates (zero real
- * PII) and that the live model's own response references the surrogate — then
- * runs the execution boundary and asserts the real values are restored into the
- * tool-call args. Every artifact is written to
- * `.github/issue-evidence/10469-pii-ner/` for manual review.
- *
- * Gated on CEREBRAS_API_KEY (post-merge / manual lane); skips cleanly otherwise.
- */
 
 const CEREBRAS_KEY = process.env.CEREBRAS_API_KEY;
 const EVIDENCE_DIR = join(

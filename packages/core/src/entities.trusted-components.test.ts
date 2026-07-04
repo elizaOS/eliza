@@ -1,6 +1,3 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Entity, IAgentRuntime, UUID, World } from "./types";
-
 /**
  * #12087 Item 16: component-visibility filtering must decide trust from the
  * RESOLVED role (resolveEntityRole, which demotes a stale stored OWNER grant to
@@ -8,6 +5,9 @@ import type { Entity, IAgentRuntime, UUID, World } from "./types";
  * revocation), not the raw world.metadata.roles literal. resolveEntityRole is
  * stubbed here; the real isAdminRank is kept so the rank threshold is exercised.
  */
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { Entity, IAgentRuntime, UUID, World } from "./types";
+
 const { resolveEntityRoleMock } = vi.hoisted(() => ({
 	resolveEntityRoleMock: vi.fn(),
 }));

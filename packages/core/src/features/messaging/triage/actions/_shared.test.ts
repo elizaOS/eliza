@@ -1,13 +1,13 @@
-import { describe, expect, it } from "vitest";
-import type { HandlerOptions } from "../../../../types/components";
-import { parseListInboxParams, parseTriageParams } from "./_shared.ts";
-
 /**
  * Triage param parsers turn loose agent-supplied options into typed inputs.
  * Sources are filtered to the known set, list fields accept comma-strings or
  * arrays, and numbers coerce from strings — malformed values drop to undefined
  * rather than reaching the inbox query as garbage.
  */
+
+import { describe, expect, it } from "vitest";
+import type { HandlerOptions } from "../../../../types/components";
+import { parseListInboxParams, parseTriageParams } from "./_shared.ts";
 
 const opts = (parameters: Record<string, unknown>): HandlerOptions =>
 	({ parameters }) as unknown as HandlerOptions;

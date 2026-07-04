@@ -1,6 +1,3 @@
-import { describe, expect, it, vi } from "vitest";
-import { runPlannerLoop } from "../planner-loop";
-
 /**
  * Regression coverage for issue elizaOS/eliza#8007:
  * "v5 planner loops on `decision: CONTINUE` without advancing past the first
@@ -23,6 +20,9 @@ import { runPlannerLoop } from "../planner-loop";
  *     past `maxRepeatedToolCalls` forces one terminal synthesis instead of
  *     running the turn to the trajectory/token limit.
  */
+import { describe, expect, it, vi } from "vitest";
+import { runPlannerLoop } from "../planner-loop";
+
 describe("v5 planner #8007 - multi-step orchestrator advance", () => {
 	const REPO = "acme/hello-world";
 

@@ -1,16 +1,20 @@
-// First-party registry aggregator.
-//
-// Registration is plugin-side: each in-repo plugin/package owns its registry
-// entry as a `registry-entry.json` in its own directory (a single entry object,
-// or an array of entries). Curated entries with no vendored package — built-in
-// app-viewers and entries for plugins not checked out in this repo — live under
-// `curated/`. This script gathers all of them, validates each fail-loud against
-// the Zod schema, dedupes by id, and writes the aggregated `generated.json` that
-// the runtime loader reads (a single committed artifact, trivial to stage
-// alongside an on-device bundle).
-//
-//   bun run --cwd packages/registry generate:first-party   # rewrite generated.json
-//   bun run --cwd packages/registry generate:first-party --check   # CI drift gate
+/**
+ * First-party registry aggregator — the build-time generator behind the
+ * `generate:first-party` script.
+ *
+ * Registration is plugin-side: each in-repo plugin/package owns its registry
+ * entry as a `registry-entry.json` in its own directory (a single entry object,
+ * or an array of entries). Curated entries with no vendored package — built-in
+ * app-viewers and entries for plugins not checked out in this repo — live under
+ * `curated/`. This script gathers all of them, validates each fail-loud against
+ * the Zod schema, dedupes by id, and writes the aggregated `generated.json` that
+ * the runtime loader reads (a single committed artifact, trivial to stage
+ * alongside an on-device bundle), plus the derived curated-app / channel /
+ * provider maps. `--check` re-runs the generator and fails on drift for CI.
+ *
+ *   bun run --cwd packages/registry generate:first-party           # rewrite generated.json
+ *   bun run --cwd packages/registry generate:first-party --check   # CI drift gate
+ */
 
 import { execFileSync } from "node:child_process";
 import {

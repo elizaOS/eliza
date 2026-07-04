@@ -1,6 +1,3 @@
-import type { ServerResponse } from "node:http";
-import type { IAgentRuntime, UUID } from "../../types";
-
 /**
  * Owner-side read routes for the realtime trajectory viewer
  * (`GET /api/trajectories`, `/api/trajectories/:id`, `/api/trajectories/stats`).
@@ -20,6 +17,9 @@ import type { IAgentRuntime, UUID } from "../../types";
  * IS loaded its richer route wins and this handler is never reached — no
  * shadowing, no regression.
  */
+
+import type { ServerResponse } from "node:http";
+import type { IAgentRuntime, UUID } from "../../types";
 
 interface ServiceTrajectoryListItem {
 	id: string;

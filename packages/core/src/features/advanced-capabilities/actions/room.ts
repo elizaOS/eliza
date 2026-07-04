@@ -1,3 +1,15 @@
+/**
+ * ROOM_OP — unified room subscription / chat-thread state action.
+ *
+ * Replaces MUTE_ROOM / UNMUTE_ROOM / FOLLOW_ROOM / UNFOLLOW_ROOM (core) and
+ * the connector-targeted CHAT_THREAD action (app-lifeops). Defaults to the
+ * current room when `roomId` / `chatName` are omitted; supports cross-room
+ * targeting by `platform` + `chatName` lookup, `scope=server` mute/unmute of
+ * the whole guild the target room belongs to (world.metadata, consulted by
+ * the same inbound mute gate), and an optional `durationMinutes` mute window
+ * persisted as `agentMuteUntilIso` — services/message/mute-state.ts unmutes
+ * on the first inbound message at/after that ISO time.
+ */
 import {
 	findKeywordTermMatch,
 	getValidationKeywordTerms,
@@ -30,19 +42,6 @@ import {
 	composePromptFromState,
 	parseBooleanFromText,
 } from "../../../utils.ts";
-
-/**
- * ROOM_OP — unified room subscription / chat-thread state action.
- *
- * Replaces MUTE_ROOM / UNMUTE_ROOM / FOLLOW_ROOM / UNFOLLOW_ROOM (core) and
- * the connector-targeted CHAT_THREAD action (app-lifeops). Defaults to the
- * current room when `roomId` / `chatName` are omitted; supports cross-room
- * targeting by `platform` + `chatName` lookup, `scope=server` mute/unmute of
- * the whole guild the target room belongs to (world.metadata, consulted by
- * the same inbound mute gate), and an optional `durationMinutes` mute window
- * persisted as `agentMuteUntilIso` — services/message/mute-state.ts unmutes
- * on the first inbound message at/after that ISO time.
- */
 
 const ROOM_OPS = ["follow", "unfollow", "mute", "unmute"] as const;
 type RoomOp = (typeof ROOM_OPS)[number];

@@ -1,3 +1,8 @@
+/**
+ * Connector action param helpers coerce loose agent input. limitParam clamps to
+ * 1..100 (DoS-bounding a query), isUuidLike gates id-shaped inputs, and the
+ * scalar readers reject non-coercible values rather than passing them through.
+ */
 import { describe, expect, it } from "vitest";
 import type { HandlerOptions } from "../../../types/components";
 import {
@@ -9,12 +14,6 @@ import {
 	sourceParam,
 	textParam,
 } from "./connectorActionUtils.ts";
-
-/**
- * Connector action param helpers coerce loose agent input. limitParam clamps to
- * 1..100 (DoS-bounding a query), isUuidLike gates id-shaped inputs, and the
- * scalar readers reject non-coercible values rather than passing them through.
- */
 
 describe("paramsFromOptions / textParam", () => {
 	it("reads the parameters bag and trims non-empty strings", () => {

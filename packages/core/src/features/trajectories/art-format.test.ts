@@ -1,3 +1,9 @@
+/**
+ * Core trajectory → ART (RL training) conversion. toARTMessages must emit the
+ * system/user/assistant message array; validateARTCompatibility rejects
+ * trajectories with no steps or no reward; groupTrajectories buckets by scenario.
+ */
+
 import { describe, expect, it } from "vitest";
 import {
 	groupTrajectories,
@@ -5,12 +11,6 @@ import {
 	validateARTCompatibility,
 } from "./art-format.ts";
 import type { Trajectory } from "./types.ts";
-
-/**
- * Core trajectory → ART (RL training) conversion. toARTMessages must emit the
- * system/user/assistant message array; validateARTCompatibility rejects
- * trajectories with no steps or no reward; groupTrajectories buckets by scenario.
- */
 
 const step = () => ({
 	llmCalls: [

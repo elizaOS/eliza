@@ -1,6 +1,3 @@
-import type { IAgentRuntime } from "../../types/runtime.ts";
-import type { ServiceTypeName } from "../../types/service.ts";
-
 /**
  * Core Runtime Extensions
  *
@@ -9,6 +6,9 @@ import type { ServiceTypeName } from "../../types/service.ts";
  * so this file only retains component unregistration helpers (action/provider/
  * service) that live outside the runtime contract.
  */
+
+import type { IAgentRuntime } from "../../types/runtime.ts";
+import type { ServiceTypeName } from "../../types/service.ts";
 
 /**
  * Extended runtime interface with optional component unregistration helpers.

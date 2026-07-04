@@ -1,7 +1,3 @@
-import * as fc from "fast-check";
-import { describe, expect, it } from "vitest";
-import { chunkMarkdownText } from "./chunk.ts";
-
 /**
  * `chunkMarkdownText` feeds connectors with HARD length caps (Discord 2000,
  * SMS 160, …): a single chunk over `limit` gets the whole message rejected by
@@ -10,6 +6,11 @@ import { chunkMarkdownText } from "./chunk.ts";
  * not fit next to the forced minimum-progress break. The limit is a hard cap;
  * closing/reopening fences is best-effort within it.
  */
+
+import * as fc from "fast-check";
+import { describe, expect, it } from "vitest";
+import { chunkMarkdownText } from "./chunk.ts";
+
 describe("chunkMarkdownText", () => {
 	it("never exceeds the limit even when the fence close line cannot fit", () => {
 		const text = "```\nAAAAAAAAAAAAAAAAAAAA\n```\n";

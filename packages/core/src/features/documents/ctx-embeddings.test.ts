@@ -1,3 +1,8 @@
+/**
+ * Pure-function unit tests for the contextual-chunk prompt builders in
+ * ctx-embeddings.ts — template interpolation, mime-type template selection, and
+ * fail-safe fallbacks, asserted with no runtime or model in the loop.
+ */
 import { describe, expect, it } from "vitest";
 import {
 	getCachingContextualizationPrompt,

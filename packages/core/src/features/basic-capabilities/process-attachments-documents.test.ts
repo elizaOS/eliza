@@ -1,3 +1,8 @@
+/**
+ * Drives the real processAttachments path over a stubbed fetch and hand-built,
+ * spec-valid PDF bytes, so document extraction (including real unpdf parsing)
+ * runs unmocked for every allow-listed upload type.
+ */
 import { Buffer } from "node:buffer";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {

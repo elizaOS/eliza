@@ -1,3 +1,11 @@
+/**
+ * Ingress test for the PII pseudonymization layer (#10469 / #7007).
+ *
+ * Proves that with `ELIZA_PII_SWAP_ENABLED` the model provider receives a fluent
+ * prompt containing *realistic surrogates* and ZERO real named-entity PII, that
+ * the response/trajectory keep surrogates (never real values), and that the
+ * layer is a pure no-op when disabled.
+ */
 import { describe, expect, it, vi } from "vitest";
 import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter";
 import { AgentRuntime } from "../../runtime";
@@ -10,14 +18,6 @@ import {
 import { runWithTrajectoryContext } from "../../trajectory-context";
 import { type Character, ModelType } from "../../types";
 
-/**
- * Ingress test for the PII pseudonymization layer (#10469 / #7007).
- *
- * Proves that with `ELIZA_PII_SWAP_ENABLED` the model provider receives a fluent
- * prompt containing *realistic surrogates* and ZERO real named-entity PII, that
- * the response/trajectory keep surrogates (never real values), and that the
- * layer is a pure no-op when disabled.
- */
 
 function makeRuntime(enabled: boolean): AgentRuntime {
 	return new AgentRuntime({

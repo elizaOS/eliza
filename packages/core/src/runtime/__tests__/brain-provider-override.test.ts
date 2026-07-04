@@ -1,8 +1,3 @@
-import { describe, expect, it } from "vitest";
-import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter";
-import { AgentRuntime } from "../../runtime";
-import { type Character, ModelType } from "../../types";
-
 /**
  * Request-time chat-brain provider override.
  *
@@ -15,6 +10,11 @@ import { type Character, ModelType } from "../../types";
  *    (a stale/typo'd value must never strand the brain),
  *  - never override an explicitly-pinned provider.
  */
+import { describe, expect, it } from "vitest";
+import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter";
+import { AgentRuntime } from "../../runtime";
+import { type Character, ModelType } from "../../types";
+
 function makeRuntime(settings: Record<string, string> = {}): AgentRuntime {
 	return new AgentRuntime({
 		character: {

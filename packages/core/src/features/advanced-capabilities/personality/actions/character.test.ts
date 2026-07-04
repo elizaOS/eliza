@@ -1,11 +1,3 @@
-import { describe, expect, it, vi } from "vitest";
-import type {
-	HandlerCallback,
-	IAgentRuntime,
-	Memory,
-	State,
-} from "../../../../types/index.ts";
-
 /**
  * #12087 Item 17: CHARACTER declares a coarse `roleGate: { minRole: "ADMIN" }`
  * (the floor enforced by canActionRun) but `update_identity` (rename agent /
@@ -14,6 +6,14 @@ import type {
  * not in scattered inline `hasRoleAccess` checks invisible in the metadata.
  * Deterministic: `hasRoleAccess` is mocked; no live model or DB.
  */
+import { describe, expect, it, vi } from "vitest";
+import type {
+	HandlerCallback,
+	IAgentRuntime,
+	Memory,
+	State,
+} from "../../../../types/index.ts";
+
 const rolesMock = vi.hoisted(() => ({ hasRoleAccess: vi.fn() }));
 vi.mock("../../../../roles.ts", () => rolesMock);
 

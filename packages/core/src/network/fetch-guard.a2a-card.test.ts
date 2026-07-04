@@ -1,8 +1,3 @@
-import { describe, expect, it, vi } from "vitest";
-import { fetchWithSsrfGuard } from "./fetch-guard.ts";
-import { nodePinnedFetch } from "./node-pinned-fetch.ts";
-import { SsrfBlockedError } from "./ssrf.ts";
-
 /**
  * Regression guard for #12229 L9: the Feed A2A agent-card fetch routes through
  * fetchWithSsrfGuard, so an operator/agent-supplied card URL cannot reach a
@@ -10,6 +5,11 @@ import { SsrfBlockedError } from "./ssrf.ts";
  * so no real resolution/egress happens; asserts the guard refuses (throws) and
  * never calls the pinned transport for a private-resolving host.
  */
+import { describe, expect, it, vi } from "vitest";
+import { fetchWithSsrfGuard } from "./fetch-guard.ts";
+import { nodePinnedFetch } from "./node-pinned-fetch.ts";
+import { SsrfBlockedError } from "./ssrf.ts";
+
 describe("fetchWithSsrfGuard for the A2A agent-card URL (#12229 L9)", () => {
 	it.each([
 		"http://169.254.169.254/.well-known/agent-card.json",

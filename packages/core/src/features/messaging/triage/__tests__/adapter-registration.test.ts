@@ -1,3 +1,8 @@
+/**
+ * Exercises the TriageService registration contract: a connector-style adapter
+ * registered the way a plugin registers one resolves and drives the real
+ * triage() dispatch, and unknown sources are skipped rather than throwing.
+ */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { IAgentRuntime } from "../../../../types/index.ts";
 import { BaseMessageAdapter } from "../adapters/base.ts";

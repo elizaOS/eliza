@@ -1,3 +1,10 @@
+/**
+ * Character secret/plugin helpers are documented as IMMUTABLE — every mutator
+ * returns a NEW character and must not mutate the input (callers rely on this to
+ * avoid leaking secrets across agent configs). mergeCharacterSecrets must keep
+ * EXISTING values (never let an incoming map overwrite a configured secret), and
+ * model-provider detection keys off the known provider→secret map.
+ */
 import { describe, expect, it } from "vitest";
 import {
 	addCharacterPlugin,
@@ -14,14 +21,6 @@ import {
 	setCharacterSecret,
 } from "./character-utils.ts";
 import type { Character } from "./types";
-
-/**
- * Character secret/plugin helpers are documented as IMMUTABLE — every mutator
- * returns a NEW character and must not mutate the input (callers rely on this to
- * avoid leaking secrets across agent configs). mergeCharacterSecrets must keep
- * EXISTING values (never let an incoming map overwrite a configured secret), and
- * model-provider detection keys off the known provider→secret map.
- */
 
 const base = (): Character =>
 	({

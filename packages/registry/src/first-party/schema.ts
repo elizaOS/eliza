@@ -1,17 +1,21 @@
-// Registry SoT for apps, plugins, and connectors.
-//
-// Replaces the fragmented surface of:
-//   - plugins.json (97 entries, 5 categories)
-//   - PluginInfo (api/client-types-config.ts)
-//   - ConfigUiHint (types/index.ts)
-//   - RegistryAppInfo (shared/contracts/apps.ts)
-//   - VISIBLE_CONNECTOR_IDS / DEFAULT_ICONS / FEATURE_SUBGROUP / SUBGROUP_DISPLAY_ORDER
-//     (components/pages/plugin-list-utils.ts)
-//   - paramsToSchema() heuristics (PORT/TIMEOUT/MODEL guessing)
-//
-// Static registry only. Runtime overlay (enabled, configured, isActive,
-// validationErrors) lives in RegistryRuntimeOverlay and is merged at API read
-// time — never in the registry files themselves.
+/**
+ * Registry source-of-truth Zod schemas and inferred types for apps, plugins,
+ * and connectors — config fields, render hints, per-account auth, the
+ * discriminated `registryEntrySchema` union, and the runtime overlay/view.
+ *
+ * Replaces the fragmented surface of:
+ *   - plugins.json (97 entries, 5 categories)
+ *   - PluginInfo (api/client-types-config.ts)
+ *   - ConfigUiHint (types/index.ts)
+ *   - RegistryAppInfo (shared/contracts/apps.ts)
+ *   - VISIBLE_CONNECTOR_IDS / DEFAULT_ICONS / FEATURE_SUBGROUP / SUBGROUP_DISPLAY_ORDER
+ *     (components/pages/plugin-list-utils.ts)
+ *   - paramsToSchema() heuristics (PORT/TIMEOUT/MODEL guessing)
+ *
+ * Static registry only. Runtime overlay (enabled, configured, isActive,
+ * validationErrors) lives in RegistryRuntimeOverlay and is merged at API read
+ * time — never in the registry files themselves.
+ */
 
 import * as zod from "zod";
 

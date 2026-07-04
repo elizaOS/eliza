@@ -1,7 +1,3 @@
-import { logger } from "../../logger";
-import type { IAgentRuntime } from "../../types";
-import { ModelType } from "../../types";
-
 /**
  * THE shared recall-query embedder on the reply hot path.
  *
@@ -34,6 +30,9 @@ import { ModelType } from "../../types";
  * means a slow embed either completes (rich recall) or genuinely errors
  * (fail-open), with no silent middle ground.
  */
+import { logger } from "../../logger";
+import type { IAgentRuntime } from "../../types";
+import { ModelType } from "../../types";
 
 /** Normalize query text so trivially-different strings share one cache slot. */
 function normalizeQuery(text: string): string {

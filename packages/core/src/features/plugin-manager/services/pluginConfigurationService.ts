@@ -1,3 +1,11 @@
+/**
+ * Backs the plugin-manager's readiness checks for a registered plugin: given a
+ * plugin, it reports which required config keys are still unset by reading the
+ * plugin's own declared `config` schema and testing each key against
+ * `process.env`. Works from real registered-plugin data, never by scanning
+ * source files on disk.
+ */
+
 import { logger } from "../../../logger.ts";
 import type { Plugin as ElizaPlugin } from "../../../types/plugin.ts";
 import type { IAgentRuntime } from "../../../types/runtime.ts";

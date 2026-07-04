@@ -1,13 +1,12 @@
-import { bench, describe } from "vitest";
-import { detectPii } from "./pii-detectors";
-import { SecretSwapSession } from "./secret-swap";
-
 /**
  * Throughput benchmarks for the secret-swap layer (#10469). Run with
  * `bunx vitest bench src/security/secret-swap.bench.ts`. These measure the
  * ingress (detect + substitute) and egress (restore) cost on realistic prompt
  * payloads so a future regex change that tanks performance is caught.
  */
+import { bench, describe } from "vitest";
+import { detectPii } from "./pii-detectors";
+import { SecretSwapSession } from "./secret-swap";
 
 const SECRETS = [
 	"4242424242424242", // card

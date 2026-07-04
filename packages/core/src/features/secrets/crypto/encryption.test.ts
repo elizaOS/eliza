@@ -1,3 +1,10 @@
+/**
+ * Core secrets encryption (AES-256-GCM). The security guarantees pinned here:
+ * a correct round-trip, authenticated decryption that rejects a wrong key or
+ * tampered ciphertext/algorithm, deterministic password-based key derivation,
+ * and a length-checked constant-time string comparison.
+ */
+
 import { describe, expect, it } from "vitest";
 import type { EncryptedSecret } from "../types.ts";
 import { EncryptionError } from "../types.ts";
@@ -15,13 +22,6 @@ import {
 	isEncryptedSecret,
 	secureCompare,
 } from "./encryption.ts";
-
-/**
- * Core secrets encryption (AES-256-GCM). The security guarantees pinned here:
- * a correct round-trip, authenticated decryption that rejects a wrong key or
- * tampered ciphertext/algorithm, deterministic password-based key derivation,
- * and a length-checked constant-time string comparison.
- */
 
 const KEY = generateKey();
 

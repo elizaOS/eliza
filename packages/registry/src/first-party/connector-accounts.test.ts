@@ -1,7 +1,9 @@
-// Tests for the OWNER+AGENT connector schema extension and the
-// `normalizeConnectorAuth` legacy-auto-map. Backwards compat: existing
-// manifests that only declare `auth` must keep loading and end up with a
-// populated `accounts.agent`.
+/**
+ * Exercises the OWNER+AGENT connector schema extension and the
+ * `normalizeConnectorAuth` legacy auto-map against the real Zod schema and
+ * loader (no I/O). Backwards compat: manifests that only declare `auth` must
+ * keep parsing and end up with a populated `accounts.agent`.
+ */
 
 import { describe, expect, it } from "vitest";
 import { loadRegistryFromRawEntries, normalizeConnectorAuth } from "./loader";

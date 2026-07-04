@@ -1,11 +1,3 @@
-import { describe, expect, it } from "vitest";
-import {
-	GazetteerEntityRecognizer,
-	PseudonymSession,
-} from "../../security/index.js";
-import { restorePiiInUserReplyText } from "../../services/message";
-import { runWithTrajectoryContext } from "../../trajectory-context";
-
 /**
  * Reply-boundary egress test for the PII pseudonymization layer (#10827).
  *
@@ -18,6 +10,14 @@ import { runWithTrajectoryContext } from "../../trajectory-context";
  * user sees the REAL value while the surrogate is what the model produced
  * (i.e. what the trajectory/providers kept).
  */
+import { describe, expect, it } from "vitest";
+import {
+	GazetteerEntityRecognizer,
+	PseudonymSession,
+} from "../../security/index.js";
+import { restorePiiInUserReplyText } from "../../services/message";
+import { runWithTrajectoryContext } from "../../trajectory-context";
+
 
 /** A turn session over a known contact roster, exactly as the ingress mints one. */
 function sessionWithContacts(): PseudonymSession {

@@ -1,7 +1,3 @@
-import { describe, expect, it } from "vitest";
-import { luhnValid } from "./pii-detectors";
-import { SecretSwapSession } from "./secret-swap";
-
 /**
  * Property-based fuzz over the secret-swap layer (#10469). No external fuzz
  * library (fast-check v4 is unstable under Bun) — a seeded mulberry32 PRNG makes
@@ -15,6 +11,9 @@ import { SecretSwapSession } from "./secret-swap";
  *   (P4) idempotent placeholders: substitute(substitute(doc)) re-runs cleanly and
  *                               never swaps an already-emitted placeholder
  */
+import { describe, expect, it } from "vitest";
+import { luhnValid } from "./pii-detectors";
+import { SecretSwapSession } from "./secret-swap";
 
 function mulberry32(seed: number): () => number {
 	let a = seed >>> 0;

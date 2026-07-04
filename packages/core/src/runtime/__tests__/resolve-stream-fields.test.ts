@@ -1,12 +1,12 @@
-import { describe, expect, it } from "vitest";
-import { resolveDynamicPromptStreamFields } from "../../runtime";
-import type { SchemaRow } from "../../types/state";
-
 /**
  * Locks the default token-stream contract for #9174: the line-oriented
  * dynamic-prompt path streams the clean reply `text` by default, honours
  * explicit `streamField` opt-in/opt-out, and never streams control fields.
  */
+import { describe, expect, it } from "vitest";
+import { resolveDynamicPromptStreamFields } from "../../runtime";
+import type { SchemaRow } from "../../types/state";
+
 describe("resolveDynamicPromptStreamFields (#9174)", () => {
 	it("streams the `text` field by default when no preference is expressed", () => {
 		const schema: SchemaRow[] = [

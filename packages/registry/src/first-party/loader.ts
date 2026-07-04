@@ -1,11 +1,15 @@
-// Registry loader. Reads, validates, and indexes the registry.
-//
-// Static data only. Runtime overlay (enabled, configured, isActive) is merged
-// in at the API layer via mergeWithRuntime() — the loader never touches it.
-//
-// Validation is fail-loud at boot: bad entries throw with a precise zod
-// message naming the offending file, so a malformed entry can't slip into a
-// running process.
+/**
+ * Registry loader. Validates raw entries and indexes them by id, kind, group,
+ * and npm name, and provides the kind-narrowed accessors plus the legacy
+ * `auth` → `accounts.agent` normalization.
+ *
+ * Static data only. Runtime overlay (enabled, configured, isActive) is merged
+ * in at the API layer via `mergeWithRuntime()` — the loader never touches it.
+ *
+ * Validation is fail-loud at boot: bad entries throw with a precise zod
+ * message naming the offending file, so a malformed entry can't slip into a
+ * running process.
+ */
 
 import {
   type AccountAuthKind,

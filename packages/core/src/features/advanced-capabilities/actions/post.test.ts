@@ -1,12 +1,12 @@
-import { describe, expect, it } from "vitest";
-import { postAction, resolveOp } from "./post.ts";
-
 /**
  * #10471 — POST op routing must come from the planner-emitted `action` enum
  * (or structured query/feed params), never from English keywords in the user
  * text. Keyword routing (e.g. `/\b(search|find)\b/`) silently fails for every
  * non-English request, so op selection stays structured-only.
  */
+import { describe, expect, it } from "vitest";
+import { postAction, resolveOp } from "./post.ts";
+
 describe("post resolveOp is i18n-safe (#10471)", () => {
 	it("routes by the planner action enum", () => {
 		expect(resolveOp({ parameters: { action: "search" } })).toBe("search");

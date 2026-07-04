@@ -1,10 +1,3 @@
-import { createServer, type Server } from "node:http";
-import type { AddressInfo } from "node:net";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { fetchWithSsrfGuard } from "./fetch-guard.ts";
-import { nodePinnedFetch } from "./node-pinned-fetch.ts";
-import { type LookupFn, SsrfBlockedError } from "./ssrf.ts";
-
 /**
  * Socket-level integration tests for the pinned SSRF transport.
  *
@@ -13,6 +6,13 @@ import { type LookupFn, SsrfBlockedError } from "./ssrf.ts";
  * exist in any resolver, so a successful request proves the connection was
  * routed through the pinned lookup to 127.0.0.1 at the socket level.
  */
+import { createServer, type Server } from "node:http";
+import type { AddressInfo } from "node:net";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { fetchWithSsrfGuard } from "./fetch-guard.ts";
+import { nodePinnedFetch } from "./node-pinned-fetch.ts";
+import { type LookupFn, SsrfBlockedError } from "./ssrf.ts";
+
 describe("pinned fetch through a real local HTTP server", () => {
 	let server: Server;
 	let port: number;

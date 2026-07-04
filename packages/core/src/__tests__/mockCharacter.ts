@@ -1,10 +1,10 @@
-import type { Character } from "@elizaos/core";
-
 /**
  * Shared Eliza `Character` fixture for core tests: a fully populated persona
  * (bio, message and post examples, style, topics, voice settings) used to
  * exercise prompt composition and character-dependent runtime paths.
  */
+import type { Character } from "@elizaos/core";
+
 export const mockCharacter: Character = {
 	name: "Eliza",
 	username: "eliza",

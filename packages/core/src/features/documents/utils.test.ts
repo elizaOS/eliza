@@ -1,3 +1,8 @@
+/**
+ * Pure-function unit tests for the document helpers in utils.ts — content-hash
+ * id generation, filename/title derivation from untrusted text, and
+ * source/base64 classification, all asserted directly with no runtime.
+ */
 import { describe, expect, it } from "vitest";
 import {
 	createDocumentNoteFilename,

@@ -1,6 +1,3 @@
-import { describe, expect, it } from "vitest";
-import { chunkText } from "./chunk.ts";
-
 /**
  * `chunkText` splits an over-long message into delivery-sized chunks for
  * connectors with hard length limits (Discord 2000, SMS 160, …) (#8801). The
@@ -8,6 +5,9 @@ import { chunkText } from "./chunk.ts";
  * content is lost or corrupted across the split. A regression here
  * silently drops or mangles the user's outbound text, so these are pinned.
  */
+import { describe, expect, it } from "vitest";
+import { chunkText } from "./chunk.ts";
+
 describe("chunkText", () => {
 	it("returns [] for empty and a single chunk within-limit / non-positive limit", () => {
 		expect(chunkText("", 10)).toEqual([]);

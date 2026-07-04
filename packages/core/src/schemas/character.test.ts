@@ -1,6 +1,3 @@
-import { describe, expect, it } from "vitest";
-import { isValidCharacter, parseAndValidateCharacter } from "./character";
-
 /**
  * Unit tests for the character-config validators (`parseAndValidateCharacter`,
  * `isValidCharacter`, over the underlying `validateCharacter`) that gate whether
@@ -8,6 +5,9 @@ import { isValidCharacter, parseAndValidateCharacter } from "./character";
  * DB. Covers a valid character passing, malformed JSON reported distinctly from
  * schema errors, and non-object / missing-name rejection. (#8801 / #9943)
  */
+import { describe, expect, it } from "vitest";
+import { isValidCharacter, parseAndValidateCharacter } from "./character";
+
 describe("parseAndValidateCharacter", () => {
 	it("accepts a minimal valid character", () => {
 		expect(parseAndValidateCharacter('{"name":"Aria"}').success).toBe(true);

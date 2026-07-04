@@ -1,3 +1,9 @@
+/**
+ * Shared write path for the personality character-editing actions: applies a
+ * partial character patch to the live runtime character and persists it through
+ * the runtime's character-persistence service, so remove/edit/reorder flows all
+ * commit through one durable, auditable path rather than mutating in memory.
+ */
 import { logger } from "../../../../../logger.ts";
 import type { Character, IAgentRuntime } from "../../../../../types/index.ts";
 import { getCharacterPersistenceService } from "../../character-persistence.ts";

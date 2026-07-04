@@ -1,13 +1,17 @@
-// First-party curated registry — runtime entry point.
-//
-// Reads JSON entries from `entries/`, validates, caches, and exposes typed
-// accessors. This is the single import path the rest of the codebase consumes
-// (`@elizaos/registry/first-party`, re-exported by `@elizaos/app-core/registry`
-// for backwards compatibility).
-//
-// Registration is plugin-side: bundled JSON under `entries/` is the default,
-// and any plugin can contribute or override an entry at runtime via
-// `registerRegistryEntry()` (deduped by `id`; runtime entries win).
+/**
+ * First-party curated registry — runtime entry point.
+ *
+ * Reads the aggregated `generated.json`, validates, caches, and exposes typed
+ * accessors. This is the single import path the rest of the codebase consumes
+ * (`@elizaos/registry/first-party`, re-exported by `@elizaos/app-core/registry`
+ * for backwards compatibility).
+ *
+ * Registration is plugin-side: bundled JSON is the default, and any plugin can
+ * contribute or override an entry at runtime via `registerRegistryEntry()`
+ * (deduped by `id`; runtime entries win). Resolving the generated file and the
+ * cache slot are both hardened against on-device bundling and circular-import
+ * re-entry (see `resolveGeneratedPath` and `cacheSlot`).
+ */
 
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";

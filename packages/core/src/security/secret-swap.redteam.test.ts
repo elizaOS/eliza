@@ -1,15 +1,15 @@
-import { describe, expect, it } from "vitest";
-import {
-	SecretSwapSession,
-	SecretSwapUnresolvedPlaceholderError,
-} from "./secret-swap";
-
 /**
  * Adversarial / red-team suite for the secret-swap layer (#10469). These are the
  * cases an attacker (or a confused model) would use to either leak a real secret
  * or hijack the restore step. The layer's job is to FAIL LOUD or keep the
  * placeholder, never to silently leak.
  */
+import { describe, expect, it } from "vitest";
+import {
+	SecretSwapSession,
+	SecretSwapUnresolvedPlaceholderError,
+} from "./secret-swap";
+
 describe("secret-swap red-team", () => {
 	const PLACEHOLDER_RE = /__ELIZA_SECRET_[0-9a-f]{8,}_\d+__/;
 	const secret = "sk-live_redteam_AbC123dEf456GhI789";

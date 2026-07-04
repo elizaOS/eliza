@@ -1,12 +1,3 @@
-import { describe, expect, it, vi } from "vitest";
-import {
-	GazetteerEntityRecognizer,
-	PseudonymSession,
-} from "../../security/index.js";
-import { runWithTrajectoryContext } from "../../trajectory-context";
-import type { Action, IAgentRuntime, Memory } from "../../types";
-import { executePlannedToolCall } from "../execute-planned-tool-call";
-
 /**
  * Egress test for the PII pseudonymization layer (#10469 / #7007).
  *
@@ -17,6 +8,15 @@ import { executePlannedToolCall } from "../execute-planned-tool-call";
  * shown to the user) carries the real recipient while the model/trajectory kept
  * the surrogate.
  */
+import { describe, expect, it, vi } from "vitest";
+import {
+	GazetteerEntityRecognizer,
+	PseudonymSession,
+} from "../../security/index.js";
+import { runWithTrajectoryContext } from "../../trajectory-context";
+import type { Action, IAgentRuntime, Memory } from "../../types";
+import { executePlannedToolCall } from "../execute-planned-tool-call";
+
 
 function makeRuntime(actions: Action[]): IAgentRuntime {
 	return {
