@@ -1,17 +1,13 @@
 /**
- * Recent security events: GET /api/v1/me/audit-events?limit=50.
- * Keeps the 404-graceful "not exposed yet on this server" pattern.
+ * Recent security events. The Worker currently exposes POST-only audit
+ * ingestion, not a user-readable audit-event list, so render the explicit
+ * unavailable state without issuing a dead account-audit request.
  */
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { BrandCard, CornerBrackets } from "../../../cloud-ui";
-import { ApiError, api } from "../../lib/api-client";
 import { useCloudT } from "../../shell/CloudI18nProvider";
 import { AuditEventList, type AuditEventRow } from "./AuditEventList";
-
-interface AuditEventsResponse {
-  events: AuditEventRow[];
-}
 
 type AuditState =
   | { kind: "loading" }
@@ -21,33 +17,7 @@ type AuditState =
 
 export function RecentAuditEvents() {
   const t = useCloudT();
-  const [state, setState] = useState<AuditState>({ kind: "loading" });
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const data = await api<AuditEventsResponse>(
-          "/api/v1/me/audit-events?limit=50",
-        );
-        if (cancelled) return;
-        setState({ kind: "ready", events: data.events ?? [] });
-      } catch (err) {
-        if (cancelled) return;
-        if (err instanceof ApiError && err.status === 404) {
-          setState({ kind: "missing" });
-          return;
-        }
-        setState({
-          kind: "error",
-          message: err instanceof Error ? err.message : String(err),
-        });
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const [state] = useState<AuditState>({ kind: "missing" });
 
   return (
     <BrandCard className="relative">

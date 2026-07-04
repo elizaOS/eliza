@@ -1,16 +1,12 @@
 /**
- * Active sessions panel: lists signed-in devices and revokes them.
- *   GET    /api/v1/sessions
- *   DELETE /api/v1/sessions/:id
- *
- * Renders the backend's explicit unavailable state until revocable session
- * inventory exists.
+ * Active sessions panel. The Worker does not currently expose session
+ * enumeration/revocation, so keep this panel in the explicit unavailable state
+ * instead of issuing dead account-session calls on every Security page load.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 import { BrandButton, BrandCard, CornerBrackets } from "../../../cloud-ui";
-import { api, apiFetch } from "../../lib/api-client";
 import { useCloudT } from "../../shell/CloudI18nProvider";
 import { emitAuditEvent } from "../data/audit-client";
 
@@ -23,12 +19,6 @@ interface SessionRow {
   current?: boolean;
 }
 
-interface SessionsResponse {
-  available?: boolean;
-  reason?: string;
-  sessions: SessionRow[];
-}
-
 type SessionsState =
   | { kind: "loading" }
   | { kind: "missing" }
@@ -37,39 +27,12 @@ type SessionsState =
 
 export function ActiveSessionsPanel() {
   const t = useCloudT();
-  const [state, setState] = useState<SessionsState>({ kind: "loading" });
+  const [state] = useState<SessionsState>({ kind: "missing" });
   const [revoking, setRevoking] = useState<string | null>(null);
-
-  const load = useCallback(async () => {
-    setState({ kind: "loading" });
-    try {
-      const data = await api<SessionsResponse>("/api/v1/sessions");
-      if (data.available === false) {
-        setState({ kind: "missing" });
-        return;
-      }
-      if (!Array.isArray(data.sessions)) {
-        throw new Error("Malformed sessions response");
-      }
-      setState({ kind: "ready", sessions: data.sessions });
-    } catch (err) {
-      setState({
-        kind: "error",
-        message: err instanceof Error ? err.message : String(err),
-      });
-    }
-  }, []);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
 
   const revoke = async (id: string) => {
     setRevoking(id);
     try {
-      await apiFetch(`/api/v1/sessions/${encodeURIComponent(id)}`, {
-        method: "DELETE",
-      });
       await emitAuditEvent({
         action: "auth.session.revoke",
         result: "allow",
@@ -78,7 +41,6 @@ export function ActiveSessionsPanel() {
       toast.success(
         t("cloud.activeSessions.revoked", { defaultValue: "Session revoked" }),
       );
-      await load();
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       toast.error(

@@ -2,31 +2,20 @@
  * Privacy controls + data-subject rights:
  *   - vision / screen-capture consent toggle (local consent store)
  *   - trajectory logging toggle (local consent store)
- *   - data export   GET  /api/v1/me/export        (DSR right-to-export)
- *   - delete account POST /api/v1/me/delete-request (DSR right-to-erasure)
  *
- * Keeps the 404-graceful "coming soon" pattern for the DSR endpoints.
+ * DSR export/deletion jobs are not exposed by the Worker yet. Keep those
+ * controls visible but disabled so the launch surface does not issue dead
+ * `/api/v1/me/*` calls or imply a request was scheduled.
  */
 
 import { Camera, Download, ScrollText, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { toast } from "sonner";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
   BrandButton,
   BrandCard,
   CornerBrackets,
-  Input,
   Switch,
 } from "../../../cloud-ui";
-import { ApiError, apiFetch } from "../../lib/api-client";
 import { useCloudT } from "../../shell/CloudI18nProvider";
 import { emitAuditEvent } from "../data/audit-client";
 import {
@@ -35,8 +24,6 @@ import {
   setTrajectoryLoggingEnabled,
   setVisionEnabled,
 } from "../data/consent-store";
-
-const DELETE_CONFIRM_PHRASE = "delete my account";
 
 export function PrivacyPanel() {
   const t = useCloudT();
@@ -60,102 +47,6 @@ export function PrivacyPanel() {
   const onTrajectoryChange = (next: boolean) => {
     setTrajectoryLoggingEnabled(next);
     setTrajectory(next);
-  };
-
-  const exportData = async () => {
-    try {
-      const res = await apiFetch("/api/v1/me/export", { method: "GET" });
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `eliza-data-export-${new Date()
-        .toISOString()
-        .replace(/[:.]/g, "-")}.zip`;
-      a.click();
-      URL.revokeObjectURL(url);
-      void emitAuditEvent({
-        action: "data.export",
-        result: "allow",
-        metadata: { scope: "all" },
-      });
-      toast.success(
-        t("cloud.privacyPanel.exportReady", {
-          defaultValue:
-            "Export ready — your download should start automatically.",
-        }),
-      );
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 404) {
-        toast.info(
-          t("cloud.privacyPanel.exportComingSoon", {
-            defaultValue:
-              "Data export is coming soon — not yet available on this server.",
-          }),
-        );
-        return;
-      }
-      const message = err instanceof Error ? err.message : String(err);
-      toast.error(
-        t("cloud.privacyPanel.exportFailed", {
-          message,
-          defaultValue: "Export failed: {{message}}",
-        }),
-      );
-    }
-  };
-
-  const [deleteOpen, setDeleteOpen] = useState(false);
-  const [deleteConfirmText, setDeleteConfirmText] = useState("");
-  const [deleteSubmitting, setDeleteSubmitting] = useState(false);
-
-  const deleteAccount = async () => {
-    if (deleteConfirmText.trim().toLowerCase() !== DELETE_CONFIRM_PHRASE) {
-      toast.error(
-        t("cloud.privacyPanel.confirmPhrasePrompt", {
-          phrase: DELETE_CONFIRM_PHRASE,
-          defaultValue: 'Please type "{{phrase}}" to confirm.',
-        }),
-      );
-      return;
-    }
-    setDeleteSubmitting(true);
-    try {
-      await apiFetch("/api/v1/me/delete-request", { method: "POST" });
-      void emitAuditEvent({
-        action: "data.delete_request",
-        result: "allow",
-        metadata: { scope: "account" },
-      });
-      toast.success(
-        t("cloud.privacyPanel.deletionScheduled", {
-          defaultValue:
-            "Deletion scheduled. You have 30 days to recover before purge.",
-        }),
-      );
-      setDeleteOpen(false);
-      setDeleteConfirmText("");
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 404) {
-        toast.info(
-          t("cloud.privacyPanel.deletionComingSoon", {
-            defaultValue:
-              "Account deletion is coming soon — not yet available on this server.",
-          }),
-        );
-        setDeleteOpen(false);
-        return;
-      }
-      const message = err instanceof Error ? err.message : String(err);
-      toast.error(
-        t("cloud.privacyPanel.deleteRequestFailed", {
-          message,
-          defaultValue: "Delete request failed: {{message}}",
-        }),
-      );
-    } finally {
-      setDeleteSubmitting(false);
-    }
   };
 
   return (
@@ -251,9 +142,15 @@ export function PrivacyPanel() {
           <BrandButton
             size="sm"
             variant="outline"
-            onClick={() => void exportData()}
+            disabled
+            title={t("cloud.privacyPanel.exportComingSoon", {
+              defaultValue:
+                "Data export is coming soon — not yet available on this server.",
+            })}
           >
-            {t("cloud.privacyPanel.export", { defaultValue: "Export" })}
+            {t("cloud.privacyPanel.exportUnavailable", {
+              defaultValue: "Export unavailable",
+            })}
           </BrandButton>
         </div>
 
@@ -281,73 +178,19 @@ export function PrivacyPanel() {
             size="sm"
             variant="outline"
             className="border-red-500/40 text-red-300"
-            onClick={() => setDeleteOpen(true)}
+            disabled
+            title={t("cloud.privacyPanel.deletionComingSoon", {
+              defaultValue:
+                "Account deletion is coming soon — not yet available on this server.",
+            })}
             data-testid="delete-account-trigger"
           >
-            {t("cloud.privacyPanel.deleteAccount", {
-              defaultValue: "Delete account…",
+            {t("cloud.privacyPanel.deleteUnavailable", {
+              defaultValue: "Deletion unavailable",
             })}
           </BrandButton>
         </div>
       </div>
-
-      <AlertDialog
-        open={deleteOpen}
-        onOpenChange={(next) => {
-          if (!next) setDeleteConfirmText("");
-          setDeleteOpen(next);
-        }}
-      >
-        <AlertDialogContent data-testid="delete-account-dialog">
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              {t("cloud.privacyPanel.dialogTitle", {
-                defaultValue: "Delete your account?",
-              })}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {t("cloud.privacyPanel.dialogIntro", {
-                defaultValue:
-                  "We'll keep your data for 30 days in case you change your mind. To confirm, type",
-              })}{" "}
-              <code>{DELETE_CONFIRM_PHRASE}</code>{" "}
-              {t("cloud.privacyPanel.dialogBelow", {
-                defaultValue: "below.",
-              })}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <Input
-            value={deleteConfirmText}
-            onChange={(e) => setDeleteConfirmText(e.target.value)}
-            placeholder={DELETE_CONFIRM_PHRASE}
-            data-testid="delete-account-confirm-input"
-          />
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleteSubmitting}>
-              {t("cloud.privacyPanel.cancel", { defaultValue: "Cancel" })}
-            </AlertDialogCancel>
-            <AlertDialogAction
-              disabled={
-                deleteSubmitting ||
-                deleteConfirmText.trim().toLowerCase() !== DELETE_CONFIRM_PHRASE
-              }
-              onClick={(e) => {
-                e.preventDefault();
-                void deleteAccount();
-              }}
-              data-testid="delete-account-confirm"
-            >
-              {deleteSubmitting
-                ? t("cloud.privacyPanel.submitting", {
-                    defaultValue: "Submitting…",
-                  })
-                : t("cloud.privacyPanel.scheduleDeletion", {
-                    defaultValue: "Schedule deletion",
-                  })}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </BrandCard>
   );
 }

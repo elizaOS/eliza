@@ -1,6 +1,7 @@
 /**
- * Two-factor authentication status panel. Reads GET /api/v1/me/mfa and renders
- * the backend's explicit unavailable state until enrollment support exists.
+ * Two-factor authentication status panel. The Worker does not currently expose
+ * an MFA status route, so keep the panel in the explicit unavailable state
+ * instead of firing a dead request on Security page load.
  *
  * NOTE: the "Enroll a second factor" button is not wired — there is no MFA
  * enrollment endpoint yet (only the read route). The CTA renders so the surface
@@ -8,17 +9,9 @@
  */
 
 import { Lock } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { BrandButton, BrandCard, CornerBrackets } from "../../../cloud-ui";
-import { api } from "../../lib/api-client";
 import { useCloudT } from "../../shell/CloudI18nProvider";
-
-interface MfaStatusResponse {
-  available?: boolean;
-  enrolled: boolean;
-  method?: "totp" | "webauthn" | null;
-  reason?: string;
-}
 
 type MfaState =
   | { kind: "loading" }
@@ -28,38 +21,7 @@ type MfaState =
 
 export function MfaPanel() {
   const t = useCloudT();
-  const [state, setState] = useState<MfaState>({ kind: "loading" });
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const data = await api<MfaStatusResponse>("/api/v1/me/mfa");
-        if (cancelled) return;
-        if (data.available === false) {
-          setState({ kind: "missing" });
-          return;
-        }
-        if (typeof data.enrolled !== "boolean") {
-          throw new Error("Malformed MFA status response");
-        }
-        setState({
-          kind: "ready",
-          enrolled: data.enrolled,
-          method: data.method ?? null,
-        });
-      } catch (err) {
-        if (cancelled) return;
-        setState({
-          kind: "error",
-          message: err instanceof Error ? err.message : String(err),
-        });
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const [state] = useState<MfaState>({ kind: "missing" });
 
   return (
     <BrandCard className="relative">
