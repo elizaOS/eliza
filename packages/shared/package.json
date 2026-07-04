@@ -113,6 +113,16 @@
       "import": "./dist/restart.js",
       "default": "./dist/restart.js"
     },
+    "./sandbox-registry": {
+      "types": "./dist/sandbox-registry.d.ts",
+      "eliza-source": {
+        "types": "./src/sandbox-registry.ts",
+        "import": "./src/sandbox-registry.ts",
+        "default": "./src/sandbox-registry.ts"
+      },
+      "import": "./dist/sandbox-registry.js",
+      "default": "./dist/sandbox-registry.js"
+    },
     "./brand": {
       "types": "./dist/brand/index.d.ts",
       "import": "./dist/brand/index.js",

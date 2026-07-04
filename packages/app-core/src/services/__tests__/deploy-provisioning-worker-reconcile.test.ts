@@ -11,7 +11,8 @@
  * secret would silently blank the live key on the next deploy.
  *
  * Runtime env parsing of `SANDBOX_REGISTRY_REDIS_URL` is covered by
- * `sandbox-registry.test.ts`; this test covers the workflow YAML that injects it.
+ * `@elizaos/shared`'s `sandbox-registry.test.ts`; this test covers the workflow
+ * YAML that injects it.
  */
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
