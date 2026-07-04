@@ -1,3 +1,7 @@
+/**
+ * Keyless coverage for the media-generation action surface. Runs on the
+ * pr-deterministic lane under the LLM proxy.
+ */
 import { ModelType, type Plugin } from "@elizaos/core";
 import type {
   CapturedAction,

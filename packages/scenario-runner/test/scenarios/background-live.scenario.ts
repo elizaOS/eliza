@@ -1,3 +1,9 @@
+/**
+ * Live-lane scenario: a real LLM drives plugin-app-control BACKGROUND
+ * set/undo/redo/reset from chat and the handler emits the `background:apply`
+ * broadcasts the renderer consumes. Runs against a real model (live-only lane);
+ * deterministic-background-actions pins the same payload contract keyless.
+ */
 import type { ScenarioTurnExecution } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
 import {

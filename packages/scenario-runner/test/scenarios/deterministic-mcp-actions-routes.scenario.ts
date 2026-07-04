@@ -1,3 +1,7 @@
+/**
+ * Keyless catalog coverage for the plugin-mcp action and route surface. Runs on
+ * the pr-deterministic lane under the LLM proxy.
+ */
 import { readFileSync } from "node:fs";
 import type http from "node:http";
 import { dirname, resolve } from "node:path";

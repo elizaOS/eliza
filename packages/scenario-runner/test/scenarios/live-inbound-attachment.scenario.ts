@@ -1,3 +1,8 @@
+/**
+ * Live-lane scenario: a real LLM reads and summarizes an inbound text attachment.
+ * Needs live model credentials (live-only lane); the deterministic twin is
+ * deterministic-inbound-attachment-actions.
+ */
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 // Real-LLM (live lane) counterpart of deterministic-inbound-attachment-actions

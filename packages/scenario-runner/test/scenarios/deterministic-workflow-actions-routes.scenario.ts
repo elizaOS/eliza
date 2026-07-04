@@ -1,3 +1,7 @@
+/**
+ * Keyless catalog coverage for the plugin-workflow action and route surface. Runs
+ * on the pr-deterministic lane under the LLM proxy.
+ */
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
 import type {
   CapturedAction,

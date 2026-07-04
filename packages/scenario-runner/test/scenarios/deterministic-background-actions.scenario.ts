@@ -1,3 +1,8 @@
+/**
+ * Keyless catalog coverage for the plugin-app-control BACKGROUND action and the
+ * `background:apply` payload contract. Runs on the pr-deterministic lane under
+ * the LLM proxy; background-live proves a real model drives the same path.
+ */
 import type { ScenarioTurnExecution } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
 import {

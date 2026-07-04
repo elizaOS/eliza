@@ -1,3 +1,8 @@
+/**
+ * Live-lane twin of deterministic-active-view-agent-surface: a real LLM drives a
+ * scenario ledger view's agent-addressable controls. Needs live model credentials
+ * (live-only lane).
+ */
 import {
   registerPluginViews,
   unregisterPluginViews,

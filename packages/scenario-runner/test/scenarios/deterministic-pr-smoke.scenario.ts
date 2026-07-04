@@ -1,3 +1,7 @@
+/**
+ * Fast keyless smoke covering the core scenario surfaces (views, actions, routing)
+ * in one pass. Runs on the pr-deterministic lane under the LLM proxy.
+ */
 import { ModelType } from "@elizaos/core";
 import type {
   CapturedAction,

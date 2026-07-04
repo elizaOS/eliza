@@ -1,3 +1,9 @@
+/**
+ * Runtime schema module for `@elizaos/scenario-runner/schema`: the final-check key
+ * table (FINAL_CHECK_KEYS) and the `scenario` / `scenarioLane` / `scenarioDeferral`
+ * validators that scenario files import to declare and validate their definitions.
+ * Types live in the paired index.d.ts.
+ */
 export const FINAL_CHECK_KEYS = new Map(
   Object.entries({
     custom: ["type", "name", "predicate"],

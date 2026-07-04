@@ -1,3 +1,8 @@
+/**
+ * Live-lane twin of deterministic-sub-agent-credential-request: a real LLM drives
+ * the sub-agent credential-request bridge. Needs live model credentials
+ * (live-only lane).
+ */
 import {
   existsSync,
   mkdirSync,

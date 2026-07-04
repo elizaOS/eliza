@@ -1,3 +1,7 @@
+/**
+ * Keyless catalog coverage for the STREAM action and route surface. Runs on the
+ * pr-deterministic lane under the LLM proxy.
+ */
 import { createServer, type Server, type ServerResponse } from "node:http";
 import type { Plugin } from "@elizaos/core";
 import type {

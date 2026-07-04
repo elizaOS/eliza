@@ -1,3 +1,7 @@
+/**
+ * Keyless coverage for XR view actions backed by a real WebSocket service. Runs on
+ * the pr-deterministic lane under the LLM proxy.
+ */
 import {
   registerPluginViews,
   unregisterPluginViews,

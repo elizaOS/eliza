@@ -1,3 +1,7 @@
+/**
+ * Keyless catalog coverage for the browser-workspace action surface against a
+ * seeded browser tab. Runs on the pr-deterministic lane under the LLM proxy.
+ */
 import type {
   CapturedAction,
   ScenarioTurnExecution,

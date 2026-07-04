@@ -1,3 +1,7 @@
+/**
+ * Keyless coverage for the plugin-todos action surface and the CURRENT_TODOS
+ * provider. Runs on the pr-deterministic lane under the LLM proxy.
+ */
 import { ModelType, stringToUuid, type UUID } from "@elizaos/core";
 import type {
   CapturedAction,

@@ -1,3 +1,8 @@
+/**
+ * Keyless coverage of the sub-agent credential-request bridge: a sub-agent's
+ * credential request relays back to its origin. Runs on the pr-deterministic lane
+ * under the LLM proxy; live-sub-agent-credential-request is the real-model twin.
+ */
 import type http from "node:http";
 import {
   type AgentRuntime,

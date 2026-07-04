@@ -1,3 +1,7 @@
+/**
+ * Keyless catalog coverage for the slash-command surface. Runs on the
+ * pr-deterministic lane under the LLM proxy.
+ */
 import type http from "node:http";
 import type { AgentRuntime } from "@elizaos/core";
 import type { ScenarioContext } from "@elizaos/scenario-runner/schema";

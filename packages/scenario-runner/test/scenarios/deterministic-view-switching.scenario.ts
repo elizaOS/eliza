@@ -1,3 +1,7 @@
+/**
+ * Keyless coverage that view switching resolves across every built-in view. Runs
+ * on the pr-deterministic lane under the LLM proxy.
+ */
 import type {
   CapturedAction,
   ScenarioTurnExecution,
