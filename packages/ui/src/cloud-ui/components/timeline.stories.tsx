@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for the scroll-driven Timeline.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { Timeline } from "./timeline";
 

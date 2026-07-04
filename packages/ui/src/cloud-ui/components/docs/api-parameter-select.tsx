@@ -1,5 +1,8 @@
 "use client";
 
+/**
+ * Select control for choosing an API-route parameter value in the docs explorer.
+ */
 import {
   Select,
   SelectContent,

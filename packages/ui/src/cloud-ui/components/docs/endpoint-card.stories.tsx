@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for the docs EndpointCard.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { Bot, Database, Image as ImageIcon, Mic } from "lucide-react";
 import type { ReactNode } from "react";

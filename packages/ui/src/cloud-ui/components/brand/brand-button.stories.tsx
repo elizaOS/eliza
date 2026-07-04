@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for BrandButton (cloud brand skin of the button primitive).
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { BrandButton } from "./brand-button";
 

@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for the API route explorer.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import type { DiscoveredApiRouteDto } from "../../types/cloud-api";
 import { ApiRouteExplorerClient } from "./api-route-explorer-client";

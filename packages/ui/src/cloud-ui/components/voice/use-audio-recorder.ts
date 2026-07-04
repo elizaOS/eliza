@@ -1,5 +1,8 @@
 "use client";
 
+/**
+ * Hook wrapping MediaRecorder capture for the voice-clone surface (start/stop, level, blob).
+ */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   getSupportedMimeType,

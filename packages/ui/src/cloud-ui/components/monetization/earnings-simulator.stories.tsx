@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for the EarningsSimulator.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { EarningsSimulator } from "./earnings-simulator";
 

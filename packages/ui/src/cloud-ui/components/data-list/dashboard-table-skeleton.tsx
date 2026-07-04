@@ -1,3 +1,6 @@
+/**
+ * Loading skeleton matching the dashboard table column layout.
+ */
 import type { ReactNode } from "react";
 import { Skeleton } from "../../../components/ui/skeleton";
 import {

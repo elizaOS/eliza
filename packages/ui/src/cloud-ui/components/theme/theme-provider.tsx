@@ -1,5 +1,8 @@
 "use client";
 
+/**
+ * Cloud theme provider: resolves and applies light/dark theme for the dashboard surfaces.
+ */
 import * as React from "react";
 import {
   type ResolvedTheme,

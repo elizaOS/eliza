@@ -1,3 +1,6 @@
+/**
+ * Runtime shim for dynamic/lazy component loading in cloud-ui, mirroring the host framework's dynamic import.
+ */
 import { type ComponentType, createElement, lazy, Suspense } from "react";
 
 type DynamicModule<P> = ComponentType<P> | { default: ComponentType<P> };

@@ -1,3 +1,6 @@
+/**
+ * Table of API keys with per-row status and rotate/revoke actions.
+ */
 import { CalendarClock, RefreshCw, ShieldOff, Trash2 } from "lucide-react";
 import { StatusBadge } from "../../../components/ui/status-badge";
 import {

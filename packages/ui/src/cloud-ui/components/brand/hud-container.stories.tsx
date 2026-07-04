@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for HUDContainer.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { HUDContainer } from "./hud-container";
 

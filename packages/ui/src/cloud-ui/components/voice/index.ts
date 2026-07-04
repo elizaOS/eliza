@@ -1,3 +1,6 @@
+/**
+ * Barrel for the cloud voice components and hooks.
+ */
 export * from "./audio-utils";
 export type { Voice, VoiceCloneJob, VoiceSettings } from "./types";
 export * from "./use-audio-player";

@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for the cloud DashboardHeader.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { Bell, Plus, Search } from "lucide-react";
 import { BrandButton } from "../brand";

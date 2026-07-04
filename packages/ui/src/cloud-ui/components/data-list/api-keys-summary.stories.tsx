@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for ApiKeysSummary.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { ApiKeysSummary } from "./api-keys-summary";
 

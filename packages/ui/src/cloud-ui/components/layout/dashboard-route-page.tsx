@@ -1,5 +1,8 @@
 "use client";
 
+/**
+ * A dashboard route page that wires its header into the page-header context.
+ */
 import {
   type ComponentPropsWithoutRef,
   type DependencyList,

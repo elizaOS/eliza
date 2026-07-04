@@ -1,3 +1,6 @@
+/**
+ * Return-to plumbing for the app-authorize flow: the path and the persisted return target.
+ */
 export const APP_AUTHORIZE_PATH = "/app-auth/authorize";
 export const APP_AUTH_RETURN_TO_KEY = "eliza_app_auth_return_to";
 

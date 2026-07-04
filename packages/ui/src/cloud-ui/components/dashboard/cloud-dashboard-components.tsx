@@ -1,5 +1,8 @@
 "use client";
 
+/**
+ * Composed cloud dashboard pieces (empty states, quick cards) shared across dashboard routes.
+ */
 import {
   ArrowRight,
   BookOpen,

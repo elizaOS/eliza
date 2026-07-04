@@ -1,5 +1,8 @@
 "use client";
 
+/**
+ * Docs card summarizing an API endpoint (method, cost, capability icons).
+ */
 import { ChevronRight, Coins, Sparkles } from "lucide-react";
 import type { ReactNode } from "react";
 import { Button } from "../../../components/ui/button";

@@ -1,3 +1,6 @@
+/**
+ * The MDX component overrides for docs pages (Callout, Cards, Steps, Tabs).
+ */
 import { Children, isValidElement, type ReactNode } from "react";
 import {
   TabsContent,

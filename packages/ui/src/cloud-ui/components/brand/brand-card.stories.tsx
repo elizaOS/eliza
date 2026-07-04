@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for BrandCard / AgentCard (cloud brand card skins).
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { AgentCard, BrandCard } from "./brand-card";
 

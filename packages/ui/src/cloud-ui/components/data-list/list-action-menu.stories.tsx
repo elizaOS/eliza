@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for the per-row ListActionMenu.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import {
   Archive,

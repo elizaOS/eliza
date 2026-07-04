@@ -1,3 +1,6 @@
+/**
+ * The Eliza Cloud wordmark lockup (logo + text).
+ */
 import { cn } from "../../lib/utils";
 
 interface ElizaCloudLockupProps {

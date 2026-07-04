@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for the connection card.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { MessageCircle, Send } from "lucide-react";
 import {

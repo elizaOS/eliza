@@ -1,5 +1,8 @@
 "use client";
 
+/**
+ * Light/dark toggle button wired to the cloud theme provider.
+ */
 import { Moon, Sun } from "lucide-react";
 import { Button } from "../../../components/ui/button";
 import { useTheme } from "./theme-provider.hooks";

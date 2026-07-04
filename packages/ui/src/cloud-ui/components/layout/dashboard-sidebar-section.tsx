@@ -1,5 +1,8 @@
 "use client";
 
+/**
+ * A collapsible titled group of sidebar nav items.
+ */
 import { ChevronDown } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import {

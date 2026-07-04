@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for the VoiceEmptyState.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { VoiceEmptyState } from "./voice-empty-state";
 

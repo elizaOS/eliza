@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for CodeDisplay.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { CodeDisplay } from "./code-display";
 

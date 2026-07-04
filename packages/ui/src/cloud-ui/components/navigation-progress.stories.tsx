@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for the route navigation-progress bar.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { Link, MemoryRouter, Route, Routes } from "react-router-dom";
 import { NavigationProgress } from "./navigation-progress";

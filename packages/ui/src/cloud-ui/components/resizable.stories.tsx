@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for the resizable-panel primitive.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import {
   ResizableHandle,

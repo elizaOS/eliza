@@ -1,5 +1,8 @@
 "use client";
 
+/**
+ * The cloud dashboard sidebar: nav sections plus the mobile drawer dismiss.
+ */
 import { X } from "lucide-react";
 import { memo, type ReactNode, useCallback } from "react";
 import { Button } from "../../../components/ui/button";

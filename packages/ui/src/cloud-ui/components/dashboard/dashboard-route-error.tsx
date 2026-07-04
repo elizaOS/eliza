@@ -1,3 +1,6 @@
+/**
+ * Error state rendered when a cloud dashboard route fails to load, with a way back.
+ */
 import { Link } from "react-router-dom";
 import { Button } from "../../../components/ui/button";
 

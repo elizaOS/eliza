@@ -1,5 +1,8 @@
 "use client";
 
+/**
+ * Badge linking to the llms.txt for the current docs page.
+ */
 import { useLocation } from "react-router-dom";
 
 export function LlmsTxtBadge() {

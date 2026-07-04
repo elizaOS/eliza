@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for the dashboard loading/error placeholder states.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import {
   DashboardErrorState,

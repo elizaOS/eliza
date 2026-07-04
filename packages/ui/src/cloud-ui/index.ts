@@ -1,3 +1,6 @@
+/**
+ * Barrel for the cloud-ui component set (@elizaos/ui/cloud-ui): re-exports primitives plus cloud-only skins and compositions.
+ */
 export {
   Tabs,
   TabsContent,

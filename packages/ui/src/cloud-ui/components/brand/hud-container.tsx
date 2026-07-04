@@ -1,3 +1,6 @@
+/**
+ * A HUD-styled container framing its children with corner brackets (cloud brand).
+ */
 import type * as React from "react";
 import { cn } from "../../lib/utils";
 import { CornerBrackets } from "./corner-brackets";

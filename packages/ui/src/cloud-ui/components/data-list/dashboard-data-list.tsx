@@ -1,3 +1,6 @@
+/**
+ * Generic dashboard data-list container + card primitives for list surfaces.
+ */
 import type { ReactNode } from "react";
 import { cn } from "../../lib/utils";
 

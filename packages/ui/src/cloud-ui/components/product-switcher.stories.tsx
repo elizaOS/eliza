@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for the ProductSwitcher.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { ProductSwitcher } from "./product-switcher";
 

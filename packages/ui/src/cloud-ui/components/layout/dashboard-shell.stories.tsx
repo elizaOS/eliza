@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for the DashboardShellLayout (sidebar + content).
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { DashboardShellLayout } from "./dashboard-shell";
 

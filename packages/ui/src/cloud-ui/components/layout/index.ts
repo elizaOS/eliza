@@ -1,3 +1,6 @@
+/**
+ * Barrel for the cloud dashboard layout components.
+ */
 export {
   DashboardHeader,
   type DashboardHeaderPageInfo,

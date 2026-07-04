@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for LockOnButton.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { LockOnButton } from "./lock-on-button";
 

@@ -1,3 +1,6 @@
+/**
+ * Types for the docs surface: frontmatter and nav-item shapes.
+ */
 import type { ComponentType } from "react";
 
 export type DocsFrontmatter = {

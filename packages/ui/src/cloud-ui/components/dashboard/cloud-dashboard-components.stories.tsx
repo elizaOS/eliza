@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for the composed cloud dashboard components (empty states, cards).
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { BrandButton } from "../brand/brand-button";
 import {

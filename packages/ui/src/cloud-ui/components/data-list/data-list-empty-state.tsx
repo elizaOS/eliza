@@ -1,3 +1,6 @@
+/**
+ * Empty-state card for dashboard data lists (icon, message, optional action).
+ */
 import type { ComponentType, ReactNode } from "react";
 import { EmptyState } from "../../../components/ui/empty-state";
 import { cn } from "../../lib/utils";

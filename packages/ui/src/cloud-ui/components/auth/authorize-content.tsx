@@ -1,5 +1,8 @@
 "use client";
 
+/**
+ * App-authorize screen content: Steward login (Discord/Google) and the return-to handoff.
+ */
 import { STEWARD_TOKEN_KEY } from "@elizaos/shared/steward-session-client";
 import { DiscordIcon, GoogleIcon, StewardLogin, useAuth } from "@stwd/react";
 import type { StewardProviders } from "@stwd/sdk";

@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for AnimatedCounter.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { useEffect, useState } from "react";
 import { AnimatedCounter, AnimatedCounterWithLabel } from "./animated-counter";

@@ -1,5 +1,8 @@
 "use client";
 
+/**
+ * Interactive API-route explorer: filter/select a discovered route and view its details.
+ */
 import { useMemo, useState } from "react";
 import { Button } from "../../../components/ui/button";
 import { Input } from "../../../components/ui/input";

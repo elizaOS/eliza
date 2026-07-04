@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for MilestoneCard / MilestoneProgress.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { MilestoneCard, MilestoneProgress } from "./milestone-progress";
 

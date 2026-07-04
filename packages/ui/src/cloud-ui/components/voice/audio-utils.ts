@@ -1,3 +1,6 @@
+/**
+ * Feature-detection and small audio helpers (MediaRecorder support) for the voice surface.
+ */
 export function supportsMediaRecorder(): boolean {
   return typeof window !== "undefined" && "MediaRecorder" in window;
 }

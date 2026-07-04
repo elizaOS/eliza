@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for CostInsightsCard.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { CostInsightsCard } from "./cost-insights-card";
 

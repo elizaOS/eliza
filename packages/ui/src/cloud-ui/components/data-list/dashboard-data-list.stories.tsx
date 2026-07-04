@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for the DashboardDataList primitives.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import {
   DashboardDataList,

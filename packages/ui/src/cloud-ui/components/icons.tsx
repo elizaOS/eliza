@@ -1,3 +1,6 @@
+/**
+ * Brand/provider SVG icon components for the cloud surfaces (Discord, Google, …).
+ */
 import type { SVGProps } from "react";
 
 export function DiscordIcon(props: SVGProps<SVGSVGElement>) {

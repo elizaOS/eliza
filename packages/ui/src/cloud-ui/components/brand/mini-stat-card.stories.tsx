@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for MiniStatCard.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { MiniStatCard } from "./mini-stat-card";
 

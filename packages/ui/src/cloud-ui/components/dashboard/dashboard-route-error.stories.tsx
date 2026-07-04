@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for the dashboard route error boundary UI.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { MemoryRouter } from "react-router-dom";
 import { DashboardRouteError } from "./dashboard-route-error";

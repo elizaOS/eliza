@@ -1,3 +1,6 @@
+/**
+ * Barrel for the cloud docs components.
+ */
 export type {
   ApiParameterSelectOption,
   ApiParameterSelectProps,

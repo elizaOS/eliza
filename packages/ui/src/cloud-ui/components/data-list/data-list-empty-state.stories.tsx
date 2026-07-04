@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for DataListEmptyState.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { Inbox, MessageSquare, Users } from "lucide-react";
 import { Button } from "../../../components/ui/button";

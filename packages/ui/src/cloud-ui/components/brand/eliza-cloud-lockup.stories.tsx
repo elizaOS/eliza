@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for the Eliza Cloud wordmark lockup.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { ElizaCloudLockup } from "./eliza-cloud-lockup";
 

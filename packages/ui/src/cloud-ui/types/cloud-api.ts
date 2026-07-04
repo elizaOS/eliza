@@ -1,3 +1,6 @@
+/**
+ * Wire types for the cloud API responses the cloud-ui components consume (success/error envelopes, DTOs).
+ */
 export type IsoDateString = string;
 export type DateLike = Date | IsoDateString;
 

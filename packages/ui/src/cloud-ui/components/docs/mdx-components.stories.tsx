@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for the docs MDX component set (Callout, Cards, Steps, Tabs).
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { Callout, Cards, Steps, Tabs } from "./mdx-components";
 

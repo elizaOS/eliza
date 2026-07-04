@@ -1,5 +1,8 @@
 "use client";
 
+/**
+ * Animated route transition wrapper for cloud dashboard pages (motion presence).
+ */
 import { AnimatePresence, motion } from "motion/react";
 
 interface PageTransitionProps {

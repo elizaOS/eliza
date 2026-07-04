@@ -1,3 +1,6 @@
+/**
+ * Types for the dashboard sidebar model (items, sections, icons).
+ */
 import type { ComponentType, CSSProperties, ReactNode } from "react";
 
 export interface DashboardSidebarItem {

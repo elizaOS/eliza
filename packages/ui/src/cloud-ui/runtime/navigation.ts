@@ -1,3 +1,6 @@
+/**
+ * Runtime navigation shim for cloud-ui backed by react-router (location, navigate, params).
+ */
 import { type ReactNode, useCallback, useMemo } from "react";
 import {
   useLocation,
