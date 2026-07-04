@@ -927,6 +927,21 @@ declare module "@elizaos/ui" {
   export const primeIosFullBunRuntime: AnyFunction;
 }
 
+declare module "@elizaos/ui/navigation" {
+  export const TAB_PATHS: Record<string, string>;
+  export function isAppWindowRoute(location?: { search: string }): boolean;
+  export function getWindowNavigationPath(
+    location?:
+      | {
+          protocol: string;
+          search: string;
+          hash: string;
+          pathname: string;
+        }
+      | undefined,
+  ): string;
+}
+
 declare module "@elizaos/plugin-discord" {
   import type { AgentRuntime } from "@elizaos/core";
 
