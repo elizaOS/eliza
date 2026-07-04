@@ -704,7 +704,11 @@ function AppProviderInner({
       },
       setFirstRunRemoteError: (value: string | null): void => {
         if (value) {
-          dispatch({ type: "SET_REMOTE_STATUS", status: "error", error: value });
+          dispatch({
+            type: "SET_REMOTE_STATUS",
+            status: "error",
+            error: value,
+          });
           return;
         }
         if (remote.status === "error") {
