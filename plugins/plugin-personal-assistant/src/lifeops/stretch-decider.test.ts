@@ -1,4 +1,10 @@
-// Exercises LifeOps policy, scheduling, or owner-context invariants.
+/**
+ * Stretch-reminder pacing (#8795 LifeOps), tested as pure functions with no
+ * reminder service. `shouldStretchNow` layers the stretch-specific cadence
+ * rules (weekend/busy/late-evening skips, the 6h cooldown, and the "a recent
+ * walk rearms the cooldown" reset) on top of the generic reminder loop, and
+ * `pickStretchReminderCopy` rotates copy deterministically by day.
+ */
 import { describe, expect, it } from "vitest";
 import {
   pickStretchReminderCopy,
@@ -6,15 +12,6 @@ import {
   STRETCH_REMINDER_VARIANTS,
   shouldStretchNow,
 } from "./stretch-decider";
-
-/**
- * Stretch-reminder pacing (#8795 LifeOps). `shouldStretchNow` layers the
- * stretch-specific cadence rules (weekend/busy/late-evening skips, the 6h
- * cooldown, and the "a recent walk rearms the cooldown" reset) on top of the
- * generic reminder loop, and `pickStretchReminderCopy` rotates copy
- * deterministically by day. Both are pure primitives chosen precisely so they
- * can be unit-tested without the reminder service — but had no test.
- */
 
 const H = 3_600_000; // 1 hour in ms
 const NOW = 1_700_000_000_000;

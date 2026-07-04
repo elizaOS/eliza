@@ -1,23 +1,21 @@
-// Supports the LifeOps scheduled-task spine, owner facts, and assistant context.
+/**
+ * Local intent store for the owner's logical devices.
+ *
+ * An intent is a small structured message targeted at one or more of the
+ * owner's logical devices (desktop, mobile, or a specific device). Intents are
+ * persisted in a single local database table, and any process attached to that
+ * database polls its pending queue; once acknowledged they are no longer
+ * returned.
+ *
+ * This module is *local-only*: there is no wire-level replication across
+ * machines, so two agent processes on different machines will NOT see each
+ * other's intents. A cross-device replication bridge (e.g. Eliza Cloud
+ * device-bus) is out of scope here — if it exists, it sits alongside this
+ * table, not inside it.
+ */
 import crypto from "node:crypto";
 import type { IAgentRuntime } from "@elizaos/core";
 import { executeRawSql, parseJsonRecord, sqlText, toText } from "./sql.js";
-
-/**
- * Local intent store (formerly called "cross-device intent sync").
- *
- * An intent is a small structured message targeted at one or more of the
- * owner's logical devices (desktop, mobile, specific device). Intents are
- * persisted in a single local database table, and any process attached to
- * that database polls its pending queue; once acknowledged they are no
- * longer returned.
- *
- * NOTE: this module is *local-only*. There is no wire-level replication
- * across machines. Two separate agent processes running on different
- * machines will NOT see each other's intents. A cross-device replication
- * bridge (e.g. Eliza Cloud device-bus) is out of scope here — if/when that
- * bridge exists, it would sit alongside this table, not inside it.
- */
 
 export const LIFE_INTENT_KINDS = [
   "user_action_requested",

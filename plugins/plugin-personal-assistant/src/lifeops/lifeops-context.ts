@@ -1,6 +1,3 @@
-// Supports the LifeOps scheduled-task spine, owner facts, and assistant context.
-import type { LifeOpsServiceBase } from "./service-mixin-core.js";
-
 /**
  * Shared state and infrastructure every LifeOps domain sub-service depends on.
  *
@@ -9,12 +6,13 @@ import type { LifeOpsServiceBase } from "./service-mixin-core.js";
  * extends `LifeOpsServiceBase`) satisfies this structurally, so the composition
  * root passes `this` as the context when constructing domain sub-services.
  *
- * Domain-specific helpers that historically lived on the base (browser-settings
- * reads, google/x grant mutation, workflow-definition lookup, the per-domain
- * `record*Audit` wrappers, the adaptive-window cache, the reminder-processing
- * lock) are intentionally NOT part of the shared context — they belong to their
- * owning domain and are injected as typed sub-service dependencies instead.
+ * Domain-specific helpers on the base (browser-settings reads, google/x grant
+ * mutation, workflow-definition lookup, the per-domain `record*Audit` wrappers,
+ * the adaptive-window cache, the reminder-processing lock) are intentionally NOT
+ * part of the shared context — they belong to their owning domain and are
+ * injected as typed sub-service dependencies instead.
  */
+import type { LifeOpsServiceBase } from "./service-mixin-core.js";
 export type LifeOpsContext = Pick<
   LifeOpsServiceBase,
   | "runtime"

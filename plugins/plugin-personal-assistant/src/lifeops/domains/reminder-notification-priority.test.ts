@@ -1,4 +1,9 @@
-// Exercises LifeOps domain priority and notification behavior.
+/**
+ * Calendar-reminder priority tiering (#10697), tested as a pure function with no
+ * runtime. "Starting soon" must outrank "tomorrow" on the notification rail, so
+ * the soon/later/distant window edges are pinned against a regression that would
+ * flatten them into a single tier.
+ */
 import { describe, expect, it } from "vitest";
 import {
   REMINDER_DISTANT_WINDOW_MS,
@@ -6,12 +11,6 @@ import {
   resolveReminderNotificationPriority,
 } from "./reminder-notification-priority.ts";
 
-/**
- * Calendar-reminder priority tiering (#10697). "Starting soon" must outrank
- * "tomorrow" on the notification rail; a regression that flattens them back to a
- * single tier is exactly what this issue fixes, so the soon/later/distant edges
- * are pinned.
- */
 const NOW = 1_700_000_000_000;
 const at = (offsetMs: number): string => new Date(NOW + offsetMs).toISOString();
 const priority = (

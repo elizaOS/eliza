@@ -1,18 +1,16 @@
-// Resolves LifeOps check-in schedules into runner-ready timing windows.
-import type { IAgentRuntime } from "@elizaos/core";
-import type { LifeOpsOwnerProfile } from "../owner-profile.js";
-import { readLifeOpsOwnerProfile } from "../owner-profile.js";
-
 /**
- * Reads the owner's configured morning/night check-in times from the existing
- * owner-profile row. Returns null for a slot if the owner hasn't configured it.
+ * Reads the owner's configured morning/night check-in times from the
+ * owner-profile row. Returns null for a slot the owner has not configured.
  *
  * `nightCheckinTime` is consumed by `shouldRunNightCheckinFromSleepCycle` as a
  * fallback bedtime anchor for irregular owners. `morningCheckinTime` is read
- * here for parity but the morning dispatcher currently relies exclusively on
- * the inferred `circadianState === "awake"` transition; an explicit timer
- * fallback is intentionally not wired.
+ * here for parity, but the morning dispatcher relies exclusively on the inferred
+ * `circadianState === "awake"` transition; an explicit timer fallback is
+ * intentionally not wired.
  */
+import type { IAgentRuntime } from "@elizaos/core";
+import type { LifeOpsOwnerProfile } from "../owner-profile.js";
+import { readLifeOpsOwnerProfile } from "../owner-profile.js";
 
 export interface CheckinSchedule {
   readonly morningCheckinTime: string | null;

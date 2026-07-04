@@ -1,4 +1,11 @@
-// Registers LifeOps delivery channels and channel priority posture.
+/**
+ * In-memory {@link ChannelRegistry} backing the LifeOps channel contract. A
+ * channel is a delivery surface keyed by `kind` (`in_app`, `push`, `imessage`,
+ * `telegram`, `sms`, …) with capability flags; connector plugins register
+ * contributions here and the scheduled-task runner's escalation/dispatch stage
+ * queries it — by `kind` or by required capabilities — to pick a channel.
+ * Registration is exclusive: a duplicate `kind` throws rather than overwriting.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import type {
   ChannelCapabilities,

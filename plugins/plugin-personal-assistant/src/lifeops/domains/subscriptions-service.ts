@@ -1,4 +1,12 @@
-// Implements a LifeOps domain service behind the assistant orchestration layer.
+/**
+ * Subscriptions audit / cancellation reads + mutations, delegated to
+ * `@elizaos/plugin-finances` (`SubscriptionsService`), which owns the finance
+ * tables and reaches Gmail + the browser bridge through runtime-service seams.
+ * Keeps the LifeOps service surface stable for route + action call sites. The
+ * `auditSubscriptions(requestUrl, request)` signature keeps its `requestUrl`
+ * argument for call-site stability but ignores it — the finances Gmail seam
+ * resolves the connector account directly.
+ */
 import { SubscriptionsService } from "@elizaos/plugin-finances/services/subscriptions-service";
 import type { LifeOpsSubscriptionPlaybook } from "@elizaos/plugin-finances/subscriptions-playbooks";
 import type {
@@ -9,16 +17,6 @@ import type {
   LifeOpsSubscriptionExecutor,
 } from "@elizaos/plugin-finances/subscriptions-types";
 import type { LifeOpsContext } from "../lifeops-context.js";
-
-/**
- * Subscriptions audit / cancellation reads + mutations, delegated to
- * `@elizaos/plugin-finances` (`SubscriptionsService`), which owns the finance
- * tables and reaches Gmail + the browser bridge through runtime-service seams.
- * Keeps the LifeOps service surface stable for existing route + action call
- * sites. The legacy `auditSubscriptions(requestUrl, request)` signature is
- * preserved; the `requestUrl` argument is no longer needed (the finances Gmail
- * seam resolves the connector account directly) and is ignored.
- */
 export class SubscriptionsDomain {
   constructor(private readonly ctx: LifeOpsContext) {}
 

@@ -1,4 +1,18 @@
-// Applies owner messaging policy before connector dispatch.
+/**
+ * Owner send-approval policy: the {@link SendPolicy} that forces outbound
+ * messages on approval-gated connectors through explicit owner confirmation
+ * before dispatch. `shouldRequireApproval` consults the connector registry (a
+ * connector's `requiresApproval` flag); `enqueueApproval` persists the draft as
+ * a CHOOSE_OPTION `ScheduledTask` on the owner approval queue.
+ *
+ * Approval executes through one stable task worker (`OWNER_SEND_APPROVAL`) that
+ * core's CHOOSE_OPTION action resolves by task name, dispatching on task
+ * metadata rather than a per-task name. The worker reconstructs the send purely
+ * from the draft payload persisted in the task row — never from an in-memory
+ * closure — so an approved send survives a process restart (#10721), and an
+ * in-process claim set makes a concurrent duplicate confirm fail rather than
+ * double-send (#11090).
+ */
 import type {
   DraftRecord,
   DraftRequest,

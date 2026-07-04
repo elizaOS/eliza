@@ -1,4 +1,11 @@
-// Registers LifeOps connector projections without owning connector transports.
+/**
+ * In-memory {@link ConnectorRegistry} backing the LifeOps connector contract.
+ * Connectors are capability- and mode-tagged owner integrations, populated by
+ * `plugin-health` and the connector default pack; the messaging and send-policy
+ * layers look them up by `kind` or `capability` to route and gate owner-facing
+ * dispatch (a connector's `requiresApproval` flag drives the owner-send policy).
+ * Registration is exclusive: a duplicate `kind` throws.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import type {
   ConnectorContribution,

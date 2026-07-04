@@ -1,4 +1,17 @@
-// Reconciles LifeOps block rules with website blocker chat requests.
+/**
+ * Persistence for website block rules — the `app_lifeops` block-rule table
+ * behind the website-blocker chat integration. Split CQRS-style into a
+ * {@link BlockRuleWriter} (create / release / gate-fulfil mutations) and a
+ * {@link BlockRuleReader} (active-block and gate queries); both live here
+ * because they share the row encoders, but stay separate classes so their
+ * pipelines can be exercised independently.
+ *
+ * The rule row is the source of truth: writers reconcile OS-level SelfControl
+ * state via `syncOsBlockToRules` after a mutation, but an activation failure is
+ * logged, not fatal — the reconciler retries the OS sync on each tick. A
+ * `harsh_no_bypass` rule refuses user-confirmed release entirely and exits only
+ * through its gate todo.
+ */
 import crypto from "node:crypto";
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
@@ -11,13 +24,6 @@ import {
   type CreateBlockRuleInput,
   rowToBlockRule,
 } from "./block-rule-schema.js";
-
-/**
- * CQRS: writers only mutate. They return the new id or void. Readers return
- * domain objects. Both live in the same module because they share the table
- * encoders, but they are separate classes so tests exercise the pipelines
- * independently.
- */
 
 function nowMs(): number {
   return Date.now();
@@ -64,7 +70,7 @@ function assertCreateInput(input: CreateBlockRuleInput): void {
     throw new Error("[BlockRuleWriter] until_todo gate requires gateTodoId");
   }
   // A harsh rule refuses every manual bypass (confirmed release, chat unblock,
-  // HTTP DELETE) and the reconciler only releases it via its gate task item. Without
+  // HTTP DELETE) and the reconciler only releases it via its gate todo. Without
   // a gateTodoId it would be a permanent lock with no exit path at all.
   if (input.gateType === "harsh_no_bypass" && !input.gateTodoId) {
     throw new Error(

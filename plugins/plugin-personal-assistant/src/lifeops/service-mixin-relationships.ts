@@ -1,12 +1,14 @@
-// Adds a focused LifeOpsService mixin for a domain capability.
+/**
+ * Type-only public surface the `withRelationships` mixin contributes to
+ * `LifeOpsService` — relationship upsert/get/list plus interaction logging. It
+ * is declared here and declaration-merged onto `LifeOpsService` because the
+ * mixin composition exceeds TypeScript's inference depth.
+ */
 import type {
   LifeOpsMessageChannel,
   LifeOpsRelationship,
   LifeOpsRelationshipInteraction,
 } from "@elizaos/shared";
-
-/** Public surface added by {@link withRelationships}; listed on the LifeOpsService
- * declaration-merge (mixin composition exceeds TS inference depth). Type-only. */
 export interface LifeOpsRelationshipService {
   upsertRelationship(
     input: Omit<

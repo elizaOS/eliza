@@ -1,4 +1,12 @@
-// Supports the LifeOps scheduled-task spine, owner facts, and assistant context.
+/**
+ * Privacy lattice for surfacing connector-account content to an audience. Maps a
+ * stored account {@link PrivacyLevel} (`owner_only` → `public`) against a
+ * {@link LifeOpsAudience} and answers whether the account may be shown, filters
+ * account lists down to the surfaceable subset, and supplies the redaction
+ * placeholder for blocked accounts. A missing or unloadable account is treated
+ * as not-surfaceable (fail closed), and filtering logs only counts, never
+ * account data.
+ */
 import {
   type ConnectorAccount,
   DEFAULT_PRIVACY_LEVEL,

@@ -1,15 +1,14 @@
-// Exercises LifeOps policy, scheduling, or owner-context invariants.
+/**
+ * LifeOps policy-rule validation (#8801). A policy rule governs what an
+ * automation may do (read_aloud, delete, send, spend_money…) and with what
+ * effect (allow / deny / require_approval). It is loaded from untrusted memory,
+ * so a malformed rule must be REJECTED with a precise error rather than silently
+ * treated as permissive. Each field check is asserted to fire only when that
+ * field is wrong (robust to the rule's other sub-checks).
+ */
 import { describe, expect, it } from "vitest";
 import { validateLifeOpsPolicyRule } from "./policy-memory.ts";
 
-/**
- * LifeOps policy-rule validation (#8801 — shipped untested). A policy rule
- * governs what an automation may do (read_aloud, delete, send, spend_money…) and
- * with what effect (allow / deny / require_approval). It is loaded from
- * untrusted memory, so a malformed rule must be REJECTED with a precise error
- * rather than silently treated as permissive. Each field check is asserted to
- * fire only when that field is wrong (robust to the rule's other sub-checks).
- */
 const base = {
   kind: "lifeops_policy_rule",
   id: "rule-1",

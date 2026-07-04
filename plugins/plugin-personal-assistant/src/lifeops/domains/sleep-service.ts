@@ -1,4 +1,9 @@
-// Implements a LifeOps domain service behind the assistant orchestration layer.
+/**
+ * Sleep history / regularity / personal-baseline reads, delegated to
+ * `@elizaos/plugin-health`'s sleep service methods (health/circadian logic
+ * belongs to plugin-health; LifeOps only projects it for the owner). Base-only
+ * domain — no cross-domain dependencies.
+ */
 import { createHealthSleepServiceMethods } from "@elizaos/plugin-health";
 import type {
   LifeOpsPersonalBaselineResponse,
@@ -7,12 +12,6 @@ import type {
 } from "@elizaos/shared";
 import { resolveDefaultTimeZone } from "../defaults.js";
 import type { LifeOpsContext } from "../lifeops-context.js";
-
-/**
- * Sleep history / regularity / personal-baseline reads, delegated to
- * `@elizaos/plugin-health`'s sleep service methods. Base-only domain (no
- * cross-domain dependencies).
- */
 export class SleepDomain {
   constructor(private readonly ctx: LifeOpsContext) {}
 

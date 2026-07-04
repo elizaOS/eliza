@@ -1,4 +1,8 @@
-// Supports the LifeOps scheduled-task spine, owner facts, and assistant context.
+/**
+ * Service-layer wrappers around the local intent store (`intent-sync.ts`):
+ * acknowledge, prune-expired, and list-pending helpers that callers invoke
+ * directly rather than reaching into the store's raw SQL surface.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import {
   acknowledgeIntent,
@@ -7,11 +11,6 @@ import {
   pruneExpiredIntents,
   receivePendingIntents,
 } from "./intent-sync.js";
-
-/**
- * Service-layer wrappers around the local intent store. These helpers
- * cover the management operations invoked directly by callers.
- */
 
 export async function acknowledgeDeviceIntent(
   runtime: IAgentRuntime,
