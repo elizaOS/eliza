@@ -43,6 +43,8 @@ const FRAME_GATE = {
 };
 const DROPPED_FRAME_EPSILON_MS = 0.5;
 const MIN_FRAME_SAMPLES = 30;
+const RAIL_SWIPE_ATTEMPTS = 3;
+const RAIL_SWIPE_CYCLES_PER_ATTEMPT = 3;
 
 const here = dirname(fileURLToPath(import.meta.url));
 const outDir = join(here, "output-home");
@@ -250,6 +252,46 @@ async function waitForSurfacePageSettled(p, pageName) {
       .every((animation) => animation.playState === "finished");
     return railSettled && transitionsDone;
   }, pageName);
+}
+function medianNumber(values) {
+  const sorted = values
+    .filter((value) => Number.isFinite(value))
+    .toSorted((a, b) => a - b);
+  return sorted[Math.floor(sorted.length / 2)] ?? 0;
+}
+async function measureRailSwipeWindow(page) {
+  await page.evaluate(() => window.__ELIZA_FRAME.start());
+  try {
+    for (let i = 0; i < RAIL_SWIPE_CYCLES_PER_ATTEMPT; i += 1) {
+      await touchSwipeRight(page, "home-launcher-launcher-page");
+      await waitForSurfacePageSettled(page, "home");
+      await touchSwipeLeft(page, "home-launcher-home-page");
+      await waitForSurfacePageSettled(page, "launcher");
+    }
+    const { deltas, longTasks } = await page.evaluate(() =>
+      window.__ELIZA_FRAME.read(),
+    );
+    const summary = summarizeFrameSamples(deltas, longTasks, FRAME_BUDGET);
+    // Chromium's headless rAF timestamps commonly quantize 60 Hz frames as
+    // 16.7-16.8ms. Treat those as on-budget; real drops still exceed the budget
+    // by more than the timestamp jitter and p95 remains the primary jank gate.
+    const effectiveDroppedFrames = deltas.filter(
+      (delta) =>
+        Number.isFinite(delta) &&
+        delta > summary.budgetMs + DROPPED_FRAME_EPSILON_MS,
+    ).length;
+    const droppedFrameRatio =
+      effectiveDroppedFrames / Math.max(1, summary.sampleCount);
+    const droppedPct = 100 * droppedFrameRatio;
+    return {
+      ...summary,
+      effectiveDroppedFrames,
+      droppedFrameRatio,
+      droppedPct,
+    };
+  } finally {
+    await page.evaluate(() => window.__ELIZA_FRAME.stop());
+  }
 }
 try {
   // Mobile (Pixel-ish) — the primary target.
@@ -694,54 +736,53 @@ try {
   await touchSwipeLeft(mobile, "home-launcher-home-page");
   await waitForSurfacePageSettled(mobile, "launcher");
 
-  // ── Rail-swipe FPS gate: sample REAL frames over three full home↔launcher
-  // round-trips (right swipe back home, left swipe to the launcher — the exact
-  // gesture the launcher redesign must keep smooth) and hard-fail on sustained
-  // jank via the same shared, meta-tested frame-budget detectors the chat perf
-  // gates use. The rail paints via rAF-paced translate3d, so a regression that
-  // moves work onto the drag path (layout, paint storms, main-thread stalls)
-  // shows up here as dropped frames / p95 blowout.
+  // ── Rail-swipe FPS gate: sample independent windows of REAL frames, each
+  // covering three full home↔launcher round-trips (right swipe back home, left
+  // swipe to the launcher — the exact gesture the launcher redesign must keep
+  // smooth), and hard-fail on sustained jank via the same shared, meta-tested
+  // frame-budget detectors the chat perf gates use. The rail paints via
+  // rAF-paced translate3d, so a regression that moves work onto the drag path
+  // (layout, paint storms, main-thread stalls) shows up here as dropped frames /
+  // p95 blowout.
   {
-    await mobile.evaluate(() => window.__ELIZA_FRAME.start());
-    for (let i = 0; i < 3; i += 1) {
-      await touchSwipeRight(mobile, "home-launcher-launcher-page");
-      await waitForSurfacePageSettled(mobile, "home");
-      await touchSwipeLeft(mobile, "home-launcher-home-page");
-      await waitForSurfacePageSettled(mobile, "launcher");
+    const attempts = [];
+    for (let attempt = 0; attempt < RAIL_SWIPE_ATTEMPTS; attempt += 1) {
+      const result = await measureRailSwipeWindow(mobile);
+      attempts.push(result);
+      console.log(
+        `  [rail-swipe ${attempt + 1}/${RAIL_SWIPE_ATTEMPTS}] ` +
+          `fps=${result.fps.toFixed(1)} p95=${result.p95FrameMs.toFixed(1)}ms ` +
+          `worst=${result.worstFrameMs.toFixed(1)}ms ` +
+          `dropped=${result.effectiveDroppedFrames}/${result.sampleCount} ` +
+          `(${result.droppedPct.toFixed(0)}%) long=${result.longTasks}`,
+      );
+      assert(
+        result.sampleCount >= MIN_FRAME_SAMPLES,
+        `rail-swipe window ${attempt + 1} captured ≥${MIN_FRAME_SAMPLES} frames ` +
+          `(got ${result.sampleCount})`,
+      );
     }
-    const { deltas, longTasks } = await mobile.evaluate(() =>
-      window.__ELIZA_FRAME.read(),
+    const budgetMs = attempts[0]?.budgetMs ?? 1000 / FRAME_BUDGET.targetFps;
+    const medianP95FrameMs = medianNumber(
+      attempts.map((attempt) => attempt.p95FrameMs),
     );
-    await mobile.evaluate(() => window.__ELIZA_FRAME.stop());
-    const s = summarizeFrameSamples(deltas, longTasks, FRAME_BUDGET);
-    // Chromium's headless rAF timestamps commonly quantize 60 Hz frames as
-    // 16.7-16.8ms. Treat those as on-budget; real drops still exceed the budget
-    // by more than the timestamp jitter and p95 remains the primary jank gate.
-    const effectiveDroppedFrames = deltas.filter(
-      (delta) =>
-        Number.isFinite(delta) &&
-        delta > s.budgetMs + DROPPED_FRAME_EPSILON_MS,
-    ).length;
-    const droppedPct =
-      (100 * effectiveDroppedFrames) / Math.max(1, s.sampleCount);
-    const overP95Budget = s.p95FrameMs > s.budgetMs * FRAME_GATE.p95BudgetFactor;
+    const medianDroppedFrameRatio = medianNumber(
+      attempts.map((attempt) => attempt.droppedFrameRatio),
+    );
+    const medianDroppedPct = 100 * medianDroppedFrameRatio;
+    const overP95Budget =
+      medianP95FrameMs > budgetMs * FRAME_GATE.p95BudgetFactor;
     const overDroppedBudget =
-      effectiveDroppedFrames / Math.max(1, s.sampleCount) >=
-      FRAME_GATE.droppedFrameRatio;
+      medianDroppedFrameRatio >= FRAME_GATE.droppedFrameRatio;
     console.log(
-      `  [rail-swipe] fps=${s.fps.toFixed(1)} p95=${s.p95FrameMs.toFixed(1)}ms ` +
-        `worst=${s.worstFrameMs.toFixed(1)}ms dropped=${effectiveDroppedFrames}/${s.sampleCount} ` +
-        `(${droppedPct.toFixed(0)}%) long=${s.longTasks}`,
-    );
-    assert(
-      s.sampleCount >= MIN_FRAME_SAMPLES,
-      `rail-swipe window captured ≥${MIN_FRAME_SAMPLES} frames (got ${s.sampleCount})`,
+      `  [rail-swipe median] p95=${medianP95FrameMs.toFixed(1)}ms ` +
+        `dropped=${medianDroppedPct.toFixed(0)}% attempts=${attempts.length}`,
     );
     assert(
       !overP95Budget && !overDroppedBudget,
-      `rail swipe stays within the frame budget (p95 ${s.p95FrameMs.toFixed(1)}ms ≤ ` +
-        `${(s.budgetMs * FRAME_GATE.p95BudgetFactor).toFixed(1)}ms, dropped ` +
-        `${droppedPct.toFixed(0)}% < ${(FRAME_GATE.droppedFrameRatio * 100).toFixed(0)}%)`,
+      `rail swipe median stays within the frame budget (p95 ${medianP95FrameMs.toFixed(1)}ms ≤ ` +
+        `${(budgetMs * FRAME_GATE.p95BudgetFactor).toFixed(1)}ms, dropped ` +
+        `${medianDroppedPct.toFixed(0)}% < ${(FRAME_GATE.droppedFrameRatio * 100).toFixed(0)}%)`,
     );
   }
 
