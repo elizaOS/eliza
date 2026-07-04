@@ -6,12 +6,17 @@
  * branch runs first.
  */
 
-import { describe, expect, mock, test } from "bun:test";
-import type { A2AContext } from "./types";
+import { beforeEach, describe, expect, mock, test } from "bun:test";
+import type { A2AContext, MessageSendParams } from "./types";
 
 function unexpectedDependencyCall(name: string): never {
   throw new Error(`${name} should not run in A2A money guard tests`);
 }
+
+const storeTask = mock(async () => undefined);
+const addMessageToHistory = mock(async () => undefined);
+const shouldBlockUser = mock(async () => false);
+const moderateInBackground = mock(() => undefined);
 
 mock.module("ai", () => ({
   APICallError: class APICallError extends Error {},
@@ -166,18 +171,17 @@ mock.module("../../services/usage", () => ({
 mock.module("../../services/a2a-task-store", () => ({
   a2aTaskStoreService: {
     addArtifact: () => unexpectedDependencyCall("a2aTaskStoreService.addArtifact"),
-    addMessageToHistory: () => unexpectedDependencyCall("a2aTaskStoreService.addMessageToHistory"),
+    addMessageToHistory,
     get: () => unexpectedDependencyCall("a2aTaskStoreService.get"),
-    set: () => unexpectedDependencyCall("a2aTaskStoreService.set"),
+    set: storeTask,
     updateTaskState: () => unexpectedDependencyCall("a2aTaskStoreService.updateTaskState"),
   },
 }));
 
 mock.module("../../services/content-moderation", () => ({
   contentModerationService: {
-    moderateInBackground: () =>
-      unexpectedDependencyCall("contentModerationService.moderateInBackground"),
-    shouldBlockUser: () => unexpectedDependencyCall("contentModerationService.shouldBlockUser"),
+    moderateInBackground,
+    shouldBlockUser,
   },
 }));
 
@@ -188,6 +192,32 @@ mock.module("../../utils/logger", () => ({
 }));
 
 const unusableContext = undefined as unknown as A2AContext;
+const handlerContext = {
+  apiKeyId: "api-key-1",
+  agentIdentifier: "a2a-test-agent",
+  user: {
+    id: "user-1",
+    email: "test@example.com",
+    name: "Test User",
+    organization_id: "org-1",
+    organization: {
+      id: "org-1",
+      name: "Test Org",
+      credit_balance: "100",
+    },
+  },
+} as A2AContext;
+
+function resetAllowedMocks() {
+  storeTask.mockClear();
+  addMessageToHistory.mockClear();
+  shouldBlockUser.mockClear();
+  moderateInBackground.mockClear();
+}
+
+beforeEach(() => {
+  resetAllowedMocks();
+});
 
 describe("A2A latent paid skill guards", () => {
   test("chat_with_agent fails closed before agent dispatch", async () => {
@@ -208,6 +238,34 @@ describe("A2A latent paid skill guards", () => {
     ).rejects.toThrow(
       "A2A skill 'video_generation' is disabled until it is wired through the billed delivery path",
     );
+  });
+
+  test("legacy message/send dispatch reaches disabled paid skill guards", async () => {
+    const { handleMessageSend } = await import("./handlers");
+
+    for (const skillId of ["chat_with_agent", "video_generation", "generate_video"]) {
+      resetAllowedMocks();
+      const params: MessageSendParams = {
+        message: {
+          role: "user",
+          parts: [
+            { type: "text", text: "make a video" },
+            { type: "data", data: { skill: skillId, prompt: "make a video" } },
+          ],
+        },
+        metadata: {
+          taskId: `task-${skillId}`,
+          contextId: `context-${skillId}`,
+        },
+      };
+
+      await expect(handleMessageSend(params, handlerContext)).rejects.toThrow(
+        "disabled until it is wired through the billed delivery path",
+      );
+
+      expect(storeTask).toHaveBeenCalledTimes(1);
+      expect(addMessageToHistory).toHaveBeenCalledTimes(1);
+    }
   });
 
   test("disabled money skills are not advertised for A2A discovery", async () => {
