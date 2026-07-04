@@ -7,8 +7,10 @@ Views are currently rendered into a shared app surface, and background behavior 
 Screenshots:
 
 - Settings on orange launcher background: `.github/issue-evidence/views-ux-audit-2026-07-04/aesthetic-audit-output/desktop-landscape/builtin-settings.png`
+- Settings Wallet & RPC with raw backend failure on shared orange background: `.github/issue-evidence/views-ux-audit-2026-07-04/deep-subviews/desktop-settings-wallet-rpc.png`
 - Apps/launcher on shared orange background: `.github/issue-evidence/views-ux-audit-2026-07-04/aesthetic-audit-output/desktop-landscape/builtin-apps.png`
 - Browser opaque surface: `.github/issue-evidence/views-ux-audit-2026-07-04/aesthetic-audit-output/desktop-landscape/builtin-browser.png`
+- Browser active tab state: `.github/issue-evidence/views-ux-audit-2026-07-04/deep-subviews/desktop-browser-example-tab.png`
 - Wallet opaque surface: `.github/issue-evidence/views-ux-audit-2026-07-04/aesthetic-audit-output/desktop-landscape/builtin-inventory.png`
 - Partial plugin capture with host API failure noise: `.github/issue-evidence/views-ux-audit-2026-07-04/plugin-views/contacts-gui.png`
 
@@ -19,6 +21,7 @@ Screenshots:
 - Dynamic/remote views are rendered through `DynamicViewLoader` inside the same shell tree.
 - The background event channel is globally mounted via `AppBackground`.
 - Registered plugin views in the visual harness share the host API/websocket surface; without the API server, the views repeatedly emit Vite-proxied `502 Bad Gateway` and websocket connection-refused diagnostics instead of rendering through an intentional offline/capability boundary.
+- Wallet & RPC also leaks backend availability as a raw `HTTP 502` panel inside settings. This is the same boundary problem in a built-in normal view: a child capability failure is exposed as infrastructure text instead of a shell-brokered offline state.
 
 ## Research Notes
 
@@ -45,6 +48,7 @@ Define a cross-platform view-surface architecture:
 - A view-surface manifest declares background policy, header policy, lifecycle policy, and capability grants.
 - Add tests that navigate between shared-background and opaque views and assert that the prior view's background does not remain visible.
 - Add a plugin-view offline-state test: when a granted capability/backend is unavailable, the view renders a bounded local failure state rather than leaking host proxy/websocket errors through the shared surface.
+- Add a built-in capability offline-state test for Wallet & RPC/browser bridge/wallet data so normal views show product-grade recovery copy when a backend capability is unavailable.
 
 ## Evidence Gaps
 

@@ -16,8 +16,11 @@ Current examples from the 2026-07-04 audit:
 - Settings: `.github/issue-evidence/views-ux-audit-2026-07-04/aesthetic-audit-output/desktop-landscape/builtin-settings.png`
 - Settings mobile hub: `.github/issue-evidence/views-ux-audit-2026-07-04/settings-audit/mobile/_hub.png`
 - Settings mobile section: `.github/issue-evidence/views-ux-audit-2026-07-04/settings-audit/mobile/ai-model.png`
+- Settings Wallet & RPC: `.github/issue-evidence/views-ux-audit-2026-07-04/deep-subviews/desktop-settings-wallet-rpc.png`
 - Browser: `.github/issue-evidence/views-ux-audit-2026-07-04/aesthetic-audit-output/desktop-landscape/builtin-browser.png`
+- Browser active tab: `.github/issue-evidence/views-ux-audit-2026-07-04/deep-subviews/desktop-browser-example-tab.png`
 - Wallet: `.github/issue-evidence/views-ux-audit-2026-07-04/aesthetic-audit-output/desktop-landscape/builtin-inventory.png`
+- Wallet Perps: `.github/issue-evidence/views-ux-audit-2026-07-04/deep-subviews/desktop-wallet-perps-hyperliquid.png`
 - Launcher/apps: `.github/issue-evidence/views-ux-audit-2026-07-04/aesthetic-audit-output/desktop-landscape/builtin-apps.png`
 
 ## Evidence
@@ -31,6 +34,8 @@ The app currently has multiple header/back patterns:
 Settings is especially inconsistent: desktop uses a left settings rail plus a section heading; mobile section views add a text "Settings" back button. Neither matches the requested normal-view header.
 
 The focused settings pass captured hub plus 15 settings sections at desktop and mobile. It makes the inconsistency more obvious: mobile settings hub has a large left-offset `Settings` heading with no shell header, while mobile section pages use an inline `← Settings` text button and a separate icon/title row. The expected pattern is one centered view title with one bare left back icon.
+
+The deep subview pass expands the same finding beyond settings. Browser active-tab states use toolbar chrome as page identity. Hyperliquid/Polymarket wallet-family routes render local `Refresh`, `Home`, `Back`, and market controls instead of the same normal-view header. Wallet & RPC has a section-local heading and rail state, but no centered view header.
 
 ## Proposed Direction
 
@@ -56,5 +61,5 @@ Normal views render through the shell header. FullscreenViews opt out explicitly
 
 ## Evidence Gaps / Known Defects
 
-- `wallet-rpc` settings did not capture in either desktop or mobile: `#wallet-rpc` never appeared for the settings audit harness.
+- Generic `wallet-rpc` settings capture by id still fails, but direct navigation/click now captures Wallet & RPC at desktop/mobile. The section id/anchor contract needs repair.
 - Full plugin-view header coverage is still missing because registered plugin routes hit API proxy failures without a running API server.

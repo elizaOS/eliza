@@ -28,16 +28,35 @@ That produced 32 settings screenshots: hub plus 15 sections at desktop and mobil
 
 A registered-plugin-view screenshot pass was attempted. It captured `contacts` GUI/TUI and `hyperliquid` GUI screenshots, then was stopped because each view was failing on repeated `502 Bad Gateway` and `ws://127.0.0.1:31337/ws` connection-refused errors. Starting the full dev stack to provide the API then failed with `ENOSPC` while Bun extracted packages. Plugin-view coverage therefore remains blocked by the local disk/API startup state.
 
+A deeper subview pass was added for this audit and run against the reusable Vite server:
+
+```bash
+ELIZA_VIEWS_DEEP_AUDIT=1 \
+ELIZA_UI_SMOKE_REUSE_SERVER=1 \
+ELIZA_UI_SMOKE_DISABLE_VIDEO=1 \
+./packages/app/node_modules/.bin/playwright test \
+  --config packages/app/playwright.ui-smoke.config.ts \
+  --project=chromium \
+  packages/app/test/ui-smoke/views-deep-audit-capture.spec.ts
+```
+
+It captured 25 additional screenshots covering wallet tabs, Hyperliquid perps, Polymarket predictions, browser empty/tab/navigation states, launcher pages, and Settings -> Wallet & RPC at desktop/mobile. The first desktop launcher/settings attempt failed on a Settings layout-shift telemetry assertion; a direct settings load then captured the target section.
+
 ## Evidence
 
 - Screenshot directory: `.github/issue-evidence/views-ux-audit-2026-07-04/aesthetic-audit-output/`
 - Settings subview directory: `.github/issue-evidence/views-ux-audit-2026-07-04/settings-audit/`
+- Deep subview directory: `.github/issue-evidence/views-ux-audit-2026-07-04/deep-subviews/`
 - Partial plugin-view directory: `.github/issue-evidence/views-ux-audit-2026-07-04/plugin-views/`
 - Settings: `desktop-landscape/builtin-settings.png`, `mobile-portrait/builtin-settings.png`, `mobile-landscape/builtin-settings.png`, `ipad-portrait/builtin-settings.png`
 - Settings subviews: `settings-audit/desktop/_hub.png`, `settings-audit/desktop/ai-model.png`, `settings-audit/desktop/advanced.png`, `settings-audit/mobile/_hub.png`, `settings-audit/mobile/ai-model.png`, `settings-audit/mobile/advanced.png`
+- Settings Wallet & RPC: `deep-subviews/desktop-settings-wallet-rpc.png`, `deep-subviews/mobile-settings-wallet-rpc.png`
 - Browser: `desktop-landscape/builtin-browser.png`, `mobile-portrait/builtin-browser.png`, `mobile-landscape/builtin-browser.png`, `ipad-portrait/builtin-browser.png`
+- Browser subviews: `deep-subviews/desktop-browser-empty.png`, `deep-subviews/desktop-browser-example-tab.png`, `deep-subviews/desktop-browser-docs-navigation.png`, `deep-subviews/mobile-browser-empty.png`, `deep-subviews/mobile-browser-example-tab.png`, `deep-subviews/mobile-browser-docs-navigation.png`
 - Launcher / apps: `desktop-landscape/builtin-apps.png`, `mobile-portrait/builtin-apps.png`, `mobile-landscape/builtin-apps.png`, `ipad-portrait/builtin-apps.png`
+- Launcher pages: `deep-subviews/desktop-launcher-page-0.png`, `deep-subviews/desktop-launcher-page-1.png`, `deep-subviews/mobile-launcher-page-0.png`
 - Wallet: `desktop-landscape/builtin-inventory.png`, `mobile-portrait/builtin-inventory.png`, `mobile-landscape/builtin-inventory.png`, `ipad-portrait/builtin-inventory.png`
+- Wallet subviews: `deep-subviews/desktop-wallet-tokens.png`, `deep-subviews/desktop-wallet-defi.png`, `deep-subviews/desktop-wallet-nfts.png`, `deep-subviews/desktop-wallet-perps-hyperliquid.png`, `deep-subviews/desktop-wallet-predictions-polymarket.png`, plus mobile equivalents.
 - Partial plugin captures: `plugin-views/contacts-gui.png`, `plugin-views/contacts-tui.png`, `plugin-views/hyperliquid-gui.png`
 
 ## Executive Read
@@ -117,7 +136,8 @@ Visible issues:
 - Section back behavior is not aligned with the desired header system.
 - Mobile hub content is partially hidden behind the fixed composer; the `Appearance` row is clipped at the bottom of the captured viewport.
 - Mobile sections use a tiny inline `Settings` text-back affordance, then a separate section title; this does not read as a product-level navigation bar.
-- `wallet-rpc` is advertised in the settings section catalog but was not reachable by the settings capture harness in either desktop or mobile.
+- The initial settings section harness could not resolve `wallet-rpc` by id, even though the nav item was visible. Direct navigation/click did capture Wallet & RPC later, which means the coverage contract and rendered section ids are inconsistent.
+- Wallet & RPC shows `HTTP 502` inside the wallet keys panel when no backend is available. That is raw infrastructure leakage in a preferences view.
 
 Actionable:
 
@@ -125,6 +145,8 @@ Actionable:
 - Use the shared normal-view header: centered `Settings`, back icon left.
 - Make the selected section title a local content heading, not another page-level header.
 - Collapse repeated form spacing into a quiet settings rhythm: label, control, helper text, with consistent max widths.
+- Give Wallet & RPC a polished offline/backend-unavailable state with plain-language recovery, not a bare HTTP status.
+- Fix the settings section id/anchor contract so `wallet-rpc` can be captured by the generic settings audit.
 
 ### 5. Browser is useful but too faint
 
@@ -134,6 +156,9 @@ Visible issues:
 - The empty state is centered, but the install bridge panel is low on the page and feels disconnected from the primary "open/search" actions.
 - The left sidebar has three empty groups; it communicates absence more than capability.
 - There is no view title or consistent product-level header.
+- In active-tab states, the desktop browser still has no page title; the tab sidebar and address bar become the entire view identity.
+- On mobile, the address field truncates so aggressively that `https://example.com/` becomes visually clipped mid-token; the toolbar controls crowd the first row.
+- The floating composer overlaps the browser content area at the bottom, even when a page is loaded.
 
 Actionable:
 
@@ -141,6 +166,7 @@ Actionable:
 - Turn the empty state into one focused composition: URL/search input, primary action, bridge status, then tabs.
 - Hide empty tab groups until they contain something or combine them into one empty state.
 - Increase contrast for toolbar controls and disabled actions.
+- On mobile, allocate stable toolbar widths and collapse secondary controls into an overflow menu rather than crushing the address field.
 
 ### 6. Wallet has structure but not enough trust polish
 
@@ -150,6 +176,9 @@ Visible issues:
 - Balance and chain/account chips are legible, but the colored dots look like placeholders or redacted content.
 - Tokens, DeFi, NFTs columns float in too much blank space; the layout lacks a financial-product grid discipline.
 - The floating composer occludes the lower portion of the wallet surface.
+- Hyperliquid and Polymarket are effectively wallet-family subviews, but they render with their own raw utility chrome instead of a shared wallet header/subnav system.
+- Polymarket captured an in-view runtime error: `Cannot read properties of undefined (reading 'ready')`.
+- Wallet tabs (Tokens/DeFi/NFTs) expose useful data, but the visual treatment is still closer to a debug sidebar than a trustworthy financial product.
 
 Actionable:
 
@@ -157,6 +186,8 @@ Actionable:
 - Replace placeholder/redaction dots with deliberate privacy controls and clear labels.
 - Align balances, chains, token rows, and chart space on a tighter financial grid.
 - Reserve bottom safe area for the composer or suppress the composer for transactional fullscreen states.
+- Bring Wallet, Perps, and Predictions under one consistent wallet-family shell with shared title, secondary nav, loading/error states, and backend-unavailable copy.
+- Fix the Polymarket undefined `ready` access and add a visual assertion for the predictions route.
 
 ### 7. Plugin views need an offline and chrome contract
 
@@ -186,5 +217,5 @@ Implication: separate surfaces are realistic, but the secure architecture needs 
 ## Verification Gaps
 
 - Full plugin views were not captured because plugin routes repeatedly hit Vite-proxied API failures (`502 Bad Gateway`, websocket connection refused) and the full API dev stack then failed to start due to `ENOSPC`.
-- `wallet-rpc` settings was not captured because the expected `#wallet-rpc` section never appeared.
+- The generic settings harness still cannot capture `wallet-rpc` through its id/anchor path; direct click capture works and is included.
 - Screenshots alone do not verify keyboard focus order, screen-reader semantics, or actual background mutation after user-driven navigation.
