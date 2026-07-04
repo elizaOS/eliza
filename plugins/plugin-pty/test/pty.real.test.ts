@@ -1,3 +1,8 @@
+/**
+ * Real PTY engine tests for the session store and console bridge.
+ * They spawn actual OS processes through the runtime-selected PTY backend and assert output, exit, and keystroke flow without the fake handle.
+ */
+
 import { describe, expect, it } from "vitest";
 import { isBunRuntime } from "../services/bun-pty-spawn";
 import type {
@@ -10,12 +15,6 @@ import {
   PtySessionStore,
 } from "../services/pty-session-store";
 
-/**
- * Real end-to-end test of the PTY engine: spawns an ACTUAL OS process through
- * the real store + bridge (no fakes) and asserts output/exit/keystroke flow.
- * Under Bun this exercises Bun.spawn({ terminal }) via bunTruePtySpawn; under
- * Node it gates on `@lydell/node-pty` actually loading (optional native dep).
- */
 let ptyAvailable = isBunRuntime();
 try {
   if (!ptyAvailable) {

@@ -1,9 +1,7 @@
-// Contract test: the Model Tester TUI capability set stays in sync across its
-// three sources — the exported capability list, plugin.ts `capabilities`, and
-// the interact() handler the view bundle re-exports. The terminal surface mounts
-// the unified ModelTesterSpatialView (see register-terminal-view.tsx) and the
-// view bundle exports `interact`, so these capabilities drive real terminal
-// dispatch; this test locks them against drift.
+/**
+ * Contract tests for Model Tester TUI capability wiring.
+ * They keep the exported capability list, plugin view declaration, and bundle `interact` handler aligned so terminal dispatch cannot drift silently.
+ */
 
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";

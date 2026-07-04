@@ -1,3 +1,8 @@
+/**
+ * PTY session store and console bridge for web-terminal sessions.
+ * It confines child process environment/cwd, buffers output for late subscribers, selects Bun or Node PTY backends, and emits the bridge events consumed by the agent server.
+ */
+
 import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
 import path from "node:path";
@@ -28,10 +33,6 @@ const EXITED_SESSION_TTL_MS = 15_000;
 /** Fallback reap for REPL sessions whose browser/socket disappeared. */
 const DEFAULT_IDLE_TIMEOUT_MS = 15 * 60_000;
 
-/**
- * Small, non-secret process env that a child terminal commonly needs to start
- * (path lookup, home directory, locale, color). Do not add account/API secrets.
- */
 const SAFE_INHERITED_ENV_KEYS = new Set([
   "PATH",
   "Path",
@@ -56,7 +57,6 @@ const SAFE_INHERITED_ENV_KEYS = new Set([
   "XDG_DATA_HOME",
 ]);
 
-/** Explicit spawn-spec env the interactive-CLI PTYs are allowed to receive. */
 const ALLOWED_SPEC_ENV_KEYS = new Set([
   "ELIZA_CODE_PROVIDER",
   "ELIZA_CODE_CODING_ONLY",

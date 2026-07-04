@@ -1,11 +1,10 @@
+/**
+ * Controllable in-memory PTY test double for the PTY session store.
+ * Tests exercise the same handle callbacks and write/resize/kill methods as a native PTY while replacing only the operating-system terminal.
+ */
+
 import type { PtyHandle, PtySpawn } from "../services/pty-types";
 
-/**
- * A controllable in-memory stand-in for a node-pty `IPty`. Lets tests drive the
- * exact same code path the native module would (onData/onExit callbacks,
- * write/resize/kill recording) without a real terminal — so the store, bridge,
- * and routing logic are exercised for real, only the OS PTY is doubled.
- */
 export class FakePty implements PtyHandle {
   readonly pid: number;
   readonly written: string[] = [];

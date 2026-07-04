@@ -1,3 +1,8 @@
+/**
+ * Selection-validator tests for MCP tool and resource dispatch.
+ * They cover untrusted model output before a call reaches a connected server, including server state, tool/resource existence, and argument schema checks.
+ */
+
 import type { State } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {
@@ -5,13 +10,6 @@ import {
   validateToolSelectionArgument,
   validateToolSelectionName,
 } from "../src/utils/validation.js";
-
-/**
- * The selection validators gate untrusted model output before it dispatches a
- * tool/resource call: a selection may only target a *connected* server and a
- * tool/resource that actually exists, and tool arguments must satisfy the
- * tool's own input schema.
- */
 
 const stateWith = (mcp: Record<string, unknown>): State =>
   ({ values: { mcp }, data: {}, text: "" }) as unknown as State;

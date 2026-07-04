@@ -1,19 +1,7 @@
-// External-API CONTRACT test.
-//
-// The api-client wire types (TrajectoryListResult / TrajectoryDetail / UILlmCall /
-// UIToolEvent / UIEvaluationEvent / UIProviderAccess) describe the subset of the
-// @elizaos/plugin-training trajectory routes this widget reads. This test feeds
-// the REAL parser (fetchTrajectoryList / fetchTrajectoryDetail / readJson) a
-// fixture whose shape is copied verbatim from the provider's response builders:
-//   - GET /api/trajectories  -> { trajectories: UITrajectoryRecord[], total, offset, limit }
-//     (plugin-training/src/routes/trajectory-routes.ts: handleGetTrajectories
-//      -> listItemToUIRecord)
-//   - GET /api/trajectories/:id -> UITrajectoryDetailResult
-//     (handleGetTrajectoryDetail -> trajectoryToUIDetail: trajectory + llmCalls
-//      with stepType/purpose/actionType/response, providerAccesses, toolEvents,
-//      evaluationEvents)
-// It then asserts the parsed DTOs are contract-valid AND that summarizePhases()
-// + extractShouldRespondDecision() classify the real payload end-to-end.
+/**
+ * External API contract tests for the trajectory logger client.
+ * The fixtures mirror plugin-training route responses so the real parser and phase summarizers are checked against the wire shape this widget reads.
+ */
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -24,8 +12,6 @@ import {
 } from "./api-client.js";
 import { extractShouldRespondDecision, summarizePhases } from "./phases.js";
 
-// Verbatim from listItemToUIRecord(): a full UITrajectoryRecord. The widget reads
-// only id/status/llmCallCount, but the real route returns the whole record.
 const LIST_PAYLOAD = {
   trajectories: [
     {
@@ -72,8 +58,6 @@ const LIST_PAYLOAD = {
   limit: 10,
 };
 
-// Verbatim from trajectoryToUIDetail() + buildUIEventFields(): a complete
-// UITrajectoryDetailResult covering all four phases.
 const DETAIL_PAYLOAD = {
   trajectory: { ...LIST_PAYLOAD.trajectories[1], status: "completed" },
   llmCalls: [

@@ -1,3 +1,8 @@
+/**
+ * Service registration for interactive PTY terminal sessions.
+ * It exposes the `PTY_SERVICE` console bridge that the agent server's WebSocket layer uses for output, keystrokes, resize events, and session lifecycle.
+ */
+
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
 import {
   PtyConsoleBridge,
@@ -6,10 +11,6 @@ import {
 } from "./pty-session-store";
 import type { PtySessionInfo, PtySpawnSpec } from "./pty-types";
 
-/**
- * Resolves the directory interactive PTY sessions are confined to:
- * `PTY_ALLOWED_DIRECTORY` (setting or env) → the process cwd.
- */
 function resolveAllowedRoot(runtime?: IAgentRuntime): string {
   const fromSetting = runtime?.getSetting?.("PTY_ALLOWED_DIRECTORY");
   const raw =
@@ -29,17 +30,6 @@ function resolveIdleTimeoutMs(runtime?: IAgentRuntime): number | undefined {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
-/**
- * `PTY_SERVICE`: the single service the agent server looks up
- * (`runtime.getService("PTY_SERVICE")`) to drive the web terminal. It exposes a
- * {@link PtyConsoleBridge} (`consoleBridge`) that the WS layer subscribes to for
- * output and forwards keystrokes/resizes into, plus session lifecycle methods
- * the plugin's routes call.
- *
- * Registering this service is the ONE missing piece: the xterm UI, the WS
- * `pty-input`/`pty-output`/`pty-resize` handlers, and the interactive
- * `eliza-code` CLI all already exist — this connects them.
- */
 export class PtyService extends Service {
   public static serviceType = "PTY_SERVICE";
 

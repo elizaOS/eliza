@@ -1,7 +1,8 @@
-// View-bundle `interact` capability handler, split out of TrajectoryLoggerView.tsx
-// so that file exports only React components and stays Fast-Refresh-compatible
-// (Vite would full-reload a component file that also exports a plain function).
-// The view bundle re-exports `interact` via ./trajectory-logger-view-bundle.ts.
+/**
+ * View-bundle capability handler for the trajectory logger TUI surface.
+ * It stays separate from the React component file so Fast Refresh sees component-only exports while the built view bundle still exposes `interact`.
+ */
+
 import { fetchTrajectoryDetail, fetchTrajectoryList } from "../api-client";
 
 export async function interact(

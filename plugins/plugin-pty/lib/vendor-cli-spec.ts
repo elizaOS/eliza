@@ -1,27 +1,11 @@
+/**
+ * Spawn-spec builders for the gated vendor-CLI PTY tier.
+ * They launch real interactive subscription CLIs only through explicit route gates, pass credential handles opaquely, and never parse or persist vendor tokens here.
+ */
+
 import { existsSync } from "node:fs";
 import path from "node:path";
 import type { PtySpawnSpec } from "../services/pty-types";
-
-/**
- * Spawn specs for the EXPERIMENTAL vendor-CLI tier (#10832 Phase 2): the real
- * interactive **Claude Code** / **Codex** CLIs in a PTY, authenticating with
- * the user's OWN subscription credentials. Running a vendor CLI on a
- * subscription is the TOS-unsafe tier, so the spawn route only reaches these
- * builders behind `PTY_VENDOR_CLI_ENABLED` (default OFF) — and never on store
- * builds.
- *
- * Credential paths reuse the conventions of the existing subscription plugins:
- *   • claude — `plugin-anthropic-proxy`'s loader order: `CLAUDE_CODE_OAUTH_TOKEN`
- *     env first, else the CLI reads `~/.claude/.credentials.json` itself (the
- *     PTY inherits HOME). The token is passed through opaquely, never parsed
- *     or logged.
- *   • codex — `plugin-codex-cli`'s auth cache `~/.codex/auth.json`; an explicit
- *     `CODEX_HOME` (the per-account dir convention used by
- *     coding-account-bridge) is passed through when configured.
- *
- * Both CLIs are launched PLAIN (no args): the interactive TUI, not the
- * `claude --print` / `codex exec` one-shot paths.
- */
 
 /** Session kinds served by the vendor-CLI tier. */
 export type PtyVendorCliKind = "claude" | "codex";

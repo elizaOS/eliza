@@ -1,12 +1,11 @@
+/**
+ * Shell command-injection guard tests for executable command strings.
+ * They pin dangerous patterns that the shell plugin must reject before command execution reaches the service.
+ */
+
 import { describe, expect, it } from "vitest";
 import { isSafeCommand } from "../utils/pathUtils";
 
-/**
- * Tests for the shell command-injection guard (#8801 / #9943). isSafeCommand
- * gates what the shell plugin will run, so it is a security boundary — yet it
- * had no assertions. The dangerous-pattern set is pinned so a future edit that
- * weakens it fails loudly.
- */
 describe("isSafeCommand", () => {
   it("allows ordinary commands (including a single pipe)", () => {
     for (const c of ["ls -la", "echo hello world", "git status", "cat file.txt | grep needle"]) {

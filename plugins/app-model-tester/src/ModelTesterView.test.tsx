@@ -1,11 +1,9 @@
-// @vitest-environment jsdom
-
-// Drives the unified ModelTesterView (the single GUI/XR/TUI data wrapper) through
-// the rendered DOM: the same component the bundle exports for the "gui", "xr",
-// and "tui" modalities. Asserts the on-mount status fetch, the prompt-preset
-// switch, run-all sequencing, refresh, per-probe run dispatch, and the Back
-// navigation — functional parity with the legacy ModelTesterAppView surface,
-// expressed through the spatial action contract.
+/**
+ * Drives the unified ModelTesterView data wrapper through the rendered DOM.
+ * The harness covers the same component exported for GUI, XR, and TUI modalities, including status fetch, prompt presets, run-all sequencing, refresh, probe dispatch, and navigation through the spatial action contract.
+ *
+ * @vitest-environment jsdom
+ */
 
 import { NAVIGATE_VIEW_EVENT } from "@elizaos/ui/events";
 import {

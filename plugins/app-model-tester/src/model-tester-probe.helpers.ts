@@ -1,7 +1,7 @@
-// Browser-side asset helpers shared by the tri-modal data wrapper
-// (ModelTesterView) and the legacy overlay wrapper (ModelTesterAppView).
-// Kept in a plain .ts module (no React) so both component files import the same
-// decode logic instead of duplicating it.
+/**
+ * Browser-side asset helpers shared by the Model Tester view wrappers.
+ * The module stays React-free so both component surfaces use the same file and audio decode logic.
+ */
 
 declare global {
   interface Window {

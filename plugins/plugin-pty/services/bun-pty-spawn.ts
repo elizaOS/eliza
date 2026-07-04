@@ -1,12 +1,10 @@
+/**
+ * Bun native PTY adapter for interactive terminal sessions.
+ * It uses `Bun.spawn({ terminal })` under Bun because node-pty's write path is broken there, while preserving the same handle contract the Node adapter uses.
+ */
+
 import type { PtyHandle, PtySpawn } from "./pty-types";
 
-/**
- * True when running on the Bun runtime, which provides a native PTY
- * (`Bun.spawn({ terminal })`). We prefer it under Bun because `@lydell/node-pty`'s
- * write path is broken there (`this._socket.write is not a function`) — output
- * streams fine but keystrokes throw. Bun's own terminal handles both. Under
- * Node, node-pty works end to end, so we use it there.
- */
 export function isBunRuntime(): boolean {
   return typeof (globalThis as { Bun?: unknown }).Bun !== "undefined";
 }

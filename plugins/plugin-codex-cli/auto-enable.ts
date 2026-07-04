@@ -1,9 +1,8 @@
-// Auto-enable check for @elizaos/plugin-codex-cli.
-//
-// Plugin manifest entry-point — referenced by package.json's
-// `elizaos.plugin.autoEnableModule`. Keep this module light: config reads
-// only, no service init, no transitive imports of the full plugin runtime.
-// The auto-enable engine loads dozens of these per boot.
+/**
+ * Auto-enable gate for the Codex CLI model-provider plugin.
+ * The manifest loads this module during boot, so it stays limited to config inspection and avoids backend/auth imports.
+ */
+
 import type { PluginAutoEnableContext } from "@elizaos/core";
 
 /**

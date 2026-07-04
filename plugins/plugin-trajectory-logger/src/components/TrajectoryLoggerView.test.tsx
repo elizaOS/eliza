@@ -1,11 +1,9 @@
-// @vitest-environment jsdom
-
-// Drives the unified TrajectoryLoggerView (the single GUI/XR data wrapper) that
-// the bundle exports for the "gui" and "xr" modalities. Asserts it mounts the
-// one presentational TrajectoryLoggerSpatialView inside a SpatialSurface, polls
-// real-shape trajectory data into the snapshot, and routes the spatial action
-// ids (`back`, `select:<slot>:<phase>`, `refresh`) across the GUI and TUI
-// surfaces.
+/**
+ * Drives the unified TrajectoryLoggerView data wrapper through the rendered DOM.
+ * The harness mounts the spatial surface, feeds real-shape trajectory data, and routes spatial action ids across the GUI and TUI surfaces.
+ *
+ * @vitest-environment jsdom
+ */
 
 import { NAVIGATE_VIEW_EVENT } from "@elizaos/ui/events";
 import { SpatialSurface } from "@elizaos/ui/spatial";

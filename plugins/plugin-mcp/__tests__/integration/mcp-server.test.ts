@@ -1,3 +1,8 @@
+/**
+ * Opt-in integration tests for real MCP server connectivity.
+ * The npx-backed lane is gated by ELIZA_MCP_NPX_INTEGRATION because package-manager and registry delays can exceed the normal unit timeout.
+ */
+
 import { execSync } from "node:child_process";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
@@ -5,7 +10,6 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 const runNpxMcpServerTests = process.env.ELIZA_MCP_NPX_INTEGRATION === "1";
 
-// Helper function to check if a command exists
 function commandExists(cmd: string): boolean {
   try {
     execSync(`which ${cmd}`, { stdio: "ignore" });
@@ -14,18 +18,6 @@ function commandExists(cmd: string): boolean {
     return false;
   }
 }
-
-/**
- * Integration tests for MCP server connectivity.
- * These tests require real MCP servers to be available.
- *
- * To run these tests, you need:
- * 1. Node.js installed
- * 2. npx available in PATH
- *
- * The external npx-backed tests are opt-in via ELIZA_MCP_NPX_INTEGRATION=1
- * because package-manager/network delays can exceed the unit test timeout.
- */
 
 describe("MCP Server Integration", () => {
   describe("StdioClientTransport", () => {

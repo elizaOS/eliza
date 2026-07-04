@@ -1,23 +1,12 @@
+/**
+ * PTY service plugin for elizaOS web terminal sessions.
+ * It registers the `PTY_SERVICE` bridge and authenticated spawn/list/stop routes that connect the existing xterm UI and WebSocket path to real interactive CLI processes.
+ */
+
 import type { Plugin } from "@elizaos/core";
 import { ptyRoutes } from "./routes/pty-routes";
 import { PtyService } from "./services/pty-service";
 
-/**
- * `@elizaos/plugin-pty` — registers `PTY_SERVICE`, the one piece the app's web
- * terminal needs to drive a real interactive CLI.
- *
- * The xterm UI, the WebSocket `pty-input`/`pty-output`/`pty-resize` handlers in
- * the agent server, and the interactive `eliza-code` CLI already exist. Without
- * a registered `PTY_SERVICE`, `getPtyConsoleBridge()` returns null and the
- * terminal is inert. This plugin supplies that service (a node-pty–backed
- * console bridge) plus routes to spawn/list/stop sessions — most importantly an
- * interactive `eliza-code` session pointed at Eliza Cloud/cerebras, giving a
- * real CLI with all slash commands on any device, with an agent we own (no TOS
- * exposure).
- *
- * Opt-in: add it to an agent's plugin list. Intended for the developer-gated
- * cockpit; disabled automatically on store builds.
- */
 export const ptyPlugin: Plugin = {
   name: "pty",
   description:

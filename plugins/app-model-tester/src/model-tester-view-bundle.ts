@@ -1,7 +1,6 @@
-// Vite view-bundle entry. Re-exports the unified spatial data wrapper plus the
-// `interact` capability handler so the built bundle (dist/views/bundle.js)
-// exposes the named exports the view loader reads (`ModelTesterView`,
-// `interact`). Kept separate from ModelTesterView.tsx so that file exports only
-// React components and stays Fast-Refresh-compatible in dev.
+/**
+ * Vite view-bundle entry for Model Tester.
+ * It re-exports the unified view wrapper and capability handler under the named exports the elizaOS view loader reads.
+ */
 export { interact } from "./ModelTesterAppView.interact";
 export { ModelTesterView } from "./ModelTesterView";

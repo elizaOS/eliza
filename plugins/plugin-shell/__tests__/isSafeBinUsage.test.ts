@@ -1,14 +1,12 @@
+/**
+ * Shell auto-approval guard tests for safe binary usage.
+ * They pin the security boundary that only allowlisted executables without path-like or existing-file arguments may be auto-approved.
+ */
+
 import { describe, expect, it } from "vitest";
 import { isSafeBinUsage, normalizeSafeBins } from "../approvals/analysis";
 import type { CommandResolution } from "../approvals/types";
 
-/**
- * Tests for the shell auto-approval guard (#8801 / #9943). isSafeBinUsage decides
- * whether a command may be auto-approved: only an allowlisted executable with NO
- * path-like / existing-file arguments (so it can't quietly read or mutate files).
- * It's a security boundary and was untested; `fileExists` is injected for
- * determinism.
- */
 const res = (
   executableName: string,
   resolvedPath: string | undefined = `/usr/bin/${executableName}`

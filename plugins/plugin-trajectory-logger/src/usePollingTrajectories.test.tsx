@@ -1,9 +1,8 @@
-// @vitest-environment jsdom
-
 /**
- * Exercises the `usePollingTrajectories` hook against a stubbed `fetch` serving
- * real-shape list/detail envelopes, asserting it selects the active + last
- * trajectory, polls, and distinguishes the routes-unavailable state from errors.
+ * Polling-hook tests for trajectory logger route state.
+ * They serve real-shape list/detail envelopes through fetch and assert active/last selection, polling, and unavailable-route handling.
+ *
+ * @vitest-environment jsdom
  */
 import { cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";

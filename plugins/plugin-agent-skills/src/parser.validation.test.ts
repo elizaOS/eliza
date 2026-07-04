@@ -1,14 +1,12 @@
+/**
+ * Skill-package validation tests for Agent Skills frontmatter.
+ * The parser gates SKILL.md loading, including slug constraints, directory/name alignment, and required fields.
+ */
+
 import { describe, expect, it } from "vitest";
 import { validateFrontmatter, validateSkillDirectory } from "./parser.ts";
 import type { SkillFrontmatter } from "./types.ts";
 
-/**
- * Skill-package validation (#8801 — shipped untested). `validateFrontmatter` /
- * `validateSkillDirectory` are the gate a SKILL.md passes before the agent will
- * load it; the name is used as a directory/registry key, so a name that is not
- * a constrained slug (uppercase, underscores, leading/consecutive hyphens, a
- * mismatch with its directory) must be REJECTED, and required fields enforced.
- */
 const fm = (over: Partial<SkillFrontmatter> = {}): SkillFrontmatter => ({
   name: "my-skill",
   description: "A clear description of what this skill does and when to use it.",

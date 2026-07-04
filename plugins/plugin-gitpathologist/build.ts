@@ -1,19 +1,12 @@
 #!/usr/bin/env bun
-import { buildPlugin } from "../plugin-build";
 
 /**
- * Build script for @elizaos/plugin-gitpathologist.
- *
- * Outputs:
- * - ESM (Node): dist/node/index.js
- * - CJS (Node): dist/cjs/index.cjs
- * - Types: dist/index.d.ts + dist/node/index.d.ts + dist/cjs/index.d.ts
- *
- * Runs on the shared `buildPlugin` driver. The CJS bundle's `index.js` is
- * renamed to `index.cjs`; its sibling `index.js.map` is intentionally left
- * unrenamed so the emitted `//# sourceMappingURL=index.js.map` reference stays
- * valid.
+ * Build entrypoint for the git-pathology plugin.
+ * It uses the shared plugin build driver to emit Node ESM/CJS bundles and declarations while preserving CJS sourcemap references.
  */
+
+import { buildPlugin } from "../plugin-build";
+
 const reexport = (from: string) => `export * from "${from}";\nexport { default } from "${from}";\n`;
 
 await buildPlugin({

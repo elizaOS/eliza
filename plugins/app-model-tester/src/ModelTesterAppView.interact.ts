@@ -1,7 +1,7 @@
-// View-bundle `interact` capability handler, split out of ModelTesterAppView.tsx
-// so that file exports only React components and stays Fast-Refresh-compatible
-// (Vite would full-reload a component file that also exports a plain function).
-// The view bundle re-exports `interact` via ./model-tester-view-bundle.ts.
+/**
+ * View-bundle capability handler for the Model Tester TUI surface.
+ * It stays separate from the React component file so Fast Refresh sees component-only exports while the built view bundle still exposes `interact`.
+ */
 
 const DEFAULT_PROMPT =
   "Say exactly one short sentence about the Eliza-1 model tester working.";
@@ -13,9 +13,6 @@ const MODEL_TESTER_COMMAND_TO_TEST: Record<string, string> = {
   "run-vad": "vad",
 };
 
-// The TUI capability ids this view registers (matches plugin.ts `capabilities`
-// and the interact() handler below). The view bundle re-exports `interact`, so
-// the terminal surface dispatches these capabilities through the same handler.
 export const MODEL_TESTER_TUI_CAPABILITIES: readonly string[] = [
   "get-status",
   ...Object.keys(MODEL_TESTER_COMMAND_TO_TEST),

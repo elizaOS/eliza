@@ -1,12 +1,11 @@
+/**
+ * In-memory skill-manifest builder tests for the security scanner.
+ * The manifest records byte lengths for text and binary payloads so integrity checks do not confuse character count with UTF-8 size.
+ */
+
 import { describe, expect, it } from "vitest";
 import { buildManifestEntriesFromMemory } from "./manifest-scanner";
 
-/**
- * Tests for the in-memory skill-manifest builder (#8801 / #9943). The manifest
- * feeds the security scanner / integrity check, so the per-file size must be the
- * UTF-8 BYTE length (not the character count) — otherwise non-ASCII files report
- * a wrong size. It was untested.
- */
 describe("buildManifestEntriesFromMemory", () => {
   it("returns an empty manifest for no files", () => {
     expect(buildManifestEntriesFromMemory(new Map())).toEqual([]);

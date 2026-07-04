@@ -1,27 +1,12 @@
+/**
+ * Spawn-spec builders for interactive eliza-code PTY sessions.
+ * The pure builders point the owned eliza-code CLI at Eliza Cloud with coding-only confinement so cockpit sessions run a real slash-command terminal without inheriting the server environment.
+ */
+
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/core";
 import type { PtySpawnSpec } from "../services/pty-types";
-
-/**
- * Builds the {@link PtySpawnSpec} that launches the **interactive** `eliza-code`
- * CLI (the real slash-command TUI in `packages/examples/code`) inside a PTY,
- * pointed at Eliza Cloud so inference runs on cerebras (`gemma-4-31b` for both
- * fast and smart tiers).
- *
- * This is the load-bearing wiring for "a real CLI on my phone": eliza-code is an
- * agent we own (no TOS exposure), it already implements `/help`, `/clear`,
- * `/task`, etc., and it selects its provider purely from env — so pointing it at
- * cerebras is entirely an environment concern, captured here as a pure function.
- *
- * eliza-code's provider resolution (packages/examples/code/src/lib/model-provider.ts):
- *   ELIZA_CODE_PROVIDER=openai  →  plugin-openai, keyed by OPENAI_API_KEY, with
- *   OPENAI_BASE_URL / OPENAI_{SMALL,MEDIUM,LARGE}_MODEL overrides. Eliza Cloud
- *   exposes an OpenAI-compatible endpoint, so this routes straight to cerebras.
- *
- * Cockpit PTY sessions run eliza-code in coding-only mode so the terminal
- * cannot recursively spawn orchestrator sub-agents from inside the REPL.
- */
 
 export const ELIZA_CLOUD_DEFAULT_BASE_URL = "https://api.elizacloud.ai/v1";
 export const ELIZA_CLOUD_FAST_MODEL = DEFAULT_CEREBRAS_TEXT_MODEL;

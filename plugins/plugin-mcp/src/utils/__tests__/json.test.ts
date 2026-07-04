@@ -1,13 +1,11 @@
+/**
+ * JSON utility tests for MCP model-output parsing and argument validation.
+ * They cover fenced/prose-wrapped JSON extraction, JSON5 leniency, and schema checks for tool-call arguments.
+ */
+
 import { describe, expect, it } from "vitest";
 import { parseJSON, parseStructuredModelOutput, validateJsonSchema } from "../json";
 
-/**
- * Tests for the MCP JSON utilities (#8801 / #9943). `parseJSON` /
- * `parseStructuredModelOutput` extract a JSON object out of raw model output
- * (fences, surrounding prose, JSON5 leniency) and `validateJsonSchema` gates
- * tool-call arguments — both brittle, security/correctness-relevant, and
- * previously untested.
- */
 describe("parseJSON", () => {
   it("parses a plain JSON object", () => {
     expect(parseJSON('{"a":1}')).toEqual({ a: 1 });
