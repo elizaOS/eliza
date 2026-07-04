@@ -117,11 +117,15 @@ function AgentConsoleOverview({
               })}
             </p>
             <div className="space-y-2">
-              <h1 className="text-2xl font-semibold text-white md:text-3xl">
+              {/* Console hero heading. Demoted from h1 to h2: the page-level
+                  title ("My Agent") is owned by the console top bar via
+                  useSetPageHeader below, so a second h1 here read as a double
+                  title. This stays the in-page section heading. */}
+              <h2 className="text-2xl font-semibold text-white md:text-3xl">
                 {t("cloud.myAgents.heading", {
                   defaultValue: "Administer and enter your running agent",
                 })}
-              </h1>
+              </h2>
               <p className="text-sm leading-6 text-white/60">
                 {t("cloud.myAgents.subheading", {
                   defaultValue:

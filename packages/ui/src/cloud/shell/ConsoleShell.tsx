@@ -111,7 +111,10 @@ const CONSOLE_NAV_SECTIONS: DashboardSidebarSection[] = [
     ],
   },
   {
-    title: "Account",
+    // Section title was "Account", which duplicated the "Account" item label
+    // right below it (double-title feel in the sidebar). "Workspace" covers
+    // the whole group — connectors, account, security, and organization.
+    title: "Workspace",
     items: [
       {
         id: "connectors",

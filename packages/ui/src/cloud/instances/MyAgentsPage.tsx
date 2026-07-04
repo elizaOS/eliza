@@ -5,7 +5,7 @@
 
 import {
   DashboardLoadingState,
-  PageHeaderProvider,
+  EnsurePageHeaderProvider,
 } from "@elizaos/ui/cloud-ui";
 import { useDocumentTitle } from "../lib/use-document-title";
 import { useRequireAuth } from "../lib/use-session-auth";
@@ -28,11 +28,14 @@ export default function MyAgentsPage() {
     );
   }
 
-  // MyAgentsClient sets the page header; this standalone route has no ancestor
-  // PageHeaderProvider, so supply one here.
+  // MyAgentsClient sets the page header. When this route renders inside the
+  // ConsoleShell, its provider already exists and drives the top-bar title;
+  // EnsurePageHeaderProvider defers to it (and supplies one only for the
+  // standalone/native mount) so the title reaches the shell header instead of
+  // a shadowed inner provider.
   return (
-    <PageHeaderProvider>
+    <EnsurePageHeaderProvider>
       <MyAgentsClient />
-    </PageHeaderProvider>
+    </EnsurePageHeaderProvider>
   );
 }
