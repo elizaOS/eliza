@@ -1,3 +1,12 @@
+/**
+ * Scheduling plugin registration hosts the generic scheduled-task runner,
+ * routes, default-pack seeding, and fallback deps on every platform.
+ *
+ * Hosts inject production deps and domain packs via the runner deps and default
+ * pack registries; the built-in fallback pack only seeds when no host owns the
+ * runner. Each runtime keeps one runner service, one injected deps set, and one
+ * scheduled-task REST route.
+ */
 import { type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
 import { buildSchedulingRoutes } from "./routes/plugin-routes.js";
 import { buildFallbackDefaultPack } from "./scheduled-task/default-pack.js";
@@ -12,38 +21,6 @@ import {
   seedRegisteredTaskPacks,
 } from "./scheduled-task/seed-registry.js";
 
-/**
- * `@elizaos/plugin-scheduling` — the scheduling spine, an always-loaded,
- * self-seeding runtime primitive.
- *
- * This plugin HOSTS the generic ScheduledTask runtime surface so scheduled
- * tasks run + serve their REST API + seed on ANY platform (including mobile)
- * from this plugin alone:
- *
- *  - the runner host `ScheduledTaskRunnerService` (built from the
- *    runtime-injected deps provider, or the built-in default deps),
- *  - the generic REST route at `/api/lifeops/scheduled-tasks`,
- *  - a boot seeder that materializes the generic default-task pack registry.
- *
- * Consumers (e.g. `@elizaos/plugin-personal-assistant`) inject production deps
- * via `registerScheduledTaskRunnerDeps` and register their domain packs via
- * `registerDefaultTaskPack`; when present, their deps win (first-wins). This
- * plugin imports neither `@elizaos/app-core`, `@elizaos/agent`, nor
- * `@elizaos/plugin-personal-assistant`.
- *
- * It ships ONE small, generic built-in fallback pack (`buildFallbackDefaultPack`
- * — a daily "Good morning" reminder + a paused "Weekly review" starter) that is
- * seeded ONLY when no consumer host is present. The consumer signal is the
- * injected deps provider: a host like PA calls `registerScheduledTaskRunnerDeps`
- * during its `init` (which completes before `runtime.initPromise` resolves), so
- * by seed time the spine knows whether a host owns the runner. When a host is
- * present its richer domain pack supersedes the fallback and the fallback is not
- * registered → no double-seed. On a stock mobile boot (no PA) the fallback seeds
- * so the home Tasks widget resolves.
- *
- * One runner/store invariant: a single runner service + a single injected deps
- * set + a single REST route per runtime (runtime first-wins dedup).
- */
 export const schedulingPlugin: Plugin = {
   name: "@elizaos/plugin-scheduling",
   description:

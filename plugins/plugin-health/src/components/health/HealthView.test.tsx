@@ -1,6 +1,6 @@
-// @vitest-environment jsdom
-
 /**
+ * @vitest-environment jsdom
+ *
  * Drives the unified HealthView (the single GUI/XR data wrapper) through the
  * rendered spatial DOM: the same component the bundle exports for both the
  * "gui" and "xr" modalities. It is a read-only sleep summary over the three
@@ -22,10 +22,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-// `@elizaos/ui` is the giant renderer barrel; HealthView only touches
-// `client.getBaseUrl()` (default fetcher seam, overridden in every test). The
-// spatial primitives come from the separate `@elizaos/ui/spatial` subpath,
-// which is not mocked.
+// HealthView only touches client.getBaseUrl; spatial primitives stay unmocked.
 vi.mock("@elizaos/ui", () => ({
   client: { getBaseUrl: () => "http://test.local" },
 }));

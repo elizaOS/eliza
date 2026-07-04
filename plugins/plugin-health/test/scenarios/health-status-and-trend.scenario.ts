@@ -1,10 +1,8 @@
-import { scenario } from "@elizaos/scenario-runner/schema";
-
 /**
- * Health domain parity scenario (#8795 item 6). Exercises the owner asking for
- * a current health snapshot and a weekly trend — routing to the OWNER_HEALTH
- * surface (plugin-health factories behind the personal-assistant wrapper).
+ * Health parity scenario exercises owner health status and weekly trend routing
+ * through the live-only scenario runner lane.
  */
+import { scenario } from "@elizaos/scenario-runner/schema";
 export default scenario({
   lane: "live-only",
   id: "health-status-and-trend",

@@ -1,10 +1,10 @@
+/**
+ * Trigger timezone helpers resolve owner-local cron triggers before they reach
+ * the core scheduler.
+ */
 import type { OwnerFactsView } from "./types.js";
 
-/**
- * Sentinel `tz` value on cron triggers meaning "the owner's timezone,
- * whatever it currently is". Default task packs use it so a pack authored
- * once fires at the owner's local hour everywhere.
- */
+/** Sentinel cron timezone that resolves to the owner's current timezone. */
 export const OWNER_LOCAL_TZ = "owner_local";
 
 /**

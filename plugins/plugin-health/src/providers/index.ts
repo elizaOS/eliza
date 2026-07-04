@@ -1,4 +1,6 @@
-/** Barrel for the health provider factory and its result builders. */
+/**
+ * Barrel for the health provider factory and its result builders.
+ */
 export {
   buildHealthProviderResult,
   buildUnavailableHealthProviderResult,

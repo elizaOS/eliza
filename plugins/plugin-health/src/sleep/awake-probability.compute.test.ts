@@ -1,11 +1,11 @@
+/**
+ * Awake-probability tests pin the directional invariants of the logistic model
+ * that gates health check-in timing.
+ */
 import { describe, expect, it } from "vitest";
 import { computeAwakeProbability } from "./awake-probability.js";
 
-// #8795 — computeAwakeProbability is the logistic awake/asleep model that gates
-// check-in timing; it was the other untested "heavy fixture" function. It mixes
-// 5+ interacting terms, so pin tuning-stable DIRECTIONAL invariants (not hand-
-// computed constants): strong-awake vs strong-asleep cross, low-evidence ->
-// pUnknown dominates, and the probabilities stay a normalized distribution.
+// Pin directional invariants rather than hand-computed tuning constants.
 const iso = (ms: number) => new Date(ms).toISOString();
 const args = (o: Record<string, unknown>) =>
   o as unknown as Parameters<typeof computeAwakeProbability>[0];

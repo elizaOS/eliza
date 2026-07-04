@@ -1,4 +1,7 @@
-/** Vitest config for plugin-health, wiring the shared provider-SDK aliases. */
+/**
+ * Vitest configuration for plugin-health tests, provider SDK shims, and sibling
+ * scheduling source aliases.
+ */
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 import {
@@ -6,11 +9,7 @@ import {
   providerSdkShimPlugin,
 } from "../../packages/test/vitest/provider-sdk-aliases";
 
-// Resolve `@elizaos/plugin-scheduling` to its in-repo source so the
-// cross-plugin gate-coverage guard (default-packs/gate-coverage.test.ts)
-// exercises the sibling package's actual `registerBuiltInGates` — not a
-// stale prebuilt `dist` or a hoisted node_modules copy. Keyed on the package
-// root so subpath imports still resolve normally.
+// Cross-plugin gate coverage must exercise sibling source, not stale dist.
 const aliases = {
   ...providerSdkAliases,
   "@elizaos/tui": fileURLToPath(
@@ -28,8 +27,7 @@ export default defineConfig({
   },
   test: {
     alias: aliases,
-    // screen-time range helpers compute from the machine-local start of day;
-    // pin the zone so these assertions are deterministic across dev + CI.
+    // Pin local-day helpers so screen-time assertions match across dev and CI.
     env: { TZ: "America/Los_Angeles" },
     include: ["src/**/*.test.{ts,tsx}", "test/**/*.test.{ts,tsx}"],
     exclude: [

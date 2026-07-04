@@ -1,11 +1,11 @@
+/**
+ * Sleep-regularity tests pin episode filtering, classification floors, and the
+ * perfectly regular nightly schedule invariant.
+ */
 import { describe, expect, it } from "vitest";
 import type { SleepRegularityEpisodeLike } from "./sleep-regularity.js";
 import { computeSleepRegularity } from "./sleep-regularity.js";
 
-// #8795 — sleep-regularity gates circadian insights. computeSleepRegularity was
-// untested; pin the filter (non-nap, >=180min, ended before now), the 5-episode
-// classification floor, the perfectly-regular invariant (identical wall-clock
-// schedule -> very_regular, ~0 variance), and the insufficient-data fail-closed.
 const nowMs = Date.parse("2026-06-24T00:00:00Z");
 const ep = (
   startAt: string,
@@ -13,7 +13,7 @@ const ep = (
   cycleType: SleepRegularityEpisodeLike["cycleType"] = "overnight",
 ): SleepRegularityEpisodeLike => ({ startAt, endAt, cycleType });
 
-// Six nights, identical 23:00->07:00 UTC schedule (>=5 needed to classify).
+// Six nights are enough to cross the five-episode classification floor.
 const regularNights: SleepRegularityEpisodeLike[] = [
   ep("2026-06-17T23:00:00Z", "2026-06-18T07:00:00Z"),
   ep("2026-06-18T23:00:00Z", "2026-06-19T07:00:00Z"),

@@ -1,10 +1,8 @@
-import { scenario } from "@elizaos/scenario-runner/schema";
-
 /**
- * Screen-time / focus parity scenario (#8795 item 6). Owner asks for a weekly
- * screen-time recap and a focus adjustment — routing to OWNER_SCREENTIME
- * (macOS-gated) and, optionally, a blocker/focus change.
+ * Screen-time parity scenario exercises weekly recap and focus adjustment
+ * routing through the live-only scenario runner lane.
  */
+import { scenario } from "@elizaos/scenario-runner/schema";
 export default scenario({
   lane: "live-only",
   id: "screentime-weekly-recap",

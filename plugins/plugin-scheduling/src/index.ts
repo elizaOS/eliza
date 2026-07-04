@@ -1,6 +1,7 @@
-// The spine barrel (scheduled-task/index) already re-exports AnchorRegistry +
-// createAnchorRegistry from consolidation-policy, so surface only the
-// anchor-registry's own symbols here to avoid a duplicate-export collision.
+/**
+ * Scheduling package barrel exports the runner spine, routes, dispatch policy,
+ * plugin object, and anchor registry helpers for hosts.
+ */
 export {
   __resetAnchorRegistryForTests,
   APP_LIFEOPS_ANCHORS,

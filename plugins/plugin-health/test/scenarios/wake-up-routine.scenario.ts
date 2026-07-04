@@ -1,9 +1,8 @@
-import { scenario } from "@elizaos/scenario-runner/schema";
-
 /**
- * Wake-up routine parity scenario (#8795 item 6). Covers the morning check-in
- * behavior from `plugin-health/src/default-packs/wake-up.ts`.
+ * Wake-up parity scenario exercises the morning health check-in behavior from
+ * the wake-up default pack.
  */
+import { scenario } from "@elizaos/scenario-runner/schema";
 export default scenario({
   lane: "live-only",
   id: "wake-up-routine",

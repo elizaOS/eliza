@@ -1,16 +1,12 @@
+/**
+ * Sleep-cycle classification tests verify overnight, nap, and unknown labels
+ * used by day-boundary anchoring and wake inference.
+ */
 import { describe, expect, it } from "vitest";
 import { classifyLifeOpsSleepCycleType } from "./sleep-cycle.js";
 
-/**
- * Sleep-cycle classification (#8795 health). `classifyLifeOpsSleepCycleType`
- * decides whether an episode is an overnight sleep, a nap, or unknown — the
- * label that drives day-boundary anchoring and the awake/wake inference. It was
- * untested. Pure given its inputs (duration math + local-hour lookups); these
- * use UTC so the local-hour thresholds are deterministic.
- */
-
 const H = 3_600_000;
-// A UTC timestamp at the given local hour (UTC) on a fixed date.
+// UTC keeps local-hour thresholds deterministic.
 const at = (hour: number, day = 1): number => Date.UTC(2024, 0, day, hour);
 const UTC = "UTC";
 

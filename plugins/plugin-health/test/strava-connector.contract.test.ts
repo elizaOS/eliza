@@ -1,14 +1,7 @@
-// Keyless contract test: replays a REAL-shaped recorded Strava response
-// (src/health-bridge/__fixtures__/strava.recorded.json — GET /athlete +
-// GET /athlete/activities with the real Strava v3 wire field names) through
-// the actual syncStrava normalizer (via the exported syncHealthConnectorData)
-// and asserts the produced HealthConnectorSyncPayload is contract-shaped.
-// This is what validates the Strava connector against the real API shape:
-// the raw->normalized transform (id->sourceExternalId, sport_type->workoutType,
-// start_date->startAt + computed endAt, moving_time->durationSeconds,
-// distance->distanceMeters, average_heartrate->averageHeartRate) is exercised
-// against the real field names with no network. strava-connector.real.test.ts
-// re-fetches the live API (with a token) to catch drift from this recording.
+/**
+ * Strava connector contract tests replay recorded v3 API responses through the
+ * actual normalizer to pin real field-name mappings without network access.
+ */
 
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";

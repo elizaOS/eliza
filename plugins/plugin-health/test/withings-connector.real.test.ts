@@ -1,13 +1,7 @@
-// Live drift check against the REAL Withings API (wbsapi.withings.net).
-//
-// Drives the actual syncWithings normalizer (via syncHealthConnectorData)
-// against the live API with a real access token and asserts the produced
-// HealthConnectorSyncPayload is still contract-shaped — catching drift from the
-// recorded fixture replayed keyless in withings-connector.contract.test.ts.
-//
-// Gated: opt-in via WITHINGS_LIVE_TEST=1 or the post-merge live lane
-// (TEST_LANE=post-merge) AND a token in WITHINGS_ACCESS_TOKEN. Skips cleanly
-// otherwise, so a token-less run is a no-op rather than a failure.
+/**
+ * Withings live drift tests run the real API normalizer when an access token
+ * and live-test lane are explicitly enabled.
+ */
 
 import { describe, expect, it } from "vitest";
 import { syncHealthConnectorData } from "../src/health-bridge/health-connectors.js";

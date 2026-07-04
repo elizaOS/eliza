@@ -1,10 +1,8 @@
-import { scenario } from "@elizaos/scenario-runner/schema";
-
 /**
- * Sleep + bedtime parity scenario (#8795 item 6). Covers the bedtime wind-down
- * prompt and the morning sleep recap — the default-pack behaviors in
- * `plugin-health/src/default-packs/{bedtime,sleep-recap}.ts`.
+ * Sleep parity scenario covers bedtime wind-down and morning recap behavior
+ * contributed by the health default packs.
  */
+import { scenario } from "@elizaos/scenario-runner/schema";
 export default scenario({
   lane: "live-only",
   id: "sleep-recap-bedtime",

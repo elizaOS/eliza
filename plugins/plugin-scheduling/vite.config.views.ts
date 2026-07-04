@@ -1,5 +1,6 @@
-/** Vite build config for the `lifeops-live-test` view bundle (dist/views/bundle.js). */
-
+/**
+ * Vite build configuration for the scheduling live-test view bundle.
+ */
 import { createViewBundleConfig } from "../../packages/scripts/view-bundle-vite.config.ts";
 
 export default createViewBundleConfig({

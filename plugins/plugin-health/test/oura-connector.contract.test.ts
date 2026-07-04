@@ -1,15 +1,7 @@
-// Keyless contract test: replays REAL-shaped recorded Oura v2 collections
-// (src/health-bridge/__fixtures__/oura.recorded.json — the {data:[...]} envelopes
-// for sleep / daily_activity / daily_readiness / heartrate / workout, plus the
-// top-level personal_info resource, with the real Oura wire field names) through
-// the actual syncOura normalizer (via the exported syncHealthConnectorData) and
-// asserts the produced HealthConnectorSyncPayload is contract-shaped. This is
-// what validates the Oura connector against the real API shape: the raw->
-// normalized sleep transform (bedtime_start->startAt, bedtime_end->endAt,
-// total_sleep_duration->durationSeconds, *_sleep_duration->{light,deep,rem},
-// type long_sleep->isMainSleep, score->sleepScore, average_hrv->averageHrvMs)
-// is exercised against the real field names with no network.
-// oura-connector.real.test.ts re-fetches the live API to catch drift.
+/**
+ * Oura connector contract tests replay recorded v2 API collections through the
+ * actual normalizer to pin real field-name mappings without network access.
+ */
 
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";

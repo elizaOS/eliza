@@ -1,5 +1,7 @@
-/** Vitest config for @elizaos/plugin-scheduling (node env + src/test globs). */
-
+/**
+ * Vitest configuration for scheduling runner and route tests in a Node
+ * environment.
+ */
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({

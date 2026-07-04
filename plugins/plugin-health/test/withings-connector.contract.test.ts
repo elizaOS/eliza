@@ -1,19 +1,7 @@
-// Keyless contract test: replays REAL-shaped recorded Withings API responses
-// (src/health-bridge/__fixtures__/withings.recorded.json — the {status,body}
-// envelopes for getactivity / getsummary / getmeas with the real
-// wbsapi.withings.net wire field names) through the actual syncWithings
-// normalizer (via the exported syncHealthConnectorData) and asserts the
-// produced HealthConnectorSyncPayload is contract-shaped. This is what
-// validates the Withings connector against the real API shape: the raw->
-// normalized transform (activities[].steps->steps, .active->active_minutes,
-// .totalcalories->calories, .distance->distance_meters, .hr_average->heart_rate,
-// .hr_resting->resting_heart_rate; sleep series[].startdate/.enddate UNIX->
-// startAt/endAt ISO, .data.total_sleep_time->durationSeconds, .data.*duration->
-// {light,deep,rem}SleepSeconds; measuregrps[].measures value*10^unit by type
-// -> weight_kg/heart_rate/blood_oxygen_percent/body_temperature_celsius/
-// heart_rate_variability/blood_pressure_systolic/blood_pressure_diastolic) is
-// exercised against the real field names with no network.
-// withings-connector.real.test.ts re-fetches the live API to catch drift.
+/**
+ * Withings connector contract tests replay recorded API envelopes through the
+ * actual normalizer to pin real field-name mappings without network access.
+ */
 
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";

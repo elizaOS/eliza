@@ -1,19 +1,7 @@
-// Keyless contract test: replays REAL-shaped recorded Fitbit Web API responses
-// (src/health-bridge/__fixtures__/fitbit.recorded.json — the per-date
-// profile / activities / sleep / heart / weight resources with the real
-// api.fitbit.com wire field names) through the actual syncFitbit normalizer
-// (via the exported syncHealthConnectorData) and asserts the produced
-// HealthConnectorSyncPayload is contract-shaped. This is what validates the
-// Fitbit connector against the real API shape: the raw->normalized transform
-// (summary.steps->steps, summary.distances[total].distance km->distance_meters m,
-// summary.{fairlyActive,veryActive}Minutes->active_minutes, summary.caloriesOut->
-// calories, activities-heart[].value.restingHeartRate->resting_heart_rate,
-// summary.totalMinutesAsleep min->sleep_hours h, sleep[].duration ms->durationSeconds,
-// sleep[].timeInBed min->timeInBedSeconds, sleep[].minutesToFallAsleep min->
-// latencySeconds, sleep[].minutesAwake min->awakeSeconds, sleep[].isMainSleep,
-// levels.data[]->stageSamples, body.log.weight[].weight kg->weight_kg) is
-// exercised against the real field names with no network.
-// fitbit-connector.real.test.ts re-fetches the live API to catch drift.
+/**
+ * Fitbit connector contract tests replay recorded Web API resources through the
+ * actual normalizer to pin real field-name mappings without network access.
+ */
 
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
