@@ -35,6 +35,7 @@ import { setApplicationMenuActionHandler } from "./application-menu-action-regis
 import { showBackgroundNoticeOnce } from "./background-notice";
 import { getBrandConfig } from "./brand-config";
 import { startBrowserWorkspaceBridgeServer } from "./browser-workspace-bridge-server";
+import { startScreenCaptureBridgeServer } from "./screencapture-bridge-server";
 import { readNavigationEventUrl } from "./cloud-auth-window";
 import {
   appendChatOverlayShellModeParam,
@@ -2503,6 +2504,23 @@ async function main(): Promise<void> {
   });
   if (stopDesktopTestBridgeServer) {
     cleanupFns.push(stopDesktopTestBridgeServer);
+  }
+
+  // Start the native screen-capture bridge and publish ELIZA_DESKTOP_SCREENCAPTURE_*
+  // BEFORE the agent child spawns (below, via _startAgent), so the child inherits
+  // the bridge URL/token and its DesktopScreenCaptureService can reach the host's
+  // capture. Awaited (not fire-and-forget) so the env is guaranteed set in time.
+  const stopScreenCaptureBridgeServer = await startScreenCaptureBridgeServer().catch(
+    (err) => {
+      logger.warn(
+        `[Main] Screen-capture bridge startup failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return undefined;
+    },
+  );
+  recordStartupPhase("screencapture_bridge_ready", { pid: process.pid });
+  if (stopScreenCaptureBridgeServer) {
+    cleanupFns.push(stopScreenCaptureBridgeServer);
   }
 
   // WHY push API base on every status tick with a port: embedded startup can

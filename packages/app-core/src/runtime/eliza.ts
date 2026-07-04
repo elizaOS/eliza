@@ -23,6 +23,7 @@ import {
   startEliza as upstreamStartEliza,
 } from "@elizaos/agent";
 import { installAgentHostBridge } from "./install-agent-host-bridge.js";
+import { registerDesktopScreenCaptureService } from "../platform/desktop-screencapture-service.js";
 
 export { CHANNEL_PLUGIN_MAP } from "./channel-plugin-map.js";
 
@@ -724,6 +725,21 @@ async function repairRuntimeAfterBoot(
   }
 
   await (await _localInference()).ensureLocalInferenceHandler(runtime);
+
+  // Desktop only (the mobile early-return above skips this): register the
+  // screen-capture service backed by the electrobun host's loopback bridge so
+  // the streaming routes can drive capture. No-op when the host never published
+  // the bridge env (dev/web/cloud), leaving capture on its fallback path.
+  try {
+    if (await registerDesktopScreenCaptureService(runtime)) {
+      logger.info("[eliza] Desktop screen-capture service registered");
+    }
+  } catch (error) {
+    logger.warn(
+      `[eliza] Desktop screen-capture service registration failed: ${formatError(error)}`,
+    );
+  }
+
   const autonomyLoopEnabled = isRuntimeAutonomyEnabled(process.env);
   if (autonomyLoopEnabled) {
     await ensureAutonomyBootstrapContext(runtime);
