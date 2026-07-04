@@ -5,6 +5,7 @@ import type { CreditTransaction } from "../schemas/credit-transactions";
 import { creditTransactions } from "../schemas/credit-transactions";
 import { organizationBilling } from "../schemas/organization-billing";
 import { type NewOrganization, type Organization, organizations } from "../schemas/organizations";
+import { parseOrganizationCreditBalance } from "./organizations-credit-balance-numeric";
 
 export type { NewOrganization, Organization };
 
@@ -140,7 +141,10 @@ export class OrganizationsRepository {
         throw new Error("Organization not found");
       }
 
-      const currentBalance = Number(org.credit_balance);
+      // Fail closed on a corrupt NUMERIC read: a bare Number(...) would yield
+      // NaN, and `NaN < 0` is false, so the negative-balance guard below would
+      // be bypassed and String(NaN) = "NaN" written back, poisoning the column.
+      const currentBalance = parseOrganizationCreditBalance(org.credit_balance, "credit_balance");
       const newBalance = currentBalance + amount;
 
       if (newBalance < 0) {
@@ -194,7 +198,11 @@ export class OrganizationsRepository {
         throw new Error("Organization not found");
       }
 
-      const currentBalance = Number(org.credit_balance);
+      // Fail closed on a corrupt NUMERIC read: a bare Number(...) would yield
+      // NaN, and `NaN < amount` is false, so the insufficient-balance SPEND GATE
+      // below would be bypassed, authorizing a debit against a corrupt balance,
+      // writing "NaN" back, and inserting a phantom debit transaction.
+      const currentBalance = parseOrganizationCreditBalance(org.credit_balance, "credit_balance");
 
       if (currentBalance < amount) {
         throw new Error(

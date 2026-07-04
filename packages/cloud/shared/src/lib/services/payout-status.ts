@@ -44,6 +44,72 @@ export interface PayoutSystemStatus {
 // Thresholds for warnings
 const LOW_BALANCE_THRESHOLD = 100; // Tokens
 
+// The balance-derived subset of a NetworkStatus: everything the on-chain token
+// balance decides. network / configured / walletAddress are owned by the caller.
+type PayoutBalanceClassification = Pick<
+  NetworkStatus,
+  "balance" | "hasBalance" | "status" | "message"
+>;
+
+/**
+ * Classify a payout network's operational state from its raw on-chain token
+ * balance. Pure + exported so the fail-closed contract is unit-testable without
+ * an RPC round-trip.
+ *
+ * FAIL-CLOSED (money-availability gate): a raw balance that does not resolve to
+ * a finite, non-negative number (`Number(rawAmount) / 10**decimals` yielding
+ * NaN/±Infinity or an impossible negative token balance — e.g. an
+ * unparseable/undefined/corrupt on-chain read that did NOT throw) must NOT be
+ * advertised as `operational`. Before this guard, `NaN === 0` is false and
+ * `NaN < LOW_BALANCE_THRESHOLD` is false, so a network we could not verify fell
+ * through to `status: "operational", hasBalance: true` ("Operational with NaN
+ * tokens available"). That made `operationalNetworks > 0`, reported the whole
+ * payout system available, and enabled token redemption against a wallet whose
+ * funds were never confirmed. A non-throwing corrupt read now degrades that
+ * single network to `not_configured` instead of fabricating availability.
+ * (error-policy: fail-closed on unverifiable balance for a money-out gate.)
+ */
+export function classifyPayoutNetworkBalance(
+  rawAmount: bigint | number | string,
+  decimals: number,
+): PayoutBalanceClassification {
+  const balance = Number(rawAmount) / 10 ** decimals;
+
+  if (!Number.isFinite(balance) || balance < 0) {
+    return {
+      balance: 0,
+      hasBalance: false,
+      status: "not_configured",
+      message: "Unable to verify payout wallet balance (unreadable on-chain value)",
+    };
+  }
+
+  if (balance === 0) {
+    return {
+      balance,
+      hasBalance: false,
+      status: "no_balance",
+      message: "Payout wallet has no elizaOS tokens",
+    };
+  }
+
+  if (balance < LOW_BALANCE_THRESHOLD) {
+    return {
+      balance,
+      hasBalance: true,
+      status: "low_balance",
+      message: `Low balance: ${balance.toFixed(2)} tokens (threshold: ${LOW_BALANCE_THRESHOLD})`,
+    };
+  }
+
+  return {
+    balance,
+    hasBalance: true,
+    status: "operational",
+    message: `Operational with ${balance.toFixed(2)} tokens available`,
+  };
+}
+
 // ============================================================================
 // SERVICE
 // ============================================================================
@@ -396,7 +462,6 @@ class PayoutStatusService {
 
     const ERC20_ABI = parseAbi(["function balanceOf(address account) view returns (uint256)"]);
 
-    let balance = 0;
     let error: string | null = null;
 
     const rawBalance = await publicClient
@@ -410,8 +475,6 @@ class PayoutStatusService {
         error = err.message;
         return BigInt(0);
       });
-
-    balance = Number(rawBalance) / 10 ** decimals;
 
     if (error) {
       logger.warn(`[PayoutStatus] Failed to check ${network} balance`, {
@@ -428,38 +491,21 @@ class PayoutStatusService {
       };
     }
 
-    if (balance === 0) {
-      return {
-        network,
-        configured: true,
-        walletAddress: this.maskAddress(walletAddress),
-        balance,
-        hasBalance: false,
-        status: "no_balance",
-        message: "Payout wallet has no elizaOS tokens",
-      };
+    // Fail-closed on an unreadable on-chain balance: a corrupt read that did not
+    // throw must degrade this network to not_configured, never fabricate
+    // "operational" (see classifyPayoutNetworkBalance).
+    const classification = classifyPayoutNetworkBalance(rawBalance, decimals);
+    if (classification.status === "not_configured") {
+      logger.warn(`[PayoutStatus] ${network} balance is unreadable; treating as unconfigured`, {
+        rawBalance: String(rawBalance),
+        decimals,
+      });
     }
-
-    if (balance < LOW_BALANCE_THRESHOLD) {
-      return {
-        network,
-        configured: true,
-        walletAddress: this.maskAddress(walletAddress),
-        balance,
-        hasBalance: true,
-        status: "low_balance",
-        message: `Low balance: ${balance.toFixed(2)} tokens (threshold: ${LOW_BALANCE_THRESHOLD})`,
-      };
-    }
-
     return {
       network,
       configured: true,
       walletAddress: this.maskAddress(walletAddress),
-      balance,
-      hasBalance: true,
-      status: "operational",
-      message: `Operational with ${balance.toFixed(2)} tokens available`,
+      ...classification,
     };
   }
 
@@ -488,7 +534,6 @@ class PayoutStatusService {
 
     const ata = await getAssociatedTokenAddress(mintAddress, walletPubkey);
 
-    let balance = 0;
     const account = await getAccount(connection, ata).catch(() => null);
 
     if (!account) {
@@ -503,40 +548,21 @@ class PayoutStatusService {
       };
     }
 
-    balance = Number(account.amount) / 10 ** ELIZA_DECIMALS.solana;
-
-    if (balance === 0) {
-      return {
-        network: "solana",
-        configured: true,
-        walletAddress: this.maskAddress(walletAddress),
-        balance,
-        hasBalance: false,
-        status: "no_balance",
-        message: "Payout wallet has no elizaOS tokens",
-      };
+    // Fail-closed on an unreadable on-chain balance: a corrupt account.amount
+    // that did not throw must degrade Solana to not_configured, never fabricate
+    // "operational" (see classifyPayoutNetworkBalance).
+    const classification = classifyPayoutNetworkBalance(account.amount, ELIZA_DECIMALS.solana);
+    if (classification.status === "not_configured") {
+      logger.warn("[PayoutStatus] solana balance is unreadable; treating as unconfigured", {
+        rawBalance: String(account.amount),
+        decimals: ELIZA_DECIMALS.solana,
+      });
     }
-
-    if (balance < LOW_BALANCE_THRESHOLD) {
-      return {
-        network: "solana",
-        configured: true,
-        walletAddress: this.maskAddress(walletAddress),
-        balance,
-        hasBalance: true,
-        status: "low_balance",
-        message: `Low balance: ${balance.toFixed(2)} tokens (threshold: ${LOW_BALANCE_THRESHOLD})`,
-      };
-    }
-
     return {
       network: "solana",
       configured: true,
       walletAddress: this.maskAddress(walletAddress),
-      balance,
-      hasBalance: true,
-      status: "operational",
-      message: `Operational with ${balance.toFixed(2)} tokens available`,
+      ...classification,
     };
   }
 

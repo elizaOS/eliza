@@ -44,6 +44,10 @@ import {
 } from "../utils";
 import { scrubPersistedAgentProfileTokens } from "./agent-profiles";
 import {
+  getInjectedEthereumProvider,
+  siweLoginWithInjectedWallet,
+} from "./cloud-siwe-login";
+import {
   hasStewardLoginLauncher,
   hasUsableStoredStewardToken,
   launchStewardLogin,
@@ -488,6 +492,53 @@ export function useCloudState({
         resolveLoginCompletion();
       };
       elizaCloudLoginCompletionRef.current = loginCompletion;
+
+      // Wallet SIWE (#13377): an injected EIP-1193 provider (a real browser
+      // wallet, or the e2e harness wallet on devices) signs in with a genuine
+      // EIP-4361 handshake against the cloud API — no browser round trip, no
+      // human beyond the wallet's own approval. Taken only when a provider is
+      // actually injected AND no still-usable session exists; a rejection or
+      // handshake failure falls through to the other sign-in paths on the
+      // same click.
+      if (!hasUsableStoredStewardToken() && getInjectedEthereumProvider()) {
+        const siweBase =
+          getBootConfig().cloudApiBase ?? "https://elizacloud.ai";
+        try {
+          const apiKey = await siweLoginWithInjectedWallet(siweBase);
+          if (apiKey) {
+            closePrePoppedWindow();
+            const connected = await pollCloudCredits();
+            // error-policy:J4 wallet config is a secondary panel; a failed
+            // load must not undo a verified login.
+            await loadWalletConfig().catch(() => undefined);
+            if (connected) {
+              setElizaCloudConnected(true);
+              setElizaCloudLoginError(null);
+              setActionNotice(
+                "Logged in to Eliza Cloud successfully.",
+                "success",
+                6000,
+              );
+            } else {
+              setElizaCloudLoginError(
+                "Could not verify your Eliza Cloud session. Please sign in again.",
+              );
+            }
+            elizaCloudLoginBusyRef.current = false;
+            setElizaCloudLoginBusy(false);
+            completeLogin();
+            return loginCompletion;
+          }
+        } catch (err) {
+          // error-policy:J4 a declined/failed wallet handshake is a designed
+          // degrade — the Steward / device-code paths below remain this
+          // click's way in; the failure is logged for the harness.
+          logger.warn(
+            { err },
+            "[useCloudState] SIWE wallet login failed; falling through",
+          );
+        }
+      }
 
       // Cloud = Steward everywhere (DECISIONS.md D3). When the shell-router has
       // mounted the Steward provider it registers a launcher; drive the in-app

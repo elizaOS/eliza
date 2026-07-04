@@ -961,15 +961,15 @@ describe("ContinuousChatOverlay", () => {
     expect(sheet.getAttribute("data-variant")).toBe("closed");
   });
 
-  it("cedes taps to a layer painted ABOVE the chat (dialog / notification sheet) instead of collapsing", () => {
+  it("cedes taps to a layer painted ABOVE the chat (stacked dialog) instead of collapsing", () => {
     render(<ContinuousChatOverlay controller={makeController()} />);
     const sheet = screen.getByTestId("chat-sheet");
     fireEvent.focus(screen.getByLabelText("message"));
     expect(sheet.getAttribute("data-variant")).toBe("open");
 
-    // Simulate the notification pull-down sheet / a Radix dialog stacked above
-    // the chat glass (role="dialog" or data-above-shell-overlay): its taps must
-    // NOT be swallowed into a chat collapse — the overlay's own handlers win.
+    // Simulate a Radix dialog stacked above the chat glass (role="dialog" or
+    // data-above-shell-overlay): its taps must NOT be swallowed into a chat
+    // collapse — the overlay's own handlers win.
     const overlay = document.createElement("div");
     overlay.setAttribute("role", "dialog");
     const rowButton = document.createElement("button");
@@ -1035,30 +1035,6 @@ describe("ContinuousChatOverlay", () => {
       viewer.remove();
     }
     // Viewer gone: Escape collapses the chat as before.
-    fireEvent.keyDown(document.body, { key: "Escape" });
-    expect(sheet.getAttribute("data-variant")).toBe("closed");
-  });
-
-  it("lets the desktop notification panel own Escape — the chat only collapses once the panel is gone", () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
-    const sheet = screen.getByTestId("chat-sheet");
-    fireEvent.focus(screen.getByLabelText("message"));
-    expect(sheet.getAttribute("data-variant")).toBe("open");
-
-    // The desktop anchored notification panel carries role="dialog" but NO
-    // data-state="open" (it is not a Radix dialog), so it wouldn't match the
-    // dialog guard — Escape must close IT alone, not also collapse the chat.
-    const panel = document.createElement("div");
-    panel.setAttribute("role", "dialog");
-    panel.setAttribute("data-testid", "notification-panel");
-    document.body.appendChild(panel);
-    try {
-      fireEvent.keyDown(document.body, { key: "Escape" });
-      expect(sheet.getAttribute("data-variant")).toBe("open");
-    } finally {
-      panel.remove();
-    }
-    // Panel gone: Escape collapses the chat as before.
     fireEvent.keyDown(document.body, { key: "Escape" });
     expect(sheet.getAttribute("data-variant")).toBe("closed");
   });

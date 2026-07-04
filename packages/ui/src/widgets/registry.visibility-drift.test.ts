@@ -110,9 +110,11 @@ describe("widget visibility drift guard (#12090 item 9)", () => {
   });
 
   it("keeps always-visible core widgets on an empty snapshot but honors explicit disable", () => {
+    // Needs-attention is backed by the core ApprovalService, not a loadable
+    // plugin — the canonical `always` core surface with no snapshot entry.
     const emptyResolved = resolveWidgetsForSlot("home", []);
     expect(
-      emptyResolved.find((r) => r.declaration.id === "notifications.recent"),
+      emptyResolved.find((r) => r.declaration.id === "needs-attention.pending"),
     ).toBeTruthy();
 
     // Calendar is `always` but IS backed by a real loadable plugin, so an

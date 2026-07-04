@@ -1,47 +1,23 @@
 /**
- * Storybook stories for the home WidgetHost, seeding activity/notification state.
+ * Storybook stories for the home WidgetHost, seeding app + activity state.
  */
-import type { AgentNotification } from "@elizaos/core";
 import type { Meta, StoryObj } from "@storybook/react";
 import { useEffect, useState } from "react";
 import type { ActivityEvent } from "../hooks/useActivityEvents";
 import { __setAppValueForTests } from "../state";
-import {
-  __ingestNotificationForTests,
-  __resetNotificationStoreForTests,
-} from "../state/notifications/notification-store";
 import { WidgetHost } from "./WidgetHost";
 
 /**
  * The home `WidgetHost` (#9143) — exactly what the /chat launch screen mounts
- * (`HomeScreen` → `<WidgetHost slot="home" layout="grid">`). This story seeds the
- * module-level app store + the notification store so the real home cards render
- * the way they do on a populated launch. The per-plugin lifeops cards self-hide
- * here (no backend), which is the intended fresh-launch behavior.
+ * (`HomeScreen` → `<WidgetHost slot="home" layout="grid">`). This story seeds
+ * the module-level app store so the real home cards render the way they do on
+ * a populated launch. The per-plugin lifeops cards self-hide here (no backend),
+ * which is the intended fresh-launch behavior. The notification center is NOT
+ * part of the host — HomeScreen pins NotificationsHomeCenter as a sibling (see
+ * HomeDashboard.stories for the composed dashboard).
  */
 
 const NOW = Date.UTC(2026, 5, 24, 8, 0, 0);
-
-const NOTIFICATIONS: AgentNotification[] = [
-  {
-    id: "n1" as AgentNotification["id"],
-    title: "PR #9412 ready for review",
-    body: "chat-widget matrix + shared parity hook",
-    category: "agent",
-    priority: "high",
-    source: "orchestrator",
-    createdAt: NOW - 120_000,
-  },
-  {
-    id: "n2" as AgentNotification["id"],
-    title: "Standup at 10:30",
-    body: "daily sync — bring the deploy notes",
-    category: "reminder",
-    priority: "normal",
-    source: "lifeops",
-    createdAt: NOW - 3_600_000,
-  },
-];
 
 const CONVERSATIONS = [
   {
@@ -102,8 +78,6 @@ function HomeWidgetsHarness() {
       t,
       // biome-ignore lint/suspicious/noExplicitAny: partial seed — widgets read only the fields above
     } as any);
-    __resetNotificationStoreForTests();
-    for (const n of NOTIFICATIONS) __ingestNotificationForTests(n);
     // No backend in storybook: the API-polled cards (apps, lifeops) get an empty
     // payload so they self-hide cleanly instead of showing a fetch error.
     const realFetch = globalThis.fetch;
@@ -125,7 +99,6 @@ function HomeWidgetsHarness() {
     setReady(true);
     return () => {
       globalThis.fetch = realFetch;
-      __resetNotificationStoreForTests();
       __setAppValueForTests(null);
     };
   }, []);

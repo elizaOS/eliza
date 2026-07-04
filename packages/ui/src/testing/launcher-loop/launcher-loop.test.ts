@@ -37,7 +37,6 @@ interface FakeSurfaceOptions {
  */
 class FakeSurface implements Driver {
   page: "home" | "launcher" = "home";
-  notificationOpen = false;
   launchCount = 0;
   focusInInert = false;
 
@@ -79,15 +78,6 @@ class FakeSurface implements Driver {
   async scrollGrid(_dy: number): Promise<void> {}
   async scrollWidgets(_dy: number): Promise<void> {}
 
-  async notificationPull(committed: boolean): Promise<void> {
-    if (this.page !== "home" || !committed) return;
-    this.notificationOpen = true;
-  }
-
-  async dismissNotification(): Promise<void> {
-    this.notificationOpen = false;
-  }
-
   async tabFocus(): Promise<void> {
     // Focus is always pulled into the visible half — never the inert one.
     this.focusInInert = false;
@@ -107,7 +97,6 @@ class FakeSurface implements Driver {
       launcherInert: this.page !== "launcher",
       activeElementInInert: this.focusInInert,
       launchCount: this.launchCount,
-      notificationOpen: this.notificationOpen,
       viewportWidth: VIEWPORT_WIDTH,
       blueSampleCount: 0,
       layoutShiftScore: 0,
@@ -117,7 +106,6 @@ class FakeSurface implements Driver {
 
   private goTo(page: "home" | "launcher"): void {
     this.page = page;
-    this.notificationOpen = false;
     this.focusInInert = false;
   }
 }
@@ -142,7 +130,6 @@ async function runLoop(
       const generated = Array.from(cmds);
       expect(generated).toHaveLength(opts.maxCommands);
       surface.page = "home";
-      surface.notificationOpen = false;
       surface.launchCount = 0;
       surface.focusInInert = false;
       const setup = (): { model: LauncherModelState; real: Driver } => ({
@@ -190,35 +177,12 @@ describe("launcher-loop model", () => {
     ).toBe(1);
   });
 
-  it("a committed notification pull opens only on the home half", () => {
-    const home = INITIAL_MODEL_STATE;
-    expect(
-      advanceModel(home, { kind: "notification-pull", committed: true })
-        .notificationOpen,
-    ).toBe(true);
-    const onLauncher = advanceModel(home, {
-      kind: "rail-swipe",
-      direction: "left",
-      committed: true,
+  it("a vertical widget scroll never flips the rail (axis lock)", () => {
+    const afterScroll = advanceModel(INITIAL_MODEL_STATE, {
+      kind: "vertical-widget-scroll",
+      dy: 200,
     });
-    expect(
-      advanceModel(onLauncher, { kind: "notification-pull", committed: true })
-        .notificationOpen,
-    ).toBe(false);
-  });
-
-  it("a rail transition closes an open notification center", () => {
-    const opened = advanceModel(INITIAL_MODEL_STATE, {
-      kind: "notification-pull",
-      committed: true,
-    });
-    expect(opened.notificationOpen).toBe(true);
-    const afterSwipe = advanceModel(opened, {
-      kind: "rail-swipe",
-      direction: "left",
-      committed: true,
-    });
-    expect(afterSwipe.notificationOpen).toBe(false);
+    expect(afterScroll).toEqual(INITIAL_MODEL_STATE);
   });
 });
 

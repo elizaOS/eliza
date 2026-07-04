@@ -178,7 +178,14 @@ describe("default-home widget sink opt-ins drift guard (#12089 item 35)", () => 
     // declaration is dropped downstream by the `Component || uiSpec` gate, so it
     // must NOT suppress the shared sink — otherwise the plugin would render no
     // home tile at all (a regression vs. the pre-refactor behavior).
-    const legacyRow = LEGACY_DEFAULT_HOME_WIDGET_SINK_OPTINS[1];
+    //
+    // Needs an ACTIVITY-sink row (notifications-sink rows resolve to no tile by
+    // design), and not row 0 — the suppression test above registers an owned
+    // card for that plugin, which would suppress this fallback.
+    const legacyRow = LEGACY_DEFAULT_HOME_WIDGET_SINK_OPTINS.find(
+      (row, index) => index > 0 && row.defaultWidget === "activity",
+    );
+    if (!legacyRow) throw new Error("no activity-sink legacy opt-in row");
     const pluginId = legacyRow.pluginId;
 
     const unrenderableServerDecls: PluginWidgetDeclaration[] = [
@@ -270,8 +277,8 @@ describe("default-home widget sink opt-ins drift guard (#12089 item 35)", () => 
         pluginId,
         slot: "home",
         label: "Extra sink",
-        icon: "Bell",
-        defaultWidget: "notifications",
+        icon: "Activity",
+        defaultWidget: "activity",
       },
     ];
 
@@ -289,6 +296,6 @@ describe("default-home widget sink opt-ins drift guard (#12089 item 35)", () => 
       (r) => r.declaration.id === `${pluginId}.extra-sink`,
     );
     expect(sink).toBeTruthy();
-    expect(sink?.defaultWidgetSink).toBe("notifications");
+    expect(sink?.defaultWidgetSink).toBe("activity");
   });
 });

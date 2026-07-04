@@ -6,7 +6,6 @@
  * modal form (`inModal`).
  */
 import { isViewVisible } from "@elizaos/core";
-import { ArrowLeft } from "lucide-react";
 import type * as React from "react";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
@@ -189,29 +188,6 @@ function SettingsNavItem({
   );
 }
 
-function SectionBackButton({ onBack }: { onBack: () => void }) {
-  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
-    id: "section-back",
-    role: "button",
-    label: "Back to Settings",
-    description: "Return to the settings hub",
-    onActivate: onBack,
-  });
-  return (
-    <Button
-      ref={ref}
-      variant="ghost"
-      size="sm"
-      onClick={onBack}
-      className="h-9 gap-1.5 rounded-md px-2 text-xs font-medium text-muted transition-colors hover:bg-surface hover:text-accent"
-      {...agentProps}
-    >
-      <ArrowLeft className="h-3.5 w-3.5" aria-hidden />
-      Settings
-    </Button>
-  );
-}
-
 /**
  * Loading placeholder for a lazily-loaded section body (#11351). Deliberately
  * minimal — a single muted, `aria-busy` line so the split is visually quiet and
@@ -249,16 +225,27 @@ function SettingsSectionContent({
       )}
     >
       {onBack ? (
-        <div className="mb-1.5">
-          <SectionBackButton onBack={onBack} />
+        /* Section → hub back uses the shared normal-view header (#13451):
+           icon-only, left-aligned back arrow with a centered section title,
+           replacing the old section-local text "Settings" button + separate
+           icon heading. The shell already owns horizontal padding, so the
+           header is flush with the section body. */
+        <ViewHeader
+          title={title}
+          onBack={onBack}
+          backLabel="Back to Settings"
+          className="mb-5 px-0"
+        />
+      ) : (
+        /* Desktop detail pane: the rail owns navigation, so there is no header
+           back control — keep the icon + title heading for the selected pane. */
+        <div className="mb-5 flex items-center gap-2.5">
+          <Icon className="h-5 w-5 shrink-0 text-muted/80" aria-hidden />
+          <h1 className="text-lg font-semibold tracking-tight text-txt-strong">
+            {title}
+          </h1>
         </div>
-      ) : null}
-      <div className="mb-5 flex items-center gap-2.5">
-        <Icon className="h-5 w-5 shrink-0 text-muted/80" aria-hidden />
-        <h1 className="text-lg font-semibold tracking-tight text-txt-strong">
-          {title}
-        </h1>
-      </div>
+      )}
       {/* Flat — no card/border. The shell owns the page's horizontal padding. */}
       <div className={section.bodyClassName}>
         <ErrorBoundary
@@ -343,7 +330,7 @@ function MobileHub({
       {/* Top-level view header: centered "Settings" title with a launcher back
           arrow on mobile (iOS-style nav bar). Only the single-column hub renders
           it — the desktop split already owns its own "Settings" H1 in the rail,
-          and the per-section view keeps its own SectionBackButton (section→hub). */}
+          and the per-section view keeps its own shared ViewHeader (section→hub). */}
       <ViewHeader
         title={t("nav.settings", { defaultValue: "Settings" })}
         className="mb-2"

@@ -108,6 +108,27 @@ function toChargeRequest(payment: CryptoPayment): AppChargeRequest | null {
     return null;
   }
 
+  // Fail closed on a corrupt stored amount. create() enforces $1-$10,000 at
+  // write-time (normalizeAmount), so an out-of-range or non-finite
+  // expected_amount on a charge-request row is always data corruption. The old
+  // bare `Number(payment.expected_amount)` let NaN flow into Stripe checkout
+  // (`Math.round(NaN * 100)` unit_amount, `credits: "NaN"` metadata) and the
+  // OxaPay checkout amount. Returning null surfaces as "Charge request not
+  // found" to payment endpoints — the corrupt row cannot be paid — while the
+  // structured error log keeps the fault observable and list endpoints keep
+  // serving the org's healthy rows.
+  // Number(), not parseFloat(): parseFloat("12garbage") is 12, silently
+  // accepting a mangled value; Number() rejects any non-purely-numeric string.
+  const amountUsd = Number(payment.expected_amount);
+  if (!Number.isFinite(amountUsd) || amountUsd < 1 || amountUsd > 10000) {
+    logger.error("[AppCharges] Refusing to read charge request with corrupt expected_amount", {
+      chargeRequestId: payment.id,
+      appId: metadata.app_id,
+      rawExpectedAmount: payment.expected_amount,
+    });
+    return null;
+  }
+
   const providers = Array.isArray(metadata.providers)
     ? metadata.providers.filter(
         (provider): provider is AppChargeProvider => provider === "stripe" || provider === "oxapay",
@@ -117,7 +138,7 @@ function toChargeRequest(payment: CryptoPayment): AppChargeRequest | null {
   return {
     id: payment.id,
     appId: metadata.app_id,
-    amountUsd: Number(payment.expected_amount),
+    amountUsd,
     description: typeof metadata.description === "string" ? metadata.description : null,
     providers,
     paymentContext: metadata.payment_context === "any_payer" ? "any_payer" : "verified_payer",

@@ -14,12 +14,7 @@
  */
 
 import type { Page } from "playwright";
-import {
-  touchDragHold,
-  touchLongPress,
-  touchSwipe,
-  touchTap,
-} from "../real-touch-gestures";
+import { touchLongPress, touchSwipe, touchTap } from "../real-touch-gestures";
 
 /** Test-id / selector contract the driver keys off (frozen, see #12179 D5). */
 export const LAUNCHER_SELECTORS = {
@@ -30,19 +25,14 @@ export const LAUNCHER_SELECTORS = {
   launcherPage: '[data-testid="home-launcher-launcher-page"]',
   launcherScroll: '[data-testid="launcher-page-window"]',
   homeScreen: '[data-testid="home-screen"]',
-  notificationPullZone: '[data-testid="home-notification-pull-zone"]',
-  // The open notification center is the pulled-down sheet (NotificationCenter
-  // renders `notification-sheet[data-open]` / `notification-panel[data-open]`);
-  // the `data-notification-open` / `notification-center[data-open="true"]`
-  // variants are kept for any surface that still exposes them.
-  notificationOpen:
-    '[data-testid="notification-sheet"][data-open], [data-testid="notification-panel"][data-open], [data-notification-open="true"], [data-testid="notification-center"][data-open="true"]',
+  // The dashboard notification center card pinned on the home half — an
+  // ordinary scrolling widget, observed only to confirm it never behaves like
+  // a modal overlay.
+  notificationCenter: '[data-testid="home-notification-center"]',
   railPrevButton: '[data-testid="rail-pager-edge-prev"]',
   railNextButton: '[data-testid="rail-pager-edge-next"]',
   tile: (id: string) => `[data-testid="launcher-tile-${id}"]`,
 } as const;
-
-export const NOTIFICATION_OPEN_SELECTOR = LAUNCHER_SELECTORS.notificationOpen;
 
 /**
  * A single observation of the real surface after an action, read atomically
@@ -60,7 +50,6 @@ export interface LauncherObservation {
   readonly launcherInert: boolean;
   readonly activeElementInInert: boolean;
   readonly launchCount: number;
-  readonly notificationOpen: boolean;
   readonly viewportWidth: number;
   readonly blueSampleCount: number;
   readonly layoutShiftScore: number;
@@ -87,11 +76,6 @@ export interface Driver {
   scrollGrid(dy: number): Promise<void>;
   /** Vertical scroll of the home widget list by `dy` px. */
   scrollWidgets(dy: number): Promise<void>;
-  /** Downward pull on the notification zone; `committed` crosses the reveal
-   *  threshold (open) or not (retract). */
-  notificationPull(committed: boolean): Promise<void>;
-  /** Dismiss an open notification center. */
-  dismissNotification(): Promise<void>;
   /** Move keyboard focus one Tab step forward. */
   tabFocus(): Promise<void>;
   /** Read a single consistent observation of the surface. */
@@ -154,7 +138,6 @@ interface ReaderSelectors {
   readonly pageProbe: string;
   readonly homePage: string;
   readonly launcherPage: string;
-  readonly notificationOpen: string;
 }
 
 const READER_SELECTORS: ReaderSelectors = {
@@ -163,7 +146,6 @@ const READER_SELECTORS: ReaderSelectors = {
   pageProbe: LAUNCHER_SELECTORS.pageProbe,
   homePage: LAUNCHER_SELECTORS.homePage,
   launcherPage: LAUNCHER_SELECTORS.launcherPage,
-  notificationOpen: LAUNCHER_SELECTORS.notificationOpen,
 };
 
 /**
@@ -224,7 +206,6 @@ function readObservation(sel: ReaderSelectors): LauncherObservation {
   }
   const ring = w.__ELIZA_VIEW_INTERACTION_TELEMETRY__ ?? [];
   const launchCount = ring.filter((e) => e?.action === "launch").length;
-  const notification = !!document.querySelector(sel.notificationOpen);
   return {
     dataPage: surface ? surface.getAttribute("data-page") : null,
     probeText: probe ? probe.textContent : null,
@@ -235,7 +216,6 @@ function readObservation(sel: ReaderSelectors): LauncherObservation {
     launcherInert: launcherPage ? launcherPage.hasAttribute("inert") : false,
     activeElementInInert: activeInInert,
     launchCount,
-    notificationOpen: notification,
     viewportWidth: window.innerWidth,
     blueSampleCount: blue,
     layoutShiftScore: w.__ELIZA_LAUNCHER_LOOP_CLS__ ?? 0,
@@ -248,10 +228,6 @@ interface CdpTouchDriverOptions {
   readonly commitDistance?: number;
   /** px distance for a deliberately-rejected (settle-back) rail flick. */
   readonly rejectDistance?: number;
-  /** px for a committed notification pull (clears the reveal threshold). */
-  readonly pullDistance?: number;
-  /** px for a rejected notification pull. */
-  readonly pullRejectDistance?: number;
 }
 
 /**
@@ -262,8 +238,6 @@ interface CdpTouchDriverOptions {
 export class CdpTouchDriver implements Driver {
   private readonly commitDistance: number;
   private readonly rejectDistance: number;
-  private readonly pullDistance: number;
-  private readonly pullRejectDistance: number;
 
   constructor(
     private readonly page: Page,
@@ -271,21 +245,12 @@ export class CdpTouchDriver implements Driver {
   ) {
     this.commitDistance = options.commitDistance ?? 280;
     this.rejectDistance = options.rejectDistance ?? 24;
-    this.pullDistance = options.pullDistance ?? 140;
-    this.pullRejectDistance = options.pullRejectDistance ?? 20;
   }
 
   async railSwipe(
     direction: "left" | "right",
     committed: boolean,
   ): Promise<void> {
-    // The model treats a committed rail swipe as navigating AND closing any open
-    // notification center. A real open notification is a modal overlay that
-    // intercepts the swipe (the touch hits the backdrop, closes the sheet, and
-    // the rail never moves), so dismiss it first — then the swipe reaches the
-    // rail and reality matches the model.
-    if (await this.notificationIsOpen()) await this.dismissNotification();
-
     const before = await this.readDataPage();
     const canNavigate =
       (direction === "left" && before === "home") ||
@@ -328,12 +293,6 @@ export class CdpTouchDriver implements Driver {
       .locator(LAUNCHER_SELECTORS.surface)
       .first()
       .getAttribute("data-page");
-  }
-
-  private async notificationIsOpen(): Promise<boolean> {
-    return (
-      (await this.page.locator(LAUNCHER_SELECTORS.notificationOpen).count()) > 0
-    );
   }
 
   async railEdgeButton(direction: "prev" | "next"): Promise<void> {
@@ -388,24 +347,6 @@ export class CdpTouchDriver implements Driver {
       steps: 8,
       stepDelayMs: 1,
     });
-    await this.settle();
-  }
-
-  async notificationPull(committed: boolean): Promise<void> {
-    const distance = committed ? this.pullDistance : this.pullRejectDistance;
-    const drag = await touchDragHold(
-      this.page,
-      LAUNCHER_SELECTORS.notificationPullZone,
-      0,
-      distance,
-      { steps: 10, stepDelayMs: committed ? 2 : 10 },
-    );
-    await drag.release();
-    await this.settle();
-  }
-
-  async dismissNotification(): Promise<void> {
-    await this.page.keyboard.press("Escape");
     await this.settle();
   }
 

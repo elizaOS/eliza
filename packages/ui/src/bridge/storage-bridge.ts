@@ -12,6 +12,7 @@
 
 import { Capacitor } from "@capacitor/core";
 import { logger } from "@elizaos/logger";
+import { STEWARD_TOKEN_KEY } from "@elizaos/shared/steward-session-client";
 import { MOBILE_RUNTIME_MODE_STORAGE_KEY } from "../first-run/mobile-runtime-mode";
 
 /**
@@ -57,6 +58,11 @@ const SYNCED_KEYS = new Set([
   "eliza.control.settings.v1",
   "eliza.device.identity",
   "eliza.device.auth",
+  // The Eliza Cloud session (#13377): with cloud-only onboarding this is THE
+  // credential — losing it to a WKWebView purge signs the user out and, mid-
+  // onboarding, restarts the sign-in ask (the mobile "login loop"). Same
+  // durability class as eliza.device.auth above.
+  STEWARD_TOKEN_KEY,
   "elizaos:active-server",
   "eliza:first-run-complete",
   "eliza:setup:step",
@@ -75,8 +81,17 @@ const SYNCED_KEYS = new Set([
   "eliza:ios-full-bun-smoke:result",
   "eliza:ios-onboarding-smoke:request",
   "eliza:ios-onboarding-smoke:result",
+  "eliza:ios-onboarding-relaunch-smoke:request",
+  "eliza:ios-onboarding-relaunch-smoke:result",
+  "eliza:ios-mixed-content-smoke:request",
+  "eliza:ios-mixed-content-smoke:result",
   "eliza:ios-attachment-smoke:request",
   "eliza:ios-attachment-smoke:result",
+  // Harness wallet for zero-interaction SIWE e2e (#13377): device harnesses
+  // seed these via native Preferences before first launch; the install itself
+  // is gated off store builds (platform/e2e-wallet.ts).
+  "eliza:e2e-wallet:pk",
+  "eliza:e2e-wallet:autologin",
 ]);
 
 // In-memory cache of values from Preferences (for native)

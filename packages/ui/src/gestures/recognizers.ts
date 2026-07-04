@@ -1,9 +1,9 @@
 /**
  * Pure, DOM-free gesture recognizers: given release deltas/velocities, decide
  * what a pointer gesture resolved to. These are the shared decision core the
- * pull/pager/notification hooks delegate to, so a single dominance/threshold
- * rule governs every surface (#12349). No React, no events, no side effects —
- * directly unit-testable.
+ * pull/pager hooks delegate to, so a single dominance/threshold rule governs
+ * every surface (#12349). No React, no events, no side effects — directly
+ * unit-testable.
  */
 
 import { HORIZONTAL_DOMINANCE_RATIO } from "./constants";
@@ -80,7 +80,7 @@ export function commitAxis(
 /**
  * Damped rubber-band: track travel 1:1 up to `softMax`, then apply `resistance`
  * to the overshoot so a long over-pull keeps giving a little without sliding
- * arbitrarily far. Shared by the notification reveal and the pager edge.
+ * arbitrarily far. Used by the pager's past-the-edge drag.
  */
 export function rubberBand(
   travel: number,

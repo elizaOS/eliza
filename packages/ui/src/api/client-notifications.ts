@@ -32,6 +32,10 @@ declare module "./client-base" {
     markAllNotificationsRead(): Promise<{ changed: number }>;
     removeNotification(id: string): Promise<{ ok: boolean }>;
     clearNotifications(): Promise<{ ok: boolean }>;
+    seedDevNotifications(): Promise<{
+      count: number;
+      notifications: AgentNotification[];
+    }>;
   }
 }
 
@@ -93,4 +97,15 @@ ElizaClient.prototype.clearNotifications = async function (
   return this.fetch<{ ok: boolean }>("/api/notifications", {
     method: "DELETE",
   });
+};
+
+// Dev-only seed (the server 404s it in production builds): paints a demo
+// spread across every priority so the dashboard center can be exercised.
+ElizaClient.prototype.seedDevNotifications = async function (
+  this: ElizaClient,
+): Promise<{ count: number; notifications: AgentNotification[] }> {
+  return this.fetch<{ count: number; notifications: AgentNotification[] }>(
+    "/api/notifications/dev/seed",
+    { method: "POST" },
+  );
 };

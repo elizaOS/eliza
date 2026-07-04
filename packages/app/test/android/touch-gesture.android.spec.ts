@@ -218,7 +218,8 @@ async function completeFirstRunIfNeeded(page: Page) {
   const firstRunVisible = await page.evaluate(() =>
     Boolean(
       document.querySelector('[data-testid="first-run-runtime-chooser"]') ||
-        /First, where should your agent run/i.test(
+        // Chooser-mode greeting OR the cloud-only sign-in greeting (#13377).
+        /First, where should your agent run|Sign in to Eliza Cloud and I['’]ll get you set up/i.test(
           document.body?.innerText ?? "",
         ),
     ),

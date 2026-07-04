@@ -18,8 +18,8 @@ import type { ReactNode } from "react";
 
 /**
  * The single source of truth mapping a notification's {@link NotificationCategory}
- * to its icon. Both the popover `NotificationCenter` and the home
- * `NotificationsWidget` consume this, so the two surfaces can never drift (#10697).
+ * to its icon, consumed by the dashboard notification center so every surface
+ * renders the same iconography (#10697).
  */
 export const CATEGORY_ICON: Record<NotificationCategory, ReactNode> = {
   reminder: <Clock className="h-4 w-4" />,

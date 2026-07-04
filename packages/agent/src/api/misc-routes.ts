@@ -20,6 +20,7 @@ import {
 } from "@elizaos/core";
 import type { ReadJsonBodyOptions } from "@elizaos/shared";
 import {
+  isAndroidMobile,
   PostAgentEventRequestSchema,
   PostCustomActionGenerateRequestSchema,
   PostCustomActionRequestSchema,
@@ -73,7 +74,7 @@ function resolveTerminalShellCommand(): {
     command:
       process.env.CODING_TOOLS_SHELL ||
       process.env.SHELL ||
-      (process.env.ELIZA_PLATFORM === "android" ? "/system/bin/sh" : "/bin/sh"),
+      (isAndroidMobile() ? "/system/bin/sh" : "/bin/sh"),
     argsFor: (command) => ["-c", command],
   };
 }

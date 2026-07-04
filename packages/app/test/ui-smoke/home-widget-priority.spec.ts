@@ -23,7 +23,10 @@ import { captureScreenshotWithQualityRetry } from "./helpers/screenshot-quality"
 // widget's data source (overdrawn balance, at-risk goal, imminent calendar
 // event, irregular sleep, a pending relationships merge, an urgent
 // notification), and proves the urgent widgets render AND rank at the top of
-// the home host. Desktop + mobile screenshots land under
+// the home host. The notification inbox is NOT a ranked tile: it renders in
+// the pinned NotificationsHomeCenter, always directly below the time/weather
+// base and outside the WidgetHost — asserted here alongside the ranking.
+// Desktop + mobile screenshots land under
 // aesthetic-audit-output/home-widget-priority/.
 
 const SCREENSHOT_DIR = path.join(
@@ -279,9 +282,12 @@ function relationshipsCandidates() {
   };
 }
 
-// NotificationsWidget reads the notification store, hydrated from
-// GET /api/notifications ({ notifications, unreadCount }). An urgent unread
-// notification -> escalation-weight (10) home signal.
+// The pinned NotificationsHomeCenter reads the notification store, hydrated
+// from GET /api/notifications ({ notifications, unreadCount }). The inbox is
+// not a ranked tile — it renders in the pinned center below the time/weather
+// base — but an urgent unread notification still emits escalation-weight
+// signals to any RANKED widget subscribing via signalKinds
+// (homeSignalsFromNotifications).
 function notificationsPayload() {
   return {
     notifications: [
@@ -487,7 +493,7 @@ async function installHomeWidgetRoutes(page: Page): Promise<void> {
     await fulfillJson(route, relationshipsCandidates());
   });
 
-  // Notification inbox hydrate — the notifications widget + the urgent signal.
+  // Notification inbox hydrate — the pinned center + the urgent signal.
   await page.route("**/api/notifications**", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
@@ -641,16 +647,17 @@ const GOALS_TESTID = "widget-goals-attention";
 const CALENDAR_TESTID = "chat-widget-calendar-upcoming";
 const HEALTH_TESTID = "widget-health-sleep";
 const RELATIONSHIPS_TESTID = "chat-widget-relationships";
-const NOTIFICATIONS_TESTID = "widget-notifications";
+// The notification inbox renders in the pinned NotificationsHomeCenter
+// (outside the ranked WidgetHost), asserted separately below.
+const NOTIFICATION_CENTER_TESTID = "home-notification-center";
 
-const URGENT_TESTIDS = [FINANCES_TESTID, GOALS_TESTID, NOTIFICATIONS_TESTID];
+const URGENT_TESTIDS = [FINANCES_TESTID, GOALS_TESTID];
 const SEEDED_TESTIDS = [
   FINANCES_TESTID,
   GOALS_TESTID,
   CALENDAR_TESTID,
   HEALTH_TESTID,
   RELATIONSHIPS_TESTID,
-  NOTIFICATIONS_TESTID,
 ];
 
 /**
@@ -720,14 +727,40 @@ test.describe("home widget priority (#9143)", () => {
     await expect(host.getByTestId(GOALS_TESTID)).toContainText(
       "Ship the release",
     );
-    await expect(host.getByTestId(NOTIFICATIONS_TESTID)).toContainText(
-      "Payment failed",
-    );
+
+    // The seeded urgent notification surfaces in the PINNED center — always
+    // directly below the time/weather base, outside the ranked WidgetHost, its
+    // position independent of ranking. Assert it renders the urgent row, sits
+    // outside the host, and precedes the host in document order.
+    const notificationCenter = page.getByTestId(NOTIFICATION_CENTER_TESTID);
+    await expect(notificationCenter).toBeVisible({ timeout: 30_000 });
+    await expect(
+      notificationCenter.getByTestId("notification-row"),
+    ).toContainText("Payment failed");
+    await expect(
+      host.getByTestId(NOTIFICATION_CENTER_TESTID),
+      "the notification center is pinned outside the ranked WidgetHost",
+    ).toHaveCount(0);
+    const centerPrecedesHost = await page.evaluate(() => {
+      const center = document.querySelector(
+        '[data-testid="home-notification-center"]',
+      );
+      const hostEl = document.querySelector('[data-testid="widget-host-home"]');
+      if (!center || !hostEl) return false;
+      return Boolean(
+        center.compareDocumentPosition(hostEl) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      );
+    });
+    expect(
+      centerPrecedesHost,
+      "the pinned notification center must sit above the ranked widget host",
+    ).toBe(true);
 
     // The ranking re-settles once useNow installs the real clock in an effect
     // (it returns 0 on the first render for determinism). Poll for the stable
-    // post-effect order: the three urgent widgets (finances + goals at
-    // escalation weight 10, notifications at escalation-weight 10) must occupy
+    // post-effect order: the two urgent widgets (finances + goals, both at
+    // escalation weight 10 from their self-published attention) must occupy
     // the top of the host, ahead of the non-urgent calendar/health/
     // relationships cards.
     await expect
@@ -761,10 +794,13 @@ test.describe("home widget priority (#9143)", () => {
     // Mobile screenshot (Pixel-7-ish 390px width).
     await page.setViewportSize({ width: 390, height: 844 });
     await expect(host).toBeVisible();
-    // Keep the urgent widgets visible at the mobile width too.
+    // Keep the urgent widgets + the pinned center visible at the mobile width.
     for (const testId of URGENT_TESTIDS) {
       await expect(host.getByTestId(testId)).toBeVisible({ timeout: 15_000 });
     }
+    await expect(page.getByTestId(NOTIFICATION_CENTER_TESTID)).toBeVisible({
+      timeout: 15_000,
+    });
     await screenshot(page, "mobile");
 
     // Launcher capture — the home (widgets) and the launcher (launcher

@@ -65,7 +65,7 @@ import { HomeLauncherSurface } from "./components/shell/HomeLauncherSurface";
 import { HomePill } from "./components/shell/HomePill";
 import { HomeScreen, type HomeTileTarget } from "./components/shell/HomeScreen";
 import { KioskViewCanvas } from "./components/shell/KioskViewCanvas";
-import { NotificationCenter } from "./components/shell/NotificationCenter";
+import { NotificationsShellBoot } from "./components/shell/notifications-boot";
 import { ShellControllerProvider } from "./components/shell/ShellControllerContext";
 import { useShellControllerContext } from "./components/shell/ShellControllerContext.hooks";
 import { ShellOverlays } from "./components/shell/ShellOverlays";
@@ -2532,12 +2532,12 @@ export function App() {
             it never collides with the in-chat first-run conductor. Renders null
             when not eligible; re-triggerable from Settings → Permissions. */}
         <PermissionPrimingOverlay />
-        {/* Notification center, headless for now: the visible bell is hidden,
-            but this still self-boots the notification store (hydrate + live
-            stream) and routes interrupt toasts through ActionNotice. Restore
-            the floating bell by rendering <NotificationCenter /> in a
-            top-right fixed wrapper again (HomePill owns bottom-center). */}
-        <NotificationCenter headless />
+        {/* Headless notification wiring: boots the notification store (hydrate
+            + live stream), routes interrupt toasts through ActionNotice, and
+            sends every "open notifications" entry point (menu/tray/deep-link)
+            to the dashboard, where NotificationsHomeCenter is the one
+            notification surface. Renders null. */}
+        <NotificationsShellBoot />
         <ShellOverlays actionNotice={actionNotice} />
         <SaveCommandModal
           open={contextMenu.saveCommandModalOpen}

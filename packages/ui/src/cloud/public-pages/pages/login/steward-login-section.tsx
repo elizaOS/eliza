@@ -59,6 +59,7 @@ import {
   consumeStewardCodeFromQuery,
   consumeStewardTokensFromHash,
   exchangeStewardCodeViaApi,
+  hasStewardOAuthCallbackInUrl,
   refreshStewardSessionViaCookie,
   syncStewardSessionCookie,
 } from "../../lib/steward-session";
@@ -224,6 +225,15 @@ export default function StewardLoginSection() {
   const [error, setError] = useState<string | null>(null);
   const [callbackError, setCallbackError] = useState<string | null>(null);
   const [redirectTo, setRedirectTo] = useState<string | null>(null);
+  // Detected once, synchronously, BEFORE the callback-consuming effect below
+  // strips `?code`/`#token` from the URL. While this is true the section shows a
+  // terminal "completing sign-in" state instead of re-rendering the provider
+  // options underneath the in-flight token exchange — that re-render is what read
+  // as the login flashing back to the sign-in options after a successful
+  // callback. Cleared only if the exchange fails, so the error + retry surface.
+  const [completingCallback, setCompletingCallback] = useState<boolean>(() =>
+    PLAYWRIGHT_TEST_AUTH_ENABLED ? false : hasStewardOAuthCallbackInUrl(),
+  );
   const [providersLoaded, setProvidersLoaded] = useState(
     PLAYWRIGHT_TEST_AUTH_ENABLED || cachedStewardProviders !== null,
   );
@@ -280,6 +290,7 @@ export default function StewardLoginSection() {
           );
         })
         .catch((sessionError) => {
+          setCompletingCallback(false);
           setCallbackError(
             getErrorMessage(
               sessionError,
@@ -300,6 +311,7 @@ export default function StewardLoginSection() {
     try {
       persistStewardToken(token);
     } catch (sessionError) {
+      setCompletingCallback(false);
       setCallbackError(
         getErrorMessage(
           sessionError,
@@ -316,6 +328,7 @@ export default function StewardLoginSection() {
         );
       })
       .catch((sessionError) => {
+        setCompletingCallback(false);
         setCallbackError(
           getErrorMessage(sessionError, "Could not establish a local session"),
         );
@@ -521,6 +534,24 @@ export default function StewardLoginSection() {
 
   if (redirectTo) {
     return <Navigate to={redirectTo} replace />;
+  }
+
+  // A completed OAuth/token callback is being exchanged. Hold a terminal
+  // "completing sign-in" state (never the provider options) until the exchange
+  // resolves into a redirect or an error — so the callback can't flash back to
+  // the sign-in options. A callback failure clears this and surfaces
+  // `callbackError` below.
+  if (completingCallback && !callbackError) {
+    return (
+      <div className="flex flex-col items-center gap-4 py-8" role="status">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-border-strong border-t-accent motion-reduce:animate-none" />
+        <p className="text-sm text-muted">
+          {t("cloud.login.completingSignIn", {
+            defaultValue: "Completing sign-in…",
+          })}
+        </p>
+      </div>
+    );
   }
 
   if (step === "success") {

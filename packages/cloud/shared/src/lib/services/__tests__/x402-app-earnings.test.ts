@@ -235,3 +235,72 @@ test("a non-app x402 request credits the payer's own redeemable balance, not an 
   expect(earnArg.userId).toBe("buyer-1");
   expect(earnArg.source).toBe("creator_revenue_share");
 });
+
+// #13415 fail-closed: a corrupt stored amount must abort BEFORE the facilitator
+// moves funds. Previously `Number(metadata.amountUsd ?? credits_to_add)` was
+// computed after settlement and NaN slipped past the `<= 0` earnings guard
+// (NaN comparisons are false), producing an `amount: "NaN"` transaction row
+// and a `total_creator_earnings + NaN` SQL update.
+test("settle refuses a request whose stored amount is corrupt, before moving funds", async () => {
+  findPaymentById.mockResolvedValue(
+    paymentRecord({
+      credits_to_add: "not-a-number",
+      metadata: {
+        kind: "x402_payment_request",
+        appId: APP_ID,
+        amountUsd: "garbage",
+        description: "Corrupt",
+        requirements: { scheme: "exact", network: "eip155:8453", payTo: "0xpayto" },
+      },
+    }),
+  );
+
+  await expect(x402PaymentRequestsService.settle(PAYMENT_ID, validPayload)).rejects.toThrow(
+    /corrupt amount/i,
+  );
+
+  // Fails closed: no on-chain settlement, no confirmation, no earnings.
+  expect(settle).not.toHaveBeenCalled();
+  expect(markAsConfirmed).not.toHaveBeenCalled();
+  expect(addPurchaseEarnings).not.toHaveBeenCalled();
+  expect(addEarnings).not.toHaveBeenCalled();
+});
+
+test("settle refuses a request missing both amountUsd and credits_to_add", async () => {
+  findPaymentById.mockResolvedValue(
+    paymentRecord({
+      credits_to_add: null,
+      metadata: {
+        kind: "x402_payment_request",
+        appId: APP_ID,
+        description: "Missing amount",
+        requirements: { scheme: "exact", network: "eip155:8453", payTo: "0xpayto" },
+      },
+    }),
+  );
+
+  await expect(x402PaymentRequestsService.settle(PAYMENT_ID, validPayload)).rejects.toThrow(
+    /corrupt amount/i,
+  );
+  expect(settle).not.toHaveBeenCalled();
+  expect(addEarnings).not.toHaveBeenCalled();
+});
+
+test("settle refuses a zero-amount request instead of settling for nothing", async () => {
+  findPaymentById.mockResolvedValue(
+    paymentRecord({
+      metadata: {
+        kind: "x402_payment_request",
+        appId: APP_ID,
+        amountUsd: 0,
+        description: "Zero",
+        requirements: { scheme: "exact", network: "eip155:8453", payTo: "0xpayto" },
+      },
+    }),
+  );
+
+  await expect(x402PaymentRequestsService.settle(PAYMENT_ID, validPayload)).rejects.toThrow(
+    /corrupt amount/i,
+  );
+  expect(settle).not.toHaveBeenCalled();
+});

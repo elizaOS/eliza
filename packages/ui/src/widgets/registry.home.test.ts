@@ -32,14 +32,14 @@ describe("home frontpage widget slot (#9143)", () => {
     expect(decl?.slot).toBe("chat-sidebar");
   });
 
-  it("resolves the Notifications widget on home even with NO plugins (always-visible core feature)", () => {
+  it("declares NO notifications widget for the home slot (the center is pinned by HomeScreen)", () => {
+    // The dashboard notification center (NotificationsHomeCenter) is mounted by
+    // HomeScreen directly, not ranked through the registry — a `notifications.*`
+    // home declaration would double-render the inbox.
     const resolved = resolveWidgetsForSlot("home", []);
-    const notif = resolved.find(
-      (r) => r.declaration.id === "notifications.recent",
-    );
-    expect(notif).toBeTruthy();
-    expect(notif?.declaration.slot).toBe("home");
-    expect(notif?.Component).toBeTruthy();
+    expect(
+      resolved.filter((r) => r.declaration.id.startsWith("notifications.")),
+    ).toEqual([]);
   });
 
   it("no longer resolves a standalone Recent conversations tile (#10697)", () => {
@@ -49,15 +49,6 @@ describe("home frontpage widget slot (#9143)", () => {
     expect(
       resolved.find((r) => r.declaration.id === "messages.recent"),
     ).toBeUndefined();
-  });
-
-  it("keeps Notifications always-visible on home with NO plugins", () => {
-    const resolved = resolveWidgetsForSlot("home", []);
-    const notif = resolved.find(
-      (r) => r.declaration.id === "notifications.recent",
-    );
-    expect(notif?.declaration.slot).toBe("home");
-    expect(notif?.Component).toBeTruthy();
   });
 
   it("resolves the agent-orchestrator Apps widget on home (reused component)", () => {

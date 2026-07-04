@@ -18,14 +18,14 @@ import { HomeLauncherSurface } from "./HomeLauncherSurface";
 import { HomeScreen } from "./HomeScreen";
 
 // The consolidated /chat home (#9143): the REAL HomeScreen mounting the REAL
-// unified home-slot WidgetHost, paired with the Launcher as the two
-// pages of HomeLauncherSurface. The per-plugin home widgets (calendar /
-// goals / finances / health / relationships / inbox) + notifications are the
-// genuine widget components, fed by the shared injected mock data only — no
-// stubbing of WidgetHost or the widgets themselves. The launcher page renders
-// the presentational <Launcher> with a representative tile set (its
-// data-fetching <LauncherSurface> wrapper needs a live /api/views layer the
-// catalog doesn't have).
+// unified home-slot WidgetHost AND the pinned NotificationsHomeCenter, paired
+// with the Launcher as the two pages of HomeLauncherSurface. The per-plugin
+// home widgets (calendar / goals / finances / health / relationships / inbox)
+// are the genuine widget components and the notification center reads the
+// seeded notification store — no stubbing of WidgetHost or the widgets
+// themselves. The launcher page renders the presentational <Launcher> with a
+// representative tile set (its data-fetching <LauncherSurface> wrapper needs a
+// live /api/views layer the catalog doesn't have).
 
 function viewEntry(id: string, label: string, icon: string): ViewEntry {
   return {

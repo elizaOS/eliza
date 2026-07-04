@@ -71,6 +71,10 @@ export {
   matchPluginRoutePath,
   tryHandleRuntimePluginRoute,
 } from "./runtime-plugin-routes.ts";
+// The Android in-process bridge serves /api/first-run/* itself (the stdio
+// dispatch bypasses the HTTP server layer that owns those routes) and needs
+// the same completion predicate the server uses.
+export { hasPersistedFirstRunState } from "./server-helpers.ts";
 export * from "./subscription-routes.ts";
 export * from "./terminal-run-limits.ts";
 export * from "./training-backend-check.ts";

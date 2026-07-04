@@ -145,6 +145,31 @@ function asRecordList(value: unknown): BuiltAppRecord[] {
   );
 }
 
+// The cache API is get/set only (no compare-and-swap), so every registry
+// mutation is a read-modify-write. Completions are serial per session but NOT
+// across sessions — two sub-agents finishing together (or a register racing an
+// HTTP DELETE) would read the same snapshot and last-write-wins would drop a
+// record. A per-runtime promise chain serializes mutations, the same
+// promise-chain mutex AcpService uses for session-slot reservation. Keyed
+// weakly on the runtime object so distinct runtimes (tests, multi-agent hosts)
+// never contend and the chain dies with the runtime.
+const mutationChains = new WeakMap<CacheRuntime, Promise<unknown>>();
+
+function withRegistryLock<T>(
+  runtime: CacheRuntime,
+  mutate: () => Promise<T>,
+): Promise<T> {
+  const tail = mutationChains.get(runtime) ?? Promise.resolve();
+  const run = tail.then(mutate);
+  // The stored tail only sequences the next mutation; its rejection is
+  // observed by this mutation's caller via `run`.
+  mutationChains.set(
+    runtime,
+    run.catch(() => undefined),
+  );
+  return run;
+}
+
 /** Read the built-apps registry, newest first. Empty when never written. */
 export async function listBuiltApps(
   runtime: unknown,
@@ -154,31 +179,34 @@ export async function listBuiltApps(
 }
 
 /**
- * Insert (or refresh, keyed on target+slug) one record. Read-modify-write on
- * the runtime cache — completions are handled serially per session in a
- * single process, so no cross-process lock is needed here.
+ * Insert (or refresh, keyed on target+slug) one record. Serialized against
+ * other registry mutations so concurrent completions all persist.
  */
 export async function registerBuiltApp(
   runtime: unknown,
   record: BuiltAppRecord,
 ): Promise<boolean> {
   if (!hasCache(runtime)) return false;
-  const existing = await listBuiltApps(runtime);
-  const rest = existing.filter(
-    (entry) => !(entry.target === record.target && entry.slug === record.slug),
-  );
-  await runtime.setCache(
-    BUILT_APPS_CACHE_KEY,
-    [record, ...rest].slice(0, MAX_BUILT_APPS),
-  );
-  return true;
+  return withRegistryLock(runtime, async () => {
+    const existing = asRecordList(await runtime.getCache(BUILT_APPS_CACHE_KEY));
+    const rest = existing.filter(
+      (entry) =>
+        !(entry.target === record.target && entry.slug === record.slug),
+    );
+    await runtime.setCache(
+      BUILT_APPS_CACHE_KEY,
+      [record, ...rest].slice(0, MAX_BUILT_APPS),
+    );
+    return true;
+  });
 }
 
 /**
- * Remove one record by its registry key (target+slug). Returns false when no
- * such record exists — or the runtime has no cache, in which case the registry
- * is structurally empty — so the route can answer 404 without a separate
- * existence check.
+ * Remove one record by its registry key (target+slug). Serialized against
+ * other registry mutations so a delete racing a register cannot clobber the
+ * other's write. Returns false when no such record exists — or the runtime has
+ * no cache, in which case the registry is structurally empty — so the route
+ * can answer 404 without a separate existence check.
  */
 export async function deleteBuiltApp(
   runtime: unknown,
@@ -186,13 +214,15 @@ export async function deleteBuiltApp(
   slug: string,
 ): Promise<boolean> {
   if (!hasCache(runtime)) return false;
-  const existing = await listBuiltApps(runtime);
-  const rest = existing.filter(
-    (entry) => !(entry.target === target && entry.slug === slug),
-  );
-  if (rest.length === existing.length) return false;
-  await runtime.setCache(BUILT_APPS_CACHE_KEY, rest);
-  return true;
+  return withRegistryLock(runtime, async () => {
+    const existing = asRecordList(await runtime.getCache(BUILT_APPS_CACHE_KEY));
+    const rest = existing.filter(
+      (entry) => !(entry.target === target && entry.slug === slug),
+    );
+    if (rest.length === existing.length) return false;
+    await runtime.setCache(BUILT_APPS_CACHE_KEY, rest);
+    return true;
+  });
 }
 
 /**

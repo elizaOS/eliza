@@ -193,30 +193,34 @@ async function dispatchOrchestratorRoutes(
     return true;
   }
 
-  // DELETE /api/orchestrator/built-apps/:target/:slug — remove one record by
-  // its registry key. Without this leg a registered app could only leave the
-  // registry via the MAX_BUILT_APPS cap or a same-slug redeploy overwrite.
-  // Same service-independence as the GET above, so it too dispatches before
-  // the service gate. 404 when the target+slug pair is not registered.
-  if (method === "DELETE" && pathname.startsWith(`${PREFIX}/built-apps/`)) {
-    const segments = pathname
-      .slice(`${PREFIX}/built-apps/`.length)
-      .split("/")
-      .filter((s) => s.length > 0);
-    if (segments.length !== 2) {
-      sendError(res, "Expected /built-apps/:target/:slug", 400);
-      return true;
-    }
+  // DELETE /api/orchestrator/built-apps/:target/:slug — remove one built app
+  // from the durable registry. Like the list route, this is cache-backed and
+  // independent of OrchestratorTaskService startup.
+  const builtAppsRest = pathname.slice(`${PREFIX}/built-apps/`.length);
+  if (
+    method === "DELETE" &&
+    pathname.startsWith(`${PREFIX}/built-apps/`) &&
+    builtAppsRest.length > 0
+  ) {
+    const segments = builtAppsRest.split("/").filter((s) => s.length > 0);
     const target = decodeURIComponent(segments[0] ?? "");
     const slug = decodeURIComponent(segments[1] ?? "");
-    if (!(await deleteBuiltApp(ctx.runtime, target, slug))) {
+    if (segments.length !== 2 || !slug) {
+      sendError(res, "target and slug are required", 400);
+      return true;
+    }
+    if (target !== "custom" && target !== "eliza-cloud") {
+      sendError(res, "target must be custom or eliza-cloud", 400);
+      return true;
+    }
+    const deleted = await deleteBuiltApp(ctx.runtime, target, slug);
+    if (!deleted) {
       sendError(res, "Built app not found", 404);
       return true;
     }
     sendJson(res, { deleted: true });
     return true;
   }
-
   const service = await resolveService(ctx);
   if (!service) {
     // Lazy service registration: the route is mounted before

@@ -517,6 +517,11 @@ const optionalPluginStubs = {
   // @elizaos/plugin-streaming destinations: ResolveMessage: Cannot
   // find module '@elizaos/plugin-streaming'` on every chat turn.
   "@elizaos/plugin-streaming": path.join(stubsDir, "null-plugin.cjs"),
+  // Birdclaw shells out to the host-local birdclaw CLI and is never loaded on
+  // mobile; the runtime plugin filter strips it before registration. Stub the
+  // static optional import so fresh mobile builds do not require its desktop
+  // package output to exist.
+  "@elizaos/plugin-birdclaw": path.join(stubsDir, "null-plugin.cjs"),
   // Workflow/automation routes are desktop/cloud surface area. Mobile's
   // runtime plugin filter does not load workflow, and latest workflow source
   // keeps large generated node catalogs in dist rather than src/data. Stub the

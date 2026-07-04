@@ -1,0 +1,13 @@
+{
+  "viewport": "mobile",
+  "id": "feed",
+  "viewType": "gui",
+  "path": "/feed",
+  "screenshot": "mobile-feed-gui.png",
+  "url": "http://127.0.0.1:2138/feed",
+  "status": "capture-error",
+  "visibleTextSample": "",
+  "consoleErrors": [],
+  "pageErrors": [],
+  "error": "locator.evaluate: Test timeout of 20000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('body')\u001b[22m\n\u001b[2m    - locator resolved to visible <body>…</body>\u001b[22m\n"
+}

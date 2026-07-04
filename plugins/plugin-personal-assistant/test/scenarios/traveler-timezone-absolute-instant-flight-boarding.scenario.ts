@@ -28,12 +28,20 @@ export default scenario({
       name: "seed existing NY-anchored calendar context",
       method: "POST",
       path: "/api/lifeops/definitions",
+      // Canonical CreateLifeOpsDefinitionRequest shape: the route validates
+      // `kind` and a structured `cadence` object; flat cadenceKind/dueAt
+      // fields are rejected before a definition (and its id) ever exists.
+      // The route answers with a LifeOpsDefinitionRecord envelope, so the id
+      // lives at `definition.id`, not at the response root.
       body: {
+        kind: "task",
         title: "Board flight NRT-JFK",
-        cadenceKind: "once",
-        dueAt: "{{now+2d}}",
+        timezone: "America/New_York",
+        priority: 1,
+        cadence: { kind: "once", dueAt: "{{now+2d}}" },
       },
-      captures: { flightDefinitionId: "id" },
+      expectedStatus: 201,
+      captures: { flightDefinitionId: "definition.id" },
     },
     {
       kind: "message",

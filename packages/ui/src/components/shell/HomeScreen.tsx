@@ -12,22 +12,14 @@ import {
 import type * as React from "react";
 import { useEffect, useRef, useState } from "react";
 
-import { dispatchOpenNotificationCenter } from "../../events";
 import { useActivityEvents } from "../../hooks/useActivityEvents";
 import { isRenderTelemetryEnabled } from "../../hooks/useRenderGuard";
 import { cn } from "../../lib/utils";
-import {
-  beginNotificationDrag,
-  cancelNotificationDrag,
-  commitNotificationDrag,
-  setNotificationDrag,
-} from "../../state/notifications/notification-shell";
 import { LAYOUT_SHIFT_OBSERVER_INIT } from "../../testing/layout-stability";
 import { WidgetHost } from "../../widgets/WidgetHost";
 import { Button } from "../ui/button";
 import { DefaultHomeWidgets } from "./DefaultHomeWidgets";
-import { useNotificationPull } from "./use-notification-pull";
-import { usePullGesture } from "./use-pull-gesture";
+import { NotificationsHomeCenter } from "./NotificationsHomeCenter";
 
 // A gentle staggered fade-up as the home settles in — iOS-style, calm, and
 // fully stilled under prefers-reduced-motion. Each block carries a small
@@ -154,14 +146,16 @@ export interface HomeScreenProps {
 
 /**
  * The /chat home: a deliberately minimal dashboard that sits behind the
- * always-present floating chat. It surfaces the prioritized home widgets — the
- * unified `home`-slot WidgetHost (#9143): notifications, recent messages,
- * orchestrator activity, and the per-plugin attention cards
- * (calendar/goals/finances/health/relationships/inbox), each self-hiding when
- * empty and dynamically ranked so whatever needs attention floats to the top.
- * The home stays clean (just the ambient field + clock) when nothing's active.
- * The AOSP native-OS tiles render below on Android. The chat overlay floats
- * over the bottom; this scrolls with clearance for it.
+ * always-present floating chat. Below the time/weather base sits the pinned
+ * notification center widget (NotificationsHomeCenter — the app's one
+ * notification surface), then the prioritized home widgets — the unified
+ * `home`-slot WidgetHost (#9143): recent messages, orchestrator activity, and
+ * the per-plugin attention cards (calendar/goals/finances/health/relationships/
+ * inbox), each self-hiding when empty and dynamically ranked so whatever needs
+ * attention floats to the top. The home stays clean (just the ambient field +
+ * clock) when nothing's active. The AOSP native-OS tiles render below on
+ * Android. The chat overlay floats over the bottom; this scrolls with
+ * clearance for it.
  */
 export function HomeScreen({
   onOpenTile,
@@ -178,106 +172,60 @@ export function HomeScreen({
   // Dev/test-only: observe home layout shifts on the shared telemetry channel.
   useHomeLayoutShiftObserver();
 
-  // iOS Notification-Center pull-down: a downward drag ANYWHERE on the dashboard
-  // (while the widget list is scrolled to the top) pulls the notification center
-  // down — the same gesture as dragging it down from an iOS home screen. There
-  // is no separate affordance: the REAL sheet fades in and tracks the finger, so
-  // the pull drives the shared shell store live (a release past threshold settles
-  // it open; a short release retracts it). The gesture only engages on a
-  // top-overscroll downward drag, so it never fights the list's vertical scroll
-  // or the home ↔ launcher horizontal pager (see use-notification-pull).
-  //
-  // The notification center has ONE owner: the always-mounted headless
-  // NotificationCenter (App.tsx), which subscribes to the shell store and also
-  // listens for OPEN_NOTIFICATION_CENTER_EVENT (tray/menu/deep-link + the
-  // top-edge button). The home path and those converge on one open state — two
-  // shells can never stack.
-  const pull = useNotificationPull({
-    onStart: () => beginNotificationDrag(),
-    onReveal: (px) => setNotificationDrag(px),
-    onEnd: (committed) =>
-      committed ? commitNotificationDrag() : cancelNotificationDrag(),
-  });
-
-  // The top-edge button is a dedicated pull HANDLE (not a scroll surface), so it
-  // uses the eager-capture gesture: capturing on pointerdown suppresses the
-  // browser's trailing synthesized click on a drag, which is what keeps an
-  // upward drag from opening the center via a stray click (gesture-matrix e2e).
-  // A tap still opens via the button's onClick / keyboard activation.
-  const edgePull = usePullGesture({
-    onPullDown: () => dispatchOpenNotificationCenter(),
-  });
-
   return (
-    <>
-      {/* Top-edge entry point for click / keyboard / desktop fine-pointer — the
-          pull gesture is touch-first, so a real button keeps the notification
-          center reachable without a drag (and covers the notch band, the
-          iOS-natural place to start the pull). No visible resting pill: it is an
-          invisible strip over the status-bar-adjacent band, so widget taps/scroll
-          below are untouched.
-
-          Height math: the shell root already pads the status bar away with
-          paddingTop: max(var(--safe-area-top) − 1.25rem, 1.25rem) (App.tsx), so
-          this strip must NOT add the full safe-area again (that double-count
-          deadened ~70px of home content on notched iPhones). It only spans the
-          residual tucked band — the part of the safe area the root deliberately
-          shaves, capped at 1.25rem — plus a 30px grab margin. */}
-      <Button
-        data-testid="home-notification-pull-zone"
-        aria-label="Open notifications"
-        variant="ghost"
-        className="absolute inset-x-0 top-0 z-[2] h-[calc(min(max(var(--safe-area-top,0px)-1.25rem,0px),1.25rem)+44px)] min-h-11 cursor-default rounded-none border-0 bg-transparent p-0 outline-none hover:bg-transparent"
-        style={{ touchAction: "none" }}
-        onClick={() => dispatchOpenNotificationCenter()}
-        {...edgePull}
-      />
-      <div
-        ref={pull.ref}
-        data-testid="home-screen"
-        className={cn(
-          // `touch-pan-y`: this scroller covers the whole home half, and a
-          // scroll container's OWN touch-action governs which pans the browser
-          // consumes at it (`overflow-y-auto` computes to overflow-x auto too,
-          // so with the default `auto` the browser ate horizontal touch drags
-          // as a scroll attempt — pointercancel — and the home → launcher rail
-          // flick never fired on real touch). Keep vertical panning native for
-          // the widget list; hand every horizontal gesture to the rail.
-          // `overscroll-y-contain`: at the top a downward drag is the
-          // notification pull (use-notification-pull); keep the browser's own
-          // pull-to-refresh / scroll-chaining off it so the gesture owns the
-          // top overscroll.
-          "eliza-continuous-chat-scroll absolute inset-0 z-[1] touch-pan-y overflow-y-auto overscroll-y-contain",
-          // The shell root already reserves the status-bar safe area (its
-          // paddingTop: var(--safe-area-top)); adding it again here double-padded
-          // the content and left a large empty band above the dashboard. Just a
-          // small gutter — the notch is already cleared by the root.
-          "px-4",
-          // Reserve the top band so resting content isn't tap-shadowed by the
-          // invisible top-edge notification button (same height math as it).
-          "pt-[calc(min(max(var(--safe-area-top,0px)-1.25rem,0px),1.25rem)+30px)]",
-          // Clear the floating chat composer at the bottom.
-          "pb-[calc(var(--eliza-mobile-nav-offset,0px)+max(var(--safe-area-bottom,0px),var(--android-gesture-inset-bottom,0px))+var(--eliza-continuous-chat-clearance,5.25rem)+1.5rem)]",
-        )}
-      >
-        <style>{HOME_ENTER_CSS}</style>
-        {/* The content column owns the FULL height of the scroller (min-h-full)
-            and lays its blocks out as a flex column so the vertical space is
-            distributed on purpose, not left as a void above the composer. The
-            editorial header (greeting/clock + weather) anchors the TOP; the
-            prioritized widget stack sits in a `flex-1` breathing region that
-            grows to absorb the reclaimed space and centres its content within
-            it, so an empty widget set reads as calm airiness rather than a
-            broken gap; the AOSP tiles settle at the BOTTOM. */}
-        <div className="mx-auto flex min-h-full w-full max-w-2xl flex-col">
-          {/* The always-on base: a naked sized grid with the time + weather as
+    <div
+      data-testid="home-screen"
+      className={cn(
+        // `touch-pan-y`: this scroller covers the whole home half, and a
+        // scroll container's OWN touch-action governs which pans the browser
+        // consumes at it (`overflow-y-auto` computes to overflow-x auto too,
+        // so with the default `auto` the browser ate horizontal touch drags
+        // as a scroll attempt — pointercancel — and the home → launcher rail
+        // flick never fired on real touch). Keep vertical panning native for
+        // the widget list; hand every horizontal gesture to the rail.
+        // `overscroll-y-contain`: keep the browser's own pull-to-refresh /
+        // scroll-chaining off the top overscroll so a drag past the top never
+        // yanks the whole page.
+        "eliza-continuous-chat-scroll absolute inset-0 z-[1] touch-pan-y overflow-y-auto overscroll-y-contain",
+        // The shell root already reserves the status-bar safe area (its
+        // paddingTop: var(--safe-area-top)); adding it again here double-padded
+        // the content and left a large empty band above the dashboard. Just a
+        // small gutter — the notch is already cleared by the root.
+        "px-4",
+        // Clear the residual tucked band the root deliberately shaves off the
+        // safe area (capped at 1.25rem), plus a small breathing gutter.
+        "pt-[calc(min(max(var(--safe-area-top,0px)-1.25rem,0px),1.25rem)+12px)]",
+        // Clear the floating chat composer at the bottom.
+        "pb-[calc(var(--eliza-mobile-nav-offset,0px)+max(var(--safe-area-bottom,0px),var(--android-gesture-inset-bottom,0px))+var(--eliza-continuous-chat-clearance,5.25rem)+1.5rem)]",
+      )}
+    >
+      <style>{HOME_ENTER_CSS}</style>
+      {/* The content column owns the FULL height of the scroller (min-h-full)
+          and lays its blocks out as a flex column so the vertical space is
+          distributed on purpose, not left as a void above the composer. The
+          editorial header (greeting/clock + weather) anchors the TOP, with the
+          pinned notification center directly beneath it; the prioritized
+          widget stack sits in a `flex-1` breathing region that grows to absorb
+          the reclaimed space and centres its content within it, so an empty
+          widget set reads as calm airiness rather than a broken gap; the AOSP
+          tiles settle at the BOTTOM. */}
+      <div className="mx-auto flex min-h-full w-full max-w-2xl flex-col">
+        {/* The always-on base: a naked sized grid with the time + weather as
             2×2 neighbours — no card, white text on the ambient field. Anchored
             at the top of the column as the editorial header. */}
-          <div className={enterClass} style={{ animationDelay: "70ms" }}>
-            <DefaultHomeWidgets />
-          </div>
+        <div className={enterClass} style={{ animationDelay: "70ms" }}>
+          <DefaultHomeWidgets />
+        </div>
 
-          {/* The prioritized data widgets (#9143) live in the breathing region:
+        {/* The notification center: a pinned widget directly below the
+            time/weather base — THE notification surface (the pull-down sheet it
+            replaced is gone). Self-hides when the inbox is empty; when present
+            it height-caps and scrolls internally. */}
+        <div className={enterClass} style={{ animationDelay: "90ms" }}>
+          <NotificationsHomeCenter />
+        </div>
+
+        {/* The prioritized data widgets (#9143) live in the breathing region:
             a `flex-1` block that grows to fill the space between the header and
             the bottom tiles, so the column always spans the full height. Its
             content is vertically centred within that region — when widgets are
@@ -286,59 +234,58 @@ export function HomeScreen({
             simply reads as calm, intentional space rather than a dead gap. A
             little top padding sets the stack apart from the editorial header as
             its own section. */}
-          <div
-            className={cn(enterClass, "flex flex-1 flex-col justify-center py-6")}
-            style={{ animationDelay: "110ms" }}
-          >
-            <WidgetHost
-              slot="home"
-              layout="grid"
-              events={events}
-              clearEvents={clearEvents}
-            />
-          </div>
-
-          {tiles.length > 0 ? (
-            <nav
-              aria-label="Apps"
-              data-testid="home-tiles"
-              className={cn(enterClass, "pt-2")}
-              style={{ animationDelay: "150ms" }}
-            >
-              <div className="grid grid-cols-4 gap-3">
-                {tiles.map((tile) => {
-                  const Icon = tile.icon;
-                  return (
-                    <Button
-                      key={tile.id}
-                      data-testid={`home-tile-${tile.id}`}
-                      onClick={() => onOpenTile(tile.target)}
-                      variant="ghost"
-                      className={cn(
-                        // Naked tile: icon + label sit directly on the ambient
-                        // orange field — no fill, no border.
-                        "flex h-auto flex-col items-center gap-1.5 whitespace-normal rounded-2xl px-1 py-3.5 text-white [text-shadow:0_1px_3px_rgba(0,0,0,0.38)]",
-                        // Tactile press: a quick scale-down on tap (stilled for
-                        // reduce-motion users), plus a faint white wash on hover.
-                        "transition-[transform,background-color] duration-150 active:scale-[0.96] motion-reduce:active:scale-100",
-                        "hover:bg-white/8",
-                      )}
-                    >
-                      <Icon
-                        className="h-[22px] w-[22px] text-white"
-                        aria-hidden
-                      />
-                      <span className="max-w-full truncate text-[11px] font-medium text-white">
-                        {tile.label}
-                      </span>
-                    </Button>
-                  );
-                })}
-              </div>
-            </nav>
-          ) : null}
+        <div
+          className={cn(enterClass, "flex flex-1 flex-col justify-center py-6")}
+          style={{ animationDelay: "110ms" }}
+        >
+          <WidgetHost
+            slot="home"
+            layout="grid"
+            events={events}
+            clearEvents={clearEvents}
+          />
         </div>
+
+        {tiles.length > 0 ? (
+          <nav
+            aria-label="Apps"
+            data-testid="home-tiles"
+            className={cn(enterClass, "pt-2")}
+            style={{ animationDelay: "150ms" }}
+          >
+            <div className="grid grid-cols-4 gap-3">
+              {tiles.map((tile) => {
+                const Icon = tile.icon;
+                return (
+                  <Button
+                    key={tile.id}
+                    data-testid={`home-tile-${tile.id}`}
+                    onClick={() => onOpenTile(tile.target)}
+                    variant="ghost"
+                    className={cn(
+                      // Naked tile: icon + label sit directly on the ambient
+                      // orange field — no fill, no border.
+                      "flex h-auto flex-col items-center gap-1.5 whitespace-normal rounded-2xl px-1 py-3.5 text-white [text-shadow:0_1px_3px_rgba(0,0,0,0.38)]",
+                      // Tactile press: a quick scale-down on tap (stilled for
+                      // reduce-motion users), plus a faint white wash on hover.
+                      "transition-[transform,background-color] duration-150 active:scale-[0.96] motion-reduce:active:scale-100",
+                      "hover:bg-white/8",
+                    )}
+                  >
+                    <Icon
+                      className="h-[22px] w-[22px] text-white"
+                      aria-hidden
+                    />
+                    <span className="max-w-full truncate text-[11px] font-medium text-white">
+                      {tile.label}
+                    </span>
+                  </Button>
+                );
+              })}
+            </div>
+          </nav>
+        ) : null}
       </div>
-    </>
+    </div>
   );
 }

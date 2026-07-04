@@ -80,6 +80,24 @@ const iosApiBase = storeSafeAgentApiBase(
   iosRuntimeMode,
 );
 
+function resolveServerUrl(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  if (!trimmed || isIosStoreBuild()) return undefined;
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return undefined;
+    }
+    if (!isPrivateOrLoopbackHost(parsed.hostname)) return undefined;
+    return parsed.href.replace(/\/$/, "");
+  } catch {
+    // error-policy:J3 invalid test-only server URL disables the override
+    return undefined;
+  }
+}
+
+const serverUrl = resolveServerUrl(process.env.ELIZA_CAPACITOR_SERVER_URL);
+
 // E2E/test builds opt into WebView remote debugging via ELIZA_WEBVIEW_DEBUG=1.
 // This keeps the bundled APK assets and the real
 // on-device agent, but makes the System WebView CDP-attachable so Playwright's
@@ -112,6 +130,7 @@ const config: CapacitorConfig = {
   server: {
     androidScheme: "https",
     iosScheme: "https",
+    ...(serverUrl ? { url: serverUrl } : {}),
     // Allow the webview to connect to the embedded API server
     allowNavigation: [
       ...localNavigationHosts,

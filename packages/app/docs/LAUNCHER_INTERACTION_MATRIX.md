@@ -16,8 +16,8 @@ per-platform roll-up:
   design (test-id contract, `[S]`/`[L]`/`[I]` tags, invariant list). Read it for
   the per-gesture detail behind the rows below.
 - `packages/app/docs/CHAT_GESTURE_COVERAGE.md` — the chat/touch gesture roster;
-  the home↔launcher pager (row 9) and notification pull (row 8) there are the
-  same handlers mapped below, from the gesture-site angle.
+  the home↔launcher pager (row 8) there is the same handler pair mapped below,
+  from the gesture-site angle.
 
 ## Lane legend
 
@@ -72,13 +72,20 @@ carry a reason. Every backticked path in this file must exist on disk (enforced)
 | 12 | Long-press on a tile: no edit mode, no ghost launch | `packages/ui/src/components/shell/HomeLauncherSurface.composed.test.tsx` | `packages/ui/src/components/pages/__e2e__/run-launcher-e2e.mjs` | `packages/app/test/ui-smoke/gesture-matrix.spec.ts` | N/A | N/A — pending: the emulator long-press leg presses a chat message, not a launcher tile | N/A — pending: the native long-press leg presses the home surface (callout suppression + no-nav), not a tile |
 | 13 | Grid vertical scroll; tiles stay tappable after scroll | `packages/ui/src/testing/launcher-loop/launcher-loop.test.ts` | `packages/ui/src/components/shell/__e2e__/run-launcher-loop-e2e.mjs` | `packages/app/test/ui-smoke/launcher-gesture-loop.spec.ts` | N/A | `packages/app/test/android/launcher-gesture-loop.android.spec.ts` | N/A — page-stability loop scopes out grid scroll |
 
-### Notification pull (home)
+### Notification center (home dashboard widget)
+
+Notifications live in `NotificationsHomeCenter`, a widget pinned on the home
+dashboard below the time/weather base (not behind a pull gesture). It carries
+no gesture recognizer (rows are plain buttons; the list is a plain capped
+scroll container), so no gesture-handler source site maps to these rows — but
+its interactions still share the home surface with the rail pager and are
+covered per-lane here.
 
 | # | Interaction | unit | fixture-e2e | ui-smoke | desktop | android | ios |
 |---|---|---|---|---|---|---|---|
-| 14 | Pull-down ≥60px opens center; short retracts | `packages/ui/src/components/shell/HomeScreen.test.tsx` + `packages/ui/src/testing/launcher-loop/launcher-loop.test.ts` (commit gating; pull easing in `packages/ui/src/components/shell/use-notification-pull.test.ts`) | `packages/ui/src/components/shell/__e2e__/run-launcher-loop-e2e.mjs` | `packages/app/test/ui-smoke/gesture-matrix.spec.ts` | N/A | N/A — pending: no emulator notification-pull leg | N/A — pending: no native notification-pull leg (web lanes own the pull) |
-| 15 | Upward drag's trailing compat-click must NOT open the sheet | `packages/ui/src/components/shell/HomeScreen.test.tsx` (direction gate) | N/A — the jsdom unit covers the direction gate; real compat-click needs the app | `packages/app/test/ui-smoke/gesture-matrix.spec.ts` | N/A | N/A — pending: no emulator notification-pull leg | N/A |
-| 16 | Scrolled-down list: downward drag scrolls, never pulls | `packages/ui/src/components/shell/HomeScreen.test.tsx` | `packages/ui/src/components/shell/__e2e__/run-launcher-loop-e2e.mjs` | `packages/app/test/ui-smoke/launcher-gesture-loop.spec.ts` | N/A | N/A — emulator matrix scopes the pull, not scroll arbitration | N/A |
+| 14 | Row tap marks read in place — order ignores read state, so the row never moves under the finger | `packages/ui/src/components/shell/NotificationsHomeCenter.test.tsx` + `packages/ui/src/components/shell/HomeScreen.test.tsx` (widget pinned below the base; no pull affordance) | N/A — plain click path, no recognizer to drive | `packages/app/test/ui-smoke/gesture-matrix.spec.ts` | N/A | N/A — web lanes own the widget; no gesture recognizer to regress natively | N/A |
+| 15 | Per-row dismiss X and clear-all remove rows; the card self-hides once the inbox empties | `packages/ui/src/components/shell/NotificationsHomeCenter.test.tsx` | N/A — plain click path | `packages/app/test/ui-smoke/gesture-matrix.spec.ts` | N/A | N/A | N/A |
+| 16 | Vertical pan inside the capped list scrolls the LIST — never flips the rail, never ghost-taps a row | N/A — jsdom has no real scroll geometry; web lanes own it | `packages/ui/src/components/shell/__e2e__/run-launcher-loop-e2e.mjs` (the home-half widget-scroll command covers the pinned card) | `packages/app/test/ui-smoke/gesture-matrix.spec.ts` + `packages/app/test/ui-smoke/launcher-gesture-loop.spec.ts` | N/A | N/A | N/A |
 
 ### Focus / a11y / brand invariants
 
@@ -100,7 +107,7 @@ carry a reason. Every backticked path in this file must exist on disk (enforced)
 
 ## Gesture-handler source sites
 
-Every home↔launcher gesture originates in one of these four `packages/ui/src`
+Every home↔launcher gesture originates in one of these two `packages/ui/src`
 handlers. The enforcement gate requires each to be mapped here — a new launcher
 gesture handler must land with its row.
 
@@ -108,12 +115,12 @@ gesture handler must land with its row.
 |---|---|---|
 | `packages/ui/src/hooks/useHorizontalPager.ts` | The rail pager pointer-capture drag/flick engine | 1–8 |
 | `packages/ui/src/components/shell/HomeLauncherSurface.tsx` | Rail composition, inert/focus management, edge buttons | 1–10, 17–20 |
-| `packages/ui/src/components/shell/use-notification-pull.ts` | Home notification pull-down recognizer + direction gate | 14–16 |
-| `packages/ui/src/components/shell/HomeScreen.tsx` | Home surface hosting the pull zone + widget scroll | 14–16 |
 
 Tap-to-launch (rows 11–13) is a plain `onClick` on the launcher grid
 (`packages/ui/src/components/pages/Launcher.tsx`), not a pointer/touch gesture,
 so it is covered by the tap-vs-long-press lanes rather than a gesture recognizer.
+The notification center rows (14–16) likewise have no recognizer: the widget's
+rows are buttons and its list is a native scroll container.
 
 ## Loop replay
 
@@ -146,11 +153,12 @@ Every loop lane is seeded and reproducible:
   Focus-subtree, CLS, and blue-hue invariants stay on the web lanes where the DOM
   is directly observable. The scripted iOS `GestureSemanticsUITests` legs cover
   the 50% pager threshold and the home-surface long-press
-  (callout-suppression + no-navigation) semantics; native tile-tap-launch,
-  tile-long-press, and notification-pull legs are **pending** on both Android
-  and iOS (rows 11–12, 14–15 mark them `N/A — pending`) — those semantics are
-  owned by the web lanes, and a native regression that navigates the rail is
-  still caught indirectly by the loop's page probe.
+  (callout-suppression + no-navigation) semantics; native tile-tap-launch and
+  tile-long-press legs are **pending** on both Android and iOS (rows 11–12 mark
+  them `N/A — pending`) — those semantics are owned by the web lanes, and a
+  native regression that navigates the rail is still caught indirectly by the
+  loop's page probe. The notification center rows (14–16) are web-lane-owned by
+  design: the widget has no gesture recognizer to regress natively.
 - **curation rows (21–24)** — pure deterministic functions
   (`curateLauncherPages`), fully owned by the jsdom unit lane; there is no gesture
   to drive on-device.

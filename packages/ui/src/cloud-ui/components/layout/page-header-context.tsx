@@ -7,7 +7,7 @@
 
 "use client";
 
-import { type ReactNode, useMemo, useState } from "react";
+import { type ReactNode, useContext, useMemo, useState } from "react";
 import {
   PageHeaderContext,
   type PageHeaderInfo,
@@ -46,4 +46,31 @@ export function PageHeaderProvider({ children }: { children: ReactNode }) {
       {children}
     </PageHeaderContext.Provider>
   );
+}
+
+/**
+ * Provide a page-header context ONLY when there isn't one already.
+ *
+ * Standalone cloud routes need their own {@link PageHeaderProvider} (mounted
+ * directly by `CloudRouterShell` / natively in the app, they have no ancestor
+ * provider and `useSetPageHeader` would throw). But the SAME routes also render
+ * inside `ConsoleShell`, which already provides one and reads it to draw the
+ * top-bar title. An unconditional inner provider SHADOWS the shell's, so
+ * `useSetPageHeader` writes to a dead context and the top bar shows no title
+ * (and any in-page heading then reads as a second, competing title).
+ *
+ * Wrapping a route body in this component defers to the shell's provider when
+ * present, and supplies its own otherwise — so the title always reaches
+ * whichever header is actually rendered.
+ */
+export function EnsurePageHeaderProvider({
+  children,
+}: {
+  children: ReactNode;
+}) {
+  const hasAncestorProvider = useContext(PageHeaderContext) !== undefined;
+  if (hasAncestorProvider) {
+    return <>{children}</>;
+  }
+  return <PageHeaderProvider>{children}</PageHeaderProvider>;
 }

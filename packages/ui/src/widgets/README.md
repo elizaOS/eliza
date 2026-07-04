@@ -43,9 +43,9 @@ being enabled (`isWidgetEnabled`), and resolves the component by
 **and** its declaration visibility allows it:
 
 - `visibility: "always"` is for core surfaces with no loadable plugin package
-  (for example `notifications`, `welcome`, `needs-attention`). These render
-  without waiting for a runtime plugin snapshot, while an explicit
-  `present + disabled` snapshot entry still hides them.
+  (for example `welcome`, `needs-attention`). These render without waiting for
+  a runtime plugin snapshot, while an explicit `present + disabled` snapshot
+  entry still hides them.
 - `visibility: "fallback"` is for store/compat-backed surfaces that should
   render when the snapshot is empty or omits the plugin, but still respect an
   explicit disabled snapshot entry.
@@ -56,9 +56,11 @@ being enabled (`isWidgetEnabled`), and resolves the component by
 
 The Home/Launcher surface mounts `<WidgetHost slot="home" layout="grid" …>`
 on the home page next to the launcher. Ships with shared **default widgets** any
-install gets out of the box — **Notifications**, **Messages**, and the
-orchestrator **Activity** + **Apps** — so the frontpage shows real activity, not
-just app icons.
+install gets out of the box — the orchestrator **Activity** + **Apps** — so the
+frontpage shows real activity, not just app icons. The notification inbox is NOT
+a host widget: HomeScreen pins the dashboard notification center
+(`components/shell/NotificationsHomeCenter.tsx`) directly below the
+time/weather base, so a registry declaration would double-render it.
 
 **To put a plugin on the frontpage:** declare a widget with `slot: "home"` (as
 above). Read your own store/API in the component; it receives `WidgetProps`
@@ -78,9 +80,12 @@ sink instead of shipping a component:
 }
 ```
 
-Default-sink declarations are participation records: the shared
-Notifications/Messages/Activity cards render once and aggregate the sink data,
-while the declaration lets coverage prove the plugin is frontpage-aware.
+Default-sink declarations are participation records: the shared Activity card
+renders once and aggregates the sink data, while the declaration lets coverage
+prove the plugin is frontpage-aware. The `notifications` / `messages` sink
+kinds yield no home tile — that content already surfaces through the pinned
+notification center, which aggregates the notification store regardless of
+producer.
 
 The home is **priority-ranked**, not all-or-nothing: `home-priority.ts`
 (`rankHomeWidgets`) scores each home widget by base `order` plus decayed

@@ -18,6 +18,12 @@
  *   POST   /api/notifications/read-all
  *     Mark every notification read. Returns `{ changed }`.
  *
+ *   POST   /api/notifications/dev/seed
+ *     Non-production only (404 in production): seed a fixed demo spread across
+ *     every priority and most categories so the dashboard notification center
+ *     can be exercised without waiting for real activity. Returns
+ *     `{ count, notifications }`.
+ *
  *   POST   /api/notifications/:id/read
  *     Mark one notification read. Returns `{ ok }`.
  *
@@ -53,6 +59,75 @@ const CATEGORIES: NotificationCategory[] = [
   "general",
 ];
 const PRIORITIES: NotificationPriority[] = ["low", "normal", "high", "urgent"];
+
+/**
+ * The dev/test seed spread: every priority tier, a breadth of categories, a
+ * long body (exercises the widget's two-line clamp), safe deep links, and a
+ * same-groupKey pair (the second collapses onto the first, proving supersede
+ * behavior) — so one click paints a realistic, scrollable inbox.
+ */
+export const DEV_SEED_NOTIFICATIONS: readonly NotificationInput[] = [
+  {
+    title: "Approval needed: send weekly report",
+    body: "The reporting workflow wants to email three recipients on your behalf.",
+    category: "approval",
+    priority: "urgent",
+    source: "dev-seed",
+    deepLink: "/chat",
+  },
+  {
+    title: "Reminder: stand-up in 10 minutes",
+    body: "Daily stand-up starts at 10:00.",
+    category: "reminder",
+    priority: "high",
+    source: "dev-seed",
+  },
+  {
+    title: "New message from Alice",
+    body: "“Did you get a chance to look at the design doc?”",
+    category: "message",
+    priority: "normal",
+    source: "dev-seed",
+    deepLink: "/chat",
+  },
+  {
+    title: "Task finished: nightly build",
+    body: "All 412 tests passed in 6m 32s.",
+    category: "task",
+    priority: "normal",
+    source: "dev-seed",
+  },
+  {
+    title: "Health check-in",
+    body: "You logged 6h 40m of sleep and a short walk this afternoon would close today's movement ring — this body intentionally runs long so list rows exercise their two-line clamp.",
+    category: "health",
+    priority: "low",
+    source: "dev-seed",
+  },
+  {
+    title: "Backup complete",
+    body: "Workspace snapshot stored locally.",
+    category: "system",
+    priority: "low",
+    source: "dev-seed",
+  },
+  {
+    title: "Deploy pipeline update",
+    body: "Step 2/5: building containers…",
+    category: "workflow",
+    priority: "normal",
+    source: "dev-seed",
+    groupKey: "dev-seed:deploy",
+  },
+  {
+    title: "Deploy pipeline update",
+    body: "Step 5/5: released to staging.",
+    category: "workflow",
+    priority: "normal",
+    source: "dev-seed",
+    groupKey: "dev-seed:deploy",
+  },
+];
 
 function getService(state: NotificationRouteState): NotificationService | null {
   const svc = state.runtime?.getService(ServiceType.NOTIFICATION);
@@ -177,6 +252,21 @@ export async function handleNotificationRoute(
   if (method === "POST" && pathname === "/api/notifications/read-all") {
     const changed = await service.markAllRead();
     helpers.json(res, { changed });
+    return true;
+  }
+
+  // ── POST /api/notifications/dev/seed ──────────────────────────────
+  if (method === "POST" && pathname === "/api/notifications/dev/seed") {
+    // 404 (not 403) in production so the route's existence isn't advertised.
+    if (process.env.NODE_ENV === "production") {
+      helpers.error(res, "notification route not found", 404);
+      return true;
+    }
+    const notifications = [];
+    for (const input of DEV_SEED_NOTIFICATIONS) {
+      notifications.push(await service.notify(input));
+    }
+    helpers.json(res, { count: notifications.length, notifications }, 201);
     return true;
   }
 

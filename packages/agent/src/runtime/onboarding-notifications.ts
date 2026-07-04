@@ -1,8 +1,9 @@
 /**
  * First-run onboarding notifications — seeds the notification inbox with a few
  * getting-started pointers ("Take the tour", "Get help", "Connect your
- * calendar") exactly once per agent, so a fresh install's notification
- * pull-down is a guide instead of an empty pane.
+ * calendar") exactly once per agent, so a fresh install's dashboard
+ * notification center opens as a guide instead of never appearing (the widget
+ * self-hides on an empty inbox).
  *
  * Seeding goes through the canonical NotificationService (persisted per-agent,
  * broadcast on the agent event bus), so the rows behave like every other

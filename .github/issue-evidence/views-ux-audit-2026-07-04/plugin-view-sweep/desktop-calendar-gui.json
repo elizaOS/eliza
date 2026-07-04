@@ -1,0 +1,13 @@
+{
+  "viewport": "desktop",
+  "id": "calendar",
+  "viewType": "gui",
+  "path": "/calendar",
+  "screenshot": "desktop-calendar-gui.png",
+  "url": "http://127.0.0.1:2138/calendar",
+  "status": "capture-error",
+  "visibleTextSample": "",
+  "consoleErrors": [],
+  "pageErrors": [],
+  "error": "locator.evaluate: Test timeout of 20000ms exceeded."
+}

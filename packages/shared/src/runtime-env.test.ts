@@ -9,12 +9,14 @@ import { getBootConfig, setBootConfig } from "./config/boot-config";
 import {
   firstWinningEnvString,
   isAndroidMobile,
+  isIosMobile,
   isLoopbackBindHost,
   isMobilePlatform,
   isWildcardBindHost,
   resolveApiExposePort,
   resolveApiSecurityConfig,
   resolveDesktopApiPortPreference,
+  resolvePlatform,
   resolveRuntimePorts,
   stripOptionalHostPort,
 } from "./runtime-env";
@@ -178,6 +180,54 @@ describe("runtime env alias resolution", () => {
 
     expect(isMobilePlatform(env)).toBe(true);
     expect(isAndroidMobile(env)).toBe(true);
+    expect(isIosMobile(env)).toBe(false);
+    expect(resolvePlatform(env)).toBe("android");
     expect(env).not.toHaveProperty("ELIZA_PLATFORM");
+  });
+
+  it("resolves iOS platform checks from a branded alias without materializing the mirror", () => {
+    const env = {
+      // upper-case + padding proves the resolver trims + lowercases the value
+      ACME_PLATFORM: "  IOS  ",
+    };
+
+    expect(isIosMobile(env)).toBe(true);
+    expect(isMobilePlatform(env)).toBe(true);
+    expect(isAndroidMobile(env)).toBe(false);
+    expect(resolvePlatform(env)).toBe("ios");
+    expect(env).not.toHaveProperty("ELIZA_PLATFORM");
+  });
+
+  it("resolvePlatform returns undefined when neither the canonical key nor a branded alias is set", () => {
+    expect(resolvePlatform({})).toBeUndefined();
+    expect(isMobilePlatform({})).toBe(false);
+    expect(isAndroidMobile({})).toBe(false);
+    expect(isIosMobile({})).toBe(false);
+  });
+
+  it("keeps an explicit ELIZA_PLATFORM ahead of the branded alias", () => {
+    const env = {
+      ACME_PLATFORM: "android",
+      ELIZA_PLATFORM: "ios",
+    };
+
+    // canonical key wins; the branded alias never suppresses a present
+    // ELIZA_ value (matches the direct-key precedence contract used for
+    // ports / API security above).
+    expect(resolvePlatform(env)).toBe("ios");
+    expect(isIosMobile(env)).toBe(true);
+    expect(isAndroidMobile(env)).toBe(false);
+  });
+
+  it("a blank ELIZA_PLATFORM does not shadow a present branded alias", () => {
+    const env = {
+      ELIZA_PLATFORM: "   ",
+      ACME_PLATFORM: "android",
+    };
+
+    // empty-is-unset: the blank canonical value must fall through to the
+    // branded alias rather than resolving as "no platform".
+    expect(resolvePlatform(env)).toBe("android");
+    expect(isAndroidMobile(env)).toBe(true);
   });
 });

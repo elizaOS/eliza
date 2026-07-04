@@ -114,7 +114,10 @@ import {
 import { materializeDefinitionOccurrences } from "../engine.js";
 import type { LifeOpsContext } from "../lifeops-context.js";
 import { REMINDER_DISPATCH_INSTRUCTIONS } from "../optimized-prompt-instructions.js";
-import { resolveOwnerFactStore } from "../owner/fact-store.js";
+import {
+  resolveOwnerFactStore,
+  resolveOwnerTimeZone,
+} from "../owner/fact-store.js";
 import { refreshLifeOpsRelativeTime } from "../relative-time.js";
 import {
   createLifeOpsActivitySignal,
@@ -5101,7 +5104,13 @@ export class RemindersDomain {
         request.limit === undefined
           ? DEFAULT_REMINDER_PROCESS_LIMIT
           : normalizePositiveInteger(request.limit, "limit");
-      const ownerTimezone = resolveDefaultTimeZone();
+      // Anchor reminder window/dueness math to the owner's stored timezone
+      // fact (travel-aware) rather than the host clock. On shared-server /
+      // TZ=UTC topologies `resolveDefaultTimeZone()` is the SERVER zone, which
+      // would fire morning/evening windows against the container's day, not
+      // the owner's (#13509). Falls back to the host zone only when no owner
+      // fact is stored.
+      const ownerTimezone = await resolveOwnerTimeZone(this.ctx.runtime, now);
 
       const policies = await this.ctx.repository.listChannelPolicies(
         this.ctx.agentId(),

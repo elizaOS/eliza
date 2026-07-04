@@ -186,6 +186,9 @@ vi.mock("./hooks/useAuthStatus", () => ({
     state: { phase: "authenticated" },
     refetch: vi.fn(),
   }),
+  // Home widgets gate their loaders on this (#11084); the mounted App renders
+  // them, so the mock must export it alongside useAuthStatus.
+  useIsAuthenticated: () => true,
 }));
 
 vi.mock("./hooks/useActivityEvents", () => ({
@@ -378,6 +381,10 @@ function navigateView(detail: Record<string, unknown>) {
 describe("App navigate-view event wiring", () => {
   beforeEach(() => {
     window.history.replaceState(null, "", "/?shellMode=chat-overlay");
+    // The post-onboarding permission-priming modal (#12331) arms on a mounted
+    // App with first-run complete and covers the surfaces under test — mark it
+    // already shown.
+    window.localStorage.setItem("eliza:permissions-primed", "1");
     setBootConfig(DEFAULT_BOOT_CONFIG);
     Reflect.deleteProperty(window, "__ELIZAOS_API_BASE__");
     Reflect.deleteProperty(window, "__ELIZA_API_TOKEN__");

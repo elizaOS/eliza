@@ -1046,13 +1046,13 @@ function formatContextAsText(ctx: BenchmarkContext): string {
       );
     } else if (isOrchestratorLifecycle) {
       sections.push(
-        `This is an orchestrator lifecycle benchmark. Respond with actions: REPLY and put only the next lifecycle message in text. Do not call BENCHMARK_ACTION.`,
+        `This is an orchestrator lifecycle benchmark. Use the normal task-management and orchestrator actions for lifecycle operations; use REPLY only for user-facing narration around those actions. Do not use BENCHMARK_ACTION.`,
       );
       sections.push(
-        `If the user says the current approach failed, asks to replan, changes scope, or asks to continue with revised work, acknowledge the scope change or failure and state that the updated plan has been applied.`,
+        `If the user says the current approach failed, asks to replan, changes scope, or asks to continue with revised work, apply the update through the running task and then acknowledge it.`,
       );
       sections.push(
-        `For delegation/status turns, mention the active subagent and the status or progress update. For underspecified turns, ask a clarifying question and say you will wait before starting.`,
+        `For status turns, query the active task or subagent registry before reporting progress; prose-only status claims do not satisfy the benchmark. For underspecified turns, ask a clarifying question and wait before starting.`,
       );
     } else {
       sections.push(

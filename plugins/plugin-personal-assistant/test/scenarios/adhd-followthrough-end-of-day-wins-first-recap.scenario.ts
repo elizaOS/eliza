@@ -35,6 +35,100 @@ export default scenario({
     },
   ],
   turns: [
+    // Today's tracked day-state, created through the REAL definitions +
+    // occurrence-completion routes so the recap has genuine wins (two
+    // completed items) and one genuine carryover to frame. Without stored
+    // day-state the rubric's "opens with completed items" criterion is
+    // unsatisfiable and the scenario grades the model on data that does not
+    // exist.
+    {
+      kind: "api",
+      name: "seed today: sort receipts (will be completed)",
+      method: "POST",
+      path: "/api/lifeops/definitions",
+      body: {
+        kind: "task",
+        title: "Sort receipts",
+        timezone: "UTC",
+        priority: 1,
+        cadence: {
+          kind: "once",
+          dueAt: "{{now-6h}}",
+          visibilityLeadMinutes: 240,
+          visibilityLagMinutes: 720,
+        },
+        reminderPlan: {
+          steps: [
+            { channel: "in_app", offsetMinutes: 0, label: "In-app reminder" },
+          ],
+        },
+      },
+      expectedStatus: 201,
+    },
+    {
+      kind: "api",
+      name: "seed today: reply to Jordan (will be completed)",
+      method: "POST",
+      path: "/api/lifeops/definitions",
+      body: {
+        kind: "task",
+        title: "Reply to Jordan",
+        timezone: "UTC",
+        priority: 1,
+        cadence: {
+          kind: "once",
+          dueAt: "{{now-4h}}",
+          visibilityLeadMinutes: 240,
+          visibilityLagMinutes: 720,
+        },
+        reminderPlan: {
+          steps: [
+            { channel: "in_app", offsetMinutes: 0, label: "In-app reminder" },
+          ],
+        },
+      },
+      expectedStatus: 201,
+    },
+    {
+      kind: "api",
+      name: "seed today: file the invoice (stays open as the carryover)",
+      method: "POST",
+      path: "/api/lifeops/definitions",
+      body: {
+        kind: "task",
+        title: "File the invoice",
+        timezone: "UTC",
+        priority: 1,
+        cadence: {
+          kind: "once",
+          dueAt: "{{now-2h}}",
+          visibilityLeadMinutes: 240,
+          visibilityLagMinutes: 720,
+        },
+        reminderPlan: {
+          steps: [
+            { channel: "in_app", offsetMinutes: 0, label: "In-app reminder" },
+          ],
+        },
+      },
+      expectedStatus: 201,
+    },
+    {
+      kind: "api",
+      name: "complete sort receipts (first win)",
+      method: "POST",
+      path: "/api/lifeops/occurrences/{{occurrenceId:Sort receipts}}/complete",
+      body: { note: "done this morning" },
+      expectedStatus: 200,
+    },
+    {
+      kind: "api",
+      name: "complete reply to Jordan (second win)",
+      method: "POST",
+      path: "/api/lifeops/occurrences/{{occurrenceId:Reply to Jordan}}/complete",
+      body: { note: "sent before lunch" },
+      expectedStatus: 200,
+    },
     {
       kind: "message",
       name: "casey asks for a wins-first recap",

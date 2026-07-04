@@ -174,11 +174,10 @@ class LifecycleRunner:
                 benchmark="orchestrator_lifecycle",
             )
         except Exception as exc:
-            logger.debug(
-                "[orchestrator_lifecycle] reset failed for %s: %s",
-                scenario_id,
-                exc,
-            )
+            raise RuntimeError(
+                "orchestrator_lifecycle: reset failed for "
+                f"scenario {scenario_id} task {task_id}"
+            ) from exc
 
     def _reply(
         self, *, turn: ScenarioTurn, task_id: str, scenario_id: str

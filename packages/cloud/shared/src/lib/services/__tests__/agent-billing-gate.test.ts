@@ -1,0 +1,144 @@
+// Exercises the agent-billing-gate pre-provisioning spend gate with deterministic
+// repository fixtures. Regression focus: a corrupt organizations.credit_balance
+// NUMERIC read ('NaN'::numeric is valid Postgres NUMERIC, read back as "NaN")
+// previously slipped past `Number(...)` + `NaN <= MINIMUM_DEPOSIT` (false) and
+// FAILED OPEN with { allowed: true, balance: NaN }.
+import { beforeEach, describe, expect, mock, test } from "bun:test";
+
+const findById = mock();
+
+mock.module("../../../db/repositories", () => ({
+  organizationsRepository: {
+    findById,
+  },
+}));
+
+const loggerError = mock();
+
+mock.module("../../utils/logger", () => ({
+  logger: {
+    error: loggerError,
+    warn: mock(),
+    info: mock(),
+    debug: mock(),
+  },
+}));
+
+const { checkAgentCreditGate, parseGateCreditBalance, CorruptCreditBalanceError } = await import(
+  "../agent-billing-gate"
+);
+
+beforeEach(() => {
+  findById.mockReset();
+  loggerError.mockReset();
+});
+
+describe("parseGateCreditBalance", () => {
+  test("accepts plain decimal strings (driver NUMERIC shape)", () => {
+    expect(parseGateCreditBalance("12.34")).toBe(12.34);
+    expect(parseGateCreditBalance("0")).toBe(0);
+    expect(parseGateCreditBalance("0.00")).toBe(0);
+    expect(parseGateCreditBalance("-3.5")).toBe(-3.5);
+    expect(parseGateCreditBalance(".25")).toBe(0.25);
+  });
+
+  test("accepts finite numbers", () => {
+    expect(parseGateCreditBalance(7.5)).toBe(7.5);
+    expect(parseGateCreditBalance(0)).toBe(0);
+  });
+
+  test("throws on corrupt values instead of producing NaN", () => {
+    for (const raw of ["NaN", "Infinity", "-Infinity", "", "   ", "1e3", "0x10", "12,34", "abc"]) {
+      expect(() => parseGateCreditBalance(raw)).toThrow(CorruptCreditBalanceError);
+    }
+    expect(() => parseGateCreditBalance(Number.NaN)).toThrow(CorruptCreditBalanceError);
+    expect(() => parseGateCreditBalance(Number.POSITIVE_INFINITY)).toThrow(
+      CorruptCreditBalanceError,
+    );
+    expect(() => parseGateCreditBalance(null)).toThrow(CorruptCreditBalanceError);
+    expect(() => parseGateCreditBalance(undefined)).toThrow(CorruptCreditBalanceError);
+    expect(() => parseGateCreditBalance({})).toThrow(CorruptCreditBalanceError);
+  });
+});
+
+describe("checkAgentCreditGate", () => {
+  test("allows an org with a healthy balance above the minimum deposit", async () => {
+    findById.mockResolvedValue({ credit_balance: "25.00" });
+
+    const result = await checkAgentCreditGate("org-healthy");
+
+    expect(result.allowed).toBe(true);
+    expect(result.balance).toBe(25);
+    expect(result.error).toBeUndefined();
+  });
+
+  test("denies an org at or below the minimum deposit with a funding message", async () => {
+    findById.mockResolvedValue({ credit_balance: "0.05" });
+
+    const result = await checkAgentCreditGate("org-broke");
+
+    expect(result.allowed).toBe(false);
+    expect(result.balance).toBe(0.05);
+    expect(result.error).toContain("Insufficient credits");
+  });
+
+  test("explicit zero balance is a legit domain value and denies (not corrupt)", async () => {
+    findById.mockResolvedValue({ credit_balance: "0.00" });
+
+    const result = await checkAgentCreditGate("org-zero");
+
+    expect(result.allowed).toBe(false);
+    expect(result.balance).toBe(0);
+    expect(result.error).toContain("Insufficient credits");
+    expect(loggerError).not.toHaveBeenCalled();
+  });
+
+  test("REGRESSION: corrupt 'NaN' balance FAILS CLOSED, never { allowed: true, balance: NaN }", async () => {
+    findById.mockResolvedValue({ credit_balance: "NaN" });
+
+    const result = await checkAgentCreditGate("org-corrupt");
+
+    expect(result.allowed).toBe(false);
+    expect(Number.isNaN(result.balance)).toBe(false);
+    expect(result.error).toContain("Unable to verify credit balance");
+    // Observable, distinct corrupt-value log naming the org
+    expect(loggerError).toHaveBeenCalledTimes(1);
+    const [message, context] = loggerError.mock.calls[0] as [string, Record<string, unknown>];
+    expect(message).toContain("Corrupt credit_balance");
+    expect(context.organizationId).toBe("org-corrupt");
+    expect(context.rawValue).toBe("NaN");
+  });
+
+  test("corrupt empty-string balance also fails closed", async () => {
+    findById.mockResolvedValue({ credit_balance: "" });
+
+    const result = await checkAgentCreditGate("org-empty");
+
+    expect(result.allowed).toBe(false);
+    expect(result.error).toContain("Unable to verify credit balance");
+  });
+
+  test("missing org denies without a corrupt-value log", async () => {
+    findById.mockResolvedValue(null);
+
+    const result = await checkAgentCreditGate("org-missing");
+
+    expect(result.allowed).toBe(false);
+    expect(result.balance).toBe(0);
+    expect(result.error).toBe("Organization not found");
+    expect(loggerError).not.toHaveBeenCalled();
+  });
+
+  test("repository failure still fails closed (pre-existing behavior preserved)", async () => {
+    findById.mockRejectedValue(new Error("db down"));
+
+    const result = await checkAgentCreditGate("org-db-down");
+
+    expect(result.allowed).toBe(false);
+    expect(result.balance).toBe(0);
+    expect(result.error).toContain("Unable to verify credit balance");
+    expect(loggerError).toHaveBeenCalledTimes(1);
+    const [message] = loggerError.mock.calls[0] as [string];
+    expect(message).toContain("Failed to check credits");
+  });
+});

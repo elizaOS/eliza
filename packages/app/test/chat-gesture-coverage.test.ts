@@ -41,7 +41,7 @@ const UI_SRC = path.join(REPO_ROOT, "packages/ui/src");
  *   2. a custom touch registration — `onTouchStart` / `addEventListener("touchstart"`
  *      / `.on("touchstart"` (a hand-rolled touch gesture, not a click).
  *   3. a named gesture-engine hook — usePullGesture / useHorizontalPager /
- *      useNotificationPull / useConversationSwipeJank (definition or consumer).
+ *      useConversationSwipeJank (definition or consumer).
  * A plain `onClick`/`onPointerDown` button is intentionally NOT a gesture site.
  */
 const GESTURE_MARKERS: readonly RegExp[] = [
@@ -49,7 +49,7 @@ const GESTURE_MARKERS: readonly RegExp[] = [
   /onTouchStart[=\s{]/,
   /addEventListener\(\s*["']touchstart/,
   /\bon\(\s*["']touchstart/,
-  /\buse(PullGesture|HorizontalPager|NotificationPull|ConversationSwipeJank)\b/,
+  /\buse(PullGesture|HorizontalPager|ConversationSwipeJank)\b/,
 ];
 
 /** `.test.`/`.fuzz.` specs, `__e2e__` fixtures, and this gate are not sites. */
@@ -94,7 +94,7 @@ function discoverGestureSites(): string[] {
 }
 
 interface GestureRow {
-  /** Matrix row number (1–18), matching docs/CHAT_GESTURE_COVERAGE.md. */
+  /** Matrix row number (1–17), matching docs/CHAT_GESTURE_COVERAGE.md. */
   id: number;
   /** The interaction under test. */
   interaction: string;
@@ -192,24 +192,13 @@ const CHAT_GESTURE_MATRIX: readonly GestureRow[] = [
   },
   {
     id: 8,
-    interaction: "Notification pull / pull-to-refresh; ghost-click gate",
-    sites: [
-      S("components/shell/use-notification-pull.ts"),
-      S("components/shell/HomeScreen.tsx"),
-    ],
-    tests: [
-      S("components/shell/use-notification-pull.test.ts"),
-      GESTURE_MATRIX_SPEC,
-      ANDROID_TOUCH_SPEC,
-    ],
-  },
-  {
-    id: 9,
     interaction: "Home↔launcher pager swipe, nested-pager arbitration",
+    // HomeScreen hosts the widget scroll (including the pinned notification
+    // center's capped list) but registers no gesture of its own — the pager
+    // hook and the rail surface are the handler sites.
     sites: [
       S("hooks/useHorizontalPager.ts"),
       S("components/shell/HomeLauncherSurface.tsx"),
-      S("components/shell/HomeScreen.tsx"),
     ],
     tests: [
       S("hooks/useHorizontalPager.test.ts"),
@@ -221,38 +210,38 @@ const CHAT_GESTURE_MATRIX: readonly GestureRow[] = [
     ownedBy: "#12179",
   },
   {
-    id: 10,
+    id: 9,
     interaction: "Topic group flick collapse/expand",
     sites: [S("components/shell/TopicGroup.tsx")],
     tests: [S("components/shell/__e2e__/run-chatux-gesture-e2e.mjs")],
   },
   {
-    id: 11,
+    id: 10,
     interaction: "Send/stop/edit/delete/retry; streaming render; typing phases",
     sites: [OVERLAY],
     tests: [CHAT_SHEET_RUNNER],
   },
   {
-    id: 12,
+    id: 11,
     interaction:
       "Attachments: add/paste/remove outbound; open/lightbox inbound",
     sites: [],
     tests: [S("components/chat/MessageAttachments.test.tsx")],
   },
   {
-    id: 13,
+    id: 12,
     interaction: "Keyboard avoidance (visualViewport vs native lift)",
     sites: [],
     tests: [S("components/shell/chat-panel-layout.test.ts")],
   },
   {
-    id: 14,
+    id: 13,
     interaction: "Auto-scroll at bottom vs reading-scrollback",
     sites: [OVERLAY],
     tests: [CHAT_SHEET_RUNNER],
   },
   {
-    id: 15,
+    id: 14,
     interaction: "Kiosk window drag; sidebar/panel resize drags",
     sites: [
       S("components/shell/KioskViewCanvas.tsx"),
@@ -262,13 +251,13 @@ const CHAT_GESTURE_MATRIX: readonly GestureRow[] = [
     tests: [S("components/shell/KioskViewCanvas.gestures.test.tsx")],
   },
   {
-    id: 16,
+    id: 15,
     interaction: "Graph pan/pinch/wheel-zoom",
     sites: [S("components/pages/RelationshipsGraphPanel.tsx")],
     tests: [],
   },
   {
-    id: 17,
+    id: 16,
     interaction: "Slash menu open/dismiss (incl. outside pointerdown)",
     sites: [],
     tests: [
@@ -277,7 +266,7 @@ const CHAT_GESTURE_MATRIX: readonly GestureRow[] = [
     ],
   },
   {
-    id: 18,
+    id: 17,
     interaction:
       "Pinch/dblclick on chat surface (should NOT zoom/break layout)",
     sites: [OVERLAY],
@@ -302,10 +291,8 @@ const PINNED_GESTURE_SITES: readonly string[] = [
   "packages/ui/src/components/pages/RelationshipsGraphPanel.tsx",
   "packages/ui/src/components/shell/ContinuousChatOverlay.tsx",
   "packages/ui/src/components/shell/HomeLauncherSurface.tsx",
-  "packages/ui/src/components/shell/HomeScreen.tsx",
   "packages/ui/src/components/shell/KioskViewCanvas.tsx",
   "packages/ui/src/components/shell/TopicGroup.tsx",
-  "packages/ui/src/components/shell/use-notification-pull.ts",
   "packages/ui/src/components/shell/use-pull-gesture.ts",
   "packages/ui/src/gestures/usePressAndHold.ts",
   "packages/ui/src/hooks/useConversationSwipeJank.ts",

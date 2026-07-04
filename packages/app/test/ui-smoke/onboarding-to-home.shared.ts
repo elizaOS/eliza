@@ -18,13 +18,32 @@ import { captureScreenshotWithQualityRetry } from "./helpers/screenshot-quality"
 
 export const SMOKE_GENERATED_AT = "2026-01-01T00:00:00.000Z";
 
-// A valid (tiny, silent) mp3 so a mocked TTS POST returns decodable audio bytes
-// instead of a 501, keeping the page-diagnostics guard clean when the tutorial
-// narrator speaks. Same fixture the assistant-home-flow voice lane uses.
-const TINY_MP3 = Buffer.from(
-  "SUQzAwAAAAAAFlRTU0UAAAAMAAADTGF2ZjU4LjI5LjEwMAAA//tQAAAAAAAA",
-  "base64",
-);
+// A tiny silent WAV so a mocked TTS POST returns bytes decodeAudioData accepts
+// on every Chromium build, keeping the page-diagnostics guard clean when the
+// tutorial narrator speaks. The old truncated-mp3 fixture stopped decoding
+// once the voice pipeline fails closed on decode errors (#12267 sweeps) — a
+// PCM WAV has no codec dependency and always decodes.
+function tinySilentWav(): Buffer {
+  const sampleRate = 8_000;
+  const samples = 160; // 20 ms of 16-bit mono silence
+  const dataSize = samples * 2;
+  const wav = Buffer.alloc(44 + dataSize);
+  wav.write("RIFF", 0);
+  wav.writeUInt32LE(36 + dataSize, 4);
+  wav.write("WAVE", 8);
+  wav.write("fmt ", 12);
+  wav.writeUInt32LE(16, 16); // PCM fmt chunk size
+  wav.writeUInt16LE(1, 20); // PCM
+  wav.writeUInt16LE(1, 22); // mono
+  wav.writeUInt32LE(sampleRate, 24);
+  wav.writeUInt32LE(sampleRate * 2, 28); // byte rate
+  wav.writeUInt16LE(2, 32); // block align
+  wav.writeUInt16LE(16, 34); // bits per sample
+  wav.write("data", 36);
+  wav.writeUInt32LE(dataSize, 40);
+  return wav;
+}
+const TINY_SILENT_WAV = tinySilentWav();
 
 // Launcher views so the launcher is non-empty (the home WidgetHost only
 // renders when the catalog has visible views) AND so a known launcher tile
@@ -301,6 +320,11 @@ export async function injectFullCapabilityHost(page: Page): Promise<void> {
     win.__ELIZAOS_APP_BOOT_CONFIG__ = { apiBase: origin };
     win.__ELIZAOS_API_BASE__ = origin;
     win.__electrobunWindowId = 1;
+    // The runtime chooser (local/remote onboarding paths) is OFF by default
+    // (#13377, cloud-only onboarding). A full-capability host is exactly the
+    // environment where the Local runtime is testable, so these lanes opt in;
+    // the cloud-only default is covered by onboarding-cloud-only.spec.ts.
+    window.localStorage.setItem("eliza:enable-runtime-chooser", "1");
   });
 }
 
@@ -542,7 +566,8 @@ export async function installHomeRoutes(
 
   // Benign TTS so the interactive tutorial's narrator (the "Take the tutorial"
   // branch speaks its first voice line through the REAL voice pipeline) does not
-  // 501 against the stub and trip the page-diagnostics guard. A valid tiny mp3.
+  // 501 against the stub and trip the page-diagnostics guard. A tiny PCM WAV —
+  // always decodable, no codec dependency.
   await page.route("**/api/tts/**", async (route) => {
     if (route.request().method() !== "POST") {
       await route.fallback();
@@ -550,9 +575,19 @@ export async function installHomeRoutes(
     }
     await route.fulfill({
       status: 200,
-      headers: { "content-type": "audio/mpeg" },
-      body: TINY_MP3,
+      headers: { "content-type": "audio/wav" },
+      body: TINY_SILENT_WAV,
     });
+  });
+
+  // The narrator's decoded audio also reports playback frames (avatar/viseme
+  // sync); the API stub 501s that POST, which trips the diagnostics guard.
+  await page.route("**/api/voice/playback-frames", async (route) => {
+    if (route.request().method() !== "POST") {
+      await route.fallback();
+      return;
+    }
+    await fulfillJson(route, { ok: true });
   });
 
   return state;
@@ -582,7 +617,13 @@ export async function injectCloudAuthToken(page: Page): Promise<void> {
   }, CLOUD_AUTH_TOKEN);
 }
 
-export async function installCloudRoutes(page: Page): Promise<void> {
+export async function installCloudRoutes(
+  page: Page,
+  opts: { agentCount?: 0 | 1 } = {},
+): Promise<void> {
+  // agentCount 0 exercises the silent auto-provision path (no cloud-agent
+  // picker): bindCloudAgent creates the agent via the POST mock below.
+  const agentCount = opts.agentCount ?? 1;
   await page.unroute("**/api/cloud/status").catch(() => {});
   await page.route("**/api/cloud/status", async (route) => {
     if (route.request().method() !== "GET") {
@@ -647,23 +688,26 @@ export async function installCloudRoutes(page: Page): Promise<void> {
     if (request.method() === "GET") {
       await fulfillJson(route, {
         success: true,
-        data: [
-          {
-            agent_id: CLOUD_AGENT_ID,
-            agent_name: CLOUD_AGENT_NAME,
-            status: "running",
-            bridge_url: origin,
-            web_ui_url: origin,
-            containerUrl: origin,
-            webUiUrl: origin,
-            database_status: "ready",
-            error_message: null,
-            agent_config: {},
-            created_at: "2026-01-01T00:00:00.000Z",
-            updated_at: "2026-01-01T00:00:00.000Z",
-            last_heartbeat_at: "2026-01-01T00:00:00.000Z",
-          },
-        ],
+        data:
+          agentCount === 0
+            ? []
+            : [
+                {
+                  agent_id: CLOUD_AGENT_ID,
+                  agent_name: CLOUD_AGENT_NAME,
+                  status: "running",
+                  bridge_url: origin,
+                  web_ui_url: origin,
+                  containerUrl: origin,
+                  webUiUrl: origin,
+                  database_status: "ready",
+                  error_message: null,
+                  agent_config: {},
+                  created_at: "2026-01-01T00:00:00.000Z",
+                  updated_at: "2026-01-01T00:00:00.000Z",
+                  last_heartbeat_at: "2026-01-01T00:00:00.000Z",
+                },
+              ],
       });
       return;
     }
@@ -743,10 +787,11 @@ export function makeScreenshotter(
   };
 }
 
-// The WidgetSection testIds each widget renders (read from source).
+// The WidgetSection testIds each widget renders (read from source). The
+// notification inbox is not a ranked tile: it renders in the pinned
+// NotificationsHomeCenter (`home-notification-center`), outside the WidgetHost.
 export const FINANCES_TESTID = "chat-widget-finances-alerts";
 export const GOALS_TESTID = "widget-goals-attention";
-export const NOTIFICATIONS_TESTID = "widget-notifications";
 
 // First-run runtime/provider buttons live in the real chat transcript. The
 // headless conductor seeds the ChoiceWidgets and the chat action channel routes
@@ -837,11 +882,35 @@ export async function expectOnboardingAutoCollapse(page: Page): Promise<void> {
   });
 }
 
+/**
+ * Dismiss the post-onboarding permission-priming modal (#12331) if it appears.
+ * It arms on the completion edge and sits over the home, so it must be skipped
+ * (the real "Skip for now" path a user takes) before asserting or swiping the
+ * home surface. Tolerant: absence is fine — the shown-once flag or platform
+ * gating can keep it away.
+ */
+export async function dismissPermissionPrimingIfShown(
+  page: Page,
+): Promise<void> {
+  const skipAll = page.getByTestId("priming-skip-all");
+  const appeared = await skipAll
+    .waitFor({ state: "visible", timeout: 3_000 })
+    .then(
+      () => true,
+      () => false,
+    );
+  if (!appeared) return;
+  await skipAll.click();
+  await expect(page.getByTestId("permission-priming-modal")).toHaveCount(0, {
+    timeout: 10_000,
+  });
+}
+
 /** Assert the seeded per-plugin home widgets render with their attention data. */
 async function expectPopulatedHome(page: Page): Promise<Locator> {
   const host = page.getByTestId("widget-host-home");
   await expect(host).toBeVisible({ timeout: 30_000 });
-  for (const testId of [FINANCES_TESTID, GOALS_TESTID, NOTIFICATIONS_TESTID]) {
+  for (const testId of [FINANCES_TESTID, GOALS_TESTID]) {
     await expect(
       host.getByTestId(testId),
       `home widget ${testId} should render with seeded attention data`,
@@ -851,9 +920,16 @@ async function expectPopulatedHome(page: Page): Promise<Locator> {
   await expect(host.getByTestId(GOALS_TESTID)).toContainText(
     "Ship the release",
   );
-  await expect(host.getByTestId(NOTIFICATIONS_TESTID)).toContainText(
-    "Payment failed",
-  );
+  // The seeded urgent notification surfaces in the pinned dashboard center
+  // (below the time/weather base), not as a ranked WidgetHost tile.
+  const notificationCenter = page.getByTestId("home-notification-center");
+  await expect(
+    notificationCenter,
+    "the pinned notification center should render the seeded inbox",
+  ).toBeVisible({ timeout: 30_000 });
+  await expect(
+    notificationCenter.getByTestId("notification-row"),
+  ).toContainText("Payment failed");
   const surface = page.getByTestId("home-launcher-surface");
   await expect(surface).toHaveAttribute("data-page", "home");
   return surface;
@@ -914,6 +990,7 @@ export async function completeOnboardingToHome(
   const chatOverlay = page.getByTestId("continuous-chat-overlay");
   await expect(chatOverlay).toBeVisible({ timeout: 60_000 });
   await expectOnboardingAutoCollapse(page);
+  await dismissPermissionPrimingIfShown(page);
   await expect(page.getByTestId("chat-composer-textarea")).toBeVisible({
     timeout: 30_000,
   });
@@ -969,6 +1046,7 @@ export async function completeCloudOnboardingToHome(
   const chatOverlay = page.getByTestId("continuous-chat-overlay");
   await expect(chatOverlay).toBeVisible({ timeout: 60_000 });
   await expectOnboardingAutoCollapse(page);
+  await dismissPermissionPrimingIfShown(page);
   await expect(page.getByTestId("chat-composer-textarea")).toBeVisible({
     timeout: 30_000,
   });
@@ -981,6 +1059,120 @@ export async function completeCloudOnboardingToHome(
   ).toBe(1);
 
   return { surface };
+}
+
+// ── Cloud-only onboarding (#13377) — the production default ─────────────────
+//
+// With the runtime chooser OFF (no eliza:enable-runtime-chooser override, no
+// VITE_ELIZA_ENABLE_RUNTIME_CHOOSER build flag) onboarding is a single
+// "Sign in to Eliza Cloud" step: the greeting seeds ONE choice button, a
+// usable stored session skips the ask entirely, and provisioning success
+// completes first-run for real — no tutorial/accent completion gate.
+
+/** Assert the cloud-only greeting: one sign-in button, no local/remote. */
+export async function expectCloudOnlySignInOnboarding(
+  page: Page,
+): Promise<void> {
+  const chatOverlay = page.getByTestId("continuous-chat-overlay");
+  await expect(chatOverlay).toBeVisible({ timeout: 30_000 });
+  await expect(
+    page.getByText("Sign in to Eliza Cloud and I'll get you set up", {
+      exact: false,
+    }),
+  ).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByTestId(RUNTIME_CHOICE("cloud"))).toBeVisible({
+    timeout: 15_000,
+  });
+  await expect(page.getByTestId(RUNTIME_CHOICE("local"))).toHaveCount(0);
+  await expect(page.getByTestId(RUNTIME_CHOICE("remote"))).toHaveCount(0);
+  // The chooser-mode greeting question must not exist.
+  await expect(
+    page.getByText("where should your agent run?", { exact: false }),
+  ).toHaveCount(0);
+  // Same onboarding surface contract as chooser mode: unlocked composer,
+  // opaque backdrop, non-dismissable pinned sheet.
+  const composer = page.getByTestId("chat-composer-textarea");
+  await expect(composer).toBeEnabled();
+  await expect(page.getByTestId("chat-first-run-backdrop")).toHaveAttribute(
+    "data-first-run-opaque",
+    "true",
+  );
+  await expect(chatOverlay).toHaveAttribute("data-open", "true");
+}
+
+/** Post-completion contract shared by every cloud-only path: the real gate
+ *  flipped at provisioning success (no tutorial/accent gate), the wrap-up turn
+ *  is informational, the sheet auto-collapsed, and first-run persisted once. */
+async function expectCloudOnlyCompletion(
+  page: Page,
+  state: OnboardingRouteState,
+): Promise<{ surface: Locator }> {
+  // Completion fires at provisioning success and collapses the sheet in the
+  // same commit — the wrap-up transcript turn is immediately hidden (and may
+  // unmount), so the completion contract is asserted on the durable surfaces:
+  // the collapse itself, the onboarded home, the absent tutorial gate, and the
+  // exactly-once POST. The wrap-up copy is covered by the conductor unit suite.
+  await expectOnboardingAutoCollapse(page);
+  await dismissPermissionPrimingIfShown(page);
+  await expect(page.getByTestId(TUTORIAL_CHOICE("start"))).toHaveCount(0);
+  await expect(page.getByTestId(TUTORIAL_CHOICE("skip"))).toHaveCount(0);
+  const surface = await expectPopulatedHome(page);
+  expect(
+    state.firstRunPosts.length,
+    "POST /api/first-run must fire exactly once for cloud-only onboarding",
+  ).toBe(1);
+  return { surface };
+}
+
+/**
+ * Drive cloud-only onboarding via the sign-in tap: greeting → the session
+ * lands during the (mocked) login the tap launches → silent provision → home.
+ * Zero-agent lane only: seeding the token in-page also arms the conductor's
+ * token poll, so a picker lane here would race two legitimate provision flows
+ * and seed duplicate picker widgets — the picker is covered by the injection
+ * flow below instead.
+ */
+export async function completeCloudOnlyOnboardingToHome(
+  page: Page,
+  click: (locator: Locator) => Promise<void>,
+  opts: { state: OnboardingRouteState },
+): Promise<{ surface: Locator }> {
+  await expectCloudOnlySignInOnboarding(page);
+
+  // The session token lands as the login flow the tap launches completes
+  // (mocked at the storage boundary — same token the poll mock returns).
+  await page.evaluate((token) => {
+    window.localStorage.setItem("steward_session_token", token);
+  }, CLOUD_AUTH_TOKEN);
+  await click(page.getByTestId(RUNTIME_CHOICE("cloud")));
+
+  return expectCloudOnlyCompletion(page, opts.state);
+}
+
+/**
+ * Session injection: a usable stored session at boot skips the sign-in ask
+ * entirely — zero interactions from fresh boot to the onboarded home. With
+ * existing cloud agents the first is auto-adopted (#13377): the agent picker
+ * must never appear in cloud-only onboarding.
+ */
+export async function completeCloudOnlySessionInjectionToHome(
+  page: Page,
+  opts: { state: OnboardingRouteState },
+): Promise<{ surface: Locator }> {
+  await expect(
+    page.getByText("Welcome back — you're already signed in", {
+      exact: false,
+    }),
+  ).toBeVisible({ timeout: 30_000 });
+  // The sign-in ask never rendered.
+  await expect(page.getByTestId(RUNTIME_CHOICE("cloud"))).toHaveCount(0);
+
+  const result = await expectCloudOnlyCompletion(page, opts.state);
+  // The picker never appeared at any point in the flow.
+  await expect(
+    page.getByTestId(CLOUD_AGENT_CHOICE(CLOUD_AGENT_ID)),
+  ).toHaveCount(0);
+  return result;
 }
 
 export async function completeCloudInferenceOnboardingToHome(
@@ -1005,6 +1197,7 @@ export async function completeCloudInferenceOnboardingToHome(
   const chatOverlay = page.getByTestId("continuous-chat-overlay");
   await expect(chatOverlay).toBeVisible({ timeout: 60_000 });
   await expectOnboardingAutoCollapse(page);
+  await dismissPermissionPrimingIfShown(page);
   await expect(page.getByTestId("chat-composer-textarea")).toBeVisible({
     timeout: 30_000,
   });
@@ -1053,6 +1246,7 @@ export async function completeOtherProviderSettingsHandoff(
   const chatOverlay = page.getByTestId("continuous-chat-overlay");
   await expect(chatOverlay).toBeVisible({ timeout: 60_000 });
   await expectOnboardingAutoCollapse(page);
+  await dismissPermissionPrimingIfShown(page);
   await expect(page.getByTestId("chat-composer-textarea")).toBeVisible({
     timeout: 30_000,
   });
@@ -1096,6 +1290,7 @@ export async function connectRemoteFirstRunToHome(
   await expect(surface).toHaveAttribute("data-page", "home");
   // Remote adoption flips firstRunComplete too — same auto-collapse edge.
   await expectOnboardingAutoCollapse(page);
+  await dismissPermissionPrimingIfShown(page);
   await expect(page.getByTestId("chat-composer-textarea")).toBeVisible({
     timeout: 30_000,
   });
@@ -1157,7 +1352,10 @@ export async function swipeLeftToLauncher(
 ): Promise<void> {
   // Post-onboarding the overlay already auto-collapsed; this guard only closes
   // a sheet a previous step deliberately opened, so the swipe lands on the
-  // home rail rather than the chat scrim.
+  // home rail rather than the chat scrim. The permission-priming modal
+  // (#12331) also arms on the completion edge and eats the drag — skip it the
+  // way a user would.
+  await dismissPermissionPrimingIfShown(page);
   await collapseChatOverlay(page);
   const homePage = page.getByTestId("home-launcher-home-page");
   await expect(homePage).toBeVisible();

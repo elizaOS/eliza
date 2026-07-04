@@ -188,6 +188,63 @@ function maskAddress(address: string): string {
 }
 
 // ============================================================================
+// HELPER: Fail-closed NUMERIC parsing for money-out limit gates (Fix #6 hardening)
+// ============================================================================
+
+/**
+ * A stored `redemption_limits` row NUMERIC value could not be parsed into a
+ * finite number. The Postgres driver returns NUMERIC columns as strings, and
+ * `'NaN'::numeric` is a *valid* Postgres NUMERIC that reads back as the string
+ * `"NaN"`. `Number("NaN") === NaN`, and every `NaN` comparison is `false`, so a
+ * corrupt `daily_usd_total` / `redemption_count` would silently make the daily
+ * anti-sybil money-out gates fail OPEN (unbounded redemptions). We throw here so
+ * the caller can fail CLOSED (deny) instead of authorizing over a corrupt row.
+ */
+export class CorruptRedemptionLimitError extends Error {
+  constructor(field: string, rawValue: unknown) {
+    super(
+      `redemption_limits.${field} is not a finite number (got ${JSON.stringify(
+        String(rawValue),
+      )}); refusing to evaluate the daily limit gate on a corrupt row`,
+    );
+    this.name = "CorruptRedemptionLimitError";
+  }
+}
+
+/**
+ * Fail-closed boundary for a `redemption_limits` NUMERIC column read.
+ *
+ * - Rejects null/undefined/empty/whitespace and any value that does not parse to
+ *   a finite number (NaN, Infinity, `"NaN"`, `""`, garbage) -> throws.
+ * - Allows an explicit domain zero (a fresh/zeroed limit row is legitimate).
+ *
+ * error-policy:J4 (fail-closed: a corrupt money-out limit value must DENY, not
+ * silently authorize an unbounded redemption).
+ *
+ * Exported for unit testing of the fail-closed boundary.
+ */
+export function parseRedemptionLimitNumber(value: unknown, field: string): number {
+  if (value === null || value === undefined) {
+    throw new CorruptRedemptionLimitError(field, value);
+  }
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) {
+      throw new CorruptRedemptionLimitError(field, value);
+    }
+    return value;
+  }
+  const raw = String(value).trim();
+  if (raw === "") {
+    throw new CorruptRedemptionLimitError(field, value);
+  }
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed)) {
+    throw new CorruptRedemptionLimitError(field, value);
+  }
+  return parsed;
+}
+
+// ============================================================================
 // HELPER: Decimal math (Fix #11)
 // ============================================================================
 
@@ -780,8 +837,26 @@ export class SecureTokenRedemptionService {
     const usdValue = pointsAmount / 100;
 
     if (limits) {
-      const currentTotal = Number(limits.daily_usd_total);
-      const currentCount = Number(limits.redemption_count);
+      // Fail-closed: the daily limit gates are money-out anti-sybil controls. A
+      // corrupt NUMERIC row ('NaN'::numeric reads back as "NaN") would make
+      // `NaN >= MAX` and `NaN + usd > LIMIT` both false -> the gate would fail
+      // OPEN and authorize unbounded redemptions. Refuse instead of authorize.
+      // error-policy:J4
+      let currentTotal: number;
+      let currentCount: number;
+      try {
+        currentTotal = parseRedemptionLimitNumber(limits.daily_usd_total, "daily_usd_total");
+        currentCount = parseRedemptionLimitNumber(limits.redemption_count, "redemption_count");
+      } catch (error) {
+        logger.error("[SecureRedemption] Corrupt daily-limit row; denying redemption", {
+          userId: sanitizeForLog(userId),
+          reason: error instanceof Error ? error.message : String(error),
+        });
+        return {
+          valid: false,
+          error: "Unable to verify your daily redemption limit right now. Please try again later.",
+        };
+      }
 
       if (currentCount >= SECURE_CONFIG.MAX_DAILY_REDEMPTIONS) {
         return {

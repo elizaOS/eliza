@@ -21,6 +21,7 @@ from benchmarks.orchestrator_lifecycle.runner import (
 )
 from benchmarks.orchestrator_lifecycle.types import (
     LifecycleConfig,
+    Scenario,
     ScenarioTurn,
     TurnRecord,
 )
@@ -236,3 +237,38 @@ def test_bridge_reply_retries_generic_failure_response() -> None:
     assert record.events == ["send"]
     assert len(client.calls) == 2
     assert client.calls[1]["retry_empty_response"] is True
+
+
+def test_bridge_reset_failure_aborts_before_turn_dispatch(tmp_path: Path) -> None:
+    class FakeClient:
+        def reset(self, *, task_id: str, benchmark: str) -> dict[str, object]:
+            raise RuntimeError("reset endpoint unavailable")
+
+        def send_message(
+            self, text: str, context: dict[str, object] | None = None
+        ) -> MessageResponse:
+            raise AssertionError("run must abort before dispatching turns")
+
+    class OneScenarioDataset:
+        def load(self) -> list[Scenario]:
+            return [
+                Scenario(
+                    scenario_id="reset_failure_case",
+                    title="reset failure",
+                    category="status",
+                    turns=[
+                        ScenarioTurn(
+                            actor="user",
+                            message="How is it going?",
+                            expected_behaviors=["report_active_subagent_status"],
+                        )
+                    ],
+                )
+            ]
+
+    runner = _bridge_runner(FakeClient())
+    runner.config = LifecycleConfig(output_dir=str(tmp_path), mode="bridge")
+    runner.dataset = OneScenarioDataset()
+
+    with pytest.raises(RuntimeError, match="reset failed for scenario reset_failure_case"):
+        runner.run()

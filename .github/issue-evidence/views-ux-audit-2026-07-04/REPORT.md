@@ -26,7 +26,20 @@ ELIZA_UI_SMOKE_DISABLE_VIDEO=1 \
 
 That produced 32 settings screenshots: hub plus 15 sections at desktop and mobile. One target, `wallet-rpc`, failed in both viewports because `#wallet-rpc` never appeared. This should be treated as a settings navigation/coverage defect, not as a clean pass.
 
-A registered-plugin-view screenshot pass was attempted. It captured `contacts` GUI/TUI and `hyperliquid` GUI screenshots, then was stopped because each view was failing on repeated `502 Bad Gateway` and `ws://127.0.0.1:31337/ws` connection-refused errors. Starting the full dev stack to provide the API then failed with `ENOSPC` while Bun extracted packages. Plugin-view coverage therefore remains blocked by the local disk/API startup state.
+A registered-plugin-view sweep was added for this audit:
+
+```bash
+ELIZA_PLUGIN_VIEWS_AUDIT=1 \
+ELIZA_UI_SMOKE_REUSE_SERVER=1 \
+ELIZA_UI_SMOKE_DISABLE_VIDEO=1 \
+ELIZA_UI_SMOKE_CHROMIUM_EXECUTABLE="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+./packages/app/node_modules/.bin/playwright test \
+  --config packages/app/playwright.ui-smoke.config.ts \
+  --project=chromium \
+  packages/app/test/ui-smoke/views-plugin-audit-capture.spec.ts
+```
+
+The sweep accounts for all 55 registered plugin view cases at desktop and mobile in `plugin-view-sweep/`. Desktop captured 52 screenshots and recorded 3 capture errors. Mobile captured 42 screenshots and recorded 13 capture errors. Several plugin routes rendered only the shared orange app background in the first pass; direct debug capture of `/contacts` then showed the route falling back to the home/launcher surface while the global background stayed orange. Treat this as view routing/isolation evidence, not as a successful plugin UX pass.
 
 A deeper subview pass was added for this audit and run against the reusable Vite server:
 
@@ -48,6 +61,7 @@ It captured 25 additional screenshots covering wallet tabs, Hyperliquid perps, P
 - Settings subview directory: `.github/issue-evidence/views-ux-audit-2026-07-04/settings-audit/`
 - Deep subview directory: `.github/issue-evidence/views-ux-audit-2026-07-04/deep-subviews/`
 - Partial plugin-view directory: `.github/issue-evidence/views-ux-audit-2026-07-04/plugin-views/`
+- Plugin sweep directory: `.github/issue-evidence/views-ux-audit-2026-07-04/plugin-view-sweep/`
 - Settings: `desktop-landscape/builtin-settings.png`, `mobile-portrait/builtin-settings.png`, `mobile-landscape/builtin-settings.png`, `ipad-portrait/builtin-settings.png`
 - Settings subviews: `settings-audit/desktop/_hub.png`, `settings-audit/desktop/ai-model.png`, `settings-audit/desktop/advanced.png`, `settings-audit/mobile/_hub.png`, `settings-audit/mobile/ai-model.png`, `settings-audit/mobile/advanced.png`
 - Settings Wallet & RPC: `deep-subviews/desktop-settings-wallet-rpc.png`, `deep-subviews/mobile-settings-wallet-rpc.png`
@@ -58,6 +72,8 @@ It captured 25 additional screenshots covering wallet tabs, Hyperliquid perps, P
 - Wallet: `desktop-landscape/builtin-inventory.png`, `mobile-portrait/builtin-inventory.png`, `mobile-landscape/builtin-inventory.png`, `ipad-portrait/builtin-inventory.png`
 - Wallet subviews: `deep-subviews/desktop-wallet-tokens.png`, `deep-subviews/desktop-wallet-defi.png`, `deep-subviews/desktop-wallet-nfts.png`, `deep-subviews/desktop-wallet-perps-hyperliquid.png`, `deep-subviews/desktop-wallet-predictions-polymarket.png`, plus mobile equivalents.
 - Partial plugin captures: `plugin-views/contacts-gui.png`, `plugin-views/contacts-tui.png`, `plugin-views/hyperliquid-gui.png`
+- Plugin sweep manifests: `plugin-view-sweep/desktop-plugin-view-sweep.json`, `plugin-view-sweep/mobile-plugin-view-sweep.json`
+- Plugin route fallback/background debug captures: `plugin-view-sweep/debug-contacts-after-wait.png`, `plugin-view-sweep/debug-contacts-seeded.png`
 
 ## Executive Read
 
@@ -189,14 +205,17 @@ Actionable:
 - Bring Wallet, Perps, and Predictions under one consistent wallet-family shell with shared title, secondary nav, loading/error states, and backend-unavailable copy.
 - Fix the Polymarket undefined `ready` access and add a visual assertion for the predictions route.
 
-### 7. Plugin views need an offline and chrome contract
+### 7. Plugin views need an offline, routing, and chrome contract
 
-Visible issues from partial captures:
+Visible issues from partial captures and the registered-view sweep:
 
 - `/contacts` GUI/TUI did not render a contacts view in the captured state; it fell through to a launcher/home-like app grid while the audit metadata still identified the route as `contacts`.
 - `/hyperliquid` rendered useful read-only content, but it looks like a raw utility panel: local `Refresh`, `Home`, and `Back` buttons, status lines, and a bottom full-width orange action without a shared view header or product-level hierarchy.
 - The global reconnect banner and floating composer sit on top of plugin surfaces, making plugin views feel like uncontrolled inserts rather than first-class app surfaces.
 - Backend unavailability appears as host-level websocket/proxy failure noise, not as a deliberate per-view offline state.
+- Desktop plugin sweep accounted for all 55 registered view cases but only 52 produced screenshots; `calendar` GUI and both `model-tester` modes recorded capture errors.
+- Mobile plugin sweep accounted for all 55 registered view cases but only 42 produced screenshots. Failures clustered around heavier/dynamic surfaces: `model-tester`, `phone` GUI, `vector-browser`, `feed`, `views-manager`, `screenshare` TUI, `social-alpha` TUI, `task-coordinator` TUI, and `orchestrator` GUI.
+- The first bounded sweep produced many orange-only screenshots. A direct seeded debug capture of `/contacts` showed why: the app had rendered the home/launcher surface under the route, with the global body/html background still set to orange. That is both a route-specific rendering failure and a global-background isolation failure.
 
 Actionable:
 
@@ -204,6 +223,7 @@ Actionable:
 - Add a route assertion that `/contacts` renders contacts-specific content, not the launcher fallback.
 - Use shell header/back controls for plugin GUI views unless they explicitly opt into fullscreen/terminal chrome.
 - Give plugin views a bounded offline/capability failure state so missing API grants do not leak as global proxy noise.
+- Add a capture-readiness marker for plugin views so visual tests wait for actual route content rather than `#root` plus a painted global background.
 
 ## Research Notes For Surface Isolation
 
@@ -216,6 +236,6 @@ Implication: separate surfaces are realistic, but the secure architecture needs 
 
 ## Verification Gaps
 
-- Full plugin views were not captured because plugin routes repeatedly hit Vite-proxied API failures (`502 Bad Gateway`, websocket connection refused) and the full API dev stack then failed to start due to `ENOSPC`.
+- Plugin views are accounted for in the bounded sweep, but many captures are route fallback/global-background evidence rather than successful plugin content. A clean API-backed run is still needed to evaluate each plugin's intended happy path.
 - The generic settings harness still cannot capture `wallet-rpc` through its id/anchor path; direct click capture works and is included.
 - Screenshots alone do not verify keyboard focus order, screen-reader semantics, or actual background mutation after user-driven navigation.

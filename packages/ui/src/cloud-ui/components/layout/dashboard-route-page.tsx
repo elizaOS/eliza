@@ -3,19 +3,15 @@
 /**
  * A dashboard route page that wires its header into the page-header context.
  */
-import {
-  type ComponentPropsWithoutRef,
-  type DependencyList,
-  type ReactNode,
-  useContext,
+import type {
+  ComponentPropsWithoutRef,
+  DependencyList,
+  ReactNode,
 } from "react";
 import { cn } from "../../lib/utils";
 import { DashboardPageContainer, DashboardPageStack } from "./dashboard-page";
-import { PageHeaderProvider } from "./page-header-context";
-import {
-  PageHeaderContext,
-  useSetPageHeader,
-} from "./page-header-context.hooks";
+import { EnsurePageHeaderProvider } from "./page-header-context";
+import { useSetPageHeader } from "./page-header-context.hooks";
 
 type DashboardRoutePageBannerTone = "info" | "success" | "warning" | "error";
 
@@ -71,14 +67,10 @@ function normalizeLayoutProps<T extends object>(
  * chrome), it defers to that provider so the header stays visible to the chrome.
  */
 export function DashboardRoutePage(props: DashboardRoutePageProps) {
-  const hasAncestorProvider = useContext(PageHeaderContext) !== undefined;
-  if (hasAncestorProvider) {
-    return <DashboardRoutePageBody {...props} />;
-  }
   return (
-    <PageHeaderProvider>
+    <EnsurePageHeaderProvider>
       <DashboardRoutePageBody {...props} />
-    </PageHeaderProvider>
+    </EnsurePageHeaderProvider>
   );
 }
 

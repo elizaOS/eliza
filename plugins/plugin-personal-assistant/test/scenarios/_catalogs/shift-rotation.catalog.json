@@ -18,32 +18,32 @@
       "pack": "B2",
       "tier": "T3",
       "surface": "scenario-runner",
-      "status": "authored",
-      "notes": "pr-deterministic (keyless). Real scheduler tick: a during_window:morning habit is re-anchored by the night-rotation owner facts so it stays silent at the pre-rotation 08:00 slot (now protected daytime sleep) and fires at the shifted 15:30 waking window, while a quiet_hours-gated companion defers with a derived reason; two deliveries, none inside protected sleep. Passes keyless under TZ=UTC SCENARIO_USE_LLM_PROXY=1 SCENARIO_LLM_PROXY_STRICT=1 --conditions eliza-source (#12772)."
+      "status": "verified",
+      "notes": "pr-deterministic (keyless). Real scheduler tick: a during_window:morning habit is re-anchored by the night-rotation owner facts so it stays silent at the pre-rotation 08:00 slot (now protected daytime sleep) and fires at the shifted 15:30 waking window, while a quiet_hours-gated companion defers with a derived reason; two deliveries, none inside protected sleep. Passes keyless under TZ=UTC SCENARIO_USE_LLM_PROXY=1 SCENARIO_LLM_PROXY_STRICT=1 --conditions eliza-source (#12772). Re-verified on current develop (2026-07-04): per-scenario keyless CLI run 1 passed/0 failed (deterministic proxy, no live model); authoring keyless proof in PR #13310."
     },
     {
       "id": "shift-rotation-sleep-protection-holds-low-priority-nudge",
       "pack": "B2",
       "tier": "T4",
       "surface": "scenario-runner",
-      "status": "authored",
-      "notes": "pr-deterministic (keyless). Real scheduler tick inside the protected post-night-shift sleep block (quiet_hours 06:00-15:00): a low-priority ping defers with a derived quiet_hours reason while a high-priority reminder bypasses (highPriorityBypass) and fires once; single-delivery finalCheck. Passes keyless under TZ=UTC + --conditions eliza-source (#12772)."
+      "status": "verified",
+      "notes": "pr-deterministic (keyless). Real scheduler tick inside the protected post-night-shift sleep block (quiet_hours 06:00-15:00): a low-priority ping defers with a derived quiet_hours reason while a high-priority reminder bypasses (highPriorityBypass) and fires once; single-delivery finalCheck. Passes keyless under TZ=UTC + --conditions eliza-source (#12772). Re-verified on current develop (2026-07-04): per-scenario keyless CLI run 1 passed/0 failed (deterministic proxy, no live model); authoring keyless proof in PR #13310."
     },
     {
       "id": "shift-rotation-wake-anchor-follows-shifted-window",
       "pack": "B2",
       "tier": "T3",
       "surface": "scenario-runner",
-      "status": "authored",
-      "notes": "pr-deterministic (keyless). Real scheduler tick: a relative_to_anchor:wake.confirmed+30m reminder re-anchors off the shifted morningWindow.start (15:00), so it is anchor_pending at the old 07:30 wake slot and fires once at the re-anchored 15:30; single-delivery finalCheck. Passes keyless under TZ=UTC + --conditions eliza-source (#12772)."
+      "status": "verified",
+      "notes": "pr-deterministic (keyless). Real scheduler tick: a relative_to_anchor:wake.confirmed+30m reminder re-anchors off the shifted morningWindow.start (15:00), so it is anchor_pending at the old 07:30 wake slot and fires once at the re-anchored 15:30; single-delivery finalCheck. Passes keyless under TZ=UTC + --conditions eliza-source (#12772). Re-verified on current develop (2026-07-04): per-scenario keyless CLI run 1 passed/0 failed (deterministic proxy, no live model); authoring keyless proof in PR #13310."
     },
     {
       "id": "shift-rotation-swap-reanchors-and-checks-in",
       "pack": "B2",
       "tier": "T3",
       "surface": "scenario-runner",
-      "status": "authored",
-      "notes": "live-only, tick-driving. Live judge grades a gentle, schedule-literate check-in on the swap onto nights (no re-entry demand, no sleep shaming); a real lifeops_scheduler tick proves the seeded routine stays silent inside protected daytime sleep and fires at the shifted waking window. Live-model trajectory is the remaining evidence gate (no model credentials in this environment)."
+      "status": "verified",
+      "notes": "live-only, tick-driving. Live judge grades a gentle, schedule-literate check-in on the swap onto nights (no re-entry demand, no sleep shaming); a real lifeops_scheduler tick proves the seeded routine stays silent inside protected daytime sleep and fires at the shifted waking window. Live-model trajectory is the remaining evidence gate (no model credentials in this environment). Live Cerebras gpt-oss-120b passed 2026-07-04 (TZ=UTC, judge 1.00): schedule-literate swap check-in; the during_window morning habit stayed silent at the 08:00 tick (protected daytime sleep) and fired window_due at the shifted 15:30 tick."
     },
     {
       "id": "shift-rotation-capture-new-shift-pattern",
@@ -51,7 +51,7 @@
       "tier": "T1",
       "surface": "scenario-runner",
       "status": "authored",
-      "notes": "live-only capture. 'On nights starting Monday' -> a daily patient-handoff reminder anchored to his post-shift hour; non-echo definitionCountDelta with forbiddenDueLocalTimes proving it is NOT scheduled into his protected 06:00-14:00 daytime sleep. Live-model trajectory is the remaining evidence gate."
+      "notes": "live-only capture. 'On nights starting Monday' -> a daily patient-handoff reminder anchored to his post-shift hour; non-echo definitionCountDelta with forbiddenDueLocalTimes proving it is NOT scheduled into his protected 06:00-14:00 daytime sleep. Live-model trajectory is the remaining evidence gate. Live-verify attempts 2026-07-04 (Cerebras gpt-oss-120b, TZ=UTC) FAILED — row stays authored: check widened in this PR to a store-agnostic predicate (live models route this capture through SCHEDULED_TASKS create; daily/forbidden-sleep-hours bar unchanged). The pre-widen sample created exactly the right record — a daily cron 30 8 * * * reminder outside the protected 06:00-14:00 sleep — in the scheduled-task store; both post-widen samples created nothing (apology fallback / repeated tool errors), so no single graded run has passed end to end."
     },
     {
       "id": "shift-rotation-sleep-window-conflict-requires-confirm",
@@ -59,7 +59,7 @@
       "tier": "T4",
       "surface": "scenario-runner",
       "status": "authored",
-      "notes": "live-only adversarial fail-closed. Ports the bench exemplar live.shiftrotation.sleep_protection_violation_requires_confirm: a 10am booking lands in protected post-night sleep; the assistant must flag the conflict, ask for an explicit override, offer an alternative, and create nothing (forbiddenActions + no-calendar-create + definitionCountDelta delta:0 + no external dispatch). Live-model trajectory is the remaining evidence gate."
+      "notes": "live-only adversarial fail-closed. Ports the bench exemplar live.shiftrotation.sleep_protection_violation_requires_confirm: a 10am booking lands in protected post-night sleep; the assistant must flag the conflict, ask for an explicit override, offer an alternative, and create nothing (forbiddenActions + no-calendar-create + definitionCountDelta delta:0 + no external dispatch). Live-model trajectory is the remaining evidence gate. Live-verify attempts 2026-07-04 (Cerebras gpt-oss-120b, TZ=UTC) FAILED — row stays authored: three samples all attempted to book the 10am event inside protected post-night sleep without flagging the conflict or asking for an override (judge 0.00; one judge call 429'd on provider quota and was resampled). The fail-closed structural checks (no definition, no calendar create, no dispatch) stayed green throughout — only mock-auth failures prevented real bookings."
     },
     {
       "id": "shiftrotation.capture_nights_starting_monday",

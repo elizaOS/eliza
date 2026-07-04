@@ -12,6 +12,7 @@ import {
   paymentRequestEvents,
   paymentRequests,
 } from "../schemas/payment-requests";
+import { parsePaymentAmountCents } from "./payment-requests-numeric";
 
 export type ProviderIntentKey = "stripe_session_id" | "oxapay_track_id" | "x402_request_id";
 
@@ -143,7 +144,7 @@ function toDomain(row: PaymentRequestDbRow): PaymentRequestRow {
     agentId: row.agent_id,
     appId: row.app_id,
     provider: row.provider,
-    amountCents: Number(row.amount_cents),
+    amountCents: parsePaymentAmountCents(row.amount_cents, "amount_cents"),
     currency: row.currency,
     reason: row.reason,
     paymentContext: row.payment_context,

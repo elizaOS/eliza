@@ -16,11 +16,6 @@
  * consumer, not here.
  */
 
-import type {
-  AgentNotification,
-  NotificationCategory,
-  NotificationPriority,
-} from "@elizaos/core";
 import type { PluginWidgetDeclaration } from "./types";
 
 /** Minimal declaration shape the ranking needs (decoupled from the full type). */
@@ -256,59 +251,17 @@ export const NOTIFICATION_PRIORITY_TO_SIGNAL_KIND: Readonly<
   low: "activity",
 };
 
-// ---------------------------------------------------------------------------
-// Content-item priority *within* a single home widget (#9143). A "default" home
-// widget (notifications/messages/activity) shows a capped list, and the items
-// themselves carry priority — so the widget must surface the most
-// attention-worthy items first, not merely the most recent. This is the
-// content-level analogue of the widget-level ranker above. Pure + stable
-// (no clock; ties resolve by original order).
-// ---------------------------------------------------------------------------
-
-/** Notification priority → numeric rank (higher = more urgent). */
+/**
+ * Notification priority → numeric rank (higher = more urgent). The
+ * content-level priority scale shared by every surface that orders
+ * notifications (the dashboard notification center sorts on it).
+ */
 export const NOTIFICATION_PRIORITY_RANK: Readonly<Record<string, number>> = {
   urgent: 3,
   high: 2,
   normal: 1,
   low: 0,
 };
-
-/** Minimal notification shape the content ranker needs. */
-export interface RankableContentNotification {
-  priority?: string;
-  /** Epoch-ms when created. */
-  createdAt: number;
-  /** Epoch-ms when read; unread (null/absent) ranks ahead of read. */
-  readAt?: number | null;
-}
-
-/**
- * Order notifications inside a home widget by attention: unread before read,
- * then higher priority, then most-recent first. Stable (equal items keep their
- * original relative order) and pure (no `Date.now()`), so the home widget never
- * reshuffles equal-importance items between renders.
- */
-export function rankHomeNotifications<T extends RankableContentNotification>(
-  items: readonly T[],
-): T[] {
-  return items
-    .map((item, index) => ({ item, index }))
-    .sort((a, b) => {
-      const aUnread = a.item.readAt ? 0 : 1;
-      const bUnread = b.item.readAt ? 0 : 1;
-      if (aUnread !== bUnread) return bUnread - aUnread;
-      const aPriority =
-        NOTIFICATION_PRIORITY_RANK[a.item.priority ?? "normal"] ?? 1;
-      const bPriority =
-        NOTIFICATION_PRIORITY_RANK[b.item.priority ?? "normal"] ?? 1;
-      if (aPriority !== bPriority) return bPriority - aPriority;
-      if (a.item.createdAt !== b.item.createdAt) {
-        return b.item.createdAt - a.item.createdAt;
-      }
-      return a.index - b.index;
-    })
-    .map((entry) => entry.item);
-}
 
 /** Minimal activity-event shape the signal derivation needs. */
 export interface RankableActivityEvent {
@@ -385,99 +338,4 @@ export function homeSignalsFromNotifications(
     }
   }
   return signals;
-}
-
-// ---------------------------------------------------------------------------
-// Home-slot notification selection (#9143). The always-visible home tile shows
-// at most ONE datum, so it needs a far stricter, collapsed view than the
-// chat-sidebar list: only genuinely home-worthy notifications (unread, recent,
-// high/urgent) survive, and a same-category burst collapses to a single "N
-// updates" entry. Pure + deterministic — `now` flows in (0 on first render =
-// "don't age-filter yet", so the tile never flashes empty on paint).
-// ---------------------------------------------------------------------------
-
-/** Priorities allowed onto the home tile — the quiet threshold's severity gate. */
-const HOME_WORTHY_PRIORITIES: ReadonlySet<NotificationPriority> = new Set([
-  "high",
-  "urgent",
-]);
-
-/**
- * A notification at or beyond this age is stale for the home tile and drops out
- * (the sidebar list still shows it). Matches the ranker's default signal max-age
- * so "home-worthy" and "boosts the widget" decay on the same clock.
- */
-const HOME_MAX_AGE_MS = DEFAULT_MAX_AGE_MS;
-
-/** How many eligible notifications must share a category before it collapses. */
-const HOME_GROUP_THRESHOLD = 2;
-
-export interface HomeNotificationOptions {
-  /** Current time (epoch-ms). `0` disables the age filter (first render). */
-  now: number;
-}
-
-/**
- * One home-tile entry: either a single lead notification, or a collapsed
- * same-category burst carrying its `lead` (the top-ranked member, whose typed
- * category/priority drive the tile's icon and tone) and the total `count`.
- */
-export type HomeNotificationEntry =
-  | { kind: "single"; notification: AgentNotification }
-  | {
-      kind: "group";
-      lead: AgentNotification;
-      count: number;
-      category: NotificationCategory;
-    };
-
-/**
- * Rank the notifications home-worthy enough for the always-visible tile, then
- * collapse each category with {@link HOME_GROUP_THRESHOLD}+ members into one
- * group entry (led by its highest-attention member). Applies the quiet
- * threshold first — unread, high/urgent, and recent — so read / stale /
- * low-severity notifications produce an empty result and the tile renders
- * nothing. Ordering follows {@link rankHomeNotifications}, with each category's
- * lead standing in for the whole collapsed group.
- */
-export function selectHomeNotifications(
-  notifications: readonly AgentNotification[],
-  opts: HomeNotificationOptions,
-): HomeNotificationEntry[] {
-  const eligible = notifications.filter((n) => {
-    if (n.readAt) return false;
-    if (!HOME_WORTHY_PRIORITIES.has(n.priority)) return false;
-    // now === 0: pre-clock first render — keep everything so the tile paints
-    // its real content immediately instead of flashing empty (see useNow).
-    if (opts.now !== 0 && opts.now - n.createdAt >= HOME_MAX_AGE_MS) return false;
-    return true;
-  });
-
-  const ranked = rankHomeNotifications(eligible);
-
-  const categoryCounts = new Map<NotificationCategory, number>();
-  for (const n of ranked) {
-    categoryCounts.set(n.category, (categoryCounts.get(n.category) ?? 0) + 1);
-  }
-
-  const entries: HomeNotificationEntry[] = [];
-  const collapsed = new Set<NotificationCategory>();
-  for (const notification of ranked) {
-    const count = categoryCounts.get(notification.category) ?? 1;
-    if (count >= HOME_GROUP_THRESHOLD) {
-      // The first (highest-ranked) member of a collapsible category becomes the
-      // group's lead; later members of the same category fold into it silently.
-      if (collapsed.has(notification.category)) continue;
-      collapsed.add(notification.category);
-      entries.push({
-        kind: "group",
-        lead: notification,
-        count,
-        category: notification.category,
-      });
-    } else {
-      entries.push({ kind: "single", notification });
-    }
-  }
-  return entries;
 }

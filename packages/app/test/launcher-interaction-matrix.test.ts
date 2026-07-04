@@ -46,15 +46,11 @@ function citedFilePaths(doc: string): string[] {
 
 /**
  * A launcher gesture-handler site is a non-test `packages/ui/src` file that
- * defines or consumes the rail pager or the notification-pull engine — the two
- * gesture systems behind every home↔launcher interaction. A new consumer of
- * either hook is a new launcher gesture surface and must earn a matrix row.
+ * defines or consumes the rail pager engine — the gesture system behind every
+ * home↔launcher interaction. A new consumer of the hook is a new launcher
+ * gesture surface and must earn a matrix row.
  */
-const LAUNCHER_GESTURE_MARKERS: readonly RegExp[] = [
-  /\buseHorizontalPager\b/,
-  /\buseNotificationPull\b/,
-  /use-notification-pull/,
-];
+const LAUNCHER_GESTURE_MARKERS: readonly RegExp[] = [/\buseHorizontalPager\b/];
 
 function isSiteCandidate(fileName: string): boolean {
   if (!/\.(ts|tsx)$/.test(fileName)) return false;
@@ -97,8 +93,6 @@ function discoverLauncherGestureSites(): string[] {
  */
 const PINNED_LAUNCHER_GESTURE_SITES: readonly string[] = [
   "packages/ui/src/components/shell/HomeLauncherSurface.tsx",
-  "packages/ui/src/components/shell/HomeScreen.tsx",
-  "packages/ui/src/components/shell/use-notification-pull.ts",
   "packages/ui/src/hooks/useHorizontalPager.ts",
 ];
 
