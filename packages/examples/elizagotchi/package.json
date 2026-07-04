@@ -8,7 +8,10 @@
     "preview": "bun --bun vite preview",
     "test": "bun test",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
-    "lint:check": "bunx @biomejs/biome check . || true",
+    "lint:check": "bunx @biomejs/biome check .",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format .",
+    "clean": "rm -rf dist",
     "typecheck": "tsgo --noEmit"
   },
   "dependencies": {
