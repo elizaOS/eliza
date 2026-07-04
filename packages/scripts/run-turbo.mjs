@@ -43,6 +43,25 @@ const turboPackageBin =
   path.join(repoRoot, "node_modules/turbo/bin/turbo");
 const turboArgs = process.argv.slice(2);
 
+function assertSupportedBunLockVersion() {
+  const bunLockPath = path.join(repoRoot, "bun.lock");
+  if (!fs.existsSync(bunLockPath)) return;
+
+  const lockHeader = fs.readFileSync(bunLockPath, "utf8").slice(0, 2048);
+  const versionMatch = lockHeader.match(/"lockfileVersion"\s*:\s*(\d+)/);
+  if (!versionMatch) return;
+
+  const lockfileVersion = Number(versionMatch[1]);
+  if (Number.isNaN(lockfileVersion) || lockfileVersion <= 1) return;
+
+  console.error(
+    `Unsupported bun.lock lockfileVersion ${lockfileVersion}; Turbo cannot parse Bun lockfile v2 yet. Regenerate bun.lock with Bun v1 lockfile support before running Turbo.`,
+  );
+  process.exit(1);
+}
+
+assertSupportedBunLockVersion();
+
 if (!turboArgs.some((arg) => arg === "--ui" || arg.startsWith("--ui="))) {
   turboArgs.unshift("--ui=stream");
 }
@@ -93,6 +112,11 @@ function filterKnownBunLockWarning(stream, output) {
     pending = lines.pop() ?? "";
 
     for (const line of lines) {
+      if (line.includes("Unsupported bun lockfile version")) {
+        skipping = 0;
+        output.write(`${line}\n`);
+        continue;
+      }
       if (line.includes(warningStart) && line.includes("bun.lock")) {
         skipping = 3;
         continue;

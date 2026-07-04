@@ -318,21 +318,9 @@
       "outputs": ["dist/**"]
     },
     "lint": {
-      "dependsOn": [
-        "@elizaos/core#build",
-        "@elizaos/shared#build",
-        "@elizaos/plugin-agent-skills#build",
-        "@elizaos/plugin-app-manager#build"
-      ],
       "outputs": []
     },
     "lint:check": {
-      "dependsOn": [
-        "@elizaos/core#build",
-        "@elizaos/shared#build",
-        "@elizaos/plugin-agent-skills#build",
-        "@elizaos/plugin-app-manager#build"
-      ],
       "outputs": []
     },
     "typecheck": {
@@ -572,23 +560,12 @@
     "start": {
       "dependsOn": ["@elizaos/core#build"],
       "env": ["LOG_LEVEL"],
-      "persistent": true
+      "persistent": true,
+      "cache": false
     },
     "dev": {
       "dependsOn": ["@elizaos/core#build"],
-      "persistent": true
-    },
-    "test": {
-      "dependsOn": ["^build"],
-      "outputs": ["coverage/**"],
-      "inputs": [
-        "src/**/*.ts",
-        "src/**/*.js",
-        "__tests__/**/*",
-        "*.test.*",
-        "package.json",
-        "tests/**/*"
-      ],
+      "persistent": true,
       "cache": false
     },
     "migrate": {
