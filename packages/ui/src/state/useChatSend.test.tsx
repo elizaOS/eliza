@@ -509,7 +509,7 @@ describe("useChatSend 404 recovery", () => {
     ).toBe(true);
   });
 
-  it("does NOT notify on a non-cloud base when createConversation 404s (preserves prior behaviour)", async () => {
+  it("surfaces a send-failure notice on a non-cloud base when createConversation 404s (#12267: a silent return read as a lost message)", async () => {
     mockStream404();
     mocks.client.createConversation.mockRejectedValue(http404());
     mocks.client.getBaseUrl.mockReturnValue("http://127.0.0.1:31337");
@@ -526,8 +526,14 @@ describe("useChatSend 404 recovery", () => {
       });
     });
 
-    expect(deps.setActionNotice).not.toHaveBeenCalled();
-    // Prior behaviour: the empty assistant placeholder is dropped.
+    // The recovery could not produce a conversation to replay into: the user
+    // must see the failure instead of a message that silently vanished.
+    expect(deps.setActionNotice).toHaveBeenCalledWith(
+      expect.stringMatching(/didn't go through/i),
+      "error",
+      8_000,
+    );
+    // The stuck empty assistant placeholder is still dropped.
     const remaining = deps.conversationMessagesRef.current;
     expect(
       remaining.some((m) => m.role === "assistant" && !m.text.trim()),
