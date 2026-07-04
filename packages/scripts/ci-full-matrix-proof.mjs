@@ -27,9 +27,17 @@
  * first) and mirrored into the GitHub step summary when `--summary` is given.
  */
 import { spawnSync } from "node:child_process";
-import { appendFileSync, readFileSync } from "node:fs";
+import {
+  appendFileSync,
+  mkdtempSync,
+  openSync,
+  closeSync,
+  readFileSync,
+  rmSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
-import { dirname, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, "..", "..");
@@ -76,20 +84,36 @@ function loadPlan({ planFile }) {
   if (planFile) {
     return JSON.parse(readFileSync(planFile, "utf8"));
   }
+  // Redirect the runner's stdout to a file rather than capturing it through a
+  // pipe. The plan JSON is >64KB and run-all-tests calls process.exit(0) right
+  // after writing it, which can truncate a piped stdout mid-flush; a file
+  // descriptor is flushed on close, so this is the only lossless capture. It
+  // also mirrors how the CI workflow invokes the runner (`> plan.json`).
   const runner = resolve(here, "run-all-tests.mjs");
-  const result = spawnSync(process.execPath, [runner, "--plan=json"], {
-    cwd: repoRoot,
-    encoding: "utf8",
-    maxBuffer: 64 * 1024 * 1024,
-  });
-  if (result.status !== 0) {
-    throw new Error(
-      `run-all-tests.mjs --plan=json exited ${result.status}: ${
-        result.stderr || result.stdout
-      }`,
-    );
+  const dir = mkdtempSync(join(tmpdir(), "ci-full-matrix-proof-"));
+  const planPath = join(dir, "plan.json");
+  const fd = openSync(planPath, "w");
+  let result;
+  try {
+    result = spawnSync(process.execPath, [runner, "--plan=json"], {
+      cwd: repoRoot,
+      stdio: ["ignore", fd, "pipe"],
+    });
+  } finally {
+    closeSync(fd);
   }
-  return JSON.parse(result.stdout);
+  try {
+    if (result.status !== 0) {
+      throw new Error(
+        `run-all-tests.mjs --plan=json exited ${result.status}: ${
+          result.stderr ? result.stderr.toString() : ""
+        }`,
+      );
+    }
+    return JSON.parse(readFileSync(planPath, "utf8"));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 }
 
 // Locate a top-level job block in the workflow YAML by its key. Returns the raw

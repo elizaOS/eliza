@@ -192,16 +192,21 @@ describe("ci-full-matrix-proof", () => {
     expect(result.stderr).toContain('script lane "test:e2e" collected zero tasks');
   });
 
-  test("proves the real committed manifest against the real workflow + plan", () => {
-    // No fixtures: run the shipped script with its default manifest and let it
-    // spawn `run-all-tests.mjs --plan=json`. This is the guard that the manifest
-    // stays honest as the repo evolves.
-    const result = spawnSync(process.execPath, [script], {
-      encoding: "utf8",
-      cwd: fileURLToPath(new URL("../../..", import.meta.url)),
-      maxBuffer: 64 * 1024 * 1024,
-    });
-    expect(result.status).toBe(0);
-    expect(result.stdout).toContain("PASS every expected lane accounted for");
-  });
+  test(
+    "proves the real committed manifest against the real workflow + plan",
+    () => {
+      // No fixtures: run the shipped script with its default manifest and let it
+      // spawn `run-all-tests.mjs --plan=json` (which does whole-repo workspace
+      // discovery). This is the guard that the manifest stays honest as the repo
+      // evolves.
+      const result = spawnSync(process.execPath, [script], {
+        encoding: "utf8",
+        cwd: fileURLToPath(new URL("../../..", import.meta.url)),
+        maxBuffer: 64 * 1024 * 1024,
+      });
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain("PASS every expected lane accounted for");
+    },
+    60_000,
+  );
 });
