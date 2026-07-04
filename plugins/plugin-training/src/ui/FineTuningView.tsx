@@ -252,9 +252,7 @@ function summarizeAnalysisCoverage(
 ): AnalysisCoverageSummary | null {
   if (!analysisIndex) return null;
   const artifacts = asArray(analysisIndex.manifest.artifacts);
-  const manifestCoverage = recordValue(
-    (analysisIndex.manifest as unknown as Record<string, unknown>).coverage,
-  );
+  const manifestCoverage = recordValue(analysisIndex.manifest.coverage);
   if (Object.keys(manifestCoverage).length > 0) {
     const dataSources = recordValue(manifestCoverage.dataSources);
     const readableSamples = recordValue(manifestCoverage.readableSamples);

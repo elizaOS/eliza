@@ -342,6 +342,7 @@ async function handleModify(
       data: { workflow: existing, awaitingUserInput: true },
     };
   } catch {
+    // error-policy:J4 modify-op boundary; a failed lookup surfaces as a user-facing not-found ActionResult.
     return { success: false, text: `Workflow not found: ${workflowId}` };
   }
 }
@@ -367,6 +368,7 @@ async function handleToggleActive(
   try {
     existing = await service.getWorkflow(workflowId);
   } catch {
+    // error-policy:J4 toggle-op boundary; a failed lookup surfaces as a user-facing not-found ActionResult.
     return { success: false, text: `Workflow not found: ${workflowId}` };
   }
   try {
@@ -412,6 +414,7 @@ async function handleDeleteWorkflow(
   try {
     existing = await service.getWorkflow(workflowId);
   } catch {
+    // error-policy:J4 delete-op boundary; a failed lookup surfaces as a user-facing not-found ActionResult.
     return { success: false, text: `Workflow not found: ${workflowId}` };
   }
   try {

@@ -130,6 +130,7 @@ async function readJsonBody(
     const parsed = JSON.parse(Buffer.concat(chunks).toString('utf-8'));
     return isRecord(parsed) ? parsed : null;
   } catch {
+    // error-policy:J3 untrusted request body; a non-JSON payload is a client error surfaced as 400.
     res.statusCode = 400;
     res.setHeader('content-type', 'application/json; charset=utf-8');
     res.end(JSON.stringify({ error: 'invalid JSON body' }));

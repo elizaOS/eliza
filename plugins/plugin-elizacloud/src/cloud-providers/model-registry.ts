@@ -54,6 +54,8 @@ export const modelRegistryProvider: Provider = {
       ) as ModelsByProvider;
       return formatModels(capped);
     } catch {
+      // error-policy:J7 diagnostics-must-not-kill-the-loop: a failed model-registry
+      // read must not abort prompt composition; contribute empty context instead.
       return { text: "", values: {}, data: {} };
     }
   },

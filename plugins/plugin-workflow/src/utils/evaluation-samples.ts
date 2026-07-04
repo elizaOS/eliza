@@ -86,6 +86,7 @@ function previewMainData(data: unknown): string | undefined {
     try {
       return truncate(JSON.stringify(compactValue(json)));
     } catch {
+      // error-policy:J4 diagnostic preview only; unserializable (e.g. circular) output degrades to a marker string.
       return 'Output could not be previewed';
     }
   }

@@ -1083,6 +1083,8 @@ async function downloadRecommendedModelFor(
 		);
 		try {
 			unlinkSync(finalPath);
+			// error-policy:J6 best-effort removal of a bad partial before re-download;
+			// a missing/locked file is fine — the re-download overwrites it anyway.
 		} catch {}
 	}
 
@@ -1095,6 +1097,8 @@ async function downloadRecommendedModelFor(
 		const stagingPath = `${finalPath}.part`;
 		try {
 			unlinkSync(stagingPath);
+			// error-policy:J6 best-effort clear of a leftover staging file; absence is
+			// the desired state and createWriteStream truncates any survivor.
 		} catch {}
 		logger.info(
 			`[mobile-device-bridge] Auto-downloading recommended ${slot} model ${model.id} from ${url}`,
@@ -1113,6 +1117,8 @@ async function downloadRecommendedModelFor(
 		if (model.expectedSizeBytes && stagedSize !== model.expectedSizeBytes) {
 			try {
 				unlinkSync(stagingPath);
+				// error-policy:J6 best-effort cleanup of the size-mismatched partial on
+				// the abort path; the throw below is the real signal to the caller.
 			} catch {}
 			throw new Error(
 				`[mobile-device-bridge] Downloaded ${model.ggufFile} size ${stagedSize} != expected ${model.expectedSizeBytes}; aborting and removing partial file.`,

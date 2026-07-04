@@ -1,4 +1,4 @@
-import type { IAgentRuntime } from "@elizaos/core";
+import { logger as coreLogger, type IAgentRuntime } from "@elizaos/core";
 import { BirdeyeClient, DexscreenerClient } from "../clients.ts";
 import { SupportedChain } from "../types.ts";
 
@@ -118,8 +118,8 @@ export class HistoricalPriceService {
 		} catch (error: unknown) {
 			// If OHLCV fails, try to get current price at least
 			const message = error instanceof Error ? error.message : String(error);
-			console.warn(
-				`OHLCV failed for ${address}, trying current price:`,
+			coreLogger.warn(
+				`[HistoricalPriceService] OHLCV failed for ${address}, trying current price:`,
 				message,
 			);
 
@@ -143,9 +143,9 @@ export class HistoricalPriceService {
 					};
 				}
 			} catch (priceError) {
-				console.error(
-					`Failed to get any price data for ${address}:`,
-					priceError,
+				coreLogger.error(
+					{ error: priceError },
+					`[HistoricalPriceService] Failed to get any price data for ${address}`,
 				);
 			}
 
@@ -251,7 +251,10 @@ export class HistoricalPriceService {
 				fetchedAt: Date.now(),
 			};
 		} catch (error) {
-			console.error(`Error fetching Dexscreener data for ${address}:`, error);
+			coreLogger.error(
+				{ error },
+				`[HistoricalPriceService] Error fetching Dexscreener data for ${address}`,
+			);
 			return null;
 		}
 	}
@@ -391,8 +394,8 @@ export class HistoricalPriceService {
 			const minLiquidityRatio = 10000 / 1000000; // $10k per $1M market cap
 
 			if (marketCap > 0 && liquidityUsd / marketCap < minLiquidityRatio) {
-				console.warn(
-					`Token ${symbol} has insufficient liquidity ratio: ${liquidityUsd / marketCap}`,
+				coreLogger.warn(
+					`[HistoricalPriceService] Token ${symbol} has insufficient liquidity ratio: ${liquidityUsd / marketCap}`,
 				);
 			}
 
@@ -407,7 +410,10 @@ export class HistoricalPriceService {
 				createdAt: bestMatch.pairCreatedAt,
 			};
 		} catch (error) {
-			console.error(`Error finding best token match for ${symbol}:`, error);
+			coreLogger.error(
+				{ error },
+				`[HistoricalPriceService] Error finding best token match for ${symbol}`,
+			);
 			return null;
 		}
 	}

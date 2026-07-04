@@ -4,6 +4,7 @@
  * `LpManagementService` registry.
  */
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import {
   createEvmLpProtocolProvider,
   registerLpProtocolProvider,
@@ -17,7 +18,7 @@ export const pancakeswapPlugin: Plugin = {
   actions: [],
   providers: [],
   init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
-    console.info("PancakeSwap V3 Plugin initialized");
+    logger.info("[PancakeSwapPlugin] PancakeSwap V3 Plugin initialized");
     const service =
       runtime.getService<PancakeSwapV3LpService>(
         PancakeSwapV3LpService.serviceType,

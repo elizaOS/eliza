@@ -4,6 +4,7 @@
  * protocol registry so it appears alongside the other DEX adapters.
  */
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import {
   createSolanaLpProtocolProvider,
   registerLpProtocolProvider,
@@ -18,7 +19,7 @@ export const orcaPlugin: Plugin = {
   actions: [],
   services: [OrcaService],
   init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
-    console.info("Orca Plugin initialized");
+    logger.info("[OrcaPlugin] Orca Plugin initialized");
     const service =
       runtime.getService<OrcaService>(OrcaService.serviceType) ??
       (await OrcaService.start(runtime));

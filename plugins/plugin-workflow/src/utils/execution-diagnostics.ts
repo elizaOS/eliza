@@ -52,6 +52,7 @@ function previewMainData(data: unknown): string {
       const preview = JSON.stringify(json);
       return preview.length > 160 ? `${preview.slice(0, 157)}...` : preview;
     } catch {
+      // error-policy:J4 diagnostic preview only; unserializable (e.g. circular) output degrades to a marker string.
       return 'Output could not be previewed';
     }
   }

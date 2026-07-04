@@ -1,6 +1,6 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import type { UUID } from "@elizaos/core";
+import { logger as coreLogger, type UUID } from "@elizaos/core";
 import { BalancedTrustScoreCalculator } from "./balancedTrustScoreCalculator";
 import {
 	type ActorConfig,
@@ -90,7 +90,9 @@ export class TrustScoreOptimizer {
 		simulationConfig?: SimulationConfig,
 		useCache: boolean = true,
 	): Promise<OptimizationResult> {
-		console.log("🔄 Starting trust score optimization cycle...");
+		coreLogger.info(
+			"[TrustScoreOptimizer] 🔄 Starting trust score optimization cycle...",
+		);
 
 		// 1. Get or generate simulation data
 		const simulationData = await this.getSimulationData(
@@ -133,13 +135,17 @@ export class TrustScoreOptimizer {
 			const cached =
 				await this.simulationRunner.loadCachedSimulation(defaultOutputDir);
 			if (cached) {
-				console.log("📂 Loaded cached simulation data");
+				coreLogger.info(
+					"[TrustScoreOptimizer] 📂 Loaded cached simulation data",
+				);
 				return cached;
 			}
 		}
 
 		// Generate new simulation
-		console.log("🎲 Generating new simulation data...");
+		coreLogger.info(
+			"[TrustScoreOptimizer] 🎲 Generating new simulation data...",
+		);
 
 		const simulationConfig: SimulationConfig = config || {
 			startTime: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000), // 30 days ago
@@ -807,14 +813,22 @@ export class TrustScoreOptimizer {
 		const dataPath = path.join(logDir, `optimization-data-${timestamp}.json`);
 		await fs.writeFile(dataPath, JSON.stringify(result, null, 2));
 
-		console.log(`\n📊 Optimization Report Summary:`);
-		console.log(`   MAE: ${result.accuracy.mae.toFixed(2)}`);
-		console.log(`   RMSE: ${result.accuracy.rmse.toFixed(2)}`);
-		console.log(`   Correlation: ${result.accuracy.correlation.toFixed(3)}`);
-		console.log(
-			`   Ranking Accuracy: ${result.accuracy.rankingAccuracy.toFixed(1)}%`,
+		coreLogger.info(`[TrustScoreOptimizer] 📊 Optimization Report Summary:`);
+		coreLogger.info(
+			`[TrustScoreOptimizer]    MAE: ${result.accuracy.mae.toFixed(2)}`,
 		);
-		console.log(`\n📁 Full report saved to: ${reportPath}`);
+		coreLogger.info(
+			`[TrustScoreOptimizer]    RMSE: ${result.accuracy.rmse.toFixed(2)}`,
+		);
+		coreLogger.info(
+			`[TrustScoreOptimizer]    Correlation: ${result.accuracy.correlation.toFixed(3)}`,
+		);
+		coreLogger.info(
+			`[TrustScoreOptimizer]    Ranking Accuracy: ${result.accuracy.rankingAccuracy.toFixed(1)}%`,
+		);
+		coreLogger.info(
+			`[TrustScoreOptimizer] 📁 Full report saved to: ${reportPath}`,
+		);
 	}
 
 	/**
@@ -824,7 +838,9 @@ export class TrustScoreOptimizer {
 		parameterRanges: Partial<Record<keyof TrustScoreParameters, number[]>>,
 		simulationConfig?: SimulationConfig,
 	): Promise<TrustScoreParameters> {
-		console.log("🔍 Starting parameter optimization via grid search...");
+		coreLogger.info(
+			"[TrustScoreOptimizer] 🔍 Starting parameter optimization via grid search...",
+		);
 
 		let bestParams = { ...this.currentParams };
 		let bestScore = Infinity;
@@ -836,8 +852,8 @@ export class TrustScoreOptimizer {
 		const paramCombinations =
 			this.generateParameterCombinations(parameterRanges);
 
-		console.log(
-			`Testing ${paramCombinations.length} parameter combinations...`,
+		coreLogger.info(
+			`[TrustScoreOptimizer] Testing ${paramCombinations.length} parameter combinations...`,
 		);
 
 		for (const params of paramCombinations) {
@@ -851,12 +867,17 @@ export class TrustScoreOptimizer {
 			if (accuracy.mae < bestScore) {
 				bestScore = accuracy.mae;
 				bestParams = { ...params };
-				console.log(`New best MAE: ${bestScore.toFixed(2)}`);
+				coreLogger.info(
+					`[TrustScoreOptimizer] New best MAE: ${bestScore.toFixed(2)}`,
+				);
 			}
 		}
 
 		this.currentParams = bestParams;
-		console.log("✅ Optimization complete. Best parameters:", bestParams);
+		coreLogger.info(
+			{ bestParams },
+			"[TrustScoreOptimizer] ✅ Optimization complete. Best parameters",
+		);
 
 		return bestParams;
 	}

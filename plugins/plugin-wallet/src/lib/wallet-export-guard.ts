@@ -15,6 +15,7 @@
 
 import crypto from "node:crypto";
 import type http from "node:http";
+import { logger } from "@elizaos/core";
 import type {
   WalletExportRejection,
   WalletExportRequestBody,
@@ -89,7 +90,7 @@ function recordAudit(entry: WalletExportAuditEntry): void {
   }
 
   const logLine = `[wallet-export-audit] ${entry.outcome} ip=${entry.ip} ua="${entry.userAgent}"${entry.reason ? ` reason="${entry.reason}"` : ""}`;
-  console.warn(logLine);
+  logger.warn(logLine);
 }
 
 /** Read-only snapshot of the audit log for diagnostics endpoints. */

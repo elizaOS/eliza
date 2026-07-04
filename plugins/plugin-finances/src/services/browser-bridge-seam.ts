@@ -47,14 +47,16 @@ export interface SubscriptionsBrowserGateway {
 function requireBrowserBridgeService(
   runtime: IAgentRuntime,
 ): BrowserBridgeRouteService {
-  const service = runtime.getService(BROWSER_BRIDGE_ROUTE_SERVICE_TYPE);
+  const service = runtime.getService<BrowserBridgeRouteService>(
+    BROWSER_BRIDGE_ROUTE_SERVICE_TYPE,
+  );
   if (!service || typeof service !== "object") {
     fail(
       503,
       "Browser bridge service is not registered. Enable the Agent Browser Bridge host plugin before using subscription cancellation in a browser.",
     );
   }
-  return service as unknown as BrowserBridgeRouteService;
+  return service;
 }
 
 /**

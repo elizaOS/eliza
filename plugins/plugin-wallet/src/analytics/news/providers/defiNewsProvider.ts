@@ -7,6 +7,7 @@
  * symbol-to-CoinGecko-id table for a short list of major tokens.
  */
 import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import type { NewsDataService } from "../services/newsDataService";
 
 interface CoinGeckoDefiData {
@@ -194,7 +195,10 @@ export const defiNewsProvider: Provider = {
       const latestNews = await getLatestCryptoNews(newsDataService);
       defiNewsInfo += latestNews;
     } catch (error) {
-      console.error("Error in DeFi News provider:", error);
+      logger.error(
+        "[defiNewsProvider] Error in DeFi News provider:",
+        String(error),
+      );
       defiNewsInfo = `Error generating DeFi News report: ${error instanceof Error ? error.message : "Unknown error"}`;
     }
 
@@ -374,7 +378,10 @@ async function getGlobalDefiData(
     defiInfo += `🎯 DeFi Dominance: ${parseFloat(defiData.defi_dominance).toFixed(2)}%\n`;
     defiInfo += `👑 Top DeFi Coin: ${defiData.top_coin_name} (${defiData.top_coin_defi_dominance.toFixed(2)}% dominance)\n\n`;
   } catch (error) {
-    console.error("Error fetching global DeFi data:", error);
+    logger.error(
+      "[defiNewsProvider] Error fetching global DeFi data:",
+      String(error),
+    );
     defiInfo += "Error fetching DeFi data. Please try again later.\n\n";
   }
 
@@ -407,7 +414,10 @@ async function getGlobalCryptoData(
 
     cryptoInfo += "\n";
   } catch (error) {
-    console.error("Error fetching global crypto data:", error);
+    logger.error(
+      "[defiNewsProvider] Error fetching global crypto data:",
+      String(error),
+    );
     cryptoInfo +=
       "Error fetching crypto market data. Please try again later.\n\n";
   }
@@ -450,7 +460,10 @@ async function getLatestCryptoNews(
       newsInfo += "\n";
     });
   } catch (error) {
-    console.error("Error fetching latest crypto news:", error);
+    logger.error(
+      "[defiNewsProvider] Error fetching latest crypto news:",
+      String(error),
+    );
     newsInfo += "Error fetching news. Please try again later.\n\n";
   }
 
@@ -573,7 +586,10 @@ async function getTokenInfoByAddress(
 
     tokenInfo += "\n";
   } catch (error) {
-    console.error("Error fetching token info by address:", error);
+    logger.error(
+      "[defiNewsProvider] Error fetching token info by address:",
+      String(error),
+    );
     return null;
   }
 
@@ -632,7 +648,10 @@ export async function getTokenInfo(
 
     tokenInfo += "\n";
   } catch (error) {
-    console.error("Error fetching token info:", error);
+    logger.error(
+      "[defiNewsProvider] Error fetching token info:",
+      String(error),
+    );
     tokenInfo += "Error fetching token data. Please try again later.\n\n";
   }
 

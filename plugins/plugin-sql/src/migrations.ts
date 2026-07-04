@@ -96,7 +96,8 @@ export async function migrateToEntityRLS(adapter: IDatabaseAdapter): Promise<voi
           try {
             await db.execute(sql.raw(`ALTER TABLE "${tableName}" DISABLE ROW LEVEL SECURITY`));
           } catch {
-            // Ignore errors
+            // error-policy:J6 best-effort teardown — one table failing to drop
+            // its RLS must not abort cleanup of the remaining tables.
           }
         }
         logger.debug(`[Migration] ✓ RLS cleanup completed (${tablesWithRls.rows.length} tables)`);

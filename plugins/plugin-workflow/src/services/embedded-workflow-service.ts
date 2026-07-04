@@ -476,6 +476,7 @@ async function parseResponseBody(response: Response): Promise<unknown> {
     try {
       return JSON.parse(text);
     } catch {
+      // error-policy:J3 upstream declared JSON but sent a malformed body; expose the raw text to the caller.
       return text;
     }
   }

@@ -3,6 +3,7 @@ import type {
   ActionExample,
   HandlerOptions,
   IAgentRuntime,
+  JsonValue,
   UUID,
 } from "@elizaos/core";
 import { asUUID, logger } from "@elizaos/core";
@@ -155,8 +156,8 @@ export const markFollowupDoneAction: Action = {
     }
 
     const nowIso = new Date().toISOString();
-    const nextFields: Record<string, string> = {
-      ...(resolvedContact.customFields as Record<string, string>),
+    const nextFields: Record<string, JsonValue> = {
+      ...resolvedContact.customFields,
       lastContactedAt: nowIso,
     };
     if (note) {

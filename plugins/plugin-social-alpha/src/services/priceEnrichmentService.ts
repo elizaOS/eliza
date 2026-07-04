@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { IAgentRuntime } from "@elizaos/core";
+import { logger as coreLogger, type IAgentRuntime } from "@elizaos/core";
 import { BirdeyeClient, DexscreenerClient } from "../clients.ts";
 import type { TokenAPIData } from "../types.ts";
 import { SupportedChain } from "../types.ts";
@@ -94,16 +94,22 @@ export class PriceEnrichmentService {
 					const batchData = JSON.parse(content) as TradingCall[];
 					allCalls.push(...batchData);
 				} catch (error) {
-					console.error(`Error loading batch file ${file}:`, error);
+					coreLogger.error(
+						{ error },
+						`[PriceEnrichmentService] Error loading batch file ${file}`,
+					);
 				}
 			}
 
-			console.log(
-				`Loaded ${allCalls.length} trading calls from ${batchFiles.length} batch files`,
+			coreLogger.info(
+				`[PriceEnrichmentService] Loaded ${allCalls.length} trading calls from ${batchFiles.length} batch files`,
 			);
 			return allCalls;
 		} catch (error) {
-			console.error("Error loading batch files:", error);
+			coreLogger.error(
+				{ error },
+				"[PriceEnrichmentService] Error loading batch files",
+			);
 			return [];
 		}
 	}
@@ -145,7 +151,10 @@ export class PriceEnrichmentService {
 
 			return null;
 		} catch (error) {
-			console.error(`Error resolving token for call ${call.callId}:`, error);
+			coreLogger.error(
+				{ error },
+				`[PriceEnrichmentService] Error resolving token for call ${call.callId}`,
+			);
 			return null;
 		}
 	}
@@ -213,7 +222,10 @@ export class PriceEnrichmentService {
 				worstPriceTimestamp: worstPrice.timestamp,
 			};
 		} catch (error) {
-			console.error(`Error getting price data for ${tokenAddress}:`, error);
+			coreLogger.error(
+				{ error },
+				`[PriceEnrichmentService] Error getting price data for ${tokenAddress}`,
+			);
 			return null;
 		}
 	}
@@ -277,7 +289,10 @@ export class PriceEnrichmentService {
 			enrichedCall.enrichmentStatus = "success";
 			enrichedCall.enrichedAt = Date.now();
 		} catch (error) {
-			console.error(`Error enriching call ${call.callId}:`, error);
+			coreLogger.error(
+				{ error },
+				`[PriceEnrichmentService] Error enriching call ${call.callId}`,
+			);
 			enrichedCall.enrichmentStatus = "failed";
 			enrichedCall.enrichmentError =
 				error instanceof Error ? error.message : "Unknown error";
@@ -301,8 +316,8 @@ export class PriceEnrichmentService {
 		let failureCount = 0;
 		let resolvedTokenCount = 0;
 
-		console.log(
-			`Starting enrichment of ${calls.length} calls in batches of ${batchSize}`,
+		coreLogger.info(
+			`[PriceEnrichmentService] Starting enrichment of ${calls.length} calls in batches of ${batchSize}`,
 		);
 
 		const startTime = Date.now();
@@ -313,8 +328,8 @@ export class PriceEnrichmentService {
 			const batchNumber = Math.floor(i / batchSize) + 1;
 			const totalBatches = Math.ceil(calls.length / batchSize);
 
-			console.log(
-				`Processing batch ${batchNumber}/${totalBatches} (${((batchNumber / totalBatches) * 100).toFixed(1)}%)`,
+			coreLogger.info(
+				`[PriceEnrichmentService] Processing batch ${batchNumber}/${totalBatches} (${((batchNumber / totalBatches) * 100).toFixed(1)}%)`,
 			);
 
 			const batchPromises = batch.map((call) => this.enrichCall(call));
@@ -345,11 +360,11 @@ export class PriceEnrichmentService {
 				const remaining = totalBatches - batchNumber;
 				const eta = remaining / rate; // minutes
 
-				console.log(
-					`📊 Progress: ${successCount} success, ${failureCount} failed, ${resolvedTokenCount} tokens resolved`,
+				coreLogger.info(
+					`[PriceEnrichmentService] 📊 Progress: ${successCount} success, ${failureCount} failed, ${resolvedTokenCount} tokens resolved`,
 				);
-				console.log(
-					`⏱️  Time: ${elapsed.toFixed(1)}min elapsed, ~${eta.toFixed(1)}min remaining`,
+				coreLogger.info(
+					`[PriceEnrichmentService] ⏱️  Time: ${elapsed.toFixed(1)}min elapsed, ~${eta.toFixed(1)}min remaining`,
 				);
 			}
 
@@ -368,15 +383,17 @@ export class PriceEnrichmentService {
 		);
 
 		const totalTime = (Date.now() - startTime) / 1000 / 60;
-		console.log(`\n✅ Enrichment complete in ${totalTime.toFixed(2)} minutes!`);
-		console.log(
-			`📈 Results: ${successCount} success (${((successCount / calls.length) * 100).toFixed(1)}%), ${failureCount} failed`,
+		coreLogger.info(
+			`[PriceEnrichmentService] ✅ Enrichment complete in ${totalTime.toFixed(2)} minutes!`,
 		);
-		console.log(
-			`🎯 Tokens resolved: ${resolvedTokenCount} (${((resolvedTokenCount / calls.length) * 100).toFixed(1)}%)`,
+		coreLogger.info(
+			`[PriceEnrichmentService] 📈 Results: ${successCount} success (${((successCount / calls.length) * 100).toFixed(1)}%), ${failureCount} failed`,
 		);
-		console.log(
-			`💾 Saved ${enrichedCalls.length} enriched calls to ${completeOutputFile}`,
+		coreLogger.info(
+			`[PriceEnrichmentService] 🎯 Tokens resolved: ${resolvedTokenCount} (${((resolvedTokenCount / calls.length) * 100).toFixed(1)}%)`,
+		);
+		coreLogger.info(
+			`[PriceEnrichmentService] 💾 Saved ${enrichedCalls.length} enriched calls to ${completeOutputFile}`,
 		);
 	}
 
@@ -529,7 +546,10 @@ export class PriceEnrichmentService {
 
 			return null;
 		} catch (error) {
-			console.error(`Error getting token info for ${address}:`, error);
+			coreLogger.error(
+				{ error },
+				`[PriceEnrichmentService] Error getting token info for ${address}`,
+			);
 			return null;
 		}
 	}
@@ -559,10 +579,15 @@ export class PriceEnrichmentService {
 				return dexscreenerResult;
 			}
 
-			console.warn(`Could not resolve token symbol: ${symbol} on ${chain}`);
+			coreLogger.warn(
+				`[PriceEnrichmentService] Could not resolve token symbol: ${symbol} on ${chain}`,
+			);
 			return null;
 		} catch (error) {
-			console.error(`Error searching for token ${symbol}:`, error);
+			coreLogger.error(
+				{ error },
+				`[PriceEnrichmentService] Error searching for token ${symbol}`,
+			);
 			return null;
 		}
 	}
@@ -1058,7 +1083,10 @@ export class PriceEnrichmentService {
 
 			return null;
 		} catch (error) {
-			console.error(`Error searching DexScreener for symbol ${symbol}:`, error);
+			coreLogger.error(
+				{ error },
+				`[PriceEnrichmentService] Error searching DexScreener for symbol ${symbol}`,
+			);
 			return null;
 		}
 	}

@@ -99,6 +99,8 @@ export function resolveStoredModelPath(
 	for (const candidate of storedModelPathCandidates(stored, currentRoot)) {
 		try {
 			if (exists(candidate)) return candidate;
+			// error-policy:J3 a sandbox-proxy probe throwing (EACCES outside the
+			// workspace) means this candidate is unreachable — try the next one.
 		} catch {}
 	}
 	return null;

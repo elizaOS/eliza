@@ -5,6 +5,7 @@
  * present) registers itself there too.
  */
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import {
   createSolanaLpProtocolProvider,
   registerLpProtocolProvider,
@@ -29,7 +30,7 @@ export const raydiumPlugin: Plugin = {
   providers: [raydiumPositionProvider],
   services: [RaydiumService],
   init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
-    console.info("Raydium Plugin initialized");
+    logger.info("[RaydiumPlugin] Raydium Plugin initialized");
     const service =
       runtime.getService<RaydiumService>(RaydiumService.serviceType) ??
       (await RaydiumService.start(runtime));
@@ -50,7 +51,7 @@ export const raydiumPlugin: Plugin = {
         name: "Raydium DEX services",
       };
       solanaService.registerExchange(me);
-      console.info("Raydium registered with Solana service");
+      logger.info("[RaydiumPlugin] Raydium registered with Solana service");
     }
   },
   async dispose(runtime: IAgentRuntime) {

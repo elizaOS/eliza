@@ -54,12 +54,12 @@ export class RaydiumService extends Service {
   constructor(runtime?: IAgentRuntime) {
     super(runtime);
     this.registry = {};
-    console.log("RAYDIUM_SERVICE cstr");
+    logger.log("[RaydiumService] RAYDIUM_SERVICE cstr");
   }
 
   async registerProvider(provider: RaydiumRegisteredProvider) {
     const id = Object.values(this.registry).length + 1;
-    console.log("registered", provider.name, `as Raydium provider #${id}`);
+    logger.log("[RaydiumService] registered", provider.name, `as Raydium provider #${id}`);
     this.registry[id] = provider;
     return id;
   }
@@ -526,7 +526,7 @@ export class RaydiumService extends Service {
   }
 
   static async start(runtime: IAgentRuntime) {
-    console.log("RAYDIUM_SERVICE trying to start");
+    logger.log("[RaydiumService] RAYDIUM_SERVICE trying to start");
     const service = new RaydiumService(runtime);
     await service.start();
     return service;
@@ -545,7 +545,7 @@ export class RaydiumService extends Service {
       logger.warn("Raydium service is already running");
       return;
     }
-    console.log("RAYDIUM_SERVICE starting");
+    logger.log("[RaydiumService] RAYDIUM_SERVICE starting");
 
     try {
       logger.info("Starting Raydium service...");

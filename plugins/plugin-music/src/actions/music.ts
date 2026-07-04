@@ -601,7 +601,7 @@ const musicExamples: ActionExample[][] = [
   ...(playbackOp.examples ?? []),
   ...(playAudio.examples ?? []),
   ...(manageRouting.examples ?? []),
-  ...((manageZones as Partial<Action>).examples ?? []),
+  ...(manageZones.examples ?? []),
 ];
 
 export const musicAction: Action = {

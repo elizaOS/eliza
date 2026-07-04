@@ -44,9 +44,9 @@ import {
 	toStoredModelPath,
 } from "../shared/local-inference-stored-path.ts";
 import {
-	createStdioBridge,
 	type StdioBridgeRequestFrame as BridgeRequest,
 	type StdioBridgeResponseFrame as BridgeResponse,
+	createStdioBridge,
 } from "../shared/stdio-bridge.ts";
 import { runModelGrind } from "./model-grind.ts";
 
@@ -1150,22 +1150,22 @@ function byNewestFirst(
 }
 
 function memoryToBrowseItem(memory: TaggedMemory): MemoryBrowseItem {
-	const content = memory.content as Record<string, unknown> | undefined;
+	const content = memory.content;
 	return {
 		id: memory.id ?? "",
 		type: memory._table,
-		text: (content?.text as string) ?? "",
+		text: content?.text ?? "",
 		entityId: memory.entityId,
 		roomId: memory.roomId,
 		agentId: memory.agentId ?? null,
 		createdAt: memoryCreatedAt(memory),
 		metadata: (memory.metadata as Record<string, unknown>) ?? null,
-		source: (content?.source as string) ?? null,
+		source: content?.source ?? null,
 	};
 }
 
 function hasBrowsableContent(memory: TaggedMemory): boolean {
-	const text = (memory.content as { text?: string } | undefined)?.text;
+	const text = memory.content?.text;
 	return typeof text === "string" && text.trim().length > 0;
 }
 
@@ -1304,7 +1304,7 @@ async function handleMemoriesBrowseRoute(
 	let filtered = allMemories;
 	if (searchQuery) {
 		filtered = allMemories.filter((m) => {
-			const text = (m.content as { text?: string } | undefined)?.text ?? "";
+			const text = m.content?.text ?? "";
 			return matchesMemoryKeyword(text, searchQuery);
 		});
 	}
@@ -4076,11 +4076,7 @@ export async function handleDirectCoreRoute(
 			runtime: "ok",
 			database: "ok",
 			plugins: {
-				loaded: Array.isArray(
-					(backend.runtime as { plugins?: unknown }).plugins,
-				)
-					? ((backend.runtime as { plugins?: unknown[] }).plugins?.length ?? 0)
-					: 0,
+				loaded: backend.runtime.plugins.length,
 				failed: 0,
 			},
 			coordinator: "not_wired",

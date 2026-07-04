@@ -11,7 +11,7 @@ import type {
   Provider,
   State,
 } from "@elizaos/core";
-import { ModelType } from "@elizaos/core";
+import { logger, ModelType } from "@elizaos/core";
 import type { KaminoService } from "../services/kaminoService";
 
 const KAMINO_LEND_PROGRAM_ID = "GzFgdRJXmawPhGeBsyRCDLx4jAKPsvbUqoqitzppkzkW";
@@ -212,7 +212,7 @@ export const kaminoProvider: Provider = {
           "Kamino lending protocol information is only available in private messages.";
       }
     } catch (error) {
-      console.error("Error in Kamino provider:", error);
+      logger.error("[kaminoProvider] Error in Kamino provider:", String(error));
       kaminoInfo = `Error generating Kamino report: ${error instanceof Error ? error.message : "Unknown error"}`;
     }
 
@@ -298,15 +298,18 @@ async function getUserKaminoPositions(
           }
         }
       } catch (error) {
-        console.error(
-          `Error fetching positions for wallet ${walletAddress}:`,
-          error,
+        logger.error(
+          `[kaminoProvider] Error fetching positions for wallet ${walletAddress}:`,
+          String(error),
         );
         positionsInfo += "   Error fetching positions for this wallet.\n\n";
       }
     }
   } catch (error) {
-    console.error("Error fetching user Kamino positions:", error);
+    logger.error(
+      "[kaminoProvider] Error fetching user Kamino positions:",
+      String(error),
+    );
     positionsInfo += "Error fetching positions. Please try again later.\n\n";
   }
 
@@ -351,7 +354,10 @@ async function getAvailableKaminoReserves(
 
     reservesInfo += `Total reserves available: ${reserves.length}\n\n`;
   } catch (error) {
-    console.error("Error fetching available Kamino reserves:", error);
+    logger.error(
+      "[kaminoProvider] Error fetching available Kamino reserves:",
+      String(error),
+    );
     reservesInfo += "Error fetching reserves. Please try again later.\n\n";
   }
 
@@ -395,7 +401,10 @@ async function getKaminoMarketOverview(
       }
     }
   } catch (error) {
-    console.error("Error fetching Kamino market overview:", error);
+    logger.error(
+      "[kaminoProvider] Error fetching Kamino market overview:",
+      String(error),
+    );
     marketInfo += "Error fetching market data. Please try again later.\n\n";
   }
 
@@ -432,7 +441,10 @@ async function getDiscoveredKaminoMarkets(
     marketsInfo += `• Data Size Filter: 1024 bytes\n`;
     marketsInfo += `• Discovery Time: ${new Date().toLocaleString()}\n\n`;
   } catch (error) {
-    console.error("Error fetching discovered Kamino markets:", error);
+    logger.error(
+      "[kaminoProvider] Error fetching discovered Kamino markets:",
+      String(error),
+    );
     marketsInfo += "Error discovering markets. Please try again later.\n\n";
   }
 
@@ -500,7 +512,10 @@ Generate a professional Kamino lending analysis report:`;
       `${data.userPositions}\n\n${data.availableReserves}\n\n${data.marketOverview}\n\n${data.discoveredMarkets}`
     );
   } catch (error) {
-    console.error("Error generating enhanced Kamino lending report:", error);
+    logger.error(
+      "[kaminoProvider] Error generating enhanced Kamino lending report:",
+      String(error),
+    );
     return `${data.userPositions}\n\n${data.availableReserves}\n\n${data.marketOverview}\n\n${data.discoveredMarkets}`;
   }
 }

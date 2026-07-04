@@ -89,7 +89,10 @@ export function createReportCache(cacheDir: string): ReportCache {
             commitCount: report.commitCount,
             sizeBytes: stat.size,
           });
-        } catch {}
+        } catch {
+          // error-policy:J6 a corrupt or partially-written cache file must not
+          // break listing every other valid report; skip this one entry.
+        }
       }
       return out.sort((a, b) => b.generatedAt.localeCompare(a.generatedAt));
     },

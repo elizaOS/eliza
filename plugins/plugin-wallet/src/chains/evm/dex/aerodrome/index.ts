@@ -4,6 +4,7 @@
  * `LpManagementService` registry.
  */
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import {
   createEvmLpProtocolProvider,
   registerLpProtocolProvider,
@@ -17,7 +18,7 @@ export const aerodromePlugin: Plugin = {
   actions: [],
   providers: [],
   init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
-    console.info("Aerodrome Plugin initialized");
+    logger.info("[AerodromePlugin] Aerodrome Plugin initialized");
     const service =
       runtime.getService<AerodromeLpService>(AerodromeLpService.serviceType) ??
       (await AerodromeLpService.start(runtime));

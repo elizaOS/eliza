@@ -6,6 +6,7 @@ import {
   ELIZA_NATIVE_MODEL_BOUNDARIES,
   ELIZA_NATIVE_TRAJECTORY_FORMAT,
   type ElizaNativeTrajectoryRow,
+  logger,
 } from "@elizaos/core";
 import {
   extractElizaNativeRowsFromExportText,
@@ -605,12 +606,12 @@ function collectTrajectoryExamplesByTask(
   const warnSkip = (message: string, count = 1): void => {
     skippedNonNativeRows += count;
     warnings.push(message);
-    console.warn(message);
+    logger.warn(message);
   };
   const warnExcludeFailed = (message: string): void => {
     excludedFailedScenarioRows += 1;
     warnings.push(message);
-    console.warn(message);
+    logger.warn(message);
   };
 
   if (nativeRows.length > 0) {
@@ -675,7 +676,7 @@ function collectTrajectoryExamplesByTask(
       excludedFailedScenarioRows += callTotal;
       const message = `[trajectory-task-datasets] excluded trajectory ${trajectoryId} (${callTotal} call(s)); scenario_status=${trajectoryQuality.scenarioStatus} must not train as gold (#8795)`;
       warnings.push(message);
-      console.warn(message);
+      logger.warn(message);
       continue;
     }
     for (const entry of listTrajectoryCallEntries(trajectory)) {

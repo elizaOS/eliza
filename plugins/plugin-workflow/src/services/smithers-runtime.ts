@@ -428,6 +428,7 @@ export async function runWorkflowWithSmithers({
     try {
       message = JSON.parse(trimmed) as SmithersProtocolRequest | SmithersProtocolResult;
     } catch {
+      // error-policy:J3 shared stdout carries Smithers' own non-protocol log lines; skip anything that isn't our JSON.
       return;
     }
     if (message.type === 'workflowResult') {

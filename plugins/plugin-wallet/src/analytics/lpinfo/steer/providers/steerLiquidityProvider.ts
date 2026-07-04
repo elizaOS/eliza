@@ -4,6 +4,7 @@
  * in the message text. `_getSteerGeneralOverview` is currently unreferenced.
  */
 import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import type { SteerLiquidityService } from "../services/steerLiquidityService";
 import type {
   SteerStakingPoolDetailInput,
@@ -150,7 +151,10 @@ export const steerLiquidityProvider: Provider = {
         liquidityInfo += `   • Visit https://app.steer.finance to view all pools\n\n`;
       }
     } catch (error) {
-      console.error("Error in Steer liquidity provider:", error);
+      logger.error(
+        "[steerLiquidityProvider] Error in Steer liquidity provider:",
+        String(error),
+      );
       liquidityInfo = `Error generating Steer liquidity report: ${error instanceof Error ? error.message : "Unknown error"}`;
     }
 
@@ -218,7 +222,10 @@ async function getSteerLiquidityStats(
 
     statsInfo += await getSteerProtocolInfo(steerLiquidityService);
   } catch (error) {
-    console.error("Error getting Steer liquidity stats:", error);
+    logger.error(
+      "[steerLiquidityProvider] Error getting Steer liquidity stats:",
+      String(error),
+    );
     statsInfo += `❌ Error fetching liquidity data: ${error instanceof Error ? error.message : "Unknown error"}\n`;
   }
 
@@ -364,7 +371,10 @@ async function getSteerProtocolInfo(
     info += `   • Stake tokens in staking pools to earn additional rewards\n`;
     info += `   • Vaults automatically rebalance to maintain optimal positions\n`;
   } catch (error) {
-    console.error("Error getting protocol info:", error);
+    logger.error(
+      "[steerLiquidityProvider] Error getting protocol info:",
+      String(error),
+    );
     info += `❌ Error fetching protocol information\n`;
   }
 
@@ -388,7 +398,10 @@ async function _getSteerGeneralOverview(
       overview += `⚠️ Connection Errors: ${testResults.error}\n\n`;
     }
   } catch (error) {
-    console.error("Error getting general overview:", error);
+    logger.error(
+      "[steerLiquidityProvider] Error getting general overview:",
+      String(error),
+    );
     overview += `❌ Error fetching general overview\n`;
   }
 
@@ -470,7 +483,10 @@ async function getSingleAssetDepositInfo(
     depositInfo += `   • Choose your token and amount\n`;
     depositInfo += `   • Preview the transaction before executing\n\n`;
   } catch (error) {
-    console.error("Error getting single-asset deposit info:", error);
+    logger.error(
+      "[steerLiquidityProvider] Error getting single-asset deposit info:",
+      String(error),
+    );
     depositInfo += `❌ Error fetching single-asset deposit information\n`;
   }
 

@@ -48,7 +48,10 @@ export const pendingDraftProvider: Provider = {
         },
         values: { hasPendingDraft: true },
       };
-    } catch {
+    } catch (error) {
+      // error-policy:J7 a cache-read failure must not kill the provider chain, but it is a real
+      // fault (drafts stop routing to WORKFLOW), so report it rather than swallow it silently.
+      runtime.reportError('PENDING_WORKFLOW_DRAFT', error, { entityId: message.entityId });
       return { text: '', data: {}, values: {} };
     }
   },

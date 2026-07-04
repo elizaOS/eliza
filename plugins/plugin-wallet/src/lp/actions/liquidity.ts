@@ -13,6 +13,7 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import { privateKeyToAccount } from "viem/accounts";
 import {
   getLpManagementService,
@@ -852,7 +853,7 @@ export const liquidityAction: Action = {
           text: errorMessage,
         };
       }
-      console.error(`[LIQUIDITY] Error: ${errorMessage}`);
+      logger.error(`[LIQUIDITY] Error: ${errorMessage}`);
       return {
         success: false,
         text: `Liquidity operation failed: ${errorMessage}`,

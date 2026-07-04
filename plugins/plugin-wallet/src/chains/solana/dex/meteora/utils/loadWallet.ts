@@ -5,6 +5,7 @@
  * the wallet always comes from the configured private/public key settings.
  */
 import type { IAgentRuntime } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import { Connection, Keypair, PublicKey } from "@solana/web3.js";
 import bs58 from "bs58";
 
@@ -45,14 +46,14 @@ export async function loadWallet(
       const secretKey = bs58.decode(privateKeyString);
       return { signer: Keypair.fromSecretKey(secretKey), connection };
     } catch (e) {
-      console.log("Error decoding base58 private key:", e);
+      logger.log("[loadWallet] Error decoding base58 private key:", String(e));
       try {
         // Then try base64
-        console.log("Try decoding base64 instead");
+        logger.log("[loadWallet] Try decoding base64 instead");
         const secretKey = Uint8Array.from(Buffer.from(privateKeyString, "base64"));
         return { signer: Keypair.fromSecretKey(secretKey), connection };
       } catch (e2) {
-        console.error("Error decoding private key: ", e2);
+        logger.error("[loadWallet] Error decoding private key: ", String(e2));
         throw new Error("Invalid private key format");
       }
     }

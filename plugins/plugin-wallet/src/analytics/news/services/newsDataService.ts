@@ -6,7 +6,7 @@
  * query-filter wrappers over `getLatestNews`.
  */
 import type { IAgentRuntime } from "@elizaos/core";
-import { Service } from "@elizaos/core";
+import { logger, Service } from "@elizaos/core";
 import type { RealWorldNewsArticle } from "../interfaces/types";
 
 interface RSSItem {
@@ -89,7 +89,7 @@ export class NewsDataService extends Service {
         });
       }
     } catch (error) {
-      console.error("❌ [NewsDataService] Error parsing RSS:", error);
+      logger.error("❌ [NewsDataService] Error parsing RSS:", String(error));
     }
 
     return items;
@@ -169,7 +169,7 @@ export class NewsDataService extends Service {
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error(
+        logger.error(
           `❌ [NewsDataService] RSS fetch error (${response.status}): ${errorText}`,
         );
         throw new Error(
@@ -222,13 +222,13 @@ export class NewsDataService extends Service {
       return articles;
     } catch (error) {
       if (error instanceof Error) {
-        console.error(
+        logger.error(
           "❌ [NewsDataService] Error fetching news:",
           error.message,
         );
         throw error;
       } else {
-        console.error("❌ [NewsDataService] Unknown error:", error);
+        logger.error("❌ [NewsDataService] Unknown error:", String(error));
         throw new Error("Failed to fetch news from Brave New Coin RSS");
       }
     }

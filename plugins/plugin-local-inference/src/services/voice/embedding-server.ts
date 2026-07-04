@@ -10,6 +10,7 @@ import { type ChildProcess, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import net from "node:net";
 import os from "node:os";
+import { logger } from "@elizaos/core";
 import {
 	isValidEmbeddingDim,
 	type LocalEmbeddingRoute,
@@ -120,11 +121,9 @@ export class EmbeddingServer {
 		child.once("exit", (code, signal) => {
 			if (this.child === child) this.child = null;
 			if (code !== 0 && code !== null) {
-				console.warn(
-					`[embedding-server] llama-server exited with code ${code}`,
-				);
+				logger.warn(`[embedding-server] llama-server exited with code ${code}`);
 			} else if (signal) {
-				console.warn(`[embedding-server] llama-server exited on ${signal}`);
+				logger.warn(`[embedding-server] llama-server exited on ${signal}`);
 			}
 		});
 

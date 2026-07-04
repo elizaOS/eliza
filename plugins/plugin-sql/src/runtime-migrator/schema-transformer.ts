@@ -178,7 +178,9 @@ function isAlreadyNamespaced(schema: DrizzleSchema, expectedSchemaName: string):
           return true;
         }
       } catch {
-        // Not a table, continue
+        // error-policy:J3 untrusted-input sanitizing — getTableConfig throws on
+        // values that pass isPgTable but aren't fully-configured tables; treat
+        // that as "not namespaced" and keep scanning the rest of the schema.
       }
     }
   }

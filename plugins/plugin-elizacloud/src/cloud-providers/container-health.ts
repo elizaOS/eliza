@@ -67,6 +67,8 @@ export const containerHealthProvider: Provider = {
         data: { reports, truncated: running.length > reports.length },
       };
     } catch {
+      // error-policy:J7 diagnostics-must-not-kill-the-loop: a failed health read
+      // must not abort prompt composition; contribute empty context instead.
       return { text: "", values: {}, data: {} };
     }
   },

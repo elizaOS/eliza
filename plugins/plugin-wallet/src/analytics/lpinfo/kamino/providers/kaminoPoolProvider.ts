@@ -4,7 +4,7 @@
  * context, with an LLM pass producing a short pool-health analysis.
  */
 import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
-import { ModelType } from "@elizaos/core";
+import { logger, ModelType } from "@elizaos/core";
 import type {
   KaminoLiquidityService,
   KaminoPoolByAddressResult,
@@ -89,7 +89,10 @@ export const kaminoPoolProvider: Provider = {
         }
       }
     } catch (error) {
-      console.error("Error in Kamino pool provider:", error);
+      logger.error(
+        "[kaminoPoolProvider] Error in Kamino pool provider:",
+        String(error),
+      );
       poolInfo = `Error generating Kamino pool report: ${error instanceof Error ? error.message : "Unknown error"}`;
     }
 
@@ -295,7 +298,10 @@ async function generatePoolReport(
     report += `   • Add Liquidity: https://app.kamino.finance/liquidity/deposit\n`;
     report += `   • Monitor Performance: https://app.kamino.finance/liquidity/strategies\n\n`;
   } catch (error) {
-    console.error("Error generating pool report:", error);
+    logger.error(
+      "[kaminoPoolProvider] Error generating pool report:",
+      String(error),
+    );
     report += `❌ Error generating detailed pool report: ${error instanceof Error ? error.message : "Unknown error"}\n`;
   }
 
@@ -338,7 +344,10 @@ Generate a concise Kamino pool analysis:`;
 
     return "";
   } catch (error) {
-    console.error("Error generating enhanced pool analysis:", error);
+    logger.error(
+      "[kaminoPoolProvider] Error generating enhanced pool analysis:",
+      String(error),
+    );
     return "";
   }
 }

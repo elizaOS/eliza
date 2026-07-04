@@ -8,6 +8,7 @@ import {
   requireConfirmation,
   resolveActionArgs,
   type SubactionsMap,
+  type UUID,
 } from "@elizaos/core";
 import {
   readTwilioCredentialsFromEnv,
@@ -601,7 +602,7 @@ async function dialOwner(
       pendingDraft?.approvalTaskId &&
       typeof runtime.deleteTask === "function"
     ) {
-      await runtime.deleteTask(pendingDraft.approvalTaskId as never);
+      await runtime.deleteTask(pendingDraft.approvalTaskId as UUID);
     }
   }
   return result;
@@ -750,7 +751,7 @@ async function dialExternal(
       pendingDraft?.approvalTaskId &&
       typeof runtime.deleteTask === "function"
     ) {
-      await runtime.deleteTask(pendingDraft.approvalTaskId as never);
+      await runtime.deleteTask(pendingDraft.approvalTaskId as UUID);
     }
   }
   return result;

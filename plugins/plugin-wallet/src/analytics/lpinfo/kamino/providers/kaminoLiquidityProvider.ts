@@ -4,7 +4,7 @@
  * context, using an LLM pass to turn raw pool stats into a readable report.
  */
 import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
-import { ModelType } from "@elizaos/core";
+import { logger, ModelType } from "@elizaos/core";
 import type {
   KaminoLiquidityService,
   KaminoStrategy,
@@ -179,7 +179,10 @@ export const kaminoLiquidityProvider: Provider = {
         }
       }
     } catch (error) {
-      console.error("Error in Kamino liquidity provider:", error);
+      logger.error(
+        "[kaminoLiquidityProvider] Error in Kamino liquidity provider:",
+        String(error),
+      );
       liquidityInfo = `Error generating Kamino liquidity report: ${error instanceof Error ? error.message : "Unknown error"}`;
     }
 
@@ -259,7 +262,10 @@ async function getKaminoLiquidityStats(
 
     statsInfo += await getKaminoProtocolInfo(kaminoLiquidityService);
   } catch (error) {
-    console.error("Error getting Kamino liquidity stats:", error);
+    logger.error(
+      "[kaminoLiquidityProvider] Error getting Kamino liquidity stats:",
+      String(error),
+    );
     statsInfo += `❌ Error fetching liquidity data: ${error instanceof Error ? error.message : "Unknown error"}\n`;
   }
 
@@ -311,7 +317,10 @@ async function getKaminoProtocolInfo(
     info += `   • Deposit tokens to earn yield from automated market making\n`;
     info += `   • Strategies automatically rebalance to maintain optimal positions\n`;
   } catch (error) {
-    console.error("Error getting protocol info:", error);
+    logger.error(
+      "[kaminoLiquidityProvider] Error getting protocol info:",
+      String(error),
+    );
     info += `❌ Error fetching protocol information\n`;
   }
 
@@ -371,7 +380,10 @@ Generate a professional Kamino liquidity analysis report:`;
 
     return enhancedReport || data.poolStats;
   } catch (error) {
-    console.error("Error generating enhanced Kamino liquidity report:", error);
+    logger.error(
+      "[kaminoLiquidityProvider] Error generating enhanced Kamino liquidity report:",
+      String(error),
+    );
     return data.poolStats;
   }
 }

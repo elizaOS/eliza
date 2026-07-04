@@ -6,6 +6,7 @@
  * provider with the shared `LpManagementService` registry.
  */
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import {
   createSolanaLpProtocolProvider,
   registerLpProtocolProvider,
@@ -22,7 +23,7 @@ export const meteoraPlugin: Plugin = {
     try {
       const serviceModulePath = "./services/MeteoraLpService.ts";
       const { MeteoraLpService } = await import(serviceModulePath);
-      console.info("Meteora Plugin Initialized");
+      logger.info("[MeteoraPlugin] Meteora Plugin Initialized");
       const service =
         runtime.getService(MeteoraLpService.serviceType) ?? (await MeteoraLpService.start(runtime));
       await registerLpProtocolProvider(
@@ -34,7 +35,7 @@ export const meteoraPlugin: Plugin = {
         })
       );
     } catch (error) {
-      console.warn(
+      logger.warn(
         "[Meteora] Optional DLMM dependency failed to load; Meteora LP support is disabled.",
         error instanceof Error ? error.message : String(error)
       );

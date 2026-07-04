@@ -25,6 +25,7 @@ import {
   ELIZA_NATIVE_TRAJECTORY_FORMAT,
   type ElizaNativeTrajectoryRow,
   iterateTrajectoryLlmCalls,
+  logger,
 } from "@elizaos/core";
 import {
   ACTION_CONTEXT_MAP,
@@ -851,7 +852,9 @@ export async function generateDataset(
         samples.push(result.value);
         config.onProgress?.(completed, totalSamples, result.value);
       } else {
-        console.error(`Failed to generate sample: ${result.reason}`);
+        logger.error(
+          `[dataset-generator] Failed to generate sample: ${result.reason}`,
+        );
       }
     }
   }
@@ -1239,7 +1242,7 @@ export async function exportTrajectoriesAsTraining(
         const response = normalizeMessageHandlerJson(call.response ?? "");
         if (!response) {
           skippedNonNativeRows += 1;
-          console.warn(
+          logger.warn(
             `[dataset-generator] skipped non-native should_respond row from trajectory ${trajectory.trajectoryId} call ${call.callId}; expected native messageHandler JSON`,
           );
           continue;
@@ -1267,7 +1270,7 @@ export async function exportTrajectoriesAsTraining(
   await writeFile(outputPath, `${content}\n`);
 
   if (skippedNonNativeRows > 0) {
-    console.warn(
+    logger.warn(
       `[dataset-generator] skipped ${skippedNonNativeRows} non-native should_respond rows while exporting ${outputPath}`,
     );
   }

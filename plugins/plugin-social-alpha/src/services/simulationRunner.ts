@@ -1,6 +1,6 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import type { UUID } from "@elizaos/core";
+import { logger as coreLogger, type UUID } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
 import { Conviction, SupportedChain } from "../types";
 import type { SimulatedActorV2 } from "./simulationActorsV2";
@@ -136,7 +136,9 @@ export class SimulationRunner {
 	}
 
 	async runSimulation(config: SimulationConfig): Promise<SimulationResult> {
-		console.log("🚀 Starting comprehensive market simulation...");
+		coreLogger.info(
+			"[SimulationRunner] 🚀 Starting comprehensive market simulation...",
+		);
 
 		// Initialize result containers
 		const calls: SimulatedCallData[] = [];
@@ -226,8 +228,8 @@ export class SimulationRunner {
 			);
 		}
 
-		console.log(
-			`✅ Simulation complete: ${stepCount} time steps, ${calls.length} calls generated`,
+		coreLogger.info(
+			`[SimulationRunner] ✅ Simulation complete: ${stepCount} time steps, ${calls.length} calls generated`,
 		);
 
 		// Calculate actual profits for each call
@@ -340,15 +342,17 @@ export class SimulationRunner {
 			tokens.push(token);
 		}
 
-		console.log(
-			`📊 Generated ${tokens.length} tokens with scenarios:`,
-			tokens.reduce(
-				(acc, t) => {
-					acc[t.scenario] = (acc[t.scenario] || 0) + 1;
-					return acc;
-				},
-				{} as Record<string, number>,
-			),
+		coreLogger.info(
+			{
+				scenarioCounts: tokens.reduce(
+					(acc, t) => {
+						acc[t.scenario] = (acc[t.scenario] || 0) + 1;
+						return acc;
+					},
+					{} as Record<string, number>,
+				),
+			},
+			`[SimulationRunner] 📊 Generated ${tokens.length} tokens with scenarios`,
 		);
 
 		return tokens;
@@ -1148,7 +1152,7 @@ export class SimulationRunner {
 			JSON.stringify(Array.from(result.actorPerformance.entries()), null, 2),
 		);
 
-		console.log(`📁 Results cached to ${outputDir}`);
+		coreLogger.info(`[SimulationRunner] 📁 Results cached to ${outputDir}`);
 	}
 
 	async loadCachedSimulation(
@@ -1179,7 +1183,10 @@ export class SimulationRunner {
 				actorPerformance: new Map(JSON.parse(perfData)),
 			};
 		} catch (error) {
-			console.error("Failed to load cached simulation:", error);
+			coreLogger.error(
+				{ error },
+				"[SimulationRunner] Failed to load cached simulation",
+			);
 			return null;
 		}
 	}

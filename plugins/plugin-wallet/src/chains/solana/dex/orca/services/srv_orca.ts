@@ -3,7 +3,7 @@
  * adapter (`ORCA_SERVICE`). Currently does no RPC or pool work itself; it
  * exists so the Orca sub-plugin has a service to register and dispose.
  */
-import { type IAgentRuntime, Service } from "@elizaos/core";
+import { type IAgentRuntime, logger, Service } from "@elizaos/core";
 
 export class OrcaService extends Service {
   [key: string]: unknown;
@@ -13,21 +13,21 @@ export class OrcaService extends Service {
 
   constructor(runtime?: IAgentRuntime) {
     super(runtime);
-    console.log("ORCA_SERVICE cstr");
+    logger.log("[OrcaService] ORCA_SERVICE cstr");
   }
 
   static async start(runtime: IAgentRuntime) {
-    console.log("ORCA_SERVICE trying to start");
+    logger.log("[OrcaService] ORCA_SERVICE trying to start");
     const service = new OrcaService(runtime);
     await service.start();
     return service;
   }
 
   async start() {
-    console.log("ORCA_SERVICE trying to start");
+    logger.log("[OrcaService] ORCA_SERVICE trying to start");
   }
 
   async stop() {
-    console.log("ORCA_SERVICE trying to stop");
+    logger.log("[OrcaService] ORCA_SERVICE trying to stop");
   }
 }

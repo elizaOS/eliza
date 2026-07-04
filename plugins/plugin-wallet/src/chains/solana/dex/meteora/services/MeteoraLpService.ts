@@ -12,6 +12,7 @@ import * as anchor from "@coral-xyz/anchor";
 import {
   type IAgentRuntime,
   type LpPositionDetails,
+  logger,
   type PoolInfo,
   Service,
   type TokenBalance,
@@ -57,12 +58,12 @@ export class MeteoraLpService extends Service {
 
   static async start(runtime: IAgentRuntime): Promise<MeteoraLpService> {
     const service = new MeteoraLpService(runtime);
-    console.info("[MeteoraLpService] started.");
+    logger.info("[MeteoraLpService] started.");
     return service;
   }
 
   async stop(): Promise<void> {
-    console.info("[MeteoraLpService] stopped.");
+    logger.info("[MeteoraLpService] stopped.");
   }
 
   public getDexName(): string {
@@ -108,7 +109,7 @@ export class MeteoraLpService extends Service {
 
       return pools;
     } catch (error) {
-      console.error("[MeteoraLpService] Error fetching pools from Meteora API:", error);
+      logger.error("[MeteoraLpService] Error fetching pools from Meteora API:", String(error));
       return [];
     }
   }
@@ -189,7 +190,7 @@ export class MeteoraLpService extends Service {
         },
       };
     } catch (error) {
-      console.error("[MeteoraLpService] Error adding liquidity:", error);
+      logger.error("[MeteoraLpService] Error adding liquidity:", String(error));
       return {
         success: false,
         error: error instanceof Error ? error.message : String(error),
@@ -277,7 +278,7 @@ export class MeteoraLpService extends Service {
         tokensReceived,
       };
     } catch (error) {
-      console.error("[MeteoraLpService] Error removing liquidity:", error);
+      logger.error("[MeteoraLpService] Error removing liquidity:", String(error));
       return {
         success: false,
         error: error instanceof Error ? error.message : String(error),
@@ -318,9 +319,9 @@ export class MeteoraLpService extends Service {
             poolAddress = poolOrPositionIdentifier;
           }
         } catch (poolError) {
-          console.error(
+          logger.error(
             `[MeteoraLpService] Failed to find position or pool for identifier: ${poolOrPositionIdentifier}`,
-            poolError
+            String(poolError)
           );
           return null;
         }
@@ -370,7 +371,7 @@ export class MeteoraLpService extends Service {
         rewards: [],
       };
     } catch (error) {
-      console.error("[MeteoraLpService] Error getting LP position details:", error);
+      logger.error("[MeteoraLpService] Error getting LP position details:", String(error));
       return null;
     }
   }
@@ -394,7 +395,7 @@ export class MeteoraLpService extends Service {
 
       return marketData;
     } catch (error) {
-      console.error("[MeteoraLpService] Error getting market data for pools:", error);
+      logger.error("[MeteoraLpService] Error getting market data for pools:", String(error));
       return {};
     }
   }

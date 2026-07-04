@@ -49,6 +49,7 @@ import type {
   ScheduledTaskSubject,
   ScheduledTaskSubjectKind,
   ScheduledTaskTrigger,
+  TerminalState,
 } from "../lifeops/scheduled-task/index.js";
 import {
   ChannelKeyError,
@@ -452,9 +453,7 @@ function normalizeTriggerInput(value: unknown): TriggerNormalization {
         trigger: {
           kind: "event",
           eventKind,
-          ...(filter && typeof filter === "object"
-            ? { filter: filter as never }
-            : {}),
+          ...(filter && typeof filter === "object" ? { filter } : {}),
         },
       };
     }
@@ -479,7 +478,11 @@ function normalizeTriggerInput(value: unknown): TriggerNormalization {
       }
       return {
         ok: true,
-        trigger: { kind: "after_task", taskId, outcome } as never,
+        trigger: {
+          kind: "after_task",
+          taskId,
+          outcome: outcome as TerminalState,
+        },
       };
     }
     default:

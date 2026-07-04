@@ -4,7 +4,7 @@
  * public-key cache here is in-memory only; callers are responsible for
  * durable storage of `secretKeyEncrypted`.
  */
-import { type IAgentRuntime, Service } from "@elizaos/core";
+import { type IAgentRuntime, logger, Service } from "@elizaos/core";
 import { TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import {
   type Connection,
@@ -67,9 +67,9 @@ export class VaultService extends Service implements IVaultService {
       }
       return Keypair.fromSecretKey(new Uint8Array(secretKey));
     } catch (error) {
-      console.error(
-        `Failed to create Keypair from secret for user ${userId}:`,
-        error,
+      logger.error(
+        `[VaultService] Failed to create Keypair from secret for user ${userId}:`,
+        String(error),
       );
       throw new Error("Could not derive Keypair from the provided secret.");
     }
@@ -127,7 +127,7 @@ export class VaultService extends Service implements IVaultService {
 
       return balances;
     } catch (error) {
-      console.error("Error fetching balances:", error);
+      logger.error("[VaultService] Error fetching balances:", String(error));
       throw new Error(
         `Failed to fetch balances for ${publicKey}: ${error instanceof Error ? error.message : "Unknown error"}`,
       );
@@ -158,7 +158,10 @@ export class VaultService extends Service implements IVaultService {
       const bs58 = await import("bs58");
       return bs58.default.encode(keypair.secretKey);
     } catch (error) {
-      console.error("Error exporting private key:", error);
+      logger.error(
+        "[VaultService] Error exporting private key:",
+        String(error),
+      );
       throw new Error("Failed to export private key");
     }
   }

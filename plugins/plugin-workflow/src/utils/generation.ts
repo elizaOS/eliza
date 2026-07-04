@@ -114,6 +114,7 @@ function isCerebrasBaseUrl(value: string): boolean {
   try {
     return isCerebrasHost(new URL(value).hostname);
   } catch {
+    // error-policy:J3 setting may be a bare host without a scheme; fall back to manual host extraction.
     const host = value.replace(/^[a-z][a-z0-9+.-]*:\/\//i, '').split(/[/?#:]/, 1)[0];
     return isCerebrasHost(host);
   }
@@ -544,6 +545,7 @@ function extractFirstBalancedJsonObject(text: string): unknown | null {
           try {
             return JSON.parse(candidate);
           } catch {
+            // error-policy:J3 scanning model output for an embedded JSON object; a non-parseable candidate ends this scan.
             break;
           }
         }

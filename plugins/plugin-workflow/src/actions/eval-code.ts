@@ -36,6 +36,7 @@ function previewResult(value: unknown): string {
     const json = JSON.stringify(value);
     return typeof json === 'string' ? json : String(value);
   } catch {
+    // error-policy:J4 diagnostic preview only; unserializable output falls back to String() coercion.
     return String(value);
   }
 }

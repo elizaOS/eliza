@@ -761,7 +761,7 @@ export async function resolveLocalInferenceLoadArgs(
 			// Back-compat with external/bare installs that reuse an Eliza-1 id but
 			// are not managed bundles: no bundle root means no manifest contract to
 			// satisfy, so leave MTP unset rather than half-configuring a drafter.
-			console.warn(
+			logger.warn(
 				`[local-inference] ${installed.id} declares a separate-drafter MTP but no drafter GGUF was found${
 					installed.bundleRoot ? ` under ${installed.bundleRoot}` : ""
 				}; loading external/bare model without speculative decoding. Install the complete Eliza-1 bundle to enable the MTP drafter.`,
@@ -1341,7 +1341,7 @@ export class ActiveModelCoordinator {
 		if (resolvedMmprojPath) return;
 		if (this.warnedDegradedVisionFor.has(installed.id)) return;
 		this.warnedDegradedVisionFor.add(installed.id);
-		console.warn(
+		logger.warn(
 			`[local-inference] vision capability unavailable for tier "${installed.id}" — the bundle declares vision/mmproj but the projector GGUF is not on disk under "${installed.bundleRoot ?? "<no-bundleRoot>"}". Text and voice will continue to load; plugin-vision will fall back to its Florence-2 path. Download the per-tier mmproj-<tier>.gguf to enable native vision-describe.`,
 		);
 	}
@@ -1434,7 +1434,7 @@ export class ActiveModelCoordinator {
 						overrides: previous.overrides,
 						state: restored,
 					};
-					console.warn(
+					logger.warn(
 						`[local-inference] Failed to switch to "${installed.id}" (${failure}); restored previously-active model "${previous.installed.id}".`,
 					);
 					this.emit();
@@ -1444,7 +1444,7 @@ export class ActiveModelCoordinator {
 						restoreErr instanceof Error
 							? restoreErr.message
 							: String(restoreErr);
-					console.error(
+					logger.error(
 						`[local-inference] Failed to switch to "${installed.id}" (${failure}) AND failed to restore "${previous.installed.id}" (${restoreFailure}). No model is loaded.`,
 					);
 				}
@@ -1454,7 +1454,7 @@ export class ActiveModelCoordinator {
 				// the loader and surface the failed request only as a warning.
 				this.state = previous.state;
 				this.lastReady = previous;
-				console.warn(
+				logger.warn(
 					`[local-inference] Refused to switch to "${installed.id}" before unloading the active model "${previous.installed.id}" (${failure}).`,
 				);
 				this.emit();
@@ -1476,7 +1476,7 @@ export class ActiveModelCoordinator {
 			try {
 				await touchElizaModel(installed.id);
 			} catch (err) {
-				console.warn(
+				logger.warn(
 					`[local-inference] Model "${installed.id}" loaded, but failed to update last-used metadata: ${err instanceof Error ? err.message : String(err)}`,
 				);
 			}
@@ -1503,7 +1503,7 @@ export class ActiveModelCoordinator {
 		const probe = opts.hardware ?? (await probeHardware());
 		const admission = assertModelFitsHost(installed, hostRamMbFromProbe(probe));
 		if (admission.level === "tight") {
-			console.warn(
+			logger.warn(
 				`[local-inference] Loading "${installed.id}" with tight RAM headroom (~${admission.minMb} MB floor, ${admission.recommendedMb} MB recommended; ${hostRamMbFromProbe(probe)} MB host). Expect swapping under sustained load.`,
 			);
 		}

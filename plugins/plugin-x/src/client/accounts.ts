@@ -198,7 +198,9 @@ async function readRuntimeAccountRecord(
         },
       };
     }
-  } catch {}
+  } catch {
+    // error-policy:J6 primary lookup unavailable; fall through to the store/legacy resolution tiers below
+  }
 
   try {
     const store = accountRuntime.getConnectorAccountStore?.("x");

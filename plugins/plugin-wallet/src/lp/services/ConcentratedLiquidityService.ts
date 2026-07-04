@@ -2,7 +2,7 @@
  * ConcentratedLiquidityService exposes the concentrated-liquidity surface while
  * DEX-specific providers add position creation and rebalancing support.
  */
-import { type IAgentRuntime, Service } from "@elizaos/core";
+import { type IAgentRuntime, logger, Service } from "@elizaos/core";
 import type {
   IConcentratedLiquidityService,
   IConcentratedPosition,
@@ -31,8 +31,8 @@ export class ConcentratedLiquidityService
 
   async start(_runtime: IAgentRuntime): Promise<void> {
     // Service initialization
-    console.info(
-      "ConcentratedLiquidityService started - awaiting DEX integration",
+    logger.info(
+      "[ConcentratedLiquidityService] ConcentratedLiquidityService started - awaiting DEX integration",
     );
   }
 
@@ -50,7 +50,9 @@ export class ConcentratedLiquidityService
   async getConcentratedPositions(
     userId: string,
   ): Promise<IConcentratedPosition[]> {
-    console.info(`Getting concentrated positions for user ${userId}`);
+    logger.info(
+      `[ConcentratedLiquidityService] Getting concentrated positions for user ${userId}`,
+    );
     return [];
   }
 

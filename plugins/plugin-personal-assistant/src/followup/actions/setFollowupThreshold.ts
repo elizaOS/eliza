@@ -3,6 +3,7 @@ import type {
   ActionExample,
   HandlerOptions,
   IAgentRuntime,
+  JsonValue,
   UUID,
 } from "@elizaos/core";
 import { asUUID, logger } from "@elizaos/core";
@@ -152,8 +153,8 @@ export const setFollowupThresholdAction: Action = {
       };
     }
 
-    const nextFields: Record<string, string | number> = {
-      ...(resolvedContact.customFields as Record<string, string | number>),
+    const nextFields: Record<string, JsonValue> = {
+      ...resolvedContact.customFields,
       followupThresholdDays: thresholdInt,
     };
     await service.updateContact(resolvedContact.entityId, {

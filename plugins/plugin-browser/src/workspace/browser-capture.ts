@@ -241,13 +241,17 @@ export async function stopBrowserCapture() {
   if (activeCaptureLoop) {
     try {
       await activeCaptureLoop;
-    } catch {}
+    } catch {
+      // error-policy:J6 best-effort teardown — the loop's own failure was already surfaced where it ran; here we only need it to have finished.
+    }
     activeCaptureLoop = null;
   }
   if (activeBrowser) {
     try {
       await activeBrowser.close();
-    } catch {}
+    } catch {
+      // error-policy:J6 best-effort teardown — a close failure must not block resetting capture state.
+    }
     activeBrowser = null;
   }
   logger.info("[browser-capture] Stopped");

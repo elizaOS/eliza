@@ -264,7 +264,10 @@ export async function lsHandler(
         type = "file";
         size = st.size;
       }
-    } catch {}
+    } catch {
+      // error-policy:J6 best-effort per-entry stat; a race-deleted or
+      // unreadable entry is still listed by name with its default "file" type.
+    }
     enriched.push(size === undefined ? { name, type } : { name, type, size });
   }
 

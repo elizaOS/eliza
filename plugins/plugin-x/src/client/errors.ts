@@ -32,7 +32,9 @@ export class ApiError extends Error {
     } catch {
       try {
         data = await response.text();
-      } catch {}
+      } catch {
+        // error-policy:J3 body is unparseable as JSON or text; leave data undefined and report status only
+      }
     }
 
     return new ApiError(response, data, `Response status: ${response.status}`);

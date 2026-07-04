@@ -11,7 +11,7 @@ import {
   cloudServiceApisBaseUrl,
   toRuntimeSettings,
 } from "@elizaos/cloud-routing";
-import { type IAgentRuntime, Service } from "@elizaos/core";
+import { type IAgentRuntime, logger, Service } from "@elizaos/core";
 import { dexScreenerErrorMessage } from "./errors";
 import type {
   DexScreenerBoostedToken,
@@ -141,7 +141,10 @@ export class DexScreenerService extends Service {
         data: data.pairs || [],
       };
     } catch (caught: unknown) {
-      console.error("DexScreener search error:", caught);
+      logger.error(
+        "[DexScreenerService] DexScreener search error:",
+        String(caught),
+      );
       return {
         success: false,
         error: dexScreenerErrorMessage(caught) || "Failed to search tokens",
@@ -163,7 +166,10 @@ export class DexScreenerService extends Service {
         data: data.pairs || [],
       };
     } catch (caught: unknown) {
-      console.error("DexScreener getTokenPairs error:", caught);
+      logger.error(
+        "[DexScreenerService] DexScreener getTokenPairs error:",
+        String(caught),
+      );
       return {
         success: false,
         error: dexScreenerErrorMessage(caught) || "Failed to get token pairs",
@@ -192,7 +198,10 @@ export class DexScreenerService extends Service {
         data: data.pair,
       };
     } catch (caught: unknown) {
-      console.error("DexScreener getPair error:", caught);
+      logger.error(
+        "[DexScreenerService] DexScreener getPair error:",
+        String(caught),
+      );
       return {
         success: false,
         error: dexScreenerErrorMessage(caught) || "Failed to get pair",
@@ -225,9 +234,9 @@ export class DexScreenerService extends Service {
             );
             return Array.isArray(pairData) ? pairData[0] : null;
           } catch (error) {
-            console.error(
-              `Failed to get pair data for ${token.tokenAddress}:`,
-              error,
+            logger.error(
+              `[DexScreenerService] Failed to get pair data for ${token.tokenAddress}:`,
+              String(error),
             );
             return null;
           }
@@ -242,7 +251,10 @@ export class DexScreenerService extends Service {
         data: pairs,
       };
     } catch (caught: unknown) {
-      console.error("DexScreener getTrending error:", caught);
+      logger.error(
+        "[DexScreenerService] DexScreener getTrending error:",
+        String(caught),
+      );
       return {
         success: false,
         error:
@@ -299,7 +311,10 @@ export class DexScreenerService extends Service {
         data: limitedPairs,
       };
     } catch (caught: unknown) {
-      console.error("DexScreener getPairsByChain error:", caught);
+      logger.error(
+        "[DexScreenerService] DexScreener getPairsByChain error:",
+        String(caught),
+      );
       return {
         success: false,
         error:
@@ -348,9 +363,9 @@ export class DexScreenerService extends Service {
             }
             return null;
           } catch (error) {
-            console.error(
-              `Failed to get pair data for ${profile.tokenAddress}:`,
-              error,
+            logger.error(
+              `[DexScreenerService] Failed to get pair data for ${profile.tokenAddress}:`,
+              String(error),
             );
             return null;
           }
@@ -365,7 +380,10 @@ export class DexScreenerService extends Service {
         data: pairs,
       };
     } catch (caught: unknown) {
-      console.error("DexScreener getNewPairs error:", caught);
+      logger.error(
+        "[DexScreenerService] DexScreener getNewPairs error:",
+        String(caught),
+      );
       return {
         success: false,
         error: dexScreenerErrorMessage(caught) || "Failed to get new pairs",
@@ -403,7 +421,10 @@ export class DexScreenerService extends Service {
         data: profile,
       };
     } catch (caught: unknown) {
-      console.error("DexScreener getTokenProfile error:", caught);
+      logger.error(
+        "[DexScreenerService] DexScreener getTokenProfile error:",
+        String(caught),
+      );
       return {
         success: false,
         error: dexScreenerErrorMessage(caught) || "Failed to get token profile",
@@ -460,7 +481,10 @@ export class DexScreenerService extends Service {
         data: Array.isArray(data) ? data : data ? [data] : [],
       };
     } catch (caught: unknown) {
-      console.error("DexScreener getMultipleTokens error:", caught);
+      logger.error(
+        "[DexScreenerService] DexScreener getMultipleTokens error:",
+        String(caught),
+      );
       return {
         success: false,
         error:
@@ -483,7 +507,10 @@ export class DexScreenerService extends Service {
         data: Array.isArray(data) ? data : [data],
       };
     } catch (caught: unknown) {
-      console.error("DexScreener getLatestTokenProfiles error:", caught);
+      logger.error(
+        "[DexScreenerService] DexScreener getLatestTokenProfiles error:",
+        String(caught),
+      );
       return {
         success: false,
         error:
@@ -507,7 +534,10 @@ export class DexScreenerService extends Service {
         data: Array.isArray(data) ? data : [data],
       };
     } catch (caught: unknown) {
-      console.error("DexScreener getLatestBoostedTokens error:", caught);
+      logger.error(
+        "[DexScreenerService] DexScreener getLatestBoostedTokens error:",
+        String(caught),
+      );
       return {
         success: false,
         error:
@@ -531,7 +561,10 @@ export class DexScreenerService extends Service {
         data: Array.isArray(data) ? data : [data],
       };
     } catch (caught: unknown) {
-      console.error("DexScreener getTopBoostedTokens error:", caught);
+      logger.error(
+        "[DexScreenerService] DexScreener getTopBoostedTokens error:",
+        String(caught),
+      );
       return {
         success: false,
         error:
@@ -555,7 +588,10 @@ export class DexScreenerService extends Service {
         data: Array.isArray(data) ? data : data ? [data] : [],
       };
     } catch (caught: unknown) {
-      console.error("DexScreener checkOrderStatus error:", caught);
+      logger.error(
+        "[DexScreenerService] DexScreener checkOrderStatus error:",
+        String(caught),
+      );
       return {
         success: false,
         error:
@@ -579,7 +615,10 @@ export class DexScreenerService extends Service {
         data: Array.isArray(data) ? data : data ? [data] : [],
       };
     } catch (caught: unknown) {
-      console.error("DexScreener getTokenPairsByChain error:", caught);
+      logger.error(
+        "[DexScreenerService] DexScreener getTokenPairsByChain error:",
+        String(caught),
+      );
       return {
         success: false,
         error:

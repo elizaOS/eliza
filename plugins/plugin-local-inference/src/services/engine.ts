@@ -486,11 +486,11 @@ export class LocalInferenceEngine {
 		const timer = setInterval(() => {
 			if (!this.hasLoadedModel()) return;
 			if (Date.now() - this.lastActivityMs < idleMs) return;
-			console.info(
+			logger.info(
 				`[local-inference] No useModel activity for >${Math.round(idleMs / 1000)}s — unloading the active text model to reclaim RAM. It will reload on the next request.`,
 			);
 			void this.unload().catch((err) => {
-				console.warn(
+				logger.warn(
 					`[local-inference] idle-unload failed: ${err instanceof Error ? err.message : String(err)}`,
 				);
 			});
@@ -528,7 +528,7 @@ export class LocalInferenceEngine {
 		// adding KV slots under pressure would just trigger the monitor.
 		const sample = await this.memoryMonitor.sample();
 		if (this.memoryMonitor.isUnderPressure(sample)) {
-			console.warn(
+			logger.warn(
 				`[local-inference] Conversation high-water mark wants --parallel ${recommended} (running ${running}) but RAM is tight (free ${sample.effectiveFreeMb} MB) — not resizing. Slot thrashing may occur; consider a smaller tier or more RAM.`,
 			);
 			return false;
@@ -536,13 +536,13 @@ export class LocalInferenceEngine {
 		try {
 			const resized = await this.dispatcher.resizeParallel(recommended);
 			if (resized) {
-				console.info(
+				logger.info(
 					`[local-inference] Resized llama.cpp --parallel ${running} → ${recommended} (conversation high-water mark grew).`,
 				);
 			}
 			return resized;
 		} catch (err) {
-			console.warn(
+			logger.warn(
 				`[local-inference] --parallel resize to ${recommended} failed: ${err instanceof Error ? err.message : String(err)}`,
 			);
 			return false;
@@ -1508,7 +1508,7 @@ export class LocalInferenceEngine {
 		// caller-supplied runtime is ignored because the bridge owns the
 		// FFI context that the coordinator targets.
 		if (opts.runtime && !bridge.cancellationCoordinatorOrNull()) {
-			console.warn(
+			logger.warn(
 				"[voice] startVoiceSession({ runtime }) supplied but the bridge has no canonical cancellation coordinator — pass `runtime` to startVoice() instead. Ignoring the session-level runtime.",
 			);
 		}
@@ -1565,7 +1565,7 @@ export class LocalInferenceEngine {
 			);
 			const headName = opts.wakeWord.head?.trim() || OPENWAKEWORD_DEFAULT_HEAD;
 			if (isPlaceholderWakeWordHead(headName)) {
-				console.warn(
+				logger.warn(
 					`[voice] wake word head '${headName}' is a PLACEHOLDER (the upstream openWakeWord "hey jarvis" head, renamed) — it fires on "hey jarvis", not the Eliza-1 wake phrase. Experimental, opt-in only; see packages/inference/reports/porting/2026-05-11/wakeword-head-plan.md.`,
 				);
 			}
@@ -1626,7 +1626,7 @@ export class LocalInferenceEngine {
 					acc = merged.slice(off);
 				};
 			} else {
-				console.info(
+				logger.info(
 					"[voice] wake word requested but no openWakeWord model in this bundle — running VAD-gated only",
 				);
 			}
