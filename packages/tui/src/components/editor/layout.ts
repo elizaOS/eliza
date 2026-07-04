@@ -43,7 +43,8 @@ export function wordWrapLine(line: string, maxWidth: number): TextChunk[] {
   let wrapOppWidth = 0;
 
   for (let i = 0; i < segments.length; i++) {
-    const seg = segments[i]!;
+    const seg = segments[i];
+    if (!seg) continue;
     const grapheme = seg.segment;
     const gWidth = visibleWidth(grapheme);
     const charIndex = seg.index;

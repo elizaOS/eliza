@@ -91,7 +91,7 @@ const forbiddenRuntimeStringPatterns = [
   /\bunsigned-executable-memory\b/i,
 ];
 
-const forbiddenRuntimeImports = [
+const _forbiddenRuntimeImports = [
   ...new Set(
     forbiddenRuntimeImportGroups.flatMap((group) =>
       group.patterns

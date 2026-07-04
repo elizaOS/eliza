@@ -139,15 +139,20 @@ function makeBuilder(
   ];
   let i = 0;
   const ocr = makeFakeOcr(options.ocrBoxesPerCall ?? [[]]);
+  const lastCaptureSet = (): DisplayCapture[] => {
+    const captureSet = captures[captures.length - 1];
+    if (!captureSet) throw new Error("Expected at least one capture set");
+    return captureSet;
+  };
+  const firstCapture = (): DisplayCapture => {
+    const capture = captures[0]?.[0];
+    if (!capture) throw new Error("Expected at least one display capture");
+    return capture;
+  };
   const builder = new SceneBuilder({
     captureAll: async () =>
-      captures[Math.min(i++, captures.length - 1)] ??
-      captures[captures.length - 1]!,
-    captureOne: async () => {
-      const first = captures[0]?.[0];
-      if (!first) throw new Error("capture fixture list is empty");
-      return first;
-    },
+      captures[Math.min(i++, captures.length - 1)] ?? lastCaptureSet(),
+    captureOne: async () => firstCapture(),
     listDisplays: () => fakeDisplays,
     enumerateApps: () => options.apps ?? [],
     accessibilityProvider: makeFakeAxProvider(options.ax ?? []),

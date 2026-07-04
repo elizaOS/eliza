@@ -441,7 +441,7 @@ function describeAvailableLibraries(root, libraries) {
 }
 
 function libraryMatchesTarget(library, selectedTargetInfo = info) {
-  if (!library || library.SupportedPlatform !== "ios") return false;
+  if (library?.SupportedPlatform !== "ios") return false;
   const wantSimulator = selectedTargetInfo.sdk === "iphonesimulator";
   return wantSimulator
     ? library.SupportedPlatformVariant === "simulator"

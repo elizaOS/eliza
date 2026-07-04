@@ -304,7 +304,9 @@ export class PromptBatcher {
 		// via reportError, never rethrow.
 		void this.runtime
 			.deleteCache(cacheKey)
-			.catch((err) => this.runtime.reportError("PromptBatcher", err, { cacheKey }));
+			.catch((err) =>
+				this.runtime.reportError("PromptBatcher", err, { cacheKey }),
+			);
 	}
 
 	invalidateAllCaches(): void {

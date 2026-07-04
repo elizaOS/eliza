@@ -51,9 +51,12 @@ import type {
 
 const segmenter = getSegmenter();
 
+const CSI_PREFIX = "\\x1b\\[";
+
 // Kitty CSI-u sequences for printable keys, including optional shifted/base codepoints.
-const KITTY_CSI_U_REGEX =
-  /^\x1b\[(\d+)(?::(\d*))?(?::(\d+))?(?:;(\d+))?(?::(\d+))?u$/;
+const KITTY_CSI_U_REGEX = new RegExp(
+  `^${CSI_PREFIX}(\\d+)(?::(\\d*))?(?::(\\d+))?(?:;(\\d+))?(?::(\\d+))?u$`,
+);
 const KITTY_MOD_SHIFT = 1;
 const KITTY_MOD_ALT = 2;
 const KITTY_MOD_CTRL = 4;

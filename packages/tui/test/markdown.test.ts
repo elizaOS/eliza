@@ -4,6 +4,7 @@
  */
 
 import assert from "node:assert";
+import { stripVTControlCharacters } from "node:util";
 import { Chalk } from "chalk";
 import { describe, it } from "vitest";
 import { Markdown } from "../src/components/markdown.js";
@@ -43,9 +44,7 @@ describe("Markdown component", () => {
       assert.ok(lines.length > 0);
 
       // Strip ANSI codes for checking
-      const plainLines = lines.map((line) =>
-        line.replace(/\x1b\[[0-9;]*m/g, ""),
-      );
+      const plainLines = lines.map((line) => stripVTControlCharacters(line));
 
       // Check structure
       assert.ok(plainLines.some((line) => line.includes("- Item 1")));
@@ -66,9 +65,7 @@ describe("Markdown component", () => {
       );
 
       const lines = markdown.render(80);
-      const plainLines = lines.map((line) =>
-        line.replace(/\x1b\[[0-9;]*m/g, ""),
-      );
+      const plainLines = lines.map((line) => stripVTControlCharacters(line));
 
       // Check proper indentation
       assert.ok(plainLines.some((line) => line.includes("- Level 1")));
@@ -89,9 +86,7 @@ describe("Markdown component", () => {
       );
 
       const lines = markdown.render(80);
-      const plainLines = lines.map((line) =>
-        line.replace(/\x1b\[[0-9;]*m/g, ""),
-      );
+      const plainLines = lines.map((line) => stripVTControlCharacters(line));
 
       assert.ok(plainLines.some((line) => line.includes("1. First")));
       assert.ok(plainLines.some((line) => line.includes("  1. Nested first")));
@@ -112,9 +107,7 @@ describe("Markdown component", () => {
       );
 
       const lines = markdown.render(80);
-      const plainLines = lines.map((line) =>
-        line.replace(/\x1b\[[0-9;]*m/g, ""),
-      );
+      const plainLines = lines.map((line) => stripVTControlCharacters(line));
 
       assert.ok(plainLines.some((line) => line.includes("1. Ordered item")));
       assert.ok(
@@ -147,7 +140,7 @@ describe("Markdown component", () => {
 
       const lines = markdown.render(80);
       const plainLines = lines.map((line) =>
-        line.replace(/\x1b\[[0-9;]*m/g, "").trim(),
+        stripVTControlCharacters(line).trim(),
       );
 
       // Find all lines that start with a number and period
@@ -189,9 +182,7 @@ describe("Markdown component", () => {
       );
 
       const lines = markdown.render(80);
-      const plainLines = lines.map((line) =>
-        line.replace(/\x1b\[[0-9;]*m/g, ""),
-      );
+      const plainLines = lines.map((line) => stripVTControlCharacters(line));
 
       // Check table structure
       assert.ok(plainLines.some((line) => line.includes("Name")));
@@ -215,9 +206,7 @@ describe("Markdown component", () => {
       );
 
       const lines = markdown.render(80);
-      const plainLines = lines.map((line) =>
-        line.replace(/\x1b\[[0-9;]*m/g, ""),
-      );
+      const plainLines = lines.map((line) => stripVTControlCharacters(line));
       const dividerLines = plainLines.filter((line) => line.includes("┼"));
 
       assert.strictEqual(
@@ -240,9 +229,7 @@ describe("Markdown component", () => {
       );
 
       const lines = markdown.render(32);
-      const plainLines = lines.map((line) =>
-        line.replace(/\x1b\[[0-9;]*m/g, ""),
-      );
+      const plainLines = lines.map((line) => stripVTControlCharacters(line));
       const dataLine = plainLines.find((line) => line.includes(longestWord));
       assert.ok(dataLine, "Expected data row containing longest word");
 
@@ -269,9 +256,7 @@ describe("Markdown component", () => {
       );
 
       const lines = markdown.render(80);
-      const plainLines = lines.map((line) =>
-        line.replace(/\x1b\[[0-9;]*m/g, ""),
-      );
+      const plainLines = lines.map((line) => stripVTControlCharacters(line));
 
       // Check headers
       assert.ok(plainLines.some((line) => line.includes("Left")));
@@ -297,9 +282,7 @@ describe("Markdown component", () => {
       // Should render without errors
       assert.ok(lines.length > 0);
 
-      const plainLines = lines.map((line) =>
-        line.replace(/\x1b\[[0-9;]*m/g, ""),
-      );
+      const plainLines = lines.map((line) => stripVTControlCharacters(line));
       assert.ok(
         plainLines.some((line) => line.includes("Very long column header")),
       );
@@ -324,7 +307,7 @@ describe("Markdown component", () => {
       // Render at narrow width that forces wrapping
       const lines = markdown.render(50);
       const plainLines = lines.map((line) =>
-        line.replace(/\x1b\[[0-9;]*m/g, "").trimEnd(),
+        stripVTControlCharacters(line).trimEnd(),
       );
 
       // All lines should fit within width
@@ -362,7 +345,7 @@ describe("Markdown component", () => {
       // Render at width that forces the cell to wrap
       const lines = markdown.render(25);
       const plainLines = lines.map((line) =>
-        line.replace(/\x1b\[[0-9;]*m/g, "").trimEnd(),
+        stripVTControlCharacters(line).trimEnd(),
       );
 
       // Should have multiple data rows due to wrapping
@@ -402,7 +385,7 @@ describe("Markdown component", () => {
       const width = 30;
       const lines = markdown.render(width);
       const plainLines = lines.map((line) =>
-        line.replace(/\x1b\[[0-9;]*m/g, "").trimEnd(),
+        stripVTControlCharacters(line).trimEnd(),
       );
 
       for (const line of plainLines) {
@@ -450,7 +433,7 @@ describe("Markdown component", () => {
       );
 
       const plainLines = lines.map((line) =>
-        line.replace(/\x1b\[[0-9;]*m/g, "").trimEnd(),
+        stripVTControlCharacters(line).trimEnd(),
       );
       for (const line of plainLines) {
         assert.ok(
@@ -483,7 +466,7 @@ describe("Markdown component", () => {
       // Very narrow width
       const lines = markdown.render(15);
       const plainLines = lines.map((line) =>
-        line.replace(/\x1b\[[0-9;]*m/g, "").trimEnd(),
+        stripVTControlCharacters(line).trimEnd(),
       );
 
       // Should not crash and should produce output
@@ -511,7 +494,7 @@ describe("Markdown component", () => {
       // Wide width where table fits naturally
       const lines = markdown.render(80);
       const plainLines = lines.map((line) =>
-        line.replace(/\x1b\[[0-9;]*m/g, "").trimEnd(),
+        stripVTControlCharacters(line).trimEnd(),
       );
 
       // Should have proper table structure
@@ -545,7 +528,7 @@ describe("Markdown component", () => {
       // Width 40 with paddingX=2 means contentWidth=36
       const lines = markdown.render(40);
       const plainLines = lines.map((line) =>
-        line.replace(/\x1b\[[0-9;]*m/g, "").trimEnd(),
+        stripVTControlCharacters(line).trimEnd(),
       );
 
       // All lines should respect width
@@ -580,9 +563,7 @@ describe("Markdown component", () => {
       );
 
       const lines = markdown.render(80);
-      const plainLines = lines.map((line) =>
-        line.replace(/\x1b\[[0-9;]*m/g, ""),
-      );
+      const plainLines = lines.map((line) => stripVTControlCharacters(line));
 
       // Check heading
       assert.ok(plainLines.some((line) => line.includes("Test Document")));
@@ -715,7 +696,7 @@ again, hello world`,
 
       const lines = markdown.render(80);
       const plainLines = lines.map((line) =>
-        line.replace(/\x1b\[[0-9;]*m/g, "").trimEnd(),
+        stripVTControlCharacters(line).trimEnd(),
       );
 
       const closingBackticksIndex = plainLines.indexOf("```");
@@ -747,7 +728,7 @@ again, hello world`,
 
       const lines = markdown.render(80);
       const plainLines = lines.map((line) =>
-        line.replace(/\x1b\[[0-9;]*m/g, "").trimEnd(),
+        stripVTControlCharacters(line).trimEnd(),
       );
 
       const dividerIndex = plainLines.findIndex((line) => line.includes("─"));
@@ -777,7 +758,7 @@ This is a paragraph`,
 
       const lines = markdown.render(80);
       const plainLines = lines.map((line) =>
-        line.replace(/\x1b\[[0-9;]*m/g, "").trimEnd(),
+        stripVTControlCharacters(line).trimEnd(),
       );
 
       const headingIndex = plainLines.findIndex((line) =>
@@ -811,7 +792,7 @@ again, hello world`,
 
       const lines = markdown.render(80);
       const plainLines = lines.map((line) =>
-        line.replace(/\x1b\[[0-9;]*m/g, "").trimEnd(),
+        stripVTControlCharacters(line).trimEnd(),
       );
 
       const quoteIndex = plainLines.findIndex((line) =>
@@ -847,9 +828,7 @@ bar`,
       const lines = markdown.render(80);
 
       // Both lines should have the quote border
-      const plainLines = lines.map((line) =>
-        line.replace(/\x1b\[[0-9;]*m/g, ""),
-      );
+      const plainLines = lines.map((line) => stripVTControlCharacters(line));
       const quotedLines = plainLines.filter((line) => line.startsWith("│ "));
       assert.strictEqual(
         quotedLines.length,
@@ -899,9 +878,7 @@ bar`,
       const lines = markdown.render(80);
 
       // Both lines should have the quote border
-      const plainLines = lines.map((line) =>
-        line.replace(/\x1b\[[0-9;]*m/g, ""),
-      );
+      const plainLines = lines.map((line) => stripVTControlCharacters(line));
       const quotedLines = plainLines.filter((line) => line.startsWith("│ "));
       assert.strictEqual(
         quotedLines.length,
@@ -945,7 +922,7 @@ bar`,
       // Render at narrow width to force wrapping
       const lines = markdown.render(30);
       const plainLines = lines.map((line) =>
-        line.replace(/\x1b\[[0-9;]*m/g, "").trimEnd(),
+        stripVTControlCharacters(line).trimEnd(),
       );
 
       // Filter to non-empty lines (exclude trailing blank line after blockquote)
@@ -986,7 +963,7 @@ bar`,
 
       const lines = markdown.render(25);
       const plainLines = lines.map((line) =>
-        line.replace(/\x1b\[[0-9;]*m/g, "").trimEnd(),
+        stripVTControlCharacters(line).trimEnd(),
       );
 
       // Filter to non-empty lines
@@ -1020,9 +997,7 @@ bar`,
       );
 
       const lines = markdown.render(80);
-      const plainLines = lines.map((line) =>
-        line.replace(/\x1b\[[0-9;]*m/g, ""),
-      );
+      const plainLines = lines.map((line) => stripVTControlCharacters(line));
 
       // Should have the quote border
       assert.ok(
@@ -1068,9 +1043,7 @@ bar`,
       );
 
       const lines = markdown.render(80);
-      const plainLines = lines.map((line) =>
-        line.replace(/\x1b\[[0-9;]*m/g, ""),
-      );
+      const plainLines = lines.map((line) => stripVTControlCharacters(line));
       const joinedPlain = plainLines.join(" ");
 
       // Should contain the email once, not duplicated with mailto:
@@ -1093,9 +1066,7 @@ bar`,
       );
 
       const lines = markdown.render(80);
-      const plainLines = lines.map((line) =>
-        line.replace(/\x1b\[[0-9;]*m/g, ""),
-      );
+      const plainLines = lines.map((line) => stripVTControlCharacters(line));
       const joinedPlain = plainLines.join(" ");
 
       // URL should appear only once
@@ -1113,9 +1084,7 @@ bar`,
       );
 
       const lines = markdown.render(80);
-      const plainLines = lines.map((line) =>
-        line.replace(/\x1b\[[0-9;]*m/g, ""),
-      );
+      const plainLines = lines.map((line) => stripVTControlCharacters(line));
       const joinedPlain = plainLines.join(" ");
 
       // Should show both link text and URL
@@ -1135,9 +1104,7 @@ bar`,
       );
 
       const lines = markdown.render(80);
-      const plainLines = lines.map((line) =>
-        line.replace(/\x1b\[[0-9;]*m/g, ""),
-      );
+      const plainLines = lines.map((line) => stripVTControlCharacters(line));
       const joinedPlain = plainLines.join(" ");
 
       // Should show both link text and mailto URL
@@ -1161,9 +1128,7 @@ bar`,
       );
 
       const lines = markdown.render(80);
-      const plainLines = lines.map((line) =>
-        line.replace(/\x1b\[[0-9;]*m/g, ""),
-      );
+      const plainLines = lines.map((line) => stripVTControlCharacters(line));
       const joinedPlain = plainLines.join(" ");
 
       // The content inside the tags should be visible
@@ -1183,9 +1148,7 @@ bar`,
       );
 
       const lines = markdown.render(80);
-      const plainLines = lines.map((line) =>
-        line.replace(/\x1b\[[0-9;]*m/g, ""),
-      );
+      const plainLines = lines.map((line) => stripVTControlCharacters(line));
       const joinedPlain = plainLines.join("\n");
 
       // HTML in code blocks should be visible

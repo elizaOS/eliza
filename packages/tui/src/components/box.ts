@@ -107,8 +107,9 @@ export class Box implements Component {
       : undefined;
 
     // Check cache validity
-    if (this.matchCache(width, childLines, backgroundSample)) {
-      return this.cache!.lines;
+    const cache = this.cache;
+    if (cache && this.matchCache(width, childLines, backgroundSample)) {
+      return cache.lines;
     }
 
     // Apply background and padding

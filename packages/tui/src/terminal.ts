@@ -108,7 +108,8 @@ export class ProcessTerminal implements Terminal {
     this.stdinBuffer = new StdinBuffer({ timeout: 10 });
 
     // Kitty protocol response pattern: \x1b[?<flags>u
-    const kittyResponsePattern = /^\x1b\[\?(\d+)u$/;
+    const csiPrefix = "\\x1b\\[";
+    const kittyResponsePattern = new RegExp(`^${csiPrefix}\\?(\\d+)u$`);
 
     // Forward individual sequences to the input handler
     this.stdinBuffer.on("data", (sequence) => {

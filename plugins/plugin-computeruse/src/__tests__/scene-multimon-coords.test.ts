@@ -318,15 +318,20 @@ describe("dirty-block re-OCR — wired to captureRegion", () => {
     let runOcrOnFrameCalls = 0;
     let runOcrOnCropsCalls = 0;
     let i = 0;
+    const lastCaptureSet = (): DisplayCapture[] => {
+      const captureSet = captures[captures.length - 1];
+      if (!captureSet) throw new Error("Expected at least one capture set");
+      return captureSet;
+    };
+    const firstCapture = (): DisplayCapture => {
+      const capture = captures[0]?.[0];
+      if (!capture) throw new Error("Expected at least one display capture");
+      return capture;
+    };
     const builder = new SceneBuilder({
       captureAll: async () =>
-        captures[Math.min(i++, captures.length - 1)] ??
-        captures[captures.length - 1]!,
-      captureOne: async () => {
-        const first = captures[0]?.[0];
-        if (!first) throw new Error("capture fixture list is empty");
-        return first;
-      },
+        captures[Math.min(i++, captures.length - 1)] ?? lastCaptureSet(),
+      captureOne: async () => firstCapture(),
       captureRegion: async (displayId, region) => {
         captureRegionCalls.push({ displayId, region });
         // Return a tiny PNG of arbitrary content; OCR is fully mocked so
@@ -403,7 +408,7 @@ describe("dirty-block re-OCR — wired to captureRegion", () => {
     // The dirty rect should be inside the source frame and roughly near
     // (col=4, row=4) for a 16×16 grid on a 256×256 frame → ~(64, 64, 16, 16).
     const reg = captureRegionCalls[0]?.region;
-    if (!reg) throw new Error("expected dirty-region capture call");
+    if (!reg) throw new Error("Expected one captureRegion call");
     expect(reg.x).toBeGreaterThanOrEqual(60);
     expect(reg.x).toBeLessThanOrEqual(80);
     expect(reg.y).toBeGreaterThanOrEqual(60);
