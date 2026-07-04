@@ -103,9 +103,19 @@ import {
 	SpeakerPresetCache,
 } from "./speaker-preset-cache";
 import {
+	pickStreamingMode,
+	readStreamingAsrEnabledFromEnv,
+	StabilizedStreamingTranscriber,
+	type StreamingPipelineMode,
+} from "./streaming-asr/streaming-pipeline-adapter";
+import {
 	ASR_SAMPLE_RATE,
 	AsrUnavailableError,
 	createStreamingTranscriber,
+	DEFAULT_ASR_STEP_SECONDS,
+	ffiSupportsStreamingAsr,
+	readAsrBackendPreferenceFromEnv,
+	readAsrStepSecondsFromEnv,
 	resampleLinear,
 } from "./transcriber";
 import type {
@@ -121,6 +131,10 @@ import type {
 	TtsBackend,
 	VadEventSource,
 } from "./types";
+import {
+	KOKORO_TTS_TRANSIENT_PEAK_BYTES,
+	OMNIVOICE_TTS_TRANSIENT_PEAK_BYTES,
+} from "./voice-budget";
 import { decodeMonoPcm16Wav, encodeMonoPcm16Wav } from "./wav-codec";
 
 const SAMPLE_RATE_DEFAULT = 24_000;
@@ -1701,11 +1715,15 @@ export class EngineVoiceBridge {
 	/**
 	 * Construct a `StreamingTranscriber` for live ASR — the contract the
 	 * voice turn controller (W9) feeds mic frames into and the barge-in
-	 * word-confirm gate (W1) listens to. Resolves the adapter chain:
-	 *   fused `libelizainference` streaming ASR (final path, gated on a
-	 *   working decoder AND a bundled ASR model) → fused batch ASR over the
-	 *   same bundled model → `AsrUnavailableError`. The Eliza-1 bridge runs
-	 *   only the fused path; the whisper.cpp interim fallback has been removed.
+	 * word-confirm gate (W1) listens to. The drive mode is picked by
+	 * `pickStreamingMode` (#12254): the fused streaming decoder when the
+	 * loaded build advertises one, the ASR bundle is present, and
+	 * `ELIZA_VOICE_STREAMING_ASR` is not disabled (default on) — else the
+	 * interim windowed-batch adapter, announced at INFO. In streaming mode
+	 * the transcriber is wrapped in `StabilizedStreamingTranscriber`
+	 * (word-level LocalAgreement-2) so subscribers only ever see a
+	 * monotonic committed prefix. No fused decoder at all →
+	 * `AsrUnavailableError`; the whisper.cpp fallback has been removed.
 	 *
 	 * Pass W1's `vad` event stream to gate decoding to active speech
 	 * windows. Caller owns the returned transcriber's lifecycle (`dispose()`).
@@ -1714,13 +1732,62 @@ export class EngineVoiceBridge {
 		vad?: VadEventSource;
 	}): StreamingTranscriber {
 		this.assertVoiceOn("create streaming transcriber");
+		return this.constructTranscriber(opts);
+	}
+
+	/** Last ASR drive mode announced, so the pick is logged once per change. */
+	private loggedAsrDriveMode: StreamingPipelineMode | null = null;
+
+	/**
+	 * Shared transcriber construction (mode pick + loud announcement +
+	 * streaming-partial stabilization). `createStreamingTranscriber` adds the
+	 * voice-on assertion; `resolveTranscriber` adds the deferred-failure
+	 * wrapper for the pipeline path.
+	 */
+	private constructTranscriber(opts?: {
+		vad?: VadEventSource;
+	}): StreamingTranscriber {
 		const contextRef = this.ffiContextRef;
-		return createStreamingTranscriber({
+		// An explicit ELIZA_LOCAL_ASR_BACKEND pin wins over the capability
+		// gate; otherwise streaming is picked exactly when supported + present
+		// + not disabled by ELIZA_VOICE_STREAMING_ASR.
+		const envPrefer = readAsrBackendPreferenceFromEnv();
+		const mode: StreamingPipelineMode =
+			envPrefer === "fused"
+				? "streaming"
+				: envPrefer === "ffi-batch"
+					? "batch"
+					: pickStreamingMode({
+							ffiSupportsStreaming: ffiSupportsStreamingAsr(this.ffi),
+							asrBundlePresent: this.asrAvailable,
+							enableStreaming: readStreamingAsrEnabledFromEnv(),
+						});
+		if (this.loggedAsrDriveMode !== mode) {
+			this.loggedAsrDriveMode = mode;
+			if (mode === "streaming") {
+				logger.info(
+					"[EngineVoiceBridge] ASR drive mode: streaming — fused eliza_inference_asr_stream_* decoder with LocalAgreement-2 partial stabilization",
+				);
+			} else {
+				logger.info(
+					`[EngineVoiceBridge] ASR drive mode: batch — fused streaming decoder ${
+						ffiSupportsStreamingAsr(this.ffi)
+							? "disabled (ELIZA_VOICE_STREAMING_ASR/ELIZA_LOCAL_ASR_BACKEND)"
+							: "unavailable on this build (asrStreamSupported() == 0)"
+					}; interim windowed re-transcription at stepSeconds=${readAsrStepSecondsFromEnv() ?? DEFAULT_ASR_STEP_SECONDS}`,
+				);
+			}
+		}
+		const transcriber = createStreamingTranscriber({
 			ffi: this.ffi,
 			getContext: contextRef ? () => contextRef.ensure() : undefined,
 			asrBundlePresent: this.asrAvailable,
 			vad: opts?.vad,
+			prefer: mode === "streaming" ? "fused" : "ffi-batch",
 		});
+		return mode === "streaming"
+			? new StabilizedStreamingTranscriber(transcriber)
+			: transcriber;
 	}
 
 	/**
@@ -2026,11 +2093,23 @@ export class EngineVoiceBridge {
 		events?: VoicePipelineEvents,
 	): VoicePipeline {
 		const transcriber = this.resolveTranscriber();
+		// Per-turn TTS transient reservation (#12254): sized to the measured
+		// decode peak of the backend actually wired. Backends without a
+		// measured table entry (test stubs/overrides) carry no reservation.
+		const ttsTransientBytes =
+			this.backend instanceof FfiOmniVoiceBackend
+				? OMNIVOICE_TTS_TRANSIENT_PEAK_BYTES
+				: this.backend instanceof KokoroTtsBackend
+					? KOKORO_TTS_TRANSIENT_PEAK_BYTES
+					: null;
 		const deps: VoicePipelineDeps = {
 			scheduler: this.scheduler,
 			transcriber,
 			drafter: new MtpDraftProposer(textRunner),
 			verifier: new MtpTargetVerifier(textRunner),
+			...(ttsTransientBytes !== null
+				? { ttsTransientReservation: { bytes: ttsTransientBytes } }
+				: {}),
 		};
 		return new VoicePipeline(deps, config, events);
 	}
@@ -2046,13 +2125,8 @@ export class EngineVoiceBridge {
 	 * silent cloud fallback.
 	 */
 	private resolveTranscriber(): StreamingTranscriber {
-		const ctxRef = this.ffiContextRef;
 		try {
-			return createStreamingTranscriber({
-				ffi: this.ffi,
-				getContext: ctxRef ? () => ctxRef.ensure() : undefined,
-				asrBundlePresent: this.asrAvailable,
-			});
+			return this.constructTranscriber();
 		} catch (err) {
 			if (err instanceof AsrUnavailableError) {
 				return new MissingAsrTranscriber(err.message);

@@ -343,15 +343,29 @@ export {
 	type WavFileAudioSinkOptions,
 } from "./system-audio-sink";
 export {
+	LocalAgreementBuffer,
+	type PickStreamingModeArgs,
+	pickStreamingMode,
+	readStreamingAsrEnabledFromEnv,
+	StabilizedStreamingTranscriber,
+	StreamingAsrFeeder,
+	type StreamingAsrFeederEvents,
+	type StreamingPipelineMode,
+	WordAgreementGate,
+} from "./streaming-asr/streaming-pipeline-adapter";
+export {
 	ASR_SAMPLE_RATE,
+	type AsrDecodePassStats,
 	AsrUnavailableError,
 	BaseStreamingTranscriber,
 	type CreateStreamingTranscriberOptions,
 	createStreamingTranscriber,
+	DEFAULT_ASR_STEP_SECONDS,
 	FfiBatchTranscriber,
 	type FfiBatchTranscriberOptions,
 	FfiStreamingTranscriber,
 	ffiSupportsStreamingAsr,
+	readAsrStepSecondsFromEnv,
 	resampleLinear,
 } from "./transcriber";
 export {
@@ -366,6 +380,8 @@ export * from "./types";
 export {
 	createSileroVadDetector,
 	createVadDetector,
+	END_HANGOVER_FIXED_VAD_MS,
+	END_HANGOVER_SEMANTIC_EOT_MS,
 	type ExternalVadAdapter,
 	GgmlSileroVad,
 	NativeSileroVad,
@@ -391,9 +407,16 @@ export {
 	createVoiceBudget,
 	createVoiceBudgetForTest,
 	DEFAULT_VOICE_BUNDLE_RESERVE_MB,
+	ensureSharedVoiceBudget,
+	FUSED_EOT_SCORER_RESERVE_BYTES,
+	KOKORO_TTS_TRANSIENT_PEAK_BYTES,
+	OMNIVOICE_TTS_TRANSIENT_PEAK_BYTES,
 	pickVoiceTierSlot,
 	priorityClassForRole,
 	type ReservationSnapshot,
+	reserveOrRamPressure,
+	setSharedVoiceBudgetForTest,
+	VAD_RESERVE_BYTES,
 	VOICE_ENSEMBLE_BUDGETS,
 	type VoiceBudget,
 	type VoiceBundleFitDecision,
@@ -401,6 +424,7 @@ export {
 	type VoiceTierSlot,
 	voiceEnsemblePeakMb,
 	voiceEnsembleSteadyStateMb,
+	WAKE_WORD_RESERVE_BYTES,
 } from "./voice-budget";
 export {
 	type ArbiterPreloader,

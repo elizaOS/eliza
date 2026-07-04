@@ -17,11 +17,12 @@
  * jitter, small enough that the stable prefix tracks the speaker
  * within ~one extra frame.
  *
- * Wiring: the streaming-ASR adapter calls `feed(partial)` per frame; the
- * `stable` portion is what flows into `splitTranscriptToTokens` and the
- * drafter. `pending` is suffix-only, fed to UI for visual feedback. The
- * stabilizer is feature-flagged off until the streaming-ASR backend is
- * wired (see `voice/pipeline.ts`'s `usePartialStabilizer`).
+ * Consumer split (#12254): this character-prefix variant serves UI caption
+ * rendering, where sub-word agreement ("sa" → "sat") keeps captions
+ * responsive and `pending` gives visual feedback. The drafter / barge-in
+ * word-confirm consumers use the word-level `LocalAgreementBuffer` /
+ * `WordAgreementGate` in `streaming-asr/streaming-pipeline-adapter.ts`,
+ * applied automatically by the engine bridge in streaming mode.
  *
  * No `any`, no fallbacks: a malformed partial (e.g. an empty string)
  * collapses the stable prefix to whatever the agreement window still
@@ -116,7 +117,13 @@ export class PartialStabilizer {
 			}
 			if (agreed.length === 0) break;
 		}
-		if (agreed.length > this.committed.length) {
+		// Extend committed only when the new agreement PRESERVES what was
+		// already committed — a longer agreement that disagrees inside the
+		// committed span must not rewrite it (monotonic contract).
+		if (
+			agreed.length > this.committed.length &&
+			agreed.startsWith(this.committed)
+		) {
 			this.committed = agreed;
 		}
 		return {

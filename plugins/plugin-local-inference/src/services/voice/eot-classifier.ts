@@ -41,6 +41,13 @@ import type {
 } from "./eliza1-eot-scorer";
 import { Eliza1EotScorer } from "./eliza1-eot-scorer";
 import { FfiEotScorer, type FfiEotScorerOptions } from "./fused-eot-scorer";
+import {
+	type BudgetReservation,
+	ensureSharedVoiceBudget,
+	FUSED_EOT_SCORER_RESERVE_BYTES,
+	reserveOrRamPressure,
+	type VoiceBudget,
+} from "./voice-budget";
 
 // ---------------------------------------------------------------------------
 // Interface
@@ -360,16 +367,26 @@ export class CompositeEotClassifier implements EotClassifier {
 	private readonly model: FfiEotScorer;
 	private readonly heuristic: HeuristicEotClassifier;
 	private readonly confidenceCutoff: number;
+	/** Voice-budget reservation for the scorer's dedicated native scoring
+	 *  context; held for the session, released via `dispose()`. */
+	private readonly reservation: BudgetReservation | null;
 
 	constructor(options: {
 		model: FfiEotScorer;
 		heuristic?: HeuristicEotClassifier;
 		confidenceCutoff?: number;
+		reservation?: BudgetReservation | null;
 	}) {
 		this.model = options.model;
 		this.heuristic = options.heuristic ?? new HeuristicEotClassifier();
 		this.confidenceCutoff =
 			options.confidenceCutoff ?? COMPOSITE_HEURISTIC_CONFIDENCE_CUTOFF;
+		this.reservation = options.reservation ?? null;
+	}
+
+	/** Release the voice-budget reservation. Idempotent; call at session teardown. */
+	dispose(): void {
+		this.reservation?.release();
 	}
 
 	private async blend(
@@ -413,10 +430,26 @@ export class CompositeEotClassifier implements EotClassifier {
  * Build a composite EOT classifier backed by the fused FFI scorer, or null when
  * the loaded fused build does not wire the v11 EOT symbol (a pre-v11 library) —
  * the caller then falls back to a heuristic-only classifier.
+ *
+ * Reserves the scorer's dedicated scoring-context envelope against the voice
+ * budget at session arm; the caller releases it via `dispose()` at teardown.
+ * An over-budget arm throws `VoiceLifecycleError("ram-pressure")`.
  */
-export function tryBuildFusedEotClassifier(
-	options: FfiEotScorerOptions,
-): CompositeEotClassifier | null {
+export async function tryBuildFusedEotClassifier(
+	options: FfiEotScorerOptions & {
+		/** Voice-budget override; defaults to the process-wide shared budget. */
+		budget?: VoiceBudget;
+	},
+): Promise<CompositeEotClassifier | null> {
 	if (!FfiEotScorer.isSupported(options.ffi)) return null;
-	return new CompositeEotClassifier({ model: new FfiEotScorer(options) });
+	const budget = options.budget ?? (await ensureSharedVoiceBudget());
+	const reservation = await reserveOrRamPressure(budget, {
+		modelId: options.modelLabel ?? "eliza-1-fused-eot",
+		role: "turn-detector",
+		bytes: FUSED_EOT_SCORER_RESERVE_BYTES,
+	});
+	return new CompositeEotClassifier({
+		model: new FfiEotScorer(options),
+		reservation,
+	});
 }

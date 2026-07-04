@@ -46,6 +46,12 @@ import type {
 	TranscriptionAudio,
 	VerifierStreamEvent,
 } from "./types";
+import {
+	type BudgetReservation,
+	ensureSharedVoiceBudget,
+	reserveOrRamPressure,
+	type VoiceBudget,
+} from "./voice-budget";
 
 /**
  * Split a transcript string into contiguous text tokens. The fused ASR
@@ -136,6 +142,15 @@ export interface VoicePipelineDeps {
 	transcriber: StreamingTranscriber;
 	drafter: DraftProposer;
 	verifier: TargetVerifier;
+	/**
+	 * When set, `run()` reserves `bytes` under role `"tts"` against the voice
+	 * budget for the duration of the turn — the TTS backend's transient decode
+	 * peak (OmniVoice MaskGIT ~1.17 GB / Kokoro ~100 MB; see `voice-budget.ts`).
+	 * Released when the turn settles, whatever the exit reason. Over-budget
+	 * turns throw `VoiceLifecycleError("ram-pressure")` before ASR starts.
+	 * `budget` defaults to the process-wide shared budget.
+	 */
+	ttsTransientReservation?: { bytes: number; budget?: VoiceBudget };
 }
 
 export interface VoicePipelineConfig {
@@ -219,6 +234,10 @@ export class VoicePipeline {
 	 * can plug straight in once it ships.
 	 */
 	private readonly partialStabilizer: PartialStabilizer | null;
+	private readonly ttsTransientReservation: {
+		bytes: number;
+		budget?: VoiceBudget;
+	} | null;
 	private active: PipelineRun | null = null;
 
 	constructor(
@@ -230,6 +249,7 @@ export class VoicePipeline {
 		this.transcriber = deps.transcriber;
 		this.drafter = deps.drafter;
 		this.verifier = deps.verifier;
+		this.ttsTransientReservation = deps.ttsTransientReservation ?? null;
 		this.maxDraftTokens = Math.max(1, Math.floor(config.maxDraftTokens));
 		this.maxGeneratedTokens = Math.max(
 			1,
@@ -281,6 +301,20 @@ export class VoicePipeline {
 				"[voice-pipeline] a turn is already running; cancel() it or await the previous run() first",
 			);
 		}
+		// Reserve the TTS transient decode peak for the turn (#12254). The
+		// reservation covers the synth passes this turn dispatches; releasing
+		// in `finally` returns the budget whatever the exit reason.
+		let ttsReservation: BudgetReservation | null = null;
+		if (this.ttsTransientReservation) {
+			const budget =
+				this.ttsTransientReservation.budget ??
+				(await ensureSharedVoiceBudget());
+			ttsReservation = await reserveOrRamPressure(budget, {
+				modelId: "tts-transient",
+				role: "tts",
+				bytes: this.ttsTransientReservation.bytes,
+			});
+		}
 		const cancel = { cancelled: false };
 		const done = this.execute(audio, cancel);
 		this.active = { cancel, done };
@@ -288,6 +322,7 @@ export class VoicePipeline {
 			return await done;
 		} finally {
 			this.active = null;
+			ttsReservation?.release();
 		}
 	}
 

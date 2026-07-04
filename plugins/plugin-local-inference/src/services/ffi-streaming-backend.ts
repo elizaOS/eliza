@@ -11,6 +11,8 @@
  *     here, then forwarded to runtimes that expose `describeImage`.
  */
 
+import { statSync } from "node:fs";
+import { logger } from "@elizaos/core";
 import type {
 	BackendPlan,
 	GenerateArgs,
@@ -24,6 +26,11 @@ import type {
 	LlmStreamingBinding,
 } from "./llm-streaming-binding";
 import { resolveGuidedDecodeForParams } from "./structured-output";
+import {
+	type BudgetReservation,
+	ensureSharedVoiceBudget,
+	type VoiceBudget,
+} from "./voice/voice-budget";
 
 /**
  * Constructor-injected adapter that resolves the FFI binding, context, and
@@ -121,8 +128,17 @@ export class FfiStreamingBackend implements LocalInferenceBackend {
 
 	private session: FfiBackendSession | null = null;
 	private loadedPath: string | null = null;
+	/** Voice-budget reservations for the loaded weights (text target +
+	 *  optional separate MTP drafter). Released on unload. */
+	private budgetReservations: BudgetReservation[] = [];
+	private readonly budgetOverride: VoiceBudget | null;
 
-	constructor(private readonly runtime: FfiBackendRuntime) {}
+	constructor(
+		private readonly runtime: FfiBackendRuntime,
+		opts: { budget?: VoiceBudget } = {},
+	) {
+		this.budgetOverride = opts.budget ?? null;
+	}
 
 	async available(): Promise<boolean> {
 		return this.runtime.supported();
@@ -138,8 +154,62 @@ export class FfiStreamingBackend implements LocalInferenceBackend {
 
 	async load(plan: BackendPlan): Promise<void> {
 		if (this.session) await this.unload();
-		this.session = await this.runtime.acquire(plan);
+		// Reserve the text-target weights against the cross-model voice budget
+		// BEFORE loading (allocator contract, `voice-budget.ts`). Sized to the
+		// GGUF on disk — the mmap resident ceiling. `BudgetExhaustedError` is a
+		// hard load failure: the model genuinely does not fit this tier's
+		// co-resident budget. A path with no stat-able file carries nothing to
+		// account (the runtime's own acquire decides whether that is fatal).
+		const textBytes = fileSizeOrNull(plan.modelPath);
+		if (textBytes !== null) {
+			const budget = this.budgetOverride ?? (await ensureSharedVoiceBudget());
+			this.budgetReservations.push(
+				await budget.reserve({
+					modelId: plan.modelPath,
+					role: "text-target",
+					bytes: textBytes,
+				}),
+			);
+		}
+		try {
+			this.session = await this.runtime.acquire(plan);
+		} catch (err) {
+			this.releaseBudgetReservations();
+			throw err;
+		}
 		this.loadedPath = plan.modelPath;
+		// A separate MTP drafter GGUF is only known post-acquire; reserve it
+		// now. Embedded-draft-head MTP shares the text weights — no extra
+		// reservation.
+		const draftPath = this.session.draftModelPath;
+		const draftBytes = draftPath ? fileSizeOrNull(draftPath) : null;
+		if (draftPath && draftBytes !== null) {
+			const budget = this.budgetOverride ?? (await ensureSharedVoiceBudget());
+			try {
+				this.budgetReservations.push(
+					await budget.reserve({
+						modelId: draftPath,
+						role: "drafter",
+						bytes: draftBytes,
+					}),
+				);
+			} catch (err) {
+				logger.error(
+					{
+						draftPath,
+						error: err instanceof Error ? err.message : String(err),
+					},
+					"[FfiStreamingBackend] drafter weights exceed the voice budget — unloading",
+				);
+				await this.unload();
+				throw err;
+			}
+		}
+	}
+
+	private releaseBudgetReservations(): void {
+		for (const r of this.budgetReservations) r.release();
+		this.budgetReservations = [];
 	}
 
 	async unload(): Promise<void> {
@@ -155,6 +225,7 @@ export class FfiStreamingBackend implements LocalInferenceBackend {
 		} finally {
 			this.session = null;
 			this.loadedPath = null;
+			this.releaseBudgetReservations();
 		}
 	}
 
@@ -415,4 +486,14 @@ export class FfiStreamingBackend implements LocalInferenceBackend {
  */
 function slotFilename(conversationId: string, slotId: number): string {
 	return `${conversationId}__slot${slotId}.kv`;
+}
+
+/** Size of a regular file on disk, or null when it cannot be stat-ed. */
+function fileSizeOrNull(filePath: string): number | null {
+	try {
+		const stat = statSync(filePath);
+		return stat.isFile() ? stat.size : null;
+	} catch {
+		return null;
+	}
 }
