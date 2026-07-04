@@ -74,33 +74,51 @@ bun run --cwd packages/scenario-runner test src/corpus-assertion-guard.test.ts
   → 9 pass  (the new live-only scenario does not trip the pr-deterministic ratchet)
 ```
 
-## Live-model WORKFLOW-action trajectory
+## Live-model WORKFLOW-action trajectory — PASSED (Cerebras gpt-oss-120b)
 
-Authored: `packages/scenario-runner/test/scenarios/live-workflow-action-executions.scenario.ts`
-(`lane: "live-only"`). It seeds + executes a real embedded workflow, then a
-live user turn ("check my '<name>' workflow and tell me its most recent runs")
-must route to the `WORKFLOW` action's `executions` op; `finalChecks` assert
-`actionCalled WORKFLOW status:success` and that the seeded execution is readable
-through the real service. The file loads and lists cleanly
-(`eliza-scenarios list … --scenario live-workflow-action-executions`).
+`packages/scenario-runner/test/scenarios/live-workflow-action-executions.scenario.ts`
+(`lane: "live-only"`) seeds a real embedded workflow, tags it for the scenario
+owner (so the user-scoped `ACTIVE_WORKFLOWS` provider surfaces it), executes it
+once, then a live user turn ("check my 'Morning digest' workflow and tell me its
+most recent runs") must route to the `WORKFLOW` action's `executions` op.
 
-**Live run status in this dev environment: BLOCKED (environmental, not a code
-defect).** Booting the full scenario `AgentRuntime` dynamically imports the
-optional `@elizaos/plugin-vision`, whose `sharp-compat.ts` hard-imports `jimp`
-(`"jimp": "^1.6.0"`, declared in `plugins/plugin-vision/package.json`). `jimp`
-is not present in the shared workspace `node_modules` — a full-`bun install`
-gap that affects the parent checkout too (`install:light` / artifact-sync skips
-it), not something this branch introduced. CI with a full install runs it. The
-existing deterministic sibling
-(`deterministic-workflow-actions-routes.scenario.ts`) already proves the same
-WORKFLOW action + routes end to end under the LLM proxy, and cases (a)–(f)
-above prove the scheduling/dispatch path with real services and artifacts.
+Ran against a live model (Cerebras `gpt-oss-120b` via the OpenAI-compatible
+provider):
+
+```
+eliza-scenarios run test/scenarios --scenario live-workflow-action-executions
+| live-workflow-action-executions | passed | 5008ms |
+Totals: 1 passed, 0 failed
+```
+
+**Trajectory, reviewed by hand** (report:
+`.github/issue-evidence/12362-lifeops-live/live-workflow-action-executions.report.json`):
+
+- `actionsCalled: [("WORKFLOW", success=true)]` — the model genuinely selected
+  the WORKFLOW action (not forced by a fixture) and its `executions` op succeeded.
+- The agent's reply reported the **real** execution the seed produced:
+  > The "Morning digest" workflow (ID `live-workflow-action-executions`) has one
+  > recent execution: Run ID `7b40b8f0-7c04-…`, Start/Finish times …
+- `finalChecks`: `actionCalled WORKFLOW status:success` → passed; the `custom`
+  check (seeded execution still readable through the real `EmbeddedWorkflowService`)
+  → passed.
+
+(First runs failed for real, documented reasons — the workflow wasn't
+user-tag-scoped so the provider hid it, and the assertion read the wrong
+`ScenarioTurnExecution` field; both fixed. The passing report above is the
+final artifact.)
+
+Environment note: the full scenario `AgentRuntime` dynamically imports the
+optional `@elizaos/plugin-vision` (→ `jimp`). `jimp@1.6.1` is present in the
+`.bun` store but its top-level `node_modules/jimp` symlink was missing in this
+workspace; restoring the symlink (a linking gap, no lockfile change) let the
+runtime boot. CI's full install has it.
 
 ## Evidence rows
 
 | Evidence | Status |
 | --- | --- |
-| Real-LLM trajectory | Authored + schema-valid; live run blocked by the `jimp`/plugin-vision install gap (documented above); deterministic proxy sibling covers the WORKFLOW action path. |
+| Real-LLM trajectory | **Attached + reviewed** — live Cerebras `gpt-oss-120b` run, WORKFLOW action selected + succeeded, real execution reported; report JSON in `.github/issue-evidence/12362-lifeops-live/`. |
 | Backend logs | Attached (Smithers `workflow executed` + embedded-service registration). |
 | Domain artifacts | `embedded_executions`, `TriggerRunRecord`, ScheduledTask `fired` state-log — asserted in-test and listed above. |
 | Frontend logs / screenshots / video | N/A — no UI surface changed (test-only). |

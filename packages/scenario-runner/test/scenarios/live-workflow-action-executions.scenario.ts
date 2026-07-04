@@ -22,6 +22,7 @@ import {
   type EmbeddedWorkflowService,
 } from "../../../../plugins/plugin-workflow/src/services/index.ts";
 import type { WorkflowDefinition } from "../../../../plugins/plugin-workflow/src/types/index.ts";
+import { getUserTagName } from "../../../../plugins/plugin-workflow/src/utils/context.ts";
 
 const WORKFLOW_ID = "live-workflow-action-executions";
 const WORKFLOW_NAME = "Morning digest";
@@ -100,9 +101,25 @@ async function seedWorkflow(ctx: ScenarioContext): Promise<string | undefined> {
     runtime.routes.push({ ...route, __scenarioWorkflowRoute: true });
   }
 
+  // The ACTIVE_WORKFLOWS provider scopes by a per-user tag
+  // (`WorkflowService.listWorkflows(userId)` filters by `getUserTagName`), so a
+  // workflow created straight on the embedded engine is invisible to the model.
+  // Create it (keeps our stable id + a real execution), then tag it for the
+  // scenario's owner entity (the executor exposes it as ELIZA_ADMIN_ENTITY_ID)
+  // so the provider surfaces it and the live model can route to it.
+  const ownerId = runtime.getSetting?.("ELIZA_ADMIN_ENTITY_ID") as
+    | string
+    | undefined;
+  if (!ownerId) return "scenario owner entity id was not available";
+
   const embedded = await embeddedService(runtime);
   await embedded.deleteWorkflow(WORKFLOW_ID).catch(() => undefined);
   await embedded.createWorkflow(workflowDefinition);
+
+  const tagName = await getUserTagName(runtime, ownerId);
+  const userTag = await embedded.getOrCreateTag(tagName);
+  await embedded.updateWorkflowTags(WORKFLOW_ID, [userTag.id]);
+
   const execution = await embedded.executeWorkflow(WORKFLOW_ID);
   seededExecutionId = execution.id;
   return undefined;
@@ -112,15 +129,23 @@ async function seedWorkflow(ctx: ScenarioContext): Promise<string | undefined> {
 function expectWorkflowExecutionsAction(
   execution: ScenarioTurnExecution,
 ): string | undefined {
-  const action = execution.actions?.find((a) => a.name === "WORKFLOW");
-  if (!action) return "expected the WORKFLOW action to be selected";
-  if (action.result?.success !== true) {
-    return `expected WORKFLOW result.success=true, saw ${JSON.stringify(action.result)}`;
+  const action = execution.actionsCalled.find(
+    (candidate) => candidate.actionName === "WORKFLOW",
+  );
+  if (!action) {
+    return `expected the WORKFLOW action to be selected, saw ${
+      execution.actionsCalled.map((c) => c.actionName).join(", ") || "none"
+    }`;
   }
-  const executions = (action.result as { data?: { executions?: unknown[] } })
-    ?.data?.executions;
+  const result = action.result as
+    | { success?: boolean; data?: { executions?: unknown[] } }
+    | undefined;
+  if (result?.success !== true) {
+    return `expected WORKFLOW result.success=true, saw ${JSON.stringify(result)}`;
+  }
+  const executions = result.data?.executions;
   if (!Array.isArray(executions) || executions.length < 1) {
-    return `expected at least one execution in the action result, saw ${JSON.stringify(action.result)}`;
+    return `expected at least one execution in the action result, saw ${JSON.stringify(result)}`;
   }
   return undefined;
 }
