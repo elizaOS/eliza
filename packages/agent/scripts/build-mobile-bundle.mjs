@@ -46,6 +46,7 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { createWorkspacePackageResolver } from "./lib/workspace-packages.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const agentRoot = path.resolve(here, "..");
@@ -61,6 +62,13 @@ const rmRecursiveScript = path.join(
   "scripts",
   "rm-path-recursive.mjs",
 );
+const resolveWorkspacePackageDir = createWorkspacePackageResolver({
+  repoRoot,
+  nodeModulesRoots: [
+    path.join(agentRoot, "node_modules"),
+    path.join(repoRoot, "node_modules"),
+  ],
+});
 
 function rmRecursive(targetPath) {
   const result = spawnSync(process.execPath, [rmRecursiveScript, targetPath], {
@@ -1139,18 +1147,6 @@ const stripStaleJsArtifactsPlugin = {
 const workspaceSrcFallbackPlugin = {
   name: "eliza-mobile-workspace-src-fallback",
   setup(build) {
-    const cache = new Map();
-    const resolvePackageDir = (pkgName) => {
-      if (cache.has(pkgName)) return cache.get(pkgName);
-      const pkgPath = path.resolve(
-        repoRoot,
-        "node_modules",
-        ...pkgName.split("/"),
-      );
-      const result = existsSync(pkgPath) ? pkgPath : null;
-      cache.set(pkgName, result);
-      return result;
-    };
     build.onResolve({ filter: /^@elizaos\// }, (args) => {
       // Don't override packages already handled by the dedupe / capacitor
       // plugins. Order matters: those plugins run earlier in the array.
@@ -1161,7 +1157,7 @@ const workspaceSrcFallbackPlugin = {
       // `@elizaos/foo` => 2 segments; `@elizaos/foo/bar` => 3+
       const pkgName = `${segments[0]}/${segments[1]}`;
       const subpath = segments.slice(2).join("/");
-      const pkgDir = resolvePackageDir(pkgName);
+      const pkgDir = resolveWorkspacePackageDir(pkgName);
       if (!pkgDir) return undefined;
 
       // Identity-pinned packages (see dedupePlugin) must resolve their
