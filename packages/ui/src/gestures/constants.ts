@@ -35,7 +35,7 @@ export const GRAPH_PAN_ENGAGE_SLOP = 4;
 export const AXIS_COMMIT_SLOP = 8;
 
 /**
- * Per-surface override (useHorizontalPager): the launcher rail commits its
+ * Per-surface override (the horizontal pager rail): the launcher rail commits its
  * axis at a shorter slop than the shared {@link AXIS_COMMIT_SLOP} so a swipe
  * starts tracking the finger sooner on the paging surface (#12349).
  */
@@ -52,7 +52,7 @@ export const PAGER_AXIS_COMMIT_SLOP = 6;
 export const HORIZONTAL_DOMINANCE_RATIO = 0.8;
 
 /**
- * Per-surface override (useHorizontalPager): the pager wants the OPPOSITE
+ * Per-surface override (the horizontal pager rail): the pager wants the OPPOSITE
  * bias from the pull surfaces' {@link HORIZONTAL_DOMINANCE_RATIO} — horizontal
  * must clearly BEAT vertical (>1) before the rail claims the gesture, so a
  * diagonal drag stays with the vertical scroller under the rail.
@@ -68,7 +68,7 @@ export const DEFAULT_SWIPE_DISTANCE = 64;
 /** Default minimum horizontal speed (px/ms) to count as a swipe flick. */
 export const DEFAULT_SWIPE_VELOCITY = 0.4;
 /**
- * Per-surface override (useHorizontalPager): release speed (px/ms) that
+ * Per-surface override (the horizontal pager rail): release speed (px/ms) that
  * commits a page flick. Deliberately kept at the pager's shipped tuning,
  * slightly stiffer than {@link DEFAULT_SWIPE_VELOCITY}.
  */
