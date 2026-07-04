@@ -1,13 +1,10 @@
-// MobileCameraSource — JS contract for native Capacitor / AOSP camera bridges.
-//
-// This file defines the JS contract and a small Capacitor bridge adapter. The
-// native sides (Android CameraX via plugin-aosp, iOS AVFoundation via
-// plugin-ios) expose matching methods through `Capacitor.Plugins.ElizaVision`.
-//
-// The JS surface stays stable while native camera plugins register concrete
-// sources. Anything in plugin-vision that needs a mobile camera goes through
-// `MobileCameraSource`, never directly through `imagesnap` / `fswebcam` /
-// `ffmpeg`.
+/**
+ * JavaScript contract and Capacitor adapter for native mobile camera sources.
+ *
+ * Android CameraX and iOS AVFoundation bridges expose matching methods through
+ * `Capacitor.Plugins.ElizaVision`. Runtime camera consumers go through
+ * `MobileCameraSource` instead of shelling out to desktop capture tools.
+ */
 
 import { logger } from "@elizaos/core";
 import type { CameraInfo, VisionFrame } from "../types";

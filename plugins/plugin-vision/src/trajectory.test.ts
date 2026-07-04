@@ -1,3 +1,7 @@
+/**
+ * Trajectory logging tests for image-description calls made by VisionService.
+ */
+
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { VisionService } from "./service";

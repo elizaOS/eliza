@@ -1,9 +1,10 @@
-// Renderer-pull routes for the Android screen-capture bridge.
-//
-// The renderer interval-polls the GET route to drain queued capture requests,
-// captures each via the Capacitor ScreenCapture plugin, then POSTs the PNG
-// back to the POST route. Both mount at their exact paths (`rawPath: true`)
-// because the Android JNI loopback forwards by literal `/api/...` path.
+/**
+ * Renderer-pulled routes for Android screen capture and OCR bridge traffic.
+ *
+ * The renderer polls for queued capture/OCR requests, performs native
+ * Capacitor work, then posts results back to exact raw paths because the Android
+ * JNI loopback forwards literal `/api/...` paths.
+ */
 
 import type { Route } from "@elizaos/core";
 import {

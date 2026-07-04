@@ -1,3 +1,8 @@
+/**
+ * Streaming microphone capture service that chunks audio, detects speech
+ * boundaries, and routes transcription through the runtime model layer.
+ */
+
 import { type ChildProcess, spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
 import {
@@ -210,7 +215,7 @@ export class StreamingAudioCaptureService extends EventEmitter {
       }
     }
 
-    // Clean up old chunks (keep last 30 seconds)
+    // Retain only the rolling audio window needed for interruption context.
     const cutoffTime = timestamp - 30000;
     this.audioBuffer = this.audioBuffer.filter((c) => c.timestamp > cutoffTime);
   }

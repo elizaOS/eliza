@@ -1,17 +1,11 @@
-// YOLO object detector — ggml runtime via `native/yolo.cpp/`.
-//
-// Replaces COCO-SSD (TensorFlow.js) and the prior onnxruntime-node YOLO
-// path. Default model is YOLOv8n COCO (80 classes). Weights are NOT bundled
-// in the npm package — they're fetched / built into a per-user state dir
-// (`<state-dir>/models/vision/yolov8n.gguf`).
-//
-// Pipeline:
-//   1. Letterbox + RGB CHW normalize to 640x640 (this file).
-//   2. Forward pass (yolo.cpp via bun:ffi).
-//   3. parseYoloV8 — decode (cx, cy, w, h, scores) per anchor.
-//   4. NMS.
-//
-// **No fallback.** If the native lib or GGUF is missing, init throws.
+/**
+ * ggml-backed YOLOv8 detector for object boxes produced by native/yolo.cpp.
+ *
+ * Weights are resolved from the per-user state directory rather than bundled in
+ * npm. This module owns letterboxing, tensor normalization, YOLOv8 output
+ * decoding, and NMS. If the native library or GGUF is missing, initialization
+ * throws instead of silently falling back.
+ */
 
 import { logger } from "@elizaos/core";
 import { getSharp } from "./image/sharp-compat";

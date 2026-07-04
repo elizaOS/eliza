@@ -1,22 +1,12 @@
-// face-recognition-ggml.ts — native ggml face recognition.
-//
-// bun:ffi binding for the face-embed head exposed by the standalone
-// `packages/native/plugins/face-cpp/` library, plus the full
-// `FaceRecognition` surface (detect → embed → match → store) consumed by
-// `VisionService`. This is the only face-recognition backend; there is no
-// tfjs / face-api.js fallback.
-//
-// The native library produces a 128-d L2-normalized embedding from a
-// `face_detection` record (bbox + 6 BlazeFace landmarks). That detection
-// is what `BlazeFaceGgmlDetector` returns, so the pipeline is:
-//
-//   const det = await blazefaceDetector.detect(buffer);
-//   const emb = await embedder.embed(buffer, det[i]);
-//
-// `FaceEmbedGgmlRecognizer` owns only the embedding step; the matching,
-// storage, and persistence that make up the `FaceLibrary` surface live in
-// the `FaceRecognition` class below. Cosine + L2 distance helpers mirror
-// `face_embed_distance` / `face_embed_distance_l2`.
+/**
+ * Native ggml face-recognition pipeline for detection, embedding, matching,
+ * and in-memory identity storage.
+ *
+ * The native library produces 128-dimensional L2-normalized embeddings from
+ * BlazeFace detections. `FaceEmbedGgmlRecognizer` owns only embedding; matching
+ * and persistence live in `FaceRecognition`. There is no tfjs or face-api
+ * fallback path.
+ */
 
 import { promises as fs } from "node:fs";
 import * as os from "node:os";

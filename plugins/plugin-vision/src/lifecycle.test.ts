@@ -1,3 +1,7 @@
+/**
+ * Deterministic lifecycle-manager tests for idle unloads and arbiter wiring.
+ */
+
 import { describe, expect, it, vi } from "vitest";
 import {
   type IModelArbiter,

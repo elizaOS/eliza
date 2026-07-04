@@ -1,13 +1,13 @@
+/**
+ * Structured-parameter tests for VISION action operation and mode normalization.
+ *
+ * These pin planner-provided params as the source of truth and prevent raw
+ * message substring matching from reappearing.
+ */
+
 import { describe, expect, it } from "vitest";
 import { normalizeOp, normalizeVisionMode } from "./action-params";
 import { VisionMode } from "./types";
-
-/**
- * #10471 — the VISION action resolves its operation and mode from the planner's
- * STRUCTURED params, never from English keyword-matching the raw message text.
- * These pin that the removed keyword banks / substring parsing stay gone (and
- * that the old `"coffee".includes("off")` → OFF substring bug cannot recur).
- */
 
 describe("normalizeOp (structured op only)", () => {
   it("accepts canonical ops", () => {

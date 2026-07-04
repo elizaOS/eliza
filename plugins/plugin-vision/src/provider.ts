@@ -1,3 +1,8 @@
+/**
+ * Context provider that injects current visual perception state into media and
+ * browser turns without exposing unbounded detection lists to the prompt.
+ */
+
 import {
   type IAgentRuntime,
   logger,

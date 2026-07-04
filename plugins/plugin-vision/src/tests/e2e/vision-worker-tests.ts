@@ -1,3 +1,7 @@
+/**
+ * End-to-end worker suite for screen capture, OCR, and threaded vision paths.
+ */
+
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
 import type { IAgentRuntime } from "@elizaos/core";

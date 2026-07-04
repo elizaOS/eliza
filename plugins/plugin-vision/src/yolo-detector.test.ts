@@ -1,3 +1,7 @@
+/**
+ * Detector lifecycle tests for YOLO, person, and MediaPipe face adapters.
+ */
+
 import { describe, expect, it } from "vitest";
 import { MediaPipeFaceDetector } from "./face-detector-mediapipe";
 import { PersonDetector } from "./person-detector";

@@ -1,3 +1,8 @@
+/**
+ * Shared contracts for plugin-vision services, detections, scene descriptions,
+ * screen tiles, OCR results, and tracked visual entities.
+ */
+
 import type { DescribePauseReason } from "./describe-backpressure";
 
 export const VisionServiceType = {

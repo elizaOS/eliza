@@ -1,9 +1,9 @@
-// sharp-compat.test.ts — diff the pure-JS shim against native sharp.
-//
-// Native sharp is available in this Linux worktree, so every op the shim
-// implements is compared directly against sharp's output on small generated
-// images. This proves the fallback is faithful for the operations the
-// codebase uses on the mobile path.
+/**
+ * Compatibility tests that diff the pure-JS image shim against native sharp.
+ *
+ * Native sharp is available in this Linux lane, so each supported shim operation
+ * is compared on small generated images for the mobile fallback path.
+ */
 
 import sharp from "sharp";
 import { describe, expect, it } from "vitest";

@@ -1,3 +1,7 @@
+/**
+ * Toggle-action tests for transitions between camera, screen, both, and off modes.
+ */
+
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { VisionService } from "./service";

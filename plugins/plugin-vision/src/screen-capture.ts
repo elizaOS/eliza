@@ -1,3 +1,8 @@
+/**
+ * Host screen capture implementation for desktop platforms, including command
+ * selection, image decoding, and tiling for local vision model input.
+ */
+
 import { exec } from "node:child_process";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
@@ -206,7 +211,7 @@ export class ScreenCaptureService {
         activeTile.data = activeTilerTile.pngBytes;
       }
 
-      // Clean up temp file
+      // Command-line capture tools write through a temporary image file.
       await fs.unlink(tempFile).catch(() => {});
 
       // Create screen capture object
@@ -221,7 +226,7 @@ export class ScreenCaptureService {
       this.lastCapture = capture;
       return capture;
     } catch (error) {
-      // Clean up temp file on error
+      // Failed captures still need to release temporary image files.
       await fs.unlink(tempFile).catch(() => {});
       throw error;
     }

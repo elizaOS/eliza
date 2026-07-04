@@ -1,3 +1,8 @@
+/**
+ * OCR backend chain for plugin-vision, selecting Apple Vision or doCTR and
+ * adapting extracted text into the plugin's screen-tile result shape.
+ */
+
 import { logger } from "@elizaos/core";
 import { assertValidVisionImageBuffer } from "./image-input";
 import { DoctrOCRService, shouldPreferAppleVision } from "./ocr-service-doctr";
@@ -11,7 +16,7 @@ export interface OCRServiceConfig {
    *   1. Apple Vision (darwin only, when a provider has been registered)
    *   2. doCTR (ggml-backed CRNN+DBNet via native/doctr.cpp)
    *
-   * There is no tesseract / onnx fallback — the migration removed both.
+   * Tesseract and ONNX are intentionally outside this backend chain.
    * If neither backend can initialize, `initialize()` throws.
    */
   backend?: OCRBackendName;

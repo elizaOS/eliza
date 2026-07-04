@@ -1,3 +1,7 @@
+/**
+ * Worker-thread OCR loop that reads captured frames from shared buffers.
+ */
+
 import { parentPort, workerData } from "node:worker_threads";
 import { getSharp } from "../image/sharp-compat";
 import { OCRService } from "../ocr-service";

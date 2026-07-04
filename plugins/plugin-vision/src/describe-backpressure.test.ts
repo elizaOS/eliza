@@ -1,3 +1,7 @@
+/**
+ * Deterministic clock tests for the describe-loop backpressure controller.
+ */
+
 import { describe, expect, it } from "vitest";
 import { DescribeBackpressureController } from "./describe-backpressure";
 

@@ -1,3 +1,7 @@
+/**
+ * Provider tests for composing fresh and stale vision context into agent state.
+ */
+
 import type { IAgentRuntime, Memory, State } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { visionProvider } from "./provider";

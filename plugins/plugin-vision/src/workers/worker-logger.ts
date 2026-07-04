@@ -1,8 +1,9 @@
+/**
+ * Worker-safe logger that forwards worker-thread log messages to the main thread.
+ */
+
 import { parentPort } from "node:worker_threads";
 
-/**
- * Worker-safe logger that sends log messages to the main thread
- */
 export const logger = {
   info: (message: string, ...args: unknown[]) => {
     const logMessage = {

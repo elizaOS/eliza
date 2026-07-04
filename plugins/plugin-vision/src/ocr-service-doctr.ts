@@ -1,20 +1,12 @@
-// doctr-based OCR backend — ggml runtime via `native/doctr.cpp/`.
-//
-// Replaces the previous PP-OCRv5 / onnxruntime-node path. Two-stage pipeline:
-//   1. Detection (db_mobilenet_v3_large + DBNet head) — produces a probability
-//      map at H/4 × W/4.
-//   2. Contour → bbox post-processing (this file).
-//   3. Recognition (crnn_mobilenet_v3_small + CTC) — per-crop logits.
-//   4. CTC greedy decode (this file).
-//
-// The C++ side runs only the forward passes. Post-processing is pure TS to
-// keep the native surface minimal and to share the same decode logic with
-// native OCR providers that return logits. Apple Vision returns text directly so its
-// recognition path skips steps 2-4).
-//
-// **No fallback** — if doctr.cpp + GGUFs aren't available the service throws
-// a clear error and the chain in `ocr-service.ts` falls through to the next
-// backend (apple-vision on darwin) or surfaces the error to the caller.
+/**
+ * doCTR OCR backend using the ggml runtime under `native/doctr.cpp`.
+ *
+ * The native side runs DBNet/CRNN forward passes; TypeScript owns contour
+ * post-processing and CTC greedy decode so the native ABI stays small and the
+ * decode logic can be shared. If libraries or GGUFs are unavailable, this
+ * backend throws clearly and the OCR chain decides whether another backend can
+ * handle the request.
+ */
 
 import { logger } from "@elizaos/core";
 import { getSharp } from "./image/sharp-compat";

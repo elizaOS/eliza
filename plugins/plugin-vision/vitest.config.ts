@@ -1,3 +1,7 @@
+/**
+ * Vitest configuration for plugin-vision unit and integration suites.
+ */
+
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({

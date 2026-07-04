@@ -1,3 +1,7 @@
+/**
+ * Mobile camera registry and Capacitor bridge tests for native frame sources.
+ */
+
 import { afterEach, describe, expect, it } from "vitest";
 import type { MobileCameraSource } from "./capacitor-camera";
 import {

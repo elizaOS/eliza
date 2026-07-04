@@ -1,3 +1,8 @@
+/**
+ * Runtime plugin registration for vision services, actions, providers, routes,
+ * OCR backends, and computeruse bridge providers.
+ */
+
 import type { Plugin } from "@elizaos/core";
 import {
   isAndroidMobile,

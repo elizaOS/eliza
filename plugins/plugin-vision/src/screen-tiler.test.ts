@@ -1,3 +1,7 @@
+/**
+ * Screenshot tiling tests for tile dimensions and absolute-coordinate recovery.
+ */
+
 import sharp from "sharp";
 import { describe, expect, it } from "vitest";
 import {

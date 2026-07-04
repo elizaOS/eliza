@@ -1,5 +1,6 @@
-// Integration test: simulate a memory-pressure event on a fake arbiter and
-// verify that registered vision sub-services (YOLO + OCR) get released.
+/**
+ * Lifecycle integration test for releasing registered vision sub-services on pressure.
+ */
 
 import { describe, expect, it, vi } from "vitest";
 import { type IModelArbiter, VisionServiceLifecycleManager } from "./lifecycle";

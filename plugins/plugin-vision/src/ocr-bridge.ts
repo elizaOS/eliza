@@ -1,3 +1,8 @@
+/**
+ * Runtime service for renderer-provided OCR requests, used by mobile/native
+ * bridges that can read text from captured screen images.
+ */
+
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
 
 export const OCR_BRIDGE_SERVICE_TYPE = "vision-ocr-bridge";

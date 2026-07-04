@@ -1,14 +1,10 @@
-// PersonDetector — dedicated person-detection model.
-//
-// Strategy:
-//   - Default to a class-filtered YOLOv8n run ("person"-only). This is fast,
-//     accurate, and reuses a single model file for both general object
-//     detection and person detection.
-//   - Pose data (keypoints) is not produced here; a ggml pose backend is
-//     pending, and the service falls back to heuristic person detection.
-//
-// Returning `PersonInfo` rather than a generic detection makes this a drop-in
-// replacement for the heuristic person detection in `service.ts`.
+/**
+ * Person detector that adapts class-filtered YOLO detections into `PersonInfo`
+ * records for the vision service.
+ *
+ * Pose keypoints are not produced here; callers combine this with heuristic or
+ * future pose backends when they need orientation data.
+ */
 
 import { logger } from "@elizaos/core";
 import type { PersonInfo } from "./types";

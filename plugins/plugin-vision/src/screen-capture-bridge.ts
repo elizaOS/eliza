@@ -1,13 +1,10 @@
-// Android agent-triggered screen-capture bridge (renderer-pulled).
-//
-// On Android the agent runs in a musl bun process with no Capacitor and no
-// agent->renderer push channel (the local-IPC base never opens a WebSocket).
-// So screen capture is renderer-PULLED: the agent enqueues a capture request
-// here; the renderer interval-polls `GET /api/vision/capture-requests`, takes a
-// frame via the Capacitor ScreenCapture plugin (MediaProjection), and POSTs the
-// PNG back to `POST /api/vision/screen-frame`, which calls `submitFrame` to
-// resolve the matching pending promise. The JNI loopback already forwards any
-// `/api/...` path, so no Java/Kotlin change is needed.
+/**
+ * Android screen-capture bridge for agent-triggered, renderer-pulled frames.
+ *
+ * The agent runs outside Capacitor and cannot push to the renderer, so it
+ * enqueues requests here. The renderer polls, captures via MediaProjection, and
+ * posts PNG frames back to resolve matching promises.
+ */
 
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
 

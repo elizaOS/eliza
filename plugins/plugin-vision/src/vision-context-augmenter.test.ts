@@ -1,3 +1,7 @@
+/**
+ * Vision context augmenter tests for OCR, object, and face prompt enrichment.
+ */
+
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";

@@ -1,20 +1,11 @@
-// face-detector-ggml.ts — ggml-backed BlazeFace binding.
-//
-// bun:ffi binding for the BlazeFace head exposed by the standalone
-// `packages/native/plugins/face-cpp/` library. This is the ggml-backed
-// replacement for the removed ONNX detector surface. It
-// exposes the same surface (`MediaPipeFaceConfig`, `MediaPipeFaceDetection`,
-// `BlazeFaceGgmlDetector` modeled on `MediaPipeFaceDetector`) so existing
-// callers can opt into the native backend without touching call sites.
-//
-// The C ABI is frozen but some native builds return `-ENOSYS` from
-// `face_detect_open` / `face_detect`. `BlazeFaceGgmlDetector.isAvailable()`
-// returns false until both the compiled `libface.<so|dylib|dll>` and the
-// BlazeFace GGUF artifact exist.
-// Until those land, every public method falls through to a clear error —
-// there is no silent fallback to a different backend.
-//
-// See `packages/native/plugins/face-cpp/AGENTS.md` for the port plan.
+/**
+ * ggml-backed BlazeFace binding for the native face-cpp detector surface.
+ *
+ * The C ABI is fixed, but native builds may report unsupported operations until
+ * both the compiled library and BlazeFace GGUF artifact are present. Availability
+ * checks return false until the full detector path can run, and public methods
+ * fail clearly rather than falling back to another backend.
+ */
 
 import { promises as fs } from "node:fs";
 import * as os from "node:os";

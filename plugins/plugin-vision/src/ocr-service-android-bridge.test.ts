@@ -1,3 +1,7 @@
+/**
+ * Mapping tests for native Android OCR words into shared OCR result records.
+ */
+
 import { describe, expect, it } from "vitest";
 import type { OcrBridgeWord } from "./ocr-bridge.js";
 import { mapOcrWordsToResult } from "./ocr-service-android-bridge.js";

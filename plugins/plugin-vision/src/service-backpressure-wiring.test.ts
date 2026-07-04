@@ -1,15 +1,14 @@
+/**
+ * Integration coverage for VisionService wiring into describe-loop backpressure.
+ *
+ * The pure controller is unit-tested separately; this file exercises runtime
+ * arbiter subscription, pressure propagation, manual resume, stats, and stop cleanup.
+ */
+
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import type { IModelArbiter } from "./lifecycle";
 import { VisionService } from "./service";
-
-// Integration coverage for the VisionService ↔ DescribeBackpressureController
-// wiring shipped in PR #9688 (#9581 / #9105 M8). The pure controller is unit-
-// tested in describe-backpressure.test.ts and the WS1 bridge in
-// ws1-arbiter-bridge.test.ts; this file exercises the service glue itself:
-// attachMemoryArbiter() resolving + subscribing the arbiter, the onPressure →
-// setPressure("critical") cascade, resumeDescribeLoop(), getBackpressureStats(),
-// idempotent re-attach, and unsubscribe on stop().
 
 type PressureCb = (holders: string[]) => void;
 

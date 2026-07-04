@@ -1,3 +1,8 @@
+/**
+ * Vision plugin configuration schema and runtime-setting parser for camera,
+ * screen, OCR, detector, and VLM update behavior.
+ */
+
 import { logger } from "@elizaos/core";
 import { z } from "zod";
 import type { VisionConfig, VisionMode } from "./types";

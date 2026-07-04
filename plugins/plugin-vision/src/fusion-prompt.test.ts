@@ -1,10 +1,9 @@
-// fusion-prompt.test.ts — buildSceneDescriptionPrompt detector fusion (#9105).
-//
-// The Gemma-4 VLM describe prompt must carry the detectors' output (OCR text,
-// YOLO objects, recognized faces) as additional context alongside the image.
-// These assert the pure prompt-builder injects each detector channel, caps and
-// dedupes them, and omits the keys entirely when a channel is empty so the
-// detection-off path is byte-for-byte unchanged.
+/**
+ * Prompt-fusion coverage for injecting detector output into VLM scene descriptions.
+ *
+ * OCR text, YOLO objects, and recognized faces are added as bounded context while
+ * the detection-off path remains byte-for-byte unchanged.
+ */
 
 import { describe, expect, it } from "vitest";
 import {

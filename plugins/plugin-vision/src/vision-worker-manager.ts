@@ -1,3 +1,8 @@
+/**
+ * Worker-thread manager for offloading screen capture and OCR processing from
+ * the main vision service loop.
+ */
+
 import * as path from "node:path";
 import { TextDecoder } from "node:util";
 import { Worker } from "node:worker_threads";

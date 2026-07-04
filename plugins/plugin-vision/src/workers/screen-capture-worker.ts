@@ -1,3 +1,7 @@
+/**
+ * Worker-thread screen capture loop that writes frames into shared buffers.
+ */
+
 import { exec } from "node:child_process";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
@@ -315,10 +319,10 @@ class ScreenCaptureWorker {
         Atomics.store(this.atomicState, this.WRITE_LOCK_INDEX, 0);
       }
 
-      // Clean up temp file
+      // Each capture owns one temporary image file.
       await fs.unlink(tempFile).catch(() => {});
     } catch (error) {
-      // Clean up temp file on error
+      // Failed captures leave the same temporary file path behind.
       await fs.unlink(tempFile).catch(() => {});
       throw error;
     }

@@ -1,3 +1,8 @@
+/**
+ * Image validation helpers for action inputs and captures before they are sent
+ * to vision models or returned as media attachments.
+ */
+
 import { getSharp, type SharpMetadata } from "./image/sharp-compat";
 
 export const MAX_VISION_IMAGE_BYTES = 25 * 1024 * 1024;

@@ -1,3 +1,7 @@
+/**
+ * Hardening coverage for VISION capture inputs and media payload bounds.
+ */
+
 import {
   ContentType,
   type HandlerCallback,

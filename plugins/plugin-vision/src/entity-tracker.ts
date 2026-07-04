@@ -1,3 +1,8 @@
+/**
+ * In-memory entity tracker that turns detections into stable visual-world
+ * entities with active and recently-left presence windows.
+ */
+
 import { createUniqueUuid, type IAgentRuntime, logger } from "@elizaos/core";
 import type {
   BoundingBox,
@@ -263,12 +268,12 @@ export class EntityTracker {
       }
     }
 
-    // Clean up old "recently left" entries
+    // Recently-left entries are short-lived presence signals, not history.
     this.worldState.recentlyLeft = this.worldState.recentlyLeft.filter(
       (entry) => timestamp - entry.leftAt < this.CLEANUP_THRESHOLD,
     );
 
-    // Clean up very old entities
+    // Entities with no recent observations are evicted from the active world.
     for (const [entityId, entity] of this.worldState.entities) {
       if (timestamp - entity.lastSeen > this.CLEANUP_THRESHOLD * 10) {
         this.worldState.entities.delete(entityId);

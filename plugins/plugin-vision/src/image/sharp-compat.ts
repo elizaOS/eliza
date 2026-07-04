@@ -1,18 +1,11 @@
-// sharp-compat.ts — lazy sharp resolver + pure-JS fallback.
-//
-// plugin-vision is loadable on mobile (Android bun-musl) only if its module
-// graph does not pull native code at module-eval. `sharp` loads the libvips
-// native addon the moment it is imported, so every runtime call site goes
-// through `getSharp()` here, which imports `sharp` *dynamically* (inside the
-// function) and caches the resolved factory. On a host where the native
-// binary loads (desktop glibc/musl), that is real `sharp` and performance is
-// unchanged. Where it cannot load, `getSharp()` returns a pure-JS shim backed
-// by `jimp` (no native deps) that is API-compatible for exactly the operations
-// the codebase uses: metadata, resize{fit:"fill"}, removeAlpha, ensureAlpha,
-// extract, extend, trim, clone, png, jpeg, raw, toBuffer.
-//
-// The shim is not a general sharp reimplementation — it implements the subset
-// in `sharp-compat.test.ts`, which diffs shim output against native sharp.
+/**
+ * Lazy image processing resolver that keeps plugin-vision loadable on mobile.
+ *
+ * Runtime call sites reach native sharp through dynamic import so Android
+ * bun-musl does not evaluate libvips at module load. Hosts without native sharp
+ * receive a Jimp-backed shim for the exact operations covered in
+ * `sharp-compat.test.ts`.
+ */
 
 import { deflateSync } from "node:zlib";
 import { Jimp, JimpMime } from "jimp";

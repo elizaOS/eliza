@@ -1,3 +1,7 @@
+/**
+ * Bridge tests for routing scene descriptions through the eliza-1 image model slot.
+ */
+
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { VisionService } from "./service";

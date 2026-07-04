@@ -1,3 +1,7 @@
+/**
+ * Screen-element fusion tests for merging OCR, accessibility, and VLM boxes.
+ */
+
 import { describe, expect, it } from "vitest";
 import {
   type AxNodeLike,

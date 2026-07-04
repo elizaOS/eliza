@@ -1,3 +1,8 @@
+/**
+ * Vision action handler that routes structured sub-operations for capture,
+ * describe, mode changes, entity naming, and screen element grounding.
+ */
+
 import {
   type Action,
   type ActionExample,

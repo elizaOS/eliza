@@ -1,3 +1,8 @@
+/**
+ * File-based audio capture service that records short clips from the host
+ * microphone and sends them through the runtime transcription model.
+ */
+
 import { exec } from "node:child_process";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";

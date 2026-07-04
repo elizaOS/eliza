@@ -1,27 +1,17 @@
-// DescribeBackpressureController — the owner of the "run the expensive VLM
-// describe this tick?" decision for VisionService's continuous loops
-// (#9105 milestone 8 / #9581). The DirtyTileDescriber / full-frame
-// `IMAGE_DESCRIPTION` call is the dominant token + RAM cost of the loop; the
-// cheap OCR/YOLO/dHash steps keep running while describing is paused. Two
-// independent pause signals:
-//
-//   1. **Arbiter memory-pressure** — the external WS1 signal cascaded from
-//      `@elizaos/plugin-local-inference`'s MemoryArbiter (`memory_pressure`
-//      events). The WS1 bridge only delivers *pressure* events, never the
-//      recovery (`nominal`) edge, so a pressure signal pauses describing for a
-//      cooldown window and auto-resumes after that window of silence. A direct
-//      arbiter that does report `nominal` clears the pause immediately.
-//   2. **Local RSS GROWTH over a captured baseline** — a self-contained
-//      low-RAM guard (`MAX_MEMORY_USAGE_MB`) so the loop throttles even when no
-//      arbiter is registered (standalone / on-device), the common case for a
-//      local agent on a memory-constrained machine. The cap measures
-//      *vision-attributable growth* over the RSS baseline captured on the first
-//      describe tick — NOT absolute process RSS. A local agent mmaps multi-GB
-//      GGUF text + vision models, so its steady-state RSS routinely exceeds any
-//      reasonable MB cap; comparing absolute RSS to the cap would pause
-//      describing forever. Measuring growth over the loop's starting footprint
-//      means a large-but-steady baseline never trips the guard, while a genuine
-//      runaway still does. This signal is always-on and self-recovering:
+/**
+ * Backpressure controller for deciding whether VisionService should run the
+ * expensive IMAGE_DESCRIPTION step on a continuous-loop tick.
+ *
+ * DirtyTileDescriber and full-frame VLM calls dominate token and RAM cost, while
+ * OCR, YOLO, and dHash steps can keep running during a describe pause. Pauses
+ * come from either external memory-pressure events or local RSS growth measured
+ * over the loop's first-describe baseline, so large-but-steady model RSS does
+ * not permanently suppress describing.
+ *
+ * External WS1 pressure events pause for a cooldown because that bridge may not
+ * deliver the nominal recovery edge; direct arbiters that report nominal clear
+ * the pause immediately.
+ */
 //      describing resumes the moment RSS drops back within `baseline + cap`.
 //
 // While paused the describe step is skipped (backpressure) and the skip is

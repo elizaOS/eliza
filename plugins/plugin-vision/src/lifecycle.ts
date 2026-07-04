@@ -1,19 +1,12 @@
-// VisionServiceLifecycleManager
-//
-// Manages dynamic load/unload of vision sub-services (YOLO, RapidOCR,
-// MediaPipe face, MoveNet pose). Two ownership signals drive release:
-//
-//   1. **Idle watchdog** — if a sub-service hasn't been queried for
-//      `idleUnloadMs` (default 60s), it's released.
-//   2. **Memory-pressure listener** — when an external arbiter signals
-//      pressure, the coldest sub-services are released first.
-//
-// The arbiter is owned by WS1 (`@elizaos/plugin-local-inference`). Until that
-// service is registered on the runtime we operate in standalone mode: idle
-// watchdog still ticks, but no external pressure signal arrives.
-//
-// Acquisition is opt-in: a sub-service that registers an `acquire` callback
-// will be re-loaded on demand the next time it's used after a release.
+/**
+ * Lifecycle manager for dynamically loading and releasing vision sub-services
+ * such as YOLO, OCR, face detection, and pose backends.
+ *
+ * Releases are driven by idle time and optional external memory-pressure
+ * signals. When no arbiter is registered, the idle watchdog still runs in
+ * standalone mode. Services that provide an acquire callback are reloaded on
+ * demand after release.
+ */
 
 import { logger } from "@elizaos/core";
 

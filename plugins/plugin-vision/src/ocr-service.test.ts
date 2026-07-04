@@ -1,3 +1,7 @@
+/**
+ * OCR service tests for backend availability and structured text extraction.
+ */
+
 import { describe, expect, it } from "vitest";
 import { extractStructuredDataFromOCR, OCRService } from "./ocr-service";
 import { DoctrOCRService, shouldPreferAppleVision } from "./ocr-service-doctr";

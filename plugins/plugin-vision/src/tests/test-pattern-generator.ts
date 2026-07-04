@@ -1,3 +1,7 @@
+/**
+ * Generated image fixtures for exercising screen tiling and OCR geometry paths.
+ */
+
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { logger } from "@elizaos/core";

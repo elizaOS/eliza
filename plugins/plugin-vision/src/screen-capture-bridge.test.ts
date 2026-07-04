@@ -1,5 +1,9 @@
-// Pure correlation tests for the renderer-pulled screen-capture bridge.
-// No device, no Capacitor — exercises the request/queue/submit handshake only.
+/**
+ * Pure correlation tests for the renderer-pulled screen-capture bridge.
+ *
+ * These cover the request, queue, and submit handshake without a device or
+ * Capacitor host.
+ */
 
 import { describe, expect, it } from "vitest";
 import {

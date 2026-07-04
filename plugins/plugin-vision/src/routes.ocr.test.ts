@@ -1,3 +1,7 @@
+/**
+ * HTTP route tests for draining OCR bridge requests and accepting native results.
+ */
+
 import { describe, expect, it } from "vitest";
 import { OcrBridgeService, type OcrBridgeWord } from "./ocr-bridge.js";
 import { ocrRequestsRoute, ocrResultRoute } from "./routes.js";

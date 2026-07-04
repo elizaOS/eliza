@@ -1,3 +1,7 @@
+/**
+ * Image input validation tests for encoded buffers and model-safe data URLs.
+ */
+
 import sharp from "sharp";
 import { describe, expect, it } from "vitest";
 import {

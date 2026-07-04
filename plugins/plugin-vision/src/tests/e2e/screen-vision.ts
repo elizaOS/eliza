@@ -1,3 +1,7 @@
+/**
+ * End-to-end screen-vision suite for OCR and image-description runtime behavior.
+ */
+
 import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { createUniqueUuid } from "@elizaos/core";
 import { visionAction } from "../../action";

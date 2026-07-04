@@ -1,3 +1,7 @@
+/**
+ * Runtime smoke suite for plugin-vision service, provider, and action surfaces.
+ */
+
 import type { Action, Content, IAgentRuntime, Provider } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import type { VisionService } from "../../service";

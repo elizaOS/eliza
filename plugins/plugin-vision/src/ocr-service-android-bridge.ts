@@ -1,3 +1,8 @@
+/**
+ * Coordinate-aware OCR adapter that delegates screen-image recognition to the
+ * Android renderer bridge and maps returned words into vision OCR blocks.
+ */
+
 import { type IAgentRuntime, logger } from "@elizaos/core";
 import {
   OCR_BRIDGE_SERVICE_TYPE,

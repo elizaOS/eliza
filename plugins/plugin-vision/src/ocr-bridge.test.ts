@@ -1,3 +1,7 @@
+/**
+ * Queue and timeout tests for renderer-driven OCR bridge requests.
+ */
+
 import { describe, expect, it } from "vitest";
 import { OcrBridgeService, type OcrBridgeWord } from "./ocr-bridge.js";
 

@@ -1,3 +1,8 @@
+/**
+ * Browser boundary export for plugin-vision; direct browser use is unsupported
+ * and callers should route vision work through a server-side runtime.
+ */
+
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 

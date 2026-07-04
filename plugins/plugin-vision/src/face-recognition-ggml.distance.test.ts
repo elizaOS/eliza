@@ -1,10 +1,12 @@
+/**
+ * Geometry tests for face-embedding distance helpers used by identity matching.
+ */
+
 import { describe, expect, it } from "vitest";
 import { cosineDistance, l2Distance } from "./face-recognition-ggml.js";
 
 const f = (...v: number[]) => new Float32Array(v);
 
-// #9105 vision — face-embedding distance metrics gate identity matching, so
-// their geometry must be exact (and dimension mismatches must fail loud).
 describe("face-recognition distance metrics", () => {
   it("cosineDistance: 0 identical, 1 orthogonal, 2 opposite (unit vectors)", () => {
     expect(cosineDistance(f(1, 0), f(1, 0))).toBeCloseTo(0, 6);

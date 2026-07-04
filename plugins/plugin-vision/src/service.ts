@@ -1,4 +1,7 @@
-// Vision service for camera integration and scene analysis
+/**
+ * Long-running vision service for camera/screen capture, scene description,
+ * OCR, object/person detection, entity tracking, and audio transcription.
+ */
 
 import { exec } from "node:child_process";
 import * as fs from "node:fs/promises";
@@ -2241,12 +2244,12 @@ export class VisionService extends Service {
           // Read the captured image
           const imageBuffer = await fs.readFile(tempFile);
 
-          // Clean up temp file
+          // Command-line camera tools write through a temporary image file.
           await fs.unlink(tempFile).catch(() => {});
 
           return imageBuffer;
         } catch (error) {
-          // Clean up temp file on error
+          // Failed captures still need to release temporary image files.
           await fs.unlink(tempFile).catch(() => {});
           throw error;
         }

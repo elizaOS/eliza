@@ -1,12 +1,11 @@
-// face-detector-mediapipe.ts — DEPRECATED.
-//
-// The previous implementation used `onnxruntime-node` to run BlazeFace. That
-// backend is no longer shipped. This compatibility class reports unavailable
-// and the runtime uses the configured face-recognition backend instead.
-//
-// Kept as a migration shim so existing imports (test fixtures) continue to
-// compile without touching the test layout. The class is internal and not
-// wired into the production `VisionService`.
+/**
+ * Compatibility face-detector surface for callers that still import the
+ * MediaPipe-shaped BlazeFace types.
+ *
+ * The runtime uses the configured ggml face backend; this internal class reports
+ * unavailable so stale imports keep compiling without becoming a production
+ * detector path.
+ */
 
 import { logger } from "@elizaos/core";
 import type { BoundingBox } from "./types";

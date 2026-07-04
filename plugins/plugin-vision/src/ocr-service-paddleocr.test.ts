@@ -1,15 +1,16 @@
+/**
+ * Parser and mapper tests for the PaddleOCR Python wrapper JSON contract.
+ *
+ * CI exercises the pure conversion path without requiring a real PaddleOCR
+ * install while keeping the wrapper and parser shape anchored.
+ */
+
 import { describe, expect, it } from "vitest";
 import {
   mapPaddleOcrJsonToResult,
   parsePaddleOcrJson,
 } from "./ocr-service-paddleocr.js";
 
-/**
- * The PaddleOCR provider (#9581) drives a Python wrapper that emits a stable
- * JSON shape (`[{ box:[[x,y]x4], text, conf }, …]`). These tests pin the pure
- * parser + mapper against that contract so CI never needs a real PaddleOCR
- * install and the wrapper↔parser format has a single source of truth.
- */
 describe("parsePaddleOcrJson (#9581)", () => {
   it("parses well-formed detections", () => {
     const json = JSON.stringify([

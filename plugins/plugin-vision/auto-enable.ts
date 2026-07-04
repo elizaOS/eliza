@@ -1,9 +1,10 @@
-// Auto-enable check for @elizaos/plugin-vision.
-//
-// Plugin manifest entry-point — referenced by package.json's
-// `elizaos.plugin.autoEnableModule`. Keep this module light: env reads only,
-// no service init, no transitive imports of the full plugin runtime. The
-// auto-enable engine loads dozens of these per boot.
+/**
+ * Auto-enable predicate for @elizaos/plugin-vision.
+ *
+ * This package-manifest entrypoint stays limited to config inspection so the
+ * auto-enable engine can load it without initializing vision services or native
+ * detector dependencies.
+ */
 import type { PluginAutoEnableContext } from "@elizaos/core";
 
 function isFeatureEnabled(
