@@ -10,6 +10,7 @@ import {
 import { tmpdir } from "node:os";
 import nodePath from "node:path";
 import {
+  buildCommandEnv,
   type CodingRemoteRunnerCommandRunner,
   createHandler,
   ensureWorkspace,
@@ -168,5 +169,121 @@ describe("coding remote runner HTTP runner", () => {
     ]);
     expect(body.stdout).toContain(workspaceRealPath);
     expect(body.stdout).toContain(":ok");
+  });
+
+  it("does not inherit runner secrets into spawned commands", () => {
+    const config = loadConfig({
+      ELIZA_CODING_WORKSPACE: workspaceRoot,
+      ELIZA_REMOTE_RUNNER_HTTP_TOKEN: "token",
+    });
+    process.env.ELIZA_REMOTE_RUNNER_HTTP_TOKEN = "super-secret-token";
+    process.env.SECRET_CLOUD_KEY = "leak-me";
+    process.env.PATH = process.env.PATH ?? "/usr/bin";
+    try {
+      const built = buildCommandEnv({ CALLER_VAR: "ok" }, config);
+      // Caller-supplied vars pass through; PATH (allowlisted) is available;
+      // runner secrets and arbitrary host vars are withheld.
+      expect(built.CALLER_VAR).toBe("ok");
+      expect(built.PATH).toBeDefined();
+      expect(built.ELIZA_REMOTE_RUNNER_HTTP_TOKEN).toBeUndefined();
+      expect(built.SECRET_CLOUD_KEY).toBeUndefined();
+    } finally {
+      delete process.env.SECRET_CLOUD_KEY;
+    }
+  });
+
+  it("drops a caller-supplied runner token from the command env", () => {
+    const config = loadConfig({
+      ELIZA_CODING_WORKSPACE: workspaceRoot,
+      ELIZA_REMOTE_RUNNER_HTTP_TOKEN: "token",
+    });
+    const built = buildCommandEnv(
+      { ELIZA_REMOTE_RUNNER_HTTP_TOKEN: "stolen", KEEP: "yes" },
+      config,
+    );
+    expect(built.ELIZA_REMOTE_RUNNER_HTTP_TOKEN).toBeUndefined();
+    expect(built.KEEP).toBe("yes");
+  });
+
+  it("never forwards the runner token even if allowlisted", async () => {
+    const config = loadConfig({
+      ELIZA_CODING_WORKSPACE: workspaceRoot,
+      ELIZA_REMOTE_RUNNER_HTTP_TOKEN: "token",
+      ELIZA_REMOTE_RUNNER_ENV_ALLOWLIST:
+        "ELIZA_REMOTE_RUNNER_HTTP_TOKEN,REMOTE_RUNNER_HTTP_TOKEN",
+    });
+    // The denylist should have stripped the secrets from the allowlist.
+    expect(config.commandEnvAllowlist).not.toContain(
+      "ELIZA_REMOTE_RUNNER_HTTP_TOKEN",
+    );
+    expect(config.commandEnvAllowlist).not.toContain(
+      "REMOTE_RUNNER_HTTP_TOKEN",
+    );
+  });
+
+  it("blocks command execution when unauthenticated even with the escape hatch on", async () => {
+    const config = loadConfig({
+      ELIZA_CODING_WORKSPACE: workspaceRoot,
+      ELIZA_REMOTE_RUNNER_ALLOW_UNAUTHENTICATED: "1",
+    });
+    let ran = false;
+    const run = createHandler(config, {
+      commandRunner: async () => {
+        ran = true;
+        return { stdout: "", stderr: "", exitCode: 0, timedOut: false };
+      },
+    });
+    const response = await run(
+      request(
+        "/v1/processes/run",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ command: "/bin/true", timeoutMs: 5000 }),
+        },
+        false,
+      ),
+    );
+    expect(response.status).toBe(503);
+    expect(ran).toBe(false);
+  });
+
+  it("blocks unauthenticated workspace writes even with the escape hatch on", async () => {
+    const config = loadConfig({
+      ELIZA_CODING_WORKSPACE: workspaceRoot,
+      ELIZA_REMOTE_RUNNER_ALLOW_UNAUTHENTICATED: "1",
+    });
+    const response = await createHandler(config)(
+      request(
+        "/v1/fs/file?path=escape.txt",
+        { method: "PUT", body: "nope" },
+        false,
+      ),
+    );
+    expect(response.status).toBe(503);
+  });
+
+  it("still allows unauthenticated read-only routes under the escape hatch", async () => {
+    await writeFile(nodePath.join(workspaceRoot, "pub.txt"), "pub", "utf8");
+    const config = loadConfig({
+      ELIZA_CODING_WORKSPACE: workspaceRoot,
+      ELIZA_REMOTE_RUNNER_ALLOW_UNAUTHENTICATED: "1",
+    });
+    const run = createHandler(config);
+    const health = await run(request("/v1/health", {}, false));
+    expect(health.status).toBe(200);
+    const read = await run(request("/v1/fs/file?path=pub.txt", {}, false));
+    expect(read.status).toBe(200);
+    expect(await read.text()).toBe("pub");
+  });
+
+  it("defaults to a loopback bind address", () => {
+    const config = loadConfig({ ELIZA_CODING_WORKSPACE: workspaceRoot });
+    expect(config.hostname).toBe("127.0.0.1");
+    const explicit = loadConfig({
+      ELIZA_CODING_WORKSPACE: workspaceRoot,
+      HOST: "0.0.0.0",
+    });
+    expect(explicit.hostname).toBe("0.0.0.0");
   });
 });

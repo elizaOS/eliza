@@ -28,6 +28,7 @@ export type RunnerConfig = {
   maxReadBytes: number;
   commandTimeoutMs: number;
   maxCommandOutputBytes: number;
+  commandEnvAllowlist: string[];
 };
 
 export type CommandPayload = {
@@ -81,6 +82,41 @@ const DEFAULT_WORKSPACE_ROOT = "/workspace";
 const DEFAULT_MAX_READ_BYTES = 5 * 1024 * 1024;
 const DEFAULT_COMMAND_TIMEOUT_MS = 60_000;
 const DEFAULT_MAX_COMMAND_OUTPUT_BYTES = 1024 * 1024;
+// Bind to loopback by default so a runner is not reachable from sibling
+// containers / the pod network unless an operator explicitly opts in via HOST.
+const DEFAULT_HOSTNAME = "127.0.0.1";
+
+// Only these host env vars are forwarded into spawned commands. Everything else
+// (runner auth token, cloud credentials, provider API keys inherited by the
+// runner process, etc.) is withheld so a command cannot exfiltrate secrets that
+// merely happen to live in the runner's environment. Callers still pass their
+// own vars explicitly via the request `env`/`envs` field.
+const DEFAULT_COMMAND_ENV_ALLOWLIST: readonly string[] = [
+  "PATH",
+  "HOME",
+  "USER",
+  "LOGNAME",
+  "SHELL",
+  "TERM",
+  "TZ",
+  "LANG",
+  "LANGUAGE",
+  "LC_ALL",
+  "LC_CTYPE",
+  "TMPDIR",
+  "ELIZA_CODING_WORKSPACE",
+  "ELIZA_CODING_CONTAINER_WORKSPACE",
+  "ELIZA_SANDBOX_WORKDIR",
+  "ELIZA_SANDBOX_AGENT_RUNNERS",
+  "WORKSPACE_DIR",
+];
+
+// Secrets that must never be forwarded to a spawned command, even if an operator
+// adds them to the allowlist by mistake. Fail closed on the runner's own auth.
+const COMMAND_ENV_DENYLIST: ReadonlySet<string> = new Set([
+  "ELIZA_REMOTE_RUNNER_HTTP_TOKEN",
+  "REMOTE_RUNNER_HTTP_TOKEN",
+]);
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): RunnerConfig {
   const workspaceRoot =
@@ -89,7 +125,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): RunnerConfig {
     readEnv(env, "WORKSPACE_DIR") ??
     DEFAULT_WORKSPACE_ROOT;
   return {
-    hostname: readEnv(env, "HOST") ?? "0.0.0.0",
+    hostname: readEnv(env, "HOST") ?? DEFAULT_HOSTNAME,
     port: readPositiveInt(env, "PORT", DEFAULT_PORT),
     workspaceRoot: nodePath.resolve(workspaceRoot),
     containerWorkspaceRoot: normalizeContainerPath(
@@ -117,7 +153,40 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): RunnerConfig {
       "ELIZA_REMOTE_RUNNER_MAX_COMMAND_OUTPUT_BYTES",
       DEFAULT_MAX_COMMAND_OUTPUT_BYTES,
     ),
+    commandEnvAllowlist: loadCommandEnvAllowlist(env),
   };
+}
+
+function loadCommandEnvAllowlist(env: NodeJS.ProcessEnv): string[] {
+  const extra = readEnv(env, "ELIZA_REMOTE_RUNNER_ENV_ALLOWLIST");
+  const names = new Set<string>(DEFAULT_COMMAND_ENV_ALLOWLIST);
+  if (extra) {
+    for (const raw of extra.split(",")) {
+      const name = raw.trim();
+      if (name && !COMMAND_ENV_DENYLIST.has(name)) names.add(name);
+    }
+  }
+  return [...names];
+}
+
+// Build the environment for a spawned command from an allowlisted subset of the
+// runner's own env plus the caller-supplied vars. The full `process.env` is
+// never inherited, so runner-held secrets cannot leak into child processes.
+export function buildCommandEnv(
+  payloadEnvs: Record<string, string>,
+  config: RunnerConfig,
+): NodeJS.ProcessEnv {
+  const result: NodeJS.ProcessEnv = {};
+  for (const name of config.commandEnvAllowlist) {
+    if (COMMAND_ENV_DENYLIST.has(name)) continue;
+    const value = process.env[name];
+    if (typeof value === "string") result[name] = value;
+  }
+  for (const [name, value] of Object.entries(payloadEnvs)) {
+    if (COMMAND_ENV_DENYLIST.has(name)) continue;
+    result[name] = value;
+  }
+  return result;
 }
 
 export async function ensureWorkspace(config: RunnerConfig): Promise<void> {
@@ -155,6 +224,14 @@ const PRIVATE_ROUTE_HANDLERS: Record<string, CodingRemoteRunnerRouteHandler> = {
     runProcessResponse(request, context),
 };
 
+// Routes that execute code or mutate the workspace. These MUST present a valid
+// bearer token; the `allowUnauthenticated` escape hatch never applies to them,
+// so an unauthenticated caller can never reach the arbitrary-command runner.
+const TOKEN_REQUIRED_ROUTES: ReadonlySet<string> = new Set([
+  "POST /v1/processes/run",
+  "PUT /v1/fs/file",
+]);
+
 async function routeRequest(
   request: Request,
   url: URL,
@@ -164,10 +241,15 @@ async function routeRequest(
     return publicHealthResponse(context.config);
   }
 
-  const authError = authorize(request, context.config);
+  const routeKey = `${request.method} ${url.pathname}`;
+  const authError = authorize(
+    request,
+    context.config,
+    TOKEN_REQUIRED_ROUTES.has(routeKey),
+  );
   if (authError) return authError;
 
-  const handler = PRIVATE_ROUTE_HANDLERS[`${request.method} ${url.pathname}`];
+  const handler = PRIVATE_ROUTE_HANDLERS[routeKey];
   return handler
     ? await handler(request, url, context)
     : jsonResponse(404, { error: "not found" });
@@ -326,7 +408,7 @@ async function runCommandWithBun(
 ): Promise<CommandResult> {
   const child = bun.spawn([payload.command, ...payload.args], {
     cwd: payload.cwd,
-    env: { ...process.env, ...payload.envs },
+    env: buildCommandEnv(payload.envs, config),
     stdin: "ignore",
     stdout: "pipe",
     stderr: "pipe",
@@ -363,7 +445,7 @@ async function runCommandWithNode(
 ): Promise<CommandResult> {
   const child = spawnNodeProcess(payload.command, payload.args, {
     cwd: payload.cwd,
-    env: { ...process.env, ...payload.envs },
+    env: buildCommandEnv(payload.envs, config),
     stdio: ["ignore", "pipe", "pipe"],
   });
   const stdout = new BoundedOutput(config.maxCommandOutputBytes);
@@ -543,8 +625,20 @@ function timingSafeStringEqual(a: string, b: string): boolean {
   return timingSafeEqual(ab, bb);
 }
 
-function authorize(request: Request, config: RunnerConfig): Response | null {
+function authorize(
+  request: Request,
+  config: RunnerConfig,
+  tokenRequired: boolean,
+): Response | null {
   if (!config.token) {
+    // Command execution / workspace writes must never run unauthenticated, even
+    // when the operator sets ELIZA_REMOTE_RUNNER_ALLOW_UNAUTHENTICATED=1. Only
+    // read-only routes may honor the escape hatch.
+    if (tokenRequired) {
+      return jsonResponse(503, {
+        error: "Remote runner token is required for this route",
+      });
+    }
     return config.allowUnauthenticated
       ? null
       : jsonResponse(503, { error: "Remote runner token is not configured" });
