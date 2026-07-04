@@ -12,7 +12,7 @@ import type {
 	RoleGate,
 	RoleGateRole,
 } from "../types/contexts";
-import { lookupProviderCatalogContexts } from "../utils/context-catalog";
+import { lookupProviderCatalogContexts } from "../utils/context-catalog.ts";
 import { normalizeContextList } from "./context-normalization";
 
 // #9948: single source of truth for role ranking — delegates to CANONICAL_ROLE_RANK.

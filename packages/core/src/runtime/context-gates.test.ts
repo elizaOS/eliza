@@ -6,13 +6,13 @@
  */
 import { describe, expect, it } from "vitest";
 import type { AgentContext } from "../types/contexts";
-import type { RoleGateRole } from "./context-gates";
+import type { RoleGateRole } from "./context-gates.ts";
 import {
 	filterByContextGate,
 	filterProvidersByContextGate,
 	normalizeGateRole,
 	resolveProviderContextGate,
-} from "./context-gates";
+} from "./context-gates.ts";
 
 /**
  * Tests for the role-gate normalizer (#8801 / #9943). normalizeGateRole canon-

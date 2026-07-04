@@ -60,7 +60,7 @@ import {
 	type CandidateActionBackstopRule,
 	getCandidateActionBackstopRules,
 } from "../runtime/candidate-action-backstop";
-import { filterProvidersByContextGate } from "../runtime/context-gates";
+import { filterProvidersByContextGate } from "../runtime/context-gates.ts";
 import { computePrefixHashes, hashString } from "../runtime/context-hash";
 import {
 	appendContextEvent,
