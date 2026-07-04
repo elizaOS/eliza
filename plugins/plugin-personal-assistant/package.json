@@ -59,7 +59,11 @@
     "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist",
     "build:js": "bun run clean && tsup --config tsup.config.ts",
     "build:types": "tsc --noCheck -p tsconfig.build.json",
-    "typecheck": "tsc --noEmit -p tsconfig.build.json"
+    "typecheck": "tsc --noEmit -p tsconfig.build.json",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format ."
   },
   "dependencies": {
     "@capacitor/core": "8.4.0",

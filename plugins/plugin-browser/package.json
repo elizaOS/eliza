@@ -30,6 +30,10 @@
   },
   "scripts": {
     "typecheck": "tsgo --noEmit -p tsconfig.json",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format .",
     "test": "vitest run",
     "test:real-chromium": "bun run test:real:external && bun run test:real:miniwob && bun run test:real:grounding",
     "test:real:chromium": "bun run test:real:external && bun run test:real:miniwob && bun run test:real:grounding",

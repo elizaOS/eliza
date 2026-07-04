@@ -55,8 +55,12 @@
   },
   "scripts": {
     "build": "bun run build.ts",
-    "check": "tsc --noEmit",
+    "typecheck": "tsgo --noEmit -p tsconfig.json",
+    "check": "bun run typecheck",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format .",
     "test": "vitest run --config ./vitest.config.ts",
     "test:watch": "vitest --config ./vitest.config.ts",
     "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist"
