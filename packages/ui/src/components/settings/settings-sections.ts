@@ -185,8 +185,35 @@ export const SECTION_HUE_MEDALLION_CLASS: Record<SettingsSectionHue, string> = {
   slate: "bg-surface text-txt-strong  ",
 };
 
-/** Per-section visuals + component, keyed by the id declared in the meta list. */
-interface SectionVisual {
+/**
+ * Canonical, per-id settings-section definition: a single declaration that
+ * carries BOTH the pure-data catalog fields (id / label / group / aliases) AND
+ * the React visuals (icon / tone / hue / component) for one section. Every
+ * built-in section — catalog and non-catalog alike — is declared exactly once
+ * in {@link BUILTIN_SECTION_DEFINITIONS}, which a single loop registers.
+ *
+ * Invariant: the catalog subset (`catalog !== false`) is the pure-data set that
+ * app-core's `dev-route-catalog` parity test mirrors through
+ * `SETTINGS_SECTION_META`; {@link assertMetaCatalogParity} enforces that those
+ * definitions match META in id, order, label, group, and aliases (both
+ * directions) at module load. `catalog: false` marks a section that registers
+ * into Settings but stays out of that pinned QA catalog — the late-registered
+ * Cloud group (`cloud-overview`, `cloud-agents`) and cockpit runtime registry
+ * (`my-runtimes`).
+ */
+interface BuiltinSectionDefinition {
+  /** Stable id — URL hash + agent-surface address. */
+  id: string;
+  /** English display label (the i18n default value). Must match META when catalog. */
+  defaultLabel: string;
+  /** Top-level group. Custom groups (e.g. Cloud) allowed for non-catalog sections. */
+  group: SettingsSectionGroup | (string & {});
+  /**
+   * Extra friendly tokens for `/settings <token>`. For catalog sections this
+   * must equal the declared META aliases (parity-checked); non-catalog sections
+   * own their aliases here directly.
+   */
+  aliases?: readonly string[];
   icon: LucideIcon;
   tone: SettingsSectionTone;
   hue: SettingsSectionHue;
@@ -194,37 +221,83 @@ interface SectionVisual {
   labelKey: string;
   /** i18n key for the section header, when it differs from the label. */
   titleKey?: string;
+  /**
+   * English fallback for the section header, when it differs from
+   * {@link defaultLabel}. Used when the `titleKey` locale entry is absent. For
+   * catalog sections the header falls back to the nav label, so this is only
+   * needed for sections (e.g. the Cloud group) whose header text differs.
+   */
+  defaultTitle?: string;
   bodyClassName?: string;
   /** Hide unless Developer Mode is on. */
   developerOnly?: boolean;
   /** Hide on the cloud mobile build (no host machine). */
   hideOnCloud?: boolean;
+  /**
+   * Explicit sort order override. Catalog sections default to their META list
+   * index; the late-registered Cloud/runtime sections declare fractional orders
+   * that interleave with the built-in groups.
+   */
+  order?: number;
+  /**
+   * Whether this section is part of the pinned pure-data catalog mirrored by
+   * app-core's `dev-route-catalog` test (`SETTINGS_SECTION_META`). `true` (the
+   * default) = a built-in local section that MUST appear in META in the same
+   * order/label/group. `false` = a section that registers into Settings but is
+   * intentionally outside the QA catalog (Cloud group upsell/agents, cockpit
+   * runtimes).
+   */
+  catalog?: boolean;
   Component: ComponentType | LazyExoticComponent<ComponentType>;
 }
 
-const SECTION_VISUALS: Record<string, SectionVisual> = {
-  identity: {
+/**
+ * The single source of truth for every built-in settings section's full
+ * definition (catalog data + visuals + component). Order here is display order
+ * within the resolved group ordering. Catalog sections (`catalog !== false`)
+ * are parity-checked against `SETTINGS_SECTION_META`; non-catalog sections
+ * (`catalog: false`) live in the Cloud group / cockpit runtime registry and
+ * stay out of the pinned QA catalog.
+ */
+const BUILTIN_SECTION_DEFINITIONS: readonly BuiltinSectionDefinition[] = [
+  {
+    id: "identity",
+    defaultLabel: "Basics",
+    group: "agent",
+    aliases: ["basics", "profile"],
     icon: User,
     tone: "neutral",
     hue: "slate",
     labelKey: "settings.sections.identity.label",
     Component: IdentitySettingsSection,
   },
-  "ai-model": {
+  {
+    id: "ai-model",
+    defaultLabel: "Models & Providers",
+    group: "agent",
+    aliases: ["model", "models", "provider", "providers", "ai", "cloud"],
     icon: Brain,
     tone: "accent",
     hue: "accent",
     labelKey: "settings.sections.aimodel.label",
     Component: ProviderSwitcher,
   },
-  voice: {
+  {
+    id: "voice",
+    defaultLabel: "Voice",
+    group: "agent",
+    aliases: ["tts", "speech"],
     icon: Mic,
     tone: "accent",
     hue: "accent",
     labelKey: "settings.sections.voice.label",
     Component: VoiceSectionMount,
   },
-  capabilities: {
+  {
+    id: "capabilities",
+    defaultLabel: "Capabilities",
+    group: "agent",
+    aliases: ["abilities"],
     icon: SlidersHorizontal,
     tone: "accent",
     hue: "accent",
@@ -232,35 +305,53 @@ const SECTION_VISUALS: Record<string, SectionVisual> = {
     titleKey: "common.capabilities",
     Component: CapabilitiesSection,
   },
-  apps: {
+  {
+    id: "apps",
+    defaultLabel: "Apps",
+    group: "agent",
+    aliases: ["views"],
     icon: LayoutGrid,
     tone: "accent",
     hue: "accent",
     labelKey: "settings.sections.apps.label",
     Component: AppsManagementSection,
   },
-  connectors: {
+  {
+    id: "connectors",
+    defaultLabel: "Connectors",
+    group: "agent",
+    aliases: ["connections", "integrations"],
     icon: Webhook,
     tone: "accent",
     hue: "accent",
     labelKey: "settings.sections.connectors.label",
     Component: ConnectorsSection,
   },
-  runtime: {
+  {
+    id: "runtime",
+    defaultLabel: "Runtime",
+    group: "system",
     icon: Server,
     tone: "neutral",
     hue: "slate",
     labelKey: "settings.sections.runtime.label",
     Component: RuntimeSettingsSection,
   },
-  appearance: {
+  {
+    id: "appearance",
+    defaultLabel: "Appearance",
+    group: "system",
+    aliases: ["theme", "look"],
     icon: Palette,
     tone: "neutral",
     hue: "rose",
     labelKey: "settings.sections.appearance.label",
     Component: AppearanceSettingsSection,
   },
-  background: {
+  {
+    id: "background",
+    defaultLabel: "Background",
+    group: "system",
     icon: Wallpaper,
     tone: "neutral",
     hue: "rose",
@@ -268,7 +359,11 @@ const SECTION_VISUALS: Record<string, SectionVisual> = {
     // Chrome-light so the live wallpaper shows through while choices apply.
     Component: BackgroundSettingsSection,
   },
-  "remote-plugins": {
+  {
+    id: "remote-plugins",
+    defaultLabel: "Remote Plugins",
+    group: "system",
+    aliases: ["remote"],
     icon: Puzzle,
     tone: "accent",
     hue: "rose",
@@ -276,7 +371,11 @@ const SECTION_VISUALS: Record<string, SectionVisual> = {
     developerOnly: true,
     Component: RemotePluginHostSection,
   },
-  "wallet-rpc": {
+  {
+    id: "wallet-rpc",
+    defaultLabel: "Wallet & RPC",
+    group: "system",
+    aliases: ["wallet", "rpc"],
     icon: Wallet,
     tone: "neutral",
     hue: "slate",
@@ -284,28 +383,43 @@ const SECTION_VISUALS: Record<string, SectionVisual> = {
     bodyClassName: "p-4 sm:p-5",
     Component: WalletRpcSection,
   },
-  updates: {
+  {
+    id: "updates",
+    defaultLabel: "Updates",
+    group: "system",
+    aliases: ["update"],
     icon: RefreshCw,
     tone: "neutral",
     hue: "slate",
     labelKey: "settings.sections.updates.label",
     Component: ReleaseCenterView,
   },
-  advanced: {
+  {
+    id: "advanced",
+    defaultLabel: "Backup & Reset",
+    group: "system",
+    aliases: ["fine-tuning"],
     icon: Archive,
     tone: "neutral",
     hue: "slate",
     labelKey: "settings.sections.backupReset.label",
     Component: AdvancedSection,
   },
-  "app-permissions": {
+  {
+    id: "app-permissions",
+    defaultLabel: "App Permissions",
+    group: "security",
     icon: ShieldCheck,
     tone: "warn",
     hue: "amber",
     labelKey: "settings.sections.apppermissions.label",
     Component: AppPermissionsSection,
   },
-  permissions: {
+  {
+    id: "permissions",
+    defaultLabel: "Permissions",
+    group: "security",
+    aliases: ["perms"],
     icon: Shield,
     tone: "warn",
     hue: "amber",
@@ -313,14 +427,21 @@ const SECTION_VISUALS: Record<string, SectionVisual> = {
     titleKey: "common.permissions",
     Component: PermissionsSection,
   },
-  secrets: {
+  {
+    id: "secrets",
+    defaultLabel: "Vault",
+    group: "security",
+    aliases: ["vault", "keys"],
     icon: KeyRound,
     tone: "warn",
     hue: "amber",
     labelKey: "settings.sections.secrets.label",
     Component: SecretsManagerSection,
   },
-  security: {
+  {
+    id: "security",
+    defaultLabel: "Security",
+    group: "security",
     icon: Lock,
     tone: "warn",
     hue: "amber",
@@ -331,93 +452,189 @@ const SECTION_VISUALS: Record<string, SectionVisual> = {
     hideOnCloud: true,
     Component: SecuritySettingsSection,
   },
-};
 
-/** Built-in sections, in display order, derived from the canonical meta list. */
-export const SETTINGS_SECTIONS: SettingsSectionDef[] =
-  SETTINGS_SECTION_META.map((meta, index): SettingsSectionDef => {
-    const visual = SECTION_VISUALS[meta.id];
-    if (!visual) {
-      throw new Error(`Missing settings-section visuals for "${meta.id}"`);
+  // ---------------------------------------------------------------------------
+  // Non-catalog sections (`catalog: false`): declared in this one canonical list
+  // + registered by the shared loop, but kept OUT of the pinned
+  // `SETTINGS_SECTION_META` that app-core's dev-route-catalog test mirrors. They
+  // live in the late-registered Cloud group / cockpit runtime registry, not the
+  // built-in QA route catalog.
+  // ---------------------------------------------------------------------------
+  {
+    id: "cloud-overview",
+    defaultLabel: "Overview",
+    group: CLOUD_SETTINGS_GROUP_ID,
+    catalog: false,
+    icon: Cloud,
+    tone: "accent",
+    hue: "accent",
+    labelKey: "settings.sections.cloudOverview.label",
+    titleKey: "settings.sections.cloudOverview.title",
+    defaultTitle: "Eliza Cloud",
+    order: 1.45,
+    Component: CloudOverviewSection,
+  },
+  // Eliza Cloud agent manager — surfaces in Settings (list / switch /
+  // create+name / delete agents) under the local Cloud group with the upsell
+  // overview, while full Cloud-only account/billing/API surfaces remain opt-in
+  // through registerCloudSettingsSections().
+  {
+    id: "cloud-agents",
+    defaultLabel: "Agents",
+    group: CLOUD_SETTINGS_GROUP_ID,
+    catalog: false,
+    icon: Bot,
+    tone: "accent",
+    hue: "accent",
+    labelKey: "settings.sections.cloudAgents.label",
+    titleKey: "settings.sections.cloudAgents.title",
+    defaultTitle: "Eliza Cloud Agents",
+    order: 1.55,
+    Component: CloudAgentsSection,
+  },
+  // "My Runtimes" — manage + switch between local / cloud-dedicated /
+  // VPS-remote runtimes (the cockpit's runtime registry).
+  {
+    id: "my-runtimes",
+    defaultLabel: "My Runtimes",
+    group: "system",
+    catalog: false,
+    icon: Server,
+    tone: "neutral",
+    hue: "slate",
+    labelKey: "settings.sections.myRuntimes.label",
+    titleKey: "settings.sections.myRuntimes.title",
+    order: 3.5,
+    Component: MyRuntimesContainer,
+  },
+] as const;
+
+/** The default-title fallback: explicit `defaultTitle` if declared, else the label. */
+function sectionDefaultTitle(def: BuiltinSectionDefinition): string {
+  return def.defaultTitle ?? def.defaultLabel;
+}
+
+/** Project a canonical definition into the registry's `SettingsSectionDef`. */
+function toSettingsSectionDef(
+  def: BuiltinSectionDefinition,
+  order: number,
+): SettingsSectionDef {
+  return {
+    id: def.id,
+    aliases: def.aliases,
+    label: def.labelKey,
+    defaultLabel: def.defaultLabel,
+    icon: def.icon,
+    tone: def.tone,
+    hue: def.hue,
+    group: def.group,
+    titleKey: def.titleKey ?? def.labelKey,
+    defaultTitle: sectionDefaultTitle(def),
+    bodyClassName: def.bodyClassName,
+    developerOnly: def.developerOnly,
+    hideOnCloud: def.hideOnCloud,
+    order: def.order ?? order,
+    Component: def.Component,
+  };
+}
+
+/** True when the definition is part of the pinned pure-data QA catalog. */
+function isCatalogSection(def: BuiltinSectionDefinition): boolean {
+  return def.catalog !== false;
+}
+
+/**
+ * Two-way drift guard between the catalog subset of the merged per-id
+ * definitions and the pinned pure-data `SETTINGS_SECTION_META` list that
+ * app-core mirrors. A catalog section whose id / label / group / aliases /
+ * order falls out of sync with META fails loudly at module load (and is
+ * asserted by a focused test), so the two sources cannot silently diverge.
+ */
+export function assertMetaCatalogParity(): void {
+  const catalogDefs = BUILTIN_SECTION_DEFINITIONS.filter(isCatalogSection);
+
+  // Same set + same order as the pinned META list.
+  const defIds = catalogDefs.map((d) => d.id);
+  const metaIds = SETTINGS_SECTION_META.map((m) => m.id);
+  if (defIds.length !== metaIds.length) {
+    throw new Error(
+      `settings-section catalog drift: ${defIds.length} catalog definition(s) ` +
+        `vs ${metaIds.length} META entr(ies). Definitions: [${defIds.join(
+          ", ",
+        )}] META: [${metaIds.join(", ")}].`,
+    );
+  }
+  for (let i = 0; i < metaIds.length; i += 1) {
+    if (defIds[i] !== metaIds[i]) {
+      throw new Error(
+        `settings-section catalog drift at index ${i}: definition "${defIds[i]}" ` +
+          `!= META "${metaIds[i]}". Catalog definitions must match ` +
+          "SETTINGS_SECTION_META in id and order.",
+      );
     }
-    return {
-      id: meta.id,
-      aliases: meta.aliases,
-      label: visual.labelKey,
-      defaultLabel: meta.defaultLabel,
-      icon: visual.icon,
-      tone: visual.tone,
-      hue: visual.hue,
-      group: meta.group,
-      titleKey: visual.titleKey ?? visual.labelKey,
-      defaultTitle: meta.defaultLabel,
-      bodyClassName: visual.bodyClassName,
-      developerOnly: visual.developerOnly,
-      hideOnCloud: visual.hideOnCloud,
-      order: index,
-      Component: visual.Component,
-    };
-  });
+  }
 
-for (const section of SETTINGS_SECTIONS) registerSettingsSection(section);
+  // Per-id: label + group + aliases must agree with the pure-data META.
+  const metaById = new Map(SETTINGS_SECTION_META.map((m) => [m.id, m]));
+  for (const def of catalogDefs) {
+    const meta = metaById.get(def.id);
+    // Membership + order already validated above; this is the field parity.
+    if (!meta) continue;
+    if (def.defaultLabel !== meta.defaultLabel) {
+      throw new Error(
+        `settings-section "${def.id}" label drift: definition ` +
+          `"${def.defaultLabel}" != META "${meta.defaultLabel}".`,
+      );
+    }
+    if (def.group !== meta.group) {
+      throw new Error(
+        `settings-section "${def.id}" group drift: definition ` +
+          `"${def.group}" != META "${meta.group}".`,
+      );
+    }
+    const defAliases = [...(def.aliases ?? [])];
+    const metaAliases = [...(meta.aliases ?? [])];
+    const aliasesMatch =
+      defAliases.length === metaAliases.length &&
+      defAliases.every((a, idx) => a === metaAliases[idx]);
+    if (!aliasesMatch) {
+      throw new Error(
+        `settings-section "${def.id}" alias drift: definition ` +
+          `[${defAliases.join(", ")}] != META [${metaAliases.join(", ")}].`,
+      );
+    }
+  }
+}
 
+assertMetaCatalogParity();
+
+/**
+ * The built-in local sections that are part of the pinned QA catalog, in
+ * display order. Derived from the canonical definitions (catalog subset).
+ * Retained as a named export for backward compatibility; runtime consumers read
+ * the live registry via {@link getAllSettingsSections}.
+ */
+export const SETTINGS_SECTIONS: SettingsSectionDef[] =
+  BUILTIN_SECTION_DEFINITIONS.filter(isCatalogSection).map((def, index) =>
+    toSettingsSectionDef(def, index),
+  );
+
+// The Cloud group must exist before its member sections register into it.
 registerSettingsGroup({
   id: CLOUD_SETTINGS_GROUP_ID,
   label: "Cloud",
   order: 1.5,
 });
 
-registerSettingsSection({
-  id: "cloud-overview",
-  label: "settings.sections.cloudOverview.label",
-  defaultLabel: "Overview",
-  icon: Cloud,
-  tone: "accent",
-  hue: "accent",
-  group: CLOUD_SETTINGS_GROUP_ID,
-  titleKey: "settings.sections.cloudOverview.title",
-  defaultTitle: "Eliza Cloud",
-  order: 1.45,
-  Component: CloudOverviewSection,
-});
-
-// Eliza Cloud agent manager — contributed through the pluggable registry rather
-// than the canonical META list, so it surfaces in Settings (list / switch /
-// create+name / delete agents) without changing the built-in section count that
-// the dev-route-catalog test pins. It lives under the local Cloud group with the
-// upsell overview, while full Cloud-only account/billing/API surfaces remain
-// opt-in through registerCloudSettingsSections().
-registerSettingsSection({
-  id: "cloud-agents",
-  label: "settings.sections.cloudAgents.label",
-  defaultLabel: "Agents",
-  icon: Bot,
-  tone: "accent",
-  hue: "accent",
-  group: CLOUD_SETTINGS_GROUP_ID,
-  titleKey: "settings.sections.cloudAgents.title",
-  defaultTitle: "Eliza Cloud Agents",
-  order: 1.55,
-  Component: CloudAgentsSection,
-});
-
-// "My Runtimes" — manage + switch between local / cloud-dedicated / VPS-remote
-// runtimes (the cockpit's runtime registry). Contributed through the registry
-// (not the pinned META list) so it doesn't change the built-in section count the
-// dev-route-catalog test pins.
-registerSettingsSection({
-  id: "my-runtimes",
-  label: "settings.sections.myRuntimes.label",
-  defaultLabel: "My Runtimes",
-  icon: Server,
-  tone: "neutral",
-  hue: "slate",
-  group: "system",
-  titleKey: "settings.sections.myRuntimes.title",
-  defaultTitle: "My Runtimes",
-  order: 3.5,
-  Component: MyRuntimesContainer,
-});
+// One data-driven registration pass for every built-in section (catalog +
+// non-catalog alike) — no per-section side calls. Catalog sections keep their
+// META list index as the default order; non-catalog sections use their declared
+// fractional order to interleave with the built-in groups.
+let catalogIndex = 0;
+for (const def of BUILTIN_SECTION_DEFINITIONS) {
+  const order = isCatalogSection(def) ? catalogIndex++ : (def.order ?? 0);
+  registerSettingsSection(toSettingsSectionDef(def, order));
+}
 
 registerCloudConnectorsSettingsSection();
 
