@@ -3,8 +3,10 @@
  * from routing metadata carried on state/message, or by scoring the message
  * text against keyword signals — and gates which actions/providers surface by
  * testing whether a component's declared contexts overlap the active set.
- * Gating is permissive: a component with no declared contexts, or an empty
- * active set, is always included.
+ * shouldIncludeByContext is permissive for an empty declared list or an empty
+ * active set, but runtime callers resolve component contexts first (declared →
+ * catalog → ["general"], utils/context-catalog), so an undeclared component is
+ * gated to "general" rather than included everywhere.
  */
 
 import type { Action, AgentContext, Provider } from "../types/components";

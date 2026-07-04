@@ -630,7 +630,12 @@ export interface Provider {
 	/**
 	 * Domain contexts this provider belongs to.
 	 * The context-routing classifier uses these to decide which providers to
-	 * include in the planner's state composition for a given turn.
+	 * include in the planner's state composition for a given turn. Selection is
+	 * lean by default: a provider that declares neither `contexts` nor a
+	 * `contextGate` is treated as `contexts: ["general"]` — composed on ordinary
+	 * chat turns, skipped on narrow tool/planner turns. Declare contexts to
+	 * scope the provider, or set `alwaysInResponseState` for a signal that must
+	 * reach every response turn.
 	 */
 	contexts?: AgentContext[];
 
@@ -657,7 +662,10 @@ export interface Provider {
 	 * state regardless of the turn's selected contexts (like the built-in
 	 * FACTS / CURRENT_TIME signals). Lets a plugin opt a dynamic provider into
 	 * always-on Stage-1 rendering without core having to name it — keeping the
-	 * core → plugin dependency direction inward-only.
+	 * core → plugin dependency direction inward-only. This is the explicit
+	 * opt-in for always-on signals: providers without it (and without declared
+	 * contexts) default to the "general" context and stay out of narrow
+	 * tool/planner turns.
 	 */
 	alwaysInResponseState?: boolean;
 

@@ -95,6 +95,10 @@ export const recentErrorsProvider: Provider = {
 	description:
 		"Recent runtime failures reported outside the action path (deduped by code)",
 	dynamic: true,
+	// Failures must reach the agent on every turn — including narrow
+	// tool/planner turns that lean provider selection skips for undeclared
+	// providers. Free on the healthy path: renders nothing without errors.
+	alwaysInResponseState: true,
 
 	get: async (
 		runtime: IAgentRuntime,

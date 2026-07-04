@@ -60,7 +60,7 @@ import {
 	type CandidateActionBackstopRule,
 	getCandidateActionBackstopRules,
 } from "../runtime/candidate-action-backstop";
-import { filterByContextGate } from "../runtime/context-gates";
+import { filterProvidersByContextGate } from "../runtime/context-gates";
 import { computePrefixHashes, hashString } from "../runtime/context-hash";
 import {
 	appendContextEvent,
@@ -1167,7 +1167,16 @@ async function composeProviderGroundedResponseState(
 	);
 }
 
-function selectV5PlannerStateProviderNames(args: {
+/**
+ * Provider names composed into the v5 planner state for a turn: the core
+ * response-state set, always-on opt-ins, and every registered provider whose
+ * effective context gate matches the turn's selected contexts. Providers with
+ * no declared contexts/contextGate resolve to the "general" context, so an
+ * undeclared plugin provider rides ordinary chat turns but not narrow
+ * tool/planner turns — `alwaysInResponseState` is the opt-in for signals that
+ * must reach every turn.
+ */
+export function selectV5PlannerStateProviderNames(args: {
 	runtime: IAgentRuntime;
 	message: Memory;
 	selectedContexts: readonly AgentContext[];
@@ -1188,7 +1197,7 @@ function selectV5PlannerStateProviderNames(args: {
 	for (const name of alwaysOnResponseStateProviderNames(args.runtime)) {
 		providerNames.add(name);
 	}
-	for (const provider of filterByContextGate(
+	for (const provider of filterProvidersByContextGate(
 		providers,
 		args.selectedContexts,
 		args.userRoles,

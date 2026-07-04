@@ -41,6 +41,7 @@ import type { IAgentRuntime } from "./types/runtime";
 import type { Service, ServiceTypeName } from "./types/service";
 import type { ShortcutDefinition } from "./types/shortcut";
 import {
+	hasCatalogProviderContexts,
 	resolveActionContexts,
 	resolveProviderContexts,
 } from "./utils/context-catalog";
@@ -370,20 +371,50 @@ function applyEffectiveActionAccess(
 function applyEffectiveProviderContexts(
 	provider: RuntimeProvider,
 	pluginContexts: Plugin["contexts"] | undefined,
+	logger?: IAgentRuntime["logger"],
 ): RuntimeProvider {
 	const inherited = inheritPluginContexts(provider, pluginContexts);
 	if ((inherited.contexts?.length ?? 0) > 0) {
 		return inherited;
 	}
 
+	// A provider gated only via contextGate (world-style `{ anyOf: [...] }`)
+	// materializes its contexts from the gate's own anyOf surface — injecting
+	// the catalog/general fallback would contradict the declared gate (ride
+	// general turns, miss its own contexts). Only a provider with no declared
+	// context surface at all falls back to the catalog and ultimately
+	// ["general"]: composed on ordinary chat turns, skipped on narrow
+	// tool/planner turns.
+	const gate = inherited.contextGate;
+	const gateAnyOf: AgentContext[] = [
+		...(gate?.contexts ?? []),
+		...(gate?.anyOf ?? []),
+	];
+	const contexts =
+		gateAnyOf.length > 0 ? gateAnyOf : resolveProviderContexts(inherited);
+	if (
+		gateAnyOf.length === 0 &&
+		!gate?.allOf?.length &&
+		!gate?.noneOf?.length &&
+		!inherited.private &&
+		!inherited.dynamic &&
+		!inherited.alwaysInResponseState &&
+		!hasCatalogProviderContexts(inherited.name)
+	) {
+		logger?.warn(
+			{ src: "agent", provider: inherited.name },
+			'[PluginLifecycle] Provider declares no contexts/contextGate; defaulting to the "general" context (composed on ordinary chat turns, skipped on narrow tool/planner turns). Declare contexts or a contextGate to scope it, or set alwaysInResponseState for an always-on response-state signal.',
+		);
+	}
+
 	if (inherited === provider) {
-		provider.contexts = [...resolveProviderContexts(inherited)];
+		provider.contexts = [...contexts];
 		return provider;
 	}
 
 	return {
 		...inherited,
-		contexts: [...resolveProviderContexts(inherited)],
+		contexts: [...contexts],
 	};
 }
 
@@ -831,6 +862,7 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 			applyEffectiveProviderContexts(
 				provider,
 				capture?.ownership.plugin.contexts,
+				runtimeWithLifecycle.logger,
 			),
 		);
 		if (!capture || runtimeWithLifecycle.providers.length <= providersBefore)

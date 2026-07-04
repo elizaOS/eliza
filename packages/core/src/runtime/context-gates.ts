@@ -6,12 +6,14 @@
  * comparison.
  */
 import { CANONICAL_ROLE_RANK } from "../roles";
+import type { Provider } from "../types/components";
 import type {
 	AgentContext,
 	ContextGate,
 	RoleGate,
 	RoleGateRole,
 } from "../types/contexts";
+import { resolveProviderContexts } from "../utils/context-catalog";
 import { normalizeContextList } from "./context-normalization";
 
 // #9948: single source of truth for role ranking — delegates to CANONICAL_ROLE_RANK.
@@ -129,4 +131,63 @@ export function filterByContextGate<T extends ContextGateCandidate>(
 		};
 		return satisfiesContextGate(activeContexts, gate, userRoles);
 	});
+}
+
+/**
+ * True when the provider declares any context surface at all — a non-empty
+ * `contexts` list or a `contextGate` with contexts/anyOf/allOf/noneOf. Providers
+ * without one fall back to the static catalog and ultimately the "general"
+ * context at the selection layer (see resolveProviderContextGate).
+ */
+export function providerDeclaresContextSurface(provider: Provider): boolean {
+	const gate = provider.contextGate;
+	return Boolean(
+		provider.contexts?.length ||
+			gate?.contexts?.length ||
+			gate?.anyOf?.length ||
+			gate?.allOf?.length ||
+			gate?.noneOf?.length,
+	);
+}
+
+/**
+ * Effective context gate for a provider at the v5 selection layer. A declared
+ * gate is honored in full — including anyOf/allOf/noneOf, which the generic
+ * candidate filter cannot carry — with the #12087 Item 14 rule that an explicit
+ * contextGate never shadows the provider's top-level roleGate. A provider that
+ * declares no context surface resolves through the static catalog and defaults
+ * to the "general" context: composed on ordinary chat turns, skipped on narrow
+ * tool/planner contexts. Plugin registration (plugin-lifecycle) materializes
+ * the same resolution onto `contexts`; this resolver keeps the selection layer
+ * lean-by-default even for providers that bypass the wrapped registration
+ * path, so an undeclared provider never rides every planner turn.
+ */
+export function resolveProviderContextGate(provider: Provider): ContextGate {
+	const explicit = provider.contextGate;
+	if (!providerDeclaresContextSurface(provider)) {
+		return {
+			contexts: resolveProviderContexts(provider),
+			roleGate: explicit?.roleGate ?? provider.roleGate,
+		};
+	}
+	return {
+		...explicit,
+		contexts: explicit?.contexts ?? provider.contexts,
+		roleGate: explicit?.roleGate ?? provider.roleGate,
+	};
+}
+
+/** Filter providers by their effective context gate (resolveProviderContextGate). */
+export function filterProvidersByContextGate<T extends Provider>(
+	providers: readonly T[],
+	activeContexts: readonly AgentContext[] | undefined,
+	userRoles?: readonly RoleGateRole[],
+): T[] {
+	return providers.filter((provider) =>
+		satisfiesContextGate(
+			activeContexts,
+			resolveProviderContextGate(provider),
+			userRoles,
+		),
+	);
 }

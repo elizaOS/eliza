@@ -201,6 +201,8 @@ export const PROVIDER_CONTEXT_MAP: Record<string, AgentContext[]> = {
 	"solana-wallet": ["wallet"],
 	CODING_AGENT_EXAMPLES: ["code", "automation"],
 	ACTIVE_WORKSPACE_CONTEXT: ["code", "automation"],
+	AVAILABLE_AGENTS: ["code", "automation"],
+	ACTIVE_SUB_AGENTS: ["code", "automation"],
 	contacts: ["contacts"],
 	trustScores: ["contacts"],
 	platformIdentity: ["messaging"],
@@ -253,5 +255,18 @@ export function resolveProviderContexts(provider: Provider): AgentContext[] {
 		PROVIDER_CONTEXT_MAP[provider.name] ??
 		PROVIDER_CONTEXT_MAP[provider.name.toLowerCase()] ??
 		PROVIDER_CONTEXT_MAP[provider.name.toUpperCase()] ?? ["general"]
+	);
+}
+
+/**
+ * Whether a provider name has a catalog entry — distinguishes a provider whose
+ * contexts this catalog knows from one falling through to the ["general"]
+ * default, which resolveProviderContexts cannot express.
+ */
+export function hasCatalogProviderContexts(name: string): boolean {
+	return Boolean(
+		PROVIDER_CONTEXT_MAP[name] ??
+			PROVIDER_CONTEXT_MAP[name.toLowerCase()] ??
+			PROVIDER_CONTEXT_MAP[name.toUpperCase()],
 	);
 }
