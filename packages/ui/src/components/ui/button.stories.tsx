@@ -1,3 +1,4 @@
+/** Storybook fixture exercising the Button primitive variants and sizes; also feeds the story-gate render check. */
 import type { Meta, StoryObj } from "@storybook/react";
 import { Button } from "./button";
 

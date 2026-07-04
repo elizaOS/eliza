@@ -1,3 +1,8 @@
+/**
+ * Inline two-step delete confirm: a trigger button that swaps in place for a
+ * prompt + confirm/cancel pair, so a destructive action needs a second click
+ * without opening a dialog.
+ */
 import * as React from "react";
 import { cn } from "../../lib/utils";
 

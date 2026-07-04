@@ -1,3 +1,4 @@
+/** Storybook fixture exercising the EmptyState composite (icon + copy + action); also feeds the story-gate render check. */
 import type { Meta, StoryObj } from "@storybook/react";
 import { Button } from "./button";
 import { EmptyState } from "./empty-state";

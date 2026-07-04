@@ -1,3 +1,4 @@
+/** Storybook fixture exercising the CopyButton primitive (copy + copied-feedback state); also feeds the story-gate render check. */
 import type { Meta, StoryObj } from "@storybook/react";
 import { CopyButton } from "./copy-button";
 

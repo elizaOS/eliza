@@ -1,3 +1,7 @@
+/**
+ * Range slider over Radix `@radix-ui/react-slider`, themed to the kit tokens.
+ * Derived from shadcn/ui `slider` (https://ui.shadcn.com/docs/components/slider).
+ */
 import * as SliderPrimitive from "@radix-ui/react-slider";
 import * as React from "react";
 

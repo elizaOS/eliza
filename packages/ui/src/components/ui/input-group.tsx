@@ -1,3 +1,8 @@
+/**
+ * Horizontal input+addon container: joins an input with leading/trailing slots
+ * (buttons, icons, text) into one bordered control with shared focus ring and
+ * density variants.
+ */
 import { Slot } from "@radix-ui/react-slot";
 import { cva, type VariantProps } from "class-variance-authority";
 import * as React from "react";

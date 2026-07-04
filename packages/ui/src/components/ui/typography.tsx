@@ -1,3 +1,8 @@
+/**
+ * Text/typography primitive with cva variants for the kit's type scale — the
+ * canonical way to render headings and body copy so font size/weight/color
+ * come from tokens instead of ad-hoc classes.
+ */
 import { cva, type VariantProps } from "class-variance-authority";
 import * as React from "react";
 

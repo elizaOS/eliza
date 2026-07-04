@@ -1,3 +1,4 @@
+/** Storybook fixture exercising the Calendar primitive (single + range selection); also feeds the story-gate render check. */
 import type { Meta, StoryObj } from "@storybook/react";
 import { useState } from "react";
 import type { DateRange } from "react-day-picker";

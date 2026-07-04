@@ -1,3 +1,7 @@
+/**
+ * Multi-line text-input primitive with cva variants, mirroring the Input skins
+ * so single- and multi-line fields share styling across settings/config forms.
+ */
 import { cva, type VariantProps } from "class-variance-authority";
 import * as React from "react";
 

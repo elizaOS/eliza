@@ -1,3 +1,4 @@
+/** Storybook fixture exercising the AlertDialog primitive states; also feeds the story-gate render check. */
 import type { Meta, StoryObj } from "@storybook/react";
 import {
   AlertDialog,

@@ -1,3 +1,8 @@
+/**
+ * CSS-grid layout primitive with cva variants for column count and gap — the
+ * declarative grid used to lay out cards and settings rows without hand-written
+ * grid classes.
+ */
 import { cva, type VariantProps } from "class-variance-authority";
 import * as React from "react";
 import { cn } from "../../lib/utils";

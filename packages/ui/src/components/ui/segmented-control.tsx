@@ -1,3 +1,8 @@
+/**
+ * Single-select segmented button group (generic over the value union) — the
+ * inline toggle used for small mutually-exclusive choices where tabs would be
+ * too heavy. Items may carry a badge and a per-item test id.
+ */
 import type * as React from "react";
 
 import { cn } from "../../lib/utils";

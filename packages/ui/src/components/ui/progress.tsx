@@ -1,3 +1,8 @@
+/**
+ * Determinate progress bar over Radix `@radix-ui/react-progress`, themed to the
+ * kit tokens. Derived from shadcn/ui `progress`
+ * (https://ui.shadcn.com/docs/components/progress).
+ */
 "use client";
 
 import * as ProgressPrimitive from "@radix-ui/react-progress";

@@ -1,3 +1,8 @@
+/**
+ * Monospace code renderer with an optional inline `CopyButton`. `variant`
+ * switches between a block `<pre>` and an inline `<code>` span; `copyable`
+ * requires a string value to copy.
+ */
 import * as React from "react";
 import { cn } from "../../lib/utils";
 import { CopyButton } from "./copy-button";

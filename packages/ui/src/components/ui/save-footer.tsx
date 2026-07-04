@@ -1,3 +1,7 @@
+/**
+ * Sticky settings-form footer that reflects dirty/saving/saved/error state on a
+ * single Save button — the shared bottom bar for editable config panels.
+ */
 import * as React from "react";
 import { cn } from "../../lib/utils";
 import { Button } from "./button";

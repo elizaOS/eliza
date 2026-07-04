@@ -1,6 +1,6 @@
 /**
- * Hover card component displaying content on hover.
- * Built on Radix UI primitives with configurable positioning and animations.
+ * Hover-triggered popover over Radix `@radix-ui/react-hover-card`. Verbatim
+ * from shadcn/ui `hover-card` (https://ui.shadcn.com/docs/components/hover-card).
  */
 "use client";
 

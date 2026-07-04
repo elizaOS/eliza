@@ -1,3 +1,8 @@
+/**
+ * Popover primitives over Radix `@radix-ui/react-popover`, with themed,
+ * portal-rendered content. Derived from shadcn/ui `popover`
+ * (https://ui.shadcn.com/docs/components/popover).
+ */
 import * as PopoverPrimitive from "@radix-ui/react-popover";
 import * as React from "react";
 

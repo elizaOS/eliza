@@ -1,3 +1,8 @@
+/**
+ * Form-field layout primitives — `Field` wrapper plus `FieldLabel` /
+ * `FieldDescription` chrome — that give labelled inputs consistent spacing and
+ * label variants across settings and config forms.
+ */
 import type * as LabelPrimitive from "@radix-ui/react-label";
 import * as React from "react";
 

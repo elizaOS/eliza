@@ -1,6 +1,10 @@
 /**
- * Chart components wrapping Recharts with theme support.
- * Provides chart container, legend, tooltip, and axis components with light/dark theme support.
+ * Recharts wrapper set: a context-carrying container plus tooltip and legend
+ * chrome that resolve series color/label from a `ChartConfig`, emitting
+ * per-series CSS variables scoped by light/dark theme selector.
+ *
+ * Derived from shadcn/ui `chart` (https://ui.shadcn.com/docs/components/chart);
+ * colors are wired to this package's theme tokens.
  */
 
 "use client";

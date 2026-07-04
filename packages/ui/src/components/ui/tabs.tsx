@@ -1,3 +1,8 @@
+/**
+ * Tabs primitives over Radix `@radix-ui/react-tabs` (list, trigger, content),
+ * themed to the kit tokens. Derived from shadcn/ui `tabs`
+ * (https://ui.shadcn.com/docs/components/tabs).
+ */
 import * as TabsPrimitive from "@radix-ui/react-tabs";
 import * as React from "react";
 

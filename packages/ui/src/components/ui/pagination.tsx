@@ -1,6 +1,7 @@
 /**
- * Pagination component system for navigating through pages.
- * Provides previous/next navigation, page numbers, and ellipsis for large page counts.
+ * Page-navigation primitives — prev/next links, numbered page items, and an
+ * ellipsis for large ranges. Derived from shadcn/ui `pagination`
+ * (https://ui.shadcn.com/docs/components/pagination).
  */
 
 import {

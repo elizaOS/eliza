@@ -1,3 +1,9 @@
+/**
+ * Select primitives over Radix `@radix-ui/react-select`, with themed trigger,
+ * portal content, and items. Derived from shadcn/ui `select`
+ * (https://ui.shadcn.com/docs/components/select); content is tagged with the
+ * config-select floating-layer name so it stacks correctly inside config dialogs.
+ */
 import * as SelectPrimitive from "@radix-ui/react-select";
 import { Check, ChevronDown, ChevronUp } from "lucide-react";
 import * as React from "react";

@@ -1,3 +1,8 @@
+/**
+ * Form label primitive over Radix `@radix-ui/react-label`, carrying the shared
+ * disabled/peer styling. Derived from shadcn/ui `label`
+ * (https://ui.shadcn.com/docs/components/label).
+ */
 import * as LabelPrimitive from "@radix-ui/react-label";
 import * as React from "react";
 

@@ -1,3 +1,4 @@
+/** Storybook fixture composing the DropdownMenu primitive parts (items, checkbox/radio groups, labels); also feeds the story-gate render check. */
 import type { Meta, StoryObj } from "@storybook/react";
 import { useState } from "react";
 import { Button } from "./button";

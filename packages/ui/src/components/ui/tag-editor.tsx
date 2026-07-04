@@ -1,3 +1,8 @@
+/**
+ * Editable list of string tags: an input that adds items on enter and renders
+ * each as a removable chip — the tag/keyword editor used in settings and
+ * config forms. De-duplicates and reports the full list via `onChange`.
+ */
 import { X } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 

@@ -1,3 +1,8 @@
+/**
+ * On/off switch rendered as a `<button role="switch">` (controlled or
+ * uncontrolled) — a dependency-free toggle that does not pull in Radix, used
+ * wherever a bare boolean switch is needed.
+ */
 import * as React from "react";
 
 import { cn } from "../../lib/utils";

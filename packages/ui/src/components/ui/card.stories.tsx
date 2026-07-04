@@ -1,3 +1,4 @@
+/** Storybook fixture composing the Card primitive parts (header/content/footer/action); also feeds the story-gate render check. */
 import type { Meta, StoryObj } from "@storybook/react";
 import {
   Card,

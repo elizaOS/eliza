@@ -1,3 +1,8 @@
+/**
+ * Text-input primitive with cva variants (default, and skins used across
+ * settings/config forms). The canonical single-line input for the kit; other
+ * inputs compose it rather than re-styling a bare `<input>`.
+ */
 import { cva, type VariantProps } from "class-variance-authority";
 import * as React from "react";
 

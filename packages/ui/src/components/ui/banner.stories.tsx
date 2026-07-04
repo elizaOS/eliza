@@ -1,3 +1,4 @@
+/** Storybook fixture exercising the Banner primitive variants + dismiss action; also feeds the story-gate render check. */
 import type { Meta, StoryObj } from "@storybook/react";
 import { Banner } from "./banner";
 import { Button } from "./button";

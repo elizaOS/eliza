@@ -1,3 +1,9 @@
+/**
+ * Class error boundary that catches render throws in its subtree and shows a
+ * heading + retry-button fallback (overridable via `fallback`). The optional
+ * `onError` hook lets a wrapper such as ViewErrorBoundary fire crash telemetry
+ * without re-implementing the boundary.
+ */
 import * as React from "react";
 import { Button } from "./button";
 

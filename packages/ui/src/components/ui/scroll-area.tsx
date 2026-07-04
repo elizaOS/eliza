@@ -1,6 +1,7 @@
 /**
- * Scroll area component with custom scrollbar styling.
- * Built on Radix UI primitives with horizontal and vertical scrollbar support.
+ * Custom-scrollbar scroll container over Radix `@radix-ui/react-scroll-area`,
+ * with horizontal and vertical bars. Derived from shadcn/ui `scroll-area`
+ * (https://ui.shadcn.com/docs/components/scroll-area).
  */
 "use client";
 

@@ -1,3 +1,9 @@
+/**
+ * Tooltip primitives over Radix `@radix-ui/react-tooltip` (provider, root,
+ * trigger, themed content). Derived from shadcn/ui `tooltip`
+ * (https://ui.shadcn.com/docs/components/tooltip). Richer affordances
+ * (icon-button tooltip with shortcut hint) live in `tooltip-extended.tsx`.
+ */
 import * as TooltipPrimitive from "@radix-ui/react-tooltip";
 import * as React from "react";
 
