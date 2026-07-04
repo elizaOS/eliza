@@ -105,7 +105,8 @@ export const teamsCaptionSelectors = {
 } as const;
 
 /** Primary voice-level speaking indicator (fallback speaker attribution). */
-export const teamsVoiceLevelSelector = '[data-tid="voice-level-stream-outline"]';
+export const teamsVoiceLevelSelector =
+  '[data-tid="voice-level-stream-outline"]';
 
 export const teamsRemovalPhrases: string[] = [
   "you've been removed from this meeting",

@@ -3,10 +3,11 @@
  * resolution, executable lookup, and overall meeting-runtime support.
  * Deterministic: node:fs and playwright are stubbed, no real browser.
  */
-import { afterEach, describe, expect, it, vi } from "vitest";
-import type { IAgentRuntime } from "@elizaos/core";
+
 import { existsSync } from "node:fs";
+import type { IAgentRuntime } from "@elizaos/core";
 import { chromium } from "playwright-core";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   chromiumExecutable,
   hasDisplay,
@@ -40,13 +41,17 @@ describe("hasDisplay", () => {
 describe("resolveHeadlessMode", () => {
   it("honors an explicit truthy ELIZA_MEETINGS_HEADLESS", () => {
     for (const v of ["true", "1", "yes", "on", "TRUE"]) {
-      expect(resolveHeadlessMode({ ELIZA_MEETINGS_HEADLESS: v }, "linux")).toBe(true);
+      expect(resolveHeadlessMode({ ELIZA_MEETINGS_HEADLESS: v }, "linux")).toBe(
+        true,
+      );
     }
   });
 
   it("honors an explicit falsy ELIZA_MEETINGS_HEADLESS even with no display", () => {
     for (const v of ["false", "0", "no", "off"]) {
-      expect(resolveHeadlessMode({ ELIZA_MEETINGS_HEADLESS: v }, "linux")).toBe(false);
+      expect(resolveHeadlessMode({ ELIZA_MEETINGS_HEADLESS: v }, "linux")).toBe(
+        false,
+      );
     }
   });
 
@@ -57,10 +62,15 @@ describe("resolveHeadlessMode", () => {
   });
 
   it("falls back to auto-detect on an unrecognized value", () => {
-    expect(resolveHeadlessMode({ ELIZA_MEETINGS_HEADLESS: "maybe" }, "linux")).toBe(true);
-    expect(resolveHeadlessMode({ ELIZA_MEETINGS_HEADLESS: "maybe", DISPLAY: ":0" }, "linux")).toBe(
-      false,
-    );
+    expect(
+      resolveHeadlessMode({ ELIZA_MEETINGS_HEADLESS: "maybe" }, "linux"),
+    ).toBe(true);
+    expect(
+      resolveHeadlessMode(
+        { ELIZA_MEETINGS_HEADLESS: "maybe", DISPLAY: ":0" },
+        "linux",
+      ),
+    ).toBe(false);
   });
 });
 
@@ -77,7 +87,11 @@ describe("chromiumExecutable", () => {
   it("throws when the override path does not exist", () => {
     vi.mocked(existsSync).mockReturnValue(false);
     expect(() =>
-      chromiumExecutable("chrome", { ELIZA_MEETINGS_CHROMIUM_PATH: "/nope" }, "darwin"),
+      chromiumExecutable(
+        "chrome",
+        { ELIZA_MEETINGS_CHROMIUM_PATH: "/nope" },
+        "darwin",
+      ),
     ).toThrow(/does not exist/);
   });
 
@@ -86,7 +100,8 @@ describe("chromiumExecutable", () => {
     const r = chromiumExecutable("chrome", {}, "darwin");
     expect(r).toEqual({
       source: "system",
-      executablePath: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+      executablePath:
+        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
     });
   });
 
@@ -94,12 +109,15 @@ describe("chromiumExecutable", () => {
     const r = chromiumExecutable("msedge", {}, "darwin");
     expect(r).toEqual({
       source: "system",
-      executablePath: "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+      executablePath:
+        "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
     });
   });
 
   it("uses bundled Chromium only when no system browser is installed", () => {
-    vi.mocked(existsSync).mockImplementation((p) => String(p) === "/pw/chromium");
+    vi.mocked(existsSync).mockImplementation(
+      (p) => String(p) === "/pw/chromium",
+    );
     vi.spyOn(chromium, "executablePath").mockReturnValue("/pw/chromium");
     const r = chromiumExecutable("chrome", {}, "linux");
     expect(r).toEqual({ source: "bundled", executablePath: "/pw/chromium" });
@@ -136,7 +154,9 @@ describe("resolveMeetingRuntimeSupport", () => {
   });
 
   it("is supported via a bundled browser when no system browser exists", () => {
-    vi.mocked(existsSync).mockImplementation((p) => String(p) === "/pw/chromium");
+    vi.mocked(existsSync).mockImplementation(
+      (p) => String(p) === "/pw/chromium",
+    );
     vi.spyOn(chromium, "executablePath").mockReturnValue("/pw/chromium");
     const r = resolveMeetingRuntimeSupport(runtime, { DISPLAY: ":0" }, "linux");
     expect(r.supported).toBe(true);
@@ -165,7 +185,11 @@ describe("resolveMeetingRuntimeSupport", () => {
   });
 
   it("reports the resolved headless mode alongside an unsupported verdict", () => {
-    const r = resolveMeetingRuntimeSupport(runtime, { ELIZA_PLATFORM: "android" }, "linux");
+    const r = resolveMeetingRuntimeSupport(
+      runtime,
+      { ELIZA_PLATFORM: "android" },
+      "linux",
+    );
     expect(r.supported).toBe(false);
     expect(r.headless).toBe(true);
   });

@@ -6,10 +6,10 @@
  * Vexa's joinGoogleMeeting (Apache-2.0) minus the authenticated branch.
  */
 
-import type { Page } from "playwright-core";
 import { logger } from "@elizaos/core";
-import type { InputDriver } from "../humanized/index.js";
+import type { Page } from "playwright-core";
 import type { MeetingBotSession } from "../../types.js";
+import type { InputDriver } from "../humanized/index.js";
 import { waitForAnySelector } from "../shared/selectors.js";
 import {
   googleCameraButtonSelectors,
@@ -64,7 +64,9 @@ async function muteControl(
   label: string,
 ): Promise<void> {
   try {
-    const handle = await page.waitForSelector(selectors[0], { timeout: MUTE_PROBE_TIMEOUT_MS });
+    const handle = await page.waitForSelector(selectors[0], {
+      timeout: MUTE_PROBE_TIMEOUT_MS,
+    });
     if (handle) {
       await input.click(page, handle);
       logger.info(`[GoogleMeetJoin] ${label} toggled off`);

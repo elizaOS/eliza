@@ -32,11 +32,11 @@
  * Run: bun run --cwd plugins/plugin-meetings test:e2e
  */
 
+import type { Buffer } from "node:buffer";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { UUID } from "@elizaos/core";
 import { chromium } from "playwright-core";
-import type { Buffer } from "node:buffer";
 import { startSpeakerAudioCapture } from "../browser/audio-capture.js";
 import { createMeetingTranscriptionPipeline } from "../pipeline/pipeline.js";
 import type { AsrBackend } from "../pipeline/transcriber.js";
@@ -103,7 +103,11 @@ async function launchBrowser() {
     console.log(
       `[e2e] bundled chromium launch failed (${err instanceof Error ? err.message.split("\n")[0] : String(err)}); falling back to system chrome channel`,
     );
-    return await chromium.launch({ headless: true, channel: "chrome", args: LAUNCH_ARGS });
+    return await chromium.launch({
+      headless: true,
+      channel: "chrome",
+      args: LAUNCH_ARGS,
+    });
   }
 }
 
@@ -116,11 +120,16 @@ async function main() {
   page.on("pageerror", (e) => pageErrors.push(e.message));
 
   await page.goto(pageUrl);
-  await page.waitForFunction(() => (window as { __meetingReady?: boolean }).__meetingReady === true);
+  await page.waitForFunction(
+    () => (window as { __meetingReady?: boolean }).__meetingReady === true,
+  );
 
   // Two participant tiles rendered.
   const tileCount = await page.locator(".tile").count();
-  assert(tileCount === 2, `fake page renders 2 participant tiles (got ${tileCount})`);
+  assert(
+    tileCount === 2,
+    `fake page renders 2 participant tiles (got ${tileCount})`,
+  );
 
   // ── REAL runtime double + pipeline + writer ──────────────────────────────
   const fake = makeFakeRuntime();
@@ -162,7 +171,8 @@ async function main() {
   // Wire pipeline updates into the writer (mirrors service.ts onUpdate).
   const confirmed: string[] = [];
   pipeline.onUpdate((update) => {
-    for (const seg of update.confirmed) confirmed.push(`${seg.speakerLabel}: ${seg.text}`);
+    for (const seg of update.confirmed)
+      confirmed.push(`${seg.speakerLabel}: ${seg.text}`);
     writer.updateSegments(update.confirmed);
   });
 
@@ -176,16 +186,25 @@ async function main() {
   const started = await page.evaluate(() =>
     (window as { __startTones?: () => Promise<unknown> }).__startTones?.(),
   );
-  assert(Array.isArray(started) && started.length === 2, "both participant tones started");
+  assert(
+    Array.isArray(started) && started.length === 2,
+    "both participant tones started",
+  );
   const speaking = await page.locator(".tile.speaking").count();
-  assert(speaking === 2, `both tiles show the speaking indicator (got ${speaking})`);
+  assert(
+    speaking === 2,
+    `both tiles show the speaking indicator (got ${speaking})`,
+  );
 
   // Sanity: the page now exposes the live per-participant elements the capture
   // module discovers.
   const liveCount = await page.evaluate(() =>
     (window as { __liveElementCount?: () => number }).__liveElementCount?.(),
   );
-  assert(liveCount === 2, `capture sees 2 live per-participant audio elements (got ${liveCount})`);
+  assert(
+    liveCount === 2,
+    `capture sees 2 live per-participant audio elements (got ${liveCount})`,
+  );
 
   // ── REAL capture: browser -> Node -> pipeline ────────────────────────────
   const pushedKeys = new Set<string>();
@@ -210,22 +229,36 @@ async function main() {
   // Keep pushing a little longer so both buffers have real content.
   await new Promise((r) => setTimeout(r, 2_500));
 
-  assert(chunkCount > 0, `REAL capture binding fired: ${chunkCount} PCM chunks crossed browser->Node`);
+  assert(
+    chunkCount > 0,
+    `REAL capture binding fired: ${chunkCount} PCM chunks crossed browser->Node`,
+  );
   assert(
     pushedKeys.size === 2,
     `per-speaker PCM reached the pipeline for BOTH speakers (keys: ${[...pushedKeys].sort().join(", ")})`,
   );
 
   await capture.stop();
-  await page.evaluate(() => (window as { __stopTones?: () => void }).__stopTones?.());
+  await page.evaluate(() =>
+    (window as { __stopTones?: () => void }).__stopTones?.(),
+  );
 
   // ── Finalize: pipeline flush -> segments -> transcript write ─────────────
   const segments = await pipeline.finalize();
-  assert(segments.length >= 1, `pipeline produced >=1 confirmed segment (got ${segments.length})`);
+  assert(
+    segments.length >= 1,
+    `pipeline produced >=1 confirmed segment (got ${segments.length})`,
+  );
   const labels = new Set(segments.map((s) => s.speakerLabel));
-  assert(labels.has("Jill") || labels.has("Bob"), `segments carry mapped speaker labels (${[...labels].join(", ")})`);
+  assert(
+    labels.has("Jill") || labels.has("Bob"),
+    `segments carry mapped speaker labels (${[...labels].join(", ")})`,
+  );
   const wav = pipeline.sessionAudioWav();
-  assert(wav != null && wav.length > 44, `retained session audio WAV produced (${wav?.length ?? 0} bytes)`);
+  assert(
+    wav != null && wav.length > 44,
+    `retained session audio WAV produced (${wav?.length ?? 0} bytes)`,
+  );
 
   const final = await writer.finalize({
     segments,
@@ -240,20 +273,36 @@ async function main() {
 
   const finalRow = fake.memories.get(writer.transcriptId);
   const readBack = readTranscriptRow(finalRow as never);
-  assert(readBack?.status === "ready", "finalized row parses back through the transcripts-view reader");
-  assert((readBack?.segments.length ?? 0) >= 1, "finalized transcript has >=1 segment");
+  assert(
+    readBack?.status === "ready",
+    "finalized row parses back through the transcripts-view reader",
+  );
+  assert(
+    (readBack?.segments.length ?? 0) >= 1,
+    "finalized transcript has >=1 segment",
+  );
   assert(
     fake.documents.length === 1 &&
-      (fake.documents[0].metadata as { tags?: string[] }).tags?.includes("transcript") === true,
+      (fake.documents[0].metadata as { tags?: string[] }).tags?.includes(
+        "transcript",
+      ) === true,
     "knowledge mirror landed with the transcript tag",
   );
 
-  assert(pageErrors.length === 0, `no page errors (${pageErrors.join(" | ") || "none"})`);
-  assert(scripted.calls.length >= 1, `scripted ASR backend received >=1 real WAV window (${scripted.calls.length} calls)`);
+  assert(
+    pageErrors.length === 0,
+    `no page errors (${pageErrors.join(" | ") || "none"})`,
+  );
+  assert(
+    scripted.calls.length >= 1,
+    `scripted ASR backend received >=1 real WAV window (${scripted.calls.length} calls)`,
+  );
 
   console.log("\n--- transcript segments ---");
   for (const seg of segments) console.log(`  ${seg.speakerLabel}: ${seg.text}`);
-  console.log(`--- ${scripted.calls.length} ASR calls, WAV bytes: ${scripted.calls.map((c) => c.wavBytes).join(",")} ---`);
+  console.log(
+    `--- ${scripted.calls.length} ASR calls, WAV bytes: ${scripted.calls.map((c) => c.wavBytes).join(",")} ---`,
+  );
 
   await context.close();
   await browser.close();
@@ -262,7 +311,9 @@ async function main() {
     console.error(`\nFAILED: ${failures} assertion(s) failed`);
     process.exit(1);
   }
-  console.log("\nPASS: headless capture -> pipeline -> transcript ran end to end (no real Meet, no real ASR)");
+  console.log(
+    "\nPASS: headless capture -> pipeline -> transcript ran end to end (no real Meet, no real ASR)",
+  );
 }
 
 main().catch((err) => {

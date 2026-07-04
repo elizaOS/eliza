@@ -44,11 +44,11 @@
     "scripts": {
         "build": "tsup --format esm",
         "dev": "tsup --format esm --watch",
-        "lint": "bunx @biomejs/biome check .",
-        "lint:check": "bun run lint",
+        "lint": "bunx @biomejs/biome check --write --unsafe .",
+        "lint:check": "bunx @biomejs/biome check .",
         "lint:fix": "bunx @biomejs/biome check --write ./src",
-        "format": "bunx @biomejs/biome format --write ./src",
-        "format:check": "bunx @biomejs/biome format ./src",
+        "format": "bunx @biomejs/biome format --write .",
+        "format:check": "bunx @biomejs/biome format .",
         "test": "vitest run --config vitest.config.ts",
         "typecheck": "tsgo --noEmit -p tsconfig.json"
     },

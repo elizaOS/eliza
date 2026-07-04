@@ -9,8 +9,8 @@
  * failure it throws LOUD with the full list tried (no silent skips).
  */
 
-import type { ElementHandle, Page } from "playwright-core";
 import { logger } from "@elizaos/core";
+import type { ElementHandle, Page } from "playwright-core";
 
 export interface SelectorMatch {
   handle: ElementHandle<Element>;
@@ -69,7 +69,10 @@ export async function waitForAnySelector(
  * True if any selector in the list is currently visible. Non-throwing; used for
  * cheap presence probes (waiting-room / rejection / removal detection).
  */
-export async function anySelectorVisible(page: Page, selectors: readonly string[]): Promise<boolean> {
+export async function anySelectorVisible(
+  page: Page,
+  selectors: readonly string[],
+): Promise<boolean> {
   for (const selector of selectors) {
     try {
       if (await page.locator(selector).first().isVisible()) return true;
@@ -85,7 +88,10 @@ export async function anySelectorVisible(page: Page, selectors: readonly string[
  * Some admission signals (participant tiles) exist but auto-hide, so presence is
  * the reliable check.
  */
-export async function anySelectorPresent(page: Page, selectors: readonly string[]): Promise<boolean> {
+export async function anySelectorPresent(
+  page: Page,
+  selectors: readonly string[],
+): Promise<boolean> {
   for (const selector of selectors) {
     try {
       if ((await page.locator(selector).count()) > 0) return true;

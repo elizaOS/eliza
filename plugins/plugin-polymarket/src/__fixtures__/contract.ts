@@ -152,7 +152,9 @@ export function validateMarketsResponse(value: unknown): Violations {
   if (!Array.isArray(r.markets)) {
     v.push("markets: expected array");
   } else {
-    r.markets.forEach((m, i) => v.push(...validateMarket(m, `markets[${i}]`)));
+    r.markets.forEach((m, i) => {
+      v.push(...validateMarket(m, `markets[${i}]`));
+    });
   }
   validateSource(v, "source", r.source, "gamma");
   return v;

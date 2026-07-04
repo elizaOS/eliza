@@ -18,9 +18,9 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { viewHostRoute } from "../routes/view-host.ts";
 
 const VIEW_HOST_SMOKE_IDS = [
-  "facewear",
-  "smartglasses",
-  "hyphenated-view",
+	"facewear",
+	"smartglasses",
+	"hyphenated-view",
 ] as const;
 
 // ── HTTP server setup ─────────────────────────────────────────────────────────
@@ -29,58 +29,58 @@ let baseUrl = "";
 let closeServer: () => Promise<void>;
 
 async function callViewHostRoute(input: unknown) {
-  const handler = viewHostRoute.routeHandler;
-  if (!handler) throw new Error("viewHostRoute has no routeHandler");
-  return handler(input as never);
+	const handler = viewHostRoute.routeHandler;
+	if (!handler) throw new Error("viewHostRoute has no routeHandler");
+	return handler(input as never);
 }
 
 beforeAll(() => {
-  return new Promise<void>((resolve) => {
-    const server = createServer(async (req, res) => {
-      if (req.method !== "GET") {
-        res.writeHead(405);
-        res.end("Method not allowed");
-        return;
-      }
+	return new Promise<void>((resolve) => {
+		const server = createServer(async (req, res) => {
+			if (req.method !== "GET") {
+				res.writeHead(405);
+				res.end("Method not allowed");
+				return;
+			}
 
-      const url = new URL(req.url ?? "/", "http://localhost");
+			const url = new URL(req.url ?? "/", "http://localhost");
 
-      // Route: GET /api/xr/view-host/:id
-      const match = url.pathname.match(/^\/api\/xr\/view-host\/(.+)$/);
-      if (match) {
-        const viewId = decodeURIComponent(match[1]);
-        const result = await callViewHostRoute({
-          params: { id: viewId },
-          runtime: { port: 31337 },
-        });
+			// Route: GET /api/xr/view-host/:id
+			const match = url.pathname.match(/^\/api\/xr\/view-host\/(.+)$/);
+			if (match) {
+				const viewId = decodeURIComponent(match[1]);
+				const result = await callViewHostRoute({
+					params: { id: viewId },
+					runtime: { port: 31337 },
+				});
 
-        res.writeHead(result.status, result.headers as Record<string, string>);
-        res.end(result.body as string);
-        return;
-      }
+				res.writeHead(result.status, result.headers as Record<string, string>);
+				res.end(result.body as string);
+				return;
+			}
 
-      // Route: GET /api/xr/view-host (no id — should 400)
-      if (url.pathname === "/api/xr/view-host") {
-        const result = await callViewHostRoute({
-          params: {},
-          runtime: { port: 31337 },
-        });
-        res.writeHead(result.status);
-        res.end(JSON.stringify(result.body));
-        return;
-      }
+			// Route: GET /api/xr/view-host (no id — should 400)
+			if (url.pathname === "/api/xr/view-host") {
+				const result = await callViewHostRoute({
+					params: {},
+					runtime: { port: 31337 },
+				});
+				res.writeHead(result.status);
+				res.end(JSON.stringify(result.body));
+				return;
+			}
 
-      res.writeHead(404);
-      res.end("Not found");
-    });
+			res.writeHead(404);
+			res.end("Not found");
+		});
 
-    server.listen(0, "127.0.0.1", () => {
-      const { port } = server.address() as AddressInfo;
-      baseUrl = `http://127.0.0.1:${port}`;
-      closeServer = () => new Promise((r) => server.close(() => r()));
-      resolve();
-    });
-  });
+		server.listen(0, "127.0.0.1", () => {
+			const { port } = server.address() as AddressInfo;
+			baseUrl = `http://127.0.0.1:${port}`;
+			closeServer = () => new Promise((r) => server.close(() => r()));
+			resolve();
+		});
+	});
 });
 
 afterAll(() => closeServer());
@@ -88,152 +88,152 @@ afterAll(() => closeServer());
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 describe("viewHostRoute — real HTTP server integration", () => {
-  it("GET /api/xr/view-host (no id) returns HTTP 400", async () => {
-    const res = await fetch(`${baseUrl}/api/xr/view-host`);
-    expect(res.status).toBe(400);
-  });
+	it("GET /api/xr/view-host (no id) returns HTTP 400", async () => {
+		const res = await fetch(`${baseUrl}/api/xr/view-host`);
+		expect(res.status).toBe(400);
+	});
 
-  it("GET /api/xr/view-host/:id returns HTTP 200 with text/html for representative view ids", async () => {
-    const failures: string[] = [];
-    for (const id of VIEW_HOST_SMOKE_IDS) {
-      const res = await fetch(
-        `${baseUrl}/api/xr/view-host/${encodeURIComponent(id)}`,
-      );
-      if (res.status !== 200) {
-        failures.push(`${id}: HTTP ${res.status}`);
-        continue;
-      }
-      const ct = res.headers.get("content-type") ?? "";
-      if (!ct.includes("text/html")) {
-        failures.push(`${id}: Content-Type "${ct}" is not text/html`);
-      }
-    }
-    expect(failures).toEqual([]);
-  });
+	it("GET /api/xr/view-host/:id returns HTTP 200 with text/html for representative view ids", async () => {
+		const failures: string[] = [];
+		for (const id of VIEW_HOST_SMOKE_IDS) {
+			const res = await fetch(
+				`${baseUrl}/api/xr/view-host/${encodeURIComponent(id)}`,
+			);
+			if (res.status !== 200) {
+				failures.push(`${id}: HTTP ${res.status}`);
+				continue;
+			}
+			const ct = res.headers.get("content-type") ?? "";
+			if (!ct.includes("text/html")) {
+				failures.push(`${id}: Content-Type "${ct}" is not text/html`);
+			}
+		}
+		expect(failures).toEqual([]);
+	});
 
-  it("every view-host response body is valid HTML with the view id in data-view-id", async () => {
-    const failures: string[] = [];
-    for (const id of VIEW_HOST_SMOKE_IDS) {
-      const res = await fetch(
-        `${baseUrl}/api/xr/view-host/${encodeURIComponent(id)}`,
-      );
-      const html = await res.text();
-      if (
-        !html.startsWith("<!DOCTYPE html") &&
-        !html.startsWith("<!doctype html")
-      ) {
-        failures.push(`${id}: response does not start with DOCTYPE`);
-      }
-      if (!html.includes(`data-view-id="${id}"`)) {
-        failures.push(`${id}: data-view-id="${id}" not found in response`);
-      }
-    }
-    expect(failures).toEqual([]);
-  });
+	it("every view-host response body is valid HTML with the view id in data-view-id", async () => {
+		const failures: string[] = [];
+		for (const id of VIEW_HOST_SMOKE_IDS) {
+			const res = await fetch(
+				`${baseUrl}/api/xr/view-host/${encodeURIComponent(id)}`,
+			);
+			const html = await res.text();
+			if (
+				!html.startsWith("<!DOCTYPE html") &&
+				!html.startsWith("<!doctype html")
+			) {
+				failures.push(`${id}: response does not start with DOCTYPE`);
+			}
+			if (!html.includes(`data-view-id="${id}"`)) {
+				failures.push(`${id}: data-view-id="${id}" not found in response`);
+			}
+		}
+		expect(failures).toEqual([]);
+	});
 
-  it("every view-host response has Content-Security-Policy header", async () => {
-    const failures: string[] = [];
-    for (const id of VIEW_HOST_SMOKE_IDS) {
-      const res = await fetch(
-        `${baseUrl}/api/xr/view-host/${encodeURIComponent(id)}`,
-      );
-      const csp = res.headers.get("content-security-policy") ?? "";
-      if (!csp) {
-        failures.push(`${id}: missing Content-Security-Policy header`);
-      } else if (!csp.includes("esm.sh")) {
-        failures.push(`${id}: CSP missing esm.sh`);
-      }
-    }
-    expect(failures).toEqual([]);
-  });
+	it("every view-host response has Content-Security-Policy header", async () => {
+		const failures: string[] = [];
+		for (const id of VIEW_HOST_SMOKE_IDS) {
+			const res = await fetch(
+				`${baseUrl}/api/xr/view-host/${encodeURIComponent(id)}`,
+			);
+			const csp = res.headers.get("content-security-policy") ?? "";
+			if (!csp) {
+				failures.push(`${id}: missing Content-Security-Policy header`);
+			} else if (!csp.includes("esm.sh")) {
+				failures.push(`${id}: CSP missing esm.sh`);
+			}
+		}
+		expect(failures).toEqual([]);
+	});
 
-  it("view-host pages with special characters in id serve correctly", async () => {
-    const specialIds = ["hyphenated-view"];
-    for (const id of specialIds) {
-      const res = await fetch(
-        `${baseUrl}/api/xr/view-host/${encodeURIComponent(id)}`,
-      );
-      expect(res.status, `${id}: expected 200`).toBe(200);
-      const html = await res.text();
-      expect(html, `${id}: data-view-id must match`).toContain(
-        `data-view-id="${id}"`,
-      );
-    }
-  });
+	it("view-host pages with special characters in id serve correctly", async () => {
+		const specialIds = ["hyphenated-view"];
+		for (const id of specialIds) {
+			const res = await fetch(
+				`${baseUrl}/api/xr/view-host/${encodeURIComponent(id)}`,
+			);
+			expect(res.status, `${id}: expected 200`).toBe(200);
+			const html = await res.text();
+			expect(html, `${id}: data-view-id must match`).toContain(
+				`data-view-id="${id}"`,
+			);
+		}
+	});
 
-  it("view-host pages embed the correct bundle URL for the elizaOS views API", async () => {
-    const failures: string[] = [];
-    for (const id of VIEW_HOST_SMOKE_IDS) {
-      const res = await fetch(
-        `${baseUrl}/api/xr/view-host/${encodeURIComponent(id)}`,
-      );
-      const html = await res.text();
-      // Bundle URL must reference /api/views/:id/bundle.js — the elizaOS views serving endpoint
-      const expectedBundlePath = `/api/views/${id}/bundle.js`;
-      if (!html.includes(expectedBundlePath)) {
-        failures.push(
-          `${id}: bundle URL "${expectedBundlePath}" not found in page`,
-        );
-      }
-    }
-    expect(failures).toEqual([]);
-  });
+	it("view-host pages embed the correct bundle URL for the elizaOS views API", async () => {
+		const failures: string[] = [];
+		for (const id of VIEW_HOST_SMOKE_IDS) {
+			const res = await fetch(
+				`${baseUrl}/api/xr/view-host/${encodeURIComponent(id)}`,
+			);
+			const html = await res.text();
+			// Bundle URL must reference /api/views/:id/bundle.js — the elizaOS views serving endpoint
+			const expectedBundlePath = `/api/views/${id}/bundle.js`;
+			if (!html.includes(expectedBundlePath)) {
+				failures.push(
+					`${id}: bundle URL "${expectedBundlePath}" not found in page`,
+				);
+			}
+		}
+		expect(failures).toEqual([]);
+	});
 
-  it("view-host pages load React from CDN importmap (not bundled)", async () => {
-    const failures: string[] = [];
-    for (const id of VIEW_HOST_SMOKE_IDS) {
-      const res = await fetch(
-        `${baseUrl}/api/xr/view-host/${encodeURIComponent(id)}`,
-      );
-      const html = await res.text();
-      // React must come from importmap (esm.sh), not be bundled — proven by the importmap block
-      if (!html.includes("esm.sh/react")) {
-        failures.push(`${id}: React importmap missing`);
-      }
-      // importmap type must be present
-      if (!html.includes('type="importmap"')) {
-        failures.push(`${id}: importmap script tag missing`);
-      }
-    }
-    expect(failures).toEqual([]);
-  });
+	it("view-host pages load React from CDN importmap (not bundled)", async () => {
+		const failures: string[] = [];
+		for (const id of VIEW_HOST_SMOKE_IDS) {
+			const res = await fetch(
+				`${baseUrl}/api/xr/view-host/${encodeURIComponent(id)}`,
+			);
+			const html = await res.text();
+			// React must come from importmap (esm.sh), not be bundled — proven by the importmap block
+			if (!html.includes("esm.sh/react")) {
+				failures.push(`${id}: React importmap missing`);
+			}
+			// importmap type must be present
+			if (!html.includes('type="importmap"')) {
+				failures.push(`${id}: importmap script tag missing`);
+			}
+		}
+		expect(failures).toEqual([]);
+	});
 
-  it("each view-host page has voice-input infrastructure wired (fillFocusedInput, xr:transcript)", async () => {
-    const failures: string[] = [];
-    for (const id of VIEW_HOST_SMOKE_IDS) {
-      const res = await fetch(
-        `${baseUrl}/api/xr/view-host/${encodeURIComponent(id)}`,
-      );
-      const html = await res.text();
-      if (!html.includes("fillFocusedInput")) {
-        failures.push(`${id}: fillFocusedInput missing`);
-      }
-      if (!html.includes("xr:transcript")) {
-        failures.push(`${id}: xr:transcript handler missing`);
-      }
-      if (!html.includes("xr:view-ready")) {
-        failures.push(`${id}: xr:view-ready postMessage missing`);
-      }
-    }
-    expect(failures).toEqual([]);
-  });
+	it("each view-host page has voice-input infrastructure wired (fillFocusedInput, xr:transcript)", async () => {
+		const failures: string[] = [];
+		for (const id of VIEW_HOST_SMOKE_IDS) {
+			const res = await fetch(
+				`${baseUrl}/api/xr/view-host/${encodeURIComponent(id)}`,
+			);
+			const html = await res.text();
+			if (!html.includes("fillFocusedInput")) {
+				failures.push(`${id}: fillFocusedInput missing`);
+			}
+			if (!html.includes("xr:transcript")) {
+				failures.push(`${id}: xr:transcript handler missing`);
+			}
+			if (!html.includes("xr:view-ready")) {
+				failures.push(`${id}: xr:view-ready postMessage missing`);
+			}
+		}
+		expect(failures).toEqual([]);
+	});
 
-  it("concurrent requests for representative view ids resolve correctly in parallel", async () => {
-    // Proves the server handles concurrent requests without state corruption
-    const responses = await Promise.all(
-      VIEW_HOST_SMOKE_IDS.map((id) =>
-        fetch(`${baseUrl}/api/xr/view-host/${encodeURIComponent(id)}`).then(
-          async (r) => ({ id, status: r.status, html: await r.text() }),
-        ),
-      ),
-    );
+	it("concurrent requests for representative view ids resolve correctly in parallel", async () => {
+		// Proves the server handles concurrent requests without state corruption
+		const responses = await Promise.all(
+			VIEW_HOST_SMOKE_IDS.map((id) =>
+				fetch(`${baseUrl}/api/xr/view-host/${encodeURIComponent(id)}`).then(
+					async (r) => ({ id, status: r.status, html: await r.text() }),
+				),
+			),
+		);
 
-    const failures: string[] = [];
-    for (const { id, status, html } of responses) {
-      if (status !== 200) failures.push(`${id}: HTTP ${status}`);
-      else if (!html.includes(`data-view-id="${id}"`))
-        failures.push(`${id}: data-view-id mismatch in concurrent response`);
-    }
-    expect(failures).toEqual([]);
-  });
+		const failures: string[] = [];
+		for (const { id, status, html } of responses) {
+			if (status !== 200) failures.push(`${id}: HTTP ${status}`);
+			else if (!html.includes(`data-view-id="${id}"`))
+				failures.push(`${id}: data-view-id mismatch in concurrent response`);
+		}
+		expect(failures).toEqual([]);
+	});
 });

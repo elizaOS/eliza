@@ -16,7 +16,7 @@
  * unit-testable without PulseAudio.
  */
 
-import { spawn as nodeSpawn, execFile } from "node:child_process";
+import { execFile, spawn as nodeSpawn } from "node:child_process";
 import type { Readable } from "node:stream";
 import { logger } from "@elizaos/core";
 
@@ -26,7 +26,10 @@ export interface ChildProcessLike {
   stdout: Readable | null;
   stderr: Readable | null;
   on(event: "error", listener: (err: Error) => void): unknown;
-  on(event: "exit", listener: (code: number | null, signal: string | null) => void): unknown;
+  on(
+    event: "exit",
+    listener: (code: number | null, signal: string | null) => void,
+  ): unknown;
   kill(signal?: NodeJS.Signals): boolean;
 }
 
@@ -72,12 +75,18 @@ export async function createNullSink(sessionId: string): Promise<NullSink> {
 export async function unloadNullSink(sink: NullSink): Promise<void> {
   try {
     await execFileText("pactl", ["unload-module", sink.moduleId]);
-    logger.info({ sinkName: sink.sinkName }, `${TAG} PulseAudio null sink unloaded`);
+    logger.info(
+      { sinkName: sink.sinkName },
+      `${TAG} PulseAudio null sink unloaded`,
+    );
   } catch (err) {
-    logger.warn({
-      sinkName: sink.sinkName,
-      error: err instanceof Error ? err.message : String(err),
-    }, `${TAG} failed to unload PulseAudio sink`);
+    logger.warn(
+      {
+        sinkName: sink.sinkName,
+        error: err instanceof Error ? err.message : String(err),
+      },
+      `${TAG} failed to unload PulseAudio sink`,
+    );
   }
 }
 
@@ -110,7 +119,9 @@ export class PulsePcmCapture {
     this.chunkBytes = (options.chunkSamples ?? 4096) * BYTES_PER_SAMPLE;
     this.onChunk = options.onChunk;
     this.spawnFn =
-      options.spawn ?? ((command, args) => nodeSpawn(command, args) as unknown as ChildProcessLike);
+      options.spawn ??
+      ((command, args) =>
+        nodeSpawn(command, args) as unknown as ChildProcessLike);
   }
 
   /** Epoch ms when the first audio byte arrived, or null. */
@@ -119,8 +130,12 @@ export class PulsePcmCapture {
   }
 
   start(): void {
-    if (this.stopped) throw new Error(`${TAG} PulsePcmCapture cannot be restarted after stop()`);
-    if (this.child) throw new Error(`${TAG} PulsePcmCapture.start() called twice`);
+    if (this.stopped)
+      throw new Error(
+        `${TAG} PulsePcmCapture cannot be restarted after stop()`,
+      );
+    if (this.child)
+      throw new Error(`${TAG} PulsePcmCapture.start() called twice`);
     const child = this.spawnFn("parecord", [
       "--raw",
       "--format=s16le",
@@ -136,7 +151,10 @@ export class PulsePcmCapture {
       if (this.stopped) return;
       if (this.firstDataAt === null) {
         this.firstDataAt = Date.now();
-        logger.info({ device: `${this.device}.monitor` }, `${TAG} parecord receiving audio`);
+        logger.info(
+          { device: `${this.device}.monitor` },
+          `${TAG} parecord receiving audio`,
+        );
       }
       this.appendAndSlice(buf);
     });
@@ -160,22 +178,30 @@ export class PulsePcmCapture {
       try {
         this.child.kill("SIGTERM");
       } catch (err) {
-        logger.warn({
-          error: err instanceof Error ? err.message : String(err),
-        }, `${TAG} parecord kill failed`);
+        logger.warn(
+          {
+            error: err instanceof Error ? err.message : String(err),
+          },
+          `${TAG} parecord kill failed`,
+        );
       }
       this.child = null;
     }
     // Flush the sub-chunk tail so no audio is lost at teardown.
     const tailSamples = Math.floor(this.pending.length / BYTES_PER_SAMPLE);
     if (tailSamples > 0) {
-      this.onChunk(s16leToFloat32(this.pending.subarray(0, tailSamples * BYTES_PER_SAMPLE)));
+      this.onChunk(
+        s16leToFloat32(
+          this.pending.subarray(0, tailSamples * BYTES_PER_SAMPLE),
+        ),
+      );
     }
     this.pending = Buffer.alloc(0);
   }
 
   private appendAndSlice(buf: Buffer): void {
-    this.pending = this.pending.length === 0 ? buf : Buffer.concat([this.pending, buf]);
+    this.pending =
+      this.pending.length === 0 ? buf : Buffer.concat([this.pending, buf]);
     while (this.pending.length >= this.chunkBytes) {
       const slice = this.pending.subarray(0, this.chunkBytes);
       this.pending = this.pending.subarray(this.chunkBytes);

@@ -160,11 +160,9 @@ describe("CalendarView (unified spatial wrapper)", () => {
     expect(goToToday).toHaveBeenCalledTimes(1);
   });
 
-  it("changing the view-mode selector routes through to setViewMode", () => {
+  it("switching to the month view routes through to setViewMode", () => {
     render(<CalendarView />);
-    fireEvent.change(agent("mode") as HTMLSelectElement, {
-      target: { value: "month" },
-    });
+    fireEvent.click(agent("mode:month"));
     expect(setViewMode).toHaveBeenCalledWith("month");
   });
 

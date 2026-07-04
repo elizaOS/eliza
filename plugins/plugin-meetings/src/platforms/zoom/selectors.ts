@@ -18,7 +18,8 @@ export const zoomPasscodeInputSelector =
 export const zoomLeaveButtonSelector = 'button[aria-label="Leave"]';
 export const zoomAudioButtonSelector = "button.join-audio-container__btn";
 export const zoomVideoButtonSelector = "button.send-video-container__btn";
-export const zoomParticipantsButtonSelector = 'button[aria-label*="participants list"]';
+export const zoomParticipantsButtonSelector =
+  'button[aria-label*="participants list"]';
 export const zoomMeetingAppSelector = ".meeting-app";
 
 // ---- Host-not-started / invalid meeting ----
@@ -59,9 +60,11 @@ export const zoomAuthRequiredTexts = [
 
 // ---- Speaker / participant DOM ----
 /** Active speaker tile (main large video frame, normal layout). */
-export const zoomActiveSpeakerSelector = ".speaker-active-container__video-frame";
+export const zoomActiveSpeakerSelector =
+  ".speaker-active-container__video-frame";
 /** Active speaker tile in screen-share layout (--active modifier). */
-export const zoomActiveSpeakerBarSelector = ".speaker-bar-container__video-frame--active";
+export const zoomActiveSpeakerBarSelector =
+  ".speaker-bar-container__video-frame--active";
 /** Participant name label inside a tile (span within the avatar footer). */
 export const zoomParticipantNameSelector = ".video-avatar__avatar-footer";
 

@@ -31,7 +31,11 @@ describe("ZoomSpeakerAttributor", () => {
     const attributor = new ZoomSpeakerAttributor({ sink });
     attributor.onActiveSpeakerPoll("Alice");
     expect(attributor.currentSpeaker).toBe("Alice");
-    expect(calls).toContainEqual({ method: "setName", key: "zoom-speaker-0", name: "Alice" });
+    expect(calls).toContainEqual({
+      method: "setName",
+      key: "zoom-speaker-0",
+      name: "Alice",
+    });
   });
 
   it("requires consecutive votes before switching speaker (flicker filtering)", () => {
@@ -49,7 +53,11 @@ describe("ZoomSpeakerAttributor", () => {
 
     // Previous segment flushed, new segment named.
     expect(calls).toContainEqual({ method: "flush", key: "zoom-speaker-0" });
-    expect(calls).toContainEqual({ method: "setName", key: "zoom-speaker-1", name: "Bob" });
+    expect(calls).toContainEqual({
+      method: "setName",
+      key: "zoom-speaker-1",
+      name: "Bob",
+    });
   });
 
   it("attributes audio chunks to the current segment key across a speaker change", () => {
@@ -62,7 +70,10 @@ describe("ZoomSpeakerAttributor", () => {
     attributor.onAudioChunk(new Float32Array(4));
 
     const pushes = calls.filter((c) => c.method === "push");
-    expect(pushes.map((c) => c.key)).toEqual(["zoom-speaker-0", "zoom-speaker-1"]);
+    expect(pushes.map((c) => c.key)).toEqual([
+      "zoom-speaker-0",
+      "zoom-speaker-1",
+    ]);
   });
 
   it("null polls (silence) never break a lock or accumulate votes", () => {

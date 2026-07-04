@@ -39,6 +39,7 @@ export type {
   Plugin,
   Route,
 } from "../../../core/src/types/index.ts";
+export { assertPublicRouteIntent } from "../../../core/src/types/plugin.ts";
 export { Service } from "../../../core/src/types/service.ts";
 export { resolveSetting } from "../../../core/src/utils/resolve-setting.ts";
 export { resolveStateDir } from "../../../core/src/utils/state-dir.ts";

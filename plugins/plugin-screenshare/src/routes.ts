@@ -119,7 +119,7 @@ export async function refreshRunSession(
     return buildScreenshareAppSession(getOrCreateLocalScreenshareSession());
   }
   const session = getScreenshareSession(sessionId);
-  if (!session || session.status !== "active") {
+  if (session?.status !== "active") {
     return null;
   }
   return buildScreenshareAppSession(session);

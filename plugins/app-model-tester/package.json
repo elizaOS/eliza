@@ -43,14 +43,17 @@
   "types": "./dist/index.d.ts",
   "scripts": {
     "typecheck": "tsgo --noEmit -p tsconfig.json",
-    "lint": "bunx @biomejs/biome check src",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
     "build": "bun run build:js && bun run build:views && bun run build:types",
     "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist",
     "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
     "build:views": "bunx --bun vite build --config vite.config.views.ts",
     "build:types": "tsc --noCheck -p tsconfig.build.json",
     "test": "vitest run --config vitest.config.ts",
-    "test:e2e": "node scripts/model-tester-e2e.mjs"
+    "test:e2e": "node scripts/model-tester-e2e.mjs",
+    "lint:check": "bunx @biomejs/biome check .",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format ."
   },
   "files": [
     "registry-entry.json",

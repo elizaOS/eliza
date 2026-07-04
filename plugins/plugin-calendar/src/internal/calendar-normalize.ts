@@ -21,7 +21,6 @@ import {
 } from "./constants.js";
 import { fail } from "./errors.js";
 import {
-  normalizeFiniteNumber,
   normalizeGoogleCapabilities,
   normalizeIsoString,
   normalizeOptionalBoolean,

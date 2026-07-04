@@ -433,7 +433,7 @@ export async function cancelAllMeetingAutoJoinTasks(
  */
 export async function restoreMeetingAutoJoinAnchors(
   runtime: IAgentRuntime,
-  agentId: string,
+  _agentId: string,
   events: readonly LifeOpsCalendarEvent[],
 ): Promise<void> {
   const settings = await readMeetingAutoJoinSettings(runtime);

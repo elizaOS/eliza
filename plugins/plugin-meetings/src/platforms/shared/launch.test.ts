@@ -3,9 +3,10 @@
  * selection passed through to playwright-core. Deterministic: node:fs and the
  * browser are stubbed.
  */
-import { afterEach, describe, expect, it, vi } from "vitest";
+
 import { existsSync } from "node:fs";
-import { chromium, type Browser } from "playwright-core";
+import { type Browser, chromium } from "playwright-core";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { launchMeetingBrowser } from "./launch.js";
 
 vi.mock("node:fs", () => ({ existsSync: vi.fn(() => true) }));
@@ -37,8 +38,12 @@ afterEach(() => {
 describe("launchMeetingBrowser headless + executable wiring", () => {
   it("passes an explicit headless option straight through to chromium.launch", async () => {
     // No system browser installed → falls through to playwright's bundled one.
-    vi.mocked(existsSync).mockImplementation((p) => String(p) === "/pw/chromium");
-    const launch = vi.spyOn(chromium, "launch").mockResolvedValue(stubBrowser());
+    vi.mocked(existsSync).mockImplementation(
+      (p) => String(p) === "/pw/chromium",
+    );
+    const launch = vi
+      .spyOn(chromium, "launch")
+      .mockResolvedValue(stubBrowser());
     vi.spyOn(chromium, "executablePath").mockReturnValue("/pw/chromium");
 
     await launchMeetingBrowser({ headless: true });
@@ -52,7 +57,9 @@ describe("launchMeetingBrowser headless + executable wiring", () => {
   it("drives the user's already-installed system browser by default (no download)", async () => {
     // existsSync defaults to true → a system Chrome/Edge is 'installed', and is
     // preferred over playwright's bundled Chromium.
-    const launch = vi.spyOn(chromium, "launch").mockResolvedValue(stubBrowser());
+    const launch = vi
+      .spyOn(chromium, "launch")
+      .mockResolvedValue(stubBrowser());
     vi.spyOn(chromium, "executablePath").mockReturnValue("/pw/chromium");
 
     await launchMeetingBrowser({ headless: true });
@@ -67,7 +74,9 @@ describe("launchMeetingBrowser headless + executable wiring", () => {
 
   it("resolves headless from ELIZA_MEETINGS_HEADLESS when no option is given", async () => {
     process.env.ELIZA_MEETINGS_HEADLESS = "true";
-    const launch = vi.spyOn(chromium, "launch").mockResolvedValue(stubBrowser());
+    const launch = vi
+      .spyOn(chromium, "launch")
+      .mockResolvedValue(stubBrowser());
     vi.spyOn(chromium, "executablePath").mockReturnValue("/pw/chromium");
 
     await launchMeetingBrowser({});
@@ -77,7 +86,9 @@ describe("launchMeetingBrowser headless + executable wiring", () => {
 
   it("honors the chromium path override and the requested channel", async () => {
     process.env.ELIZA_MEETINGS_CHROMIUM_PATH = "/opt/edge";
-    const launch = vi.spyOn(chromium, "launch").mockResolvedValue(stubBrowser());
+    const launch = vi
+      .spyOn(chromium, "launch")
+      .mockResolvedValue(stubBrowser());
 
     await launchMeetingBrowser({ channel: "msedge", headless: false });
 

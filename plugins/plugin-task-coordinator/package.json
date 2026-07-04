@@ -57,7 +57,11 @@
     "build:types": "tsc --noCheck -p tsconfig.build.json",
     "test": "vitest run --config vitest.config.ts",
     "test:unit": "vitest run --config vitest.config.ts",
-    "test:e2e:manual": "vitest run --config vitest.live.config.ts"
+    "test:e2e:manual": "vitest run --config vitest.live.config.ts",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format ."
   },
   "files": [
     "assets",

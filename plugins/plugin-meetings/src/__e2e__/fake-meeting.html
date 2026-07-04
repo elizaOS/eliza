@@ -34,11 +34,15 @@
     <div class="grid">
       <div class="tile" id="tile-0" data-participant="Jill">
         <span class="name">Jill</span>
-        <audio id="audio-0" data-participant="Jill"></audio>
+        <audio id="audio-0" data-participant="Jill">
+          <track kind="captions" label="Jill captions" src="data:text/vtt,WEBVTT%0A" default />
+        </audio>
       </div>
       <div class="tile" id="tile-1" data-participant="Bob">
         <span class="name">Bob</span>
-        <audio id="audio-1" data-participant="Bob"></audio>
+        <audio id="audio-1" data-participant="Bob">
+          <track kind="captions" label="Bob captions" src="data:text/vtt,WEBVTT%0A" default />
+        </audio>
       </div>
     </div>
     <script>
@@ -60,7 +64,7 @@
         osc.connect(gain);
         gain.connect(dest);
         osc.start();
-        const el = document.getElementById("audio-" + index);
+        const el = document.getElementById(`audio-${index}`);
         el.srcObject = dest.stream;
         el.muted = true; // never actually play out loud
         el.play().catch(() => {});
@@ -75,11 +79,11 @@
 
       // Start both tones (ramp gain up) and mark the tiles as speaking. Returns
       // the participant->element map the test asserts against.
-      window.__startTones = async function () {
+      window.__startTones = async () => {
         if (ac.state === "suspended") await ac.resume();
         for (const p of streams) {
           p.gain.gain.setValueAtTime(0.6, ac.currentTime);
-          document.getElementById("tile-" + p.index).classList.add("speaking");
+          document.getElementById(`tile-${p.index}`).classList.add("speaking");
         }
         return streams.map((p) => ({
           index: p.index,
@@ -89,24 +93,22 @@
         }));
       };
 
-      window.__stopTones = function () {
+      window.__stopTones = () => {
         for (const p of streams) {
           p.gain.gain.setValueAtTime(0, ac.currentTime);
-          document.getElementById("tile-" + p.index).classList.remove("speaking");
+          document.getElementById(`tile-${p.index}`).classList.remove("speaking");
         }
       };
 
       // Report how many live audio elements are discoverable (mirrors the
       // capture module's own liveAudioElements filter) — a page-side sanity read.
-      window.__liveElementCount = function () {
-        return Array.from(document.querySelectorAll("audio, video")).filter((el) => {
+      window.__liveElementCount = () => Array.from(document.querySelectorAll("audio, video")).filter((el) => {
           const src = el.srcObject;
           if (!(src instanceof MediaStream)) return false;
           if (el.paused) return false;
           const tracks = src.getAudioTracks();
           return tracks.length > 0 && tracks.some((t) => t.enabled);
         }).length;
-      };
     </script>
   </body>
 </html>

@@ -178,7 +178,8 @@ describe("InboxService.triageWithCuration", () => {
     );
 
     expect(result.triaged).toHaveLength(1);
-    const item = result.triaged[0]!;
+    const [item] = result.triaged;
+    if (!item) throw new Error("expected one triaged item");
     // Triage classification is intact.
     expect(item.classification).toBe("needs_reply");
     expect(item.urgency).toBe("high");

@@ -298,7 +298,7 @@ const taskCoordinatorPlugin: Plugin = {
       description: "Mobile-first coding cockpit — your agents on one screen",
       icon: "TerminalSquare",
       path: "/cockpit",
-      modalities: ["gui"],
+      modalities: ["gui", "xr"],
       bundlePath: "dist/views/bundle.js",
       componentExport: "CockpitRoute",
       // The cockpit drives the same orchestrator interact protocol (list /

@@ -30,6 +30,12 @@
       "@elizaos/ui/spatial": ["../../packages/ui/src/spatial/index.ts"],
       "@elizaos/ui/spatial/*": ["../../packages/ui/src/spatial/*"],
       "@elizaos/ui/*": ["../../packages/ui/src/*"],
+      "@elizaos/capacitor-bun-runtime": [
+        "../../plugins/plugin-native-bun-runtime/src/index.ts"
+      ],
+      "@elizaos/capacitor-camera": [
+        "../../plugins/plugin-native-camera/src/index.ts"
+      ],
       "@elizaos/core": ["../../packages/core/src/index.node.ts"],
       "@elizaos/core/*": ["../../packages/core/src/*"],
       "@elizaos/contracts": ["../../packages/contracts/src/index.ts"],

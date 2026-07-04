@@ -7,9 +7,9 @@
 import { logger } from "@elizaos/core";
 import type { MeetingEndReason, MeetingPlatform } from "@elizaos/shared";
 import type { MeetingBotSession, MeetingPlatformAdapter } from "../../types.js";
+import { selectInputDriver } from "../humanized/index.js";
 import { launchMeetingBrowser } from "../shared/launch.js";
 import { runMeetingFlow } from "../shared/meeting-flow.js";
-import { selectInputDriver } from "../humanized/index.js";
 import { createGoogleMeetStrategies } from "./strategies.js";
 
 export class GoogleMeetAdapter implements MeetingPlatformAdapter {

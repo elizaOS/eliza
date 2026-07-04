@@ -32,16 +32,16 @@ const FACEWEAR_ROUTES = facewearPlugin.routes as Route[];
 const servers: http.Server[] = [];
 
 afterEach(async () => {
-  await Promise.all(
-    servers.map(
-      (server) =>
-        new Promise<void>((resolve) => {
-          server.closeAllConnections?.();
-          server.close(() => resolve());
-        }),
-    ),
-  );
-  servers.length = 0;
+	await Promise.all(
+		servers.map(
+			(server) =>
+				new Promise<void>((resolve) => {
+					server.closeAllConnections?.();
+					server.close(() => resolve());
+				}),
+		),
+	);
+	servers.length = 0;
 });
 
 // ── routeHandler → legacy handler adapter ──────────────────────────────────
@@ -51,63 +51,63 @@ afterEach(async () => {
 // (.params/.query/.body), run routeHandler, and flush {status, headers, body}.
 
 type AugmentedRequest = IncomingMessage & {
-  params?: Record<string, string>;
-  query?: Record<string, string | string[]>;
-  body?: unknown;
-  rawBody?: string;
-  path?: string;
+	params?: Record<string, string>;
+	query?: Record<string, string | string[]>;
+	body?: unknown;
+	rawBody?: string;
+	path?: string;
 };
 
 function headersToRecord(req: IncomingMessage): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const [key, value] of Object.entries(req.headers)) {
-    out[key] = Array.isArray(value) ? value.join(",") : (value ?? "");
-  }
-  return out;
+	const out: Record<string, string> = {};
+	for (const [key, value] of Object.entries(req.headers)) {
+		out[key] = Array.isArray(value) ? value.join(",") : (value ?? "");
+	}
+	return out;
 }
 
 function bridgeToLegacyHandler(route: Route): Route {
-  const routeHandler = route.routeHandler;
-  if (!routeHandler) return route;
-  return {
-    ...route,
-    routeHandler: undefined,
-    handler: async (req, res, runtime) => {
-      const augmented = req as unknown as AugmentedRequest;
-      const ctx: RouteHandlerContext = {
-        body: augmented.body,
-        rawBody: augmented.rawBody,
-        params: augmented.params ?? {},
-        query: augmented.query ?? {},
-        headers: headersToRecord(req as unknown as IncomingMessage),
-        method: (req as unknown as IncomingMessage).method ?? "GET",
-        path: augmented.path ?? "",
-        runtime,
-        inProcess: false,
-      };
-      const result = await routeHandler(ctx);
-      const response = res as unknown as ServerResponse;
-      response.statusCode = result.status;
-      for (const [key, value] of Object.entries(result.headers ?? {})) {
-        response.setHeader(key, value);
-      }
-      if (result.body === undefined) {
-        response.end();
-        return;
-      }
-      if (typeof result.body === "string" || Buffer.isBuffer(result.body)) {
-        if (!response.getHeader("Content-Type")) {
-          response.setHeader("Content-Type", "text/plain; charset=utf-8");
-        }
-        response.end(result.body);
-        return;
-      }
-      if (!response.getHeader("Content-Type")) {
-        response.setHeader("Content-Type", "application/json; charset=utf-8");
-      }
-      response.end(JSON.stringify(result.body));
-    },
-  };
+	const routeHandler = route.routeHandler;
+	if (!routeHandler) return route;
+	return {
+		...route,
+		routeHandler: undefined,
+		handler: async (req, res, runtime) => {
+			const augmented = req as unknown as AugmentedRequest;
+			const ctx: RouteHandlerContext = {
+				body: augmented.body,
+				rawBody: augmented.rawBody,
+				params: augmented.params ?? {},
+				query: augmented.query ?? {},
+				headers: headersToRecord(req as unknown as IncomingMessage),
+				method: (req as unknown as IncomingMessage).method ?? "GET",
+				path: augmented.path ?? "",
+				runtime,
+				inProcess: false,
+			};
+			const result = await routeHandler(ctx);
+			const response = res as unknown as ServerResponse;
+			response.statusCode = result.status;
+			for (const [key, value] of Object.entries(result.headers ?? {})) {
+				response.setHeader(key, value);
+			}
+			if (result.body === undefined) {
+				response.end();
+				return;
+			}
+			if (typeof result.body === "string" || Buffer.isBuffer(result.body)) {
+				if (!response.getHeader("Content-Type")) {
+					response.setHeader("Content-Type", "text/plain; charset=utf-8");
+				}
+				response.end(result.body);
+				return;
+			}
+			if (!response.getHeader("Content-Type")) {
+				response.setHeader("Content-Type", "application/json; charset=utf-8");
+			}
+			response.end(JSON.stringify(result.body));
+		},
+	};
 }
 
 const BRIDGED_ROUTES = FACEWEAR_ROUTES.map(bridgeToLegacyHandler);
@@ -115,228 +115,228 @@ const BRIDGED_ROUTES = FACEWEAR_ROUTES.map(bridgeToLegacyHandler);
 // ── Fake services ───────────────────────────────────────────────────────────
 
 interface FakeXrConnection {
-  id: string;
-  deviceType: string;
-  connectedAt: Date;
+	id: string;
+	deviceType: string;
+	connectedAt: Date;
 }
 
 function makeXrService(connections: FakeXrConnection[]) {
-  return {
-    getConnections: () => connections,
-    getVisionPipeline: () => ({
-      hasRecentFrame: (_id: string) => true,
-    }),
-  };
+	return {
+		getConnections: () => connections,
+		getVisionPipeline: () => ({
+			hasRecentFrame: (_id: string) => true,
+		}),
+	};
 }
 
 function makeFacewearService(
-  devices: Array<{
-    id: string;
-    kind: "xr" | "smartglasses";
-    deviceType?: string;
-  }>,
+	devices: Array<{
+		id: string;
+		kind: "xr" | "smartglasses";
+		deviceType?: string;
+	}>,
 ) {
-  return {
-    getConnectedDevices: () => devices,
-  };
+	return {
+		getConnectedDevices: () => devices,
+	};
 }
 
 interface RuntimeServices {
-  xr?: ReturnType<typeof makeXrService> | null;
-  facewear?: ReturnType<typeof makeFacewearService> | null;
+	xr?: ReturnType<typeof makeXrService> | null;
+	facewear?: ReturnType<typeof makeFacewearService> | null;
 }
 
 function makeRuntime(services: RuntimeServices = {}): AgentRuntime {
-  return {
-    routes: BRIDGED_ROUTES,
-    getService: (key: string) => {
-      if (key === XR_SERVICE_TYPE) return services.xr ?? null;
-      if (key === FACEWEAR_SERVICE_TYPE) return services.facewear ?? null;
-      return null;
-    },
-  } as unknown as AgentRuntime;
+	return {
+		routes: BRIDGED_ROUTES,
+		getService: (key: string) => {
+			if (key === XR_SERVICE_TYPE) return services.xr ?? null;
+			if (key === FACEWEAR_SERVICE_TYPE) return services.facewear ?? null;
+			return null;
+		},
+	} as unknown as AgentRuntime;
 }
 
 async function startServer(
-  runtime: AgentRuntime,
-  isAuthorized: () => boolean = () => true,
+	runtime: AgentRuntime,
+	isAuthorized: () => boolean = () => true,
 ): Promise<string> {
-  const server = http.createServer(async (req, res) => {
-    const url = new URL(req.url ?? "/", "http://127.0.0.1");
-    const handled = await tryHandleRuntimePluginRoute({
-      req,
-      res,
-      method: req.method ?? "GET",
-      pathname: url.pathname,
-      url,
-      runtime,
-      isAuthorized,
-    });
-    if (!handled && !res.headersSent) {
-      res.statusCode = 404;
-      res.end("not found");
-    }
-  });
-  servers.push(server);
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const { port } = server.address() as AddressInfo;
-  return `http://127.0.0.1:${port}`;
+	const server = http.createServer(async (req, res) => {
+		const url = new URL(req.url ?? "/", "http://127.0.0.1");
+		const handled = await tryHandleRuntimePluginRoute({
+			req,
+			res,
+			method: req.method ?? "GET",
+			pathname: url.pathname,
+			url,
+			runtime,
+			isAuthorized,
+		});
+		if (!handled && !res.headersSent) {
+			res.statusCode = 404;
+			res.end("not found");
+		}
+	});
+	servers.push(server);
+	await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+	const { port } = server.address() as AddressInfo;
+	return `http://127.0.0.1:${port}`;
 }
 
 describe("plugin-facewear routes (real dispatch)", () => {
-  it("GET /xr/status returns connected XR devices when the XR service is running", async () => {
-    const base = await startServer(
-      makeRuntime({
-        xr: makeXrService([
-          {
-            id: "conn-1",
-            deviceType: "meta-quest",
-            connectedAt: new Date("2024-01-01T00:00:00.000Z"),
-          },
-        ]),
-      }),
-    );
+	it("GET /xr/status returns connected XR devices when the XR service is running", async () => {
+		const base = await startServer(
+			makeRuntime({
+				xr: makeXrService([
+					{
+						id: "conn-1",
+						deviceType: "meta-quest",
+						connectedAt: new Date("2024-01-01T00:00:00.000Z"),
+					},
+				]),
+			}),
+		);
 
-    const res = await fetch(`${base}/xr/status`);
-    expect(res.status).toBe(200);
-    expect(res.headers.get("content-type")).toContain("application/json");
-    const body = (await res.json()) as {
-      connected: boolean;
-      connections: Array<{
-        id: string;
-        deviceType: string;
-        connectedAt: string;
-        hasRecentFrame: boolean;
-      }>;
-    };
-    expect(body.connected).toBe(true);
-    expect(body.connections).toHaveLength(1);
-    expect(body.connections[0]).toMatchObject({
-      id: "conn-1",
-      deviceType: "meta-quest",
-      connectedAt: "2024-01-01T00:00:00.000Z",
-      hasRecentFrame: true,
-    });
-  });
+		const res = await fetch(`${base}/xr/status`);
+		expect(res.status).toBe(200);
+		expect(res.headers.get("content-type")).toContain("application/json");
+		const body = (await res.json()) as {
+			connected: boolean;
+			connections: Array<{
+				id: string;
+				deviceType: string;
+				connectedAt: string;
+				hasRecentFrame: boolean;
+			}>;
+		};
+		expect(body.connected).toBe(true);
+		expect(body.connections).toHaveLength(1);
+		expect(body.connections[0]).toMatchObject({
+			id: "conn-1",
+			deviceType: "meta-quest",
+			connectedAt: "2024-01-01T00:00:00.000Z",
+			hasRecentFrame: true,
+		});
+	});
 
-  it("GET /xr/status returns 503 when the XR service is unavailable", async () => {
-    const base = await startServer(makeRuntime({ xr: null }));
-    const res = await fetch(`${base}/xr/status`);
-    expect(res.status).toBe(503);
-    expect(((await res.json()) as { error: string }).error).toContain(
-      "XR service not running",
-    );
-  });
+	it("GET /xr/status returns 503 when the XR service is unavailable", async () => {
+		const base = await startServer(makeRuntime({ xr: null }));
+		const res = await fetch(`${base}/xr/status`);
+		expect(res.status).toBe(503);
+		expect(((await res.json()) as { error: string }).error).toContain(
+			"XR service not running",
+		);
+	});
 
-  it("GET /api/facewear/devices lists the full device registry", async () => {
-    const base = await startServer(makeRuntime());
-    const res = await fetch(`${base}/api/facewear/devices`);
-    expect(res.status).toBe(200);
-    expect(res.headers.get("content-type")).toContain("application/json");
-    const body = (await res.json()) as {
-      devices: Array<{ id: string }>;
-    };
-    expect(Array.isArray(body.devices)).toBe(true);
-    expect(body.devices.length).toBeGreaterThan(0);
-    expect(body.devices.map((d) => d.id)).toContain("meta-quest");
-  });
+	it("GET /api/facewear/devices lists the full device registry", async () => {
+		const base = await startServer(makeRuntime());
+		const res = await fetch(`${base}/api/facewear/devices`);
+		expect(res.status).toBe(200);
+		expect(res.headers.get("content-type")).toContain("application/json");
+		const body = (await res.json()) as {
+			devices: Array<{ id: string }>;
+		};
+		expect(Array.isArray(body.devices)).toBe(true);
+		expect(body.devices.length).toBeGreaterThan(0);
+		expect(body.devices.map((d) => d.id)).toContain("meta-quest");
+	});
 
-  it("GET /api/facewear/devices/:id resolves a known profile via the :id param", async () => {
-    const base = await startServer(makeRuntime());
+	it("GET /api/facewear/devices/:id resolves a known profile via the :id param", async () => {
+		const base = await startServer(makeRuntime());
 
-    const known = await fetch(`${base}/api/facewear/devices/meta-quest`);
-    expect(known.status).toBe(200);
-    expect(((await known.json()) as { id: string }).id).toBe("meta-quest");
+		const known = await fetch(`${base}/api/facewear/devices/meta-quest`);
+		expect(known.status).toBe(200);
+		expect(((await known.json()) as { id: string }).id).toBe("meta-quest");
 
-    // An unknown id is validated against the registry at the route boundary
-    // (`isFacewearDeviceType`) and rejected with a real 404 instead of serving
-    // an empty 200 body.
-    const unknown = await fetch(`${base}/api/facewear/devices/does-not-exist`);
-    expect(unknown.status).toBe(404);
-    expect(unknown.headers.get("content-type")).toContain("application/json");
-    expect(((await unknown.json()) as { error: string }).error).toBe(
-      "Device not found",
-    );
-  });
+		// An unknown id is validated against the registry at the route boundary
+		// (`isFacewearDeviceType`) and rejected with a real 404 instead of serving
+		// an empty 200 body.
+		const unknown = await fetch(`${base}/api/facewear/devices/does-not-exist`);
+		expect(unknown.status).toBe(404);
+		expect(unknown.headers.get("content-type")).toContain("application/json");
+		expect(((await unknown.json()) as { error: string }).error).toBe(
+			"Device not found",
+		);
+	});
 
-  it("GET /api/facewear/status reports connected devices from FacewearService", async () => {
-    const base = await startServer(
-      makeRuntime({
-        facewear: makeFacewearService([
-          { id: "conn-1", kind: "xr", deviceType: "xreal" },
-        ]),
-      }),
-    );
-    const res = await fetch(`${base}/api/facewear/status`);
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as {
-      connected: boolean;
-      devices: Array<{ id: string; kind: string }>;
-    };
-    expect(body.connected).toBe(true);
-    expect(body.devices).toHaveLength(1);
-    expect(body.devices[0]).toMatchObject({ id: "conn-1", kind: "xr" });
-  });
+	it("GET /api/facewear/status reports connected devices from FacewearService", async () => {
+		const base = await startServer(
+			makeRuntime({
+				facewear: makeFacewearService([
+					{ id: "conn-1", kind: "xr", deviceType: "xreal" },
+				]),
+			}),
+		);
+		const res = await fetch(`${base}/api/facewear/status`);
+		expect(res.status).toBe(200);
+		const body = (await res.json()) as {
+			connected: boolean;
+			devices: Array<{ id: string; kind: string }>;
+		};
+		expect(body.connected).toBe(true);
+		expect(body.devices).toHaveLength(1);
+		expect(body.devices[0]).toMatchObject({ id: "conn-1", kind: "xr" });
+	});
 
-  it("GET /api/facewear/status returns an empty list when FacewearService is absent", async () => {
-    const base = await startServer(makeRuntime({ facewear: null }));
-    const res = await fetch(`${base}/api/facewear/status`);
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as {
-      connected: boolean;
-      devices: unknown[];
-    };
-    expect(body.connected).toBe(false);
-    expect(body.devices).toEqual([]);
-  });
+	it("GET /api/facewear/status returns an empty list when FacewearService is absent", async () => {
+		const base = await startServer(makeRuntime({ facewear: null }));
+		const res = await fetch(`${base}/api/facewear/status`);
+		expect(res.status).toBe(200);
+		const body = (await res.json()) as {
+			connected: boolean;
+			devices: unknown[];
+		};
+		expect(body.connected).toBe(false);
+		expect(body.devices).toEqual([]);
+	});
 
-  it("GET /xr/connect serves the QR pairing HTML page", async () => {
-    const base = await startServer(makeRuntime());
-    const res = await fetch(`${base}/xr/connect`);
-    expect(res.status).toBe(200);
-    expect(res.headers.get("content-type")).toContain("text/html");
-    const html = await res.text();
-    expect(html).toContain("<!DOCTYPE html>");
-    expect(html).toContain("Connect XR Headset");
-  });
+	it("GET /xr/connect serves the QR pairing HTML page", async () => {
+		const base = await startServer(makeRuntime());
+		const res = await fetch(`${base}/xr/connect`);
+		expect(res.status).toBe(200);
+		expect(res.headers.get("content-type")).toContain("text/html");
+		const html = await res.text();
+		expect(html).toContain("<!DOCTYPE html>");
+		expect(html).toContain("Connect XR Headset");
+	});
 
-  it("GET /xr/view-host/:id serves an XR host page for the requested view", async () => {
-    const base = await startServer(makeRuntime());
-    const res = await fetch(`${base}/xr/view-host/facewear`);
-    expect(res.status).toBe(200);
-    expect(res.headers.get("content-type")).toContain("text/html");
-    const html = await res.text();
-    expect(html).toContain("<!DOCTYPE html>");
-    expect(html).toContain('data-view-id="facewear"');
-    // The page must wire the bundle URL for the requested view id.
-    expect(html).toContain("/api/views/facewear/bundle.js");
-  });
+	it("GET /xr/view-host/:id serves an XR host page for the requested view", async () => {
+		const base = await startServer(makeRuntime());
+		const res = await fetch(`${base}/xr/view-host/facewear`);
+		expect(res.status).toBe(200);
+		expect(res.headers.get("content-type")).toContain("text/html");
+		const html = await res.text();
+		expect(html).toContain("<!DOCTYPE html>");
+		expect(html).toContain('data-view-id="facewear"');
+		// The page must wire the bundle URL for the requested view id.
+		expect(html).toContain("/api/views/facewear/bundle.js");
+	});
 
-  it("enforces the auth gate on the non-public facewear routes (401)", async () => {
-    // None of the facewear routes are declared `public: true`, so the auth gate
-    // applies to all of them. With auth denied every route must 401 before the
-    // handler runs.
-    const base = await startServer(
-      makeRuntime({
-        xr: makeXrService([]),
-        facewear: makeFacewearService([]),
-      }),
-      () => false,
-    );
+	it("enforces the auth gate on the non-public facewear routes (401)", async () => {
+		// None of the facewear routes are declared `public: true`, so the auth gate
+		// applies to all of them. With auth denied every route must 401 before the
+		// handler runs.
+		const base = await startServer(
+			makeRuntime({
+				xr: makeXrService([]),
+				facewear: makeFacewearService([]),
+			}),
+			() => false,
+		);
 
-    for (const path of [
-      "/xr/status",
-      "/api/facewear/devices",
-      "/api/facewear/devices/meta-quest",
-      "/api/facewear/status",
-      "/xr/connect",
-      "/xr/view-host/facewear",
-    ]) {
-      const res = await fetch(`${base}${path}`);
-      expect(res.status, `expected 401 for ${path}`).toBe(401);
-      expect(((await res.json()) as { error: string }).error).toBe(
-        "Unauthorized",
-      );
-    }
-  });
+		for (const path of [
+			"/xr/status",
+			"/api/facewear/devices",
+			"/api/facewear/devices/meta-quest",
+			"/api/facewear/status",
+			"/xr/connect",
+			"/xr/view-host/facewear",
+		]) {
+			const res = await fetch(`${base}${path}`);
+			expect(res.status, `expected 401 for ${path}`).toBe(401);
+			expect(((await res.json()) as { error: string }).error).toBe(
+				"Unauthorized",
+			);
+		}
+	});
 });

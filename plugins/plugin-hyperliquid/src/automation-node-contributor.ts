@@ -4,10 +4,10 @@
  * automation builder whenever the Hyperliquid plugin is loaded.
  */
 import {
-  type AutomationNodeContributorContext,
-  buildRuntimeCapabilityNodes,
-  type RuntimeCapabilityNodeSpec,
-  registerAutomationNodeContributor,
+	type AutomationNodeContributorContext,
+	buildRuntimeCapabilityNodes,
+	type RuntimeCapabilityNodeSpec,
+	registerAutomationNodeContributor,
 } from "@elizaos/app-core/api/automation-node-contributors";
 import type { AutomationNodeDescriptor } from "@elizaos/shared";
 
@@ -18,63 +18,63 @@ import type { AutomationNodeDescriptor } from "@elizaos/shared";
  * change updates the node alongside the code that gates it.
  */
 const HYPERLIQUID_AUTOMATION_NODE_SPECS: RuntimeCapabilityNodeSpec[] = [
-  {
-    id: "crypto:hyperliquid.action",
-    label: "Hyperliquid action",
-    description:
-      "Hyperliquid automation entry point backed by a loaded Hyperliquid runtime plugin.",
-    class: "action",
-    backingCapability: "HYPERLIQUID_ACTION",
-    actionNames: [
-      "HYPERLIQUID_ACTION",
-      "HYPERLIQUID_ORDER",
-      "HYPERLIQUID_TRADE",
-    ],
-    pluginNames: [
-      "hyperliquid",
-      "plugin-hyperliquid",
-      "@elizaos/plugin-hyperliquid",
-    ],
-    ownerScoped: true,
-    enabledWithoutRuntimeCapability: false,
-    disabledReason: "Load the Hyperliquid runtime plugin.",
-  },
-  {
-    id: "trigger:order.event",
-    label: "Order event",
-    description:
-      "React to order lifecycle events emitted by a loaded trading venue plugin.",
-    class: "trigger",
-    backingCapability: "ORDER_EVENT",
-    actionNames: [
-      "ORDER_EVENT",
-      "ORDER_FILLED",
-      "ORDER_UPDATED",
-      "HYPERLIQUID_ACTION",
-    ],
-    pluginNames: [
-      "hyperliquid",
-      "plugin-hyperliquid",
-      "@elizaos/plugin-hyperliquid",
-    ],
-    ownerScoped: false,
-    enabledWithoutRuntimeCapability: false,
-    disabledReason: "Load an order-event-capable runtime plugin.",
-  },
+	{
+		id: "crypto:hyperliquid.action",
+		label: "Hyperliquid action",
+		description:
+			"Hyperliquid automation entry point backed by a loaded Hyperliquid runtime plugin.",
+		class: "action",
+		backingCapability: "HYPERLIQUID_ACTION",
+		actionNames: [
+			"HYPERLIQUID_ACTION",
+			"HYPERLIQUID_ORDER",
+			"HYPERLIQUID_TRADE",
+		],
+		pluginNames: [
+			"hyperliquid",
+			"plugin-hyperliquid",
+			"@elizaos/plugin-hyperliquid",
+		],
+		ownerScoped: true,
+		enabledWithoutRuntimeCapability: false,
+		disabledReason: "Load the Hyperliquid runtime plugin.",
+	},
+	{
+		id: "trigger:order.event",
+		label: "Order event",
+		description:
+			"React to order lifecycle events emitted by a loaded trading venue plugin.",
+		class: "trigger",
+		backingCapability: "ORDER_EVENT",
+		actionNames: [
+			"ORDER_EVENT",
+			"ORDER_FILLED",
+			"ORDER_UPDATED",
+			"HYPERLIQUID_ACTION",
+		],
+		pluginNames: [
+			"hyperliquid",
+			"plugin-hyperliquid",
+			"@elizaos/plugin-hyperliquid",
+		],
+		ownerScoped: false,
+		enabledWithoutRuntimeCapability: false,
+		disabledReason: "Load an order-event-capable runtime plugin.",
+	},
 ];
 
 export function buildHyperliquidAutomationNodes({
-  runtime,
+	runtime,
 }: AutomationNodeContributorContext): AutomationNodeDescriptor[] {
-  return buildRuntimeCapabilityNodes(
-    HYPERLIQUID_AUTOMATION_NODE_SPECS,
-    runtime,
-  );
+	return buildRuntimeCapabilityNodes(
+		HYPERLIQUID_AUTOMATION_NODE_SPECS,
+		runtime,
+	);
 }
 
 export function registerHyperliquidAutomationNodeContributor(): void {
-  registerAutomationNodeContributor(
-    "hyperliquid",
-    buildHyperliquidAutomationNodes,
-  );
+	registerAutomationNodeContributor(
+		"hyperliquid",
+		buildHyperliquidAutomationNodes,
+	);
 }

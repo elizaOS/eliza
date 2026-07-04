@@ -31,12 +31,27 @@ import {
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+type AgentDescriptor = {
+  id: string;
+  onFill?: (value: string) => void;
+};
+
+const agentDescriptors = vi.hoisted(() => new Map<string, AgentDescriptor>());
+
 // Stub out the agent-surface hook — TaskInspector wires a couple of agent
-// elements (close button + priority select) and only needs `ref` + `agentProps`
-// back. Returning empty objects is safe because the production hook is purely
-// a registration side effect for the agent overlay.
+// elements (close button + priority select). Capture descriptors so tests can
+// exercise the agent-fill contract without depending on Radix portal behavior
+// in jsdom.
 vi.mock("@elizaos/ui/agent-surface", () => ({
-  useAgentElement: () => ({ ref: () => {}, agentProps: {} }),
+  useAgentElement: (descriptor: AgentDescriptor) => {
+    agentDescriptors.set(descriptor.id, descriptor);
+    return {
+      ref: () => {},
+      agentProps: {
+        "data-agent-id": descriptor.id,
+      },
+    };
+  },
 }));
 
 import { TaskInspector } from "../../src/OrchestratorWorkbench";
@@ -138,6 +153,7 @@ function renderInspector(
 
 afterEach(() => {
   cleanup();
+  agentDescriptors.clear();
 });
 
 describe("TaskInspector — terminal-task action-bar guards", () => {
@@ -451,11 +467,11 @@ describe("TaskInspector — control behavior (callbacks fire)", () => {
     expect(cb.onValidate).toHaveBeenCalledWith(false);
   });
 
-  it("changing the priority select fires onSetPriority with the new value", () => {
+  it("agent-filling the priority select fires onSetPriority with the new value", () => {
     const { cb } = renderWithSpies({ status: "active", priority: "normal" });
-    fireEvent.change(screen.getByTestId("orchestrator-priority-select"), {
-      target: { value: "high" },
-    });
+    const descriptor = agentDescriptors.get("inspector-priority");
+    expect(descriptor?.onFill).toBeTypeOf("function");
+    descriptor?.onFill?.("high");
     expect(cb.onSetPriority).toHaveBeenCalledWith("high");
   });
 

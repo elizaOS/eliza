@@ -6,18 +6,29 @@
 
 import path from "node:path";
 import { defineConfig } from "vitest/config";
+import baseConfig from "../../packages/test/vitest/default.config";
 import {
   providerSdkAliases,
   providerSdkShimPlugin,
 } from "../../packages/test/vitest/provider-sdk-aliases";
 
+const baseResolveAliases = Array.isArray(baseConfig.resolve?.alias)
+  ? baseConfig.resolve.alias
+  : [];
+const baseTestAliases = Array.isArray(baseConfig.test?.alias)
+  ? baseConfig.test.alias
+  : [];
+
 export default defineConfig({
-  plugins: [providerSdkShimPlugin()],
+  ...baseConfig,
+  plugins: [...(baseConfig.plugins ?? []), providerSdkShimPlugin()],
   resolve: {
-    alias: providerSdkAliases,
+    ...baseConfig.resolve,
+    alias: [...providerSdkAliases, ...baseResolveAliases],
   },
   test: {
-    alias: providerSdkAliases,
+    ...baseConfig.test,
+    alias: [...providerSdkAliases, ...baseTestAliases],
     globals: false,
     environment: "node",
     include: ["src/**/*.test.ts"],

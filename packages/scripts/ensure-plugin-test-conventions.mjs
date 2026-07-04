@@ -14,6 +14,8 @@
  *    task: (cd rust && cargo test) || echo 'Rust tests skipped'
  * 3. Python: test:py / test:python runs guard on pytest when possible so
  *    missing pytest doesn't fail: command -v pytest >/dev/null 2>&1 && ...
+ * 4. Top-level plugin workspaces must expose real test/typecheck/lint/format
+ *    scripts so Turbo does not treat them as transit-only graph nodes.
  *
  * Usage:
  *   bun run ensure-plugin-test-conventions     # apply to all plugins
@@ -30,6 +32,14 @@ const CHECK = process.argv.includes("--check");
 
 const RUST_SKIP_MSG = "Rust tests skipped";
 const PYTHON_SKIP_MSG = "Python tests skipped";
+const REQUIRED_WORKSPACE_SCRIPTS = [
+  "test",
+  "typecheck",
+  "lint",
+  "lint:check",
+  "format",
+  "format:check",
+];
 
 function findPackageJsonFiles(dir, list = []) {
   if (!existsSync(dir)) return list;
@@ -47,6 +57,116 @@ function findPackageJsonFiles(dir, list = []) {
     }
   }
   return list;
+}
+
+function findPluginWorkspacePackageJsonFiles() {
+  const pluginsDir = join(ROOT, "plugins");
+  if (!existsSync(pluginsDir)) return [];
+  const entries = readdirSync(pluginsDir, { withFileTypes: true });
+  return entries
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => join(pluginsDir, entry.name, "package.json"))
+    .filter((filePath) => existsSync(filePath))
+    .sort();
+}
+
+function rel(filePath) {
+  return filePath.replace(ROOT + "/", "");
+}
+
+function hasFakeSuccess(value) {
+  if (typeof value !== "string") return false;
+  return /^\s*echo\b/.test(value) || /\|\|\s*true\b/.test(value);
+}
+
+function delegatesToNestedScript(value, scriptName) {
+  return value === `cd src && bun run ${scriptName}`;
+}
+
+function hasBiomeCommand(value, commandName) {
+  return (
+    typeof value === "string" &&
+    value.includes("@biomejs/biome") &&
+    value.includes(commandName)
+  );
+}
+
+function isMutatingLint(value) {
+  return (
+    delegatesToNestedScript(value, "lint") ||
+    (hasBiomeCommand(value, "check") && value.includes("--write"))
+  );
+}
+
+function isReadOnlyLintCheck(value) {
+  return (
+    delegatesToNestedScript(value, "lint:check") ||
+    ((hasBiomeCommand(value, "check") || hasBiomeCommand(value, "lint")) &&
+      !value.includes("--write"))
+  );
+}
+
+function isMutatingFormat(value) {
+  return (
+    delegatesToNestedScript(value, "format") ||
+    (hasBiomeCommand(value, "format") && value.includes("--write"))
+  );
+}
+
+function isReadOnlyFormatCheck(value) {
+  return (
+    delegatesToNestedScript(value, "format:check") ||
+    (hasBiomeCommand(value, "format") && !value.includes("--write"))
+  );
+}
+
+function validateWorkspaceScriptContract(filePath) {
+  const pkg = JSON.parse(readFileSync(filePath, "utf8"));
+  const scripts = pkg.scripts;
+  const errors = [];
+
+  if (!scripts || typeof scripts !== "object") {
+    return [`${rel(filePath)} has no scripts object`];
+  }
+
+  for (const scriptName of REQUIRED_WORKSPACE_SCRIPTS) {
+    const value = scripts[scriptName];
+    if (!value) {
+      errors.push(`${rel(filePath)} missing required script "${scriptName}"`);
+      continue;
+    }
+    if (hasFakeSuccess(value)) {
+      errors.push(
+        `${rel(filePath)} script "${scriptName}" is a fake success command: ${value}`,
+      );
+    }
+  }
+
+  if (scripts.lint && !isMutatingLint(scripts.lint)) {
+    errors.push(`${rel(filePath)} lint must run a mutating Biome check`);
+  }
+  if (scripts["lint:check"] && !isReadOnlyLintCheck(scripts["lint:check"])) {
+    errors.push(`${rel(filePath)} lint:check must be read-only`);
+  }
+  if (scripts.format && !isMutatingFormat(scripts.format)) {
+    errors.push(`${rel(filePath)} format must run a mutating Biome format`);
+  }
+  if (
+    scripts["format:check"] &&
+    !isReadOnlyFormatCheck(scripts["format:check"])
+  ) {
+    errors.push(`${rel(filePath)} format:check must be read-only`);
+  }
+
+  return errors;
+}
+
+function validateAllWorkspaceScriptContracts() {
+  const errors = [];
+  for (const filePath of findPluginWorkspacePackageJsonFiles()) {
+    errors.push(...validateWorkspaceScriptContract(filePath));
+  }
+  return errors;
 }
 
 function ensureVitestNoPassWithNoTests(value) {
@@ -153,6 +273,13 @@ function main() {
   }
   if (DRY_RUN && anyChanged) {
     console.log("\nRun without --dry-run to apply changes.");
+  }
+  const validationErrors = validateAllWorkspaceScriptContracts();
+  if (validationErrors.length > 0) {
+    for (const error of validationErrors) {
+      console.error(error);
+    }
+    process.exit(1);
   }
 }
 

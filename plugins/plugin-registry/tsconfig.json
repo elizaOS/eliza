@@ -38,6 +38,7 @@
       "@elizaos/capacitor-bun-runtime": [
         "../plugin-native-bun-runtime/src/index.ts"
       ],
+      "@elizaos/capacitor-camera": ["../plugin-native-camera/src/index.ts"],
       "@elizaos/plugin-capacitor-bridge": [
         "../plugin-capacitor-bridge/src/index.ts"
       ],

@@ -727,7 +727,7 @@ export class FormService extends Service {
     }
 
     const fieldState = session.fields[field];
-    if (!fieldState || fieldState.status !== "uncertain") {
+    if (fieldState?.status !== "uncertain") {
       return;
     }
 
@@ -893,7 +893,7 @@ export class FormService extends Service {
     for (const subControl of subControls) {
       if (!subControl.required) continue;
       const subField = subFields[subControl.key];
-      if (!subField || subField.status !== "filled") {
+      if (subField?.status !== "filled") {
         return false;
       }
     }
@@ -1040,7 +1040,7 @@ export class FormService extends Service {
     }
 
     const fieldState = session.fields[field];
-    if (!fieldState || fieldState.status !== "pending") {
+    if (fieldState?.status !== "pending") {
       logger.warn(
         `[FormService] Cannot confirm field ${field}: not in pending state`,
       );

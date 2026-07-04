@@ -77,8 +77,19 @@ export class X11Input {
   }
 
   async moveRel(dx: number, dy: number): Promise<void> {
-    if (this.dryRun) this.simPointer = { x: this.simPointer.x + dx, y: this.simPointer.y + dy };
-    await this.run(["xdotool", "mousemove_relative", "--sync", "--", String(dx), String(dy)]);
+    if (this.dryRun)
+      this.simPointer = {
+        x: this.simPointer.x + dx,
+        y: this.simPointer.y + dy,
+      };
+    await this.run([
+      "xdotool",
+      "mousemove_relative",
+      "--sync",
+      "--",
+      String(dx),
+      String(dy),
+    ]);
   }
 
   async buttonDown(button = 1): Promise<void> {
@@ -91,6 +102,14 @@ export class X11Input {
 
   /** Type literal text via XTEST keystrokes with a per-char delay (ms). */
   async typeText(text: string, delayMs = 60): Promise<void> {
-    await this.run(["xdotool", "type", "--clearmodifiers", "--delay", String(delayMs), "--", text]);
+    await this.run([
+      "xdotool",
+      "type",
+      "--clearmodifiers",
+      "--delay",
+      String(delayMs),
+      "--",
+      text,
+    ]);
   }
 }

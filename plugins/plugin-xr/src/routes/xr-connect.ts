@@ -2,25 +2,25 @@ import { networkInterfaces } from "node:os";
 import type { Route } from "@elizaos/core";
 
 function getLocalIp(): string {
-  const nets = networkInterfaces();
-  for (const iface of Object.values(nets)) {
-    for (const net of iface ?? []) {
-      if (!net.internal && net.family === "IPv4") return net.address;
-    }
-  }
-  return "127.0.0.1";
+	const nets = networkInterfaces();
+	for (const iface of Object.values(nets)) {
+		for (const net of iface ?? []) {
+			if (!net.internal && net.family === "IPv4") return net.address;
+		}
+	}
+	return "127.0.0.1";
 }
 
 function getAppUrl(): string {
-  // Set by the connect script when a tunnel is active
-  if (process.env.XR_APP_URL) return process.env.XR_APP_URL;
-  const port = process.env.VITE_PORT ?? "5173";
-  return `http://${getLocalIp()}:${port}`;
+	// Set by the connect script when a tunnel is active
+	if (process.env.XR_APP_URL) return process.env.XR_APP_URL;
+	const port = process.env.VITE_PORT ?? "5173";
+	return `http://${getLocalIp()}:${port}`;
 }
 
 function htmlPage(appUrl: string): string {
-  const encoded = encodeURIComponent(appUrl);
-  return `<!DOCTYPE html>
+	const encoded = encodeURIComponent(appUrl);
+	return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -74,16 +74,16 @@ function htmlPage(appUrl: string): string {
 }
 
 export const xrConnectRoute: Route = {
-  type: "GET",
-  path: "/xr/connect",
-  description:
-    "Returns an HTML page with a QR code to connect an XR headset. Set XR_APP_URL env var (or run `bun run connect` in plugins/plugin-facewear/app-xr) to show the correct public URL.",
-  routeHandler: async (_ctx) => {
-    const url = getAppUrl();
-    return {
-      status: 200,
-      headers: { "Content-Type": "text/html; charset=utf-8" },
-      body: htmlPage(url),
-    };
-  },
+	type: "GET",
+	path: "/xr/connect",
+	description:
+		"Returns an HTML page with a QR code to connect an XR headset. Set XR_APP_URL env var (or run `bun run connect` in plugins/plugin-facewear/app-xr) to show the correct public URL.",
+	routeHandler: async (_ctx) => {
+		const url = getAppUrl();
+		return {
+			status: 200,
+			headers: { "Content-Type": "text/html; charset=utf-8" },
+			body: htmlPage(url),
+		};
+	},
 };

@@ -65,7 +65,11 @@
     "build:types": "tsc --noCheck -p tsconfig.build.json",
     "typecheck": "tsgo --noEmit -p tsconfig.build.json",
     "test": "vitest run --config ./vitest.config.ts",
-    "test:e2e:manual": "vitest run --config ../../vitest.config.ts test/*.live.e2e.test.ts"
+    "test:e2e:manual": "vitest run --config ../../vitest.config.ts test/*.live.e2e.test.ts",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format ."
   },
   "files": [
     "registry-entry.json",

@@ -11,37 +11,37 @@
 import { registerSpatialTerminalView } from "@elizaos/ui/spatial/tui";
 import { createElement } from "react";
 import {
-  type HyperliquidSnapshot,
-  HyperliquidSpatialView,
+	type HyperliquidSnapshot,
+	HyperliquidSpatialView,
 } from "./components/HyperliquidSpatialView.tsx";
 
 const EMPTY: HyperliquidSnapshot = {
-  status: {
-    publicReadReady: false,
-    signerReady: false,
-    executionReady: false,
-    credentialMode: "none",
-    accountAddress: null,
-    vaultReady: false,
-    executionBlockedReason: null,
-  },
-  markets: [],
-  positions: [],
-  orders: [],
+	status: {
+		publicReadReady: false,
+		signerReady: false,
+		executionReady: false,
+		credentialMode: "none",
+		accountAddress: null,
+		vaultReady: false,
+		executionBlockedReason: null,
+	},
+	markets: [],
+	positions: [],
+	orders: [],
 };
 
 let current: HyperliquidSnapshot = EMPTY;
 
 /** Update the snapshot the registered terminal view renders from. */
 export function setHyperliquidTerminalSnapshot(
-  next: HyperliquidSnapshot,
+	next: HyperliquidSnapshot,
 ): void {
-  current = next;
+	current = next;
 }
 
 /** Register the Hyperliquid terminal view; returns an unregister function. */
 export function registerHyperliquidTerminalView(): () => void {
-  return registerSpatialTerminalView("hyperliquid", () =>
-    createElement(HyperliquidSpatialView, { snapshot: current }),
-  );
+	return registerSpatialTerminalView("hyperliquid", () =>
+		createElement(HyperliquidSpatialView, { snapshot: current }),
+	);
 }

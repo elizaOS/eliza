@@ -76,7 +76,11 @@
     "test": "vitest run --config vitest.config.ts",
     "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
     "build:views": "bunx --bun vite build --config vite.config.views.ts",
-    "build:types": "tsc --noCheck -p tsconfig.build.json"
+    "build:types": "tsc --noCheck -p tsconfig.build.json",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format ."
   },
   "files": [
     "assets",

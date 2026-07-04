@@ -13,10 +13,10 @@
  *    rejection — keep waiting so a human/agent can solve it.
  */
 
-import type { Page } from "playwright-core";
 import { logger } from "@elizaos/core";
-import type { AdmissionOutcome } from "../shared/strategy.js";
+import type { Page } from "playwright-core";
 import { anySelectorPresent, anySelectorVisible } from "../shared/selectors.js";
+import type { AdmissionOutcome } from "../shared/strategy.js";
 import {
   googleInitialAdmissionIndicators,
   googleRejectionIndicators,
@@ -25,7 +25,10 @@ import {
 
 const POLL_INTERVAL_MS = 2_000;
 /** Structural selectors detected by DOM presence, not visibility (auto-hide-proof). */
-const PRESENCE_SELECTORS = new Set(["[data-participant-id]", "[data-self-name]"]);
+const PRESENCE_SELECTORS = new Set([
+  "[data-participant-id]",
+  "[data-self-name]",
+]);
 
 /** Detect an active reCAPTCHA (enterprise) challenge in any frame. */
 export async function hasRecaptchaChallenge(page: Page): Promise<boolean> {
@@ -129,6 +132,8 @@ export async function waitForAdmission(
   // Final terminal-state check before declaring timeout.
   if (await checkForRejection(page)) return "rejected";
   if (await checkForAdmission(page)) return "admitted";
-  logger.info("[GoogleMeetAdmission] admission window elapsed without admittance");
+  logger.info(
+    "[GoogleMeetAdmission] admission window elapsed without admittance",
+  );
   return "timeout";
 }

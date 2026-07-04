@@ -3,7 +3,7 @@
  * generated library and the pointer-lands-in-target selection bounds. Pure.
  */
 import { describe, expect, it } from "vitest";
-import { MocapEngine, buildMocapLibrary } from "./mocap.js";
+import { buildMocapLibrary, MocapEngine } from "./mocap.js";
 import type { Rect } from "./types.js";
 
 describe("mocap library generation", () => {
@@ -43,7 +43,9 @@ describe("MocapEngine trajectory selection bounds", () => {
     if (!seq) return false;
     const fx = startX + seq.total_dx;
     const fy = startY + seq.total_dy;
-    return fx >= rect.left && fx <= rect.right && fy >= rect.top && fy <= rect.bottom;
+    return (
+      fx >= rect.left && fx <= rect.right && fy >= rect.top && fy <= rect.bottom
+    );
   }
 
   it("lands the pointer inside a target rect in several directions", () => {

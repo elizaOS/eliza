@@ -55,7 +55,7 @@ export const calendlyEventTypesProvider: Provider = {
       return { data: {}, values: { calendlyConnected: false }, text: "" };
     }
 
-    let eventTypes;
+    let eventTypes: Awaited<ReturnType<CalendlyService["listEventTypes"]>>;
     try {
       eventTypes = await service.listEventTypes(accountId);
     } catch (err) {

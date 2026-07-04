@@ -197,11 +197,11 @@ export function useShopifyDashboard(): UseShopifyDashboardReturn {
   const [customerSearch, setCustomerSearch] = useState("");
 
   // -- Tick counter to drive polling
-  const [tick, setTick] = useState(0);
+  const [refreshTick, setRefreshTick] = useState(0);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const refresh = useCallback(() => {
-    setTick((n) => n + 1);
+    setRefreshTick((n) => n + 1);
   }, []);
 
   // Poll every 30 s when the component is mounted
@@ -214,6 +214,7 @@ export function useShopifyDashboard(): UseShopifyDashboardReturn {
 
   // -- Fetch status
   useEffect(() => {
+    void refreshTick;
     let cancelled = false;
     setStatusLoading(true);
     setStatusError(null);
@@ -242,12 +243,13 @@ export function useShopifyDashboard(): UseShopifyDashboardReturn {
     return () => {
       cancelled = true;
     };
-  }, [tick]);
+  }, [refreshTick]);
 
   const connected = status?.connected ?? false;
 
   // -- Fetch products (only when connected)
   useEffect(() => {
+    void refreshTick;
     if (!connected) return;
     let cancelled = false;
     setProductsLoading(true);
@@ -284,10 +286,11 @@ export function useShopifyDashboard(): UseShopifyDashboardReturn {
     return () => {
       cancelled = true;
     };
-  }, [connected, productsPage, productSearch, tick]);
+  }, [connected, productsPage, productSearch, refreshTick]);
 
   // -- Fetch orders
   useEffect(() => {
+    void refreshTick;
     if (!connected) return;
     let cancelled = false;
     setOrdersLoading(true);
@@ -316,10 +319,11 @@ export function useShopifyDashboard(): UseShopifyDashboardReturn {
     return () => {
       cancelled = true;
     };
-  }, [connected, orderStatusFilter, tick]);
+  }, [connected, orderStatusFilter, refreshTick]);
 
   // -- Fetch inventory
   useEffect(() => {
+    void refreshTick;
     if (!connected) return;
     let cancelled = false;
     setInventoryLoading(true);
@@ -343,10 +347,11 @@ export function useShopifyDashboard(): UseShopifyDashboardReturn {
     return () => {
       cancelled = true;
     };
-  }, [connected, tick]);
+  }, [connected, refreshTick]);
 
   // -- Fetch customers
   useEffect(() => {
+    void refreshTick;
     if (!connected) return;
     let cancelled = false;
     setCustomersLoading(true);
@@ -375,7 +380,7 @@ export function useShopifyDashboard(): UseShopifyDashboardReturn {
     return () => {
       cancelled = true;
     };
-  }, [connected, customerSearch, tick]);
+  }, [connected, customerSearch, refreshTick]);
 
   const counts: ShopifyAggregateCounts = {
     productCount: productsData?.total ?? 0,

@@ -48,7 +48,9 @@ describe("plugin-meetings shouldEnable", () => {
     expect(shouldEnable(ctx(withMeetings(true)))).toBe(true);
     expect(shouldEnable(ctx(withMeetings({ enabled: true })))).toBe(true);
     // A feature object without an explicit `enabled: false` is treated as on.
-    expect(shouldEnable(ctx(withMeetings({ botName: "Notetaker" })))).toBe(true);
+    expect(shouldEnable(ctx(withMeetings({ botName: "Notetaker" })))).toBe(
+      true,
+    );
   });
 
   it("does NOT key off any ELIZA_MEETINGS_* env flag (no bespoke switch)", () => {

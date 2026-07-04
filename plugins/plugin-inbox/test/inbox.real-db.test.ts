@@ -312,7 +312,8 @@ describe("InboxService + InboxRepository — real PGLite", () => {
     );
 
     expect(result.triaged).toHaveLength(1);
-    const item = result.triaged[0]!;
+    const [item] = result.triaged;
+    if (!item) throw new Error("expected one triaged item");
     // Triage still classifies (deterministic stub).
     expect(item.classification).toBeDefined();
     // Curation decision attached, VIP identity honored, delete blocked.

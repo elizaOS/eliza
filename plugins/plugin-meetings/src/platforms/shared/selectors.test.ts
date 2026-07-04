@@ -3,8 +3,9 @@
  * selector list, where a per-selector timeout never aborts the others.
  * Deterministic: a fake page with scripted per-selector delays.
  */
-import { describe, expect, it } from "vitest";
+
 import type { ElementHandle, Page } from "playwright-core";
+import { describe, expect, it } from "vitest";
 import { waitForAnySelector } from "./selectors.js";
 
 /**
@@ -20,7 +21,10 @@ function fakePage(delays: Record<string, number>): Page {
           setTimeout(() => reject(new Error("timeout")), 5);
           return;
         }
-        setTimeout(() => resolve({ selector } as unknown as ElementHandle<Element>), d);
+        setTimeout(
+          () => resolve({ selector } as unknown as ElementHandle<Element>),
+          d,
+        );
       }),
   } as unknown as Page;
 }
@@ -28,7 +32,12 @@ function fakePage(delays: Record<string, number>): Page {
 describe("waitForAnySelector selector racing", () => {
   it("resolves with the FIRST selector to match (not list order)", async () => {
     const page = fakePage({ "b-fast": 5, "a-slow": 40 });
-    const { selector } = await waitForAnySelector(page, ["a-slow", "b-fast"], 1000, "control");
+    const { selector } = await waitForAnySelector(
+      page,
+      ["a-slow", "b-fast"],
+      1000,
+      "control",
+    );
     expect(selector).toBe("b-fast");
   });
 
@@ -53,6 +62,8 @@ describe("waitForAnySelector selector racing", () => {
 
   it("throws immediately for an empty selector list", async () => {
     const page = fakePage({});
-    await expect(waitForAnySelector(page, [], 50, "empty")).rejects.toThrow(/could not locate empty/);
+    await expect(waitForAnySelector(page, [], 50, "empty")).rejects.toThrow(
+      /could not locate empty/,
+    );
   });
 });

@@ -317,10 +317,10 @@ describe("OrchestratorSpatialView one source, three modalities", () => {
     ]) {
       expect(gui).toContain(`data-agent-id="${agentId}"`);
     }
-    // The priority select carries the four priority options.
-    for (const priority of ["low", "normal", "high", "urgent"]) {
-      expect(gui).toContain(priority);
-    }
+    // Static markup only renders the closed select trigger; Radix renders its
+    // options in a portal when opened, so the static contract is the agent hook
+    // plus the current value.
+    expect(gui).toContain("high");
   });
 
   it("detail hides the Edit-group + priority on a terminal (archived) task", () => {

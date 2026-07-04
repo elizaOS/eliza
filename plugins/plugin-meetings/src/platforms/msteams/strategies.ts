@@ -6,11 +6,14 @@
  */
 
 import { logger } from "@elizaos/core";
-import type { Page } from "playwright-core";
 import type { MeetingEndReason } from "@elizaos/shared";
+import type { Page } from "playwright-core";
 import type { MeetingBotSession } from "../../types.js";
 import { anySelectorVisible } from "../shared/selectors.js";
-import type { AdmissionOutcome, PlatformStrategies } from "../shared/strategy.js";
+import type {
+  AdmissionOutcome,
+  PlatformStrategies,
+} from "../shared/strategy.js";
 import { TeamsCaptionRouter } from "./caption-router.js";
 import {
   enableTeamsLiveCaptions,
@@ -40,7 +43,9 @@ async function isAdmitted(page: Page): Promise<boolean> {
     const element = page.locator(selector).first();
     const visible = await element.isVisible().catch(() => false);
     if (!visible) continue;
-    const disabled = await element.getAttribute("aria-disabled").catch(() => null);
+    const disabled = await element
+      .getAttribute("aria-disabled")
+      .catch(() => null);
     if (disabled !== "true") return true;
   }
   return false;
@@ -62,16 +67,26 @@ async function isRejected(page: Page): Promise<boolean> {
  * "Continue without audio or video" modal (it blocks the prejoin: "Join now"
  * never enables until dismissed) and any lingering "Continue" button.
  */
-async function waitForPreJoinReadiness(page: Page, timeoutMs: number): Promise<boolean> {
+async function waitForPreJoinReadiness(
+  page: Page,
+  timeoutMs: number,
+): Promise<boolean> {
   const start = Date.now();
   let continueClicks = 0;
   let continueWithoutMediaClicks = 0;
 
   while (Date.now() - start < timeoutMs) {
-    const withoutMedia = page.locator(teamsContinueWithoutMediaSelectors.join(", ")).first();
-    if ((await withoutMedia.isVisible().catch(() => false)) && continueWithoutMediaClicks < 3) {
+    const withoutMedia = page
+      .locator(teamsContinueWithoutMediaSelectors.join(", "))
+      .first();
+    if (
+      (await withoutMedia.isVisible().catch(() => false)) &&
+      continueWithoutMediaClicks < 3
+    ) {
       continueWithoutMediaClicks += 1;
-      logger.info(`${TAG} dismissing "Continue without audio or video" modal (attempt ${continueWithoutMediaClicks})`);
+      logger.info(
+        `${TAG} dismissing "Continue without audio or video" modal (attempt ${continueWithoutMediaClicks})`,
+      );
       await withoutMedia.click({ timeout: 5000 }).catch(() => {});
       await page.waitForTimeout(500);
       continue;
@@ -89,8 +104,13 @@ async function waitForPreJoinReadiness(page: Page, timeoutMs: number): Promise<b
       .catch(() => false);
     if (joinNowVisible || nameInputVisible) return true;
 
-    const continueButton = page.locator(teamsContinueButtonSelectors[0]).first();
-    if ((await continueButton.isVisible().catch(() => false)) && continueClicks < 2) {
+    const continueButton = page
+      .locator(teamsContinueButtonSelectors[0])
+      .first();
+    if (
+      (await continueButton.isVisible().catch(() => false)) &&
+      continueClicks < 2
+    ) {
       continueClicks += 1;
       await continueButton.click().catch(() => {});
       await page.waitForTimeout(500);
@@ -99,7 +119,10 @@ async function waitForPreJoinReadiness(page: Page, timeoutMs: number): Promise<b
 
     await page.waitForTimeout(300);
   }
-  logger.warn({ url: page.url() }, `${TAG} timed out waiting for prejoin readiness`);
+  logger.warn(
+    { url: page.url() },
+    `${TAG} timed out waiting for prejoin readiness`,
+  );
   return false;
 }
 
@@ -116,11 +139,16 @@ export function createMsTeamsStrategies(): PlatformStrategies {
       await installTeamsRemoteAudioHook(page);
 
       logger.info({ meetingUrl }, `${TAG} navigating to Teams meeting`);
-      await page.goto(meetingUrl, { waitUntil: "domcontentloaded", timeout: 60_000 });
+      await page.goto(meetingUrl, {
+        waitUntil: "domcontentloaded",
+        timeout: 60_000,
+      });
       await page.waitForTimeout(500);
 
       // "Continue on this browser" interstitial.
-      const continueButton = page.locator(teamsContinueButtonSelectors[0]).first();
+      const continueButton = page
+        .locator(teamsContinueButtonSelectors[0])
+        .first();
       const continueClicked = await continueButton
         .waitFor({ timeout: 10_000 })
         .then(async () => {
@@ -144,10 +172,14 @@ export function createMsTeamsStrategies(): PlatformStrategies {
           return true;
         })
         .catch(() => false);
-      logger.info(`${TAG} camera ${cameraClicked ? "turned off" : "button not found (already off)"}`);
+      logger.info(
+        `${TAG} camera ${cameraClicked ? "turned off" : "button not found (already off)"}`,
+      );
 
       // Display name.
-      const nameInput = page.locator(teamsNameInputSelectors.join(", ")).first();
+      const nameInput = page
+        .locator(teamsNameInputSelectors.join(", "))
+        .first();
       const nameSet = await nameInput
         .waitFor({ timeout: 5000 })
         .then(async () => {
@@ -162,20 +194,30 @@ export function createMsTeamsStrategies(): PlatformStrategies {
       }
 
       // Computer audio: required to RECEIVE the meeting's mixed audio stream.
-      const computerAudioRadio = page.locator(teamsComputerAudioRadioSelectors.join(", ")).first();
-      const dontUseAudioRadio = page.locator(teamsDontUseAudioRadioSelectors.join(", ")).first();
+      const computerAudioRadio = page
+        .locator(teamsComputerAudioRadioSelectors.join(", "))
+        .first();
+      const dontUseAudioRadio = page
+        .locator(teamsDontUseAudioRadioSelectors.join(", "))
+        .first();
       if (await computerAudioRadio.isVisible().catch(() => false)) {
         const dontUseChecked =
           (await dontUseAudioRadio.isVisible().catch(() => false)) &&
-          (await dontUseAudioRadio.getAttribute("aria-checked").catch(() => null)) === "true";
+          (await dontUseAudioRadio
+            .getAttribute("aria-checked")
+            .catch(() => null)) === "true";
         if (dontUseChecked) {
-          logger.info(`${TAG} "Don't use audio" was selected — switching to Computer audio`);
+          logger.info(
+            `${TAG} "Don't use audio" was selected — switching to Computer audio`,
+          );
         }
         await computerAudioRadio.click({ timeout: 5000 }).catch(() => {});
         await page.waitForTimeout(200);
         logger.info(`${TAG} Computer audio selected`);
       }
-      const speakerOn = page.locator(teamsSpeakerEnableSelectors.join(", ")).first();
+      const speakerOn = page
+        .locator(teamsSpeakerEnableSelectors.join(", "))
+        .first();
       if (await speakerOn.isVisible().catch(() => false)) {
         await speakerOn.click({ timeout: 5000 }).catch(() => {});
         logger.info(`${TAG} speaker enabled via toggle`);
@@ -187,7 +229,9 @@ export function createMsTeamsStrategies(): PlatformStrategies {
         await joinNow.click();
         logger.info(`${TAG} clicked "Join now"`);
       } else {
-        const fallbackJoin = page.locator(teamsJoinButtonSelectors.join(", ")).first();
+        const fallbackJoin = page
+          .locator(teamsJoinButtonSelectors.join(", "))
+          .first();
         await fallbackJoin.waitFor({ timeout: 10_000 });
         await fallbackJoin.click();
         logger.info(`${TAG} clicked join button (fallback selector)`);
@@ -248,10 +292,15 @@ export function createMsTeamsStrategies(): PlatformStrategies {
       await startTeamsPageCapture(page, state.router);
     },
 
-    async startRecording(page: Page, session: MeetingBotSession): Promise<MeetingEndReason> {
+    async startRecording(
+      page: Page,
+      session: MeetingBotSession,
+    ): Promise<MeetingEndReason> {
       const router = state.router;
       if (!router) {
-        throw new Error(`${TAG} startRecording called before prepare — no caption router`);
+        throw new Error(
+          `${TAG} startRecording called before prepare — no caption router`,
+        );
       }
       const { autoLeave } = session.config;
       const startedAt = Date.now();
@@ -259,7 +308,9 @@ export function createMsTeamsStrategies(): PlatformStrategies {
       let aloneMs = 0;
       let everHadOthers = false;
 
-      logger.info(`${TAG} recording started (caption-driven per-speaker routing)`);
+      logger.info(
+        `${TAG} recording started (caption-driven per-speaker routing)`,
+      );
 
       try {
         while (!session.signal.aborted) {
@@ -275,11 +326,17 @@ export function createMsTeamsStrategies(): PlatformStrategies {
               ) as HTMLElement[];
               const found = new Set<string>();
               for (const item of items) {
-                const hasImg = !!(item.querySelector("img") || item.querySelector('[role="img"]'));
+                const hasImg = !!(
+                  item.querySelector("img") ||
+                  item.querySelector('[role="img"]')
+                );
                 if (!hasImg) continue;
                 const aria = item.getAttribute("aria-label");
-                const name = (aria && aria.trim()) || (item.textContent || "").trim();
-                if (name && !name.toLowerCase().includes(botName.toLowerCase())) {
+                const name = aria?.trim() || (item.textContent || "").trim();
+                if (
+                  name &&
+                  !name.toLowerCase().includes(botName.toLowerCase())
+                ) {
                   found.add(name);
                 }
               }
@@ -313,8 +370,13 @@ export function createMsTeamsStrategies(): PlatformStrategies {
               ? autoLeave.everyoneLeftTimeoutMs
               : autoLeave.noOneJoinedTimeoutMs;
             if (aloneMs >= limit) {
-              logger.info({ aloneMs, everHadOthers }, `${TAG} alone timeout reached`);
-              return everHadOthers ? "left_alone_timeout" : "startup_alone_timeout";
+              logger.info(
+                { aloneMs, everHadOthers },
+                `${TAG} alone timeout reached`,
+              );
+              return everHadOthers
+                ? "left_alone_timeout"
+                : "startup_alone_timeout";
             }
           } else {
             aloneMs = 0;
@@ -327,7 +389,10 @@ export function createMsTeamsStrategies(): PlatformStrategies {
       }
     },
 
-    async startRemovalMonitor(page: Page, session: MeetingBotSession): Promise<MeetingEndReason> {
+    async startRemovalMonitor(
+      page: Page,
+      session: MeetingBotSession,
+    ): Promise<MeetingEndReason> {
       while (!session.signal.aborted) {
         await page.waitForTimeout(1500).catch(() => {});
         if (page.isClosed()) {
@@ -339,11 +404,18 @@ export function createMsTeamsStrategies(): PlatformStrategies {
             const bodyText = (document.body?.innerText || "").toLowerCase();
             if (phrases.some((p) => bodyText.includes(p))) return true;
             // Rejoin / Dismiss buttons render on the post-removal screen.
-            const buttons = Array.from(document.querySelectorAll("button")) as HTMLElement[];
+            const buttons = Array.from(
+              document.querySelectorAll("button"),
+            ) as HTMLElement[];
             for (const btn of buttons) {
               const text = (btn.textContent || "").trim().toLowerCase();
               const aria = (btn.getAttribute("aria-label") || "").toLowerCase();
-              if (text !== "rejoin" && text !== "dismiss" && !aria.includes("rejoin")) continue;
+              if (
+                text !== "rejoin" &&
+                text !== "dismiss" &&
+                !aria.includes("rejoin")
+              )
+                continue;
               if (btn.offsetWidth <= 0 || btn.offsetHeight <= 0) continue;
               const cs = getComputedStyle(btn);
               if (cs.display === "none" || cs.visibility === "hidden") continue;
@@ -373,11 +445,16 @@ export function createMsTeamsStrategies(): PlatformStrategies {
             return;
           }
         }
-        logger.warn(`${TAG} no leave control found — closing page will drop the call`);
+        logger.warn(
+          `${TAG} no leave control found — closing page will drop the call`,
+        );
       } catch (err) {
-        logger.warn({
-          error: err instanceof Error ? err.message : String(err),
-        }, `${TAG} leave attempt failed`);
+        logger.warn(
+          {
+            error: err instanceof Error ? err.message : String(err),
+          },
+          `${TAG} leave attempt failed`,
+        );
       }
     },
   };

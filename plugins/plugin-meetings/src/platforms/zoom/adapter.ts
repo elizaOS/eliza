@@ -13,9 +13,9 @@ import { launchMeetingBrowser } from "../shared/launch.js";
 import { runMeetingFlow } from "../shared/meeting-flow.js";
 import {
   createNullSink,
+  type NullSink,
   pulseAudioAvailable,
   unloadNullSink,
-  type NullSink,
 } from "./pulse-capture.js";
 import { createZoomStrategies } from "./strategies.js";
 
@@ -40,7 +40,9 @@ export class ZoomAdapter implements MeetingPlatformAdapter {
         );
       }
     } else {
-      logger.info(`${TAG} no PulseAudio on this host — in-browser element capture only`);
+      logger.info(
+        `${TAG} no PulseAudio on this host — in-browser element capture only`,
+      );
     }
 
     try {

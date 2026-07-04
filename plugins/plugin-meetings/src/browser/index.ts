@@ -1,6 +1,6 @@
 /** Browser-context capture surface (reusable across platform adapters). */
 export {
-  startSpeakerAudioCapture,
   type SpeakerAudioCapture,
   type SpeakerAudioCaptureOptions,
+  startSpeakerAudioCapture,
 } from "./audio-capture.js";

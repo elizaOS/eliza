@@ -294,7 +294,7 @@ describe("form_extractor evaluator", () => {
     };
     const runtime = makeRuntime(formService);
     const message = makeMessage("my email is jane@example.com");
-    const prepared = await formEvaluator.prepare!({
+    const prepared = await formEvaluator.prepare?.({
       runtime,
       message,
       state: EMPTY_STATE,
@@ -334,9 +334,12 @@ describe("form_extractor evaluator", () => {
       entityId,
     };
 
-    const extractionsProcessor = formEvaluator.processors!.find(
+    const extractionsProcessor = formEvaluator.processors?.find(
       (p) => p.name === "formExtractions",
-    )!;
+    );
+    expect(extractionsProcessor).toBeDefined();
+    if (!extractionsProcessor)
+      throw new Error("formExtractions processor missing");
     const result = await extractionsProcessor.process({
       runtime,
       message,
@@ -389,9 +392,11 @@ describe("form_extractor evaluator", () => {
       entityId,
     };
 
-    const intentProcessor = formEvaluator.processors!.find(
+    const intentProcessor = formEvaluator.processors?.find(
       (p) => p.name === "formIntent",
-    )!;
+    );
+    expect(intentProcessor).toBeDefined();
+    if (!intentProcessor) throw new Error("formIntent processor missing");
     const result = await intentProcessor.process({
       runtime,
       message,

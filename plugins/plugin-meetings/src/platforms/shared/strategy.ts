@@ -5,8 +5,8 @@
  * object per platform, no platform branching inside the flow.
  */
 
-import type { Page } from "playwright-core";
 import type { MeetingEndReason } from "@elizaos/shared";
+import type { Page } from "playwright-core";
 import type { MeetingBotSession } from "../../types.js";
 
 /** Outcome of an admission wait. */
@@ -40,12 +40,18 @@ export interface PlatformStrategies {
    * the shared flow races this against the removal monitor and the abort
    * signal.
    */
-  startRecording(page: Page, session: MeetingBotSession): Promise<MeetingEndReason>;
+  startRecording(
+    page: Page,
+    session: MeetingBotSession,
+  ): Promise<MeetingEndReason>;
   /**
    * Resolve when the bot is removed by an admin (or the page is closed under
    * it). Never resolves for the normal path.
    */
-  startRemovalMonitor(page: Page, session: MeetingBotSession): Promise<MeetingEndReason>;
+  startRemovalMonitor(
+    page: Page,
+    session: MeetingBotSession,
+  ): Promise<MeetingEndReason>;
   /** Click the platform's leave control; best-effort, must not throw. */
   leave(page: Page): Promise<void>;
 }

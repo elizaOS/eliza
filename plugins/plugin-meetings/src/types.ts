@@ -21,8 +21,8 @@ import type {
   MeetingParticipant,
   MeetingPlatform,
   MeetingSessionStatus,
+  TranscriptSegment,
 } from "@elizaos/shared";
-import type { TranscriptSegment } from "@elizaos/shared";
 
 /** Audio produced by every platform adapter: mono Float32 PCM at 16 kHz. */
 export const MEETING_AUDIO_SAMPLE_RATE = 16_000;

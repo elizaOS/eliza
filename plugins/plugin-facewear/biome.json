@@ -1,0 +1,26 @@
+{
+	"$schema": "https://biomejs.dev/schemas/2.5.1/schema.json",
+	"root": false,
+	"files": {
+		"includes": [
+			"**",
+			"!app-xr",
+			"!dist",
+			"!emulator",
+			"!native",
+			"!node_modules"
+		]
+	},
+	"overrides": [
+		{
+			"includes": ["**/*.ts"],
+			"linter": {
+				"rules": {
+					"correctness": {
+						"useHookAtTopLevel": "off"
+					}
+				}
+			}
+		}
+	]
+}

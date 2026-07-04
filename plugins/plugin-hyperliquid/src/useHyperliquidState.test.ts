@@ -10,17 +10,17 @@ import { ApiError } from "@elizaos/ui";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
-  HyperliquidMarketsResponse,
-  HyperliquidOrdersResponse,
-  HyperliquidPositionsResponse,
-  HyperliquidStatusResponse,
+	HyperliquidMarketsResponse,
+	HyperliquidOrdersResponse,
+	HyperliquidPositionsResponse,
+	HyperliquidStatusResponse,
 } from "./hyperliquid-contracts";
 
 const hyperliquidClient = vi.hoisted(() => ({
-  hyperliquidStatus: vi.fn(),
-  hyperliquidMarkets: vi.fn(),
-  hyperliquidPositions: vi.fn(),
-  hyperliquidOrders: vi.fn(),
+	hyperliquidStatus: vi.fn(),
+	hyperliquidMarkets: vi.fn(),
+	hyperliquidPositions: vi.fn(),
+	hyperliquidOrders: vi.fn(),
 }));
 
 vi.mock("@elizaos/app-core", () => ({ client: hyperliquidClient }));
@@ -29,153 +29,153 @@ vi.mock("./client", () => ({}));
 import { useHyperliquidState } from "./useHyperliquidState";
 
 const status: HyperliquidStatusResponse = {
-  publicReadReady: true,
-  signerReady: false,
-  executionReady: false,
-  executionBlockedReason: null,
-  accountAddress: "0xabc",
-  apiBaseUrl: "https://api.hyperliquid.xyz",
-  credentialMode: "none",
-  readiness: {
-    publicReads: true,
-    accountReads: true,
-    signer: false,
-    execution: false,
-  },
-  account: { address: "0xabc", source: "env_account", guidance: null },
-  vault: { configured: false, ready: false, address: null, guidance: "g" },
-  apiWallet: { configured: false, guidance: "g" },
+	publicReadReady: true,
+	signerReady: false,
+	executionReady: false,
+	executionBlockedReason: null,
+	accountAddress: "0xabc",
+	apiBaseUrl: "https://api.hyperliquid.xyz",
+	credentialMode: "none",
+	readiness: {
+		publicReads: true,
+		accountReads: true,
+		signer: false,
+		execution: false,
+	},
+	account: { address: "0xabc", source: "env_account", guidance: null },
+	vault: { configured: false, ready: false, address: null, guidance: "g" },
+	apiWallet: { configured: false, guidance: "g" },
 };
 
 const markets: HyperliquidMarketsResponse = {
-  markets: [
-    {
-      name: "BTC",
-      index: 0,
-      szDecimals: 5,
-      maxLeverage: 40,
-      onlyIsolated: false,
-      isDelisted: false,
-    },
-  ],
-  source: "hyperliquid-info-meta",
-  fetchedAt: "2026-05-18T12:00:00.000Z",
+	markets: [
+		{
+			name: "BTC",
+			index: 0,
+			szDecimals: 5,
+			maxLeverage: 40,
+			onlyIsolated: false,
+			isDelisted: false,
+		},
+	],
+	source: "hyperliquid-info-meta",
+	fetchedAt: "2026-05-18T12:00:00.000Z",
 };
 
 const positions: HyperliquidPositionsResponse = {
-  accountAddress: "0xabc",
-  positions: [],
-  summary: null,
-  readBlockedReason: null,
-  fetchedAt: "2026-05-18T12:00:00.000Z",
+	accountAddress: "0xabc",
+	positions: [],
+	summary: null,
+	readBlockedReason: null,
+	fetchedAt: "2026-05-18T12:00:00.000Z",
 };
 
 const orders: HyperliquidOrdersResponse = {
-  accountAddress: "0xabc",
-  orders: [],
-  readBlockedReason: null,
-  fetchedAt: "2026-05-18T12:00:00.000Z",
+	accountAddress: "0xabc",
+	orders: [],
+	readBlockedReason: null,
+	fetchedAt: "2026-05-18T12:00:00.000Z",
 };
 
 afterEach(() => {
-  vi.clearAllMocks();
+	vi.clearAllMocks();
 });
 
 describe("useHyperliquidState", () => {
-  it("populates all four slices on success and clears loading", async () => {
-    hyperliquidClient.hyperliquidStatus.mockResolvedValue(status);
-    hyperliquidClient.hyperliquidMarkets.mockResolvedValue(markets);
-    hyperliquidClient.hyperliquidPositions.mockResolvedValue(positions);
-    hyperliquidClient.hyperliquidOrders.mockResolvedValue(orders);
+	it("populates all four slices on success and clears loading", async () => {
+		hyperliquidClient.hyperliquidStatus.mockResolvedValue(status);
+		hyperliquidClient.hyperliquidMarkets.mockResolvedValue(markets);
+		hyperliquidClient.hyperliquidPositions.mockResolvedValue(positions);
+		hyperliquidClient.hyperliquidOrders.mockResolvedValue(orders);
 
-    const { result } = renderHook(() => useHyperliquidState());
+		const { result } = renderHook(() => useHyperliquidState());
 
-    await waitFor(() => {
-      expect(result.current.loading).toBe(false);
-    });
-    expect(result.current.status).toEqual(status);
-    expect(result.current.markets).toEqual(markets);
-    expect(result.current.positions).toEqual(positions);
-    expect(result.current.orders).toEqual(orders);
-    expect(result.current.error).toBeNull();
-  });
+		await waitFor(() => {
+			expect(result.current.loading).toBe(false);
+		});
+		expect(result.current.status).toEqual(status);
+		expect(result.current.markets).toEqual(markets);
+		expect(result.current.positions).toEqual(positions);
+		expect(result.current.orders).toEqual(orders);
+		expect(result.current.error).toBeNull();
+	});
 
-  it("leaves markets/positions/orders null and skips the reads when publicReadReady is false", async () => {
-    hyperliquidClient.hyperliquidStatus.mockResolvedValue({
-      ...status,
-      publicReadReady: false,
-    });
+	it("leaves markets/positions/orders null and skips the reads when publicReadReady is false", async () => {
+		hyperliquidClient.hyperliquidStatus.mockResolvedValue({
+			...status,
+			publicReadReady: false,
+		});
 
-    const { result } = renderHook(() => useHyperliquidState());
+		const { result } = renderHook(() => useHyperliquidState());
 
-    await waitFor(() => {
-      expect(result.current.loading).toBe(false);
-    });
-    expect(result.current.status?.publicReadReady).toBe(false);
-    expect(result.current.markets).toBeNull();
-    expect(result.current.positions).toBeNull();
-    expect(result.current.orders).toBeNull();
-    expect(hyperliquidClient.hyperliquidMarkets).not.toHaveBeenCalled();
-    expect(hyperliquidClient.hyperliquidPositions).not.toHaveBeenCalled();
-    expect(hyperliquidClient.hyperliquidOrders).not.toHaveBeenCalled();
-  });
+		await waitFor(() => {
+			expect(result.current.loading).toBe(false);
+		});
+		expect(result.current.status?.publicReadReady).toBe(false);
+		expect(result.current.markets).toBeNull();
+		expect(result.current.positions).toBeNull();
+		expect(result.current.orders).toBeNull();
+		expect(hyperliquidClient.hyperliquidMarkets).not.toHaveBeenCalled();
+		expect(hyperliquidClient.hyperliquidPositions).not.toHaveBeenCalled();
+		expect(hyperliquidClient.hyperliquidOrders).not.toHaveBeenCalled();
+	});
 
-  it("sets error to the rejection message and clears loading", async () => {
-    hyperliquidClient.hyperliquidStatus.mockRejectedValue(
-      new Error("status fetch failed"),
-    );
+	it("sets error to the rejection message and clears loading", async () => {
+		hyperliquidClient.hyperliquidStatus.mockRejectedValue(
+			new Error("status fetch failed"),
+		);
 
-    const { result } = renderHook(() => useHyperliquidState());
+		const { result } = renderHook(() => useHyperliquidState());
 
-    await waitFor(() => {
-      expect(result.current.loading).toBe(false);
-    });
-    expect(result.current.error).toBe("status fetch failed");
-    expect(result.current.status).toBeNull();
-  });
+		await waitFor(() => {
+			expect(result.current.loading).toBe(false);
+		});
+		expect(result.current.error).toBe("status fetch failed");
+		expect(result.current.status).toBeNull();
+	});
 
-  it.each([
-    404, 503,
-  ])("degrades to unavailable (no raw error) when the routes %i", async (httpStatus) => {
-    hyperliquidClient.hyperliquidStatus.mockRejectedValue(
-      new ApiError({
-        kind: "http",
-        path: "/api/hyperliquid/status",
-        message: "Not found",
-        status: httpStatus,
-      }),
-    );
+	it.each([
+		404, 503,
+	])("degrades to unavailable (no raw error) when the routes %i", async (httpStatus) => {
+		hyperliquidClient.hyperliquidStatus.mockRejectedValue(
+			new ApiError({
+				kind: "http",
+				path: "/api/hyperliquid/status",
+				message: "Not found",
+				status: httpStatus,
+			}),
+		);
 
-    const { result } = renderHook(() => useHyperliquidState());
+		const { result } = renderHook(() => useHyperliquidState());
 
-    await waitFor(() => {
-      expect(result.current.loading).toBe(false);
-    });
-    expect(result.current.unavailable).toBe(true);
-    expect(result.current.error).toBeNull();
-    expect(result.current.status).toBeNull();
-    expect(result.current.markets).toBeNull();
-  });
+		await waitFor(() => {
+			expect(result.current.loading).toBe(false);
+		});
+		expect(result.current.unavailable).toBe(true);
+		expect(result.current.error).toBeNull();
+		expect(result.current.status).toBeNull();
+		expect(result.current.markets).toBeNull();
+	});
 
-  it("re-invokes the reads when refresh() is called", async () => {
-    hyperliquidClient.hyperliquidStatus.mockResolvedValue(status);
-    hyperliquidClient.hyperliquidMarkets.mockResolvedValue(markets);
-    hyperliquidClient.hyperliquidPositions.mockResolvedValue(positions);
-    hyperliquidClient.hyperliquidOrders.mockResolvedValue(orders);
+	it("re-invokes the reads when refresh() is called", async () => {
+		hyperliquidClient.hyperliquidStatus.mockResolvedValue(status);
+		hyperliquidClient.hyperliquidMarkets.mockResolvedValue(markets);
+		hyperliquidClient.hyperliquidPositions.mockResolvedValue(positions);
+		hyperliquidClient.hyperliquidOrders.mockResolvedValue(orders);
 
-    const { result } = renderHook(() => useHyperliquidState());
-    await waitFor(() => {
-      expect(result.current.loading).toBe(false);
-    });
-    expect(hyperliquidClient.hyperliquidStatus).toHaveBeenCalledTimes(1);
+		const { result } = renderHook(() => useHyperliquidState());
+		await waitFor(() => {
+			expect(result.current.loading).toBe(false);
+		});
+		expect(hyperliquidClient.hyperliquidStatus).toHaveBeenCalledTimes(1);
 
-    await act(async () => {
-      await result.current.refresh();
-    });
+		await act(async () => {
+			await result.current.refresh();
+		});
 
-    expect(hyperliquidClient.hyperliquidStatus).toHaveBeenCalledTimes(2);
-    expect(hyperliquidClient.hyperliquidMarkets).toHaveBeenCalledTimes(2);
-    expect(hyperliquidClient.hyperliquidPositions).toHaveBeenCalledTimes(2);
-    expect(hyperliquidClient.hyperliquidOrders).toHaveBeenCalledTimes(2);
-  });
+		expect(hyperliquidClient.hyperliquidStatus).toHaveBeenCalledTimes(2);
+		expect(hyperliquidClient.hyperliquidMarkets).toHaveBeenCalledTimes(2);
+		expect(hyperliquidClient.hyperliquidPositions).toHaveBeenCalledTimes(2);
+		expect(hyperliquidClient.hyperliquidOrders).toHaveBeenCalledTimes(2);
+	});
 });

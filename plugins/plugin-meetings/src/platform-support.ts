@@ -13,11 +13,11 @@
  * which binary would be used.
  */
 
+import { existsSync } from "node:fs";
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { isMobilePlatform } from "@elizaos/shared";
 import { chromium } from "playwright-core";
-import { existsSync } from "node:fs";
 
 /** System-browser channel a platform prefers for its fallback. */
 export type BrowserChannel = "chrome" | "msedge";
@@ -50,26 +50,27 @@ export interface MeetingRuntimeSupport {
  * Known install locations for a system Chrome/Chromium, by platform. The bots
  * drive the browser the user already has rather than downloading a separate one.
  */
-const SYSTEM_CHROME_PATHS: Partial<Record<NodeJS.Platform, readonly string[]>> = {
-  darwin: [
-    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-    "/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary",
-    "/Applications/Chromium.app/Contents/MacOS/Chromium",
-    "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser",
-  ],
-  linux: [
-    "/usr/bin/google-chrome-stable",
-    "/usr/bin/google-chrome",
-    "/usr/bin/chromium-browser",
-    "/usr/bin/chromium",
-    "/snap/bin/chromium",
-    "/usr/bin/brave-browser",
-  ],
-  win32: [
-    "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
-    "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
-  ],
-};
+const SYSTEM_CHROME_PATHS: Partial<Record<NodeJS.Platform, readonly string[]>> =
+  {
+    darwin: [
+      "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+      "/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary",
+      "/Applications/Chromium.app/Contents/MacOS/Chromium",
+      "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser",
+    ],
+    linux: [
+      "/usr/bin/google-chrome-stable",
+      "/usr/bin/google-chrome",
+      "/usr/bin/chromium-browser",
+      "/usr/bin/chromium",
+      "/snap/bin/chromium",
+      "/usr/bin/brave-browser",
+    ],
+    win32: [
+      "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+      "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
+    ],
+  };
 
 /** Known install locations for a system Microsoft Edge, by platform. */
 const SYSTEM_EDGE_PATHS: Partial<Record<NodeJS.Platform, readonly string[]>> = {

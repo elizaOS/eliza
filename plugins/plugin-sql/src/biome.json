@@ -2,7 +2,7 @@
   "root": false,
   "$schema": "https://biomejs.dev/schemas/2.5.1/schema.json",
   "files": {
-    "includes": ["**", "!**/*.d.ts", "!!**/dist", "!!**/node_modules", "!!**/.eliza"]
+    "includes": ["**", "!**/*.d.ts", "!**/dist/**", "!**/node_modules/**", "!**/.eliza/**"]
   },
   "assist": {
     "actions": {

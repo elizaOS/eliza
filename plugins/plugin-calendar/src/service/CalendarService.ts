@@ -773,7 +773,7 @@ export class CalendarService extends Service {
     timeMin: string,
     timeMax: string,
     timeZone: string,
-    forceSync: boolean,
+    _forceSync: boolean,
     now = new Date(),
   ): Promise<LifeOpsCalendarFeed> {
     const sources: AggregatedCalendarFeedSource[] = [];

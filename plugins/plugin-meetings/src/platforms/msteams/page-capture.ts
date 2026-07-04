@@ -14,8 +14,8 @@
 
 import { logger } from "@elizaos/core";
 import type { Page } from "playwright-core";
-import { teamsCaptionSelectors, teamsVoiceLevelSelector } from "./selectors.js";
 import type { TeamsCaptionRouter } from "./caption-router.js";
+import { teamsCaptionSelectors, teamsVoiceLevelSelector } from "./selectors.js";
 
 const TAG = "[MsTeamsAdapter]";
 
@@ -29,17 +29,23 @@ export async function installTeamsRemoteAudioHook(page: Page): Promise<void> {
     const win = window as typeof window & {
       __elizaRemoteAudioHookInstalled?: boolean;
     };
-    if (win.__elizaRemoteAudioHookInstalled || typeof RTCPeerConnection !== "function") {
+    if (
+      win.__elizaRemoteAudioHookInstalled ||
+      typeof RTCPeerConnection !== "function"
+    ) {
       return;
     }
     win.__elizaRemoteAudioHookInstalled = true;
     const OriginalPC = RTCPeerConnection;
 
-    function wrapPeerConnection(this: unknown, ...args: ConstructorParameters<typeof RTCPeerConnection>) {
+    function wrapPeerConnection(
+      this: unknown,
+      ...args: ConstructorParameters<typeof RTCPeerConnection>
+    ) {
       const pc = new OriginalPC(...args);
       const handleTrack = (event: RTCTrackEvent) => {
-        if (!event.track || event.track.kind !== "audio") return;
-        const stream = (event.streams && event.streams[0]) || new MediaStream([event.track]);
+        if (event.track?.kind !== "audio") return;
+        const stream = event.streams?.[0] || new MediaStream([event.track]);
         const audioEl = document.createElement("audio");
         audioEl.autoplay = true;
         audioEl.muted = false;
@@ -66,7 +72,8 @@ export async function installTeamsRemoteAudioHook(page: Page): Promise<void> {
     }
     wrapPeerConnection.prototype = OriginalPC.prototype;
     Object.setPrototypeOf(wrapPeerConnection, OriginalPC);
-    (window as { RTCPeerConnection: unknown }).RTCPeerConnection = wrapPeerConnection;
+    (window as { RTCPeerConnection: unknown }).RTCPeerConnection =
+      wrapPeerConnection;
   });
 }
 
@@ -82,9 +89,12 @@ export async function startTeamsPageCapture(
   await page.exposeFunction("__elizaTeamsAudioChunk", (samples: number[]) => {
     router.onAudioChunk(Float32Array.from(samples));
   });
-  await page.exposeFunction("__elizaTeamsCaption", (speaker: string, text: string) => {
-    router.onCaption(speaker, text);
-  });
+  await page.exposeFunction(
+    "__elizaTeamsCaption",
+    (speaker: string, text: string) => {
+      router.onCaption(speaker, text);
+    },
+  );
   await page.exposeFunction(
     "__elizaTeamsVoiceLevel",
     (name: string, speaking: boolean) => {
@@ -137,7 +147,9 @@ export async function startTeamsPageCapture(
 
       // ── Caption observation: author/text atom pairs, latest pair wins ──
       const processCaptions = () => {
-        const wrapper = document.querySelector(captionSelectors.rendererWrapper);
+        const wrapper = document.querySelector(
+          captionSelectors.rendererWrapper,
+        );
         if (!wrapper) return;
         const authors = wrapper.querySelectorAll(captionSelectors.authorName);
         const texts = wrapper.querySelectorAll(captionSelectors.captionText);
@@ -150,18 +162,25 @@ export async function startTeamsPageCapture(
 
       let captionObserverActive = false;
       const startCaptionObserver = () => {
-        const wrapper = document.querySelector(captionSelectors.rendererWrapper);
+        const wrapper = document.querySelector(
+          captionSelectors.rendererWrapper,
+        );
         if (!wrapper) return false;
         captionObserverActive = true;
         const observer = new MutationObserver(processCaptions);
-        observer.observe(wrapper, { childList: true, subtree: true, characterData: true });
+        observer.observe(wrapper, {
+          childList: true,
+          subtree: true,
+          characterData: true,
+        });
         processCaptions();
         // Backup poll — MutationObserver can miss virtual-DOM updates.
         setInterval(processCaptions, 200);
         return true;
       };
       const captionDetect = setInterval(() => {
-        if (!captionObserverActive && startCaptionObserver()) clearInterval(captionDetect);
+        if (!captionObserverActive && startCaptionObserver())
+          clearInterval(captionDetect);
       }, 2000);
       startCaptionObserver();
 
@@ -179,7 +198,9 @@ export async function startTeamsPageCapture(
         return null;
       };
       setInterval(() => {
-        const outlines = Array.from(document.querySelectorAll(voiceLevelSelector));
+        const outlines = Array.from(
+          document.querySelectorAll(voiceLevelSelector),
+        );
         const active = new Set<string>();
         for (const outline of outlines) {
           // vdi-frame-occlusion on the outline or an ancestor = speaking.
@@ -219,7 +240,9 @@ export async function startTeamsPageCapture(
       voiceLevelSelector: teamsVoiceLevelSelector,
     },
   );
-  logger.info(`${TAG} page capture installed (mixed audio + captions + voice-level fallback)`);
+  logger.info(
+    `${TAG} page capture installed (mixed audio + captions + voice-level fallback)`,
+  );
 }
 
 /**
@@ -268,14 +291,20 @@ export async function enableTeamsLiveCaptions(page: Page): Promise<void> {
           text === "turn on live captions"
         ) {
           (el as HTMLElement).click();
-          return { clicked: (el.textContent || "").trim(), path: "direct" as const };
+          return {
+            clicked: (el.textContent || "").trim(),
+            path: "direct" as const,
+          };
         }
       }
       for (const el of visibleItems()) {
         const text = (el.textContent || "").toLowerCase();
         if (text.includes("language") && text.includes("speech")) {
           (el as HTMLElement).click();
-          return { clicked: (el.textContent || "").trim(), path: "submenu" as const };
+          return {
+            clicked: (el.textContent || "").trim(),
+            path: "submenu" as const,
+          };
         }
       }
       return { clicked: null, path: "none" as const };
@@ -284,7 +313,9 @@ export async function enableTeamsLiveCaptions(page: Page): Promise<void> {
     if (!enableResult.clicked) {
       throw new Error("captions menu item not found in More menu");
     }
-    logger.info(`${TAG} clicked captions menu item "${enableResult.clicked}" (${enableResult.path})`);
+    logger.info(
+      `${TAG} clicked captions menu item "${enableResult.clicked}" (${enableResult.path})`,
+    );
     await page.waitForTimeout(1000);
 
     if (enableResult.path === "submenu") {
@@ -294,7 +325,10 @@ export async function enableTeamsLiveCaptions(page: Page): Promise<void> {
         );
         for (const el of items) {
           const text = (el.textContent || "").toLowerCase();
-          if (text.includes("live captions") && (el as HTMLElement).offsetParent) {
+          if (
+            text.includes("live captions") &&
+            (el as HTMLElement).offsetParent
+          ) {
             (el as HTMLElement).click();
             return (el.textContent || "").trim();
           }
@@ -302,7 +336,9 @@ export async function enableTeamsLiveCaptions(page: Page): Promise<void> {
         return null;
       });
       if (clickedSub) {
-        logger.info(`${TAG} clicked live-captions submenu item "${clickedSub}"`);
+        logger.info(
+          `${TAG} clicked live-captions submenu item "${clickedSub}"`,
+        );
       } else {
         logger.warn(`${TAG} live captions submenu item not found`);
       }

@@ -36,7 +36,11 @@
     "build": "tsup src/index.ts src/register-routes.ts --format esm --dts --clean",
     "test": "vitest run",
     "typecheck": "tsgo --noEmit",
-    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist .turbo"
+    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist .turbo",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format ."
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",

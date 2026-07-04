@@ -9,7 +9,12 @@
  * directly.
  */
 
-import type { MocapLibrary, MocapMovement, MocapSequence, Rect } from "./types.js";
+import type {
+  MocapLibrary,
+  MocapMovement,
+  MocapSequence,
+  Rect,
+} from "./types.js";
 
 /** Deterministic small PRNG (mulberry32) so generation + selection are reproducible. */
 function mulberry32(seed: number): () => number {
@@ -107,7 +112,11 @@ export function buildMocapLibrary(seed = 0x56455841): MocapLibrary {
 
 export const MOCAP_LIBRARY: MocapLibrary = buildMocapLibrary();
 
-function rotateSequence(seq: MocapSequence, degrees: number, scale = 1): MocapSequence {
+function rotateSequence(
+  seq: MocapSequence,
+  degrees: number,
+  scale = 1,
+): MocapSequence {
   const rad = (degrees * Math.PI) / 180;
   const cos = Math.cos(rad);
   const sin = Math.sin(rad);
@@ -154,21 +163,36 @@ export class MocapEngine {
     return this.sequences.length;
   }
 
-  private landsIn(seq: MocapSequence, x: number, y: number, rect: Rect): boolean {
+  private landsIn(
+    seq: MocapSequence,
+    x: number,
+    y: number,
+    rect: Rect,
+  ): boolean {
     const fx = x + seq.total_dx;
     const fy = y + seq.total_dy;
-    return fx >= rect.left && fx <= rect.right && fy >= rect.top && fy <= rect.bottom;
+    return (
+      fx >= rect.left && fx <= rect.right && fy >= rect.top && fy <= rect.bottom
+    );
   }
 
   /** Pick a random sequence whose endpoint lands inside `rect`; null if none. */
-  findSequenceLandingInRect(x: number, y: number, rect: Rect): MocapSequence | null {
+  findSequenceLandingInRect(
+    x: number,
+    y: number,
+    rect: Rect,
+  ): MocapSequence | null {
     const matching = this.sequences.filter((s) => this.landsIn(s, x, y, rect));
     if (matching.length === 0) return null;
     return matching[Math.floor(this.rng() * matching.length)];
   }
 
   /** Fallback: scale+rotate a base sequence to land on the rect center. */
-  findSequenceWithStretchAndRotation(x: number, y: number, rect: Rect): MocapSequence | null {
+  findSequenceWithStretchAndRotation(
+    x: number,
+    y: number,
+    rect: Rect,
+  ): MocapSequence | null {
     const cx = (rect.left + rect.right) / 2;
     const cy = (rect.top + rect.bottom) / 2;
     const wantDx = cx - x;

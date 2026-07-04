@@ -47,11 +47,13 @@
         "test": "vitest run --config ./vitest.config.ts",
         "build": "tsup --format esm --dts",
         "dev": "tsup --format esm --dts --watch",
-        "lint": "bunx @biomejs/biome check src/",
+        "lint": "bunx @biomejs/biome check --write --unsafe .",
         "lint:fix": "bunx @biomejs/biome check --write src/",
-        "format": "bunx @biomejs/biome format src/",
+        "format": "bunx @biomejs/biome format --write .",
         "format:fix": "bunx @biomejs/biome format --write src/",
-        "typecheck": "tsgo --noEmit -p tsconfig.json"
+        "typecheck": "tsgo --noEmit -p tsconfig.json",
+        "lint:check": "bunx @biomejs/biome check .",
+        "format:check": "bunx @biomejs/biome format ."
     },
     "agentConfig": {
         "pluginType": "elizaos:client:1.0.0",

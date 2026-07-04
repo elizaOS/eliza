@@ -52,6 +52,12 @@
       "@elizaos/plugin-registry/*": ["../../plugins/plugin-registry/dist/*"],
       "@elizaos/ui": ["../../packages/ui/src/index.ts"],
       "@elizaos/ui/*": ["../../packages/ui/src/*"],
+      "@elizaos/capacitor-bun-runtime": [
+        "../../plugins/plugin-native-bun-runtime/src/index.ts"
+      ],
+      "@elizaos/capacitor-camera": [
+        "../../plugins/plugin-native-camera/src/index.ts"
+      ],
       "@elizaos/tui": ["../../packages/tui/src/index.ts"],
       "@elizaos/tui/*": ["../../packages/tui/src/*"],
       "@elizaos/shared": ["../../packages/shared/src/index.ts"],

@@ -8,6 +8,7 @@
 			"!**/__tests__/e2e/benchmarks/data_processed",
 			"!**/dist",
 			"!**/node_modules",
+			"!public",
 			"!src/frontend/index.css"
 		]
 	},

@@ -369,7 +369,8 @@ function buildRecurrenceScopeClarification(args: {
   event: LifeOpsCalendarEvent;
 }): string {
   const description =
-    describeRecurrence(recurrenceLinesFrom(args.event)) ?? "on a repeating schedule";
+    describeRecurrence(recurrenceLinesFrom(args.event)) ??
+    "on a repeating schedule";
   const verb = args.action === "update" ? "change" : "delete";
   return `"${args.event.title}" repeats ${description}. should i ${verb} just this occurrence or the whole series?`;
 }

@@ -12,16 +12,16 @@
  */
 
 export {
-  collectXRViews,
-  extractViewId,
-  xrCloseViewAction as XR_CLOSE_VIEW,
-  xrCloseViewAction,
-  xrListViewsAction as XR_LIST_VIEWS,
-  xrListViewsAction,
-  xrOpenViewAction as XR_OPEN_VIEW,
-  xrOpenViewAction,
-  xrResizeViewAction as XR_RESIZE_VIEW,
-  xrResizeViewAction,
-  xrSwitchViewAction as XR_SWITCH_VIEW,
-  xrSwitchViewAction,
+	collectXRViews,
+	extractViewId,
+	xrCloseViewAction as XR_CLOSE_VIEW,
+	xrCloseViewAction,
+	xrListViewsAction as XR_LIST_VIEWS,
+	xrListViewsAction,
+	xrOpenViewAction as XR_OPEN_VIEW,
+	xrOpenViewAction,
+	xrResizeViewAction as XR_RESIZE_VIEW,
+	xrResizeViewAction,
+	xrSwitchViewAction as XR_SWITCH_VIEW,
+	xrSwitchViewAction,
 } from "./view-actions.ts";

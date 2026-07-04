@@ -463,9 +463,7 @@ export function CodingAgentSettingsSection() {
       />
 
       <ModelConfigSection
-        activeTab={activeTab}
         llmProvider={llmProvider}
-        isCloud={isCloud}
         prefix={prefix}
         powerfulValue={powerfulValue}
         fastValue={fastValue}

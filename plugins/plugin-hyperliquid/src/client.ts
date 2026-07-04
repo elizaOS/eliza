@@ -6,33 +6,33 @@
  */
 import { ElizaClient } from "@elizaos/ui";
 import type {
-  HyperliquidMarketsResponse,
-  HyperliquidOrdersResponse,
-  HyperliquidPositionsResponse,
-  HyperliquidStatusResponse,
+	HyperliquidMarketsResponse,
+	HyperliquidOrdersResponse,
+	HyperliquidPositionsResponse,
+	HyperliquidStatusResponse,
 } from "./hyperliquid-contracts";
 
 export type HyperliquidClient = ElizaClient & {
-  hyperliquidStatus(): Promise<HyperliquidStatusResponse>;
-  hyperliquidMarkets(): Promise<HyperliquidMarketsResponse>;
-  hyperliquidPositions(): Promise<HyperliquidPositionsResponse>;
-  hyperliquidOrders(): Promise<HyperliquidOrdersResponse>;
+	hyperliquidStatus(): Promise<HyperliquidStatusResponse>;
+	hyperliquidMarkets(): Promise<HyperliquidMarketsResponse>;
+	hyperliquidPositions(): Promise<HyperliquidPositionsResponse>;
+	hyperliquidOrders(): Promise<HyperliquidOrdersResponse>;
 };
 
 const elizaClientPrototype = ElizaClient.prototype as HyperliquidClient;
 
 elizaClientPrototype.hyperliquidStatus = async function () {
-  return this.fetch("/api/hyperliquid/status");
+	return this.fetch("/api/hyperliquid/status");
 };
 
 elizaClientPrototype.hyperliquidMarkets = async function () {
-  return this.fetch("/api/hyperliquid/markets");
+	return this.fetch("/api/hyperliquid/markets");
 };
 
 elizaClientPrototype.hyperliquidPositions = async function () {
-  return this.fetch("/api/hyperliquid/positions");
+	return this.fetch("/api/hyperliquid/positions");
 };
 
 elizaClientPrototype.hyperliquidOrders = async function () {
-  return this.fetch("/api/hyperliquid/orders");
+	return this.fetch("/api/hyperliquid/orders");
 };

@@ -47,7 +47,11 @@
     "test:scenarios": "SCENARIO_USE_LLM_PROXY=1 bun --conditions=eliza-source ../../packages/scenario-runner/bin/eliza-scenarios run test/scenarios --lane pr-deterministic",
     "test:e2e": "bun src/__e2e__/headless-capture-e2e.ts",
     "typecheck": "tsgo --noEmit",
-    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist .turbo"
+    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist .turbo",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format ."
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",

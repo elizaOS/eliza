@@ -194,7 +194,8 @@ describe("InboxService.triage — classifier contract", () => {
     const result = await service.triage([inbound({})]);
 
     expect(result.triaged).toHaveLength(1);
-    const triaged = result.triaged[0]!;
+    const [triaged] = result.triaged;
+    if (!triaged) throw new Error("expected one triaged item");
     expect(triaged.classification).toBe("needs_reply");
     expect(triaged.urgency).toBe("high");
     expect(triaged.confidence).toBeCloseTo(0.92);

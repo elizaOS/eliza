@@ -60,7 +60,9 @@
     "test": "bun test __tests__",
     "typecheck": "tsgo --noEmit",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
-    "lint:check": "bunx @biomejs/biome check ."
+    "lint:check": "bunx @biomejs/biome check .",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format ."
   },
   "dependencies": {
     "@elizaos/cloud-sdk": "workspace:*"

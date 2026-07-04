@@ -61,8 +61,8 @@
     "test": "vitest run",
     "test:unit": "vitest run",
     "typecheck": "tsgo --noEmit -p tsconfig.json",
-    "lint": "bunx @biomejs/biome check .",
-    "lint:check": "bun run lint",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format ."
   },

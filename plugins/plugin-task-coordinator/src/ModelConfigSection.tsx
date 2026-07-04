@@ -12,16 +12,10 @@ import {
   useAppSelector,
 } from "@elizaos/ui";
 import { AlertTriangle, CheckCircle2 } from "lucide-react";
-import type {
-  AgentTab,
-  LlmProvider,
-  ModelOption,
-} from "./coding-agent-settings-shared";
+import type { LlmProvider, ModelOption } from "./coding-agent-settings-shared";
 
 interface ModelConfigSectionProps {
-  activeTab: AgentTab;
   llmProvider: LlmProvider;
-  isCloud: boolean;
   prefix: string;
   powerfulValue: string;
   fastValue: string;
@@ -31,9 +25,7 @@ interface ModelConfigSectionProps {
 }
 
 export function ModelConfigSection({
-  activeTab,
   llmProvider,
-  isCloud,
   prefix,
   powerfulValue,
   fastValue,

@@ -12,8 +12,8 @@
  * an un-mapped speaking track by participant order when correlation stalls.
  */
 
-import type { Page } from "playwright-core";
 import { logger } from "@elizaos/core";
+import type { Page } from "playwright-core";
 import type { MeetingAudioSink } from "../../types.js";
 import { googleNameSelectors, googleSpeakingIndicators } from "./selectors.js";
 
@@ -71,8 +71,14 @@ export class VoteLockTable {
     byName.set(name, (byName.get(name) ?? 0) + weight);
 
     const total = [...byName.values()].reduce((a, b) => a + b, 0);
-    const [topName, topVotes] = [...byName.entries()].sort((a, b) => b[1] - a[1])[0];
-    if (topVotes >= LOCK_THRESHOLD && topVotes / total >= LOCK_RATIO && !this.isNameTaken(topName, track)) {
+    const [topName, topVotes] = [...byName.entries()].sort(
+      (a, b) => b[1] - a[1],
+    )[0];
+    if (
+      topVotes >= LOCK_THRESHOLD &&
+      topVotes / total >= LOCK_RATIO &&
+      !this.isNameTaken(topName, track)
+    ) {
       this.locked.set(track, topName);
       return topName;
     }
@@ -112,8 +118,14 @@ async function queryMeetState(
     return await page.evaluate(
       ({ nameSelectors, speakingSelectors, self }) => {
         const isJunk = (name: string): boolean =>
-          /^Google Participant \(/.test(name) || /spaces\//.test(name) || /devices\//.test(name);
-        const junkPhrases = ["let participants", "send messages", "turn on captions"];
+          /^Google Participant \(/.test(name) ||
+          /spaces\//.test(name) ||
+          /devices\//.test(name);
+        const junkPhrases = [
+          "let participants",
+          "send messages",
+          "turn on captions",
+        ];
         const selfLower = self.toLowerCase();
 
         const collect = (selectors: string[]): string[] => {
@@ -123,7 +135,8 @@ async function queryMeetState(
               const text = (el.textContent || "").trim();
               if (!text) continue;
               const lower = text.toLowerCase();
-              if (lower.includes(selfLower) || selfLower.includes(lower)) continue;
+              if (lower.includes(selfLower) || selfLower.includes(lower))
+                continue;
               if (junkPhrases.some((p) => lower.includes(p))) continue;
               if (isJunk(text)) continue;
               if (text.length > 60) continue;
@@ -142,11 +155,14 @@ async function queryMeetState(
           for (const ind of Array.from(document.querySelectorAll(sel))) {
             let node: Element | null = ind;
             while (node && node !== document.body) {
-              const labelled = node.querySelector("[data-self-name], span.notranslate");
+              const labelled = node.querySelector(
+                "[data-self-name], span.notranslate",
+              );
               const text = (labelled?.textContent || "").trim();
               if (text && text.length <= 60) {
                 const lower = text.toLowerCase();
-                if (!lower.includes(selfLower) && !selfLower.includes(lower)) speaking.add(text);
+                if (!lower.includes(selfLower) && !selfLower.includes(lower))
+                  speaking.add(text);
                 break;
               }
               node = node.parentElement;
@@ -236,7 +252,10 @@ export class GoogleSpeakerIdentity {
     const lockedNow = this.table.recordVote(track, name, weight);
     const resolved = lockedNow ?? this.table.bestGuess(track);
     if (resolved) this.sink.setSpeakerName(String(track), resolved);
-    if (lockedNow) logger.info(`[GoogleSpeakerIdentity] track ${track} LOCKED → "${lockedNow}"`);
+    if (lockedNow)
+      logger.info(
+        `[GoogleSpeakerIdentity] track ${track} LOCKED → "${lockedNow}"`,
+      );
   }
 
   private fallbackAttribute(track: number, names: string[]): void {

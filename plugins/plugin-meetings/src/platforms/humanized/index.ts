@@ -1,9 +1,20 @@
 /** Humanized input layer public surface. */
-export type { InputDriver, MocapLibrary, MocapMovement, MocapSequence, Rect } from "./types.js";
-export { MOCAP_LIBRARY, MocapEngine, buildMocapLibrary } from "./mocap.js";
-export { X11Input, type PointerLocation, type X11InputOptions } from "./x11-input.js";
+
 export {
   PlaywrightInputDriver,
-  XtestInputDriver,
   selectInputDriver,
+  XtestInputDriver,
 } from "./input-driver.js";
+export { buildMocapLibrary, MOCAP_LIBRARY, MocapEngine } from "./mocap.js";
+export type {
+  InputDriver,
+  MocapLibrary,
+  MocapMovement,
+  MocapSequence,
+  Rect,
+} from "./types.js";
+export {
+  type PointerLocation,
+  X11Input,
+  type X11InputOptions,
+} from "./x11-input.js";

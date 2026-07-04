@@ -26,8 +26,13 @@
  * let Chromium's honest, self-consistent UA flow through.
  */
 
-import { chromium, type Browser, type BrowserContext, type Page } from "playwright-core";
 import { logger } from "@elizaos/core";
+import {
+  type Browser,
+  type BrowserContext,
+  chromium,
+  type Page,
+} from "playwright-core";
 import {
   type BrowserChannel,
   chromiumExecutable,
@@ -127,7 +132,10 @@ export async function launchMeetingBrowser(
       executablePath: resolved.executablePath,
       chromiumSource: resolved.source,
       headless,
-      headlessResolvedBy: opts.headless === undefined ? "env/display-autodetect" : "explicit-option",
+      headlessResolvedBy:
+        opts.headless === undefined
+          ? "env/display-autodetect"
+          : "explicit-option",
     },
     "[MeetingLaunch] launching Chromium",
   );

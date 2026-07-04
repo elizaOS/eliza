@@ -68,7 +68,9 @@ export class TeamsCaptionRouter {
 
   /** The speaker most recently attributed by captions (or voice fallback). */
   get currentSpeaker(): string | null {
-    return this.captionSeen ? this.lastCaptionSpeaker : this.voiceFallbackSpeaker;
+    return this.captionSeen
+      ? this.lastCaptionSpeaker
+      : this.voiceFallbackSpeaker;
   }
 
   /** Enqueue an RMS-gated PCM chunk from the mixed Teams audio element. */
@@ -115,7 +117,10 @@ export class TeamsCaptionRouter {
     // length by 1–2 chars; new words grow it by 5+. A shrink means Teams
     // started a fresh caption entry — flush too.
     const growth = trimmedText.length - this.lastFlushedTextLength;
-    if (growth > this.minTextGrowth || trimmedText.length < this.lastFlushedTextLength) {
+    if (
+      growth > this.minTextGrowth ||
+      trimmedText.length < this.lastFlushedTextLength
+    ) {
       this.flushQueueTo(trimmedSpeaker);
       this.lastFlushedTextLength = trimmedText.length;
     }
@@ -179,7 +184,10 @@ export class TeamsCaptionRouter {
   }
 
   private evictStale(nowMs: number): void {
-    while (this.queue.length > 0 && nowMs - this.queue[0].timestamp > this.maxQueueAgeMs) {
+    while (
+      this.queue.length > 0 &&
+      nowMs - this.queue[0].timestamp > this.maxQueueAgeMs
+    ) {
       this.queue.shift();
     }
   }

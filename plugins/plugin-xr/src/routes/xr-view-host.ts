@@ -22,50 +22,50 @@ import type { Route } from "@elizaos/core";
  *                  { type:"xr:close" }
  */
 export const xrViewHostRoute: Route = {
-  type: "GET",
-  path: "/xr/view-host/:id",
-  description:
-    "Serves a self-contained XR-friendly HTML host page for a registered view",
-  routeHandler: async (ctx) => {
-    const viewId = (ctx.params as Record<string, string>)?.id ?? "";
-    if (!viewId) {
-      return { status: 400, body: { error: "Missing view id" } };
-    }
+	type: "GET",
+	path: "/xr/view-host/:id",
+	description:
+		"Serves a self-contained XR-friendly HTML host page for a registered view",
+	routeHandler: async (ctx) => {
+		const viewId = (ctx.params as Record<string, string>)?.id ?? "";
+		if (!viewId) {
+			return { status: 400, body: { error: "Missing view id" } };
+		}
 
-    // Resolve the agent origin so the page can load the bundle
-    const agentPort = (ctx.runtime as { port?: number }).port ?? 31337;
-    const agentOrigin =
-      process.env.XR_AGENT_URL ?? `http://localhost:${agentPort}`;
-    const bundleUrl = `${agentOrigin}/api/views/${viewId}/bundle.js`;
-    const viewsApiUrl = `${agentOrigin}/api/views`;
+		// Resolve the agent origin so the page can load the bundle
+		const agentPort = (ctx.runtime as { port?: number }).port ?? 31337;
+		const agentOrigin =
+			process.env.XR_AGENT_URL ?? `http://localhost:${agentPort}`;
+		const bundleUrl = `${agentOrigin}/api/views/${viewId}/bundle.js`;
+		const viewsApiUrl = `${agentOrigin}/api/views`;
 
-    const html = buildHostPage(viewId, bundleUrl, viewsApiUrl, agentOrigin);
+		const html = buildHostPage(viewId, bundleUrl, viewsApiUrl, agentOrigin);
 
-    return {
-      status: 200,
-      headers: {
-        "Content-Type": "text/html; charset=utf-8",
-        // Relax CSP for dynamic imports of view bundles (same agent origin only)
-        "Content-Security-Policy":
-          `default-src 'self' ${agentOrigin} https://esm.sh https://cdn.jsdelivr.net; ` +
-          `script-src 'self' 'unsafe-inline' 'unsafe-eval' ${agentOrigin} https://esm.sh https://cdn.jsdelivr.net; ` +
-          `style-src 'self' 'unsafe-inline'; ` +
-          `connect-src 'self' ${agentOrigin} ws://localhost:*;`,
-      },
-      body: html,
-    };
-  },
+		return {
+			status: 200,
+			headers: {
+				"Content-Type": "text/html; charset=utf-8",
+				// Relax CSP for dynamic imports of view bundles (same agent origin only)
+				"Content-Security-Policy":
+					`default-src 'self' ${agentOrigin} https://esm.sh https://cdn.jsdelivr.net; ` +
+					`script-src 'self' 'unsafe-inline' 'unsafe-eval' ${agentOrigin} https://esm.sh https://cdn.jsdelivr.net; ` +
+					`style-src 'self' 'unsafe-inline'; ` +
+					`connect-src 'self' ${agentOrigin} ws://localhost:*;`,
+			},
+			body: html,
+		};
+	},
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
 
 function buildHostPage(
-  viewId: string,
-  bundleUrl: string,
-  viewsApiUrl: string,
-  agentOrigin: string,
+	viewId: string,
+	bundleUrl: string,
+	viewsApiUrl: string,
+	agentOrigin: string,
 ): string {
-  return `<!DOCTYPE html>
+	return `<!DOCTYPE html>
 <html lang="en" data-view-id="${viewId}">
 <head>
   <meta charset="utf-8" />

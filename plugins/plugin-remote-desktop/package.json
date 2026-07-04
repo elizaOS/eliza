@@ -65,7 +65,9 @@
     "typecheck": "tsgo --noEmit -p tsconfig.json --rootDir ../..",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
-    "check": "bun run typecheck && bun run test"
+    "check": "bun run typecheck && bun run test",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format ."
   },
   "publishConfig": {
     "access": "public"

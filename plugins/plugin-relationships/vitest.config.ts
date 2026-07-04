@@ -51,6 +51,10 @@ export default defineConfig({
         find: /^react-dom\/client$/,
         replacement: require.resolve("react-dom/client"),
       },
+      {
+        find: /^@elizaos\/plugin-wallet\/diagnostic$/,
+        replacement: path.resolve(here, "../plugin-wallet/src/diagnostic.ts"),
+      },
       ...baseAliases,
     ],
   },

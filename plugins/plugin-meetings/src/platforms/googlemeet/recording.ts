@@ -11,11 +11,11 @@
  * LEFT_ALONE guard, ported from Vexa recording.ts, Apache-2.0).
  */
 
-import type { Page } from "playwright-core";
 import { logger } from "@elizaos/core";
 import type { MeetingEndReason } from "@elizaos/shared";
-import type { MeetingBotSession } from "../../types.js";
+import type { Page } from "playwright-core";
 import { startSpeakerAudioCapture } from "../../browser/audio-capture.js";
+import type { MeetingBotSession } from "../../types.js";
 import { googleParticipantSelectors } from "./selectors.js";
 import { GoogleSpeakerIdentity } from "./speaker-identity.js";
 
@@ -25,16 +25,22 @@ const AUDIO_GRACE_MS = 120_000;
 /** Count non-bot participant tiles present in the meeting DOM. */
 async function countParticipants(page: Page): Promise<number> {
   try {
-    return await page.evaluate((selectors: string[]) => {
-      const ids = new Set<string>();
-      for (const sel of selectors) {
-        for (const el of Array.from(document.querySelectorAll(sel))) {
-          const id = el.getAttribute("data-participant-id") ?? el.getAttribute("data-self-name") ?? el.outerHTML.slice(0, 64);
-          ids.add(id);
+    return await page.evaluate(
+      (selectors: string[]) => {
+        const ids = new Set<string>();
+        for (const sel of selectors) {
+          for (const el of Array.from(document.querySelectorAll(sel))) {
+            const id =
+              el.getAttribute("data-participant-id") ??
+              el.getAttribute("data-self-name") ??
+              el.outerHTML.slice(0, 64);
+            ids.add(id);
+          }
         }
-      }
-      return ids.size;
-    }, [...googleParticipantSelectors]);
+        return ids.size;
+      },
+      [...googleParticipantSelectors],
+    );
   } catch {
     return 0;
   }
@@ -44,7 +50,11 @@ export async function startGoogleRecording(
   page: Page,
   session: MeetingBotSession,
 ): Promise<MeetingEndReason> {
-  const identity = new GoogleSpeakerIdentity(page, session.sink, session.config.botName);
+  const identity = new GoogleSpeakerIdentity(
+    page,
+    session.sink,
+    session.config.botName,
+  );
   identity.start();
 
   let lastAudioMs = Date.now();
@@ -56,7 +66,8 @@ export async function startGoogleRecording(
     },
   });
 
-  const { noOneJoinedTimeoutMs, everyoneLeftTimeoutMs } = session.config.autoLeave;
+  const { noOneJoinedTimeoutMs, everyoneLeftTimeoutMs } =
+    session.config.autoLeave;
 
   return new Promise<MeetingEndReason>((resolve) => {
     let settled = false;
@@ -92,12 +103,20 @@ export async function startGoogleRecording(
       aloneMs += TICK_MS;
       const limit = speakersSeen ? everyoneLeftTimeoutMs : noOneJoinedTimeoutMs;
       if (aloneMs >= limit) {
-        const reason: MeetingEndReason = speakersSeen ? "left_alone_timeout" : "startup_alone_timeout";
-        logger.info(`[GoogleMeetRecording] ${reason} after ${Math.round(aloneMs / 1000)}s alone`);
+        const reason: MeetingEndReason = speakersSeen
+          ? "left_alone_timeout"
+          : "startup_alone_timeout";
+        logger.info(
+          `[GoogleMeetRecording] ${reason} after ${Math.round(aloneMs / 1000)}s alone`,
+        );
         finish(reason);
       }
     }, TICK_MS);
 
-    session.signal.addEventListener("abort", () => finish("normal_completion"), { once: true });
+    session.signal.addEventListener(
+      "abort",
+      () => finish("normal_completion"),
+      { once: true },
+    );
   });
 }

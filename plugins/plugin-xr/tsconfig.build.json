@@ -1,9 +1,9 @@
 {
-  "extends": "../tsconfig.build.shared.json",
-  "compilerOptions": {
-    "outDir": "dist",
-    "rootDir": "./src"
-  },
-  "include": ["src"],
-  "exclude": ["src/**/*.test.ts", "src/**/__tests__/**"]
+	"extends": "../tsconfig.build.shared.json",
+	"compilerOptions": {
+		"outDir": "dist",
+		"rootDir": "./src"
+	},
+	"include": ["src"],
+	"exclude": ["src/**/*.test.ts", "src/**/__tests__/**"]
 }

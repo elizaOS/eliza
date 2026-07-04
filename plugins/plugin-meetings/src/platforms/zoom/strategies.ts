@@ -9,10 +9,13 @@
  */
 
 import { logger } from "@elizaos/core";
-import type { Page } from "playwright-core";
 import type { MeetingEndReason } from "@elizaos/shared";
+import type { Page } from "playwright-core";
 import type { MeetingBotSession } from "../../types.js";
-import type { AdmissionOutcome, PlatformStrategies } from "../shared/strategy.js";
+import type {
+  AdmissionOutcome,
+  PlatformStrategies,
+} from "../shared/strategy.js";
 import {
   classifyZoomPage,
   isZoomAudioInitUrl,
@@ -64,7 +67,9 @@ async function snapshotPage(page: Page): Promise<ZoomPageSnapshot> {
     .catch(() => false);
   const domState = await page
     .evaluate(() => {
-      const liveAudioCount = Array.from(document.querySelectorAll("audio")).filter((el) => {
+      const liveAudioCount = Array.from(
+        document.querySelectorAll("audio"),
+      ).filter((el) => {
         const media = el as HTMLAudioElement;
         return (
           !media.paused &&
@@ -76,7 +81,9 @@ async function snapshotPage(page: Page): Promise<ZoomPageSnapshot> {
       const preJoinControlsPresent = !!(
         document.querySelector("#input-for-name") ||
         document.querySelector("button.preview-join-button") ||
-        document.querySelector('input[placeholder*="passcode" i], input[placeholder*="password" i]')
+        document.querySelector(
+          'input[placeholder*="passcode" i], input[placeholder*="password" i]',
+        )
       );
       return {
         title: document.title,
@@ -131,7 +138,9 @@ async function readParticipantCount(page: Page): Promise<number | null> {
     .catch(() => null);
 }
 
-export function createZoomStrategies(options: ZoomStrategyOptions = {}): PlatformStrategies {
+export function createZoomStrategies(
+  options: ZoomStrategyOptions = {},
+): PlatformStrategies {
   return {
     async join(page: Page, session: MeetingBotSession): Promise<void> {
       const { meetingUrl, botName } = session.config;
@@ -141,8 +150,12 @@ export function createZoomStrategies(options: ZoomStrategyOptions = {}): Platfor
       // "This meeting link is invalid (3,001)" until the host starts.
       const startTime = Date.now();
       for (;;) {
-        if (session.signal.aborted) throw new Error(`${TAG} join aborted by stop request`);
-        await page.goto(meetingUrl, { waitUntil: "domcontentloaded", timeout: 60_000 });
+        if (session.signal.aborted)
+          throw new Error(`${TAG} join aborted by stop request`);
+        await page.goto(meetingUrl, {
+          waitUntil: "domcontentloaded",
+          timeout: 60_000,
+        });
         await page.waitForTimeout(2000);
 
         const snapshot = await snapshotPage(page);
@@ -155,11 +168,16 @@ export function createZoomStrategies(options: ZoomStrategyOptions = {}): Platfor
         if (state !== "host_not_started") break;
 
         if (Date.now() - startTime >= HOST_NOT_STARTED_MAX_WAIT_MS) {
-          throw new Error(`${TAG} host did not start the meeting within the wait timeout`);
+          throw new Error(
+            `${TAG} host did not start the meeting within the wait timeout`,
+          );
         }
-        logger.info({
-          retryInMs: HOST_NOT_STARTED_RETRY_MS,
-        }, `${TAG} host not started yet — retrying`);
+        logger.info(
+          {
+            retryInMs: HOST_NOT_STARTED_RETRY_MS,
+          },
+          `${TAG} host not started yet — retrying`,
+        );
         await page.waitForTimeout(HOST_NOT_STARTED_RETRY_MS);
       }
 
@@ -170,13 +188,17 @@ export function createZoomStrategies(options: ZoomStrategyOptions = {}): Platfor
         const allowBtn = page.locator('button:has-text("Allow")').first();
         if (await allowBtn.isVisible({ timeout: 4000 }).catch(() => false)) {
           await allowBtn.click().catch(() => {});
-          logger.info(`${TAG} granted media permission (attempt ${attempt + 1})`);
+          logger.info(
+            `${TAG} granted media permission (attempt ${attempt + 1})`,
+          );
           await page.waitForTimeout(600);
           continue;
         }
         const dismissBtn = page.locator(zoomPermissionDismissSelector).first();
         if (await dismissBtn.isVisible({ timeout: 1000 }).catch(() => false)) {
-          logger.warn(`${TAG} no "Allow" button — dismissing permission dialog (element capture may be unavailable)`);
+          logger.warn(
+            `${TAG} no "Allow" button — dismissing permission dialog (element capture may be unavailable)`,
+          );
           await dismissBtn.click().catch(() => {});
           await page.waitForTimeout(600);
         } else {
@@ -208,7 +230,11 @@ export function createZoomStrategies(options: ZoomStrategyOptions = {}): Platfor
 
       // Real keyboard events — synthetic input events don't satisfy Zoom's
       // React form validation and the Join button stays disabled.
-      await page.locator(zoomNameInputSelector).first().click({ timeout: 5000 }).catch(() => {});
+      await page
+        .locator(zoomNameInputSelector)
+        .first()
+        .click({ timeout: 5000 })
+        .catch(() => {});
       await page.locator(zoomNameInputSelector).first().fill("");
       await page.keyboard.type(botName, { delay: 30 });
       logger.info({ botName }, `${TAG} typed bot name`);
@@ -217,25 +243,33 @@ export function createZoomStrategies(options: ZoomStrategyOptions = {}): Platfor
         .waitForFunction(
           (sel: string) => {
             const btn = document.querySelector(sel) as HTMLButtonElement | null;
-            return !!btn && !btn.classList.contains("disabled") && !btn.disabled;
+            return (
+              !!btn && !btn.classList.contains("disabled") && !btn.disabled
+            );
           },
           zoomJoinButtonSelector,
           { timeout: 8000 },
         )
         .catch(() =>
-          logger.warn(`${TAG} join button still disabled after typing name — attempting click anyway`),
+          logger.warn(
+            `${TAG} join button still disabled after typing name — attempting click anyway`,
+          ),
         );
 
       // Mute mic in preview (receive-only bot).
       const muteBtn = page.locator(zoomPreviewMuteSelector);
-      const muteLabel = await muteBtn.getAttribute("aria-label").catch(() => null);
+      const muteLabel = await muteBtn
+        .getAttribute("aria-label")
+        .catch(() => null);
       if (muteLabel === "Mute") {
         await muteBtn.click().catch(() => {});
         logger.info(`${TAG} muted microphone in preview`);
       }
       // Stop video in preview.
       const videoBtn = page.locator(zoomPreviewVideoSelector);
-      const videoLabel = await videoBtn.getAttribute("aria-label").catch(() => null);
+      const videoLabel = await videoBtn
+        .getAttribute("aria-label")
+        .catch(() => null);
       if (videoLabel === "Stop Video") {
         await videoBtn.click().catch(() => {});
         logger.info(`${TAG} stopped video in preview`);
@@ -245,12 +279,15 @@ export function createZoomStrategies(options: ZoomStrategyOptions = {}): Platfor
       // intercepts Playwright's hit-tested click.
       const clicked = await page.evaluate((sel: string) => {
         const btn = document.querySelector(sel) as HTMLButtonElement | null;
-        if (!btn || btn.classList.contains("disabled") || btn.disabled) return false;
+        if (!btn || btn.classList.contains("disabled") || btn.disabled)
+          return false;
         btn.click();
         return true;
       }, zoomJoinButtonSelector);
       if (!clicked) {
-        logger.warn(`${TAG} DOM-direct join click failed — falling back to forced click`);
+        logger.warn(
+          `${TAG} DOM-direct join click failed — falling back to forced click`,
+        );
         const joinBtn = page.locator(zoomJoinButtonSelector);
         await joinBtn.waitFor({ state: "visible", timeout: 10_000 });
         await joinBtn.click({ force: true, timeout: 10_000 });
@@ -298,7 +335,8 @@ export function createZoomStrategies(options: ZoomStrategyOptions = {}): Platfor
     async checkAdmissionSilent(page: Page): Promise<boolean> {
       // Zoom UI transiently hides elements during popup dismissals — retry.
       for (let attempt = 0; attempt < 3; attempt++) {
-        if (classifyZoomPage(await snapshotPage(page)) === "in_meeting") return true;
+        if (classifyZoomPage(await snapshotPage(page)) === "in_meeting")
+          return true;
         if (attempt < 2) await page.waitForTimeout(1000);
       }
       return false;
@@ -340,7 +378,9 @@ export function createZoomStrategies(options: ZoomStrategyOptions = {}): Platfor
             ].join(", "),
           )
           .first();
-        if (await computerAudioBtn.isVisible({ timeout: 1500 }).catch(() => false)) {
+        if (
+          await computerAudioBtn.isVisible({ timeout: 1500 }).catch(() => false)
+        ) {
           await computerAudioBtn.click().catch(() => {});
           logger.info(`${TAG} clicked "Join with Computer Audio"`);
           audioJoined = true;
@@ -349,16 +389,24 @@ export function createZoomStrategies(options: ZoomStrategyOptions = {}): Platfor
 
         const audioBtn = page.locator(zoomAudioButtonSelector).first();
         if (await audioBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
-          const label = (await audioBtn.getAttribute("aria-label").catch(() => null)) || "";
+          const label =
+            (await audioBtn.getAttribute("aria-label").catch(() => null)) || "";
           if (label === "Mute" || label === "Unmute") {
             logger.info(`${TAG} audio already joined (mic toggle visible)`);
             audioJoined = true;
             break;
           }
-          if (label.toLowerCase().includes("join audio") || label.toLowerCase() === "audio") {
+          if (
+            label.toLowerCase().includes("join audio") ||
+            label.toLowerCase() === "audio"
+          ) {
             await audioBtn.click({ timeout: 5000 }).catch(() => {});
             await page.waitForTimeout(1500);
-            if (await computerAudioBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
+            if (
+              await computerAudioBtn
+                .isVisible({ timeout: 3000 })
+                .catch(() => false)
+            ) {
               await computerAudioBtn.click().catch(() => {});
               logger.info(`${TAG} joined computer audio via footer dialog`);
               audioJoined = true;
@@ -377,8 +425,12 @@ export function createZoomStrategies(options: ZoomStrategyOptions = {}): Platfor
 
       // Video off in-meeting (preview toggle doesn't always carry over).
       const inMeetingVideoBtn = page.locator(zoomVideoButtonSelector).first();
-      if (await inMeetingVideoBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
-        const label = await inMeetingVideoBtn.getAttribute("aria-label").catch(() => null);
+      if (
+        await inMeetingVideoBtn.isVisible({ timeout: 2000 }).catch(() => false)
+      ) {
+        const label = await inMeetingVideoBtn
+          .getAttribute("aria-label")
+          .catch(() => null);
         if (label === "Stop Video") {
           await inMeetingVideoBtn.click().catch(() => {});
           logger.info(`${TAG} video disabled post-admission`);
@@ -386,15 +438,21 @@ export function createZoomStrategies(options: ZoomStrategyOptions = {}): Platfor
       }
     },
 
-    async startRecording(page: Page, session: MeetingBotSession): Promise<MeetingEndReason> {
+    async startRecording(
+      page: Page,
+      session: MeetingBotSession,
+    ): Promise<MeetingEndReason> {
       const attributor = new ZoomSpeakerAttributor({ sink: session.sink });
       let elementChunks = 0;
       let pulseCapture: PulsePcmCapture | null = null;
 
-      await page.exposeFunction("__elizaZoomAudioChunk", (samples: number[]) => {
-        elementChunks += 1;
-        attributor.onAudioChunk(Float32Array.from(samples));
-      });
+      await page.exposeFunction(
+        "__elizaZoomAudioChunk",
+        (samples: number[]) => {
+          elementChunks += 1;
+          attributor.onAudioChunk(Float32Array.from(samples));
+        },
+      );
 
       // ── Capture path 1: in-browser element capture ─────────────────────
       await page.evaluate(() => {
@@ -434,13 +492,19 @@ export function createZoomStrategies(options: ZoomStrategyOptions = {}): Platfor
 
       // ── Capability detection: probe element capture, fall back to Pulse ─
       const probeStart = Date.now();
-      while (elementChunks === 0 && Date.now() - probeStart < CAPTURE_PROBE_TIMEOUT_MS) {
+      while (
+        elementChunks === 0 &&
+        Date.now() - probeStart < CAPTURE_PROBE_TIMEOUT_MS
+      ) {
         if (session.signal.aborted) return "requested_stop";
         await page.waitForTimeout(1000);
       }
 
       if (elementChunks > 0) {
-        logger.info({ elementChunks }, `${TAG} in-browser element capture active`);
+        logger.info(
+          { elementChunks },
+          `${TAG} in-browser element capture active`,
+        );
       } else if (options.pulseSinkName) {
         logger.warn(
           { sink: options.pulseSinkName },
@@ -469,7 +533,10 @@ export function createZoomStrategies(options: ZoomStrategyOptions = {}): Platfor
               `(${options.pulseSinkName}.monitor) both produced zero audio within ${CAPTURE_PROBE_TIMEOUT_MS}ms`,
           );
         }
-        logger.info({ sink: options.pulseSinkName }, `${TAG} PulseAudio capture active`);
+        logger.info(
+          { sink: options.pulseSinkName },
+          `${TAG} PulseAudio capture active`,
+        );
       } else {
         throw new Error(
           `${TAG} no meeting audio captured: in-browser element capture produced zero audio within ` +
@@ -520,20 +587,25 @@ export function createZoomStrategies(options: ZoomStrategyOptions = {}): Platfor
             )
             .catch(() => null);
           const isBotTile =
-            !!speakerName && speakerName.toLowerCase().includes(botName.toLowerCase());
+            !!speakerName &&
+            speakerName.toLowerCase().includes(botName.toLowerCase());
           attributor.onActiveSpeakerPoll(isBotTile ? null : speakerName);
 
           // Roster from visible tile names (excluding the bot).
           const tileNames = await page
             .evaluate((footerSelector: string) => {
-              return Array.from(document.querySelectorAll(`${footerSelector} span`))
+              return Array.from(
+                document.querySelectorAll(`${footerSelector} span`),
+              )
                 .map((s) => s.textContent?.trim())
                 .filter((n): n is string => !!n);
             }, zoomParticipantNameSelector)
             .catch(() => [] as string[]);
           const nowMs = Date.now();
           const current = new Set(
-            tileNames.filter((n) => !n.toLowerCase().includes(botName.toLowerCase())),
+            tileNames.filter(
+              (n) => !n.toLowerCase().includes(botName.toLowerCase()),
+            ),
           );
           for (const name of current) {
             if (!knownParticipants.has(name)) {
@@ -562,8 +634,13 @@ export function createZoomStrategies(options: ZoomStrategyOptions = {}): Platfor
               ? autoLeave.everyoneLeftTimeoutMs
               : autoLeave.noOneJoinedTimeoutMs;
             if (aloneMs >= limit) {
-              logger.info({ aloneMs, everHadOthers }, `${TAG} alone timeout reached`);
-              return everHadOthers ? "left_alone_timeout" : "startup_alone_timeout";
+              logger.info(
+                { aloneMs, everHadOthers },
+                `${TAG} alone timeout reached`,
+              );
+              return everHadOthers
+                ? "left_alone_timeout"
+                : "startup_alone_timeout";
             }
           } else {
             aloneMs = 0;
@@ -582,7 +659,10 @@ export function createZoomStrategies(options: ZoomStrategyOptions = {}): Platfor
       }
     },
 
-    async startRemovalMonitor(page: Page, session: MeetingBotSession): Promise<MeetingEndReason> {
+    async startRemovalMonitor(
+      page: Page,
+      session: MeetingBotSession,
+    ): Promise<MeetingEndReason> {
       const joinedAtMs = Date.now();
       let consecutiveLeaveButtonMisses = 0;
 
@@ -603,11 +683,17 @@ export function createZoomStrategies(options: ZoomStrategyOptions = {}): Platfor
         const url = page.url();
         if (!inGrace && !isZoomAudioInitUrl(url)) {
           if (url && !url.startsWith("about:") && !isZoomDomainUrl(url)) {
-            logger.info({ url }, `${TAG} navigated away from Zoom domain — meeting ended`);
+            logger.info(
+              { url },
+              `${TAG} navigated away from Zoom domain — meeting ended`,
+            );
             return "removed_by_admin";
           }
           if (url.includes("/signin") || url.includes("/login")) {
-            logger.info({ url }, `${TAG} redirected to Zoom sign-in — meeting ended`);
+            logger.info(
+              { url },
+              `${TAG} redirected to Zoom sign-in — meeting ended`,
+            );
             return "removed_by_admin";
           }
         }
@@ -625,10 +711,13 @@ export function createZoomStrategies(options: ZoomStrategyOptions = {}): Platfor
               snapshot.title === "Zoom" ||
               snapshot.title.startsWith("Join"))
           ) {
-            logger.info({
-              url,
-              title: snapshot.title,
-            }, `${TAG} meeting UI gone (${consecutiveLeaveButtonMisses} misses)`);
+            logger.info(
+              {
+                url,
+                title: snapshot.title,
+              },
+              `${TAG} meeting UI gone (${consecutiveLeaveButtonMisses} misses)`,
+            );
             return "removed_by_admin";
           }
         } else {
@@ -661,7 +750,9 @@ export function createZoomStrategies(options: ZoomStrategyOptions = {}): Platfor
           return null;
         });
         if (!clicked) {
-          logger.warn(`${TAG} leave button not found — navigating away to drop WebRTC`);
+          logger.warn(
+            `${TAG} leave button not found — navigating away to drop WebRTC`,
+          );
           await page.goto("about:blank").catch(() => {});
           return;
         }
@@ -683,14 +774,19 @@ export function createZoomStrategies(options: ZoomStrategyOptions = {}): Platfor
           // Hold the page open long enough for the WebRTC peer to disconnect.
           await page.waitForTimeout(2500);
         } else {
-          logger.warn(`${TAG} leave confirm dialog not found — navigating away`);
+          logger.warn(
+            `${TAG} leave confirm dialog not found — navigating away`,
+          );
           await page.goto("about:blank").catch(() => {});
           await page.waitForTimeout(1000);
         }
       } catch (err) {
-        logger.warn({
-          error: err instanceof Error ? err.message : String(err),
-        }, `${TAG} leave attempt failed`);
+        logger.warn(
+          {
+            error: err instanceof Error ? err.message : String(err),
+          },
+          `${TAG} leave attempt failed`,
+        );
       }
     },
   };

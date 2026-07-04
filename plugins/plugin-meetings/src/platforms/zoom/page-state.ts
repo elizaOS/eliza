@@ -70,7 +70,8 @@ export function classifyZoomPage(snapshot: ZoomPageSnapshot): ZoomPageState {
   if (isZoomHostNotStarted(snapshot.title)) return "host_not_started";
   if (isZoomWaitingRoomText(snapshot.bodyText)) return "waiting_room";
   if (snapshot.meetingAppVisible) return "in_meeting";
-  if (snapshot.liveAudioCount > 0 && !snapshot.preJoinControlsPresent) return "in_meeting";
+  if (snapshot.liveAudioCount > 0 && !snapshot.preJoinControlsPresent)
+    return "in_meeting";
   if (snapshot.preJoinControlsPresent) return "pre_join";
   return "unknown";
 }
@@ -90,7 +91,8 @@ export function isZoomAudioInitUrl(url: string): boolean {
   return ZOOM_AUDIO_INIT_URL_PATTERNS.some((pattern) => pattern.test(url));
 }
 
-const ZOOM_DOMAIN_RE = /zoom\.(us|com|eu|com\.cn|com\.br|com\.au|de|fr|jp|ca|co\.uk)\b/;
+const ZOOM_DOMAIN_RE =
+  /zoom\.(us|com|eu|com\.cn|com\.br|com\.au|de|fr|jp|ca|co\.uk)\b/;
 
 export function isZoomDomainUrl(url: string): boolean {
   return ZOOM_DOMAIN_RE.test(url);

@@ -6,7 +6,7 @@
  * stubbed by the runner's esbuild resolver.
  */
 
-import { Bot, GitBranch, ListChecks, Terminal } from "lucide-react";
+import { Bot, ListChecks, Terminal } from "lucide-react";
 import { createRoot } from "react-dom/client";
 import {
   TaskCard,

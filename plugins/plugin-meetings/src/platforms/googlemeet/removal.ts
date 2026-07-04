@@ -6,15 +6,18 @@
  * startGoogleRemovalMonitor (Apache-2.0), adapted to a promise-returning shape.
  */
 
-import type { Page } from "playwright-core";
 import { logger } from "@elizaos/core";
 import type { MeetingEndReason } from "@elizaos/shared";
+import type { Page } from "playwright-core";
 import { anySelectorVisible } from "../shared/selectors.js";
 import { googleRemovalIndicators } from "./selectors.js";
 
 const CHECK_INTERVAL_MS = 1_500;
 
-export function startRemovalMonitor(page: Page, signal: AbortSignal): Promise<MeetingEndReason> {
+export function startRemovalMonitor(
+  page: Page,
+  signal: AbortSignal,
+): Promise<MeetingEndReason> {
   return new Promise((resolve) => {
     if (signal.aborted) return; // Never resolves — the race is already decided.
 

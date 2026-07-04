@@ -5,7 +5,11 @@
     "noEmit": true,
     "incremental": false,
     "composite": false,
-    "types": ["node"]
+    "types": ["node"],
+    "paths": {
+      "@elizaos/plugin-inmemorydb": ["../plugin-inmemorydb/index.ts"],
+      "@elizaos/plugin-inmemorydb/*": ["../plugin-inmemorydb/*"]
+    }
   },
   "include": ["*.ts", "tsup.config.ts"],
   "exclude": [

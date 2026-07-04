@@ -50,7 +50,11 @@
     "build": "bun run build.ts",
     "dev": "bun run build.ts",
     "typecheck": "tsgo --noEmit -p tsconfig.json",
-    "test": "vitest run --config vitest.config.ts"
+    "test": "vitest run --config vitest.config.ts",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format ."
   },
   "agentConfig": {
     "pluginType": "elizaos:plugin:1.0.0",

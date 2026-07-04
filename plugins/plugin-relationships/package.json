@@ -83,9 +83,11 @@
     "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist .turbo",
     "test": "bunx vitest run --config ./vitest.config.ts",
     "typecheck": "tsgo --noEmit -p tsconfig.json",
-    "lint": "bunx @biomejs/biome check src/",
-    "lint:check": "bun run lint",
-    "check": "bun run typecheck && bun run test"
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
+    "check": "bun run typecheck && bun run test",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format ."
   },
   "publishConfig": {
     "access": "public"
