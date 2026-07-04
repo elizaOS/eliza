@@ -11,10 +11,23 @@ enum ElizaWidgetDeepLink {
     enum Source: String {
         case widget = "ios-widget"
         case control = "ios-control"
+        case liveActivity = "ios-live-activity"
     }
 
     static func ask(source: Source) -> URL {
         url(path: "assistant", action: "ask", source: source)
+    }
+
+    /// Live Activity tap/button target: opens the voice surface tagged
+    /// `source=ios-live-activity` with the given action (`open`/`stop`/`save`)
+    /// so the app can act on the button and logs prove the entry point.
+    static func dictation(action: String) -> URL {
+        url(
+            path: "voice",
+            action: action,
+            source: .liveActivity,
+            extraItems: [URLQueryItem(name: "voice", value: "1")]
+        )
     }
 
     static func voice(source: Source) -> URL {
@@ -250,6 +263,9 @@ struct ElizaQuickActionsWidget: Widget {
 struct ElizaWidgetsBundle: WidgetBundle {
     var body: some Widget {
         ElizaQuickActionsWidget()
+        if #available(iOS 16.1, *) {
+            ElizaDictationLiveActivity()
+        }
         if #available(iOS 18.0, *) {
             ElizaAskControl()
         }

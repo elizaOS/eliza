@@ -33,11 +33,16 @@ const MIC_PURPOSE = "Eliza listens when you talk to your agent.";
 const SPEECH_PURPOSE =
   "Eliza transcribes your speech so you can talk to the agent.";
 
-const KEYS = /** @type {Array<{ key: string; value: string | string[] }>} */ ([
-  { key: "UIBackgroundModes", value: ["audio"] },
-  { key: "NSMicrophoneUsageDescription", value: MIC_PURPOSE },
-  { key: "NSSpeechRecognitionUsageDescription", value: SPEECH_PURPOSE },
-]);
+const KEYS =
+  /** @type {Array<{ key: string; value: string | string[] | boolean }>} */ ([
+    { key: "UIBackgroundModes", value: ["audio"] },
+    { key: "NSMicrophoneUsageDescription", value: MIC_PURPOSE },
+    { key: "NSSpeechRecognitionUsageDescription", value: SPEECH_PURPOSE },
+    // Live Activities for the voice/dictation session (#12185 D10). Kept in
+    // sync with the app-core merger (scripts/mobile/ios-plist.mjs) so the two
+    // plist patchers agree.
+    { key: "NSSupportsLiveActivities", value: true },
+  ]);
 
 const TARGET_PATH = resolve(__dirname, "..", "ios", "App", "App", "Info.plist");
 
@@ -66,6 +71,9 @@ function renderEntry({ key, value }) {
       .map((v) => `\t\t<string>${escapeXml(v)}</string>`)
       .join("\n");
     return `\t<key>${key}</key>\n\t<array>\n${items}\n\t</array>\n`;
+  }
+  if (typeof value === "boolean") {
+    return `\t<key>${key}</key>\n\t<${value ? "true" : "false"}/>\n`;
   }
   return `\t<key>${key}</key>\n\t<string>${escapeXml(value)}</string>\n`;
 }

@@ -29,6 +29,10 @@
 		EWDG00010000000000000001 /* ElizaWidgets.swift in Sources */ = {isa = PBXBuildFile; fileRef = EWDG00010000000000000102 /* ElizaWidgets.swift */; };
 		EWDG00010000000000000002 /* ElizaWidgets.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = EWDG00010000000000000101 /* ElizaWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		EWDG00010000000000000003 /* ElizaWidgetControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = EWDG00010000000000000105 /* ElizaWidgetControls.swift */; };
+		EWDG00010000000000000004 /* ElizaDictationAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = EWDG00010000000000000106 /* ElizaDictationAttributes.swift */; };
+		EWDG00010000000000000005 /* ElizaDictationAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = EWDG00010000000000000106 /* ElizaDictationAttributes.swift */; };
+		EWDG00010000000000000006 /* ElizaDictationLiveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = EWDG00010000000000000107 /* ElizaDictationLiveActivity.swift */; };
+		ELIZALIVEACT000000000001 /* ElizaLiveActivityBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = ELIZALIVEACT000000000002 /* ElizaLiveActivityBridge.swift */; };
 		WBCB00010000000000000001 /* ActionRequestHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = WBCB00010000000000000102 /* ActionRequestHandler.swift */; };
 		WBCB00010000000000000002 /* WebsiteBlockerContentExtension.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = WBCB00010000000000000101 /* WebsiteBlockerContentExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		AUIT00010000000000000001 /* BootCaptureUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AUIT00010000000000000002 /* BootCaptureUITests.swift */; };
@@ -127,6 +131,9 @@
 		EWDG00010000000000000103 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		EWDG00010000000000000104 /* ElizaWidgets.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ElizaWidgets.entitlements; sourceTree = "<group>"; };
 		EWDG00010000000000000105 /* ElizaWidgetControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ElizaWidgetControls.swift; sourceTree = "<group>"; };
+		EWDG00010000000000000106 /* ElizaDictationAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ElizaDictationAttributes.swift; sourceTree = "<group>"; };
+		EWDG00010000000000000107 /* ElizaDictationLiveActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ElizaDictationLiveActivity.swift; sourceTree = "<group>"; };
+		ELIZALIVEACT000000000002 /* ElizaLiveActivityBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ElizaLiveActivityBridge.swift; sourceTree = "<group>"; };
 		WBCB00010000000000000101 /* WebsiteBlockerContentExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = WebsiteBlockerContentExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		WBCB00010000000000000102 /* ActionRequestHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActionRequestHandler.swift; sourceTree = "<group>"; };
 		WBCB00010000000000000103 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
@@ -228,6 +235,7 @@
 				SCENEDEL00000000000002 /* SceneDelegate.swift */,
 				E1A5105A0000000000000002 /* ElizaAppIntents.swift */,
 				MIPL00010000000000000002 /* ElizaIntentPlugin.swift */,
+				ELIZALIVEACT000000000002 /* ElizaLiveActivityBridge.swift */,
 				AWDG00010000000000000002 /* AgentWatchdog.swift */,
 				504EC30B1FED79650016851F /* Main.storyboard */,
 				504EC30E1FED79650016851F /* Assets.xcassets */,
@@ -289,6 +297,8 @@
 			children = (
 				EWDG00010000000000000102 /* ElizaWidgets.swift */,
 				EWDG00010000000000000105 /* ElizaWidgetControls.swift */,
+				EWDG00010000000000000106 /* ElizaDictationAttributes.swift */,
+				EWDG00010000000000000107 /* ElizaDictationLiveActivity.swift */,
 				EWDG00010000000000000103 /* Info.plist */,
 				EWDG00010000000000000104 /* ElizaWidgets.entitlements */,
 			);
@@ -597,6 +607,8 @@
 				SCENEDEL00000000000001 /* SceneDelegate.swift in Sources */,
 				E1A5105A0000000000000001 /* ElizaAppIntents.swift in Sources */,
 				MIPL00010000000000000001 /* ElizaIntentPlugin.swift in Sources */,
+				ELIZALIVEACT000000000001 /* ElizaLiveActivityBridge.swift in Sources */,
+				EWDG00010000000000000004 /* ElizaDictationAttributes.swift in Sources */,
 				AWDG00010000000000000001 /* AgentWatchdog.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -643,6 +655,8 @@
 			files = (
 				EWDG00010000000000000001 /* ElizaWidgets.swift in Sources */,
 				EWDG00010000000000000003 /* ElizaWidgetControls.swift in Sources */,
+				EWDG00010000000000000005 /* ElizaDictationAttributes.swift in Sources */,
+				EWDG00010000000000000006 /* ElizaDictationLiveActivity.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
