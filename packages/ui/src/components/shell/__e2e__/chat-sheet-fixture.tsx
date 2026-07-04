@@ -154,6 +154,15 @@ function Harness(): React.JSX.Element {
     React.useState(initialNeedsUnlock);
   const [transcriptionMode, setTranscriptionMode] =
     React.useState(initialTranscribing);
+  // Onboarding is stateful so the e2e can drive the completion (falling) edge —
+  // `window.__setFirstRun(false)` flips it, exercising the #12178 opaque-backdrop
+  // fade + auto-collapse reveal that a static prop can't reach (#12364).
+  const [firstRunOpen, setFirstRunOpen] = React.useState(firstRun);
+  React.useEffect(() => {
+    (
+      window as unknown as { __setFirstRun?: (v: boolean) => void }
+    ).__setFirstRun = setFirstRunOpen;
+  }, []);
 
   // Log lifecycle so the e2e harness can assert the interaction flow from the
   // console (the user asked for logs to be checked alongside the visuals).
@@ -390,7 +399,10 @@ function Harness(): React.JSX.Element {
           ))}
         </div>
       </div>
-      <ContinuousChatOverlay controller={controller} firstRunOpen={firstRun} />
+      <ContinuousChatOverlay
+        controller={controller}
+        firstRunOpen={firstRunOpen}
+      />
     </div>
   );
 }

@@ -25,6 +25,7 @@ import { builtinModules } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
+import { PNG } from "pngjs";
 import { chromium } from "playwright";
 import {
   touchDragHold,
@@ -124,6 +125,7 @@ const result = await build({
 const js = result.outputFiles[0].text;
 const html = `<!doctype html><html><head><meta charset="utf-8"><title>chat sheet e2e</title>
 <script src="https://cdn.tailwindcss.com"></script>
+<script>tailwind.config={theme:{extend:{colors:{bg:"#0a0d16"}}}};</script>
 <script>window.process=window.process||{env:{NODE_ENV:"production"},platform:"browser",cwd:function(){return "/"}};</script>
 <style>html,body{margin:0;height:100%;background:#0a0d16}</style>
 </head><body><div id="root"></div><script>${js}</script></body></html>`;
@@ -199,6 +201,16 @@ async function snap(p, name) {
   const file = `${String(shot).padStart(2, "0")}-${name}.png`;
   await p.screenshot({ path: join(outDir, file) });
   console.log(`  📸 ${file}`);
+}
+
+// Sample the ACTUAL rendered pixel at a viewport point (decoded from a 1px
+// screenshot clip). Proves visual paint, unlike elementFromPoint which skips
+// pointer-events:none layers — the #12178 opaque onboarding backdrop is
+// intentionally non-interactive yet must still paint over the launcher (#12364).
+async function pixelAt(p, x, y) {
+  const buf = await p.screenshot({ clip: { x, y, width: 1, height: 1 } });
+  const png = PNG.sync.read(buf);
+  return { r: png.data[0], g: png.data[1], b: png.data[2] };
 }
 
 function attachConsole(p, sink) {
@@ -2015,6 +2027,80 @@ try {
       "ONBOARDING: composer textarea is unlocked (#12178)",
     );
     await snap(p, "state-onboarding-bottom-anchored");
+
+    // OPAQUE BACKDROP (#12178 impl / #12364 proof): a solid bg-bg plane covers
+    // the launcher/home so no launcher pixel shows through — the fixture's
+    // "Workspace" view content behind the chat must be fully hidden. Assert the
+    // backdrop is present, opaque, full-viewport, solid-colored, and that the
+    // real rendered pixel over the fixture heading reads the opaque bg-bg.
+    const backdrop = await p.evaluate(() => {
+      const el = document.querySelector(
+        '[data-testid="chat-first-run-backdrop"]',
+      );
+      if (!el) return null;
+      const cs = getComputedStyle(el);
+      const r = el.getBoundingClientRect();
+      return {
+        opaque: el.getAttribute("data-first-run-opaque"),
+        opacity: cs.opacity,
+        bg: cs.backgroundColor,
+        coversW: r.width >= window.innerWidth - 1,
+        coversH: r.height >= window.innerHeight - 1,
+      };
+    });
+    assert(
+      backdrop !== null,
+      "ONBOARDING: opaque first-run backdrop is mounted (#12178)",
+    );
+    assert(
+      backdrop.opaque === "true" && backdrop.opacity === "1",
+      `ONBOARDING: backdrop is fully opaque while onboarding is open (opaque ${backdrop?.opaque}, opacity ${backdrop?.opacity})`,
+    );
+    assert(
+      backdrop.bg !== "rgba(0, 0, 0, 0)" && backdrop.bg !== "transparent",
+      `ONBOARDING: backdrop paints a solid bg-bg color (got ${backdrop?.bg})`,
+    );
+    assert(
+      backdrop.coversW && backdrop.coversH,
+      "ONBOARDING: backdrop spans the whole viewport (inset-0)",
+    );
+    const headingCenter = await p.evaluate(() => {
+      const h = document.querySelector('[data-testid="view-content"] h1');
+      const r = h.getBoundingClientRect();
+      return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + 4) };
+    });
+    const hidePx = await pixelAt(p, headingCenter.x, headingCenter.y);
+    assert(
+      hidePx.r < 40 && hidePx.g < 40 && hidePx.b < 50,
+      `ONBOARDING: launcher/home behind is hidden — pixel over the heading is the opaque bg-bg, not the home backdrop (got rgb(${hidePx.r}, ${hidePx.g}, ${hidePx.b}))`,
+    );
+    await snap(p, "state-onboarding-opaque-backdrop");
+
+    // COMPLETION REVEAL (#12364): drive the falling edge — the backdrop fades
+    // off its opaque state and the sheet auto-collapses, revealing the home
+    // surface cleanly.
+    await p.evaluate(() => window.__setFirstRun?.(false));
+    await p.waitForTimeout(900);
+    const revealOpaque = await p.evaluate(() => {
+      const el = document.querySelector(
+        '[data-testid="chat-first-run-backdrop"]',
+      );
+      return el ? el.getAttribute("data-first-run-opaque") : "gone";
+    });
+    assert(
+      revealOpaque !== "true",
+      `REVEAL: backdrop drops its opaque state after onboarding completes (got ${revealOpaque})`,
+    );
+    const revealPx = await pixelAt(p, headingCenter.x, headingCenter.y);
+    assert(
+      !(revealPx.r < 40 && revealPx.g < 40 && revealPx.b < 50),
+      `REVEAL: the home surface is painted again once the backdrop reveals (pixel rgb(${revealPx.r}, ${revealPx.g}, ${revealPx.b}) is no longer the opaque bg)`,
+    );
+    assert(
+      (await variant(p)) === "closed",
+      "REVEAL: the sheet auto-collapses on completion, revealing home",
+    );
+    await snap(p, "state-onboarding-reveal-home");
     await p.close();
   }
 } finally {
