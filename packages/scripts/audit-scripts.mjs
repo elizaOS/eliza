@@ -17,6 +17,11 @@
  *       that points `node`/`bun` at a repo file (`*.mjs/.ts/.js/...`) that is
  *       missing. Deleting a tool without deleting its root alias is caught here.
  *
+ *   (e) UNJUSTIFIED 1:1 package wrappers — a root script whose entire body is
+ *       exactly `bun run --cwd <dir> <script>`. These are allowed only when the
+ *       root command is a deliberate cross-package product or CI entrypoint and
+ *       is documented below with a reason.
+ *
  * Scope:
  *   - (a) orphan: the root package.json scripts block (the dumping ground).
  *   - (b) no-op: first-party shipping packages — root + packages/, plugins/,
@@ -148,6 +153,52 @@ const ORPHAN_SCRIPT_FILE_ALLOWLIST = new Map([
   ],
 ]);
 
+const ROOT_CWD_WRAPPER_ALLOWLIST = new Map([
+  [
+    "audit:apple-store-sandbox",
+    "root audit entrypoint for the app-core Apple Store sandbox gate",
+  ],
+  ["start", "day-to-day root start entrypoint for the runnable agent"],
+  ["dev:agent", "day-to-day root agent dev entrypoint"],
+  ["dev:core", "day-to-day root core dev entrypoint"],
+  ["test:hmr", "root release/regression gate for app HMR behavior"],
+  [
+    "test:apple-entitlements",
+    "root release/regression gate for app entitlement checks",
+  ],
+  [
+    "test:remote-capabilities",
+    "remote-capabilities CI suite with root-level naming family",
+  ],
+  [
+    "test:remote-capabilities:ui",
+    "remote-capabilities CI suite with root-level naming family",
+  ],
+  [
+    "test:remote-capabilities:source-build",
+    "remote-capabilities CI suite with root-level naming family",
+  ],
+  [
+    "test:remote-capabilities:docker",
+    "remote-capabilities CI suite with root-level naming family",
+  ],
+  ["dev:cloud:api", "cloud API developer entrypoint"],
+  ["dev:cloud:web", "cloud web developer entrypoint"],
+  ["build:cloud", "cloud API build entrypoint"],
+  ["test:cloud:e2e", "cloud API E2E entrypoint"],
+  ["cloud:e2e", "cloud E2E package entrypoint"],
+  ["cloud:e2e:headed", "cloud E2E headed mode entrypoint"],
+  ["cloud:e2e:ui", "cloud E2E UI mode entrypoint"],
+  ["bench:personality:calibrate", "personality benchmark calibration entrypoint"],
+  ["bench:eliza-1", "benchmark suite root entrypoint"],
+  ["bench:recall", "benchmark suite root entrypoint"],
+  ["bench:recall:1k", "benchmark suite root entrypoint"],
+  ["bench:three-agent", "benchmark suite root entrypoint"],
+  ["bench:three-agent:smoke", "benchmark suite root entrypoint"],
+  ["db:cloud:generate", "cloud shared database root entrypoint"],
+  ["db:cloud:studio", "cloud shared database root entrypoint"],
+]);
+
 const NOOP_GATE_KEYS = /^(lint|typecheck|test|build)(:|$)/;
 // Demo / vendored / scaffold subtrees that legitimately ship placeholder scripts
 // or reference paths that only exist after scaffolding. Out of the no-op gate.
@@ -257,6 +308,15 @@ function buildReferenceCorpus(root) {
 function namespaceOf(name) {
   const idx = name.indexOf(":");
   return idx === -1 ? name : name.slice(0, idx);
+}
+
+function exactCwdWrapper(body) {
+  const match = body.match(/^bun\s+run\s+--cwd\s+(\S+)\s+(\S+)$/);
+  if (!match) return null;
+  return {
+    cwd: match[1].replace(/^["']|["']$/g, ""),
+    script: match[2].replace(/^["']|["']$/g, ""),
+  };
 }
 
 function isNoopSkip(body) {
@@ -395,6 +455,15 @@ function auditScripts(root) {
   // `eliza/` references that are absent here.)
   for (const [name, body] of Object.entries(rootScripts)) {
     if (typeof body !== "string") continue;
+
+    const wrapper = exactCwdWrapper(body);
+    if (wrapper && !ROOT_CWD_WRAPPER_ALLOWLIST.has(name)) {
+      failures.push(
+        `[cwd-wrapper] root script "${name}" is a 1:1 package wrapper ` +
+          `(${JSON.stringify(body)}). Call "bun run --cwd ${wrapper.cwd} ` +
+          `${wrapper.script}" directly, or add an explicit allowlist reason.`,
+      );
+    }
 
     const cwdMatch = body.match(/--cwd\s+(\S+)/);
     if (cwdMatch) {

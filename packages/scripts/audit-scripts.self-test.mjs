@@ -160,4 +160,43 @@ function hasFinding(report, fragment) {
   );
 }
 
+// 9. An unallowlisted exact root -> package script wrapper fails.
+{
+  const report = runAudit({
+    root: {
+      "audit:thing": "bun run --cwd packages/thing test",
+    },
+    files: {
+      "packages/thing/package.json": JSON.stringify({
+        name: "thing",
+        scripts: { test: "vitest run" },
+      }),
+    },
+  });
+  assert(!report.ok, "unallowlisted cwd wrapper should fail");
+  assert(
+    hasFinding(report, "[cwd-wrapper]"),
+    "expected a [cwd-wrapper] finding",
+  );
+}
+
+// 10. A documented allowlisted exact root -> package script wrapper passes.
+{
+  const report = runAudit({
+    root: {
+      "test:hmr": "bun run --cwd packages/app test:hmr",
+    },
+    files: {
+      "packages/app/package.json": JSON.stringify({
+        name: "app",
+        scripts: { "test:hmr": "vitest run test/hmr.test.ts" },
+      }),
+    },
+  });
+  assert(
+    report.ok,
+    `allowlisted cwd wrapper should pass, got ${JSON.stringify(report.failures)}`,
+  );
+}
+
 console.log("audit-scripts self-test passed");
