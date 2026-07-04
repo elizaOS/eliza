@@ -1,11 +1,22 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { resetUiRegistryHostForTests } from "../../registry-host";
 import type { OverlayApp } from "./overlay-app-api";
 import {
   getAvailableOverlayApps,
   isAospAndroid,
   registerOverlayApp,
 } from "./overlay-app-registry";
+
+// The registry now lives in `@elizaos/shared`, anchored on a single global slot
+// keyed verbatim so every module copy converges on one store. Reset it directly
+// (there is no `window` in the node test env, so the store falls back to
+// `globalThis`).
+const OVERLAY_REGISTRY_KEY = "__elizaosOverlayAppRegistry__";
+
+function resetOverlayRegistry(): void {
+  (globalThis as { [OVERLAY_REGISTRY_KEY]?: Map<string, OverlayApp> })[
+    OVERLAY_REGISTRY_KEY
+  ] = new Map();
+}
 
 const ELIZAOS_AOSP_UA =
   "Mozilla/5.0 (Linux; Android 15; sdk_gphone64_x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/124.0.6367.243 Mobile Safari/537.36 ElizaOS/dev-2026-01";
@@ -29,7 +40,7 @@ function makeOverlayApp(name: string, androidOnly: boolean): OverlayApp {
 
 describe("overlay-app-registry AOSP gating", () => {
   beforeEach(() => {
-    resetUiRegistryHostForTests();
+    resetOverlayRegistry();
     registerOverlayApp(makeOverlayApp("@elizaos/plugin-phone", true));
     registerOverlayApp(makeOverlayApp("@elizaos/plugin-contacts", true));
     registerOverlayApp(makeOverlayApp("@elizaos/plugin-wifi", true));
@@ -37,7 +48,7 @@ describe("overlay-app-registry AOSP gating", () => {
   });
 
   afterEach(() => {
-    resetUiRegistryHostForTests();
+    resetOverlayRegistry();
   });
 
   it("hides androidOnly apps on stock Android (no AOSP marker)", () => {

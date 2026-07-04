@@ -1,5 +1,29 @@
+// Legacy UI-compat shim, reachable only via the explicit `./ui-compat`
+// package.json subpath (no longer via the Node `index.ts` barrel). View-bundle
+// browser consumers (e.g. plugin-feed) externalize `@elizaos/ui`, so the React
+// value re-exports below resolve to the host React singleton at runtime.
+//
+// The registry functions and surface helpers now live in the React-free
+// `@elizaos/shared` package; the typed HTTP client + Feed transport types come
+// from the React-free `@elizaos/ui/api` subpath. Only the primitive/component
+// re-exports still touch the React component graph.
+
 export type {
   AppDetailExtensionProps,
+  OverlayApp,
+  OverlayAppContext,
+  SurfaceTone,
+} from "@elizaos/shared";
+export {
+  formatDetailTimestamp,
+  registerDetailExtension,
+  registerOverlayApp,
+  selectLatestRunForApp,
+  toneForHealthState,
+  toneForStatusText,
+  toneForViewerAttachment,
+} from "@elizaos/shared";
+export type {
   AppRunSummary,
   AppSessionJsonValue,
   FeedActivityItem,
@@ -9,19 +33,8 @@ export type {
   FeedPredictionMarket,
   FeedTeamAgent,
   FeedWallet,
-  OverlayApp,
-  OverlayAppContext,
-  SurfaceTone,
-} from "@elizaos/ui";
-// Re-export each value from its narrow `@elizaos/ui` subpath rather than the
-// root barrel. The barrel (`@elizaos/ui`) eagerly evaluates the entire frontend
-// component graph, and this shim is reachable from the Node `@elizaos/app-core`
-// barrel (index.ts) — so importing it from the bare barrel dragged ~1000 React
-// modules (and their deps) into the API process at boot. Subpath imports pull
-// only the specific component. Mirrors `browser.ts`. The `export type` block
-// above is erased at compile time and needs no narrowing.
+} from "@elizaos/ui/api";
 export { client } from "@elizaos/ui/api";
-export { registerDetailExtension } from "@elizaos/ui/components/apps/extensions/registry";
 export {
   SurfaceBadge,
   SurfaceCard,
@@ -29,14 +42,6 @@ export {
   SurfaceGrid,
   SurfaceSection,
 } from "@elizaos/ui/components/apps/extensions/surface";
-export {
-  formatDetailTimestamp,
-  selectLatestRunForApp,
-  toneForHealthState,
-  toneForStatusText,
-  toneForViewerAttachment,
-} from "@elizaos/ui/components/apps/extensions/surface.helpers";
-export { registerOverlayApp } from "@elizaos/ui/components/apps/overlay-app-registry";
 export { PagePanel } from "@elizaos/ui/components/composites/page-panel";
 export { Button } from "@elizaos/ui/components/ui/button";
 export { Input } from "@elizaos/ui/components/ui/input";

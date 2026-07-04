@@ -42,7 +42,20 @@ vi.stubGlobal("navigator", navigatorMock);
 
 import { resetUiRegistryHostForTests } from "../../registry-host";
 import { loadMergedCatalogApps } from "./catalog-loader";
+import type { OverlayApp } from "./overlay-app-api";
 import { registerOverlayApp } from "./overlay-app-registry";
+
+// The overlay registry now lives in `@elizaos/shared`, anchored on a single
+// global slot keyed verbatim. Clear that slot directly (no `window` in the node
+// test env, so the store falls back to `globalThis`) alongside the UI
+// registry-host reset used by the other in-package registries.
+const OVERLAY_REGISTRY_KEY = "__elizaosOverlayAppRegistry__";
+
+function resetOverlayRegistry(): void {
+  (globalThis as { [OVERLAY_REGISTRY_KEY]?: Map<string, OverlayApp> })[
+    OVERLAY_REGISTRY_KEY
+  ] = new Map();
+}
 
 interface ServerAppRow {
   name: string;
@@ -93,6 +106,7 @@ function makeServerApp(name: string): ServerAppRow {
 describe("loadMergedCatalogApps AOSP filter", () => {
   beforeEach(() => {
     resetUiRegistryHostForTests();
+    resetOverlayRegistry();
     registerOverlayApp({
       name: "@elizaos/plugin-phone",
       displayName: "Phone",
@@ -138,6 +152,7 @@ describe("loadMergedCatalogApps AOSP filter", () => {
 
   afterEach(() => {
     resetUiRegistryHostForTests();
+    resetOverlayRegistry();
   });
 
   const ANDROID_ONLY_APP_NAMES = [

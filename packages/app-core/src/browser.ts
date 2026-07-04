@@ -1,4 +1,19 @@
-export { resolveAppBranding } from "@elizaos/shared";
+export type {
+  AppDetailExtensionProps,
+  OverlayApp,
+  OverlayAppContext,
+  SurfaceTone,
+} from "@elizaos/shared";
+export {
+  formatDetailTimestamp,
+  registerDetailExtension,
+  registerOverlayApp,
+  resolveAppBranding,
+  selectLatestRunForApp,
+  toneForHealthState,
+  toneForStatusText,
+  toneForViewerAttachment,
+} from "@elizaos/shared";
 export {
   type AppRunSummary,
   type AppSessionJsonValue,
@@ -10,28 +25,13 @@ export {
 } from "@elizaos/ui/api";
 export * from "@elizaos/ui/browser";
 export { ErrorBoundary } from "@elizaos/ui/browser";
-export { registerDetailExtension } from "@elizaos/ui/components/apps/extensions/registry";
 export {
   SurfaceBadge,
   SurfaceCard,
   SurfaceEmptyState,
   SurfaceGrid,
   SurfaceSection,
-  type SurfaceTone,
 } from "@elizaos/ui/components/apps/extensions/surface";
-export {
-  formatDetailTimestamp,
-  selectLatestRunForApp,
-  toneForHealthState,
-  toneForStatusText,
-  toneForViewerAttachment,
-} from "@elizaos/ui/components/apps/extensions/surface.helpers";
-export type { AppDetailExtensionProps } from "@elizaos/ui/components/apps/extensions/types";
-export type {
-  OverlayApp,
-  OverlayAppContext,
-} from "@elizaos/ui/components/apps/overlay-app-api";
-export { registerOverlayApp } from "@elizaos/ui/components/apps/overlay-app-registry";
 export { PagePanel } from "@elizaos/ui/components/composites/page-panel";
 export { Button } from "@elizaos/ui/components/ui/button";
 export { Input } from "@elizaos/ui/components/ui/input";

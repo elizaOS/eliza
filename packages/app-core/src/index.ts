@@ -13,6 +13,7 @@ export * from "./api/server";
 export * from "./api/server-security";
 export * from "./api/server-wallet-trade";
 export * from "./api/setup-contract";
+export * from "./api/ui-transport-client";
 export * from "./config/app-config";
 export * from "./diagnostics/integration-observability";
 export * from "./first-run/first-run-config";
@@ -38,7 +39,12 @@ export * from "./runtime/app-route-plugin-registry";
 export * from "./runtime/build-character-from-config";
 export * from "./runtime/build-variant";
 export * from "./runtime/channel-plugin-map";
-export * from "./runtime/desktop";
+// `./runtime/desktop` and `./ui-compat` are intentionally NOT re-exported from
+// this Node barrel. Both eagerly evaluate React-bearing modules (the desktop
+// window/tray runtimes and the `@elizaos/ui` component surface), which would
+// drag the entire frontend component graph into the API process at boot.
+// Browser consumers reach these surfaces through `src/browser.ts` (the
+// browser-aliased entry) and the explicit `./ui-compat` package.json subpath.
 export * from "./runtime/eliza";
 export * from "./runtime/mobile-safe-runtime";
 export * from "./runtime/mode/runtime-mode";
@@ -64,4 +70,3 @@ export * from "./services/steward-sidecar.ts";
 export * from "./services/task-host-capabilities";
 export * from "./services/vault-bootstrap";
 export * from "./services/vault-mirror";
-export * from "./ui-compat";

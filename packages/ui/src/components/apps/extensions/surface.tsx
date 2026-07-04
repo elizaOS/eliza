@@ -1,12 +1,7 @@
+import type { SurfaceTone } from "@elizaos/shared";
 import type React from "react";
-import type { AppRunSummary } from "../../../api";
 
-export type SurfaceTone = "neutral" | "accent" | "success" | "warn" | "danger";
-
-export interface SelectedAppRun {
-  run: AppRunSummary | null;
-  matchingRuns: AppRunSummary[];
-}
+export type { SelectedAppRun, SurfaceTone } from "@elizaos/shared";
 
 function toneClassName(tone: SurfaceTone): string {
   switch (tone) {
