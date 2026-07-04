@@ -84,14 +84,20 @@ function resolveUrl(
  * on a 2xx response `request()` promotes this to a thrown failure rather than
  * fabricating a success — a malformed JSON body is a broken response, not data.
  */
+const malformedJsonBodyBrand = Symbol("MalformedJsonBody");
+
 interface MalformedJsonBody {
+  readonly [malformedJsonBodyBrand]: true;
   readonly kind: "malformed-json";
   readonly text: string;
 }
 
 function isMalformedJsonBody(value: unknown): value is MalformedJsonBody {
   return (
-    isRecord(value) && (value as { kind?: unknown }).kind === "malformed-json"
+    isRecord(value) &&
+    (value as { [malformedJsonBodyBrand]?: unknown })[
+      malformedJsonBodyBrand
+    ] === true
   );
 }
 
@@ -109,7 +115,11 @@ async function parseResponseBody(response: Response): Promise<unknown> {
   } catch {
     // error-policy:J3 declared-JSON parse failure returns a typed marker; the
     // caller surfaces it (error path) or throws (2xx), never a fake success.
-    return { kind: "malformed-json", text } satisfies MalformedJsonBody;
+    return {
+      [malformedJsonBodyBrand]: true,
+      kind: "malformed-json",
+      text,
+    } satisfies MalformedJsonBody;
   }
 }
 

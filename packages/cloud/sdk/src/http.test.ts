@@ -249,6 +249,25 @@ describe("ElizaCloudHttpClient errors", () => {
     });
   });
 
+  it("does not confuse valid JSON fields with the internal malformed-json marker", async () => {
+    const client = new ElizaCloudHttpClient({
+      baseUrl: "https://cloud.test",
+      fetchImpl: asFetch(async () =>
+        Response.json({
+          success: true,
+          kind: "malformed-json",
+          text: "this is valid application JSON",
+        }),
+      ),
+    });
+
+    await expect(client.request("GET", "/api/test")).resolves.toEqual({
+      success: true,
+      kind: "malformed-json",
+      text: "this is valid application JSON",
+    });
+  });
+
   it("keeps not-found, auth, and server failures as distinct statuses", async () => {
     const respondWith = (status: number, statusText: string) =>
       new ElizaCloudHttpClient({
