@@ -938,7 +938,20 @@ export interface ImageGenerationResult {
  * Parameters for transcription models
  */
 export interface TranscriptionParams {
-	audioUrl: string;
+	/** Remote URL or data URL for providers that fetch/transcode audio themselves. */
+	audioUrl?: string;
+	/** Buffered audio bytes for providers that accept local upload-style input. */
+	audio?: Buffer | Uint8Array | ArrayBuffer;
+	/** MIME type for `audio`; for example, `audio/wav`. */
+	mimeType?: string;
+	/** Raw mono PCM samples for local/on-device ASR handlers. */
+	pcm?: Float32Array;
+	/** Sample rate for `pcm` in Hz. */
+	sampleRateHz?: number;
+	/** Legacy alias accepted by existing local ASR extraction helpers. */
+	sampleRate?: number;
+	/** BCP-47 language hint; providers may auto-detect when absent. */
+	language?: string;
 	prompt?: string;
 	signal?: AbortSignal;
 	/**

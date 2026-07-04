@@ -24,7 +24,7 @@ import {
   type PipelineTranscriptUpdate,
 } from "../types";
 import { type AsrSegment, SpeakerStreamManager } from "./speaker-streams";
-import { type AsrBackend, RuntimeModelAsrBackend } from "./transcriber";
+import { type AsrBackend, LocalRuntimeAsrBackend } from "./transcriber";
 import { float32ToWav } from "./wav";
 
 /** Silence gap (ms) between words that splits a submission into segments. */
@@ -94,7 +94,7 @@ class MeetingPipeline implements MeetingTranscriptionPipeline {
     private readonly options: MeetingPipelineOptions,
     backend?: AsrBackend,
   ) {
-    this.backend = backend ?? new RuntimeModelAsrBackend(options.runtime);
+    this.backend = backend ?? new LocalRuntimeAsrBackend(options.runtime);
     this.idPrefix = options.sessionId.slice(0, 8);
     this.manager = new SpeakerStreamManager({
       sampleRate: MEETING_AUDIO_SAMPLE_RATE,
@@ -265,6 +265,8 @@ class MeetingPipeline implements MeetingTranscriptionPipeline {
         const result = await this.backend.transcribe(wav, {
           ...(this.options.language ? { language: this.options.language } : {}),
           ...(prompt ? { prompt } : {}),
+          pcm: audio,
+          sampleRateHz: MEETING_AUDIO_SAMPLE_RATE,
         });
         const segments =
           result.words && result.words.length > 0
@@ -341,8 +343,8 @@ class MeetingPipeline implements MeetingTranscriptionPipeline {
 
 /**
  * Create the transcription pipeline for one meeting session. `backend` is
- * injectable for tests and alternate ASR providers; the default routes
- * through `runtime.useModel(ModelType.TRANSCRIPTION)`.
+ * injectable for tests and alternate ASR providers; the default pins overlapping
+ * LocalAgreement windows to local runtime transcription.
  */
 export function createMeetingTranscriptionPipeline(
   options: MeetingPipelineOptions,

@@ -1651,6 +1651,7 @@ export async function ensureLocalInferenceHandler(
 				: makeTranscriptionHandler(),
 			provider,
 			LOCAL_INFERENCE_PRIORITY,
+			{ local: true },
 		);
 		runtimeWithRegistration.registerModel(
 			ModelType.IMAGE_DESCRIPTION,

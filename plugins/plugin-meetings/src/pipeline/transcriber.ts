@@ -1,10 +1,10 @@
 /**
  * The ASR boundary of the meeting pipeline.
  *
- * `AsrBackend` is the seam: the pipeline hands it a mono 16 kHz 16-bit PCM
- * WAV window and gets back text (plus per-word timings when the backend has
- * them). The default backend routes through
- * `runtime.useModel(ModelType.TRANSCRIPTION)`.
+ * `AsrBackend` is the seam: the pipeline hands it a mono 16 kHz window and gets
+ * back text (plus per-word timings when the backend has them). The default
+ * meeting path pins interim LocalAgreement windows to local runtime ASR so
+ * overlapping stabilization windows cannot accidentally bill a hosted provider.
  *
  * ── Why there is no in-process word-timing backend ─────────────────────────
  * The only first-party words-returning ASR path is
@@ -14,19 +14,25 @@
  * `/api/asr/local-inference` HTTP route, which app-core mounts explicitly
  * (it is not on `runtime.routes`, not a registered elizaOS service, and the
  * locked `ModelType.TRANSCRIPTION ⇒ string` contract carries text only). No
- * clean in-process seam exists, so this module ships RuntimeModelAsrBackend
- * alone; segments then carry `words: []` (the transcript player falls back
- * to segment-level highlighting) rather than fabricated timings.
+ * clean in-process word-timing path exists, so runtime-backed segments carry
+ * `words: []` (the transcript player falls back to segment-level
+ * highlighting) rather than fabricated timings.
  */
 
 import type { Buffer } from "node:buffer";
 import { type IAgentRuntime, logger, ModelType } from "@elizaos/core";
+
+const LOCAL_TRANSCRIPTION_PROVIDER = "eliza-local-inference";
 
 export interface AsrTranscribeOptions {
   /** BCP-47 language hint; auto-detect when absent. */
   language?: string;
   /** Previously confirmed text — decoding context for streaming continuity. */
   prompt?: string;
+  /** Raw mono PCM backing the WAV. Required by the local inference handler. */
+  pcm?: Float32Array;
+  /** Sample rate for `pcm`. Meeting audio is 16 kHz mono. */
+  sampleRateHz?: number;
   signal?: AbortSignal;
 }
 
@@ -53,12 +59,41 @@ export interface RuntimeModelAsrBackendConfig {
   retryDelayMs?: number;
 }
 
+interface LocalTranscriptionParams {
+  pcm: Float32Array;
+  sampleRateHz: number;
+  language?: string;
+  prompt?: string;
+  signal?: AbortSignal;
+}
+
 /** Whisper-style non-speech markers, e.g. "[BLANK_AUDIO]", "(silence)". */
 const NON_SPEECH_PATTERN =
   /^[\s[(]*(?:blank[\s_]*audio|silence|no[\s_]*speech|inaudible|music)[\s\])]*$/i;
 
 function isNonSpeech(text: string): boolean {
   return text.length === 0 || NON_SPEECH_PATTERN.test(text);
+}
+
+function isLocalTranscriptionRegistration(registration: {
+  modelType: string;
+  provider: string;
+  metadata?: { local?: boolean };
+}): boolean {
+  return (
+    registration.modelType === ModelType.TRANSCRIPTION &&
+    (registration.metadata?.local === true ||
+      registration.provider === LOCAL_TRANSCRIPTION_PROVIDER)
+  );
+}
+
+export function findLocalTranscriptionProvider(
+  runtime: IAgentRuntime,
+): string | null {
+  const registration = runtime
+    .getModelRegistrations()
+    .find(isLocalTranscriptionRegistration);
+  return registration?.provider ?? null;
 }
 
 /**
@@ -122,5 +157,54 @@ export class RuntimeModelAsrBackend implements AsrBackend {
       : new Error(
           `[MeetingPipeline] TRANSCRIPTION failed: ${String(lastError)}`,
         );
+  }
+}
+
+/**
+ * Local-only ASR backend for live meeting stabilization windows.
+ *
+ * LocalAgreement intentionally retranscribes overlapping audio as it waits for
+ * stable text. Routing those windows through provider priority would let a
+ * higher-priority cloud ASR handler win, multiplying metered calls. This backend
+ * resolves the local provider once and calls it by explicit provider name; if no
+ * local registration exists, meeting transcription fails visibly instead of
+ * silently spending cloud tokens.
+ */
+export class LocalRuntimeAsrBackend implements AsrBackend {
+  private readonly provider: string;
+
+  constructor(private readonly runtime: IAgentRuntime) {
+    const provider = findLocalTranscriptionProvider(runtime);
+    if (!provider) {
+      throw new Error(
+        "[MeetingPipeline] Local TRANSCRIPTION provider is required for meeting interim ASR",
+      );
+    }
+    this.provider = provider;
+  }
+
+  async transcribe(
+    _wav: Buffer,
+    opts: AsrTranscribeOptions,
+  ): Promise<AsrTranscribeResult> {
+    if (!opts.pcm || !opts.sampleRateHz) {
+      throw new Error(
+        "[MeetingPipeline] Local TRANSCRIPTION requires PCM samples and sample rate",
+      );
+    }
+    const params: LocalTranscriptionParams = {
+      pcm: opts.pcm,
+      sampleRateHz: opts.sampleRateHz,
+      ...(opts.language ? { language: opts.language } : {}),
+      ...(opts.prompt ? { prompt: opts.prompt } : {}),
+      ...(opts.signal ? { signal: opts.signal } : {}),
+    };
+    const raw = await this.runtime.useModel(
+      ModelType.TRANSCRIPTION,
+      params,
+      this.provider,
+    );
+    const text = typeof raw === "string" ? raw.trim() : "";
+    return isNonSpeech(text) ? { text: "" } : { text };
   }
 }
