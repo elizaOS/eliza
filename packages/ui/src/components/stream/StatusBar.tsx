@@ -1,3 +1,10 @@
+/**
+ * Bottom status bar for the agent screen-stream view: agent name, live/idle
+ * indicator, uptime, frame count, and the start/stop-stream toggle. On the web
+ * it also offers a pop-out button that opens the stream in a separate window
+ * (`openStreamPopout`); the Electrobun desktop runtime uses its own native
+ * window path, so the web pop-out is suppressed there.
+ */
 import { ExternalLink } from "lucide-react";
 import { type CSSProperties, useEffect, useRef } from "react";
 import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";

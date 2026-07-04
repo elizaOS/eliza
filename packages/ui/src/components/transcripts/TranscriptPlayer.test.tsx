@@ -1,5 +1,10 @@
 // @vitest-environment jsdom
 
+/**
+ * Behaviour coverage for TranscriptPlayer: real render in jsdom driving
+ * play/pause/scrub and the word-synced highlighting.
+ */
+
 import type { Transcript } from "@elizaos/shared/transcripts";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";

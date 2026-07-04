@@ -1,5 +1,10 @@
 // @vitest-environment jsdom
 
+/**
+ * Behaviour coverage for TranscriptsView: real render in jsdom asserting the
+ * recordings list + player pairing and meeting-aware summary handling.
+ */
+
 import type {
   Transcript,
   TranscriptSummary,

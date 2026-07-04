@@ -1,5 +1,10 @@
 // @vitest-environment jsdom
 
+/**
+ * Behaviour coverage for RoleGate: renders children only when the current role
+ * (from `RoleProvider`) meets the gate. Real render in jsdom.
+ */
+
 import type { RoleGateRole } from "@elizaos/core";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";

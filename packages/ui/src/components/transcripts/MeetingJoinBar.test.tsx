@@ -1,5 +1,10 @@
 // @vitest-environment jsdom
 
+/**
+ * Behaviour coverage for MeetingJoinBar: real render in jsdom driving the
+ * meeting-URL paste/validation and join flow.
+ */
+
 import type { MeetingSession } from "@elizaos/shared";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";

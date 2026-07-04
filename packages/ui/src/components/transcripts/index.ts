@@ -1,3 +1,4 @@
+/** Public barrel for the Transcripts surface (player, live meeting pane, reducer). */
 export {
   LiveMeetingPane,
   type LiveMeetingPaneProps,

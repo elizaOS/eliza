@@ -1,3 +1,5 @@
+/** Storybook stories for AppWorkspaceChrome — default (with nav) and no-nav layouts. */
+
 import type { Meta, StoryObj } from "@storybook/react";
 import { AppWorkspaceChrome } from "./AppWorkspaceChrome";
 

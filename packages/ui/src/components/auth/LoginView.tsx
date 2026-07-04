@@ -1,3 +1,11 @@
+/**
+ * Password sign-in screen shown when a remote agent requires owner
+ * authentication. Posts credentials via `authLoginPassword` and calls
+ * `onLoginSuccess` so the shell can redirect to the dashboard. When the host
+ * reports `remote_password_not_configured`, it swaps the form for setup
+ * instructions (there is no owner password to authenticate against yet) instead
+ * of accepting a login. Styled with the shared first-run/setup tokens.
+ */
 import { type FormEvent, useCallback, useId, useState } from "react";
 import { type AuthLoginResult, authLoginPassword } from "../../api/auth-client";
 import { cn } from "../../lib/utils";

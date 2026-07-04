@@ -1,3 +1,10 @@
+/**
+ * Renders one native tool-call event (a `NativeToolCallEvent` from the agent's
+ * activity stream) as a collapsible log row: a running/success/failure status
+ * icon and the tool name, expanding to show the truncated argument/result
+ * previews and pretty-printed JSON. State + name derivation live in
+ * `ToolCallEventLog.helpers`.
+ */
 import { CheckCircle, ChevronDown, Clock3, XCircle } from "lucide-react";
 import type { ReactNode } from "react";
 

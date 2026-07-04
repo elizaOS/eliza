@@ -1,3 +1,10 @@
+/**
+ * Header status badge for the Eliza Cloud connection. Renders only when there is
+ * something worth surfacing — auth rejection, a credits-fetch error, or a
+ * low/critical credit balance — and stays hidden for a healthy balance. Balances
+ * are formatted compactly ($1.2k / $3.4m) for the header. The `shell` appearance
+ * matches the app shell's chrome; the default is a lighter inline button.
+ */
 import type { CSSProperties } from "react";
 import { Button } from "../ui/button";
 

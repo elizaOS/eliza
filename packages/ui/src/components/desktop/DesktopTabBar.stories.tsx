@@ -1,3 +1,5 @@
+/** Storybook stories for DesktopTabBar — default, single-tab, many-tabs, and no-active-tab states (under an Electrobun-runtime decorator). */
+
 import type { Meta, StoryObj } from "@storybook/react";
 import type { DesktopTab } from "../../hooks/useDesktopTabs";
 import { DesktopTabBar } from "./DesktopTabBar";

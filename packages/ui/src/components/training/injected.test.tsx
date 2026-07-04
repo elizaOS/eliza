@@ -1,4 +1,9 @@
 // @vitest-environment jsdom
+/**
+ * Behaviour coverage for the injected FineTuningView: renders the host-supplied
+ * `bootConfig.fineTuningView` when present, and the install hint when absent.
+ * Real render in jsdom with a stubbed boot context.
+ */
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { DEFAULT_BOOT_CONFIG } from "../../config/boot-config";

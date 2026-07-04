@@ -1,3 +1,4 @@
+/** Curated re-export barrel of the base UI primitives from `components/ui/*`. */
 export * from "../ui/alert";
 export * from "../ui/alert-dialog";
 export * from "../ui/badge";

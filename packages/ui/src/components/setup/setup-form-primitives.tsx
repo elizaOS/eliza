@@ -1,3 +1,10 @@
+/**
+ * `SetupField` — the labeled form-field wrapper for first-run / setup steps.
+ * Wraps the base `Field` primitive with setup-specific label/helper styling and
+ * wires up description/message ids so the control (supplied via render-prop) gets
+ * the right `aria-describedby` and invalid state. Danger messages are announced
+ * assertively.
+ */
 import type * as React from "react";
 import { cn } from "../../lib/utils";
 import { Field, FieldDescription, FieldLabel, FieldMessage } from "../ui/field";

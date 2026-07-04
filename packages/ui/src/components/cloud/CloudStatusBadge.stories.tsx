@@ -1,3 +1,5 @@
+/** Storybook stories for CloudStatusBadge — low/critical credits, large-balance-low, auth-rejected, credits-error, and shell-appearance states. */
+
 import type { Meta, StoryObj } from "@storybook/react";
 import { CloudStatusBadge } from "./CloudStatusBadge";
 

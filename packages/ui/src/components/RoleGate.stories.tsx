@@ -1,3 +1,5 @@
+/** Storybook stories for RoleGate — showing which gated children render for the owner, admin, user, and guest roles. */
+
 import type { RoleGateRole } from "@elizaos/core";
 import type { Meta, StoryObj } from "@storybook/react";
 import { RoleProvider, useRole } from "../hooks/useRole.tsx";
