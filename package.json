@@ -94,7 +94,7 @@
     "dev:agent": "bun run --cwd packages/agent dev",
     "dev:core": "bun run --cwd packages/core dev",
     "start:debug": "NODE_NO_WARNINGS=1 LOG_LEVEL=debug bun run --cwd packages/agent start",
-    "build": "node packages/scripts/run-turbo.mjs run build --concurrency=8 --filter='!@elizaos/electrobun' --filter='!./packages/examples/**' --filter='!./packages/benchmarks/**' --cache=local:rw,remote:r --output-logs=errors-only && bun run --cwd packages/app-core/platforms/electrobun build && bun run check:view-bundles",
+    "build": "node packages/scripts/run-turbo.mjs run build --concurrency=8 --filter='!./packages/examples/**' --filter='!./packages/benchmarks/**' --cache=local:rw,remote:r --output-logs=errors-only && bun run check:view-bundles",
     "build:typescript": "node packages/scripts/run-turbo.mjs run build",
     "build:client": "node packages/scripts/run-turbo.mjs run build --filter=@elizaos/app",
     "build:views": "node packages/scripts/build-views.mjs",
