@@ -3921,7 +3921,18 @@ export function ContinuousChatOverlay({
               <motion.div
                 data-testid="chat-thread"
                 className={cn(
-                  "relative z-10 min-h-0 w-full shrink grow-0 overflow-hidden",
+                  // `flex flex-col`: the thread is now a flex COLUMN so its lone
+                  // child (the scroller) sizes via `flex-1 min-h-0` against this
+                  // element's bounded height instead of `height:100%`. A flex
+                  // item whose main size comes ONLY from `flex-basis` (the px
+                  // MotionValue below) is NOT a definite height for a percentage
+                  // `h-full` child on iOS Safari / WebKit (it resolves to auto →
+                  // the scroller sizes to CONTENT and never overflows → the
+                  // transcript can't scroll on mobile web, #chat-scroll-web). The
+                  // flex algorithm gives a `min-h-0` flex child a definite
+                  // resolved height regardless, so this makes the scroll viewport
+                  // reliably bounded on every engine.
+                  "relative z-10 flex min-h-0 w-full shrink grow-0 flex-col overflow-hidden",
                   // When open, fade the top edge into the glass so the topmost
                   // message dissolves under the drag handle instead of butting
                   // against it.
@@ -3959,7 +3970,20 @@ export function ContinuousChatOverlay({
                   // Gated during onboarding so a swipe can't leave the seeded
                   // first-run transcript.
                   {...(sheetOpen && !firstRunOpen ? conversationSwipe : {})}
-                  className="relative flex h-full w-full touch-pan-y flex-col overflow-y-auto px-5 [scrollbar-width:none]  [&::-webkit-scrollbar]:hidden"
+                  // `flex-1 min-h-0` (not `h-full`): as the single child of the
+                  // flex-column thread above, the scroller fills the parent's
+                  // BOUNDED height via the flex algorithm — a resolution that is
+                  // definite on every engine, unlike `height:100%` against a
+                  // flex-basis-sized parent (auto on iOS Safari → content-sized →
+                  // unscrollable, #chat-scroll-web). `min-h-0` lets it shrink
+                  // below its content so `overflow-y-auto` actually engages.
+                  // `[-webkit-overflow-scrolling:touch]`: iOS Safari needs this
+                  // legacy hint to give an `overflow-y-auto` region its own
+                  // momentum-scroll compositor layer; without it a nested
+                  // overflow region on iOS can fail to take the touch-scroll at
+                  // all (the transcript reads as "stuck" — #chat-scroll-web).
+                  // Harmless/ignored on every non-WebKit engine.
+                  className="relative flex min-h-0 w-full flex-1 touch-pan-y flex-col overflow-y-auto overscroll-contain px-5 [scrollbar-width:none] [-webkit-overflow-scrolling:touch] [&::-webkit-scrollbar]:hidden"
                   style={{ opacity: threadContentOpacity }}
                 >
                   {/* Empty-thread loading: a fresh/cleared chat awaiting its
