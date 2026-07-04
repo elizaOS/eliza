@@ -87,11 +87,41 @@ function escapeXml(value) {
     .replace(/'/g, "&apos;");
 }
 
+function ensureArrayStringValue(xml, key, value) {
+  const keyPattern = `<key>${escapeKey(key)}</key>`;
+  const blockPattern = new RegExp(
+    `(${keyPattern}\\s*<array>)([\\s\\S]*?)(\\s*</array>)`,
+  );
+  const match = xml.match(blockPattern);
+  if (!match) {
+    return { next: xml, changed: false };
+  }
+  const [, prefix, body, suffix] = match;
+  if (new RegExp(`<string>${escapeKey(escapeXml(value))}</string>`).test(body)) {
+    return { next: xml, changed: false };
+  }
+  const indent = body.match(/\n(\s*)<string>/)?.[1] ?? "\t\t";
+  const insertedBody = `${body}\n${indent}<string>${escapeXml(value)}</string>`;
+  return {
+    next: xml.replace(blockPattern, `${prefix}${insertedBody}${suffix}`),
+    changed: true,
+  };
+}
+
 function patchPlist(xml, urlScheme) {
   let changed = false;
   let next = xml;
   for (const entry of KEYS) {
-    if (hasKey(next, entry.key)) continue;
+    if (hasKey(next, entry.key)) {
+      if (Array.isArray(entry.value)) {
+        for (const value of entry.value) {
+          const result = ensureArrayStringValue(next, entry.key, value);
+          next = result.next;
+          changed = changed || result.changed;
+        }
+      }
+      continue;
+    }
     const insertAt = findInsertionPoint(next);
     next = next.slice(0, insertAt) + renderEntry(entry) + next.slice(insertAt);
     changed = true;
@@ -137,15 +167,23 @@ if (checkOnly) {
   }
   const xml = readFileSync(TARGET_PATH, "utf8");
   const { urlScheme } = readAppIdentity(APP_DIR);
-  const missing = KEYS.filter((k) => !hasKey(xml, k.key));
+  const patched = patchPlist(xml, urlScheme);
   const missingUrlScheme = ensurePlistUrlScheme(xml, urlScheme) !== xml;
-  if (missing.length === 0 && !missingUrlScheme) {
+  if (!patched.changed && !missingUrlScheme) {
     console.log("[patch-ios-plist] OK — all required keys present.");
     process.exit(0);
   }
+  const missing = KEYS.filter((k) => !hasKey(xml, k.key));
+  const incompleteArrays = KEYS.flatMap((entry) => {
+    if (!Array.isArray(entry.value) || !hasKey(xml, entry.key)) return [];
+    return entry.value
+      .filter((value) => ensureArrayStringValue(xml, entry.key, value).changed)
+      .map((value) => `${entry.key}:${value}`);
+  });
   console.error(
     `[patch-ios-plist] missing keys: ${[
       ...missing.map((k) => k.key),
+      ...incompleteArrays,
       ...(missingUrlScheme ? [`CFBundleURLTypes:${urlScheme}`] : []),
     ].join(", ")}`,
   );

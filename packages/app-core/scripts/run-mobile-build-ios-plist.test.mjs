@@ -33,6 +33,7 @@ describe("iOS Info.plist overlay helpers", () => {
     expect(merged.content).toContain("<key>NSBonjourServices</key>");
     expect(merged.content).toContain("<string>_eliza-gw._tcp</string>");
     expect(merged.content).toContain("<key>UIBackgroundModes</key>");
+    expect(merged.content).toContain("<string>audio</string>");
     expect(merged.content).toContain("<string>fetch</string>");
     expect(merged.content).toContain("<string>processing</string>");
     expect(merged.content).toContain(
