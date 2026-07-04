@@ -25,7 +25,7 @@ import {
   type VoiceCaptureFactoryOptions,
   type VoiceCaptureHandle,
 } from "@elizaos/ui/voice";
-import { APP_LOG_PREFIX } from "./app-config";
+import appConfig from "../app.config";
 import {
   getKeyboardDictationBridge,
   type KeyboardDictationBridge,
@@ -70,6 +70,7 @@ const defaultDeps: KeyboardDictationDeps = {
 const SESSION_MAX_MS = 60_000;
 const OVERLAY_ID = "eliza-keyboard-dictation-overlay";
 const ACCENT = "#ff5800";
+const LOG_PREFIX = `[${appConfig.appName}]`;
 
 let activeSession: KeyboardDictationSession | null = null;
 
@@ -165,7 +166,7 @@ export function startKeyboardDictationSession(
   const source = params.get("source") ?? "ios-keyboard";
   const log = (message: string, ...rest: unknown[]) =>
     console.log(
-      `${APP_LOG_PREFIX} [KeyboardDictation] ${message} (source=${source} session=${sessionId})`,
+      `${LOG_PREFIX} [KeyboardDictation] ${message} (source=${source} session=${sessionId})`,
       ...rest,
     );
 
