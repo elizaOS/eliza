@@ -202,20 +202,30 @@ function addedByRoleForRoleName(
  * descriptions, extracted document text); fall back to a filename/format stub
  * so the record is never empty and still matches a filename/format search.
  *
- * A trailing provenance line (room + sender + scope) is appended so the
- * documents store's content-addressed dedupe key (`generateContentBasedId`,
- * hashes body + filename) is CONTEXT-scoped: the SAME bytes shared in a
- * different room, by a different sender, or under a different scope produce a
- * DISTINCT knowledge record instead of collapsing onto the first occurrence and
- * losing that occurrence's roomId/sender/scope facets. Identical bytes in the
- * SAME (room, sender, scope) still dedupe idempotently, which is the intended
- * behavior. The marker is a stable single line so re-ingest is a no-op.
+ * A trailing provenance line (media hash + room + sender + scope) is appended so
+ * the documents store's content-addressed dedupe key (`generateContentBasedId`,
+ * hashes body + filename) is CONTEXT- and BYTES-scoped:
+ *  - the SAME bytes shared in a different room, by a different sender, or under
+ *    a different scope produce a DISTINCT record (no roomId/sender/scope facet
+ *    loss); and
+ *  - two DIFFERENT attachments that happen to share a filename + description in
+ *    the same (room, sender, scope) still produce DISTINCT records because the
+ *    media hash differs — so the second attachment's distinct mediaUrl/hash is
+ *    never dropped by dedupe.
+ * Identical bytes in the SAME (room, sender, scope) still dedupe idempotently,
+ * which is the intended behavior. The marker is a stable single line so
+ * re-ingest is a no-op.
  */
 function ingestBodyForAttachment(
   attachment: Media,
   format: MediaFormat,
   fileName: string,
-  provenance: { roomId: UUID; senderEntityId: UUID; scope: string },
+  provenance: {
+    roomId: UUID;
+    senderEntityId: UUID;
+    scope: string;
+    mediaHash: string;
+  },
 ): string {
   const label = attachment.filename || attachment.title || fileName;
   const described =
@@ -224,9 +234,23 @@ function ingestBodyForAttachment(
       : "") ||
     (typeof attachment.text === "string" ? attachment.text.trim() : "");
   const header = `[${format} attachment: ${label}]`;
-  const provenanceLine = `[ingest room=${provenance.roomId} sender=${provenance.senderEntityId} scope=${provenance.scope}]`;
+  const provenanceLine = `[ingest media=${provenance.mediaHash} room=${provenance.roomId} sender=${provenance.senderEntityId} scope=${provenance.scope}]`;
   const body = described ? `${header}\n\n${described}` : header;
   return `${body}\n\n${provenanceLine}`;
+}
+
+/**
+ * Storage filename for the text-backed knowledge record. The documents service
+ * special-cases `.pdf`/binary `originalFilename`s (base64-decode + PDF extract)
+ * BEFORE fragmenting — feeding it a synthesized-plaintext body under a `.pdf`
+ * name corrupts the stored fragments. We ALWAYS store under a `.txt` name so the
+ * body is treated as searchable text; the real display filename is preserved in
+ * `metadata.filename`/`originalFilename`.
+ */
+function textStorageFilename(displayFilename: string): string {
+  const base = displayFilename.replace(/\.[^./\\]+$/, "");
+  const safeBase = base.trim().length > 0 ? base.trim() : "attachment";
+  return `${safeBase}.txt`;
 }
 
 export interface IngestAttachmentDeps {
@@ -356,6 +380,10 @@ export async function ingestMessageAttachmentsAsKnowledge(
       typeof attachment.checksum === "string"
         ? attachment.checksum
         : mediaFileName.split(".")[0];
+    // Store under a .txt name so the documents service treats the synthesized
+    // plaintext body as text (never the .pdf/binary base64-decode + extract
+    // path). The real display filename lives in metadata.filename.
+    const storageFilename = textStorageFilename(fileName);
 
     try {
       const stored = await documents.addDocument({
@@ -367,11 +395,12 @@ export async function ingestMessageAttachmentsAsKnowledge(
         // Text-backed so the documents store treats the body as searchable text
         // rather than trying to re-decode opaque bytes it never received.
         contentType: "text/plain",
-        originalFilename: fileName,
+        originalFilename: storageFilename,
         content: ingestBodyForAttachment(attachment, format, fileName, {
           roomId,
           senderEntityId,
           scope,
+          mediaHash,
         }),
         scope,
         ...(scopedToEntityId ? { scopedToEntityId } : {}),

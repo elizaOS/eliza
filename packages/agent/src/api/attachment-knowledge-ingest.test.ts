@@ -169,7 +169,7 @@ function makeRuntime(params: {
     getRelationships: vi.fn(async () => []),
     reportError: vi.fn(),
     logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
-  } as never;
+  } as Record<string, unknown>;
 }
 
 function messageWithAttachments(
@@ -257,6 +257,12 @@ describe("ingestMessageAttachmentsAsKnowledge", () => {
     expect(pdf.scope).toBe("owner-private");
     expect(pdf.metadata?.mediaFormat).toBe("pdf");
     expect(pdf.metadata?.tags).toEqual(["attachment", "media-format:pdf"]);
+    // A PDF attachment is stored as a text record under a .txt name so the
+    // documents service does NOT run the .pdf base64-decode/extract path on the
+    // synthesized plaintext body. The display filename is preserved in metadata.
+    expect(pdf.contentType).toBe("text/plain");
+    expect(pdf.originalFilename).toBe("report.txt");
+    expect(pdf.metadata?.filename).toBe("report.pdf");
   });
 
   it("scopes a public-room attachment to the sender (user-private), never owner-private/global", async () => {
@@ -453,6 +459,51 @@ describe("ingestMessageAttachmentsAsKnowledge", () => {
     ).rejects.toMatchObject({
       code: "ATTACHMENT_KNOWLEDGE_WORLD_LOOKUP_FAILED",
     });
+  });
+
+  it("gives DIFFERENT bytes with the same filename+description distinct content (media hash in body)", async () => {
+    const { service, calls } = makeDocumentService();
+    const runtime = makeRuntime({
+      roomType: ChannelType.DM,
+      roomId: DM_ROOM,
+      ownerId: OWNER_ENTITY,
+    });
+    // Two DISTINCT stored files (different sha256) that share filename +
+    // description — without the media hash in the body they'd dedupe and the
+    // second file's mediaUrl/hash would be lost.
+    const message = messageWithAttachments({
+      entityId: OWNER_ENTITY,
+      roomId: DM_ROOM,
+      attachments: [
+        {
+          id: "dup1",
+          url: STORED_IMAGE_URL,
+          contentType: ContentType.IMAGE,
+          mimeType: "image/png",
+          filename: "same.png",
+          description: "same description",
+        },
+        {
+          id: "dup2",
+          url: "/api/media/cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc.png",
+          contentType: ContentType.IMAGE,
+          mimeType: "image/png",
+          filename: "same.png",
+          description: "same description",
+        },
+      ],
+    });
+
+    await ingestMessageAttachmentsAsKnowledge(
+      { runtime, documents: service } as never,
+      message,
+    );
+
+    expect(calls).toHaveLength(2);
+    expect(calls[0].content).not.toBe(calls[1].content);
+    expect(calls[0].metadata?.mediaFileName).not.toBe(
+      calls[1].metadata?.mediaFileName,
+    );
   });
 
   it("gives the SAME bytes distinct content per (room, sender, scope) so dedupe doesn't drop facets", async () => {
