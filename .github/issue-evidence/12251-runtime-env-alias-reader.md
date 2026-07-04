@@ -18,18 +18,23 @@ bun run install:light
 bun run --cwd packages/shared build:i18n
 bun run --cwd packages/cloud/routing build
 bun run --cwd packages/shared test -- runtime-env.test.ts utils/env.test.ts
+bun run --cwd packages/app test -- src/brand-env.test.ts
 ```
 
-Result: `2 passed (2)` test files, `27 passed (27)` tests.
+Result: `2 passed (2)` test files, `28 passed (28)` tests.
+App alias-table result: `1 passed (1)` test file, `1 passed (1)` test.
 
 ```bash
 bunx @biomejs/biome check \
   packages/shared/src/runtime-env.ts \
   packages/shared/src/runtime-env.test.ts \
-  packages/core/src/runtime-env.ts
+  packages/core/src/boot-env.ts \
+  packages/core/src/runtime-env.ts \
+  packages/app/src/brand-env.ts \
+  packages/app/src/brand-env.test.ts
 ```
 
-Result: `Checked 3 files ... No fixes applied.`
+Result: passed.
 
 ```bash
 bun run --cwd packages/core typecheck

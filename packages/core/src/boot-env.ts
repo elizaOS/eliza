@@ -75,6 +75,12 @@ function getBootConfig(): AppBootConfig {
 	return getBootConfigStore().current;
 }
 
+export function getBootConfigEnvAliases():
+	| readonly (readonly [string, string])[]
+	| undefined {
+	return getBootConfig().envAliases;
+}
+
 function getProcessEnv(): Record<string, string | undefined> | null {
 	try {
 		const p = (globalThis as Record<string, unknown>).process as

@@ -12,7 +12,7 @@
  * capabilities that shell out are unavailable.
  */
 
-import { resolveAliasedEnvValue } from "./boot-env.js";
+import { getBootConfigEnvAliases } from "./boot-env.js";
 import { isTruthyEnvValue } from "./env-utils.js";
 
 const DEFAULT_API_BIND_HOST = "127.0.0.1";
@@ -86,8 +86,8 @@ function firstNonEmpty(
 	keys: readonly string[],
 ): string | null {
 	for (const key of keys) {
-		const value = resolveEnvValue(env, key)?.trim();
-		if (value) return value;
+		const entry = resolveEnvEntry(env, key);
+		if (entry) return entry.value;
 	}
 	return null;
 }
@@ -98,8 +98,31 @@ export function firstWinningEnvString(
 	keys: readonly string[],
 ): { key: string; value: string } | null {
 	for (const key of keys) {
-		const value = resolveEnvValue(env, key)?.trim();
-		if (value) return { key, value };
+		const entry = resolveEnvEntry(env, key);
+		if (entry) return entry;
+	}
+	return null;
+}
+
+function presentEnvValue(value: string | undefined): string | undefined {
+	if (typeof value !== "string") return undefined;
+	const trimmed = value.trim();
+	return trimmed || undefined;
+}
+
+function resolveEnvEntry(
+	env: RuntimeEnvRecord,
+	key: string,
+): { key: string; value: string } | null {
+	const direct = presentEnvValue(env[key]);
+	if (direct !== undefined) return { key, value: direct };
+
+	for (const [brandKey, elizaKey] of getBootConfigEnvAliases() ?? []) {
+		const partner =
+			key === brandKey ? elizaKey : key === elizaKey ? brandKey : null;
+		if (!partner) continue;
+		const value = presentEnvValue(env[partner]);
+		if (value !== undefined) return { key: partner, value };
 	}
 	return null;
 }
@@ -108,7 +131,7 @@ function resolveEnvValue(
 	env: RuntimeEnvRecord,
 	key: string,
 ): string | undefined {
-	return resolveAliasedEnvValue(key, undefined, env);
+	return resolveEnvEntry(env, key)?.value;
 }
 
 export interface PortPreferenceResolution {
@@ -123,13 +146,15 @@ export function resolveDesktopApiPortPreference(
 	env: RuntimeEnvRecord = process.env,
 ): PortPreferenceResolution {
 	for (const key of DESKTOP_API_PORT_KEYS) {
-		const p = parsePositivePort(resolveEnvValue(env, key));
+		const entry = resolveEnvEntry(env, key);
+		if (!entry) continue;
+		const p = parsePositivePort(entry.value);
 		if (p !== null) {
 			return {
 				port: p,
-				sourceLabel: `env set — ${key}=${p}`,
-				changeLabel: `unset ${key} or set ELIZA_API_PORT / ELIZA_PORT (first wins); built-in ${DEFAULT_DESKTOP_API_PORT}`,
-				winningKey: key,
+				sourceLabel: `env set — ${entry.key}=${p}`,
+				changeLabel: `unset ${entry.key} or set ELIZA_API_PORT / ELIZA_PORT (first wins); built-in ${DEFAULT_DESKTOP_API_PORT}`,
+				winningKey: entry.key,
 			};
 		}
 	}
@@ -147,13 +172,15 @@ export function resolveDesktopUiPortPreference(
 	env: RuntimeEnvRecord = process.env,
 ): PortPreferenceResolution {
 	for (const key of DESKTOP_UI_PORT_KEYS) {
-		const p = parsePositivePort(resolveEnvValue(env, key));
+		const entry = resolveEnvEntry(env, key);
+		if (!entry) continue;
+		const p = parsePositivePort(entry.value);
 		if (p !== null) {
 			return {
 				port: p,
-				sourceLabel: `env set — ${key}=${p}`,
-				changeLabel: `unset ${key} for built-in ${DEFAULT_DESKTOP_UI_PORT}`,
-				winningKey: key,
+				sourceLabel: `env set — ${entry.key}=${p}`,
+				changeLabel: `unset ${entry.key} for built-in ${DEFAULT_DESKTOP_UI_PORT}`,
+				winningKey: entry.key,
 			};
 		}
 	}
