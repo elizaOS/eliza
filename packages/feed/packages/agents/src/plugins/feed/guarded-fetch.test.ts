@@ -36,6 +36,29 @@ describe("Feed A2A guardedFetch SSRF guard (#12229 L9)", () => {
     expect(injected).toBe("k");
   });
 
+  test("createGuardedFetchImpl preserves Request headers before applying auth headers", async () => {
+    let existing: string | null = null;
+    let injected: string | null = null;
+    const impl = createGuardedFetchImpl((headers) => {
+      existing = headers.get("x-existing");
+      headers.set("x-feed-api-key", "k");
+      injected = headers.get("x-feed-api-key");
+    });
+
+    await expect(
+      impl(
+        new Request("http://169.254.169.254/tasks", {
+          method: "POST",
+          headers: { "x-existing": "v" },
+          body: "payload",
+        }),
+      ),
+    ).rejects.toThrow(/private|internal|Blocked/i);
+
+    expect(existing).toBe("v");
+    expect(injected).toBe("k");
+  });
+
   test("blocks a blocked internal hostname", async () => {
     await expect(
       guardedFetch("http://metadata.google.internal/agent-card.json"),

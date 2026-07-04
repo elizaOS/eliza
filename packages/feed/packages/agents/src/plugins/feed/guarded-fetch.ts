@@ -23,10 +23,10 @@ export async function guardedFetch(
   url: string | URL | Request,
   init?: RequestInit,
 ): Promise<Response> {
-  const target = a2aRequestUrl(url);
+  const { target, requestInit } = a2aRequestParts(url, init);
   const { response, release } = await fetchWithSsrfGuard({
     url: target,
-    ...(init ? { init } : {}),
+    ...(requestInit ? { init: requestInit } : {}),
   });
   // The guard's release() only clears the abort timer we did not set here, so it
   // is a no-op cleanup; call it to honor the contract without holding the socket.
@@ -46,19 +46,35 @@ export function createGuardedFetchImpl(
     url: string | URL | Request,
     init?: RequestInit,
   ): Promise<Response> => {
-    const headers = new Headers(init?.headers);
+    const headers = new Headers(url instanceof Request ? url.headers : undefined);
+    for (const [key, value] of new Headers(init?.headers)) {
+      headers.set(key, value);
+    }
     injectHeaders(headers);
     return guardedFetch(url, { ...init, headers });
   };
   return impl as typeof fetch;
 }
 
-function a2aRequestUrl(url: string | URL | Request): string {
+function a2aRequestParts(
+  url: string | URL | Request,
+  init?: RequestInit,
+): { target: string; requestInit?: RequestInit } {
   if (typeof url === "string") {
-    return url;
+    return { target: url, requestInit: init };
   }
   if (url instanceof URL) {
-    return url.toString();
+    return { target: url.toString(), requestInit: init };
   }
-  return url.url;
+  return {
+    target: url.url,
+    requestInit: {
+      method: url.method,
+      headers: url.headers,
+      body: url.body,
+      signal: url.signal,
+      redirect: url.redirect,
+      ...init,
+    },
+  };
 }
