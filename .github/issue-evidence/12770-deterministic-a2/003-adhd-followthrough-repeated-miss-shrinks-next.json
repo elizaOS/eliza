@@ -1,0 +1,62 @@
+{
+  "id": "adhd-followthrough-repeated-miss-shrinks-next",
+  "title": "ADHD follow-through: repeated miss shrinks the next ask",
+  "domain": "lifeops",
+  "tags": [
+    "pr",
+    "deterministic",
+    "zero-cost",
+    "lifeops",
+    "adhd",
+    "personas",
+    "scheduled-tasks",
+    "12283"
+  ],
+  "status": "passed",
+  "durationMs": 381,
+  "turns": [
+    {
+      "name": "create the follow-through check Casey has missed before",
+      "kind": "api",
+      "responseText": "{\"task\":{\"taskId\":\"st_mr6kv7r9_xu7wkzj5\",\"kind\":\"checkin\",\"promptInstructions\":\"ask Casey whether the quarterly slides got a ten-minute pass\",\"trigger\":{\"kind\":\"once\",\"atIso\":\"2026-07-11T09:00:00.000Z\"},\"priority\":\"medium\",\"output\":{\"destination\":\"channel\",\"target\":\"scenario_a2_repeated_miss_delivery:owner\"},\"pipeline\":{\"onSkip\":[{\"kind\":\"followup\",\"promptInstructions\":\"Offer Casey one smaller version of the slides task or a pause; do not mention streaks, failure, discipline, or motivation.\",\"trigger\":{\"kind\":\"manual\"},\"priority\":\"low\",\"respectsGlobalPause\":false,\"source\":\"user_chat\",\"createdBy\":\"adhd-followthrough-repeated-miss-shrinks-next\",\"ownerVisible\":true,\"metadata\":{\"scenario\":\"adhd-followthrough-repeated-miss-shrinks-next\",\"premise\":\"repeated miss shrink offer\"}}]},\"idempotencyKey\":\"adhd-followthrough-repeated-miss-shrinks-next-slides-check\",\"respectsGlobalPause\":false,\"source\":\"user_chat\",\"createdBy\":\"adhd-followthrough-repeated-miss-shrinks-next\",\"ownerVisible\":true,\"metadata\":{\"scenario\":\"adhd-followthrough-repeated-miss-shrinks-next\",\"missCount\":3},\"state\":{\"status\":\"scheduled\",\"followupCount\":0}}}",
+      "actionsCalled": [],
+      "durationMs": 3,
+      "failedAssertions": []
+    },
+    {
+      "name": "the original check fires once",
+      "kind": "tick",
+      "responseText": "{\"success\":true,\"nextInterval\":60449,\"now\":\"2026-07-11T09:05:00.000Z\",\"reminderAttempts\":[],\"workflowRuns\":[],\"scheduledTaskFires\":[{\"taskId\":\"st_mr6kv7r9_xu7wkzj5\",\"status\":\"fired\",\"reason\":\"once_due\",\"occurrenceAtIso\":\"2026-07-11T09:00:00.000Z\"}],\"scheduledTaskCompletionTimeouts\":[],\"subsystemFailures\":[]}",
+      "actionsCalled": [],
+      "durationMs": 354,
+      "failedAssertions": []
+    },
+    {
+      "name": "Casey skips it after another miss",
+      "kind": "api",
+      "responseText": "{\"task\":{\"taskId\":\"st_mr6kv7r9_xu7wkzj5\",\"kind\":\"checkin\",\"promptInstructions\":\"ask Casey whether the quarterly slides got a ten-minute pass\",\"trigger\":{\"kind\":\"once\",\"atIso\":\"2026-07-11T09:00:00.000Z\"},\"priority\":\"medium\",\"output\":{\"destination\":\"channel\",\"target\":\"scenario_a2_repeated_miss_delivery:owner\"},\"pipeline\":{\"onSkip\":[{\"kind\":\"followup\",\"promptInstructions\":\"Offer Casey one smaller version of the slides task or a pause; do not mention streaks, failure, discipline, or motivation.\",\"trigger\":{\"kind\":\"manual\"},\"priority\":\"low\",\"respectsGlobalPause\":false,\"source\":\"user_chat\",\"createdBy\":\"adhd-followthrough-repeated-miss-shrinks-next\",\"ownerVisible\":true,\"metadata\":{\"scenario\":\"adhd-followthrough-repeated-miss-shrinks-next\",\"premise\":\"repeated miss shrink offer\"}}]},\"idempotencyKey\":\"adhd-followthrough-repeated-miss-shrinks-next-slides-check\",\"respectsGlobalPause\":false,\"state\":{\"status\":\"skipped\",\"firedAt\":\"2026-07-11T09:05:00.000Z\",\"followupCount\":0,\"lastDecisionLog\":\"third miss; shrink or pause instead\"},\"source\":\"user_chat\",\"createdBy\":\"adhd-followthrough-repeated-miss-shrinks-next\",\"ownerVisible\":true,\"metadata\":{\"scenario\":\"adhd-followthrough-repeated-miss-shrinks-next\",\"missCount\":3,\"createdAtIso\":\"2026-07-04T16:29:38.950Z\",\"escalationCursor\":{\"stepIndex\":-1,\"lastDispatchedAt\":\"2026-07-11T09:05:00.000Z\"},\"lastDispatchResult\":{\"ok\":true,\"messageId\":\"adhd-followthrough-repeated-miss-shrinks-next-delivery-1\"}}}}",
+      "actionsCalled": [],
+      "durationMs": 9,
+      "failedAssertions": []
+    },
+    {
+      "name": "list tasks and prove a smaller follow-up child exists",
+      "kind": "api",
+      "responseText": "{\"tasks\":[{\"taskId\":\"st_mr6kv72d_8s2ls63d\",\"kind\":\"reminder\",\"promptInstructions\":\"nudge Casey to upload the last receipt photo\",\"trigger\":{\"kind\":\"once\",\"atIso\":\"2026-07-12T15:00:00.000Z\"},\"priority\":\"medium\",\"output\":{\"destination\":\"channel\",\"target\":\"scenario_a2_completion_celebration_delivery:owner\"},\"pipeline\":{\"onComplete\":[{\"kind\":\"recap\",\"promptInstructions\":\"Name the receipt upload as one win in one sentence; keep it proportional, do not over-celebrate, and do not add another plan.\",\"trigger\":{\"kind\":\"manual\"},\"priority\":\"low\",\"respectsGlobalPause\":false,\"source\":\"user_chat\",\"createdBy\":\"adhd-followthrough-completion-celebrates-proportionally\",\"ownerVisible\":true,\"metadata\":{\"scenario\":\"adhd-followthrough-completion-celebrates-proportionally\",\"premise\":\"proportional completion celebration\"}}]},\"idempotencyKey\":\"adhd-followthrough-completion-celebrates-proportionally-receipt-upload\",\"respectsGlobalPause\":false,\"state\":{\"status\":\"completed\",\"firedAt\":\"2026-07-12T15:05:00.000Z\",\"completedAt\":\"2026-07-04T16:29:38.523Z\",\"followupCount\":0,\"lastDecisionLog\":\"Casey uploaded the receipt photo\"},\"source\":\"user_chat\",\"createdBy\":\"adhd-followthrough-completion-celebrates-proportionally\",\"ownerVisible\":true,\"metadata\":{\"scenario\":\"adhd-followthrough-completion-celebrates-proportionally\",\"createdAtIso\":\"2026-07-04T16:29:38.056Z\",\"escalationCursor\":{\"stepIndex\":-1,\"lastDispatchedAt\":\"2026-07-12T15:05:00.000Z\"},\"lastDispatchResult\":{\"ok\":true,\"messageId\":\"adhd-followthrough-completion-celebrates-proportionally-delivery-1\"}}},{\"taskId\":\"st_mr6kv7fg_9652bti7\",\"kind\":\"recap\",\"promptInstructions\":\"Name the receipt upload as one win in one sentence; keep it proportional, do not over-celebrate, and do not add another plan.\",\"trigger\":{\"kind\":\"manual\"},\"priority\":\"low\",\"respectsGlobalPause\":false,\"state\":{\"status\":\"scheduled\",\"followupCount\":0,\"pipelineParentId\":\"st_mr6kv72d_8s2ls63d\"},\"source\":\"user_chat\",\"createdBy\":\"adhd-followthrough-completion-celebrates-proportionally\",\"ownerVisible\":true,\"metadata\":{\"scenario\":\"adhd-followthrough-completion-celebrates-proportionally\",\"premise\":\"proportional completion celebration\",\"createdAtIso\":\"2026-07-04T16:29:38.526Z\"}},{\"taskId\":\"st_mr6kv7g7_13lt0zki\",\"kind\":\"recap\",\"promptInstructions\":\"End-of-day recap for Casey: lead with wins completed today before misses, keep it short, and avoid scorekeeping language.\",\"trigger\":{\"kind\":\"once\",\"atIso\":\"2026-07-13T18:00:00.000Z\"},\"priority\":\"low\",\"output\":{\"destination\":\"channel\",\"target\":\"scenario_a2_end_of_day_wins_delivery:owner\"},\"idempotencyKey\":\"adhd-followthrough-end-of-day-recap-leads-with-wins-wins-recap\",\"respectsGlobalPause\":false,\"state\":{\"status\":\"fired\",\"firedAt\":\"2026-07-13T18:05:00.000Z\",\"followupCount\":0,\"lastDecisionLog\":\"fired\"},\"source\":\"user_chat\",\"createdBy\":\"adhd-followthrough-end-of-day-recap-leads-with-wins\",\"ownerVisible\":true,\"metadata\":{\"scenario\":\"adhd-followthrough-end-of-day-recap-leads-with-wins\",\"premise\":\"wins-first recap\",\"createdAtIso\":\"2026-07-04T16:29:38.553Z\",\"escalationCursor\":{\"stepIndex\":-1,\"lastDispatchedAt\":\"2026-07-13T18:05:00.000Z\"},\"lastDispatchResult\":{\"ok\":true,\"messageId\":\"adhd-followthrough-end-of-day-recap-leads-with-wins-delivery-1\"}}},{\"taskId\":\"st_mr6kv7r9_xu7wkzj5\",\"kind\":\"checkin\",\"promptInstructions\":\"ask Casey whether the quarterly slides got a ten-minute pass\",\"trigger\":{\"kind\":\"once\",\"atIso\":\"2026-07-11T09:00:00.000Z\"},\"priority\":\"medium\",\"output\":{\"destination\":\"channel\",\"target\":\"scenario_a2_repeated_miss_delivery:owner\"},\"pipeline\":{\"onSkip\":[{\"kind\":\"followup\",\"promptInstructions\":\"Offer Casey one smaller version of the slides task or a pause; do not mention streaks, failure, discipline, or motivation.\",\"trigger\":{\"kind\":\"manual\"},\"priority\":\"low\",\"respectsGlobalPause\":false,\"source\":\"user_chat\",\"createdBy\":\"adhd-followthrough-repeated-miss-shrinks-next\",\"ownerVisible\":true,\"metadata\":{\"scenario\":\"adhd-followthrough-repeated-miss-shrinks-next\",\"premise\":\"repeated miss shrink offer\"}}]},\"idempotencyKey\":\"adhd-followthrough-repeated-miss-shrinks-next-slides-check\",\"respectsGlobalPause\":false,\"state\":{\"status\":\"skipped\",\"firedAt\":\"2026-07-11T09:05:00.000Z\",\"followupCount\":0,\"lastDecisionLog\":\"third miss; shrink or pause instead\"},\"source\":\"user_chat\",\"createdBy\":\"adhd-followthrough-repeated-miss-shrinks-next\",\"ownerVisible\":true,\"metadata\":{\"scenario\":\"adhd-followthrough-repeated-miss-shrinks-next\",\"missCount\":3,\"createdAtIso\":\"2026-07-04T16:29:38.950Z\",\"escalationCursor\":{\"stepIndex\":-1,\"lastDispatchedAt\":\"2026-07-11T09:05:00.000Z\"},\"lastDispatchResult\":{\"ok\":true,\"messageId\":\"adhd-followthrough-repeated-miss-shrinks-next-delivery-1\"}}},{\"taskId\":\"st_mr6kv816_3cr6v4kf\",\"kind\":\"followup\",\"promptInstructions\":\"Offer Casey one smaller version of the slides task or a pause; do not mention streaks, failure, discipline, or motivation.\",\"trigger\":{\"kind\":\"manual\"},\"priority\":\"low\",\"respectsGlobalPause\":false,\"state\":{\"status\":\"scheduled\",\"followupCount\":0,\"pipelineParentId\":\"st_mr6kv7r9_xu7wkzj5\"},\"source\":\"user_chat\",\"createdBy\":\"adhd-followthrough-repeated-miss-shrinks-next\",\"ownerVisible\":true,\"metadata\":{\"scenario\":\"adhd-followthrough-repeated-miss-shrinks-next\",\"premise\":\"repeated miss shrink offer\",\"createdAtIso\":\"2026-07-04T16:29:39.307Z\"}}]}",
+      "actionsCalled": [],
+      "durationMs": 1,
+      "failedAssertions": []
+    }
+  ],
+  "finalChecks": [
+    {
+      "label": "only the original check delivered; the shrink offer is stored as a child",
+      "type": "custom",
+      "status": "passed",
+      "detail": "predicate returned undefined"
+    }
+  ],
+  "actionsCalled": [],
+  "failedAssertions": [],
+  "providerName": "deterministic-llm-proxy"
+}

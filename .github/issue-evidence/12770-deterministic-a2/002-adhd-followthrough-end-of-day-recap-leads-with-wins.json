@@ -1,0 +1,52 @@
+{
+  "id": "adhd-followthrough-end-of-day-recap-leads-with-wins",
+  "title": "ADHD follow-through: end-of-day recap leads with wins",
+  "domain": "lifeops",
+  "tags": [
+    "pr",
+    "deterministic",
+    "zero-cost",
+    "lifeops",
+    "adhd",
+    "personas",
+    "scheduled-tasks",
+    "12283"
+  ],
+  "status": "passed",
+  "durationMs": 403,
+  "turns": [
+    {
+      "name": "create the end-of-day recap",
+      "kind": "api",
+      "responseText": "{\"task\":{\"taskId\":\"st_mr6kv7g7_13lt0zki\",\"kind\":\"recap\",\"promptInstructions\":\"End-of-day recap for Casey: lead with wins completed today before misses, keep it short, and avoid scorekeeping language.\",\"trigger\":{\"kind\":\"once\",\"atIso\":\"2026-07-13T18:00:00.000Z\"},\"priority\":\"low\",\"output\":{\"destination\":\"channel\",\"target\":\"scenario_a2_end_of_day_wins_delivery:owner\"},\"idempotencyKey\":\"adhd-followthrough-end-of-day-recap-leads-with-wins-wins-recap\",\"respectsGlobalPause\":false,\"source\":\"user_chat\",\"createdBy\":\"adhd-followthrough-end-of-day-recap-leads-with-wins\",\"ownerVisible\":true,\"metadata\":{\"scenario\":\"adhd-followthrough-end-of-day-recap-leads-with-wins\",\"premise\":\"wins-first recap\"},\"state\":{\"status\":\"scheduled\",\"followupCount\":0}}}",
+      "actionsCalled": [],
+      "durationMs": 5,
+      "failedAssertions": []
+    },
+    {
+      "name": "recap fires at end of day",
+      "kind": "tick",
+      "responseText": "{\"success\":true,\"nextInterval\":60449,\"now\":\"2026-07-13T18:05:00.000Z\",\"reminderAttempts\":[],\"workflowRuns\":[],\"scheduledTaskFires\":[{\"taskId\":\"st_mr6kv7g7_13lt0zki\",\"status\":\"fired\",\"reason\":\"once_due\",\"occurrenceAtIso\":\"2026-07-13T18:00:00.000Z\"}],\"scheduledTaskCompletionTimeouts\":[],\"subsystemFailures\":[]}",
+      "actionsCalled": [],
+      "durationMs": 378,
+      "failedAssertions": []
+    }
+  ],
+  "finalChecks": [
+    {
+      "label": "recap delivered exactly once",
+      "type": "custom",
+      "status": "passed",
+      "detail": "predicate returned undefined"
+    },
+    {
+      "label": "delivery prompt leads with wins before misses",
+      "type": "custom",
+      "status": "passed",
+      "detail": "predicate returned undefined"
+    }
+  ],
+  "actionsCalled": [],
+  "failedAssertions": [],
+  "providerName": "deterministic-llm-proxy"
+}

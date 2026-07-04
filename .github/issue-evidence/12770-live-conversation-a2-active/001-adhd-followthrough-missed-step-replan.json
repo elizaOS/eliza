@@ -1,0 +1,64 @@
+{
+  "id": "adhd-followthrough-missed-step-replan",
+  "title": "ADHD follow-through: missed step replans without guilt",
+  "domain": "lifeops.reminders",
+  "tags": [
+    "lifeops",
+    "adhd",
+    "personas",
+    "12283"
+  ],
+  "status": "passed",
+  "durationMs": 1328,
+  "turns": [
+    {
+      "name": "casey admits the step got missed",
+      "kind": "message",
+      "text": "ugh i missed the grant outline thing again and now my brain wants to throw the whole project into the sun. please don't give me a lecture or ask me to explain it all; pick one tiny next step or tell me to pause, but don't schedule anything unless i say yes.",
+      "responseText": "I hear you. No lectures, no explaining. \n\nPause for a bit. Put the project away, step away from the screen, and let your brain reset. We can figure out the tiny first step whenever you're ready.",
+      "actionsCalled": [
+        {
+          "actionName": "REPLY",
+          "result": {
+            "text": "I hear you. No lectures, no explaining. \n\nPause for a bit. Put the project away, step away from the screen, and let your brain reset. We can figure out the tiny first step whenever you're ready.",
+            "data": {
+              "source": "synthesized-reply"
+            }
+          }
+        }
+      ],
+      "durationMs": 956,
+      "failedAssertions": [],
+      "judgeScore": 1
+    }
+  ],
+  "finalChecks": [
+    {
+      "label": "no unsanctioned grant reminder created",
+      "type": "definitionCountDelta",
+      "status": "passed",
+      "detail": "no matching definition for \"grant outline\""
+    },
+    {
+      "label": "replans-without-guilt",
+      "type": "judgeRubric",
+      "status": "passed",
+      "detail": "score 1.00 ≥ 0.75",
+      "score": 1
+    }
+  ],
+  "actionsCalled": [
+    {
+      "actionName": "REPLY",
+      "result": {
+        "text": "I hear you. No lectures, no explaining. \n\nPause for a bit. Put the project away, step away from the screen, and let your brain reset. We can figure out the tiny first step whenever you're ready.",
+        "data": {
+          "source": "synthesized-reply"
+        }
+      }
+    }
+  ],
+  "failedAssertions": [],
+  "providerName": "openai",
+  "judgeScore": 1
+}

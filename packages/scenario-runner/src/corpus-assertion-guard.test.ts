@@ -258,6 +258,13 @@ const EXPECTED_PR_DETERMINISTIC_SCENARIO_IDS = [
   // added here in the same commit so this toEqual stays green while the coverage
   // ledger can still resolve their ids.
   "adhd-distractor-storm-mid-capture",
+  // LifeOps persona pack A2 (adhd-follow-through, #12770). These are the
+  // keyless scheduler-side proofs for follow-through mechanics; live tone
+  // checks remain on the live-only persona surface.
+  "adhd-followthrough-completion-celebrates-proportionally",
+  "adhd-followthrough-end-of-day-recap-leads-with-wins",
+  "adhd-followthrough-repeated-miss-shrinks-next",
+  "adhd-followthrough-snooze-legitimate-deferral",
   "adhd-hyperfocus-guardrail-protects-standup",
   // LifeOps persona pack C1 (traveler-timezone-truth, #12773). Same G1
   // convention: keyless `tick`-driven timezone journeys authored under

@@ -1,0 +1,66 @@
+{
+  "schema": "eliza.privacy_filter_attestation.v1",
+  "version": 1,
+  "generated_at": "2026-07-04T16:34:37.344Z",
+  "passed": true,
+  "strict": true,
+  "sourceKind": "user_export",
+  "source": {
+    "kind": "user_export",
+    "realUserExport": true,
+    "inputPathRefs": [
+      "sha256:225bf60ad1d9db3f",
+      "sha256:0ec391de78746858"
+    ]
+  },
+  "privacy": {
+    "reviewed": true,
+    "realUserExport": true,
+    "attestationType": "privacy_filter"
+  },
+  "input_count": 1,
+  "output_count": 1,
+  "redaction_count": 0,
+  "categories": {
+    "secret": 0,
+    "geo": 0,
+    "contact": 0,
+    "backend": 0
+  },
+  "residual_findings": {
+    "count": 0,
+    "by_label": {}
+  },
+  "residual_findings_count": 0,
+  "input_path_refs": [
+    "sha256:225bf60ad1d9db3f",
+    "sha256:0ec391de78746858"
+  ],
+  "artifacts": {
+    "redacted_jsonl": {
+      "path": "native.jsonl",
+      "path_ref": "sha256:bac0a3dfdd235896",
+      "sha256": "fe58bba0838bd8b9c58a489f2289f5e83b0442f0553aaca950d8d26175c190e3",
+      "rows": 1
+    }
+  },
+  "gate": {
+    "passed": true,
+    "strict": true,
+    "sourceKind": "user_export",
+    "input_count": 1,
+    "output_count": 1,
+    "redaction_count": 0,
+    "categories": {
+      "secret": 0,
+      "geo": 0,
+      "contact": 0,
+      "backend": 0
+    },
+    "residual_findings": {
+      "count": 0,
+      "by_label": {}
+    },
+    "residual_findings_count": 0
+  }
+}

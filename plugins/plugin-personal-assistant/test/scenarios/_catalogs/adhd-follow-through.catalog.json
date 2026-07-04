@@ -16,10 +16,66 @@
     {
       "id": "adhd-followthrough-rage-quit-delete-trap",
       "pack": "A2",
+      "tier": "T4",
+      "surface": "scenario-runner",
+      "status": "authored",
+      "notes": "AUTHORED as a pending regression test. The scenario seeds a sentinel scheduled task and asserts it remains listed after the rage-delete outburst, but a 2026-07-04 live run still failed the user-facing judge because the assistant asked for destructive confirmation instead of offering a pause/snooze alternative. Flip active/verified only after the live planner behavior is fixed and a fresh real-LLM run proves both the guardrail and sentinel preservation."
+    },
+    {
+      "id": "adhd-followthrough-missed-step-replan",
+      "pack": "A2",
       "tier": "T2",
       "surface": "scenario-runner",
       "status": "authored",
-      "notes": "AUTHORED as an active regression test \u2014 a live run showed the assistant mass-deleted on a rage-quit 'delete everything' outburst (task_b493d551). Flip to verified only after a fresh real-LLM run proves the broad-delete guardrail."
+      "notes": "AUTHORED live-only missed-step repair scenario. The live judge requires one smaller next step or pause, no guilt/streak/discipline framing, and consent before scheduling; a no-unsanctioned-reminder definition delta guards side effects."
+    },
+    {
+      "id": "adhd-followthrough-snooze-legitimate-deferral",
+      "pack": "A2",
+      "tier": "T2",
+      "surface": "scenario-runner",
+      "status": "authored",
+      "notes": "AUTHORED pr-deterministic scheduler proof for the 'can't now, after lunch' deferral: the task is snoozed, silent at the original due time, and delivered once at the deferred time."
+    },
+    {
+      "id": "adhd-followthrough-repeated-miss-shrinks-next",
+      "pack": "A2",
+      "tier": "T3",
+      "surface": "scenario-runner",
+      "status": "authored",
+      "notes": "AUTHORED pr-deterministic scheduler proof for repeated-miss follow-through: skipping a fired task creates one smaller-version-or-pause follow-up child instead of streak shame."
+    },
+    {
+      "id": "adhd-followthrough-completion-celebrates-proportionally",
+      "pack": "A2",
+      "tier": "T2",
+      "surface": "scenario-runner",
+      "status": "authored",
+      "notes": "AUTHORED pr-deterministic scheduler proof that completion creates a proportional one-win recap child only after the task is completed."
+    },
+    {
+      "id": "adhd-followthrough-end-of-day-recap-leads-with-wins",
+      "pack": "A2",
+      "tier": "T3",
+      "surface": "scenario-runner",
+      "status": "authored",
+      "notes": "AUTHORED pr-deterministic scheduler proof that the end-of-day recap dispatch prompt leads with wins before misses and avoids scorekeeping language."
+    },
+    {
+      "id": "adhd-followthrough-rule-change-slides-reminders",
+      "pack": "A2",
+      "tier": "T2",
+      "surface": "scenario-runner",
+      "status": "authored",
+      "notes": "AUTHORED live-only scheduler proof for a late-meds rule change: the task is slid one hour later, stays silent at the old instant, and delivers once at the new instant."
+    },
+    {
+      "id": "adhd-followthrough-silence-reengagement-retries-gently",
+      "pack": "A2",
+      "tier": "T3",
+      "surface": "scenario-runner",
+      "status": "authored",
+      "notes": "AUTHORED live-only scheduler proof that a no-reply lapse enters the gentle no-reply retry path without spawning a shame follow-up child."
     }
   ]
 }

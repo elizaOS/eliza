@@ -1,0 +1,43 @@
+{
+  "schema": "eliza_scenario_native_export",
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-04T16:34:37.344Z",
+  "runDir": "/private/tmp/eliza-12770-a2.hPYwy0/.github/issue-evidence/12770-live-conversation-a2-active",
+  "trajectoriesDir": "/private/tmp/eliza-12770-a2.hPYwy0/.github/issue-evidence/12770-live-conversation-a2-active/trajectories",
+  "jsonlPath": "/private/tmp/eliza-12770-a2.hPYwy0/.github/issue-evidence/12770-live-conversation-a2-active/native.jsonl",
+  "manifestPath": "/private/tmp/eliza-12770-a2.hPYwy0/.github/issue-evidence/12770-live-conversation-a2-active/native.manifest.json",
+  "privacyAttestationPath": "/private/tmp/eliza-12770-a2.hPYwy0/.github/issue-evidence/12770-live-conversation-a2-active/native.privacy-attestation.json",
+  "counts": {
+    "trajectoryFiles": 1,
+    "parsedTrajectories": 1,
+    "skippedFiles": 0,
+    "rows": 1,
+    "passedRows": 1,
+    "failedRows": 0,
+    "skippedScenarioRows": 0,
+    "unknownOutcomeRows": 0
+  },
+  "runIds": [
+    "2d3292e2-ba09-4596-b98e-cc8589f37d3f"
+  ],
+  "scenarioIds": [
+    "adhd-followthrough-missed-step-replan"
+  ],
+  "agentIds": [
+    "546ac3ab-0468-01a2-9d5b-52dfa34bf9cc"
+  ],
+  "privacy": {
+    "reviewed": true,
+    "attestationSchema": "eliza.privacy_filter_attestation.v1",
+    "attestationVersion": 1,
+    "attestationPath": "/private/tmp/eliza-12770-a2.hPYwy0/.github/issue-evidence/12770-live-conversation-a2-active/native.privacy-attestation.json",
+    "redactions": 0,
+    "residualFindings": 0,
+    "categories": {
+      "secret": 0,
+      "geo": 0,
+      "contact": 0,
+      "backend": 0
+    }
+  }
+}

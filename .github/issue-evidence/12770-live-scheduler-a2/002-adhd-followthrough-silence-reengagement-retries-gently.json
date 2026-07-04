@@ -1,0 +1,59 @@
+{
+  "id": "adhd-followthrough-silence-reengagement-retries-gently",
+  "title": "ADHD follow-through: silence re-engages with a gentle retry",
+  "domain": "lifeops",
+  "tags": [
+    "lifeops",
+    "adhd",
+    "personas",
+    "scheduled-tasks",
+    "12283"
+  ],
+  "status": "passed",
+  "durationMs": 790,
+  "turns": [
+    {
+      "name": "create the quiet-user check-in",
+      "kind": "api",
+      "responseText": "{\"task\":{\"taskId\":\"st_mr6kvk9r_ijofoh2t\",\"kind\":\"checkin\",\"promptInstructions\":\"ask Casey if she wants one tiny next step or a pause on the taxes pile\",\"trigger\":{\"kind\":\"once\",\"atIso\":\"2026-07-15T16:00:00.000Z\"},\"priority\":\"medium\",\"completionCheck\":{\"kind\":\"user_replied_within\",\"params\":{\"lookbackMinutes\":10,\"requireSinceTaskFired\":true},\"followupAfterMinutes\":30},\"output\":{\"destination\":\"channel\",\"target\":\"scenario_a2_silence_reengagement_delivery:owner\"},\"idempotencyKey\":\"adhd-followthrough-silence-reengagement-retries-gently-taxes-checkin\",\"respectsGlobalPause\":false,\"source\":\"user_chat\",\"createdBy\":\"adhd-followthrough-silence-reengagement-retries-gently\",\"ownerVisible\":true,\"metadata\":{\"scenario\":\"adhd-followthrough-silence-reengagement-retries-gently\",\"premise\":\"quiet reengagement without guilt\"},\"state\":{\"status\":\"scheduled\",\"followupCount\":0}}}",
+      "actionsCalled": [],
+      "durationMs": 4,
+      "failedAssertions": []
+    },
+    {
+      "name": "the check-in fires",
+      "kind": "tick",
+      "responseText": "{\"success\":true,\"nextInterval\":60449,\"now\":\"2026-07-15T16:05:00.000Z\",\"reminderAttempts\":[],\"workflowRuns\":[],\"scheduledTaskFires\":[{\"taskId\":\"st_mr6kvk9r_ijofoh2t\",\"status\":\"fired\",\"reason\":\"once_due\",\"occurrenceAtIso\":\"2026-07-15T16:00:00.000Z\"}],\"scheduledTaskCompletionTimeouts\":[],\"subsystemFailures\":[]}",
+      "actionsCalled": [],
+      "durationMs": 343,
+      "failedAssertions": []
+    },
+    {
+      "name": "no reply triggers the gentle retry path",
+      "kind": "tick",
+      "responseText": "{\"success\":true,\"nextInterval\":60449,\"now\":\"2026-07-15T16:45:00.000Z\",\"reminderAttempts\":[],\"workflowRuns\":[],\"scheduledTaskFires\":[],\"scheduledTaskCompletionTimeouts\":[{\"taskId\":\"st_mr6kvk9r_ijofoh2t\",\"status\":\"scheduled\",\"reason\":\"no_reply_retry_1\",\"occurrenceAtIso\":\"2026-07-15T16:35:00.000Z\"}],\"subsystemFailures\":[]}",
+      "actionsCalled": [],
+      "durationMs": 423,
+      "failedAssertions": []
+    },
+    {
+      "name": "list tasks and prove timeout did not spawn a shame child",
+      "kind": "api",
+      "responseText": "{\"tasks\":[{\"taskId\":\"st_mr6kvjln_lvruxo80\",\"kind\":\"reminder\",\"promptInstructions\":\"gently remind Casey to restart the grant draft after meds settle\",\"trigger\":{\"kind\":\"once\",\"atIso\":\"2026-07-14T10:00:00.000Z\"},\"priority\":\"medium\",\"output\":{\"destination\":\"channel\",\"target\":\"scenario_a2_rule_change_slide_delivery:owner\"},\"idempotencyKey\":\"adhd-followthrough-rule-change-slides-reminders-grant-draft\",\"respectsGlobalPause\":false,\"state\":{\"status\":\"fired\",\"firedAt\":\"2026-07-14T11:05:00.000Z\",\"followupCount\":0,\"lastDecisionLog\":\"fired\"},\"source\":\"user_chat\",\"createdBy\":\"adhd-followthrough-rule-change-slides-reminders\",\"ownerVisible\":true,\"metadata\":{\"scenario\":\"adhd-followthrough-rule-change-slides-reminders\",\"premise\":\"meds slide one hour\",\"createdAtIso\":\"2026-07-04T16:29:54.302Z\",\"escalationCursor\":{\"stepIndex\":-1,\"lastDispatchedAt\":\"2026-07-14T11:05:00.000Z\"},\"lastDispatchResult\":{\"ok\":true,\"messageId\":\"adhd-followthrough-rule-change-slides-reminders-delivery-1\"}}},{\"taskId\":\"st_mr6kvk9r_ijofoh2t\",\"kind\":\"checkin\",\"promptInstructions\":\"ask Casey if she wants one tiny next step or a pause on the taxes pile\",\"trigger\":{\"kind\":\"once\",\"atIso\":\"2026-07-15T16:00:00.000Z\"},\"priority\":\"medium\",\"completionCheck\":{\"kind\":\"user_replied_within\",\"params\":{\"lookbackMinutes\":10,\"requireSinceTaskFired\":true},\"followupAfterMinutes\":30},\"output\":{\"destination\":\"channel\",\"target\":\"scenario_a2_silence_reengagement_delivery:owner\"},\"idempotencyKey\":\"adhd-followthrough-silence-reengagement-retries-gently-taxes-checkin\",\"respectsGlobalPause\":false,\"state\":{\"status\":\"scheduled\",\"firedAt\":\"2026-07-16T16:45:00.000Z\",\"followupCount\":0,\"lastDecisionLog\":\"no_reply_retry_1: completion_timeout_due\"},\"source\":\"user_chat\",\"createdBy\":\"adhd-followthrough-silence-reengagement-retries-gently\",\"ownerVisible\":true,\"metadata\":{\"scenario\":\"adhd-followthrough-silence-reengagement-retries-gently\",\"premise\":\"quiet reengagement without guilt\",\"createdAtIso\":\"2026-07-04T16:29:55.169Z\",\"escalationCursor\":{\"stepIndex\":-1,\"lastDispatchedAt\":\"2026-07-16T16:45:00.000Z\"},\"lastDispatchResult\":{\"ok\":true,\"messageId\":\"adhd-followthrough-silence-reengagement-retries-gently-delivery-1\"},\"noReplyPolicy\":{\"maxRetries\":1,\"retryCadenceMinutes\":[1440],\"terminalStatus\":\"expired\",\"terminalReason\":\"no_reply_checkin_expired\",\"sensitive\":false,\"allowCrossChannel\":false,\"allowNonOwnerNotification\":false},\"noReplyState\":{\"retryCount\":1,\"lastTimedOutAt\":\"2026-07-15T16:45:00.000Z\",\"nextRetryAt\":\"2026-07-16T16:45:00.000Z\"}}}]}",
+      "actionsCalled": [],
+      "durationMs": 5,
+      "failedAssertions": []
+    }
+  ],
+  "finalChecks": [
+    {
+      "label": "only the original check-in delivered before the retry was scheduled",
+      "type": "custom",
+      "status": "passed",
+      "detail": "predicate returned undefined"
+    }
+  ],
+  "actionsCalled": [],
+  "failedAssertions": [],
+  "providerName": "deterministic-llm-proxy"
+}

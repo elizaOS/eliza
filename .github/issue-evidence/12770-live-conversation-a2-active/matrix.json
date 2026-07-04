@@ -1,0 +1,94 @@
+{
+  "runId": "2d3292e2-ba09-4596-b98e-cc8589f37d3f",
+  "startedAtIso": "2026-07-04T16:34:31.514Z",
+  "completedAtIso": "2026-07-04T16:34:37.339Z",
+  "providerName": "openai",
+  "scenarios": [
+    {
+      "id": "adhd-followthrough-missed-step-replan",
+      "title": "ADHD follow-through: missed step replans without guilt",
+      "domain": "lifeops.reminders",
+      "tags": [
+        "lifeops",
+        "adhd",
+        "personas",
+        "12283"
+      ],
+      "status": "passed",
+      "durationMs": 1328,
+      "turns": [
+        {
+          "name": "casey admits the step got missed",
+          "kind": "message",
+          "text": "ugh i missed the grant outline thing again and now my brain wants to throw the whole project into the sun. please don't give me a lecture or ask me to explain it all; pick one tiny next step or tell me to pause, but don't schedule anything unless i say yes.",
+          "responseText": "I hear you. No lectures, no explaining. \n\nPause for a bit. Put the project away, step away from the screen, and let your brain reset. We can figure out the tiny first step whenever you're ready.",
+          "actionsCalled": [
+            {
+              "actionName": "REPLY",
+              "result": {
+                "text": "I hear you. No lectures, no explaining. \n\nPause for a bit. Put the project away, step away from the screen, and let your brain reset. We can figure out the tiny first step whenever you're ready.",
+                "data": {
+                  "source": "synthesized-reply"
+                }
+              }
+            }
+          ],
+          "durationMs": 956,
+          "failedAssertions": [],
+          "judgeScore": 1
+        }
+      ],
+      "finalChecks": [
+        {
+          "label": "no unsanctioned grant reminder created",
+          "type": "definitionCountDelta",
+          "status": "passed",
+          "detail": "no matching definition for \"grant outline\""
+        },
+        {
+          "label": "replans-without-guilt",
+          "type": "judgeRubric",
+          "status": "passed",
+          "detail": "score 1.00 ≥ 0.75",
+          "score": 1
+        }
+      ],
+      "actionsCalled": [
+        {
+          "actionName": "REPLY",
+          "result": {
+            "text": "I hear you. No lectures, no explaining. \n\nPause for a bit. Put the project away, step away from the screen, and let your brain reset. We can figure out the tiny first step whenever you're ready.",
+            "data": {
+              "source": "synthesized-reply"
+            }
+          }
+        }
+      ],
+      "failedAssertions": [],
+      "providerName": "openai",
+      "judgeScore": 1
+    }
+  ],
+  "totals": {
+    "passed": 1,
+    "failed": 0,
+    "skipped": 0,
+    "flakyPassed": 0,
+    "costUsd": 0,
+    "finalChecksSkipped": 0
+  },
+  "totalCount": 1,
+  "passedCount": 1,
+  "failedCount": 0,
+  "skippedCount": 0,
+  "flakyPassedCount": 0,
+  "totalCostUsd": 0,
+  "artifactPaths": {
+    "runDir": "/private/tmp/eliza-12770-a2.hPYwy0/.github/issue-evidence/12770-live-conversation-a2-active",
+    "matrixJson": "/private/tmp/eliza-12770-a2.hPYwy0/.github/issue-evidence/12770-live-conversation-a2-active/matrix.json",
+    "viewerIndex": "/private/tmp/eliza-12770-a2.hPYwy0/.github/issue-evidence/12770-live-conversation-a2-active/viewer/index.html",
+    "viewerData": "/private/tmp/eliza-12770-a2.hPYwy0/.github/issue-evidence/12770-live-conversation-a2-active/viewer/data.js",
+    "nativeJsonl": "/private/tmp/eliza-12770-a2.hPYwy0/.github/issue-evidence/12770-live-conversation-a2-active/native.jsonl",
+    "nativeManifest": "/private/tmp/eliza-12770-a2.hPYwy0/.github/issue-evidence/12770-live-conversation-a2-active/native.manifest.json"
+  }
+}

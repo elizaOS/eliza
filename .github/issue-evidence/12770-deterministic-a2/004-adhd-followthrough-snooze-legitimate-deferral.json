@@ -1,0 +1,62 @@
+{
+  "id": "adhd-followthrough-snooze-legitimate-deferral",
+  "title": "ADHD follow-through: legitimate deferral snoozes, then resurfaces",
+  "domain": "lifeops",
+  "tags": [
+    "pr",
+    "deterministic",
+    "zero-cost",
+    "lifeops",
+    "adhd",
+    "personas",
+    "scheduled-tasks",
+    "12283"
+  ],
+  "status": "passed",
+  "durationMs": 733,
+  "turns": [
+    {
+      "name": "create the lunch-blocked follow-through reminder",
+      "kind": "api",
+      "responseText": "{\"task\":{\"taskId\":\"st_mr6kv81r_kxkp2enx\",\"kind\":\"reminder\",\"promptInstructions\":\"send Casey one gentle nudge to submit the receipt photo\",\"trigger\":{\"kind\":\"once\",\"atIso\":\"2026-07-10T12:00:00.000Z\"},\"priority\":\"medium\",\"output\":{\"destination\":\"channel\",\"target\":\"scenario_a2_snooze_deferral_delivery:owner\"},\"idempotencyKey\":\"adhd-followthrough-snooze-legitimate-deferral-receipt-photo\",\"respectsGlobalPause\":false,\"source\":\"user_chat\",\"createdBy\":\"adhd-followthrough-snooze-legitimate-deferral\",\"ownerVisible\":true,\"metadata\":{\"scenario\":\"adhd-followthrough-snooze-legitimate-deferral\",\"premise\":\"after lunch deferral\"},\"state\":{\"status\":\"scheduled\",\"followupCount\":0}}}",
+      "actionsCalled": [],
+      "durationMs": 4,
+      "failedAssertions": []
+    },
+    {
+      "name": "snooze until after lunch rather than dropping it",
+      "kind": "api",
+      "responseText": "{\"task\":{\"taskId\":\"st_mr6kv81r_kxkp2enx\",\"kind\":\"reminder\",\"promptInstructions\":\"send Casey one gentle nudge to submit the receipt photo\",\"trigger\":{\"kind\":\"once\",\"atIso\":\"2026-07-10T12:00:00.000Z\"},\"priority\":\"medium\",\"output\":{\"destination\":\"channel\",\"target\":\"scenario_a2_snooze_deferral_delivery:owner\"},\"idempotencyKey\":\"adhd-followthrough-snooze-legitimate-deferral-receipt-photo\",\"respectsGlobalPause\":false,\"state\":{\"status\":\"scheduled\",\"firedAt\":\"2026-07-10T13:30:00.000Z\",\"followupCount\":0,\"lastDecisionLog\":\"snoozed until 2026-07-10T13:30:00.000Z (ladder reset)\"},\"source\":\"user_chat\",\"createdBy\":\"adhd-followthrough-snooze-legitimate-deferral\",\"ownerVisible\":true,\"metadata\":{\"scenario\":\"adhd-followthrough-snooze-legitimate-deferral\",\"premise\":\"after lunch deferral\",\"createdAtIso\":\"2026-07-04T16:29:39.329Z\",\"escalationCursor\":{\"stepIndex\":-1,\"lastDispatchedAt\":\"2026-07-10T13:30:00.000Z\"}}}}",
+      "actionsCalled": [],
+      "durationMs": 8,
+      "failedAssertions": []
+    },
+    {
+      "name": "original due time passes without firing",
+      "kind": "tick",
+      "responseText": "{\"success\":true,\"nextInterval\":60449,\"now\":\"2026-07-10T12:05:00.000Z\",\"reminderAttempts\":[],\"workflowRuns\":[],\"scheduledTaskFires\":[],\"scheduledTaskCompletionTimeouts\":[],\"subsystemFailures\":[]}",
+      "actionsCalled": [],
+      "durationMs": 307,
+      "failedAssertions": []
+    },
+    {
+      "name": "after-lunch tick resurfaces the same task once",
+      "kind": "tick",
+      "responseText": "{\"success\":true,\"nextInterval\":60449,\"now\":\"2026-07-10T13:35:00.000Z\",\"reminderAttempts\":[],\"workflowRuns\":[],\"scheduledTaskFires\":[{\"taskId\":\"st_mr6kv81r_kxkp2enx\",\"status\":\"fired\",\"reason\":\"scheduled_override_due\",\"occurrenceAtIso\":\"2026-07-10T13:30:00.000Z\"}],\"scheduledTaskCompletionTimeouts\":[],\"subsystemFailures\":[]}",
+      "actionsCalled": [],
+      "durationMs": 404,
+      "failedAssertions": []
+    }
+  ],
+  "finalChecks": [
+    {
+      "label": "exactly one delivery after the legitimate deferral",
+      "type": "custom",
+      "status": "passed",
+      "detail": "predicate returned undefined"
+    }
+  ],
+  "actionsCalled": [],
+  "failedAssertions": [],
+  "providerName": "deterministic-llm-proxy"
+}
