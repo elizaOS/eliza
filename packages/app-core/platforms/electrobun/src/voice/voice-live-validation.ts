@@ -1,3 +1,4 @@
+/** Implements Electrobun desktop voice live validation ts behavior for app-core shell integration. */
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { basename, extname, join } from "node:path";
 import type { JsonValue } from "@elizaos/plugin-remote-manifest";

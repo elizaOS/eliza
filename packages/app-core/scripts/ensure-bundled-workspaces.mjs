@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/** Supports app-core build, packaging, or development orchestration for ensure bundled workspaces mjs. */
 
 import { spawn } from "node:child_process";
 import { existsSync, statSync } from "node:fs";

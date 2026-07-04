@@ -1,3 +1,4 @@
+/** Implements Electrobun git remote operation history ts boundaries for desktop app-core. */
 import { throwGitError } from "./errors.ts";
 import type { GitOperation, GitOperationId } from "./protocol.ts";
 

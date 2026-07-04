@@ -1,3 +1,4 @@
+/** Implements Electrobun PTY remote output buffer ts boundaries for desktop app-core. */
 import type {
   PtyOutputEntry,
   PtyOutputTailResult,

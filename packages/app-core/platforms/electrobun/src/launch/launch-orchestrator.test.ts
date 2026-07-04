@@ -1,3 +1,4 @@
+/** Exercises launch orchestrator behavior with deterministic app-core test fixtures. */
 import type { JsonValue } from "@elizaos/plugin-remote-manifest";
 import { describe, expect, it, vi } from "vitest";
 import { createDatabaseSnapshot } from "../database";

@@ -1,3 +1,4 @@
+/** Exercises electrobun crypto ready behavior with deterministic app-core test fixtures. */
 import { describe, expect, it, vi } from "vitest";
 import {
   type ElectrobunCryptoWindow,

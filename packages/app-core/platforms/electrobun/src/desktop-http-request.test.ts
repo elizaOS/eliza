@@ -1,3 +1,4 @@
+/** Exercises desktop http request behavior with deterministic app-core test fixtures. */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   desktopHttpRequest,

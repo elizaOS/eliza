@@ -1,3 +1,4 @@
+/** Implements Electrobun file-system remote phase5 smoke ts boundaries for desktop app-core. */
 import {
   mkdirSync,
   mkdtempSync,

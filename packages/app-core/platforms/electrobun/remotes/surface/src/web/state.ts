@@ -1,3 +1,4 @@
+/** Implements Electrobun surface remote state ts boundaries for desktop app-core. */
 import type {
   AgentMessageStreamEvent,
   AgentSummary,

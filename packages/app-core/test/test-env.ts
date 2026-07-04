@@ -1,3 +1,4 @@
+/** Defines app-core test env ts behavior for dashboard host and runtime integration. */
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";

@@ -1,3 +1,4 @@
+/** Supports app-core build, packaging, or development orchestration for runtime package manifest ts. */
 import fs from "node:fs";
 import path from "node:path";
 // Import from the specific subpath instead of "@elizaos/agent" so loading

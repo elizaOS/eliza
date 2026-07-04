@@ -1,3 +1,4 @@
+/** Implements Electrobun desktop electrobun boot config ts behavior for app-core shell integration. */
 export const ELECTROBUN_BOOT_CONFIG_STORE_KEY = Symbol.for(
   "elizaos.app.boot-config",
 );

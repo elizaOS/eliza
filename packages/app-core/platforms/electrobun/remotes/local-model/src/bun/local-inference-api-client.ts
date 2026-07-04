@@ -1,3 +1,4 @@
+/** Implements Electrobun local-model remote local inference api client ts boundaries for desktop app-core. */
 import { throwModelError } from "./errors.ts";
 import type { ModelRemoteErrorCode } from "./protocol.ts";
 

@@ -1,3 +1,4 @@
+/** Implements Electrobun desktop loopback port ts behavior for app-core shell integration. */
 import { createServer } from "node:net";
 
 const LISTEN_TIMEOUT_MS = 3000;

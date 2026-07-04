@@ -1,3 +1,4 @@
+/** Implements Electrobun runtime remote runtime manager ts boundaries for desktop app-core. */
 import { existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";

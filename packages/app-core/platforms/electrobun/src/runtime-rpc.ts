@@ -1,3 +1,4 @@
+/** Implements Electrobun desktop runtime rpc ts behavior for app-core shell integration. */
 import { AgentNotReadyError } from "./config-and-auth-rpc";
 import {
   finiteNumber,

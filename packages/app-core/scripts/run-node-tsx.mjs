@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/** Supports app-core build, packaging, or development orchestration for run node tsx mjs. */
 import { spawn } from "node:child_process";
 import path from "node:path";
 import process from "node:process";

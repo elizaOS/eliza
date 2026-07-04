@@ -1,3 +1,4 @@
+/** Implements Electrobun desktop voice stream coordinator ts behavior for app-core shell integration. */
 import type { JsonValue } from "@elizaos/plugin-remote-manifest";
 import { VoiceError } from "./errors";
 import type {

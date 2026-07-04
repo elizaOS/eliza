@@ -1,3 +1,4 @@
+/** Supports app-core build, packaging, or development orchestration for run ui smoke playwright suite mjs. */
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import net from "node:net";

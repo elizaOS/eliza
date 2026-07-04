@@ -1,3 +1,4 @@
+/** Exercises tray popover position behavior with deterministic app-core test fixtures. */
 import { describe, expect, it } from "vitest";
 import { computeTrayPopoverFrame } from "./tray-popover-position";
 

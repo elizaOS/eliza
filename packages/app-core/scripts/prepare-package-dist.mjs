@@ -1,3 +1,4 @@
+/** Supports app-core build, packaging, or development orchestration for prepare package dist mjs. */
 import {
   existsSync,
   mkdirSync,

@@ -1,3 +1,4 @@
+/** Implements Electrobun desktop desktop test bridge server ts behavior for app-core shell integration. */
 import crypto from "node:crypto";
 import http from "node:http";
 import { invokeApplicationMenuAction } from "./application-menu-action-registry";

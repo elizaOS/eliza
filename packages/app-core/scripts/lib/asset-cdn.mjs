@@ -1,3 +1,4 @@
+/** Supports app-core build, packaging, or development orchestration for asset cdn mjs. */
 import process from "node:process";
 
 export const ELIZA_GITHUB_REPOSITORY = "elizaos/eliza";

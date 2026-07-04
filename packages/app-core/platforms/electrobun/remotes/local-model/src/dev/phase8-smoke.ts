@@ -1,3 +1,4 @@
+/** Implements Electrobun local-model remote phase8 smoke ts boundaries for desktop app-core. */
 import { serializeError } from "../bun/errors.ts";
 import { ModelRemoteService } from "../bun/model-service.ts";
 

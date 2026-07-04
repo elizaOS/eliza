@@ -1,3 +1,4 @@
+/** Implements Electrobun desktop first party remotes ts behavior for app-core shell integration. */
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";

@@ -1,3 +1,4 @@
+/** Implements Electrobun desktop surface windows ts behavior for app-core shell integration. */
 import { getBrandConfig } from "./brand-config";
 
 export type DetachedSurface =

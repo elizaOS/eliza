@@ -1,4 +1,5 @@
 #!/usr/bin/env -S node --import tsx
+/** Supports app-core build, packaging, or development orchestration for copy runtime node modules ts. */
 
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";

@@ -1,3 +1,4 @@
+/** Implements Electrobun desktop api base ts behavior for app-core shell integration. */
 import { resolveApiExposePort, resolveDesktopApiPort } from "@elizaos/shared";
 import { DEFAULT_API_PORT } from "./constants";
 import { logger } from "./logger";

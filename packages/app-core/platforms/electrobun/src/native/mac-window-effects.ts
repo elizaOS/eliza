@@ -1,3 +1,4 @@
+/** Implements Electrobun desktop mac window effects ts behavior for app-core shell integration. */
 import { CString, dlopen, FFIType, type Pointer, ptr } from "bun:ffi";
 import { join } from "node:path";
 import { assertDlopenPathAllowed } from "@elizaos/core";

@@ -1,3 +1,4 @@
+/** Supports app-core build, packaging, or development orchestration for coverage policy mjs. */
 export const coverageThresholds = Object.freeze({
   lines: 25,
   functions: 25,

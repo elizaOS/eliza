@@ -1,3 +1,4 @@
+/** Implements Electrobun PTY remote protocol ts boundaries for desktop app-core. */
 export const TERMINAL_REMOTE_ID = "eliza.pty" as const;
 
 export type PtySessionId = string;

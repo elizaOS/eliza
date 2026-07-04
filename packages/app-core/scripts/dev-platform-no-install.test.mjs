@@ -1,3 +1,4 @@
+/** Exercises dev platform no install behavior with deterministic app-core test fixtures. */
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

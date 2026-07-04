@@ -1,3 +1,4 @@
+/** Exercises agent source watcher behavior with deterministic app-core test fixtures. */
 import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";

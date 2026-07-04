@@ -1,3 +1,4 @@
+/** Supports app-core build, packaging, or development orchestration for pre review local mjs. */
 import { execFileSync, execSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import path from "node:path";

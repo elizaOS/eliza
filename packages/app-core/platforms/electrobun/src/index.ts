@@ -1,3 +1,4 @@
+/** Implements Electrobun desktop index ts behavior for app-core shell integration. */
 import fs from "node:fs";
 import { createServer as createNetServer } from "node:net";
 import os from "node:os";

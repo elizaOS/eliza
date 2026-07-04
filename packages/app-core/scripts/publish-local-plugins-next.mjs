@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/** Supports app-core build, packaging, or development orchestration for publish local plugins next mjs. */
 
 import { spawn } from "node:child_process";
 import { existsSync, readdirSync, readFileSync } from "node:fs";

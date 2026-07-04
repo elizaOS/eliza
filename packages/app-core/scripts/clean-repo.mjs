@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/** Supports app-core build, packaging, or development orchestration for clean repo mjs. */
 import { execFileSync, spawnSync } from "node:child_process";
 /**
  * Remove build outputs and tool caches so the next `bun run build` / dev run is cold.

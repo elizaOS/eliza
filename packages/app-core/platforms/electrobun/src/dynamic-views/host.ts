@@ -1,3 +1,4 @@
+/** Implements Electrobun desktop host ts behavior for app-core shell integration. */
 import type { JsonValue } from "@elizaos/plugin-remote-manifest";
 import { DynamicViewError } from "./errors";
 import type { DynamicViewRegistry } from "./registry";

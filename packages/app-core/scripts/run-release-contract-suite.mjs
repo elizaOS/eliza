@@ -1,3 +1,4 @@
+/** Supports app-core build, packaging, or development orchestration for run release contract suite mjs. */
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";

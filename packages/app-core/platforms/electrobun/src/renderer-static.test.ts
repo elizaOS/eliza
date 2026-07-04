@@ -1,3 +1,4 @@
+/** Exercises renderer static behavior with deterministic app-core test fixtures. */
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {

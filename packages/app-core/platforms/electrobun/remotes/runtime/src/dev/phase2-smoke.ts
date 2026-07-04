@@ -1,3 +1,4 @@
+/** Implements Electrobun runtime remote phase2 smoke ts boundaries for desktop app-core. */
 import {
   readPhase2SmokeTestEnv,
   TEST_ENV_NAMES,

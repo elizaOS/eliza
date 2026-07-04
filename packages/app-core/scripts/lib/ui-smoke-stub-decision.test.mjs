@@ -1,3 +1,4 @@
+/** Exercises ui smoke stub decision behavior with deterministic app-core test fixtures. */
 import { describe, expect, it } from "vitest";
 import { shouldForceStubStack } from "./ui-smoke-stub-decision.mjs";
 

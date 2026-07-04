@@ -1,3 +1,4 @@
+/** Implements Electrobun file-system remote worker ts boundaries for desktop app-core. */
 import { serializeFileError } from "./errors.ts";
 import { FileRemoteService } from "./fs-service.ts";
 import type {

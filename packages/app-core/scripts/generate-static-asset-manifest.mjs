@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/** Supports app-core build, packaging, or development orchestration for generate static asset manifest mjs. */
 
 import path from "node:path";
 import { fileURLToPath } from "node:url";

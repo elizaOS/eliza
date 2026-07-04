@@ -1,3 +1,4 @@
+/** Defines app-core playwright behavior for dashboard host and runtime integration. */
 import path from "node:path";
 import { defineConfig, devices } from "@playwright/test";
 

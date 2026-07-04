@@ -1,3 +1,4 @@
+/** Implements Electrobun desktop trace service ts behavior for app-core shell integration. */
 import type { JsonValue } from "@elizaos/plugin-remote-manifest";
 import type { DynamicViewRegistry } from "../dynamic-views/registry";
 import type { DynamicViewSessionManager } from "../dynamic-views/session-manager";

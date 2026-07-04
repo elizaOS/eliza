@@ -1,3 +1,4 @@
+/** Defines app-core plugin telegram module ts behavior for dashboard host and runtime integration. */
 import type { Plugin } from "@elizaos/core";
 
 type TelegramChunk = {

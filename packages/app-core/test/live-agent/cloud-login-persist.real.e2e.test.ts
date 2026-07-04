@@ -1,3 +1,4 @@
+/** Exercises cloud login persist real e2e behavior with deterministic app-core test fixtures. */
 import fs from "node:fs/promises";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { startApiServer } from "../../src/api/server";

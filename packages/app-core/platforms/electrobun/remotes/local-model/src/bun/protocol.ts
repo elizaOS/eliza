@@ -1,3 +1,4 @@
+/** Implements Electrobun local-model remote protocol ts boundaries for desktop app-core. */
 export const MODEL_REMOTE_ID = "eliza.local-model" as const;
 export const ELIZA_1_HF_REPO = "elizaos/eliza-1" as const;
 

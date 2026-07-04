@@ -1,3 +1,4 @@
+/** Implements Electrobun desktop launch orchestrator ts behavior for app-core shell integration. */
 import type { JsonValue } from "@elizaos/plugin-remote-manifest";
 import {
   createUnknownDatabaseSnapshot,

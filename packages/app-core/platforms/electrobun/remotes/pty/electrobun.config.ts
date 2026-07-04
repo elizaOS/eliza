@@ -1,3 +1,4 @@
+/** Implements Electrobun PTY remote electrobun boundaries for desktop app-core. */
 const terminalRemote = {
   id: "eliza.pty",
   name: "Eliza Terminal",

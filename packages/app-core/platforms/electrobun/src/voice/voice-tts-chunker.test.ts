@@ -1,3 +1,4 @@
+/** Exercises voice tts chunker behavior with deterministic app-core test fixtures. */
 import { describe, expect, it } from "vitest";
 import { VoiceTtsChunker } from "./voice-tts-chunker";
 

@@ -1,3 +1,4 @@
+/** Implements Electrobun file-system remote path guard ts boundaries for desktop app-core. */
 import { existsSync } from "node:fs";
 import { lstat, realpath } from "node:fs/promises";
 import path from "node:path";

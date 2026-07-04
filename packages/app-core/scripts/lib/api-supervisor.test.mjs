@@ -1,3 +1,4 @@
+/** Exercises api supervisor behavior with deterministic app-core test fixtures. */
 import { EventEmitter } from "node:events";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 

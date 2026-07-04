@@ -1,3 +1,4 @@
+/** Exercises cloud providers live e2e behavior with deterministic app-core test fixtures. */
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { describeIf } from "../helpers/conditional-tests.ts";
 import {

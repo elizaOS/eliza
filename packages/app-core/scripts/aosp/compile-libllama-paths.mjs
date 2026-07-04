@@ -1,3 +1,4 @@
+/** Supports app-core build, packaging, or development orchestration for compile libllama paths mjs. */
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";

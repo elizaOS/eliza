@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/** Supports app-core build, packaging, or development orchestration for ensure electrobun core mjs. */
 
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";

@@ -1,3 +1,4 @@
+/** Implements Electrobun desktop desktop session prime ts behavior for app-core shell integration. */
 import { Session } from "electrobun/bun";
 import { logger } from "../logger";
 import { resolveMainWindowPartition } from "../main-window-session";

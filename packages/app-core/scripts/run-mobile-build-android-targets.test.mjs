@@ -1,3 +1,4 @@
+/** Exercises run mobile build android targets behavior with deterministic app-core test fixtures. */
 import { describe, expect, it } from "vitest";
 import { resolveAndroidGradleCommandsForTarget } from "./mobile/android-gradle.mjs";
 import {

@@ -1,3 +1,4 @@
+/** Implements Electrobun runtime remote index ts boundaries for desktop app-core. */
 import type {
   AgentMessageStreamEvent,
   RuntimeMethod,

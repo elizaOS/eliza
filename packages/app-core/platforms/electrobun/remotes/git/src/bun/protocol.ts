@@ -1,3 +1,4 @@
+/** Implements Electrobun git remote protocol ts boundaries for desktop app-core. */
 export const GIT_REMOTE_ID = "eliza.git" as const;
 
 export type GitOperationId = string;

@@ -1,3 +1,4 @@
+/** Exercises settings mutations rpc behavior with deterministic app-core test fixtures. */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AgentNotReadyError } from "./config-and-auth-rpc";
 import {

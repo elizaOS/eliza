@@ -1,3 +1,4 @@
+/** Exercises location behavior with deterministic app-core test fixtures. */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { logger } from "../logger";
 import { LocationManager } from "./location";

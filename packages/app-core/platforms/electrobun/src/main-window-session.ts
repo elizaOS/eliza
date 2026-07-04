@@ -1,3 +1,4 @@
+/** Implements Electrobun desktop main window session ts behavior for app-core shell integration. */
 import { getBrandConfig } from "./brand-config";
 
 export const PACKAGED_WINDOWS_BOOTSTRAP_PARTITION =

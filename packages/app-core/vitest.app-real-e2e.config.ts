@@ -1,3 +1,4 @@
+/** Defines app-core vitest app real e2e behavior for dashboard host and runtime integration. */
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";

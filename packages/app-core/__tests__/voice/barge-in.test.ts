@@ -1,3 +1,4 @@
+/** Exercises barge in behavior with deterministic app-core test fixtures. */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 type RuntimeListenerEvent = {

@@ -1,3 +1,4 @@
+/** Supports app-core build, packaging, or development orchestration for lifeops prompt benchmark ts. */
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";

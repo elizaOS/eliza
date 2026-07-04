@@ -1,3 +1,4 @@
+/** Implements Electrobun desktop extension rpc ts behavior for app-core shell integration. */
 import { AgentNotReadyError } from "./config-and-auth-rpc";
 import { isRecord, nullableString } from "./rpc-parse-utils";
 import type { ExtensionStatusSnapshot } from "./rpc-schema";

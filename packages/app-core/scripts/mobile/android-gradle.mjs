@@ -1,3 +1,4 @@
+/** Supports app-core build, packaging, or development orchestration for android gradle mjs. */
 export const ANDROID_AAR_METADATA_TASKS = Object.freeze({
   debug: ":capacitor-cordova-android-plugins:writeDebugAarMetadata",
   release: ":capacitor-cordova-android-plugins:writeReleaseAarMetadata",

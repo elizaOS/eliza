@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+/** Supports Electrobun packaging and signing workflow for app-core desktop builds. */
 
 import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";

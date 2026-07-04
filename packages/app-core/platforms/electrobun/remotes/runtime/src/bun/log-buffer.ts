@@ -1,3 +1,4 @@
+/** Implements Electrobun runtime remote log buffer ts boundaries for desktop app-core. */
 import type { RuntimeLogEntry, RuntimeLogStream } from "./protocol.ts";
 
 export class RuntimeLogBuffer {

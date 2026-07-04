@@ -1,3 +1,4 @@
+/** Implements Electrobun desktop runtime permissions ts behavior for app-core shell integration. */
 import { getBrandConfig } from "./brand-config";
 import { logger } from "./logger";
 import type {

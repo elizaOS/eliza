@@ -1,3 +1,4 @@
+/** Implements Electrobun git remote git service ts boundaries for desktop app-core. */
 import { GitException, throwGitError } from "./errors.ts";
 import { defaultCwd, GitCommandRunner } from "./git-command.ts";
 import type {

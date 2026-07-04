@@ -1,3 +1,4 @@
+/** Exercises rpc handlers behavior with deterministic app-core test fixtures. */
 import { describe, expect, it, vi } from "vitest";
 import {
   buildDynamicViewRpcHandlers,

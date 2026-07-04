@@ -1,3 +1,4 @@
+/** Implements Electrobun git remote phase7 smoke ts boundaries for desktop app-core. */
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";

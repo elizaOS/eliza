@@ -1,3 +1,4 @@
+/** Implements Electrobun file-system remote protocol ts boundaries for desktop app-core. */
 export const FILE_REMOTE_ID = "eliza.fs" as const;
 
 export type FileRemoteErrorCode =

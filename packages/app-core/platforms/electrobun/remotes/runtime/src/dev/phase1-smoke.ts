@@ -1,3 +1,4 @@
+/** Implements Electrobun runtime remote phase1 smoke ts boundaries for desktop app-core. */
 import { RuntimeLogBuffer } from "../bun/log-buffer.ts";
 import type { RuntimeManagerEvent } from "../bun/protocol.ts";
 import { ElizaRuntimeManager } from "../bun/runtime-manager.ts";

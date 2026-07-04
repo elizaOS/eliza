@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/** Supports app-core build, packaging, or development orchestration for audit apple store sandbox mjs. */
 
 import { spawnSync } from "node:child_process";
 import {

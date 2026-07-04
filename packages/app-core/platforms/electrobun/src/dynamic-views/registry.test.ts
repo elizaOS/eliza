@@ -1,3 +1,4 @@
+/** Exercises registry behavior with deterministic app-core test fixtures. */
 import { describe, expect, it } from "vitest";
 import { DynamicViewError } from "./errors";
 import { DynamicViewRegistry } from "./registry";

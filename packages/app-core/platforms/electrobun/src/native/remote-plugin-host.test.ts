@@ -1,3 +1,4 @@
+/** Exercises remote plugin host behavior with deterministic app-core test fixtures. */
 import {
   mkdirSync,
   mkdtempSync,

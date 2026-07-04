@@ -1,3 +1,4 @@
+/** Supports app-core build, packaging, or development orchestration for desktop preflight mjs. */
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";

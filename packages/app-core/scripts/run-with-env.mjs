@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/** Supports app-core build, packaging, or development orchestration for run with env mjs. */
 import { spawnSync } from "node:child_process";
 
 const args = process.argv.slice(2);

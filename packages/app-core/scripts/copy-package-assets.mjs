@@ -1,3 +1,4 @@
+/** Supports app-core build, packaging, or development orchestration for copy package assets mjs. */
 import { cpSync, existsSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

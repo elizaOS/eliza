@@ -1,3 +1,4 @@
+/** Implements Electrobun file-system remote fs service ts boundaries for desktop app-core. */
 import type { Stats } from "node:fs";
 import {
   lstat,

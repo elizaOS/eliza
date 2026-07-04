@@ -1,3 +1,4 @@
+/** Exercises update availability behavior with deterministic app-core test fixtures. */
 import { describe, expect, it } from "vitest";
 import { resolveDesktopUpdateAvailability } from "./update-availability";
 

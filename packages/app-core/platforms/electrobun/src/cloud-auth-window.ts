@@ -1,3 +1,4 @@
+/** Implements Electrobun desktop cloud auth window ts behavior for app-core shell integration. */
 export interface CloudAuthWindowFrame {
   x: number;
   y: number;

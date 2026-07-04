@@ -1,3 +1,4 @@
+/** Implements Electrobun runtime remote electrobun boundaries for desktop app-core. */
 const runtimeRemote = {
   id: "eliza.runtime",
   name: "Eliza Runtime",

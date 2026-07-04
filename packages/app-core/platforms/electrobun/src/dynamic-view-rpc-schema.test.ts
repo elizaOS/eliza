@@ -1,3 +1,4 @@
+/** Exercises dynamic view rpc schema behavior with deterministic app-core test fixtures. */
 import { describe, expect, it } from "vitest";
 import { CHANNEL_TO_RPC_METHOD } from "./rpc-schema";
 

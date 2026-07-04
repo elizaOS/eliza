@@ -1,3 +1,4 @@
+/** Configures Storybook coverage for app-core dashboard and shell components. */
 import { withThemeByClassName } from "@storybook/addon-themes";
 import type { Preview } from "@storybook/react";
 import "../../app-core/src/styles/styles.css";

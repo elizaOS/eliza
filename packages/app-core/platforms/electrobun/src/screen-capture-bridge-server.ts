@@ -1,3 +1,4 @@
+/** Implements Electrobun desktop screen capture bridge server ts behavior for app-core shell integration. */
 import crypto from "node:crypto";
 import http from "node:http";
 import { findFirstAvailableLoopbackPort } from "./native/loopback-port";

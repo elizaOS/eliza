@@ -1,3 +1,4 @@
+/** Implements Electrobun desktop electrobun window options ts behavior for app-core shell integration. */
 import { BrowserWindow } from "electrobun/bun";
 
 type BrowserWindowConstructorOptions = NonNullable<

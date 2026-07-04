@@ -1,3 +1,4 @@
+/** Defines app-core browser launch ts behavior for dashboard host and runtime integration. */
 import { setTimeout as sleep } from "node:timers/promises";
 import {
   chromium,

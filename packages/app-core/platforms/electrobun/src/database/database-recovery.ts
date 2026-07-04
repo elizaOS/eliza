@@ -1,3 +1,4 @@
+/** Implements Electrobun desktop database recovery ts behavior for app-core shell integration. */
 import fs from "node:fs";
 import path from "node:path";
 import { assertSafePgliteResetTarget } from "./pglite-paths";

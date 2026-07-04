@@ -1,3 +1,4 @@
+/** Implements Electrobun local-model remote errors ts boundaries for desktop app-core. */
 import type { ModelRemoteError, ModelRemoteErrorCode } from "./protocol.ts";
 
 export class ModelRemoteException extends Error {

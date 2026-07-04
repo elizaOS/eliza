@@ -1,3 +1,4 @@
+/** Implements Electrobun surface remote phase4 smoke ts boundaries for desktop app-core. */
 import { existsSync } from "node:fs";
 import path from "node:path";
 import type { AgentMessageStreamEvent } from "../protocol/event-types.ts";

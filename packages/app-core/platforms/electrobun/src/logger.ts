@@ -1,3 +1,4 @@
+/** Implements Electrobun desktop logger ts behavior for app-core shell integration. */
 type LogMethod = (...args: unknown[]) => void;
 
 function bindConsoleMethod(

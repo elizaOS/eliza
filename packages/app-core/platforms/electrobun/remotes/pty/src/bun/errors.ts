@@ -1,3 +1,4 @@
+/** Implements Electrobun PTY remote errors ts boundaries for desktop app-core. */
 import type { PtyError, PtyErrorCode, PtySessionId } from "./protocol.ts";
 
 export class PtyException extends Error {

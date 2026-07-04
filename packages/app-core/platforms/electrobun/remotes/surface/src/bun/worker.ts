@@ -1,3 +1,4 @@
+/** Implements Electrobun surface remote worker ts boundaries for desktop app-core. */
 type JsonPrimitive = string | number | boolean | null;
 type JsonValue = JsonPrimitive | { [key: string]: JsonValue } | JsonValue[];
 

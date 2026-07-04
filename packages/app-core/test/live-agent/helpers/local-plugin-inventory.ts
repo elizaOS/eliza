@@ -1,3 +1,4 @@
+/** Defines app-core local plugin inventory ts behavior for dashboard host and runtime integration. */
 import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";

@@ -1,3 +1,4 @@
+/** Exercises screen capture bridge server behavior with deterministic app-core test fixtures. */
 import { afterEach, describe, expect, it } from "vitest";
 import { startScreenCaptureBridgeServer } from "./screen-capture-bridge-server";
 

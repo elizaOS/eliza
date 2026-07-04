@@ -1,3 +1,4 @@
+/** Exercises trace store behavior with deterministic app-core test fixtures. */
 import { describe, expect, it } from "vitest";
 import { TraceError } from "./errors";
 import { TraceStore } from "./trace-store";

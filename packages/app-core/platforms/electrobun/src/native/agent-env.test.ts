@@ -1,3 +1,4 @@
+/** Exercises agent env behavior with deterministic app-core test fixtures. */
 import { describe, expect, it } from "vitest";
 import {
   applyDesktopDeferAppRoutesPolicy,

@@ -1,3 +1,4 @@
+/** Implements Electrobun desktop menu reset from main ts behavior for app-core shell integration. */
 import { getBrandConfig } from "./brand-config";
 
 /**

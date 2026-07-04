@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/** Supports app-core build, packaging, or development orchestration for sanitize npm package metadata mjs. */
 
 import fs from "node:fs";
 import path from "node:path";

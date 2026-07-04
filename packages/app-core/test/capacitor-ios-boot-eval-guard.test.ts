@@ -1,3 +1,4 @@
+/** Exercises capacitor ios boot eval guard behavior with deterministic app-core test fixtures. */
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";

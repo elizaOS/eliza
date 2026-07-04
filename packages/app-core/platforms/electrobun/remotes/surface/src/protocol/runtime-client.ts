@@ -1,3 +1,4 @@
+/** Implements Electrobun surface remote runtime client ts boundaries for desktop app-core. */
 import type {
   AgentMessageParams,
   AgentMessageResult,

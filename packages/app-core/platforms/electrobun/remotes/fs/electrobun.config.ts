@@ -1,3 +1,4 @@
+/** Implements Electrobun file-system remote electrobun boundaries for desktop app-core. */
 const fileRemote = {
   id: "eliza.fs",
   name: "Eliza File",

@@ -1,3 +1,4 @@
+/** Implements Electrobun desktop subscription rpc ts behavior for app-core shell integration. */
 import type {
   SubscriptionProviderStatus,
   SubscriptionStatusResponse,

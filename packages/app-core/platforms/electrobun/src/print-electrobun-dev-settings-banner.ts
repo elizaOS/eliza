@@ -1,3 +1,4 @@
+/** Implements Electrobun desktop print electrobun dev settings banner ts behavior for app-core shell integration. */
 import {
   colorizeDevSettingsStartupBanner,
   type DevSettingsRow,

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/** Supports app-core build, packaging, or development orchestration for write homepage release data mjs. */
 
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";

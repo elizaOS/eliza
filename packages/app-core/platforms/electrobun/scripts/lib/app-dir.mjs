@@ -1,3 +1,4 @@
+/** Supports Electrobun packaging and signing workflow for app-core desktop builds. */
 import fs from "node:fs";
 import path from "node:path";
 

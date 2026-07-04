@@ -1,3 +1,4 @@
+/** Exercises run mobile build android manifest behavior with deterministic app-core test fixtures. */
 import { describe, expect, it } from "vitest";
 
 import {

@@ -1,3 +1,4 @@
+/** Exercises dashboard rpc behavior with deterministic app-core test fixtures. */
 import { describe, expect, it, vi } from "vitest";
 import { AgentNotReadyError } from "./config-and-auth-rpc";
 import {

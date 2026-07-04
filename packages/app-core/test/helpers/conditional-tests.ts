@@ -1,3 +1,4 @@
+/** Defines app-core conditional tests ts behavior for dashboard host and runtime integration. */
 import { describe, it, test } from "vitest";
 
 type SuiteCallback = () => void | Promise<void>;

@@ -1,3 +1,4 @@
+/** Implements Electrobun runtime remote api client ts boundaries for desktop app-core. */
 import { createApiBridgeError, isApiBridgeError } from "./errors.ts";
 import type {
   AgentMessageParams,

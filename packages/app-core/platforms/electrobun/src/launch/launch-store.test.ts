@@ -1,3 +1,4 @@
+/** Exercises launch store behavior with deterministic app-core test fixtures. */
 import { describe, expect, it } from "vitest";
 import { createDatabaseSnapshot } from "../database";
 import { LaunchStore } from "./launch-store";

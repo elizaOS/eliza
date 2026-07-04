@@ -1,3 +1,4 @@
+/** Implements Electrobun surface remote electrobun boundaries for desktop app-core. */
 const surfaceRemote = {
   id: "eliza.surface",
   name: "Eliza Surface",

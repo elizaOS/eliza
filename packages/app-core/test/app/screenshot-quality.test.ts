@@ -1,3 +1,4 @@
+/** Exercises screenshot quality behavior with deterministic app-core test fixtures. */
 import sharp from "sharp";
 import { describe, expect, it, vi } from "vitest";
 import {

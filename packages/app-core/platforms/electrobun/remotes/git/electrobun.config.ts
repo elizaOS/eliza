@@ -1,3 +1,4 @@
+/** Implements Electrobun git remote electrobun boundaries for desktop app-core. */
 const gitRemote = {
   id: "eliza.git",
   name: "Eliza Git",

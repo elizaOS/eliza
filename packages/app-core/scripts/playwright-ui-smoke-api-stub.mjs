@@ -1,3 +1,4 @@
+/** Supports app-core build, packaging, or development orchestration for playwright ui smoke api stub mjs. */
 import { existsSync, readFileSync } from "node:fs";
 import http from "node:http";
 import path from "node:path";

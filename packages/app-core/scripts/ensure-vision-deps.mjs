@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/** Supports app-core build, packaging, or development orchestration for ensure vision deps mjs. */
 import { execSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import os from "node:os";

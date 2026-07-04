@@ -1,3 +1,4 @@
+/** Defines app-core isolated config ts behavior for dashboard host and runtime integration. */
 import fs from "node:fs";
 import fsp from "node:fs/promises";
 import os from "node:os";

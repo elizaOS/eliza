@@ -1,3 +1,4 @@
+/** Implements Electrobun desktop windows cef profile ts behavior for app-core shell integration. */
 import fs from "node:fs";
 import path from "node:path";
 

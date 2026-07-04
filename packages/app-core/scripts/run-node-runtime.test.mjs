@@ -1,3 +1,4 @@
+/** Exercises run node runtime behavior with deterministic app-core test fixtures. */
 import { describe, expect, test } from "vitest";
 import {
   chooseElizaRuntime,

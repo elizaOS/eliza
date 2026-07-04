@@ -1,3 +1,4 @@
+/** Implements Electrobun runtime remote sse parser ts boundaries for desktop app-core. */
 export type ParsedSSEEvent = {
   event?: string;
   data?: string;

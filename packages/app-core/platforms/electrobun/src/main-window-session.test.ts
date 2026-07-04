@@ -1,3 +1,4 @@
+/** Exercises main window session behavior with deterministic app-core test fixtures. */
 import { describe, expect, it } from "vitest";
 import {
   MAC_DESKTOP_CEF_PARTITION,

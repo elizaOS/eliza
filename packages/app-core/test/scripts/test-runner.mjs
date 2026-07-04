@@ -1,3 +1,4 @@
+/** Supports app-core build, packaging, or development orchestration for test runner mjs. */
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {

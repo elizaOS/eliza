@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/** Supports app-core build, packaging, or development orchestration for validate cdn assets mjs. */
 
 import { execFileSync } from "node:child_process";
 import path from "node:path";

@@ -1,3 +1,4 @@
+/** Supports app-core build, packaging, or development orchestration for run node runtime mjs. */
 import { spawnSync } from "node:child_process";
 
 const KNOWN_UNSTABLE_BUN_LINUX = /^1\.3\.9(?:$|[-+].*)/;

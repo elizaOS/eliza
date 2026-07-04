@@ -1,3 +1,4 @@
+/** Implements Electrobun desktop pglite paths ts behavior for app-core shell integration. */
 import fs from "node:fs";
 import path from "node:path";
 

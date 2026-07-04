@@ -1,3 +1,4 @@
+/** Supports app-core build, packaging, or development orchestration for release check pack dry run ts. */
 import { existsSync } from "node:fs";
 
 const localPackHotspotPaths = [

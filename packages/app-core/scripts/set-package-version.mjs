@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/** Supports app-core build, packaging, or development orchestration for set package version mjs. */
 import { readFileSync, writeFileSync } from "node:fs";
 
 const version = process.env.RELEASE_VERSION;

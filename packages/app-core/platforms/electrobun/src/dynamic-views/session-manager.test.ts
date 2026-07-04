@@ -1,3 +1,4 @@
+/** Exercises session manager behavior with deterministic app-core test fixtures. */
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";

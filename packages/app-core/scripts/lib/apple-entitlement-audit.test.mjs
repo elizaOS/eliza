@@ -1,3 +1,4 @@
+/** Exercises apple entitlement audit behavior with deterministic app-core test fixtures. */
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";

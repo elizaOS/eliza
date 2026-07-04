@@ -1,3 +1,4 @@
+/** Implements Electrobun desktop location ts behavior for app-core shell integration. */
 import { logger } from "../logger";
 import type { SendToWebview } from "../types.js";
 

@@ -1,3 +1,4 @@
+/** Supports app-core build, packaging, or development orchestration for audit live test surface mjs. */
 import fs from "node:fs";
 import fsp from "node:fs/promises";
 import path from "node:path";

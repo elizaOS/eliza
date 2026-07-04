@@ -1,3 +1,4 @@
+/** Implements Electrobun file-system remote errors ts boundaries for desktop app-core. */
 import type { FileRemoteError, FileRemoteErrorCode } from "./protocol.ts";
 
 export class FileRemoteException extends Error {

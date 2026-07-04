@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/** Supports app-core build, packaging, or development orchestration for rt mjs. */
 
 import { spawn } from "node:child_process";
 

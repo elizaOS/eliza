@@ -1,3 +1,4 @@
+/** Implements Electrobun desktop agent status rpc ts behavior for app-core shell integration. */
 import { AgentNotReadyError } from "./config-and-auth-rpc";
 import { isRecord, parseStringArray } from "./rpc-parse-utils";
 import type {

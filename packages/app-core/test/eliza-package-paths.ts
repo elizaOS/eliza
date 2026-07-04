@@ -1,3 +1,4 @@
+/** Defines app-core eliza package paths ts behavior for dashboard host and runtime integration. */
 import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";

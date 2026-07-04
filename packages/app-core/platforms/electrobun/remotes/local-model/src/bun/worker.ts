@@ -1,3 +1,4 @@
+/** Implements Electrobun local-model remote worker ts boundaries for desktop app-core. */
 import { serializeError } from "./errors.ts";
 import { ModelRemoteService } from "./model-service.ts";
 import type {

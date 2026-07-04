@@ -1,3 +1,4 @@
+/** Exercises server config filter behavior with deterministic app-core test fixtures. */
 import { describe, expect, test } from "vitest";
 import { filterConfigEnvForResponse } from "../src/api/server-config-filter";
 

@@ -1,3 +1,4 @@
+/** Implements Electrobun desktop desktop http request ts behavior for app-core shell integration. */
 import { isLoopbackBindHost, isWildcardBindHost } from "@elizaos/shared";
 import { resolveExternalApiBase } from "./api-base";
 

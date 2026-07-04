@@ -1,3 +1,4 @@
+/** Implements Electrobun local-model remote electrobun boundaries for desktop app-core. */
 const localModelRemote = {
   id: "eliza.local-model",
   name: "Eliza Model",

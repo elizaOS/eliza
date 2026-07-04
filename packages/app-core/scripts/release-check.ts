@@ -1,4 +1,5 @@
 #!/usr/bin/env -S node --import tsx
+/** Supports app-core build, packaging, or development orchestration for release check ts. */
 
 import { execSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";

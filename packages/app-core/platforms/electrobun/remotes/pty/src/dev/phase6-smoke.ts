@@ -1,3 +1,4 @@
+/** Implements Electrobun PTY remote phase6 smoke ts boundaries for desktop app-core. */
 import { PtyException } from "../bun/errors.ts";
 import { TerminalRemoteService } from "../bun/pty-service.ts";
 

@@ -1,3 +1,4 @@
+/** Implements Electrobun runtime remote errors ts boundaries for desktop app-core. */
 import type { ApiBridgeError } from "./protocol.ts";
 
 export function createApiBridgeError(input: ApiBridgeError): ApiBridgeError {

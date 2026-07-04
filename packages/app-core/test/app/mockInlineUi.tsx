@@ -1,3 +1,4 @@
+/** Defines app-core mockInlineUi tsx behavior for dashboard host and runtime integration. */
 import React from "react";
 
 type InlineProps = React.PropsWithChildren<Record<string, unknown>>;

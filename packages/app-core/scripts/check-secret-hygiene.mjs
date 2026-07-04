@@ -1,3 +1,4 @@
+/** Supports app-core build, packaging, or development orchestration for check secret hygiene mjs. */
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";

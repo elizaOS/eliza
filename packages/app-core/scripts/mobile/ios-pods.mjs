@@ -1,3 +1,4 @@
+/** Supports app-core build, packaging, or development orchestration for ios pods mjs. */
 export const MOBILE_CAPACITOR_PLUGIN_MANIFEST = [
   {
     packageName: "@capacitor/app",

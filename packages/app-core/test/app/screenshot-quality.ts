@@ -1,3 +1,4 @@
+/** Defines app-core screenshot quality ts behavior for dashboard host and runtime integration. */
 import sharp from "sharp";
 
 type ScreenshotOptions = {

@@ -1,3 +1,4 @@
+/** Implements Electrobun desktop application menu ts behavior for app-core shell integration. */
 import { getBrandConfig } from "./brand-config";
 import type { ManagedWindowSnapshot } from "./surface-windows";
 

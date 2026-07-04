@@ -1,3 +1,4 @@
+/** Implements Electrobun local-model remote model service ts boundaries for desktop app-core. */
 import {
   DownloadStateTracker,
   normalizeDownloadJob,

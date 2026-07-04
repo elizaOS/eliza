@@ -1,3 +1,4 @@
+/** Implements Electrobun git remote errors ts boundaries for desktop app-core. */
 import type { GitError, GitErrorCode } from "./protocol.ts";
 
 export class GitException extends Error {

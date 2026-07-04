@@ -1,3 +1,4 @@
+/** Implements Electrobun desktop index ts behavior for app-core shell integration. */
 import { createDynamicViewHost, type DynamicViewHost } from "./host";
 import { DynamicViewRegistry } from "./registry";
 import { DynamicViewSessionManager } from "./session-manager";

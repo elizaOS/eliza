@@ -1,3 +1,4 @@
+/** Supports app-core build, packaging, or development orchestration for audit server test surface mjs. */
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

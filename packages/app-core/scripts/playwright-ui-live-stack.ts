@@ -1,3 +1,4 @@
+/** Supports app-core build, packaging, or development orchestration for playwright ui live stack ts. */
 import {
   type ChildProcessWithoutNullStreams,
   execFileSync,

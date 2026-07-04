@@ -1,3 +1,4 @@
+/** Supports app-core build, packaging, or development orchestration for container entrypoint mjs. */
 import { spawn } from "node:child_process";
 import { pathToFileURL } from "node:url";
 

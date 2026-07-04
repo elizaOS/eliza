@@ -1,3 +1,4 @@
+/** Exercises memory relationships real e2e behavior with deterministic app-core test fixtures. */
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import crypto from "node:crypto";
 import { existsSync } from "node:fs";

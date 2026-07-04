@@ -1,3 +1,4 @@
+/** Exercises compile libllama zig pin behavior with deterministic app-core test fixtures. */
 import { describe, expect, it } from "bun:test";
 import {
   ABI_TARGETS,

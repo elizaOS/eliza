@@ -1,3 +1,4 @@
+/** Implements Electrobun surface remote app ts boundaries for desktop app-core. */
 import { RuntimeRemoteClient } from "../protocol/runtime-client.ts";
 import { collectElements, renderSurface } from "./render.ts";
 import {

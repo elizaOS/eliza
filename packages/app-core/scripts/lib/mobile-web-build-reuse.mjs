@@ -1,3 +1,4 @@
+/** Supports app-core build, packaging, or development orchestration for mobile web build reuse mjs. */
 import fs from "node:fs";
 import path from "node:path";
 

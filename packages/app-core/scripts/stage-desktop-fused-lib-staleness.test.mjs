@@ -1,3 +1,4 @@
+/** Exercises stage desktop fused lib staleness behavior with deterministic app-core test fixtures. */
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";

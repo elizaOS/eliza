@@ -1,3 +1,4 @@
+/** Implements Electrobun runtime remote worker ts boundaries for desktop app-core. */
 import { ElizaRuntimeApiClient } from "./api-client.ts";
 import { createApiBridgeError, serializeError } from "./errors.ts";
 import { RuntimeLogBuffer } from "./log-buffer.ts";

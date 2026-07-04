@@ -1,3 +1,4 @@
+/** Exercises surface windows behavior with deterministic app-core test fixtures. */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   type BoundsStore,

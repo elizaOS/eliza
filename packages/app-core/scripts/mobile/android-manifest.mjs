@@ -1,3 +1,4 @@
+/** Supports app-core build, packaging, or development orchestration for android manifest mjs. */
 function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }

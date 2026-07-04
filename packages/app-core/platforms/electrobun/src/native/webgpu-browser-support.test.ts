@@ -1,3 +1,4 @@
+/** Exercises webgpu browser support behavior with deterministic app-core test fixtures. */
 import { describe, expect, it } from "vitest";
 import { checkWebGpuSupport } from "./webgpu-browser-support";
 

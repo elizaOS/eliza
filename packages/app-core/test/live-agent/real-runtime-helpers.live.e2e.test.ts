@@ -1,3 +1,4 @@
+/** Exercises real runtime helpers live e2e behavior with deterministic app-core test fixtures. */
 import { createElizaPlugin } from "@elizaos/agent";
 import { ModelType, type Plugin, stringToUuid } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";

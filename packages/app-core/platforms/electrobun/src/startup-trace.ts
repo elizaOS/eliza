@@ -1,3 +1,4 @@
+/** Implements Electrobun desktop startup trace ts behavior for app-core shell integration. */
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";

@@ -1,3 +1,4 @@
+/** Implements Electrobun surface remote event types ts boundaries for desktop app-core. */
 export type {
   FileListParams,
   FileListResult,

@@ -1,3 +1,4 @@
+/** Implements Electrobun desktop permissions shared ts behavior for app-core shell integration. */
 export type {
   PermissionCheckResult,
   PermissionId,

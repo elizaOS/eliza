@@ -1,3 +1,4 @@
+/** Defines app-core live setup ts behavior for dashboard host and runtime integration. */
 import { afterAll } from "vitest";
 import { withIsolatedTestHome } from "./test-env";
 

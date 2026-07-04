@@ -1,3 +1,4 @@
+/** Exercises api base owner behavior with deterministic app-core test fixtures. */
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";

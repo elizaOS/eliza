@@ -1,3 +1,4 @@
+/** Implements Electrobun local-model remote download state ts boundaries for desktop app-core. */
 import type {
   LocalModelDownloadJob,
   LocalModelDownloadState,

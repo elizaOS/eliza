@@ -1,3 +1,4 @@
+/** Implements Electrobun PTY remote worker ts boundaries for desktop app-core. */
 import { serializePtyError } from "./errors.ts";
 import type {
   JsonValue,

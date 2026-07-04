@@ -1,3 +1,4 @@
+/** Exercises patch bun exports behavior with deterministic app-core test fixtures. */
 import { execFileSync } from "node:child_process";
 import {
   existsSync,

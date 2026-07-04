@@ -1,3 +1,4 @@
+/** Exercises run mobile build plugin manifest behavior with deterministic app-core test fixtures. */
 import { expect, it } from "vitest";
 
 import {

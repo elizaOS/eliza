@@ -1,3 +1,4 @@
+/** Defines app-core capacitor core ts behavior for dashboard host and runtime integration. */
 type ListenerHandle = {
   remove(): Promise<void>;
 };

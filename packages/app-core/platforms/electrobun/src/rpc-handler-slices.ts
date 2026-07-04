@@ -1,3 +1,4 @@
+/** Implements Electrobun desktop rpc handler slices ts behavior for app-core shell integration. */
 import type { DynamicViewRegistry } from "./dynamic-views/registry";
 import type { DynamicViewSessionManager } from "./dynamic-views/session-manager";
 import type {

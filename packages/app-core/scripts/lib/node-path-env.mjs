@@ -1,3 +1,4 @@
+/** Supports app-core build, packaging, or development orchestration for node path env mjs. */
 import path from "node:path";
 
 export function extendNodePathEnv(baseEnv, rootDir) {

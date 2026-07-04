@@ -1,3 +1,4 @@
+/** Defines app-core vitest harvest live agent behavior for dashboard host and runtime integration. */
 import baseConfig from "./vitest.config";
 
 /**

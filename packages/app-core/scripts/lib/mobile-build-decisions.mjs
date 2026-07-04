@@ -1,3 +1,4 @@
+/** Supports app-core build, packaging, or development orchestration for mobile build decisions mjs. */
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

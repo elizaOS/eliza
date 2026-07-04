@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/** Supports app-core build, packaging, or development orchestration for relink workspace packages to dist mjs. */
 
 import {
   existsSync,

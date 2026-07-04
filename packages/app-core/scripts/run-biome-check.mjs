@@ -1,3 +1,4 @@
+/** Supports app-core build, packaging, or development orchestration for run biome check mjs. */
 import { spawnSync } from "node:child_process";
 import { existsSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";

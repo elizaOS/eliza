@@ -1,3 +1,4 @@
+/** Defines app-core vitest behavior for dashboard host and runtime integration. */
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

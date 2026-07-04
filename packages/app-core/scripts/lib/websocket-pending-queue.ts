@@ -1,3 +1,4 @@
+/** Supports app-core build, packaging, or development orchestration for websocket pending queue ts. */
 export type WebSocketSendData =
   | string
   | Buffer

@@ -1,3 +1,4 @@
+/** Supports app-core build, packaging, or development orchestration for start eliza live ts. */
 import { startEliza } from "../../src/runtime/eliza.ts";
 
 startEliza().catch((error) => {

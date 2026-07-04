@@ -1,3 +1,4 @@
+/** Implements Electrobun desktop camera ts behavior for app-core shell integration. */
 export class CameraManager {
   setSendToWebview(_fn: (message: string, payload?: unknown) => void): void {}
 

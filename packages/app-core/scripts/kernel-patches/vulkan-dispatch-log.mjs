@@ -1,3 +1,4 @@
+/** Supports app-core build, packaging, or development orchestration for vulkan dispatch log mjs. */
 import fs from "node:fs";
 
 const DISPATCH_RE = /ggml_vk_dispatch_pipeline\(([^,\s)]+)/g;

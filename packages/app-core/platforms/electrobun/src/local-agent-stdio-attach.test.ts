@@ -1,3 +1,4 @@
+/** Exercises local agent stdio attach behavior with deterministic app-core test fixtures. */
 import { afterEach, describe, expect, it } from "vitest";
 import {
   getActiveLocalAgentDispatcher,

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/** Supports app-core build, packaging, or development orchestration for sync dod gap issues mjs. */
 
 import { readFileSync } from "node:fs";
 import {

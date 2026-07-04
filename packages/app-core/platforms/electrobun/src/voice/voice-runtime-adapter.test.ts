@@ -1,3 +1,4 @@
+/** Exercises voice runtime adapter behavior with deterministic app-core test fixtures. */
 import { describe, expect, it } from "vitest";
 import { VoiceError } from "./errors";
 import {

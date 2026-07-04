@@ -1,3 +1,4 @@
+/** Implements Electrobun local-model remote eliza1 catalog ts boundaries for desktop app-core. */
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

@@ -1,3 +1,4 @@
+/** Implements Electrobun git remote worker ts boundaries for desktop app-core. */
 import { serializeGitError } from "./errors.ts";
 import { GitRemoteService } from "./git-service.ts";
 import type {

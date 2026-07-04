@@ -1,3 +1,4 @@
+/** Implements Electrobun desktop browser workspace bridge server ts behavior for app-core shell integration. */
 import crypto from "node:crypto";
 import http from "node:http";
 import type { BrowserWorkspaceEventType } from "./native/browser-workspace";

@@ -1,3 +1,4 @@
+/** Implements Electrobun file-system remote file limits ts boundaries for desktop app-core. */
 export type FileLimits = {
   maxReadBytes: number;
   maxWriteBytes: number;

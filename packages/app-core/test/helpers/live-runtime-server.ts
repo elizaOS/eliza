@@ -1,3 +1,4 @@
+/** Defines app-core live runtime server ts behavior for dashboard host and runtime integration. */
 import type { Plugin } from "@elizaos/core";
 import { startApiServer } from "../../src/api/server.ts";
 import {

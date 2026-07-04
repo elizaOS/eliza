@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+/** Supports app-core build, packaging, or development orchestration for build bundled orchestrator artifact mjs. */
 
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";

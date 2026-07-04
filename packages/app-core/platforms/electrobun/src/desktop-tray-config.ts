@@ -1,3 +1,4 @@
+/** Implements Electrobun desktop desktop tray config ts behavior for app-core shell integration. */
 import { isKioskShellMode } from "./kiosk-mode";
 
 function parseTruthy(value: string | undefined): boolean {

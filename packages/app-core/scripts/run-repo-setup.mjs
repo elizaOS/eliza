@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/** Supports app-core build, packaging, or development orchestration for run repo setup mjs. */
 
 import { spawn } from "node:child_process";
 import { promises as fs } from "node:fs";

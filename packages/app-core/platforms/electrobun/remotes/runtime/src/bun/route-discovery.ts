@@ -1,3 +1,4 @@
+/** Implements Electrobun runtime remote route discovery ts boundaries for desktop app-core. */
 import { createApiBridgeError } from "./errors.ts";
 import type {
   ApiDiscoveryResult,

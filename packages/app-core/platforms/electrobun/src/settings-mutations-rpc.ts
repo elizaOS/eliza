@@ -1,3 +1,4 @@
+/** Implements Electrobun desktop settings mutations rpc ts behavior for app-core shell integration. */
 import { AgentNotReadyError } from "./config-and-auth-rpc";
 import { isRecord } from "./rpc-parse-utils";
 import type {

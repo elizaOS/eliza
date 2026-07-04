@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/** Supports app-core build, packaging, or development orchestration for check homepage release data mjs. */
 
 import { readFile } from "node:fs/promises";
 import path from "node:path";

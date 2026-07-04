@@ -1,3 +1,4 @@
+/** Exercises verify android native plugins behavior with deterministic app-core test fixtures. */
 import { describe, expect, it } from "vitest";
 // @ts-expect-error — plain .mjs script, no types emitted; the shape is asserted below.
 import { verifyAndroidNativePlugins } from "./verify-android-native-plugins.mjs";

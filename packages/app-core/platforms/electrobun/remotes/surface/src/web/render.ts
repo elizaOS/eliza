@@ -1,3 +1,4 @@
+/** Implements Electrobun surface remote render ts boundaries for desktop app-core. */
 import type { SurfaceRuntimeStatus } from "./state.ts";
 
 export type SurfaceElements = {

@@ -1,3 +1,4 @@
+/** Exercises startup integration script drift behavior with deterministic app-core test fixtures. */
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

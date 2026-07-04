@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/** Supports app-core build, packaging, or development orchestration for sync desktop renderer mjs. */
 
 import { spawn, spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, statSync, watch } from "node:fs";

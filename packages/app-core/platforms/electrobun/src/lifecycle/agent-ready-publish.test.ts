@@ -1,3 +1,4 @@
+/** Exercises agent ready publish behavior with deterministic app-core test fixtures. */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("./api-base-owner", () => ({

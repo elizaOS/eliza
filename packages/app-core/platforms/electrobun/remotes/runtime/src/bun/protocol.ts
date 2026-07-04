@@ -1,3 +1,4 @@
+/** Implements Electrobun runtime remote protocol ts boundaries for desktop app-core. */
 export const RUNTIME_REMOTE_ID = "eliza.runtime" as const;
 export const SURFACE_REMOTE_ID = "eliza.surface" as const;
 export const FILE_REMOTE_ID = "eliza.fs" as const;

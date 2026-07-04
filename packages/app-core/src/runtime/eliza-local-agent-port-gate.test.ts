@@ -1,3 +1,4 @@
+/** Exercises eliza local agent port gate behavior with deterministic app-core test fixtures. */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { resolveApiExposePort } from "@elizaos/shared";

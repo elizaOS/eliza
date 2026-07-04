@@ -1,3 +1,4 @@
+/** Defines app-core setup ts behavior for dashboard host and runtime integration. */
 import Module from "node:module";
 import path from "node:path";
 import { afterAll, afterEach, vi } from "vitest";

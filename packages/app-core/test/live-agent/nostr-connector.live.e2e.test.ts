@@ -1,3 +1,4 @@
+/** Exercises nostr connector live e2e behavior with deterministic app-core test fixtures. */
 import crypto from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

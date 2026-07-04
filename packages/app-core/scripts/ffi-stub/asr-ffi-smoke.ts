@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+/** Supports app-core build, packaging, or development orchestration for asr ffi smoke ts. */
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 

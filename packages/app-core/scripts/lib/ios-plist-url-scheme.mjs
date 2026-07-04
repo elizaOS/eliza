@@ -1,3 +1,4 @@
+/** Supports app-core build, packaging, or development orchestration for ios plist url scheme mjs. */
 function escapeXmlText(value) {
   return String(value)
     .replace(/&/g, "&amp;")

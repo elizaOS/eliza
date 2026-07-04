@@ -1,3 +1,4 @@
+/** Implements Electrobun local-model remote hf eliza1 client ts boundaries for desktop app-core. */
 import {
   getEliza1BundleTiers,
   getEliza1Catalog,

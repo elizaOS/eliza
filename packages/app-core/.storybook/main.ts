@@ -1,3 +1,4 @@
+/** Configures Storybook coverage for app-core dashboard and shell components. */
 import type { StorybookConfig } from "@storybook/react-vite";
 
 const config: StorybookConfig = {

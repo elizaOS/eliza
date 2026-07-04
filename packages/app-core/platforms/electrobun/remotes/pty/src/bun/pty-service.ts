@@ -1,3 +1,4 @@
+/** Implements Electrobun PTY remote pty service ts boundaries for desktop app-core. */
 import { throwPtyError } from "./errors.ts";
 import { PtyOutputBuffer } from "./output-buffer.ts";
 import type {

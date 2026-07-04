@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/** Supports app-core build, packaging, or development orchestration for run eliza app core script mjs. */
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { dirname, extname, resolve } from "node:path";

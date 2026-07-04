@@ -1,3 +1,4 @@
+/** Implements Electrobun desktop trace host requests ts behavior for app-core shell integration. */
 import type { JsonValue } from "@elizaos/plugin-remote-manifest";
 import { TraceError } from "./errors";
 import {

@@ -1,3 +1,4 @@
+/** Supports app-core build, packaging, or development orchestration for dev ui vision mjs. */
 export function buildVisionDepsFailureMessage(
   error,
   command = "node scripts/ensure-vision-deps.mjs",

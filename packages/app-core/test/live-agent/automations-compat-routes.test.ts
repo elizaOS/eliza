@@ -1,3 +1,4 @@
+/** Exercises automations compat routes behavior with deterministic app-core test fixtures. */
 import http from "node:http";
 import { Socket } from "node:net";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
