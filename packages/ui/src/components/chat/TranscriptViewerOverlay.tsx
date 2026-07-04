@@ -431,26 +431,26 @@ export function TranscriptViewerOverlay({
         type="button"
         aria-label="Close transcript"
         onClick={onClose}
-        className="absolute inset-0 cursor-default bg-black/85"
+        className="absolute inset-0 cursor-default bg-scrim"
       />
       <div
         className={cn(
           "relative flex max-h-full w-full max-w-2xl flex-col overflow-hidden",
-          "rounded-2xl border border-white/15 bg-[rgb(22,22,28)] text-white",
+          "rounded-lg border border-border bg-card text-txt",
         )}
       >
         {/* Header: title + close */}
-        <div className="flex items-center gap-2 border-b border-white/10 px-4 py-3">
-          <h2 className="min-w-0 flex-1 truncate text-sm font-semibold">
+        <div className="flex items-center gap-2 border-b border-border px-4 py-3">
+          <h2 className="min-w-0 flex-1 truncate text-sm font-semibold text-txt-strong">
             {title}
           </h2>
           <button
             type="button"
             aria-label="Close"
             onClick={onClose}
-            className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-white/10 text-white/80 transition-colors hover:bg-white/20"
+            className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-bg-hover text-muted transition-colors hover:bg-surface hover:text-txt active:scale-[0.96] motion-reduce:active:scale-100"
           >
-            <X className="h-4 w-4" />
+            <X className="h-4 w-4" strokeWidth={1.5} />
           </button>
         </div>
 
@@ -471,14 +471,14 @@ export function TranscriptViewerOverlay({
               >
                 <track kind="captions" />
               </audio>
-              <div className="flex items-center gap-1 text-xs text-white/50">
-                <FileAudio className="h-3.5 w-3.5 shrink-0" aria-hidden />
+              <div className="flex items-center gap-1 text-xs text-muted">
+                <FileAudio className="h-3.5 w-3.5 shrink-0" strokeWidth={1.5} aria-hidden />
                 <span className="mr-1">Recording</span>
                 <button
                   type="button"
                   onClick={handleDownloadAudio}
                   data-testid="transcript-save-audio"
-                  className="rounded px-1.5 py-0.5 text-white/70 transition-colors hover:bg-white/10 hover:text-white"
+                  className="rounded-sm px-1.5 py-0.5 text-muted transition-colors hover:bg-bg-hover hover:text-txt"
                 >
                   Download
                 </button>
@@ -486,7 +486,7 @@ export function TranscriptViewerOverlay({
                   type="button"
                   onClick={() => void handleShareAudio()}
                   data-testid="transcript-share-audio"
-                  className="rounded px-1.5 py-0.5 text-white/70 transition-colors hover:bg-white/10 hover:text-white"
+                  className="rounded-sm px-1.5 py-0.5 text-muted transition-colors hover:bg-bg-hover hover:text-txt"
                 >
                   Share
                 </button>
@@ -494,7 +494,7 @@ export function TranscriptViewerOverlay({
             </div>
           ) : null}
           {load.status === "loading" ? (
-            <div className="flex items-center gap-2 py-8 text-sm text-white/60">
+            <div className="flex items-center gap-2 py-8 text-sm text-muted">
               <Spinner size={16} /> Loading transcript…
             </div>
           ) : editing ? (
@@ -503,20 +503,20 @@ export function TranscriptViewerOverlay({
               onChange={(e) => setValue(e.target.value)}
               aria-label="Edit transcript"
               data-testid="transcript-editor"
-              className="min-h-[40vh] w-full resize-none border-white/15 bg-black/30 text-[13px] leading-relaxed text-white"
+              className="min-h-[40vh] w-full resize-none border-border bg-bg text-xs-tight leading-relaxed text-txt"
               autoFocus
             />
           ) : (
             <pre
               data-testid="transcript-text"
-              className="whitespace-pre-wrap break-words font-sans text-[13px] leading-relaxed text-white/90"
+              className="whitespace-pre-wrap break-words font-sans text-xs-tight leading-relaxed text-txt"
             >
               {value || "(empty transcript)"}
             </pre>
           )}
           {saveError ? (
             <p
-              className="mt-2 text-xs text-[color:var(--danger,#f87171)]"
+              className="mt-2 text-xs text-danger"
               data-testid="transcript-save-error"
             >
               {saveError}
@@ -525,16 +525,20 @@ export function TranscriptViewerOverlay({
         </div>
 
         {/* Action bar */}
-        <div className="flex flex-wrap items-center gap-2 border-t border-white/10 px-4 py-3">
+        <div
+          className="flex flex-wrap items-center gap-2 border-t border-border px-4 py-3"
+          style={{
+            paddingBottom: "calc(var(--safe-area-bottom, 0px) + 0.75rem)",
+          }}
+        >
           {!editing ? (
             <Button
               variant="ghost"
               size="sm"
               onClick={() => setEditing(true)}
               data-testid="transcript-edit"
-              className="text-white/85 hover:bg-white/10"
             >
-              <Pencil className="mr-1.5 h-4 w-4" /> Edit
+              <Pencil className="mr-1.5 h-4 w-4" strokeWidth={1.5} /> Edit
             </Button>
           ) : (
             <Button
@@ -543,9 +547,8 @@ export function TranscriptViewerOverlay({
               onClick={() => setValue(pristine)}
               disabled={!dirty}
               data-testid="transcript-undo"
-              className="text-white/85 hover:bg-white/10"
             >
-              <Undo2 className="mr-1.5 h-4 w-4" /> Undo
+              <Undo2 className="mr-1.5 h-4 w-4" strokeWidth={1.5} /> Undo
             </Button>
           )}
           <Button
@@ -553,17 +556,12 @@ export function TranscriptViewerOverlay({
             size="sm"
             onClick={() => void handleCopy()}
             data-testid="transcript-copy"
-            className={cn(
-              "hover:bg-white/10",
-              copyStatus === "failed"
-                ? "text-[color:var(--danger,#f87171)]"
-                : "text-white/85",
-            )}
+            className={cn(copyStatus === "failed" && "text-danger")}
           >
             {copyStatus === "copied" ? (
-              <Check className="mr-1.5 h-4 w-4 text-[color:var(--ok)]" />
+              <Check className="mr-1.5 h-4 w-4 text-status-success" strokeWidth={1.5} />
             ) : (
-              <Copy className="mr-1.5 h-4 w-4" />
+              <Copy className="mr-1.5 h-4 w-4" strokeWidth={1.5} />
             )}
             {copyButtonLabel(copyStatus)}
           </Button>
@@ -572,18 +570,16 @@ export function TranscriptViewerOverlay({
             size="sm"
             onClick={handleShare}
             data-testid="transcript-share"
-            className="text-white/85 hover:bg-white/10"
           >
-            <Share2 className="mr-1.5 h-4 w-4" /> Share
+            <Share2 className="mr-1.5 h-4 w-4" strokeWidth={1.5} /> Share
           </Button>
           <Button
             variant="ghost"
             size="sm"
             onClick={handleSaveToFiles}
             data-testid="transcript-save-to-files"
-            className="text-white/85 hover:bg-white/10"
           >
-            <Download className="mr-1.5 h-4 w-4" /> Download
+            <Download className="mr-1.5 h-4 w-4" strokeWidth={1.5} /> Download
           </Button>
           {resolvedId || audioUrl ? (
             <Button
@@ -591,9 +587,8 @@ export function TranscriptViewerOverlay({
               size="sm"
               onClick={handleOpenInTranscripts}
               data-testid="transcript-open-in-transcripts"
-              className="text-white/85 hover:bg-white/10"
             >
-              <Headphones className="mr-1.5 h-4 w-4" /> Open in Transcripts
+              <Headphones className="mr-1.5 h-4 w-4" strokeWidth={1.5} /> Open in Transcripts
             </Button>
           ) : null}
           {resolvedId ? (
@@ -603,13 +598,11 @@ export function TranscriptViewerOverlay({
               onClick={() => void handleDelete()}
               data-testid="transcript-delete"
               className={cn(
-                "hover:bg-[color:var(--danger,#f87171)]/15",
-                confirmDelete
-                  ? "text-[color:var(--danger,#f87171)]"
-                  : "text-white/70",
+                "hover:bg-destructive-subtle",
+                confirmDelete ? "text-danger" : "text-muted",
               )}
             >
-              <Trash2 className="mr-1.5 h-4 w-4" />
+              <Trash2 className="mr-1.5 h-4 w-4" strokeWidth={1.5} />
               {confirmDelete ? "Confirm delete" : "Delete"}
             </Button>
           ) : null}
@@ -619,7 +612,6 @@ export function TranscriptViewerOverlay({
               size="sm"
               onClick={onClose}
               data-testid="transcript-cancel"
-              className="text-white/70 hover:bg-white/10"
             >
               Cancel
             </Button>
