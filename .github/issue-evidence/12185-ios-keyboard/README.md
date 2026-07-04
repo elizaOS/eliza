@@ -36,7 +36,7 @@ extensions" (Wispr) pattern.
 ## Build verification
 
 `ElizaKeyboard` appex built against the iOS Simulator SDK — **BUILD SUCCEEDED**.
-See [`appex-build.log`](./appex-build.log). Fat binary (`x86_64 arm64`),
+See [`appex-build.txt`](./appex-build.txt). Fat binary (`x86_64 arm64`),
 `NSExtensionPointIdentifier = com.apple.keyboard-service`.
 
 ```
