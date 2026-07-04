@@ -2615,9 +2615,14 @@ export function ContinuousChatOverlay({
       setBottomPad((prev) => (prev === pad ? prev : pad));
     }
   });
+  // Depend on the coalescer's stable methods, NOT the wrapper object (which is a
+  // fresh literal each render) — otherwise this effect re-runs every render and
+  // re-fires settleDragRef mid-drag, stranding an in-progress sheet gesture.
+  const scheduleViewportSync = viewportSync.schedule;
+  const cancelViewportSync = viewportSync.cancel;
   React.useEffect(() => {
     if (typeof window === "undefined") return undefined;
-    const sync = () => viewportSync.schedule(undefined);
+    const sync = () => scheduleViewportSync(undefined);
     // A real WINDOW resize (rotation/desktop resize) must never strand the
     // pill↔input morph mid-crossfade — rotation often cancels the in-flight
     // pointer with no pointerup, leaving the drag orphaned. Re-settle to a clean
@@ -2635,12 +2640,12 @@ export function ContinuousChatOverlay({
     vv?.addEventListener("resize", sync);
     vv?.addEventListener("scroll", sync, { passive: true });
     return () => {
-      viewportSync.cancel();
+      cancelViewportSync();
       window.removeEventListener("resize", syncAndSettleWindow);
       vv?.removeEventListener("resize", sync);
       vv?.removeEventListener("scroll", sync);
     };
-  }, [viewportSync]);
+  }, [scheduleViewportSync, cancelViewportSync]);
   const viewportH = viewport.height;
   const keyboardInset = viewport.keyboardInset;
 
