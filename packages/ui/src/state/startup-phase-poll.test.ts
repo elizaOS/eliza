@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for the startup polling backend: recoverable-base detection and
+ * loopback-origin fallback. Deps injected, no live network.
+ */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { FirstRunOptions } from "../api";
 import { clearPersistedActiveServer } from "./persistence";

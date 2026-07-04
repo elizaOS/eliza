@@ -1,3 +1,8 @@
+/**
+ * Predicates that classify conversations for the main chat surface — hiding
+ * automation-scoped rooms and the legacy page-chat titles so only real user
+ * threads appear in the transcript list.
+ */
 import type { Conversation } from "../api";
 
 const MAIN_CHAT_HIDDEN_SCOPES = new Set([

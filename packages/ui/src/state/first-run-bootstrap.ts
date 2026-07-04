@@ -1,3 +1,8 @@
+/**
+ * Probes an existing local install on boot — detects a completed/partial
+ * first-run config and resolves the initial active-server record so a returning
+ * user skips re-onboarding. Reads via the injected probe client.
+ */
 import { asRecord, readString } from "./config-readers";
 import {
   createPersistedActiveServer,

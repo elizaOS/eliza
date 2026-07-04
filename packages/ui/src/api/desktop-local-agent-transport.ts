@@ -1,3 +1,7 @@
+/**
+ * AgentRequestTransport for the desktop-hosted local agent: dispatches requests
+ * over the Electrobun renderer RPC to the in-process agent via its IPC base.
+ */
 import {
   isMobileLocalAgentIpcUrl,
   mobileLocalAgentPathFromUrl,

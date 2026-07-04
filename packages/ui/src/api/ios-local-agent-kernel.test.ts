@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for the iOS in-renderer fetch kernel's route handling. In-process
+ * Request/Response, no real device.
+ */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { handleIosLocalAgentRequest } from "./ios-local-agent-kernel";
 

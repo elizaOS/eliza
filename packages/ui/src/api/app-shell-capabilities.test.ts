@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for the API-base capability predicates (limited cloud vs full
+ * app-shell routes). Pure functions, no harness.
+ */
 import { describe, expect, it } from "vitest";
 import {
   isLimitedCloudAgentApiBase,

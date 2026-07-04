@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for the in-thread transport dispatching to a route handler with
+ * timeout context. In-process, no network.
+ */
 import { describe, expect, it } from "vitest";
 import { createIttpAgentTransport } from "./ittp-agent-transport";
 

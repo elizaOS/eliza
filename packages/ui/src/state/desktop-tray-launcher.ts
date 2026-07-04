@@ -1,3 +1,8 @@
+/**
+ * Runtime registry for the desktop tray-popover launcher rows: the desktop host
+ * contributes resolved, localized rows and the presentational TrayLauncher reads
+ * them. See the block below for why @elizaos/ui cannot import the catalog directly.
+ */
 import { useSyncExternalStore } from "react";
 
 /**

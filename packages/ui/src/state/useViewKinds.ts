@@ -1,3 +1,7 @@
+/**
+ * Resolves which view kinds are enabled for the client: system/release always
+ * on, developer/preview following the two Settings toggles.
+ */
 import {
   type EnabledViewKinds,
   isViewKindEnabled,

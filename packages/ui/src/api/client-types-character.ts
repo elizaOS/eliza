@@ -1,3 +1,7 @@
+/**
+ * Wire types for the character surface: history scope/values and the character
+ * snapshot shape the client and character views share.
+ */
 export type CharacterHistoryScope = "auto" | "global" | "user";
 
 export type CharacterHistoryValue =

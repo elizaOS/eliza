@@ -1,3 +1,7 @@
+/**
+ * Hook to read + write the unified app background, backed by
+ * useDisplayPreferences so every caller shares one persisted source of truth.
+ */
 import { useAppSelector, useAppSelectorShallow } from "./app-store";
 import type { BackgroundConfig } from "./ui-preferences";
 

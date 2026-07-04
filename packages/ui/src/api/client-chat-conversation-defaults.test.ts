@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for chat conversation default resolution. Capacitor mocked to
+ * web, transport stubbed, no live agent.
+ */
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@capacitor/core", () => ({

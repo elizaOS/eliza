@@ -1,3 +1,8 @@
+/**
+ * In-renderer fetch kernel for the iOS local agent: services a subset of routes
+ * (market data, steward session) directly in the webview when the full-bun agent
+ * is not reachable, using the shared market-provider helpers.
+ */
 import {
   asRecord,
   buildCoinGeckoMarketsUrl,

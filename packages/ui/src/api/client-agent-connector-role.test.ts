@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for connector server-role→UI-role mapping and account-record
+ * normalization. Pure functions, no harness.
+ */
 import { describe, expect, it } from "vitest";
 import {
   CONNECTOR_SERVER_ROLE_TO_UI_ROLE,

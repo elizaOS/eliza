@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for the desktop main-process reset-applied handler that resets
+ * renderer lifecycle state. Deps injected, no harness.
+ */
 import { describe, expect, it, vi } from "vitest";
 import type { AgentStatus } from "../api/client";
 import {

@@ -1,3 +1,8 @@
+/**
+ * localStorage + server persistence for shell state: the active-server record,
+ * UI language, favorite/recent apps, and background config/history. The single
+ * read/write layer the state modules go through.
+ */
 import { logger } from "@elizaos/logger";
 import { asRecord } from "@elizaos/shared";
 import { fetchWithCsrf } from "../api/csrf-client";

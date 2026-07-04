@@ -1,3 +1,8 @@
+/**
+ * User-configurable global hotkey that toggles the floating chat surface.
+ * Registers the accelerator with the OS via the desktop bridge; the shell
+ * handles the press. See the block below for why it is separate from the palette.
+ */
 import { useSyncExternalStore } from "react";
 
 /**

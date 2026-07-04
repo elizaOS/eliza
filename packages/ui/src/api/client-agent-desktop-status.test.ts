@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for the desktop agent-status client verb. Transport stubbed,
+ * boot config injected, no live agent.
+ */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setBootConfig } from "../config/boot-config";
 import { ElizaClient } from "./client-base";

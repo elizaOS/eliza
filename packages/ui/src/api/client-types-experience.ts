@@ -1,3 +1,7 @@
+/**
+ * Wire types for agent experience records (outcome/context/action/result/
+ * learning) surfaced in the experience views.
+ */
 export interface ExperienceRecord {
   id: string;
   type: string;

@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for the coding-agent task-thread status client verbs. Transport
+ * stubbed, no live agent.
+ */
 import { describe, expect, it, vi } from "vitest";
 import "./client-agent";
 import { ElizaClient } from "./client-base";

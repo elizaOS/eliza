@@ -1,3 +1,8 @@
+/**
+ * Renderer side of the Android agent-triggered screen-capture bridge: pull-polls
+ * queued capture requests and POSTs frames back, since Android has no
+ * agent→renderer push channel. See the block below for the full protocol.
+ */
 import { Capacitor } from "@capacitor/core";
 import { getScreenCapturePlugin } from "../bridge/native-plugins";
 

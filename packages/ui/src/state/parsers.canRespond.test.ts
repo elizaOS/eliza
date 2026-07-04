@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for the `canRespond` readiness signal surviving parse of the WS
+ * status event and feeding deriveAgentReady. Pure functions, no harness.
+ */
 import { describe, expect, it } from "vitest";
 import { parseAgentStatusEvent } from "./parsers";
 import { deriveAgentReady } from "./types";

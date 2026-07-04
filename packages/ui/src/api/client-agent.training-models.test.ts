@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for the training-model listing client verb. Transport stubbed,
+ * no live agent.
+ */
 import { describe, expect, it, vi } from "vitest";
 import "./client-agent";
 import { ElizaClient } from "./client-base";

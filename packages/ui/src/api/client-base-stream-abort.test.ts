@@ -1,13 +1,15 @@
+/**
+ * Unit coverage for client-side stream aborts on the base ElizaClient.
+ * Deterministic SSE streams, no live model.
+ */
 import { describe, expect, it, vi } from "vitest";
 import { ElizaClient } from "./client";
 
 /**
- * FIX: once the SSE response headers arrive, `rawRequestOnce` detaches its
- * request-phase abort listener, so the caller's AbortSignal was no longer wired
- * to the fetch during the body read. Aborting the client controller therefore
- * did nothing to the streaming read loop — a client-side Stop relied entirely on
- * the separate server-abort POST to eventually close the stream. These tests
- * pin that the signal now tears the read loop down immediately.
+ * Pins that a client abort tears down the SSE read loop immediately. The caller's
+ * AbortSignal must stay wired to the fetch through the body read (not just the
+ * request phase), so a client-side Stop cancels the stream without waiting on the
+ * separate server-abort POST. Deterministic streams, no live model.
  */
 describe("streamChatEndpoint client abort", () => {
   it("stops the read loop and cancels the reader when the client aborts mid-stream", async () => {

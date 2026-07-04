@@ -1,3 +1,8 @@
+/**
+ * AgentRequestTransport for native (Capacitor) builds talking to Eliza Cloud:
+ * uses CapacitorHttp for direct cloud hosts (bypassing the WKWebView CORS/cookie
+ * limits), falling back to fetch for everything else.
+ */
 import { Capacitor, CapacitorHttp } from "@capacitor/core";
 import {
   type AgentRequestTransport,

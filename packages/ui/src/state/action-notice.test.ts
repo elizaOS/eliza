@@ -1,3 +1,8 @@
+/**
+ * Unit coverage for the toast helpers in `action-notice`: priority→tone mapping
+ * and the canonical `TOAST_TTL_MS` timing values the shell surfaces rely on.
+ * Pure functions, no harness.
+ */
 import type { NotificationPriority } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { TOAST_TTL_MS, toastToneForPriority } from "./action-notice";
@@ -27,7 +32,6 @@ describe("TOAST_TTL_MS", () => {
   });
 
   it("keeps the historical millisecond values the surfaces relied on", () => {
-    // These are the previously-scattered magic numbers, now canonical.
     expect(TOAST_TTL_MS.default).toBe(2800);
     expect(TOAST_TTL_MS.notification).toBe(4000);
     expect(TOAST_TTL_MS.notificationInterruptive).toBe(7000);

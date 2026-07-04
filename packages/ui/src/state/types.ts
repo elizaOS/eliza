@@ -1,3 +1,8 @@
+/**
+ * Core shared types for the app-state layer: the AppContext value shape, agent
+ * status, and the many request/response DTOs threaded through the shell.
+ * Imported broadly, so keep it type-only.
+ */
 import type {
   WalletChainKind,
   WalletEntry,

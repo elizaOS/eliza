@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for the desktop local-agent transport dispatch over RPC. Runtime
+ * detection mocked, no real agent.
+ */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";

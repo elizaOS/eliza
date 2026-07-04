@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for the Android native agent transport: URL selection and the
+ * native-bridge request path. Capacitor bridge mocked, no real device.
+ */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_BOOT_CONFIG, setBootConfig } from "../config/boot-config";
 import {

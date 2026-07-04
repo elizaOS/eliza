@@ -1,3 +1,8 @@
+/**
+ * Predicates that classify an API base by which surfaces it exposes — direct
+ * Cloud agent bases are chat adapters, so app-shell/orchestrator routes are
+ * gated off for them.
+ */
 import { isDedicatedCloudAgentBase } from "../utils/cloud-agent-base";
 import { isDirectCloudSharedAgentBase } from "./client-cloud";
 

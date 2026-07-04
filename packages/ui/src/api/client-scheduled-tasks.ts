@@ -1,3 +1,7 @@
+/**
+ * ElizaClient extension for owner-facing scheduled-task verbs — exactly the
+ * runner's frozen ScheduledTaskVerb set — plus list/filter reads.
+ */
 import { ElizaClient } from "./client-base";
 import type {
   ScheduledTaskListFilter,

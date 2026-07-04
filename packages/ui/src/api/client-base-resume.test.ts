@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for chat stream resume on the base client. Transport stubbed,
+ * boot config injected, no live model.
+ */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setBootConfig } from "../config/boot-config";
 import { ElizaClient } from "./client-base";

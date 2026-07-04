@@ -1,9 +1,14 @@
+/**
+ * Unit coverage for `firstRunOwnsLoginSurface`, the pure predicate that decides
+ * whether the top-level LoginView owns the screen versus in-chat onboarding.
+ * Guards the double-login window (onboarding incomplete but coordinator past
+ * first-run-required). Pure function, no harness.
+ */
 import { describe, expect, it } from "vitest";
 import { firstRunOwnsLoginSurface } from "./top-level-auth-gate";
 
 describe("firstRunOwnsLoginSurface — top-level LoginView vs in-chat onboarding", () => {
   it("yields the login surface while the coordinator is in first-run-required", () => {
-    // Unchanged from before the fix: the original bypass condition.
     expect(firstRunOwnsLoginSurface("first-run-required", false)).toBe(true);
     expect(firstRunOwnsLoginSurface("first-run-required", undefined)).toBe(
       true,

@@ -1,3 +1,8 @@
+/**
+ * Deadline math for the agent-ready wait loop: an absolute cap plus a sliding
+ * extension applied while the agent stays in `starting`. Electrobun gets a
+ * longer floor. Consumed by the startup coordinator's poll loop.
+ */
 import { isElectrobunRuntime } from "../bridge";
 import { AGENT_READY_TIMEOUT_MS } from "./types";
 

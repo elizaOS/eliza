@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for the Android screen-capture poller: mocks the Capacitor
+ * plugin and asserts the pull loop's request/frame round-trip and backoff.
+ */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Make isNativeMobile() true and the capture plugin present so the poller runs.

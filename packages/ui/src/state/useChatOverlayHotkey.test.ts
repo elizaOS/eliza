@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for chat-overlay accelerator parsing/normalization from keyboard
+ * events. Pure functions, no harness.
+ */
 import { describe, expect, it } from "vitest";
 import {
   acceleratorFromKeyboardEvent,

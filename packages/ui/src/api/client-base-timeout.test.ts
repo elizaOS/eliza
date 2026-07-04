@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for per-request timeout selection on the base client (including
+ * local-inference budgets). Transport stubbed, no live model.
+ */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { setBootConfig } from "../config/boot-config";
 import { ElizaClient } from "./client-base";

@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for cloud handoff-target resolution. Capacitor mocked, no live
+ * cloud.
+ */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@capacitor/core", () => ({

@@ -173,10 +173,9 @@ const TUTORIAL_CHOICE = [
 ].join("\n");
 
 // Recovery choice seeded when a finish/provision flow fails (e.g. a 404 from
-// POST /api/first-run). It replaces the old "re-append the runtime question"
-// behavior — which, on a persistent finish error, re-looped the runtime prompt
-// forever with no explanation and no escape. Every option here is a real way
-// forward: retry the same runtime, pick a different one, or bail out to Settings
+// POST /api/first-run). Every option here is a real way forward — retry the
+// same runtime, pick a different one, or bail out to Settings — so a persistent
+// finish error surfaces an escape instead of re-looping the runtime prompt
 // and configure a provider by hand.
 const ERROR_CHOICE = [
   "[CHOICE:first-run id=error]",

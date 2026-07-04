@@ -1,3 +1,8 @@
+/**
+ * Unit coverage for the streaming-text modification primitive: append/replace/
+ * complete/fail/interrupt/drop modes and referential-equality preservation.
+ * Pure function, no harness.
+ */
 import { describe, expect, it, vi } from "vitest";
 import type { ConversationMessage } from "../../api";
 import {

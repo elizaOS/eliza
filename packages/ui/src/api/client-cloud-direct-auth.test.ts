@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for direct-cloud auth handling in the cloud client. Capacitor
+ * HTTP mocked, no live cloud.
+ */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const capacitorMocks = vi.hoisted(() => ({

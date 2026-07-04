@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for `tunnelCredential` posting scoped credentials to the
+ * credential-tunnel route. Transport stubbed, no live agent.
+ */
 import { describe, expect, it, vi } from "vitest";
 import "./client-agent";
 import { ElizaClient } from "./client-base";

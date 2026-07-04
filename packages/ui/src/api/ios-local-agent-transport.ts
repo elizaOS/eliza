@@ -1,3 +1,8 @@
+/**
+ * AgentRequestTransport for the iOS local agent: installs the __ELIZA_BRIDGE__
+ * window bridge and routes requests to the in-process full-bun agent over its
+ * IPC base. See the ios-local-agent references in the package CLAUDE.md.
+ */
 import { Capacitor, registerPlugin } from "@capacitor/core";
 import {
   installElizaBridge,

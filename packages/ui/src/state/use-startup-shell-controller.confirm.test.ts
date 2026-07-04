@@ -1,3 +1,7 @@
+/**
+ * Unit coverage locking which hosts count as loopback (no confirm prompt) vs
+ * everything else for the attacker-reachable CONNECT deep link. Pure, no harness.
+ */
 import { describe, expect, it } from "vitest";
 import { isLoopbackGatewayHost } from "./use-startup-shell-controller";
 

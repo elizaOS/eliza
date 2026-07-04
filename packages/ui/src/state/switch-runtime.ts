@@ -1,3 +1,9 @@
+/**
+ * Non-destructive runtime switch: repoints the app at a different agent
+ * profile (local / cloud / remote) by updating the active-profile and
+ * active-server records and clearing chat drafts, without wiping persisted
+ * state. Consumed by the runtime picker and connect deep-links.
+ */
 import { client } from "../api";
 import {
   isMobileLocalAgentIpcBase,

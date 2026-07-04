@@ -1,3 +1,8 @@
+/**
+ * Pure mapping between shell views and navigation tabs — derives the UI shell
+ * mode for a tab and resolves the tab to restore for a given shell view,
+ * guarding against invalid tabs leaking into native/desktop mode.
+ */
 import type { Tab } from "../navigation";
 import type { ShellView } from "./types";
 import type { UiShellMode } from "./ui-preferences";

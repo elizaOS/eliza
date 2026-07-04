@@ -1,3 +1,8 @@
+/**
+ * In-Thread Transport Protocol: an AgentRequestTransport that dispatches Requests
+ * straight to a same-process fetch-route kernel (no network), for embedding an
+ * agent's routes in the renderer.
+ */
 import type { AgentRequestTransport } from "./transport";
 
 export interface IttpAgentRequestContext {

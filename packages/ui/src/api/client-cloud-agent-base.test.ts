@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for cloud agent-base resolution/classification. Capacitor mocked,
+ * no live cloud.
+ */
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@capacitor/core", () => ({

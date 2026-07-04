@@ -1,3 +1,8 @@
+/**
+ * State for the app-shell surface: owner name, favorite/recent apps, and the
+ * apps sub-tab. Reconciles localStorage favorites with the server list when the
+ * shell supports full app-shell routes.
+ */
 import { useCallback, useEffect, useState } from "react";
 import { client } from "../api";
 import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";

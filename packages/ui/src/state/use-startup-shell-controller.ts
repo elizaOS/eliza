@@ -1,3 +1,9 @@
+/**
+ * Drives the startup-shell state machine: waits for the local/remote agent,
+ * adopts remote first-run, applies connect deep-links, and surfaces startup
+ * errors. Distinguishes the benign loopback-gateway target from a repoint to a
+ * different server that needs confirmation.
+ */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../api";
 import type { StartupShellView } from "../components/shell/startup-shell-types";

@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for the home↔launcher shell-surface store transitions. In-memory
+ * store, no harness.
+ */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   getShellSurface,

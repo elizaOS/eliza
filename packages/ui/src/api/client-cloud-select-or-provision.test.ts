@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for the cloud select-or-provision-agent flow. Capacitor mocked,
+ * no live cloud.
+ */
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@capacitor/core", () => ({

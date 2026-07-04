@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for the iOS local-agent transport, including native-plugin
+ * availability. Capacitor state mocked, no real device.
+ */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const capacitorState = vi.hoisted(() => ({

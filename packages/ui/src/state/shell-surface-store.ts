@@ -1,3 +1,8 @@
+/**
+ * Single source of truth for which half of the home↔launcher rail is showing,
+ * so one model owns navigation instead of four uncoordinated state machines.
+ * Module-level store shared via globalThis + useSyncExternalStore.
+ */
 import * as React from "react";
 
 /**

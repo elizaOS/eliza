@@ -1,3 +1,8 @@
+/**
+ * Decides which conversation messages render in the transcript: user turns
+ * always show; assistant turns show only with visible text, structured blocks,
+ * or media (image-only replies carry empty text but populated attachments).
+ */
 import type { ConversationMessage } from "../api";
 
 /**

@@ -1,3 +1,8 @@
+/**
+ * Types for the persisted agent-profile registry: each profile records how one
+ * agent (local, cloud, or remote) is reached and authenticated. Consumed by the
+ * agent-profiles store and the runtime-switching flow.
+ */
 export interface AgentProfile {
   /** Stable unique identifier (UUID v4). */
   id: string;

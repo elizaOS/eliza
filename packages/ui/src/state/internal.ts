@@ -1,3 +1,7 @@
+/**
+ * Internal re-export surface for state helpers shared within the package without
+ * widening the public `@elizaos/ui/state` barrel.
+ */
 export {
   filterRenderableConversationMessages,
   shouldKeepConversationMessage,

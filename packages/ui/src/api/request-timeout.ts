@@ -1,3 +1,8 @@
+/**
+ * Per-request fetch timeout budgets. Local on-device TTS/ASR on mobile CPU run
+ * far past the generic 10s bridge timeout, so those paths get minutes-long
+ * budgets to avoid aborting valid, in-progress responses.
+ */
 const DEFAULT_FETCH_TIMEOUT_MS = 10_000;
 // Local neural TTS on mobile CPU is slower than ordinary JSON API calls. Pixel
 // APK validation with the bundled Kokoro path produced normal chat clips in the

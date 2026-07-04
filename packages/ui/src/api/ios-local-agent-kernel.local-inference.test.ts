@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for the iOS in-renderer kernel's local-inference routes.
+ * In-process, no real device.
+ */
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 type KernelModule = Pick<

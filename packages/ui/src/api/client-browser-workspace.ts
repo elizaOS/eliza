@@ -1,3 +1,7 @@
+/**
+ * ElizaClient extension for the desktop browser workspace: snapshot, open, and
+ * navigate tabs through the Electrobun bridge.
+ */
 import { invokeDesktopBridgeRequest } from "../bridge/electrobun-rpc";
 import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
 import type {

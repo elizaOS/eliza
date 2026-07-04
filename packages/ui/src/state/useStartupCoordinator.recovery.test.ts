@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for terminal-startup-error recovery via the startup reducer.
+ * Deps injected against a mocked client, no live agent.
+ */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { startupReducer } from "./startup-coordinator";
 import {

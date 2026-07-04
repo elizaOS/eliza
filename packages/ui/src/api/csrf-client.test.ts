@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for the CSRF-token fetch wrapper. Boot config mocked, no live
+ * server.
+ */
 import { setBootConfig as setSharedBootConfig } from "@elizaos/shared/config/boot-config";
 import { afterEach, describe, expect, it, vi } from "vitest";
 

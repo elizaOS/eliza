@@ -1,3 +1,8 @@
+/**
+ * AgentRequestTransport for the Android local agent: routes requests through
+ * the Capacitor native bridge to the in-process musl-bun agent (IPC base),
+ * including native streaming. Selected when the API base is an Android local URL.
+ */
 import { Capacitor } from "@capacitor/core";
 import { getBootConfig } from "../config/boot-config";
 import { isAndroidLocalAgentUrl } from "../first-run/local-agent-token";
