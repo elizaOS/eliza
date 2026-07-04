@@ -351,6 +351,13 @@ async function main() {
     CONTAINER_CONTROL_PLANE_URL: tCp,
     CONTAINER_CONTROL_PLANE_TOKEN: "local-mock-token",
     CRON_SECRET: "local-cron-secret",
+    // Fixed dev master key so the mock stack exercises the real secrets
+    // envelope end-to-end. Since #12229 (M4) the LocalKMSProvider fails closed
+    // when SECRETS_MASTER_KEY is unset, so any secrets op during a mock session
+    // (connector-OAuth token storage, provisioning/container-deploy secrets)
+    // would otherwise throw. This is a throwaway local-dev key, never a real one.
+    SECRETS_MASTER_KEY:
+      process.env.SECRETS_MASTER_KEY ?? "0123456789abcdef".repeat(4),
   };
 
   try {
