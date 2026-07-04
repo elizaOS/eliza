@@ -1,0 +1,76 @@
+{
+  "$comment": "Committed source of truth for the exhaustive develop lane (#12342). ci-full-matrix-proof.mjs checks this against .github/workflows/test.yml (job presence, no PR-only gate) and against `run-all-tests.mjs --plan=json` (floors + required packages + non-empty script lanes). Bump floors only when the real plan genuinely grows; never lower them to make a shrinking plan pass.",
+  "workflow": ".github/workflows/test.yml",
+  "aggregateStatusJob": "ci-ok",
+  "workflowLanes": [
+    {
+      "job": "server-tests",
+      "name": "Server Tests",
+      "description": "Core/agent/app-core/shared server suite plus PTY/TUI smoke."
+    },
+    {
+      "job": "client-tests",
+      "name": "Client Tests",
+      "description": "packages/ui + app client suite and XR/tutorial/immersive e2e."
+    },
+    {
+      "job": "xr-harness-e2e",
+      "name": "XR harness e2e",
+      "description": "WebXR emulator scene → ray → hit → press → drag capture."
+    },
+    {
+      "job": "plugin-tests",
+      "name": "Plugin Tests",
+      "description": "Sharded plugin suite (matrix); aggregated by plugin-tests-status."
+    },
+    {
+      "job": "integration-tests",
+      "name": "Integration Lane (personal-assistant)",
+      "description": "LifeOps/personal-assistant integration surface."
+    },
+    {
+      "job": "desktop-contract",
+      "name": "Electrobun Desktop Contract",
+      "description": "Desktop/electrobun contract tests."
+    },
+    {
+      "job": "zero-key-unit-coverage",
+      "name": "Zero-Key unit + UI coverage",
+      "description": "Secret-free deterministic unit + UI coverage."
+    },
+    {
+      "job": "zero-key-scenario-runner",
+      "name": "Zero-Key scenario runner",
+      "description": "Deterministic scenario-runner coverage."
+    },
+    {
+      "job": "zero-key-harness-e2e",
+      "name": "Zero-Key harness E2E",
+      "description": "Keyless harness end-to-end coverage."
+    },
+    {
+      "job": "zero-key-e2e",
+      "name": "Zero-Key Deterministic E2E",
+      "description": "Aggregated keyless deterministic E2E gate."
+    }
+  ],
+  "planFloors": {
+    "$comment": "Checked against `run-all-tests.mjs --plan=json`. minTaskCount/minPackageCount guard whole-plan collapse; requiredPackages guard glob-drift or a deleted core package; nonEmptyScriptLanes guard a whole script-type lane disappearing.",
+    "minTaskCount": 240,
+    "minPackageCount": 220,
+    "minPluginTaskCount": 130,
+    "requiredPackages": [
+      "@elizaos/core",
+      "@elizaos/agent",
+      "@elizaos/app-core",
+      "@elizaos/ui",
+      "@elizaos/scenario-runner",
+      "@elizaos/skills"
+    ],
+    "nonEmptyScriptLanes": [
+      "test",
+      "test:e2e",
+      "test:integration"
+    ]
+  }
+}

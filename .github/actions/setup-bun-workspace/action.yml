@@ -155,8 +155,12 @@ runs:
         bun-version: ${{ inputs.bun-version }}
 
     - name: Cache Bun install
-      if: ${{ runner.os != 'Linux' }}
-      uses: actions/cache@v5
+      # Cache the Bun install store on every OS, Linux included (#12338). A miss
+      # just means no speedup and a cache write failure is non-fatal, so this is
+      # additive: worst case a cold Linux runner behaves exactly as before while
+      # warm runners skip re-downloading the dependency tarballs. Pinned by SHA
+      # (no floating @v5) to avoid the Bun/cache-action drift #12338 targets.
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
       with:
         path: ~/.bun/install/cache
         key: bun-${{ runner.os }}-${{ inputs.bun-version }}-${{ hashFiles('bun.lock') }}

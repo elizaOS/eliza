@@ -62,6 +62,9 @@ jobs:
       - name: Validate CI workflow dedup contract
         run: node packages/scripts/ci-workflow-dedup-contract.mjs
 
+      - name: Validate GitHub-native turbo cache contract
+        run: node packages/scripts/ci-turbo-cache-contract.mjs
+
       - name: Determine affected test lanes
         id: filter
         shell: bash

@@ -90,10 +90,7 @@ import {
   runPool,
   taskBelongsToShard,
 } from "./lib/test-task-pool.mjs";
-import {
-  expandWorkspaceGlobs,
-  listWorkspaceDirs,
-} from "./lib/workspaces.mjs";
+import { expandWorkspaceGlobs, listWorkspaceDirs } from "./lib/workspaces.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "..", "..");
@@ -175,6 +172,7 @@ let onlyFlag;
 let excludeFlags;
 let concurrencyFlag;
 let planFlag;
+let minTasksFlag;
 try {
   filterFlag = parseFlagValue("--filter");
   patternFlag = parseFlagValue("--pattern");
@@ -182,6 +180,7 @@ try {
   excludeFlags = parseRepeatedFlagValue("--exclude");
   concurrencyFlag = parseFlagValue("--concurrency");
   planFlag = parseFlagValue("--plan");
+  minTasksFlag = parseFlagValue("--min-tasks");
 } catch (error) {
   failUsage(error.message);
 }
@@ -204,6 +203,9 @@ if (helpFlag) {
       "  --concurrency=<n>    Run parallel-safe `test` tasks through an n-worker",
       "                       pool (pr lane only; default 1 = fully serial).",
       "  --plan[=text|json]   Print the discovered test plan without running it.",
+      "  --min-tasks=<n>      Fail loudly (exit 3) if fewer than n tasks are",
+      "                       collected, or if every collected task skips. Guards",
+      "                       against a filter/glob collapse reporting vacuous green.",
       "",
       "Env vars:",
       "  TEST_LANE=pr|post-merge        Lane select (default: pr).",
@@ -212,6 +214,7 @@ if (helpFlag) {
       "  TEST_PACKAGE_FILTER=<regex>     Equivalent to --filter (legacy).",
       "  TEST_SCRIPT_FILTER=<regex>      Filter by script name.",
       "  TEST_START_AT=<substring>       Skip until first matching label.",
+      "  MIN_TEST_TASKS=<n>              Same as --min-tasks (default 0 = off).",
       "",
       "See `.env.test.example` for deterministic PR and live lane env setup.",
       "",
@@ -229,6 +232,19 @@ if (onlyFlag && !["e2e", "test"].includes(onlyFlag)) {
 if (!["text", "json"].includes(planFormat)) {
   failUsage(`--plan must be "text" or "json", got "${planFormat}"`);
 }
+
+// Vacuous-green floor: a lane that collects zero tasks (a filter/shard/glob that
+// silently matched nothing) or whose every task skips (no test files) otherwise
+// exits green and reads as coverage. `--min-tasks`/`MIN_TEST_TASKS` turns both
+// into a loud non-zero exit (3) so the exhaustive lane's proof job can rely on it.
+const minTasksRaw = minTasksFlag ?? process.env.MIN_TEST_TASKS ?? "0";
+const minTasks = Number.parseInt(minTasksRaw, 10);
+if (!Number.isInteger(minTasks) || minTasks < 0) {
+  failUsage(
+    `--min-tasks/MIN_TEST_TASKS must be a non-negative integer, got "${minTasksRaw}"`,
+  );
+}
+
 if (argv.length > 0) {
   failUsage(`unknown argument(s): ${argv.join(" ")}`);
 }
@@ -1095,7 +1111,22 @@ if (planEnabled) {
   process.exit(0);
 }
 
+// Collection-time vacuous-green floor. Evaluated before any task runs so a lane
+// that matched nothing fails immediately instead of "passing" with no work.
+if (minTasks > 0 && tasks.length < minTasks) {
+  console.error(
+    `[eliza-test] VACUOUS-GREEN GUARD collected ${tasks.length} task(s) < required ${minTasks}. ` +
+      "A filter/shard/glob collapsed this lane to (near-)zero work. Failing loudly instead of reporting green.",
+  );
+  process.exit(3);
+}
+
 ensurePluginSqlPostgresEnv();
+
+// Runtime outcome tally, consumed by the all-skipped vacuous-green guard below.
+// A task that skips resolved (no local test files) counts toward `skipped`; a
+// task that actually ran vitest/bun counts toward `ran`.
+const outcomeTally = { ran: 0, skipped: 0 };
 
 // Run one task, logging START/PASS/SKIP/FAIL. `stream` echoes child output live
 // (serial path); when false the output is buffered and flushed only on failure
@@ -1114,10 +1145,12 @@ async function runTask(task, { stream }) {
     );
     const durationMs = Date.now() - startedAt;
     if (result.skipped) {
+      outcomeTally.skipped += 1;
       console.log(
         `[eliza-test] SKIP ${task.label} (${durationMs}ms, no test files found)`,
       );
     } else {
+      outcomeTally.ran += 1;
       console.log(`[eliza-test] PASS ${task.label} (${durationMs}ms)`);
     }
     return result;
@@ -1125,6 +1158,21 @@ async function runTask(task, { stream }) {
     const durationMs = Date.now() - startedAt;
     console.error(`[eliza-test] FAIL ${task.label} (${durationMs}ms)`);
     throw error;
+  }
+}
+
+// Enforced after the workspace sweep but before the cloud step: when a lane
+// collected work yet every task skipped (each package's glob matched no test
+// files on this runner), the run would otherwise exit green having asserted
+// nothing. `--min-tasks` upgrades that to a loud failure.
+function enforceRanFloor() {
+  if (minTasks <= 0) return;
+  if (outcomeTally.ran === 0 && tasks.length > 0) {
+    console.error(
+      `[eliza-test] VACUOUS-GREEN GUARD ${tasks.length} task(s) collected but all skipped ` +
+        "(no test files found on this runner). Failing loudly instead of reporting green.",
+    );
+    process.exit(3);
   }
 }
 
@@ -1178,6 +1226,8 @@ if (concurrency <= 1) {
     process.exit(1);
   }
 }
+
+enforceRanFloor();
 
 // Final stage: cloud tests (unless --no-cloud was passed)
 if (!noCloud) {
