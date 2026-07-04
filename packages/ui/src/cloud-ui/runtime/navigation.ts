@@ -37,7 +37,10 @@ function normalizeInternalHref(href: string): string {
     if (url.origin === window.location.origin) {
       return `${url.pathname}${url.search}${url.hash}`;
     }
-  } catch {}
+  } catch {
+    // error-policy:J3 unparseable href is untrusted input → return it verbatim
+    // for the caller to route; never fabricate a normalized path from garbage.
+  }
   return href;
 }
 

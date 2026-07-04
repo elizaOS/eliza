@@ -487,6 +487,9 @@ export function usePluginsSkillsState({
       setActionNotice(`Skill "${name}" created.`, "success");
       await refreshSkills();
       if (result.path)
+        // error-policy:J6 best-effort post-success open of the just-created skill;
+        // creation already surfaced its own success notice, so a failed open must
+        // not be rethrown into the outer catch and flip it to a failure notice.
         await client.openSkill(result.skill?.id ?? name).catch(() => undefined);
     } catch (err) {
       setActionNotice(

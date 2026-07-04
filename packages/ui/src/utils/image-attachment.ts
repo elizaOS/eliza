@@ -348,6 +348,8 @@ async function fileToChatAttachment(file: File): Promise<ImageAttachment> {
   if (imageNeedsReencode(file.type, data.length)) {
     ({ data, mimeType } = await reencodeImageToChatCap(file));
   }
+  // error-policy:J4 the thumbnail is optional preview enrichment; null omits it
+  // while the full-resolution attachment (already read above) still sends.
   const thumbnail = await createImageThumbnail(file).catch(() => null);
   return {
     data,

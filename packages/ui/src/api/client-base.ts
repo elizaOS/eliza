@@ -1431,6 +1431,9 @@ export class ElizaClient {
           const parsed = JSON.parse(queued) as { type?: unknown };
           return parsed.type !== "active-conversation";
         } catch {
+          // error-policy:J3 an unparseable queued frame can't be classified as a
+          // superseded active-conversation update, so keep it in the send queue
+          // rather than silently dropping a message we failed to inspect.
           return true;
         }
       });
@@ -1602,6 +1605,7 @@ export class ElizaClient {
       // body and frees the connection) and returning whatever streamed so far as
       // an interrupted (`completed: false`) turn.
       if (signal?.aborted) {
+        // error-policy:J6 best-effort teardown of an already-aborted reader.
         void reader.cancel("elizaos-sse-client-abort").catch(() => {});
         break;
       }
@@ -1643,6 +1647,7 @@ export class ElizaClient {
         // A client abort wins over everything else: cancel the reader and stop —
         // the partial streamed so far is returned as an interrupted turn.
         if (signal?.aborted) {
+          // error-policy:J6 best-effort teardown of an already-aborted reader.
           void reader.cancel("elizaos-sse-client-abort").catch(() => {});
           break;
         }
@@ -1656,6 +1661,7 @@ export class ElizaClient {
           streamState.doneFailureKind =
             streamState.doneFailureKind ?? "provider_issue";
         }
+        // error-policy:J6 best-effort teardown after a stalled/dropped stream.
         void reader.cancel("elizaos-sse-idle-timeout").catch(() => {});
         break;
       }
@@ -1670,6 +1676,7 @@ export class ElizaClient {
           if (!line.startsWith("data:")) continue;
           if (applyStreamChatDataLine(line, streamState, onToken, onStatus)) {
             buffer = "";
+            // error-policy:J6 best-effort teardown once the terminal event lands.
             void reader.cancel("elizaos-sse-terminal-done").catch(() => {});
             break;
           }

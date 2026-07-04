@@ -783,6 +783,8 @@ export class Downloader {
         // treated as invalid and replaced by the fresh bundle artifact.
       }
     } else {
+      // error-policy:J6 best-effort cleanup of a stale staging file before the
+      // fresh download re-creates it; force already ignores a missing path.
       await fsp.rm(stagingPath, { force: true }).catch(() => undefined);
     }
 

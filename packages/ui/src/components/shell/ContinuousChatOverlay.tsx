@@ -1927,6 +1927,8 @@ export function ContinuousChatOverlay({
             if (cancelled) handle.remove();
             else handles.push(handle);
           })
+          // error-policy:J6 best-effort native listener registration; the
+          // visualViewport path (outer catch) covers keyboard insets otherwise.
           .catch(() => {});
         void Keyboard.addListener("keyboardWillHide", () => {
           setNativeKeyboardHeight(0);
@@ -1935,6 +1937,8 @@ export function ContinuousChatOverlay({
             if (cancelled) handle.remove();
             else handles.push(handle);
           })
+          // error-policy:J6 best-effort native listener registration; the
+          // visualViewport path (outer catch) covers keyboard insets otherwise.
           .catch(() => {});
       })
       .catch(() => {

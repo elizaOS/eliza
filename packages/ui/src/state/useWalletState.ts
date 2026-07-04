@@ -27,6 +27,7 @@ import type {
   WalletPrimaryMap,
   WalletSource,
 } from "@elizaos/shared";
+import { logger } from "@elizaos/logger";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   client,
@@ -85,7 +86,14 @@ export function useWalletState({
     saveWalletEnabled(v);
     void client
       .updateConfig({ ui: { capabilities: { wallet: v } } })
-      .catch(() => {});
+      .catch((err) => {
+        // Optimistic local toggle already applied; a lost server write would
+        // silently revert on the next getConfig hydration, so make it observable.
+        logger.error(
+          { err },
+          "[useWalletState] failed to persist wallet capability toggle to server config",
+        );
+      });
   }, []);
 
   const [browserEnabled, setBrowserEnabledRaw] = useState(loadBrowserEnabled);
@@ -94,7 +102,12 @@ export function useWalletState({
     saveBrowserEnabled(v);
     void client
       .updateConfig({ ui: { capabilities: { browser: v } } })
-      .catch(() => {});
+      .catch((err) => {
+        logger.error(
+          { err },
+          "[useWalletState] failed to persist browser capability toggle to server config",
+        );
+      });
   }, []);
 
   const [computerUseEnabled, setComputerUseEnabledRaw] = useState(
@@ -105,7 +118,12 @@ export function useWalletState({
     saveComputerUseEnabled(v);
     void client
       .updateConfig({ ui: { capabilities: { computerUse: v } } })
-      .catch(() => {});
+      .catch((err) => {
+        logger.error(
+          { err },
+          "[useWalletState] failed to persist computerUse capability toggle to server config",
+        );
+      });
   }, []);
 
   // ── Hydrate capability flags from server config on mount ──────────
@@ -133,6 +151,8 @@ export function useWalletState({
           saveComputerUseEnabled(caps.computerUse);
         }
       })
+      // error-policy:J4 offline/stale hydration degrades to the localStorage
+      // fallback the capability toggles were seeded from (comment above).
       .catch(() => {});
     return () => {
       cancelled = true;

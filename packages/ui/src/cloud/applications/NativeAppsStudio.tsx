@@ -270,6 +270,8 @@ export default function NativeAppsStudio(): React.JSX.Element {
       const token = readStoredStewardToken()?.trim() ?? null;
       if (shouldRefreshBeforeRender(token)) {
         const refreshed = await Promise.race([
+          // error-policy:J4 best-effort pre-render token refresh; on failure or
+          // timeout the page still boots with the existing token (below).
           refreshCloudStewardSession({
             endpoint: resolveNativeStewardRefreshEndpoint(),
           }).catch(() => null),
@@ -283,7 +285,8 @@ export default function NativeAppsStudio(): React.JSX.Element {
           try {
             window.dispatchEvent(new CustomEvent("steward-token-sync"));
           } catch {
-            // best-effort
+            // error-policy:J6 best-effort notify; token is already persisted, so
+            // a missing CustomEvent constructor (SSR/old runtime) is non-fatal.
           }
         }
       }

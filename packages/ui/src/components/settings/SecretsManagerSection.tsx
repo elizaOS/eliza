@@ -341,6 +341,9 @@ function VaultBody({
         client.rawRequest("/api/secrets/routing", undefined, {
           allowNonOk: true,
         }),
+        // error-policy:J4 agents/apps are optional cross-reference enrichment;
+        // null degrades those columns while the core secrets panels below still
+        // fail hard on a bad backends/preferences/methods response.
         client
           .rawRequest("/api/agents", undefined, { allowNonOk: true })
           .catch(() => null),

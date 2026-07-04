@@ -780,6 +780,9 @@ async function getFullBunRuntime(): Promise<FullBunRuntimePlugin | null> {
       // the raw Capacitor proxy — awaiting the proxy deadlocks; see the
       // comment inside it).
       const runtime = await importFullBunRuntimePlugin();
+      // error-policy:J4 status probe — an unreachable/not-yet-booted engine is
+      // the expected "not ready" shape; null falls through to start() below,
+      // where a genuine start() failure is NOT caught and surfaces to the user.
       const currentStatus = await runtime.getStatus().catch(() => null);
       if (currentStatus?.ready && currentStatus.engine === "bun") {
         recordIosNativeAgentBootPhase("ready");

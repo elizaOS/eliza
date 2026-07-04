@@ -74,6 +74,8 @@ async function updateProfile(formData: FormData): Promise<ProfileActionResult> {
     });
     const body = (await res
       .json()
+      // error-policy:J3 a non-JSON/empty body is an explicit "invalid" signal;
+      // the `!body?.success` check below turns it into a user-facing error.
       .catch(() => null)) as ProfileMutationBody | null;
     if (!body?.success) {
       return {
@@ -103,6 +105,8 @@ async function updateEmail(formData: FormData): Promise<ProfileActionResult> {
     });
     const body = (await res
       .json()
+      // error-policy:J3 a non-JSON/empty body is an explicit "invalid" signal;
+      // the `!body?.success` check below turns it into a user-facing error.
       .catch(() => null)) as ProfileMutationBody | null;
     if (!body?.success) {
       return { success: false, error: body?.error ?? "Failed to update email" };
@@ -127,6 +131,8 @@ async function uploadAvatar(formData: FormData): Promise<AvatarUploadResult> {
     });
     const body = (await res
       .json()
+      // error-policy:J3 a non-JSON/empty body is an explicit "invalid" signal;
+      // the `!body?.success` check below turns it into a user-facing error.
       .catch(() => null)) as ProfileMutationBody | null;
     if (body?.success && typeof body.avatarUrl === "string") {
       return {
