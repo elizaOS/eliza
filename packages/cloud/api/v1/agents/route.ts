@@ -585,6 +585,7 @@ app.post("/", async (c) => {
       202,
     );
   } catch (error) {
+    // error-policy:J1 route boundary — every catch in v1/agents/* translates a thrown error into a structured HTTP failure (typed 4xx for known cases, failureResponse 5xx otherwise), never a fabricated success.
     if (error instanceof AgentImageNotAllowedError) {
       logger.warn("[service-api] Agent creation blocked: image not allowed", {
         image: error.image,

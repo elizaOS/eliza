@@ -138,6 +138,10 @@ async function handleWhatsAppWebhook(c: AppContext): Promise<Response> {
 
     return c.json({ success: true });
   } catch (error) {
+    // error-policy:J1 route boundary for the webhooks/ dir — the outermost handler
+    // catch translates an unexpected exception into an explicit 500 (structured
+    // failure), never a fabricated 200/ack. Parse/validation failures degrade to
+    // 400 above; per-message failures are isolated and the claim is released.
     logger.error("[WhatsAppWebhook] Error processing webhook", {
       orgId,
       error: error instanceof Error ? error.message : "Unknown error",

@@ -598,6 +598,7 @@ async function configureDomainDns(input: {
   const records = await cloudflareDnsService
     .listRecords(input.zoneId)
     .catch((err) => {
+      // error-policy:J6 best-effort DNS reconciliation AFTER the domain purchase already committed+debited; a failed record lookup degrades to "attempt a create" (itself non-fatal below), never failing the completed purchase. Observed via this warn.
       logger.warn("[Domains Buy] DNS record lookup failed before CNAME setup", {
         appId: input.appId,
         domain: input.domain,

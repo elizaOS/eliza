@@ -32,6 +32,9 @@ app.get("/", async (c) => {
       },
     });
   } catch (error) {
+    // error-policy:J1 route boundary for the users/ dir — the outermost handler
+    // catch translates exceptions into a structured HTTP failure
+    // (failureResponse → 5xx / typed status), never a fabricated success.
     logger.error("[users/me] error", {
       error: error instanceof Error ? error.message : String(error),
     });

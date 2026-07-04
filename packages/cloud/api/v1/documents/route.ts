@@ -24,6 +24,12 @@ interface CreateDocumentBody {
 
 const app = new Hono<AppEnv>();
 
+// error-policy:J1 every handler in the v1/documents/* dir wraps its body in one
+// outermost try/catch that translates exceptions into a structured failure via
+// failureResponse(c, error) (or a 4xx for validation/not-found). No catch in
+// this directory fabricates a success/empty on a failed DB/BLOB call. The
+// `.catch(() => null)` sites are J3 request-body parse guards (invalid JSON ->
+// 400), and the retrying blob-delete throws its last error rather than swallow.
 app.use("*", rateLimit(RateLimitPresets.STANDARD));
 
 app.get("/", async (c) => {

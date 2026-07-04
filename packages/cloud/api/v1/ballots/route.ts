@@ -100,6 +100,7 @@ app.post("/", async (c) => {
       participantTokens: result.participantTokens,
     });
   } catch (error) {
+    // error-policy:J1 route boundary — every catch in v1/ballots/* translates a thrown error into a structured HTTP failure via failureResponse (never a fabricated 200/empty).
     logger.error("[SecretBallots API] Failed to create ballot", { error });
     return failureResponse(c, error);
   }

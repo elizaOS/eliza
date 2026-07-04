@@ -58,6 +58,14 @@ import { CreateContainerSchema } from "./schema";
 
 const app = new Hono<AppEnv>();
 
+// error-policy:J1 every handler across the v1/containers/* dir (this collection
+// route plus [id]) has one outermost try/catch that translates exceptions into
+// a structured HTTP failure: HetznerClientError maps to a typed 400/404/502/503
+// (see handleContainerError in [id]/route.ts), everything else goes through
+// failureResponse(c, error). No catch here fabricates a success or empty list;
+// a not-found container is an explicit 404 and a listByOrganization failure
+// propagates to the 5xx boundary rather than returning [].
+
 function slugify(name: string): string {
   return (
     name

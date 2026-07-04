@@ -116,6 +116,7 @@ app.get("/", async (c) => {
       truncated: fullKeys.length > MAX_LIST_RESULTS,
     });
   } catch (error) {
+    // error-policy:J1 route boundary — every catch in v1/apis/* translates a thrown error into a structured HTTP failure via failureResponse (never a fabricated 200/empty).
     return failureResponse(c, error);
   }
 });

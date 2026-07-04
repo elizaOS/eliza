@@ -71,6 +71,12 @@ app.post("/", async (c) => {
     }
 
     const token = parsed.data.token ?? c.req.query("token");
+    // error-policy:J4 the submitter is by-design sessionless in the token path
+    // (out-of-band recipient), so an absent/invalid session is an expected
+    // degrade to token-only, not a swallowed failure. authorizeSubmit rejects
+    // an unauthenticated caller when the request required an authed link, so a
+    // genuine auth outage still surfaces as a structured error, never a fake
+    // success.
     const user = await getCurrentUser(c).catch(() => null);
     const actor = user?.organization_id
       ? actorFromUser({ ...user, organization_id: user.organization_id })

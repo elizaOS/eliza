@@ -78,6 +78,10 @@ async function forwardContainerSync(
       try {
         json = JSON.parse(text);
       } catch {
+        // error-policy:J3 the upstream control-plane body is untrusted; an
+        // unparseable body on an OK response yields no supplementary data to
+        // merge, so we keep the locally-built authoritative base response. A
+        // non-OK upstream is already surfaced verbatim below (status + text).
         json = null;
       }
     }

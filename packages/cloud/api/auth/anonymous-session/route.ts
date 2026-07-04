@@ -130,6 +130,9 @@ app.post("/", async (c) => {
       },
     });
   } catch (error) {
+    // error-policy:J1 route boundary for the auth/ dir — the outermost handler
+    // catches here translate exceptions into a structured HTTP failure
+    // (failureResponse → 5xx / typed status), never a fabricated success.
     logger.error("[anonymous-session] Error:", error);
     return failureResponse(c, error);
   }

@@ -543,6 +543,7 @@ app.post("/", async (c) => {
     // catch must NOT also release it.
     billed = true;
     const billedPromise = settleBilling().catch((err) => {
+      // error-policy:J7 deferred settlement runs after the response is returned; its rejection is observed here and drained by waitUntil below. The hold is released inside settleBilling's own failure path.
       logger.error("[Embeddings] Failed to settle billing", {
         error: err instanceof Error ? err.message : String(err),
       });
@@ -566,6 +567,7 @@ app.post("/", async (c) => {
       },
     });
   } catch (error) {
+    // error-policy:J1 route boundary — this catch releases the upfront credit hold and translates the failure into a structured HTTP error via failureResponse below (never a fabricated 200/empty embedding set).
     // Release the upfront credit hold on any failure that landed here before
     // billing took over (e.g. the embedding provider threw 429/5xx). Guarded by
     // `billed` so the success path's reconcile is never double-applied, and by

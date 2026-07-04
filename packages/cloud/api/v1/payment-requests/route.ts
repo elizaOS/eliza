@@ -142,6 +142,7 @@ app.post("/", async (c) => {
       hostedUrl: result.hostedUrl,
     });
   } catch (error) {
+    // error-policy:J1 route boundary — every catch in v1/payment-requests/* translates a thrown error into a structured HTTP failure via failureResponse (never a fabricated 200/empty).
     logger.error("[PaymentRequests API] Failed to create payment request", {
       error,
     });

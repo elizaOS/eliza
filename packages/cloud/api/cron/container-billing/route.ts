@@ -509,6 +509,9 @@ async function handleContainerBilling(c: AppContext): Promise<Response> {
     // above run now instead of waiting for the next process-provisioning-jobs
     // tick. Fire-and-forget — the daemon's own cron is the safety net.
     if (containersShutdown > 0) {
+      // error-policy:J5 fire-and-forget daemon kick — a failed trigger is
+      // recovered by the provisioning worker's own cron (the safety net named in
+      // the comment above), which is where the rejection is effectively observed.
       void provisioningJobService.triggerImmediate(c.env).catch(() => {});
     }
 

@@ -73,6 +73,11 @@ function getApprovalRequestsService(): ApprovalRequestsService {
 
 const app = new Hono<AppEnv>();
 
+// error-policy:J1 every handler across the v1/approval-requests/* dir (this
+// collection route plus [id], [id]/approve, [id]/deny, [id]/cancel) has one
+// outermost try/catch that translates exceptions into a structured failure via
+// failureResponse(c, error), with typed 400 for invalid input and 404 for a
+// not-found row. No catch here fabricates a success or an empty result.
 app.use("*", rateLimit(RateLimitPresets.STANDARD));
 
 app.post("/", async (c) => {

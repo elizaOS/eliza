@@ -101,6 +101,7 @@ app.post("/", async (c) => {
 
     return c.json({ success: true, oauthIntent });
   } catch (error) {
+    // error-policy:J1 route boundary — every catch in v1/oauth-intents/* translates a thrown error into a structured HTTP failure via failureResponse (never a fabricated 200/empty).
     logger.error("[OAuthIntents API] Failed to create oauth intent", { error });
     return failureResponse(c, error);
   }

@@ -72,6 +72,7 @@ app.post("/", async (c) => {
       deliveredTo: [],
     });
   } catch (error) {
+    // error-policy:J1 route boundary — every catch in v1/device-bus/* translates a thrown error into a structured HTTP failure via failureResponse (never a fabricated 200/empty).
     return failureResponse(c, error);
   }
 });

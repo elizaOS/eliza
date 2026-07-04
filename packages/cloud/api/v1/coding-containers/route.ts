@@ -82,6 +82,14 @@ import type { AppContext, AppEnv, AuthedUser } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 
+// error-policy:J1 every handler across the v1/coding-containers/* dir (this
+// route plus [containerId]/sync and promotions) has one outermost try/catch
+// that translates exceptions into a structured HTTP failure via
+// failureResponse(c, error), with typed codes for allowlist/quota/enqueue/
+// provision failures. No catch here fabricates a success: a missing sandbox
+// after provisioning is a 500, an enqueue failure is a 503, a provision-job
+// failure is a 402/502.
+
 // How long to wait for the daemon to provision the container before returning
 // a 202 "still working" to the caller (the job keeps running; the caller can
 // poll `/api/v1/jobs/{jobId}`). Container cold-start (image pull + boot) is
@@ -359,6 +367,9 @@ async function createCodingContainer(
     // job table unavailable). Best-effort — log but don't mask the original error.
     try {
       await elizaSandboxService.deleteAgent(sandbox.id, user.organization_id);
+      // error-policy:J6 best-effort orphan teardown after an enqueue failure;
+      // a failed cleanup is logged (warn) and does not mask the enqueue error
+      // returned below as a 503.
     } catch (deleteError) {
       logger.warn(
         "[CodingContainers API] orphan cleanup failed after enqueue error",
@@ -384,6 +395,9 @@ async function createCodingContainer(
   }
 
   const { job } = enqueue;
+  // error-policy:J5 fire-and-forget daemon kick; the rejection IS observed
+  // inside triggerImmediate (it logs), and the provisioning cron is the safety
+  // net, so a failed immediate trigger only delays (never drops) provisioning.
   void provisioningJobService.triggerImmediate(c.env).catch(() => {
     // Logged inside the service; the cron is the safety net.
   });

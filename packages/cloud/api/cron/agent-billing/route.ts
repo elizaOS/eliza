@@ -553,6 +553,10 @@ async function handleAgentBilling(c: AppContext): Promise<Response> {
       },
     });
   } catch (error) {
+    // error-policy:J1 route boundary for the cron/ dir — the outermost handler
+    // catch translates exceptions into a structured HTTP failure
+    // (failureResponse → 5xx / typed status), never a fabricated success. Per-item
+    // failures inside the sweep are isolated and reported in the result summary.
     logger.error("[Agent Billing] Failed", {
       error: error instanceof Error ? error.message : String(error),
     });

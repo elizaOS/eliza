@@ -53,6 +53,7 @@ app.delete("/", async (c) => {
         metadata: { key_id: id, reason: "user_delete" },
       })
       .catch((err: unknown) => {
+        // error-policy:J7 audit-log emit is best-effort telemetry; a failed emit must not fail an already-revoked key. Observed via this warn.
         logger.warn("[API Keys] revoke audit emit failed", {
           error: err instanceof Error ? err.message : String(err),
         });

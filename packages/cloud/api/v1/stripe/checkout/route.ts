@@ -95,6 +95,7 @@ app.post("/", async (c) => {
 
     return c.json({ success: true, hostedUrl: result.hostedUrl ?? null });
   } catch (error) {
+    // error-policy:J1 route boundary — every catch in v1/stripe/* translates a thrown error into a structured HTTP failure via failureResponse (never a fabricated 200/empty).
     logger.error("[StripeCheckout API] Failed to create checkout", { error });
     return failureResponse(c, error);
   }

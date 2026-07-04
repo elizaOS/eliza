@@ -79,7 +79,7 @@ async function __hono_POST(c: AppContext) {
     });
 
     void provisioningJobService.triggerImmediate(c.env).catch(() => {
-      // Logged inside the service.
+      // error-policy:J5 fire-and-forget provisioning kick; the rejection is observed and logged inside provisioningJobService.
     });
 
     // Poll the job row for the daemon-delivered reply.

@@ -217,7 +217,10 @@ async function processTwitterAutomation({
 async function processApp(item: AppWithConfig): Promise<ProcessResult[]> {
   const results: ProcessResult[] = [];
 
-  // Process all platforms for this app in parallel
+  // Process all platforms for this app in parallel.
+  // error-policy:J7 per-platform isolation in a batch cron — one platform's
+  // failure is logged and must not abort the sibling platforms or the sweep; a
+  // failed platform yields null (skipped, not counted as a successful post).
   const [discordResult, telegramResult, twitterResult] = await Promise.all([
     processDiscordAutomation(item).catch((error) => {
       logger.error("[SocialAutomation Cron] Discord error", {

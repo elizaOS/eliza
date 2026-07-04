@@ -68,7 +68,7 @@ app.post("/", async (c) => {
     });
 
     void provisioningJobService.triggerImmediate(c.env).catch(() => {
-      // Logged inside the service.
+      // error-policy:J5 fire-and-forget provisioning kick; the rejection is observed and logged inside provisioningJobService.
     });
 
     return c.json(

@@ -65,6 +65,7 @@ app.get("/", async (c) => {
       },
     });
   } catch (error) {
+    // error-policy:J1 route boundary — every catch in v1/apps/* translates a thrown error into a structured HTTP failure (500 with an error body), never a fabricated 200 with empty analytics.
     logger.error("Failed to get app analytics:", error);
     return c.json(
       {

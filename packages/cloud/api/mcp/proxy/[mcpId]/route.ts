@@ -463,6 +463,8 @@ app.post("/", async (c) => {
           platformFeeCredits,
         },
       })
+      // error-policy:J7 usage recording is diagnostic and runs after the proxied
+      // call already succeeded and settled; a failed write is logged, not fatal.
       .catch((usageError: Error | string) => {
         logger.error("[MCP Proxy] Failed to record usage", {
           mcpId,

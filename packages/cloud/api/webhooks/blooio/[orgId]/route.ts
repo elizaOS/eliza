@@ -276,6 +276,8 @@ async function handleIncomingMessage(
   if (apiKey && event.sender) {
     markChatAsRead(apiKey, event.sender, {
       fromNumber: blooioFromNumber || undefined,
+      // error-policy:J6 best-effort read-receipt side-effect — a failed read
+      // marker is logged and must not affect webhook processing of the message.
     }).catch((err) =>
       logger.warn("[BlooioWebhook] Failed to mark chat as read", {
         orgId,

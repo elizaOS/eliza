@@ -155,6 +155,7 @@ async function __hono_PATCH(
 
     return Response.json(result);
   } catch (error) {
+    // error-policy:J1 route boundary — every catch in v1/admin/* translates a thrown error into a structured HTTP failure (500 / typed status), never a fabricated success.
     logger.error("[Admin] Org rate limits PATCH error", { error, orgId });
     return Response.json({ error: "Internal server error" }, { status: 500 });
   }

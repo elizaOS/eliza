@@ -60,6 +60,8 @@ app.post("/", async (c) => {
           request_id: c.get("requestId"),
           metadata: { method: "steward_cookie" },
         })
+        // error-policy:J7 audit write is diagnostic; logout already succeeded via
+        // the cookie clear above, so a dropped audit event is logged, not fatal.
         .catch((err: unknown) => {
           logger.warn("[Logout] audit emit failed", {
             error: err instanceof Error ? err.message : String(err),
@@ -67,9 +69,9 @@ app.post("/", async (c) => {
         });
     }
   } catch (error) {
-    // Cookies are already cleared, so the user is logged out client-side; a
-    // failed server-side teardown must not turn logout into a 500 that strands
-    // stale cookies.
+    // error-policy:J6 best-effort teardown — cookies are already cleared, so the
+    // user is logged out client-side; a failed server-side session teardown must
+    // not turn logout into a 500 that strands stale cookies. Caches expire on TTL.
     logger.warn(
       "[Logout] server-side teardown failed (cookies already cleared)",
       {

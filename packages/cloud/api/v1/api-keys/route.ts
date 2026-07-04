@@ -51,6 +51,7 @@ app.get("/", async (c) => {
     const keys = await apiKeysService.listByOrganization(user.organization_id);
     return c.json({ keys: keys.map(toClientApiKey) });
   } catch (error) {
+    // error-policy:J1 route boundary — every catch in v1/api-keys/* translates a thrown error into a structured HTTP failure via failureResponse (never a fabricated 200/empty key list).
     logger.error("Error fetching API keys:", error);
     return failureResponse(c, error);
   }
@@ -108,6 +109,7 @@ app.post("/", async (c) => {
         },
       })
       .catch((err: unknown) => {
+        // error-policy:J7 audit-log emit is best-effort telemetry; a failed emit must not fail an already-created key. Observed via this warn.
         logger.warn("[API Keys] create audit emit failed", {
           error: err instanceof Error ? err.message : String(err),
         });

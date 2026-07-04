@@ -203,6 +203,9 @@ app.post("/", async (c) => {
       alreadyApplied: false,
     });
   } catch (error) {
+    // error-policy:J1 route boundary for the billing/ dir — the outermost handler
+    // catch translates exceptions into a structured HTTP failure
+    // (failureResponse → 5xx / typed status), never a fabricated success.
     logger.error("[Billing Checkout Verify] Error:", error);
     return failureResponse(c, error);
   }

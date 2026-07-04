@@ -78,6 +78,10 @@ app.post("/", rateLimit(RateLimitPresets.STRICT), async (c) => {
       creditsToAdd: result.creditsToAdd,
     });
   } catch (error) {
+    // error-policy:J1 route boundary for the crypto/ dir — the outermost handler
+    // catch maps typed CryptoPaymentError codes to their HTTP status and any other
+    // exception to a structured failure (failureResponse → 5xx), never a fabricated
+    // success. Money paths fail closed.
     logger.error("[Crypto Payments API] Create payment error:", error);
     if (error instanceof CryptoPaymentError) {
       const statusMap: Record<

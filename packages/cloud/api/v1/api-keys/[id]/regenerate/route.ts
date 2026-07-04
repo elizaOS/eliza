@@ -74,6 +74,7 @@ app.post("/", async (c) => {
         metadata: { key_id: id, reason: "user_regenerate" },
       })
       .catch((err: unknown) => {
+        // error-policy:J7 audit-log emit is best-effort telemetry; a failed emit must not fail an already-rotated key. Observed via this warn.
         logger.warn("[API Keys] rotate audit emit failed", {
           error: err instanceof Error ? err.message : String(err),
         });

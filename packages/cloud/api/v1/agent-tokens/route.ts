@@ -81,6 +81,7 @@ app.post("/", async (c) => {
     });
     return c.json(minted);
   } catch (error) {
+    // error-policy:J1 route boundary — this catch translates mint failures into structured HTTP failures (400 invalid id / 503 unconfigured key / 500 otherwise), never a fabricated success token.
     const message = error instanceof Error ? error.message : String(error);
     if (message === "invalid agentId") {
       return c.json({ success: false, error: message }, 400);

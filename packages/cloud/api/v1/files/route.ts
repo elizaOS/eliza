@@ -184,6 +184,7 @@ app.post("/", async (c) => {
           await cloudFilesService
             .delete(c.env, user.organization_id, uploadedFile.id)
             .catch((deleteError) => {
+              // error-policy:J6 best-effort rollback of already-uploaded parts after a mid-batch failure; the original error is rethrown below. Observed via this warn.
               logger.warn(
                 "[CloudFiles API] Failed to roll back multipart upload after failure",
                 {
@@ -217,6 +218,7 @@ app.post("/", async (c) => {
       201,
     );
   } catch (error) {
+    // error-policy:J1 route boundary — every catch in v1/files/* translates a thrown error into a structured HTTP failure via failureResponse (never a fabricated 200/empty upload result).
     return failureResponse(c, error);
   }
 });

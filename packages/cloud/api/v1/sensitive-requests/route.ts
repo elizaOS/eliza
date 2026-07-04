@@ -91,6 +91,11 @@ function actorFromContext(
 
 const app = new Hono<AppEnv>();
 
+// error-policy:J1 every handler across the v1/sensitive-requests/* dir (this
+// create route plus [id], [id]/submit, [id]/cancel, [id]/expire) has one
+// outermost try/catch that translates exceptions into a structured failure via
+// failureResponse(c, error), with typed 400 for invalid input. No catch here
+// fabricates a success or an empty result on a failed service/DB call.
 app.use("*", rateLimit(RateLimitPresets.STANDARD));
 
 app.post("/", async (c) => {

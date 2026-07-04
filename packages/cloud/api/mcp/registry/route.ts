@@ -394,6 +394,8 @@ app.get("/", async (c) => {
     const user = await withRegistryTimeout(
       getCurrentUser(c),
       "optional auth lookup",
+      // error-policy:J4 optional auth on a public catalog — a lookup failure
+      // degrades to the anonymous view, surfaced via isAuthenticated:false below.
     ).catch((error) => {
       logger.warn("[MCP Registry] Optional auth lookup failed", {
         error: error instanceof Error ? error.message : String(error),
@@ -542,6 +544,9 @@ app.get("/", async (c) => {
       isAuthenticated,
     });
   } catch (error) {
+    // error-policy:J1 route boundary for the mcp/ dir — translate any unexpected
+    // exception into a structured HTTP failure (failureResponse → 5xx), never a
+    // fabricated 200.
     logger.error("[MCP Registry] Error:", error);
     return failureResponse(c, error);
   }

@@ -153,6 +153,9 @@ app.get("/", rateLimit(RateLimitPresets.STANDARD), async (c) => {
       },
     });
   } catch (error) {
+    // error-policy:J1 route boundary for the admin/ dir — the outermost handler
+    // catches translate exceptions into a structured HTTP failure
+    // (failureResponse → 5xx / typed status), never a fabricated success.
     return failureResponse(c, error);
   }
 });
