@@ -1,0 +1,9 @@
+
+ RUN  v4.1.5 /Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/wf_f7a1641e-e50-11/plugins/plugin-capacitor-bridge
+
+
+ Test Files  1 passed (1)
+      Tests  7 passed (7)
+   Start at  22:11:53
+   Duration  28.09s (transform 24.16s, setup 0ms, import 25.98s, tests 15ms, environment 0ms)
+
