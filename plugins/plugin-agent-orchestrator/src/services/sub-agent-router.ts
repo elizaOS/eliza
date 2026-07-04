@@ -815,6 +815,16 @@ export class SubAgentRouter extends Service {
 
     const origin = readOrigin(session);
     if (!origin) {
+      // No origin room means there is nothing to post — but a durable task
+      // created WITHOUT a chat room (cockpit "new session", bare POST
+      // /api/orchestrator/tasks) spawns exactly such a session:
+      // spawnAgentForTask stamps roomId from the task's optional room, which
+      // is undefined. Its completed app build must still land in the durable
+      // built-apps registry (#12036) — registration needs only the session
+      // and its verified URLs, never a room.
+      if (event === "task_complete") {
+        await this.registerRoomlessBuiltApps(session, data);
+      }
       this.log(
         "debug",
         "session has no origin metadata; skipping router post",
@@ -1578,6 +1588,56 @@ export class SubAgentRouter extends Service {
       });
       return delivered ? [delivered] : [];
     };
+  }
+
+  /**
+   * Built-app registration for a completion whose session has NO origin room
+   * (a durable task created without a chat room: cockpit "new session", bare
+   * POST /api/orchestrator/tasks). The normal registration sits after the
+   * readOrigin gate on the narration path, so these sessions never reached it
+   * and their deploys were fire-and-forget. Mirrors that path's verification:
+   * probe the URLs the completion claims and register only the live ones. The
+   * reference text falls back from `initialTask` to the bare `goal` —
+   * spawnAgentForTask stamps only the latter. Never throws: the registry is a
+   * side-record and must not break event handling.
+   */
+  private async registerRoomlessBuiltApps(
+    session: SessionInfo,
+    data: unknown,
+  ): Promise<void> {
+    try {
+      const response = pickPayloadString(data, "response");
+      if (!response) return;
+      const meta = session.metadata as Record<string, unknown> | undefined;
+      const referenceText =
+        typeof meta?.initialTask === "string"
+          ? meta.initialTask
+          : typeof meta?.goal === "string"
+            ? meta.goal
+            : undefined;
+      const verified = await annotateUnverifiedUrls(
+        normalizeUrlsInText(response),
+        (m) => this.log("debug", m),
+        referenceText,
+        pickStringSet(meta?.cachedStaleMissUrls),
+        this.runtime,
+        routeVerificationForSession(session),
+      );
+      if (verified.verifiedUrls.length === 0) return;
+      await registerBuiltAppsForCompletion(
+        this.runtime,
+        session,
+        verified.verifiedUrls,
+        (level, message, ctx) => this.log(level, message, ctx),
+      );
+    } catch (err) {
+      // error-policy:J7 side-record on the event path; a registration failure
+      // warns and must not break handling of the completion event.
+      this.log("warn", "room-less built-app registration failed", {
+        sessionId: session.id,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 
   /**

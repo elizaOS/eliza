@@ -290,28 +290,13 @@ describe("task_complete → registry record (real router path)", () => {
     );
   });
 
-  it("a successful app-deploy completion writes the live URL to the registry", async () => {
-    const liveUrl = `${baseUrl}/apps/snake-game/`;
+  function routerHarness(session: { id: string } & Record<string, unknown>): {
+    cache: Map<string, unknown>;
+    runtime: IAgentRuntime;
+  } {
     const cache = new Map<string, unknown>();
-    const session = {
-      id: "sess-app",
-      agentType: "codex",
-      name: "Ada",
-      workdir: "/tmp/built-apps-registry-test",
-      status: "ready",
-      createdAt: new Date(0),
-      lastActivityAt: new Date(0),
-      metadata: {
-        roomId: ROOM,
-        taskRoomId: ROOM,
-        messageId: MSG,
-        source: "discord",
-        label: "build snake game",
-        initialTask: "build a snake game web app and deploy it live",
-      },
-    };
     const sessions = new Map<string, Record<string, unknown>>([
-      ["sess-app", session],
+      [session.id, session],
     ]);
     const acp = {
       onSessionEvent: () => () => {},
@@ -342,17 +327,51 @@ describe("task_complete → registry record (real router path)", () => {
       emitEvent: vi.fn(async () => undefined),
       useModel: vi.fn(async () => "{}"),
     } as unknown as IAgentRuntime;
+    return { cache, runtime };
+  }
 
+  async function driveTaskComplete(
+    runtime: IAgentRuntime,
+    sessionId: string,
+    response: string,
+  ): Promise<void> {
     const router = new SubAgentRouter(runtime);
     await router.start();
     const internals = router as unknown as {
       handleEvent(id: string, event: string, data: unknown): Promise<void>;
     };
-    await internals.handleEvent("sess-app", "task_complete", {
-      response: `The snake game is built and live at ${liveUrl}`,
+    await internals.handleEvent(sessionId, "task_complete", {
+      response,
       stopReason: "end_turn",
     });
     await router.stop();
+  }
+
+  it("a successful app-deploy completion writes the live URL to the registry", async () => {
+    const liveUrl = `${baseUrl}/apps/snake-game/`;
+    const { cache, runtime } = routerHarness({
+      id: "sess-app",
+      agentType: "codex",
+      name: "Ada",
+      workdir: "/tmp/built-apps-registry-test",
+      status: "ready",
+      createdAt: new Date(0),
+      lastActivityAt: new Date(0),
+      metadata: {
+        roomId: ROOM,
+        taskRoomId: ROOM,
+        messageId: MSG,
+        source: "discord",
+        label: "build snake game",
+        initialTask: "build a snake game web app and deploy it live",
+      },
+    });
+
+    await driveTaskComplete(
+      runtime,
+      "sess-app",
+      `The snake game is built and live at ${liveUrl}`,
+    );
 
     const apps = cache.get(BUILT_APPS_CACHE_KEY) as BuiltAppRecord[];
     expect(apps).toHaveLength(1);
@@ -365,5 +384,49 @@ describe("task_complete → registry record (real router path)", () => {
       label: "build snake game",
     });
     expect(apps[0].registeredAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+  });
+
+  it("a room-less durable task's deploy still registers (cockpit new-session / bare API create)", async () => {
+    const liveUrl = `${baseUrl}/apps/workout-tracker/`;
+    // Exactly what spawnAgentForTask stamps for a task created WITHOUT a chat
+    // room (cockpit "new session", bare POST /api/orchestrator/tasks): no room
+    // UUID anywhere, the bare `goal` (not `initialTask`), source
+    // "orchestrator". readOrigin() yields null for this session, so the router
+    // has no room to post to — the registry write must not depend on one.
+    const { cache, runtime } = routerHarness({
+      id: "sess-roomless",
+      agentType: "codex",
+      name: "Ada",
+      workdir: "/tmp/built-apps-registry-test",
+      status: "ready",
+      createdAt: new Date(0),
+      lastActivityAt: new Date(0),
+      metadata: {
+        taskId: "task-1",
+        roomId: undefined,
+        label: "Ada",
+        source: "orchestrator",
+        goal: "build a workout tracker web app and deploy it live",
+        keepAliveAfterComplete: true,
+        nestingDepth: 0,
+      },
+    });
+
+    await driveTaskComplete(
+      runtime,
+      "sess-roomless",
+      `Deployed. The workout tracker is live at ${liveUrl}`,
+    );
+
+    const apps = cache.get(BUILT_APPS_CACHE_KEY) as BuiltAppRecord[];
+    expect(apps).toHaveLength(1);
+    expect(apps[0]).toMatchObject({
+      slug: "workout-tracker",
+      name: "Workout Tracker",
+      url: liveUrl,
+      target: "custom",
+      sessionId: "sess-roomless",
+      label: "Ada",
+    });
   });
 });
