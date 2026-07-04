@@ -1,3 +1,9 @@
+/**
+ * React hook for the authenticated homepage provisioning chat.
+ *
+ * It supports both the current shared onboarding session API and the legacy
+ * provisioning-agent endpoint while exposing one chat-shaped client state.
+ */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { elizacloudAuthFetch } from "@/lib/api/client";
 

@@ -1,3 +1,7 @@
+/**
+ * Browser fetch helpers for calling the Eliza Cloud API from the static
+ * homepage.
+ */
 const ELIZACLOUD_DEFAULT_URL = "https://www.elizacloud.ai";
 
 function getBaseUrl(): string {

@@ -1,3 +1,7 @@
+/**
+ * Browser speech-recognition ambient declarations used by homepage voice
+ * controls.
+ */
 interface SpeechRecognitionEvent extends Event {
   readonly results: SpeechRecognitionResultList;
   readonly resultIndex: number;

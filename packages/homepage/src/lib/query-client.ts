@@ -1,3 +1,6 @@
+/**
+ * TanStack Query client factory for homepage API state.
+ */
 import { QueryClient } from "@tanstack/react-query";
 
 const defaultOptions = {

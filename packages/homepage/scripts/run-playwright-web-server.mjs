@@ -1,3 +1,10 @@
+/**
+ * Playwright web-server launcher for homepage e2e tests.
+ *
+ * The script syncs shared public assets before starting Vite on the fixed
+ * homepage port so route and visual tests exercise the same static assets as
+ * local development.
+ */
 import { spawn, spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
