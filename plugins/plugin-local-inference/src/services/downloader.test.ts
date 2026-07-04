@@ -1103,6 +1103,110 @@ describe("local inference downloader status", () => {
 		}
 	});
 
+	it("fails over from an explicit mirror to direct HuggingFace on transient 5xx", async () => {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-download-test-"));
+		process.env.ELIZA_STATE_DIR = root;
+		process.env.ELIZA_HF_BASE_URLS = "https://mirror.example.com";
+
+		const base = findCatalogModel("eliza-1-2b");
+		if (!base) throw new Error("missing test catalog model");
+		const singleFileSpec: CatalogModel = {
+			...base,
+			hfRepo: "test/single-file",
+			ggufFile: "model.gguf",
+			sizeGb: 0.000001,
+			bundleManifestFile: undefined,
+			bundleManifestSha256: undefined,
+			companionModelIds: [],
+			runtimeRole: undefined,
+		};
+
+		const ggufBody = Buffer.concat([Buffer.from("GGUF"), Buffer.alloc(60, 0)]);
+		const hosts: string[] = [];
+		globalThis.fetch = vi.fn(async (url: string | URL | Request) => {
+			const href =
+				typeof url === "string" ? url : url instanceof URL ? url.href : url.url;
+			const host = new URL(href).host;
+			hosts.push(host);
+			if (host === "mirror.example.com") {
+				return new Response("temporary mirror failure", { status: 503 });
+			}
+			return new Response(ggufBody, {
+				status: 200,
+				headers: { "content-length": String(ggufBody.length) },
+			});
+		}) as unknown as typeof fetch;
+
+		const downloader = new Downloader({
+			probeDeviceCaps: async () => cpuOnlyCaps,
+			probeHardware: async () => fakeProbe(100),
+		});
+		const completed = new Promise<DownloadJob>((resolve) => {
+			const unsub = downloader.subscribe((event) => {
+				if (event.job.modelId === base.id && event.type === "completed") {
+					unsub();
+					resolve(event.job);
+				}
+			});
+		});
+
+		await downloader.start(singleFileSpec);
+		await completed;
+		expect(hosts).toContain("mirror.example.com");
+		expect(hosts.at(-1)).toBe("huggingface.co");
+	});
+
+	it("turns structured HF_GATED proxy errors into authorize guidance", async () => {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-download-test-"));
+		process.env.ELIZA_STATE_DIR = root;
+		process.env.ELIZAOS_CLOUD_API_KEY = "secret-token";
+
+		const base = findCatalogModel("eliza-1-2b");
+		if (!base) throw new Error("missing test catalog model");
+		const singleFileSpec: CatalogModel = {
+			...base,
+			hfRepo: "private/gated-model",
+			ggufFile: "model.gguf",
+			sizeGb: 0.000001,
+			bundleManifestFile: undefined,
+			bundleManifestSha256: undefined,
+			companionModelIds: [],
+			runtimeRole: undefined,
+		};
+
+		globalThis.fetch = vi.fn(
+			async () =>
+				new Response(
+					JSON.stringify({ code: "HF_GATED", repo: "private/gated-model" }),
+					{
+						status: 403,
+						headers: { "content-type": "application/json" },
+					},
+				),
+		) as unknown as typeof fetch;
+
+		const downloader = new Downloader({
+			probeDeviceCaps: async () => cpuOnlyCaps,
+			probeHardware: async () => fakeProbe(100),
+		});
+		const failed = new Promise<DownloadJob>((resolve) => {
+			const unsub = downloader.subscribe((event) => {
+				if (event.job.modelId === base.id && event.type === "failed") {
+					unsub();
+					resolve(event.job);
+				}
+			});
+		});
+
+		await downloader.start(singleFileSpec);
+		const job = await failed;
+
+		expect(job.error).toContain("private/gated-model");
+		expect(job.error).toContain(
+			"Link or authorize this device with Eliza Cloud",
+		);
+	});
+
 	it("blocks a download that does not fit on the models volume", async () => {
 		const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-download-test-"));
 		process.env.ELIZA_STATE_DIR = root;

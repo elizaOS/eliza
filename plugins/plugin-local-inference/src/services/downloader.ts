@@ -24,11 +24,10 @@ import { pipeline } from "node:stream/promises";
 import { logger } from "@elizaos/core";
 import { ensureDefaultAssignment } from "./assignments";
 import {
-	buildHuggingFaceResolveUrl,
-	buildHuggingFaceResolveUrlForPath,
+	buildHuggingFaceResolveUrlCandidatesForPath,
 	findCatalogModel,
+	type HfResolveUrlCandidate,
 	isDefaultEligibleId,
-	resolveHfDownloadBase,
 } from "./catalog";
 import { deviceCapsFromProbe, probeHardware } from "./hardware";
 import {
@@ -70,6 +69,8 @@ interface ActiveJob {
 
 type DownloadListener = (event: DownloadEvent) => void;
 type BundleFileKind = keyof Eliza1Files;
+const HUB_FAILOVER_BASE_BACKOFF_MS = 25;
+const HUB_ERROR_BODY_LIMIT_BYTES = 64 * 1024;
 
 /**
  * Thrown before any weight byte is fetched when an Eliza-1 bundle's manifest
@@ -322,6 +323,53 @@ async function hasGgufMagic(filePath: string): Promise<boolean> {
 	} catch {
 		return false;
 	}
+}
+
+function sleep(ms: number): Promise<void> {
+	return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function failoverBackoffMs(attemptIndex: number): number {
+	return HUB_FAILOVER_BASE_BACKOFF_MS * 2 ** attemptIndex;
+}
+
+function isTransientHubStatus(statusCode: number): boolean {
+	return statusCode >= 500;
+}
+
+async function readHubErrorBody(body: AsyncIterable<Buffer>): Promise<string> {
+	const chunks: Buffer[] = [];
+	let total = 0;
+	for await (const chunk of body) {
+		const remaining = HUB_ERROR_BODY_LIMIT_BYTES - total;
+		if (remaining <= 0) break;
+		const slice =
+			chunk.length > remaining ? chunk.subarray(0, remaining) : chunk;
+		chunks.push(slice);
+		total += slice.length;
+		if (total >= HUB_ERROR_BODY_LIMIT_BYTES) break;
+	}
+	return Buffer.concat(chunks).toString("utf8");
+}
+
+function parseGatedHubError(body: string): { repo: string } | null {
+	try {
+		const parsed = JSON.parse(body) as { code?: unknown; repo?: unknown };
+		if (parsed.code === "HF_GATED" && typeof parsed.repo === "string") {
+			return { repo: parsed.repo };
+		}
+		return null;
+	} catch {
+		return null;
+	}
+}
+
+function gatedRepoMessage(repo: string, httpStatus: number): string {
+	return (
+		`HuggingFace repo ${repo} is gated or private (HTTP ${httpStatus}). ` +
+		"Link or authorize this device with Eliza Cloud, then retry — gated downloads route " +
+		"through the cloud HuggingFace proxy."
+	);
 }
 
 function bundleDirname(modelId: string): string {
@@ -871,6 +919,148 @@ export class Downloader {
 		}
 	}
 
+	private async requestHubFile(args: {
+		catalogEntry: CatalogModel;
+		remotePath: string;
+		headers: Record<string, string>;
+		signal: AbortSignal;
+	}): Promise<{
+		response: {
+			statusCode: number;
+			headers: Record<string, string | string[] | undefined>;
+			body: AsyncIterable<Buffer>;
+		};
+		candidate: HfResolveUrlCandidate;
+	}> {
+		const candidates = buildHuggingFaceResolveUrlCandidatesForPath(
+			args.catalogEntry,
+			args.remotePath,
+		);
+		const httpClient = await this.loadHttpClient();
+		let lastError: unknown;
+
+		for (let index = 0; index < candidates.length; index += 1) {
+			const candidate = candidates[index];
+			const headers = {
+				...args.headers,
+				...candidate.authHeader,
+			};
+
+			let response: Awaited<ReturnType<typeof httpClient.request>>;
+			try {
+				response = await httpClient.request(candidate.url, {
+					method: "GET",
+					headers,
+					signal: args.signal,
+				});
+			} catch (error) {
+				lastError = error;
+				if (args.signal.aborted || index === candidates.length - 1) {
+					throw error;
+				}
+				logger.warn(
+					`[Downloader] model hub request failed via ${candidate.label ?? candidate.base}; trying next base`,
+					{ error },
+				);
+				await sleep(failoverBackoffMs(index));
+				continue;
+			}
+
+			if (
+				isTransientHubStatus(response.statusCode) &&
+				index < candidates.length - 1
+			) {
+				lastError = new Error(
+					`HTTP ${response.statusCode} from model hub via ${candidate.label ?? candidate.base}`,
+				);
+				logger.warn(
+					`[Downloader] transient model hub HTTP ${response.statusCode} via ${candidate.label ?? candidate.base}; trying next base`,
+				);
+				await sleep(failoverBackoffMs(index));
+				continue;
+			}
+
+			if (response.statusCode >= 400) {
+				const body = await readHubErrorBody(response.body);
+				if (response.statusCode === 401 || response.statusCode === 403) {
+					const gated = parseGatedHubError(body);
+					throw new GatedRepoError(
+						gatedRepoMessage(
+							gated?.repo ?? args.catalogEntry.hfRepo,
+							response.statusCode,
+						),
+						response.statusCode,
+					);
+				}
+				throw new Error(
+					`HTTP ${response.statusCode} from model hub for ${args.catalogEntry.hfRepo}/${args.remotePath}`,
+				);
+			}
+
+			return { response, candidate };
+		}
+
+		throw lastError instanceof Error
+			? lastError
+			: new Error(
+					`Failed to download ${args.catalogEntry.hfRepo}/${args.remotePath}`,
+				);
+	}
+
+	private async transferViaBackgroundSessionWithFailover(args: {
+		bridge: NativeBackgroundDownloadBridge;
+		catalogEntry: CatalogModel;
+		remotePath: string;
+		headers: Record<string, string>;
+		downloadId: string;
+		targetPath: string;
+		record: ActiveJob;
+		baseBytes: number;
+		expectedTotalBytes: number;
+		forceFresh: boolean;
+	}): Promise<void> {
+		const candidates = buildHuggingFaceResolveUrlCandidatesForPath(
+			args.catalogEntry,
+			args.remotePath,
+		);
+		let lastError: unknown;
+		for (let index = 0; index < candidates.length; index += 1) {
+			const candidate = candidates[index];
+			try {
+				await this.transferViaBackgroundSession({
+					bridge: args.bridge,
+					downloadId: args.downloadId,
+					url: candidate.url,
+					headers: { ...args.headers, ...candidate.authHeader },
+					targetPath: args.targetPath,
+					record: args.record,
+					baseBytes: args.baseBytes,
+					expectedTotalBytes: args.expectedTotalBytes,
+					forceFresh: args.forceFresh || index > 0,
+				});
+				return;
+			} catch (error) {
+				lastError = error;
+				if (
+					args.record.abortController.signal.aborted ||
+					index === candidates.length - 1
+				) {
+					throw error;
+				}
+				logger.warn(
+					`[Downloader] background model hub request failed via ${candidate.label ?? candidate.base}; trying next base`,
+					{ error },
+				);
+				await sleep(failoverBackoffMs(index));
+			}
+		}
+		throw lastError instanceof Error
+			? lastError
+			: new Error(
+					`Failed to download ${args.catalogEntry.hfRepo}/${args.remotePath}`,
+				);
+	}
+
 	private async runJob(
 		catalogEntry: CatalogModel,
 		record: ActiveJob,
@@ -884,10 +1074,8 @@ export class Downloader {
 				return;
 			}
 
-			const url = buildHuggingFaceResolveUrl(catalogEntry);
 			const headers: Record<string, string> = {
 				"user-agent": "Eliza-LocalInference/1.0",
-				...resolveHfDownloadBase().authHeader,
 			};
 
 			const backgroundBridge = this.backgroundDownloadBridge();
@@ -896,10 +1084,11 @@ export class Downloader {
 				// URLSession so it survives the app backgrounding / device lock
 				// (#11841). The native session owns resume, so no Range header.
 				record.job.received = 0;
-				await this.transferViaBackgroundSession({
+				await this.transferViaBackgroundSessionWithFailover({
 					bridge: backgroundBridge,
+					catalogEntry,
+					remotePath: catalogEntry.ggufFile,
 					downloadId: stagingFilename(record.job.modelId),
-					url,
 					headers,
 					targetPath: record.stagingPath,
 					record,
@@ -908,31 +1097,18 @@ export class Downloader {
 					forceFresh: false,
 				});
 			} else {
-				const httpClient = await this.loadHttpClient();
 				const startByte = record.job.received;
 
 				if (startByte > 0) {
 					headers.range = `bytes=${startByte}-`;
 				}
 
-				const response = await httpClient.request(url, {
-					method: "GET",
+				const { response } = await this.requestHubFile({
+					catalogEntry,
+					remotePath: catalogEntry.ggufFile,
 					headers,
 					signal: record.abortController.signal,
 				});
-
-				if (response.statusCode === 401 || response.statusCode === 403) {
-					throw new GatedRepoError(
-						`HuggingFace repo ${catalogEntry.hfRepo} is gated or private (HTTP ${response.statusCode}). ` +
-							"Link this device to Eliza Cloud and retry — gated downloads route through the cloud HuggingFace proxy.",
-						response.statusCode,
-					);
-				}
-				if (response.statusCode >= 400) {
-					throw new Error(
-						`HTTP ${response.statusCode} from model hub for ${catalogEntry.hfRepo}`,
-					);
-				}
 				let effectiveStartByte = startByte;
 				if (effectiveStartByte > 0 && response.statusCode !== 206) {
 					effectiveStartByte = 0;
@@ -1281,10 +1457,8 @@ export class Downloader {
 		const backgroundBridge = this.backgroundDownloadBridge();
 		const maxAttempts = expectedSha256 ? SHA_MISMATCH_MAX_ATTEMPTS : 1;
 		for (let attempt = 1; ; attempt++) {
-			const url = buildHuggingFaceResolveUrlForPath(catalogEntry, remotePath);
 			const headers: Record<string, string> = {
 				"user-agent": "Eliza-LocalInference/1.0",
-				...resolveHfDownloadBase().authHeader,
 			};
 
 			if (backgroundBridge) {
@@ -1294,10 +1468,11 @@ export class Downloader {
 				// from zero; the first attempt may reuse a completed transfer
 				// that outlived a runtime restart.
 				record.job.received = baseBytes;
-				await this.transferViaBackgroundSession({
+				await this.transferViaBackgroundSessionWithFailover({
 					bridge: backgroundBridge,
+					catalogEntry,
+					remotePath,
 					downloadId: path.basename(stagingPath),
-					url,
 					headers,
 					targetPath: stagingPath,
 					record,
@@ -1325,25 +1500,12 @@ export class Downloader {
 					headers.range = `bytes=${startByte}-`;
 				}
 
-				const httpClient = await this.loadHttpClient();
-				const response = await httpClient.request(url, {
-					method: "GET",
+				const { response } = await this.requestHubFile({
+					catalogEntry,
+					remotePath,
 					headers,
 					signal: record.abortController.signal,
 				});
-
-				if (response.statusCode === 401 || response.statusCode === 403) {
-					throw new GatedRepoError(
-						`HuggingFace repo ${catalogEntry.hfRepo}/${remotePath} is gated or private (HTTP ${response.statusCode}). ` +
-							"Link this device to Eliza Cloud and retry — gated downloads route through the cloud HuggingFace proxy.",
-						response.statusCode,
-					);
-				}
-				if (response.statusCode >= 400) {
-					throw new Error(
-						`HTTP ${response.statusCode} from model hub for ${catalogEntry.hfRepo}/${remotePath}`,
-					);
-				}
 				if (startByte > 0 && response.statusCode !== 206) {
 					startByte = 0;
 					record.job.received = baseBytes;

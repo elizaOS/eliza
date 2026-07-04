@@ -27,9 +27,9 @@ import * as loggerActual from "@/lib/utils/logger";
 
 const requireUserOrApiKeyWithOrg =
   mock<(c: unknown) => Promise<{ id: string; organization_id: string }>>();
-
 const loggerInfo = mock<(...args: unknown[]) => void>();
 const loggerWarn = mock<(...args: unknown[]) => void>();
+const loggerError = mock<(...args: unknown[]) => void>();
 
 mock.module("@/lib/auth/workers-hono-auth", () => ({
   ...workersHonoAuthActual,
@@ -42,7 +42,7 @@ mock.module("@/lib/utils/logger", () => ({
     ...loggerActual.logger,
     info: loggerInfo,
     warn: loggerWarn,
-    error: () => undefined,
+    error: loggerError,
     debug: () => undefined,
   },
 }));
@@ -64,6 +64,9 @@ beforeAll(async () => {
 });
 
 beforeEach(() => {
+  loggerInfo.mockClear();
+  loggerWarn.mockClear();
+  loggerError.mockClear();
   requireUserOrApiKeyWithOrg.mockResolvedValue({
     id: "user-1",
     organization_id: "org-1",
@@ -74,6 +77,7 @@ afterEach(() => {
   requireUserOrApiKeyWithOrg.mockReset();
   loggerInfo.mockReset();
   loggerWarn.mockReset();
+  loggerError.mockReset();
   globalThis.fetch = realFetch;
 });
 
@@ -82,6 +86,23 @@ afterAll(() => {
 });
 
 const RESOLVE_PATH = "elizaos/eliza-1/resolve/main/model.gguf";
+
+function fakeKv() {
+  const map = new Map<string, string>();
+  return {
+    get: async (key: string) => map.get(key) ?? null,
+    put: async (key: string, value: string) => {
+      map.set(key, value);
+    },
+    delete: async (key: string) => {
+      map.delete(key);
+    },
+    list: async () => ({
+      keys: [...map.keys()].map((name) => ({ name })),
+      list_complete: true,
+    }),
+  };
+}
 
 function makeRequest(
   path: string,
@@ -209,6 +230,71 @@ describe("GET /api/v1/hf-proxy/[...path]", () => {
     // Identity is attached (redacted) so usage is attributable.
     expect(usagePayload.orgId).toBeDefined();
     expect(usagePayload.userId).toBeDefined();
+
+    expect(loggerInfo).toHaveBeenCalledWith(
+      "[hf-proxy] egress metric",
+      expect.objectContaining({
+        organizationId: "org-1",
+        repo: "elizaos/eliza-1",
+        bytes: 10,
+        status: 200,
+      }),
+    );
+  });
+
+  test("returns structured HF_GATED for upstream 401/403", async () => {
+    globalThis.fetch = mock(
+      async () =>
+        new Response("private", {
+          status: 403,
+          headers: { "content-type": "text/plain" },
+        }),
+    ) as unknown as typeof fetch;
+
+    const res = await app.fetch(makeRequest(RESOLVE_PATH), {
+      HF_TOKEN: "hf-secret",
+    });
+
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({
+      error: "HuggingFace repo is gated or unauthorized.",
+      code: "HF_GATED",
+      repo: "elizaos/eliza-1",
+    });
+  });
+
+  test("enforces per-org monthly egress budget before streaming the next response", async () => {
+    const kv = fakeKv();
+    globalThis.fetch = mock(
+      async () =>
+        new Response("12345678", {
+          status: 200,
+          headers: {
+            "content-type": "application/octet-stream",
+            "content-length": "8",
+          },
+        }),
+    ) as unknown as typeof fetch;
+
+    const env = {
+      HF_TOKEN: "hf-secret",
+      CACHE_KV: kv,
+      HF_PROXY_MONTHLY_EGRESS_LIMIT_BYTES: "12",
+    };
+    const first = await app.fetch(makeRequest(RESOLVE_PATH), env);
+    expect(first.status).toBe(200);
+    expect(await first.text()).toBe("12345678");
+
+    const second = await app.fetch(makeRequest(RESOLVE_PATH), env);
+    expect(second.status).toBe(429);
+    const body = (await second.json()) as {
+      code?: string;
+      limit_bytes?: number;
+      used_bytes?: number;
+    };
+    expect(body.code).toBe("HF_PROXY_EGRESS_LIMIT");
+    expect(body.limit_bytes).toBe(12);
+    expect(body.used_bytes).toBe(8);
   });
 });
 
