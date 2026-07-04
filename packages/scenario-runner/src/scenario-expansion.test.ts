@@ -1,3 +1,4 @@
+/** Tests scenario discovery and edge-variant expansion (loader.ts): loading `.scenario.ts` files from a temp dir, static metadata listing, corpus counting/validation, and `expandScenarioDefinition` variant generation. */
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";

@@ -1,3 +1,4 @@
+/** Unit tests for the fuzzy action-name matcher (action-families.ts): casing, prefix, plural, and token-order equivalence. */
 import { describe, expect, it } from "vitest";
 import {
   actionMatchesScenarioExpectation,

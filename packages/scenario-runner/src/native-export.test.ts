@@ -1,3 +1,4 @@
+/** Tests the trajectory-to-training-corpus conversion (native-export.ts): boundary-row shape, schema/version tagging, and jsonl manifest written to a temp dir. */
 import {
   mkdirSync,
   mkdtempSync,

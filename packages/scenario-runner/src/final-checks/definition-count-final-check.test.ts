@@ -1,3 +1,4 @@
+/** Tests the `definitionCount` final check (final-checks/index.ts) with LifeOpsService mocked to return a fixed definition list, asserting the min/max count comparison. */
 import type { ScenarioFinalCheck } from "@elizaos/scenario-runner/schema";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 

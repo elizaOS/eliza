@@ -1,3 +1,8 @@
+/**
+ * Tests for `runScenario` (executor.ts), the core turn loop. Drives message /
+ * action / api / tick turns against a stubbed runtime to assert turn dispatch,
+ * assertion evaluation, and report shape without a real model.
+ */
 import type {
   Action,
   AgentRuntime,

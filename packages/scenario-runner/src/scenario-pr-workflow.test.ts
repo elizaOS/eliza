@@ -1,3 +1,4 @@
+/** Guards the CI wiring by reading `.github/workflows/scenario-pr.yml` and `test.yml` from disk and asserting the keyless PR-deterministic scenario lane stays configured. */
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";

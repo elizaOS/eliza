@@ -1,3 +1,4 @@
+/** Tests the loader's `--lane` filtering (loader.ts) by writing scenario files with declared lanes to a temp dir and asserting `listScenarioMetadata` returns only the matching lane. */
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";

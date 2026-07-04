@@ -1,3 +1,24 @@
+/**
+ * Deterministic action-coverage gate.
+ *
+ * The app exposes an action surface that we want exercised by zero-cost
+ * (keyless) e2e scenarios in CI. This test keeps that promise honest:
+ *
+ *   - Surface integrity: the real action surface of each importable core plugin
+ *     is read live (from `plugin.actions[].name`) and must match the checked-in
+ *     manifest. A new/renamed/removed action breaks the build, forcing whoever
+ *     changed it to acknowledge the action here.
+ *   - Coverage registry: every action we claim to cover deterministically must
+ *     still be referenced by a real scenario (no silent coverage regression),
+ *     and the total only grows (count ratchet).
+ *   - Stable-core ratchet: every stable-core keyless action is either covered or
+ *     in a baseline that may only shrink.
+ *   - Wiring integrity: every scenario file is actually run by the deterministic
+ *     CI script — a scenario that exists but never runs is larp.
+ *
+ * Plugins import is static (top of file) so the heavy source transform happens
+ * at module load, not inside a test where it would race the per-test timeout.
+ */
 import { readdirSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -20,28 +41,6 @@ import type { ScenarioTurn } from "@elizaos/scenario-runner/schema";
 import { describe, expect, it } from "vitest";
 import mcpPlugin from "../../../../plugins/plugin-mcp/src/index.ts";
 import { loadAllScenarios } from "../loader";
-
-/**
- * Deterministic action-coverage gate.
- *
- * The app exposes an action surface that we want exercised by zero-cost
- * (keyless) e2e scenarios in CI. This test keeps that promise honest:
- *
- *   - Surface integrity: the real action surface of each importable core plugin
- *     is read live (from `plugin.actions[].name`) and must match the checked-in
- *     manifest. A new/renamed/removed action breaks the build, forcing whoever
- *     changed it to acknowledge the action here.
- *   - Coverage registry: every action we claim to cover deterministically must
- *     still be referenced by a real scenario (no silent coverage regression),
- *     and the total only grows (count ratchet).
- *   - Stable-core ratchet: every stable-core keyless action is either covered or
- *     in a baseline that may only shrink.
- *   - Wiring integrity: every scenario file is actually run by the deterministic
- *     CI script — a scenario that exists but never runs is larp.
- *
- * Plugins import is static (top of file) so the heavy source transform happens
- * at module load, not inside a test where it would race the per-test timeout.
- */
 
 const repoRoot = resolve(
   dirname(fileURLToPath(import.meta.url)),

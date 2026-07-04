@@ -1,3 +1,4 @@
+/** Corpus guard for the LifeOps travel scenarios: loads every `.scenario.ts` under packages/test/scenarios/lifeops.travel and asserts the expected scenario-id set is present and well-formed (no live model). */
 import { readdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";

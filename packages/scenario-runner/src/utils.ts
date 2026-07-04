@@ -1,3 +1,4 @@
+/** Internal helpers shared across the runner: `toRecord` narrows unknown values to plain objects, `isLoopbackUrl` gates seed steps and api turns to local addresses. */
 export function toRecord(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)

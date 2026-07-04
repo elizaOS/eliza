@@ -1,3 +1,4 @@
+/** Unit tests for the loader's file-glob matching (loader.ts): globstar segment expansion and `scenarioFileMatchesGlob`, pure string logic with no filesystem. */
 import { describe, expect, it } from "vitest";
 import {
   scenarioFileGlobAlternatives,

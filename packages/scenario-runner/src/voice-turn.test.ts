@@ -1,3 +1,4 @@
+/** Tests the voice turn kind (voice-turn.ts) using plugin-local-inference's voice-workbench ground-truth mock services, asserting `executeVoiceTurn` drives the STT/TTS scenario path and writes expected artifacts. */
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";

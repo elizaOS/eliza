@@ -1,3 +1,11 @@
+/**
+ * No-op React / react-dom / jsx-runtime module stubs installed as a Bun bundler
+ * plugin so the scenario runtime can import plugin view modules (which pull in
+ * React) without a real React dependency. `registerScenarioRuntimeReactStubs`
+ * resolves any `react*` / `react-dom*` specifier to inert exports (components
+ * render nothing, hooks return their initial value); registration is idempotent
+ * and silently no-ops when not running under Bun. Consumed by runtime-factory.ts.
+ */
 type BunPluginBuilder = {
   onResolve: (
     options: { filter: RegExp },
