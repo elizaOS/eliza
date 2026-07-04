@@ -240,11 +240,16 @@ function normalizeLinkTarget(rawTarget) {
 function candidatePaths(basePath) {
   const candidates = [basePath];
   if (!path.extname(basePath)) {
-    candidates.push(`${basePath}.md`);
+    // packages/docs is a Mintlify site whose pages are `.mdx`; links omit the
+    // extension, so `.mdx` must be tried alongside `.md` or every link to an
+    // `.mdx` page (e.g. `/config-schema`, `/user/change-character`) is a false
+    // "missing file".
+    candidates.push(`${basePath}.md`, `${basePath}.mdx`);
   }
   candidates.push(
     path.join(basePath, "README.md"),
     path.join(basePath, "index.md"),
+    path.join(basePath, "index.mdx"),
   );
   return candidates;
 }
