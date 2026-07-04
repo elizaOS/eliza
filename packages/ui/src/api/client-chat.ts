@@ -325,8 +325,18 @@ declare module "./client-base" {
          * RPC fast path (which only knows the recent window).
          */
         around?: string;
+        /**
+         * When set, load one page STRICTLY OLDER than this createdAt cursor for
+         * the infinite upward scroll (#13532) — the client passes the createdAt
+         * of its current oldest message and prepends the returned page. Forces
+         * the HTTP path (the desktop-bridge RPC only serves the recent window)
+         * and makes the response carry `hasMore`.
+         */
+        before?: number;
+        /** Older-page size for the `before` cursor path. Server-clamped. */
+        limit?: number;
       },
-    ): Promise<{ messages: ConversationMessage[] }>;
+    ): Promise<{ messages: ConversationMessage[]; hasMore?: boolean }>;
     /**
      * Keyword search across every conversation the user can see, ranked by
      * relevance then recency. Backs the chat message-search affordance.
@@ -987,10 +997,12 @@ ElizaClient.prototype.getConversationMessages = async function (
   id,
   options,
 ) {
-  let response: { messages: ConversationMessage[] } | null = null;
-  // The desktop-bridge RPC only serves the recent window; an `around` jump must
-  // go straight to HTTP so the server can center the window on the target.
-  if (!options?.around) {
+  let response: { messages: ConversationMessage[]; hasMore?: boolean } | null =
+    null;
+  // The desktop-bridge RPC only serves the recent window; an `around` jump or a
+  // `before` load-older page must go straight to HTTP so the server can center
+  // the window on the target (around) or page below the cursor (before).
+  if (!options?.around && options?.before === undefined) {
     try {
       response = await invokeLocalDesktopChatRpc<{
         messages: ConversationMessage[];
@@ -1006,10 +1018,20 @@ ElizaClient.prototype.getConversationMessages = async function (
   // The HTTP path is abortable (a rapid conversation swipe cancels the prior
   // in-flight load so stacked requests don't race to set the thread); the
   // desktop bridge path is local + fast and ignores the signal.
-  const query = options?.around
-    ? `?around=${encodeURIComponent(options.around)}`
-    : "";
-  response ??= await this.fetch<{ messages: ConversationMessage[] }>(
+  let query = "";
+  if (options?.around) {
+    query = `?around=${encodeURIComponent(options.around)}`;
+  } else if (options?.before !== undefined) {
+    const params = new URLSearchParams({ before: String(options.before) });
+    if (options.limit !== undefined) {
+      params.set("limit", String(options.limit));
+    }
+    query = `?${params.toString()}`;
+  }
+  response ??= await this.fetch<{
+    messages: ConversationMessage[];
+    hasMore?: boolean;
+  }>(
     `/api/conversations/${encodeURIComponent(id)}/messages${query}`,
     options?.signal ? { signal: options.signal } : undefined,
   );
@@ -1019,6 +1041,9 @@ ElizaClient.prototype.getConversationMessages = async function (
       const text = this.normalizeAssistantText(message.text);
       return text === message.text ? message : { ...message, text };
     }),
+    ...(typeof response.hasMore === "boolean"
+      ? { hasMore: response.hasMore }
+      : {}),
   };
 };
 

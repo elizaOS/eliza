@@ -25,6 +25,17 @@ import {
 } from "./persistence";
 import type { ChatTurnUsage } from "./types";
 
+/**
+ * Cap on retained transcript messages during infinite upward scroll (#13532).
+ * A long load-older session prepends page after page; without a cap the array
+ * (and the rendered DOM) would grow unbounded. Mirrors MemoryViewerView's
+ * FEED_MAX_ITEMS: older items drop off the top once the cap is exceeded, and
+ * the top sentinel can re-fetch them if the reader scrolls back up. The cap
+ * trims from the FRONT (oldest) so the newest turns — the ones the reader is
+ * most likely near — always survive.
+ */
+export const CONVERSATION_MAX_RETAINED_MESSAGES = 500;
+
 // ── State shape ────────────────────────────────────────────────────────
 
 export interface ChatState {
@@ -84,6 +95,7 @@ type ChatAction =
   | { type: "SET_ACTIVE_CONVERSATION_ID"; value: string | null }
   | { type: "SET_COMPANION_CUTOFF"; value: number }
   | { type: "SET_MESSAGES"; value: ConversationMessage[] }
+  | { type: "PREPEND_MESSAGES"; value: ConversationMessage[] }
   | { type: "APPEND_MESSAGE"; message: ConversationMessage }
   | { type: "UPDATE_MESSAGE"; id: string; update: Partial<ConversationMessage> }
   | { type: "REMOVE_MESSAGE"; id: string }
@@ -137,6 +149,25 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
       return { ...state, companionMessageCutoffTs: action.value };
     case "SET_MESSAGES":
       return { ...state, conversationMessages: action.value };
+    case "PREPEND_MESSAGES": {
+      // Merge an older page in front of the current thread (infinite upward
+      // scroll, #13532). Dedupe by id so a page overlapping the current top —
+      // or a double-fetch that slipped past the in-flight guard — never
+      // double-renders a turn, then cap the retained count from the front so a
+      // long scrollback can't grow the array unbounded.
+      if (action.value.length === 0) return state;
+      const existingIds = new Set(state.conversationMessages.map((m) => m.id));
+      const olderToAdd = action.value.filter((m) => !existingIds.has(m.id));
+      if (olderToAdd.length === 0) return state;
+      const merged = [...olderToAdd, ...state.conversationMessages];
+      return {
+        ...state,
+        conversationMessages:
+          merged.length > CONVERSATION_MAX_RETAINED_MESSAGES
+            ? merged.slice(-CONVERSATION_MAX_RETAINED_MESSAGES)
+            : merged,
+      };
+    }
     case "APPEND_MESSAGE":
       return {
         ...state,
@@ -215,6 +246,13 @@ export interface ChatStateHook {
   setConversationMessages: React.Dispatch<
     React.SetStateAction<ConversationMessage[]>
   >;
+  /**
+   * Merge an older page in FRONT of the current thread for infinite upward
+   * scroll (#13532). Dedupes by id and caps the retained count; keeps the
+   * synchronous `conversationMessagesRef` in step with the dispatch so
+   * callbacks reading the ref right after a prepend see the merged thread.
+   */
+  prependConversationMessages: (older: ConversationMessage[]) => void;
   setAutonomousEvents: (v: StreamEventEnvelope[]) => void;
   setAutonomousLatestEventId: (v: string | null) => void;
   setAutonomousRunHealthByRunId: (v: AutonomyRunHealthMap) => void;
@@ -346,6 +384,26 @@ export function useChatState(): ChatStateHook {
     [],
   ) as React.Dispatch<React.SetStateAction<ConversationMessage[]>>;
 
+  const prependConversationMessages = useCallback(
+    (older: ConversationMessage[]) => {
+      if (older.length === 0) return;
+      // Mirror the reducer's dedupe+cap so the synchronous ref stays exactly in
+      // step with the dispatched state (callbacks that read the ref right after
+      // a prepend must see the same merged, capped thread the reducer produces).
+      const current = conversationMessagesRef.current;
+      const existingIds = new Set(current.map((m) => m.id));
+      const olderToAdd = older.filter((m) => !existingIds.has(m.id));
+      if (olderToAdd.length === 0) return;
+      const merged = [...olderToAdd, ...current];
+      conversationMessagesRef.current =
+        merged.length > CONVERSATION_MAX_RETAINED_MESSAGES
+          ? merged.slice(-CONVERSATION_MAX_RETAINED_MESSAGES)
+          : merged;
+      dispatch({ type: "PREPEND_MESSAGES", value: older });
+    },
+    [],
+  );
+
   const setAutonomousEvents = useCallback((v: StreamEventEnvelope[]) => {
     autonomousEventsRef.current = v;
     dispatch({ type: "SET_AUTONOMOUS_EVENTS", value: v });
@@ -425,6 +483,7 @@ export function useChatState(): ChatStateHook {
     setActiveConversationId,
     setCompanionMessageCutoffTs,
     setConversationMessages,
+    prependConversationMessages,
     setAutonomousEvents,
     setAutonomousLatestEventId,
     setAutonomousRunHealthByRunId,

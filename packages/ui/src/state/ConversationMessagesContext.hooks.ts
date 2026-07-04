@@ -35,6 +35,12 @@ export interface ConversationMessagesValue {
    * into the SAME transcript the floating chat renders. Stable identity.
    */
   setConversationMessages: Dispatch<SetStateAction<ConversationMessage[]>>;
+  /**
+   * Prepend an older page in front of the transcript for infinite upward
+   * scroll (#13532). Dedupes by id and caps the retained count; keeps the
+   * synchronous message ref in step. Stable identity.
+   */
+  prependConversationMessages: (older: ConversationMessage[]) => void;
 }
 
 export const ConversationMessagesCtx = createContext<ConversationMessagesValue>(
@@ -42,6 +48,7 @@ export const ConversationMessagesCtx = createContext<ConversationMessagesValue>(
     conversationMessages: [],
     removeConversationMessage: () => {},
     setConversationMessages: () => {},
+    prependConversationMessages: () => {},
   },
 );
 

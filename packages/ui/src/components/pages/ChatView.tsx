@@ -13,7 +13,6 @@
  */
 
 import { logger } from "@elizaos/logger";
-import { RotateCcw } from "lucide-react";
 import {
   type ChangeEvent,
   type DragEvent,
@@ -35,6 +34,7 @@ import { readPersistedMobileRuntimeMode } from "../../first-run/mobile-runtime-m
 import { useChatAvatarVoiceBridge } from "../../hooks/useChatAvatarVoiceBridge";
 import { useConnectorSendAsAccount } from "../../hooks/useConnectorSendAsAccount";
 import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
+import { useLoadOlderOnScroll } from "../../hooks/useLoadOlderOnScroll";
 import { claimAssistantLaunchPayloadFromHash } from "../../platform/assistant-launch-payload";
 import {
   CodingAgentControlChip,
@@ -43,6 +43,7 @@ import {
 import { useAppSelectorShallow } from "../../state/app-store";
 import { useChatComposer } from "../../state/ChatComposerContext.hooks";
 import { useConversationMessages } from "../../state/ConversationMessagesContext.hooks";
+import { loadOlderConversationMessages } from "../../state/load-older-conversation-messages";
 import { usePtySessions } from "../../state/PtySessionsContext.hooks";
 import {
   loadContinuousChatMode,
@@ -79,8 +80,6 @@ import { ChatThreadLayout } from "../composites/chat/chat-thread-layout";
 import { ChatTranscript } from "../composites/chat/chat-transcript";
 import type { ChatMessageData } from "../composites/chat/chat-types";
 import { TypingIndicator } from "../composites/chat/chat-typing-indicator";
-import { useConversationReset } from "../shell/use-conversation-reset";
-import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { pickProblemSessionToAutoFocus } from "./ChatView.terminal-focus";
 import {
@@ -222,11 +221,13 @@ export function ChatView({
   } = app;
   const { ptySessions } = usePtySessions();
   // Reset to a fresh greeted thread. Same path as the overlay header reset.
-  const resetConversation = useConversationReset();
   // Per-token streaming messages come from the isolated context so token updates
   // don't ride on the giant AppContext value identity.
-  const { conversationMessages, removeConversationMessage } =
-    useConversationMessages();
+  const {
+    conversationMessages,
+    removeConversationMessage,
+    prependConversationMessages,
+  } = useConversationMessages();
   const {
     chatInput: rawChatInput,
     chatSending,
@@ -264,6 +265,13 @@ export function ChatView({
   );
 
   const messagesRef = useRef<HTMLDivElement>(null);
+  // Top sentinel for infinite upward scroll (#13532): rendered just above the
+  // first transcript row; when it nears the viewport the older page prefetches.
+  const topSentinelRef = useRef<HTMLDivElement>(null);
+  // Whether the server reports older turns beyond the current top. Starts true
+  // (we don't know until the first load-older) and latches false at the true
+  // top. Reset on conversation switch below.
+  const [hasMoreOlder, setHasMoreOlder] = useState(true);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const composerRef = useRef<HTMLDivElement>(null);
@@ -428,6 +436,35 @@ export function ChatView({
         .map(withDefaultSource),
     [chatFirstTokenReceived, chatSending, msgs],
   );
+  // Infinite upward scroll load-older orchestration (#13532). The `before`
+  // cursor is the oldest currently-held message; the game-modal companion
+  // surface has its own carryover window and is excluded.
+  const loadOlderMessages = useCallback(async () => {
+    if (!activeConversationId) return;
+    const result = await loadOlderConversationMessages({
+      client,
+      conversationId: activeConversationId,
+      currentMessages: conversationMessages,
+      prependMessages: prependConversationMessages,
+    });
+    setHasMoreOlder(result.hasMore);
+  }, [activeConversationId, conversationMessages, prependConversationMessages]);
+
+  // A fresh conversation may have older history — re-arm the loader on switch.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: activeConversationId is the intentional re-arm trigger; the body only calls the stable setter.
+  useEffect(() => {
+    setHasMoreOlder(true);
+  }, [activeConversationId]);
+
+  useLoadOlderOnScroll<HTMLDivElement>({
+    scrollRef: messagesRef,
+    sentinelRef: topSentinelRef,
+    onLoadOlder: loadOlderMessages,
+    hasMore: hasMoreOlder && !isGameModal,
+    topItemKey: visibleMsgs[0]?.id ?? "",
+    enabled: !isGameModal,
+  });
+
   const {
     companionCarryover,
     gameModalCarryoverOpacity,
@@ -683,30 +720,44 @@ export function ChatView({
         onSuggestionClick={(suggestion) => setChatInput(suggestion)}
       />
     ) : (
-      <ChatTranscript
-        variant={variant}
-        agentName={agentName}
-        carryoverMessages={companionCarryover?.messages}
-        carryoverOpacity={gameModalCarryoverOpacity}
-        labels={chatMessageLabels}
-        messages={isGameModal ? gameModalVisibleMsgs : visibleMsgs}
-        onEdit={handleEditMessage}
-        onSpeak={handleSpeakMessage}
-        onCopy={handleCopyMessageText}
-        onDelete={handleDeleteMessage}
-        onDismissSuggestion={handleDismissSuggestion}
-        onAcceptSuggestion={handleAcceptSuggestion}
-        renderMessageContent={renderChatMessageContent}
-        typingIndicator={
-          chatSending && !chatFirstTokenReceived && !typingStalled ? (
-            isGameModal ? (
-              <TypingIndicator variant="game-modal" agentName={agentName} />
-            ) : (
-              <TypingIndicator agentName={agentName} />
-            )
-          ) : null
-        }
-      />
+      <>
+        {/* Top sentinel for infinite upward scroll (#13532): a zero-height
+            anchor above the first row. The IntersectionObserver in
+            useLoadOlderOnScroll watches it (with a viewport of runway) to
+            prefetch the next older page before the reader reaches the top. */}
+        {!isGameModal ? (
+          <div
+            ref={topSentinelRef}
+            data-testid="chat-transcript-top-sentinel"
+            aria-hidden
+            className="h-px w-full"
+          />
+        ) : null}
+        <ChatTranscript
+          variant={variant}
+          agentName={agentName}
+          carryoverMessages={companionCarryover?.messages}
+          carryoverOpacity={gameModalCarryoverOpacity}
+          labels={chatMessageLabels}
+          messages={isGameModal ? gameModalVisibleMsgs : visibleMsgs}
+          onEdit={handleEditMessage}
+          onSpeak={handleSpeakMessage}
+          onCopy={handleCopyMessageText}
+          onDelete={handleDeleteMessage}
+          onDismissSuggestion={handleDismissSuggestion}
+          onAcceptSuggestion={handleAcceptSuggestion}
+          renderMessageContent={renderChatMessageContent}
+          typingIndicator={
+            chatSending && !chatFirstTokenReceived && !typingStalled ? (
+              isGameModal ? (
+                <TypingIndicator variant="game-modal" agentName={agentName} />
+              ) : (
+                <TypingIndicator agentName={agentName} />
+              )
+            ) : null
+          }
+        />
+      </>
     );
 
   const voiceStatusBarVisible =
@@ -807,24 +858,11 @@ export function ChatView({
       "calc(var(--safe-area-bottom, 0px) + var(--eliza-mobile-nav-offset, 0px) + 0.375rem)",
   } as const;
 
-  // Reset-to-fresh-thread control for the main ChatView header row (#8930).
-  // Visible only when there are messages to clear; routes through the shared
-  // reset path. Neutral resting -> neutral-with-opacity hover (no orange, no
-  // blue), matching nearby controls.
-  const resetConversationButton =
-    visibleMsgs.length > 0 ? (
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        data-testid="chat-view-reset-button"
-        aria-label="Reset conversation"
-        title="Reset conversation"
-        onClick={resetConversation}
-        className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border/40 text-muted transition-colors hover:bg-bg-hover hover:text-txt   "
-      >
-        <RotateCcw className="h-[18px] w-[18px]" aria-hidden />
-      </Button>
-    ) : null;
+  // The user-facing reset-to-fresh-thread control (#8930) was removed with the
+  // chat-redesign (#13532/#13539): the infinite-scroll transcript makes
+  // "clear the thread" an anti-pattern, and new-conversation flows remain
+  // reachable via the conversation switcher. The shared handleNewConversation /
+  // RESET_DRAFT machinery that first-run / wipe / switch depend on is untouched.
 
   const composerNode = hideComposer ? null : isGameModal ? (
     <ChatComposerShell
@@ -833,18 +871,15 @@ export function ChatView({
       before={
         <>
           <CodingAgentControlChip />
-          {continuousChatToggleVisible || resetConversationButton ? (
+          {continuousChatToggleVisible ? (
             <div className="flex items-center justify-end gap-1 px-1 pb-0.5">
-              {resetConversationButton}
-              {continuousChatToggleVisible ? (
-                <ContinuousChatToggle
-                  compact
-                  value={continuousChatMode}
-                  onChange={handleContinuousChatModeChange}
-                  disabled={isComposerLocked}
-                  data-testid="chat-view-continuous-chat-toggle-game-modal"
-                />
-              ) : null}
+              <ContinuousChatToggle
+                compact
+                value={continuousChatMode}
+                onChange={handleContinuousChatModeChange}
+                disabled={isComposerLocked}
+                data-testid="chat-view-continuous-chat-toggle-game-modal"
+              />
             </div>
           ) : null}
           <AgentActivityBox
@@ -895,18 +930,15 @@ export function ChatView({
       before={
         <>
           <CodingAgentControlChip />
-          {continuousChatToggleVisible || resetConversationButton ? (
+          {continuousChatToggleVisible ? (
             <div className="flex items-center justify-end gap-1 px-1 pb-0.5">
-              {resetConversationButton}
-              {continuousChatToggleVisible ? (
-                <ContinuousChatToggle
-                  compact
-                  value={continuousChatMode}
-                  onChange={handleContinuousChatModeChange}
-                  disabled={isComposerLocked}
-                  data-testid="chat-view-continuous-chat-toggle"
-                />
-              ) : null}
+              <ContinuousChatToggle
+                compact
+                value={continuousChatMode}
+                onChange={handleContinuousChatModeChange}
+                disabled={isComposerLocked}
+                data-testid="chat-view-continuous-chat-toggle"
+              />
             </div>
           ) : null}
         </>

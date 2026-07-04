@@ -330,6 +330,7 @@ function AppProviderInner({
     setActiveConversationId,
     setCompanionMessageCutoffTs,
     setConversationMessages,
+    prependConversationMessages,
     setAutonomousEvents,
     setAutonomousLatestEventId,
     setAutonomousRunHealthByRunId,
@@ -1687,8 +1688,14 @@ function AppProviderInner({
       conversationMessages,
       removeConversationMessage,
       setConversationMessages,
+      prependConversationMessages,
     }),
-    [conversationMessages, removeConversationMessage, setConversationMessages],
+    [
+      conversationMessages,
+      removeConversationMessage,
+      setConversationMessages,
+      prependConversationMessages,
+    ],
   );
 
   // Live assistant-turn status (rich status indicator) lives in its own context
