@@ -111,7 +111,7 @@ const DEPLOY_RE =
 // qualifies, which is what gates the app-build-only "the live URL returns
 // HTTP 200" criterion. The verb branch accepts "a" OR "an" plus up to two
 // intervening words so canonical phrasing like "build an app" and
-// "create a todo app" classifies correctly (a bare `build\s+a\s+app` never
+// "create a checklist app" classifies correctly (a bare `build\s+a\s+app` never
 // matches grammatical English and silently regressed those to coding).
 const APP_BUILD_RE =
   /\b(website|web\s*site|landing\s+page|web\s+app|webapp|frontend\s+app|(?:build|create|make)\s+an?\s+(?:\w+[ -]){0,2}(?:site|page|app|application)\b)/i;

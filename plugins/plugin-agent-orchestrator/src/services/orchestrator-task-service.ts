@@ -825,8 +825,8 @@ export class OrchestratorTaskService extends Service {
         break;
       }
       case "plan": {
-        // The sub-agent's todo/plan snapshot (already sanitized in AcpService)
-        // becomes the task's durable currentPlan, which drives the plan/todo
+        // The sub-agent's checklist/plan snapshot (already sanitized in AcpService)
+        // becomes the task's durable currentPlan, which drives the plan/checklist
         // dock. addEvent (in onSessionEvent) persisted the event; here we update
         // the task so the latest plan is available without replaying events.
         const entries = Array.isArray(record.entries) ? record.entries : [];

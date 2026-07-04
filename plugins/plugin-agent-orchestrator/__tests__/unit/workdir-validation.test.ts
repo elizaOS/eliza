@@ -42,7 +42,7 @@ describe("ensureTaskWorkdir / resolveAllowedWorkdir", () => {
   });
 
   it("rejects an existing dir outside the workspace base and cwd", async () => {
-    // The OS temp dir exists but lives in neither the workspace base nor cwd.
+    // The OS scratch dir exists but lives in neither the workspace base nor cwd.
     await expect(resolveAllowedWorkdir(os.tmpdir())).rejects.toThrow(
       /within workspace base/,
     );
@@ -57,7 +57,7 @@ describe("ensureTaskWorkdir / resolveAllowedWorkdir", () => {
   });
 
   it("accepts a dir inside a configured workspace root (ELIZA_WORKSPACE_DIR)", async () => {
-    // A dir under the OS temp dir is normally rejected (it is neither the
+    // A dir under the OS scratch dir is normally rejected (it is neither the
     // ~/.eliza/workspaces base nor cwd). Pointing a configured workspace root
     // env var at it must make a child dir allowed, matching the spawn path.
     const root = path.join(os.tmpdir(), `eliza-ws-root-${process.pid}`);
@@ -76,7 +76,7 @@ describe("ensureTaskWorkdir / resolveAllowedWorkdir", () => {
   });
 
   it("still rejects a dir outside the base, cwd, and any configured root", async () => {
-    // With no workspace-root env configured, the OS temp dir stays rejected.
+    // With no workspace-root env configured, the OS scratch dir stays rejected.
     const prev = process.env.ELIZA_WORKSPACE_DIR;
     delete process.env.ELIZA_WORKSPACE_DIR;
     try {

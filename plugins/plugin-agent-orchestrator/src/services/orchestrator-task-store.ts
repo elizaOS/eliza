@@ -94,7 +94,7 @@ const FILE_LOCK_ACQUIRE_TIMEOUT_MS = 30_000;
 // A lock is only reclaimed as "stale" once it is older than this. It MUST be
 // shorter than the acquire timeout (so a waiter can reclaim a dead lock within
 // its own wait window) yet far longer than a legitimate hold — the guarded work
-// is a single atomic temp-file write + rename, sub-second even for large task
+// is a single atomic scratch-file write + rename, sub-second even for large task
 // histories, so a lock older than 10s means the holder died mid-write. Setting
 // this equal to the acquire timeout (the previous value) let a waiter give up at
 // the exact moment a lock became reclaimable, and risked reclaiming a lock still

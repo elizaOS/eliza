@@ -486,7 +486,7 @@ export function createAgentOrchestratorPlugin(): Plugin {
 // messages, even though the provider rule says self-healing is automatic.
 // This is a recency-bias hallucination from the conversation memory. Until
 // memory rewriting lands upstream, intercept user-facing text and replace
-// the cleanup-cleanup phrases with the canonical self-heal recovery line so
+// the teardown-retry phrases with the canonical self-heal recovery line so
 // the user never sees instructions to do something the runtime already does.
 const FORBIDDEN_CLEANUP_PATTERNS: RegExp[] = [
   /[^.!?\n]*\b(restart|kick(?:[\s-]?off)?|bounce)[^.!?\n]*\bacpx[^.!?\n]*[.!?]?/gi,
@@ -983,7 +983,7 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
   // mechanism: when supported, ALL narration + heartbeat live in the
   // thread, so the main channel's recentMessages provider never sees them
   // and the planner LLM cannot paraphrase past status into hallucinations
-  // on later turns.
+  // on subsequent turns.
   type ProgressState = {
     mainMessageId: string;
     canEdit: boolean;
@@ -1005,7 +1005,7 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
   // Sessions whose single "ack"-mode spawn ACK has been posted. This is the
   // canonical "ack done" marker for ack mode — set synchronously the moment we
   // commit to sending the ACK (before any await) and cleared only on terminal
-  // cleanup. It does NOT depend on the post succeeding or on progressBySession
+  // teardown. It does NOT depend on the post succeeding or on progressBySession
   // being recorded: when sendMessageToTarget returns an empty platformId (or a
   // post-send throw releases firstPostInFlight), `state.mainMessageId` never
   // gets set, so a `state?.mainMessageId`-keyed guard would let the 10s
@@ -1164,7 +1164,7 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
     taggedRuntime.__orchestratorSendWrapped = true;
     taggedRuntime.__orchestratorOriginalSend = originalSend;
     restoreSend = () => {
-      // Only restore if we're still the active wrap. If a later wrapper
+      // Only restore if we're still the active wrap. If a subsequent wrapper
       // chained over ours, leave it alone — yanking the middle of a chain
       // would break downstream consumers.
       if (runtime.sendMessageToTarget === wrapped) {
@@ -1325,7 +1325,7 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
   // recentMessages provider skips Memory entries with metadata.transient
   // when building the planner's conversation window, so past 🚀/💬/⏳/✅/❌
   // status posts cannot resurface as text the planner LLM paraphrases on
-  // later turns. Cross-platform: the flag rides on the persisted Memory
+  // subsequent turns. Cross-platform: the flag rides on the persisted Memory
   // regardless of which connector surface delivered the post (thread,
   // edit-in-place, or fresh send).
   function transientContent(
@@ -1434,7 +1434,7 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
   //   1. THREAD exists (or can be created) → all narration goes in thread.
   //      This is the ANTI-POLLUTION key: thread messages never enter the
   //      main channel's recentMessages window, so the planner LLM cannot
-  //      paraphrase past status updates into hallucinations on later turns.
+  //      paraphrase past status updates into hallucinations on subsequent turns.
   //   2. canEdit → edit a single main-channel message in place.
   //   3. Fallback → send a new main-channel message each time.
   // First call lazily initializes state: creates the thread when supported
@@ -1452,7 +1452,7 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
     const text = sanitizePlannerText(rawText);
     const state = progressBySession.get(sessionId);
     // "ack" mode: the spawn ACK posts once (first emit); never edit it
-    // afterward. Once the main message exists, suppress every later progress
+    // afterward. Once the main message exists, suppress every subsequent progress
     // emit so the ACK stays untouched and the completion-evaluator synthesis is
     // the separate final message — no in-place editing of the channel message.
     if (progressPolicy.mode === "ack" && ackedSessions.has(sessionId)) {
@@ -1660,7 +1660,7 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
           lastText: initialText,
         };
         progressBySession.set(sessionId, newState);
-        // State is recorded — later emits now take the edit/ack-guard branch.
+        // State is recorded — subsequent emits now take the edit/ack-guard branch.
         // Release the first-post claim so a genuine respawn can post again.
         firstPostInFlight.delete(sessionId);
         // A spawning/running reaction marks progress without polluting the
@@ -1939,7 +1939,7 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
         // mainMessageId guards keep it to exactly one ack.
         // A verification-retry re-dispatch (buildVerifyRetryCount > 0, set by
         // SubAgentRouter.retryIncompleteBuild) is an INTERNAL continuation of the
-        // same user request, spawned under a fresh sessionId minutes later. The
+        // same user request, spawned under a fresh sessionId minutes subsequent. The
         // per-session ackedSessions/firstPostInFlight guards never see it, and the
         // per-room ack dedup window (60s) has long expired — so without this gate
         // each retry posts another spawn ack (the triple-ack users reported).
@@ -2007,7 +2007,7 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
                 : "";
             const summary = extractCompletionSummary(rawResponse);
             // await so the state lookup happens BEFORE progressBySession.delete
-            // below — otherwise the helper races against the cleanup and finds
+            // below — otherwise the helper races against the teardown and finds
             // no state to attach the ✅ to.
             await markTaskComplete(sessionId, { source, roomId }, summary);
           } else if (evName === "error" || evName === "cancelled") {
@@ -2054,7 +2054,7 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
           }
           // Drop dedupe keys scoped to this session so the map doesn't grow
           // unbounded across the runtime's lifetime (one entry per
-          // session*event*text triplet). Without this cleanup a long-lived
+          // session*event*text triplet). Without this teardown a long-lived
           // orchestrator process leaks memory proportional to historical
           // session count.
           for (const key of lastPostByKey.keys()) {
@@ -2147,7 +2147,7 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
             // the provider surfaces the live state to the planner; a Discord
             // post would only pollute conversation memory with phrasings the
             // LLM paraphrases as obsolete "restart / reconnect" advice on
-            // later turns.
+            // subsequent turns.
             const failureKind = (data as { failureKind?: string })?.failureKind;
             const USER_ACTION_KINDS = new Set([
               "auth",

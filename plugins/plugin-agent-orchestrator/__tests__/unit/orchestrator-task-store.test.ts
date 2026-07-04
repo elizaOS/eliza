@@ -487,7 +487,7 @@ describe("FileTaskStore", () => {
     const raw = JSON.parse(await readFile(file, "utf8")) as unknown[];
     expect(raw).toHaveLength(1);
 
-    // No lock or temp artifacts left behind after the atomic write.
+    // No lock or scratch artifacts left behind after the atomic write.
     const entries = await readdir(dirname(file));
     expect(entries.some((name) => name.endsWith(".lock"))).toBe(false);
     expect(entries.some((name) => name.endsWith(".tmp"))).toBe(false);
@@ -944,7 +944,7 @@ describe("orchestrator-task-store audit follow-ups (#11028)", () => {
     const x = await b.createTask(createInput({ title: "X" }));
     // `a` never saw X, so its delete is a no-op and must say so.
     expect(await a.deleteTask(x.task.id)).toBe(false);
-    // The failed delete must not leave a lingering tombstone that a later
+    // The failed delete must not leave a lingering tombstone that a subsequent
     // unrelated write applies, silently destroying the other process's task.
     await a.createTask(createInput({ title: "Y" }));
     const reader = new FileTaskStore(path);

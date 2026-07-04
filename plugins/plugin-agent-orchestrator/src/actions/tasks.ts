@@ -1297,7 +1297,7 @@ async function runSpawnAgent(
       // `continueChain: false` is the planner-loop's terminal flag —
       // setting it here makes the spawn act as a "the request has
       // been dispatched, end the turn" signal. The orchestrator's
-      // separate task-event channel reports completion later when the
+      // separate task-event channel reports completion subsequent when the
       // sub-agent actually finishes (or fails). This matches how
       // sendDraft / respondToMessage already mark themselves terminal.
       continueChain: false,

@@ -78,7 +78,7 @@ export const codingAgentExamplesProvider: Provider = {
       ].join("\n");
 
       // The provider's contextGate scopes this to coding/agent-internal routing
-      // contexts. Generic owner task/todo turns must stay with LifeOps surfaces.
+      // contexts. Generic owner task/checklist turns must stay with LifeOps surfaces.
       const detailedText = [
         compactText,
         "",

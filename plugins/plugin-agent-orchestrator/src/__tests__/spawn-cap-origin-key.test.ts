@@ -212,7 +212,7 @@ describe("per-origin spawn cap key (#8875)", () => {
       );
       expect(router.spawnCountForOrigin(otherKey)).toBe(0);
 
-      // Best result keeps the LONGEST non-empty completion (a later truncated
+      // Best result keeps the LONGEST non-empty completion (a subsequent truncated
       // stub must not clobber the fuller earlier answer).
       router.recordOriginResult(key, { text: "479" });
       router.recordOriginResult(key, { text: "479001600 (the full answer)" });
@@ -234,7 +234,7 @@ describe("per-origin spawn cap key (#8875)", () => {
         deliverable: "42",
       });
 
-      // A later re-spawn hop derives the SAME key from the propagated root id,
+      // A subsequent re-spawn hop derives the SAME key from the propagated root id,
       // so it finds the relayable result instead of spawning again.
       const respawnKey = spawnOriginKeyFor(
         msg(SYNTH_MSG_1, {}),

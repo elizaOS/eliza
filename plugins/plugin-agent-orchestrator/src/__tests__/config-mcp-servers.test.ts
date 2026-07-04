@@ -25,7 +25,7 @@ afterEach(() => {
   try {
     rmSync(dir, { recursive: true, force: true });
   } catch {
-    // best-effort cleanup
+    // best-effort teardown
   }
 });
 

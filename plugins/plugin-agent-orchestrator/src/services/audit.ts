@@ -11,7 +11,7 @@ import type { IAgentRuntime } from "@elizaos/core";
 
 // Rotate the NDJSON audit log when it crosses this byte threshold. Without a
 // cap, a long-lived runtime appends one line per spawn/send/cancel forever and
-// the file grows unbounded — eventually filling the user's disk. 10 MiB keeps a
+// the file grows unbounded — over time filling the user's disk. 10 MiB keeps a
 // useful tail (~50k events) while bounding worst-case footprint at 20 MiB
 // (current + .1 rolled).
 const AUDIT_LOG_MAX_BYTES = 10 * 1024 * 1024;

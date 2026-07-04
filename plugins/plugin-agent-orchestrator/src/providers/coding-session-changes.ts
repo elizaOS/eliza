@@ -94,7 +94,7 @@ export const codingSessionChangesProvider: Provider = {
     if (!top) return { text: "", values: {}, data: {} };
 
     // Staleness guard. The change set above is the most recent one PERSISTED,
-    // but a later coding task may have run since and produced no captured diff
+    // but a subsequent coding task may have run since and produced no captured diff
     // (e.g. it wrote only to a gitignored deploy dir, or made no tracked
     // change). Reaching back to the older persisted set is how an unrelated
     // diff leaks into a follow-up ("what did you change?" after task B

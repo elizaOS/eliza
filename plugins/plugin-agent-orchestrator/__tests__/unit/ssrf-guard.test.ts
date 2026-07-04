@@ -187,7 +187,7 @@ describe("safeFetch DNS-rebinding pin (#11028)", () => {
 
   it("connects hostname targets through the PINNED transport with the vetted addresses, never plain fetch", async () => {
     // Rebinding resolver: answers PUBLIC on the vetting lookup and the
-    // metadata IP on any later lookup. The connection must use the first
+    // metadata IP on any subsequent lookup. The connection must use the first
     // (vetted) answer — a second resolution is the TOCTOU under test.
     let calls = 0;
     setHostResolver(async () => {

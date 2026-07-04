@@ -259,7 +259,7 @@ export class SwarmCoordinatorService
   // seconds after the router's real completion post (#11689 residual), and
   // leaked a terminal stop mid-respawn on error paths the router deliberately
   // suppresses (before the #11711 handoff stamp lands). Cleared when the
-  // session resumes (a genuine stop on a later turn must still post), on
+  // session resumes (a genuine stop on a subsequent turn must still post), on
   // legacy-task eviction, and on stop().
   private readonly routerCededTerminalSessions = new Set<string>();
   // Per-session serialization chain for terminal-event synthesis. AcpService
@@ -916,7 +916,7 @@ export class SwarmCoordinatorService
     // dedupe guard, and a router-owned skip does NOT consume the slot: ACP
     // sessions are reused across follow-up turns, so a router-owned turn must
     // not claim the session's synthesis slot — otherwise a `stopped` on a
-    // LATER turn of the SAME session (which the router does not post) would be
+    // SUBSEQUENT turn of the SAME session (which the router does not post) would be
     // swallowed. Instead the skip records the cession in
     // `routerCededTerminalSessions`, so THIS turn's teardown `stopped` — which
     // the one-shot runners emit unconditionally right after the terminal — is
@@ -1159,7 +1159,7 @@ export class SwarmCoordinatorService
 
     const session = await this.acp()?.getSession(sessionId);
     // Do NOT cache a miss: an event can race session-store persistence, and
-    // pinning `{}` would strip routing metadata from every later event of the
+    // pinning `{}` would strip routing metadata from every subsequent event of the
     // session. A miss stays uncached so the next event retries the lookup.
     if (!session) return { metadata: {} };
 

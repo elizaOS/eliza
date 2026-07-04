@@ -260,7 +260,7 @@ export function routerLoopTransition(
         };
       }
       // Over the cap. The first over-cap event force-stops + surfaces; any
-      // later event for an already-capped session is suppressed.
+      // subsequent event for an already-capped session is suppressed.
       if (state.capExceededSessions.has(event.sessionId)) {
         return {
           state: { ...state, roundTripCounts },
@@ -279,7 +279,7 @@ export function routerLoopTransition(
 
     case "rollback_round_trip": {
       const current = state.roundTripCounts.get(event.sessionId);
-      // Only undo when our increment is still the current value: a later event
+      // Only undo when our increment is still the current value: a subsequent event
       // may have advanced it, in which case the round-trip really happened.
       if (current !== event.expectedCount) {
         return { state, decision: { kind: "noop" } };

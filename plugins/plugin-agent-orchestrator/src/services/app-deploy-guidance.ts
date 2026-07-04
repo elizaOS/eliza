@@ -255,7 +255,7 @@ export function augmentTaskWithDeployGuidance(
   // View/plugin tasks are a distinct surface (#8918) with their own cloud-vs-local
   // sandbox contract — they are NOT hosted web apps, so they must be routed before
   // the custom-host app note (which would otherwise wrongly tell the agent to
-  // publish a plugin as a static page). This check stays keyword-gated for now;
+  // publish a plugin as a static page). This check stays keyword-gated at this point;
   // a separate follow-up tracks removing that gate too.
   if (isViewPluginTask(task) && !isAppBuildTask(task)) {
     return `${task.trimEnd()}\n\n${viewPluginGuidance(resolved, {

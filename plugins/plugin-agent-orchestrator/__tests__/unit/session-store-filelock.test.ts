@@ -200,7 +200,7 @@ describe("FileSessionStore cross-instance file-lock contention", () => {
       lockFile,
     );
 
-    // The lock is released after the write completes (finally-block cleanup).
+    // The lock is released after the write completes (finally-block teardown).
     await expect(stat(lockFile)).rejects.toMatchObject({ code: "ENOENT" });
   });
 

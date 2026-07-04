@@ -820,7 +820,7 @@ export class SubAgentRouter extends Service {
     }
 
     // A successful task_complete means this origin task is making progress —
-    // reset its state_lost respawn counter so a later genuine restart is not
+    // reset its state_lost respawn counter so a subsequent genuine restart is not
     // pre-capped by an earlier transient one.
     if (event === "task_complete") {
       this.loopState = routerLoopTransition(this.loopState, {
@@ -988,7 +988,7 @@ export class SubAgentRouter extends Service {
     // dedupe). Those events never post a synthetic inbound, so counting them
     // against the runaway-loop cap would miscount real round-trips and trip the
     // force-stop early. The reducer only undoes the increment if it is still the
-    // current value (no later event has advanced it).
+    // current value (no subsequent event has advanced it).
     const rollbackRoundTrip = (): void => {
       this.loopState = routerLoopTransition(this.loopState, {
         type: "rollback_round_trip",
@@ -1269,7 +1269,7 @@ export class SubAgentRouter extends Service {
     if (event === "task_complete") {
       // Remember the best (longest) CLEAN result for this root origin so the
       // spawn cap (tasks.ts) can relay it instead of re-spawning when a weak
-      // model's later completion for the SAME user request comes back
+      // model's subsequent completion for the SAME user request comes back
       // truncated/blocked. Key contract (#8875) and the verify-failed gate
       // live in captureOriginResultForCompletion.
       this.captureOriginResultForCompletion(
@@ -1502,7 +1502,7 @@ export class SubAgentRouter extends Service {
     // The lineage slot was already claimed atomically before the delivery loop
     // (the reducer's claim_completion), so there is nothing to mark here. The
     // claim suppresses
-    // a later retry sub-agent (different sessionId) for the same parent prompt
+    // a subsequent retry sub-agent (different sessionId) for the same parent prompt
     // (issue elizaOS/eliza#7967); same-session progressive task_completes are
     // unaffected because the claim is keyed by sessionId, and a verify-retry
     // handoff returns earlier (above) so an incomplete build never claims.

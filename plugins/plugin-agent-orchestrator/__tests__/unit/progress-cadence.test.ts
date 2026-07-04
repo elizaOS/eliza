@@ -546,7 +546,7 @@ describe("emitProgress routing ladder + cadence", () => {
     expect(rt.sendMessageToTarget).toHaveBeenCalledTimes(1);
 
     // SubAgentRouter.retryIncompleteBuild re-dispatches a failed build under a
-    // FRESH sessionId minutes later, tagging it `buildVerifyRetryCount > 0`. The
+    // FRESH sessionId minutes subsequent, tagging it `buildVerifyRetryCount > 0`. The
     // per-session ackedSessions/firstPostInFlight guards never see the new id,
     // and the per-room ack dedup window (ACK_ROOM_DEDUP_MS, 60s) has expired — so
     // the only thing standing between the retry and a second "working on it now."
@@ -679,7 +679,7 @@ describe("emitProgress routing ladder + cadence", () => {
       { sessionOutput: "Now let me build the homepage and deploy it." },
     );
     seedSession(rt, "s-hb-dupe", "deploy-task");
-    // Model always returns the SAME line → after the first post, later ticks
+    // Model always returns the SAME line → after the first post, subsequent ticks
     // must dedupe and stay silent.
     rt.useModel.mockResolvedValue("Building the homepage and deploying.");
 

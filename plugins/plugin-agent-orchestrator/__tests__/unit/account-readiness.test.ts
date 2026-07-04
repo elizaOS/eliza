@@ -6,7 +6,7 @@
  * returns 503 (loud) when the pool is not ready.
  */
 
-// biome-ignore assist/source/organizeImports: comment-only cleanup preserves import token order.
+// biome-ignore assist/source/organizeImports: comment-only pass preserves import token order.
 import { CODING_AGENT_SELECTOR_BRIDGE_SYMBOL } from "@elizaos/core";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { describe, expect, it, vi } from "vitest";

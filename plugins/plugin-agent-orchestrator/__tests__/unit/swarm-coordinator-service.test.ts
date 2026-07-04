@@ -620,13 +620,13 @@ describe("SwarmCoordinatorService", () => {
     await new Promise((r) => setTimeout(r, 0));
     expect(acp.getSession).toHaveBeenCalledTimes(1);
 
-    // Later enrichable events reuse the cache: no further getSession calls.
+    // Subsequent enrichable events reuse the cache: no further getSession calls.
     acp.emit("sess-cache", "tool_running", { toolCall: { title: "Read" } });
     acp.emit("sess-cache", "usage_update", { tokens: 10 });
     await new Promise((r) => setTimeout(r, 0));
     expect(acp.getSession).toHaveBeenCalledTimes(1);
 
-    // Cached metadata still enriches later events.
+    // Cached metadata still enriches subsequent events.
     expect(received.at(-1)?.data).toMatchObject({
       originRoomId: "origin-room-20",
       label: "build-site",
@@ -1003,7 +1003,7 @@ describe("SwarmCoordinatorService", () => {
   it("a `stopped` AFTER the session resumes still synthesizes (cession is per-turn; sessions are reused)", async () => {
     // ACP sessions are reused across follow-up turns. The ceded-terminal
     // marker belongs to the PREVIOUS turn only: once the session resumes (any
-    // non-terminal event), a later stop — which the router never posts — must
+    // non-terminal event), a subsequent stop — which the router never posts — must
     // synthesize again or a genuine mid-turn user stop would go silent.
     const acp = makeAcpStub({
       agentType: "codex",

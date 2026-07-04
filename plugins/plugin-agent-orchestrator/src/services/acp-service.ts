@@ -460,7 +460,7 @@ export class AcpService extends Service {
     AcpService.liveInstances.delete(this);
     // The shared SIGTERM/SIGINT hook is `process.once` — it self-removes
     // when fired. If nothing fired and the last instance is going away,
-    // explicitly off() the hook so a respawned instance later in the
+    // explicitly off() the hook so a respawned instance subsequent in the
     // process can install a fresh one (otherwise shutdownHookInstalled
     // stays true but the listener is gone).
     if (
@@ -897,7 +897,7 @@ export class AcpService extends Service {
       // busy marker was only added deep inside sendNativePrompt (after
       // `updateStatus` + client setup await), so two concurrent sendPrompt calls
       // could both pass the has() check before either added, driving two prompts
-      // onto the same native session. Cleanup on the pre-prompt error paths;
+      // onto the same native session. Teardown on the pre-prompt error paths;
       // sendNativePrompt's own finally clears it on the normal path.
       this.nativePromptSessionIds.add(sessionId);
       try {
@@ -2078,10 +2078,10 @@ export class AcpService extends Service {
       ) {
         this.emitSessionEvent(sessionId, "reasoning", { text: content.text });
       }
-      // plan: opencode emits the agent's todo/plan list as a `plan` update with
+      // plan: opencode emits the agent's checklist/plan list as a `plan` update with
       // entries [{content, status, priority}] (driven by its todowrite tool).
       // Forward a sanitized snapshot as a `plan` event so the task's currentPlan
-      // can drive the plan/todo dock. Validated at this boundary (raw -> typed);
+      // can drive the plan/checklist dock. Validated at this boundary (raw -> typed);
       // an adapter that never emits a plan simply does not enter this branch.
       else if (sessionUpdate === "plan") {
         const rawEntries = updateBlock?.entries;

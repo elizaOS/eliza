@@ -775,7 +775,7 @@ export class CodingWorkspaceService {
       this.readConfigEnvKey("ELIZA_CODING_DIRECTORY") ??
       process.env.ELIZA_CODING_DIRECTORY;
     // ELIZA_CODING_DIRECTORY is optional — guard the trim so an unconfigured
-    // runtime (rawCodingDir === undefined) doesn't crash scratch-dir cleanup.
+    // runtime (rawCodingDir === undefined) doesn't crash scratch-dir teardown.
     const trimmedCodingDir = rawCodingDir?.trim();
     const codingDir = trimmedCodingDir
       ? trimmedCodingDir.startsWith("~")

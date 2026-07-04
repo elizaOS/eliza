@@ -290,7 +290,7 @@ function killNewAgentPids(agent, before, signal) {
     try {
       process.kill(pid, signal);
     } catch {
-      // Best-effort cleanup for a gated live smoke.
+      // Best-effort teardown for a gated live smoke.
     }
   }
 }

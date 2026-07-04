@@ -8,7 +8,7 @@
  * shared state_lost lineage cap.
  */
 
-// biome-ignore assist/source/organizeImports: comment-only cleanup preserves import token order.
+// biome-ignore assist/source/organizeImports: comment-only pass preserves import token order.
 import { CODING_AGENT_SELECTOR_BRIDGE_SYMBOL } from "@elizaos/core";
 import type { Content, HandlerCallback, Memory } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
