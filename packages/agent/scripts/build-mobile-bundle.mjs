@@ -46,6 +46,7 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { resolveWorkspacePackageRoot } from "./lib/mobile-workspace-resolution.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const agentRoot = path.resolve(here, "..");
@@ -850,8 +851,10 @@ function findViemPackageRoot() {
       candidates.push(path.join(bunDir, entry, "node_modules", "viem"));
     }
   }
-  return candidates.find((candidate) =>
-    existsSync(path.join(candidate, "_cjs", "chains", "index.js")),
+  return candidates.find(
+    (candidate) =>
+      existsSync(path.join(candidate, "_cjs", "chains", "index.js")) &&
+      existsSync(path.join(candidate, "_cjs", "actions", "test", "reset.js")),
   );
 }
 
@@ -1147,7 +1150,9 @@ const workspaceSrcFallbackPlugin = {
         "node_modules",
         ...pkgName.split("/"),
       );
-      const result = existsSync(pkgPath) ? pkgPath : null;
+      const result = existsSync(pkgPath)
+        ? pkgPath
+        : resolveWorkspacePackageRoot(repoRoot, pkgName);
       cache.set(pkgName, result);
       return result;
     };
