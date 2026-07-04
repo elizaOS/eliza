@@ -17,7 +17,9 @@ import {
   type A11yScanStats,
   type AccessibilityProvider,
   DarwinAccessibilityProvider,
+  LinuxAccessibilityProvider,
   parseDarwinA11yPayload,
+  parseLinuxAtspiPayload,
   parseWindowsUiaPayload,
   WindowsAccessibilityProvider,
 } from "./a11y-provider.js";
@@ -95,6 +97,22 @@ describe("accessibility provider snapshot failure surfacing", () => {
     },
   );
 
+  it.skipIf(process.platform === "linux")(
+    "Linux provider on an AT-SPI-less host degrades by design: [] with no fabricated scan stats",
+    async () => {
+      // Real path, no mocks: on macOS/Windows hosts python3 either does not
+      // exist (early return) or genuinely lacks the gi/Atspi bindings, so the
+      // embedded script prints the designed {"unavailable": true} failover
+      // payload. Neither case is a failure, so no error may be fabricated —
+      // the compositor tiers (hyprctl/swaymsg absent here) then yield [].
+      const provider = new LinuxAccessibilityProvider();
+      const nodes = await provider.snapshot();
+
+      expect(nodes).toEqual([]);
+      expect(provider.lastScanStats()).toBeNull();
+    },
+  );
+
   it.skipIf(onWindows)(
     "Windows provider surfaces the PowerShell failure via logger.warn, records scan stats, and still returns []",
     async () => {
@@ -165,6 +183,48 @@ describe("scan payload parsers (untrusted embedded-script output)", () => {
   it("parseWindowsUiaPayload throws on a bare-array payload instead of fabricating an empty scan", () => {
     expect(() => parseWindowsUiaPayload("[]")).toThrow();
   });
+
+  it("parseLinuxAtspiPayload preserves the counts when every window failed (an all-miss scan is not a clean empty desktop)", () => {
+    const parsed = parseLinuxAtspiPayload(
+      JSON.stringify({ nodes: [], failed: 4, total: 4 }),
+    );
+    expect(parsed.nodes).toEqual([]);
+    expect(parsed.failedWindows).toBe(4);
+    expect(parsed.totalWindows).toBe(4);
+    expect(parsed.unavailable).toBe(false);
+    expect(parsed.error).toBeUndefined();
+  });
+
+  it("parseLinuxAtspiPayload carries a mid-scan crash message alongside the counts accumulated before the crash", () => {
+    const parsed = parseLinuxAtspiPayload(
+      JSON.stringify({
+        nodes: [
+          { role: "frame", label: "Files", bbox: [0, 0, 10, 10], actions: [] },
+        ],
+        failed: 1,
+        total: 3,
+        error: "atspi bus vanished",
+      }),
+    );
+    expect(parsed.nodes).toHaveLength(1);
+    expect(parsed.failedWindows).toBe(1);
+    expect(parsed.totalWindows).toBe(3);
+    expect(parsed.error).toBe("atspi bus vanished");
+  });
+
+  it("parseLinuxAtspiPayload flags the designed bindings-absent failover distinctly from a crash", () => {
+    const parsed = parseLinuxAtspiPayload(
+      JSON.stringify({ nodes: [], unavailable: true }),
+    );
+    expect(parsed.unavailable).toBe(true);
+    expect(parsed.error).toBeUndefined();
+  });
+
+  it("parseLinuxAtspiPayload throws on a non-object or empty payload instead of fabricating an empty scan", () => {
+    expect(() => parseLinuxAtspiPayload("[]")).toThrow();
+    expect(() => parseLinuxAtspiPayload("not json")).toThrow();
+    expect(() => parseLinuxAtspiPayload("")).toThrow();
+  });
 });
 
 describe("SceneBuilder reports a11y scan failures once per scan", () => {
@@ -227,6 +287,34 @@ describe("SceneBuilder reports a11y scan failures once per scan", () => {
       provider: "darwin",
     });
     expect(String((scanReports[0]?.error as Error).message)).toContain("4/6");
+  });
+
+  it("an all-windows-failed scan (empty node list, non-zero counts) is reported, not read as a clean empty desktop", async () => {
+    // The Linux AT-SPI regression class this guards: a scan that attempted N
+    // windows and read none of them previously discarded its counts because
+    // stats were only recorded when nodes came back.
+    const provider: AccessibilityProvider = {
+      name: "linux",
+      available: () => true,
+      snapshot: async (): Promise<SceneAxNode[]> => [],
+      lastScanStats: (): A11yScanStats => ({
+        failedWindows: 5,
+        totalWindows: 5,
+      }),
+    };
+    const { builder, reports } = makeBuilderWith(provider);
+
+    await builder.tick("agent-turn");
+
+    const scanReports = reports.filter(
+      (r) => r.scope === "Computeruse.a11yScan",
+    );
+    expect(scanReports).toHaveLength(1);
+    expect(scanReports[0]?.context).toMatchObject({
+      failedWindows: 5,
+      totalWindows: 5,
+      provider: "linux",
+    });
   });
 
   it("a clean scan produces no report", async () => {

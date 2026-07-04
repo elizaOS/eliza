@@ -140,7 +140,10 @@ export class LinuxAccessibilityProvider implements AccessibilityProvider {
     // Try AT-SPI first (richest data on X11 / GNOME-Wayland), then fall
     // back to compositor-specific IPC. Scan stats come from the AT-SPI tier
     // (the only tier that can count per-window misses); the compositor tiers
-    // report null (unknown) rather than a fabricated clean count.
+    // report null (unknown) rather than a fabricated clean count. An AT-SPI
+    // failure recorded in the stats deliberately survives a compositor-tier
+    // success: the compositor fallback only yields window shells, so a broken
+    // AT-SPI stack still degrades the scene and is reported once per scan.
     this.lastStats = null;
     const atspiNodes = this.tryAtspi();
     if (atspiNodes.length > 0) return atspiNodes;
@@ -153,17 +156,23 @@ export class LinuxAccessibilityProvider implements AccessibilityProvider {
     // Per-window failures inside the AT-SPI walk are COUNTED (not silently
     // degraded) so a scan that drops or half-reads windows is reported once
     // per scan by the scene-builder instead of read as an emptier desktop
-    // (#12273). The module-level except keeps the designed failover contract:
-    // AT-SPI unavailable (no gi bindings) -> empty payload -> compositor tier.
+    // (#12273). The Python side distinguishes the designed failover (gi/Atspi
+    // bindings absent -> {"unavailable": true} -> compositor tier, no error)
+    // from a mid-scan crash, which ships the counts accumulated before the
+    // crash plus the message so it cannot read as a clean empty payload.
     const py = `
 import json, sys
 try:
     import gi
     gi.require_version('Atspi', '2.0')
     from gi.repository import Atspi
-    out = []
-    failed = 0
-    total = 0
+except Exception:
+    print(json.dumps({"nodes": [], "unavailable": True}))
+    sys.exit(0)
+out = []
+failed = 0
+total = 0
+try:
     desktop = Atspi.get_desktop(0)
     for i in range(desktop.get_child_count()):
         app = desktop.get_child_at_index(i)
@@ -200,7 +209,7 @@ try:
                 failed += 1
     print(json.dumps({"nodes": out, "failed": failed, "total": total}))
 except Exception as e:
-    print(json.dumps({"nodes": [], "failed": 0, "total": 0}))
+    print(json.dumps({"nodes": out, "failed": failed, "total": total, "error": str(e)}))
 `;
     try {
       const text = execFileSync("python3", ["-c", py], {
@@ -208,25 +217,27 @@ except Exception as e:
         encoding: "utf8",
         stdio: ["ignore", "pipe", "ignore"],
       });
-      const parsed: unknown = JSON.parse(text || '{"nodes":[]}');
-      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-        return [];
-      }
-      const obj = parsed as Record<string, unknown>;
-      const rawNodes = Array.isArray(obj.nodes) ? obj.nodes : [];
-      const nodes = rawNodes
-        .filter((n) => n && typeof n === "object")
-        .map((n, i) => mapAtspiNode(n as Record<string, unknown>, i));
-      if (nodes.length > 0) {
-        this.lastStats = {
-          failedWindows: Number(obj.failed) || 0,
-          totalWindows: Number(obj.total) || 0,
-        };
-      }
-      return nodes;
-    } catch {
-      // error-policy:J4 AT-SPI probe; empty result advances the failover chain
-      // to the Wayland compositor tier (see snapshot()).
+      const payload = parseLinuxAtspiPayload(text);
+      if (payload.unavailable) return [];
+      this.lastStats = {
+        failedWindows: payload.failedWindows,
+        totalWindows: payload.totalWindows,
+        ...(payload.error !== undefined
+          ? { error: `AT-SPI scan crashed mid-walk: ${payload.error}` }
+          : {}),
+      };
+      return payload.nodes;
+    } catch (err) {
+      // error-policy:J4 empty result advances the failover chain to the
+      // Wayland compositor tier (see snapshot()), but python3 dying (timeout,
+      // non-zero exit, unparseable output) is a failure, not an AT-SPI-less
+      // host — record it in the scan stats (the scene-builder reports it once
+      // per scan) and warn, instead of reading as an empty desktop.
+      const message = err instanceof Error ? err.message : String(err);
+      this.lastStats = { failedWindows: 0, totalWindows: 0, error: message };
+      logger.warn(
+        `[LinuxAccessibilityProvider] AT-SPI snapshot failed; falling back to compositor tier: ${message}`,
+      );
       return [];
     }
   }
@@ -381,6 +392,45 @@ export function parseSwayTree(text: string): SceneAxNode[] {
   };
   visit(raw, "");
   return out;
+}
+
+/**
+ * Parse the AT-SPI scan payload into nodes + scan stats. Exported so the
+ * untrusted-output seam is testable without python3/AT-SPI. `unavailable`
+ * marks the designed failover (gi/Atspi bindings absent → compositor tier,
+ * not an error); a mid-scan crash instead carries `error` plus the counts
+ * accumulated before the crash, so it can never read as a clean empty scan.
+ * Throws on an unrecognizable payload — the caller's catch treats that as a
+ * whole-scan failure rather than fabricating an empty-but-healthy result.
+ */
+export function parseLinuxAtspiPayload(text: string): {
+  nodes: SceneAxNode[];
+  failedWindows: number;
+  totalWindows: number;
+  unavailable: boolean;
+  error?: string;
+} {
+  const parsed: unknown = JSON.parse(text);
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("AT-SPI payload is not a {nodes,failed,total} object");
+  }
+  const obj = parsed as Record<string, unknown>;
+  if (obj.unavailable === true) {
+    return { nodes: [], failedWindows: 0, totalWindows: 0, unavailable: true };
+  }
+  const rawNodes = Array.isArray(obj.nodes) ? obj.nodes : [];
+  const nodes = rawNodes
+    .filter((n) => n && typeof n === "object")
+    .map((n, i) => mapAtspiNode(n as Record<string, unknown>, i));
+  return {
+    nodes,
+    failedWindows: Number(obj.failed) || 0,
+    totalWindows: Number(obj.total) || 0,
+    unavailable: false,
+    ...(typeof obj.error === "string" && obj.error !== ""
+      ? { error: obj.error }
+      : {}),
+  };
 }
 
 function mapAtspiNode(raw: Record<string, unknown>, idx: number): SceneAxNode {

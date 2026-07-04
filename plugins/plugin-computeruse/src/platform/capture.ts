@@ -306,7 +306,13 @@ function tryCaptureWaylandPortal(tmpFile: string): boolean {
     captureWaylandPortalScreenshot(tmpFile);
     return true;
   } catch (error) {
+    // Permission denial is terminal — no other tier can succeed, and the
+    // classified error is what the caller surfaces.
     if (isPermissionDeniedError(error)) throw error;
+    // error-policy:J4 capture-tier failover — a non-permission portal failure
+    // (helper missing, DBus timeout) advances the chain to the X11 tools
+    // tier; when every tier fails the caller throws "No screenshot tool
+    // available", so the miss never fabricates a capture.
     return false;
   }
 }

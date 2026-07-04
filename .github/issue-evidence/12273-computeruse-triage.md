@@ -18,6 +18,16 @@ report pipeline failures; process/window enumeration failures warn instead of re
 as an empty machine; approval-mode load/persist failures surfaced; COMPUTER_USE_AGENT
 returns `result.error` on non-finish; progress-callback failures reportError'd (J7).
 
+Follow-up (cross-review of PR #13228): the Linux AT-SPI tier now has full parity with
+the macOS/Windows tiers — scan stats are recorded unconditionally (an all-windows-failed
+scan no longer discards its counts), the embedded Python distinguishes the designed
+bindings-absent failover (`{"unavailable": true}` → compositor tier, no error) from a
+mid-scan crash (partial counts + `error`, never a clean `{failed:0,total:0}`), and a
+python3/exec/parse failure sets `stats.error` so the scene-builder emits ERROR_REPORTED.
+The `tryCaptureWaylandPortal` catches (capture.ts/screenshot.ts) and the Brain imageless
+catch are re-verdicted below from `rethrow` to J4: each keeps a narrow rethrow
+(permission-denied / imagePolicy=never) but otherwise degrades along a designed tier.
+
 | site | verdict |
 |---|---|
 | `src/actions/clipboard.ts:181` | J1 (annotated at site) |
@@ -32,8 +42,8 @@ returns `result.error` on non-finish; progress-callback failures reportError'd (
 | `src/actor/aosp-input-actor.ts:172` | J1 (annotated at site) |
 | `src/actor/aosp-input-actor.ts:202` | J1 (annotated at site) |
 | `src/actor/brain.ts:343` | J3 (annotated at site) |
-| `src/actor/brain.ts:373` | rethrow — propagates (context-adding or permission-classifying throw); no swallow |
-| `src/actor/brain.ts:566` | rethrow — propagates (context-adding or permission-classifying throw); no swallow |
+| `src/actor/brain.ts:373` | J4 (annotated at site) — rethrows under imagePolicy=never (no tier left); otherwise designed degrade to the pixels-escalation tier |
+| `src/actor/brain.ts:568` | rethrow — propagates (context-adding or permission-classifying throw); no swallow |
 | `src/actor/cascade.ts:394` | J4 (annotated at site) |
 | `src/actor/cascade.ts:432` | J4 (annotated at site) |
 | `src/actor/computer-interface.ts:202` | J4 (annotated at site) |
@@ -64,8 +74,8 @@ returns `result.error` on non-finish; progress-callback failures reportError'd (
 | `src/platform/capture.ts:113` | J6 (annotated at site) |
 | `src/platform/capture.ts:152` | J6 (annotated at site) |
 | `src/platform/capture.ts:178` | rethrow — propagates (context-adding or permission-classifying throw); no swallow |
-| `src/platform/capture.ts:308` | rethrow — propagates (context-adding or permission-classifying throw); no swallow |
-| `src/platform/capture.ts:381` | J4 (annotated at site) |
+| `src/platform/capture.ts:308` | J4 (annotated at site) — permission-denied rethrows (terminal); other portal failures advance the capture-tier failover to the X11 tools tier |
+| `src/platform/capture.ts:387` | J4 (annotated at site) |
 | `src/platform/clipboard.ts:118` | J4 (annotated at site) |
 | `src/platform/clipboard.ts:159` | J4 (annotated at site) |
 | `src/platform/desktop.ts:906` | rethrow — propagates (context-adding or permission-classifying throw); no swallow |
@@ -124,9 +134,9 @@ returns `result.error` on non-finish; progress-callback failures reportError'd (
 | `src/platform/screenshot.ts:69` | J6 (annotated at site) |
 | `src/platform/screenshot.ts:72` | J6 (annotated at site) |
 | `src/platform/screenshot.ts:113` | rethrow — propagates (context-adding or permission-classifying throw); no swallow |
-| `src/platform/screenshot.ts:191` | rethrow — propagates (context-adding or permission-classifying throw); no swallow |
-| `src/platform/screenshot.ts:203` | J4 (annotated at site) |
-| `src/platform/screenshot.ts:235` | J4 (annotated at site) |
+| `src/platform/screenshot.ts:191` | J4 (annotated at site) — permission-denied rethrows (terminal); other portal failures advance the capture-tier failover to the X11 tools tier |
+| `src/platform/screenshot.ts:209` | J4 (annotated at site) |
+| `src/platform/screenshot.ts:241` | J4 (annotated at site) |
 | `src/platform/security.ts:239` | J3 (annotated at site) |
 | `src/platform/security.ts:350` | J3 (annotated at site) |
 | `src/platform/security.ts:379` | J3 (annotated at site) |
@@ -190,16 +200,16 @@ returns `result.error` on non-finish; progress-callback failures reportError'd (
 | `src/sandbox/docker-backend.ts:354` | J6 (annotated at site) |
 | `src/sandbox/docker-backend.ts:397` | J3 (annotated at site) |
 | `src/sandbox/remote-guest.ts:160` | J1 (annotated at site) |
-| `src/scene/a11y-provider.ts:227` | J4 (annotated at site) |
-| `src/scene/a11y-provider.ts:255` | J4 (annotated at site) |
-| `src/scene/a11y-provider.ts:270` | J4 (annotated at site) |
-| `src/scene/a11y-provider.ts:293` | J3 (annotated at site) |
-| `src/scene/a11y-provider.ts:342` | J3 (annotated at site) |
-| `src/scene/a11y-provider.ts:492` | FIXED (exemplar 2) — embedded JXA per-window catch now COUNTS the miss (`failed += 1`); reported once per scan via runtime.reportError("Computeruse.a11yScan", …). |
-| `src/scene/a11y-provider.ts:494` | FIXED (exemplar 2) — embedded JXA per-process catch now counts the miss; reported once per scan. |
-| `src/scene/a11y-provider.ts:511` | J4 (annotated at site) |
-| `src/scene/a11y-provider.ts:612` | FIXED — embedded PS UIA per-element catch now counts the miss (`$failed++`); reported once per scan. |
-| `src/scene/a11y-provider.ts:628` | J4 (annotated at site) |
+| `src/scene/a11y-provider.ts:230` | J4 (annotated at site) — python3 dying is recorded in scan stats (stats.error → one reportError per scan) before the failover to the compositor tier |
+| `src/scene/a11y-provider.ts:266` | J4 (annotated at site) |
+| `src/scene/a11y-provider.ts:281` | J4 (annotated at site) |
+| `src/scene/a11y-provider.ts:304` | J3 (annotated at site) |
+| `src/scene/a11y-provider.ts:353` | J3 (annotated at site) |
+| `src/scene/a11y-provider.ts:542` | FIXED (exemplar 2) — embedded JXA per-window catch now COUNTS the miss (`failed += 1`); reported once per scan via runtime.reportError("Computeruse.a11yScan", …). |
+| `src/scene/a11y-provider.ts:544` | FIXED (exemplar 2) — embedded JXA per-process catch now counts the miss; reported once per scan. |
+| `src/scene/a11y-provider.ts:561` | J4 (annotated at site) |
+| `src/scene/a11y-provider.ts:662` | FIXED — embedded PS UIA per-element catch now counts the miss (`$failed++`); reported once per scan. |
+| `src/scene/a11y-provider.ts:678` | J4 (annotated at site) |
 | `src/scene/apps.ts:172` | J4 (annotated at site) |
 | `src/scene/ocr-adapter.ts:110` | J4 (annotated at site) |
 | `src/scene/ocr-adapter.ts:132` | J4 (annotated at site) |
