@@ -3019,7 +3019,9 @@ describe("runV5MessageRuntimeStage1", () => {
 		const userContent = params.messages?.[1]?.content ?? "";
 		// The user's turn keeps the user tag; the agent's own reply is present
 		// and role-tagged with the character name so recall is grounded.
-		expect(userContent).toContain("prior_message:user:\n1gig: whats the btc price");
+		expect(userContent).toContain(
+			"prior_message:user:\n1gig: whats the btc price",
+		);
 		expect(userContent).toContain(
 			"prior_message:agent:\nTest Agent: BTC is around $63,000 right now.",
 		);
