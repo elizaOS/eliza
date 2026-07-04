@@ -402,15 +402,11 @@ describe("native assistant entry contracts", () => {
     // Service: records audio, transcribes over the loopback ASR route, commits
     // via InputConnection, and deep-links into the app with a distinct source
     // tag when the on-device engine is unreachable (no silent fallback).
-    expect(androidVoiceImeService).toContain(
-      "extends InputMethodService",
-    );
+    expect(androidVoiceImeService).toContain("extends InputMethodService");
     expect(androidVoiceImeService).toContain("AudioRecord");
     expect(androidVoiceImeService).toContain("/api/asr/local-inference");
     expect(androidVoiceImeService).toContain("commitText");
-    expect(androidVoiceImeService).toContain(
-      "source=android-ime",
-    );
+    expect(androidVoiceImeService).toContain("source=android-ime");
     // The switch-back affordance is wired to the framework switch APIs.
     expect(androidVoiceImeService).toContain("switchToPreviousInputMethod");
     expect(androidVoiceImeService).toContain("switchToNextInputMethod");
