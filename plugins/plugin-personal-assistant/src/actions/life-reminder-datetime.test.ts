@@ -12,9 +12,19 @@
  *     reach the snooze handler instead of being discarded.
  */
 
-import type { HandlerOptions, IAgentRuntime, Memory } from "@elizaos/core";
+import type {
+  HandlerOptions,
+  IAgentRuntime,
+  Memory,
+  UUID,
+} from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { resolveDefaultTimeZone } from "../lifeops/defaults.js";
+import {
+  createOwnerFactStore,
+  registerOwnerFactStore,
+  resolveOwnerFactStore,
+} from "../lifeops/owner/fact-store.js";
 import { getZonedDateParts } from "../lifeops/time.js";
 import type { ExtractedTaskParams } from "./lib/extract-task-plan.js";
 import {
@@ -372,11 +382,24 @@ describe("buildCadenceFromUpdateFields (once reschedule)", () => {
 // ── Handler-level flows ───────────────────────────────
 
 function makeRuntime(respond: (prompt: string) => string): IAgentRuntime {
+  const cache = new Map<string, unknown>();
   return {
+    agentId: "00000000-0000-0000-0000-000000000003" as UUID,
     getRoom: vi.fn(async () => null),
     useModel: vi.fn(async (_modelType: unknown, args: { prompt: string }) =>
       respond(args.prompt),
     ),
+    async getCache<T>(key: string): Promise<T | null> {
+      const value = cache.get(key);
+      return value === undefined ? null : (value as T);
+    },
+    async setCache<T>(key: string, value: T): Promise<boolean> {
+      cache.set(key, value);
+      return true;
+    },
+    async deleteCache(key: string): Promise<boolean> {
+      return cache.delete(key);
+    },
     logger: {
       debug: vi.fn(),
       error: vi.fn(),
@@ -569,6 +592,66 @@ describe("runLifeOperationHandler one-off reminder scheduling", () => {
     expect(weekday).toBe(5);
     expect(parts.hour).toBe(17);
     expect(parts.minute).toBe(0);
+  });
+
+  it('anchors "remind me tomorrow at 9am" to the owner timezone fact, not the host clock (#13509)', async () => {
+    // Regression for #13509: a conversational one-off create with no zone
+    // stated out loud (planner returns timeZone:null) must resolve "9am"
+    // against the owner's STORED timezone fact, not the host clock. Before the
+    // fix, this stored 09:00 in the host zone (UTC on TZ=UTC / server
+    // topologies) = 04:00 America/Chicago — "confidently wrong by five hours".
+    const runtime = makeRuntime((prompt) => {
+      if (prompt.includes("create_definition request")) {
+        return taskPlanJson({
+          requestKind: "reminder",
+          title: "Call pharmacy about refill",
+          cadenceKind: "once",
+          dueInDays: 1,
+          timeOfDay: "09:00",
+          // No zone stated out loud: the planner leaves timeZone null. The
+          // owner-fact fallback (#13509) must supply the zone.
+          timeZone: null,
+        });
+      }
+      return "";
+    });
+    // Seed the owner's stored timezone fact.
+    registerOwnerFactStore(runtime, createOwnerFactStore(runtime));
+    await resolveOwnerFactStore(runtime).update(
+      { timezone: "America/Chicago" },
+      { source: "profile_save", recordedAt: "2026-07-04T00:00:00.000Z" },
+    );
+
+    const result = await runLifeOperationHandler(
+      runtime,
+      makeMessage(
+        "remind me tomorrow at 9am to call the pharmacy about my refill",
+      ),
+      undefined,
+      {
+        parameters: {
+          action: "create_reminder",
+          intent:
+            "remind me tomorrow at 9am to call the pharmacy about my refill",
+        },
+      } as HandlerOptions,
+    );
+    expect(result.success).toBe(true);
+    expect(serviceState.createCalls).toHaveLength(1);
+    const created = serviceState.createCalls[0] as {
+      cadence: { kind: string; dueAt: string };
+      timezone?: string;
+    };
+    expect(created.cadence.kind).toBe("once");
+    // dueAt wall-clock is 09:00 in America/Chicago, NOT 09:00 host/UTC.
+    const parts = getZonedDateParts(
+      new Date(created.cadence.dueAt),
+      "America/Chicago",
+    );
+    expect(parts.hour).toBe(9);
+    expect(parts.minute).toBe(0);
+    // The persisted definition also carries the owner zone, not the host zone.
+    expect(created.timezone).toBe("America/Chicago");
   });
 
   it("asks for clarification instead of scheduling when the time is unresolvable", async () => {
