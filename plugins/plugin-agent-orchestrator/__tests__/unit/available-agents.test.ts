@@ -2,18 +2,15 @@
  * Verifies availableAgentsProvider.
  * Deterministic unit test of pure helpers; no runtime, no live model.
  */
-import { mock } from "bun:test";
 import { describe, expect, it, vi } from "vitest";
 
 // Control the framework-state probe so we can drive its failure path
 // deterministically without touching the filesystem / env discovery it does.
 const getTaskAgentFrameworkStateMock = vi.fn();
-mock.module("../../src/services/task-agent-frameworks.js", () => {
-  return {
-    getTaskAgentFrameworkState: (...args: unknown[]) =>
-      getTaskAgentFrameworkStateMock(...args),
-  };
-});
+vi.mock("../../src/services/task-agent-frameworks.js", () => ({
+  getTaskAgentFrameworkState: (...args: unknown[]) =>
+    getTaskAgentFrameworkStateMock(...args),
+}));
 
 import {
   memory,
