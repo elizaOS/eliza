@@ -1,5 +1,7 @@
 /** Unit tests for the OpenClaw home parser and its shared importer integration. */
 
+import { mkdtemp, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -44,6 +46,21 @@ describe("openclaw parser: detect()", () => {
 
   it("returns false for a non-existent path", async () => {
     expect(await detect(path.join(here, "does-not-exist"))).toBe(false);
+  });
+
+  it("does not treat generic AGENTS.md repos as OpenClaw homes", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "openclaw-agents-only-"));
+    await writeFile(path.join(dir, "AGENTS.md"), "# Agent instructions\n");
+    await writeFile(path.join(dir, "MEMORY.md"), "# Generic project memory\n");
+
+    expect(await detect(dir)).toBe(false);
+  });
+
+  it("does not detect persona markers without importable memory", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "openclaw-marker-only-"));
+    await writeFile(path.join(dir, "SOUL.md"), "# Persona only\n");
+
+    expect(await detect(dir)).toBe(false);
   });
 });
 

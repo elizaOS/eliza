@@ -21,10 +21,7 @@ const SOURCE = "openclaw" as const;
 const HOME_SUBROOTS = ["", "workspace", "workspace.default"] as const;
 const ROOT_MEMORY_CANDIDATES = ["MEMORY.md", "memory.md"] as const;
 const PERSONA_FILES = ["SOUL.md", "IDENTITY.md", "AGENTS.md"] as const;
-const OPENCLAW_MARKER_FILES = [
-  ...PERSONA_FILES,
-  ...ROOT_MEMORY_CANDIDATES,
-] as const;
+const OPENCLAW_MARKER_FILES = ["SOUL.md", "IDENTITY.md"] as const;
 const DAILY_RE = /^(\d{4})-(\d{2})-(\d{2})\.md$/;
 
 export type OpenClawParseOptions = {
@@ -116,10 +113,15 @@ async function hasMarkdownMemory(memoryDir: string): Promise<boolean> {
 }
 
 async function hasOpenClawMarkers(root: string): Promise<boolean> {
+  const hasMemory =
+    (await readRootMemory(root)) !== undefined ||
+    (await hasMarkdownMemory(path.join(root, "memory")));
+  if (!hasMemory) return false;
+
   for (const fileName of OPENCLAW_MARKER_FILES) {
     if (await isFile(path.join(root, fileName))) return true;
   }
-  return hasMarkdownMemory(path.join(root, "memory"));
+  return false;
 }
 
 async function resolveAgentRoot(input: string): Promise<string> {
