@@ -425,13 +425,38 @@ export class AgentManager {
         },
       });
 
+      // A running runtime always wires a DefaultMessageService (runtime ctor).
+      // A null messageService here means the message pipeline never initialized
+      // for this agent — a structural runtime failure, not an empty reply.
+      // Optional-chaining past it (the previous `rt.messageService?.`) skipped
+      // the pipeline silently and returned a fabricated reply string, which the
+      // gateway-webhook consumer accepts as a legitimate 200 reply (see
+      // parseAgentResponse), hiding a broken agent end-to-end. Fail closed so
+      // the route returns 500. // error-policy:J1 boundary — surface structural
+      // pipeline-init failure instead of fabricating a reply.
+      const messageService = rt.messageService;
+      if (!messageService) {
+        throw new Error(
+          `Agent ${agentId} has no message service; runtime message pipeline is not initialized`,
+        );
+      }
+
       let response = "";
-      await rt.messageService?.handleMessage(rt, mem, async (content) => {
+      await messageService.handleMessage(rt, mem, async (content) => {
         if (content?.text) response += content.text;
         return [];
       });
 
-      return response || "No response generated.";
+      // An empty accumulated response is a real outcome, not a fault: the agent
+      // deliberately did not respond (mute / shouldRespond=no) or emitted no
+      // text. Return the empty string; the gateway-webhook consumer treats an
+      // empty reply as deliberate silence and skips sendReply (see
+      // processMessage), so nothing is delivered. The previous fabricated
+      // "No response generated." string was fail-open slop — it read like an
+      // agent reply and was actually SENT to platform adapters, and (via the
+      // removed `?.`) it also masked a structural pipeline failure. Genuine
+      // structural failures now throw above.
+      return response;
     } finally {
       this.inFlight--;
     }

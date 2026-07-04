@@ -177,6 +177,20 @@ async function processMessage(
     return;
   }
 
+  // An empty responseText is a deliberate no-response from the agent (mute /
+  // shouldRespond=no), not content: forwarding it would make platform adapters
+  // (WhatsApp/Twilio/Telegram) attempt an invalid empty send. Skip the reply so
+  // "agent chose silence" sends nothing, staying distinct from a forward
+  // failure (which returned above) and from a real reply.
+  // error-policy:J5 no-op — deliberate agent silence, nothing to deliver.
+  if (responseText.length === 0) {
+    logger.debug("Agent produced no reply; skipping send", {
+      agentId,
+      platform: adapter.platform,
+    });
+    return;
+  }
+
   try {
     await adapter.sendReply(config, event, responseText);
   } catch (err) {

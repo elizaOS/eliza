@@ -273,4 +273,65 @@ describe("gateway webhook handler e2e routing", () => {
       chatId: "+15551234567",
     });
   });
+
+  test("skips sendReply when the agent server returns an empty (no-response) reply", async () => {
+    // A deliberate agent silence surfaces as an empty `response` string (the
+    // agent-server no longer fabricates a "No response generated." reply). The
+    // gateway must NOT forward the empty string to the platform adapter — an
+    // empty send is invalid on WhatsApp/Twilio/Telegram — and must stay
+    // distinct from a forward failure (which returns without a reply too, but
+    // is logged as an error). Here the forward SUCCEEDS with an empty body, so
+    // no reply is sent and no error is raised.
+    configureEnv();
+    const redis = new MemoryRedis();
+    redis.store.set("agent:agent-1:server", "server-1");
+    redis.store.set("server:server-1:url", "http://agent-server.local");
+    const event = createTwilioEvent({
+      messageId: "SM_silent_1",
+      text: "(a message the agent chooses not to answer)",
+    });
+    const adapter = createAdapter(event);
+
+    globalThis.fetch = mock(async (input, init) => {
+      const request = new Request(input, init);
+      if (
+        request.url ===
+        "https://api.elizacloud.ai/api/internal/identity/resolve"
+      ) {
+        return new Response(
+          JSON.stringify({
+            success: true,
+            data: {
+              user: { id: "user-1", organizationId: "org-1" },
+              agent: { id: "agent-1" },
+            },
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      if (request.url === "http://agent-server.local/agents/agent-1/message") {
+        return new Response(JSON.stringify({ response: "" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      throw new Error(`Unexpected fetch: ${request.url}`);
+    }) as typeof fetch;
+
+    const response = await handleWebhook(
+      requestFor(event),
+      adapter,
+      {
+        redis,
+        cloudBaseUrl: "https://api.elizacloud.ai",
+        getAuthHeader: () => ({ Authorization: "Bearer internal-secret" }),
+      },
+      "eliza-app",
+    );
+
+    expect(response.status).toBe(200);
+    // Give the fire-and-forget processMessage a moment; assert it NEVER sends.
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(adapter.replies).toEqual([]);
+  });
 });
