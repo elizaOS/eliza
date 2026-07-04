@@ -2693,6 +2693,11 @@ export class OrchestratorTaskService extends Service {
         roomId: doc.task.taskRoomId ?? doc.task.roomId,
         label: agentName,
         source: "orchestrator",
+        // Persist the bare goal (the same key the direct-API spawn stamps) so
+        // completion-time consumers that read the task text off session
+        // metadata — the built-apps registry's app-build gate, interruption
+        // relevance — see what this session is building.
+        goal: doc.task.goal,
         // Orchestrator sessions outlive their first prompt so follow-ups and
         // validation re-dispatch can reuse them.
         keepAliveAfterComplete: true,

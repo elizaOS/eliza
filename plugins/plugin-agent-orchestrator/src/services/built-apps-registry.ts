@@ -184,8 +184,18 @@ export async function registerBuiltAppsForCompletion(
 ): Promise<BuiltAppRecord | null> {
   try {
     const meta = session.metadata;
+    // The task text's metadata carrier differs by spawn path: TASKS
+    // op=spawn_agent stamps the full `initialTask`, while the durable-task
+    // route (`spawnAgentForTask`) and the direct API spawn persist the bare
+    // `goal`. Accept either so the eliza-cloud app-build gate sees the task
+    // on every spawn path — an app built via a durable task must register
+    // the same way a chat-spawned one does.
     const initialTask =
-      typeof meta?.initialTask === "string" ? meta.initialTask : undefined;
+      typeof meta?.initialTask === "string"
+        ? meta.initialTask
+        : typeof meta?.goal === "string"
+          ? meta.goal
+          : undefined;
     const derived = deriveBuiltApp(
       verifiedUrls,
       resolveAppDeployConfig(),

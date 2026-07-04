@@ -56,15 +56,19 @@ export const reflexionVerifierModel: VerifierModel = async (
   );
 };
 
-/** A scripted ACP that records the goal prompt handed to each spawned session
- * (`spawns[i].initialTask`) and lets the driver emit `task_complete` events. */
+/** A scripted ACP that records the goal prompt + session metadata handed to
+ * each spawned session and lets the driver emit `task_complete` events. */
 export function makeSpawnCapturingAcp() {
   let handler:
     | ((sessionId: string, event: string, data: unknown) => void)
     | undefined;
   let counter = 0;
   const sent: Array<{ sessionId: string; text: string }> = [];
-  const spawns: Array<{ sessionId: string; initialTask: string }> = [];
+  const spawns: Array<{
+    sessionId: string;
+    initialTask: string;
+    metadata?: Record<string, unknown>;
+  }> = [];
   const service = {
     onSessionEvent(
       cb: (sessionId: string, event: string, data: unknown) => void,
@@ -85,7 +89,11 @@ export function makeSpawnCapturingAcp() {
     spawnSession: async (opts: SpawnOptions): Promise<SpawnResult> => {
       counter += 1;
       const sessionId = `reflexion-spawn-${counter}`;
-      spawns.push({ sessionId, initialTask: opts.initialTask ?? "" });
+      spawns.push({
+        sessionId,
+        initialTask: opts.initialTask ?? "",
+        metadata: opts.metadata,
+      });
       return {
         sessionId,
         id: sessionId,

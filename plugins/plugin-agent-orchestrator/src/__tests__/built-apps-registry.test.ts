@@ -20,6 +20,8 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { makeGrillingRuntime } from "../../test/scenarios/_helpers/orchestrator-grilling-harness.ts";
+import { makeSpawnCapturingAcp } from "../../test/scenarios/_helpers/reflexion-scenario.ts";
 import {
   BUILT_APPS_CACHE_KEY,
   type BuiltAppRecord,
@@ -28,6 +30,8 @@ import {
   registerBuiltApp,
   registerBuiltAppsForCompletion,
 } from "../services/built-apps-registry.ts";
+import { OrchestratorTaskService } from "../services/orchestrator-task-service.ts";
+import { OrchestratorTaskStore } from "../services/orchestrator-task-store.ts";
 import { SubAgentRouter } from "../services/sub-agent-router.ts";
 
 const ROOM = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
@@ -164,6 +168,85 @@ describe("registry round-trip", () => {
         "https://example.org/apps/x/",
       ]),
     ).toBeNull();
+  });
+});
+
+describe("durable-task spawn path (#12036 follow-up)", () => {
+  // The durable-task route stamps `goal` (not `initialTask`) on session
+  // metadata, so the register handoff must gate the eliza-cloud target on
+  // either key — otherwise an app built via a durable task never registers.
+  const savedEnv: Record<string, string | undefined> = {};
+  const ENV_KEYS = ["ELIZA_CONFIG_PATH", "ELIZA_APP_DEPLOY_TARGET"];
+
+  beforeEach(() => {
+    for (const key of ENV_KEYS) savedEnv[key] = process.env[key];
+    process.env.ELIZA_CONFIG_PATH = "/nonexistent/built-apps-test.json";
+    process.env.ELIZA_APP_DEPLOY_TARGET = "eliza-cloud";
+  });
+  afterEach(() => {
+    for (const key of ENV_KEYS) {
+      if (savedEnv[key] === undefined) delete process.env[key];
+      else process.env[key] = savedEnv[key];
+    }
+  });
+
+  it("a spawnAgentForTask session carries the task text and its cloud deploy registers", async () => {
+    const goal = "build a website for tracking my workouts and deploy it";
+    const store = new OrchestratorTaskStore({ backend: "memory" });
+    const detail = await store.createTask({
+      title: "Workout tracker",
+      goal,
+      acceptanceCriteria: [],
+      roomId: ROOM,
+      taskRoomId: ROOM,
+      worldId: "scenario-world",
+    });
+    const acp = makeSpawnCapturingAcp();
+    const base = {
+      agentId: AGENT_ID,
+      character: { name: "Tester" },
+      databaseAdapter: undefined,
+      logger: {
+        debug: () => undefined,
+        info: () => undefined,
+        warn: () => undefined,
+        error: () => undefined,
+      },
+      getSetting: () => undefined,
+      getService: () => undefined,
+      useModel: async () => "{}",
+    } as unknown as IAgentRuntime;
+    const service = new OrchestratorTaskService(
+      makeGrillingRuntime(base, acp.service, async () => "{}"),
+      { store },
+    );
+    await service.start();
+    try {
+      await service.spawnAgentForTask(detail.task.id);
+    } finally {
+      await service.stop().catch(() => undefined);
+    }
+
+    // The durable spawn persists the bare goal on session metadata (the same
+    // key the direct-API spawn stamps)…
+    const spawned = acp.spawns.at(0);
+    expect(spawned?.metadata?.goal).toBe(goal);
+
+    // …and the SAME register handoff the router runs at task_complete gates
+    // the eliza-cloud target on it: the durable-built app lands in the
+    // registry exactly like a chat-spawned one.
+    const { runtime, cache } = cacheRuntime();
+    const registered = await registerBuiltAppsForCompletion(
+      runtime,
+      { id: spawned?.sessionId ?? "", metadata: spawned?.metadata },
+      ["https://workouts.apps.elizacloud.example/"],
+    );
+    expect(registered).toMatchObject({
+      slug: "workouts",
+      target: "eliza-cloud",
+      url: "https://workouts.apps.elizacloud.example/",
+    });
+    expect(cache.get(BUILT_APPS_CACHE_KEY)).toHaveLength(1);
   });
 });
 
