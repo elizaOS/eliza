@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for the nav-lock gate (locking navigation during critical flows).
+ * Pure state, no runtime.
+ */
 import { afterEach, describe, expect, it } from "vitest";
 import { isNavAllowed, isNavLocked, setNavLock } from "./nav-lock";
 

@@ -1,3 +1,7 @@
+/**
+ * Lazy component loader that retains resolved modules across mounts (with cache
+ * telemetry), so heavy views don't re-import on every navigation.
+ */
 import {
   type ComponentType,
   type ReactNode,

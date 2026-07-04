@@ -1,3 +1,7 @@
+/**
+ * Unit coverage asserting the startup-shell keys exist across the loaded
+ * language catalogs. Pure data, no runtime.
+ */
 import { describe, expect, it } from "vitest";
 import { ensureLanguageLoaded, MESSAGES, UI_LANGUAGES } from "./messages";
 

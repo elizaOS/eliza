@@ -1,3 +1,7 @@
+/**
+ * Source-scanning gate banning permanent `will-change` (it pins a compositor
+ * layer and costs memory, #9141). Reads the src tree, no runtime.
+ */
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";

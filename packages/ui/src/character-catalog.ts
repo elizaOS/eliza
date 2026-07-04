@@ -1,3 +1,7 @@
+/**
+ * Resolves the bundled/injected character catalog from boot config into the
+ * character assets the character surfaces render.
+ */
 import {
   getBootConfig,
   type ResolvedCharacterAsset,

@@ -1,3 +1,7 @@
+/**
+ * Module-cache telemetry: the event name and payload the retained-lazy loader
+ * emits, plus heap-usage resolution, for the perf overlay.
+ */
 import { resolveHeapUsage } from "./state/bounded-view-lru";
 
 export const MODULE_CACHE_TELEMETRY_EVENT = "eliza:module-cache-telemetry";

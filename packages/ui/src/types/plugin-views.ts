@@ -1,3 +1,6 @@
+/**
+ * Props contract for plugin-provided view components (agentId in).
+ */
 import type { ComponentType } from "react";
 
 export interface PluginViewProps {

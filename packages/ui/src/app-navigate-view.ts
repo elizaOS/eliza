@@ -1,3 +1,7 @@
+/**
+ * Fires the shared navigate-view event to open a registered view, the imperative
+ * entry the agent's view actions and the shell use to switch views.
+ */
 import {
   dispatchNavigateViewEvent,
   type NavigateViewDetail,

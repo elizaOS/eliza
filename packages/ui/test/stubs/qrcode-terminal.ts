@@ -1,3 +1,6 @@
+/**
+ * Test stub for qrcode-terminal — no-op generate/error-level.
+ */
 export function generate(): string {
   return "";
 }

@@ -1,3 +1,7 @@
+/**
+ * Marks agent-surface elements as sensitive so they cannot be read or filled
+ * through the agent view-instrumentation surface.
+ */
 import type { AgentElementDescriptor } from "./types";
 
 export const SENSITIVE_AGENT_ELEMENT_REASON =

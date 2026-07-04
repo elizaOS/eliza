@@ -1,3 +1,7 @@
+/**
+ * Mock app/translation providers for Storybook, seeding the app-store and
+ * translator so components render outside the real shell.
+ */
 import type { ReactNode } from "react";
 import { createTranslator, type UiLanguage } from "../i18n";
 import { publishAppValue } from "../state/app-store";

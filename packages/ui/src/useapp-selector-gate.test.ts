@@ -1,3 +1,8 @@
+/**
+ * Source-scanning gate steering callers off the monolithic useApp() toward
+ * narrow selectors so a single field change doesn't re-render everything (#9141).
+ * Reads the src tree, no runtime.
+ */
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";

@@ -1,3 +1,6 @@
+/**
+ * Barrel for content packs: load/apply a pack and its color scheme.
+ */
 export {
   applyColorScheme,
   applyContentPack,

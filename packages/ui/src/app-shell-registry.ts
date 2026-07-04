@@ -1,3 +1,7 @@
+/**
+ * Runtime registry of app-shell nav pages: registerAppShellPage / listAppShellPages.
+ * Plugins and the host contribute nav tabs; the shell renders the snapshot.
+ */
 import type { AppShellBackgroundPolicy, ViewKind } from "@elizaos/core";
 import type { ComponentType } from "react";
 import { getUiRegistryStore } from "./registry-host";

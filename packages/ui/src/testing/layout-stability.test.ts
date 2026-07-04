@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for the layout-stability helpers (cumulative shift, opacity-flash
+ * detection). Pure functions over samples, no browser.
+ */
 import { describe, expect, it } from "vitest";
 import {
   cumulativeLayoutShift,

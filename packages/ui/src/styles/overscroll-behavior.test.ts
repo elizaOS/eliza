@@ -1,3 +1,7 @@
+/**
+ * Gate asserting the overscroll-behavior CSS contract (no rubber-band bleed).
+ * Reads the stylesheet, no runtime.
+ */
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";

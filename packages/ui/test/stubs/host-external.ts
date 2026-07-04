@@ -1,3 +1,6 @@
+/**
+ * Test stub for host-external native plugins (camera, …) returning denied/no-op.
+ */
 export const Camera = {
   async requestPermissions() {
     return { camera: "denied" };

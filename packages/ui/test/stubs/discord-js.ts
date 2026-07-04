@@ -1,3 +1,7 @@
+/**
+ * Test stub for discord.js (gateway intents) so connector-adjacent code loads
+ * without the real dependency.
+ */
 export const GatewayIntentBits = {
   Guilds: 1,
   GuildMembers: 2,

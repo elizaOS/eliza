@@ -1,3 +1,8 @@
+/**
+ * Source-scanning regression gate for the interaction mechanics (touch-action,
+ * pager surfaces): asserts real behavior, not comments, so a deleted class can't
+ * leave a green raw-text gate behind. Reads the src tree, no runtime.
+ */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";

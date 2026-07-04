@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for path→tab resolution against the app-shell registry. In-memory
+ * registry, no runtime.
+ */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { registerAppShellPage } from "../app-shell-registry";
 import { resetUiRegistryHostForTests } from "../registry-host";

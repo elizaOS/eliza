@@ -1,3 +1,8 @@
+/**
+ * The UI message catalogs, with lazy per-language loading over the bundled
+ * locale JSON. Language codes themselves are owned by @elizaos/shared and
+ * re-exported here.
+ */
 import {
   DEFAULT_UI_LANGUAGE,
   UI_LANGUAGES,

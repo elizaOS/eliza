@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for the app-shell page registry (register/list/snapshot). In-
+ * memory registry, no runtime.
+ */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   getAppShellPageRegistrySnapshot,

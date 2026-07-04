@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for the persisted desktop workspace-folder storage (read/persist/
+ * clear). localStorage-backed, no real picker.
+ */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {

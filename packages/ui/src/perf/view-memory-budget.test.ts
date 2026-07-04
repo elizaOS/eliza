@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for view memory-growth reporting from heap samples. Pure
+ * functions, no runtime.
+ */
 import { describe, expect, it } from "vitest";
 import {
   shouldReportMemoryGrowth,

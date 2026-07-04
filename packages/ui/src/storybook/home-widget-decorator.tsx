@@ -1,3 +1,7 @@
+/**
+ * Storybook decorator that seeds auth + app state so home-widget stories render
+ * populated.
+ */
 import type { Decorator } from "@storybook/react";
 import { useEffect, useRef, useState } from "react";
 import {

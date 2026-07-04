@@ -1,3 +1,8 @@
+/**
+ * Source-scanning gate banning backdrop-filter/backdrop-blur app-wide — the
+ * glassmorphic blur is the biggest GPU/battery cost (#9141). Reads the src tree,
+ * no runtime.
+ */
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";

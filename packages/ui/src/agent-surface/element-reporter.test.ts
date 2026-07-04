@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for agent-surface element-reporter payload building against the
+ * view registry. Pure functions, no live agent.
+ */
 import { describe, expect, it } from "vitest";
 import { buildPayload } from "./element-reporter.hooks";
 import { ViewAgentRegistry } from "./registry";
