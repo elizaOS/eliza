@@ -1456,7 +1456,19 @@ export class AcpService extends Service {
           if (protocolSessionId && protocolSessionId !== id) {
             void this.store
               .update(id, { acpxSessionId: protocolSessionId })
-              .catch(() => undefined);
+              // error-policy:J7 mapping write runs inside the ACP event
+              // callback and must not throw into the transport, but a swallowed
+              // failure leaves the acpxSessionId unpersisted so later protocol
+              // lookups silently miss the session — report it.
+              .catch((err) =>
+                this.runtime.reportError(
+                  "AcpService.persistAcpxSessionId",
+                  err,
+                  {
+                    sessionId: id,
+                  },
+                ),
+              );
           }
         },
         onStderr: (chunk) => {
@@ -1488,6 +1500,8 @@ export class AcpService extends Service {
     try {
       return await attachClient(client);
     } catch (err) {
+      // error-policy:J6 best-effort teardown of the failed client; the spawn
+      // failure `err` is rethrown/handled below.
       await client.close().catch(() => undefined);
       // A failed spawn must not leave a closed client registered: the entry is
       // set above before the store writes that can throw here. Idempotent when
@@ -1516,6 +1530,8 @@ export class AcpService extends Service {
         try {
           return await attachClient(client);
         } catch (retryErr) {
+          // error-policy:J6 best-effort teardown of the failed retry client;
+          // `retryErr` is surfaced as the spawn failure below.
           await client.close().catch(() => undefined);
           this.nativeClients.delete(id);
           message = stderr.join("").trim() || errorMessage(retryErr);
@@ -1666,7 +1682,15 @@ export class AcpService extends Service {
         if (protocolSessionId && protocolSessionId !== session.id) {
           void this.store
             .update(session.id, { acpxSessionId: protocolSessionId })
-            .catch(() => undefined);
+            // error-policy:J7 mapping write runs inside the ACP event callback
+            // and must not throw into the transport, but a swallowed failure
+            // leaves the acpxSessionId unpersisted so later protocol lookups
+            // silently miss the session — report it.
+            .catch((err) =>
+              this.runtime.reportError("AcpService.persistAcpxSessionId", err, {
+                sessionId: session.id,
+              }),
+            );
         }
       });
       this.nativePromptSessionIds.delete(session.id);
@@ -1711,6 +1735,8 @@ export class AcpService extends Service {
     const session = await this.store.get(sessionId);
     const protocolSessionId =
       session?.acpxSessionId ?? session?.agentSessionId ?? sessionId;
+    // error-policy:J6 best-effort teardown of a session being deleted; a
+    // close/closeSession failure must not abort the deletion.
     await client.closeSession(protocolSessionId).catch(() => undefined);
     await client.close().catch(() => undefined);
   }
@@ -1866,7 +1892,17 @@ export class AcpService extends Service {
             if (session && !TERMINAL_SESSION_STATUSES.has(session.status)) {
               void this.store
                 .updateStatus(sessionId, "errored", exitMessage)
-                .catch(() => undefined);
+                // error-policy:J7 crash-handling write; a swallowed failure
+                // leaves a dead session stuck in a non-terminal status while the
+                // log below claims it was "marked errored" — report the write
+                // failure so the contradiction is observable.
+                .catch((err) =>
+                  this.runtime.reportError(
+                    "AcpService.markErroredOnCrash",
+                    err,
+                    { sessionId, code },
+                  ),
+                );
               this.log(
                 "warn",
                 "subprocess crashed mid-flight; marked errored",
@@ -2336,6 +2372,8 @@ export class AcpService extends Service {
       release = resolve;
     });
     // Wait for the prior reservation to finish before observing the count.
+    // error-policy:J5 the prior reservation's rejection is observed by its own
+    // awaiter; here we only serialize on its settle before counting slots.
     await previous.catch(() => {});
     try {
       await this.enforceSessionLimit();
@@ -2562,6 +2600,8 @@ export class AcpService extends Service {
       outcome = await mintSpawnLease({ sessionId, agentType, ttlMs });
     } catch (err) {
       // Fail-closed: drop the reserved slot before surfacing the refusal.
+      // error-policy:J6 best-effort teardown on the fail-closed path; the lease
+      // refusal `err` is rethrown as the spawn failure below.
       await this.store.delete(sessionId).catch(() => {});
       this.log("warn", "model-gateway lease refused; spawn blocked", {
         sessionId,

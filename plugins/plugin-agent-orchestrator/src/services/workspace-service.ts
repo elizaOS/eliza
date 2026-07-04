@@ -956,6 +956,8 @@ export class CodingWorkspaceService {
 
   private async removeAmbientCredentialHelper(workspacePath: string) {
     const helperDir = path.join(workspacePath, ".git-workspace");
+    // error-policy:J6 best-effort teardown of the ambient credential helper dir;
+    // a missing/undeletable dir must not fail workspace removal.
     await fs.rm(helperDir, { recursive: true, force: true }).catch(() => {});
     await new Promise<void>((resolve) => {
       execFile(

@@ -807,6 +807,9 @@ export class SwarmCoordinatorService
     const prior =
       this.terminalCompletionChains.get(sessionId) ?? Promise.resolve();
     const next = prior
+      // error-policy:J5 the prior link's rejection is observed by whoever
+      // awaited it; this catch only keeps the per-session completion chain alive
+      // so one failed completion cannot wedge later ones.
       .catch(() => {})
       .then(() => this.runSwarmComplete(sessionId, event, data));
     this.terminalCompletionChains.set(sessionId, next);

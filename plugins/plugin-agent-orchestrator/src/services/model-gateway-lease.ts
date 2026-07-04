@@ -154,6 +154,8 @@ export class HttpModelGatewayLeaseBroker implements ModelGatewayLeaseBroker {
         `lease mint failed: HTTP ${res.status}${detail ? ` ${detail}` : ""}`,
       );
     }
+    // error-policy:J3 unparseable lease body → null → the explicit `if (!lease)
+    // throw` below turns it into a structured "lease mint failed" failure.
     const lease = coerceLease(await res.json().catch(() => null));
     if (!lease) {
       throw new Error(

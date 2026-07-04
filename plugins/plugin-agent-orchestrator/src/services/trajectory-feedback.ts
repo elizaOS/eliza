@@ -322,6 +322,9 @@ export async function queryPastExperience(
       const detail = await withTimeout(
         logger.getTrajectoryDetail(summary.id),
         QUERY_TIMEOUT_MS,
+        // error-policy:J4 one unreadable/timed-out legacy trajectory is skipped
+        // so this bounded best-effort enrichment still returns partial results;
+        // a total query failure surfaces at this function's outer catch.
       ).catch(() => null);
       if (!detail?.steps) continue;
 

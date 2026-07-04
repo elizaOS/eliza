@@ -606,6 +606,8 @@ export class FileSessionStore extends InMemorySessionStore {
         handle = pending;
       } catch (error) {
         if (pending) {
+          // error-policy:J6 best-effort teardown of a half-acquired lock on the
+          // error path; the original acquisition failure is rethrown below.
           await pending.close().catch(() => {});
           await rm(this.lockFile, { force: true }).catch(() => {});
         }

@@ -1431,7 +1431,16 @@ export class OrchestratorTaskService extends Service {
           ok: true,
           ...(model ? { model } : {}),
         })
-        .catch(() => undefined);
+        // error-policy:J7 account-usage accounting is a side-channel that must
+        // not fail the turn, but a swallowed failure silently under-counts a
+        // provider account's spend (quota/billing drift) — report it.
+        .catch((err) =>
+          this.runtime.reportError("OrchestratorTask.recordAccountUsage", err, {
+            taskId,
+            sessionId,
+            accountProviderId: session.accountProviderId,
+          }),
+        );
     }
   }
 
@@ -2774,6 +2783,8 @@ export class OrchestratorTaskService extends Service {
       // sees a 2xx with the real session info. Prefer a fresh read (the
       // addSession may have partially landed); fall back to the pre-spawn doc
       // with the new session appended so the response is never a false 404.
+      // error-policy:J4 a failed fresh read degrades to the designed pre-spawn
+      // fallback below (doc + appended session), never a false 404.
       const refreshed = await this.getTask(taskId).catch(() => null);
       if (refreshed?.sessions?.some((s) => s.sessionId === result.sessionId)) {
         return refreshed;

@@ -280,6 +280,9 @@ export function HealthView(props: HealthViewProps = {}): ReactNode {
         .then(([history, regularity, baseline]) => {
           setState({ kind: "ready", data: { history, regularity, baseline } });
         })
+        // error-policy:J4 the initial `load()` above owns the error render
+        // (kind:"error"); this quiet poll intentionally keeps the last-good view
+        // on a transient refresh failure rather than clobbering populated data.
         .catch(() => {});
     }, POLL_INTERVAL_MS);
     return () => clearInterval(id);

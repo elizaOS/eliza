@@ -630,7 +630,16 @@ export class PgApprovalQueue implements ApprovalQueue {
         groupKey: `approval:${id}`,
         data: { requestId: id, kind: input.action },
       })
-      .catch(() => {});
+      // error-policy:J7 notify is a side-channel that must not block the
+      // enqueue, but a swallowed failure means the owner is never told an
+      // approval is pending — surface it so repeated notify-rail failures are
+      // observable instead of silently stranding approvals.
+      .catch((err) => {
+        this.runtime.reportError("ApprovalQueue.notify", err, {
+          requestId: id,
+          action: input.action,
+        });
+      });
     return rowToRequest(rows[0]);
   }
 

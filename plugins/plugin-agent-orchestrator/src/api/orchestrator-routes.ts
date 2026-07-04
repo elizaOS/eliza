@@ -123,6 +123,9 @@ async function resolveService(
   if (ctx.runtime.hasService(OrchestratorTaskService.serviceType)) {
     await ctx.runtime
       .getServiceLoadPromise(OrchestratorTaskService.serviceType)
+      // error-policy:J5 a rejected load is observed at the service-load site;
+      // here we only wait for the settle before re-reading, and a failed load
+      // surfaces as the getService() below returning undefined.
       .catch(() => {});
     return ctx.runtime.getService<OrchestratorTaskService>(
       OrchestratorTaskService.serviceType,
@@ -254,6 +257,7 @@ async function dispatchOrchestratorRoutes(
 
   // POST /api/orchestrator/tasks
   if (method === "POST" && pathname === `${PREFIX}/tasks`) {
+    // error-policy:J3 unparseable request body → null → explicit 400 below.
     const body = await parseBody(req).catch(() => null);
     if (!body) {
       sendError(res, "Invalid JSON body", 400);
@@ -347,6 +351,7 @@ async function dispatchOrchestratorRoutes(
 
     // PATCH /tasks/:taskId
     if (method === "PATCH" && segments.length === 1) {
+      // error-policy:J3 unparseable request body → null → explicit 400 below.
       const body = await parseBody(req).catch(() => null);
       if (!body) {
         sendError(res, "Invalid JSON body", 400);
@@ -487,6 +492,7 @@ async function dispatchOrchestratorRoutes(
     //
     // Refs: elizaOS/eliza#8124
     if (method === "POST" && sub === "auto-validate" && segments.length === 2) {
+      // error-policy:J3 unparseable request body → null → explicit 400 below.
       const body = await parseBody(req).catch(() => null);
       if (!body) {
         sendError(res, "Invalid JSON body", 400);
@@ -554,6 +560,7 @@ async function dispatchOrchestratorRoutes(
 
     // POST /tasks/:taskId/validate  { passed, summary }
     if (method === "POST" && sub === "validate" && segments.length === 2) {
+      // error-policy:J3 unparseable request body → null → explicit 400 below.
       const body = await parseBody(req).catch(() => null);
       if (!body || typeof body.passed !== "boolean") {
         sendError(res, "passed (boolean) is required", 400);
@@ -599,6 +606,7 @@ async function dispatchOrchestratorRoutes(
         return true;
       }
       if (method === "POST") {
+        // error-policy:J3 unparseable request body → null → explicit 400 below.
         const body = await parseBody(req).catch(() => null);
         if (!body) {
           sendError(res, "Invalid JSON body", 400);
@@ -638,6 +646,7 @@ async function dispatchOrchestratorRoutes(
 
     // POST /tasks/:taskId/retry-turn
     if (method === "POST" && sub === "retry-turn" && segments.length === 2) {
+      // error-policy:J3 unparseable request body → null → explicit 400 below.
       const body = await parseBody(req).catch(() => null);
       if (!body) {
         sendError(res, "Invalid JSON body", 400);
@@ -685,6 +694,7 @@ async function dispatchOrchestratorRoutes(
       sub === "rerun-from-event" &&
       segments.length === 2
     ) {
+      // error-policy:J3 unparseable request body → null → explicit 400 below.
       const body = await parseBody(req).catch(() => null);
       const eventId = body ? asString(body.eventId) : undefined;
       if (!body) {
@@ -731,6 +741,7 @@ async function dispatchOrchestratorRoutes(
 
     // POST /tasks/:taskId/restart
     if (method === "POST" && sub === "restart" && segments.length === 2) {
+      // error-policy:J3 unparseable request body → null → explicit 400 below.
       const body = await parseBody(req).catch(() => null);
       if (!body) {
         sendError(res, "Invalid JSON body", 400);
@@ -766,6 +777,7 @@ async function dispatchOrchestratorRoutes(
       sub === "restart-with-edited-plan" &&
       segments.length === 2
     ) {
+      // error-policy:J3 unparseable request body → null → explicit 400 below.
       const body = await parseBody(req).catch(() => null);
       if (!body) {
         sendError(res, "Invalid JSON body", 400);
@@ -818,6 +830,7 @@ async function dispatchOrchestratorRoutes(
         return true;
       }
       if (method === "POST") {
+        // error-policy:J3 unparseable request body → null → explicit 400 below.
         const body = await parseBody(req).catch(() => null);
         const content = body ? asString(body.content) : undefined;
         if (!content) {

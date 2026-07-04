@@ -425,6 +425,8 @@ export async function safeFetch(
       );
     }
     // Drain the redirect body so the socket can be reused.
+    // error-policy:J6 best-effort teardown; a failed drain only forgoes socket
+    // reuse and never affects the redirect-following result.
     await res.body?.cancel().catch(() => {});
     current = next.toString();
   }
