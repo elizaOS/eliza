@@ -148,7 +148,3 @@ export function useRoutableViews() {
     refresh: () => {},
   };
 }
-
-export async function fetchAvailableViews(): Promise<ViewRegistryEntry[]> {
-  return useRoutableViews().views;
-}
