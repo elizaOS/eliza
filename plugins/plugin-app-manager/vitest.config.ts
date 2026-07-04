@@ -1,3 +1,9 @@
+/**
+ * Vitest config for plugin-app-manager: aliases the `@elizaos/agent/*` and
+ * `@elizaos/auth/*` host imports to local test stubs (test/stubs/) so the
+ * library's route and service code runs under test without the full agent
+ * package.
+ */
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 

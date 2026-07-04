@@ -1,3 +1,8 @@
+/**
+ * Property and unit tests for `handleAppsRoutes`, driving the `/api/apps/*`
+ * dispatcher against a mock AppManager/plugin-manager (AppsRouteContext) over a
+ * real temp state dir on disk — no live agent runtime.
+ */
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import type http from "node:http";
 import os from "node:os";

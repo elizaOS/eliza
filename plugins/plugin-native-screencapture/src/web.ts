@@ -1,3 +1,10 @@
+/**
+ * Browser implementation of the ScreenCapture plugin, backed by getDisplayMedia,
+ * MediaRecorder, and the ImageCapture API. Used directly in browsers and, via
+ * the Node runtime path, in the Electrobun desktop shell. getDisplayMedia always
+ * prompts the user, so permission state is reported as prompt/not_supported
+ * rather than queried.
+ */
 import { WebPlugin } from "@capacitor/core";
 
 import type {

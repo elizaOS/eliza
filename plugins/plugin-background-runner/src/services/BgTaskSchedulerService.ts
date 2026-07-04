@@ -1,3 +1,10 @@
+/**
+ * The plugin's service. On start it probes the Capacitor environment and picks
+ * a scheduler (CapacitorBgScheduler when native background execution is
+ * available, else IntervalBgScheduler), sets `runtime.serverless = true` so
+ * core's TaskService defers its own timer to the OS, and schedules a single
+ * periodic wake that calls `TaskService.runDueTasks()` on each fire.
+ */
 import { elizaLogger, type IAgentRuntime, Service, ServiceType } from '@elizaos/core';
 import {
   type BackgroundRunnerLike,

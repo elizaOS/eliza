@@ -1,3 +1,7 @@
+/**
+ * Unit tests for the app run store's read/write/migrate paths against real
+ * temp state dirs on disk (no mocks), including v1→v2 migration.
+ */
 import fs from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";

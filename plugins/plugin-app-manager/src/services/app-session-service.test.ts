@@ -1,3 +1,7 @@
+/**
+ * Unit tests for AppSessionService: verifies it reports AppManager run state
+ * read from a real temp state dir via the run store, with no live agent runtime.
+ */
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
