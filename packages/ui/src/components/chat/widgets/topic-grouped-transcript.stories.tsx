@@ -1,3 +1,4 @@
+/** Storybook + story-gate visual states for the TopicGroupedTranscript. */
 import type { Meta, StoryObj } from "@storybook/react";
 import type { TopicGroup } from "./topic-grouped-transcript";
 import { TopicGroupedTranscript } from "./topic-grouped-transcript";

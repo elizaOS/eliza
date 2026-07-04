@@ -1,3 +1,13 @@
+/**
+ * Inline chat card shown when an action hits a connector "account wall" — no
+ * usable account for the target provider, or the selected one needs reauth. It
+ * lists the caller's accounts with per-account status, lets the user pick or
+ * connect one, and (when a `retryAction` is supplied) drives the reconnect →
+ * reauth → retry loop that re-issues the blocked action once an account flips
+ * to "connected". Presentation-only: reconnect progress comes from
+ * `useConnectorReconnect`; account state is polled by the caller via the live
+ * `accounts` prop.
+ */
 import { CheckCircle2, RefreshCw, ShieldAlert, UserRound } from "lucide-react";
 import { useRef } from "react";
 import type { ConnectorAccountRecord } from "../../api/client-agent";

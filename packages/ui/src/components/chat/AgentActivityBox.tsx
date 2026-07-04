@@ -1,3 +1,10 @@
+/**
+ * Compact row of active coding-agent sessions rendered above the chat thread:
+ * per-session status dot, label, and derived activity text, each clickable to
+ * open that session. Activity text for server-hydrated sessions is synthesized
+ * through the canonical `activityEventToPlaintext` serializer so this rail reads
+ * the same as the live WebSocket activity stream. Renders nothing when idle.
+ */
 import { activityEventToPlaintext } from "@elizaos/core";
 import type { CodingAgentSession } from "../../api/client-types-cloud";
 import {

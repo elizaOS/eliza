@@ -1,3 +1,10 @@
+/**
+ * Icon-first home widget surfacing the oldest pending approval the user still
+ * owes the agent (waiting longest = most overdue), tapping prefills the chat to
+ * resolve it. One of the home-attention widget family; `useApprovals` reads the
+ * shared pending-actions source and the widget publishes into the home-attention
+ * store to rank itself on the home surface.
+ */
 import type { PendingUserAction } from "@elizaos/core";
 import { CircleHelp } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";

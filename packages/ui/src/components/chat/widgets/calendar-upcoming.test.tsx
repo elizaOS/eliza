@@ -1,4 +1,9 @@
 // @vitest-environment jsdom
+//
+// CalendarUpcomingWidget self-hide rules: renders nothing (and skips full-shell
+// probes) on limited cloud bases, when no Google account is linked, or when there
+// are no upcoming events; otherwise shows the single soonest event with a +N
+// badge and applies its grid span. jsdom render with the API client mocked.
 import {
   cleanup,
   fireEvent,

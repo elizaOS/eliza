@@ -1,4 +1,8 @@
 // @vitest-environment jsdom
+//
+// ThinkingBlock: collapsed by default and toggles the reasoning body, renders
+// nothing for empty/whitespace reasoning, and uses the shared accent treatment
+// with no blue classes. Pure jsdom render — presentational component, no backend.
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";

@@ -1,3 +1,16 @@
+/**
+ * Renders the attachment previews under a chat message. `attachmentPreviewKind`
+ * derives a fine-grained preview kind (image / audio / video / PDF inline vs
+ * download-fallback / text-code / generic document) from mime + extension at
+ * read time — the store keeps a frozen `ContentType`, so the kind is computed
+ * here, not persisted (#8876). `resolveAttachmentUrl` normalises served
+ * `/api/media/<hash>` paths against the active API base for the dev proxy, prod
+ * same-origin, and desktop/native shells; every URL passes the scheme-allowlist
+ * guard (`isSafeAttachmentUrl`) before rendering.
+ *
+ * See the "Files / attachments" note in this package's CLAUDE.md — don't add a
+ * second attachment download path or URL guard; reuse the ones referenced here.
+ */
 import {
   Box,
   Code2,

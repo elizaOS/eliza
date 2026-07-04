@@ -1,3 +1,10 @@
+/**
+ * Home widget with a real progress track for the recommended local model's
+ * download (see the `ModelDownloadWidget` JSDoc below). `useLocalModelDownloads`
+ * subscribes to the local-inference download stream and derives the home model
+ * status; the widget is the ONLY model-loading status surface (the chat overlay
+ * shows no floating pill) and self-hides when no local slot needs a download.
+ */
 import { Download, Loader2, TriangleAlert } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../../../api";

@@ -1,3 +1,18 @@
+/**
+ * Renderer for a single chat message body in the full ChatView. Parses the
+ * message text into segments (`parseSegments`) — plain text with inline code,
+ * fenced code blocks, `[CONFIG:…]` plugin cards, fenced UiSpec JSON, sensitive
+ * secret requests, permission cards, account-connect blocks, and inline widget
+ * markers (choice/form/followups/task) — and renders each with the matching
+ * sub-component or registry entry, plus any attachments.
+ *
+ * This is the load-bearing chat surface: it shares the parser + inline-widget
+ * registry with the overlay renderer (`InlineWidgetText`), so both stay in sync
+ * (parser parity: parser-parity.contract.test.ts; tree parity:
+ * render-parity.contract.test.tsx). The self-contained `InlinePluginConfig`,
+ * `MessageUiSpecBlock`, `SensitiveRequestBlock`, and `MessagePermissionCard`
+ * exports here drive their own mutations through the typed `ElizaClient`.
+ */
 import {
   type FormEvent,
   type ReactNode,

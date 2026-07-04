@@ -1,4 +1,8 @@
 // @vitest-environment jsdom
+//
+// AppRunsWidget polling gates: skips the app-run poll on limited cloud agent
+// bases and while unauthenticated, and starts once the session authenticates.
+// jsdom render with the API client + auth hook + app store mocked (no backend).
 import { cleanup, render, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 

@@ -1,3 +1,9 @@
+/**
+ * Storybook + story-gate visual states for the ModelDownloadWidget across its
+ * queued / downloading / loading / failed / ready phases. Stories seed an
+ * authenticated session and a mock ModelHub snapshot so the widget renders each
+ * phase without a backend.
+ */
 import type { Decorator, Meta, StoryObj } from "@storybook/react";
 import { __setAuthStatusForTests } from "../../../hooks/useAuthStatus";
 import type {

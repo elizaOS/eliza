@@ -1,4 +1,9 @@
 // @vitest-environment jsdom
+//
+// AutomationsWidget: loading card before the fetch, the "Automations" glossary
+// label (never "Tasks"), surfacing the top running scheduled task while excluding
+// paused/manual ones, and the +N overflow badge. jsdom render with the API client
+// mocked to return seeded scheduled tasks (no backend).
 import {
   cleanup,
   fireEvent,

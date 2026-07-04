@@ -1,4 +1,9 @@
 // @vitest-environment jsdom
+//
+// FtuWelcomeWidget: renders only on the home slot (greeting + suggestion chips),
+// prefills the chat and marks the card acted when a chip is tapped, retires on
+// dismiss, and ignores unrelated activity. jsdom render; prompt suggestions and
+// the home-dismissal store are mocked (no backend).
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { __resetHomeDismissalsForTests } from "../../../widgets/home-dismissal-store";

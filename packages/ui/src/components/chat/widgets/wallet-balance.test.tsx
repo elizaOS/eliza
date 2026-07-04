@@ -1,4 +1,9 @@
 // @vitest-environment jsdom
+//
+// WalletBalanceWidget (price-only): loading placeholder until data resolves,
+// price-only rows for held assets (no amounts/holding value), skipping holdings
+// under $1, self-hide on empty balances, and opening the wallet view on tap.
+// jsdom render with the wallet balances/market API mocked (no backend).
 import type {
   WalletBalancesResponse,
   WalletMarketOverviewResponse,

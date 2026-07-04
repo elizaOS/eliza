@@ -1,4 +1,9 @@
 // @vitest-environment jsdom
+//
+// OrchestratorRoomView presentation: empty state, hiding terminal rooms from the
+// live board, surfacing the active tool + live count, ordering live sub-agents
+// ahead of idle ones, and drill-in only when `onSelectRoom` is set. Pure jsdom
+// render over fixture props — presentational component, no backend.
 import {
   cleanup,
   fireEvent,

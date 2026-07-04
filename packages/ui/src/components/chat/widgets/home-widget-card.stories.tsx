@@ -1,3 +1,4 @@
+/** Storybook + story-gate visual states for the shared HomeWidgetCard shell. */
 import type { Meta, StoryObj } from "@storybook/react";
 import {
   CalendarDays,

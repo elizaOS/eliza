@@ -1,4 +1,9 @@
 // @vitest-environment jsdom
+//
+// TaskWidget: fallback title until the first fetch, then the fetched title /
+// status / agents / token count, "Task removed." when the detail fetch is null,
+// navigation to /orchestrator on click, and no pulse animation for terminal
+// status. jsdom render with the orchestrator task detail fetch mocked (no backend).
 
 import {
   cleanup,

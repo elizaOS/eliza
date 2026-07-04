@@ -1,3 +1,10 @@
+/**
+ * Icon-first home widget surfacing the top relationship signal — a pending
+ * identity-merge to confirm, else the stalest contact to reach out to (see the
+ * `RelationshipsAttentionWidget` JSDoc below). One of the home-attention widget
+ * family; publishes into the shared home-attention store to rank itself on the
+ * home surface.
+ */
 import { Users } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { client } from "../../../api";

@@ -1,3 +1,6 @@
+// Streaming guarantee for the inline-widget region finders: a partially streamed
+// block emits no region until its closing marker has fully arrived, so half-typed
+// markers never flash a broken widget mid-stream. Pure functions — no jsdom.
 import { describe, expect, it } from "vitest";
 import { findChoiceRegions } from "./message-choice-parser";
 import { findFollowupsRegions } from "./message-followups-parser";

@@ -1,3 +1,9 @@
+/**
+ * Shared layout primitives for chat-sidebar widgets: `WidgetSection` (labelled
+ * section with an icon, optional navigating title, and trailing action) and
+ * `EmptyWidgetState` (centered empty placeholder). Every sidebar widget renders
+ * through these so the rail stays visually consistent.
+ */
 import type { ReactNode } from "react";
 import { Button } from "../../ui/button";
 

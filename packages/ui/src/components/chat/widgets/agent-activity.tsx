@@ -1,3 +1,9 @@
+/**
+ * Home tile summarizing the agent's recent feed activity — the latest few
+ * `FeedActivityItem`s with a total count, fetched through the API client and
+ * validated at the boundary. The fetch is bounded by a timeout so a hung agent
+ * channel settles the tile to empty rather than spinning on "Loading…" forever.
+ */
 import { Activity } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { client } from "../../../api";
