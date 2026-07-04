@@ -495,7 +495,10 @@ describe("VoiceService", () => {
     let clockMs = Date.parse("2026-05-17T12:00:00.000Z");
     const adapter = new MockVoiceRuntimeAdapter();
     const voice = new VoiceService({
-      env: { ELIZA_VOICE_LIVE_RUNTIME: "1", ELIZA_VOICE_POST_TTS_COOLDOWN_MS: "1500" },
+      env: {
+        ELIZA_VOICE_LIVE_RUNTIME: "1",
+        ELIZA_VOICE_POST_TTS_COOLDOWN_MS: "1500",
+      },
       now: () => new Date(clockMs),
       runtimeAdapter: adapter,
     });
@@ -515,8 +518,9 @@ describe("VoiceService", () => {
 
     adapter.emitAsrFinal({ text: "capital of france" });
     await flushVoiceEvents();
-    const signalDuring = adapter.lastHandoffParams?.metadata
-      ?.voiceTurnSignal as Record<string, unknown> | undefined;
+    const signalDuring = adapter.lastHandoffParams?.metadata?.voiceTurnSignal as
+      | Record<string, unknown>
+      | undefined;
     expect(signalDuring?.agentShouldSpeak).toBe(false); // echo suppressed
     expect(signalDuring?.nextSpeaker).toBe("user");
 
@@ -529,8 +533,9 @@ describe("VoiceService", () => {
     clockMs += 12_000;
     adapter.emitAsrFinal({ text: "capital of france" });
     await flushVoiceEvents();
-    const signalAfter = adapter.lastHandoffParams?.metadata
-      ?.voiceTurnSignal as Record<string, unknown> | undefined;
+    const signalAfter = adapter.lastHandoffParams?.metadata?.voiceTurnSignal as
+      | Record<string, unknown>
+      | undefined;
     expect(signalAfter?.agentShouldSpeak).toBe(true);
   });
 

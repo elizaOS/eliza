@@ -198,11 +198,7 @@ async function fetchLocalJson<T>(
       if (!response.ok) continue;
       return (await response.json()) as T;
     } catch {
-      // error-policy:J4 local-API port failover — the dev API lives on one of a
-      // small set of candidate ports; a connection failure means "try the next
-      // port". Total exhaustion returns null, which every caller renders as an
-      // explicit "unavailable from the … API" line (agent-visible, not silence).
-      continue;
+      // Try the next local API port candidate on connection failures.
     }
   }
   return null;
