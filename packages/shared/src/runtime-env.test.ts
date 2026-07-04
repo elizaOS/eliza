@@ -9,6 +9,7 @@ import { getBootConfig, setBootConfig } from "./config/boot-config";
 import {
   isLoopbackBindHost,
   isWildcardBindHost,
+  resolveApiExposePort,
   resolveApiSecurityConfig,
   resolveDesktopApiPortPreference,
   resolveRuntimePorts,
@@ -83,6 +84,7 @@ describe("runtime env alias resolution", () => {
     ["ACME_ALLOWED_HOSTS", "ELIZA_ALLOWED_HOSTS"],
     ["ACME_ALLOW_NULL_ORIGIN", "ELIZA_ALLOW_NULL_ORIGIN"],
     ["ACME_DISABLE_AUTO_API_TOKEN", "ELIZA_DISABLE_AUTO_API_TOKEN"],
+    ["ACME_API_EXPOSE_PORT", "ELIZA_API_EXPOSE_PORT"],
   ];
 
   beforeEach(() => {
@@ -147,5 +149,14 @@ describe("runtime env alias resolution", () => {
     });
 
     expect(config.token).toBe("canonical-token");
+  });
+
+  it("resolves API expose-port from a branded alias", () => {
+    const env = {
+      ACME_API_EXPOSE_PORT: "true",
+    };
+
+    expect(resolveApiExposePort(env)).toBe(true);
+    expect(env).not.toHaveProperty("ELIZA_API_EXPOSE_PORT");
   });
 });
