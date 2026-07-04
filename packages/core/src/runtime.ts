@@ -38,7 +38,9 @@ import { InMemoryDatabaseAdapter } from "./database/inMemoryAdapter";
 import { type ReportedError, toElizaError } from "./errors";
 import {
 	type CapabilityConfig,
+	type CapabilitySettingFlags,
 	createBasicCapabilitiesPlugin,
+	resolveCapabilityConfig,
 } from "./features/basic-capabilities/index";
 import {
 	INFERENCE_MARKS,
@@ -1057,19 +1059,25 @@ export class AgentRuntime implements IAgentRuntime {
 			this.isAnonymousCharacter = true;
 		}
 
-		// Store capability options for use in initialize()
-		// When character is anonymous, also signal to skip the character provider
-		// Support both enableExtendedCapabilities and advancedCapabilities as aliases
-		this.capabilityOptions = {
-			disableBasic: opts.disableBasicCapabilities,
-			enableExtended: opts.enableExtendedCapabilities,
-			advancedCapabilities: opts.advancedCapabilities,
-			skipCharacterProvider: this.isAnonymousCharacter,
-			enableAutonomy: opts.enableAutonomy,
-			enableTrust: opts.enableTrust,
-			enableSecretsManager: opts.enableSecretsManager,
-			enablePluginManager: opts.enablePluginManager,
-		};
+		// Resolve the full capability config once, at construction: explicit
+		// constructor options win, and any option left unspecified falls back to
+		// the matching character setting. initialize() then builds the
+		// basic-capabilities plugin from this config, so registerPlugin needs no
+		// name-keyed branch to re-derive it. Anonymous characters have no character
+		// provider to inject, so skipCharacterProvider is forced on.
+		this.capabilityOptions = resolveCapabilityConfig(
+			{
+				disableBasic: opts.disableBasicCapabilities,
+				enableExtended: opts.enableExtendedCapabilities,
+				advancedCapabilities: opts.advancedCapabilities,
+				skipCharacterProvider: this.isAnonymousCharacter,
+				enableAutonomy: opts.enableAutonomy,
+				enableTrust: opts.enableTrust,
+				enableSecretsManager: opts.enableSecretsManager,
+				enablePluginManager: opts.enablePluginManager,
+			},
+			character.settings as CapabilitySettingFlags | undefined,
+		);
 		this.nativeFeatureOptions = {
 			documents: opts.enableDocuments,
 			relationships: opts.enableRelationships,
@@ -1846,67 +1854,13 @@ export class AgentRuntime implements IAgentRuntime {
 			return;
 		}
 
-		// Handle capability-aware registration for basic-capabilities plugin
-		let pluginToRegister = plugin;
-		if (plugin.name === "basic-capabilities") {
-			const settings = this.character.settings;
-			// Constructor options take precedence over character settings
-			const disableBasic =
-				this.capabilityOptions.disableBasic ??
-				(settings?.DISABLE_BASIC_CAPABILITIES === true ||
-					settings?.DISABLE_BASIC_CAPABILITIES === "true");
-			// Support both enableExtended/enableExtendedCapabilities and advancedCapabilities as aliases
-			const enableExtended =
-				this.capabilityOptions.enableExtended ??
-				this.capabilityOptions.advancedCapabilities ??
-				(settings?.ENABLE_EXTENDED_CAPABILITIES === true ||
-					settings?.ENABLE_EXTENDED_CAPABILITIES === "true" ||
-					settings?.ADVANCED_CAPABILITIES === true ||
-					settings?.ADVANCED_CAPABILITIES === "true");
-			const skipCharacterProvider =
-				this.capabilityOptions.skipCharacterProvider ?? false;
-			const enableAutonomy =
-				this.capabilityOptions.enableAutonomy ??
-				(settings?.ENABLE_AUTONOMY === true ||
-					settings?.ENABLE_AUTONOMY === "true");
-			const enableTrust =
-				this.capabilityOptions.enableTrust ??
-				(settings?.ENABLE_TRUST === true || settings?.ENABLE_TRUST === "true");
-			const enableSecretsManager =
-				this.capabilityOptions.enableSecretsManager ??
-				(settings?.ENABLE_SECRETS_MANAGER === true ||
-					settings?.ENABLE_SECRETS_MANAGER === "true");
-			const enablePluginManager =
-				this.capabilityOptions.enablePluginManager ??
-				(settings?.ENABLE_PLUGIN_MANAGER === true ||
-					settings?.ENABLE_PLUGIN_MANAGER === "true");
-
-			if (
-				disableBasic ||
-				enableExtended ||
-				skipCharacterProvider ||
-				enableAutonomy ||
-				enableTrust ||
-				enableSecretsManager ||
-				enablePluginManager
-			) {
-				const config: CapabilityConfig = {
-					disableBasic,
-					enableExtended,
-					skipCharacterProvider,
-					enableAutonomy,
-					enableTrust,
-					enableSecretsManager,
-					enablePluginManager,
-				};
-				const configuredPlugin = createBasicCapabilitiesPlugin(config);
-				pluginToRegister = {
-					...configuredPlugin,
-					events: plugin.events ?? configuredPlugin.events,
-				};
-			}
-		}
-
+		// Registration is purely structural: whatever plugin the caller declares —
+		// including basic-capabilities, already built from the resolved capability
+		// config by initialize() — is registered as-is. No name-keyed branch
+		// re-derives or rebuilds a specific plugin; capability configuration is
+		// owned by the declaring plugin (via resolveCapabilityConfig +
+		// createBasicCapabilitiesPlugin), not by this method.
+		const pluginToRegister = plugin;
 		(this.plugins as Plugin[]).push(pluginToRegister);
 		this.logger.debug(
 			{ src: "agent", agentId: this.agentId, plugin: pluginToRegister.name },
