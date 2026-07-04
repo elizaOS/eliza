@@ -1,4 +1,11 @@
 #!/usr/bin/env node
+/**
+ * Smartglasses completion gate: combines the software-readiness check with the
+ * freshness of the latest hardware-smoke report and prints a JSON summary,
+ * exiting non-zero unless both pass. The hardware report path and its max age
+ * come from CLI args or SMARTGLASSES_REPORT_PATH / SMARTGLASSES_COMPLETION_MAX_AGE_MS.
+ * `--self-test` exercises the gate logic against synthetic inputs.
+ */
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";

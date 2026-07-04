@@ -1,4 +1,11 @@
 #!/usr/bin/env node
+/**
+ * Collects the live-validation readiness status for the LifeOps HITL work
+ * (issue #11632) by probing each connector group's required env vars (model
+ * provider, Google, and others) and writing a status.json under the issue's
+ * evidence dir. Reports which connector groups are configured so the live
+ * validation run knows what it can actually exercise.
+ */
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";

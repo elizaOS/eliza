@@ -1,3 +1,9 @@
+/**
+ * Declarative catalog of the UI end-to-end recording suites (name, working
+ * directory, run script, coverage blurb, and any record-mode env). The
+ * run-all.mjs orchestrator iterates this list to execute each suite and collect
+ * its screenshots, traces, and videos into RECORDINGS_DIR.
+ */
 import path from "node:path";
 
 export const REPO_ROOT = path.resolve(import.meta.dirname, "..", "..");

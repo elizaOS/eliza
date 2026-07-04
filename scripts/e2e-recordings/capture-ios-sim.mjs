@@ -1,4 +1,11 @@
 #!/usr/bin/env node
+/**
+ * Captures iOS Simulator e2e evidence: boots a simulator, builds and installs
+ * the app (unless --skip-build), drives it against a host agent, and collects a
+ * screenshot plus video into the issue-evidence dir. Exits with SKIP_EXIT_CODE
+ * (77) when no simulator is available. Shares arg parsing and manifest writing
+ * with the other native capture scripts via native-capture-common.mjs.
+ */
 import fs from "node:fs";
 import path from "node:path";
 import {
