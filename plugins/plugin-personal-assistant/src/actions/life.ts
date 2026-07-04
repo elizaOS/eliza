@@ -1060,7 +1060,7 @@ async function renderLifeActionReply(args: {
     fallback,
     context,
   });
-  return renderGroundedActionReply({
+  const rendered = await renderGroundedActionReply({
     runtime,
     message,
     state,
@@ -1078,6 +1078,7 @@ async function renderLifeActionReply(args: {
       "If this is reply-only, do not pretend you saved or changed anything.",
     ],
   });
+  return rendered.trim().length > 0 ? rendered : naturalFallback;
 }
 
 function buildLifeClarificationFallback(args: {
