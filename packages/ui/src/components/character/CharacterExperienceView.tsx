@@ -1,3 +1,7 @@
+/**
+ * Renders the character experience page for inspecting and editing agent
+ * persona-facing fields.
+ */
 import { useCallback, useMemo, useState } from "react";
 import { client } from "../../api/client";
 import type { ExperienceRecord } from "../../api/client-types";

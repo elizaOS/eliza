@@ -1,3 +1,7 @@
+/**
+ * Bridges view headers to the mobile workspace sidebar trigger supplied by the
+ * surrounding page layout.
+ */
 import { PanelLeftOpen } from "lucide-react";
 import type * as React from "react";
 

@@ -1,3 +1,7 @@
+/**
+ * Storybook states for the Trajectory Llm Call Card trajectory visualizer used
+ * by run-detail and evidence surfaces.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { TrajectoryLlmCallCard } from "./trajectory-llm-call-card";
 

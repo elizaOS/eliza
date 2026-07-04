@@ -1,3 +1,7 @@
+/**
+ * Storybook states for the Chat Conversation Rename Dialog chat composite used
+ * by shared conversation and composer surfaces.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { ChatConversationRenameDialog } from "./chat-conversation-rename-dialog";
 

@@ -1,3 +1,7 @@
+/**
+ * Renders the Eliza brand mark as a reusable UI component for shell and
+ * marketing-adjacent surfaces.
+ */
 import type * as React from "react";
 
 /**

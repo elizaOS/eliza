@@ -1,3 +1,7 @@
+/**
+ * Storybook states for the Trajectory Cache Stats trajectory visualizer used
+ * by run-detail and evidence surfaces.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { TrajectoryCacheStats } from "./trajectory-cache-stats";
 

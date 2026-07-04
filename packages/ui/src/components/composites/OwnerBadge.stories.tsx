@@ -1,3 +1,7 @@
+/**
+ * Storybook states for the OwnerBadge shared UI component across
+ * representative layouts and variants.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { OwnerBadge } from "./OwnerBadge";
 

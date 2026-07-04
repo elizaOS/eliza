@@ -1,3 +1,7 @@
+/**
+ * Storybook states for the Page Panel Empty page-panel primitive used to
+ * compose dense dashboard pages.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { Button } from "../../ui/button";
 import { PageEmptyState } from "./page-panel-empty";

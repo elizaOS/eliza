@@ -1,3 +1,7 @@
+/**
+ * Renders the standard view header slots used by dashboard pages, including
+ * mobile sidebar affordances.
+ */
 import { ArrowLeft } from "lucide-react";
 import type { ReactNode } from "react";
 import { useAgentElement } from "../../agent-surface";

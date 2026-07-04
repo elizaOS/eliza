@@ -1,3 +1,7 @@
+/**
+ * Storybook states for the Chat Typing Indicator chat composite used by shared
+ * conversation and composer surfaces.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { TypingIndicator } from "./chat-typing-indicator";
 

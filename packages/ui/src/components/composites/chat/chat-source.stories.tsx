@@ -1,3 +1,7 @@
+/**
+ * Storybook states for the Chat Source chat composite used by shared
+ * conversation and composer surfaces.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { ChatSourceIcon } from "./chat-source";
 

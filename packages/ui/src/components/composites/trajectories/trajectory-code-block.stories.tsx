@@ -1,3 +1,7 @@
+/**
+ * Storybook states for the Trajectory Code Block trajectory visualizer used by
+ * run-detail and evidence surfaces.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { TrajectoryCodeBlock } from "./trajectory-code-block";
 

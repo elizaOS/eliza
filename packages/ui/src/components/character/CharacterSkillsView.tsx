@@ -1,3 +1,7 @@
+/**
+ * Renders the character skills page that lists capability and skill
+ * configuration for an agent profile.
+ */
 import { ViewHeader } from "../shared/ViewHeader";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 import { CharacterLearnedSkillsSection } from "./CharacterLearnedSkillsSection";

@@ -1,3 +1,7 @@
+/**
+ * Storybook states for the Trajectory Context Diff List trajectory visualizer
+ * used by run-detail and evidence surfaces.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { TrajectoryContextDiffList } from "./trajectory-context-diff-list";
 

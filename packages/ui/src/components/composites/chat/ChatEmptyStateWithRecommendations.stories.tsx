@@ -1,3 +1,7 @@
+/**
+ * Storybook states for the ChatEmptyStateWithRecommendations chat composite
+ * used by shared conversation and composer surfaces.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { FileText, KeyRound } from "lucide-react";
 import { ChatEmptyStateWithRecommendations } from "./ChatEmptyStateWithRecommendations";

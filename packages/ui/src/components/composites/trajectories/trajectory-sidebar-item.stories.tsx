@@ -1,3 +1,7 @@
+/**
+ * Storybook states for the Trajectory Sidebar Item trajectory visualizer used
+ * by run-detail and evidence surfaces.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { TrajectorySidebarItem } from "./trajectory-sidebar-item";
 

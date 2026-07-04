@@ -1,3 +1,7 @@
+/**
+ * Storybook states for the Chat Transcript chat composite used by shared
+ * conversation and composer surfaces.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { ChatTranscript } from "./chat-transcript";
 import type { ChatMessageData } from "./chat-types";

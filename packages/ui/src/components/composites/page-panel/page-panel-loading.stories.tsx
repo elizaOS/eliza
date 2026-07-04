@@ -1,3 +1,7 @@
+/**
+ * Storybook states for the Page Panel Loading page-panel primitive used to
+ * compose dense dashboard pages.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { PageLoadingState } from "./page-panel-loading";
 

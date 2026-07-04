@@ -1,3 +1,7 @@
+/**
+ * Storybook states for the Chat Composer Shell chat composite used by shared
+ * conversation and composer surfaces.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { ChatComposerShell } from "./chat-composer-shell";
 

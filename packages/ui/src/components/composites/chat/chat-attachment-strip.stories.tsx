@@ -1,3 +1,7 @@
+/**
+ * Storybook states for the Chat Attachment Strip chat composite used by shared
+ * conversation and composer surfaces.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { ChatAttachmentStrip } from "./chat-attachment-strip";
 import type { ChatAttachmentItem } from "./chat-types";

@@ -1,3 +1,7 @@
+/**
+ * Storybook states for the Skill Sidebar Item skill navigation composite used
+ * by skill marketplace sidebars.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { SkillSidebarItem } from "./skill-sidebar-item";
 

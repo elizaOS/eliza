@@ -1,3 +1,7 @@
+/**
+ * Provides reusable skeleton loading layouts for cards, lists, and page
+ * sections in shared UI surfaces.
+ */
 import { cn } from "../../lib/utils";
 import { Skeleton } from "./skeleton";
 

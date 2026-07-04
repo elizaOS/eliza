@@ -1,3 +1,7 @@
+/**
+ * Storybook states for the Page Panel Toolbar page-panel primitive used to
+ * compose dense dashboard pages.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { Button } from "../../ui/button";
 import { Input } from "../../ui/input";

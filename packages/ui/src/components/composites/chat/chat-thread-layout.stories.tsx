@@ -1,3 +1,7 @@
+/**
+ * Storybook states for the Chat Thread Layout chat composite used by shared
+ * conversation and composer surfaces.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { ChatThreadLayout } from "./chat-thread-layout";
 

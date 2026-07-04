@@ -1,3 +1,7 @@
+/**
+ * Storybook states for the Chat Composer chat composite used by shared
+ * conversation and composer surfaces.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { useRef } from "react";
 import { ChatComposer, type ChatComposerVoiceState } from "./chat-composer";

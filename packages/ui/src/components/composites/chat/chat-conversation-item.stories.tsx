@@ -1,3 +1,7 @@
+/**
+ * Storybook states for the Chat Conversation Item chat composite used by
+ * shared conversation and composer surfaces.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { ChatConversationItem } from "./chat-conversation-item";
 import type { ChatConversationSummary } from "./chat-types";

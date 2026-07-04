@@ -1,3 +1,7 @@
+/**
+ * Exports the base skeleton loading primitive used by shared components and
+ * page-level loading states.
+ */
 import * as React from "react";
 
 import { cn } from "../../lib/utils";

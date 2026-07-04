@@ -1,3 +1,7 @@
+/**
+ * Storybook states for the Sidebar Scroll Region sidebar composite across
+ * expanded, collapsed, and shell navigation layouts.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { SidebarScrollRegion } from "./sidebar-scroll-region";
 

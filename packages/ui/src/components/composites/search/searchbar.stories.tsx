@@ -1,3 +1,7 @@
+/**
+ * Storybook states for the Searchbar search composite used by filterable lists
+ * and sidebars.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { SidebarSearchBar } from "./searchbar";
 

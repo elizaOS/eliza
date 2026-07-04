@@ -1,3 +1,7 @@
+/**
+ * Storybook states for the Page Panel Feature Empty page-panel primitive used
+ * to compose dense dashboard pages.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { Bell, Inbox, MessageSquare, Sparkles, Zap } from "lucide-react";
 import { PagePanelFeatureEmpty } from "./page-panel-feature-empty";

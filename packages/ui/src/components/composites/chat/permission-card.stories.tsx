@@ -1,3 +1,7 @@
+/**
+ * Storybook states for the Permission Card chat composite used by shared
+ * conversation and composer surfaces.
+ */
 import type { PermissionState } from "@elizaos/shared";
 import type { Meta, StoryObj } from "@storybook/react";
 import { PermissionCard } from "./permission-card";
