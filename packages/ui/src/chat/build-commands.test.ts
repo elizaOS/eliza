@@ -44,7 +44,8 @@ describe("buildCommands — palette launcher (#8792)", () => {
 
     // Coverage extended well beyond the original 10 tabs.
     expect(commands.some((c) => c.label === "Open Messages")).toBe(true);
-    expect(commands.some((c) => c.label === "Open Tasks")).toBe(true);
+    expect(commands.some((c) => c.label === "Open Coding Tasks")).toBe(true);
+    expect(commands.some((c) => c.label === "Open Triggers")).toBe(true);
     expect(commands.some((c) => c.label === "Open Automations")).toBe(true);
     expect(commands.some((c) => c.label === "Open Browser")).toBe(true);
   });

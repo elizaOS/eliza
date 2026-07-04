@@ -90,7 +90,7 @@ export interface AutomationsFeedProps {
 const FILTER_LABELS: Record<FeedFilter, { key: string; defaultLabel: string }> =
   {
     all: { key: "automationsfeed.filterAll", defaultLabel: "All" },
-    tasks: { key: "automationsfeed.filterTasks", defaultLabel: "Tasks" },
+    tasks: { key: "automationsfeed.filterTasks", defaultLabel: "Prompts" },
     workflows: {
       key: "automationsfeed.filterWorkflows",
       defaultLabel: "Workflows",

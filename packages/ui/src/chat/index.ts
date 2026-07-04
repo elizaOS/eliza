@@ -138,10 +138,10 @@ export const NAV_COMMANDS: readonly { id: string; label: string; tab: Tab }[] =
     // Views + Apps consolidated into the single Launcher (#9143).
     { id: "nav-launcher", label: "Open Launcher", tab: "views" },
     { id: "nav-character", label: "Open Character", tab: "character" },
-    { id: "nav-triggers", label: "Open Heartbeats", tab: "triggers" },
+    { id: "nav-triggers", label: "Open Triggers", tab: "triggers" },
     { id: "nav-inventory", label: "Open Wallet", tab: "inventory" },
     { id: "nav-documents", label: "Open Knowledge", tab: "documents" },
-    { id: "nav-tasks", label: "Open Tasks", tab: "tasks" },
+    { id: "nav-tasks", label: "Open Coding Tasks", tab: "tasks" },
     { id: "nav-automations", label: "Open Automations", tab: "automations" },
     { id: "nav-messages", label: "Open Messages", tab: "messages" },
     { id: "nav-contacts", label: "Open Contacts", tab: "contacts" },

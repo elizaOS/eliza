@@ -23,14 +23,6 @@ describe("shared view glyph cleanup", () => {
     expect(source).not.toContain("✓");
   });
 
-  it("keeps Heartbeats status and delete controls on icon components instead of raw glyphs", () => {
-    const source = readPageSource("HeartbeatsView.tsx");
-
-    expect(source).not.toContain("✓");
-    expect(source).not.toContain("✗");
-    expect(source).not.toContain("×");
-  });
-
   // #8796: extend the iconography guard across EVERY built-in view — no raw
   // check/cross glyphs anywhere; use Lucide icon components instead. (× is the
   // multiplication sign and is intentionally not banned globally; close/delete

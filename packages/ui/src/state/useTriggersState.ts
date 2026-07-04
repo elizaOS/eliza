@@ -1,5 +1,5 @@
 /**
- * Trigger (heartbeat) state — extracted from AppContext.
+ * Trigger state — extracted from AppContext.
  *
  * Manages trigger CRUD, run history, and health polling. Zero coupling to
  * the startup sequence — triggers are only loaded post-ready.

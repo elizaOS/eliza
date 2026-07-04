@@ -45,7 +45,7 @@ export const DESKTOP_WORKSPACE_SURFACES: readonly DesktopWorkspaceSurfaceDef[] =
     },
     {
       id: "triggers",
-      label: "Heartbeats Window",
+      label: "Triggers Window",
       description: "Open scheduled trigger controls in a detached window.",
     },
     {
