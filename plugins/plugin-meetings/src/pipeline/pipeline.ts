@@ -19,7 +19,7 @@ import { logger } from "@elizaos/core";
 import type { MeetingParticipant, TranscriptSegment } from "@elizaos/shared";
 import {
   MEETING_AUDIO_SAMPLE_RATE,
-  MeetingBillingError,
+  isMeetingInsufficientCreditsError,
   type MeetingPipelineOptions,
   type MeetingTranscriptionPipeline,
   type PipelineTranscriptUpdate,
@@ -278,10 +278,7 @@ class MeetingPipeline implements MeetingTranscriptionPipeline {
               Math.ceil(durationSec * 1000),
             );
           } catch (err) {
-            if (
-              err instanceof MeetingBillingError &&
-              err.code === "insufficient_credits"
-            ) {
+            if (isMeetingInsufficientCreditsError(err)) {
               this.options.onSpendCapReached?.(err);
               this.manager.handleTranscriptionResult(speakerKey, "");
               return;

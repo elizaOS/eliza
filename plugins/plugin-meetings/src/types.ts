@@ -129,6 +129,16 @@ export class MeetingBillingError extends Error {
   }
 }
 
+export function isMeetingInsufficientCreditsError(
+  error: unknown,
+): error is Error & { code: "insufficient_credits" } {
+  return (
+    error instanceof Error &&
+    "code" in error &&
+    error.code === "insufficient_credits"
+  );
+}
+
 export interface MeetingBillingSessionInput {
   runtime: IAgentRuntime;
   sessionId: UUID;
@@ -155,5 +165,7 @@ export interface MeetingPipelineOptions {
   /** Retain raw session audio for the transcript record's audio player. */
   retainAudio: boolean;
   billing?: MeetingBillingSession;
-  onSpendCapReached?: (error: MeetingBillingError) => void;
+  onSpendCapReached?: (
+    error: Error & { code: "insufficient_credits" },
+  ) => void;
 }
