@@ -208,7 +208,7 @@ export function BuyDomainCard({ appId, onPurchased }: BuyDomainCardProps) {
           type="submit"
           size="sm"
           disabled={!isValid || checking}
-          className="bg-[var(--accent)] hover:bg-[#e54f00] text-white rounded-sm shrink-0"
+          className="bg-[#FF5800] hover:bg-[#e54f00] text-black rounded-sm shrink-0"
         >
           {checking ? (
             <Loader2 className="h-4 w-4 animate-spin" />
@@ -264,7 +264,7 @@ export function BuyDomainCard({ appId, onPurchased }: BuyDomainCardProps) {
               <Button
                 size="sm"
                 disabled={buying}
-                className="bg-[var(--accent)] hover:bg-[#e54f00] text-white rounded-sm shrink-0"
+                className="bg-[#FF5800] hover:bg-[#e54f00] text-black rounded-sm shrink-0"
               >
                 {buying ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -304,7 +304,7 @@ export function BuyDomainCard({ appId, onPurchased }: BuyDomainCardProps) {
                 </AlertDialogCancel>
                 <AlertDialogAction
                   onClick={() => void handleBuy()}
-                  className="bg-[var(--accent)] hover:bg-[#e54f00] text-white"
+                  className="bg-[#FF5800] hover:bg-[#e54f00] text-black"
                 >
                   {t("cloud.appDomains.buyConfirmAction", {
                     defaultValue: "Buy domain",

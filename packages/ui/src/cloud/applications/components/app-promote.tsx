@@ -146,7 +146,7 @@ export function AppPromote({ app }: AppPromoteProps) {
           <Button
             onClick={() => setShowPromoteDialog(true)}
             size="sm"
-            className="bg-[var(--accent)] hover:bg-[#e54f00] text-white rounded-sm"
+            className="bg-[#FF5800] hover:bg-[#e54f00] text-black rounded-sm"
           >
             <Megaphone className="h-4 w-4 mr-1.5" />
             {t("cloud.appPromote.launch", { defaultValue: "Launch Promotion" })}

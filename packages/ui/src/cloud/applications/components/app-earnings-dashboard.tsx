@@ -248,7 +248,7 @@ export function AppEarningsDashboard({ appId }: AppEarningsDashboardProps) {
                 onClick={() => {
                   navigate(`/dashboard/apps/${appId}?tab=monetization`);
                 }}
-                className="bg-[var(--accent)] hover:bg-[#e54f00] text-white"
+                className="bg-[#FF5800] hover:bg-[#e54f00] text-black"
               >
                 Enable Monetization
               </Button>
