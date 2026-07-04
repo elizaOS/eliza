@@ -24,10 +24,11 @@ Before:
 After:
 
 - `invoiceAmount`: strict parse; non-finite or `<= 0` throws `OxaPayApiError`
-  with the raw amount + trackId, after a structured `logger.error`. Every
-  invoice is created with a positive amount (`createInvoice` requires it), so a
-  non-positive inquiry amount is a malformed provider response, never a valid
-  business state.
+  with the raw amount + trackId, after a structured `logger.error`. The parser
+  rejects partial numeric strings such as `"25abc"` / `"25 USD"` instead of
+  accepting a `parseFloat` prefix. Every invoice is created with a positive
+  amount (`createInvoice` requires it), so a non-positive inquiry amount is a
+  malformed provider response, never a valid business state.
 - `nativePayAmount`: `Number.parseFloat(data.payAmount ?? "")`, non-finite →
   `undefined` (field is optional on `OxaPayPaymentStatus.transactions[]`).
 
@@ -45,10 +46,10 @@ provider returns a sane response.
 `bun test --isolate src/lib/services/oxapay.amount-fail-closed.test.ts`:
 
 ```
- 8 pass
+ 9 pass
  0 fail
- 14 expect() calls
-Ran 8 tests across 1 file. [615.00ms]
+ 18 expect() calls
+Ran 9 tests across 1 file.
 ```
 
 Adjacent adapter suite unchanged and green:

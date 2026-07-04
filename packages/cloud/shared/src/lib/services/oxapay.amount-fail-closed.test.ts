@@ -66,6 +66,15 @@ describe("oxaPayService.getPaymentStatus — invoice amount fail-closed", () => 
     );
   });
 
+  test("partial numeric amount throws instead of accepting a prefix", async () => {
+    for (const amount of ["25abc", "25 USD", "25.00 trailing", "1e2"]) {
+      stubInquiryResponse({ amount });
+      await expect(oxaPayService.getPaymentStatus("trk_1")).rejects.toThrow(
+        /invalid invoice amount/i,
+      );
+    }
+  });
+
   test("zero amount throws OxaPayApiError (invoices are always positive)", async () => {
     stubInquiryResponse({ amount: "0" });
     await expect(oxaPayService.getPaymentStatus("trk_1")).rejects.toBeInstanceOf(OxaPayApiError);

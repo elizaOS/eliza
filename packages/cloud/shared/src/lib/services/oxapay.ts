@@ -90,6 +90,23 @@ export function isOxaPayConfigured(): boolean {
   return Boolean(process.env.OXAPAY_MERCHANT_API_KEY);
 }
 
+function parseOxaPayInvoiceAmount(rawAmount: string | undefined): number {
+  const trimmedAmount = rawAmount?.trim();
+  if (!trimmedAmount || !/^(?:\d+|\d+\.\d+|\.\d+)$/.test(trimmedAmount)) {
+    throw new OxaPayApiError(
+      `OxaPay inquiry returned invalid invoice amount ${JSON.stringify(rawAmount ?? null)}`,
+    );
+  }
+
+  const amount = Number(trimmedAmount);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new OxaPayApiError(
+      `OxaPay inquiry returned invalid invoice amount ${JSON.stringify(rawAmount ?? null)}`,
+    );
+  }
+  return amount;
+}
+
 class OxaPayService {
   /**
    * Create an invoice payment using OxaPay's merchant request API.
@@ -230,16 +247,17 @@ class OxaPayService {
     // non-positive is a malformed provider response. Coercing it to 0 (the old
     // `parseFloat(...) || 0` behavior) let confirmPayment mark a CONFIRMED payment
     // as settled while crediting $0 — silently eating the user's payment.
-    const invoiceAmount = Number.parseFloat(data.amount);
-    if (!Number.isFinite(invoiceAmount) || invoiceAmount <= 0) {
+    let invoiceAmount: number;
+    try {
+      invoiceAmount = parseOxaPayInvoiceAmount(data.amount);
+    } catch (error) {
       logger.error("[OxaPay] Invalid invoice amount in inquiry response", {
         trackId: data.trackId,
         status: data.status,
         rawAmount: data.amount,
+        error,
       });
-      throw new OxaPayApiError(
-        `OxaPay inquiry returned invalid invoice amount ${JSON.stringify(data.amount ?? null)} for track ${data.trackId}`,
-      );
+      throw error;
     }
 
     // Native pay amount is audit/debug metadata only (never credited); a
