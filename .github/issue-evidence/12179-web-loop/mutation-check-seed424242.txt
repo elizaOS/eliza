@@ -1,0 +1,8 @@
+[launcher-loop] replay: ELIZA_LOOP_SEED=424242
+✗ batch 1 FAILED — launcher loop failed (seed=424242). Replay with ELIZA_LOOP_SEED=424242.
+Property failed after 1 tests
+Counterexample: [[notificationPull(commit),railSwipe(left,reject),railSwipe(left,reject),railSwipe(left,commit),tileTap(hyperliquid),railSwipe(left,commit),railSwipe(right,reject),railSwipe(right,reject),tabFocus,gridScroll(141),tileTap(logs),gridScroll(63),tabFocus,tileTap(skills),railSwipe(right,commit),notificationPull(commit),railSwipe(left,reject),notificationPull(commit),gridScroll(47),railSwipe(left,reject),railSwipe(right,reject),railEdgeButton(prev),notificationDismiss,tileLongPress(settings),notificationDismiss,tabFocus,notificationPull(reject),tileTap(chat),railSwipe(right,commit),railSwipe(left,reject),notificationDismiss,notificationDismiss,notificationDismiss,notificationPull(reject),railSwipe(left,commit),railSwipe(right,commit),railSwipe(right,reject),notificationPull(commit),railSwipe(right,reject),railSwipe(right,commit),railSwipe(left,commit),tabFocus,railEdgeButton(next),tabFocus,railEdgeButton(prev),railSwipe(left,commit),gridScroll(250),tileTap(hyperliquid),widgetScroll(53),railSwipe(left,commit),railSwipe(right,commit),railEdgeButton(next),tileLongPress(feed),railSwipe(left,commit),widgetScroll(319),notificationPull(reject),railSwipe(left,commit),tileLongPress(logs),tileTap(skills),notificationDismiss]]
+Shrunk 0 time(s)
+Invariant: invariant violation(s):
+  - data-page="home" but model expects "launcher"
+LAUNCHER-LOOP E2E FAILED (2) — replay: ELIZA_LOOP_SEED=424242[0m
