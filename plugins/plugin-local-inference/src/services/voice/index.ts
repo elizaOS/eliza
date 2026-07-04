@@ -70,15 +70,6 @@ export {
 	EchoReferenceBuffer,
 	type EchoReferenceBufferOptions,
 } from "./echo-reference-buffer";
-export {
-	cancelEchoInWavUtterance,
-	type DesktopAecPassthroughReason,
-	type DesktopAecResult,
-	type DesktopAecUtteranceSummary,
-	FarEndReference,
-	type FarEndReferenceStatus,
-	getSharedFarEndReference,
-} from "./far-end-reference";
 export type {
 	LlamaContextLike as Eliza1EotLlamaContext,
 	LlamaContextSequenceLike as Eliza1EotLlamaSequence,
@@ -153,6 +144,15 @@ export {
 	turnDetectorGgufForTier,
 } from "./eot-classifier-ggml";
 export { VoiceStartupError } from "./errors";
+export {
+	cancelEchoInWavUtterance,
+	type DesktopAecPassthroughReason,
+	type DesktopAecResult,
+	type DesktopAecUtteranceSummary,
+	FarEndReference,
+	type FarEndReferenceStatus,
+	getSharedFarEndReference,
+} from "./far-end-reference";
 export * from "./ffi-bindings";
 export {
 	_resetSharedFirstLineCacheForTesting,
@@ -271,6 +271,14 @@ export {
 	VoiceScheduler,
 } from "./scheduler";
 export {
+	AGENT_SELF_VOICE_IMPRINT_THRESHOLD,
+	AgentSelfVoiceImprint,
+	type AgentSelfVoiceImprintOptions,
+	type AgentSelfVoiceImprintSource,
+	getAgentSelfVoiceImprint,
+	registerAgentSelfVoiceImprint,
+} from "./self-voice-imprint";
+export {
 	createMtpDraftHandle,
 	type KernelSet,
 	type MmapRegionHandle,
@@ -280,14 +288,6 @@ export {
 	SharedResourceRegistry,
 	type SharedTokenizer,
 } from "./shared-resources";
-export {
-	AGENT_SELF_VOICE_IMPRINT_THRESHOLD,
-	AgentSelfVoiceImprint,
-	type AgentSelfVoiceImprintOptions,
-	type AgentSelfVoiceImprintSource,
-	getAgentSelfVoiceImprint,
-	registerAgentSelfVoiceImprint,
-} from "./self-voice-imprint";
 export {
 	type VoiceAttributionOutput,
 	VoiceAttributionPipeline,

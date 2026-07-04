@@ -1,0 +1,156 @@
+{
+  "generatedAt": "2026-07-04T03:59:45.729Z",
+  "minErleDbCeiling": 18,
+  "note": "Real NlmsEchoCanceller + FarEndReference + MFCC AgentSelfVoiceImprint over the deterministic synthetic echo corpus. The fused WeSpeaker GGUF is unstaged in this worktree, so the embedding encoder is MFCC-timbre (13d); real-hardware ERLE (device-acoustic-erle.mjs) is N/A without a loaded acoustic host.",
+  "directNlms": [
+    {
+      "condition": "clean-echo",
+      "delayMs": 20,
+      "farFieldDb": 6,
+      "earlyReflections": [],
+      "erleDb": 31.71,
+      "farActiveErleDb": 31.71,
+      "meetsCeiling": true
+    },
+    {
+      "condition": "early-reflections",
+      "delayMs": 45,
+      "farFieldDb": 9,
+      "earlyReflections": [
+        [
+          64,
+          0.35
+        ],
+        [
+          150,
+          0.18
+        ]
+      ],
+      "erleDb": 29.25,
+      "farActiveErleDb": 29.25,
+      "meetsCeiling": true
+    },
+    {
+      "condition": "long-transport",
+      "delayMs": 380,
+      "farFieldDb": 9,
+      "earlyReflections": [
+        [
+          80,
+          0.3
+        ]
+      ],
+      "erleDb": 30.05,
+      "farActiveErleDb": 30.05,
+      "meetsCeiling": true
+    }
+  ],
+  "desktopFarEndReference": {
+    "applied": true,
+    "reason": null,
+    "erleDb": 33.67,
+    "offsetSamples": 14880,
+    "confidence": 0.954,
+    "farActiveSamples": 38720,
+    "meetsCeiling": true,
+    "status": {
+      "echoReferenceWired": true,
+      "playbackFramesReceived": 124,
+      "playbackSamplesReceived": 39680,
+      "lastPlaybackFrameAt": 1007465,
+      "playbackResets": 1,
+      "epochOffsetKnown": true,
+      "utterancesCancelled": 1,
+      "utterancesPassedThrough": 0,
+      "lastErleDb": 33.671537350996715,
+      "lastCancellation": {
+        "atEpochMs": 1007606.9375,
+        "applied": true,
+        "erleDb": 33.671537350996715,
+        "offsetSamples": 14880,
+        "confidence": 0.9540810693800255,
+        "farActiveSamples": 38720,
+        "nearSamples": 41471
+      },
+      "recentCancellations": [
+        {
+          "atEpochMs": 1007606.9375,
+          "applied": true,
+          "erleDb": 33.671537350996715,
+          "offsetSamples": 14880,
+          "confidence": 0.9540810693800255,
+          "farActiveSamples": 38720,
+          "nearSamples": 41471
+        }
+      ]
+    }
+  },
+  "selfVoiceImprint": {
+    "mfccOperatingThreshold": 0.7,
+    "productionWeSpeakerThreshold": 0.28,
+    "productionMarginsFromAssessmentSection6": {
+      "agentSelf": 0.37,
+      "human": 0.15
+    },
+    "encoder": "mfcc-timbre-13d (fused WeSpeaker GGUF unstaged in this worktree)",
+    "agentSelfSimilarityMean": 1,
+    "humanSimilarityMean": 0.091,
+    "humanSimilarityMax": 0.573,
+    "allAgentRejected": true,
+    "allHumanPassed": true,
+    "agentProbes": [
+      {
+        "seed": 16384,
+        "similarity": 1,
+        "rejected": true
+      },
+      {
+        "seed": 16385,
+        "similarity": 1,
+        "rejected": true
+      },
+      {
+        "seed": 16386,
+        "similarity": 1,
+        "rejected": true
+      },
+      {
+        "seed": 16387,
+        "similarity": 1,
+        "rejected": true
+      },
+      {
+        "seed": 16388,
+        "similarity": 1,
+        "rejected": true
+      }
+    ],
+    "humanProbes": [
+      {
+        "seed": 20480,
+        "index": 0,
+        "similarity": 0.153,
+        "rejected": false
+      },
+      {
+        "seed": 20481,
+        "index": 1,
+        "similarity": 0.573,
+        "rejected": false
+      },
+      {
+        "seed": 20482,
+        "index": 2,
+        "similarity": -0.31,
+        "rejected": false
+      },
+      {
+        "seed": 20483,
+        "index": 3,
+        "similarity": -0.053,
+        "rejected": false
+      }
+    ]
+  },
+  "verdict": "PASS"
+}

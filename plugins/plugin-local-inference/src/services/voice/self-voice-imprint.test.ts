@@ -92,7 +92,9 @@ describe("AgentSelfVoiceImprint decision gate (#12256)", () => {
 			encoder: queuedEncoder([unitEmbedding(0)]),
 		});
 		expect(imprint.ready).toBe(false);
-		await expect(imprint.isAgentSelfVoice(unitEmbedding(0))).resolves.toBeNull();
+		await expect(
+			imprint.isAgentSelfVoice(unitEmbedding(0)),
+		).resolves.toBeNull();
 	});
 });
 

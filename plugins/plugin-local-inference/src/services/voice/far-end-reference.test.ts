@@ -7,10 +7,7 @@
 
 import { describe, expect, it } from "vitest";
 import type { AudioFrameEvent } from "./audio-frame-consumer";
-import {
-	cancelEchoInWavUtterance,
-	FarEndReference,
-} from "./far-end-reference";
+import { cancelEchoInWavUtterance, FarEndReference } from "./far-end-reference";
 import { encodeMonoPcm16Wav } from "./wav-codec";
 
 const SAMPLE_RATE = 16_000;

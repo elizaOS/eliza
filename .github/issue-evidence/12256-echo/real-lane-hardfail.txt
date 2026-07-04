@@ -1,0 +1,7 @@
+Error: [voice:workbench --real] missing speaker GGUF: (unset)
+    at requirePath (/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/agent-a5b7507e7bedabe25/plugins/plugin-local-inference/src/services/voice/workbench-real-services.ts:106:13)
+    at createRealVoiceWorkbenchRuntimeFromEnv (/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/agent-a5b7507e7bedabe25/plugins/plugin-local-inference/src/services/voice/workbench-real-services.ts:601:22)
+    at main (/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/agent-a5b7507e7bedabe25/plugins/plugin-local-inference/scripts/voice-workbench.ts:56:11)
+    at /Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/agent-a5b7507e7bedabe25/plugins/plugin-local-inference/scripts/voice-workbench.ts:111
+    at processTicksAndRejections (native:7:39)
+real exit=1
