@@ -133,7 +133,6 @@
 		"typecheck": "tsgo --noEmit -p tsconfig.json"
 	},
 	"dependencies": {
-		"@elizaos/agent": "workspace:*",
 		"@elizaos/core": "workspace:*",
 		"@elizaos/plugin-capacitor-bridge": "workspace:*",
 		"@elizaos/plugin-computeruse": "workspace:*",
@@ -148,6 +147,7 @@
 	},
 	"devDependencies": {
 		"@biomejs/biome": "2.5.2",
+		"@elizaos/agent": "workspace:*",
 		"@types/node": "24.12.2",
 		"@types/ws": "^8.18.1",
 		"typescript": "^6.0.3",
