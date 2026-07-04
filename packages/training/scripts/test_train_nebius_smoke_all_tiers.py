@@ -101,6 +101,19 @@ def test_run_pipeline_accepts_max_steps_and_resume_via_source_inspection():
     assert 'cmd += ["--resume-from-checkpoint", str(args.resume_from_checkpoint)]' in src
 
 
+def test_run_pipeline_retires_legacy_eliza1_bundle_source_path():
+    src = (SCRIPTS / "run_pipeline.py").read_text()
+    assert '"scripts/optimize_for_eliza1.py",' not in src
+    assert "--eliza1-bundle is no longer supported" in src
+    assert 'summary["stages"]["eliza1_bundle"] = {"skipped": "retired"}' in src
+
+
+def test_train_nebius_does_not_request_retired_eliza1_bundle():
+    src = (SCRIPTS / "train_nebius.sh").read_text()
+    assert "--no-eliza1-bundle" in src
+    assert "--eliza1-bundle" not in src
+
+
 # ---------- train_nebius.sh teardown via a mock nebius CLI ------------------
 
 

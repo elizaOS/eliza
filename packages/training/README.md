@@ -79,7 +79,7 @@ data/raw/* ──▶ normalize.py ──▶ data/normalized/<slug>.jsonl
                                   ▼
               ┌─────────────┬─────┴─────┬─────────────┐
               ▼             ▼           ▼             ▼
-       gguf_eliza1_apply  MTP drafter verify  optional legacy KV recipes
+       GGUF release staging  MTP drafter verify  optional legacy KV recipes
                                   │
                                   ▼
                           native_tool_call_bench.py
@@ -195,7 +195,9 @@ extend the Nebius path.
 - **APOLLO** — `scripts/training/optimizer.py` (`apollo-torch` package).
   Validation: `scripts/training/test_apollo.py`.
 - **GGUF release quantization** — `scripts/quantization/gguf_eliza1_apply.py`
-  produces the q4/q6/q8 artifacts consumed by the local inference manifests.
+  is used by the supported Gemma bundle staging path to produce the q4/q6/q8
+  artifacts consumed by the local inference manifests. The old
+  `scripts/optimize_for_eliza1.py` `eliza1-optimized` wrapper was retired.
 - **MTP drafter verify** — Gemma 4 uses separate official drafter checkpoints;
   publish gates validate the drafter manifest rather than same-model EAGLE
   distillation.

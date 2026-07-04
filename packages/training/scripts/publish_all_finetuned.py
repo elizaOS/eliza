@@ -72,8 +72,9 @@ def _run(cmd: list[str], *, dry_run: bool, env: dict | None = None) -> int:
 def _find_bundle_dir(checkpoints_dir: Path, tier: str, entry: Any) -> Path | None:
     """Find the assembled bundle directory for a tier.
 
-    Looks for eliza1-optimized/ bundle first (the full GGUF bundle), then
-    falls back to the plain final checkpoint.
+    Uses the final checkpoint directory. The retired eliza1-optimized/ output
+    was produced by the legacy optimizer and must not be preferred for
+    app-facing publishes.
     """
     eliza_name = entry.eliza_short_name
     if checkpoints_dir.exists():
@@ -83,11 +84,6 @@ def _find_bundle_dir(checkpoints_dir: Path, tier: str, entry: Any) -> Path | Non
                 d.name.startswith(eliza_name) or
                 d.name.startswith(tier.replace(".", "-"))
             ):
-                # Prefer the eliza1-optimized bundle
-                bundle = d / "eliza1-optimized"
-                if bundle.exists():
-                    return bundle
-                # Fall back to the plain final checkpoint
                 final = d / "final"
                 if final.exists():
                     return final

@@ -177,13 +177,17 @@ entry points for training and publishing:
 - `cloud_run.py` / `train_vast.sh` / `train_nebius.sh` — cloud training
   dispatchers.
 - `quantization/*_apply.py` — quantization recipes (see §3).
+- `quantization/gguf_eliza1_apply.py` — release GGUF conversion/verification
+  helper for the supported Gemma bundle path. It is not invoked through the
+  retired `eliza1-optimized` optimizer.
 - `eval_checkpoint.py` / `eval_loop.sh` / `benchmarks/` — eval harness.
 - `publish/publish_model.py` / `publish/publish_dataset.py` /
   `publish/publish_pipeline.py` — three canonical publisher entry points.
   `publish_model` dispatches to `publish.orchestrator` (full gated bundle
   publish) or `publish_eliza1_model_repo` (per-tier upload after the full gate
-  ran elsewhere). The legacy fused single-GGUF `publish_eliza1_model` path was
-  retired because it only accepted the disconnected Qwen-shaped fused flow.
+  ran elsewhere). The legacy fused single-GGUF `publish_eliza1_model` path and
+  the `scripts/optimize_for_eliza1.py` `eliza1-optimized` path were retired
+  because they only accepted disconnected Qwen-shaped optimization flows.
   `publish_all_eliza1.sh` is the per-tier matrix driver. These MUST be the
   *only* paths that push app-facing bundles to `elizaos/eliza-1`. The older
   `push_to_hf.py` / `push_pipeline_to_hf.py` were deleted;

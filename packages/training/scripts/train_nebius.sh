@@ -16,7 +16,7 @@
 # `mk8s-worker-node-v-1-31-ubuntu24.04-cuda12.8` public image (NVIDIA 570.x +
 # CUDA 12.8 preinstalled), rsync `packages/training/` + the training corpus,
 # `run_pipeline.py` (full chain: APOLLO SFT → gate bench → PolarQuant/QJL/
-# fused-TurboQuant quant → eliza1-typed GGUF bundle), fetch results, teardown.
+# quantization smoke/evals), fetch results, teardown.
 #
 # 27b cost note: the H200 platform offers only `1gpu-` and `8gpu-` presets — no
 # 2-GPU preset. A 27b run on Nebius H200 therefore rents 8× H200 (~$30+/GPU-h
@@ -435,7 +435,7 @@ uv run --extra train $launch scripts/run_pipeline.py \\
   $max_steps_flag \\
   --train-file $TRAIN_FILE --val-file $VAL_FILE --test-file $TEST_FILE \\
   --eval-mode full --bench-per-bucket 200 --skip-throughput-bench \\
-  --quantizers $QUANTIZE_AFTER --eliza1-bundle $base_bench_flag $push_flag $allow_unval_flag
+  --quantizers $QUANTIZE_AFTER --no-eliza1-bundle $base_bench_flag $push_flag $allow_unval_flag
 echo "RUN_PIPELINE_DONE_OK"
 EOF
   # NOTE: `bash ... 2>&1 | tee $log` makes `$?` reflect `tee`'s exit (always 0)

@@ -10,9 +10,9 @@ Stages (skippable individually; see flags):
                                                      checkpoints/<run>/gate_report.json
   5. PolarQuant + TurboQuant + QJL quantization   → checkpoints/<run>/final-<q>/
   6. Quantized benchmark                          → benchmarks/<run>/<q>/
-  6b. Eliza-1-typed GGUF bundle (--eliza1-bundle,  → checkpoints/<run>/eliza1-optimized/
-      auto-on if the elizaOS/llama.cpp fork is       (Q4_POLAR GGUF + qjl_config.json +
-      found): optimize_for_eliza1.py +                turboquant.json + eliza1_manifest.json).
+  6b. Retired: the old --eliza1-bundle path hard-errors.
+      Use scripts/manifest/stage_eliza1_source_weights.py and
+      scripts.publish.orchestrator for app-facing bundles.
       (The MTP drafter is staged out of band — --mtp-drafter is removed and
       hard-errors; see gemma4-mtp-drafter-conversion.md for the convert + A/B path.)
   6c. Throughput bench (llama-bench on the GGUFs)  → checkpoints/<run>/evals/throughput.json
@@ -358,14 +358,13 @@ def main() -> int:
     )
     mb = ap.add_mutually_exclusive_group()
     mb.add_argument("--eliza1-bundle", dest="eliza1_bundle", action="store_true",
-                    help="Stage 6b: assemble the Eliza-1-typed GGUF bundle via "
-                         "optimize_for_eliza1.py — PolarQuant 4-bit weights + "
-                         "QJL1_256 K-cache + TBQ V-cache sidecars + "
-                         "eliza1_manifest.json. Needs the elizaOS/llama.cpp "
-                         "fork (auto-detected; set $LLAMA_CPP_DIR to override).")
+                    help="REMOVED — the legacy eliza1-optimized GGUF bundle "
+                         "builder was retired. Use the manifest staging "
+                         "scripts plus scripts.publish.orchestrator.")
     mb.add_argument("--no-eliza1-bundle", dest="eliza1_bundle", action="store_false",
-                    help="Skip the Eliza-1 GGUF bundle stage.")
-    ap.set_defaults(eliza1_bundle=None)  # None ⇒ auto (on iff the fork is found)
+                    help="Compatibility no-op: the retired Eliza-1 GGUF bundle "
+                         "stage is always skipped.")
+    ap.set_defaults(eliza1_bundle=False)
     ap.add_argument("--mtp-drafter", action="store_true",
                     help="REMOVED — passing this now hard-errors. In-repo MTP "
                          "drafter distillation (scripts/distill_mtp_drafter.py) "
@@ -393,6 +392,14 @@ def main() -> int:
             "Gemma-4 MTP drafter and A/B it per "
             "plugins/plugin-local-inference/docs/gemma4-mtp-drafter-conversion.md, "
             "then stage the resulting drafter GGUF into the bundle's mtp/ dir."
+        )
+
+    if args.eliza1_bundle:
+        raise SystemExit(
+            "--eliza1-bundle is no longer supported: the legacy "
+            "scripts/optimize_for_eliza1.py eliza1-optimized path was retired. "
+            "Stage release bundles with scripts/manifest/stage_eliza1_source_weights.py "
+            "and publish them through python -m scripts.publish.orchestrator."
         )
 
     entry = registry_get(args.registry_key)
@@ -726,47 +733,11 @@ def main() -> int:
             rcs = _bench(str(ck), q)
             summary["stages"][f"{q}_bench"] = {"exit": rcs}
 
-    # ───────────── stage 6b: Eliza-1-typed GGUF bundle ─────────────────
-    # PolarQuant 4-bit weights packed via the fork's Q4_POLAR GGML type +
-    # QJL1_256 K-cache & TBQ V-cache JSON sidecars + eliza1_manifest.json.
-    # The MTP drafter is produced out of band (no-train convert + A/B per
-    # plugins/plugin-local-inference/docs/gemma4-mtp-drafter-conversion.md) and
-    # staged into the bundle's mtp/ dir, not by this stage. optimize_for_eliza1.py
-    # is the canonical orchestrator (it re-runs polarquant→qjl→turboquant
-    # idempotently and then converts via the fork) — run_pipeline delegates to it.
+    # Stage 6b was the legacy eliza1-optimized GGUF path. It is retired because
+    # it delegated to the disconnected Qwen-shaped optimizer. App-facing bundles
+    # now go through manifest staging and scripts.publish.orchestrator.
     fork_dir = _resolve_eliza1_llama_cpp()
-    want_bundle = args.eliza1_bundle if args.eliza1_bundle is not None else (fork_dir is not None)
-    if want_bundle and not args.skip_quantize:
-        if fork_dir is None:
-            log.error("--eliza1-bundle requested but no elizaOS/llama.cpp fork "
-                      "found (set $LLAMA_CPP_DIR or clone eliza-llama-cpp); "
-                      "skipping the Eliza-1 GGUF bundle")
-            summary["stages"]["eliza1_bundle"] = {"skipped": "fork not found"}
-        elif not finetuned_model.exists():
-            log.warning("no fine-tuned checkpoint at %s — skipping Eliza-1 bundle",
-                        finetuned_model)
-            summary["stages"]["eliza1_bundle"] = {"skipped": "no checkpoint"}
-        else:
-            opt_dir = ckpt_dir / "eliza1-optimized"
-            o_cmd = [
-                "uv", "run", "--extra", "train", "python",
-                "scripts/optimize_for_eliza1.py",
-                "--base-model", str(finetuned_model),
-                "--output-dir", str(opt_dir),
-                "--apply", "polarquant", "qjl", "turboquant",
-                "--calibration", str(test_file if test_file.exists() else val_file),
-                "--calibration-samples", "128",
-                "--llama-cpp-dir", str(fork_dir),
-            ]
-            if args.publish and getattr(entry, "eliza_repo_id", None):
-                o_cmd += ["--hf-repo", entry.eliza_repo_id]
-            rc = run(o_cmd, cwd=ROOT)
-            manifest = opt_dir / "eliza1_manifest.json"
-            summary["stages"]["eliza1_bundle"] = {
-                "exit": rc, "output": str(opt_dir),
-                "manifest": str(manifest) if manifest.exists() else None,
-            }
-            log.info("Eliza-1 bundle exit=%d → %s", rc, opt_dir)
+    summary["stages"]["eliza1_bundle"] = {"skipped": "retired"}
 
     # ───────────── stage 6c: throughput bench (tokens/sec) ────────────
     # llama-bench on every produced GGUF: prefill (pp) + generation (tg) t/s.

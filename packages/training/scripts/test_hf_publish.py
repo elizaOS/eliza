@@ -46,6 +46,11 @@ def publish_pipeline():
     return _load("publish_pipeline_to_hf", SCRIPTS / "publish_pipeline_to_hf.py")
 
 
+@pytest.fixture
+def publish_all_finetuned():
+    return _load("publish_all_finetuned", SCRIPTS / "publish_all_finetuned.py")
+
+
 # ---------------------------------------------------------------------------
 # Allowlist correctness
 # ---------------------------------------------------------------------------
@@ -139,6 +144,24 @@ def test_training_spec_exports_native_rows_to_hf_safe_jsonl(publish_dataset, tmp
     assert isinstance(row["request_json"], str)
     assert isinstance(row["native_json"], str)
     assert publish_dataset.validate_hf_loadable(spec)
+
+
+def test_publish_all_ignores_retired_eliza1_optimized_bundle(
+    publish_all_finetuned, tmp_path
+):
+    checkpoints = tmp_path / "checkpoints"
+    run = checkpoints / "eliza-1-2b-apollo-123"
+    retired = run / "eliza1-optimized"
+    final = run / "final"
+    retired.mkdir(parents=True)
+    final.mkdir()
+
+    entry = SimpleNamespace(eliza_short_name="eliza-1-2b")
+
+    assert (
+        publish_all_finetuned._find_bundle_dir(checkpoints, "gemma4-e2b", entry)
+        == final
+    )
 
 
 def test_hf_load_preflight_rejects_split_feature_drift(publish_dataset, tmp_path):

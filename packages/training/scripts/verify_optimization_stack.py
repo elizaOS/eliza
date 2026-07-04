@@ -1,7 +1,8 @@
 """Verify the Eliza-1 PolarQuant + QJL + TurboQuant optimization stack on a bundle.
 
-Asserts on a staged/published Eliza-1 bundle dir (or the raw
-``eliza1-optimized/`` output from ``optimize_for_eliza1.py``):
+Asserts on a staged/published Eliza-1 bundle dir. It still accepts historical
+``eliza1-optimized/`` directories so old evidence can be audited after the
+optimizer's retirement:
 
   * ``eliza1_manifest.json.applied.{polarquant,qjl,turboquant,fused_turboquant}.applied``
     is true (or honestly recorded as skipped + reason).
@@ -21,7 +22,7 @@ Asserts on a staged/published Eliza-1 bundle dir (or the raw
 Run on a staged bundle:
     uv run python scripts/verify_optimization_stack.py \\
         --bundle-dir /tmp/eliza1-stage/eliza-1-2b
-On the orchestrator output:
+On a historical optimizer output:
     uv run python scripts/verify_optimization_stack.py \\
         --opt-dir checkpoints/eliza-1-2b-apollo-1778551769/eliza1-optimized
 Exits non-zero on a failed assertion (publish-blocking).
@@ -113,7 +114,7 @@ def _verify_recipe_pins(
 
 
 def verify_opt_dir(opt_dir: Path) -> Report:
-    """Verify an ``optimize_for_eliza1.py`` output directory."""
+    """Verify a historical ``eliza1-optimized/`` output directory."""
     rep = Report(bundle=str(opt_dir))
 
     manifest = _read_json(opt_dir / "gguf" / "eliza1_manifest.json")
@@ -255,7 +256,7 @@ def main(argv: list[str] | None = None) -> int:
     g.add_argument(
         "--opt-dir",
         type=Path,
-        help="Directory produced by optimize_for_eliza1.py (the eliza1-optimized/ output).",
+        help="Historical eliza1-optimized/ output directory.",
     )
     g.add_argument(
         "--bundle-dir",

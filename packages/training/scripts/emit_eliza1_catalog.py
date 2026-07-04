@@ -1,8 +1,9 @@
 """Emit a MODEL_CATALOG entry for a freshly-produced eliza-1-<tier> GGUF.
 
-After ``optimize_for_eliza1.py`` produces a GGUF + ``eliza1_manifest.json``
-the Eliza-1 runtime can only pick the model up once it has a catalog
-entry. The canonical catalog (``MODEL_CATALOG``, ``ELIZA_1_TIER_IDS``,
+After the supported Gemma bundle staging path produces a GGUF +
+``eliza1_manifest.json``, the Eliza-1 runtime can only pick the model up once
+it has a catalog entry. The canonical catalog (``MODEL_CATALOG``,
+``ELIZA_1_TIER_IDS``,
 ``DEFAULT_ELIGIBLE_MODEL_IDS``, the HuggingFace URL builders) lives in:
 
     packages/shared/src/local-inference/catalog.ts
@@ -352,7 +353,7 @@ def main(argv: list[str] | None = None) -> int:
         "--manifest",
         type=Path,
         required=True,
-        help="Path to eliza1_manifest.json from optimize_for_eliza1.py.",
+        help="Path to eliza1_manifest.json from the staged bundle.",
     )
     ap.add_argument(
         "--catalog",

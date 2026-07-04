@@ -12,8 +12,8 @@ Usage:
     cd packages/training
     HF_TOKEN=... uv run --extra train python -m scripts.publish.stage_base_v1_candidate \
         --tier 2b \
-        --text-gguf checkpoints/eliza-1-2b-apollo-<run>/eliza1-optimized/gguf/final-Q4_POLAR.gguf \
-        --text-sidecar checkpoints/eliza-1-2b-apollo-<run>/eliza1-optimized/gguf/final-Q4_POLAR.gguf.eliza1.json \
+        --text-gguf checkpoints/eliza-1-2b-apollo-<run>/bundle/text/eliza-1-2b-q4.gguf \
+        --text-sidecar checkpoints/eliza-1-2b-apollo-<run>/bundle/text/eliza-1-2b-q4.gguf.eliza1.json \
         --drafter-gguf /tmp/eliza1-eval-models/gemma4-mtp-drafter-2b.gguf \
         --drafter-source <license-reviewed drafter source> \
         --asr-repo <verified Gemma ASR-capable repo> \
@@ -546,7 +546,7 @@ def main(argv: list[str] | None = None) -> int:
         "sourceModels": {
             "text": {
                 "repo": base_repo,
-                "convertedVia": "plugins/plugin-local-inference/native/llama.cpp/convert_hf_to_gguf.py + scripts/optimize_for_eliza1.py (PolarQuant/QJL/TurboQuant)",
+                "convertedVia": "plugins/plugin-local-inference/native/llama.cpp/convert_hf_to_gguf.py + supported Gemma bundle staging path",
                 "note": "Fine-tuned (APOLLO full-parameter SFT) then optimized; NOT strictly base-v1 semantics — this is a finetuned candidate.",
             },
             "voice": {
@@ -670,10 +670,9 @@ def _render_readme(
         text_para = (
             f"- **Text GGUF** (`{text_rel}`): a **real fine-tune** "
             "— APOLLO full-parameter SFT on the Eliza-1 training corpus, then run "
-            "through the PolarQuant / QJL / TurboQuant optimization stack and "
-            "converted to GGUF via the elizaOS/llama.cpp fork. The body is `Q8_0` "
-            "(the fork's converter does not yet emit `q4_polar`); the K/V cache uses "
-            "QJL / TurboQuant slots. "
+            "through the supported Gemma bundle staging path and converted to "
+            "GGUF via the elizaOS/llama.cpp fork. The body quantization and "
+            "cache metadata are recorded in `textQuant` and the GGUF sidecar. "
         )
     else:
         text_para = (
