@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+// @vitest-environment-options {"url":"https://localhost/"}
 
 /**
  * Unit coverage for the base client's WebSocket lifecycle and the
@@ -109,6 +110,23 @@ describe("ElizaClient websocket connection policy", () => {
     expect(createdUrls).toHaveLength(1);
     expect(createdUrls[0]).toContain("wss://agent.example.test/ws?");
     expect(createdUrls[0]).toContain("token=agent-token");
+  });
+
+  it("does not open mixed-content ws from an https origin", () => {
+    const createdUrls = stubWebSocket();
+
+    const client = new ElizaClient("http://127.0.0.1:31338", "agent-token");
+
+    client.connectWs();
+
+    expect(window.location.protocol).toBe("https:");
+    expect(createdUrls).toEqual([]);
+    expect(client.getConnectionState()).toEqual({
+      state: "connected",
+      reconnectAttempt: 0,
+      maxReconnectAttempts: 15,
+      disconnectedAt: null,
+    });
   });
 
   it("treats a dedicated cloud agent base as connected without opening a websocket (its /ws is not proxied)", () => {

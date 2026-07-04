@@ -381,6 +381,12 @@ function getInjectedWsBase(): string | undefined {
   return undefined;
 }
 
+function isMixedContentWebSocketBlocked(wsProtocol: "ws:" | "wss:"): boolean {
+  if (wsProtocol !== "ws:") return false;
+  if (typeof window === "undefined") return false;
+  return window.location?.protocol === "https:";
+}
+
 // ---------------------------------------------------------------------------
 // Network status — listens for the bridged Capacitor `networkStatusChange`
 // event so the WS reconnect scheduler can park itself during airplane mode
@@ -1171,6 +1177,22 @@ export class ElizaClient {
     }
 
     if (!host) return;
+
+    // WKWebView and browsers on an HTTPS origin block insecure `ws://` as mixed
+    // content before the backend can answer. REST/SSE remains usable in that
+    // remote-host simulator lane, so degrade to connected-over-REST instead of
+    // burning the reconnect budget and surfacing the fatal lost-connection
+    // overlay against a healthy agent.
+    if (isMixedContentWebSocketBlocked(wsProtocol)) {
+      this.backoffMs = 500;
+      this.reconnectAttempt = 0;
+      this.disconnectedAt = null;
+      if (this.connectionState !== "connected") {
+        this.connectionState = "connected";
+        this.emitConnectionStateChange();
+      }
+      return;
+    }
 
     // On Capacitor native (iosScheme/androidScheme = "https"), the origin host
     // is a synthetic bundle host (e.g. "localhost" with no server behind it).
