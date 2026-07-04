@@ -22,13 +22,13 @@ import {
   formatStartupErrorDetail,
   type StartupErrorState,
 } from "./internal";
+import { loadPersistedActiveServer } from "./persistence";
 import type { RuntimeTarget, StartupEvent } from "./startup-coordinator";
 
 function isCapacitorNative(): boolean {
   try {
     const cap = (globalThis as Record<string, unknown>).Capacitor as
-      | { isNativePlatform?: () => boolean }
-      | undefined;
+      { isNativePlatform?: () => boolean } | undefined;
     return Boolean(cap?.isNativePlatform?.());
   } catch {
     return false;
@@ -138,6 +138,55 @@ async function hydrateReadyAgentStatus(
 }
 
 /**
+ * True when the persisted active server is an Eliza-managed cloud agent
+ * (`kind: "cloud"`). Written on every cloud entry path (first-run completion,
+ * session restore, profile switch) and NEVER for the desktop/mobile embedded
+ * agent (`kind: "local"`) or a self-hosted remote backend (`kind: "remote"`).
+ *
+ * This is the scope signal for the cold-boot warmup gate: only a managed cloud
+ * agent reaches the app through the per-agent PROXY passthrough
+ * (`/api/v1/eliza/agents/<id>/api/*`) that 404s "Agent not found" while the
+ * container is still warming, so only a managed cloud agent needs the extra
+ * passthrough confirmation before we declare the runtime ready. A pure
+ * localStorage read — no deps threading, no state-machine change — so the
+ * embedded-local and remote-backend paths keep their exact current behavior.
+ */
+function isCloudManagedActiveServer(): boolean {
+  return loadPersistedActiveServer()?.kind === "cloud";
+}
+
+/**
+ * Probes the genuine per-agent proxy passthrough for a managed cloud agent.
+ *
+ * The startup coordinator historically declared a cloud agent "ready" off the
+ * cloud ORCHESTRATOR view (`getStatus()`, which for a direct shared-runtime base
+ * is a client-side shim that hardcodes `state: "running"` — see
+ * ElizaClient.getStatus). That reports running the instant the agent is
+ * PROVISIONED, but the per-agent PROXY passthrough
+ * (`/api/v1/eliza/agents/<id>/api/*`) still 404s "Agent not found" for the first
+ * ~minutes while the container binds the runtime. Declaring ready off the shim
+ * routed cold-boot cloud users to a washed-out /character/select instead of the
+ * booting chat.
+ *
+ * `listConversations()` issues a real `GET /api/conversations` THROUGH that
+ * passthrough (it is NOT short-circuited by any shim), so it is the authoritative
+ * "is the warmed runtime actually serving?" signal:
+ *   - resolves → the passthrough serves → runtime is live → ready.
+ *   - rejects  → still warming (404 "Agent not found") or a transient blip →
+ *     keep polling. Both are "not ready yet"; the 401/429 auth cases are already
+ *     resolved during the polling-backend phase before starting-runtime, so a
+ *     rejection here does not need auth disambiguation.
+ */
+async function isCloudProxyPassthroughServing(): Promise<boolean> {
+  try {
+    await client.listConversations();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Runs the starting-runtime phase.
  * Polls /status until the agent reaches "running", then dispatches AGENT_RUNNING.
  *
@@ -165,11 +214,38 @@ export async function runStartingRuntime(
   // container the device is pointed at — there is no local runtime to start.
   // Calling client.startAgent() here would (at best) hit a remote endpoint
   // that has nothing to boot, and the local agent-readiness poll loop is
-  // pure latency on the first-paint critical path. Treat the running remote
-  // agent as ready and advance straight to hydration. Topologies 1 & 2
+  // pure latency on the first-paint critical path. Topologies 1 & 2
   // ("embedded-local") fall through to the full boot/poll loop below.
   if (target === "cloud-managed" || target === "remote-backend") {
     if (cancelled.current || effectRunRef.current !== effectRunId) return;
+
+    // For an Eliza-MANAGED cloud agent, "provisioned" is not "serving". The
+    // orchestrator/status shim reports running the instant the agent is
+    // provisioned, but the per-agent PROXY passthrough
+    // (`/api/v1/eliza/agents/<id>/api/*`) 404s "Agent not found" for the first
+    // ~minutes while the container binds the runtime. Declaring ready off the
+    // shim routed the user to a washed-out /character/select instead of the
+    // booting chat. Gate readiness on the passthrough genuinely serving so we
+    // stay in starting-runtime (booting chat + BootStatusIndicator) until the
+    // warmed runtime actually answers. Scoped to `kind: "cloud"` — a
+    // self-hosted `remote-backend` and the desktop/mobile embedded-local agent
+    // never go through this passthrough, so they keep the immediate-ready
+    // behavior unchanged.
+    if (target === "cloud-managed" && isCloudManagedActiveServer()) {
+      await runCloudManagedWarmup(
+        deps,
+        dispatch,
+        effectRunId,
+        effectRunRef,
+        cancelled,
+        tidRef,
+      );
+      return;
+    }
+
+    // Self-hosted remote backend (or a cloud-managed target with no persisted
+    // cloud record): treat the already-running remote agent as ready and
+    // advance straight to hydration — today's behavior, unchanged.
     await hydrateReadyAgentStatus(deps);
     if (cancelled.current || effectRunRef.current !== effectRunId) return;
     deps.setConnected(true);
@@ -434,6 +510,92 @@ export async function runStartingRuntime(
       lastErr = err;
       deps.setConnected(false);
     }
+    await new Promise<void>((r) => {
+      tidRef.current = setTimeout(r, 500);
+    });
+  }
+}
+
+/**
+ * Cold-boot warmup loop for an Eliza-MANAGED cloud agent (`kind: "cloud"`).
+ *
+ * Polls the genuine per-agent proxy passthrough (`GET /api/conversations` via
+ * `client.listConversations()`) until it actually serves, THEN hydrates and
+ * dispatches AGENT_RUNNING. Until then we stay in the starting-runtime phase,
+ * which renders the booting chat (with BootStatusIndicator / "connecting…")
+ * rather than flipping ready and routing the user to a washed-out
+ * /character/select while the container is still warming.
+ *
+ * Deadline handling mirrors the local boot loop: start with the web policy's
+ * 180s budget, then — while the passthrough is still warming — slide the
+ * deadline forward with an effective "starting" state (the passthrough IS the
+ * agent starting) so a legitimately slow warm (minutes) is not tripped as a
+ * timeout. The slide is bounded by AGENT_STARTUP_ABSOLUTE_MAX_MS, so a genuinely
+ * stuck agent still ends on the friendly agent-timeout screen instead of an
+ * infinite spinner.
+ *
+ * Scoped strictly to managed cloud: this function is only reached from the
+ * cloud-managed + persisted-cloud branch, so the desktop/mobile embedded-local
+ * first-run and the self-hosted remote-backend paths are entirely unaffected.
+ */
+async function runCloudManagedWarmup(
+  deps: StartingRuntimeDeps,
+  dispatch: (event: StartupEvent) => void,
+  effectRunId: number,
+  effectRunRef: React.MutableRefObject<number>,
+  cancelled: { current: boolean },
+  tidRef: { current: ReturnType<typeof setTimeout> | null },
+): Promise<void> {
+  const started = Date.now();
+  let deadline = started + getAgentReadyTimeoutMs();
+
+  logger.info(
+    "[eliza][startup:init] cloud-managed agent; waiting on proxy passthrough to warm before declaring ready",
+  );
+
+  while (!cancelled.current && effectRunRef.current === effectRunId) {
+    if (Date.now() >= deadline) {
+      deps.setStartupError({
+        reason: "agent-timeout",
+        phase: "initializing-agent",
+        message:
+          "The cloud agent did not finish starting in time. Cloud agents can take a few minutes to warm up on first launch.",
+        detail:
+          'The agent\'s chat endpoint was still returning "Agent not found" when the startup budget elapsed. Press Retry to keep waiting.',
+      });
+      deps.setFirstRunLoading(false);
+      dispatch({ type: "AGENT_TIMEOUT" });
+      return;
+    }
+
+    const serving = await isCloudProxyPassthroughServing();
+    if (cancelled.current || effectRunRef.current !== effectRunId) return;
+
+    if (serving) {
+      // The passthrough answers → the warmed runtime is genuinely serving.
+      // Hydrate the full status (model/canRespond) then advance exactly once.
+      await hydrateReadyAgentStatus(deps);
+      if (cancelled.current || effectRunRef.current !== effectRunId) return;
+      deps.setConnected(true);
+      deps.setFirstRunLoading(false);
+      logger.info(
+        "[eliza][startup:init] cloud-managed proxy passthrough is serving; agent ready",
+      );
+      dispatch({ type: "AGENT_RUNNING" });
+      return;
+    }
+
+    // Still warming (or a transient failure). Keep polling and — because the
+    // passthrough not-yet-serving IS the agent still starting — slide the
+    // deadline with an effective "starting" state so the warm window can extend
+    // up to the absolute max instead of tripping the initial timeout.
+    deps.setConnected(false);
+    deadline = computeAgentDeadlineExtensions({
+      agentWaitStartedAt: started,
+      agentDeadlineAt: deadline,
+      state: "starting",
+    });
+
     await new Promise<void>((r) => {
       tidRef.current = setTimeout(r, 500);
     });
