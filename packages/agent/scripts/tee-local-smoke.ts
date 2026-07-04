@@ -3,7 +3,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { createServer } from "node:http";
 import path from "node:path";
-import { collectDstackTeeEvidence } from "../src/services/dstack-tee-provider.ts";
+import { collectDstackTeeEvidence } from "../../../plugins/plugin-tee/src/confidential/dstack-tee-provider.ts";
 import type { TeeEvidence } from "../src/services/tee-evidence.ts";
 import {
   HttpTeeKeyReleaseClient,

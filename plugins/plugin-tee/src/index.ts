@@ -11,6 +11,14 @@ export {
   RemoteAttestationProvider,
 } from "./providers";
 export { TEEService } from "./services";
+// Confidential-VM (dstack/CoVE) TEE deployment surface. Registers the host
+// boot-gate evidence provider through the `@elizaos/agent` seam. Kept isolated
+// from the Phala vendor surface above; the two TEE providers do not tangle.
+export {
+  createDstackTeeProvider,
+  dstackConfidentialTeePlugin,
+  registerDstackEvidenceProvider,
+} from "./confidential";
 export * from "./types";
 export {
   calculateSHA256,

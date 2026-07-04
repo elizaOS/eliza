@@ -40,7 +40,7 @@
 import { type BinaryLike, createHash, randomBytes } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { createServer, type Server } from "node:http";
-import { collectDstackTeeEvidence } from "../src/services/dstack-tee-provider.ts";
+import { collectDstackTeeEvidence } from "../../../plugins/plugin-tee/src/confidential/dstack-tee-provider.ts";
 import {
   MODEL_KEY_ID,
   type SealedWeightsBlob,

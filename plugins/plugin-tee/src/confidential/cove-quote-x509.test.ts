@@ -13,7 +13,7 @@ import {
   TCG_DICE_TCB_INFO_OID,
   verifyCoveX509Chain,
 } from "./cove-quote-x509.ts";
-import { evaluateTeeEvidencePolicy } from "./tee-policy.ts";
+import { evaluateTeeEvidencePolicy } from "@elizaos/agent/services/tee-policy";
 
 /**
  * Real Salus CoVE evidence certificate, captured from the COVG

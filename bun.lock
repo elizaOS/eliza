@@ -5156,6 +5156,7 @@
       "name": "@elizaos/plugin-tee",
       "version": "2.0.3-beta.7",
       "dependencies": {
+        "@elizaos/agent": "workspace:*",
         "@elizaos/core": "workspace:*",
         "@phala/dstack-sdk": "^0.5.7",
         "@solana/web3.js": "1.98.4",

@@ -1,7 +1,10 @@
 import { timingSafeEqual } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { coveQuoteToTeeEvidence, verifyCoveQuote } from "./cove-quote.ts";
-import { normalizeTeeEvidence, type TeeEvidence } from "./tee-evidence.ts";
+import {
+  normalizeTeeEvidence,
+  type TeeEvidence,
+} from "@elizaos/agent/services/tee-evidence";
 
 const DEFAULT_DSTACK_EVIDENCE_PATHS = [
   "/run/dstack/tee-evidence.json",

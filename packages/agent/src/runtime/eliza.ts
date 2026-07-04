@@ -209,7 +209,6 @@ import {
 } from "../hooks/index.ts";
 import { ensureAgentWorkspace } from "../providers/workspace.ts";
 import { SandboxAuditLog } from "../security/audit-log.ts";
-import { createDstackTeeProvider } from "../services/dstack-tee-provider.ts";
 import { bootstrapRemoteCapabilityPlugins } from "../services/remote-plugin-adapter.ts";
 import {
   SandboxManager,
@@ -219,6 +218,7 @@ import {
   evaluateTeeBootGate,
   type TeeBootGate,
 } from "../services/tee-boot-gate.ts";
+import { resolveTeeEvidenceProvider } from "../services/tee-evidence-provider.ts";
 import {
   setTeeBootGateState,
   teeBootGateBlocksSecrets,
@@ -4692,9 +4692,13 @@ export async function startEliza(
   const runTeeBootGate = async (): Promise<void> => {
     let teeBootGate: TeeBootGate;
     try {
+      // The concrete evidence provider (dstack/CoVE) is registered by the TEE
+      // deployment plugin through the host seam; absent that plugin this is
+      // undefined and a required policy fails closed (secrets disabled).
+      const evidenceProvider = resolveTeeEvidenceProvider({ env: process.env });
       teeBootGate = await evaluateTeeBootGate({
         env: process.env,
-        evidenceProvider: createDstackTeeProvider({ env: process.env }),
+        ...(evidenceProvider ? { evidenceProvider } : {}),
       });
     } catch (err) {
       // A TEE policy was configured but evidence could not be collected or
@@ -4746,11 +4750,19 @@ export async function startEliza(
         caller: "remote-signing:boot",
       });
       const teePolicy = teeBootGateResult?.policy;
+      // Re-attest each sign through the same registered provider the boot gate
+      // used. This path only runs once the gate has already enabled secrets, so
+      // a required policy implies a registered provider; if none is registered
+      // the re-attesting provider is simply absent (the gate would not have
+      // reached here under a required policy).
+      const signingEvidenceProvider = teePolicy?.required
+        ? resolveTeeEvidenceProvider({ env: process.env })
+        : undefined;
       const signing = createTeeGatedRemoteSigningService({
         signer,
         ...(teePolicy ? { teePolicy } : {}),
-        ...(teePolicy?.required
-          ? { evidenceProvider: createDstackTeeProvider({ env: process.env }) }
+        ...(signingEvidenceProvider
+          ? { evidenceProvider: signingEvidenceProvider }
           : {}),
       });
 

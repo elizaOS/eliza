@@ -40,7 +40,7 @@ import {
   type TeeEvidence,
   type TeeMeasurementName,
   type TeeMeasurements,
-} from "./tee-evidence.ts";
+} from "@elizaos/agent/services/tee-evidence";
 
 /** Measurement registers a CoVE quote carries (RTMR-equivalents). */
 export type CoveMeasurements = {

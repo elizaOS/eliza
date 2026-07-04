@@ -261,8 +261,6 @@ export {
   PgApprovalQueue,
   resolveApprovalService,
 } from "./services/approval/index.ts";
-export * from "./services/cove-quote.ts";
-export * from "./services/dstack-tee-provider.ts";
 export {
   createGlobalPauseStore,
   GLOBAL_PAUSE_CACHE_KEY,
@@ -380,6 +378,7 @@ export * from "./services/tee-boot-gate.ts";
 export * from "./services/tee-boot-gate-state.ts";
 export * from "./services/tee-confidential-inference.ts";
 export * from "./services/tee-evidence.ts";
+export * from "./services/tee-evidence-provider.ts";
 export * from "./services/tee-key-release.ts";
 export * from "./services/tee-model-key-boot.ts";
 export * from "./services/tee-policy.ts";

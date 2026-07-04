@@ -18,7 +18,7 @@ import {
   expectedReportData,
   verifyCoveQuote,
 } from "./cove-quote.ts";
-import { evaluateTeeEvidencePolicy } from "./tee-policy.ts";
+import { evaluateTeeEvidencePolicy } from "@elizaos/agent/services/tee-policy";
 
 /**
  * Local DICE key ceremony for tests. This is the reference vector the silicon

@@ -32,7 +32,7 @@ import {
   normalizeTeeEvidence,
   type TeeEvidence,
   type TeeMeasurements,
-} from "./tee-evidence.ts";
+} from "@elizaos/agent/services/tee-evidence";
 
 /** TCG DICE `DiceTcbInfo` extension OID: tcg(2.23.133) platformClass(5) 4. */
 export const TCG_DICE_TCB_INFO_OID = "2.23.133.5.4";
