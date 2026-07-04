@@ -17,8 +17,6 @@ from typing import TYPE_CHECKING, Mapping
 
 import torch
 import torch.nn as nn
-from transformers import AutoModelForCausalLM, AutoTokenizer
-from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 
 if TYPE_CHECKING:
     # Static-only import. ``PretrainedConfig`` is the upstream type for
@@ -27,6 +25,7 @@ if TYPE_CHECKING:
     # want the helpers below. Behind ``TYPE_CHECKING`` mypy/pyright still
     # see the strong type and reject helpers that misuse the config.
     from transformers import PretrainedConfig
+    from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 
 log = logging.getLogger(__name__)
 
@@ -57,6 +56,8 @@ def load_model_and_tokenizer(
     dtype: torch.dtype = torch.bfloat16,
 ) -> tuple[nn.Module, PreTrainedTokenizerBase]:
     """Load a HF causal-LM checkpoint, merging a LoRA adapter if present."""
+    from transformers import AutoModelForCausalLM, AutoTokenizer
+
     p = Path(model_path)
     if p.exists() and is_lora_dir(p):
         base = resolve_base_for_lora(p)
@@ -85,7 +86,7 @@ def load_model_and_tokenizer(
 
 
 def save_model(
-    model: nn.Module, tokenizer: PreTrainedTokenizerBase, output_dir: Path
+    model: nn.Module, tokenizer: "PreTrainedTokenizerBase", output_dir: Path
 ) -> None:
     """Persist model + tokenizer to ``output_dir`` via safetensors."""
     output_dir.mkdir(parents=True, exist_ok=True)

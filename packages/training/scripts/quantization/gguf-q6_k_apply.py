@@ -187,9 +187,9 @@ def main(argv: list[str] | None = None) -> int:
         "--no-smoke-load",
         dest="smoke_load",
         action="store_false",
-        help="Skip the post-quantize llama-cli load-smoke (default: run it — "
-             "load the produced GGUF and generate a few tokens to confirm the "
-             "quantized weights are valid).",
+        help="Skip the post-quantize llama-cli load-smoke. This is a local "
+             "debug escape hatch; release/publish runs must keep the default "
+             "artifact load test enabled.",
     )
     ap.set_defaults(smoke_load=True)
     ap.add_argument("--dry-run", action="store_true")
@@ -237,7 +237,15 @@ def main(argv: list[str] | None = None) -> int:
         if smoke.get("ok"):
             log.info("load-smoke OK: %r", smoke.get("output", "")[:80])
         else:
-            log.warning("load-smoke FAILED: %s", smoke.get("error"))
+            log.error("load-smoke FAILED: %s", smoke.get("error"))
+            return 2
+    else:
+        smoke = {
+            "ok": False,
+            "skipped": True,
+            "releaseEligible": False,
+            "reason": "--no-smoke-load was passed",
+        }
 
     sidecar = {
         "method": f"gguf_{QUANT_LEVEL.lower()}",

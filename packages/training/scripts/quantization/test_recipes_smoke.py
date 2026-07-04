@@ -887,6 +887,85 @@ def test_kquant_sibling_dry_run_prints_quant_level(
     assert payload["dry_run"] is True
 
 
+@pytest.mark.parametrize("module_basename,expected_level", _KQUANT_SIBLINGS)
+def test_kquant_sibling_fails_when_artifact_load_smoke_fails(
+    module_basename: str, expected_level: str, monkeypatch, tmp_path
+):
+    mod = _load_module_from_quantization_file(module_basename)
+    fake_llama = tmp_path / "llama.cpp"
+    fake_llama.mkdir()
+    fake_convert = fake_llama / "convert_hf_to_gguf.py"
+    fake_convert.write_text("# fake\n", encoding="utf-8")
+    fake_quantize = fake_llama / "llama-quantize"
+    fake_quantize.write_text("# fake\n", encoding="utf-8")
+    fake_quantize.chmod(0o755)
+
+    def fake_run(cmd):
+        cmd = [str(part) for part in cmd]
+        if "--outfile" in cmd:
+            Path(cmd[cmd.index("--outfile") + 1]).write_bytes(b"f16")
+        elif cmd[-1] == expected_level:
+            Path(cmd[-2]).write_bytes(b"quantized")
+
+    monkeypatch.setattr(mod, "_find_convert_script", lambda _dir: fake_convert)
+    monkeypatch.setattr(mod, "_find_quantize_binary", lambda _dir: fake_quantize)
+    monkeypatch.setattr(mod, "_run", fake_run)
+    monkeypatch.setattr(
+        mod,
+        "_smoke_load_gguf",
+        lambda _gguf, _quantize: {"ok": False, "error": "synthetic load failure"},
+    )
+
+    rc = mod.main([
+        "--model", "google/gemma-4-E2B",
+        "--output", str(tmp_path / "out"),
+    ])
+
+    assert rc == 2
+    assert not list((tmp_path / "out").glob("gguf_*.json"))
+
+
+@pytest.mark.parametrize("module_basename,_expected_level", _KQUANT_SIBLINGS)
+def test_kquant_sibling_no_smoke_marks_artifact_not_release_eligible(
+    module_basename: str, _expected_level: str, monkeypatch, tmp_path
+):
+    mod = _load_module_from_quantization_file(module_basename)
+    fake_llama = tmp_path / "llama.cpp"
+    fake_llama.mkdir()
+    fake_convert = fake_llama / "convert_hf_to_gguf.py"
+    fake_convert.write_text("# fake\n", encoding="utf-8")
+    fake_quantize = fake_llama / "llama-quantize"
+    fake_quantize.write_text("# fake\n", encoding="utf-8")
+    fake_quantize.chmod(0o755)
+
+    def fake_run(cmd):
+        cmd = [str(part) for part in cmd]
+        if "--outfile" in cmd:
+            Path(cmd[cmd.index("--outfile") + 1]).write_bytes(b"f16")
+        else:
+            Path(cmd[-2]).write_bytes(b"quantized")
+
+    monkeypatch.setattr(mod, "_find_convert_script", lambda _dir: fake_convert)
+    monkeypatch.setattr(mod, "_find_quantize_binary", lambda _dir: fake_quantize)
+    monkeypatch.setattr(mod, "_run", fake_run)
+
+    out_dir = tmp_path / "out"
+    rc = mod.main([
+        "--model", "google/gemma-4-E2B",
+        "--output", str(out_dir),
+        "--no-smoke-load",
+    ])
+
+    assert rc == 0
+    sidecar = json.loads(next(out_dir.glob("gguf_*.json")).read_text())
+    assert sidecar["smoke_load"] == {
+        "ok": False,
+        "skipped": True,
+        "releaseEligible": False,
+        "reason": "--no-smoke-load was passed",
+    }
+
+
 @pytest.mark.parametrize(
     "module_basename",
     (
