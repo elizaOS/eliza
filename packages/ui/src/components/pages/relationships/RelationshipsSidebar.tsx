@@ -1,3 +1,8 @@
+/**
+ * The person-list sidebar for the Relationships view: renders the graph's people
+ * as a selectable list and forwards `PageLayout`'s layout-injected sidebar props
+ * (variant/close/className) so the mobile drawer renders its chrome correctly.
+ */
 import { Crown } from "lucide-react";
 import type { RelationshipsGraphSnapshot } from "../../../api/client-types-relationships";
 import { SidebarContent } from "../../composites/sidebar/sidebar-content";

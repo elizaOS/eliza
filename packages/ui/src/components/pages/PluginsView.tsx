@@ -1,3 +1,15 @@
+/**
+ * The Plugins / Connectors view (`/plugins`): lists installed plugins, filters
+ * them by tag, and lets the user enable/disable, reorder, and configure each one.
+ * The same component serves multiple modes (`all` / `connectors` / `social`),
+ * driven by the `mode` prop, so the plugins and connectors surfaces share one
+ * data path.
+ *
+ * Rows are rendered by `PluginCard`; connector-specific setup (OAuth, credential
+ * dialogs) is delegated to the `plugin-view-connectors` / `plugin-view-dialogs`
+ * helpers. Plugin data and toggle/reorder mutations flow through the `client`
+ * plugins API. Reorder persistence is gated by the developer-order toggle.
+ */
 import { Package, Puzzle } from "lucide-react";
 import {
   type ReactNode,

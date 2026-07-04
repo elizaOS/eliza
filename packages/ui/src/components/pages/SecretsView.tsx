@@ -1,3 +1,10 @@
+/**
+ * The Secrets view: lists, edits, and saves the agent's secret/env values,
+ * grouped and pinnable, with masked reveal-on-demand and a picker for adding
+ * known keys. Reads/writes through the `client` secrets API; seeds from
+ * `resource-cache` for instant revisits. Pinned keys persist in localStorage
+ * (best-effort — pinning is cosmetic, so a storage failure is swallowed).
+ */
 import { ChevronDown } from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import type { SecretInfo } from "../../api";

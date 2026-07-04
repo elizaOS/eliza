@@ -1,6 +1,8 @@
 /**
- * Sub-components and helpers for ConfigPageView.
- * Extracted from ConfigPageView.tsx.
+ * Section sub-components and their shared types for `ConfigPageView`: the RPC
+ * provider config section (per-chain provider selection + key entry), the cloud
+ * RPC status readout, and the cloud-services section. Types (`RpcFieldGroup`,
+ * `RpcSectionConfigMap`, translate-fn aliases) are exported for the parent view.
  */
 
 import { normalizeFirstRunProviderId } from "@elizaos/shared";

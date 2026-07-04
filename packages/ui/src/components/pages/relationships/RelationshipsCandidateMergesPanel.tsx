@@ -1,3 +1,10 @@
+/**
+ * Panel in the Relationships view listing candidate identity merges the merge
+ * engine has proposed, each with its evidence summary and Accept/Reject buttons
+ * (`client.acceptRelationshipsCandidate` / `rejectRelationshipsCandidate`).
+ * Resolving one calls back to the parent to refresh the graph. Renders nothing
+ * when there are no candidates.
+ */
 import {
   CalendarClock,
   Check,

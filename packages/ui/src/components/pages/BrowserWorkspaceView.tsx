@@ -1,3 +1,12 @@
+/**
+ * The Browser workspace view (`/browser`): a tabbed embedded-browser surface
+ * with a collapsible sidebar for tab management and companion-bridge status.
+ *
+ * Tabs, navigation, and snapshots flow through the `client` browser API; on
+ * native the tabs render via a registered renderer impl
+ * (`browser-tabs-renderer-registry`), while desktop/web fall back to the
+ * companion bridge. Mounted in `App.tsx` under the `browser` route key.
+ */
 import { Capacitor } from "@capacitor/core";
 import {
   ExternalLink,

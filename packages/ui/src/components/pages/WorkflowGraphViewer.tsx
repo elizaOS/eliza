@@ -1,3 +1,11 @@
+/**
+ * Renders a workflow definition as an interactive node graph via `@xyflow/react`
+ * (React Flow) — nodes, edges, minimap, controls, and a full-screen mode. Used in
+ * the workflow editor to visualize a workflow's trigger + steps; node clicks and
+ * the empty-state CTA route back to the parent editor. Loading and generating
+ * states are distinct so an in-flight AI generation reads differently from a
+ * plain fetch.
+ */
 import {
   Background,
   Controls,

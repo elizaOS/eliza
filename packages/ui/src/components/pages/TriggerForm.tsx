@@ -1,3 +1,10 @@
+/**
+ * Create/edit form for a workflow trigger (cron or event), with run-history,
+ * enable toggle, run-now, save-as-template, and delete affordances. Fully
+ * controlled: all form state and mutation callbacks are owned by the parent
+ * (`TriggersView`) and passed in, so this file is presentation plus local
+ * validation (e.g. cron-expression checking) only.
+ */
 import { useEffect, useMemo, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
 import { client } from "../../api";

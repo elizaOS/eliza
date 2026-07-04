@@ -1,3 +1,12 @@
+/**
+ * The Database view (`/database`): browse the agent's SQL store — tables, rows,
+ * and an ad-hoc query editor — behind a segmented Tables/SQL control.
+ *
+ * Status, table list, and rows are read through the `client` database API and
+ * seeded from `resource-cache` so a revisit paints the last-known shape while it
+ * revalidates. Segmented tabs register with the agent surface via ref-less
+ * `ViewModeTab` children (the SegmentedControl doesn't forward refs).
+ */
 import {
   ChevronLeft,
   ChevronRight,

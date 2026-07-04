@@ -1,4 +1,11 @@
 // @vitest-environment jsdom
+
+/**
+ * jsdom tests for `WalletSectionNav` and `isWalletSectionPath`: exercises the
+ * real app-shell page registry to confirm active-route matching, alias
+ * resolution to Wallet, and that a sub-view stops matching when its registration
+ * is absent.
+ */
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { registerAppShellPage } from "../../app-shell-registry";

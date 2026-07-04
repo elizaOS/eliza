@@ -1,3 +1,10 @@
+/**
+ * Pure shaping, normalization, and callback-parsing helpers for
+ * `ElizaCloudDashboard` — billing summary/settings normalizers, the auto-top-up
+ * form reducer, checkout-URL resolution, status-badge maps, and the managed
+ * Discord/GitHub OAuth callback-URL consumers. No React, no network: the view
+ * owns the `client` calls; this module keeps the derivation out of the component.
+ */
 import type {
   CloudBillingCheckoutResponse,
   CloudBillingSettings,

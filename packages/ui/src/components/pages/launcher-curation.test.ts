@@ -1,3 +1,8 @@
+/**
+ * Unit tests for `curateLauncherPages` / `canonicalLauncherId` — the pure
+ * launcher-page composition (system + release always, developer + preview gated
+ * by their toggles) that `LauncherSurface` feeds into `Launcher`.
+ */
 import { describe, expect, it } from "vitest";
 import type { ViewEntry } from "../../hooks/view-catalog";
 import { canonicalLauncherId, curateLauncherPages } from "./launcher-curation";

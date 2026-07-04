@@ -1,3 +1,8 @@
+/**
+ * Lists the linked identities of a person in the Relationships view — one row
+ * per merged identity, showing its platform, primary name, and handle/entity id.
+ * Renders nothing when the person has no identities.
+ */
 import { Fingerprint } from "lucide-react";
 import type { RelationshipsPersonDetail } from "../../api/client-types-relationships";
 

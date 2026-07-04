@@ -1,3 +1,10 @@
+/**
+ * The Settings view (`/settings`): a sectioned settings surface that adapts
+ * between a two-pane rail+detail layout on wide/landscape viewports and a
+ * single-column hub on narrow ones. Section content is lazy-loaded and gated by
+ * `isViewVisible`; `initialSection` deep-links a specific pane. Also reusable in
+ * modal form (`inModal`).
+ */
 import { isViewVisible } from "@elizaos/core";
 import { ArrowLeft } from "lucide-react";
 import type * as React from "react";

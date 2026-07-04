@@ -1,3 +1,13 @@
+/**
+ * The knowledge-documents surface: lists, searches, uploads, and deletes the
+ * agent's knowledge documents, scoped by ownership (agent / user / shared).
+ *
+ * Rendered inside `KnowledgeView` (the `/documents` route) and also reusable in
+ * embedded/modal form. Reads/writes through the `client` documents API, seeds
+ * from `resource-cache` for instant revisits, and binds the floating chat
+ * composer as its search box via `useRegisterViewChatBinding`. Upload compresses
+ * large images (`documents-upload-image`) before sending.
+ */
 import {
   BadgeCheck,
   Bot,

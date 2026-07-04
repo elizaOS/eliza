@@ -1,3 +1,10 @@
+/**
+ * Data + state wrapper around `Launcher`: pulls the routable views, filters them
+ * by the user's enabled view kinds and active modality, curates them into pages
+ * (`curateLauncherPages`), and wires tile taps to view navigation, chat-open,
+ * and the tutorial start. `Launcher` itself is pure presentation; this component
+ * owns the runtime data so the rail/home shell can mount it directly.
+ */
 import * as React from "react";
 import { dispatchChatOpen } from "../../events";
 import { useRoutableViews } from "../../hooks/useAvailableViews";

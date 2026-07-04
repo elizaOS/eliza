@@ -1,3 +1,9 @@
+/**
+ * The document-upload UI for `DocumentsView`: the `UploadZone` (file picker,
+ * drag-drop, pasted-text, and URL ingestion) plus its scope controls. Upload
+ * intents are handed back to the parent view's handlers; this file owns the
+ * input surface, not the network call.
+ */
 import {
   Bot,
   FileUp,

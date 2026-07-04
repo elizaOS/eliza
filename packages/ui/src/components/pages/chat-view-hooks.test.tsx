@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
 
+/**
+ * jsdom `renderHook` tests for `useChatVoiceController` over a mocked
+ * `useVoiceChat`: pins the audio-unlock ordering (speech queued by the same
+ * gesture that unlocks audio is not cancelled) and message-play telemetry.
+ */
+
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useVoiceChat } from "../../hooks/useVoiceChat";

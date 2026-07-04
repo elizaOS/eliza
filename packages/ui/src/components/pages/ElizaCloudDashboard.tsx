@@ -1,3 +1,14 @@
+/**
+ * The Eliza Cloud account dashboard: billing summary, balance top-up (Stripe
+ * embedded checkout), auto-top-up settings, spend limits, and managed
+ * Discord/GitHub connection callbacks.
+ *
+ * Reads and mutates through the `client` cloud-billing API; the pure shaping and
+ * normalization helpers live in `cloud-dashboard-utils`. Mounted as the
+ * `CloudDashboard` route in the desktop detached shell (`DetachedShellRoot`).
+ * Locks itself out when the mobile runtime is Cloud-locked
+ * (`isElizaCloudRuntimeLocked`).
+ */
 import {
   ArrowLeft,
   CreditCard,

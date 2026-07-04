@@ -1,3 +1,9 @@
+/**
+ * The plugin settings dialog for `PluginsView`: shows a plugin's config form,
+ * install progress, save/test results, and install/reset/save actions in a
+ * modal. Fully controlled — all state and callbacks are owned by the parent
+ * view and passed in as props.
+ */
 import { CheckCircle2 } from "lucide-react";
 import { useAgentElement } from "../../agent-surface";
 import type { PluginInfo } from "../../api";

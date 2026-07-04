@@ -1,3 +1,9 @@
+/**
+ * Presentational building blocks for `DatabaseView`: the results grid, a cell
+ * value popover, the pagination bar, and the shared `DbView`/`SortDir` types.
+ * These render query/table results the view fetches; they hold no data of their
+ * own.
+ */
 import type { ColumnInfo } from "../../api";
 import { useAppSelector } from "../../state";
 import { Badge } from "../ui/badge";

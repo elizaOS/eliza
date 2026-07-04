@@ -1,3 +1,8 @@
+/**
+ * Storybook stories for `Launcher` — the presentational tile grid. Drives it
+ * with hand-built `ViewEntry` fixtures (no data hooks), covering the populated
+ * grid and the launch interaction.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import type { ViewEntry } from "../../hooks/view-catalog";
 import { assert } from "../../storybook/home-widget-decorator";

@@ -1,4 +1,10 @@
 // @vitest-environment jsdom
+
+/**
+ * jsdom tests for `ScheduledTaskEditor` over a mocked `applyScheduledTask` client:
+ * verifies verb routing (run-now / acknowledge / snooze / complete / dismiss),
+ * the correct label per task kind, and error surfacing when a verb fails.
+ */
 import {
   cleanup,
   fireEvent,

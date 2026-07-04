@@ -1,3 +1,10 @@
+/**
+ * One row/tile in `PluginsView`: shows a plugin's visual, name, and description,
+ * an enable/disable toggle (agent-controllable via `useAgentElement`), an
+ * expandable settings section (`PluginConfigForm`), and drag handles for
+ * reordering. Pure presentation — all state and mutation callbacks are owned by
+ * `PluginsView` and passed in as props.
+ */
 import { memo } from "react";
 import { useAgentElement } from "../../agent-surface";
 import type { PluginInfo, PluginParamDef } from "../../api";

@@ -1,3 +1,10 @@
+/**
+ * Renders a plugin's configurable parameters as a form, inside the expanded
+ * settings section of a `PluginCard`. Derives a config schema from the plugin's
+ * declared parameters, merges server-provided `configUiHints` over the
+ * auto-generated ones (server wins), and drives the shared `ConfigRenderer`.
+ * Value changes flow back out through `onParamChange`.
+ */
 import { useCallback, useMemo, useRef, useState } from "react";
 import type { PluginInfo, PluginParamDef } from "../../api";
 import { ConfigRenderer } from "../../components/config-ui/config-renderer";

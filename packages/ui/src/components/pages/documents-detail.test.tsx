@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
-//
-// Regression coverage for the document detail (knowledge) viewer load path.
-// The #8876 screenshot review of the populated Knowledge view surfaced a real
-// bug: when the detail response lacked a `document`, the viewer read `.content`
-// of `undefined` and leaked a raw "Cannot read properties of undefined
-// (reading 'content')" TypeError as the user-facing error. These tests pin the
-// clean degraded message and the happy path.
+
+/**
+ * Regression coverage for the document detail (knowledge) viewer load path
+ * (#8876). When the detail response lacks a `document`, the viewer must not read
+ * `.content` of `undefined` and leak a raw TypeError as the user-facing error;
+ * these tests pin the clean degraded message and the happy path.
+ */
 
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

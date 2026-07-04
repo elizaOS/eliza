@@ -1,3 +1,8 @@
+/**
+ * Pure formatting and derivation helpers shared across the Relationships view
+ * components: builds the graph query, sorts/labels people, summarizes handles
+ * and contacts, and renders merge-candidate evidence. No React, no I/O.
+ */
 import type {
   RelationshipsGraphQuery,
   RelationshipsGraphSnapshot,

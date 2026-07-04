@@ -1,3 +1,10 @@
+/**
+ * The Skills view (`/skills`): browses the agent's installed runtime skills and
+ * the skill marketplace for installing new ones. Renders a full-page layout or a
+ * compact modal variant depending on the `inModal` prop. Skill data and
+ * install/create mutations come from the app store; tiles register with the
+ * agent surface via `useAgentElement`.
+ */
 import { Brain, Store } from "lucide-react";
 import { memo, type ReactNode, useEffect, useMemo, useState } from "react";
 import { useAgentElement } from "../../agent-surface";

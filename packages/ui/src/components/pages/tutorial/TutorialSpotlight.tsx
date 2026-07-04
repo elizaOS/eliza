@@ -1,9 +1,3 @@
-import { Volume2, VolumeX } from "lucide-react";
-import * as React from "react";
-import { createPortal } from "react-dom";
-import { Z_TUTORIAL } from "../../../lib/floating-layers";
-import { Button } from "../../ui/button";
-
 /**
  * The tour spotlight: a full-screen overlay that
  *  - draws a breathing glow around the target (the indicator that points at the
@@ -16,6 +10,11 @@ import { Button } from "../../ui/button";
  * orange in the default theme, white/black in the mono themes, gold on the
  * classic brand — instead of hardcoding one accent.
  */
+import { Volume2, VolumeX } from "lucide-react";
+import * as React from "react";
+import { createPortal } from "react-dom";
+import { Z_TUTORIAL } from "../../../lib/floating-layers";
+import { Button } from "../../ui/button";
 
 const PAD = 8; // glow  inset around the target
 

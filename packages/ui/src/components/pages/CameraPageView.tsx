@@ -1,15 +1,3 @@
-import {
-  Camera,
-  type CameraDirection,
-  type PhotoResult,
-} from "@elizaos/capacitor-camera";
-import { AlertTriangle, Loader2, RotateCcw, SwitchCamera } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { appNameInterpolationVars, useBranding } from "../../config/branding";
-import { useTranslation } from "../../state/TranslationContext.hooks";
-import { PermissionRecoveryCallout } from "../permissions/PermissionRecoveryCallout";
-import { Button } from "../ui/button";
-
 /**
  * The Camera surface — a live preview with capture and front/back switching,
  * backed by the `@elizaos/capacitor-camera` bridge. On the AOSP ElizaOS fork the
@@ -21,6 +9,17 @@ import { Button } from "../ui/button";
  * itself is platform-agnostic — it degrades to a permission/error state when no
  * camera is reachable rather than dead-ending.
  */
+import {
+  Camera,
+  type CameraDirection,
+  type PhotoResult,
+} from "@elizaos/capacitor-camera";
+import { AlertTriangle, Loader2, RotateCcw, SwitchCamera } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { appNameInterpolationVars, useBranding } from "../../config/branding";
+import { useTranslation } from "../../state/TranslationContext.hooks";
+import { PermissionRecoveryCallout } from "../permissions/PermissionRecoveryCallout";
+import { Button } from "../ui/button";
 
 type PreviewStatus = "starting" | "live" | "denied" | "error";
 
