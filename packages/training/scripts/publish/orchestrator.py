@@ -210,6 +210,7 @@ TIER_TAGLINES: Mapping[str, str] = {
     "4b": "flagship phones, small desktops",
     "9b": "workstations, tablets, and high-memory local hosts",
     "27b": "GPU workstations",
+    "27b-256k": "long-context GPU workstations",
 }
 
 DEFAULT_VOICE_CAPABILITIES: tuple[str, ...] = ("tts", "emotion-tags", "singing")
@@ -226,6 +227,7 @@ DEFAULT_RAM_BUDGET_MB: Mapping[str, tuple[int, int]] = {
     "4b": (10000, 12000),
     "9b": (12000, 16000),
     "27b": (32000, 48000),
+    "27b-256k": (24000, 32000),
 }
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
