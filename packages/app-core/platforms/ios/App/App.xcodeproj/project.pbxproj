@@ -40,6 +40,10 @@
 		AUIT00010000000000000005 /* ViewWalkthroughUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AUIT00010000000000000006 /* ViewWalkthroughUITests.swift */; };
 		AUIT00010000000000000007 /* WidgetGalleryCaptureUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AUIT00010000000000000008 /* WidgetGalleryCaptureUITests.swift */; };
 		AUIT00010000000000000009 /* LauncherGestureLoopUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AUIT0001000000000000000A /* LauncherGestureLoopUITests.swift */; };
+		EKEY00010000000000000001 /* KeyboardViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = EKEY00010000000000000102 /* KeyboardViewController.swift */; };
+		EKEY00010000000000000002 /* ElizaKeyboard.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = EKEY00010000000000000101 /* ElizaKeyboard.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		EKEY00010000000000000003 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = EKEY00010000000000000105 /* PrivacyInfo.xcprivacy */; };
+		EKEYBRIDGE00000000000001 /* ElizaKeyboardBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = EKEYBRIDGE00000000000002 /* ElizaKeyboardBridge.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -78,6 +82,13 @@
 			remoteGlobalIDString = 504EC3031FED79650016851F;
 			remoteInfo = App;
 		};
+		EKEY00010000000000000701 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 504EC2FC1FED79650016851F /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = EKEY00010000000000000401;
+			remoteInfo = ElizaKeyboard;
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -91,6 +102,7 @@
 				DAMON000100000000000002 /* DeviceActivityMonitorExtension.appex in Embed App Extensions */,
 				DAREP000100000000000002 /* DeviceActivityReportExtension.appex in Embed App Extensions */,
 				EWDG00010000000000000002 /* ElizaWidgets.appex in Embed App Extensions */,
+					EKEY00010000000000000002 /* ElizaKeyboard.appex in Embed App Extensions */,
 			);
 			name = "Embed App Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -144,6 +156,12 @@
 		AUIT00010000000000000008 /* WidgetGalleryCaptureUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetGalleryCaptureUITests.swift; sourceTree = "<group>"; };
 		AUIT0001000000000000000A /* LauncherGestureLoopUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LauncherGestureLoopUITests.swift; sourceTree = "<group>"; };
 		AUIT00010000000000000101 /* AppUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = AppUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		EKEY00010000000000000101 /* ElizaKeyboard.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = ElizaKeyboard.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		EKEY00010000000000000102 /* KeyboardViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardViewController.swift; sourceTree = "<group>"; };
+		EKEY00010000000000000103 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		EKEY00010000000000000104 /* ElizaKeyboard.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ElizaKeyboard.entitlements; sourceTree = "<group>"; };
+		EKEY00010000000000000105 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		EKEYBRIDGE00000000000002 /* ElizaKeyboardBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ElizaKeyboardBridge.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -190,6 +208,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		EKEY00010000000000000202 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -220,6 +245,7 @@
 				DAMON000100000000000101 /* DeviceActivityMonitorExtension.appex */,
 				DAREP000100000000000101 /* DeviceActivityReportExtension.appex */,
 				EWDG00010000000000000101 /* ElizaWidgets.appex */,
+					EKEY00010000000000000101 /* ElizaKeyboard.appex */,
 				AUIT00010000000000000101 /* AppUITests.xctest */,
 			);
 			name = Products;
@@ -236,6 +262,7 @@
 				E1A5105A0000000000000002 /* ElizaAppIntents.swift */,
 				MIPL00010000000000000002 /* ElizaIntentPlugin.swift */,
 				ELIZALIVEACT000000000002 /* ElizaLiveActivityBridge.swift */,
+					EKEYBRIDGE00000000000002 /* ElizaKeyboardBridge.swift */,
 				AWDG00010000000000000002 /* AgentWatchdog.swift */,
 				504EC30B1FED79650016851F /* Main.storyboard */,
 				504EC30E1FED79650016851F /* Assets.xcassets */,
@@ -248,6 +275,7 @@
 				DAMON000100000000000301 /* DeviceActivityMonitorExtension */,
 				DAREP000100000000000301 /* DeviceActivityReportExtension */,
 				EWDG00010000000000000301 /* ElizaWidgets */,
+					EKEY00010000000000000301 /* ElizaKeyboard */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -305,6 +333,17 @@
 			path = ElizaWidgets;
 			sourceTree = "<group>";
 		};
+		EKEY00010000000000000301 /* ElizaKeyboard */ = {
+			isa = PBXGroup;
+			children = (
+				EKEY00010000000000000102 /* KeyboardViewController.swift */,
+				EKEY00010000000000000103 /* Info.plist */,
+				EKEY00010000000000000104 /* ElizaKeyboard.entitlements */,
+				EKEY00010000000000000105 /* PrivacyInfo.xcprivacy */,
+			);
+			path = ElizaKeyboard;
+			sourceTree = "<group>";
+		};
 		AUIT00010000000000000301 /* AppUITests */ = {
 			isa = PBXGroup;
 			children = (
@@ -339,6 +378,7 @@
 				DAMON000100000000000702 /* PBXTargetDependency */,
 				DAREP000100000000000702 /* PBXTargetDependency */,
 				EWDG00010000000000000702 /* PBXTargetDependency */,
+					EKEY00010000000000000702 /* PBXTargetDependency */,
 			);
 			name = App;
 			productName = App;
@@ -413,6 +453,23 @@
 			productReference = EWDG00010000000000000101 /* ElizaWidgets.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
+		EKEY00010000000000000401 /* ElizaKeyboard */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = EKEY00010000000000000601 /* Build configuration list for PBXNativeTarget "ElizaKeyboard" */;
+			buildPhases = (
+				EKEY00010000000000000203 /* Sources */,
+				EKEY00010000000000000202 /* Frameworks */,
+				EKEY00010000000000000204 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = ElizaKeyboard;
+			productName = ElizaKeyboard;
+			productReference = EKEY00010000000000000101 /* ElizaKeyboard.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 		AUIT00010000000000000401 /* AppUITests */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = AUIT00010000000000000601 /* Build configuration list for PBXNativeTarget "AppUITests" */;
@@ -461,6 +518,10 @@
 						CreatedOnToolsVersion = 16.1;
 						ProvisioningStyle = Automatic;
 					};
+					EKEY00010000000000000401 = {
+						CreatedOnToolsVersion = 16.1;
+						ProvisioningStyle = Automatic;
+					};
 					AUIT00010000000000000401 = {
 						CreatedOnToolsVersion = 16.1;
 						ProvisioningStyle = Automatic;
@@ -486,6 +547,7 @@
 				DAMON000100000000000401 /* DeviceActivityMonitorExtension */,
 				DAREP000100000000000401 /* DeviceActivityReportExtension */,
 				EWDG00010000000000000401 /* ElizaWidgets */,
+					EKEY00010000000000000401 /* ElizaKeyboard */,
 				AUIT00010000000000000401 /* AppUITests */,
 			);
 		};
@@ -538,6 +600,14 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		EKEY00010000000000000204 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				EKEY00010000000000000003 /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -608,6 +678,7 @@
 				E1A5105A0000000000000001 /* ElizaAppIntents.swift in Sources */,
 				MIPL00010000000000000001 /* ElizaIntentPlugin.swift in Sources */,
 				ELIZALIVEACT000000000001 /* ElizaLiveActivityBridge.swift in Sources */,
+					EKEYBRIDGE00000000000001 /* ElizaKeyboardBridge.swift in Sources */,
 				EWDG00010000000000000004 /* ElizaDictationAttributes.swift in Sources */,
 				AWDG00010000000000000001 /* AgentWatchdog.swift in Sources */,
 			);
@@ -660,6 +731,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		EKEY00010000000000000203 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				EKEY00010000000000000001 /* KeyboardViewController.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -687,6 +766,11 @@
 			isa = PBXTargetDependency;
 			target = EWDG00010000000000000401 /* ElizaWidgets */;
 			targetProxy = EWDG00010000000000000701 /* PBXContainerItemProxy */;
+		};
+		EKEY00010000000000000702 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = EKEY00010000000000000401 /* ElizaKeyboard */;
+			targetProxy = EKEY00010000000000000701 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -1032,6 +1116,47 @@
 			};
 			name = Release;
 		};
+		EKEY00010000000000000501 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = App/ElizaKeyboard/ElizaKeyboard.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 25877RY2EH;
+				INFOPLIST_FILE = App/ElizaKeyboard/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks";
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = ai.elizaos.app.ElizaKeyboard;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		EKEY00010000000000000502 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = App/ElizaKeyboard/ElizaKeyboard.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 25877RY2EH;
+				INFOPLIST_FILE = App/ElizaKeyboard/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks";
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = ai.elizaos.app.ElizaKeyboard;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 		AUIT00010000000000000501 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -1124,6 +1249,15 @@
 			buildConfigurations = (
 				EWDG00010000000000000501 /* Debug */,
 				EWDG00010000000000000502 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		EKEY00010000000000000601 /* Build configuration list for PBXNativeTarget "ElizaKeyboard" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				EKEY00010000000000000501 /* Debug */,
+				EKEY00010000000000000502 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

@@ -226,6 +226,21 @@ export function buildAssistantLaunchHashRoute(
       params.set("voice", "1");
       return formatHashRoute("chat", params);
     }
+    case "keyboard-dictation": {
+      const params = withDefaultSearchParam(
+        searchParams,
+        "source",
+        "ios-keyboard",
+      );
+      params.set("action", params.get("action") ?? "keyboard.dictation");
+      params.set("voice", "1");
+      const requestId = params.get("requestId")?.trim();
+      if (requestId && !params.has("keyboardRequestId")) {
+        params.set("keyboardRequestId", requestId);
+      }
+      ensureAssistantLaunchId(params, generateLaunchId);
+      return formatHashRoute("chat", params);
+    }
     // Personal-assistant deep links no longer target a top-level "lifeops"
     // aggregate view (it was decomposed into independent plugins). They route
     // into chat with the assistant-entry source + a planner action hint so the

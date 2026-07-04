@@ -823,6 +823,7 @@ export function applyIosAppIdentity({
       "DeviceActivityMonitorExtension",
       "DeviceActivityReportExtension",
       "ElizaWidgets",
+      "ElizaKeyboard",
     ];
     for (const suffix of extensionBundleSuffixes) {
       project = project.replace(
@@ -937,6 +938,7 @@ export function applyIosAppIdentity({
       "DeviceActivityReportExtension.entitlements",
     ),
     path.join("App", "ElizaWidgets", "ElizaWidgets.entitlements"),
+    path.join("App", "ElizaKeyboard", "ElizaKeyboard.entitlements"),
   ]) {
     const filePath = path.join(iosAppRoot, relPath);
     if (
@@ -952,6 +954,7 @@ export function applyIosAppIdentity({
     `${appId}.DeviceActivityMonitorExtension`,
     `${appId}.DeviceActivityReportExtension`,
     `${appId}.ElizaWidgets`,
+    `${appId}.ElizaKeyboard`,
   ].join(",");
   const fastlaneReplacements = [
     [

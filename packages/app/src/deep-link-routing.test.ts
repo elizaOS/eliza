@@ -127,6 +127,24 @@ describe("assistant launch deep-link routing", () => {
     );
   });
 
+  it("routes iOS keyboard dictation handoff into hands-free chat with request metadata", () => {
+    const hashRoute = buildAssistantLaunchHashRoute(
+      "keyboard-dictation",
+      new URLSearchParams("source=ios-keyboard&requestId=req-123"),
+      { generateLaunchId: () => "launch-keyboard" },
+    );
+
+    expect(hashRoute?.startsWith("#chat?")).toBe(true);
+    expect(params(hashRoute ?? "").get("source")).toBe("ios-keyboard");
+    expect(params(hashRoute ?? "").get("action")).toBe("keyboard.dictation");
+    expect(params(hashRoute ?? "").get("voice")).toBe("1");
+    expect(params(hashRoute ?? "").get("requestId")).toBe("req-123");
+    expect(params(hashRoute ?? "").get("keyboardRequestId")).toBe("req-123");
+    expect(params(hashRoute ?? "").get("assistant.launchId")).toBe(
+      "launch-keyboard",
+    );
+  });
+
   it("routes Android widget daily brief links into chat with a planner hint", () => {
     const hashRoute = buildAssistantLaunchHashRoute(
       "lifeops/daily-brief",
@@ -192,6 +210,7 @@ describe("assistant launch deep-link routing", () => {
       "chat",
       "voice",
       "chat/voice",
+      "keyboard-dictation",
       "daily-brief",
       "lifeops/daily-brief",
       "lifeops/tasks",
@@ -255,6 +274,7 @@ describe("assistant launch deep-link routing", () => {
             "chat",
             "voice",
             "chat/voice",
+            "keyboard-dictation",
             "daily-brief",
             "lifeops/daily-brief",
             "lifeops/tasks",
