@@ -207,7 +207,7 @@ describe("resolveSlashDispatch", () => {
   it("navigates to a pinned view id", () => {
     const command = makeCommand({
       key: "orchestrator",
-      target: { kind: "navigate", viewId: "orchestrator" },
+      target: { kind: "navigate", viewId: "orchestrator", path: "/orchestrator" },
     });
     expect(
       resolveSlashDispatch({ command, args: "" }, "/orchestrator"),
@@ -217,7 +217,7 @@ describe("resolveSlashDispatch", () => {
   it("navigates to a view id resolved from a /views <id> argument", () => {
     const command = makeCommand({
       key: "views",
-      target: { kind: "navigate" },
+      target: { kind: "navigate", path: "/views" },
       acceptsArgs: true,
       args: [{ name: "view", description: "View", dynamicChoices: "views" }],
     });

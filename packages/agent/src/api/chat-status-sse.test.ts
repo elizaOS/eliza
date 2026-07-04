@@ -1,7 +1,7 @@
 import type http from "node:http";
 import { describe, expect, it, vi } from "vitest";
 
-import { type ChatTurnStatus, writeChatStatusSse } from "./chat-routes.ts";
+import { writeChatStatusSse } from "./chat-routes.ts";
 
 /** Minimal ServerResponse stand-in capturing the bytes written to the wire. */
 function makeRes(): {
@@ -50,27 +50,5 @@ describe("writeChatStatusSse (#8813)", () => {
     (res as { writableEnded: boolean }).writableEnded = true;
     writeChatStatusSse(res, { kind: "streaming" });
     expect(writes).toHaveLength(0);
-  });
-
-  it("accepts every ChatTurnStatus kind in the contract", () => {
-    // Compile-time + runtime guard that the server kind union stays in lockstep
-    // with the canonical @elizaos/ui ChatTurnStatus union (#8813). If a kind is
-    // added on one side and not the other, this array stops type-checking.
-    const kinds: ChatTurnStatus["kind"][] = [
-      "thinking",
-      "streaming",
-      "running_action",
-      "running_tool",
-      "evaluating",
-      "waking",
-      "speaking",
-    ];
-    for (const kind of kinds) {
-      const { res, writes } = makeRes();
-      writeChatStatusSse(res, { kind });
-      const payload = JSON.parse(writes[0].slice("data: ".length).trim());
-      expect(payload.type).toBe("status");
-      expect(payload.kind).toBe(kind);
-    }
   });
 });

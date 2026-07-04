@@ -189,6 +189,9 @@ export * from "./utils/environment";
 export { getEnv } from "./utils/environment";
 export { formatError } from "./utils/format-error";
 export * from "./utils/read-env";
+// Canonical recent-messages state accessor (pure type-only deps → browser-safe;
+// shared re-exports this).
+export * from "./utils/recent-messages-state";
 export * from "./utils/resolve-setting";
 export * from "./utils/streaming";
 export { ResponseSkeletonStreamExtractor } from "./utils/streaming";

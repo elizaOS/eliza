@@ -196,6 +196,7 @@ export * from "./config/wechat-config.js";
 export * from "./config/zod-schema.agent-runtime.js";
 export * from "./config/zod-schema.core.js";
 export * from "./connector-cred-types.js";
+export * from "./connector-setup-modes.js";
 export * from "./connectors.js";
 export {
   getDirectAccountProviderForFirstRunProvider,

@@ -10,24 +10,6 @@ export interface HomeGridApp extends AppIdentitySource {
   targetTab: Tab;
 }
 
-/**
- * Internal-tool apps that can be pinned to the homescreen.
- * None are pinned by default — this is the full catalog available for pinning.
- */
-export const PINNABLE_INTERNAL_APPS: readonly string[] = [
-  "@elizaos/plugin-personal-assistant",
-  "@elizaos/plugin-task-coordinator",
-  "@elizaos/app-skills-viewer",
-  "@elizaos/app-memory-viewer",
-  "@elizaos/app-plugin-viewer",
-  "@elizaos/plugin-training",
-  "@elizaos/app-relationship-viewer",
-  "@elizaos/app-trajectory-viewer",
-  "@elizaos/app-database-viewer",
-  "@elizaos/app-runtime-debugger",
-  "@elizaos/app-log-viewer",
-];
-
 /** The 4 tiles pinned to the homescreen by default. */
 const DEFAULT_PINNED_APPS: readonly HomeGridApp[] = [
   {

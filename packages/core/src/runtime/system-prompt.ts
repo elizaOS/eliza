@@ -27,17 +27,24 @@ export function normalizeSystemPromptRole(
 	return normalized || undefined;
 }
 
-// Mirrors `@elizaos/shared/src/utils/name-tokens.ts:replaceNameTokens`.
-// Inlined because `@elizaos/core` does not depend on `@elizaos/shared` at
-// runtime. Setup-preset characters ship with `{{name}}` / `{{agentName}}`
-// tokens in `system` and `bio` (PR #7101 deliberately preserves them on save
-// so renames propagate), so the canonical prompt builder must resolve them
-// before forwarding text to the model.
-function substituteNamePlaceholders(value: string, name: string): string {
+/**
+ * Replace un-substituted `{{name}}` / `{{agentName}}` tokens with the actual
+ * character name. Setup-preset characters ship with these tokens in `system`
+ * and `bio` (PR #7101 deliberately preserves them on save so renames
+ * propagate), so the canonical prompt builder must resolve them before
+ * forwarding text to the model.
+ *
+ * Canonical implementation: `@elizaos/shared` re-exports this from
+ * `@elizaos/core` (see `packages/shared/src/utils/name-tokens.ts`) because
+ * `shared` depends on `core` and not vice versa. A replacer function is used so
+ * `$`-sequences in the name (e.g. "Cash$$", "M$&M") insert literally instead of
+ * being interpreted as `String.replace` substitution patterns.
+ */
+export function replaceNameTokens(value: string, name: string): string {
 	if (!value) return value;
 	return value
-		.replace(/\{\{\s*name\s*\}\}/g, name)
-		.replace(/\{\{\s*agentName\s*\}\}/g, name);
+		.replace(/\{\{name\}\}/g, () => name)
+		.replace(/\{\{agentName\}\}/g, () => name);
 }
 
 export function buildCanonicalSystemPrompt(args: {
@@ -49,14 +56,11 @@ export function buildCanonicalSystemPrompt(args: {
 		typeof character?.name === "string" && character.name.trim()
 			? character.name.trim()
 			: "the agent";
-	const system = substituteNamePlaceholders(
+	const system = replaceNameTokens(
 		typeof character?.system === "string" ? character.system.trim() : "",
 		name,
 	);
-	const bio = substituteNamePlaceholders(
-		renderSystemPromptBio(character?.bio),
-		name,
-	);
+	const bio = replaceNameTokens(renderSystemPromptBio(character?.bio), name);
 	const role = normalizeSystemPromptRole(args.userRole);
 	return [
 		system,

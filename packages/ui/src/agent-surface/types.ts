@@ -135,15 +135,10 @@ export interface AgentActionResult {
   value?: unknown;
 }
 
-/** Capability ids handled generically by the agent-surface registry. */
-export const AGENT_SURFACE_CAPABILITY_IDS: ReadonlySet<string> = new Set([
-  "list-elements",
-  "describe-element",
-  "get-focus",
-  "get-agent-state",
-  "agent-click",
-  "agent-fill",
-  "agent-focus",
-  "agent-scroll-to",
-  "set-highlight",
-]);
+/**
+ * Capability ids handled generically by the agent-surface registry. The
+ * canonical source lives in `@elizaos/shared` (shared with the agent's
+ * views-routes); re-exported here so `./capabilities.ts` and the agent-surface
+ * barrel keep resolving the same symbol.
+ */
+export { AGENT_SURFACE_CAPABILITY_IDS } from "@elizaos/shared";

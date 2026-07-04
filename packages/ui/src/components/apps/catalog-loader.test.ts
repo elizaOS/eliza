@@ -5,20 +5,27 @@ const ELIZAOS_AOSP_UA =
 const STOCK_ANDROID_UA =
   "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36";
 
-const { listCatalogAppsMock, listAppsMock, capacitorState, navigatorMock } =
-  vi.hoisted(() => ({
-    listCatalogAppsMock: vi.fn(),
-    listAppsMock: vi.fn(),
-    capacitorState: { platform: "android" as string },
-    navigatorMock: {
-      userAgent: "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36",
-    },
-  }));
+const {
+  listCatalogAppsMock,
+  listAppsMock,
+  fetchMock,
+  capacitorState,
+  navigatorMock,
+} = vi.hoisted(() => ({
+  listCatalogAppsMock: vi.fn(),
+  listAppsMock: vi.fn(),
+  fetchMock: vi.fn(),
+  capacitorState: { platform: "android" as string },
+  navigatorMock: {
+    userAgent: "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36",
+  },
+}));
 
 vi.mock("../../api", () => ({
   client: {
     listCatalogApps: listCatalogAppsMock,
     listApps: listAppsMock,
+    fetch: fetchMock,
   },
 }));
 
@@ -116,6 +123,8 @@ describe("loadMergedCatalogApps AOSP filter", () => {
 
     listCatalogAppsMock.mockReset();
     listAppsMock.mockReset();
+    fetchMock.mockReset();
+    fetchMock.mockResolvedValue({ views: [] });
     listCatalogAppsMock.mockResolvedValue([]);
     listAppsMock.mockResolvedValue([
       makeServerApp("@elizaos/plugin-phone"),

@@ -1,9 +1,12 @@
+import type { ConnectorManagementMode } from "@elizaos/shared";
 import type {
   ConnectorAccountCreateInput,
   ConnectorAccountPrivacy,
   ConnectorAccountPurpose,
   ConnectorAccountRole,
 } from "../../api/client-agent";
+
+export type { ConnectorManagementMode };
 
 export interface ConnectorAccountOption<T extends string> {
   value: T;
@@ -21,12 +24,6 @@ export type ConnectorRoleConfirmationRequirement = "none" | "owner";
 export const CONNECTOR_PLUGIN_MANAGED_MODE_ID = "plugin-managed";
 export const CONNECTOR_ACCOUNT_MANAGEMENT_PANEL_PREFIX =
   "connector-account-management";
-
-export type ConnectorManagementMode =
-  | typeof CONNECTOR_PLUGIN_MANAGED_MODE_ID
-  | "cloud-managed"
-  | "local-setup"
-  | "local-config";
 
 export interface ConnectorPluginManagedAccountOption
   extends ConnectorAccountOption<typeof CONNECTOR_PLUGIN_MANAGED_MODE_ID> {

@@ -1,11 +1,19 @@
 // @vitest-environment jsdom
 
+import { registerConnectorSetupDeclaration } from "@elizaos/shared";
 import { describe, expect, it } from "vitest";
 import {
   getConnectorModes,
+  getDefaultConnectorModeId,
   modeToSetupPluginId,
 } from "../connectors/ConnectorModeSelector.helpers";
-import { hasConnectorSetupPanel } from "../connectors/ConnectorSetupPanel.helpers";
+import {
+  hasConnectorSetupPanel,
+  registerConnectorSetupPanel,
+} from "../connectors/ConnectorSetupPanel.helpers";
+// Importing the panel evaluates its module-init registrations for the
+// first-party setup panels the routing assertions depend on.
+import "../connectors/ConnectorSetupPanel";
 import { shouldRenderConnectorConfigForm } from "./ConnectorsSection";
 
 /**
@@ -102,5 +110,47 @@ describe("ConnectorsSection mode routing", () => {
         setupTargetsPlugin: true,
       }),
     ).toBe(false);
+  });
+
+  it("drives a connector declared only at runtime (absent from any switch)", () => {
+    const connectorId = "matrixchat";
+    // No hardcoded table entry exists for this id — before registration it has
+    // no modes and no setup panel.
+    expect(getConnectorModes(connectorId, {}).length).toBe(0);
+    expect(hasConnectorSetupPanel(connectorId)).toBe(false);
+
+    registerConnectorSetupDeclaration({
+      connectorId,
+      preferredDefaultModeIds: ["homeserver"],
+      modes: [
+        {
+          id: "homeserver",
+          managementMode: "local-config",
+          labelKey: "connectormode.matrixchat.homeserver.label",
+          labelFallback: "Homeserver",
+          descriptionKey: "connectormode.matrixchat.homeserver.description",
+          descriptionFallback: "Point at your Matrix homeserver URL",
+          setupPluginId: connectorId,
+        },
+        {
+          id: "qr",
+          managementMode: "local-setup",
+          labelKey: "connectormode.matrixchat.qr.label",
+          labelFallback: "QR Pair",
+          descriptionKey: "connectormode.matrixchat.qr.description",
+          descriptionFallback: "Pair a device via QR",
+          setupPluginId: `${connectorId}qr`,
+        },
+      ],
+    });
+
+    const modes = getConnectorModes(connectorId, {});
+    expect(modes.map((m) => m.id)).toEqual(["homeserver", "qr"]);
+    expect(getDefaultConnectorModeId(connectorId, modes)).toBe("homeserver");
+    expect(modeToSetupPluginId(connectorId, "qr")).toBe(`${connectorId}qr`);
+
+    // A runtime-registered panel for the declared setup plugin becomes routable.
+    registerConnectorSetupPanel(`${connectorId}qr`, () => null);
+    expect(hasConnectorSetupPanel(`${connectorId}qr`)).toBe(true);
   });
 });

@@ -1,3 +1,7 @@
+export {
+  BACKGROUND_APPLY_EVENT,
+  type BackgroundApplyOp,
+} from "@elizaos/shared/events";
 export { AppBackground, type AppBackgroundProps } from "./AppBackground";
 export type { BackgroundHostProps } from "./BackgroundHost";
 export { BackgroundHost } from "./BackgroundHost";
@@ -28,8 +32,4 @@ export {
   uniformsEqual,
 } from "./shader-schema";
 export { SKY_BACKGROUND_COLOR, SOLID_BACKGROUND_CSS } from "./types";
-export {
-  BACKGROUND_APPLY_EVENT,
-  type BackgroundApplyOp,
-  useBackgroundApplyChannel,
-} from "./useBackgroundApplyChannel";
+export { useBackgroundApplyChannel } from "./useBackgroundApplyChannel";

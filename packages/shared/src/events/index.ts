@@ -88,6 +88,50 @@ export const FIRST_RUN_VOICE_PREVIEW_AWAIT_TELEPORT_EVENT =
 // ── Sidebar sync ─────────────────────────────────────────────────────────
 export const SELF_STATUS_SYNC_EVENT = "eliza:self-status-refresh" as const;
 
+// ── Background (view-event contract) ─────────────────────────────────────
+/**
+ * View-event type the BACKGROUND action broadcasts (server → WS →
+ * `emitViewEvent`). The single subscriber is `useBackgroundApplyChannel` in
+ * `@elizaos/ui`. Unlike the `eliza:*` custom events above, this is a view event
+ * (`emitViewEvent` / `useViewEvent`), so it carries no `eliza:` prefix. It is
+ * declared here so the producer (`@elizaos/plugin-app-control`) and consumer
+ * (`@elizaos/ui`) share one source of truth for the wire string + payload shape.
+ */
+export const BACKGROUND_APPLY_EVENT = "background:apply" as const;
+
+/** Operation carried by a `background:apply` event payload. */
+export type BackgroundApplyOp = "set" | "undo" | "redo" | "reset";
+
+/** Tunable GLSL uniform patch the agent can drive (#10694). The GLSL source
+ * itself lives in `@elizaos/ui` — the action only names a preset id + uniforms;
+ * the renderer resolves id → source and validates it. */
+export interface ShaderUniformPatch {
+  u_speed?: number;
+  u_scale?: number;
+  u_intensity?: number;
+  u_seed?: number;
+}
+
+/**
+ * Payload broadcast to the renderer. Consumed by `useBackgroundApplyChannel`
+ * in `@elizaos/ui` and produced by the BACKGROUND action in
+ * `@elizaos/plugin-app-control`.
+ */
+export interface BackgroundApplyPayload {
+  op: BackgroundApplyOp;
+  /** "shader" (color field), "image" (cover image), or "glsl" (programmable
+   * shader). Omitted for undo/redo/reset. */
+  mode?: "shader" | "image" | "glsl";
+  /** 6-digit hex for shader/glsl mode. */
+  color?: string;
+  /** Same-origin image URL (`/api/media/…`) for image mode. */
+  imageUrl?: string;
+  /** Named GLSL preset id (renderer resolves → source) for glsl mode. */
+  presetId?: string;
+  /** Uniform patch for glsl mode (named preset set or a live-shader tweak). */
+  uniforms?: ShaderUniformPatch;
+}
+
 export interface AppEmoteEventDetail {
   emoteId: string;
   path: string;

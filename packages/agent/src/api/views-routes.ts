@@ -30,9 +30,12 @@ import {
   type RouteRequestMeta,
   type ViewType,
 } from "@elizaos/core";
-import { type RouteHelpers, readJsonBody } from "@elizaos/shared";
-import { AGENT_SURFACE_CAPABILITY_IDS } from "@elizaos/ui/agent-surface/types";
-import { STANDARD_CAPABILITIES } from "@elizaos/ui/views/view-interact-protocol";
+import {
+  AGENT_SURFACE_CAPABILITY_IDS,
+  type RouteHelpers,
+  readJsonBody,
+  STANDARD_CAPABILITIES,
+} from "@elizaos/shared";
 import {
   type ActiveViewElement,
   clearActiveViewContext,

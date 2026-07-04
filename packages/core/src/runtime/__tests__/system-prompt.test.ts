@@ -25,6 +25,42 @@ describe("system prompt helpers", () => {
 		);
 	});
 
+	it("inserts $-sequence names literally (no String.replace pattern interpretation)", () => {
+		// A replacer function must be used so `$$`, `$&`, `$1`, `$\`` in the
+		// name are inserted verbatim rather than interpreted as substitution
+		// patterns. String-replacement semantics would mangle e.g. "Cash$$" →
+		// "Cash$" in the rendered prompt.
+		for (const name of ["Cash$$", "M$&M", "A$1P", "x$`y"]) {
+			const prompt = buildCanonicalSystemPrompt({
+				character: {
+					name,
+					system: "You are {{name}}.",
+					bio: ["{{agentName}} is here."],
+				},
+			});
+			expect(prompt).toContain(`You are ${name}.`);
+			expect(prompt).toContain(`${name} is here.`);
+			expect(prompt).toContain(`# About ${name}`);
+			expect(prompt).not.toContain("{{name}}");
+			expect(prompt).not.toContain("{{agentName}}");
+		}
+	});
+
+	it("does not substitute whitespace-padded tokens (strict {{name}} form only)", () => {
+		// Presets emit bare `{{name}}` / `{{agentName}}` with no inner spaces.
+		// The strict regex matches shared canonical and leaves padded variants
+		// untouched (they never occur in real presets).
+		const prompt = buildCanonicalSystemPrompt({
+			character: {
+				name: "Eliza",
+				system: "You are {{ name }} and {{name}}.",
+				bio: [],
+			},
+		});
+		expect(prompt).toContain("{{ name }}");
+		expect(prompt).toContain("You are {{ name }} and Eliza.");
+	});
+
 	it("substitutes {{name}} / {{agentName}} placeholders in system + bio", () => {
 		// Character presets (packages/shared/dist/character-presets.characters.js)
 		// persist `{{name}}` tokens so character renames propagate. The runtime

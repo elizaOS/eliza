@@ -2,6 +2,14 @@ import type { RegistryAppInfo } from "../../api";
 import type { Tab } from "../../navigation";
 
 interface InternalToolAppDefinition {
+  /**
+   * Fallback presentation fields. For plugin-backed tools (`@elizaos/plugin-*`)
+   * these are overridden at render time by the plugin's own `ViewDeclaration`
+   * served at GET /api/views (via {@link getInternalToolApps}), so the plugin
+   * is the single source of truth for its label/description/hero. The synthetic
+   * built-in-tab tools have no matching /api/views declaration and fall back to
+   * these literals.
+   */
   capabilities: string[];
   description: string;
   displayName: string;
@@ -18,6 +26,32 @@ interface InternalToolAppDefinition {
    */
   hasDetailsPage?: boolean;
 }
+
+/**
+ * Minimal projection of a `/api/views` `ViewRegistryEntry` that the internal
+ * tool catalog overlays onto its plugin-backed rows. Kept structural (not an
+ * import of the React hook's `ViewRegistryEntry`) so this data module stays
+ * React-free.
+ */
+export interface InternalToolAppViewOverlay {
+  id: string;
+  label: string;
+  description?: string;
+  heroImageUrl?: string;
+  capabilities?: ReadonlyArray<{ id: string }>;
+}
+
+/**
+ * Route a plugin-backed internal tool to the `ViewRegistryEntry.id` its plugin
+ * declares at GET /api/views, so renaming the plugin's `ViewDeclaration.label`
+ * updates the catalog with no edit here. Only the two real plugin apps have a
+ * declaration; the synthetic built-in-tab tools are absent and keep their
+ * literal presentation fields.
+ */
+const TOOL_NAME_TO_VIEW_ID: Readonly<Record<string, string>> = {
+  "@elizaos/plugin-training": "training",
+  "@elizaos/plugin-task-coordinator": "task-coordinator",
+};
 
 const INTERNAL_TOOL_APPS: readonly InternalToolAppDefinition[] = [
   {
@@ -152,28 +186,92 @@ const INTERNAL_TOOL_APP_BY_NAME = new Map(
   INTERNAL_TOOL_APPS.map((app) => [app.name, app] as const),
 );
 
-export function getInternalToolApps(): RegistryAppInfo[] {
-  return INTERNAL_TOOL_APPS.map((app) => ({
-    name: app.name,
-    displayName: app.displayName,
-    description: app.description,
-    category: "utility",
-    launchType: "local",
-    launchUrl: null,
-    icon: null,
-    heroImage: app.heroImage ?? null,
-    capabilities: app.capabilities,
-    stars: 0,
-    repository: "",
-    latestVersion: null,
-    supports: { v0: false, v1: false, v2: true },
-    npm: {
-      package: app.name,
-      v0Version: null,
-      v1Version: null,
-      v2Version: null,
-    },
-  }));
+/**
+ * Overlay a plugin's own `ViewDeclaration` (from GET /api/views) onto the
+ * presentation fields of its internal-tool row. The plugin is the single
+ * source of truth for its label/description/hero/capabilities; the literal
+ * fields here are only a fallback for the synthetic built-in-tab tools whose
+ * metadata is not served through /api/views.
+ */
+function applyViewOverlay(
+  app: InternalToolAppDefinition,
+  viewsById: ReadonlyMap<string, InternalToolAppViewOverlay>,
+): {
+  displayName: string;
+  description: string;
+  heroImage: string | null;
+  capabilities: string[];
+} {
+  const viewId = TOOL_NAME_TO_VIEW_ID[app.name];
+  const view = viewId ? viewsById.get(viewId) : undefined;
+  if (!view) {
+    return {
+      displayName: app.displayName,
+      description: app.description,
+      heroImage: app.heroImage ?? null,
+      capabilities: app.capabilities,
+    };
+  }
+  return {
+    displayName: view.label,
+    description: view.description ?? app.description,
+    heroImage: view.heroImageUrl ?? app.heroImage ?? null,
+    capabilities: view.capabilities
+      ? view.capabilities.map((capability) => capability.id)
+      : app.capabilities,
+  };
+}
+
+/**
+ * The internal-tool app catalog as `RegistryAppInfo[]`. When `viewsById` is
+ * supplied (the `/api/views` feed keyed by view id), plugin-backed rows draw
+ * their presentation identity from the plugin's `ViewDeclaration` instead of
+ * the literal fallback, so a plugin can rename/redescribe its tool without any
+ * edit here. Called with no argument, every row uses its literal fallback.
+ */
+export function getInternalToolApps(
+  viewsById: ReadonlyMap<string, InternalToolAppViewOverlay> = new Map(),
+): RegistryAppInfo[] {
+  return INTERNAL_TOOL_APPS.map((app) => {
+    const overlay = applyViewOverlay(app, viewsById);
+    return {
+      name: app.name,
+      displayName: overlay.displayName,
+      description: overlay.description,
+      category: "utility",
+      launchType: "local",
+      launchUrl: null,
+      icon: null,
+      heroImage: overlay.heroImage,
+      capabilities: overlay.capabilities,
+      stars: 0,
+      repository: "",
+      latestVersion: null,
+      supports: { v0: false, v1: false, v2: true },
+      npm: {
+        package: app.name,
+        v0Version: null,
+        v1Version: null,
+        v2Version: null,
+      },
+    };
+  });
+}
+
+/**
+ * Index a `/api/views` feed by view id for {@link getInternalToolApps}. Only
+ * the ids referenced by plugin-backed tools are retained; the rest of the feed
+ * is irrelevant to the internal-tool catalog.
+ */
+export function buildInternalToolAppViewOverlays(
+  views: readonly InternalToolAppViewOverlay[],
+): Map<string, InternalToolAppViewOverlay> {
+  const referencedViewIds = new Set(Object.values(TOOL_NAME_TO_VIEW_ID));
+  const byId = new Map<string, InternalToolAppViewOverlay>();
+  for (const view of views) {
+    if (referencedViewIds.has(view.id)) byId.set(view.id, view);
+  }
+  return byId;
 }
 
 export function isInternalToolApp(name: string): boolean {

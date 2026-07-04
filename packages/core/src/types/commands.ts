@@ -130,6 +130,58 @@ export interface CommandDefinition {
 }
 
 /**
+ * Wire-safe argument shape produced by `serializeCommand`. The function-valued
+ * `choices` on a `CommandArgDefinition` collapse to a static `choices` array or
+ * a `dynamicChoices` source here — never a fabricated list.
+ */
+export interface SerializedCommandArg {
+	name: string;
+	description: string;
+	required?: boolean;
+	choices?: string[];
+	dynamicChoices?: CommandArgSource;
+	captureRemaining?: boolean;
+}
+
+/** Where a serialized catalog item came from — drives menu grouping/labels. */
+export type SerializedCommandSource = "builtin" | "custom-action" | "saved";
+
+/**
+ * The canonical wire shape served by `GET /api/commands` and consumed by every
+ * surface: the web composer (`@elizaos/ui`), the TUI autocomplete
+ * (`@elizaos/agent`), and the connector bridges (`@elizaos/plugin-commands`).
+ * This is the single contract the route projects — no field is fabricated at
+ * the HTTP boundary. Kept alongside `CommandDefinition` so all four packages
+ * consume one definition and can never drift.
+ */
+export interface SerializedCommand {
+	key: string;
+	nativeName: string;
+	description: string;
+	textAliases: string[];
+	scope: CommandScope;
+	category?: CommandCategory;
+	acceptsArgs: boolean;
+	args: SerializedCommandArg[];
+	requiresAuth: boolean;
+	requiresElevated: boolean;
+	surfaces?: CommandSurface[];
+	target: CommandTarget;
+	icon?: string;
+	source: SerializedCommandSource;
+	/** View ids this command is scoped to (#8798); omitted when global. */
+	views?: string[];
+}
+
+/** The full `GET /api/commands` response envelope. */
+export interface CommandsCatalogResponse {
+	commands: SerializedCommand[];
+	surface: string | null;
+	agentId: string | null;
+	generatedAt: string;
+}
+
+/**
  * Runtime contract for the chat-command registry. `@elizaos/plugin-commands`
  * registers the concrete implementation under service type `"commands"`; hosts
  * and other plugins contribute commands through

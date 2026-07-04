@@ -1,19 +1,18 @@
 /**
- * SandboxRegistry (agent runtime) — self-registers a cloud-provisioned
- * container in the shared Redis so the multi-tenant gateways
- * (`gateway-discord`, `gateway-webhook`) can resolve `agent_id -> server URL`
- * and forward inbound platform messages to THIS container.
+ * SandboxRegistry — self-registers a cloud-provisioned container in the shared
+ * Redis so the multi-tenant gateways (`gateway-discord`, `gateway-webhook`) can
+ * resolve `agent_id -> server URL` and forward inbound platform messages to
+ * THIS container.
  *
- * WHY this lives in `packages/agent` (and duplicates the logic in
- * `packages/app-core/src/services/sandbox-registry.ts`):
- * The published cloud image runs `packages/agent/dist/bin.js` as its
- * entrypoint (see `packages/app-core/deploy/Dockerfile.ci` APP_ENTRYPOINT).
- * That entrypoint boots the agent runtime in `packages/agent/src/runtime/eliza.ts`,
- * which CANNOT import `@elizaos/app-core` without creating an
- * `agent -> app-core -> agent` workspace cycle. The app-core copy therefore
- * never executes in a provisioned container. This is a deliberate, minimal
- * backport scoped to the container self-registration seam (Path A). Keep the
- * two copies in lock-step.
+ * This lives in `@elizaos/shared` — the lowest-level package importable by both
+ * the agent runtime (`packages/agent`) and the app-core runtime
+ * (`packages/app-core`) without creating a workspace cycle. The published cloud
+ * image runs `packages/agent/dist/bin.js` as its entrypoint (see
+ * `packages/app-core/deploy/Dockerfile.ci` APP_ENTRYPOINT), which boots the
+ * agent runtime in `packages/agent/src/runtime/eliza.ts`; the app-core runtime
+ * boot path (`packages/app-core/src/runtime/eliza.ts`) uses the same registry.
+ * Both call `buildSandboxRegistryFromEnv()` from here, so there is exactly one
+ * implementation of the container self-registration seam (Path A).
  *
  * It writes two Redis keys with a short TTL; a periodic heartbeat refreshes
  * the TTL while the container is alive, and `unregister()` deletes them on
@@ -32,8 +31,8 @@
  *     public proxy). Auth is carried inline in the URL, so no separate token
  *     is required. This mirrors what the gateways already do
  *     (`gateway-discord` / `gateway-webhook` both speak native TCP Redis).
- * Neither path adds a runtime dependency to the agent package (which is also
- * bundled for mobile): REST uses `fetch`, TCP uses the `node:net` builtin.
+ * Neither path adds a runtime dependency: REST uses `fetch`, TCP uses the
+ * `node:net` builtin (already reached by the root barrel via `loopback-trust`).
  */
 
 import net from "node:net";

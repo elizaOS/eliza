@@ -27,23 +27,13 @@ export interface ViewInteractResult {
   error?: string;
 }
 
-/** Standard capabilities that every view is expected to support. */
-export const STANDARD_CAPABILITIES = {
-  /** Returns the current view state as JSON. */
-  GET_STATE: "get-state",
-  /** Forces a data refresh / re-render. */
-  REFRESH: "refresh",
-  /** Focuses an input or button by CSS selector or name attribute. */
-  FOCUS_ELEMENT: "focus-element",
-  /** Returns the visible text content of the view container. */
-  GET_TEXT: "get-text",
-  /** Clicks an element by CSS selector or name attribute. Dispatched generically
-   *  by DynamicViewLoader / ShellViewAgentSurface for every loaded view. */
-  CLICK_ELEMENT: "click-element",
-  /** Sets the value of an input by selector/name. Dispatched generically by
-   *  DynamicViewLoader / ShellViewAgentSurface for every loaded view. */
-  FILL_INPUT: "fill-input",
-} as const;
-
-export type StandardCapability =
-  (typeof STANDARD_CAPABILITIES)[keyof typeof STANDARD_CAPABILITIES];
+/**
+ * Standard capabilities that every view is expected to support. The canonical
+ * source lives in `@elizaos/shared` (shared with the agent's views-routes); this
+ * subpath re-exports it so `@elizaos/ui/views/view-interact-protocol` consumers
+ * keep resolving the same symbol.
+ */
+export {
+  STANDARD_CAPABILITIES,
+  type StandardCapability,
+} from "@elizaos/shared";

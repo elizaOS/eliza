@@ -187,6 +187,7 @@ const SLASH_COMMANDS: SlashCommandCatalogItem[] = [
     requiresAuth: false,
     requiresElevated: false,
     target: { kind: "navigate", tab: "settings", path: "/settings" },
+    source: "builtin",
   },
   {
     key: "orchestrator",
@@ -199,6 +200,7 @@ const SLASH_COMMANDS: SlashCommandCatalogItem[] = [
     requiresAuth: false,
     requiresElevated: false,
     target: { kind: "navigate", viewId: "orchestrator", path: "/orchestrator" },
+    source: "builtin",
   },
   {
     key: "clear",
@@ -211,6 +213,7 @@ const SLASH_COMMANDS: SlashCommandCatalogItem[] = [
     requiresAuth: false,
     requiresElevated: false,
     target: { kind: "client", clientAction: "clear-chat" },
+    source: "builtin",
   },
   {
     key: "help",
@@ -223,6 +226,7 @@ const SLASH_COMMANDS: SlashCommandCatalogItem[] = [
     requiresAuth: false,
     requiresElevated: false,
     target: { kind: "agent" },
+    source: "builtin",
   },
 ];
 

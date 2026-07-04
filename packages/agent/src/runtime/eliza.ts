@@ -5828,10 +5828,8 @@ export async function startEliza(
     // multi-tenant gateways resolve this container as the inference target
     // and forward inbound platform messages here. Returns null for every
     // non-provisioned runtime, so this is inert outside the cloud
-    // container. See packages/agent/src/runtime/sandbox-registry.ts.
-    const { buildSandboxRegistryFromEnv } = await import(
-      "./sandbox-registry.ts"
-    );
+    // container. See packages/shared/src/sandbox-registry.ts.
+    const { buildSandboxRegistryFromEnv } = await import("@elizaos/shared");
     const sandboxRegistry = buildSandboxRegistryFromEnv();
     if (sandboxRegistry) {
       try {

@@ -32,6 +32,7 @@ import {
   type UUID,
   validateUuid,
 } from "@elizaos/core";
+import type { ChatFailureKind } from "@elizaos/shared";
 import {
   PatchConversationRequestSchema,
   PostConversationCleanupEmptyRequestSchema,
@@ -43,7 +44,6 @@ import type { ElizaConfig } from "../config/config.ts";
 import { resolveStateDir } from "../config/paths.ts";
 import type {
   AccountConnectRequest,
-  ChatFailureKind,
   ChatGenerationResult,
   LogEntry,
 } from "./chat-routes.ts";

@@ -1582,9 +1582,7 @@ export async function startEliza(
 
       console.log("[eliza] Server running. Press Ctrl+C to stop.");
 
-      const { buildSandboxRegistryFromEnv } = await import(
-        "../services/sandbox-registry.js"
-      );
+      const { buildSandboxRegistryFromEnv } = await import("@elizaos/shared");
       const sandboxRegistry = buildSandboxRegistryFromEnv();
       if (sandboxRegistry) {
         try {

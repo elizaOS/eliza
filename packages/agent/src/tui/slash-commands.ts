@@ -2,75 +2,35 @@
  * Pure helpers that bridge the universal slash-command catalog (served by
  * `GET /api/commands?surface=tui`) into the terminal composer.
  *
- * The catalog item shape mirrors the server's `SerializedCommand`
- * (@elizaos/plugin-commands). We keep a local copy of the transport type so
- * the TUI does not take a runtime dependency on the commands plugin, matching
- * how the web client (`@elizaos/ui` `client-types-commands`) keeps its own.
+ * The catalog item shape is the canonical wire contract defined once in
+ * @elizaos/core (`types/commands`) — the same types the server serializer
+ * (@elizaos/plugin-commands) and the web composer (@elizaos/ui) consume, so the
+ * TUI can never drift from them again.
  *
  * Everything here is pure (no terminal, no I/O) so it is unit-testable. The
  * side effects (HTTP, transcript mutation) live in `agent-terminal-tui.ts`.
  */
 
+import type {
+  CommandArgSource,
+  CommandsCatalogResponse,
+  CommandSurface,
+  CommandTarget as SerializedCommandTarget,
+  SerializedCommand,
+  SerializedCommandArg,
+} from "@elizaos/core";
 import type { AutocompleteItem, SlashCommand } from "@elizaos/tui";
 
-export type CommandSurface = "gui" | "tui" | "discord" | "telegram";
-
-export type CommandArgSource =
-  | "models"
-  | "views"
-  | "settings-sections"
-  | "skills"
-  | "providers";
-
-export type ClientCommandAction =
-  | "clear-chat"
-  | "new-conversation"
-  | "toggle-fullscreen"
-  | "open-command-palette"
-  | "show-commands";
-
-export interface SerializedCommandArg {
-  name: string;
-  description: string;
-  required?: boolean;
-  choices?: string[];
-  dynamicChoices?: CommandArgSource;
-  captureRemaining?: boolean;
-}
-
-export type SerializedCommandTarget =
-  | { kind: "agent"; action?: string }
-  | {
-      kind: "navigate";
-      tab?: string;
-      viewId?: string;
-      path?: string;
-      section?: string;
-    }
-  | { kind: "client"; clientAction: ClientCommandAction };
-
-export interface SerializedCommand {
-  key: string;
-  nativeName: string;
-  description: string;
-  textAliases: string[];
-  scope: "text" | "native" | "both";
-  category?: string;
-  acceptsArgs: boolean;
-  args: SerializedCommandArg[];
-  requiresAuth: boolean;
-  requiresElevated: boolean;
-  surfaces?: CommandSurface[];
-  target: SerializedCommandTarget;
-  icon?: string;
-}
-
-export interface CommandsCatalogResponse {
-  commands: SerializedCommand[];
-  surface: string | null;
-  agentId: string | null;
-  generatedAt: string;
-}
+// Re-export the transport types agent-terminal-tui.ts / slash-commands.test.ts
+// still import from here.
+export type {
+  CommandArgSource,
+  CommandsCatalogResponse,
+  CommandSurface,
+  SerializedCommand,
+  SerializedCommandArg,
+  SerializedCommandTarget,
+};
 
 /**
  * The display name for a command (no leading slash). Prefers the first text

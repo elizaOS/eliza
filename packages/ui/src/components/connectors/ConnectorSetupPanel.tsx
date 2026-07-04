@@ -4,7 +4,8 @@ import { ConnectorAccountList } from "./ConnectorAccountList";
 import { ConnectorAccountSetupScope } from "./ConnectorAccountSetupScope";
 import {
   connectorSetupRegistry,
-  normalizePluginId,
+  registerConnectorSetupPanel,
+  resolveConnectorSetupPanelKey,
 } from "./ConnectorSetupPanel.helpers";
 import {
   getConnectorPluginManagedAccountCreateInput,
@@ -17,6 +18,33 @@ import { SignalQrOverlay } from "./SignalQrOverlay";
 import { TelegramAccountConnectorPanel } from "./TelegramAccountConnectorPanel";
 import { TelegramBotSetupPanel } from "./TelegramBotSetupPanel";
 import { WhatsAppQrOverlay } from "./WhatsAppQrOverlay";
+
+function WhatsAppSetupPanel() {
+  return (
+    <ConnectorAccountSetupScope provider="whatsapp">
+      {(accountId) => <WhatsAppQrOverlay accountId={accountId ?? undefined} />}
+    </ConnectorAccountSetupScope>
+  );
+}
+
+function SignalSetupPanel() {
+  return (
+    <ConnectorAccountSetupScope provider="signal">
+      {(accountId) => <SignalQrOverlay accountId={accountId ?? undefined} />}
+    </ConnectorAccountSetupScope>
+  );
+}
+
+// Register the first-party connector setup panels once at module load so the
+// panel lookup is a single registry read with no hardcoded per-connector-id
+// switch. Plugins register their own panels via registerConnectorSetupPanel.
+registerConnectorSetupPanel("whatsapp", WhatsAppSetupPanel);
+registerConnectorSetupPanel("signal", SignalSetupPanel);
+registerConnectorSetupPanel("discordlocal", DiscordLocalConnectorPanel);
+registerConnectorSetupPanel("bluebubbles", BlueBubblesStatusPanel);
+registerConnectorSetupPanel("imessage", IMessageStatusPanel);
+registerConnectorSetupPanel("telegram", TelegramBotSetupPanel);
+registerConnectorSetupPanel("telegramaccount", TelegramAccountConnectorPanel);
 
 function ConnectorAccountManagementPanel({
   provider,
@@ -43,21 +71,18 @@ function ConnectorAccountManagementPanel({
 }
 
 export function ConnectorSetupPanel({ pluginId }: { pluginId: string }) {
-  const normalized = normalizePluginId(pluginId);
   const accountManagementPanel =
     parseConnectorAccountManagementPanelPluginId(pluginId);
-
   if (accountManagementPanel) {
     return <ConnectorAccountManagementPanel {...accountManagementPanel} />;
   }
 
-  // Check registry first — plugin-registered panels take precedence
+  const normalized = resolveConnectorSetupPanelKey(pluginId);
   const RegisteredPanel = connectorSetupRegistry.get(normalized);
   if (RegisteredPanel) {
     return <RegisteredPanel />;
   }
 
-  // Fall back to hardcoded components
   if (
     normalized.includes("lifeopsbrowser") ||
     normalized.includes("browserbridg")
@@ -65,38 +90,6 @@ export function ConnectorSetupPanel({ pluginId }: { pluginId: string }) {
     const BrowserBridgeSetupPanel = getBootConfig().lifeOpsBrowserSetupPanel;
     return BrowserBridgeSetupPanel ? <BrowserBridgeSetupPanel /> : null;
   }
-  if (normalized.includes("telegramaccount")) {
-    return <TelegramAccountConnectorPanel />;
-  }
-  if (normalized.includes("plugintelegram")) {
-    return <TelegramBotSetupPanel />;
-  }
-  switch (normalized) {
-    case "whatsapp":
-      return (
-        <ConnectorAccountSetupScope provider="whatsapp" connectorId={pluginId}>
-          {(accountId) => (
-            <WhatsAppQrOverlay accountId={accountId ?? undefined} />
-          )}
-        </ConnectorAccountSetupScope>
-      );
-    case "signal":
-      return (
-        <ConnectorAccountSetupScope provider="signal" connectorId={pluginId}>
-          {(accountId) => (
-            <SignalQrOverlay accountId={accountId ?? undefined} />
-          )}
-        </ConnectorAccountSetupScope>
-      );
-    case "discordlocal":
-      return <DiscordLocalConnectorPanel />;
-    case "bluebubbles":
-      return <BlueBubblesStatusPanel />;
-    case "imessage":
-      return <IMessageStatusPanel />;
-    case "telegram":
-      return <TelegramBotSetupPanel />;
-    default:
-      return null;
-  }
+
+  return null;
 }

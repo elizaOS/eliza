@@ -1,5 +1,6 @@
 import { client, type RegistryAppInfo } from "../../api";
 import { writeAppsCache } from "./apps-cache";
+import { fetchInternalToolAppViewOverlays } from "./catalog-loader";
 import { getInternalToolApps } from "./internal-tool-apps";
 import {
   getAvailableOverlayApps,
@@ -20,14 +21,16 @@ export async function loadAppsCatalog(): Promise<RegistryAppInfo[]> {
     serverAppsResult.status === "fulfilled" ? serverAppsResult.value : [];
   // non-transient server list failure is silent; catalog + overlay entries fill the gap
 
+  const viewsById = await fetchInternalToolAppViewOverlays();
+
   let catalogApps: RegistryAppInfo[];
   try {
     catalogApps = [
-      ...getInternalToolApps(),
+      ...getInternalToolApps(viewsById),
       ...(await client.listCatalogApps()),
     ];
   } catch {
-    catalogApps = getInternalToolApps();
+    catalogApps = getInternalToolApps(viewsById);
   }
 
   const overlayDescriptors = getAvailableOverlayApps()

@@ -1,7 +1,9 @@
 /**
- * Unit tests for the agent-side SandboxRegistry (Path A fix #1). The Upstash
- * REST API is exercised through a mocked global `fetch` so we record the exact
- * commands that would be sent. Everything else runs the real production code.
+ * Unit tests for the shared SandboxRegistry (container self-registration,
+ * Path A). The Upstash REST API is exercised through a mocked global `fetch`
+ * so we record the exact commands that would be sent, and the native TCP
+ * transport is exercised against an in-process RESP server on a real
+ * `node:net` socket. Everything else runs the real production code.
  */
 
 import net from "node:net";
@@ -9,7 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   buildSandboxRegistryFromEnv,
   SandboxRegistry,
-} from "../sandbox-registry.ts";
+} from "./sandbox-registry.js";
 
 vi.mock("@elizaos/core", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
@@ -69,7 +71,7 @@ const baseConfig = {
   ttlSeconds: 90,
 };
 
-describe("SandboxRegistry (agent runtime)", () => {
+describe("SandboxRegistry (REST transport)", () => {
   beforeEach(() => installFetch());
   afterEach(() => vi.restoreAllMocks());
 
@@ -149,7 +151,8 @@ describe("buildSandboxRegistryFromEnv", () => {
     );
   });
 
-  it("falls back to SANDBOX_AGENT_ID when no route id is injected", () => {
+  it("falls back to SANDBOX_AGENT_ID when no route id is injected", async () => {
+    installFetch();
     const reg = buildSandboxRegistryFromEnv({
       SANDBOX_REGISTRY_REDIS_URL: "https://example.upstash.io",
       SANDBOX_REGISTRY_REDIS_TOKEN: "tok",
@@ -158,6 +161,40 @@ describe("buildSandboxRegistryFromEnv", () => {
       SANDBOX_PUBLIC_URL: "http://1.2.3.4:1999/api",
     });
     expect(reg).not.toBeNull();
+    await reg?.register();
+    const pipe = recorded.find((r) => r.url.endsWith("/pipeline"));
+    const cmds = pipe?.body as string[][];
+    // With no route id, the sandbox id is the routing key.
+    expect(cmds.some((c) => c[1] === "agent:sandbox-id:server")).toBe(true);
+  });
+
+  it("prefers the route id over the sandbox id even when both are set", () => {
+    const reg = buildSandboxRegistryFromEnv({
+      SANDBOX_REGISTRY_REDIS_URL: "https://example.upstash.io",
+      SANDBOX_REGISTRY_REDIS_TOKEN: "tok",
+      SANDBOX_AGENT_ID: "sandbox-id",
+      SANDBOX_ROUTE_AGENT_ID: "char-route",
+      SANDBOX_SERVER_NAME: "sandbox-name",
+      SANDBOX_PUBLIC_URL: "http://1.2.3.4:1999/api",
+    });
+    expect(reg).not.toBeNull();
+  });
+
+  it("treats a whitespace-only SANDBOX_ROUTE_AGENT_ID as absent and falls back", async () => {
+    installFetch();
+    const reg = buildSandboxRegistryFromEnv({
+      SANDBOX_REGISTRY_REDIS_URL: "https://example.upstash.io",
+      SANDBOX_REGISTRY_REDIS_TOKEN: "tok",
+      SANDBOX_AGENT_ID: "sandbox-id",
+      SANDBOX_ROUTE_AGENT_ID: "   ",
+      SANDBOX_SERVER_NAME: "sandbox-name",
+      SANDBOX_PUBLIC_URL: "http://1.2.3.4:1999/api",
+    });
+    expect(reg).not.toBeNull();
+    await reg?.register();
+    const pipe = recorded.find((r) => r.url.endsWith("/pipeline"));
+    const cmds = pipe?.body as string[][];
+    expect(cmds.some((c) => c[1] === "agent:sandbox-id:server")).toBe(true);
   });
 
   it("accepts a redis:// URL with NO token (TCP transport carries auth inline)", () => {

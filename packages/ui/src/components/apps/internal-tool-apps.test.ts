@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { pathForTab, tabFromPath } from "../../navigation";
 import {
+  buildInternalToolAppViewOverlays,
   getInternalToolAppDescriptors,
   getInternalToolAppHasDetailsPage,
   getInternalToolApps,
   getInternalToolAppTargetTab,
   getInternalToolAppWindowPath,
+  type InternalToolAppViewOverlay,
 } from "./internal-tool-apps";
 
 describe("internal tool app descriptors", () => {
@@ -55,5 +57,78 @@ describe("internal tool app descriptors", () => {
   it("routes nested app view paths through the dynamic view renderer", () => {
     expect(tabFromPath("/apps/facewear/tui")).toBe("views");
     expect(tabFromPath("/apps/smartglasses/tui")).toBe("views");
+  });
+});
+
+describe("internal tool app /api/views overlay", () => {
+  it("lets a plugin's ViewDeclaration override the literal presentation for @elizaos/plugin-training", () => {
+    const views: InternalToolAppViewOverlay[] = [
+      {
+        id: "training",
+        label: "Renamed Training",
+        description: "Overlaid description from the plugin ViewDeclaration",
+        heroImageUrl: "/api/views/training/hero.png",
+        capabilities: [
+          { id: "renamed-capability" },
+          { id: "second-capability" },
+        ],
+      },
+    ];
+    const overlaid = getInternalToolApps(
+      buildInternalToolAppViewOverlays(views),
+    ).find((app) => app.name === "@elizaos/plugin-training");
+
+    expect(overlaid).toBeDefined();
+    expect(overlaid?.displayName).toBe("Renamed Training");
+    expect(overlaid?.description).toBe(
+      "Overlaid description from the plugin ViewDeclaration",
+    );
+    expect(overlaid?.heroImage).toBe("/api/views/training/hero.png");
+    expect(overlaid?.capabilities).toEqual([
+      "renamed-capability",
+      "second-capability",
+    ]);
+  });
+
+  it("overlays @elizaos/plugin-task-coordinator from its task-coordinator view id", () => {
+    const views: InternalToolAppViewOverlay[] = [
+      { id: "task-coordinator", label: "Renamed Automations" },
+    ];
+    const overlaid = getInternalToolApps(
+      buildInternalToolAppViewOverlays(views),
+    ).find((app) => app.name === "@elizaos/plugin-task-coordinator");
+
+    expect(overlaid?.displayName).toBe("Renamed Automations");
+  });
+
+  it("falls back to literal metadata for the synthetic built-in-tab tools (no matching /api/views id)", () => {
+    const views: InternalToolAppViewOverlay[] = [
+      { id: "training", label: "Renamed Training" },
+    ];
+    const overlaid = getInternalToolApps(
+      buildInternalToolAppViewOverlays(views),
+    ).find((app) => app.name === "@elizaos/app-plugin-viewer");
+
+    expect(overlaid?.displayName).toBe("Plugin Viewer");
+    expect(overlaid?.description).toBe(
+      "Inspect installed plugins, connectors, and runtime feature flags.",
+    );
+  });
+
+  it("keeps literal metadata when called with no views feed", () => {
+    const training = getInternalToolApps().find(
+      (app) => app.name === "@elizaos/plugin-training",
+    );
+    expect(training?.displayName).toBe("Fine Tuning");
+  });
+
+  it("indexes only the view ids referenced by plugin-backed tools", () => {
+    const views: InternalToolAppViewOverlay[] = [
+      { id: "training", label: "Training" },
+      { id: "some-unrelated-view", label: "Unrelated" },
+      { id: "task-coordinator", label: "Task Coordinator" },
+    ];
+    const byId = buildInternalToolAppViewOverlays(views);
+    expect([...byId.keys()].sort()).toEqual(["task-coordinator", "training"]);
   });
 });

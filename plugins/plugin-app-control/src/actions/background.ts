@@ -28,39 +28,19 @@ import {
 	type Memory,
 	type State,
 } from "@elizaos/core";
+import {
+	BACKGROUND_APPLY_EVENT,
+	type BackgroundApplyOp,
+	type BackgroundApplyPayload,
+	type ShaderUniformPatch,
+} from "@elizaos/shared/events";
 import { normalizeActionOptions, readStringOption } from "../params.js";
 
-/** Operation carried by the `background:apply` event. */
-export type BackgroundApplyOp = "set" | "undo" | "redo" | "reset";
-
-/** Tunable GLSL uniform patch the agent can drive (#10694). The GLSL source
- * itself lives in `@elizaos/ui` — the action only names a preset id + uniforms;
- * the renderer resolves id → source and validates it. */
-export interface ShaderUniformPatch {
-	u_speed?: number;
-	u_scale?: number;
-	u_intensity?: number;
-	u_seed?: number;
-}
-
-/**
- * Payload broadcast to the renderer. Mirrors the contract consumed by
- * `useBackgroundApplyChannel` in `@elizaos/ui` — keep the two in sync.
- */
-export interface BackgroundApplyPayload {
-	op: BackgroundApplyOp;
-	/** "shader" (color field), "image" (cover image), or "glsl" (programmable
-	 * shader). Omitted for undo/redo/reset. */
-	mode?: "shader" | "image" | "glsl";
-	/** 6-digit hex for shader/glsl mode. */
-	color?: string;
-	/** Same-origin image URL (`/api/media/…`) for image mode. */
-	imageUrl?: string;
-	/** Named GLSL preset id (renderer resolves → source) for glsl mode. */
-	presetId?: string;
-	/** Uniform patch for glsl mode (named preset set or a live-shader tweak). */
-	uniforms?: ShaderUniformPatch;
-}
+// The `background:apply` view-event contract (wire string + payload shapes) is
+// the single source of truth in `@elizaos/shared/events`, shared with the
+// consumer (`useBackgroundApplyChannel` in `@elizaos/ui`). Re-export the public
+// types so the plugin's exported surface (src/index.ts) stays unchanged.
+export type { BackgroundApplyOp, BackgroundApplyPayload };
 
 /** The resolved plan for one BACKGROUND invocation. */
 type BackgroundPlan =
@@ -440,7 +420,7 @@ async function defaultEmit(payload: BackgroundApplyPayload): Promise<void> {
 		{
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({ type: "background:apply", payload }),
+			body: JSON.stringify({ type: BACKGROUND_APPLY_EVENT, payload }),
 			signal: AbortSignal.timeout(5_000),
 		},
 	);
