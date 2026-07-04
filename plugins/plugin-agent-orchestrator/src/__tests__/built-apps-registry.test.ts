@@ -179,6 +179,55 @@ describe("registry round-trip", () => {
     expect(await listBuiltApps(runtime)).toHaveLength(1);
   });
 
+  it("concurrent registrations from different sessions all land", async () => {
+    // Two sub-agent sessions can complete at the same time, so two
+    // registerBuiltApp calls interleave on the get/set-only cache. Without
+    // serialization both read the same snapshot and the last write clobbers
+    // the other's record. A latency-injected cache widens the interleaving
+    // window the way a real DB-backed cache does.
+    const store = new Map<string, unknown>();
+    const runtime = {
+      getCache: async (key: string) => {
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        return store.get(key);
+      },
+      setCache: async (key: string, value: unknown) => {
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        store.set(key, value);
+        return true;
+      },
+    } as unknown as IAgentRuntime;
+
+    const slugs = ["snake-game", "todo", "workouts", "chess", "notes"];
+    await Promise.all(
+      slugs.map((slug, i) =>
+        registerBuiltApp(
+          runtime,
+          record({
+            slug,
+            name: slug,
+            url: `https://example.org/apps/${slug}/`,
+            sessionId: `sess-${i}`,
+          }),
+        ),
+      ),
+    );
+    const apps = await listBuiltApps(runtime);
+    expect(apps.map((app) => app.slug).sort()).toEqual([...slugs].sort());
+  });
+
+  it("a concurrent delete cannot resurrect or drop unrelated records", async () => {
+    const { runtime } = cacheRuntime();
+    await registerBuiltApp(runtime, record());
+    // Register of a second app races the delete of the first: both must
+    // observe each other's write regardless of interleaving order.
+    await Promise.all([
+      registerBuiltApp(runtime, record({ slug: "todo", name: "Todo" })),
+      deleteBuiltApp(runtime, "custom", "snake-game"),
+    ]);
+    expect(await listBuiltApps(runtime)).toMatchObject([{ slug: "todo" }]);
+  });
+
   it("degrades gracefully when the runtime has no cache", async () => {
     const bare = {} as IAgentRuntime;
     expect(await registerBuiltApp(bare, record())).toBe(false);
