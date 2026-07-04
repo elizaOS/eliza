@@ -141,7 +141,7 @@ describe("createIosStreamingAgentPlugin", () => {
     expect(text).toBe("Hello world");
   });
 
-  it("surfaces a call rejection to onStreamError without throwing to the caller", async () => {
+  it("surfaces a call rejection to onStreamError and the stream completion", async () => {
     const onError = vi.fn();
     const runtime: IosStreamingRuntime = {
       async call(): Promise<{ result: unknown }> {
@@ -152,13 +152,32 @@ describe("createIosStreamingAgentPlugin", () => {
       },
     };
     const plugin = createIosStreamingAgentPlugin(runtime, onError);
-    const { streamId } = await plugin.requestStream({
+    const { streamId, completion } = await plugin.requestStream({
       method: "POST",
       path: "/api/conversations/c1/messages/stream",
     });
     expect(streamId).toMatch(/^ios-stream-/);
-    await new Promise((r) => setTimeout(r, 0));
+    await expect(completion).rejects.toThrow("bridge exploded");
     expect(onError).toHaveBeenCalledOnce();
     expect(String(onError.mock.calls[0][0])).toContain("bridge exploded");
+  });
+
+  it("rejects the response head when the native call rejects before emitting a head", async () => {
+    const runtime: IosStreamingRuntime = {
+      async call(): Promise<{ result: unknown }> {
+        throw new Error("backend failed before stream head");
+      },
+      async addListener() {
+        return { remove: () => {} };
+      },
+    };
+    const plugin = createIosStreamingAgentPlugin(runtime);
+
+    await expect(
+      createNativeStreamingResponse(plugin, {
+        method: "POST",
+        path: "/api/conversations/c1/messages/stream",
+      }),
+    ).rejects.toThrow("backend failed before stream head");
   });
 });

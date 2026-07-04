@@ -44,10 +44,10 @@ function newStreamId(): string {
 
 /**
  * Build a `NativeStreamingAgentPlugin` backed by the iOS runtime bridge. The
- * `onStreamError` hook (optional) observes a native call that rejects after the
- * stream head was already delivered — the response body is already terminated by
- * an `agentStreamComplete` event in the normal path, so this is purely for
- * diagnostics, never for control flow.
+ * `onStreamError` hook (optional) observes a native call rejection for
+ * diagnostics. The returned stream `completion` promise is load-bearing: if the
+ * native call rejects before a terminal `agentStreamComplete` event, the shared
+ * stream helper settles the head/body instead of leaving the reader pending.
  */
 export function createIosStreamingAgentPlugin(
   runtime: IosStreamingRuntime,
@@ -56,12 +56,12 @@ export function createIosStreamingAgentPlugin(
   return {
     requestStream(
       options: NativeStreamAgentRequestOptions,
-    ): Promise<{ streamId: string }> {
+    ): Promise<{ streamId: string; completion: Promise<unknown> }> {
       const streamId = newStreamId();
       // Fire-and-forget: the call blocks until the stream completes, but the
       // token events already reached the WebView through the listeners the
       // caller attached before awaiting this resolved streamId.
-      void runtime
+      const completion = runtime
         .call({
           method: "http_request_stream",
           args: {
@@ -75,8 +75,9 @@ export function createIosStreamingAgentPlugin(
         })
         .catch((error) => {
           onStreamError?.(error);
+          throw error;
         });
-      return Promise.resolve({ streamId });
+      return Promise.resolve({ streamId, completion });
     },
     addListener(
       eventName:

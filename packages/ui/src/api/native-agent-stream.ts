@@ -45,7 +45,7 @@ export interface NativeStreamListenerHandle {
 export interface NativeStreamingAgentPlugin {
   requestStream: (
     options: NativeStreamAgentRequestOptions,
-  ) => Promise<{ streamId: string }>;
+  ) => Promise<{ streamId: string; completion?: Promise<unknown> }>;
   addListener: (
     eventName:
       | "agentStreamResponse"
@@ -86,7 +86,8 @@ export async function createNativeStreamingResponse(
   agent: NativeStreamingAgentPlugin,
   options: NativeStreamAgentRequestOptions,
 ): Promise<Response> {
-  const { streamId } = await agent.requestStream(options);
+  const stream = await agent.requestStream(options);
+  const { streamId } = stream;
 
   let controller: ReadableStreamDefaultController<Uint8Array> | null = null;
   // Buffer events that land before `start()` runs (and the terminal state if it
@@ -125,6 +126,26 @@ export async function createNativeStreamingResponse(
     rejectHead = reject;
   });
   let headSettled = false;
+
+  const failStream = (reason: unknown): void => {
+    if (detached) return;
+    const error =
+      reason instanceof Error
+        ? reason
+        : new Error(String(reason ?? "Stream failed"));
+    if (!headSettled) {
+      headSettled = true;
+      rejectHead(error);
+      detach();
+      return;
+    }
+    if (controller) {
+      controller.error(error);
+      detach();
+    } else {
+      terminal = { error: error.message };
+    }
+  };
 
   const onResponse = (event: unknown): void => {
     const e = event as NativeStreamResponseEvent;
@@ -170,6 +191,10 @@ export async function createNativeStreamingResponse(
   handles.push(await agent.addListener("agentStreamResponse", onResponse));
   handles.push(await agent.addListener("agentStreamChunk", onChunk));
   handles.push(await agent.addListener("agentStreamComplete", onComplete));
+
+  if (stream.completion) {
+    void stream.completion.catch(failStream);
+  }
 
   return head;
 }

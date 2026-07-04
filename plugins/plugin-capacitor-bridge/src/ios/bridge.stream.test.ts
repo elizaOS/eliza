@@ -160,6 +160,42 @@ describe("iOS bridge — streamConversationMessageResponse", () => {
 		expect(tokenChunks.length).toBeGreaterThan(1);
 	});
 
+	it("emits a terminal complete frame when a mid-stream chunk emit rejects", async () => {
+		const runtime = createStreamingRuntime(["a", "b", "c"]);
+		const backend = makeBackendWithConversation(runtime);
+		const frames: StreamEmitFrame[] = [];
+
+		await streamConversationMessageResponse(
+			backend,
+			CONVERSATION_ID,
+			{ text: "hi" },
+			"stream-reject",
+			async (frame) => {
+				frames.push(frame);
+				if (
+					frame.kind === "chunk" &&
+					decodeChunk(frame).type === "token" &&
+					decodeChunk(frame).text === "b"
+				) {
+					throw new Error("webview emit failed");
+				}
+			},
+		);
+
+		expect(frames[0]).toMatchObject({ kind: "response", status: 200 });
+		expect(frames.at(-1)).toEqual({
+			streamId: "stream-reject",
+			kind: "complete",
+			error: "Error: webview emit failed",
+		});
+		expect(
+			frames
+				.filter((f) => f.kind === "chunk")
+				.map(decodeChunk)
+				.some((p) => p.type === "done"),
+		).toBe(true);
+	});
+
 	it("emits a 404 stream for an unknown conversation without throwing", async () => {
 		const runtime = createStreamingRuntime(["ignored"]);
 		const backend = makeBackendWithConversation(runtime);

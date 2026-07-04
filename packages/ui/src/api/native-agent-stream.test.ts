@@ -15,11 +15,11 @@ import {
  * `agentStream*` events on demand — exactly how the native bridge will emit them
  * via Capacitor `notifyListeners`.
  */
-function makeFakeAgent(streamId = "s1") {
+function makeFakeAgent(streamId = "s1", completion?: Promise<unknown>) {
   const listeners = new Map<string, Array<(e: unknown) => void>>();
   const agent: NativeStreamingAgentPlugin = {
     async requestStream() {
-      return { streamId };
+      return { streamId, completion };
     },
     async addListener(eventName, listener) {
       const arr = listeners.get(eventName) ?? [];
@@ -142,6 +142,34 @@ describe("createNativeStreamingResponse", () => {
     await flush();
     emit("agentStreamComplete", { streamId: "s1", error: "connect refused" });
     await expect(responsePromise).rejects.toThrow("connect refused");
+  });
+
+  it("rejects the head when the native stream call rejects without a complete event", async () => {
+    const completion = Promise.reject(new Error("native boot failed"));
+    const { agent } = makeFakeAgent("s1", completion);
+    const responsePromise = createNativeStreamingResponse(agent, {
+      path: "/x",
+    });
+    await expect(responsePromise).rejects.toThrow("native boot failed");
+  });
+
+  it("errors the body when the native stream call rejects after the head", async () => {
+    let rejectCompletion: (error: Error) => void = () => {};
+    const completion = new Promise((_resolve, reject) => {
+      rejectCompletion = reject;
+    });
+    const { agent, emit } = makeFakeAgent("s1", completion);
+    const responsePromise = createNativeStreamingResponse(agent, {
+      path: "/x",
+    });
+    await flush();
+    emit("agentStreamResponse", { streamId: "s1", status: 200 });
+    const response = await responsePromise;
+    const reader = (response.body as ReadableStream<Uint8Array>).getReader();
+
+    rejectCompletion(new Error("native stream died"));
+
+    await expect(reader.read()).rejects.toThrow("native stream died");
   });
 
   it("detaches all listeners once the stream completes", async () => {

@@ -44,9 +44,9 @@ import {
 	toStoredModelPath,
 } from "../shared/local-inference-stored-path.ts";
 import {
-	createStdioBridge,
 	type StdioBridgeRequestFrame as BridgeRequest,
 	type StdioBridgeResponseFrame as BridgeResponse,
+	createStdioBridge,
 } from "../shared/stdio-bridge.ts";
 import { runModelGrind } from "./model-grind.ts";
 
@@ -3988,10 +3988,18 @@ export async function streamConversationMessageResponse(
 	// A serialized emit tail: keep `chunk` frames in generation order even though
 	// `emit` may be async, and let `complete` await every prior chunk.
 	let emitTail: Promise<void> = Promise.resolve();
+	let emitError: unknown = null;
+	const emitSafely = async (frame: StreamEmitFrame): Promise<void> => {
+		try {
+			await emit(frame);
+		} catch (error) {
+			emitError ??= error;
+		}
+	};
 	const enqueueChunk = (payload: Record<string, unknown>): void => {
 		const dataBase64 = sseChunkBase64(payload);
 		emitTail = emitTail.then(() =>
-			Promise.resolve(emit({ streamId, kind: "chunk", dataBase64 })),
+			emitSafely({ streamId, kind: "chunk", dataBase64 }),
 		);
 	};
 
@@ -4019,7 +4027,7 @@ export async function streamConversationMessageResponse(
 		}
 	} catch (error) {
 		await emitTail;
-		await emit({
+		await emitSafely({
 			streamId,
 			kind: "chunk",
 			dataBase64: sseChunkBase64({
@@ -4027,7 +4035,11 @@ export async function streamConversationMessageResponse(
 				error: error instanceof Error ? error.message : String(error),
 			}),
 		});
-		await emit({ streamId, kind: "complete", error: null });
+		await emit({
+			streamId,
+			kind: "complete",
+			error: emitError ? String(emitError) : null,
+		});
 		return;
 	}
 
@@ -4059,7 +4071,11 @@ export async function streamConversationMessageResponse(
 	});
 
 	await emitTail;
-	await emit({ streamId, kind: "complete", error: null });
+	await emit({
+		streamId,
+		kind: "complete",
+		error: emitError ? String(emitError) : null,
+	});
 }
 
 export async function handleDirectCoreRoute(
