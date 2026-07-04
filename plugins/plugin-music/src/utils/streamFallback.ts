@@ -1,3 +1,6 @@
+/**
+ * Canonical yt-dlp-backed stream creation for music playback URLs.
+ */
 import type { Readable } from "node:stream";
 import { logger } from "@elizaos/core";
 import { createYtdlpStream } from "./ytdlpFallback";

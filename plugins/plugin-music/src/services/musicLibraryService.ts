@@ -1,3 +1,7 @@
+/**
+ * Music library service that aggregates playlists, preferences, analytics,
+ * entity detection, metadata lookup, and recommendation helpers.
+ */
 import { type IAgentRuntime, logger, Service, type UUID } from "@elizaos/core";
 import {
   type DJAnalytics,

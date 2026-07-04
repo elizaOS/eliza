@@ -1,3 +1,7 @@
+/**
+ * yt-dlp command-line helpers for JavaScript runtime detection and shell-safe
+ * argument emission.
+ */
 import { basename, dirname } from "node:path";
 
 /**

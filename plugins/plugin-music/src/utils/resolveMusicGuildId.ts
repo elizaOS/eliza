@@ -1,3 +1,7 @@
+/**
+ * Guild-id resolution shared by playback control actions so web and Discord
+ * queues target the same active playback entry.
+ */
 import type { Memory } from "@elizaos/core";
 import type { MusicService } from "../service";
 

@@ -1,3 +1,6 @@
+/**
+ * Vitest configuration for deterministic node-based music plugin tests.
+ */
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({

@@ -1,3 +1,10 @@
+/**
+ * HTTP route handlers for music playback streams, queue inspection, now-playing
+ * metadata, and control commands.
+ *
+ * Streaming routes support both direct web clients and Shoutcast/Icecast-style
+ * metadata injection for players that expect interleaved track titles.
+ */
 import { Transform, type TransformCallback } from "node:stream";
 import type {
   IAgentRuntime,

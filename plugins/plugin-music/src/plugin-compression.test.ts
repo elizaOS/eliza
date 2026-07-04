@@ -1,3 +1,7 @@
+/**
+ * Compression-shape tests for the music plugin's public action and provider
+ * surface using a deterministic in-memory runtime harness.
+ */
 import type { HandlerCallback, IAgentRuntime, Memory } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import musicPlugin from "./index";

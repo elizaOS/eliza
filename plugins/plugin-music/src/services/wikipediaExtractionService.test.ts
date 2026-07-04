@@ -1,3 +1,7 @@
+/**
+ * Deterministic Wikipedia extraction tests for prompt context and cache-key
+ * behavior using a stubbed text model.
+ */
 import { type IAgentRuntime, ModelType } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import type { WikipediaClient } from "./wikipediaClient";

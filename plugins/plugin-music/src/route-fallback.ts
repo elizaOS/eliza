@@ -1,3 +1,7 @@
+/**
+ * Compatibility response for legacy music-player status polling when the full
+ * music route plugin is absent.
+ */
 import type { ServerResponse } from "node:http";
 import type { AgentRuntime } from "@elizaos/core";
 

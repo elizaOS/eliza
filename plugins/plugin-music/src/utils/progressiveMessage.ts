@@ -1,3 +1,7 @@
+/**
+ * Progress-message adapter that provides Discord-style in-place status updates
+ * through the generic action callback contract.
+ */
 import type { HandlerCallback } from "@elizaos/core";
 
 /**

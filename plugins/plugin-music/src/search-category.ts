@@ -1,3 +1,7 @@
+/**
+ * Runtime search category registrations for YouTube video search and Wikipedia
+ * music metadata lookup.
+ */
 import type { IAgentRuntime, SearchCategoryRegistration } from "@elizaos/core";
 
 export const YOUTUBE_SEARCH_CATEGORY: SearchCategoryRegistration = {

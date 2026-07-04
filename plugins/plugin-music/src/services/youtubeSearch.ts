@@ -1,3 +1,7 @@
+/**
+ * YouTube search service for video and music result metadata with cached
+ * play-dl lookups.
+ */
 import { logger } from "@elizaos/core";
 
 const YOUTUBE_SEARCH_SERVICE_NAME = "youtubeSearch";

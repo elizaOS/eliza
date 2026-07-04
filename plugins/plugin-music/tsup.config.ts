@@ -1,3 +1,7 @@
+/**
+ * Build configuration for publishing the music plugin as an ESM package with
+ * declaration output.
+ */
 import { defineConfig } from "tsup";
 
 export default defineConfig({

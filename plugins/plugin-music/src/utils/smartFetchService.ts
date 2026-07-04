@@ -1,3 +1,7 @@
+/**
+ * Structural accessors for the optional smart music fetch service used by
+ * download and play-query flows.
+ */
 import type { IAgentRuntime, UUID } from "@elizaos/core";
 
 export type MusicFetchProgress = {

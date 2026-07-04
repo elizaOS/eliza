@@ -1,3 +1,7 @@
+/**
+ * Music plugin registration and public export surface for playback, library,
+ * metadata, routing, and streaming capabilities.
+ */
 import { type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
 import { musicAction } from "./actions/music";
 import { musicInfoProvider } from "./providers/musicInfoProvider";

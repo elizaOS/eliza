@@ -1,3 +1,6 @@
+/**
+ * TheAudioDB metadata client for optional artist and album artwork enrichment.
+ */
 import { logger } from "@elizaos/core";
 import { type RetryableError, retryWithBackoff } from "../utils/retry";
 

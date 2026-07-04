@@ -1,3 +1,7 @@
+/**
+ * Genius API client for resolving track pages and lyric metadata links used by
+ * music information enrichment.
+ */
 import { logger } from "@elizaos/core";
 import { type RetryableError, retryWithBackoff } from "../utils/retry";
 

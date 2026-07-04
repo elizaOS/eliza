@@ -1,3 +1,7 @@
+/**
+ * yt-dlp streaming fallback that spawns the downloader, annotates failures, and
+ * exposes a readable stream for playback.
+ */
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { createReadStream, existsSync, unlinkSync } from "node:fs";

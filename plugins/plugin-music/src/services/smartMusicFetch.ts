@@ -1,3 +1,7 @@
+/**
+ * Smart music fetch service that prefers library matches and can fall back to
+ * yt-dlp or optional torrent-provider services.
+ */
 import { type IAgentRuntime, logger, Service, type UUID } from "@elizaos/core";
 
 // Local contracts for the optional torrent peer plugins. They aren't always

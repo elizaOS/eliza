@@ -1,3 +1,7 @@
+/**
+ * LLM extraction helper that turns Wikipedia source data into structured music
+ * facts for provider and recommendation context.
+ */
 import { type IAgentRuntime, logger, ModelType } from "@elizaos/core";
 import type { AlbumInfo, ArtistInfo, TrackInfo } from "../types";
 import { parseJsonObjectResponse } from "../utils/json";

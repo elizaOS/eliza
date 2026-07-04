@@ -1,3 +1,7 @@
+/**
+ * FFmpeg and ffprobe binary resolution helpers for playback caching and stream
+ * normalization subprocesses.
+ */
 import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import { delimiter, dirname } from "node:path";

@@ -1,3 +1,7 @@
+/**
+ * LLM-assisted music entity detection service for extracting artists, albums,
+ * and songs from conversation text.
+ */
 import { type IAgentRuntime, logger, ModelType } from "@elizaos/core";
 import { parseJsonObjectResponse } from "../utils/json";
 

@@ -1,3 +1,7 @@
+/**
+ * Music playback service that owns queues, broadcast streams, Discord voice
+ * wiring, audio routing, and optional library analytics hooks.
+ */
 import { type IAgentRuntime, logger, Service, type UUID } from "@elizaos/core";
 import type { BroadcastTrackMetadata, IAudioBroadcast } from "./contracts";
 import { Broadcast } from "./core";

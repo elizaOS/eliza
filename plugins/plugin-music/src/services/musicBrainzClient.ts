@@ -1,3 +1,7 @@
+/**
+ * MusicBrainz metadata client for zero-key artist, album, and recording lookup
+ * with retry behavior around the public API.
+ */
 import { logger } from "@elizaos/core";
 import type { AlbumInfo, ArtistInfo, TrackInfo } from "../types";
 import { retryWithBackoff } from "../utils/retry";

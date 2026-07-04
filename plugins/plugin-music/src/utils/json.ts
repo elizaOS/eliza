@@ -1,3 +1,7 @@
+/**
+ * JSON parsing helpers for model responses that may be wrapped in prose or
+ * fenced code blocks.
+ */
 export function parseJsonObjectResponse<T = Record<string, unknown>>(
   response: string,
 ): T | null {

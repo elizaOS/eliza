@@ -1,3 +1,10 @@
+/**
+ * Transient audio cache for yt-dlp downloads and Discord/web playback
+ * transcodes.
+ *
+ * The cache resolves ffmpeg and yt-dlp at runtime, stores reusable files under
+ * the configured cache directory, and keeps archive storage separate.
+ */
 import { exec, execFile } from "node:child_process";
 import {
   createReadStream,

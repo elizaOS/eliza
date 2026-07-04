@@ -1,3 +1,7 @@
+/**
+ * Deterministic registration tests for the music search category metadata that
+ * the runtime search surface consumes.
+ */
 import type { IAgentRuntime, SearchCategoryRegistration } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import {

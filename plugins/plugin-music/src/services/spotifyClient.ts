@@ -1,3 +1,7 @@
+/**
+ * Spotify Web API client for client-credentials authentication, track lookup,
+ * audio features, and recommendation requests.
+ */
 import { logger } from "@elizaos/core";
 import { Buffer } from "buffer";
 import type {

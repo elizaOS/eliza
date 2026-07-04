@@ -1,3 +1,10 @@
+/**
+ * Audio broadcast contracts shared between the music playback engine and
+ * downstream consumers such as Discord voice or web stream listeners.
+ *
+ * The contracts keep playback fan-out independent of any connector plugin so
+ * slow or disconnected consumers cannot block the source broadcast.
+ */
 import type { EventEmitter } from "node:events";
 import type { Readable } from "node:stream";
 

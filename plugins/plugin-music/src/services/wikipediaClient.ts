@@ -1,3 +1,7 @@
+/**
+ * Wikipedia music metadata client with shared conservative rate limiting for
+ * artist, album, and track background lookups.
+ */
 import { logger } from "@elizaos/core";
 import type { AlbumInfo, ArtistInfo, TrackInfo } from "../types";
 

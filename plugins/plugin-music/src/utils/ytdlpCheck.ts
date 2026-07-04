@@ -1,3 +1,7 @@
+/**
+ * yt-dlp executable discovery and installation diagnostics for playback and
+ * cache subprocesses.
+ */
 import { execSync } from "node:child_process";
 import { accessSync, constants, existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";

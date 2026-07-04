@@ -1,3 +1,7 @@
+/**
+ * Permanent high-quality music archive storage for callers that want retained
+ * source files instead of the transient playback cache.
+ */
 import { exec } from "node:child_process";
 import {
   createReadStream,

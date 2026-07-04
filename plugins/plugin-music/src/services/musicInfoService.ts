@@ -1,3 +1,7 @@
+/**
+ * Aggregated music metadata service that coordinates MusicBrainz and optional
+ * external enrichment providers.
+ */
 import { type IAgentRuntime, logger } from "@elizaos/core";
 import type {
   AlbumInfo,

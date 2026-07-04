@@ -1,3 +1,7 @@
+/**
+ * Optional ffmpeg normalization pipeline for keeping broadcast Opus streams
+ * paced and playable for long-running consumers.
+ */
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { PassThrough, type Readable } from "node:stream";
 import { logger } from "@elizaos/core";

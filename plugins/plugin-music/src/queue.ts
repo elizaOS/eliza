@@ -1,3 +1,7 @@
+/**
+ * Per-guild playback queue and voice-manager bridge for music tracks, crossfade
+ * options, and broadcast handoff.
+ */
 import { EventEmitter } from "node:events";
 import { PassThrough, type Readable } from "node:stream";
 import { type IAgentRuntime, logger } from "@elizaos/core";

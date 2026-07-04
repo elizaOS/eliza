@@ -1,3 +1,7 @@
+/**
+ * Structural Discord voice types used by music playback without importing the
+ * Discord plugin at module load time.
+ */
 import type { VoiceManagerLike } from "./queue";
 
 /**

@@ -1,3 +1,7 @@
+/**
+ * Deterministic Spotify recommendation tests for seed truncation and outbound
+ * request construction using a stubbed fetch implementation.
+ */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SpotifyClient, testExports } from "./spotifyClient";
 
