@@ -19,12 +19,32 @@ function readStringEnv(c: AppContext, keys: readonly string[]): string | null {
   return null;
 }
 
-function requestSuffix(c: AppContext, platform: string): string {
-  const pathname = new URL(c.req.url).pathname;
+// The forwarder appends the request's trailing path onto the internal gateway
+// URL, so a traversal suffix (`..%2f…`, `%2e%2e…`, backslashes) would let a
+// caller escape `/webhook/<project>/<platform>` and hit arbitrary gateway paths.
+// The URL parser only collapses *literal* dot-segments, so percent-encoded
+// separators survive to here. Webhook routes are fixed paths, so a legitimate
+// suffix is only ever empty or benign safe-char segments — reject anything else
+// rather than forward it. (finding L3, #12878 / #12227)
+const SAFE_WEBHOOK_SUFFIX = /^(?:\/[A-Za-z0-9_-]+)*\/?$/;
+
+/**
+ * Extract the trailing path to forward from `pathname`, or `null` if it is a
+ * traversal attempt. Pure so the allowlist can be exercised directly.
+ */
+export function safeWebhookSuffix(
+  pathname: string,
+  platform: string,
+): string | null {
   const prefix = `/api/eliza-app/webhook/${platform}`;
   if (!pathname.startsWith(prefix)) return "";
   const suffix = pathname.slice(prefix.length);
-  return suffix === "/" ? "" : suffix;
+  if (suffix === "/" || suffix === "") return "";
+  return SAFE_WEBHOOK_SUFFIX.test(suffix) ? suffix : null;
+}
+
+function requestSuffix(c: AppContext, platform: string): string | null {
+  return safeWebhookSuffix(new URL(c.req.url).pathname, platform);
 }
 
 interface ForwardOptions {
@@ -94,14 +114,24 @@ export async function forwardToWebhookGateway(
     );
   }
 
+  const suffix = requestSuffix(c, platform);
+  if (suffix === null) {
+    logger.warn("[ElizaAppWebhook] rejected traversal suffix", { platform });
+    return c.json(
+      {
+        success: false,
+        code: "WEBHOOK_INVALID_PATH",
+        error: "Invalid webhook path",
+      },
+      400,
+    );
+  }
+
   const project =
     readStringEnv(c, ["ELIZA_APP_WEBHOOK_PROJECT"]) ?? "eliza-app";
   const target = new URL(baseUrl);
   const sourceUrl = new URL(c.req.url);
-  target.pathname = `/webhook/${encodeURIComponent(project)}/${platform}${requestSuffix(
-    c,
-    platform,
-  )}`;
+  target.pathname = `/webhook/${encodeURIComponent(project)}/${platform}${suffix}`;
   target.search = sourceUrl.search;
 
   return proxyRequest(c, target, "webhook gateway", options);
