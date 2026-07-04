@@ -280,6 +280,11 @@ describe("MESSAGE umbrella planner tools footprint (real surface)", () => {
 		expect(send).not.toContain("draftId");
 		expect(send).not.toContain("worldIds");
 
+		const readChannel = props("MESSAGE_READ_CHANNEL");
+		expect(readChannel).toEqual(
+			expect.arrayContaining(["from", "until", "to"]),
+		);
+
 		const react = props("MESSAGE_REACT");
 		expect(react).toEqual(expect.arrayContaining(["emoji", "messageId"]));
 		expect(react).not.toContain("attachments");
