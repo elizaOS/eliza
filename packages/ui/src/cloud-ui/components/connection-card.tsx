@@ -4,7 +4,14 @@
  */
 "use client";
 
-import { CheckCircle, ChevronDown, Copy, Loader2, XCircle } from "lucide-react";
+import {
+  AlertTriangle,
+  CheckCircle,
+  ChevronDown,
+  Copy,
+  Loader2,
+  XCircle,
+} from "lucide-react";
 import type * as React from "react";
 import {
   AlertDialog,
@@ -31,7 +38,11 @@ type ConnectionCardStatus =
   | "loading"
   | "not-configured"
   | "connected"
-  | "disconnected";
+  | "disconnected"
+  // The status probe FAILED (transport / 5xx / parse / auth). Distinct from
+  // "disconnected" (a healthy "not connected yet") so a broken/unreachable
+  // backend never renders as the setup form (#12784/#13419 three-state).
+  | "error";
 
 interface ConnectionCardProps {
   /** Integration name (e.g. "Discord Bot") */
@@ -50,6 +61,12 @@ interface ConnectionCardProps {
   setupContent?: React.ReactNode;
   /** Content shown when not configured */
   notConfiguredMessage?: string;
+  /** Message shown when the status probe failed (status === "error"). */
+  errorMessage?: string;
+  /** Optional retry affordance rendered in the error state. */
+  onRetry?: () => void;
+  /** Label for the retry button in the error state. */
+  retryLabel?: string;
   /** Status badge shown in the header when connected */
   statusBadge?: React.ReactNode;
   /** Additional CSS classes */
@@ -348,6 +365,9 @@ function ConnectionCard({
   connectedContent,
   setupContent,
   notConfiguredMessage = "This integration is not configured. Please contact your administrator.",
+  errorMessage = "We couldn't load this connection's status. Please try again.",
+  onRetry,
+  retryLabel = "Retry",
   statusBadge,
   className,
 }: ConnectionCardProps) {
@@ -374,7 +394,9 @@ function ConnectionCard({
             <p className="text-sm text-muted-foreground mt-1.5">
               {status === "not-configured"
                 ? `${name} integration is not configured`
-                : description}
+                : status === "error"
+                  ? `Couldn't load ${name} status`
+                  : description}
             </p>
           </div>
           {status === "connected" && statusBadge}
@@ -388,6 +410,24 @@ function ConnectionCard({
             <p className="text-sm text-muted-foreground">
               {notConfiguredMessage}
             </p>
+          </div>
+        )}
+        {status === "error" && (
+          <div
+            role="alert"
+            className="flex flex-col gap-3 p-4 bg-destructive/10 border border-destructive/30 rounded-sm"
+          >
+            <div className="flex items-start gap-2">
+              <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0 text-destructive" />
+              <p className="text-sm text-destructive">{errorMessage}</p>
+            </div>
+            {onRetry && (
+              <div>
+                <Button variant="outline" size="sm" onClick={onRetry}>
+                  {retryLabel}
+                </Button>
+              </div>
+            )}
           </div>
         )}
         {status === "connected" && connectedContent}

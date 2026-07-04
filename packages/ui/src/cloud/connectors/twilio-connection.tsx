@@ -52,6 +52,8 @@ export function TwilioConnection() {
   const {
     status,
     isLoading,
+    isError: isStatusError,
+    errorMessage: statusErrorMessage,
     refetch: fetchStatus,
   } = useConnectionStatus<TwilioStatus>(
     "/api/v1/twilio/status",
@@ -186,7 +188,20 @@ export function TwilioConnection() {
       description={t("cloud.twilio.cardDescription", {
         defaultValue: "Connect Twilio for SMS, MMS, and voice call automation",
       })}
-      status={status?.connected ? "connected" : "disconnected"}
+      status={
+        isStatusError
+          ? "error"
+          : status?.connected
+            ? "connected"
+            : "disconnected"
+      }
+      errorMessage={
+        statusErrorMessage ??
+        t("cloud.twilio.statusFetchFailed", {
+          defaultValue: "Failed to fetch Twilio status",
+        })
+      }
+      onRetry={() => void fetchStatus()}
       statusBadge={<ConnectionConnectedBadge />}
       connectedContent={
         <div className="space-y-4">

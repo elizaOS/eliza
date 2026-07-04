@@ -54,6 +54,8 @@ export function BlooioConnection() {
   const {
     status,
     isLoading,
+    isError: isStatusError,
+    errorMessage: statusErrorMessage,
     refetch: fetchStatus,
   } = useConnectionStatus<BlooioStatus>(
     "/api/v1/blooio/status",
@@ -232,7 +234,20 @@ export function BlooioConnection() {
       description={t("cloud.blooio.cardDescription", {
         defaultValue: "Connect iMessage for AI-powered text conversations",
       })}
-      status={status?.connected ? "connected" : "disconnected"}
+      status={
+        isStatusError
+          ? "error"
+          : status?.connected
+            ? "connected"
+            : "disconnected"
+      }
+      errorMessage={
+        statusErrorMessage ??
+        t("cloud.blooio.statusFetchFailed", {
+          defaultValue: "Failed to fetch Blooio status",
+        })
+      }
+      onRetry={() => void fetchStatus()}
       statusBadge={<ConnectionConnectedBadge />}
       connectedContent={
         <div className="space-y-4">

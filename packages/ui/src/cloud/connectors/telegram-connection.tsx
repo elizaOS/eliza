@@ -58,6 +58,8 @@ export function TelegramConnection() {
   const {
     status,
     isLoading,
+    isError: isStatusError,
+    errorMessage: statusErrorMessage,
     refetch: fetchStatus,
   } = useConnectionStatus<TelegramStatus>(
     "/api/v1/telegram/status",
@@ -170,7 +172,20 @@ export function TelegramConnection() {
       description={t("cloud.telegram.cardDescription", {
         defaultValue: "Connect your Telegram bot for AI-powered automation",
       })}
-      status={status?.connected ? "connected" : "disconnected"}
+      status={
+        isStatusError
+          ? "error"
+          : status?.connected
+            ? "connected"
+            : "disconnected"
+      }
+      errorMessage={
+        statusErrorMessage ??
+        t("cloud.telegram.statusFetchFailed", {
+          defaultValue: "Failed to fetch Telegram status",
+        })
+      }
+      onRetry={() => void fetchStatus()}
       statusBadge={<ConnectionConnectedBadge />}
       connectedContent={
         <div className="space-y-4">

@@ -54,6 +54,8 @@ export function WhatsAppConnection() {
   const {
     status,
     isLoading,
+    isError: isStatusError,
+    errorMessage: statusErrorMessage,
     refetch: fetchStatus,
   } = useConnectionStatus<WhatsAppStatus>(
     "/api/v1/whatsapp/status",
@@ -200,7 +202,20 @@ export function WhatsAppConnection() {
       description={t("cloud.whatsapp.cardDescription", {
         defaultValue: "Connect WhatsApp Business for AI-powered automation",
       })}
-      status={status?.connected ? "connected" : "disconnected"}
+      status={
+        isStatusError
+          ? "error"
+          : status?.connected
+            ? "connected"
+            : "disconnected"
+      }
+      errorMessage={
+        statusErrorMessage ??
+        t("cloud.whatsapp.statusFetchFailed", {
+          defaultValue: "Failed to fetch WhatsApp status",
+        })
+      }
+      onRetry={() => void fetchStatus()}
       statusBadge={<ConnectionConnectedBadge />}
       connectedContent={
         <div className="space-y-4">
