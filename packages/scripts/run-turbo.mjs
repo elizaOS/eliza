@@ -9,6 +9,52 @@ const repoRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "../..",
 );
+const maxSupportedBunLockfileVersion = 1;
+
+function bunLockfilePath() {
+  return process.env.RUN_TURBO_BUN_LOCKFILE
+    ? path.resolve(process.env.RUN_TURBO_BUN_LOCKFILE)
+    : path.join(repoRoot, "bun.lock");
+}
+
+function readBunLockfileVersion(lockfile) {
+  if (!fs.existsSync(lockfile)) return null;
+  const source = fs.readFileSync(lockfile, "utf8");
+  const match = source.match(/"lockfileVersion"\s*:\s*(\d+)/);
+  if (!match) {
+    throw new Error(
+      `${lockfile} does not contain a parseable "lockfileVersion" field.`,
+    );
+  }
+  return Number.parseInt(match[1], 10);
+}
+
+function assertSupportedBunLockfile() {
+  const lockfile = bunLockfilePath();
+  const version = readBunLockfileVersion(lockfile);
+  if (version === null) return;
+  if (version <= maxSupportedBunLockfileVersion) return;
+
+  throw new Error(
+    [
+      `Unsupported bun.lock lockfileVersion ${version} in ${lockfile}.`,
+      `This repo currently allows lockfileVersion <= ${maxSupportedBunLockfileVersion} because the pinned Turbo cannot parse newer Bun lockfiles for per-package dependency hashing.`,
+      "Regenerate bun.lock with a supported Bun version or update Turbo plus this guard together.",
+      "Context: https://github.com/vercel/turborepo/discussions/13126",
+    ].join("\n"),
+  );
+}
+
+try {
+  assertSupportedBunLockfile();
+} catch (error) {
+  console.error(`[run-turbo] ${error.message}`);
+  process.exit(1);
+}
+
+if (process.env.RUN_TURBO_LOCKFILE_CHECK_ONLY === "1") {
+  process.exit(0);
+}
 
 // Every `node_modules` from repoRoot up to the filesystem root. A git worktree
 // (e.g. `.claude/worktrees/<name>`) has no `node_modules` of its own and shares
@@ -74,46 +120,12 @@ try {
   child = spawn(turboCommand, turboCommandArgs, {
     cwd: process.cwd(),
     env: process.env,
-    stdio: ["inherit", "pipe", "pipe"],
+    stdio: "inherit",
   });
 } catch (error) {
   console.error(`Failed to start turbo: ${error.message}`);
   process.exit(1);
 }
-
-const warningStart = "An issue occurred while attempting to parse";
-
-function filterKnownBunLockWarning(stream, output) {
-  let pending = "";
-  let skipping = 0;
-
-  stream.on("data", (chunk) => {
-    pending += chunk.toString();
-    const lines = pending.split(/\r?\n/);
-    pending = lines.pop() ?? "";
-
-    for (const line of lines) {
-      if (line.includes(warningStart) && line.includes("bun.lock")) {
-        skipping = 3;
-        continue;
-      }
-      if (skipping > 0) {
-        skipping -= 1;
-        continue;
-      }
-      output.write(`${line}\n`);
-    }
-  });
-
-  stream.on("end", () => {
-    if (pending && skipping === 0 && !pending.includes(warningStart)) {
-      output.write(pending);
-    }
-  });
-}
-
-filterKnownBunLockWarning(child.stdout, process.stdout);
-filterKnownBunLockWarning(child.stderr, process.stderr);
 
 child.on("exit", (code, signal) => {
   if (signal) {
