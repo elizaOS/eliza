@@ -83,6 +83,28 @@ describe("room-feed-fst", () => {
 		]);
 	});
 
+	it("keeps a declared room with multiple diarized speakers in the multi-speaker room state", () => {
+		const result = classifyRoomFeed({
+			captureMode: "bot",
+			platformParticipant: {
+				id: "conf-room-2",
+				kind: "room",
+				isRoomResource: true,
+			},
+			sourceStream: { id: "room-feed", kind: "participant_audio" },
+			diarizedSpeakerCount: 3,
+			speakerCountConfidence: 0.91,
+		});
+
+		expect(result.state).toBe("multi_speaker_room");
+		expect(result.reasonCodes).toContain("participant_declared_room");
+		expect(result.reasonCodes).toContain("diarized_multiple_speakers");
+		expect(result.uiHints.map((hint) => hint.code)).toEqual([
+			"participant_may_represent_room",
+			"split_speaker_candidates",
+		]);
+	});
+
 	it("flags several diarized speakers inside one person participant for split review", () => {
 		const result = classifyRoomFeed({
 			captureMode: "bot",

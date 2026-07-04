@@ -14,8 +14,9 @@ Branch: `fix/12497-room-feed-fst`
   - `speaker_candidates_split`
   - `profile_bound`
 - Covered confidence, reason codes, UI hints, candidate speaker provenance,
-  sensitive-attribute withholding, input validation, and invalid transition
-  handling.
+  sensitive-attribute withholding, input validation, invalid transition
+  handling, and a declared room feed with multiple diarized speakers but no
+  visual count staying in `multi_speaker_room` with speaker-split hints.
 - Exported the FST from the voice service barrel for meeting UI/benchmark use.
 
 ## Focused Verification
@@ -28,7 +29,7 @@ Result:
 
 ```text
 Test Files  1 passed (1)
-Tests       10 passed (10)
+Tests       11 passed (11)
 ```
 
 ```bash
@@ -62,6 +63,11 @@ bun run --cwd plugins/plugin-local-inference test
 
 Result: failed with 14 unrelated failures in existing tests:
 
+```text
+Test Files  3 failed | 244 passed (247)
+Tests       14 failed | 2490 passed | 20 skipped (2524)
+```
+
 - `src/routes/local-inference-route-contracts.fuzz.test.ts` expects an ASR
   response without the current `aec` metadata field.
 - `src/services/downloader.test.ts` reports invalid Eliza-1 manifest fixtures
@@ -70,6 +76,18 @@ Result: failed with 14 unrelated failures in existing tests:
   fallback, while current code throws `MissingMtpDrafterError`.
 
 No `room-feed-fst` tests failed in the full run.
+
+## Root Verify Status
+
+```bash
+bun run verify
+```
+
+Result: blocked after ratchets passed by unrelated
+`@elizaos/electrobun#lint` formatting diagnostics in
+`packages/app-core/platforms/electrobun/src/voice/voice-service.test.ts`.
+The root verify run rewrote an unrelated core file via write-mode lint; that
+side effect was restored before pushing this branch.
 
 ## Artifact / Evidence Rows
 

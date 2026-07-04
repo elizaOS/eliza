@@ -421,11 +421,7 @@ export function classifyRoomFeed(
 			0.85,
 		);
 		requiresReview = confidence < 0.92;
-	} else if (
-		audioMulti &&
-		visualMulti &&
-		(participantRoom || mixedSource || roomCapture)
-	) {
+	} else if (audioMulti && (participantRoom || mixedSource || roomCapture)) {
 		state = "multi_speaker_room";
 		confidence = maxConfidence(
 			[speakerConfidence, faceConfidence, overlap >= 0.2 ? 0.86 : undefined],
