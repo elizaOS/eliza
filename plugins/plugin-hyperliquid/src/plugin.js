@@ -115,6 +115,7 @@ export const hyperliquidPlugin = {
             bundlePath: "dist/views/bundle.js",
             componentExport: "HyperliquidView",
             tags: ["trading", "perps", "hyperliquid", "crypto"],
+            relatedActions: ["PERPETUAL_MARKET"],
             // Reached as a sub-view of Wallet (WalletSectionNav), not a launcher tile.
             visibleInManager: false,
             desktopTabEnabled: false,
