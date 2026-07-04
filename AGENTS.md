@@ -46,12 +46,13 @@ bun run test:server    # core/agent/app-core/shared/vault/elizaos/skills/scenari
 bun run test:client    # app/ui + lifeops/training plugins
 bun run test:e2e       # end-to-end lane
 bun run start          # run an agent (packages/agent start)
-bun run clean          # nuke dist/.turbo/node_modules, reinstall, rebuild
+bun run clean          # nuke dist/.turbo/node_modules and local state
+bun run reset          # clean, reinstall, rebuild
 bun run cloud:mock     # boot the full local cloud stack with mocks
 ```
 
 Scope any command to one package with `--cwd`:
-`bun run --cwd packages/core test`. The repo has ~200 root scripts; the list
+`bun run --cwd packages/core test`. The repo has 213 root scripts; the list
 above is the day-to-day set. Use `bun run` with no args to print them all.
 
 ## Repo map — where to find what

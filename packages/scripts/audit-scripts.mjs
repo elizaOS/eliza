@@ -101,6 +101,7 @@ const ALLOWED_EXACT = new Set([
   "typecheck",
   "start",
   "clean",
+  "reset",
   "knip",
   "pre-commit",
   "audit:scripts",
