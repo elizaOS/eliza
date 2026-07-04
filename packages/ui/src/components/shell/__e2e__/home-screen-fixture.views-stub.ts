@@ -116,7 +116,14 @@ export function useRoutableViews() {
       builtinView("chat", "Chat", "/chat"),
       builtinView("views", "Views", "/views"),
       builtinView("shopify", "Shopify", "/shopify", "ShoppingBag", true),
-      builtinView("hyperliquid", "Hyperliquid", "/hyperliquid", "TrendingUp", true),
+      // Wallet sub-page: the real plugin-hyperliquid registration carries
+      // `group: "wallet"`, which is what launcher curation keys on to fold it
+      // under the single Wallet tile (#12521) — mirror it here so the e2e
+      // exercises the real group-based hide, not the removed id blocklist.
+      {
+        ...builtinView("hyperliquid", "Hyperliquid", "/hyperliquid", "TrendingUp", true),
+        group: "wallet",
+      },
       // Page 1 — everyday apps (curated order is enforced by launcher-curation).
       builtinView("wallet", "Wallet", "/wallet", "Wallet", true, heroDataUri(28, "wallet")),
       // Duplicate wallet registration — must collapse to the single Wallet tile.
