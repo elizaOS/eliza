@@ -27,7 +27,7 @@
  * the whole point of the pattern. The BROWSER action stays one action.
  */
 
-import { type IAgentRuntime, logger, Service } from "@elizaos/core";
+import { ElizaError, type IAgentRuntime, logger, Service } from "@elizaos/core";
 import {
   BROWSER_BRIDGE_ROUTE_SERVICE_TYPE,
   type BrowserBridgeRouteService,
@@ -191,8 +191,19 @@ export class BrowserService extends Service {
       if (!target) return [];
       try {
         return (await target.available()) ? [target] : [];
-      } catch {
-        return [];
+      } catch (error) {
+        throw new ElizaError(
+          `Browser target "${preferredId}" availability check failed.`,
+          {
+            code: "BROWSER_TARGET_UNAVAILABLE",
+            cause: error,
+            context: {
+              targetId: preferredId,
+              subaction: command.subaction,
+            },
+            severity: "ephemeral",
+          },
+        );
       }
     }
 

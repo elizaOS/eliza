@@ -1,3 +1,4 @@
+import { ElizaError } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BrowserService, type BrowserTarget } from "../browser-service.js";
 
@@ -7,6 +8,7 @@ function createTarget(args: {
   id: string;
   priority: number;
   available?: boolean;
+  availableError?: Error;
   fail?: boolean;
   score?: BrowserTarget["score"];
 }): BrowserTarget {
@@ -16,7 +18,10 @@ function createTarget(args: {
     description: args.id,
     priority: args.priority,
     ...(args.score ? { score: args.score } : {}),
-    available: vi.fn(async () => args.available ?? true),
+    available: vi.fn(async () => {
+      if (args.availableError) throw args.availableError;
+      return args.available ?? true;
+    }),
     execute: vi.fn(async (command) => {
       if (args.fail) throw new Error(`${args.id} failed`);
       return {
@@ -71,6 +76,33 @@ describe("BrowserService target routing", () => {
     await expect(
       service.execute({ subaction: "state" }, "workspace"),
     ).rejects.toThrow("workspace failed");
+  });
+
+  it("preserves pinned target availability failures as typed errors", async () => {
+    const service = new BrowserService();
+    const availabilityError = new Error("bridge health probe failed");
+    service.registerTarget(
+      createTarget({
+        id: "bridge",
+        priority: 80,
+        availableError: availabilityError,
+      }),
+    );
+    service.registerTarget(createTarget({ id: "workspace", priority: 100 }));
+
+    try {
+      await service.execute({ subaction: "state" }, "bridge");
+      throw new Error("expected pinned target availability failure");
+    } catch (error) {
+      expect(error).toBeInstanceOf(ElizaError);
+      expect((error as ElizaError).code).toBe("BROWSER_TARGET_UNAVAILABLE");
+      expect((error as ElizaError).context).toEqual({
+        targetId: "bridge",
+        subaction: "state",
+      });
+      expect((error as ElizaError).severity).toBe("ephemeral");
+      expect((error as Error).cause).toBe(availabilityError);
+    }
   });
 
   it("passes desktop context so companion targets can win when available", async () => {
