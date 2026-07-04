@@ -15,6 +15,10 @@ type TxResult = boolean | { granted?: boolean };
 
 // Committed grant rows, visible to every new transaction's COUNT.
 let committedGrants: GrantRow[] = [];
+// When set, the COUNT(*) query returns this row shape instead of the real
+// per-IP count. Lets a test inject a malformed/unreadable count to exercise the
+// fail-closed guard. `null` -> a row with no `count` field at all.
+let countRowOverride: { count: unknown } | null | undefined;
 // Per-lock-key queue of waiters, enforcing FIFO mutual exclusion.
 const lockHolders = new Map<string, Promise<void>>();
 // SQL strings each tx.execute saw, for asserting the advisory lock is acquired.
@@ -45,6 +49,13 @@ class FakeTx {
     if (text.includes("COUNT(*)")) {
       // The guard always runs the advisory-lock statement before the COUNT, so
       // `this.ip` is set; count only COMMITTED grant rows for this IP.
+      if (countRowOverride !== undefined) {
+        return {
+          rows: (countRowOverride === null ? [{}] : [countRowOverride]) as Array<{
+            count: string;
+          }>,
+        };
+      }
       const count = committedGrants.filter((g) => g.ip === this.ip).length;
       return { rows: [{ count: String(count) }] };
     }
@@ -130,9 +141,13 @@ mock.module("../utils/logger", () => ({
   logger: { warn: () => {}, info: () => {}, error: () => {}, debug: () => {} },
 }));
 
-const { runWithSignupGrantIpCap, resolveSignupGrantIpLimits, FREE_GRANT_IP_LIMITS } = await import(
-  "./signup-grant-guard"
-);
+const {
+  runWithSignupGrantIpCap,
+  runWithSignupGrantIpCapDetailed,
+  resolveSignupGrantIpLimits,
+  parseGrantCount,
+  FREE_GRANT_IP_LIMITS,
+} = await import("./signup-grant-guard");
 
 const CAP = FREE_GRANT_IP_LIMITS.MAX_FREE_GRANTS_PER_IP_DAILY;
 
@@ -172,6 +187,7 @@ describe("runWithSignupGrantIpCap (anti-sybil free-grant cap)", () => {
     committedGrants = [];
     executedSql = [];
     lockHolders.clear();
+    countRowOverride = undefined;
   });
 
   test("falls open and runs the grant without a transaction when no IP is known", async () => {
@@ -244,5 +260,78 @@ describe("runWithSignupGrantIpCap (anti-sybil free-grant cap)", () => {
       }),
     ).rejects.toThrow("addCredits failed");
     expect(committedGrants.filter((g) => g.ip === "7.7.7.7").length).toBe(0);
+  });
+
+  // Fail-closed regression: an unreadable per-IP COUNT must WITHHOLD the bonus.
+  // The old `Number(count ?? 0)` produced NaN, and `NaN >= cap` === false, so a
+  // corrupt/unexpected count silently GRANTED the free credits — an unbounded
+  // anti-sybil faucet. Each of these malformed shapes must now deny the grant.
+  const malformedCounts: Array<[string, { count: unknown } | null]> = [
+    ["non-numeric string", { count: "NaN" }],
+    ["empty string", { count: "" }],
+    ["fractional string", { count: "1.5" }],
+    ["negative string", { count: "-1" }],
+    ["null count field", { count: null }],
+    ["missing count field", null],
+  ];
+
+  for (const [label, override] of malformedCounts) {
+    test(`withholds the grant (fail-closed) when the COUNT is unreadable: ${label}`, async () => {
+      countRowOverride = override;
+      let granted = false;
+      const decision = await runWithSignupGrantIpCapDetailed("4.4.4.4", async () => {
+        granted = true;
+      });
+      expect(decision.granted).toBe(false);
+      expect(decision.withheldReason).toBe("count_unavailable");
+      // The grant callback must never run on an unverifiable count.
+      expect(granted).toBe(false);
+      expect(committedGrants.filter((g) => g.ip === "4.4.4.4").length).toBe(0);
+    });
+  }
+
+  test("still grants when the COUNT reads a valid below-cap integer string", async () => {
+    // Force a well-formed "0" so the healthy path is exercised via the override.
+    countRowOverride = { count: "0" };
+    let granted = false;
+    const decision = await runWithSignupGrantIpCapDetailed("6.6.6.6", async () => {
+      granted = true;
+    });
+    expect(decision.granted).toBe(true);
+    expect(granted).toBe(true);
+  });
+});
+
+describe("parseGrantCount (fail-closed anti-sybil count boundary)", () => {
+  test("accepts non-negative integer strings and numbers", () => {
+    expect(parseGrantCount("0")).toBe(0);
+    expect(parseGrantCount("3")).toBe(3);
+    expect(parseGrantCount(" 42 ")).toBe(42);
+    expect(parseGrantCount(0)).toBe(0);
+    expect(parseGrantCount(7)).toBe(7);
+    expect(parseGrantCount(5n)).toBe(5);
+  });
+
+  test("throws on any unverifiable/malformed count (never returns NaN)", () => {
+    for (const bad of [
+      "NaN",
+      "",
+      "   ",
+      "1.5",
+      "-1",
+      "1e3",
+      "0x10",
+      "abc",
+      null,
+      undefined,
+      Number.NaN,
+      Infinity,
+      -1,
+      1.5,
+      -3n,
+      {},
+    ]) {
+      expect(() => parseGrantCount(bad)).toThrow();
+    }
   });
 });

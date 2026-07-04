@@ -73,7 +73,11 @@ export interface StewardSessionResponse {
   initialCreditsGranted?: boolean;
   initialFreeCreditsUsd?: number;
   welcomeBonusWithheld?: boolean;
-  welcomeBonusWithheldReason?: "ip_daily_cap";
+  // Mirrors `SignupGrantWithheldReason` in
+  // packages/cloud/shared/src/lib/services/signup-grant-guard.ts (the source of
+  // truth). Kept as an inline literal union because `packages/shared` cannot
+  // depend on `packages/cloud/shared`; keep in sync when reasons are added.
+  welcomeBonusWithheldReason?: "ip_daily_cap" | "count_unavailable";
   welcomeBonusWithheldMessage?: string;
 }
 
