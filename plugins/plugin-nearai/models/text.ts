@@ -11,11 +11,17 @@
  * that shim if the upstream API changes what it accepts.
  */
 import type { GenerateTextParams, IAgentRuntime } from "@elizaos/core";
-import { logger, ModelType } from "@elizaos/core";
+import { ElizaError, logger, ModelType } from "@elizaos/core";
 import { generateText, type ToolSet } from "ai";
 import { createNearAIClient, type NearAIFetch } from "../providers";
 import type { ModelName, ProviderOptions } from "../types";
-import { getExperimentalTelemetry, getLargeModel, getSmallModel } from "../utils/config";
+import {
+  getApiKey,
+  getExperimentalTelemetry,
+  getLargeModel,
+  getSmallModel,
+  isBrowser,
+} from "../utils/config";
 import { emitModelUsageEvent } from "../utils/events";
 
 // Extract the native generateText parameter type to avoid unsafe casts at call sites.
@@ -75,7 +81,9 @@ function createNearAIRequestFetch(baseFetch: NearAIFetch): NearAIFetch {
         }
         init.body = JSON.stringify(body);
       } catch {
-        // Non-JSON request bodies pass through unchanged.
+        // error-policy:J3 untrusted-input sanitizing — the compatibility shim
+        // can only rewrite a JSON body; non-JSON request bodies pass through
+        // unchanged rather than being replaced with a fabricated one.
       }
     }
     return baseFetch(input, init);
@@ -89,6 +97,14 @@ async function generateTextWithModel(
   modelName: ModelName,
   modelType: typeof ModelType.TEXT_SMALL | typeof ModelType.TEXT_LARGE
 ): Promise<string> {
+  // A missing credential must surface as a typed local failure before any
+  // request goes out — an anonymous request would masquerade as a
+  // provider-side 401 and hide the real misconfiguration. Browser builds are
+  // exempt: they route through a proxy that holds the key
+  // (NEARAI_BROWSER_BASE_URL).
+  if (!isBrowser()) {
+    getApiKey(runtime);
+  }
   const experimentalTelemetry = getExperimentalTelemetry(runtime);
   const requestFetch = createNearAIRequestFetch((runtime.fetch ?? fetch) as NearAIFetch);
   const nearai = createNearAIClient(runtime, { fetch: requestFetch });
@@ -117,7 +133,24 @@ async function generateTextWithModel(
     topP: resolved.topP,
   };
 
-  const { text, usage } = await generateText(generateParams);
+  const { text, usage, finishReason } = await generateText(generateParams);
+
+  // An empty completion is a provider failure (moderation, truncation,
+  // upstream bug) — never a legitimate result for this prompt-only handler.
+  // Returning "" would fabricate a healthy-empty completion the planner
+  // cannot distinguish from a real answer, and emit success usage telemetry
+  // for it (#9324: throw, never fabricate).
+  if (text.length === 0) {
+    throw new ElizaError(
+      `[NEAR AI] ${modelType} returned an empty completion${
+        finishReason ? ` (finishReason: ${finishReason})` : ""
+      }`,
+      {
+        code: "MODEL_EMPTY_COMPLETION",
+        context: { modelType, modelName, finishReason },
+      }
+    );
+  }
 
   if (usage) {
     emitModelUsageEvent(runtime, modelType, usage);

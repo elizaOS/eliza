@@ -10,15 +10,17 @@
  * expects a top-level `thinking` body field the SDK does not natively emit.
  */
 import type { GenerateTextParams, IAgentRuntime } from "@elizaos/core";
-import { logger, ModelType } from "@elizaos/core";
+import { ElizaError, logger, ModelType } from "@elizaos/core";
 import { generateText } from "ai";
 import { createZaiClient, type ZaiFetch } from "../providers";
 import { createModelName, type ModelName, type ModelSize, type ProviderOptions } from "../types";
 import {
+  getApiKey,
   getExperimentalTelemetry,
   getLargeModel,
   getSmallModel,
   getThinkingConfig,
+  isBrowser,
   type ZaiThinkingConfig,
 } from "../utils/config";
 import { emitModelUsageEvent } from "../utils/events";
@@ -92,7 +94,9 @@ function createZaiRequestFetch(thinking: ZaiThinkingConfig | null, baseFetch: Za
           init.body = JSON.stringify(body);
         }
       } catch {
-        // Non-JSON request bodies pass through unchanged.
+        // error-policy:J3 untrusted-input sanitizing — the thinking field is
+        // only injectable into a JSON body; non-JSON request bodies pass
+        // through unchanged rather than being replaced with a fabricated one.
       }
     }
     return baseFetch(input, init);
@@ -107,6 +111,14 @@ async function generateTextWithModel(
   modelSize: ModelSize,
   modelType: typeof ModelType.TEXT_SMALL | typeof ModelType.TEXT_LARGE
 ): Promise<string> {
+  // A missing credential must surface as a typed local failure before any
+  // request goes out — an anonymous request would masquerade as a
+  // provider-side 401 and hide the real misconfiguration. Browser builds are
+  // exempt: they route through a proxy that holds the key
+  // (ZAI_BROWSER_BASE_URL).
+  if (!isBrowser()) {
+    getApiKey(runtime);
+  }
   const experimentalTelemetry = getExperimentalTelemetry(runtime);
   const thinking = getThinkingConfig(runtime, modelSize);
   const requestFetch = createZaiRequestFetch(thinking, (runtime.fetch ?? fetch) as ZaiFetch);
@@ -136,7 +148,26 @@ async function generateTextWithModel(
     ...(typeof resolved.maxTokens === "number" ? { maxTokens: resolved.maxTokens } : {}),
   };
 
-  const { text, usage } = await generateText(generateParams as Parameters<typeof generateText>[0]);
+  const { text, usage, finishReason } = await generateText(
+    generateParams as Parameters<typeof generateText>[0]
+  );
+
+  // An empty completion is a provider failure (moderation, truncation,
+  // upstream bug) — never a legitimate result for this prompt-only handler.
+  // Returning "" would fabricate a healthy-empty completion the planner
+  // cannot distinguish from a real answer, and emit success usage telemetry
+  // for it (#9324: throw, never fabricate).
+  if (text.length === 0) {
+    throw new ElizaError(
+      `[z.ai] ${modelType} returned an empty completion${
+        finishReason ? ` (finishReason: ${finishReason})` : ""
+      }`,
+      {
+        code: "MODEL_EMPTY_COMPLETION",
+        context: { modelType, modelName, finishReason },
+      }
+    );
+  }
 
   if (usage) {
     emitModelUsageEvent(runtime, modelType, usage);

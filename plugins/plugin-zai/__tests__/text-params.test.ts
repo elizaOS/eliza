@@ -13,6 +13,18 @@ vi.mock("@ai-sdk/openai-compatible", () => ({
 }));
 
 vi.mock("@elizaos/core", () => ({
+  ElizaError: class extends Error {
+    readonly code: string;
+    readonly context?: Record<string, unknown>;
+    constructor(
+      message: string,
+      options: { code: string; context?: Record<string, unknown>; cause?: unknown }
+    ) {
+      super(message, options.cause !== undefined ? { cause: options.cause } : undefined);
+      this.code = options.code;
+      this.context = options.context;
+    }
+  },
   logger: { log: vi.fn() },
   ModelType: { TEXT_SMALL: "TEXT_SMALL", TEXT_LARGE: "TEXT_LARGE" },
 }));

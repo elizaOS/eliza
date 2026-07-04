@@ -180,6 +180,10 @@ function resolveFingerprintConfig(): {
       fingerprintConfig: loadFingerprintConfig(configPath),
     };
   } catch (error) {
+    // error-policy:J3 untrusted-input sanitizing — an unreadable/invalid
+    // fingerprint config becomes an explicit typed configError (the service
+    // then refuses to start the proxy and surfaces it via startError +
+    // PROXY_STATUS); no partial/default config is fabricated.
     return {
       configPath,
       configError: `Invalid anthropic proxy config ${configPath}: ${
@@ -257,6 +261,10 @@ export class AnthropicProxyService extends Service {
       try {
         service.effectiveUrl = validateSharedUpstream(config.upstream);
       } catch (e) {
+        // error-policy:J4 explicit user-facing degrade — an invalid shared
+        // upstream degrades to the documented "off" mode (agent keeps running
+        // on direct billing); the failure stays observable via startError,
+        // the PROXY_STATUS action, and GET /api/anthropic-proxy/status.
         service.startError = (e as Error).message;
         logger.warn(`[anthropic-proxy] ${service.startError} — falling back to off`);
         service.effectiveMode = "off";
@@ -301,6 +309,11 @@ export class AnthropicProxyService extends Service {
       setAnthropicBaseUrl(service.effectiveUrl);
       logger.info(`[anthropic-proxy] mode=inline — listening on ${service.effectiveUrl}`);
     } catch (e) {
+      // error-policy:J4 explicit user-facing degrade — a failed inline proxy
+      // start (missing credentials, port in use) degrades to the documented
+      // "off" mode instead of crashing agent boot; the failure stays
+      // observable via startError, the PROXY_STATUS action, and
+      // GET /api/anthropic-proxy/status.
       service.startError = (e as Error).message;
       logger.warn(
         `[anthropic-proxy] failed to start inline proxy (${service.startError}). ` +
@@ -360,6 +373,9 @@ export class AnthropicProxyService extends Service {
         });
         upstream = { reachable: r.ok, status: r.status };
       } catch (e) {
+        // error-policy:J4 explicit user-facing degrade — the upstream health
+        // probe's failure IS the answer: the status DTO reports an explicit
+        // { reachable: false, error } state, never a fake-healthy upstream.
         upstream = {
           reachable: false,
           error: (e as Error).message,

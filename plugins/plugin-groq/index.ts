@@ -16,6 +16,7 @@ import type {
 } from "@elizaos/core";
 import {
   buildCanonicalSystemPrompt,
+  ElizaError,
   EventType,
   type GenerateTextParams,
   logger,
@@ -152,6 +153,9 @@ function stringifyForUsage(value: unknown): string {
   try {
     return JSON.stringify(value);
   } catch {
+    // error-policy:J3 untrusted-input sanitizing — a circular/unstringifiable
+    // response degrades to String() for token *estimation* only (the usage
+    // event is flagged `estimated`); no completion data is fabricated.
     return String(value);
   }
 }
@@ -246,8 +250,10 @@ function getBaseURL(runtime: IAgentRuntime): string {
   let parsed: URL;
   try {
     parsed = new URL(configured);
-  } catch {
-    throw new Error("GROQ_BASE_URL must be a valid http(s) URL");
+  } catch (error) {
+    // error-policy:J2 context-adding rethrow — names the misconfigured setting;
+    // the original URL parse failure travels as `cause`.
+    throw new Error("GROQ_BASE_URL must be a valid http(s) URL", { cause: error });
   }
 
   if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
@@ -622,6 +628,23 @@ async function generateWithRetry(
   while (true) {
     try {
       const result = await generate();
+      // A completion with no text and no tool calls is a provider failure
+      // (moderation block, truncation, upstream bug) — never a legitimate
+      // result. Returning "" here would fabricate a healthy-empty completion
+      // the planner cannot distinguish from a real answer (#9324: throw,
+      // never fabricate) — and would emit success usage telemetry for it.
+      const resultToolCalls = Array.isArray(result.toolCalls) ? result.toolCalls : [];
+      if (result.text.length === 0 && resultToolCalls.length === 0) {
+        throw new ElizaError(
+          `[Groq] ${modelType} returned an empty completion${
+            result.finishReason ? ` (finishReason: ${result.finishReason})` : ""
+          }`,
+          {
+            code: "MODEL_EMPTY_COMPLETION",
+            context: { modelType, model, finishReason: result.finishReason },
+          }
+        );
+      }
       const usage = normalizeTokenUsage(result.usage) ?? estimateUsage(params.prompt, result.text);
       emitModelUsed(runtime, modelType, model, usage);
       if (params.returnNative) {
@@ -630,6 +653,9 @@ async function generateWithRetry(
       const { text } = result;
       return text;
     } catch (error) {
+      // error-policy:J2 context-adding rethrow — rate-limit/transient errors
+      // are retried with backoff; fatal errors and exhausted attempts rethrow
+      // the original provider error unchanged. No failure becomes a result.
       const kind = classifyRetryError(error);
 
       if (kind === "rate-limit" && rateLimitAttempts < MAX_RATE_LIMIT_RETRIES) {
@@ -861,6 +887,15 @@ export const groqPlugin: Plugin = {
       formData.append("model", transcriptionModel);
 
       const apiKey = nonEmptyString(runtime.getSetting("GROQ_API_KEY"));
+      // A missing credential must surface as a typed failure before the
+      // request goes out — an empty bearer token would masquerade as a
+      // provider-side 401 and hide the real misconfiguration.
+      if (!apiKey) {
+        throw new ElizaError("[Groq] TRANSCRIPTION requires GROQ_API_KEY", {
+          code: "MODEL_MISSING_CREDENTIAL",
+          context: { modelType: ModelType.TRANSCRIPTION },
+        });
+      }
       const details: RecordLlmCallDetails = {
         model: transcriptionModel,
         systemPrompt: "",
@@ -874,7 +909,7 @@ export const groqPlugin: Plugin = {
         const response = await fetch(`${baseURL}/audio/transcriptions`, {
           method: "POST",
           headers: {
-            Authorization: `Bearer ${apiKey ?? ""}`,
+            Authorization: `Bearer ${apiKey}`,
           },
           body: formData,
         });
@@ -938,6 +973,14 @@ export const groqPlugin: Plugin = {
               : DEFAULT_TTS_RESPONSE_FORMAT;
 
       const apiKey = nonEmptyString(runtime.getSetting("GROQ_API_KEY"));
+      // Same rule as TRANSCRIPTION: a missing credential is a typed local
+      // failure, never an empty bearer token sent upstream.
+      if (!apiKey) {
+        throw new ElizaError("[Groq] TEXT_TO_SPEECH requires GROQ_API_KEY", {
+          code: "MODEL_MISSING_CREDENTIAL",
+          context: { modelType: ModelType.TEXT_TO_SPEECH },
+        });
+      }
       const details: RecordLlmCallDetails = {
         model,
         systemPrompt: "",
@@ -951,7 +994,7 @@ export const groqPlugin: Plugin = {
         const response = await fetch(`${baseURL}/audio/speech`, {
           method: "POST",
           headers: {
-            Authorization: `Bearer ${apiKey ?? ""}`,
+            Authorization: `Bearer ${apiKey}`,
             "Content-Type": "application/json",
           },
           body: JSON.stringify({

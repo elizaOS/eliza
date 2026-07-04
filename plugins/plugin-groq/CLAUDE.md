@@ -38,6 +38,7 @@ plugins/plugin-groq/
     retry.test.ts               classifyRetryError unit tests
     model-usage.test.ts         Token usage normalisation tests
     native-plumbing.shape.test.ts  Native tool-call / structured-output plumbing
+    error-policy.shape.test.ts  #12182 failure-path surfaces (typed errors, no fabricated completions)
     core-test-mock.ts           Shared mock helpers
   prompts/
     evaluators.json     (bundled prompt data)

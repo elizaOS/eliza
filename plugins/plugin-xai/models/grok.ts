@@ -8,6 +8,7 @@
 import {
   buildCanonicalSystemPrompt,
   dropDuplicateLeadingSystemMessage,
+  ElizaError,
   type EventPayload,
   EventType,
   type GenerateTextParams,
@@ -53,8 +54,10 @@ function normalizeBaseUrl(value: unknown): string {
   let url: URL;
   try {
     url = new URL(raw);
-  } catch {
-    throw new Error("XAI_BASE_URL must be a valid URL");
+  } catch (error) {
+    // error-policy:J2 context-adding rethrow — names the misconfigured
+    // setting; the original URL parse failure travels as `cause`.
+    throw new Error("XAI_BASE_URL must be a valid URL", { cause: error });
   }
   if (url.protocol !== "http:" && url.protocol !== "https:") {
     throw new Error("XAI_BASE_URL must use http or https");
@@ -599,6 +602,25 @@ async function generateText(
         throw new Error("No content in Grok response");
       }
 
+      // A native completion with no text and no tool calls is a provider
+      // failure (empty choices, moderation, truncation) — never a legitimate
+      // result. Returning an empty native shape would fabricate a
+      // healthy-empty completion and emit success usage telemetry for it
+      // (#9324: throw, never fabricate). Tool-call-only completions pass.
+      if (!rawText && rawToolCalls.length === 0) {
+        throw new ElizaError(
+          `[xAI] ${modelType} returned an empty completion${
+            choice?.finish_reason
+              ? ` (finishReason: ${choice.finish_reason})`
+              : ""
+          }`,
+          {
+            code: "MODEL_EMPTY_COMPLETION",
+            context: { modelType, model, finishReason: choice?.finish_reason },
+          },
+        );
+      }
+
       emitModelUsed(
         runtime,
         modelType,
@@ -730,6 +752,21 @@ function createStreamTextResult(
       }
 
       const fullText = chunks.join("");
+      // A stream that delivered zero content chunks is a provider failure
+      // (empty body, non-SSE payload, moderation) — ending it as a healthy ""
+      // completion with success usage telemetry would hide the broken
+      // pipeline from the planner (#9324: throw, never fabricate).
+      if (chunks.length === 0) {
+        throw new ElizaError(
+          `[xAI] ${modelType} stream produced no content${
+            finishReason ? ` (finishReason: ${finishReason})` : ""
+          }`,
+          {
+            code: "MODEL_EMPTY_COMPLETION",
+            context: { modelType, model, finishReason },
+          },
+        );
+      }
       const finalUsage = usage ?? estimateUsage(promptText, fullText);
       emitModelUsed(runtime, modelType, responseModel, finalUsage);
 
@@ -742,14 +779,26 @@ function createStreamTextResult(
     },
   );
 
+  // error-policy:J5 unhandled-rejection suppression — consumers typically
+  // iterate only `textStream`; the companion promises (text/usage/finishReason)
+  // would otherwise each surface a stream failure as an unhandled rejection.
+  // The failure IS observed by the textStream consumer (the generator awaits
+  // `state` and rethrows). Mirrors plugin-anthropic/plugin-openai
+  // `handledPromise`.
+  const handledPromise = <T>(value: T | PromiseLike<T>): Promise<T> => {
+    const promise = Promise.resolve(value);
+    promise.catch(() => {});
+    return promise;
+  };
+
   return {
     textStream: (async function* () {
       const result = await state;
       yield* result.chunks;
     })(),
-    text: state.then((result) => result.fullText),
-    usage: state.then((result) => result.usage),
-    finishReason: state.then((result) => result.finishReason),
+    text: handledPromise(state.then((result) => result.fullText)),
+    usage: handledPromise(state.then((result) => result.usage)),
+    finishReason: handledPromise(state.then((result) => result.finishReason)),
   };
 }
 
@@ -758,6 +807,10 @@ function parseJsonOrRaw(value: unknown): unknown {
   try {
     return JSON.parse(value);
   } catch {
+    // error-policy:J3 untrusted-input sanitizing — model-emitted tool-call
+    // arguments that are not valid JSON pass through as the raw string, so
+    // the consumer sees exactly what the model produced; nothing fake-valid
+    // is fabricated.
     return value;
   }
 }

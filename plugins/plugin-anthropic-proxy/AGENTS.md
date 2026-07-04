@@ -58,7 +58,8 @@ plugins/plugin-anthropic-proxy/
     ├── manifest-engine.integration.test.ts
     ├── process-body.edge.test.ts
     ├── proxy-server.routing.test.ts
-    └── sse-rewrite.test.ts
+    ├── sse-rewrite.test.ts
+    └── error-policy.shape.test.ts
 ```
 
 ## Commands

@@ -46,6 +46,7 @@ plugins/plugin-xai/
     index.ts            Re-exports grok.ts
   __tests__/
     native-plumbing.shape.test.ts   Unit tests for tool-call normalization shapes
+    error-policy.shape.test.ts      #12182 failure-path surfaces (typed errors, no fabricated completions)
     plugin.live.test.ts             Live API integration test (requires XAI_API_KEY)
   build.ts              Bun.build script (produces node ESM, browser ESM, CJS)
   vitest.config.ts      Vitest config

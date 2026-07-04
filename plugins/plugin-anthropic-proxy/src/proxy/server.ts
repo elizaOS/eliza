@@ -384,6 +384,9 @@ export class ProxyServer {
         })
       );
     } catch (e) {
+      // error-policy:J1 boundary translation — outermost handler for the
+      // /health HTTP route; the failure becomes a structured 500 body instead
+      // of tearing down the proxy's request loop.
       res.writeHead(500, { "Content-Type": "application/json" });
       res.end(
         JSON.stringify({

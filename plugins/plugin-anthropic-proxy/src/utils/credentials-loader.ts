@@ -45,6 +45,9 @@ function jwtExpiresAt(token: string): number {
     const parsed = JSON.parse(json) as { exp?: number };
     return typeof parsed.exp === "number" ? parsed.exp * 1000 : 0;
   } catch {
+    // error-policy:J3 untrusted-input sanitizing — a non-JWT/undecodable token
+    // yields the explicit 0 = "unknown expiry" marker used only for expiry
+    // diagnostics in getStats(); no credential is fabricated.
     return 0;
   }
 }
@@ -100,6 +103,10 @@ export function loadCredentials(
         };
       }
     } catch (e) {
+      // error-policy:J1 boundary translation — an unreadable/unparseable
+      // credentials file becomes a typed LoadResult failure; the proxy server
+      // surfaces it as a 503 auth error and the service exposes it via
+      // startError/PROXY_STATUS. No credential is fabricated.
       return {
         creds: null,
         error: `failed to read ${resolved}: ${(e as Error).message}`,

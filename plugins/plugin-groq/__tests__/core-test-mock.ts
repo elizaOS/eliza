@@ -15,7 +15,24 @@ vi.mock("@elizaos/core", () => {
     warn: vi.fn(),
   };
 
+  // Mirrors core's ElizaError shape ({ code, context, cause }) so the plugin's
+  // typed failure paths can be asserted without booting the real core.
+  class ElizaError extends Error {
+    override readonly name = "ElizaError";
+    readonly code: string;
+    readonly context?: Record<string, unknown>;
+    constructor(
+      message: string,
+      options: { code: string; context?: Record<string, unknown>; cause?: unknown }
+    ) {
+      super(message, options.cause !== undefined ? { cause: options.cause } : undefined);
+      this.code = options.code;
+      this.context = options.context;
+    }
+  }
+
   return {
+    ElizaError,
     EventType: {
       MODEL_USED: "MODEL_USED",
     },
