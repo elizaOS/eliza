@@ -19,7 +19,6 @@ import {
 import { getImageProvider } from "../../providers/image/registry";
 import { getLanguageModel } from "../../providers/language-model";
 import { getCloudAwareEnv } from "../../runtime/cloud-bindings";
-import { agentsService } from "../../services/agents/agents";
 import { calculateImageGenerationCostFromCatalog } from "../../services/ai-pricing";
 import {
   DEFAULT_IMAGE_MODEL_ID,
@@ -67,6 +66,12 @@ import type {
 } from "./types";
 
 const MIN_RESPONSE_TOKENS = 4096;
+
+function rejectUnwiredPaidSkill(skillId: "chat_with_agent" | "video_generation"): never {
+  throw new Error(
+    `A2A skill '${skillId}' is disabled until it is wired through the billed delivery path`,
+  );
+}
 
 /**
  * Chat completion skill - Generate text with LLMs
@@ -487,35 +492,11 @@ export async function executeSkillListAgents(
  * Chat with agent skill
  */
 export async function executeSkillChatWithAgent(
-  textContent: string,
-  dataContent: Record<string, unknown>,
-  ctx: A2AContext,
+  _textContent: string,
+  _dataContent: Record<string, unknown>,
+  _ctx: A2AContext,
 ): Promise<ChatWithAgentResult> {
-  const message = (dataContent.message as string) || textContent;
-  const roomId = dataContent.roomId as string | undefined;
-  const agentId = dataContent.agentId as string | undefined;
-  const entityId = ctx.user.id;
-
-  if (!message) throw new Error("Message required");
-  if (!agentId && !roomId) throw new Error("agentId or roomId required");
-
-  // If we have a roomId, use it directly; otherwise create/get a room for the agent
-  const actualRoomId = roomId || (await agentsService.getOrCreateRoom(entityId, agentId!));
-
-  const response = await agentsService.sendMessage({
-    roomId: actualRoomId,
-    entityId,
-    message,
-    organizationId: ctx.user.organization_id,
-    streaming: false,
-  });
-
-  return {
-    response: response.content,
-    roomId: actualRoomId,
-    messageId: response.messageId,
-    timestamp: new Date().toISOString(),
-  };
+  rejectUnwiredPaidSkill("chat_with_agent");
 }
 
 /**
@@ -735,57 +716,11 @@ export async function executeSkillGetConversationContext(
  * Video generation skill (async - returns job ID)
  */
 export async function executeSkillVideoGeneration(
-  textContent: string,
-  dataContent: Record<string, unknown>,
-  ctx: A2AContext,
+  _textContent: string,
+  _dataContent: Record<string, unknown>,
+  _ctx: A2AContext,
 ): Promise<VideoGenerationResult> {
-  const prompt = (dataContent.prompt as string) || textContent;
-  const model = (dataContent.model as string) || "fal-ai/veo3";
-
-  if (!prompt) throw new Error("Video prompt required");
-
-  const VIDEO_COST = 5; // $5 per video
-
-  // Reserve credits BEFORE the operation (TOCTOU-safe)
-  let reservation: CreditReservation;
-  try {
-    reservation = await creditsService.reserve({
-      organizationId: ctx.user.organization_id,
-      amount: VIDEO_COST,
-      userId: ctx.user.id,
-      description: "A2A video generation",
-    });
-  } catch (error) {
-    if (error instanceof InsufficientCreditsError) {
-      throw new Error(`Insufficient credits: need $${VIDEO_COST.toFixed(2)}`);
-    }
-    throw error;
-  }
-
-  try {
-    const generation = await generationsService.create({
-      organization_id: ctx.user.organization_id,
-      user_id: ctx.user.id,
-      api_key_id: ctx.apiKeyId,
-      type: "video",
-      model,
-      provider: "fal",
-      prompt,
-      status: "pending",
-      credits: String(VIDEO_COST),
-      cost: String(VIDEO_COST),
-    });
-
-    await reservation.reconcile(VIDEO_COST);
-    return {
-      jobId: generation.id,
-      status: "pending",
-      cost: VIDEO_COST,
-    };
-  } catch (error) {
-    await reservation.reconcile(0);
-    throw error;
-  }
+  rejectUnwiredPaidSkill("video_generation");
 }
 
 /**
