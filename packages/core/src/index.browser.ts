@@ -90,7 +90,12 @@ export * from "./messaging/interactions";
 // Vendor-neutral model-gateway resolution (#11536 E1). Pure string logic, no
 // Node deps, so it is browser-safe and exported from both barrels.
 export * from "./model-gateway";
+// Pure isomorphic helpers (string token substitution + a state accessor).
+// Canonical owner is `@elizaos/core`; `@elizaos/shared` re-exports them from
+// this barrel so browser consumers resolve the same implementation.
+export * from "./name-tokens";
 export * from "./prompts";
+export * from "./recent-messages-state";
 export * from "./roles";
 export * from "./runtime";
 export { warnOnUnmatchedActionRolePolicyKeys } from "./runtime/action-role-policy";
