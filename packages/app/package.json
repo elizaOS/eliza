@@ -151,6 +151,7 @@
     "@elizaos/plugin-agent-orchestrator": "workspace:*",
     "@elizaos/plugin-background-runner": "workspace:*",
     "@elizaos/plugin-blocker": "workspace:*",
+    "@elizaos/plugin-browser": "workspace:*",
     "@elizaos/plugin-contacts": "workspace:*",
     "@elizaos/plugin-elizacloud": "workspace:*",
     "@elizaos/plugin-facewear": "workspace:*",

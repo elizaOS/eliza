@@ -133,6 +133,7 @@
 		"typecheck": "tsgo --noEmit -p tsconfig.json"
 	},
 	"dependencies": {
+		"@elizaos/agent": "workspace:*",
 		"@elizaos/core": "workspace:*",
 		"@elizaos/plugin-capacitor-bridge": "workspace:*",
 		"@elizaos/plugin-computeruse": "workspace:*",
