@@ -2,6 +2,7 @@
  * Fires the shared navigate-view event to open a registered view, the imperative
  * entry the agent's view actions and the shell use to switch views.
  */
+import { logger } from "@elizaos/logger";
 import {
   dispatchNavigateViewEvent,
   type NavigateViewDetail,
@@ -136,8 +137,11 @@ export function navigateBrowserPath(path: string): void {
     }
     window.history.pushState(null, "", path);
     window.dispatchEvent(new PopStateEvent("popstate"));
-  } catch {
-    return;
+  } catch (err) {
+    // error-policy:J4 sandboxed webviews can reject history navigation with a
+    // SecurityError; navigation degrades to a no-op there. Logged so silent
+    // dead navigation is diagnosable.
+    logger.warn({ err, path }, "[app-navigate-view] browser navigation failed");
   }
 }
 
@@ -260,7 +264,15 @@ export function createNavigateViewHandler({
             navigatePath(viewPath);
           }
         })
-        .catch(() => {
+        .catch((err: unknown) => {
+          // error-policy:J4 designed degrade: when the desktop bridge cannot
+          // open a separate window, the view opens as an in-shell tab instead —
+          // the user still lands on the view. Logged so a broken bridge is
+          // observable.
+          logger.warn(
+            { err, viewPath },
+            "[app-navigate-view] desktop openAppWindow failed; opening in-shell",
+          );
           activateTabForPath(viewPath);
           navigatePath(viewPath);
         });

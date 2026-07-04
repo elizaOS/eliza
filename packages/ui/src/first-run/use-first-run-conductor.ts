@@ -34,6 +34,7 @@
  *   connect-and-resume continuation (`pendingCloudResumeRef`).
  */
 
+import { logger } from "@elizaos/logger";
 import * as React from "react";
 import type {
   ConversationMessage,
@@ -1009,7 +1010,15 @@ export function useFirstRunConductor(): void {
       .then((backups) => {
         if (!cancelled && backups.length > 0) seedBackupRestoreChoice(backups);
       })
-      .catch(() => {});
+      .catch((err: unknown) => {
+        // error-policy:J4 the backup probe is a purely additive upgrade (see
+        // above): on failure first-run proceeds without the restore choice.
+        // Logged so a wedged local agent is diagnosable.
+        logger.debug(
+          { err },
+          "[useFirstRunConductor] local-agent backup probe failed",
+        );
+      });
     return () => {
       cancelled = true;
       setFirstRunActionHandler(null);

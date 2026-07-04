@@ -5,6 +5,7 @@
  * and the tutorial start. `Launcher` itself is pure presentation; this component
  * owns the runtime data so the rail/home shell can mount it directly.
  */
+import { logger } from "@elizaos/logger";
 import * as React from "react";
 import { dispatchChatOpen } from "../../events";
 import { useRoutableViews } from "../../hooks/useAvailableViews";
@@ -67,8 +68,12 @@ export const LauncherSurface = React.memo(
           // so the user arrives in a conversation, not on a collapsed pill.
           dispatchChatOpen();
         }
-      } catch {
-        // Sandboxed navigation is best-effort.
+      } catch (err) {
+        // error-policy:J4 sandboxed webviews (embeds) can reject history
+        // navigation with a SecurityError; the tile tap degrades to a no-op
+        // there. Logged so a launcher that silently stops navigating is
+        // diagnosable.
+        logger.warn({ err, path }, "[LauncherSurface] tile navigation failed");
       }
     }, []);
 

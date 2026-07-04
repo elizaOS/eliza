@@ -345,7 +345,15 @@ export function bindReadyPhase(
         if (s?.tasks)
           depsRef.current?.setPtySessions(mapServerTasksToSessions(s.tasks));
       })
-      .catch(() => {});
+      .catch((err: unknown) => {
+        // error-policy:J4 PTY-session hydration decorates the coding-agent
+        // panel; the panel's own load path surfaces hard failures. Logged so a
+        // persistently broken orchestrator route is not invisible.
+        logger.debug(
+          { err },
+          "[startup-phase-hydrate] coding-agent status hydrate failed",
+        );
+      });
   };
   // Recovery/refresh triggers (reconnect, visibility, periodic) only hit the
   // orchestrator/ACP routes once the agent runtime is running. Before that those

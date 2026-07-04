@@ -213,7 +213,16 @@ export function useStartupCoordinator(
     // local-agent transports stay policy-locked and boot hangs. No-op on
     // web/desktop and whenever the persisted mode is still usable.
     reconcilePersistedMobileRuntimeModeAtBoot();
-    runRestoringSession(d, dispatch, _ctx, cancelled).catch(() => {});
+    // error-policy:J5 expected failures are dispatched to the state machine
+    // inside the runner; this catch only keeps an unexpected runner bug from
+    // becoming an unhandled rejection, logged so a wedged boot phase is
+    // diagnosable instead of silent.
+    runRestoringSession(d, dispatch, _ctx, cancelled).catch((err: unknown) => {
+      logger.error(
+        { err },
+        "[useStartupCoordinator] restoring-session phase runner threw",
+      );
+    });
 
     return () => {
       cancelled.current = true;
@@ -245,7 +254,14 @@ export function useStartupCoordinator(
       effectRunRef,
       cancelled,
       tidRef,
-    ).catch(() => {});
+    ).catch((err: unknown) => {
+      // error-policy:J5 expected failures are dispatched to the state machine
+      // inside the runner; log unexpected runner bugs instead of dropping them.
+      logger.error(
+        { err },
+        "[useStartupCoordinator] polling-backend phase runner threw",
+      );
+    });
 
     return () => {
       cancelled.current = true;
@@ -278,7 +294,14 @@ export function useStartupCoordinator(
       cancelled,
       tidRef,
       startingRuntimeTarget,
-    ).catch(() => {});
+    ).catch((err: unknown) => {
+      // error-policy:J5 expected failures are dispatched to the state machine
+      // inside the runner; log unexpected runner bugs instead of dropping them.
+      logger.error(
+        { err },
+        "[useStartupCoordinator] starting-runtime phase runner threw",
+      );
+    });
 
     return () => {
       cancelled.current = true;

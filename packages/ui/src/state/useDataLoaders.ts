@@ -378,7 +378,19 @@ export function useDataLoaders(deps: DataLoadersDeps) {
         }
         const status = (err as { status?: number }).status;
         if (status === 404) {
-          const refreshed = await client.listConversations().catch(() => null);
+          // error-policy:J4 the 404 already settled the thread's fate (gone);
+          // this refresh only re-syncs the sidebar list. Its failure degrades to
+          // the stale list + cleared selection below — logged so a broken
+          // list endpoint is not silent.
+          const refreshed = await client
+            .listConversations()
+            .catch((refreshErr: unknown) => {
+              logger.warn(
+                { err: refreshErr },
+                "[useDataLoaders] conversation-list refresh after 404 failed",
+              );
+              return null;
+            });
           if (refreshed) {
             const normalized = normalizeConversationList(
               refreshed.conversations,

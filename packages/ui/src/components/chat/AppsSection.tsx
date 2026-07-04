@@ -5,6 +5,7 @@
  * that are not currently running. Clicking an app launches / focuses it.
  */
 
+import { logger } from "@elizaos/logger";
 import { LayoutGrid, MoreHorizontal } from "lucide-react";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -74,7 +75,12 @@ export function AppsSection({ headerAction }: AppsSectionProps = {}) {
           setCatalogApps(apps);
         }
       })
-      .catch(() => undefined);
+      .catch((err: unknown) => {
+        // error-policy:J4 a failed catalog load hides the sidebar app
+        // launchers only (chat itself is unaffected) — logged so a broken
+        // catalog endpoint is distinguishable from "no apps installed".
+        logger.warn({ err }, "[AppsSection] app catalog load failed");
+      });
     return () => {
       cancelled = true;
     };

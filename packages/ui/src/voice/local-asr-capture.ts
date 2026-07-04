@@ -272,7 +272,10 @@ export async function startLocalAsrRecorder(
   });
   const context = new AudioContextCtor();
   if (context.state === "suspended") {
-    await context.resume().catch(() => {});
+    // A context that cannot resume produces silence — surface the failure to
+    // the caller (voice-capture-factory setState("error")) instead of
+    // recording a dead stream.
+    await context.resume();
   }
 
   const source = context.createMediaStreamSource(stream);
@@ -322,23 +325,24 @@ export async function startLocalAsrRecorder(
     try {
       analyser?.disconnect();
     } catch {
-      /* already disconnected */
+      // error-policy:J6 teardown — node already disconnected
     }
     analyser = null;
     try {
       source.disconnect();
     } catch {
-      /* already disconnected */
+      // error-policy:J6 teardown — node already disconnected
     }
     try {
       processor.disconnect();
     } catch {
-      /* already disconnected */
+      // error-policy:J6 teardown — node already disconnected
     }
     for (const track of stream.getTracks()) {
       track.stop();
     }
-    await context.close().catch(() => {});
+    // error-policy:J6 teardown — closing an already-closed context throws
+    await context.close().catch(() => undefined);
   };
 
   return {
