@@ -507,9 +507,11 @@ export class MeetingService extends Service {
     let endReason: MeetingEndReason;
     let errorMessage: string | undefined;
     let capTimer: ReturnType<typeof setTimeout> | null = null;
+    let durationCapReached = false;
     try {
       const capReached = new Promise<MeetingEndReason>((resolve) => {
         capTimer = setTimeout(() => {
+          durationCapReached = true;
           logger.warn(
             {
               sessionId: session.id,
@@ -518,12 +520,15 @@ export class MeetingService extends Service {
             "[MeetingService] duration cap reached; stopping meeting",
           );
           this.applyStatus(session, "leaving");
-          session.abort.abort();
           resolve("duration_cap_reached");
+          session.abort.abort();
         }, session.maxDurationMs);
         capTimer.unref?.();
       });
       endReason = await Promise.race([adapter.run(botSession), capReached]);
+      if (durationCapReached) {
+        endReason = "duration_cap_reached";
+      }
     } catch (err) {
       endReason = "error";
       errorMessage = err instanceof Error ? err.message : String(err);

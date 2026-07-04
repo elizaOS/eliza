@@ -328,6 +328,33 @@ describe("MeetingService — session state machine", () => {
     }
   });
 
+  it("keeps the duration-cap reason when the adapter resolves on abort", async () => {
+    vi.useFakeTimers();
+    try {
+      const adapter = new ScriptedAdapter("google_meet");
+      const { service } = makeService([adapter]);
+      const dto = await service.requestJoin({
+        platform: "google_meet",
+        meetingUrl: MEET_URL,
+        maxDurationMs: 25,
+      });
+      const botSession = await adapter.started;
+      botSession.signal.addEventListener(
+        "abort",
+        () => adapter.end("requested_stop"),
+        { once: true },
+      );
+
+      await vi.advanceTimersByTimeAsync(25);
+
+      const session = service.getSession(dto.id as never);
+      expect(session?.status).toBe("ended");
+      expect(session?.endReason).toBe("duration_cap_reached");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("ignores adapter status reports after a terminal state", async () => {
     const adapter = new ScriptedAdapter("google_meet");
     const { service } = makeService([adapter]);

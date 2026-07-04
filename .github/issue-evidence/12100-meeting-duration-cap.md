@@ -3,9 +3,11 @@
 ## Local proof captured
 
 - `bunx vitest run plugins/plugin-meetings/src/service.test.ts plugins/plugin-meetings/src/routes/meetings-routes.test.ts packages/shared/src/meetings.test.ts`
-  - Result: 3 files passed, 33 tests passed.
+  - Result: 3 files passed, 36 tests passed.
 - `bun run --cwd packages/shared typecheck`
-  - Result: clean.
+  - Result: blocked in this checkout by pre-existing logger declaration
+    resolution for `adze`, `adze/dist/log.js`, and `fast-redact`; no reported
+    error was in `packages/shared/src/meetings.ts`.
 - `bun run --cwd plugins/plugin-meetings typecheck`
   - Result: clean.
 - `bunx @biomejs/biome check packages/shared/src/meetings.ts plugins/plugin-meetings/src/routes/meetings-routes.ts plugins/plugin-meetings/src/service.ts plugins/plugin-meetings/src/service.test.ts plugins/plugin-meetings/src/routes/meetings-routes.test.ts`
@@ -20,6 +22,8 @@
 - Callers may request a lower per-session `maxDurationMs`.
 - Requests above the configured `ELIZA_MEETINGS_MAX_DURATION_MS` fail before a bot launches.
 - When the cap is reached, the service transitions to leaving, aborts the adapter signal, finalizes the pipeline, and records `endReason: "duration_cap_reached"`.
+- The duration-cap reason wins even when the adapter resolves `requested_stop`
+  synchronously from the abort signal.
 
 ## Evidence not captured
 
