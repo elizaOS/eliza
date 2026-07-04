@@ -210,18 +210,7 @@ function concatSegments(segments, outPath, log) {
   );
   const result = spawnSync(
     "ffmpeg",
-    [
-      "-y",
-      "-f",
-      "concat",
-      "-safe",
-      "0",
-      "-i",
-      listPath,
-      "-c",
-      "copy",
-      outPath,
-    ],
+    ["-y", "-f", "concat", "-safe", "0", "-i", listPath, "-c", "copy", outPath],
     { stdio: "ignore" },
   );
   fs.rmSync(listPath, { force: true });
