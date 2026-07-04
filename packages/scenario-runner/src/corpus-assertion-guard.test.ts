@@ -271,6 +271,13 @@ const EXPECTED_PR_DETERMINISTIC_SCENARIO_IDS = [
   "traveler-disruption-recovery-missed-connection",
   "traveler-dst-boundary-reminder-integrity",
   "traveler-reanchor-on-timezone-change-signal",
+  // LifeOps persona pack E1 (low-activation-reengagement, #12775). Same G1
+  // convention: pr-deterministic scenarios live under plugin-personal-assistant
+  // and are added here in the same commit.
+  "lowact-micro-step-deferred-not-dropped",
+  "lowact-morning-single-priority-fires-once",
+  "lowact-quiet-streak-softens-next-nudge",
+  "lowact-values-anchored-activity-fires-in-window",
   "agent-orchestrator.list-agents",
   // LifeOps persona pack B1 (night-owl-anchored-day, #12771). Same G1
   // convention as A1: authored under the SCANNED root
