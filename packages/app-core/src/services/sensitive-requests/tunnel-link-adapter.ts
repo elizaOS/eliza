@@ -1,5 +1,6 @@
 import type {
   DeliveryResult,
+  IAgentRuntime,
   DispatchSensitiveRequest as SensitiveRequest,
   SensitiveRequestDeliveryAdapter,
   TunnelStatus,
@@ -16,14 +17,12 @@ export interface TunnelLinkAdapterDeps {
   getTunnelStatus?: (runtime: unknown) => TunnelLinkStatus | null;
 }
 
-interface RuntimeWithService {
-  getService?: (name: string) => unknown;
-}
+type RuntimeWithService = Pick<IAgentRuntime, "getService">;
 
 function isRuntimeWithService(value: unknown): value is RuntimeWithService {
   return (
-    typeof (value as RuntimeWithService | null | undefined)?.getService ===
-    "function"
+    typeof (value as { getService?: unknown } | null | undefined)
+      ?.getService === "function"
   );
 }
 

@@ -95,6 +95,8 @@ export interface NavigateViewDetail {
   layout?: string;
   placement?: string;
   alwaysOnTop?: boolean;
+  /** Opaque payload handed to the target view on navigation (deep-link state). */
+  payload?: unknown;
 }
 
 export type NavigateViewEvent = CustomEvent<NavigateViewDetail>;

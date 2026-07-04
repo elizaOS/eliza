@@ -281,7 +281,7 @@ describe("workbench VFS routes", () => {
           },
         };
       },
-    };
+    } as unknown as WorkbenchRouteContext["state"]["runtime"];
 
     const response = await callRoute(
       "POST",
@@ -313,7 +313,7 @@ describe("workbench VFS routes", () => {
               },
             }
           : null,
-    };
+    } as unknown as WorkbenchRouteContext["state"]["runtime"];
 
     const response = await callRoute<ErrorResponse>(
       "POST",

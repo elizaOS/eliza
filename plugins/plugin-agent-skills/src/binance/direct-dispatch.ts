@@ -8,18 +8,18 @@
 import {
   type Action,
   type ActionParameters,
-  type AgentRuntime,
   type Content,
-  type createMessageMemory,
+  type IAgentRuntime,
+  type Memory,
   ModelType,
   NON_EXECUTABLE_RESPONSE_ACTION_NAMES,
 } from "@elizaos/core";
+import { USE_SKILL_ACTION_NAME } from "../actions/use-skill";
 import {
   AGENT_SKILLS_SERVICE_TYPE,
   type AgentSkillsService,
-  USE_SKILL_ACTION_NAME,
-} from "@elizaos/plugin-agent-skills";
-import { extractCompatTextContent } from "./compat-utils.ts";
+} from "../services/skills";
+import { extractCompatTextContent } from "./compat-utils";
 
 const EXPOSED_BINANCE_SKILL_IDS = new Set([
   "binance-crypto-market-rank",
@@ -47,7 +47,7 @@ type RuntimeActionLike = Pick<
 >;
 
 async function rewriteFallbackActionText(args: {
-  runtime: AgentRuntime;
+  runtime: IAgentRuntime;
   actionName: string;
   text: string;
   content?: Content;
@@ -158,8 +158,8 @@ export function parseFallbackActionBlocks(
 }
 
 export async function executeFallbackParsedActions(
-  runtime: AgentRuntime,
-  message: ReturnType<typeof createMessageMemory>,
+  runtime: IAgentRuntime,
+  message: Memory,
   parsedActions: FallbackParsedAction[],
   appendIncomingText: (incoming: string) => void,
   onActionCallback: (actionTag: string, hasText: boolean) => void,
@@ -848,7 +848,7 @@ function normalizeDirectBinanceSummaryText(summary: string): string {
 }
 
 async function summarizeDirectBinanceSkillResult(
-  runtime: AgentRuntime,
+  runtime: IAgentRuntime,
   skillSlug: string,
   userText: string,
   rawText: string,
@@ -913,7 +913,7 @@ async function summarizeDirectBinanceSkillResult(
 }
 
 async function rewriteRawDirectBinanceSkillResult(
-  runtime: AgentRuntime,
+  runtime: IAgentRuntime,
   skillSlug: string,
   userText: string,
   rawText: string,
@@ -970,9 +970,9 @@ async function rewriteRawDirectBinanceSkillResult(
   }
 }
 
-export async function maybeHandleDirectBinanceSkillRequest(
-  runtime: AgentRuntime,
-  message: ReturnType<typeof createMessageMemory>,
+export async function runDirectBinanceSkillDispatch(
+  runtime: IAgentRuntime,
+  message: Memory,
   appendIncomingText: (incoming: string) => void,
   replaceText?: (text: string) => void,
 ): Promise<string | null> {
