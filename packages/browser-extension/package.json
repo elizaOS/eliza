@@ -13,7 +13,13 @@
     "test": "bun run test:unit && bun run test:smoke",
     "test:unit": "bunx vitest run --config ./vitest.extension.config.ts",
     "test:smoke": "node scripts/extension-smoke.mjs",
-    "test:smoke:safari": "node scripts/extension-smoke-safari.mjs"
+    "test:smoke:safari": "node scripts/extension-smoke-safari.mjs",
+    "clean": "node ../scripts/rm-path-recursive.mjs dist",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
+    "lint:fix": "bunx @biomejs/biome check --write --unsafe .",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format ."
   },
   "dependencies": {
     "@elizaos/shared": "workspace:*"

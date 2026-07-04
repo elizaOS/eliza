@@ -12,7 +12,6 @@ export function NavigationButtons({
   return (
     <nav
       className="elizaos-mobile-nav"
-      role="navigation"
       aria-label="System navigation"
       style={{
         display: "flex",

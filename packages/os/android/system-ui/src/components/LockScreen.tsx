@@ -54,7 +54,6 @@ export function LockScreen({ cloudsModule }: LockScreenProps) {
         }}
       >
         <div
-          aria-label={`Time ${formatted.time}`}
           style={{
             fontSize: "84px",
             fontWeight: 200,
@@ -64,10 +63,7 @@ export function LockScreen({ cloudsModule }: LockScreenProps) {
         >
           {formatted.time}
         </div>
-        <div
-          aria-label={formatted.date}
-          style={{ marginTop: 8, fontSize: "18px", fontWeight: 500 }}
-        >
+        <div style={{ marginTop: 8, fontSize: "18px", fontWeight: 500 }}>
           {formatted.date}
         </div>
       </div>

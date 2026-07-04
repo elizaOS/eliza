@@ -83,6 +83,11 @@ All scripts are run from the package directory:
 bun run --cwd packages/browser-extension build                   # Chrome (default)
 bun run --cwd packages/browser-extension build:chrome
 bun run --cwd packages/browser-extension build:safari-webextension
+bun run --cwd packages/browser-extension clean                   # remove dist/
+bun run --cwd packages/browser-extension lint                    # Biome check --write --unsafe
+bun run --cwd packages/browser-extension lint:check              # Biome check (read-only)
+bun run --cwd packages/browser-extension format                  # Biome format --write
+bun run --cwd packages/browser-extension format:check            # Biome format (read-only)
 bun run --cwd packages/browser-extension package:chrome          # .zip for Chrome Web Store
 bun run --cwd packages/browser-extension package:safari
 bun run --cwd packages/browser-extension package:stores

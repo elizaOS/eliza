@@ -13,7 +13,12 @@
     "verify:app-store": "node scripts/verify-ios-app-store.mjs",
     "test": "node --test scripts/*.test.mjs",
     "smoke:sim": "node scripts/smoke-ios-bun-engine.mjs --target=simulator",
-    "smoke:device": "node scripts/smoke-ios-bun-engine.mjs --target=device"
+    "smoke:device": "node scripts/smoke-ios-bun-engine.mjs --target=device",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
+    "lint:fix": "bunx @biomejs/biome check --write --unsafe .",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format ."
   },
   "files": [
     "ElizaBunEngine.podspec",

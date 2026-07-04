@@ -122,6 +122,10 @@ await audit.emit({
 
 ```bash
 bun run --cwd packages/security build        # tsc → dist/
+bun run --cwd packages/security lint         # Biome check --write --unsafe
+bun run --cwd packages/security lint:check   # Biome check (read-only)
+bun run --cwd packages/security format       # Biome format --write
+bun run --cwd packages/security format:check # Biome format (read-only)
 bun run --cwd packages/security test         # vitest run
 bun run --cwd packages/security test:watch   # vitest watch
 bun run --cwd packages/security typecheck    # tsgo --noEmit

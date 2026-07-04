@@ -73,6 +73,7 @@ All scripts are run with `bun run --cwd packages/homepage <script>`.
 ```bash
 bun run --cwd packages/homepage dev            # Vite dev server on :4444 (runs predev first)
 bun run --cwd packages/homepage build          # Production build → dist/ (runs prebuild first)
+bun run --cwd packages/homepage clean          # Remove dist/
 bun run --cwd packages/homepage preview        # Serve dist/ on :4444
 bun run --cwd packages/homepage typecheck      # tsc -b (generates release-data first)
 bun run --cwd packages/homepage lint           # Biome check --write --unsafe

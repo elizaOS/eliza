@@ -59,6 +59,7 @@ All scripts require Bun. Run from repo root with `--cwd`:
 ```bash
 bun run --cwd packages/os/homepage dev          # Dev server on :4455 (runs predev asset sync first)
 bun run --cwd packages/os/homepage build        # Vite build to dist/ (runs prebuild asset sync first)
+bun run --cwd packages/os/homepage clean        # Remove dist/
 bun run --cwd packages/os/homepage preview      # Preview built dist/ on :4455
 bun run --cwd packages/os/homepage deploy       # wrangler pages deploy to elizaos-homepage project
 bun run --cwd packages/os/homepage typecheck    # tsc -b
@@ -68,6 +69,7 @@ bun run --cwd packages/os/homepage screenshots  # Capture screenshots via script
 bun run --cwd packages/os/homepage lint         # Biome check + unsafe auto-fix
 bun run --cwd packages/os/homepage lint:check   # Biome check only
 bun run --cwd packages/os/homepage format       # Biome format --write
+bun run --cwd packages/os/homepage format:check # Biome format only
 ```
 
 `predev` and `prebuild` hooks run `packages/shared/scripts/sync-to-public.mjs` to copy logos, OG embeds, concept images, and background videos from `@elizaos/shared` into `public/brand/`. This is required — the directory is gitignored.

@@ -60,10 +60,13 @@ describe("getBridgeTransport (android)", () => {
 
     const transport = getBridgeTransport();
     expect(transport).not.toBeNull();
+    if (!transport) {
+      throw new Error("expected native bridge transport");
+    }
     expect(window.__elizaAndroidBridge).toBe(transport);
 
     const payloads: unknown[] = [];
-    const unsubscribe = transport!.on("eliza.android.wifi.state", (payload) =>
+    const unsubscribe = transport.on("eliza.android.wifi.state", (payload) =>
       payloads.push(payload),
     );
     expect(payloads).toEqual([
@@ -71,7 +74,7 @@ describe("getBridgeTransport (android)", () => {
     ]);
     unsubscribe();
     await expect(
-      transport!.send("eliza.android.audio.setMuted", { muted: true }),
+      transport.send("eliza.android.audio.setMuted", { muted: true }),
     ).resolves.toEqual({ ok: true });
     expect(subscriptions).toEqual([
       "eliza.android.wifi.state",

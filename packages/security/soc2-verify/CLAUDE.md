@@ -58,6 +58,8 @@ CLI entry is `src/cli.ts` (also exported at `./cli`).
 ```bash
 bun run --cwd packages/security/soc2-verify verify           # run all checks, write report
 bun run --cwd packages/security/soc2-verify verify:strict    # exit 1 if any critical check fails
+bun run --cwd packages/security/soc2-verify lint:check       # Biome check (read-only)
+bun run --cwd packages/security/soc2-verify format:check     # Biome format (read-only)
 bun run --cwd packages/security/soc2-verify test             # vitest run (unit suite)
 bun run --cwd packages/security/soc2-verify test:watch       # vitest watch
 bun run --cwd packages/security/soc2-verify typecheck        # tsgo --noEmit

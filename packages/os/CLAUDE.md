@@ -126,10 +126,13 @@ Commands are defined per sub-package; run from repo root:
 # USB Installer
 bun run --cwd packages/os/usb-installer dev
 bun run --cwd packages/os/usb-installer build
+bun run --cwd packages/os/usb-installer clean
 bun run --cwd packages/os/usb-installer test
 bun run --cwd packages/os/usb-installer test:linux-virtual-usb
 bun run --cwd packages/os/usb-installer test:e2e
 bun run --cwd packages/os/usb-installer lint
+bun run --cwd packages/os/usb-installer lint:check
+bun run --cwd packages/os/usb-installer format:check
 bun run --cwd packages/os/usb-installer server           # local backend on 127.0.0.1
 bun run --cwd packages/os/usb-installer package:darwin
 bun run --cwd packages/os/usb-installer package:linux
@@ -137,7 +140,10 @@ bun run --cwd packages/os/usb-installer package:win32
 
 # AOSP Flasher (setup)
 bun run --cwd packages/os/setup build
+bun run --cwd packages/os/setup clean
 bun run --cwd packages/os/setup test
+bun run --cwd packages/os/setup lint:check
+bun run --cwd packages/os/setup format:check
 bun run --cwd packages/os/setup package:mac
 bun run --cwd packages/os/setup package:linux
 bun run --cwd packages/os/setup package:windows

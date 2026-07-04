@@ -7,6 +7,7 @@
     "dev": "bun --bun vite",
     "prebuild": "node ../shared/scripts/sync-to-public.mjs ./public --logos --favicons --ogembeds --background --background-videos && node ../app-core/scripts/write-homepage-release-data.mjs",
     "build": "bun --bun vite build",
+    "clean": "node ../scripts/rm-path-recursive.mjs dist",
     "check:release-data": "node ../app-core/scripts/check-homepage-release-data.mjs",
     "test": "bun test tests/smoke.node.test.mjs tests/contact.test.ts",
     "test:e2e": "node ../app-core/scripts/write-homepage-release-data.mjs && playwright test",

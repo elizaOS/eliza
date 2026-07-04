@@ -32,7 +32,13 @@
     "build:sqlite-vec:simulator": "node ../../../packages/scripts/run-bash-darwin-only.mjs packages/native/ios-deps/sqlite-vec/build-ios.sh simulator",
     "clean:sqlite-vec": "node ../../../packages/scripts/run-bash-darwin-only.mjs packages/native/ios-deps/sqlite-vec/build-ios.sh clean",
     "build:stamp": "node -e \"const fs=require('node:fs'); fs.mkdirSync('.turbo/native-deps-build', { recursive: true }); fs.writeFileSync('.turbo/native-deps-build/stamp', 'ok\\n');\"",
-    "build": "bun run build:llama-cpp && bun run build:sqlite-vec && bun run build:stamp"
+    "build": "bun run build:llama-cpp && bun run build:sqlite-vec && bun run build:stamp",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
+    "lint:fix": "bunx @biomejs/biome check --write --unsafe .",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format .",
+    "clean": "bun run clean:llama-cpp && bun run clean:sqlite-vec && node ../../../packages/scripts/rm-path-recursive.mjs .turbo/native-deps-build"
   },
   "files": [
     "VERSIONS",

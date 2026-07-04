@@ -69,6 +69,8 @@ All scripts are in `packages/docs/package.json`.
 ```bash
 # Run the test suite (nav integrity, page existence, broken links, empty files)
 bun run --cwd packages/docs test
+bun run --cwd packages/docs lint:check
+bun run --cwd packages/docs format:check
 
 # Preview locally (install Mintlify CLI first: bun install -g mint)
 # predev auto-syncs brand assets from packages/shared

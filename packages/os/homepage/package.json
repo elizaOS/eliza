@@ -17,7 +17,8 @@
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
     "predev": "node ../../shared/scripts/sync-to-public.mjs ./public --logos --ogembeds --concepts --background --background-videos",
-    "prebuild": "node ../../shared/scripts/sync-to-public.mjs ./public --logos --ogembeds --concepts --background --background-videos"
+    "prebuild": "node ../../shared/scripts/sync-to-public.mjs ./public --logos --ogembeds --concepts --background --background-videos",
+    "clean": "node ../../scripts/rm-path-recursive.mjs dist"
   },
   "dependencies": {
     "@elizaos/ui": "workspace:*",

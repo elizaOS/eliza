@@ -82,6 +82,10 @@ import { createTestVault } from "@elizaos/vault";
 
 ```bash
 bun run --cwd packages/vault build       # compile via tsc → dist/
+bun run --cwd packages/vault lint        # Biome check --write --unsafe
+bun run --cwd packages/vault lint:check  # Biome check (read-only)
+bun run --cwd packages/vault format      # Biome format --write
+bun run --cwd packages/vault format:check # Biome format (read-only)
 bun run --cwd packages/vault test        # vitest run (all test files)
 bun run --cwd packages/vault test:watch  # vitest watch mode
 bun run --cwd packages/vault typecheck   # tsgo --noEmit

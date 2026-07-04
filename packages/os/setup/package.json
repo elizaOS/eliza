@@ -8,15 +8,20 @@
     "predev": "node ../../shared/scripts/sync-to-public.mjs ./public",
     "dev": "vite",
     "prebuild": "node ../../shared/scripts/sync-to-public.mjs ./public",
-    "build": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.main.json && vite build",
-    "typecheck": "tsgo --noEmit -p tsconfig.json&& tsgo --noEmit -p tsconfig.main.json",
+    "build": "vite build",
+    "typecheck": "tsgo --noEmit -p tsconfig.json && tsgo --noEmit -p tsconfig.main.json",
     "test": "vitest run --config ./vitest.config.ts",
-    "lint": "bunx @biomejs/biome check src vite.config.ts vitest.config.ts",
+    "lint": "bunx @biomejs/biome check --write --unsafe src vite.config.ts vitest.config.ts",
     "package:mac": "electrobun build --platform darwin",
     "package:linux": "electrobun build --platform linux",
     "package:windows": "electrobun build --platform win32",
     "postinstall": "node vendor/download.mjs",
-    "vendor:update": "node vendor/download.mjs --strict"
+    "vendor:update": "node vendor/download.mjs --strict",
+    "clean": "node ../../scripts/rm-path-recursive.mjs dist",
+    "lint:check": "bunx @biomejs/biome check src vite.config.ts vitest.config.ts",
+    "lint:fix": "bunx @biomejs/biome check --write --unsafe src vite.config.ts vitest.config.ts",
+    "format": "bunx @biomejs/biome format --write src vite.config.ts vitest.config.ts",
+    "format:check": "bunx @biomejs/biome format src vite.config.ts vitest.config.ts"
   },
   "dependencies": {
     "vite": "^8.0.0"

@@ -26,17 +26,10 @@ export function StatusBar() {
   }, [time.now, time.locale, time.timeZone]);
 
   return (
-    <header className="elizaos-mobile-statusbar" role="banner">
+    <header className="elizaos-mobile-statusbar">
       <div className="elizaos-mobile-statusbar-left">
-        <span
-          className="elizaos-mobile-clock"
-          aria-label={`Time ${formatted.time}`}
-        >
-          {formatted.time}
-        </span>
-        <span className="elizaos-mobile-date" aria-label={formatted.date}>
-          {formatted.date}
-        </span>
+        <span className="elizaos-mobile-clock">{formatted.time}</span>
+        <span className="elizaos-mobile-date">{formatted.date}</span>
       </div>
       <div
         className="elizaos-mobile-statusbar-right"
