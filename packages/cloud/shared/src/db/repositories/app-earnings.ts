@@ -9,6 +9,7 @@ import {
   type NewAppEarnings,
   type NewAppEarningsTransaction,
 } from "../schemas/app-earnings";
+import { parseEarningsNumber } from "./app-earnings-numeric";
 
 export type { AppEarnings, AppEarningsTransaction, NewAppEarnings, NewAppEarningsTransaction };
 
@@ -351,8 +352,10 @@ export class AppEarningsRepository {
       };
     }
 
-    const withdrawable = Number(earnings.withdrawable_balance);
-    const threshold = Number(earnings.payout_threshold);
+    // error-policy:J1 corrupt NUMERIC must throw, not become NaN — `amount < NaN`
+    // and `NaN < amount` are both false, which would fail the payout gates OPEN.
+    const withdrawable = parseEarningsNumber(earnings.withdrawable_balance, "withdrawable_balance");
+    const threshold = parseEarningsNumber(earnings.payout_threshold, "payout_threshold");
 
     if (amount < threshold) {
       return {
@@ -388,7 +391,12 @@ export class AppEarningsRepository {
 
     if (!updated) {
       const current = await this.findByAppId(appId);
-      const currentWithdrawable = Number(current?.withdrawable_balance ?? 0);
+      // error-policy:J1 the DB predicate already denied the debit; report the
+      // live balance but never let a corrupt NUMERIC surface as "NaN".
+      const currentWithdrawable =
+        current === undefined
+          ? 0
+          : parseEarningsNumber(current.withdrawable_balance, "withdrawable_balance");
       return {
         success: false,
         earnings: current ?? earnings,
@@ -428,7 +436,11 @@ export class AppEarningsRepository {
           });
         }
 
-        const threshold = Number(earnings.payout_threshold);
+        // error-policy:J1 corrupt NUMERIC threshold must throw, not become NaN
+        // (`amount < NaN` is false → the minimum-payout gate fails OPEN). This
+        // runs before the idempotency-key insert, so a corrupt row aborts the
+        // transaction with no phantom claim.
+        const threshold = parseEarningsNumber(earnings.payout_threshold, "payout_threshold");
         if (amount < threshold) {
           throw new WithdrawalRollback({
             success: false,
@@ -462,7 +474,12 @@ export class AppEarningsRepository {
           const current = await tx.query.appEarnings.findFirst({
             where: eq(appEarnings.app_id, appId),
           });
-          const currentWithdrawable = Number(current?.withdrawable_balance ?? 0);
+          // error-policy:J1 DB predicate already denied the debit; report the
+          // live balance but never surface a corrupt NUMERIC as "NaN".
+          const currentWithdrawable =
+            current === undefined
+              ? 0
+              : parseEarningsNumber(current.withdrawable_balance, "withdrawable_balance");
           throw new WithdrawalRollback({
             success: false,
             earnings: current ?? earnings,
