@@ -1,3 +1,6 @@
+/**
+ * Story group for feature surfaces (local-inference, runs, downloads) with representative state.
+ */
 import type {
   ActiveModelState,
   AppRunSummary,

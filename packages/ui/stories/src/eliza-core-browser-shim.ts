@@ -1,3 +1,6 @@
+/**
+ * Browser shim standing in for @elizaos/core in the stories app: the minimal types/constants the gallery needs without pulling the runtime.
+ */
 export const DEFAULT_MAX_BODY_BYTES = 1_048_576;
 
 export type UUID = string;

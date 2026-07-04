@@ -1,3 +1,6 @@
+/**
+ * Story group for the cloud dashboard compositions (empty states, cards, skeletons).
+ */
 import { BrandButton } from "@ui-src/cloud-ui/components/brand/brand-button.tsx";
 import {
   AppsEmptyState,

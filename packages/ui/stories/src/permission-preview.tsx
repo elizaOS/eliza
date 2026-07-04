@@ -1,3 +1,6 @@
+/**
+ * Standalone preview entry mounting the PermissionRecoveryCallout for visual review.
+ */
 import { createRoot } from "react-dom/client";
 import "@ui-src/styles.ts";
 import { PermissionRecoveryCallout } from "@ui-src/components/permissions/PermissionRecoveryCallout.tsx";

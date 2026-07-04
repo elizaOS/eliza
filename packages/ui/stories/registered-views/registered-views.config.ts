@@ -1,3 +1,6 @@
+/**
+ * Playwright config for the registered-views story harness.
+ */
 import { resolve } from "node:path";
 import { defineConfig, devices } from "@playwright/test";
 

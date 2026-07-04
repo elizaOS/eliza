@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for the ImageBackground cover layer.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { ImageBackground } from "./ImageBackground";
 

@@ -1,3 +1,6 @@
+/**
+ * Aurora orb concept: TSL shader module + uniforms for the voice-orb gallery.
+ */
 import type {
   ConceptDescriptor,
   OrbUniforms,

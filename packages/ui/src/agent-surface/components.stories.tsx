@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for the agent-surface primitive components (AgentButton, AgentInput, IconTag).
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { CheckCircle2, Sparkles } from "lucide-react";
 import { AgentButton, AgentInput, IconTag } from "./components";

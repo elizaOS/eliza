@@ -1,3 +1,6 @@
+/**
+ * Root component of the standalone story gallery app: composes every story group into one page.
+ */
 import { Story, type StoryGroup } from "./Story.tsx";
 import { analyticsStories } from "./stories/analytics.tsx";
 import { brandStories } from "./stories/brand.tsx";

@@ -1,3 +1,6 @@
+/**
+ * Playwright config for the XR simulation harness (see block below).
+ */
 import { resolve } from "node:path";
 import { defineConfig, devices } from "@playwright/test";
 

@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for the AgentElementOverlay (agent view-instrumentation highlight).
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { useEffect, useRef } from "react";
 import { AgentElementOverlay } from "./AgentElementOverlay";

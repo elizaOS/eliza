@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for the static BackgroundHost (see block below).
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { BackgroundHost } from "./BackgroundHost";
 

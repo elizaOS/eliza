@@ -1,3 +1,6 @@
+/**
+ * Story group for the shell foundation (ChatSurface, AssistantOverlay, HomePill).
+ */
 import { AssistantOverlay } from "@ui-src/components/shell/AssistantOverlay.tsx";
 import { ChatSurface } from "@ui-src/components/shell/ChatSurface.tsx";
 import { HomePill } from "@ui-src/components/shell/HomePill.tsx";

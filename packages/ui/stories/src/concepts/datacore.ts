@@ -1,3 +1,6 @@
+/**
+ * Datacore orb concept: shader module, uniforms, and per-frame animation for the voice-orb gallery.
+ */
 import type {
   ConceptDescriptor,
   OrbFrame,
