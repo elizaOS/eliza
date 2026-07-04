@@ -1,3 +1,4 @@
+// Coordinates cloud service fetch behavior behind route handlers.
 export async function fetchJson<T>(url: string): Promise<T> {
   const response = await fetch(url, {
     headers: {

@@ -1,3 +1,4 @@
+// Exercises node autoscaler behavior with deterministic cloud-shared lib fixtures.
 import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import type { DockerNode } from "../../../db/repositories/docker-nodes";
 

@@ -1,3 +1,4 @@
+// Coordinates cloud service index behavior behind route handlers.
 import { and, eq } from "drizzle-orm";
 import { dbRead, dbWrite } from "../../../db/client";
 import { platformCredentials } from "../../../db/schemas/platform-credentials";

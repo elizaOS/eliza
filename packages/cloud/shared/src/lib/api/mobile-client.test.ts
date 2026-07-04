@@ -1,3 +1,4 @@
+// Exercises mobile client behavior with deterministic cloud-shared lib fixtures.
 import { afterEach, describe, expect, test, vi } from "vitest";
 
 import { ApiError, api, createAuthenticatedClient } from "./mobile-client";

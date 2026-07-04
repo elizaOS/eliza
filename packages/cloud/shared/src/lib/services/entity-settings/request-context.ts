@@ -1,3 +1,4 @@
+// Coordinates cloud service request context behavior behind route handlers.
 import { AsyncLocalStorage } from "node:async_hooks";
 import type { UUID } from "@elizaos/core";
 

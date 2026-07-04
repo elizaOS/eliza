@@ -1,3 +1,4 @@
+// Exercises identity client behavior with deterministic cloud-shared lib fixtures.
 import { describe, expect, mock, test } from "bun:test";
 import { type Hash } from "viem";
 import { ERC8004_IDENTITY_REGISTRY_ADDRESSES, ERC8004IdentityClient } from "./identity-client";

@@ -1,3 +1,4 @@
+// Coordinates cloud service gmail behavior behind route handlers.
 import { extractBody, sanitizeHeaderValue } from "../../utils/google-mcp-shared";
 import type { OAuthConnectionRole } from "../oauth/types";
 import {

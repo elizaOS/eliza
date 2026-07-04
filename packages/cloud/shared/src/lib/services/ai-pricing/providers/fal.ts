@@ -1,3 +1,4 @@
+// Coordinates cloud service fal behavior behind route handlers.
 import { aiPricingRepository } from "../../../../db/repositories/ai-pricing";
 import type { PricingDimensions } from "../../../../db/schemas/ai-pricing";
 import { logger } from "../../../utils/logger";

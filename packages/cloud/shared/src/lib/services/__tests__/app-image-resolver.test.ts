@@ -1,3 +1,4 @@
+// Exercises app image resolver behavior with deterministic cloud-shared lib fixtures.
 import { describe, expect, test } from "bun:test";
 import { AppImageBuilder, type BuildExec } from "../app-image-builder";
 import {

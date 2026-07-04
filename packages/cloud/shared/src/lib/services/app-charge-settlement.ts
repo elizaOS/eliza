@@ -1,3 +1,4 @@
+// Coordinates cloud service app charge settlement behavior behind route handlers.
 import { eq } from "drizzle-orm";
 import { dbWrite } from "../../db/helpers";
 import { cryptoPayments } from "../../db/schemas/crypto-payments";

@@ -1,3 +1,4 @@
+// Wires hosted Eliza agent mcp config behavior for cloud runtime services.
 import { elizaLogger } from "@elizaos/core";
 import { getRequestContext } from "../../services/entity-settings/request-context";
 import type { UserContext } from "../user-context";

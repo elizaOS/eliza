@@ -1,10 +1,11 @@
+// Exercises ai billing usage behavior with deterministic cloud-shared lib fixtures.
 import { describe, expect, test } from "bun:test";
 import { normalizeUsage } from "../ai-billing";
 
 const u = (o: Record<string, unknown>) => o as Parameters<typeof normalizeUsage>[0];
 
 // Usage feeds the charge; it must normalize across AI-SDK versions/providers
-// (v4 inputTokens vs legacy promptTokens, two cache-token namings) consistently.
+// (v4 inputTokens, previous promptTokens, and two cache-token namings) consistently.
 describe("normalizeUsage", () => {
   test("returns all-zeros for null/undefined", () => {
     for (const v of [null, undefined]) {

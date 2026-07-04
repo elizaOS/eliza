@@ -1,3 +1,4 @@
+// Defines cloud shared blog behavior for backend service consumers.
 import matter from "gray-matter";
 
 type RawPostModule = string | { default: string };

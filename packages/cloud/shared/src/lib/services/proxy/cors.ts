@@ -1,3 +1,4 @@
+// Coordinates cloud service cors behavior behind route handlers.
 import {
   APP_LOCAL_ORIGIN_RE,
   APP_SCHEME_ORIGIN_RE,

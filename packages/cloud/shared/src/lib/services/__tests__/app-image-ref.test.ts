@@ -1,3 +1,4 @@
+// Exercises app image ref behavior with deterministic cloud-shared lib fixtures.
 import { describe, expect, test } from "bun:test";
 import { appImageSlug, buildAppImageRef, deriveImageTag } from "../app-image-ref";
 

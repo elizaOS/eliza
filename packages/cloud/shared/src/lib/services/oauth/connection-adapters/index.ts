@@ -25,7 +25,7 @@ import {
 import { twilioAdapter } from "./twilio-adapter";
 import { twitterAdapter } from "./twitter-adapter";
 
-// Google now uses the generic adapter (migrated from legacy google-adapter)
+// Google uses the generic adapter through google-adapter compatibility wiring
 const googleAdapter = createGenericAdapter("google");
 const asanaAdapter = createGenericAdapter("asana");
 const dropboxAdapter = createGenericAdapter("dropbox");

@@ -1,3 +1,4 @@
+// Exercises docker port allocation behavior with deterministic cloud-shared lib fixtures.
 import { describe, expect, it, vi } from "vitest";
 import * as dockerPortAllocation from "../docker-port-allocation";
 

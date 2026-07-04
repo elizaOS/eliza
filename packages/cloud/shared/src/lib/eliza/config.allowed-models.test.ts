@@ -1,3 +1,4 @@
+// Exercises config.allowed models behavior with deterministic cloud-shared lib fixtures.
 import { describe, expect, it } from "vitest";
 import { expandBitRouterModelIdCandidates } from "../providers/model-id-translation";
 import { ALLOWED_CHAT_MODELS, isAllowedChatModel } from "./config";

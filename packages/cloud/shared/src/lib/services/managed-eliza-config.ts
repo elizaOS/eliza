@@ -1,3 +1,4 @@
+// Coordinates cloud service managed eliza config behavior behind route handlers.
 import crypto from "node:crypto";
 import { EXTERNAL_URLS } from "@elizaos/shared/brand";
 import { getElizaAgentPublicWebUiUrl } from "../eliza-agent-web-ui";

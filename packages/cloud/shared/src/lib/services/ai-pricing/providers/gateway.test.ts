@@ -1,3 +1,4 @@
+// Exercises gateway behavior with deterministic cloud-shared lib fixtures.
 import { describe, expect, it, vi } from "vitest";
 import { logger } from "../../../utils/logger";
 import type { PreparedPricingEntry } from "../types";

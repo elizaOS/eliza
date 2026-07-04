@@ -1,3 +1,4 @@
+// Defines cloud shared index behavior for backend service consumers.
 export {
   annotateCatalogModel,
   annotateCatalogModels,

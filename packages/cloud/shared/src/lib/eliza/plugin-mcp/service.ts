@@ -1,3 +1,4 @@
+// Wires hosted Eliza agent service behavior for cloud runtime services.
 import { type Action, type IAgentRuntime, logger, Service } from "@elizaos/core";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";

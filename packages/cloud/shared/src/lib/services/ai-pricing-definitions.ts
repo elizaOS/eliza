@@ -1,3 +1,4 @@
+// Coordinates cloud service ai pricing definitions behavior behind route handlers.
 export type PricingProductFamily =
   | "language"
   | "embedding"

@@ -1,3 +1,4 @@
+// Coordinates cloud service app auth codes behavior behind route handlers.
 import { cache } from "../cache/client";
 import { CacheKeys } from "../cache/keys";
 

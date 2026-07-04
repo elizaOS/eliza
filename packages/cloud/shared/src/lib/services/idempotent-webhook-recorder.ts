@@ -1,3 +1,4 @@
+// Coordinates cloud service idempotent webhook recorder behavior behind route handlers.
 export interface IdempotentWebhookRecorder {
   recordIfNew(provider: string, eventId: string): Promise<boolean>;
 }

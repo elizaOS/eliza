@@ -1,3 +1,4 @@
+// Exercises playwright test session behavior with deterministic cloud-shared lib fixtures.
 import crypto from "crypto";
 
 export const PLAYWRIGHT_TEST_SESSION_COOKIE_NAME = "eliza-test-session";

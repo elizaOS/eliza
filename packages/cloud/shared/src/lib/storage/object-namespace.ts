@@ -1,3 +1,4 @@
+// Defines cloud shared object namespace behavior for backend service consumers.
 export const ObjectNamespaces = {
   ConversationMessageBodies: "conversation-message-bodies",
   ConversationMessageApiPayloads: "conversation-message-api",

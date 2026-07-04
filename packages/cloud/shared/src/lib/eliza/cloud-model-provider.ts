@@ -1,3 +1,4 @@
+// Wires hosted Eliza agent cloud model provider behavior for cloud runtime services.
 import type { Plugin } from "@elizaos/core";
 import { elizaOSCloudPlugin } from "@elizaos/plugin-elizacloud";
 

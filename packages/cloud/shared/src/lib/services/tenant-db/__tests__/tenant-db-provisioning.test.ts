@@ -1,3 +1,4 @@
+// Exercises tenant db provisioning behavior with deterministic cloud-shared lib fixtures.
 import { describe, expect, test } from "bun:test";
 import type { AllocatedCluster } from "../cluster-pool";
 import {

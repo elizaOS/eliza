@@ -237,7 +237,7 @@ d("tenant-db provisioning over real Postgres", () => {
 
     // decrypt passthrough: the column holds the plaintext admin DSN for the test.
     // This integration creates only tenant_db_clusters (not the whole cloud
-    // apps/app_databases schema), so keep it on the legacy pool seam while unit
+    // apps/app_databases schema), so keep it on the compatibility pool seam while unit
     // tests cover the production placement claimer.
     const provisioning = makeTenantDbProvisioning({
       decrypt: async (x) => x,
@@ -324,7 +324,7 @@ d("tenant-db provisioning over real Postgres", () => {
     // claimTenantDbPlacementForApp makes a second provisionForApp for the SAME
     // appId re-enter the same physical cluster WITHOUT a second tryClaimSlot. This
     // drives the REAL production claimer (claimPlacement defaults to
-    // appDatabasesRepository.claimTenantDbPlacementForApp) — not the legacy pool
+    // appDatabasesRepository.claimTenantDbPlacementForApp) — not the compatibility pool
     // seam the sibling tests inject — so the durable app->cluster placement that
     // closes #9686 is exercised end to end.
     const { id: clusterId } = await tenantDbClustersRepository.create({

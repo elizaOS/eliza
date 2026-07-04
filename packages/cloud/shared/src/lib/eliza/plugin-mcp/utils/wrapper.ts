@@ -1,3 +1,4 @@
+// Wires hosted Eliza agent wrapper behavior for cloud runtime services.
 import {
   type HandlerCallback,
   type IAgentRuntime,

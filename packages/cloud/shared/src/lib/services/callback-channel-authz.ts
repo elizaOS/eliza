@@ -1,3 +1,4 @@
+// Coordinates cloud service callback channel authz behavior behind route handlers.
 import { elizaRoomCharactersRepository } from "../../db/repositories/eliza-room-characters";
 import { logger } from "../utils/logger";
 

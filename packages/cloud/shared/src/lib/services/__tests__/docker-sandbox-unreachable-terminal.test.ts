@@ -73,7 +73,7 @@ function seedContainer(provider: DockerSandboxProvider): void {
 
 describe("DockerSandboxProvider.stop() terminal policy on unreachable node", () => {
   beforeEach(() => {
-    // Headscale cleanup is skipped when not configured.
+    // Headscale deletion is skipped when not configured.
     delete process.env.HEADSCALE_API_KEY;
   });
 

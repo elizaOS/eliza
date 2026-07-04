@@ -1,3 +1,4 @@
+// Coordinates cloud service ai billing records behavior behind route handlers.
 import type { UsageRecord } from "../../db/repositories";
 import {
   type AiBillingRecord,

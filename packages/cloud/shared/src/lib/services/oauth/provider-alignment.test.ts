@@ -1,3 +1,4 @@
+// Exercises provider alignment behavior with deterministic cloud-shared lib fixtures.
 import { describe, expect, test } from "bun:test";
 import {
   CONNECTOR_NATIVE_OAUTH_PROVIDERS,

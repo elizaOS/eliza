@@ -1,3 +1,4 @@
+// Exercises app url behavior with deterministic cloud-shared lib fixtures.
 import { afterEach, describe, expect, test } from "bun:test";
 import { deriveAppPublicUrl } from "../app-url";
 

@@ -1,3 +1,4 @@
+// Coordinates cloud service cloud files behavior behind route handlers.
 import { createHash, randomUUID } from "node:crypto";
 import { extname } from "node:path";
 import {

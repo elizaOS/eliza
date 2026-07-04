@@ -1,3 +1,4 @@
+// Exercises direct wallet payer proof behavior with deterministic cloud-shared lib fixtures.
 import { describe, expect, test } from "bun:test";
 import { Keypair } from "@solana/web3.js";
 import bs58 from "bs58";

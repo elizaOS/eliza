@@ -1,3 +1,4 @@
+// Defines cloud shared cloud provider options behavior for backend service consumers.
 export type CloudJsonValue = null | string | number | boolean | CloudJsonObject | CloudJsonValue[];
 
 export type CloudJsonObject = {

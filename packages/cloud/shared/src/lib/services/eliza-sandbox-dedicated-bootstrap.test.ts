@@ -1,3 +1,4 @@
+// Exercises eliza sandbox dedicated bootstrap behavior with deterministic cloud-shared lib fixtures.
 import { afterAll, afterEach, describe, expect, mock, spyOn, test } from "bun:test";
 
 import type { AgentSandbox } from "../../db/repositories/agent-sandboxes";

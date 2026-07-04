@@ -1,3 +1,4 @@
+// Coordinates cloud service steward tenant config behavior behind route handlers.
 import { organizationsRepository } from "../../db/repositories/organizations";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { logger } from "../utils/logger";

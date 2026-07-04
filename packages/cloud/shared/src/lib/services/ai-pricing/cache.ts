@@ -1,3 +1,4 @@
+// Coordinates cloud service cache behavior behind route handlers.
 import type { AiPricingEntry } from "../../../db/schemas/ai-pricing";
 import {
   EXTERNAL_CACHE_TTL_MS,

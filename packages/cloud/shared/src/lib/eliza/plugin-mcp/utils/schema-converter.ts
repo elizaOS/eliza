@@ -1,3 +1,4 @@
+// Wires hosted Eliza agent schema converter behavior for cloud runtime services.
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 
 /** MCP → runtime action parameter row (replaces removed @elizaos/core ActionParameter export). */

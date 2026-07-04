@@ -1,3 +1,4 @@
+// Coordinates cloud service sensitive requests behavior behind route handlers.
 import {
   type SensitiveRequest as CoreSensitiveRequest,
   defaultSensitiveRequestPolicy,

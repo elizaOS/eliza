@@ -1,3 +1,4 @@
+// Coordinates cloud service discord behavior behind route handlers.
 import { logger } from "../utils/logger";
 
 const DISCORD_API = "https://discord.com/api/v10";

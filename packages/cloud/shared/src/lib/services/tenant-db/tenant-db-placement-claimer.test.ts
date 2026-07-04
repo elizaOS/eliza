@@ -1,3 +1,4 @@
+// Exercises tenant db placement claimer behavior with deterministic cloud-shared lib fixtures.
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";

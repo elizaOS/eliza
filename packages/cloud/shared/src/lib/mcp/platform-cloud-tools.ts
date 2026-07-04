@@ -1,3 +1,4 @@
+// Defines cloud shared platform cloud tools behavior for backend service consumers.
 import type { Context } from "hono";
 import { organizationsRepository } from "../../db/repositories";
 import type { AppEnv } from "../../types/cloud-worker-env";

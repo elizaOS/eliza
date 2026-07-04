@@ -1,3 +1,4 @@
+// Coordinates cloud service sensitive request binding behavior behind route handlers.
 import {
   redactSensitiveRequestMetadata,
   type SensitiveRequestEvent,

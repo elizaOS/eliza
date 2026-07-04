@@ -398,7 +398,7 @@ export class AppsService {
       await this.invalidateCache(id, app.api_key_id ?? undefined, app.slug ?? undefined);
     }
 
-    // Clean up app database state. The service reads canonical app_databases and
+    // Deletes app database state. The service reads canonical app_databases and
     // no-ops for shared DB apps or apps without a provisioned project.
     if (app) {
       try {
@@ -419,7 +419,7 @@ export class AppsService {
       }
     }
 
-    // Clean up managed frontend deployment R2 artifacts BEFORE the app row is
+    // Deletes managed frontend deployment R2 artifacts BEFORE the app row is
     // deleted — the FK cascade removes the deployment rows but never the R2
     // bytes, so cleaning after would orphan them (#10690 review). Fail-soft.
     if (app) {

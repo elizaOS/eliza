@@ -1,3 +1,4 @@
+// Coordinates cloud service eliza agent config behavior behind route handlers.
 export const AGENT_INTERNAL_CONFIG_PREFIX = "__agent";
 export const AGENT_CHARACTER_OWNERSHIP_KEY = "__agentCharacterOwnership";
 export const AGENT_REUSE_EXISTING_CHARACTER = "reuse-existing";

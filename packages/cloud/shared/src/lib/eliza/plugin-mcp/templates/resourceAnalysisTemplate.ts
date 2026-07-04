@@ -1,3 +1,4 @@
+// Wires hosted Eliza agent resourceAnalysisTemplate behavior for cloud runtime services.
 export const resourceAnalysisTemplate = `
 {{{mcpProvider.text}}}
 

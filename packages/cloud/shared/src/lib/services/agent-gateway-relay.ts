@@ -1,3 +1,4 @@
+// Coordinates cloud service agent gateway relay behavior behind route handlers.
 import { randomUUID } from "crypto";
 import { buildRedisClient, type CompatibleRedis } from "../cache/redis-factory";
 import { logger } from "../utils/logger";

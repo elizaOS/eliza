@@ -1,3 +1,4 @@
+// Coordinates cloud service server wallets behavior behind route handlers.
 import { buildWalletProvisionChallenge } from "@elizaos/cloud-sdk/wallet-provision-challenge";
 import { StewardApiError } from "@stwd/sdk";
 import { and, eq } from "drizzle-orm";

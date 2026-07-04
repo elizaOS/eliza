@@ -1,3 +1,4 @@
+// Coordinates cloud service docker node workloads behavior behind route handlers.
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { dbRead } from "../../db/helpers";
 import { agentSandboxes } from "../../db/schemas/agent-sandboxes";

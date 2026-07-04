@@ -1,3 +1,4 @@
+// Coordinates cloud service dimensions behavior behind route handlers.
 import { createHash } from "node:crypto";
 import Decimal from "decimal.js";
 import type { AiPricingEntry, NewAiPricingEntry } from "../../../db/repositories/ai-pricing";

@@ -1,3 +1,4 @@
+// Coordinates cloud service vertex model registry behavior behind route handlers.
 import { and, desc, eq, or } from "drizzle-orm";
 import { dbRead, dbWrite } from "../../db/client";
 import {

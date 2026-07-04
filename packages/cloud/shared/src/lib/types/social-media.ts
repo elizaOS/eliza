@@ -1,3 +1,4 @@
+// Defines cloud shared social media behavior for backend service consumers.
 import { z } from "zod";
 
 /**

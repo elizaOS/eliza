@@ -1,3 +1,4 @@
+// Registers cloud capability registry behavior for hosted agent execution.
 export type CloudCapabilityCategory =
   | "auth"
   | "account"

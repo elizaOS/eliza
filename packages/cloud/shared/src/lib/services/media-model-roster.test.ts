@@ -1,3 +1,4 @@
+// Exercises media model roster behavior with deterministic cloud-shared lib fixtures.
 import { describe, expect, test } from "bun:test";
 import { MEDIA_MODEL_ROSTER, mediaRosterModelIndexes } from "./media-model-roster";
 

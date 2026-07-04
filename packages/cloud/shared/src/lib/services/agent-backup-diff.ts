@@ -222,7 +222,7 @@ export function planIncrementalBackup(params: {
   const maxChainDepth = params.maxChainDepth ?? 20;
   const maxDeltaRatio = params.maxDeltaRatio ?? 0.5;
   // Full-agent manifests contain component blobs and per-component hashes. The
-  // legacy delta format intentionally knows only memories/config/workspaceFiles,
+  // compatibility delta format intentionally knows only memories/config/workspaceFiles,
   // so storing a manifest snapshot incrementally would drop the real backup
   // surface. Keep manifest-bearing snapshots full until a component-aware delta
   // format exists.

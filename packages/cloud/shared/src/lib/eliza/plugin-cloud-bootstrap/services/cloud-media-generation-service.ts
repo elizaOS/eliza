@@ -1,3 +1,4 @@
+// Wires hosted Eliza agent cloud media generation service behavior for cloud runtime services.
 import {
   type IAgentRuntime,
   IMediaGenerationService,

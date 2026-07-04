@@ -1,3 +1,4 @@
+// Exercises pairing token behavior with deterministic cloud-shared lib fixtures.
 import { describe, expect, it } from "bun:test";
 import { DOMAIN_ALIAS_GROUPS, getAlternateDomainOrigins } from "./pairing-token-domains";
 
@@ -33,7 +34,7 @@ describe("getAlternateDomainOrigins", () => {
 
   it("rejects retired 0xSolace-era domains (example.ai, shad0w.xyz)", () => {
     // These domains were intentionally dropped from the alias group to
-    // close the "0 legacy" cleanup. A leftover bookmark must fail Origin
+    // close the zero-compatibility-domain goal. A leftover bookmark must fail Origin
     // validation rather than silently aliasing into a live brand.
     expect(getAlternateDomainOrigins("https://abc.example.ai")).toEqual([]);
     expect(getAlternateDomainOrigins("https://abc.shad0w.xyz")).toEqual([]);

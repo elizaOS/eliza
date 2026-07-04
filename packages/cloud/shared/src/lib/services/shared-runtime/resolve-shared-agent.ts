@@ -1,3 +1,4 @@
+// Coordinates cloud service resolve shared agent behavior behind route handlers.
 import type { Context } from "hono";
 
 import {

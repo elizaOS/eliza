@@ -1,3 +1,4 @@
+// Exercises dimensions behavior with deterministic cloud-shared lib fixtures.
 import Decimal from "decimal.js";
 import { describe, expect, test } from "vitest";
 import { PLATFORM_MARKUP_MULTIPLIER } from "../../pricing-constants";

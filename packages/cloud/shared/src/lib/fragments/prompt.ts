@@ -15,7 +15,7 @@ export {
 } from "../prompts";
 
 import { buildApiContext } from "./api-context";
-// Legacy fragment builder (for quick mode)
+// Quick-mode fragment builder compatibility wrapper
 import { Templates, templatesToPrompt } from "./templates";
 
 export async function buildFragmentPrompt(

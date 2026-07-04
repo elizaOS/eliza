@@ -1,3 +1,4 @@
+// Wires hosted Eliza agent resourceSelectionTemplate behavior for cloud runtime services.
 export const resourceSelectionTemplate = `
 {{{mcpProvider.text}}}
 

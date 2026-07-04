@@ -1,3 +1,4 @@
+// Exercises docker sandbox headscale route behavior with deterministic cloud-shared lib fixtures.
 import { afterEach, describe, expect, test } from "bun:test";
 import { resolveElizaCloudTopology } from "@elizaos/shared";
 import {
@@ -115,7 +116,7 @@ describe("headscaleVpnEnabled", () => {
 
   test("stays consistent with requiresHeadscaleRoute under the fallback flag", () => {
     // When the fallback is on, neither the route nor the VPN enrollment is
-    // required — the container boots over the legacy bridge-host path.
+    // required because the container boots over the bridge-host compatibility path.
     const env = {
       HEADSCALE_API_KEY: "secret",
       AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK: "1",

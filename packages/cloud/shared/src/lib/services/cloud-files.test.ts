@@ -1,3 +1,4 @@
+// Exercises cloud files behavior with deterministic cloud-shared lib fixtures.
 import { describe, expect, mock, test } from "bun:test";
 import { CloudFilesService, kindFromMime } from "./cloud-files";
 

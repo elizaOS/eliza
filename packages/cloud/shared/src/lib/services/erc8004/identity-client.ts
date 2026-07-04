@@ -1,3 +1,4 @@
+// Coordinates cloud service identity client behavior behind route handlers.
 import {
   type Address,
   createPublicClient,

@@ -64,7 +64,7 @@ class CreditEventEmitter {
     const isServerless =
       process.env.NODE_ENV === "production" || process.env.FORCE_REDIS_EVENTS === "true";
 
-    // Accept a TCP `REDIS_URL` (Railway) as well as the legacy Upstash REST
+    // Accepts a TCP `REDIS_URL` (Railway) as well as Upstash REST compatibility
     // creds — mirrors `buildRedisClient` so a Railway-only deploy doesn't
     // silently degrade credit events to a single-process in-memory emitter.
     const redisConfigured = hasRedisConfig();
@@ -110,7 +110,7 @@ class CreditEventEmitter {
 
       // Return sync unsubscribe function
       return () => {
-        // Unsubscribe is handled by Redis cleanup
+        // Redis owns subscription release after unsubscribe
       };
     } else if (this.inMemoryEmitter) {
       const listener = (event: CreditUpdateEvent) => {

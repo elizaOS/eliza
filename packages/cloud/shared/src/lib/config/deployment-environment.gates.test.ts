@@ -1,3 +1,4 @@
+// Exercises deployment environment.gates behavior with deterministic cloud-shared lib fixtures.
 import { describe, expect, it } from "bun:test";
 import { shouldBlockDevnetBypass, shouldBlockUnsafeWebhookSkip } from "./deployment-environment";
 

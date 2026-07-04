@@ -1,3 +1,4 @@
+// Coordinates cloud service encryption behavior behind route handlers.
 import { createCipheriv, createDecipheriv, randomBytes } from "crypto";
 import { getCloudAwareEnv } from "../../runtime/cloud-bindings";
 import { logger } from "../../utils/logger";

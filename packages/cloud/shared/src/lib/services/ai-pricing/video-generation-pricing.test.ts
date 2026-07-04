@@ -1,3 +1,4 @@
+// Exercises video generation pricing behavior with deterministic cloud-shared lib fixtures.
 import { expect, test } from "bun:test";
 import { SUPPORTED_VIDEO_MODELS } from "../ai-pricing-definitions";
 import type { PreparedPricingEntry } from "./types";

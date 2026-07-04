@@ -1,3 +1,4 @@
+// Defines cloud shared safe fetch behavior for backend service consumers.
 import type { LookupAddress } from "node:dns";
 import type { ClientRequest, IncomingMessage } from "node:http";
 import type { RequestOptions } from "node:https";

@@ -1,3 +1,4 @@
+// Provides cloud utility random names helpers shared by backend services.
 const ADJECTIVES = [
   "swift",
   "cosmic",

@@ -1,3 +1,4 @@
+// Exercises outbound url behavior with deterministic cloud-shared lib fixtures.
 import { afterAll, beforeEach, describe, expect, test, vi } from "vitest";
 
 const lookupMock = vi.fn();

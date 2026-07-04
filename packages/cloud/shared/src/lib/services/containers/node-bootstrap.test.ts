@@ -1,3 +1,4 @@
+// Exercises node bootstrap behavior with deterministic cloud-shared lib fixtures.
 import { afterEach, describe, expect, test } from "bun:test";
 import { buildContainerNodeUserData } from "./node-bootstrap";
 

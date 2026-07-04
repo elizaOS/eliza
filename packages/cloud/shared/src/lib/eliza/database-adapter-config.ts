@@ -1,3 +1,4 @@
+// Wires hosted Eliza agent database adapter config behavior for cloud runtime services.
 interface EnvLike {
   [key: string]: string | undefined;
 }

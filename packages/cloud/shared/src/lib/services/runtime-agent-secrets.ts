@@ -1,3 +1,4 @@
+// Coordinates cloud service runtime agent secrets behavior behind route handlers.
 import { shouldStripRawOpenAIForKeyless } from "./managed-eliza-env";
 
 export const RUNTIME_AGENT_SECRET_KEYS = [

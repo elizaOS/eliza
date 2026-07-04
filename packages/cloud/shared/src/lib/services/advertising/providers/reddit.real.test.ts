@@ -1,3 +1,4 @@
+// Exercises reddit.real behavior with deterministic cloud-shared lib fixtures.
 import { describe, expect, test } from "bun:test";
 import { redditAdsProvider } from "./reddit";
 

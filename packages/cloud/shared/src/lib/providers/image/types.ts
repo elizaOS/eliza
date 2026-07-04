@@ -1,3 +1,4 @@
+// Defines cloud shared types behavior for backend service consumers.
 import type { PricingBillingSource } from "../../services/ai-pricing-definitions";
 
 export interface ImageGenRequest {

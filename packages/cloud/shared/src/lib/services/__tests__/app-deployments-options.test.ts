@@ -1,3 +1,4 @@
+// Exercises app deployments options behavior with deterministic cloud-shared lib fixtures.
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 
 const APP_ID = "11111111-2222-3333-4444-555555555555";

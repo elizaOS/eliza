@@ -1,3 +1,4 @@
+// Exercises rate limit config verdict behavior with deterministic cloud-shared lib fixtures.
 import { describe, expect, test } from "bun:test";
 import { applyRateLimitMultiplier, rateLimitConfigVerdict } from "./rate-limit-hono-cloudflare";
 

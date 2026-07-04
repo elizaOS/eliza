@@ -5,7 +5,7 @@
  * Supports key rotation by allowing multiple active keys identified by "kid".
  */
 
-// jose v6 dropped the legacy `KeyLike` alias; `importPKCS8` / `importSPKI`
+// jose v6 removed the previous `KeyLike` alias; `importPKCS8` / `importSPKI`
 // now resolve to the global `CryptoKey` type directly, which is available
 // in Node 18+ and Cloudflare Workers — everywhere this module runs.
 import { exportJWK, importPKCS8, importSPKI, type JWK } from "jose";

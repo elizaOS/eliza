@@ -1,3 +1,4 @@
+// Exercises app db deprovision job service behavior with deterministic cloud-shared lib fixtures.
 import { describe, expect, test } from "bun:test";
 import {
   type AppDbDeprovisioner,

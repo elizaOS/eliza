@@ -1,3 +1,4 @@
+// Coordinates cloud service admin infrastructure behavior behind route handlers.
 import { asc } from "drizzle-orm";
 import { dbRead } from "../../db/helpers";
 import { dockerNodesRepository } from "../../db/repositories/docker-nodes";
@@ -483,7 +484,7 @@ async function inspectNodeRuntime(node: {
     try {
       await ssh.disconnect();
     } catch {
-      // ignore cleanup failures
+      // Ignore deletion failures
     }
   }
 }

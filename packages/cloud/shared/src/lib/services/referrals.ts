@@ -1,3 +1,4 @@
+// Coordinates cloud service referrals behavior behind route handlers.
 import * as crypto from "crypto";
 import {
   type ReferralCode,

@@ -1,3 +1,4 @@
+// Defines cloud shared atlascloud image generation behavior for backend service consumers.
 import { getAiProviderConfigurationError } from "../language-model";
 import type { GeneratedImage, ImageGenRequest, ImageProvider } from "./types";
 

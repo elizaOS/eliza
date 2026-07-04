@@ -1,3 +1,4 @@
+// Builds prompt fragment messages helpers for cloud-hosted agents.
 import type { DeepPartial } from "ai";
 import type { FragmentSchema } from "./schema";
 import type { ExecutionResult } from "./types";

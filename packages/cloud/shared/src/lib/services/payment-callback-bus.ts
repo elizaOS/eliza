@@ -1,3 +1,4 @@
+// Coordinates cloud service payment callback bus behavior behind route handlers.
 import { logger } from "../utils/logger";
 
 export type PaymentProvider = "stripe" | "oxapay" | "x402" | "wallet_native";

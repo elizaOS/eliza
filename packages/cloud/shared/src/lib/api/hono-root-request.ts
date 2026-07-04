@@ -1,3 +1,4 @@
+// Defines cloud API hono root request helpers shared across worker routes.
 type HonoFetchable = {
   fetch(
     request: Request,

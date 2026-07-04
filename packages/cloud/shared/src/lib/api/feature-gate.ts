@@ -1,3 +1,4 @@
+// Defines cloud API feature gate helpers shared across worker routes.
 import { type FeatureFlag, getFeatureForRoute, isFeatureEnabled } from "../config/feature-flags";
 
 export function requireFeature(flag: FeatureFlag): Response | null {

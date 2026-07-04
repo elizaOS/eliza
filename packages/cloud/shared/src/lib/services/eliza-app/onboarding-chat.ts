@@ -1,3 +1,4 @@
+// Coordinates cloud service onboarding chat behavior behind route handlers.
 import { createOpenAI } from "@ai-sdk/openai";
 import { generateText } from "ai";
 import { cache } from "../../cache/client";

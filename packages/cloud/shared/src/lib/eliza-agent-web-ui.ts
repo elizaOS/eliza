@@ -1,3 +1,4 @@
+// Defines cloud shared eliza agent web ui behavior for backend service consumers.
 import type { AgentSandbox } from "../db/schemas/agent-sandboxes";
 
 const DEFAULT_AGENT_BASE_DOMAIN = "elizacloud.ai";

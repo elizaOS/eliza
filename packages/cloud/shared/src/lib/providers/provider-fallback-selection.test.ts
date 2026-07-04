@@ -1,3 +1,4 @@
+// Exercises provider fallback selection behavior with deterministic cloud-shared lib fixtures.
 import { describe, expect, mock, test } from "bun:test";
 
 // Raw-fetch failover selector used by v1/apps/[id]/chat. Direct-first: native

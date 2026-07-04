@@ -1,3 +1,4 @@
+// Coordinates cloud service pairing token behavior behind route handlers.
 import { agentPairingTokensRepository } from "../../db/repositories/agent-pairing-tokens";
 import { getAlternateDomainOrigins } from "./pairing-token-domains";
 

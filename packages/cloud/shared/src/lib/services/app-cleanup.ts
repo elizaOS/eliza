@@ -253,7 +253,7 @@ export async function cleanupAppResources(
 
   // Step 1: Stop + tear down the deployed container(s). Done first so the org
   // stops being metered (and the live container stops running) as early as
-  // possible, even if a later cleanup step fails.
+  // possible, even if a later deletion step fails.
   const containerResult = await stopAppContainers(app, containerTeardown);
   cleaned.containersTornDown = containerResult.tornDown;
   errors.push(...containerResult.errors);
@@ -283,7 +283,7 @@ export async function cleanupAppResources(
     }
   }
 
-  // Step 4: Clean up secret bindings
+  // Step 4: Delete secret bindings
   const secretResult = await cleanupSecretBindings(appId);
   cleaned.secretBindingsRemoved = secretResult.removed;
   errors.push(...secretResult.errors);
@@ -314,7 +314,7 @@ export async function deleteAppWithCleanup(
   appId: string,
   options: CleanupOptions = {},
 ): Promise<CleanupResult> {
-  // First, perform cleanup of external resources
+  // First, delete external resources
   const cleanupResult = await cleanupAppResources(appId, options);
 
   // Then delete the app record (which triggers CASCADE deletes for DB records)

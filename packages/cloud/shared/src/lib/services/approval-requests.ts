@@ -1,3 +1,4 @@
+// Coordinates cloud service approval requests behavior behind route handlers.
 import type {
   ApprovalChallengeKind,
   ApprovalChallengePayload,

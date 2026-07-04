@@ -1,3 +1,4 @@
+// Coordinates cloud service index behavior behind route handlers.
 export {
   createManagedGoogleCalendarEvent,
   deleteManagedGoogleCalendarEvent,

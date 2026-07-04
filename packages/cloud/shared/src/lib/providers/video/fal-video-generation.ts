@@ -1,3 +1,4 @@
+// Defines cloud shared fal video generation behavior for backend service consumers.
 import { ApiError, createFalClient } from "@fal-ai/client";
 import { getAiProviderConfigurationError } from "../language-model";
 import {

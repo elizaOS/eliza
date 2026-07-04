@@ -142,7 +142,7 @@ export async function ensureAudioFormat(blob: Blob): Promise<Blob> {
   }
 
   // If it's a video/webm that might contain audio, we need to convert it
-  // For now, we'll just change the MIME type since it's actually audio data
+  // Rewrites the MIME type because the payload is already audio data
   // The actual container is still WebM with audio track
   if (blob.type.startsWith("video/webm")) {
     return new Blob([blob], { type: "audio/webm" });

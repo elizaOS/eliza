@@ -1,3 +1,4 @@
+// Coordinates cloud service identity link store behavior behind route handlers.
 import type {
   IdentityLinkRow,
   IdentityLinksRepository,

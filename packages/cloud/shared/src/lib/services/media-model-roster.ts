@@ -1,3 +1,4 @@
+// Coordinates cloud service media model roster behavior behind route handlers.
 import {
   SUPPORTED_IMAGE_MODEL_IDS,
   SUPPORTED_MUSIC_MODEL_IDS,

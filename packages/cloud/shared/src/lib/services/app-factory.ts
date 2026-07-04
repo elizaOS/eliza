@@ -1,3 +1,4 @@
+// Coordinates cloud service app factory behavior behind route handlers.
 import type { App, NewApp } from "../../db/repositories/apps";
 import { containersEnv } from "../config/containers-env";
 import { logger } from "../utils/logger";

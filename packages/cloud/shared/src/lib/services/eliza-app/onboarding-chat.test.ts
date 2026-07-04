@@ -1,3 +1,4 @@
+// Exercises onboarding chat behavior with deterministic cloud-shared lib fixtures.
 import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import * as realCloudBindings from "../../runtime/cloud-bindings";
 import type { OnboardingChatMessage, OnboardingSession } from "./onboarding-chat";

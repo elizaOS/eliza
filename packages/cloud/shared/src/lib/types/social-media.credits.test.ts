@@ -1,3 +1,4 @@
+// Exercises social media.credits behavior with deterministic cloud-shared lib fixtures.
 import { describe, expect, test } from "vitest";
 import { calculatePostCredits, type MediaAttachment, type SocialPlatform } from "./social-media";
 

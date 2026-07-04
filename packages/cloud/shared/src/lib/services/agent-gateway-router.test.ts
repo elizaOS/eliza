@@ -1,3 +1,4 @@
+// Exercises agent gateway router behavior with deterministic cloud-shared lib fixtures.
 import { afterAll, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 
 import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";

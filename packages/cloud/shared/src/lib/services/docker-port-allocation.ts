@@ -1,3 +1,4 @@
+// Coordinates cloud service docker port allocation behavior behind route handlers.
 import { and, eq, sql } from "drizzle-orm";
 import { dbRead } from "../../db/helpers";
 import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";

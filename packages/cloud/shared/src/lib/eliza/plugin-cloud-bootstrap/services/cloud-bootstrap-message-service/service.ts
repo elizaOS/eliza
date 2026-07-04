@@ -431,7 +431,7 @@ export class CloudBootstrapMessageService implements IMessageService {
       }
     }
 
-    // Clean up response ID tracking (only if we still own it)
+    // Releases response ID tracking only while this request still owns it
     await cleanupLatestResponseId(runtime.agentId, message.roomId, responseId);
 
     const memoryService = runtime.getService("memory") as { hasStorage?: () => boolean } | null;

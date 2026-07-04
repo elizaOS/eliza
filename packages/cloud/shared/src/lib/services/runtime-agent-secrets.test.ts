@@ -1,3 +1,4 @@
+// Exercises runtime agent secrets behavior with deterministic cloud-shared lib fixtures.
 import { describe, expect, test } from "bun:test";
 import { mergeRuntimeAgentSecretsFromEnv } from "./runtime-agent-secrets";
 

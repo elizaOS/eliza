@@ -1,3 +1,4 @@
+// Coordinates cloud service payment requests default behavior behind route handlers.
 import { paymentRequestsRepository } from "../../db/repositories/payment-requests";
 import { createOxaPayPaymentAdapter } from "./payment-adapters/oxapay";
 import { createStripePaymentAdapter } from "./payment-adapters/stripe";

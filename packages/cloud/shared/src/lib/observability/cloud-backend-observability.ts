@@ -1,3 +1,4 @@
+// Defines cloud shared cloud backend observability behavior for backend service consumers.
 import { AsyncLocalStorage } from "node:async_hooks";
 
 const MAX_EVENTS = 1_000;

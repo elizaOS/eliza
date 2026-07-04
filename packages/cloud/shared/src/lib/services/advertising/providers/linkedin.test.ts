@@ -1,3 +1,4 @@
+// Exercises linkedin behavior with deterministic cloud-shared lib fixtures.
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import {
   adAccountsRepository,

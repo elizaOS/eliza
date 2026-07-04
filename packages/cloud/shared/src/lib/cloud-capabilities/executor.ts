@@ -1,3 +1,4 @@
+// Registers cloud capability executor behavior for hosted agent execution.
 import type { AppContext } from "../../types/cloud-worker-env";
 import { requireAdmin, requireUserOrApiKeyWithOrg } from "../auth/workers-hono-auth";
 import { type CloudCapability, type CloudCapabilityStatus, getCloudCapabilities } from "./registry";

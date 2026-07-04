@@ -1,3 +1,4 @@
+// Wires hosted Eliza agent validation behavior for cloud runtime services.
 import type { State } from "@elizaos/core";
 import { type McpProviderData, ResourceSelectionSchema, type ValidationResult } from "../types";
 import { validateJsonSchema } from "./json";

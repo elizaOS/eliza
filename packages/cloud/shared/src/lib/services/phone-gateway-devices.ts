@@ -1,3 +1,4 @@
+// Coordinates cloud service phone gateway devices behavior behind route handlers.
 import { sql } from "drizzle-orm";
 import { dbWrite } from "../../db/client";
 import { phoneGatewayDevices } from "../../db/schemas/phone-gateway-devices";

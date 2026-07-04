@@ -1,3 +1,4 @@
+// Exercises container job executors behavior with deterministic cloud-shared lib fixtures.
 import { describe, expect, test } from "bun:test";
 import type { AppContainerProvider, ProvisionedAppContainer } from "../app-container-provider";
 import {

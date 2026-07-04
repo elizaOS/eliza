@@ -1,3 +1,4 @@
+// Exercises registry behavior with deterministic cloud-shared lib fixtures.
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { containersEnv as actualContainersEnv } from "../../../config/containers-env";
 

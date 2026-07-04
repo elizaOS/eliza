@@ -1,3 +1,4 @@
+// Coordinates cloud service suno behavior behind route handlers.
 import { MUSIC_SNAPSHOT_PRICING, type PricingBillingSource } from "../../ai-pricing-definitions";
 import { getCachedExternalEntries } from "../cache";
 import { EXTERNAL_CACHE_TTL_MS, type PreparedPricingEntry } from "../types";

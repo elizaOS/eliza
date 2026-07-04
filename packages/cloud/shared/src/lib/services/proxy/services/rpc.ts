@@ -1,3 +1,4 @@
+// Coordinates cloud service rpc behavior behind route handlers.
 import { getCloudAwareEnv } from "../../../runtime/cloud-bindings";
 import { logger } from "../../../utils/logger";
 import { getProxyConfig } from "../config";

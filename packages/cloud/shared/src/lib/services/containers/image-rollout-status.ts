@@ -1,3 +1,4 @@
+// Coordinates cloud service image rollout status behavior behind route handlers.
 export type ImagePinning = "digest" | "tag" | "implicit-latest";
 
 const SHA256_DIGEST_RE = /^sha256:[a-f0-9]{64}$/i;

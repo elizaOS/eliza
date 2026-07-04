@@ -1,3 +1,4 @@
+// Exercises oauth behavior with deterministic cloud-shared lib fixtures.
 import { describe, expect, test } from "bun:test";
 import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { oauthAction } from "./oauth";

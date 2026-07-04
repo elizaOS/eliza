@@ -502,7 +502,7 @@ export class PayoutProcessorService {
     const network = redemption.network as SupportedNetwork;
 
     if (config.ENFORCE_PRICE_VALIDATION) {
-      // Optional legacy guard for fully automated payout deployments.
+      // Optional compatibility guard for fully automated payout deployments.
       if (new Date() > redemption.price_quote_expires_at) {
         return {
           success: false,
@@ -584,7 +584,7 @@ export class PayoutProcessorService {
       };
     }
 
-    // Asset-aware (#10732): USDC (6 decimals) or the legacy elizaOS token (9).
+    // Asset-aware (#10732): USDC (6 decimals) or the compatibility elizaOS token (9).
     // `eliza_amount` holds the payout-token amount in either case.
     const tokenConfig = getPayoutTokenConfig(network, redemption.asset);
     const tokenAddress = tokenConfig.address as Address;
@@ -710,7 +710,7 @@ export class PayoutProcessorService {
       getAccount,
       TokenAccountNotFoundError,
     } = require("@solana/spl-token") as typeof import("@solana/spl-token");
-    // Asset-aware (#10732): USDC SPL mint (6 decimals) or the legacy elizaOS mint (9).
+    // Asset-aware (#10732): USDC SPL mint (6 decimals) or the compatibility elizaOS mint (9).
     const tokenConfig = getPayoutTokenConfig("solana", redemption.asset);
     const mintAddress = new PublicKey(tokenConfig.address);
     const toAddress = new PublicKey(redemption.payout_address);

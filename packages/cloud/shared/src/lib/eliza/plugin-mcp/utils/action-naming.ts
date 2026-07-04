@@ -1,3 +1,4 @@
+// Wires hosted Eliza agent action naming behavior for cloud runtime services.
 function normalize(str: string): string {
   return str
     .toUpperCase()

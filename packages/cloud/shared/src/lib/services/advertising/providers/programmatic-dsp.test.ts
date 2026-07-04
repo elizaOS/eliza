@@ -1,3 +1,4 @@
+// Exercises programmatic dsp behavior with deterministic cloud-shared lib fixtures.
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { programmaticDspProvider } from "./programmatic-dsp";
 

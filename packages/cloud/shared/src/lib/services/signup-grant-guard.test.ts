@@ -1,3 +1,4 @@
+// Exercises signup grant guard behavior with deterministic cloud-shared lib fixtures.
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 
 // A minimal in-memory Postgres stand-in that models the load-bearing semantics:

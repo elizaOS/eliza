@@ -1,3 +1,4 @@
+// Exercises vercel ai gateway tools behavior with deterministic cloud-shared lib fixtures.
 import { describe, expect, test } from "bun:test";
 import { normalizeToolFunction, toGatewayTools } from "./vercel-ai-gateway";
 

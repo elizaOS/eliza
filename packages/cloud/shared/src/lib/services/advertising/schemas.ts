@@ -1,3 +1,4 @@
+// Coordinates cloud service schemas behavior behind route handlers.
 import { z } from "zod";
 
 export const AdPlatformSchema = z.enum([

@@ -1,3 +1,4 @@
+// Exercises container provider input behavior with deterministic cloud-shared lib fixtures.
 import { describe, expect, test } from "bun:test";
 import {
   APP_CONTAINER_DEFAULTS,

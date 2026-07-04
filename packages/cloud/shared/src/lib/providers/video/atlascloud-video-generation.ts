@@ -1,3 +1,4 @@
+// Defines cloud shared atlascloud video generation behavior for backend service consumers.
 import { getAiProviderConfigurationError } from "../language-model";
 import type {
   GeneratedVideo,

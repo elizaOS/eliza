@@ -1,3 +1,4 @@
+// Builds prompt fragment models helpers for cloud-hosted agents.
 export interface LLMModel {
   id: string;
   name: string;

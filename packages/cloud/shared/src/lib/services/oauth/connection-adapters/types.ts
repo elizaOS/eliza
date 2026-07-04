@@ -1,3 +1,4 @@
+// Coordinates cloud service types behavior behind route handlers.
 import type { OAuthConnection, TokenResult } from "../types";
 
 export interface ConnectionAdapter {

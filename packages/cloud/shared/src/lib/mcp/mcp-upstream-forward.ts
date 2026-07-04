@@ -1,3 +1,4 @@
+// Defines cloud shared mcp upstream forward behavior for backend service consumers.
 import { safeFetch } from "../security/safe-fetch";
 
 const HOP_BY_HOP = new Set([

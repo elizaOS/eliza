@@ -1,3 +1,4 @@
+// Coordinates cloud service bitrouter behavior behind route handlers.
 import { getProviderKey } from "../../../providers/provider-env";
 import { logger } from "../../../utils/logger";
 import { type PricingChargeUnit, type PricingProductFamily } from "../../ai-pricing-definitions";

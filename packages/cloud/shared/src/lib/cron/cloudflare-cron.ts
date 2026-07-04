@@ -38,7 +38,7 @@ export const CRON_FANOUT: Record<string, string[]> = {
     "/api/cron/sample-eliza-price",
     "/api/cron/process-redemptions",
     "/api/cron/cleanup-stuck-provisioning",
-    // node-disk-cleanup matches the daemon's 5-min infra-maintenance cadence;
+    // node-disk-maintenance matches the daemon's 5-min infra-maintenance cadence;
     // it's a daemon-superseded parity endpoint (the real prune runs in the
     // provisioning-worker, which owns the SSH credential + docker_nodes truth).
     "/api/v1/cron/node-disk-cleanup",

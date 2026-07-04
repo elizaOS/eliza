@@ -1,3 +1,4 @@
+// Coordinates cloud service agent github return behavior behind route handlers.
 import { escapeHtml } from "../utils/html";
 import type { ManagedAgentGithubMode } from "./eliza-agent-config";
 

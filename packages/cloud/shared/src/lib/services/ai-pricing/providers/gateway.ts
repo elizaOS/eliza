@@ -1,3 +1,4 @@
+// Coordinates cloud service gateway behavior behind route handlers.
 import { logger } from "../../../utils/logger";
 import type { PreparedPricingEntry, PriceLookupSource } from "../types";
 import { fetchAtlasCloudCatalogEntries } from "./atlascloud";

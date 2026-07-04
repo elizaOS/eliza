@@ -1,3 +1,4 @@
+// Coordinates cloud service sandbox provider behavior behind route handlers.
 import type { SandboxProvider } from "./sandbox-provider-types";
 
 export type {

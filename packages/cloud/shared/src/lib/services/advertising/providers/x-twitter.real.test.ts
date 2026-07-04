@@ -1,3 +1,4 @@
+// Exercises x twitter.real behavior with deterministic cloud-shared lib fixtures.
 import { describe, expect, test } from "bun:test";
 import { xTwitterAdsProvider } from "./x-twitter";
 

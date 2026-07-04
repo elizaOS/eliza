@@ -1,3 +1,4 @@
+// Wires hosted Eliza agent settings behavior for cloud runtime services.
 import { createHash } from "node:crypto";
 import type { AgentRuntime, Character } from "@elizaos/core";
 import { getStaticEmbeddingDimension } from "../../cache/edge-runtime-cache";

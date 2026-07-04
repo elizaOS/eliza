@@ -1,3 +1,4 @@
+// Coordinates cloud service sfx behavior behind route handlers.
 import { type PricingBillingSource, SFX_SNAPSHOT_PRICING } from "../../ai-pricing-definitions";
 import { EXTERNAL_CACHE_TTL_MS, type PreparedPricingEntry } from "../types";
 

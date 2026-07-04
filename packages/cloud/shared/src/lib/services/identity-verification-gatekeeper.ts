@@ -1,3 +1,4 @@
+// Coordinates cloud service identity verification gatekeeper behavior behind route handlers.
 import { getAddress, verifyMessage } from "viem";
 import type { ApprovalChallengePayload } from "../../db/repositories/approval-requests";
 import { logger } from "../utils/logger";

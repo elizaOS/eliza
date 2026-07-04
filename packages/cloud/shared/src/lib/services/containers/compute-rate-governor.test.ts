@@ -1,3 +1,4 @@
+// Exercises compute rate governor behavior with deterministic cloud-shared lib fixtures.
 import { describe, expect, test } from "bun:test";
 import type { ComputeAction } from "./compute-provider.js";
 import {

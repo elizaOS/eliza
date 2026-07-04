@@ -1,3 +1,4 @@
+// Coordinates cloud service app charge callbacks behavior behind route handlers.
 import { MemoryType } from "@elizaos/core";
 import { randomUUID } from "crypto";
 import { eq } from "drizzle-orm";

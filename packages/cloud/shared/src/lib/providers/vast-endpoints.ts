@@ -1,3 +1,4 @@
+// Defines cloud shared vast endpoints behavior for backend service consumers.
 import { getVastApiModelId, isVastNativeModel, VAST_NATIVE_MODELS } from "../models";
 import { getProviderKey } from "./provider-env";
 

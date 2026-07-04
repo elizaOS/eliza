@@ -1,3 +1,4 @@
+// Discovers cloud documentation api route discovery metadata for backend tooling.
 import fs from "node:fs/promises";
 import path from "node:path";
 

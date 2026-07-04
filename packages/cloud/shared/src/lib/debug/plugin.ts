@@ -158,7 +158,7 @@ async function handleRunEnded(payload: RunEndedPayload): Promise<void> {
   // Store the completed trace
   storeDebugTrace(trace);
 
-  // Clean up
+  // Releases debug plugin state
   removeCollector(runId);
 
   logger.info(

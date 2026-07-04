@@ -1,3 +1,4 @@
+// Exercises headscale client behavior with deterministic cloud-shared lib fixtures.
 import { afterEach, describe, expect, it } from "vitest";
 import { resolvePreAuthTtlMs } from "./headscale-client";
 

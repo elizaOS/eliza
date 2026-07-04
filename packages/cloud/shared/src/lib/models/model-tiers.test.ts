@@ -1,3 +1,4 @@
+// Exercises model tiers behavior with deterministic cloud-shared lib fixtures.
 import { describe, expect, test } from "bun:test";
 import {
   DEFAULT_IMAGE_MODEL_ID,

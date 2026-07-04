@@ -1,3 +1,4 @@
+// Defines cloud shared fal audio generation behavior for backend service consumers.
 import { falQueueOptionsFromApiKeys, runFalQueueJob } from "../fal-queue";
 import type { AudioGenRequest, AudioProvider, GeneratedAudio } from "./types";
 

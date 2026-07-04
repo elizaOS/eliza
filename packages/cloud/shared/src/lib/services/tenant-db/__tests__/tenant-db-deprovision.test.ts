@@ -1,3 +1,4 @@
+// Exercises tenant db deprovision behavior with deterministic cloud-shared lib fixtures.
 import { describe, expect, test } from "bun:test";
 import {
   deprovisionTenantDbForApp,

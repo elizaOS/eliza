@@ -1,3 +1,4 @@
+// Coordinates cloud service auto top up behavior behind route handlers.
 import { and, eq, sql } from "drizzle-orm";
 import { dbRead } from "../../db/client";
 import type { Organization } from "../../db/repositories";

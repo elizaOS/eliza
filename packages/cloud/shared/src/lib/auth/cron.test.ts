@@ -1,3 +1,4 @@
+// Exercises cron behavior with deterministic cloud-shared lib fixtures.
 import { describe, expect, it } from "vitest";
 import { timingSafeEqualSecret } from "./cron";
 

@@ -1,3 +1,4 @@
+// Wires hosted Eliza agent dynamic tool actions behavior for cloud runtime services.
 import {
   type Action,
   type ActionResult,

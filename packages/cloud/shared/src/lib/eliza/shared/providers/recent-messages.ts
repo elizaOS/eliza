@@ -1,3 +1,4 @@
+// Wires hosted Eliza agent recent messages behavior for cloud runtime services.
 import {
   addHeader,
   ChannelType,

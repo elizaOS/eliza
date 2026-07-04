@@ -185,7 +185,7 @@ export class RoomsService {
 
     const includeBuildRooms = options?.includeBuildRooms ?? false;
 
-    // Transform to API response format and filter out locked/legacy builder rooms
+    // Transform to API response format and filter out locked or compatibility builder rooms
     return roomsWithPreview
       .map((room) => {
         const metadata = room.metadata as { locked?: boolean } | null;

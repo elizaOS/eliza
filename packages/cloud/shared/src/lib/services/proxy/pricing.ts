@@ -1,3 +1,4 @@
+// Coordinates cloud service pricing behavior behind route handlers.
 import { servicePricingRepository } from "../../../db/repositories";
 import { cache } from "../../cache/client";
 import { logger } from "../../utils/logger";
@@ -5,7 +6,7 @@ import { getProxyConfig } from "./config";
 
 // Fallback used only when a service's DB pricing rows are missing (a data fault,
 // e.g. a partially-seeded DB or a new serviceId shipped without a seed). Kept at
-// the low end of real per-call prices (sub-cent; cf. the legacy proxy-billing
+// the low end of real per-call prices (sub-cent; cf. the proxy-billing compatibility
 // defaults of $0.0003–$0.001) so a pricing miss UNDER-charges rather than billing
 // $1.00/call (~1,000–20,000x the true price). Fail-safe for the customer.
 const FALLBACK_COST = 0.001;

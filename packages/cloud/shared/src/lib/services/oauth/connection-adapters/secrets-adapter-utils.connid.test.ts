@@ -1,3 +1,4 @@
+// Exercises secrets adapter utils.connid behavior with deterministic cloud-shared lib fixtures.
 import { describe, expect, it } from "vitest";
 import { generateConnectionId, verifyConnectionId } from "./secrets-adapter-utils";
 

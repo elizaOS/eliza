@@ -1,3 +1,4 @@
+// Defines cloud shared index behavior for backend service consumers.
 export { envelope, errorEnvelope, toCompatOpResult } from "./api/compat-envelope";
 export { containersEnv } from "./config/containers-env";
 export { runWithCloudBindingsAsync } from "./runtime/cloud-bindings";

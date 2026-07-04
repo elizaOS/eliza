@@ -1,3 +1,4 @@
+// Wires hosted Eliza agent webSearch behavior for cloud runtime services.
 import {
   Action,
   type ActionResult,

@@ -1,3 +1,4 @@
+// Exercises auto top up behavior with deterministic cloud-shared lib fixtures.
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 
 const selectMock = mock(() => ({

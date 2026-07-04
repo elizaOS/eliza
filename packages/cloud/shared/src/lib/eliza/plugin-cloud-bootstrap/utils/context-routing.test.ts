@@ -1,3 +1,4 @@
+// Exercises context routing behavior with deterministic cloud-shared lib fixtures.
 import type { Action } from "@elizaos/core";
 import { describe, expect, test } from "vitest";
 import {

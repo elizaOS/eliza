@@ -1,3 +1,4 @@
+// Defines cloud shared language model behavior for backend service consumers.
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createGatewayProvider, type GatewayProvider } from "@ai-sdk/gateway";
 import { createOpenAI } from "@ai-sdk/openai";

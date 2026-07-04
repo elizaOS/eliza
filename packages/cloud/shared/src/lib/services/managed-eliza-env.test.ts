@@ -1,3 +1,4 @@
+// Exercises managed eliza env behavior with deterministic cloud-shared lib fixtures.
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 
 mock.module("./api-keys", () => ({

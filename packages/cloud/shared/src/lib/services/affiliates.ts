@@ -1,3 +1,4 @@
+// Coordinates cloud service affiliates behavior behind route handlers.
 import { nanoid } from "nanoid";
 import { affiliatesRepository } from "../../db/repositories/affiliates";
 import type { AffiliateCode, UserAffiliate } from "../../db/schemas/affiliates";

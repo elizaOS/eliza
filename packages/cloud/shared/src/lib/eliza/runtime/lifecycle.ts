@@ -1,3 +1,4 @@
+// Wires hosted Eliza agent lifecycle behavior for cloud runtime services.
 import { type AgentRuntime, elizaLogger } from "@elizaos/core";
 
 const DEFAULT_RUNTIME_LIFECYCLE_TIMEOUT_MS = 10_000;

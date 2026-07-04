@@ -188,7 +188,7 @@ export class HeadscaleIntegration {
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error);
       logger.warn(`[headscale-integration] error cleaning up VPN for ${nodeName}:`, msg);
-      // Don't rethrow — cleanup failures should not block container deletion
+      // Do not rethrow because Headscale deletion failures should not block container deletion
     }
   }
 

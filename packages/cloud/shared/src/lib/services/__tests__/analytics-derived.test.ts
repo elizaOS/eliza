@@ -1,3 +1,4 @@
+// Exercises analytics derived behavior with deterministic cloud-shared lib fixtures.
 import { describe, expect, test } from "bun:test";
 import {
   deriveCostTrendingFields,

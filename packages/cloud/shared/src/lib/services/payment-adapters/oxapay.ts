@@ -68,7 +68,7 @@ export function createOxaPayPaymentAdapter(): PaymentProviderAdapter {
       // OxaPay → us settlement callback. The unified rail settles via
       // /api/v1/oxapay/webhook (markSettled on payment_requests); without an
       // explicit per-invoice callback OxaPay falls back to the merchant-panel
-      // default, which points at the legacy /api/crypto/webhook and can never
+      // default, which points at the previous /api/crypto/webhook and can never
       // settle a payment_request — the user would pay and never be credited.
       // So resolve it here and fail invoice creation loudly if we cannot.
       const env = getCloudAwareEnv();

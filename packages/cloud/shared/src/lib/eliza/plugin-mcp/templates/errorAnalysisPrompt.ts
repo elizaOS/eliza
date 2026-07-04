@@ -1,3 +1,4 @@
+// Wires hosted Eliza agent errorAnalysisPrompt behavior for cloud runtime services.
 export const errorAnalysisPrompt = `
 {{{mcpProvider.text}}}
 

@@ -1,3 +1,4 @@
+// Exercises eliza agent config behavior with deterministic cloud-shared lib fixtures.
 import { describe, expect, test } from "vitest";
 import {
   AGENT_CHARACTER_OWNERSHIP_KEY,

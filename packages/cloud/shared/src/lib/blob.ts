@@ -1,3 +1,4 @@
+// Defines cloud shared blob behavior for backend service consumers.
 import { getRuntimeR2Bucket, runtimeR2BucketConfigured } from "./storage/r2-runtime-binding";
 
 const DEFAULT_R2_PUBLIC_HOST = "blob.elizacloud.ai";

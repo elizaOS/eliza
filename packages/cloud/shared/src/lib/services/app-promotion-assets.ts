@@ -1,3 +1,4 @@
+// Coordinates cloud service app promotion assets behavior behind route handlers.
 import { generateText } from "ai";
 import { z } from "zod";
 import type { App } from "../../db/repositories";

@@ -1,3 +1,4 @@
+// Exercises rate limit orphaned counter behavior with deterministic cloud-shared lib fixtures.
 import { describe, expect, it } from "bun:test";
 import type { CompatibleRedis } from "../cache/redis-factory";
 import { checkUpstash } from "./rate-limit-hono-cloudflare";

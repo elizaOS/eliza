@@ -1,3 +1,4 @@
+// Defines cloud shared pricing behavior for backend service consumers.
 import { normalizeProviderKey } from "./providers/model-id-translation";
 import {
   calculateImageGenerationCostFromCatalog,

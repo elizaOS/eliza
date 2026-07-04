@@ -1,3 +1,4 @@
+// Wires hosted Eliza agent base behavior for cloud runtime services.
 import type { JSONSchema7, JSONSchema7Definition } from "json-schema";
 
 export type ModelProvider = "openai" | "anthropic" | "google" | "bitrouter" | "unknown";

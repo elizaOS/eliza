@@ -1,3 +1,4 @@
+// Wires hosted Eliza agent prompt presets behavior for cloud runtime services.
 import { logger } from "../utils/logger";
 /**
  * Prompt Presets - Environment-based prompt configurations for different app deployments

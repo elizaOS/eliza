@@ -1,3 +1,4 @@
+// Provides cloud utility hubspot mcp shared helpers shared by backend services.
 import { oauthService } from "../services/oauth";
 import { logger } from "./logger";
 

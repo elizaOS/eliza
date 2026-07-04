@@ -1,3 +1,4 @@
+// Exercises org image namespaces behavior with deterministic cloud-shared lib fixtures.
 import { describe, expect, test } from "bun:test";
 import { isCodingContainerImageAllowed } from "../coding-containers";
 import { getOrgImageNamespaces, normalizeOrgImageNamespaces } from "../org-image-namespaces";

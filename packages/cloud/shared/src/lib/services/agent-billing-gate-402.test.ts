@@ -1,3 +1,4 @@
+// Exercises agent billing gate 402 behavior with deterministic cloud-shared lib fixtures.
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { AGENT_PRICING } from "../constants/agent-pricing";
 import { logger } from "../utils/logger";

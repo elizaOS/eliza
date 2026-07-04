@@ -1,3 +1,4 @@
+// Defines cloud shared object store behavior for backend service consumers.
 import { GetObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import type { ObjectNamespace } from "./object-namespace";

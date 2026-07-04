@@ -1,3 +1,4 @@
+// Exercises analytics overview behavior with deterministic cloud-shared lib fixtures.
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import * as realUsageRecords from "../../../db/repositories/usage-records";
 import * as realCacheClient from "../../cache/client";

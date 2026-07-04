@@ -1,3 +1,4 @@
+// Wires hosted Eliza agent race tracking behavior for cloud runtime services.
 import { cache } from "../../../cache/client";
 
 const RESPONSE_ID_TTL_SECONDS = 60 * 60;

@@ -1,3 +1,4 @@
+// Wires hosted Eliza agent json behavior for cloud runtime services.
 import Ajv from "ajv";
 import JSON5 from "json5";
 

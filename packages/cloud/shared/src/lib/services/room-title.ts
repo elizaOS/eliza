@@ -1,3 +1,4 @@
+// Coordinates cloud service room title behavior behind route handlers.
 import { generateText } from "ai";
 import { memoriesRepository, roomsRepository } from "../../db/repositories";
 import { getLanguageModel } from "../providers/language-model";
@@ -63,7 +64,7 @@ Title:`;
       prompt,
     });
 
-    // Clean up the generated title
+    // Normalizes the generated title
     title = result.text
       .trim()
       .replace(/^["']|["']$/g, "") // Remove quotes

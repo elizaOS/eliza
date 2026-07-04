@@ -1,3 +1,4 @@
+// Exercises token refresh.expiry behavior with deterministic cloud-shared lib fixtures.
 import { describe, expect, it } from "vitest";
 import type { SocialCredentials } from "../../types/social-media";
 import { isTokenExpired } from "./token-refresh";

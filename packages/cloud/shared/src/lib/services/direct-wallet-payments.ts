@@ -1,3 +1,4 @@
+// Coordinates cloud service direct wallet payments behavior behind route handlers.
 import {
   createAssociatedTokenAccountInstruction,
   createTransferCheckedInstruction,
@@ -312,7 +313,7 @@ function directPaymentConfig(
   if (network === "bsc") {
     const receiveAddress = envString(env, "CRYPTO_DIRECT_BSC_RECEIVE_ADDRESS");
     const secureAddress = envString(env, "CRYPTO_DIRECT_BSC_SECURE_ADDRESS");
-    // Backward-compat: legacy CRYPTO_DIRECT_BSC_TOKEN_ADDRESS overrides the
+    // Backward-compatibility: CRYPTO_DIRECT_BSC_TOKEN_ADDRESS overrides the
     // default USDT contract in the tokens list, in case an env has been
     // pointed at a non-standard contract.
     const usdtOverride = envString(env, "CRYPTO_DIRECT_BSC_TOKEN_ADDRESS");
@@ -656,7 +657,7 @@ async function verifyPayerProofOrThrow(params: {
   }
   if (direct.network !== "solana" && !direct.payerProofTypedData) {
     // Rows from the short-lived personal-sign era carry a message but no
-    // EIP-712 payload — same legacy shape, same manual-reconcile path.
+    // EIP-712 payload uses the same compatibility shape and manual-reconcile path.
     throwLegacyPaymentMissingProof({
       paymentId: params.paymentId,
       network: direct.network,
@@ -1680,7 +1681,7 @@ export class DirectWalletPaymentsService {
         // payment row is provably unverifiable) and retrying can never change
         // the outcome: reverted tx, wrong sender/recipient/amount, tampered
         // quote, payer-proof mismatch, hash already credited to another
-        // payment, or an unverifiable legacy row. Everything OUTSIDE this
+        // payment, or an unverifiable compatibility row. Everything OUTSIDE this
         // allowlist retries — a transient RPC failure (503 / timeout /
         // rate-limit thrown by getTransactionReceipt / getTransaction /
         // getParsedTransaction, e.g. viem HttpRequestError or TimeoutError)

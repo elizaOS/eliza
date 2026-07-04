@@ -1,3 +1,4 @@
+// Exercises app analytics behavior with deterministic cloud-shared lib fixtures.
 import { describe, expect, test } from "bun:test";
 import type { AppRequest } from "../../db/repositories/apps";
 import { AppAnalyticsService } from "./app-analytics";

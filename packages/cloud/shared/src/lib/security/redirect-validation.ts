@@ -1,3 +1,4 @@
+// Defines cloud shared redirect validation behavior for backend service consumers.
 import { isAllowedOrigin } from "./origin-validation";
 
 const DEFAULT_PLATFORM_REDIRECT_ORIGINS = [

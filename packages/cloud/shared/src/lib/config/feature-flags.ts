@@ -1,3 +1,4 @@
+// Defines cloud configuration feature flags invariants for backend services.
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 
 export type FeatureFlag =

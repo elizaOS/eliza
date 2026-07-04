@@ -1,3 +1,4 @@
+// Exercises classify container health behavior with deterministic cloud-shared lib fixtures.
 import { describe, expect, test } from "bun:test";
 import { classifyContainerHealth } from "../admin-infrastructure";
 

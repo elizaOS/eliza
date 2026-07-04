@@ -1,3 +1,4 @@
+// Defines cloud shared cloud api behavior for backend service consumers.
 export type IsoDateString = string;
 export type DateLike = Date | IsoDateString;
 

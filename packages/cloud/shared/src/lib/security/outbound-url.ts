@@ -1,3 +1,4 @@
+// Defines cloud shared outbound url behavior for backend service consumers.
 import type { LookupAddress } from "node:dns";
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";

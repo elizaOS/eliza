@@ -254,7 +254,7 @@ export async function verifyStewardTokenCached(
     }
 
     if (cached) {
-      // Expired entry, clean up
+      // Removes expired cache entries
       await cache.del(cacheKey);
     }
 

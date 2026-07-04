@@ -1,3 +1,4 @@
+// Coordinates cloud service payment requests behavior behind route handlers.
 import type {
   PaymentRequestRow,
   PaymentRequestsRepository,

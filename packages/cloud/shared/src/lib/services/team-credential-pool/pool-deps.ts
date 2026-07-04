@@ -133,7 +133,7 @@ export class DrizzleAccountPoolDeps implements AccountPoolDeps {
       });
     } catch (err) {
       // The pool row is already gone (the credential can never be selected
-      // again); an orphaned vault secret is a cleanup concern, not a failure.
+      // again); an orphaned vault secret is a deletion concern, not a failure.
       logger.warn("[DrizzleAccountPoolDeps] secret cleanup failed after credential delete", {
         organizationId: this.organizationId,
         credentialId: accountId,

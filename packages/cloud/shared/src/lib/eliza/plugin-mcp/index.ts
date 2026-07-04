@@ -1,3 +1,4 @@
+// Wires hosted Eliza agent index behavior for cloud runtime services.
 import { type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
 import { mcpAction } from "./actions/mcp";
 import { provider } from "./provider";

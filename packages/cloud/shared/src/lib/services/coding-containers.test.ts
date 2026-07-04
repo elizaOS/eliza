@@ -1,3 +1,4 @@
+// Exercises coding containers behavior with deterministic cloud-shared lib fixtures.
 import { describe, expect, it } from "bun:test";
 import { containersEnv } from "../config/containers-env";
 import { runWithCloudBindings } from "../runtime/cloud-bindings";

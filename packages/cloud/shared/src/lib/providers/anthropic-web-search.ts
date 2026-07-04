@@ -1,3 +1,4 @@
+// Defines cloud shared anthropic web search behavior for backend service consumers.
 import { anthropic as anthropicProvider } from "@ai-sdk/anthropic";
 
 const SUPPORTED_ANTHROPIC_WEB_SEARCH_MODELS = ["claude-sonnet-4-6", "claude-opus-4-7"] as const;

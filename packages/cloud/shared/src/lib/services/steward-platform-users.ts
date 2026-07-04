@@ -1,3 +1,4 @@
+// Coordinates cloud service steward platform users behavior behind route handlers.
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { resolveServerStewardApiUrlFromEnv } from "../steward-url";
 import { logger } from "../utils/logger";

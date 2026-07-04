@@ -1,3 +1,4 @@
+// Exercises invite tokens behavior with deterministic cloud-shared lib fixtures.
 import { describe, expect, test } from "vitest";
 import { generateInviteToken, hashInviteToken, verifyInviteToken } from "./invite-tokens";
 

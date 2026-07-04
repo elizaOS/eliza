@@ -1,3 +1,4 @@
+// Coordinates cloud service eliza provision lock behavior behind route handlers.
 import { sql } from "drizzle-orm";
 
 /**

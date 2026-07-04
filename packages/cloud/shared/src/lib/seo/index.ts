@@ -1,3 +1,4 @@
+// Defines cloud shared index behavior for backend service consumers.
 export { ROUTE_METADATA, SEO_CONSTANTS } from "./constants";
 export {
   generateRobotsFile,

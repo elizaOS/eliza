@@ -1,3 +1,4 @@
+// Defines cloud shared registry behavior for backend service consumers.
 import type { PricingBillingSource } from "../../services/ai-pricing-definitions";
 import { elevenLabsAudioProvider } from "./elevenlabs-audio-generation";
 import { falAudioProvider } from "./fal-audio-generation";

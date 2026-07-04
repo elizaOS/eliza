@@ -1,3 +1,4 @@
+// Wires hosted Eliza agent google behavior for cloud runtime services.
 import { McpToolCompatibility, type ModelInfo } from "../base";
 
 export class GoogleMcpCompatibility extends McpToolCompatibility {

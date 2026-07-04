@@ -1,3 +1,4 @@
+// Exercises language model openrouter primary behavior with deterministic cloud-shared lib fixtures.
 import { afterEach, describe, expect, mock, test } from "bun:test";
 
 const ORIGINAL_FETCH = globalThis.fetch;

@@ -1,3 +1,4 @@
+// Coordinates cloud service oauth intents behavior behind route handlers.
 import type { OAuthIntentRow, OAuthIntentsRepository } from "../../db/repositories/oauth-intents";
 import { logger } from "../utils/logger";
 

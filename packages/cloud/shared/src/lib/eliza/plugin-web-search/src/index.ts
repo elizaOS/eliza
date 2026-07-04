@@ -1,3 +1,4 @@
+// Wires hosted Eliza agent index behavior for cloud runtime services.
 import { webSearch } from "./actions/webSearch";
 import { WebSearchService } from "./services/searchService";
 

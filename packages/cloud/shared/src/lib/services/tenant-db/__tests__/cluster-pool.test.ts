@@ -1,3 +1,4 @@
+// Exercises cluster pool behavior with deterministic cloud-shared lib fixtures.
 import { describe, expect, test } from "bun:test";
 import {
   type ClusterCandidate,

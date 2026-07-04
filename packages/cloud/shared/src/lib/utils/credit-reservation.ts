@@ -1,3 +1,4 @@
+// Provides cloud utility credit reservation helpers shared by backend services.
 import type { CreditReconciliationResult, CreditReservation } from "../services/credits";
 
 /**

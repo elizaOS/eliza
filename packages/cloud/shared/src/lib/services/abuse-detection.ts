@@ -1,3 +1,4 @@
+// Coordinates cloud service abuse detection behavior behind route handlers.
 import { and, eq, gte, or, sql } from "drizzle-orm";
 import { dbRead, dbWrite } from "../../db/client";
 import { organizations } from "../../db/schemas/organizations";

@@ -1,3 +1,4 @@
+// Defines cloud shared register typed tool behavior for backend service consumers.
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
 export type TextToolResult = {

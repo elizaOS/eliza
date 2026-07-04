@@ -1,3 +1,4 @@
+// Wires hosted Eliza agent index behavior for cloud runtime services.
 import type { Plugin } from "@elizaos/core";
 import { oauthAction } from "./actions/oauth";
 import { userAuthStatusProvider } from "./providers/user-auth-status";

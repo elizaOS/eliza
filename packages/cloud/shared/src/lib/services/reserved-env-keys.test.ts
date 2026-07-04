@@ -1,3 +1,4 @@
+// Exercises reserved env keys behavior with deterministic cloud-shared lib fixtures.
 import { describe, expect, test } from "vitest";
 import {
   findReservedEnvKeys,

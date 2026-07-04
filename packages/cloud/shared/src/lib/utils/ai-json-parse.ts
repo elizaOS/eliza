@@ -1,3 +1,4 @@
+// Provides cloud utility ai json parse helpers shared by backend services.
 import { z } from "zod";
 
 function extractJsonFromAiResponse(text: string): string {

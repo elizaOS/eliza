@@ -1,3 +1,4 @@
+// Provides cloud utility cors helpers shared by backend services.
 import { APP_LOCAL_ORIGIN_RE, APP_SCHEME_ORIGIN_RE, CORS_ALLOW_HEADERS } from "../cors-constants";
 
 const ALLOWED_ORIGINS = [

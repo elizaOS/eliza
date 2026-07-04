@@ -1,3 +1,4 @@
+// Coordinates cloud service anonymous sessions behavior behind route handlers.
 import { anonymousSessionsRepository } from "../../db/repositories";
 import type { AnonymousSession } from "../../db/schemas";
 

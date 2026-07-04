@@ -1,3 +1,4 @@
+// Coordinates cloud service calendar behavior behind route handlers.
 import { applyTimeZone } from "../../utils/google-mcp-shared";
 import type { OAuthConnectionRole } from "../oauth/types";
 import {

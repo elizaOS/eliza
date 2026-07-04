@@ -1,3 +1,4 @@
+// Exercises atlascloud video generation behavior with deterministic cloud-shared lib fixtures.
 import { afterEach, describe, expect, test } from "bun:test";
 import {
   atlasCloudVideoProvider,

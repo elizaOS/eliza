@@ -1,3 +1,4 @@
+// Exercises signup grant amount behavior with deterministic cloud-shared lib fixtures.
 import { afterEach, describe, expect, test } from "bun:test";
 import { INITIAL_FREE_CREDITS } from "./services/wallet-signup";
 import { DEFAULT_INITIAL_CREDITS, getInitialCredits } from "./steward-sync";

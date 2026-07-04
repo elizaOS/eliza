@@ -1,3 +1,4 @@
+// Exercises app database mode behavior with deterministic cloud-shared lib fixtures.
 import { describe, expect, test } from "bun:test";
 import {
   DEFAULT_APP_DATABASE_MODE,

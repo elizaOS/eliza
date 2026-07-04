@@ -1,3 +1,4 @@
+// Exercises whatsapp api behavior with deterministic cloud-shared lib fixtures.
 import crypto from "node:crypto";
 import { describe, expect, test } from "vitest";
 import {

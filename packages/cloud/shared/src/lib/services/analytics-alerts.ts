@@ -1,3 +1,4 @@
+// Coordinates cloud service analytics alerts behavior behind route handlers.
 import {
   type AnalyticsAlertEvent,
   analyticsAlertEventsRepository,

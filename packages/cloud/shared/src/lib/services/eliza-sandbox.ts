@@ -278,7 +278,7 @@ const SNAPSHOT_FETCH_TIMEOUT_MS = 120_000;
 const SNAPSHOT_RESTORE_TIMEOUT_MS = 120_000;
 const UPGRADE_RUNTIME_HEALTH_GATE_TIMEOUT_MS = 30_000;
 // Hard cap on the container+VPN teardown during agent delete. The underlying
-// docker rm (60s) and headscale cleanup (15s) are each internally bounded, but
+// docker rm (60s) and headscale deletion (15s) are each internally bounded, but
 // an EARLY hang (SSH connect / provider init) was not — and a single stuck node
 // could then hang the delete past the 300s job watchdog and wedge the whole
 // provisioning worker. Generous over the internal caps, well under the watchdog.
@@ -1227,7 +1227,7 @@ export class ElizaSandboxService {
       };
     }
 
-    // Character cleanup used to live in the HTTP DELETE handler. Now that
+    // Character deletion used to live in the HTTP DELETE handler. Now that
     // delete is async via the queue, the daemon owns this step so orphan
     // characters do not pile up when the deletion completes outside of an
     // HTTP request context. Best-effort: a failure here leaves an orphan
@@ -1332,7 +1332,7 @@ export class ElizaSandboxService {
     let lastError: string = "Unknown error";
 
     // Materialize the stored env for the container: BYO secrets are encrypted
-    // at rest (#11332); legacy plaintext values pass through unchanged. A
+    // at rest (#11332); compatibility plaintext values pass through unchanged. A
     // decrypt failure fails the provision (never boot a container with
     // ciphertext standing in for a secret) and is surfaced like any other
     // pre-provision failure.
@@ -1502,7 +1502,7 @@ export class ElizaSandboxService {
           healthUrl: handle.healthUrl,
         };
       } catch (err) {
-        // Ghost container cleanup: provider.create() succeeded but DB update or health check failed
+        // Ghost container deletion: provider.create() succeeded but DB update or health check failed
         const msg = err instanceof Error ? err.message : String(err);
         lastError = msg;
 
@@ -2324,7 +2324,7 @@ export class ElizaSandboxService {
       // the canonical surface served by packages/app-core/deploy/cloud-agent-shared.ts.
       // It returns 200 with {result:{text}} on success, 500 with
       // {error:{message}} on runtime failures (e.g. no LLM key). When an
-      // image doesn't expose /bridge (legacy public ghcr.io/elizaos/eliza
+      // image doesn't expose /bridge (public ghcr.io/elizaos/eliza compatibility
       // image) it 404s and we fall through to the REST attempts below.
       () => this.bridgeNativeJsonRpcSend(rec, rpc, params),
       () => this.bridgeConversationMessageSend(rec, rpc, params),

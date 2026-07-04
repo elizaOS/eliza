@@ -1,3 +1,4 @@
+// Defines cloud shared provider env behavior for backend service consumers.
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 
 function isPlaceholderProviderKey(value: string | undefined): boolean {

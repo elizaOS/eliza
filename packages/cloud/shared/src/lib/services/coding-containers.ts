@@ -1,3 +1,4 @@
+// Coordinates cloud service coding containers behavior behind route handlers.
 export type {
   CloudCodingContainerSession,
   CloudCodingContainerStatus,

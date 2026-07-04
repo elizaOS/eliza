@@ -1,3 +1,4 @@
+// Exercises x402 facilitator behavior with deterministic cloud-shared lib fixtures.
 import { expect, mock, test } from "bun:test";
 
 const NETWORK = "eip155:8453";

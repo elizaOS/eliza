@@ -1,3 +1,4 @@
+// Coordinates cloud service rate limit behavior behind route handlers.
 import type { SocialPlatform } from "../../types/social-media";
 import { logger } from "../../utils/logger";
 

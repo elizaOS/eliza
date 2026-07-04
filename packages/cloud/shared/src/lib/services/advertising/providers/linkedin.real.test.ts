@@ -1,3 +1,4 @@
+// Exercises linkedin.real behavior with deterministic cloud-shared lib fixtures.
 import { describe, expect, test } from "bun:test";
 import { logger } from "../../../utils/logger";
 import { linkedinAdsProvider } from "./linkedin";

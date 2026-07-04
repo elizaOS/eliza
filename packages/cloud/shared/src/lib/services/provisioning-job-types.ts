@@ -1,3 +1,4 @@
+// Coordinates cloud service provisioning job types behavior behind route handlers.
 export const JOB_TYPES = {
   AGENT_PROVISION: "agent_provision",
   AGENT_DELETE: "agent_delete",

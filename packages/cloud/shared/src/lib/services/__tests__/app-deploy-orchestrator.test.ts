@@ -1,3 +1,4 @@
+// Exercises app deploy orchestrator behavior with deterministic cloud-shared lib fixtures.
 import { describe, expect, test } from "bun:test";
 import {
   type AppDeployDeps,

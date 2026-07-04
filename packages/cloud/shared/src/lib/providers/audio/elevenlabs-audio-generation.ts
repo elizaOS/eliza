@@ -1,3 +1,4 @@
+// Defines cloud shared elevenlabs audio generation behavior for backend service consumers.
 import type { AudioGenRequest, AudioProvider, GeneratedAudio } from "./types";
 
 const DEFAULT_BASE_URL = "https://api.elevenlabs.io";

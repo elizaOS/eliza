@@ -1,3 +1,4 @@
+// Exercises paths.mount path behavior with deterministic cloud-shared lib fixtures.
 import { describe, expect, it } from "vitest";
 import { DEFAULT_VOLUME_MOUNT_PATH } from "./constants";
 import { validateContainerMountPath } from "./paths";

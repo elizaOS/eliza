@@ -1,3 +1,4 @@
+// Provides cloud utility request timeout helpers shared by backend services.
 const MIN_ROUTE_TIMEOUT_MS = 1_000;
 const ROUTE_TIMEOUT_BUFFER_MS = 10_000;
 

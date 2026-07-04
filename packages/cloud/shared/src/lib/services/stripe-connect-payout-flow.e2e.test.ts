@@ -1,3 +1,4 @@
+// Exercises stripe connect payout flow.e2e behavior with deterministic cloud-shared lib fixtures.
 import { describe, expect, it } from "vitest";
 import {
   type ConnectPayoutStatus,

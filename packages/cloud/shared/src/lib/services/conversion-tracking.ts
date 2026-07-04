@@ -1,3 +1,4 @@
+// Coordinates cloud service conversion tracking behavior behind route handlers.
 import { and, desc, eq, sql } from "drizzle-orm";
 import { dbRead, dbWrite } from "../../db/client";
 import { adCampaigns } from "../../db/schemas/ad-campaigns";

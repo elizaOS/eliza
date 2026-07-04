@@ -1,3 +1,4 @@
+// Coordinates cloud service crypto payments behavior behind route handlers.
 import Decimal from "decimal.js";
 import { eq } from "drizzle-orm";
 import { validate as uuidValidate } from "uuid";

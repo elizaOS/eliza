@@ -1,3 +1,4 @@
+// Wires hosted Eliza agent model preferences behavior for cloud runtime services.
 export const MODEL_PREFERENCE_KEYS = [
   "nanoModel",
   "smallModel",

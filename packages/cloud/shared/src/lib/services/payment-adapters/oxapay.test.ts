@@ -1,3 +1,4 @@
+// Exercises oxapay behavior with deterministic cloud-shared lib fixtures.
 import { beforeAll, describe, expect, test } from "bun:test";
 import { IgnoredWebhookEvent } from "../payment-webhook-errors";
 import { createOxaPayPaymentAdapter } from "./oxapay";

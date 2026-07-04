@@ -1,3 +1,4 @@
+// Defines cloud shared dashboard agent stats behavior for backend service consumers.
 import type { AgentStats } from "../cache/agent-state-cache";
 
 /**

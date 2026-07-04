@@ -1,3 +1,4 @@
+// Exercises provisioning worker health behavior with deterministic cloud-shared lib fixtures.
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import type { CompatibleRedis } from "../cache/redis-factory";
 import { runWithCloudBindingsAsync } from "../runtime/cloud-bindings";

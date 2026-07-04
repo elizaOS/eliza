@@ -1,3 +1,4 @@
+// Exercises steward url behavior with deterministic cloud-shared lib fixtures.
 import { afterEach, describe, expect, test } from "bun:test";
 import { resolveBrowserStewardApiUrl } from "./steward-url";
 

@@ -1,3 +1,4 @@
+// Coordinates cloud service meta behavior behind route handlers.
 import { extractErrorMessage } from "../../../utils/error-handling";
 import { logger } from "../../../utils/logger";
 import { assertSafeAdMediaUrl, downloadAdMedia, mediaFileName } from "../media-utils";
@@ -98,7 +99,7 @@ export function mapBidControlsToMetaAdSet(input: CreateCampaignInput): {
 }
 
 function isRetryableError(code: number): boolean {
-  // Rate limit errors (code 4, 17, 32, 613) and temporary errors (code 1, 2)
+  // Rate limit errors (code 4, 17, 32, 613) and transient errors (code 1, 2)
   return [1, 2, 4, 17, 32, 613].includes(code);
 }
 

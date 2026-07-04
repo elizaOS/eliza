@@ -1,3 +1,4 @@
+// Exercises programmatic dsp.real behavior with deterministic cloud-shared lib fixtures.
 import { describe, expect, test } from "vitest";
 import { programmaticDspProvider } from "./programmatic-dsp";
 

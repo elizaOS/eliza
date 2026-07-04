@@ -1,3 +1,4 @@
+// Exercises music generation pricing behavior with deterministic cloud-shared lib fixtures.
 import { beforeEach, expect, mock, test } from "bun:test";
 import { buildMusicSnapshotEntries } from "./providers/suno";
 import type { PreparedPricingEntry } from "./types";

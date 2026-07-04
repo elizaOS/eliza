@@ -1,3 +1,4 @@
+// Exercises fal video generation behavior with deterministic cloud-shared lib fixtures.
 import { describe, expect, mock, test } from "bun:test";
 
 const falActual = require("@fal-ai/client") as typeof import("@fal-ai/client");

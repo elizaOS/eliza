@@ -1,3 +1,4 @@
+// Coordinates cloud service agent gateway router behavior behind route handlers.
 import { createHash, randomUUID } from "crypto";
 import { and, desc, eq } from "drizzle-orm";
 import { dbWrite } from "../../db/client";

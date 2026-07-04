@@ -1,3 +1,4 @@
+// Wires hosted Eliza agent agent behavior for cloud runtime services.
 import { getDefaultModels, getElizaCloudApiUrl } from "./config";
 
 // messageExamples uses grouped MessageExample[][] rows; createCharacter() normalizes it at

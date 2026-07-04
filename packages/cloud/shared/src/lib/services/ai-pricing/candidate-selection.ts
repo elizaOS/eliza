@@ -1,3 +1,4 @@
+// Coordinates cloud service candidate selection behavior behind route handlers.
 import type { PricingDimensions } from "../../../db/schemas/ai-pricing";
 import {
   expandBitRouterModelIdCandidates,

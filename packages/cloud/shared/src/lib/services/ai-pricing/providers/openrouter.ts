@@ -1,3 +1,4 @@
+// Coordinates cloud service openrouter behavior behind route handlers.
 import { logger } from "../../../utils/logger";
 import { inferProviderFromCanonicalModel, parseNumericPrice } from "../dimensions";
 import {

@@ -1,3 +1,4 @@
+// Exercises provisioning jobs agent downgrade behavior with deterministic cloud-shared lib fixtures.
 import { describe, expect, spyOn, test } from "bun:test";
 
 import { jobsRepository } from "../../db/repositories/jobs";

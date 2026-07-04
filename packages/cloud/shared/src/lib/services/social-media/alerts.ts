@@ -1,3 +1,4 @@
+// Coordinates cloud service alerts behavior behind route handlers.
 import { logger } from "../../utils/logger";
 
 type AlertSeverity = "critical" | "high" | "medium" | "low";

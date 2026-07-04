@@ -1,3 +1,4 @@
+// Exercises vast behavior with deterministic cloud-shared lib fixtures.
 import { afterEach, describe, expect, mock, test } from "bun:test";
 import type { OpenAIChatRequest } from "./types";
 import { VastProvider } from "./vast";

@@ -1,3 +1,4 @@
+// Coordinates cloud service secrets behavior behind route handlers.
 import {
   type AppSecretRequirement,
   appSecretRequirementsRepository,

@@ -1,3 +1,4 @@
+// Exercises safe fetch behavior with deterministic cloud-shared lib fixtures.
 import { EventEmitter } from "node:events";
 import type { ClientRequest, IncomingMessage } from "node:http";
 

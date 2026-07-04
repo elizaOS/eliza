@@ -1,3 +1,4 @@
+// Exercises compat envelope behavior with deterministic cloud-shared lib fixtures.
 import { describe, expect, test } from "bun:test";
 import type { AgentSandbox } from "../../db/schemas/agent-sandboxes";
 import { toCompatStatus } from "./compat-envelope";

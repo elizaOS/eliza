@@ -1,3 +1,4 @@
+// Wires hosted Eliza agent initializer behavior for cloud runtime services.
 import {
   AgentRuntime,
   type Character,

@@ -1,3 +1,4 @@
+// Wires hosted Eliza agent stable serialize behavior for cloud runtime services.
 export function stableSerialize(value: unknown): string {
   return serializeStableValue(value, new WeakSet<object>());
 }

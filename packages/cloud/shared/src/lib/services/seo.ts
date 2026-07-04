@@ -1,3 +1,4 @@
+// Coordinates cloud service seo behavior behind route handlers.
 import { Buffer } from "node:buffer";
 import { generateText } from "ai";
 import { eq } from "drizzle-orm";

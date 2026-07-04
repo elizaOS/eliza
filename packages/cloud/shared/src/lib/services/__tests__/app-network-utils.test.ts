@@ -1,3 +1,4 @@
+// Exercises app network utils behavior with deterministic cloud-shared lib fixtures.
 import { describe, expect, test } from "bun:test";
 import {
   appNetworkName,

@@ -246,7 +246,7 @@ export async function removePooledCredential(params: {
     await secretsService.delete(row.secret_id, params.organizationId, params.audit);
   } catch (err) {
     // Pool row is gone — the credential can never be selected again. An
-    // orphaned vault secret is logged for cleanup, not surfaced as a failure.
+    // orphaned vault secret is logged for deletion, not surfaced as a failure.
     logger.warn("[TeamCredentialPool] secret cleanup failed after credential delete", {
       organizationId: params.organizationId,
       credentialId: params.credentialId,

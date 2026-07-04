@@ -1,3 +1,4 @@
+// Exercises ad campaign dayparting behavior with deterministic cloud-shared lib fixtures.
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { adAccountsRepository } from "../../../db/repositories/ad-accounts";
 import { adCampaignsRepository } from "../../../db/repositories/ad-campaigns";

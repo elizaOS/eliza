@@ -1,3 +1,4 @@
+// Wires hosted Eliza agent types behavior for cloud runtime services.
 import type { Service } from "@elizaos/core";
 
 export interface IWebSearchService extends Service {

@@ -1,3 +1,4 @@
+// Defines cloud shared groq behavior for backend service consumers.
 import { GROQ_NATIVE_MODELS, getGroqApiModelId } from "../models";
 import { logger } from "../utils/logger";
 import type {

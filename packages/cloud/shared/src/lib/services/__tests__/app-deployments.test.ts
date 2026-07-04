@@ -1,3 +1,4 @@
+// Exercises app deployments behavior with deterministic cloud-shared lib fixtures.
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import type { AppDeploymentStatus } from "../app-deployments-helpers";
 

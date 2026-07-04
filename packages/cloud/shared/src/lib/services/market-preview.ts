@@ -1,3 +1,4 @@
+// Coordinates cloud service market preview behavior behind route handlers.
 import type {
   CoinGeckoMarketRecord,
   WalletMarketOverviewResponse,

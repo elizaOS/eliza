@@ -1,3 +1,4 @@
+// Exercises app docker cmd behavior with deterministic cloud-shared lib fixtures.
 import { describe, expect, test } from "bun:test";
 import { buildAppDockerCreateCmd } from "../app-docker-cmd";
 import type { CreateContainerInput } from "../containers/hetzner-client/types";

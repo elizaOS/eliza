@@ -624,7 +624,7 @@ function buildPlatformAgentPath(tenantId: string, agentId?: string): string {
 }
 
 // Best-effort `curl -X DELETE` against Steward's platform agent endpoint for
-// cleanup paths (failed container create, missing Headscale registration).
+// deletion paths (failed container create, missing Headscale registration).
 // Uses the platform-key path so the daemon authenticates as a platform
 // operator instead of impersonating a tenant owner session — Steward's
 // `/agents/:id` (tenant-scoped) route requires `session-jwt + tenantRole
@@ -699,7 +699,7 @@ async function registerAgentWithSteward(
   tenantId: string,
   apiKey?: string,
 ): Promise<string> {
-  // The legacy tenant-scoped POST /agents route requires a session-jwt with
+  // The tenant-scoped POST /agents compatibility route requires a session-jwt with
   // owner|admin role (Steward `requireTenantAdminSession`), which a daemon
   // cannot satisfy. Switch to the platform-key path Steward exposes for
   // exactly this use-case: POST /platform/tenants/:id/agents (scope
@@ -844,7 +844,7 @@ export class DockerSandboxProvider implements SandboxProvider {
           throw lastError;
         }
 
-        // Clean up ghost container from the failed attempt
+        // Deletes the ghost container from the failed attempt
         const containerName = getContainerName(config.agentId);
         logger.warn(
           `[docker-sandbox] Port collision on attempt ${attempt}/${MAX_ATTEMPTS} for ${containerName}, cleaning up and retrying...`,
@@ -985,7 +985,7 @@ export class DockerSandboxProvider implements SandboxProvider {
     // surfacing as "CLOUD CONNECTION NEEDS ATTENTION" in the desktop UI for
     // every newly-signed-in user. When `STEWARD_PLATFORM_KEYS` is not
     // configured (non-prod environments) this is a no-op that leaves the
-    // legacy fallback behavior intact.
+    // compatibility fallback behavior intact.
     const stewardTenant = organizationId
       ? await ensureStewardTenant(organizationId)
       : await resolveStewardTenantCredentials({ organizationId });
@@ -1150,7 +1150,7 @@ export class DockerSandboxProvider implements SandboxProvider {
       //   1. SANDBOX_REGISTRY_REDIS_URL (+ optional _TOKEN): explicit operator
       //      override. A `redis://` / `rediss://` URL carries its own auth, so
       //      no token is needed; an `https://` Upstash URL needs the token.
-      //   2. KV_REST_API_URL + KV_REST_API_TOKEN: legacy Upstash REST.
+      //   2. KV_REST_API_URL + KV_REST_API_TOKEN: Upstash REST compatibility.
       // Omit when neither is configured — the sandbox skips registration.
       const {
         url: registryRedisUrl,
@@ -1381,7 +1381,7 @@ export class DockerSandboxProvider implements SandboxProvider {
       }
     } catch (err) {
       // Best-effort Steward deregistration — the agent was registered but the
-      // container failed to start, so we try to clean up the Steward record.
+      // container failed to start, so the Steward record is deleted here.
       try {
         await ssh.exec(
           await buildSignedDeleteAgentCurl(agentId, stewardTenant),
@@ -1410,7 +1410,7 @@ export class DockerSandboxProvider implements SandboxProvider {
           );
         });
       }
-      // Clean up Headscale pre-auth key if VPN was prepared
+      // Deletes the Headscale pre-auth key if VPN was prepared
       if (headscaleEnabled) {
         await headscaleIntegration
           .cleanupContainerVPN(vpnEnvVars.TS_HOSTNAME ?? agentId)
@@ -1433,7 +1433,7 @@ export class DockerSandboxProvider implements SandboxProvider {
       webUiPort,
       agentId,
       // Headscale node name (TS_HOSTNAME) the container registered under, so
-      // cleanup can find + delete the node by the same name it was created with.
+      // deletion can find and remove the node by the same name it was created with.
       tsHostname: vpnEnvVars.TS_HOSTNAME,
       sshPort,
       sshUser,
@@ -1533,7 +1533,7 @@ export class DockerSandboxProvider implements SandboxProvider {
     // internal port is bound (the app binds 0.0.0.0:${containerPort}).
     // bridge_port / web_ui_port are the HOST-published ports from
     // `docker -p host:container`; they don't exist inside the container's
-    // network namespace, so they only work for legacy host routing. bridge_url
+    // network namespace, so they only work for host-routing compatibility. bridge_url
     // and health_url are the single source of truth for reaching the agent —
     // encode the port that is actually reachable over the chosen ingress.
     const containerPortNum = Number.parseInt(containerPort, 10);
@@ -1752,7 +1752,7 @@ export class DockerSandboxProvider implements SandboxProvider {
       // An UNREACHABLE node (SSH connect timeout, refused/unreachable socket,
       // DNS failure on BOTH legs) is treated as TERMINAL: the delete is
       // completed instead of re-queued. Re-queuing an unreachable delete re-runs
-      // the ~20-65s stop path every cycle, eventually pushing the work cycle
+      // the 20-65s stop path every cycle, which can push the work cycle
       // past the 300s watchdog so the liveness heartbeat is withheld and the
       // cloud-api fails closed (agents API hangs).
       //
@@ -1760,7 +1760,7 @@ export class DockerSandboxProvider implements SandboxProvider {
       // container. There is currently NO automatic reclaimer — no orphan-sweep /
       // node-reconcile job exists that lists actual containers on a node and
       // removes ones with no DB row. So if the node later returns, the container
-      // (and its headscale registration, if cleanup was skipped) can LEAK until
+      // (and its headscale registration, if deletion was skipped) can leak until
       // such a sweeper is built or it is reclaimed by hand. We accept that leak
       // to keep the work cycle bounded; the lifecycle/capacity owner should add
       // a node-reconcile sweep (and revisit the allocated_count decrement below)
@@ -1794,7 +1794,7 @@ export class DockerSandboxProvider implements SandboxProvider {
       );
     });
 
-    // Clean up Headscale VPN registration only for containers that were
+    // Deletes Headscale VPN registration only for containers that were
     // actually enrolled. Fallback-mode containers can run with HEADSCALE_API_KEY
     // configured but without TS_HOSTNAME; deleting by bare agent id can remove a
     // stale or unrelated node.

@@ -11,7 +11,7 @@
 // Intentionally NOT in this list:
 //   - `.shad0w.xyz` — personal handle from the 0xSolace stack, never
 //     served real production sandbox URLs
-// Retired domains are part of the "0 legacy" cleanup goal; old bookmarks
+// Retired domains are part of the zero-compatibility-domain goal; old bookmarks
 // under them will fail Origin validation, which is the intended outcome.
 //
 // Pure data + pure function — extracted from `pairing-token.ts` so the

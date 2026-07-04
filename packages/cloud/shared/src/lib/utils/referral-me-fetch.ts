@@ -1,3 +1,4 @@
+// Provides cloud utility referral me fetch helpers shared by backend services.
 import { parseReferralMeResponse, type ReferralMeResponse } from "../types/referral-me";
 
 export const REFERRALS_ME_API_PATH = "/api/v1/referrals";

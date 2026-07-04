@@ -1,3 +1,4 @@
+// Defines cloud shared es behavior for backend service consumers.
 import type { StripeProductMessages } from "./en";
 
 export const stripeProductMessages: StripeProductMessages = {

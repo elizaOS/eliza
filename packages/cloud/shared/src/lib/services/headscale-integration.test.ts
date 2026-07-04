@@ -1,3 +1,4 @@
+// Exercises headscale integration behavior with deterministic cloud-shared lib fixtures.
 import { afterEach, describe, expect, test } from "bun:test";
 import type { HeadscaleClient } from "./headscale-client";
 import {

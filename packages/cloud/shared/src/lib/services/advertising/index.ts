@@ -1,3 +1,4 @@
+// Coordinates cloud service index behavior behind route handlers.
 import {
   type AdAccount,
   type AdAudienceSegment,

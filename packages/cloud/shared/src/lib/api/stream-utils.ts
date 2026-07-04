@@ -1,3 +1,4 @@
+// Defines cloud API stream utils helpers shared across worker routes.
 import { logger } from "../utils/logger";
 
 export interface StreamState {

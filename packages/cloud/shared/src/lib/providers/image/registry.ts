@@ -1,3 +1,4 @@
+// Defines cloud shared registry behavior for backend service consumers.
 import type { PricingBillingSource } from "../../services/ai-pricing-definitions";
 import { atlasCloudImageProvider } from "./atlascloud-image-generation";
 import { falImageProvider } from "./fal-image-generation";

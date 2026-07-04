@@ -1,3 +1,4 @@
+// Exercises feature flags behavior with deterministic cloud-shared lib fixtures.
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 
 import {

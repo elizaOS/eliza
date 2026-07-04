@@ -1,3 +1,4 @@
+// Exercises rate limit default key behavior with deterministic cloud-shared lib fixtures.
 import { describe, expect, test } from "bun:test";
 import type { AppContext } from "../../types/cloud-worker-env";
 import { getDefaultKey } from "./rate-limit-hono-cloudflare";

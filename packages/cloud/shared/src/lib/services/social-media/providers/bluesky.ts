@@ -214,7 +214,7 @@ export const blueskyProvider: SocialMediaProvider = {
         record.facets = facets;
       }
 
-      // Handle media attachments (images only for now)
+      // Handles supported media attachments, currently images
       if (content.media?.length) {
         const images: Array<{
           alt: string;

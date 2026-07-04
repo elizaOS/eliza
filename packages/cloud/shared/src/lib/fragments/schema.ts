@@ -1,3 +1,4 @@
+// Builds prompt fragment schema helpers for cloud-hosted agents.
 import { z } from "zod";
 
 /**

@@ -1,3 +1,4 @@
+// Wires hosted Eliza agent processing behavior for cloud runtime services.
 import {
   ContentType,
   composePromptFromState,

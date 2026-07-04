@@ -1,3 +1,4 @@
+// Exercises address validation behavior with deterministic cloud-shared lib fixtures.
 import { describe, expect, it } from "vitest";
 import { isValidAddress, isValidSolanaAddress } from "./address-validation";
 

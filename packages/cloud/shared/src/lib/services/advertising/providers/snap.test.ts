@@ -1,3 +1,4 @@
+// Exercises snap behavior with deterministic cloud-shared lib fixtures.
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { snapAdsProvider } from "./snap";
 

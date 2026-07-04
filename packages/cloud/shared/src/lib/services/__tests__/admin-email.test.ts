@@ -1,3 +1,4 @@
+// Exercises admin email behavior with deterministic cloud-shared lib fixtures.
 import { describe, expect, test } from "bun:test";
 import { adminService, isElizaLabsAdminEmail } from "../admin";
 

@@ -1,3 +1,4 @@
+// Defines cloud shared steward url behavior for backend service consumers.
 const STEWARD_PREFIX = "/steward";
 
 function trimTrailingSlash(value: string): string {

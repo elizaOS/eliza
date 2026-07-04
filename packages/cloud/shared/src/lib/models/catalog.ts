@@ -1,3 +1,4 @@
+// Defines cloud shared catalog behavior for backend service consumers.
 import { normalizeProviderKey } from "../providers/model-id-translation";
 
 export interface CatalogModel {

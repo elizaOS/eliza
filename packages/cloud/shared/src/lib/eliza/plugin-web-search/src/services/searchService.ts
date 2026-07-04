@@ -1,3 +1,4 @@
+// Wires hosted Eliza agent searchService behavior for cloud runtime services.
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
 import {
   executeHostedGoogleSearch,

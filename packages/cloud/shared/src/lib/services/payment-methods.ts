@@ -1,3 +1,4 @@
+// Coordinates cloud service payment methods behavior behind route handlers.
 import type Stripe from "stripe";
 import { type Organization, organizationsRepository } from "../../db/repositories";
 import { requireStripe } from "../stripe";

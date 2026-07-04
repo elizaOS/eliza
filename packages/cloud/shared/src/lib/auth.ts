@@ -1,3 +1,4 @@
+// Defines cloud shared auth behavior for backend service consumers.
 import crypto from "crypto";
 import type { Organization } from "../db/schemas/organizations";
 import { AuthenticationError, ForbiddenError } from "./api/errors";

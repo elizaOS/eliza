@@ -182,7 +182,7 @@ class OAuthService {
       return { authUrl: result.authUrl, state: result.state };
     }
 
-    // Legacy provider-specific handlers (only Twitter remains - uses OAuth 1.0a)
+    // Provider-specific compatibility handlers remain for OAuth 1.0a Twitter
     switch (platform) {
       case "twitter":
         return this.initiateTwitterAuth(organizationId, userId, redirectUrl, role);

@@ -1,3 +1,4 @@
+// Coordinates cloud service sandbox provider types behavior behind route handlers.
 export interface SandboxProvider {
   create(config: SandboxCreateConfig): Promise<SandboxHandle>;
   stop(sandboxId: string): Promise<void>;

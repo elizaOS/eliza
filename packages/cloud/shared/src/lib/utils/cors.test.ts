@@ -1,3 +1,4 @@
+// Exercises cors behavior with deterministic cloud-shared lib fixtures.
 import { describe, expect, test } from "vitest";
 import { getCorsHeaders } from "./cors";
 

@@ -1,3 +1,4 @@
+// Defines cloud configuration deployment environment invariants for backend services.
 type EnvLike = Record<string, string | undefined>;
 
 /**

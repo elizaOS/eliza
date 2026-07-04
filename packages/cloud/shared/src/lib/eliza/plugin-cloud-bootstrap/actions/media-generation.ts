@@ -1,3 +1,4 @@
+// Wires hosted Eliza agent media generation behavior for cloud runtime services.
 import {
   type ActionExample,
   type ActionResult,

@@ -1,3 +1,4 @@
+// Exercises app deploy runner behavior with deterministic cloud-shared lib fixtures.
 import { afterEach, describe, expect, test } from "bun:test";
 import { runWithCloudBindingsAsync } from "../../runtime/cloud-bindings";
 import type { AppDeployRunnerDeps } from "../app-deploy-runner";

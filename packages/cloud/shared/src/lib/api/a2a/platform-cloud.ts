@@ -1,3 +1,4 @@
+// Defines cloud API platform cloud helpers shared across worker routes.
 import { organizationsRepository } from "../../../db/repositories";
 import type { AppContext } from "../../../types/cloud-worker-env";
 import { requireAdmin, requireUserOrApiKeyWithOrg } from "../../auth/workers-hono-auth";

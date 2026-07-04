@@ -1,3 +1,4 @@
+// Wires hosted Eliza agent error behavior for cloud runtime services.
 import {
   type ActionResult,
   composePromptFromState,

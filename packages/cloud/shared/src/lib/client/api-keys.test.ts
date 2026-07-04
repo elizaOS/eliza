@@ -1,3 +1,4 @@
+// Exercises api keys behavior with deterministic cloud-shared lib fixtures.
 import { afterEach, describe, expect, mock, test } from "bun:test";
 import { getClientApiKeySecret } from "./api-keys";
 

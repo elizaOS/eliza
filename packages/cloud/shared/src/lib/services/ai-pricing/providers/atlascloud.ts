@@ -1,3 +1,4 @@
+// Coordinates cloud service atlascloud behavior behind route handlers.
 import {
   SUPPORTED_IMAGE_MODELS,
   SUPPORTED_VIDEO_MODELS,

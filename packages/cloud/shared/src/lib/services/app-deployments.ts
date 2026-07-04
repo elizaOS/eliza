@@ -147,7 +147,7 @@ export class AppDeploymentsService {
     // Apps lane (Product 2): trigger the real isolated deploy.
     //   WORKER  — enqueue an APP_DEPLOY job (pg-free); the daemon runs it.
     //   NODE/test — run the injected runner inline.
-    //   neither wired — legacy stub (status flip only).
+    //   neither wired — compatibility stub (status flip only).
     // On failure, mark the app errored so the caller's status poll reflects it.
     if (this.deployEnqueuer || this.deployRunner) {
       try {

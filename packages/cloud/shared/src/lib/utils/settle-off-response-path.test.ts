@@ -1,3 +1,4 @@
+// Exercises settle off response path behavior with deterministic cloud-shared lib fixtures.
 import { describe, expect, test } from "bun:test";
 import { settleOffResponsePath } from "./settle-off-response-path";
 

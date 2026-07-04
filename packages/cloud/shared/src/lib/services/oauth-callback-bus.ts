@@ -1,3 +1,4 @@
+// Coordinates cloud service oauth callback bus behavior behind route handlers.
 import { logger } from "../utils/logger";
 
 export type OAuthCallbackEvent =

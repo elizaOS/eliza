@@ -1,3 +1,4 @@
+// Exercises provisioning worker health monitor behavior with deterministic cloud-shared lib fixtures.
 import { describe, expect, it } from "bun:test";
 import type { ProvisioningWorkerHealth } from "./provisioning-worker-health";
 import {

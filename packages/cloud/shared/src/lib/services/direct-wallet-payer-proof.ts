@@ -1,3 +1,4 @@
+// Coordinates cloud service direct wallet payer proof behavior behind route handlers.
 import { PublicKey } from "@solana/web3.js";
 import bs58 from "bs58";
 import nacl from "tweetnacl";

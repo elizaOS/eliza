@@ -1,3 +1,4 @@
+// Exercises stripe connect payout behavior with deterministic cloud-shared lib fixtures.
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";

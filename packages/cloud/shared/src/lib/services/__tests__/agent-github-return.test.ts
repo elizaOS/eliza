@@ -1,3 +1,4 @@
+// Exercises agent github return behavior with deterministic cloud-shared lib fixtures.
 import { describe, expect, test } from "bun:test";
 import { resolveAgentReturnUrl } from "../agent-github-return";
 

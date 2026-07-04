@@ -1,3 +1,4 @@
+// Exercises playwright test session behavior with deterministic cloud-shared lib fixtures.
 import crypto from "crypto";
 import { describe, expect, it } from "vitest";
 import {

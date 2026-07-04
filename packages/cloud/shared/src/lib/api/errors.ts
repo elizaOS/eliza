@@ -197,7 +197,7 @@ export function getErrorStatusCode(error: unknown): number {
       return 403;
     }
 
-    // Fallback to message matching for legacy errors
+    // Uses message matching for compatibility errors without typed metadata
     if (
       message.includes("authentication") ||
       message.includes("unauthorized") ||

@@ -1,3 +1,4 @@
+// Wires hosted Eliza agent index behavior for cloud runtime services.
 export {
   McpToolCompatibility,
   type ModelInfo,

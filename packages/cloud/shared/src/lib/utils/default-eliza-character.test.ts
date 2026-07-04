@@ -1,3 +1,4 @@
+// Exercises default eliza character behavior with deterministic cloud-shared lib fixtures.
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, test } from "vitest";
 import defaultAgent from "../eliza/agent";

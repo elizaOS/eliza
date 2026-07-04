@@ -1,3 +1,4 @@
+// Exercises app review behavior with deterministic cloud-shared lib fixtures.
 import { describe, expect, test } from "bun:test";
 import type { App } from "../../db/schemas/apps";
 import {

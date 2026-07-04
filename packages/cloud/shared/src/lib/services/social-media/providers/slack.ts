@@ -1,3 +1,4 @@
+// Coordinates cloud service slack behavior behind route handlers.
 import type {
   MediaAttachment,
   PlatformPostOptions,

@@ -1,3 +1,4 @@
+// Coordinates cloud service token refresh behavior behind route handlers.
 import type { SocialCredentials, SocialPlatform } from "../../types/social-media";
 import { safeJsonParse } from "../../utils/json-parsing";
 import { logger } from "../../utils/logger";

@@ -1,3 +1,4 @@
+// Coordinates cloud service content safety behavior behind route handlers.
 import { ApiError } from "../api/cloud-worker-errors";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { assertSafeOutboundUrl } from "../security/outbound-url";

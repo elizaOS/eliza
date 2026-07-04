@@ -1,3 +1,4 @@
+// Coordinates cloud service mastodon behavior behind route handlers.
 import type {
   AccountAnalytics,
   MediaAttachment,

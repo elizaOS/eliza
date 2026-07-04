@@ -5,7 +5,7 @@
  * New code should import from '../prompts' directly.
  */
 
-// Legacy type alias
+// Compatibility type alias
 export type { TemplateType as keyof } from "../prompts";
 export {
   BASE_SYSTEM_PROMPT,
@@ -16,13 +16,13 @@ export {
   type TemplateType,
 } from "../prompts";
 
-// Legacy function wrapper
+// Compatibility function wrapper
 export function getSystemPrompt(templateType: string = "blank"): string {
   const { buildSystemPrompt } = require("../prompts");
   return buildSystemPrompt({ templateType: templateType as "blank" });
 }
 
-// Legacy monetization/analytics prompts (now built into main builder)
+// Compatibility monetization and analytics prompts remain built into the main builder
 export const MONETIZATION_PROMPT = `## Monetization
 Track user credits with useAppCredits and AppCreditDisplay components.
 `;

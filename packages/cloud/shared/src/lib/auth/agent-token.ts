@@ -1,3 +1,4 @@
+// Enforces cloud auth agent token invariants before requests reach services.
 import { calculateJwkThumbprint, exportJWK, importPKCS8, type JWK, SignJWT } from "jose";
 
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";

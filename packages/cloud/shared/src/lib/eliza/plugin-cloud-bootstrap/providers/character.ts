@@ -1,3 +1,4 @@
+// Wires hosted Eliza agent character behavior for cloud runtime services.
 import type {
   IAgentRuntime,
   Memory,

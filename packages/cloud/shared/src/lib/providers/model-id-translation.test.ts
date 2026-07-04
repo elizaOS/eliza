@@ -1,3 +1,4 @@
+// Exercises model id translation behavior with deterministic cloud-shared lib fixtures.
 import { describe, expect, test } from "bun:test";
 import { stripOpenRouterRoutingSuffix } from "./model-id-translation";
 

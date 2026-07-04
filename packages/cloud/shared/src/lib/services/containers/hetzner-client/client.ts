@@ -350,7 +350,7 @@ export class HetznerContainersClient {
         nodeId: node.node_id,
         error: message,
       });
-      // Best-effort cleanup of the half-created Docker container. Leave the
+      // Best-effort deletion of the half-created Docker container. Leave the
       // Hetzner Cloud volume intact; it may contain data if this is a
       // redeploy and the container start failed after attach. Operators can
       // retry because the volume is found by label on the next attempt.
@@ -500,11 +500,11 @@ export class HetznerContainersClient {
           });
         await ssh.exec(`docker rm -f ${shellQuote(meta.containerName)}`, 30_000);
 
-        // Local host volume cleanup - only when there is no Hetzner Cloud
+        // Local host volume deletion runs only when there is no Hetzner Cloud
         // volume backing this path (hcloud volumes are managed separately below).
         if (!row.hcloud_volume_id && options.purgeVolume && meta.volumePath) {
           // Defense in depth: only purge paths under /data/projects/ (or
-          // the legacy /data/containers/ prefix). The schema is the only
+          // the previous /data/containers/ prefix). The schema is the only
           // writer of these paths, so this is a belt-and-braces guard
           // against malformed metadata reaching `rm -rf`.
           if (
@@ -536,7 +536,7 @@ export class HetznerContainersClient {
         });
     }
 
-    // Hetzner Cloud volume lifecycle - handled after Docker cleanup so the
+    // Hetzner Cloud volume lifecycle runs after Docker deletion so the
     // container is no longer running when we unmount/detach.
     if (row.hcloud_volume_id !== null && isHetznerVolumesAvailable()) {
       const volService = getHetznerVolumeService();

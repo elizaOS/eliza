@@ -1,3 +1,4 @@
+// Exercises redirect validation behavior with deterministic cloud-shared lib fixtures.
 import { describe, expect, test } from "vitest";
 import {
   assertAllowedAbsoluteRedirectUrl,

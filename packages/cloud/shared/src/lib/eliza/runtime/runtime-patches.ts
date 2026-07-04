@@ -1,3 +1,4 @@
+// Wires hosted Eliza agent runtime patches behavior for cloud runtime services.
 import { type AgentRuntime, elizaLogger, type Logger } from "@elizaos/core";
 import { getRequestContext } from "../../services/entity-settings/request-context";
 import { logger } from "../../utils/logger";

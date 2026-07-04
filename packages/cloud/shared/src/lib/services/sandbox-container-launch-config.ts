@@ -1,3 +1,4 @@
+// Coordinates cloud service sandbox container launch config behavior behind route handlers.
 import type { SandboxContainerLaunchConfig } from "./sandbox-provider-types";
 
 function asRecord(value: unknown): Record<string, unknown> {

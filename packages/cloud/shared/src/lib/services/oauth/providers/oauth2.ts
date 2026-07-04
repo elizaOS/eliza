@@ -134,7 +134,7 @@ function connectionSourceContext(
   connectionRole: OAuthStandardConnectionRole,
 ): PlatformCredentialSourceContext {
   // We intentionally no longer write `agentGoogleSide`. `connectionRole`
-  // is the canonical field; existing rows that only have the legacy
+  // is the canonical field; existing rows that only have the compatibility
   // field are still readable via the fallbacks in `getStoredConnectionRole`
   // (above, line 95), `oauth-service.ts` (`agentGoogleSide` fallback),
   // and `connection-adapters/generic-adapter.ts`. The upsert
@@ -692,7 +692,7 @@ async function storeConnection(
     source: `oauth2-${provider.id}-callback`,
   };
 
-  // Track newly created secrets for cleanup on failure
+  // Tracks newly created secrets for deletion on failure
   const newlyCreatedSecretIds: string[] = [];
 
   const providerPlatform = provider.id as (typeof platformCredentialTypeEnum.enumValues)[number];
@@ -858,7 +858,7 @@ async function storeConnection(
       refreshTokenSecretId = existing[0].refresh_token_secret_id;
     }
   } else {
-    // Create new secrets with cleanup on partial failure
+    // Creates new secrets with deletion on partial failure
     try {
       const accessSecret = await createOrRotateSecret(
         organizationId,

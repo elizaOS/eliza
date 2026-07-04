@@ -238,7 +238,7 @@ class DiscordRateLimiter {
 /** Singleton rate limiter instance */
 const discordRateLimiter = new DiscordRateLimiter();
 
-// Cleanup stale rate limiters periodically
+// Prunes stale rate limiters periodically
 setInterval(() => discordRateLimiter.cleanup(), 5 * 60 * 1000);
 
 // ============================================

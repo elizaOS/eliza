@@ -1,3 +1,4 @@
+// Exercises content safety behavior with deterministic cloud-shared lib fixtures.
 import { afterAll, afterEach, describe, expect, mock, test } from "bun:test";
 import * as realLogger from "@/lib/utils/logger";
 import { ApiError } from "../../api/cloud-worker-errors";

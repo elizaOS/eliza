@@ -1,3 +1,4 @@
+// Provides cloud utility persistence guard helpers shared by backend services.
 function envFlagEnabled(raw: string | undefined): boolean {
   const normalized = String(raw ?? "")
     .trim()

@@ -1,3 +1,4 @@
+// Coordinates cloud service managed eliza env behavior behind route handlers.
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { resolveServerStewardApiUrlFromEnv } from "../steward-url";
 import { resolveStewardContainerUrl } from "./docker-sandbox-utils";

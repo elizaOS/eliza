@@ -1,3 +1,4 @@
+// Exercises apps ingress provisioner behavior with deterministic cloud-shared lib fixtures.
 import { describe, expect, test } from "bun:test";
 import { addAppRoute, type IngressFetch, removeAppRoute } from "../apps-ingress-provisioner";
 

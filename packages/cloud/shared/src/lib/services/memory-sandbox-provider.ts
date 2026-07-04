@@ -1,3 +1,4 @@
+// Coordinates cloud service memory sandbox provider behavior behind route handlers.
 import { randomUUID } from "node:crypto";
 import { createServer, type Server } from "node:http";
 import type { Socket } from "node:net";

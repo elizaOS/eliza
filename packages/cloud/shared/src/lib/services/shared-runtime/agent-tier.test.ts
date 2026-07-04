@@ -1,3 +1,4 @@
+// Exercises agent tier behavior with deterministic cloud-shared lib fixtures.
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { getAgentTier, tierProvisionsEagerly } from "./agent-tier";
 import { runSharedAgentTurn } from "./run-shared-agent-turn";

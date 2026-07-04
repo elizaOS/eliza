@@ -1,3 +1,4 @@
+// Exercises cloudflare registrar behavior with deterministic cloud-shared lib fixtures.
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { cloudflareRegistrarService } from "./cloudflare-registrar";
 

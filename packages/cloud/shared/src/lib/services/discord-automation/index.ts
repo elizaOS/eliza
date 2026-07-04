@@ -649,7 +649,7 @@ class DiscordAutomationService {
         },
       });
 
-      // Even if the API call fails (maybe already removed), clean up database
+      // Even if the API call fails (maybe already removed), delete database
       if (!response.ok && response.status !== 404) {
         logger.warn("[Discord] Failed to leave guild via API, cleaning up database anyway", {
           guildId,

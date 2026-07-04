@@ -1,3 +1,4 @@
+// Exercises eliza sandbox behavior with deterministic cloud-shared lib fixtures.
 import { afterAll, afterEach, describe, expect, jest, mock, spyOn, test } from "bun:test";
 import type { SQL } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";
@@ -853,7 +854,7 @@ describe("ElizaSandboxService deletion-state guards (resume/wake/restart)", () =
 });
 
 // Orphaned shared-runtime history on delete is covered at the repository level
-// in shared-runtime-history.test.ts: the post-commit cleanup is a best-effort
+// in shared-runtime-history.test.ts: the post-commit deletion is a best-effort
 // call to sharedRuntimeHistoryRepository.deleteByAgent.
 
 // The anti-wedge teardown cap (PR #9066). deleteAgent now runs its three short
@@ -1445,7 +1446,7 @@ describe("ElizaSandboxService.provision dedup + port-collision retry (LARP H2)",
       expect(res.error).toBe("connection terminated unexpectedly");
       // A non-unique error is NOT a port collision — must not retry.
       expect(create).toHaveBeenCalledTimes(1);
-      // Ghost cleanup still runs once for the single failed attempt.
+      // Ghost deletion still runs once for the single failed attempt.
       expect(stop).toHaveBeenCalledTimes(1);
       expect(markErrorSpy).toHaveBeenCalledTimes(1);
     } finally {

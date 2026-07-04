@@ -1,3 +1,4 @@
+// Exercises ad audience segments behavior with deterministic cloud-shared lib fixtures.
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import {
   adAccountsRepository,

@@ -1,3 +1,4 @@
+// Defines cloud shared environment behavior for backend service consumers.
 import { getAppHost, getAppUrl } from "../utils/app-url";
 import type { Metadata, MetadataRoute } from "./metadata-types";
 
