@@ -18,13 +18,32 @@ import { captureScreenshotWithQualityRetry } from "./helpers/screenshot-quality"
 
 export const SMOKE_GENERATED_AT = "2026-01-01T00:00:00.000Z";
 
-// A valid (tiny, silent) mp3 so a mocked TTS POST returns decodable audio bytes
-// instead of a 501, keeping the page-diagnostics guard clean when the tutorial
-// narrator speaks. Same fixture the assistant-home-flow voice lane uses.
-const TINY_MP3 = Buffer.from(
-  "SUQzAwAAAAAAFlRTU0UAAAAMAAADTGF2ZjU4LjI5LjEwMAAA//tQAAAAAAAA",
-  "base64",
-);
+// A tiny silent WAV so a mocked TTS POST returns bytes decodeAudioData accepts
+// on every Chromium build, keeping the page-diagnostics guard clean when the
+// tutorial narrator speaks. The old truncated-mp3 fixture stopped decoding
+// once the voice pipeline fails closed on decode errors (#12267 sweeps) — a
+// PCM WAV has no codec dependency and always decodes.
+function tinySilentWav(): Buffer {
+  const sampleRate = 8_000;
+  const samples = 160; // 20 ms of 16-bit mono silence
+  const dataSize = samples * 2;
+  const wav = Buffer.alloc(44 + dataSize);
+  wav.write("RIFF", 0);
+  wav.writeUInt32LE(36 + dataSize, 4);
+  wav.write("WAVE", 8);
+  wav.write("fmt ", 12);
+  wav.writeUInt32LE(16, 16); // PCM fmt chunk size
+  wav.writeUInt16LE(1, 20); // PCM
+  wav.writeUInt16LE(1, 22); // mono
+  wav.writeUInt32LE(sampleRate, 24);
+  wav.writeUInt32LE(sampleRate * 2, 28); // byte rate
+  wav.writeUInt16LE(2, 32); // block align
+  wav.writeUInt16LE(16, 34); // bits per sample
+  wav.write("data", 36);
+  wav.writeUInt32LE(dataSize, 40);
+  return wav;
+}
+const TINY_SILENT_WAV = tinySilentWav();
 
 // Launcher views so the launcher is non-empty (the home WidgetHost only
 // renders when the catalog has visible views) AND so a known launcher tile
@@ -547,7 +566,8 @@ export async function installHomeRoutes(
 
   // Benign TTS so the interactive tutorial's narrator (the "Take the tutorial"
   // branch speaks its first voice line through the REAL voice pipeline) does not
-  // 501 against the stub and trip the page-diagnostics guard. A valid tiny mp3.
+  // 501 against the stub and trip the page-diagnostics guard. A tiny PCM WAV —
+  // always decodable, no codec dependency.
   await page.route("**/api/tts/**", async (route) => {
     if (route.request().method() !== "POST") {
       await route.fallback();
@@ -555,9 +575,19 @@ export async function installHomeRoutes(
     }
     await route.fulfill({
       status: 200,
-      headers: { "content-type": "audio/mpeg" },
-      body: TINY_MP3,
+      headers: { "content-type": "audio/wav" },
+      body: TINY_SILENT_WAV,
     });
+  });
+
+  // The narrator's decoded audio also reports playback frames (avatar/viseme
+  // sync); the API stub 501s that POST, which trips the diagnostics guard.
+  await page.route("**/api/voice/playback-frames", async (route) => {
+    if (route.request().method() !== "POST") {
+      await route.fallback();
+      return;
+    }
+    await fulfillJson(route, { ok: true });
   });
 
   return state;
@@ -851,6 +881,30 @@ export async function expectOnboardingAutoCollapse(page: Page): Promise<void> {
   });
 }
 
+/**
+ * Dismiss the post-onboarding permission-priming modal (#12331) if it appears.
+ * It arms on the completion edge and sits over the home, so it must be skipped
+ * (the real "Skip for now" path a user takes) before asserting or swiping the
+ * home surface. Tolerant: absence is fine — the shown-once flag or platform
+ * gating can keep it away.
+ */
+export async function dismissPermissionPrimingIfShown(
+  page: Page,
+): Promise<void> {
+  const skipAll = page.getByTestId("priming-skip-all");
+  const appeared = await skipAll
+    .waitFor({ state: "visible", timeout: 3_000 })
+    .then(
+      () => true,
+      () => false,
+    );
+  if (!appeared) return;
+  await skipAll.click();
+  await expect(page.getByTestId("permission-priming-modal")).toHaveCount(0, {
+    timeout: 10_000,
+  });
+}
+
 /** Assert the seeded per-plugin home widgets render with their attention data. */
 async function expectPopulatedHome(page: Page): Promise<Locator> {
   const host = page.getByTestId("widget-host-home");
@@ -928,6 +982,7 @@ export async function completeOnboardingToHome(
   const chatOverlay = page.getByTestId("continuous-chat-overlay");
   await expect(chatOverlay).toBeVisible({ timeout: 60_000 });
   await expectOnboardingAutoCollapse(page);
+  await dismissPermissionPrimingIfShown(page);
   await expect(page.getByTestId("chat-composer-textarea")).toBeVisible({
     timeout: 30_000,
   });
@@ -983,6 +1038,7 @@ export async function completeCloudOnboardingToHome(
   const chatOverlay = page.getByTestId("continuous-chat-overlay");
   await expect(chatOverlay).toBeVisible({ timeout: 60_000 });
   await expectOnboardingAutoCollapse(page);
+  await dismissPermissionPrimingIfShown(page);
   await expect(page.getByTestId("chat-composer-textarea")).toBeVisible({
     timeout: 30_000,
   });
@@ -1049,6 +1105,7 @@ async function expectCloudOnlyCompletion(
   // the collapse itself, the onboarded home, the absent tutorial gate, and the
   // exactly-once POST. The wrap-up copy is covered by the conductor unit suite.
   await expectOnboardingAutoCollapse(page);
+  await dismissPermissionPrimingIfShown(page);
   await expect(page.getByTestId(TUTORIAL_CHOICE("start"))).toHaveCount(0);
   await expect(page.getByTestId(TUTORIAL_CHOICE("skip"))).toHaveCount(0);
   const surface = await expectPopulatedHome(page);
@@ -1129,6 +1186,7 @@ export async function completeCloudInferenceOnboardingToHome(
   const chatOverlay = page.getByTestId("continuous-chat-overlay");
   await expect(chatOverlay).toBeVisible({ timeout: 60_000 });
   await expectOnboardingAutoCollapse(page);
+  await dismissPermissionPrimingIfShown(page);
   await expect(page.getByTestId("chat-composer-textarea")).toBeVisible({
     timeout: 30_000,
   });
@@ -1177,6 +1235,7 @@ export async function completeOtherProviderSettingsHandoff(
   const chatOverlay = page.getByTestId("continuous-chat-overlay");
   await expect(chatOverlay).toBeVisible({ timeout: 60_000 });
   await expectOnboardingAutoCollapse(page);
+  await dismissPermissionPrimingIfShown(page);
   await expect(page.getByTestId("chat-composer-textarea")).toBeVisible({
     timeout: 30_000,
   });
@@ -1220,6 +1279,7 @@ export async function connectRemoteFirstRunToHome(
   await expect(surface).toHaveAttribute("data-page", "home");
   // Remote adoption flips firstRunComplete too — same auto-collapse edge.
   await expectOnboardingAutoCollapse(page);
+  await dismissPermissionPrimingIfShown(page);
   await expect(page.getByTestId("chat-composer-textarea")).toBeVisible({
     timeout: 30_000,
   });
@@ -1281,7 +1341,10 @@ export async function swipeLeftToLauncher(
 ): Promise<void> {
   // Post-onboarding the overlay already auto-collapsed; this guard only closes
   // a sheet a previous step deliberately opened, so the swipe lands on the
-  // home rail rather than the chat scrim.
+  // home rail rather than the chat scrim. The permission-priming modal
+  // (#12331) also arms on the completion edge and eats the drag — skip it the
+  // way a user would.
+  await dismissPermissionPrimingIfShown(page);
   await collapseChatOverlay(page);
   const homePage = page.getByTestId("home-launcher-home-page");
   await expect(homePage).toBeVisible();
