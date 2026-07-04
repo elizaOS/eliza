@@ -16,6 +16,28 @@ from registry.scores import (  # noqa: E402
 )
 
 
+GENERATED_ARTIFACT_SCORE_IDS = (
+    "summary_factuality",
+    "action_item_owner_date",
+    "decision_extraction",
+    "open_question_extraction",
+    "memory_entity_correctness",
+    "hallucination_rate",
+    "omission_rate",
+    "source_grounding",
+)
+
+
+def _meeting_generated_artifact_scores() -> list[dict[str, object]]:
+    return [
+        {
+            "id": score_id,
+            "observed_score": 0.0 if score_id in {"hallucination_rate", "omission_rate"} else 1.0,
+        }
+        for score_id in GENERATED_ARTIFACT_SCORE_IDS
+    ]
+
+
 def test_hermes_env_placeholder_only_score_is_not_publishable() -> None:
     with pytest.raises(ValueError, match="placeholder-only"):
         _score_from_hermes_env_json(
@@ -173,6 +195,7 @@ def _meeting_transcription_real_report() -> dict[str, object]:
         "speaker_operations": [{"id": "speaker_name_correction"}],
         "speaker_name_provenance": [{} for _ in range(8)],
         "audio_visual_cases": [{} for _ in range(7)],
+        "generated_artifact_scores": _meeting_generated_artifact_scores(),
     }
 
 
@@ -222,6 +245,14 @@ def test_meeting_transcription_real_lane_requires_audio_visual_metrics() -> None
         _score_from_meeting_transcription_proof_json(report)
 
 
+def test_meeting_transcription_real_lane_requires_generated_artifact_scores() -> None:
+    report = _meeting_transcription_real_report()
+    report["generated_artifact_scores"] = _meeting_generated_artifact_scores()[:-1]
+
+    with pytest.raises(ValueError, match="generated artifact scores"):
+        _score_from_meeting_transcription_proof_json(report)
+
+
 def test_meeting_transcription_real_lane_score_is_publishable_with_evidence() -> None:
     extraction = _score_from_meeting_transcription_proof_json(_meeting_transcription_real_report())
 
@@ -233,3 +264,5 @@ def test_meeting_transcription_real_lane_score_is_publishable_with_evidence() ->
     assert extraction.metrics["audio_visual_case_count"] == 7
     assert extraction.metrics["active_speaker_f1"] == pytest.approx(0.88)
     assert extraction.metrics["visual_acoustic_disagreement_rate"] == pytest.approx(0.12)
+    assert extraction.metrics["summary_factuality"] == pytest.approx(1.0)
+    assert extraction.metrics["hallucination_rate"] == pytest.approx(0.0)

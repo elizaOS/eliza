@@ -116,6 +116,26 @@ ALLOWED_AUDIO_VISUAL_IDENTITY_SOURCES = {
     "platform_roster",
     "none",
 }
+REQUIRED_GENERATED_ARTIFACT_SCORE_IDS = {
+    "summary_factuality",
+    "action_item_owner_date",
+    "decision_extraction",
+    "open_question_extraction",
+    "memory_entity_correctness",
+    "hallucination_rate",
+    "omission_rate",
+    "source_grounding",
+}
+REQUIRED_GENERATED_ARTIFACT_SCORE_FIELDS = {
+    "id",
+    "judge_mode",
+    "observed_score",
+    "threshold",
+    "higher_is_better",
+    "passed",
+    "proof",
+}
+GENERATED_ARTIFACT_JUDGE_MODES = {"deterministic", "live_model", "manual"}
 REQUIRED_SPEAKER_NAME_PROVENANCE_CASES = {
     "platform_roster_name",
     "calendar_attendee_name",
@@ -250,6 +270,14 @@ REQUIRED_DETAILED_METRICS = {
     "notes_factuality",
     "action_item_extraction",
     *REQUIRED_AUDIO_VISUAL_METRICS,
+    "summary_factuality",
+    "action_item_owner_date",
+    "decision_extraction",
+    "open_question_extraction",
+    "memory_entity_correctness",
+    "hallucination_rate",
+    "omission_rate",
+    "source_grounding",
 }
 RATIO_METRICS = {
     *REQUIRED_QUALITY_METRICS,
@@ -265,6 +293,14 @@ RATIO_METRICS = {
     "notes_factuality",
     "action_item_extraction",
     *REQUIRED_AUDIO_VISUAL_METRICS,
+    "summary_factuality",
+    "action_item_owner_date",
+    "decision_extraction",
+    "open_question_extraction",
+    "memory_entity_correctness",
+    "hallucination_rate",
+    "omission_rate",
+    "source_grounding",
 }
 LATENCY_METRICS = {"end_of_turn_latency_ms", "barge_in_latency_ms", "p95_end_to_end_latency_ms"}
 KNOWN_METRICS = REQUIRED_QUALITY_METRICS | REQUIRED_DETAILED_METRICS
@@ -816,6 +852,82 @@ def _validate_audio_visual_cases(manifest: dict[str, Any]) -> tuple[list[dict[st
     return sorted(normalized, key=lambda case: case["id"]), referenced_evidence
 
 
+def _validate_generated_artifact_scores(manifest: dict[str, Any]) -> list[dict[str, Any]]:
+    rows = manifest.get("generated_artifact_scores")
+    if not isinstance(rows, list) or not rows:
+        raise ValueError("generated_artifact_scores must be a non-empty array")
+
+    score_ids: set[str] = set()
+    normalized: list[dict[str, Any]] = []
+    for index, row in enumerate(rows):
+        if not isinstance(row, dict):
+            raise ValueError(f"generated_artifact_scores[{index}] must be an object")
+        missing_fields = REQUIRED_GENERATED_ARTIFACT_SCORE_FIELDS - set(row)
+        if missing_fields:
+            raise ValueError(f"generated_artifact_scores[{index}] missing fields: {sorted(missing_fields)}")
+        score_id = row.get("id")
+        if not isinstance(score_id, str) or not score_id.strip():
+            raise ValueError(f"generated_artifact_scores[{index}].id must be a non-empty string")
+        if score_id not in REQUIRED_GENERATED_ARTIFACT_SCORE_IDS:
+            raise ValueError(f"generated_artifact_scores[{index}].id is unknown: {score_id}")
+        score_ids.add(score_id)
+        judge_mode = row.get("judge_mode")
+        if judge_mode not in GENERATED_ARTIFACT_JUDGE_MODES:
+            raise ValueError(
+                f"generated_artifact_scores[{index}].judge_mode must be one of {sorted(GENERATED_ARTIFACT_JUDGE_MODES)}"
+            )
+        observed_score = row.get("observed_score")
+        threshold = row.get("threshold")
+        if isinstance(observed_score, bool) or not isinstance(observed_score, int | float):
+            raise ValueError(f"generated_artifact_scores[{index}].observed_score must be numeric")
+        if isinstance(threshold, bool) or not isinstance(threshold, int | float):
+            raise ValueError(f"generated_artifact_scores[{index}].threshold must be numeric")
+        observed = float(observed_score)
+        threshold_value = float(threshold)
+        if not 0 <= observed <= 1:
+            raise ValueError(f"generated_artifact_scores[{index}].observed_score must be in [0, 1]")
+        if not 0 <= threshold_value <= 1:
+            raise ValueError(f"generated_artifact_scores[{index}].threshold must be in [0, 1]")
+        higher_is_better = row.get("higher_is_better")
+        if not isinstance(higher_is_better, bool):
+            raise ValueError(f"generated_artifact_scores[{index}].higher_is_better must be boolean")
+        passed = row.get("passed")
+        if not isinstance(passed, bool):
+            raise ValueError(f"generated_artifact_scores[{index}].passed must be boolean")
+        expected_pass = observed >= threshold_value if higher_is_better else observed <= threshold_value
+        if passed != expected_pass:
+            raise ValueError(
+                f"generated_artifact_scores[{index}].passed does not match threshold direction"
+            )
+        proof = row.get("proof")
+        if not isinstance(proof, dict):
+            raise ValueError(f"generated_artifact_scores[{index}].proof must be an object")
+        required_proof = {
+            "deterministic": {"score_report"},
+            "live_model": {"model_trajectory_jsonl", "raw_prompt", "model_output", "judge_output"},
+            "manual": {"manual_review"},
+        }[judge_mode]
+        missing_proof = required_proof - set(proof)
+        if missing_proof:
+            raise ValueError(f"generated_artifact_scores[{index}] missing proof: {sorted(missing_proof)}")
+        normalized.append(
+            {
+                "id": score_id,
+                "judge_mode": judge_mode,
+                "observed_score": observed,
+                "threshold": threshold_value,
+                "higher_is_better": higher_is_better,
+                "passed": passed,
+                "proof": {key: proof[key] for key in sorted(proof)},
+            }
+        )
+
+    missing_scores = REQUIRED_GENERATED_ARTIFACT_SCORE_IDS - score_ids
+    if missing_scores:
+        raise ValueError(f"missing generated artifact scores: {sorted(missing_scores)}")
+    return sorted(normalized, key=lambda row: row["id"])
+
+
 def validate_manifest(manifest: dict[str, Any], *, lane: str, manifest_path: Path) -> dict[str, Any]:
     if lane not in LANES:
         raise ValueError(f"lane must be one of {sorted(LANES)}")
@@ -875,6 +987,7 @@ def validate_manifest(manifest: dict[str, Any], *, lane: str, manifest_path: Pat
     speaker_operations, speaker_operation_evidence_types = _validate_speaker_operations(manifest)
     speaker_name_provenance, speaker_name_evidence_types = _validate_speaker_name_provenance(manifest)
     audio_visual_cases, audio_visual_evidence_types = _validate_audio_visual_cases(manifest)
+    generated_artifact_scores = _validate_generated_artifact_scores(manifest)
 
     metric_values = _validate_metrics(manifest.get("metrics"), lane=lane)
 
@@ -917,6 +1030,7 @@ def validate_manifest(manifest: dict[str, Any], *, lane: str, manifest_path: Pat
         "speaker_operations": speaker_operations,
         "speaker_name_provenance": speaker_name_provenance,
         "audio_visual_cases": audio_visual_cases,
+        "generated_artifact_scores": generated_artifact_scores,
         "metrics": metric_values,
         "evidence_files": evidence_files,
         "provider_mode": provider_mode,

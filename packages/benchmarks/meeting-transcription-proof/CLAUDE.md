@@ -28,6 +28,7 @@ pytest packages/benchmarks/meeting-transcription-proof/tests -q
 | Path | Role |
 | --- | --- |
 | `elizaos_meeting_transcription_proof/cli.py` | CLI, manifest validation, report writer |
+| `elizaos_meeting_transcription_proof/artifact_scoring.py` | Deterministic generated-artifact scoring |
 | `fixtures/mock-meeting-manifest.json` | Hermetic schema/capture/evidence fixture |
 | `tests/` | Lane separation and real evidence validation tests |
 
@@ -65,6 +66,16 @@ Face tracks are localization evidence only. Identity binding from face data is
 forbidden without an explicit opt-in identity source such as a voice profile,
 user correction, calendar participant, or platform roster. Sensitive-attribute
 shortcuts are always forbidden.
+
+The real lane also requires generated meeting intelligence scores:
+`summary_factuality`, `action_item_owner_date`, `decision_extraction`,
+`open_question_extraction`, `memory_entity_correctness`, `hallucination_rate`,
+`omission_rate`, and `source_grounding`. Each manifest row must include
+`observed_score`, `threshold`, `higher_is_better`, `passed`, `judge_mode`, and
+`proof`; the validator rejects rows whose `passed` flag does not match the
+threshold direction. `deterministic` rows require `score_report`, `live_model`
+rows require `model_trajectory_jsonl`, `raw_prompt`, `model_output`, and
+`judge_output`, and `manual` rows require `manual_review`.
 
 ## Dataset Contract
 

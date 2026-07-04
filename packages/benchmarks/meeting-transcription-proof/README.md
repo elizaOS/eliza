@@ -140,6 +140,22 @@ F1/mAP, audio-video association accuracy, off-screen speaker detection accuracy,
 room-feed precision/recall, and visual/acoustic disagreement rate while
 forbidding face-only identity binding and sensitive attribute shortcuts.
 
+Real manifests must include `generated_artifact_scores` for meeting
+intelligence outputs. Required rows are `summary_factuality`,
+`action_item_owner_date`, `decision_extraction`, `open_question_extraction`,
+`memory_entity_correctness`, `hallucination_rate`, `omission_rate`, and
+`source_grounding`. Each row carries `observed_score`, `threshold`,
+`higher_is_better`, `passed`, `judge_mode`, and `proof`; the validator checks
+that `passed` matches the threshold direction. Deterministic rows must point to
+a score report, live-model rows must include the trajectory JSONL, raw prompt,
+model output, and judge output, and manual rows must point to a manual review.
+
+`elizaos_meeting_transcription_proof.artifact_scoring` provides the
+deterministic artifact scorer for transcript-grounded generated summaries,
+action items, decisions, open questions, memory entities, hallucination rate,
+omission rate, and source grounding. Live-model artifact scores are still
+expected to attach real trajectories and reviewed outputs in the manifest.
+
 ## Fixture Manifest
 
 `fixtures/mock-meeting-manifest.json` describes the minimum canonical meeting

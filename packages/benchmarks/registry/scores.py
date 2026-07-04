@@ -937,6 +937,17 @@ _MEETING_PROOF_REQUIRED_AV_METRICS = {
     "visual_acoustic_disagreement_rate",
 }
 
+MEETING_PROOF_REQUIRED_GENERATED_ARTIFACT_SCORE_IDS = {
+    "summary_factuality",
+    "action_item_owner_date",
+    "decision_extraction",
+    "open_question_extraction",
+    "memory_entity_correctness",
+    "hallucination_rate",
+    "omission_rate",
+    "source_grounding",
+}
+
 
 def _score_from_meeting_transcription_proof_json(data: JSONValue) -> ScoreExtraction:
     """Extract the #12486 meeting transcription proof score.
@@ -968,6 +979,25 @@ def _score_from_meeting_transcription_proof_json(data: JSONValue) -> ScoreExtrac
     )
     audio_visual_cases = root.get("audio_visual_cases")
     audio_visual_case_count = len(audio_visual_cases) if isinstance(audio_visual_cases, list) else 0
+    generated_artifact_observed: dict[str, float] = {}
+    generated_artifact_ids: set[str] = set()
+    generated_artifact_scores = root.get("generated_artifact_scores")
+    if isinstance(generated_artifact_scores, list):
+        for index, row in enumerate(generated_artifact_scores):
+            score_row = expect_dict(row, ctx=f"meeting_transcription_proof:generated_artifact_scores[{index}]")
+            score_id = str(
+                get_required(
+                    score_row,
+                    "id",
+                    ctx=f"meeting_transcription_proof:generated_artifact_scores[{index}]",
+                )
+            )
+            generated_artifact_ids.add(score_id)
+            if "observed_score" in score_row:
+                generated_artifact_observed[score_id] = expect_float(
+                    score_row["observed_score"],
+                    ctx=f"meeting_transcription_proof:generated_artifact_scores[{index}].observed_score",
+                )
     publishable = root.get("publishable") is True
     if lane == "real_product":
         if not publishable:
@@ -1005,8 +1035,21 @@ def _score_from_meeting_transcription_proof_json(data: JSONValue) -> ScoreExtrac
                 "meeting_transcription_proof: real lane requires audio-visual metrics "
                 f"{sorted(missing_av_metrics)}"
             )
+        missing_generated_scores = MEETING_PROOF_REQUIRED_GENERATED_ARTIFACT_SCORE_IDS - generated_artifact_ids
+        if missing_generated_scores:
+            raise ValueError(
+                "meeting_transcription_proof: real lane requires complete generated artifact scores"
+            )
     elif publishable:
         raise ValueError("meeting_transcription_proof: mocked lane cannot be publishable")
+
+    generated_artifact_metrics: dict[str, JSONValue] = {}
+    for metric_id in sorted(MEETING_PROOF_REQUIRED_GENERATED_ARTIFACT_SCORE_IDS):
+        metric_value = metrics.get(metric_id)
+        if isinstance(metric_value, (int, float)) and not isinstance(metric_value, bool):
+            generated_artifact_metrics[metric_id] = float(metric_value)
+        else:
+            generated_artifact_metrics[metric_id] = generated_artifact_observed.get(metric_id, 0)
 
     return ScoreExtraction(
         score=score,
@@ -1030,6 +1073,7 @@ def _score_from_meeting_transcription_proof_json(data: JSONValue) -> ScoreExtrac
             "room_feed_heuristic_precision": metrics.get("room_feed_heuristic_precision") or 0,
             "room_feed_heuristic_recall": metrics.get("room_feed_heuristic_recall") or 0,
             "visual_acoustic_disagreement_rate": metrics.get("visual_acoustic_disagreement_rate") or 0,
+            **generated_artifact_metrics,
             "provider_mode": root.get("provider_mode") or "",
         },
     )

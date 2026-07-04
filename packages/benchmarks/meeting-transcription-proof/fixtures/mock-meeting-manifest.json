@@ -623,6 +623,99 @@
       }
     }
   ],
+  "generated_artifact_scores": [
+    {
+      "id": "summary_factuality",
+      "judge_mode": "deterministic",
+      "observed_score": 1.0,
+      "threshold": 0.9,
+      "higher_is_better": true,
+      "passed": true,
+      "proof": {
+        "score_report": "mock-generated-artifacts/summary-score.json"
+      }
+    },
+    {
+      "id": "action_item_owner_date",
+      "judge_mode": "deterministic",
+      "observed_score": 1.0,
+      "threshold": 0.85,
+      "higher_is_better": true,
+      "passed": true,
+      "proof": {
+        "score_report": "mock-generated-artifacts/action-items-score.json"
+      }
+    },
+    {
+      "id": "decision_extraction",
+      "judge_mode": "deterministic",
+      "observed_score": 1.0,
+      "threshold": 0.85,
+      "higher_is_better": true,
+      "passed": true,
+      "proof": {
+        "score_report": "mock-generated-artifacts/decisions-score.json"
+      }
+    },
+    {
+      "id": "open_question_extraction",
+      "judge_mode": "manual",
+      "observed_score": 1.0,
+      "threshold": 0.8,
+      "higher_is_better": true,
+      "passed": true,
+      "proof": {
+        "manual_review": "mock-generated-artifacts/open-questions-review.md"
+      }
+    },
+    {
+      "id": "memory_entity_correctness",
+      "judge_mode": "deterministic",
+      "observed_score": 1.0,
+      "threshold": 0.9,
+      "higher_is_better": true,
+      "passed": true,
+      "proof": {
+        "score_report": "mock-generated-artifacts/memory-score.json"
+      }
+    },
+    {
+      "id": "hallucination_rate",
+      "judge_mode": "live_model",
+      "observed_score": 0.0,
+      "threshold": 0.05,
+      "higher_is_better": false,
+      "passed": true,
+      "proof": {
+        "judge_output": "mock-generated-artifacts/hallucination-judge.json",
+        "model_output": "mock-generated-artifacts/hallucination-output.txt",
+        "model_trajectory_jsonl": "mock-generated-artifacts/hallucination-trajectory.jsonl",
+        "raw_prompt": "mock-generated-artifacts/hallucination-prompt.txt"
+      }
+    },
+    {
+      "id": "omission_rate",
+      "judge_mode": "deterministic",
+      "observed_score": 0.0,
+      "threshold": 0.1,
+      "higher_is_better": false,
+      "passed": true,
+      "proof": {
+        "score_report": "mock-generated-artifacts/omission-score.json"
+      }
+    },
+    {
+      "id": "source_grounding",
+      "judge_mode": "deterministic",
+      "observed_score": 1.0,
+      "threshold": 0.95,
+      "higher_is_better": true,
+      "passed": true,
+      "proof": {
+        "score_report": "mock-generated-artifacts/source-grounding-score.json"
+      }
+    }
+  ],
   "metrics": {
     "transcript_quality": 1.0,
     "diarization_quality": 1.0,
@@ -649,6 +742,14 @@
     "barge_in_latency_ms": 0,
     "p95_end_to_end_latency_ms": 0,
     "notes_factuality": 1.0,
-    "action_item_extraction": 1.0
+    "action_item_extraction": 1.0,
+    "summary_factuality": 1.0,
+    "action_item_owner_date": 1.0,
+    "decision_extraction": 1.0,
+    "open_question_extraction": 1.0,
+    "memory_entity_correctness": 1.0,
+    "hallucination_rate": 0.0,
+    "omission_rate": 0.0,
+    "source_grounding": 1.0
   }
 }
