@@ -69,7 +69,11 @@ class FakeSurface implements Driver {
   }
 
   async longPressTile(_tileId: string): Promise<void> {
-    // Inert: no edit mode, no ghost launch.
+    // No edit/jiggle mode (removed, #12179 item 11): a stationary long-press on a
+    // plain `<Button>` tile synthesizes a click and launches once, like a tap.
+    if (this.page !== "launcher") return;
+    this.launchCount += 1;
+    if (this.bugs.ghostLaunchOnTap) this.launchCount += 1;
   }
 
   async scrollGrid(_dy: number): Promise<void> {}

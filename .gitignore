@@ -23,6 +23,8 @@ packages/ui/src/components/shell/__e2e__/output-bottombar/
 packages/ui/src/components/pages/__e2e__/output-connectors/
 # Resize-handles e2e output (screenshots + html bundle — regenerate via the composites __e2e__ runner; committed evidence lives in .github/issue-evidence/11144-spatial-chrome-gestures/)
 packages/ui/src/components/composites/__e2e__/output-resize-handles/
+# Launcher gesture-loop e2e output (webm videos + html bundle + traces — regenerate via test:launcher-loop-e2e; committed evidence lives in .github/issue-evidence/12179-web-loop/)
+packages/ui/src/components/shell/__e2e__/output-launcher-loop/
 
 .next/
 **/.next/**

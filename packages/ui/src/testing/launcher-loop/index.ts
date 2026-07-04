@@ -33,7 +33,11 @@ export type {
   Driver,
   LauncherObservation,
 } from "./cdp-gestures";
-export { CdpTouchDriver, LAUNCHER_SELECTORS } from "./cdp-gestures";
+export {
+  CdpTouchDriver,
+  LAUNCHER_SELECTORS,
+  NOTIFICATION_OPEN_SELECTOR,
+} from "./cdp-gestures";
 export {
   type CommandWeights,
   DEFAULT_WEIGHTS,

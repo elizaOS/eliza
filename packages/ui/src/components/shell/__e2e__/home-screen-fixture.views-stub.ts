@@ -109,6 +109,14 @@ function heroDataUri(hue: number, glyphId: string): string {
 // carry real branded hero IMAGES so the tiles render <img> icons, proving the
 // launcher shows real image icons (not the glyph fallback). Duplicate/removed
 // registrations are included so the e2e proves curation drops + dedupes them.
+// The launcher's catalog loaders (`catalog-loader.ts`, `load-apps-catalog.ts`)
+// import `fetchAvailableViews` from this module; the stub replaces the whole
+// module, so any fixture that bundles the launcher (home-screen, launcher-loop)
+// fails to esbuild unless the stub also provides it. Serve the same routable set.
+export async function fetchAvailableViews(): Promise<ViewRegistryEntry[]> {
+  return useRoutableViews().views;
+}
+
 export function useRoutableViews() {
   return {
     views: [

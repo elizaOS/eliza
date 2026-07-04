@@ -37,6 +37,17 @@ export const LAUNCHER_SELECTORS = {
 } as const;
 
 /**
+ * How an OPEN notification center is detected in the real DOM. `NotificationCenter`
+ * renders the mobile pull-down as `notification-sheet` and the desktop dropdown as
+ * `notification-panel`, each stamped `data-open` only while open — there is no
+ * `notification-center[data-open]` / `data-notification-open` element (the earlier
+ * guess the driver + reader keyed off, which never matched, so an open sheet was
+ * invisible to the loop).
+ */
+export const NOTIFICATION_OPEN_SELECTOR =
+  '[data-testid="notification-sheet"][data-open], [data-testid="notification-panel"][data-open]';
+
+/**
  * A single observation of the real surface after an action, read atomically
  * from the page so `invariants.ts` compares one consistent snapshot against the
  * model. `railTransformX` is the rail's committed X translation at rest (px);
@@ -146,6 +157,7 @@ interface ReaderSelectors {
   readonly pageProbe: string;
   readonly homePage: string;
   readonly launcherPage: string;
+  readonly notificationOpen: string;
 }
 
 const READER_SELECTORS: ReaderSelectors = {
@@ -154,6 +166,7 @@ const READER_SELECTORS: ReaderSelectors = {
   pageProbe: LAUNCHER_SELECTORS.pageProbe,
   homePage: LAUNCHER_SELECTORS.homePage,
   launcherPage: LAUNCHER_SELECTORS.launcherPage,
+  notificationOpen: NOTIFICATION_OPEN_SELECTOR,
 };
 
 /**
@@ -214,9 +227,7 @@ function readObservation(sel: ReaderSelectors): LauncherObservation {
   }
   const ring = w.__ELIZA_VIEW_INTERACTION_TELEMETRY__ ?? [];
   const launchCount = ring.filter((e) => e?.action === "launch").length;
-  const notification = !!document.querySelector(
-    '[data-notification-open="true"], [data-testid="notification-center"][data-open="true"]',
-  );
+  const notification = !!document.querySelector(sel.notificationOpen);
   return {
     dataPage: surface ? surface.getAttribute("data-page") : null,
     probeText: probe ? probe.textContent : null,
@@ -261,7 +272,10 @@ export class CdpTouchDriver implements Driver {
     private readonly page: Page,
     options: CdpTouchDriverOptions = {},
   ) {
-    this.commitDistance = options.commitDistance ?? 220;
+    // 280 px comfortably clears the pager's DISTANCE_THRESHOLD_RATIO (0.5 of the
+    // ~402 px page → ~201 px commit line); 220 sat close enough that a coalesced
+    // touch burst could land just under it.
+    this.commitDistance = options.commitDistance ?? 280;
     this.rejectDistance = options.rejectDistance ?? 24;
     this.pullDistance = options.pullDistance ?? 140;
     this.pullRejectDistance = options.pullRejectDistance ?? 20;
@@ -271,15 +285,48 @@ export class CdpTouchDriver implements Driver {
     direction: "left" | "right",
     committed: boolean,
   ): Promise<void> {
-    const magnitude = committed ? this.commitDistance : this.rejectDistance;
-    const dx = direction === "left" ? -magnitude : magnitude;
-    const stepDelayMs = committed ? 2 : 12;
+    // The model treats a committed rail swipe as navigating AND closing any open
+    // notification center (advanceModel → commitPage). A real open notification is
+    // a modal overlay (backdrop + sheet, pointer-events auto) that intercepts the
+    // touch, so the swipe never reaches the rail and it stays parked — a
+    // model-vs-reality divergence. Dismiss it first so the swipe lands on the rail
+    // and the net state matches the model.
+    if (await this.notificationIsOpen()) await this.dismissNotification();
+
+    const before = await this.readDataPage();
+    const canNavigate =
+      (direction === "left" && before === "home") ||
+      (direction === "right" && before === "launcher");
+    const expected =
+      committed && canNavigate
+        ? before === "home"
+          ? "launcher"
+          : "home"
+        : before;
+
     const target =
       direction === "left"
         ? LAUNCHER_SELECTORS.homePage
         : LAUNCHER_SELECTORS.launcherPage;
-    await touchSwipe(this.page, target, dx, 0, { steps: 10, stepDelayMs });
-    await this.settle();
+    const magnitude = committed ? this.commitDistance : this.rejectDistance;
+    const dx = direction === "left" ? -magnitude : magnitude;
+
+    // 16 ms/step (the proven run-home-screen-e2e cadence) keeps the touchMove
+    // burst on separate frames so the pager's velocity tracker sees real motion;
+    // at 2 ms/step Chromium coalesces the burst into one composited jump and the
+    // flick is dropped. A CDP touch can still be dropped by the compositor under
+    // load (a delivery artifact no finger reproduces), so a committing swipe that
+    // fails to land is re-dispatched, bounded. A reject (expected === before)
+    // matches on the first pass and never retries; a genuine model/driver
+    // divergence lands on the wrong page and is caught by the invariant check.
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      await touchSwipe(this.page, target, dx, 0, {
+        steps: 10,
+        stepDelayMs: 16,
+      });
+      await this.settle();
+      if ((await this.readDataPage()) === expected) return;
+    }
   }
 
   async railEdgeButton(direction: "prev" | "next"): Promise<void> {
@@ -288,20 +335,54 @@ export class CdpTouchDriver implements Driver {
         ? LAUNCHER_SELECTORS.railPrevButton
         : LAUNCHER_SELECTORS.railNextButton;
     const button = this.page.locator(selector).first();
-    if ((await button.count()) === 0) return;
-    if (!(await button.isVisible())) return;
-    await button.click();
-    await this.settle();
+    if ((await button.count()) > 0 && (await button.isVisible())) {
+      await button.click();
+      await this.settle();
+      return;
+    }
+    // Coarse-pointer (touch) surfaces don't render the edge chevrons —
+    // `PagerEdgeButtons` is fine-pointer-only — so the same navigation intent is a
+    // committed rail flick (next = home→launcher = left; prev = launcher→home =
+    // right). Keeps the driver faithful to the abstract "go to that page" action
+    // the model advances regardless of which affordance realizes it.
+    await this.railSwipe(direction === "next" ? "left" : "right", true);
   }
 
   async tapTile(tileId: string): Promise<void> {
+    // The launcher grid (`launcher-page-window`) is `overflow-y-auto`; a prior
+    // gridScroll can push a tile off-window, where a center-tap resolves to
+    // `elementFromPoint(...) === null` and launches nothing (the model still
+    // expects a launch → launchCount diverges). A real user scrolls the tile into
+    // view before tapping it, so do the same.
+    await this.page
+      .locator(LAUNCHER_SELECTORS.tile(tileId))
+      .first()
+      .scrollIntoViewIfNeeded();
     await touchTap(this.page, LAUNCHER_SELECTORS.tile(tileId));
     await this.settle();
   }
 
   async longPressTile(tileId: string): Promise<void> {
+    await this.page
+      .locator(LAUNCHER_SELECTORS.tile(tileId))
+      .first()
+      .scrollIntoViewIfNeeded();
     await touchLongPress(this.page, LAUNCHER_SELECTORS.tile(tileId), 650);
     await this.settle();
+  }
+
+  private async readDataPage(): Promise<string | null> {
+    return this.page
+      .locator(LAUNCHER_SELECTORS.surface)
+      .first()
+      .getAttribute("data-page");
+  }
+
+  private async notificationIsOpen(): Promise<boolean> {
+    return this.page.evaluate(
+      (selector) => Boolean(document.querySelector(selector)),
+      NOTIFICATION_OPEN_SELECTOR,
+    );
   }
 
   async scrollGrid(dy: number): Promise<void> {
@@ -348,6 +429,44 @@ export class CdpTouchDriver implements Driver {
   }
 
   private async settle(): Promise<void> {
+    // Wait for the rail to actually REST before the caller observes it: every rail
+    // animation finished AND the transform parked at a page boundary (0 or a whole
+    // -width multiple). A bare double-rAF returns mid-commit under load — the
+    // observation then reads a transitioning rail and the transform/page invariant
+    // sees `data-page` lagging the model (#12179). Page-agnostic, so it stays a
+    // driver concern and does not duplicate the model's page tracking.
+    await this.page
+      .waitForFunction(
+        () => {
+          const rail = document.querySelector(
+            '[data-testid="home-launcher-rail"]',
+          );
+          const surface = document.querySelector(
+            '[data-testid="home-launcher-surface"]',
+          );
+          if (
+            !(rail instanceof HTMLElement) ||
+            !(surface instanceof HTMLElement)
+          ) {
+            return false;
+          }
+          const animating = rail
+            .getAnimations({ subtree: true })
+            .some((a) => a.playState === "running");
+          if (animating) return false;
+          const railLeft = rail.getBoundingClientRect().left;
+          const surfaceLeft = surface.getBoundingClientRect().left;
+          const width = surface.getBoundingClientRect().width || 1;
+          const offset = railLeft - surfaceLeft;
+          return Math.abs(offset - Math.round(offset / width) * width) < 1.5;
+        },
+        undefined,
+        { timeout: 4000 },
+      )
+      // error-policy:J7 a rail that never rests is a real bug — swallow the raw
+      // playwright timeout and let checkInvariants report it with model context
+      // (transformX=… expected …) instead of an opaque waitForFunction error.
+      .catch(() => undefined);
     await this.page.evaluate(
       () =>
         new Promise<void>((resolve) => {

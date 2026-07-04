@@ -91,16 +91,18 @@ export function advanceModel(
         action.direction === "next" ? "launcher" : "home";
       return commitPage(state, target);
     }
-    case "tile-tap": {
+    case "tile-tap":
+    case "tile-long-press": {
       // A tile only launches from the launcher half; a tap that lands during a
       // committed rail swipe is swallowed by the pager (§D item 10) and never
-      // reaches the model as a tap.
+      // reaches the model. A long-press is the SAME launch: the launcher's edit/
+      // jiggle mode was removed (#12179 slop item 11), so a tile is a plain
+      // `<Button onClick>` with no long-press handler — a stationary press+release
+      // synthesizes a click and launches exactly once, like a tap. "No ghost
+      // launch" (§D item 38) holds as long as it launches once, not zero times.
       if (state.page !== "launcher") return state;
       return { ...state, launchCount: state.launchCount + 1 };
     }
-    case "tile-long-press":
-      // Long-press is inert — no edit mode, no ghost launch (§D item 38).
-      return state;
     case "grid-scroll":
     case "vertical-widget-scroll":
       // Vertical scroll never flips the rail or opens the notification center
