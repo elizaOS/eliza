@@ -236,7 +236,17 @@ async function debitInferenceCost(
       reason: result.reason,
     });
     await invalidateOrgBalanceHint(ctx.organizationId);
-    void apiKeysService.invalidateInferenceContextForUser(ctx.userId);
+    void apiKeysService.invalidateInferenceContextForUser(ctx.userId).catch((error) => {
+      // error-policy:J5 - the org balance hint is already invalidated above,
+      // so the next request leaves the optimistic path. User IAC eviction is
+      // a best-effort acceleration here; contain cache brownouts explicitly.
+      logger.error("[InferenceBilling] failed to invalidate user inference auth context", {
+        organizationId: ctx.organizationId,
+        userId: ctx.userId,
+        requestId: ctx.requestId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
   } catch (error) {
     logger.error("[InferenceBilling] inference debit threw", {
       organizationId: ctx.organizationId,

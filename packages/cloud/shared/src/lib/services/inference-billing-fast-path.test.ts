@@ -22,6 +22,7 @@ let deductResult: { success: true; newBalance: number } | { success: false; reas
 let freshBalanceUsd: number;
 let freshBalanceCalls = 0;
 const invalidateUserCalls: string[] = [];
+let invalidateUserShouldReject = false;
 
 mock.module("./credits", () => ({
   creditsService: {
@@ -48,6 +49,9 @@ mock.module("./api-keys", () => ({
   apiKeysService: {
     invalidateInferenceContextForUser: async (userId: string) => {
       invalidateUserCalls.push(userId);
+      if (invalidateUserShouldReject) {
+        throw new Error("iac eviction unavailable");
+      }
     },
   },
 }));
@@ -103,6 +107,7 @@ beforeEach(async () => {
   freshBalanceUsd = 50;
   freshBalanceCalls = 0;
   invalidateUserCalls.length = 0;
+  invalidateUserShouldReject = false;
   // Drop any pending entries left by a prior test.
   for (const key of await cache.scanByPrefix(CacheKeys.inference.pendingChargePrefix())) {
     await cache.del(key);
@@ -256,6 +261,19 @@ describe("createOptimisticDebitSettler", () => {
     await writePendingInferenceCharge(input, Date.now());
     await createOptimisticDebitSettler(input)(0.02);
     // Org-balance hint invalidated + user IAC invalidated → next request slow-paths.
+    expect(await readOrgBalanceHint(input.organizationId)).toBeNull();
+    expect(invalidateUserCalls).toContain(input.userId);
+  });
+
+  test("on FAILED debit contains a user IAC invalidation failure", async () => {
+    const input = chargeInput();
+    deductResult = { success: false, reason: "insufficient_balance" };
+    invalidateUserShouldReject = true;
+    await writeOrgBalanceHint(input.organizationId, 999, Date.now());
+    await writePendingInferenceCharge(input, Date.now());
+
+    await expect(createOptimisticDebitSettler(input)(0.02)).resolves.toBeNull();
+
     expect(await readOrgBalanceHint(input.organizationId)).toBeNull();
     expect(invalidateUserCalls).toContain(input.userId);
   });
