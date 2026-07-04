@@ -24,6 +24,13 @@ import type {
 // Node-only modules); the shapes are validated against the real interface by
 // the consumer that calls `registerNativeWebsiteBlockerBackend(...)`.
 type SelfControlMatchMode = "exact" | "subdomain";
+type SelfControlPermissionPlatform =
+  | "darwin"
+  | "win32"
+  | "linux"
+  | "ios"
+  | "android"
+  | "web";
 
 interface SelfControlStatus {
   available: boolean;
@@ -59,6 +66,7 @@ interface SelfControlPermissionState {
   status: "granted" | "denied" | "not-determined" | "not-applicable";
   lastChecked: number;
   canRequest: boolean;
+  platform: SelfControlPermissionPlatform;
   reason?: string;
   hostsFilePath?: string | null;
   supportsElevationPrompt?: boolean;
@@ -126,15 +134,33 @@ function toElevationMethod(
 
 function toSelfControlPermissionState(
   permission: WebsiteBlockerPermissionResult,
+  platform: string,
 ): SelfControlPermissionState {
   return {
     id: "website-blocking",
     status: permission.status,
     lastChecked: Date.now(),
     canRequest: permission.canRequest,
+    platform: toSelfControlPermissionPlatform(platform),
     reason: permission.reason,
     supportsElevationPrompt: permission.canRequest,
   };
+}
+
+function toSelfControlPermissionPlatform(
+  platform: string,
+): SelfControlPermissionPlatform {
+  switch (platform) {
+    case "darwin":
+    case "win32":
+    case "linux":
+    case "ios":
+    case "android":
+    case "web":
+      return platform;
+    default:
+      return "web";
+  }
 }
 
 /**
@@ -168,10 +194,16 @@ export function createNativeWebsiteBlockerBackend(
       return { success: false, error: result.error, status };
     },
     async getPermissionState() {
-      return toSelfControlPermissionState(await plugin.checkPermissions());
+      const [permission, status] = await Promise.all([
+        plugin.checkPermissions(),
+        plugin.getStatus(),
+      ]);
+      return toSelfControlPermissionState(permission, status.platform);
     },
     async requestPermission() {
-      return toSelfControlPermissionState(await plugin.requestPermissions());
+      const permission = await plugin.requestPermissions();
+      const status = await plugin.getStatus();
+      return toSelfControlPermissionState(permission, status.platform);
     },
   };
 }

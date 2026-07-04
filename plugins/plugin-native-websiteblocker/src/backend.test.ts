@@ -176,13 +176,18 @@ describe("createNativeWebsiteBlockerBackend", () => {
   });
 
   it("maps permission checks into the engine permission-state shape", async () => {
-    const backend = createNativeWebsiteBlockerBackend(makePlugin());
+    const backend = createNativeWebsiteBlockerBackend(
+      makePlugin({
+        getStatus: vi.fn(async () => makeStatus({ platform: "android" })),
+      }),
+    );
 
     const permission = await backend.getPermissionState();
 
     expect(permission.id).toBe("website-blocking");
     expect(permission.status).toBe("granted");
     expect(permission.canRequest).toBe(false);
+    expect(permission.platform).toBe("android");
     expect(typeof permission.lastChecked).toBe("number");
   });
 });
