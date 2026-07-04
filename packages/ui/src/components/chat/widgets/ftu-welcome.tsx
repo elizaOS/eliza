@@ -69,19 +69,20 @@ function FtuWelcomeWidget({
     markHomeWidgetActed(WIDGET_KEY);
   };
 
-  // Deliberately flat — no card/border/background/rounded-pill chrome. The
-  // welcome sits directly on the home: a greeting line and the starters as plain
-  // tappable text (hover underline is the only affordance).
+  // Deliberately flat: no card chrome. The welcome sits directly on the home as
+  // an editorial intro line, with the starters as warm-tinted tappable chips and
+  // a quiet dismiss. The greeting carries real hierarchy (a serene display line)
+  // so a cold home still feels composed, not empty.
   return (
     <section
       className={spanClassName}
       data-testid="chat-widget-ftu-welcome"
-      aria-label="Welcome — getting started"
+      aria-label="Getting started"
     >
-      <p className="text-sm font-medium text-white">
-        Welcome — ask me anything to get started.
+      <p className="text-sm font-medium leading-snug text-white [text-shadow:0_1px_3px_rgba(0,0,0,0.4)]">
+        Ask me anything to get started.
       </p>
-      <div className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-1.5">
+      <div className="mt-2.5 flex flex-wrap items-center gap-2">
         {suggestions.map((text) => (
           <Button
             key={text}
@@ -89,7 +90,7 @@ function FtuWelcomeWidget({
             onClick={() => onChip(text)}
             variant="ghost"
             size="sm"
-            className="h-auto px-0 py-0 text-sm font-normal text-white/75 underline-offset-4 transition-colors hover:bg-transparent hover:text-white hover:underline"
+            className="h-auto rounded-full border border-accent/25 bg-accent-subtle px-3 py-1.5 text-xs font-medium text-white transition-colors duration-150 hover:border-accent/45 hover:bg-accent/20 active:scale-[0.97] motion-reduce:active:scale-100"
           >
             {text}
           </Button>
@@ -100,7 +101,7 @@ function FtuWelcomeWidget({
           onClick={() => dismissHomeWidget(WIDGET_KEY)}
           variant="ghost"
           size="sm"
-          className="h-auto px-0 py-0 text-sm font-normal text-white/60 transition-colors hover:bg-transparent hover:text-white/80"
+          className="h-auto px-1 py-0 text-xs text-white/60 transition-colors hover:bg-transparent hover:text-white"
         >
           Dismiss
         </Button>

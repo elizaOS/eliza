@@ -313,8 +313,8 @@ function TileButton({
 }): React.JSX.Element {
   const cls = cn(
     "inline-flex h-7 w-7 items-center justify-center rounded-full",
-    "bg-black/70 text-white/90 transition-colors",
-    "hover:bg-black/85   ",
+    "bg-scrim text-white transition-colors",
+    "hover:bg-brand-black active:scale-[0.96] motion-reduce:active:scale-100",
   );
   if (href) {
     return (
@@ -363,11 +363,11 @@ function ImageTile({
 }): React.JSX.Element {
   const label = attachmentLabel(att);
   return (
-    <div className="group relative inline-block max-w-[min(20rem,100%)] overflow-hidden rounded-xl border border-white/12">
+    <div className="group relative inline-block max-w-[min(20rem,100%)] overflow-hidden rounded-lg border border-border bg-card">
       <Button
         variant="ghost"
         onClick={onExpand}
-        className="block h-auto w-full cursor-zoom-in rounded-none bg-transparent p-0 hover:bg-transparent   "
+        className="block h-auto w-full cursor-zoom-in rounded-none bg-transparent p-0 hover:bg-transparent"
         aria-label={`Expand image ${label}`}
       >
         <img
@@ -379,7 +379,7 @@ function ImageTile({
           // The type carries no intrinsic dimensions, so a 4:3 default is used.
           // `object-contain` letterboxes the full image inside that reserved box
           // (mirrors the video branch + lightbox) so non-4:3 content isn't cropped.
-          className="block aspect-[4/3] max-h-80 w-full object-contain"
+          className="block aspect-[4/3] max-h-80 w-full object-contain transition-transform duration-200 group-hover:scale-[1.01] motion-reduce:transition-none motion-reduce:group-hover:scale-100"
         />
       </Button>
       <div className="pointer-events-none absolute right-1.5 top-1.5 flex gap-1.5 opacity-0 transition-opacity group-hover:opacity-100">
@@ -418,8 +418,8 @@ function FileTile({
       asChild
       variant="ghost"
       className={cn(
-        "h-auto max-w-[min(20rem,100%)] justify-start gap-2.5 whitespace-normal rounded-xl border border-white/12 bg-white/[0.06] px-3 py-2.5",
-        "text-white/90 transition-colors hover:bg-white/[0.12]   ",
+        "h-auto min-h-touch max-w-[min(20rem,100%)] justify-start gap-2.5 whitespace-normal rounded-lg border border-border bg-card px-3 py-2.5",
+        "text-txt transition-colors hover:bg-bg-hover hover:border-border-strong active:scale-[0.99] motion-reduce:active:scale-100",
       )}
     >
       <a
@@ -428,25 +428,25 @@ function FileTile({
         rel="noreferrer"
         download={kind === "link" ? undefined : downloadName(att, kind)}
       >
-        <Icon className="h-5 w-5 shrink-0 text-white/70" />
+        <Icon className="h-5 w-5 shrink-0 text-muted" strokeWidth={1.5} />
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-[13px] font-medium">
+          <span className="block truncate text-xs-tight font-medium">
             {label}
           </span>
           {att.description?.trim() ? (
-            <span className="block truncate text-[11px] text-white/55">
+            <span className="block truncate text-2xs text-muted">
               {att.description.trim()}
             </span>
           ) : (
-            <span className="block text-[11px] uppercase tracking-wide text-white/45">
+            <span className="block text-2xs uppercase tracking-wide text-muted">
               {kind === "link" ? "link" : kind}
             </span>
           )}
         </span>
         {kind === "link" ? (
-          <LinkIcon className="h-4 w-4 shrink-0 text-white/55" />
+          <LinkIcon className="h-4 w-4 shrink-0 text-muted" strokeWidth={1.5} />
         ) : (
-          <Download className="h-4 w-4 shrink-0 text-white/55" />
+          <Download className="h-4 w-4 shrink-0 text-muted" strokeWidth={1.5} />
         )}
       </a>
     </Button>
@@ -494,8 +494,8 @@ function PdfTile({
         asChild
         variant="ghost"
         className={cn(
-          "h-auto max-w-[min(20rem,100%)] justify-start gap-2.5 whitespace-normal rounded-xl border border-white/12 bg-white/[0.06] px-3 py-2.5",
-          "text-white/90 transition-colors hover:bg-white/[0.12]   ",
+          "h-auto min-h-touch max-w-[min(20rem,100%)] justify-start gap-2.5 whitespace-normal rounded-lg border border-border bg-card px-3 py-2.5",
+          "text-txt transition-colors hover:bg-bg-hover hover:border-border-strong active:scale-[0.99] motion-reduce:active:scale-100",
         )}
       >
         <a
@@ -505,16 +505,16 @@ function PdfTile({
           download={downloadName(att, "pdf")}
           data-testid="pdf-attachment-fallback"
         >
-          <FileText className="h-5 w-5 shrink-0 text-white/70" />
+          <FileText className="h-5 w-5 shrink-0 text-muted" strokeWidth={1.5} />
           <span className="min-w-0 flex-1">
-            <span className="block truncate text-[13px] font-medium">
+            <span className="block truncate text-xs-tight font-medium">
               {label}
             </span>
-            <span className="block text-[11px] uppercase tracking-wide text-white/45">
+            <span className="block text-2xs uppercase tracking-wide text-muted">
               {t("messageattachments.pdfLabel")}
             </span>
           </span>
-          <Download className="h-4 w-4 shrink-0 text-white/55" />
+          <Download className="h-4 w-4 shrink-0 text-muted" strokeWidth={1.5} />
         </a>
       </Button>
     );
@@ -524,11 +524,11 @@ function PdfTile({
     <figure
       data-testid="pdf-attachment"
       aria-label={frameTitle}
-      className="m-0 w-full max-w-[min(36rem,100%)] overflow-hidden rounded-xl border border-white/12 bg-white/[0.04]"
+      className="m-0 w-full max-w-[min(36rem,100%)] overflow-hidden rounded-lg border border-border bg-card"
     >
-      <figcaption className="flex items-center gap-2 border-b border-white/10 px-3 py-2">
-        <FileText className="h-4 w-4 shrink-0 text-white/70" />
-        <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-white/90">
+      <figcaption className="flex items-center gap-2 border-b border-border px-3 py-2">
+        <FileText className="h-4 w-4 shrink-0 text-muted" strokeWidth={1.5} />
+        <span className="min-w-0 flex-1 truncate text-xs-tight font-medium text-txt">
           {label}
         </span>
         <span className="flex shrink-0 gap-1.5">
@@ -550,7 +550,7 @@ function PdfTile({
         // Sandbox the embedded document: allow it to be treated as same-origin
         // so the native viewer's resources load, but grant no script/forms/etc.
         sandbox="allow-same-origin"
-        className="block h-[28rem] w-full border-0 bg-white"
+        className="block h-[28rem] w-full border-0 bg-brand-white"
       />
     </figure>
   );
@@ -694,11 +694,11 @@ function Model3dTile({
     <figure
       data-testid="model3d-attachment"
       aria-label={label}
-      className="m-0 w-full max-w-[min(28rem,100%)] overflow-hidden rounded-xl border border-white/12 bg-white/[0.04]"
+      className="m-0 w-full max-w-[min(28rem,100%)] overflow-hidden rounded-lg border border-border bg-card"
     >
-      <figcaption className="flex items-center gap-2 border-b border-white/10 px-3 py-2">
-        <Box className="h-4 w-4 shrink-0 text-white/70" />
-        <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-white/90">
+      <figcaption className="flex items-center gap-2 border-b border-border px-3 py-2">
+        <Box className="h-4 w-4 shrink-0 text-muted" strokeWidth={1.5} />
+        <span className="min-w-0 flex-1 truncate text-xs-tight font-medium text-txt">
           {label}
         </span>
         <span className="flex shrink-0 gap-1.5">
@@ -715,7 +715,7 @@ function Model3dTile({
         <Button
           asChild
           variant="ghost"
-          className="h-auto w-full justify-start gap-2.5 rounded-none px-3 py-3 text-white/85 transition-colors hover:bg-white/[0.08]"
+          className="h-auto min-h-touch w-full justify-start gap-2.5 rounded-none px-3 py-3 text-txt transition-colors hover:bg-bg-hover"
         >
           <a
             href={src}
@@ -724,21 +724,21 @@ function Model3dTile({
             download={downloadName(att, "model3d")}
             data-testid="model3d-attachment-fallback"
           >
-            <Box className="h-5 w-5 shrink-0 text-white/60" />
-            <span className="min-w-0 flex-1 text-[12px] text-white/60">
+            <Box className="h-5 w-5 shrink-0 text-muted" strokeWidth={1.5} />
+            <span className="min-w-0 flex-1 text-2xs text-muted">
               {t("messageattachments.model3dDownloadToView")}
             </span>
-            <Download className="h-4 w-4 shrink-0 text-white/55" />
+            <Download className="h-4 w-4 shrink-0 text-muted" strokeWidth={1.5} />
           </a>
         </Button>
       ) : (
         <div
           ref={mountRef}
           data-testid="model3d-canvas"
-          className="relative h-72 w-full bg-black/40"
+          className="relative h-72 w-full bg-bg-elevated"
         >
           {status === "loading" ? (
-            <span className="absolute inset-0 flex items-center justify-center text-[12px] text-white/60">
+            <span className="absolute inset-0 flex items-center justify-center text-2xs text-muted">
               {t("messageattachments.model3dLoading")}
             </span>
           ) : null}
@@ -773,8 +773,8 @@ function CodeTile({
         asChild
         variant="ghost"
         className={cn(
-          "h-auto max-w-[min(20rem,100%)] justify-start gap-2.5 whitespace-normal rounded-xl border border-white/12 bg-white/[0.06] px-3 py-2.5",
-          "text-white/90 transition-colors hover:bg-white/[0.12]   ",
+          "h-auto min-h-touch max-w-[min(20rem,100%)] justify-start gap-2.5 whitespace-normal rounded-lg border border-border bg-card px-3 py-2.5",
+          "text-txt transition-colors hover:bg-bg-hover hover:border-border-strong active:scale-[0.99] motion-reduce:active:scale-100",
         )}
       >
         <a
@@ -784,16 +784,16 @@ function CodeTile({
           download={downloadName(att, "code")}
           data-testid="code-attachment-fallback"
         >
-          <Code2 className="h-5 w-5 shrink-0 text-white/70" />
+          <Code2 className="h-5 w-5 shrink-0 text-muted" strokeWidth={1.5} />
           <span className="min-w-0 flex-1">
-            <span className="block truncate text-[13px] font-medium">
+            <span className="block truncate text-xs-tight font-medium">
               {label}
             </span>
-            <span className="block text-[11px] uppercase tracking-wide text-white/45">
+            <span className="block text-2xs uppercase tracking-wide text-muted">
               {t("messageattachments.textLabel")}
             </span>
           </span>
-          <Download className="h-4 w-4 shrink-0 text-white/55" />
+          <Download className="h-4 w-4 shrink-0 text-muted" strokeWidth={1.5} />
         </a>
       </Button>
     );
@@ -804,14 +804,14 @@ function CodeTile({
     <figure
       data-testid="code-attachment"
       aria-label={t("messageattachments.codePreviewTitle", { name: label })}
-      className="m-0 w-full max-w-[min(36rem,100%)] overflow-hidden rounded-xl border border-white/12 bg-white/[0.04]"
+      className="m-0 w-full max-w-[min(36rem,100%)] overflow-hidden rounded-lg border border-border bg-card"
     >
-      <figcaption className="flex items-center gap-2 border-b border-white/10 px-3 py-2">
-        <Code2 className="h-4 w-4 shrink-0 text-white/70" />
-        <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-white/90">
+      <figcaption className="flex items-center gap-2 border-b border-border px-3 py-2">
+        <Code2 className="h-4 w-4 shrink-0 text-muted" strokeWidth={1.5} />
+        <span className="min-w-0 flex-1 truncate text-xs-tight font-medium text-txt">
           {label}
         </span>
-        <span className="shrink-0 text-[11px] uppercase tracking-wide text-white/45">
+        <span className="shrink-0 text-2xs uppercase tracking-wide text-muted">
           {language}
         </span>
         <TileButton
@@ -849,14 +849,14 @@ function UnsafeAttachmentTile({
     <div
       data-testid="unsafe-attachment"
       className={cn(
-        "flex max-w-[min(20rem,100%)] items-center gap-2.5 rounded-xl border border-white/12 bg-white/[0.06] px-3 py-2.5",
-        "text-white/90",
+        "flex max-w-[min(20rem,100%)] items-center gap-2.5 rounded-lg border border-border bg-card px-3 py-2.5",
+        "text-txt",
       )}
     >
-      <FileText className="h-5 w-5 shrink-0 text-white/70" />
+      <FileText className="h-5 w-5 shrink-0 text-muted" strokeWidth={1.5} />
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-[13px] font-medium">{label}</span>
-        <span className="block text-[11px] uppercase tracking-wide text-white/45">
+        <span className="block truncate text-xs-tight font-medium">{label}</span>
+        <span className="block text-2xs uppercase tracking-wide text-muted">
           unsupported attachment
         </span>
       </span>
@@ -879,18 +879,18 @@ function TranscriptTile({
       onClick={onOpen}
       data-testid="transcript-attachment"
       className={cn(
-        "group h-auto max-w-[min(20rem,100%)] justify-start gap-2.5 whitespace-normal rounded-xl border border-white/12 bg-white/[0.06] px-3 py-2.5 text-left",
-        "text-white/90 transition-colors hover:bg-white/[0.12]   ",
+        "group h-auto min-h-touch max-w-[min(20rem,100%)] justify-start gap-2.5 whitespace-normal rounded-lg border border-border bg-card px-3 py-2.5 text-left",
+        "text-txt transition-colors hover:bg-bg-hover hover:border-border-strong active:scale-[0.99] motion-reduce:active:scale-100",
       )}
     >
-      <ScrollText className="h-5 w-5 shrink-0 text-white/70" />
+      <ScrollText className="h-5 w-5 shrink-0 text-muted" strokeWidth={1.5} />
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-[13px] font-medium">{label}</span>
-        <span className="block text-[11px] uppercase tracking-wide text-white/45">
+        <span className="block truncate text-xs-tight font-medium">{label}</span>
+        <span className="block text-2xs uppercase tracking-wide text-muted">
           Transcript · tap to open
         </span>
       </span>
-      <Maximize2 className="h-4 w-4 shrink-0 text-white/55 transition-colors group-hover:text-white/80" />
+      <Maximize2 className="h-4 w-4 shrink-0 text-muted transition-colors group-hover:text-txt" strokeWidth={1.5} />
     </Button>
   );
 }
@@ -931,7 +931,7 @@ function Lightbox({
         variant="ghost"
         aria-label="Close preview"
         onClick={onClose}
-        className="absolute inset-0 h-auto w-auto cursor-zoom-out rounded-none bg-black/85 p-0 hover:bg-black/85"
+        className="absolute inset-0 h-auto w-auto cursor-zoom-out rounded-none bg-scrim p-0 hover:bg-scrim"
       />
       <img
         src={src}
@@ -1044,10 +1044,10 @@ export function MessageAttachments({
               <div
                 key={att.id}
                 data-testid="audio-attachment"
-                className="max-w-[min(22rem,100%)] rounded-xl border border-white/12 bg-white/[0.06] px-3 py-2.5"
+                className="max-w-[min(22rem,100%)] rounded-lg border border-border bg-card px-3 py-2.5"
               >
                 {att.title?.trim() ? (
-                  <div className="mb-1.5 truncate text-[12px] font-medium text-white/80">
+                  <div className="mb-1.5 truncate text-2xs font-medium text-txt">
                     {att.title.trim()}
                   </div>
                 ) : null}
@@ -1071,7 +1071,7 @@ export function MessageAttachments({
                 preload="metadata"
                 // Reserve a stable 16:9 box so the row height is fixed before
                 // the video metadata loads — avoids layout shift on load.
-                className="aspect-video max-h-80 w-full max-w-[min(22rem,100%)] rounded-xl border border-white/12 object-contain"
+                className="aspect-video max-h-80 w-full max-w-[min(22rem,100%)] rounded-lg border border-border bg-card object-contain"
               >
                 <track kind="captions" />
               </video>

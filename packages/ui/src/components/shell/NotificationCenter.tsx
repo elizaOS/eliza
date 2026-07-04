@@ -19,6 +19,7 @@ import {
   OPEN_NOTIFICATION_CENTER_EVENT,
 } from "../../events";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
+import { REVEAL_SOFT_MAX } from "./use-notification-pull";
 import {
   Z_NOTIFICATION_BACKDROP,
   Z_NOTIFICATION_OVERLAY,
@@ -49,23 +50,60 @@ import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 type NotificationSortMode = "priority" | "time";
 
 /**
- * Glass-look surface for the controlled shells (sheet + panel): a mostly-opaque
- * dark base, a hairline border, a lit top edge (inset highlight), and a soft
- * drop shadow for depth — deliberately NOT flat. The list cards float on top as
- * their own lighter tiles. NO GPU blur/saturate filter behind the surface: it
- * re-samples the layer underneath every frame (#9141 battery decision,
- * enforced by the ui-package no-blur gate test) — the high base opacity
- * carries readability over live launcher content instead.
+ * Solid surface for the controlled shells (sheet + panel). The system is flat:
+ * an opaque token surface (--card) + a hairline border carries the depth, NOT
+ * backdrop blur/saturation or a drop shadow (both removed app-wide: blur trips
+ * the #9141 battery gate, and all shadow tokens are none). The list cards sit
+ * on top as their own token tiles.
  */
 const GLASS_SURFACE =
-  "border border-white/15 bg-neutral-950/[0.87] [box-shadow:inset_0_1px_0_0_rgba(255,255,255,0.18),0_24px_70px_-18px_rgba(0,0,0,0.8)]";
+  "border border-border-strong bg-card";
 
 /**
- * Finger travel (px) that maps to a fully-revealed sheet during a pull. The
- * open threshold (~60px) lands the reveal a little under half, so a committed
- * pull then eases the rest of the way open.
+ * Finger travel (px) that maps to a fully-revealed sheet during a pull. Locked
+ * to the gesture hook's soft cap ({@link REVEAL_SOFT_MAX}) so the finger CARRIES
+ * the whole sheet 1:1: at the soft cap the sheet is fully revealed, and any
+ * further pull rubber-bands (the hook damps travel past the cap). A mismatch is
+ * what made the old pull feel laggy — the sheet trailed the finger because the
+ * cap (96) revealed only ~74% of a 130px sheet.
  */
-const SHEET_REVEAL_DISTANCE = 130;
+const SHEET_REVEAL_DISTANCE = REVEAL_SOFT_MAX;
+
+/**
+ * Overshoot past the fully-open sheet (px) at the rubber-band ceiling. The hook
+ * damps finger travel above the soft cap to a small extra distance; we translate
+ * that into a tiny downward give (never a second full reveal) so a hard over-pull
+ * feels elastic instead of dead-stopped.
+ */
+const SHEET_OVERSHOOT_MAX = 12;
+
+/**
+ * Query for the OS "reduce motion" setting. When set, the sheet/panel skip the
+ * spring settle + descent and appear/disappear instantly (no transition), the
+ * accessibility contract the rest of the shell already honors
+ * ({@link ../../hooks/useHorizontalPager}).
+ */
+const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)";
+
+/**
+ * The resting pull-hint's breathe: a slow, low-amplitude opacity + vertical
+ * bob so the grabber pill catches the eye once as "pullable", then settles into
+ * quiet ambient motion. GPU-only (opacity + transform), and it self-disables
+ * under prefers-reduced-motion (the JS path also gates it out entirely) so the
+ * looping-animation motion rule is satisfied belt-and-suspenders.
+ */
+const PULL_HINT_CSS = `
+@keyframes eliza-notif-hint-breathe {
+  0%, 100% { opacity: 0.55; transform: translateY(0); }
+  50% { opacity: 0.9; transform: translateY(1px); }
+}
+.eliza-notif-hint-breathe {
+  animation: eliza-notif-hint-breathe 3.2s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .eliza-notif-hint-breathe { animation: none; opacity: 0.7; }
+}
+`;
 
 const CATEGORY_LABEL: Record<NotificationCategory, string> = {
   reminder: "Reminders",
@@ -154,14 +192,13 @@ function NotificationRow({
   );
 
   return (
-    // iOS-notification-center card: each notification is its own rounded
-    // tile floating on the dark shell — a hairline border + a faint lit top
-    // edge give it depth with zero GPU backdrop filtering (banned app-wide
-    // for battery, #9141; such filters re-rasterize per frame on the phone).
+    // Notification card: each notification is its own rounded token tile on the
+    // solid shell — a hairline border + a token surface fill carry the depth
+    // (flat system: no GPU blur, no drop/inset shadow).
     <li
       className={cn(
-        "group relative flex items-start gap-3 rounded-2xl border border-white/10 bg-white/[0.07] pr-9 transition-colors [box-shadow:inset_0_1px_0_0_rgba(255,255,255,0.08)] hover:bg-white/[0.12] pointer-coarse:pr-12",
-        unread && "border-white/15 bg-white/[0.11]",
+        "group relative flex items-start gap-3 rounded-2xl border border-border bg-surface pr-9 transition-colors hover:bg-bg-hover pointer-coarse:pr-12",
+        unread && "border-border-strong bg-bg-hover",
       )}
     >
       <Button
@@ -176,14 +213,14 @@ function NotificationRow({
               ? "bg-status-danger/20 text-status-danger"
               : notification.priority === "high"
                 ? "bg-accent/20 text-accent"
-                : "bg-white/15 text-white/85",
+                : "bg-surface text-txt",
           )}
         >
           {categoryIcon(notification.category)}
         </span>
         <span className="min-w-0 flex-1">
           <span className="flex items-center gap-2">
-            <span className="truncate text-sm font-medium text-white">
+            <span className="truncate text-sm font-medium text-txt">
               {notification.title}
             </span>
             {unread && (
@@ -191,11 +228,11 @@ function NotificationRow({
             )}
           </span>
           {notification.body && (
-            <span className="mt-0.5 line-clamp-2 block text-xs text-white/70">
+            <span className="mt-0.5 line-clamp-2 block text-xs text-muted-strong">
               {notification.body}
             </span>
           )}
-          <span className="mt-1 block text-[11px] text-white/50">
+          <span className="mt-1 block text-xs-tight text-muted">
             {formatRelativeTime(notification.createdAt)}
           </span>
         </span>
@@ -213,7 +250,7 @@ function NotificationRow({
         // coarse pointer the hit target grows to the 44px `touch` token (the
         // house `pointer-coarse:min-*-touch` convention) so it isn't a
         // sub-target tap zone on the phone sheet.
-        className="absolute right-1.5 top-2.5 h-auto w-auto shrink-0 rounded-full p-1 text-white/60 opacity-50 transition-opacity pointer-coarse:min-h-touch pointer-coarse:min-w-touch hover:bg-white/10 hover:text-white group-hover:opacity-100"
+        className="absolute right-1.5 top-2.5 h-auto w-auto shrink-0 rounded-full p-1 text-muted opacity-50 transition-opacity pointer-coarse:min-h-touch pointer-coarse:min-w-touch hover:bg-bg-hover hover:text-txt group-hover:opacity-100"
       >
         <X className="h-3.5 w-3.5" />
       </Button>
@@ -283,7 +320,7 @@ function FilterChip({
         "h-auto shrink-0 gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition-colors",
         active
           ? "bg-accent text-accent-foreground hover:bg-accent-hover"
-          : "text-white/70 hover:bg-white/10 hover:text-white",
+          : "text-muted-strong hover:bg-bg-hover hover:text-txt",
       )}
     >
       {icon}
@@ -348,6 +385,10 @@ export function NotificationCenter({
   // the overlay is open re-picks the appropriate treatment.
   const isDesktopSurface = useMediaQuery(DESKTOP_PANEL_QUERY);
   const isShortLandscape = useMediaQuery(SHORT_LANDSCAPE_QUERY);
+  // Honor the OS reduce-motion setting: the sheet/panel appear instantly (no
+  // spring, no descent) instead of animating. Reactive so a live OS toggle takes
+  // effect without a remount.
+  const reduceMotion = useMediaQuery(REDUCED_MOTION_QUERY);
 
   // `variant="auto"` lets a controlled caller (e.g. HomeScreen's notification
   // pull-down) render the surface-appropriate shell without owning the media
@@ -381,12 +422,29 @@ export function NotificationCenter({
   const dragProgress = dragging
     ? Math.min(1, Math.max(0, dragPx / SHEET_REVEAL_DISTANCE))
     : 0;
+  // Rubber-band give past a fully-revealed sheet: the hook damps finger travel
+  // above the soft cap, so anything beyond SHEET_REVEAL_DISTANCE maps to a small
+  // elastic downward nudge (capped) rather than more reveal. Only meaningful
+  // while dragging; 0 once settled.
+  const dragOvershootPx =
+    dragging && dragPx > SHEET_REVEAL_DISTANCE
+      ? Math.min(SHEET_OVERSHOOT_MAX, dragPx - SHEET_REVEAL_DISTANCE)
+      : 0;
   const settledTarget = exiting ? 0 : open ? 1 : 0;
   const revealProgress = dragging ? dragProgress : entered ? settledTarget : 0;
-  // Instant while the finger drives it; eased on settle / retract / enter.
-  const revealTransition = dragging
-    ? "none"
-    : "clip-path 320ms cubic-bezier(0.22,1,0.36,1), opacity 260ms ease-out, transform 320ms cubic-bezier(0.22,1,0.36,1)";
+  // Motion contract:
+  //   • dragging → no transition (the finger IS the animation, tracks 1:1);
+  //   • reduce-motion → no transition (instant appear/disappear);
+  //   • settle/retract/enter → a SPRING: a snappy overshoot-and-settle on the
+  //     transform (the tactile "catch" as the sheet finishes opening or springs
+  //     back closed) while clip/opacity ride a clean ease so the reveal edge and
+  //     fade don't wobble. This is what makes a committed pull feel like it
+  //     "lands" instead of gliding to a stop.
+  const SPRING = "cubic-bezier(0.34, 1.32, 0.5, 1)";
+  const revealTransition =
+    dragging || reduceMotion
+      ? "none"
+      : `clip-path 300ms cubic-bezier(0.22,1,0.36,1), opacity 240ms ease-out, transform 360ms ${SPRING}`;
 
   // Categories actually present in the inbox, in a stable display order. Drives
   // the filter chips — empty/single-category inboxes get no filter clutter.
@@ -581,7 +639,39 @@ export function NotificationCenter({
   // panel on mouse-driven wide surfaces, the full-width pull-down sheet on
   // touch/narrow ones. It stays mounted through its exit animation.
   if (headless) {
-    if (!shellMounted) return null;
+    // At rest (sheet fully closed) the headless owner still renders a quiet
+    // affordance so the pull is DISCOVERABLE: a subtle grabber pill peeking at
+    // the top-center edge that says "there's something to pull here", the same
+    // signal an iOS notch/handle gives. It only shows on the touch/narrow
+    // surface (the pull-down sheet's home) — the desktop panel is reached by the
+    // bell/tray, not a pull, so a handle there would be noise. It is purely
+    // decorative (aria-hidden, no pointer events): the invisible pull-zone button
+    // in HomeScreen owns the tap + gesture; this only advertises them. It fades
+    // + lifts away the instant a pull starts so it never fights the live sheet.
+    if (!shellMounted) {
+      // Desktop is reached by the bell/tray, not a pull — a handle there is
+      // noise. Touch/narrow surfaces get the resting hint.
+      if (isDesktopSurface) return null;
+      return overlayPortal(
+        <div
+          aria-hidden
+          data-testid="notification-pull-hint"
+          className="pointer-events-none fixed inset-x-0 top-0 z-[1] flex justify-center pt-[calc(var(--safe-area-top,0px)+0.375rem)]"
+        >
+          {/* Solid token pill — no blur, no shadow. It gently breathes so the
+              eye catches it once as "pullable", then rests; under reduce-motion
+              it holds a plain static pill (the CSS + the JS flag both drop the
+              animation) so the affordance stays without the motion. */}
+          <span
+            className={cn(
+              "h-1 w-8 rounded-full bg-muted-strong/70",
+              !reduceMotion && "eliza-notif-hint-breathe",
+            )}
+          />
+          <style>{PULL_HINT_CSS}</style>
+        </div>,
+      );
+    }
     return (
       <NotificationCenter
         variant="auto"
@@ -603,7 +693,7 @@ export function NotificationCenter({
           hierarchy separate it from the list (app-wide flat direction). */}
       <div className="flex items-center justify-between gap-2 px-3.5 py-2.5">
         <div className="flex min-w-0 items-center gap-2">
-          <span className="text-sm font-semibold text-white">
+          <span className="text-sm font-semibold text-txt">
             Notifications
           </span>
           {hasUnread && (
@@ -619,7 +709,7 @@ export function NotificationCenter({
               size="icon-sm"
               aria-label="Mark all read"
               title="Mark all read"
-              className="text-white/70 hover:bg-white/10 hover:text-white"
+              className="text-muted-strong hover:bg-bg-hover hover:text-txt"
               onClick={handleMarkAll}
             >
               <CheckCheck className="h-4 w-4" />
@@ -631,7 +721,7 @@ export function NotificationCenter({
               size="icon-sm"
               aria-label="Clear all"
               title="Clear all"
-              className="text-white/70 hover:bg-white/10 hover:text-white"
+              className="text-muted-strong hover:bg-bg-hover hover:text-txt"
               onClick={handleClear}
             >
               <Trash2 className="h-4 w-4" />
@@ -651,10 +741,10 @@ export function NotificationCenter({
       )}
       {notifications.length > 1 && (
         <div className="flex items-center gap-2 px-3 py-1.5">
-          <span className="text-2xs font-medium uppercase tracking-wide text-white/60">
+          <span className="text-2xs font-medium uppercase tracking-wide text-muted">
             Sort
           </span>
-          <div className="ml-auto flex items-center gap-0.5 rounded-md bg-white/10 p-0.5">
+          <div className="ml-auto flex items-center gap-0.5 rounded-md bg-surface p-0.5">
             {(
               [
                 ["priority", "Priority"],
@@ -672,7 +762,7 @@ export function NotificationCenter({
                   "h-auto rounded-sm px-2 py-0.5 text-2xs font-medium transition-colors",
                   sortMode === mode
                     ? "bg-accent/15 text-accent"
-                    : "text-white/60 hover:text-white",
+                    : "text-muted hover:text-txt",
                 )}
               >
                 {label}
@@ -696,13 +786,13 @@ export function NotificationCenter({
               (which would flash then get replaced when rows arrive). */}
           {hydrated ? (
             <>
-              <Inbox className="h-7 w-7 text-white/50" />
-              <span className="text-sm text-white/70">
+              <Inbox className="h-7 w-7 text-muted" />
+              <span className="text-sm text-muted-strong">
                 You're all caught up
               </span>
             </>
           ) : (
-            <span className="text-sm text-white/70">Loading…</span>
+            <span className="text-sm text-muted-strong">Loading…</span>
           )}
         </div>
       ) : (
@@ -759,7 +849,7 @@ export function NotificationCenter({
             transition: revealTransition,
             pointerEvents: open ? "auto" : "none",
           }}
-          className="fixed inset-0 h-auto w-auto rounded-none bg-black/55 p-0 hover:bg-black/55"
+          className="fixed inset-0 h-auto w-auto rounded-none bg-scrim p-0 hover:bg-scrim"
         />
         <div
           ref={dialogRef}
@@ -778,7 +868,12 @@ export function NotificationCenter({
             // lead as it descends; fade + a small settle ride along.
             clipPath: `inset(0px 0px ${(1 - revealProgress) * 100}% 0px)`,
             opacity: Math.min(1, revealProgress * 2),
-            transform: `translateY(${(revealProgress - 1) * 10}px)`,
+            // Descent + rubber-band: a small lift-in as it settles (skipped under
+            // reduce-motion) plus the elastic over-pull give at the fully-open
+            // ceiling, so a hard pull past the bottom feels stretchy, not walled.
+            transform: reduceMotion
+              ? "none"
+              : `translateY(${(revealProgress - 1) * 10 + dragOvershootPx}px)`,
             transition: revealTransition,
             pointerEvents: open ? "auto" : "none",
           }}
@@ -801,7 +896,7 @@ export function NotificationCenter({
             onClick={() => onOpenChange?.(false)}
             className="h-auto shrink-0 rounded-none bg-transparent py-2 hover:bg-transparent"
           >
-            <span className="h-1 w-9 rounded-full bg-white/40" aria-hidden />
+            <span className="h-1 w-9 rounded-full bg-muted-strong" aria-hidden />
           </Button>
         </div>
       </>,
@@ -843,9 +938,12 @@ export function NotificationCenter({
           onKeyDown={onDialogKeyDown}
           style={{
             zIndex: Z_NOTIFICATION_OVERLAY,
-            // No drag on desktop — just a quick fade + small drop on open/close.
+            // No drag on desktop — just a quick fade + small spring-drop on
+            // open/close (instant under reduce-motion).
             opacity: revealProgress,
-            transform: `translateY(${(revealProgress - 1) * 8}px)`,
+            transform: reduceMotion
+              ? "none"
+              : `translateY(${(revealProgress - 1) * 8}px)`,
             transition: revealTransition,
           }}
           className={cn(

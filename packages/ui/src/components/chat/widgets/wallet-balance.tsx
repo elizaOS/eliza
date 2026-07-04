@@ -109,7 +109,7 @@ export function WalletBalanceWidget(
       variant="ghost"
       className={`${spanClassName} group flex h-auto w-full flex-col items-stretch gap-1 whitespace-normal px-3 py-2.5 text-left font-normal transition-opacity hover:opacity-80`}
     >
-      <span className="flex items-center gap-2 text-xs text-white/70 [&>svg]:h-3.5 [&>svg]:w-3.5">
+      <span className="flex items-center gap-2 text-xs text-muted [&>svg]:h-3.5 [&>svg]:w-3.5">
         <Wallet />
         Wallet
       </span>
@@ -121,9 +121,11 @@ export function WalletBalanceWidget(
             data-testid={`wallet-price-row-${h.symbol}`}
             className="flex items-baseline justify-between gap-2 text-sm"
           >
-            <span className="truncate font-medium text-white">{h.symbol}</span>
+            <span className="truncate font-medium text-txt-strong">
+              {h.symbol}
+            </span>
             <span className="flex shrink-0 items-baseline gap-1.5">
-              <span className="tabular-nums text-white">
+              <span className="tabular-nums text-txt-strong">
                 {formatPrice(h.priceUsd)}
               </span>
               {change ? (

@@ -81,6 +81,23 @@ const startEmpty = params.has("empty");
 // is visible instead of a long scrolling transcript.
 const firstRun = params.has("firstrun");
 const fewMessages = params.has("few") || firstRun;
+// `?many` seeds a LONG transcript (far taller than any detent) so the scroll
+// container's overflow can be reproduced/measured in a real browser: at the FULL
+// detent the content must exceed the panel height and the thread must scroll
+// natively (the "can't scroll chat on web" repro harness, #chat-scroll-web).
+const manyMessages = params.has("many");
+const MANY_SEED: ShellMessage[] = Array.from({ length: 40 }, (_, i) => {
+  const role: ShellMessage["role"] = i % 2 === 0 ? "user" : "assistant";
+  return {
+    id: `many-${i}`,
+    role,
+    content:
+      role === "user"
+        ? `message number ${i + 1} — a question that takes a full line to read`
+        : `reply ${i + 1}: here is a deliberately long answer so the transcript grows well past the tallest sheet detent and the scroll container has real overflow to scroll through on every viewport.`,
+    createdAt: i + 1,
+  } as ShellMessage;
+});
 const FEW_SEED: ShellMessage[] = [
   {
     id: "f1",
@@ -135,14 +152,21 @@ function Harness(): React.JSX.Element {
   const [messages, setMessages] = React.useState<ShellMessage[]>(
     startEmpty
       ? []
-      : fewMessages
-        ? FEW_SEED
-        : streaming
-          ? [
-              ...SEED,
-              { id: "m-inflight", role: "assistant", content: "", createdAt: 13 },
-            ]
-          : SEED_WITH_FAILURE,
+      : manyMessages
+        ? MANY_SEED
+        : fewMessages
+          ? FEW_SEED
+          : streaming
+            ? [
+                ...SEED,
+                {
+                  id: "m-inflight",
+                  role: "assistant",
+                  content: "",
+                  createdAt: 13,
+                },
+              ]
+            : SEED_WITH_FAILURE,
   );
   const [phase, setPhase] =
     React.useState<ShellController["phase"]>(initialPhase);

@@ -43,6 +43,9 @@ function renderWidget() {
 }
 
 function rowTitles(): string[] {
+  // Each row is a <li><button …>; the title is the first text node inside it
+  // (an aria-hidden icon chip + optional unread dot carry no text, and the
+  // timestamp <time> is right-aligned after the title/body column).
   return screen
     .getAllByRole("listitem")
     .map((li) => within(li).getAllByText(/.+/)[0].textContent ?? "");
@@ -154,12 +157,22 @@ describe("NotificationsWidget — populated (#9304)", () => {
     renderWidget();
 
     expect(screen.getByText("Detail line").textContent).toBe("Detail line");
+    // The with-body row shows both its title and its body line.
+    const withBodyRow = within(screen.getByTestId("widget-notifications"))
+      .getByText("Has body")
+      .closest("li");
+    expect(withBodyRow).not.toBeNull();
+    expect(
+      within(withBodyRow as HTMLElement).queryByText("Detail line"),
+    ).not.toBeNull();
+
+    // The no-body row renders its title but no body line at all.
     const noBodyRow = within(screen.getByTestId("widget-notifications"))
       .getByText("No body")
       .closest("li");
     expect(noBodyRow).not.toBeNull();
-    // The body span is a sibling of the title span; without a body the row has
-    // exactly one text child.
-    expect(within(noBodyRow as HTMLElement).getAllByText(/.+/)).toHaveLength(1);
+    expect(
+      within(noBodyRow as HTMLElement).queryByText("Detail line"),
+    ).toBeNull();
   });
 });

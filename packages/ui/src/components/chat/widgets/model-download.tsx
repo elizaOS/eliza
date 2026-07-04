@@ -360,7 +360,7 @@ function ModelProgressCard({
       <span className="flex w-full items-center gap-3">
         <span
           className={cn(
-            "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white/10 text-white/85 [&>svg]:h-4 [&>svg]:w-4",
+            "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-bg-hover text-txt-strong [&>svg]:h-4 [&>svg]:w-4",
             tone === "danger" && "text-danger",
           )}
         >
@@ -369,13 +369,13 @@ function ModelProgressCard({
         <span
           className={cn(
             "min-w-0 flex-1 truncate text-sm font-semibold leading-tight",
-            tone === "danger" ? "text-danger" : "text-white",
+            tone === "danger" ? "text-danger" : "text-txt-strong",
           )}
         >
           {value}
         </span>
         {meta != null ? (
-          <span className="shrink-0 text-2xs tabular-nums text-white/60">
+          <span className="shrink-0 text-2xs tabular-nums text-muted">
             {meta}
           </span>
         ) : null}
@@ -395,7 +395,7 @@ function ModelProgressCard({
       <span
         aria-hidden="true"
         data-testid="chat-widget-model-download-track"
-        className="h-1.5 w-full overflow-hidden rounded-full bg-white/10"
+        className="h-1.5 w-full overflow-hidden rounded-full bg-bg-hover"
       >
         {indeterminate ? (
           <span className="block h-full w-full animate-pulse rounded-full bg-accent/70 motion-reduce:animate-none" />
