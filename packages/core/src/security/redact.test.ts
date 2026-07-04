@@ -59,6 +59,20 @@ describe("redactSensitiveText (pattern detection)", () => {
 		expect(redactSensitiveText(bearer)).not.toContain("a".repeat(40));
 	});
 
+	it("masks Stripe secret + restricted keys (underscore form)", () => {
+		// Stripe is the payment processor — a leaked sk_live_ is catastrophic, and these
+		// often appear as bare values (not under a *_SECRET name) in logged request bodies.
+		// Assemble the token from fragments at runtime so a contiguous Stripe-shaped key
+		// never sits in source — GitHub push-protection blocks even a fake literal one.
+		const body = "0123456789abcdefghijABCDEF";
+		for (const prefix of ["sk_live_", "sk_test_", "rk_live_", "rk_test_"]) {
+			const key = `${prefix}${body}`;
+			const out = redactSensitiveText(`stripe key ${key} end`);
+			expect(out).not.toContain(key);
+			expect(out).toContain("…");
+		}
+	});
+
 	it("mode:off is a passthrough", () => {
 		const key = "sk-0123456789abcdefghij";
 		expect(redactSensitiveText(key, { mode: "off" })).toBe(key);

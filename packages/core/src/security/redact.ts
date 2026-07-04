@@ -44,6 +44,10 @@ const DEFAULT_REDACT_PATTERNS: string[] = [
 	String.raw`-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]+?-----END [A-Z ]*PRIVATE KEY-----`,
 	// Common token prefixes.
 	String.raw`\b(sk-[A-Za-z0-9_-]{8,})\b`,
+	// Stripe secret + restricted keys (underscore form) — sk_live_/sk_test_/rk_live_/rk_test_.
+	// Distinct shape from the OpenAI sk- above; Stripe is the payment processor so a leaked
+	// sk_live_ is catastrophic, and these often appear as bare values (not under a *_SECRET name).
+	String.raw`\b((?:sk|rk)_(?:live|test)_[A-Za-z0-9]{10,})\b`,
 	String.raw`\b(ghp_[A-Za-z0-9]{20,})\b`,
 	String.raw`\b(github_pat_[A-Za-z0-9_]{20,})\b`,
 	String.raw`\b(xox[baprs]-[A-Za-z0-9-]{10,})\b`,
