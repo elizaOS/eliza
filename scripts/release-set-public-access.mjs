@@ -1,10 +1,12 @@
-// Stamp publishConfig.access="public" onto every public @elizaos/* package
-// before `lerna publish from-package`. New scoped packages default to
-// "restricted" access, which fails with `E402 You must sign up for private
-// packages` on the free @elizaos org and aborts the whole release mid-stream.
-// lerna publishes via libnpmpublish and honours each package's
-// publishConfig.access (NOT the npmrc `access` key), so it must be set
-// per-package. Private packages are skipped by lerna entirely and left alone.
+/**
+ * Release helper that stamps publishConfig.access="public" onto public @elizaos packages.
+ *
+ * Scoped packages default to restricted access, which fails on the free @elizaos
+ * npm organization during `lerna publish from-package`. Lerna publishes through
+ * libnpmpublish and honors each package's publishConfig.access rather than the
+ * npmrc access key, so this script sets the per-package field and leaves private
+ * packages untouched.
+ */
 
 import { execSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";

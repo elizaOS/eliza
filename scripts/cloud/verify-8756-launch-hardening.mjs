@@ -1,8 +1,11 @@
 #!/usr/bin/env node
-// Read-only evidence collector for the launch-hardening operator lane
-// (#12081, superseding #8756). It gathers the public GitHub state that proves
-// whether closeout is ready without printing secret values or mutating live
-// infrastructure.
+/**
+ * Read-only evidence collector for the launch-hardening operator lane.
+ *
+ * Gathers the public GitHub state for #12081, superseding #8756, so reviewers
+ * can decide whether closeout is ready without printing secret values or
+ * mutating live infrastructure.
+ */
 import { spawnSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
