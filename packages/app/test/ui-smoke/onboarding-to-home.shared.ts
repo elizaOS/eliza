@@ -301,6 +301,11 @@ export async function injectFullCapabilityHost(page: Page): Promise<void> {
     win.__ELIZAOS_APP_BOOT_CONFIG__ = { apiBase: origin };
     win.__ELIZAOS_API_BASE__ = origin;
     win.__electrobunWindowId = 1;
+    // The runtime chooser (local/remote onboarding paths) is OFF by default
+    // (#13377, cloud-only onboarding). A full-capability host is exactly the
+    // environment where the Local runtime is testable, so these lanes opt in;
+    // the cloud-only default is covered by onboarding-cloud-only.spec.ts.
+    window.localStorage.setItem("eliza:enable-runtime-chooser", "1");
   });
 }
 
@@ -582,7 +587,13 @@ export async function injectCloudAuthToken(page: Page): Promise<void> {
   }, CLOUD_AUTH_TOKEN);
 }
 
-export async function installCloudRoutes(page: Page): Promise<void> {
+export async function installCloudRoutes(
+  page: Page,
+  opts: { agentCount?: 0 | 1 } = {},
+): Promise<void> {
+  // agentCount 0 exercises the silent auto-provision path (no cloud-agent
+  // picker): bindCloudAgent creates the agent via the POST mock below.
+  const agentCount = opts.agentCount ?? 1;
   await page.unroute("**/api/cloud/status").catch(() => {});
   await page.route("**/api/cloud/status", async (route) => {
     if (route.request().method() !== "GET") {
@@ -647,23 +658,26 @@ export async function installCloudRoutes(page: Page): Promise<void> {
     if (request.method() === "GET") {
       await fulfillJson(route, {
         success: true,
-        data: [
-          {
-            agent_id: CLOUD_AGENT_ID,
-            agent_name: CLOUD_AGENT_NAME,
-            status: "running",
-            bridge_url: origin,
-            web_ui_url: origin,
-            containerUrl: origin,
-            webUiUrl: origin,
-            database_status: "ready",
-            error_message: null,
-            agent_config: {},
-            created_at: "2026-01-01T00:00:00.000Z",
-            updated_at: "2026-01-01T00:00:00.000Z",
-            last_heartbeat_at: "2026-01-01T00:00:00.000Z",
-          },
-        ],
+        data:
+          agentCount === 0
+            ? []
+            : [
+                {
+                  agent_id: CLOUD_AGENT_ID,
+                  agent_name: CLOUD_AGENT_NAME,
+                  status: "running",
+                  bridge_url: origin,
+                  web_ui_url: origin,
+                  containerUrl: origin,
+                  webUiUrl: origin,
+                  database_status: "ready",
+                  error_message: null,
+                  agent_config: {},
+                  created_at: "2026-01-01T00:00:00.000Z",
+                  updated_at: "2026-01-01T00:00:00.000Z",
+                  last_heartbeat_at: "2026-01-01T00:00:00.000Z",
+                },
+              ],
       });
       return;
     }
@@ -981,6 +995,114 @@ export async function completeCloudOnboardingToHome(
   ).toBe(1);
 
   return { surface };
+}
+
+// ── Cloud-only onboarding (#13377) — the production default ─────────────────
+//
+// With the runtime chooser OFF (no eliza:enable-runtime-chooser override, no
+// VITE_ELIZA_ENABLE_RUNTIME_CHOOSER build flag) onboarding is a single
+// "Sign in to Eliza Cloud" step: the greeting seeds ONE choice button, a
+// usable stored session skips the ask entirely, and provisioning success
+// completes first-run for real — no tutorial/accent completion gate.
+
+/** Assert the cloud-only greeting: one sign-in button, no local/remote. */
+export async function expectCloudOnlySignInOnboarding(
+  page: Page,
+): Promise<void> {
+  const chatOverlay = page.getByTestId("continuous-chat-overlay");
+  await expect(chatOverlay).toBeVisible({ timeout: 30_000 });
+  await expect(
+    page.getByText("Sign in to Eliza Cloud and I'll get you set up", {
+      exact: false,
+    }),
+  ).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByTestId(RUNTIME_CHOICE("cloud"))).toBeVisible({
+    timeout: 15_000,
+  });
+  await expect(page.getByTestId(RUNTIME_CHOICE("local"))).toHaveCount(0);
+  await expect(page.getByTestId(RUNTIME_CHOICE("remote"))).toHaveCount(0);
+  // The chooser-mode greeting question must not exist.
+  await expect(
+    page.getByText("where should your agent run?", { exact: false }),
+  ).toHaveCount(0);
+  // Same onboarding surface contract as chooser mode: unlocked composer,
+  // opaque backdrop, non-dismissable pinned sheet.
+  const composer = page.getByTestId("chat-composer-textarea");
+  await expect(composer).toBeEnabled();
+  await expect(page.getByTestId("chat-first-run-backdrop")).toHaveAttribute(
+    "data-first-run-opaque",
+    "true",
+  );
+  await expect(chatOverlay).toHaveAttribute("data-open", "true");
+}
+
+/** Post-completion contract shared by every cloud-only path: the real gate
+ *  flipped at provisioning success (no tutorial/accent gate), the wrap-up turn
+ *  is informational, the sheet auto-collapsed, and first-run persisted once. */
+async function expectCloudOnlyCompletion(
+  page: Page,
+  state: OnboardingRouteState,
+): Promise<{ surface: Locator }> {
+  await expect(
+    page.getByText("You're all set", { exact: false }),
+  ).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByTestId(TUTORIAL_CHOICE("start"))).toHaveCount(0);
+  await expect(page.getByTestId(TUTORIAL_CHOICE("skip"))).toHaveCount(0);
+  await expectOnboardingAutoCollapse(page);
+  const surface = await expectPopulatedHome(page);
+  expect(
+    state.firstRunPosts.length,
+    "POST /api/first-run must fire exactly once for cloud-only onboarding",
+  ).toBe(1);
+  return { surface };
+}
+
+/**
+ * Drive cloud-only onboarding via the sign-in tap: greeting → the session
+ * lands during the (mocked) login the tap launches → provision → home.
+ * With `agentCount: 1` the cloud-agent picker still appears and is picked;
+ * with 0 the bind is silent.
+ */
+export async function completeCloudOnlyOnboardingToHome(
+  page: Page,
+  click: (locator: Locator) => Promise<void>,
+  opts: { state: OnboardingRouteState; pickAgent?: boolean },
+): Promise<{ surface: Locator }> {
+  const { state, pickAgent = false } = opts;
+  await expectCloudOnlySignInOnboarding(page);
+
+  // The session token lands as the login flow the tap launches completes
+  // (mocked at the storage boundary — same token the poll mock returns).
+  await page.evaluate((token) => {
+    window.localStorage.setItem("steward_session_token", token);
+  }, CLOUD_AUTH_TOKEN);
+  await click(page.getByTestId(RUNTIME_CHOICE("cloud")));
+
+  if (pickAgent) {
+    const agentChoice = page.getByTestId(CLOUD_AGENT_CHOICE(CLOUD_AGENT_ID));
+    await expect(agentChoice).toBeVisible({ timeout: 30_000 });
+    await click(agentChoice);
+  }
+
+  return expectCloudOnlyCompletion(page, state);
+}
+
+/**
+ * Session injection: a usable stored session at boot skips the sign-in ask
+ * entirely — zero interactions from fresh boot to onboarded home.
+ */
+export async function completeCloudOnlySessionInjectionToHome(
+  page: Page,
+  opts: { state: OnboardingRouteState },
+): Promise<{ surface: Locator }> {
+  await expect(
+    page.getByText("Welcome back — you're already signed in", {
+      exact: false,
+    }),
+  ).toBeVisible({ timeout: 30_000 });
+  // The sign-in ask never rendered.
+  await expect(page.getByTestId(RUNTIME_CHOICE("cloud"))).toHaveCount(0);
+  return expectCloudOnlyCompletion(page, opts.state);
 }
 
 export async function completeCloudInferenceOnboardingToHome(
