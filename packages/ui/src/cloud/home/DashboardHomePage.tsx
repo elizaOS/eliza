@@ -29,6 +29,7 @@ import {
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { DashboardLoadingState } from "../../cloud-ui/components/dashboard/route-placeholders";
+import { useSetPageHeader } from "../../cloud-ui/components/layout";
 import { useCreditsBalance } from "../instances/lib/data/credits";
 import { useDocumentTitle } from "../lib/use-document-title";
 import { useRequireAuth } from "../lib/use-session-auth";
@@ -226,6 +227,13 @@ export function DashboardHomePage() {
   const t = useCloudT();
   const session = useRequireAuth();
   useDocumentTitle(t("cloud.home.metaTitle", { defaultValue: "Dashboard" }));
+  // Title renders in the console chrome's top bar (ConsoleShell captures it).
+  useSetPageHeader({
+    title: t("cloud.home.title", { defaultValue: "Overview" }),
+    description: t("cloud.home.subtitle", {
+      defaultValue: "Manage your agents, apps, credits, and keys.",
+    }),
+  });
 
   if (!session.ready) {
     return (
@@ -236,15 +244,7 @@ export function DashboardHomePage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-5xl px-4 py-6 md:px-6 md:py-8">
-      <h1 className="mb-1 text-2xl font-semibold text-txt-strong">
-        {t("cloud.home.title", { defaultValue: "Eliza Cloud" })}
-      </h1>
-      <p className="mb-6 text-sm text-muted">
-        {t("cloud.home.subtitle", {
-          defaultValue: "Manage your agents, apps, credits, and keys.",
-        })}
-      </p>
+    <div className="mx-auto w-full max-w-5xl">
       <BalanceCard />
       <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {CONSOLE_SURFACES.map((surface) => (

@@ -5,13 +5,19 @@
  * round-trip (which can't carry it in the OAuth `redirect_uri`).
  */
 
-// The post-login landing is the join flow (`/join`): it select-or-provisions a
-// Cloud agent and drops the user straight into chat (the headline migration
-// outcome), instead of a "No agents yet" management table. See cloud/join.
-// Exported so every post-auth surface (login, email magic-link callback, invite
-// accept) lands on the same place — a bare `/dashboard` has no index route and
-// dead-ends on the cloud 404 (`CloudRouterShell` `dashboard/*` → CloudNotFound).
-export const DEFAULT_LOGIN_RETURN_TO = "/join";
+import { isApexControlPlaneHost } from "../../shell/apex-host";
+
+// The post-login landing is host-dependent. On the app domains the join flow
+// (`/join`) select-or-provisions a Cloud agent and drops the user straight
+// into chat (the headline migration outcome). On an apex control-plane host
+// (elizacloud.ai — the CONSOLE) chat doesn't exist and the agent app never
+// boots (see AppCatchAllRoute), so login lands on the `/dashboard` console
+// overview instead of running an agent-provisioning flow the console can't
+// use. Called by every post-auth surface (login, email magic-link callback,
+// invite accept) so they all agree.
+export function defaultLoginReturnTo(): string {
+  return isApexControlPlaneHost() ? "/dashboard" : "/join";
+}
 const PENDING_OAUTH_RETURN_TO_KEY = "eliza.login.oauth.returnTo";
 const PENDING_OAUTH_RETURN_TO_TTL_MS = 10 * 60 * 1000;
 
@@ -33,7 +39,7 @@ export function resolveLoginReturnTo(
   return (
     sanitizeLoginReturnTo(searchParams.get("returnTo")) ??
     sanitizeLoginReturnTo(pendingOAuthReturnTo) ??
-    DEFAULT_LOGIN_RETURN_TO
+    defaultLoginReturnTo()
   );
 }
 

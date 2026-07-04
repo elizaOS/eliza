@@ -18,7 +18,7 @@ import {
   LocalStewardAuthContext,
   StewardAuthProvider,
 } from "../../../shell/StewardProvider";
-import { DEFAULT_LOGIN_RETURN_TO } from "../../lib/login-return-to";
+import { defaultLoginReturnTo } from "../../lib/login-return-to";
 import { syncStewardSessionCookie } from "../../lib/steward-session";
 import { usePageTitle } from "../../lib/use-page-title";
 
@@ -70,7 +70,7 @@ function EmailCallbackContent() {
       return;
     }
 
-    const destination = returnTo ?? DEFAULT_LOGIN_RETURN_TO;
+    const destination = returnTo ?? defaultLoginReturnTo();
 
     let redirectTimer: ReturnType<typeof setTimeout> | null = null;
     const finishSuccess = () => {

@@ -34,12 +34,17 @@ vi.mock("../instances/lib/data/credits", () => ({
   useCreditsBalance: () => creditsState,
 }));
 
+import { PageHeaderProvider } from "../../cloud-ui/components/layout";
 import { DashboardHomePage } from "./DashboardHomePage";
 
 function renderHome(): void {
   render(
     <MemoryRouter>
-      <DashboardHomePage />
+      {/* The real mount is inside ConsoleShell, which provides the header
+          context useSetPageHeader writes to. */}
+      <PageHeaderProvider>
+        <DashboardHomePage />
+      </PageHeaderProvider>
     </MemoryRouter>,
   );
 }

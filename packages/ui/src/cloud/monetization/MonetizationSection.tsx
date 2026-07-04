@@ -10,12 +10,14 @@
  */
 
 import { useState } from "react";
+// Canonical primitive import per the packages/ui extension rules (cloud code
+// imports components/ui/* directly, not re-export shims).
 import {
   Tabs,
   TabsContent,
   TabsList,
   TabsTrigger,
-} from "../../cloud-ui/components/primitives";
+} from "../../components/ui/tabs";
 import { useCloudT } from "../shell/CloudI18nProvider";
 import { AffiliatesSurface } from "./affiliates/AffiliatesSurface";
 import { EarningsSurface } from "./earnings/EarningsSurface";

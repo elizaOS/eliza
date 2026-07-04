@@ -17,13 +17,19 @@ export function DashboardShellLayout({
   children,
 }: DashboardShellLayoutProps) {
   return (
-    <div className="theme-cloud dashboard-theme flex min-h-dvh w-full bg-black font-poppins text-white">
+    // The shell owns all scrolling: the host app locks document scroll, so the
+    // frame is pinned to the viewport and the content region scrolls itself
+    // (the sidebar scrolls its own nav list independently).
+    <div className="theme-cloud dashboard-theme flex h-dvh w-full overflow-hidden bg-black font-poppins text-white">
       {sidebar}
 
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="flex h-dvh min-w-0 flex-1 flex-col">
         {header}
 
-        <main id="main" className="min-w-0 flex-1 bg-black p-3 md:p-6">
+        <main
+          id="main"
+          className="min-h-0 min-w-0 flex-1 overflow-y-auto bg-black p-3 md:p-6"
+        >
           {children}
         </main>
       </div>

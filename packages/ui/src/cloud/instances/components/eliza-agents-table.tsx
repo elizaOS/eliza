@@ -36,6 +36,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@elizaos/ui/cloud-ui";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   ArrowUpDown,
   Boxes,
@@ -52,6 +53,8 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "../../../components/ui/button";
+import { Checkbox } from "../../../components/ui/checkbox";
+import { api } from "../../lib/api-client";
 import { useT } from "../lib/i18n";
 import { openWebUIWithPairing } from "../lib/open-web-ui";
 import {
@@ -196,9 +199,13 @@ export function ElizaAgentsTable({
   sandboxes: initialSandboxes,
 }: ElizaAgentsTableProps) {
   const t = useT();
-  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+  const [deleteIds, setDeleteIds] = useState<string[] | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [actionInProgress, setActionInProgress] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(
+    new Set(),
+  );
 
   const [localSandboxes, setLocalSandboxes] =
     useState<ElizaAgentRow[]>(initialSandboxes);
@@ -206,20 +213,38 @@ export function ElizaAgentsTable({
     [...initialSandboxes.map((sb) => sb.id)].sort().join(","),
   );
 
+  // Delete tombstones: the backend list is eventually consistent, so a refetch
+  // right after a successful DELETE can still contain the deleted agent and
+  // resurrect its row (the "deleted but still shown until refresh" bug). Ids
+  // stay tombstoned — filtered from every merge — until the API stops
+  // returning them, then the entry is dropped.
+  const deletedIdsRef = useRef(new Set<string>());
+  const withoutDeleted = useCallback(
+    (rows: ElizaAgentRow[]) =>
+      rows.filter((sb) => !deletedIdsRef.current.has(sb.id)),
+    [],
+  );
+
   useEffect(() => {
     const newIds = [...initialSandboxes.map((sb) => sb.id)].sort().join(",");
     if (newIds !== initialSandboxIdsRef.current) {
       initialSandboxIdsRef.current = newIds;
-      setLocalSandboxes(initialSandboxes);
+      setLocalSandboxes(withoutDeleted(initialSandboxes));
     }
-  }, [initialSandboxes]);
+  }, [initialSandboxes, withoutDeleted]);
 
   const mergeApiData = useCallback((apiAgents: SandboxListAgent[]) => {
     setLocalSandboxes((prev) => {
       const apiIds = new Set(apiAgents.map((a) => a.id));
+      // An id the API no longer returns is fully deleted — retire its
+      // tombstone so a future agent reusing the id isn't silently hidden.
+      for (const id of deletedIdsRef.current) {
+        if (!apiIds.has(id)) deletedIdsRef.current.delete(id);
+      }
+      const live = apiAgents.filter((a) => !deletedIdsRef.current.has(a.id));
       const existingMap = new Map(prev.map((sb) => [sb.id, sb]));
 
-      const merged = apiAgents.map((agent) => {
+      const merged = live.map((agent) => {
         const existing = existingMap.get(agent.id);
         return {
           ...(existing ?? {}),
@@ -252,22 +277,30 @@ export function ElizaAgentsTable({
         } as ElizaAgentRow;
       });
 
-      const localOnly = prev.filter((sb) => !apiIds.has(sb.id));
-      return [...merged, ...localOnly];
+      // The API list is the source of truth for membership: a row it doesn't
+      // return is gone (deleted elsewhere, another tab, another member).
+      // Keeping unknown local rows here is what used to resurrect deleted
+      // agents after every refresh.
+      return merged;
     });
   }, []);
 
   const refreshData = useCallback(async () => {
     try {
-      const res = await fetch("/api/v1/eliza/agents");
-      if (!res.ok) return;
-      const json = await res.json();
-      const agents: SandboxListAgent[] = json?.data ?? [];
-      mergeApiData(agents);
+      // The typed cloud client (Bearer → api.elizacloud.ai). A same-origin
+      // fetch here 404s on the console hosts, which serve no /api/*.
+      const json = await api<{ data?: SandboxListAgent[] }>(
+        "/api/v1/eliza/agents",
+      );
+      mergeApiData(json?.data ?? []);
+      // Keep the parent useAgents() cache honest too, so navigating away and
+      // back doesn't rehydrate pre-action rows.
+      await queryClient.invalidateQueries({ queryKey: ["agent", "agents"] });
     } catch {
-      // Silent — retried on next action or poll.
+      // error-policy:J4 list refresh is opportunistic after an action; the
+      // 15s useAgents poll reconciles on the next tick if this read fails.
     }
-  }, [mergeApiData]);
+  }, [mergeApiData, queryClient]);
 
   const jobActionById = useRef(new Map<string, string>());
 
@@ -539,45 +572,71 @@ export function ElizaAgentsTable({
     }
   }
 
-  async function handleDelete(id: string) {
+  /**
+   * Delete one or many agents. Rows leave the list immediately and their ids
+   * are tombstoned so the eventually-consistent list API can't resurrect them
+   * on the next refetch; a failed DELETE lifts its tombstone and restores its
+   * row. One implementation serves the row action and the bulk bar.
+   */
+  async function handleDelete(ids: string[]) {
     setIsDeleting(true);
-    const previousSandboxes = localSandboxes;
-    setLocalSandboxes((prev) => prev.filter((sb) => sb.id !== id));
+    const rowById = new Map(localSandboxes.map((sb) => [sb.id, sb]));
+    for (const id of ids) deletedIdsRef.current.add(id);
+    setLocalSandboxes((prev) => prev.filter((sb) => !ids.includes(sb.id)));
     try {
-      const res = await fetch(`/api/v1/eliza/agents/${id}`, {
-        method: "DELETE",
+      const results = await Promise.allSettled(
+        ids.map((id) =>
+          api(`/api/v1/eliza/agents/${id}`, { method: "DELETE" }),
+        ),
+      );
+      const failed: string[] = [];
+      ids.forEach((id, i) => {
+        if (results[i].status === "rejected") failed.push(id);
       });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setLocalSandboxes(previousSandboxes);
-        throw new Error(
-          (data as { error?: string }).error ??
-            t("cloud.elizaAgentsTable.deleteFailed", {
-              defaultValue: "Delete failed",
-            }),
+      if (failed.length > 0) {
+        for (const id of failed) deletedIdsRef.current.delete(id);
+        setLocalSandboxes((prev) => [
+          ...prev,
+          ...failed
+            .map((id) => rowById.get(id))
+            .filter((sb): sb is ElizaAgentRow => Boolean(sb)),
+        ]);
+        const firstError = results.find(
+          (r): r is PromiseRejectedResult => r.status === "rejected",
+        )?.reason;
+        toast.error(
+          t("cloud.elizaAgentsTable.deleteSomeFailed", {
+            count: failed.length,
+            defaultValue: "Failed to delete {{count}} agent(s)",
+          }),
+          {
+            description:
+              firstError instanceof Error ? firstError.message : undefined,
+          },
         );
       }
-      toast.success(
-        t("cloud.elizaAgentsTable.agentDeleted", {
-          defaultValue: "Agent deleted",
-        }),
-      );
+      const deleted = ids.length - failed.length;
+      if (deleted > 0) {
+        toast.success(
+          deleted === 1
+            ? t("cloud.elizaAgentsTable.agentDeleted", {
+                defaultValue: "Agent deleted",
+              })
+            : t("cloud.elizaAgentsTable.agentsDeleted", {
+                count: deleted,
+                defaultValue: "{{count}} agents deleted",
+              }),
+        );
+      }
+      setSelectedIds(new Set());
       void refreshData();
-    } catch (err) {
-      const message =
-        err instanceof Error
-          ? err.message
-          : t("cloud.elizaAgentsTable.failedToDelete", {
-              defaultValue: "Failed to delete agent",
-            });
-      toast.error(message);
     } finally {
       setIsDeleting(false);
-      setDeleteId(null);
+      setDeleteIds(null);
     }
   }
 
-  const deleteTargetBusy = deleteId ? poller.isActive(deleteId) : false;
+  const deleteTargetBusy = (deleteIds ?? []).some((id) => poller.isActive(id));
 
   if (localSandboxes.length === 0) {
     return (
@@ -607,9 +666,64 @@ export function ElizaAgentsTable({
     );
   }
 
+  const selectableIds = filtered
+    .filter((sb) => !poller.isActive(sb.id))
+    .map((sb) => sb.id);
+  const allSelected =
+    selectableIds.length > 0 &&
+    selectableIds.every((id) => selectedIds.has(id));
+  const toggleSelected = (id: string, checked: boolean) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  };
+
   return (
     <TooltipProvider>
       <DashboardDataList>
+        {selectedIds.size > 0 && (
+          <div className="flex items-center justify-between gap-3 rounded-sm border border-border bg-card px-3 py-2">
+            <span className="text-sm text-txt">
+              {t("cloud.elizaAgentsTable.selectedCount", {
+                count: selectedIds.size,
+                defaultValue: "{{count}} selected",
+              })}
+            </span>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="ghost"
+                type="button"
+                onClick={() => setSelectedIds(new Set())}
+                className="h-8 px-3 text-muted hover:text-txt"
+              >
+                {t("cloud.elizaAgentsTable.clearSelection", {
+                  defaultValue: "Clear",
+                })}
+              </Button>
+              <Button
+                variant="ghost"
+                type="button"
+                disabled={isDeleting}
+                onClick={() =>
+                  setDeleteIds(
+                    [...selectedIds].filter((id) =>
+                      localSandboxes.some((sb) => sb.id === id),
+                    ),
+                  )
+                }
+                className="h-8 px-3 text-destructive hover:bg-destructive-subtle"
+              >
+                <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+                {t("cloud.elizaAgentsTable.deleteSelected", {
+                  defaultValue: "Delete selected",
+                })}
+              </Button>
+            </div>
+          </div>
+        )}
         {/* Search + filter + create */}
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="relative flex-1">
@@ -696,6 +810,19 @@ export function ElizaAgentsTable({
           <Table>
             <TableHeader>
               <TableRow className="bg-bg-muted border-b border-border hover:bg-bg-muted">
+                <TableHead className="w-10">
+                  <Checkbox
+                    aria-label={t("cloud.elizaAgentsTable.selectAll", {
+                      defaultValue: "Select all agents",
+                    })}
+                    checked={allSelected}
+                    onCheckedChange={(checked) =>
+                      setSelectedIds(
+                        checked === true ? new Set(selectableIds) : new Set(),
+                      )
+                    }
+                  />
+                </TableHead>
                 <TableHead className="w-[30%]">
                   <Button
                     variant="ghost"
@@ -755,7 +882,7 @@ export function ElizaAgentsTable({
             <TableBody>
               {filtered.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="h-24 text-center">
+                  <TableCell colSpan={7} className="h-24 text-center">
                     <div className="flex flex-col items-center justify-center gap-1 text-muted">
                       <Search className="h-5 w-5 mb-1" />
                       <p className="text-sm">
@@ -791,6 +918,18 @@ export function ElizaAgentsTable({
                       key={sb.id}
                       className="hover:bg-bg-hover transition-colors border-b border-border"
                     >
+                      <TableCell className="w-10">
+                        <Checkbox
+                          aria-label={t("cloud.elizaAgentsTable.selectAgent", {
+                            defaultValue: "Select agent",
+                          })}
+                          checked={selectedIds.has(sb.id)}
+                          disabled={isProvisioningActive}
+                          onCheckedChange={(checked) =>
+                            toggleSelected(sb.id, checked === true)
+                          }
+                        />
+                      </TableCell>
                       <TableCell>
                         <div className="space-y-1">
                           <div className="flex flex-wrap items-center gap-2">
@@ -986,7 +1125,7 @@ export function ElizaAgentsTable({
                               <Button
                                 variant="ghost"
                                 type="button"
-                                onClick={() => !busy && setDeleteId(sb.id)}
+                                onClick={() => !busy && setDeleteIds([sb.id])}
                                 disabled={isDeleting || busy}
                                 className="inline-flex size-touch items-center justify-center text-muted hover:text-destructive hover:bg-destructive-subtle transition-colors disabled:opacity-30"
                               >
@@ -1154,7 +1293,7 @@ export function ElizaAgentsTable({
                     <Button
                       variant="ghost"
                       type="button"
-                      onClick={() => !busy && setDeleteId(sb.id)}
+                      onClick={() => !busy && setDeleteIds([sb.id])}
                       disabled={isDeleting || busy}
                       className="min-h-touch px-3 text-muted hover:text-destructive hover:bg-destructive-subtle transition-colors disabled:opacity-30"
                     >
@@ -1168,17 +1307,22 @@ export function ElizaAgentsTable({
         </DashboardDataListMobile>
       </DashboardDataList>
 
-      {/* Delete confirmation */}
+      {/* Delete confirmation — one dialog for the row action and the bulk bar */}
       <AlertDialog
-        open={deleteId !== null}
-        onOpenChange={() => setDeleteId(null)}
+        open={deleteIds !== null}
+        onOpenChange={() => setDeleteIds(null)}
       >
         <AlertDialogContent className="bg-card border-border">
           <AlertDialogHeader>
             <AlertDialogTitle className="text-txt-strong">
-              {t("cloud.elizaAgentsTable.deleteAgentTitle", {
-                defaultValue: "Delete Agent",
-              })}
+              {(deleteIds?.length ?? 0) > 1
+                ? t("cloud.elizaAgentsTable.deleteAgentsTitle", {
+                    count: deleteIds?.length,
+                    defaultValue: "Delete {{count}} Agents",
+                  })
+                : t("cloud.elizaAgentsTable.deleteAgentTitle", {
+                    defaultValue: "Delete Agent",
+                  })}
             </AlertDialogTitle>
             <AlertDialogDescription className="text-muted">
               {deleteTargetBusy
@@ -1186,10 +1330,16 @@ export function ElizaAgentsTable({
                     defaultValue:
                       "This agent is still provisioning. Wait for the job to finish before deleting.",
                   })
-                : t("cloud.elizaAgentsTable.deleteDesc", {
-                    defaultValue:
-                      "This will permanently delete the agent and stop any running container.",
-                  })}
+                : (deleteIds?.length ?? 0) > 1
+                  ? t("cloud.elizaAgentsTable.deleteManyDesc", {
+                      count: deleteIds?.length,
+                      defaultValue:
+                        "This will permanently delete {{count}} agents and stop their running containers.",
+                    })
+                  : t("cloud.elizaAgentsTable.deleteDesc", {
+                      defaultValue:
+                        "This will permanently delete the agent and stop any running container.",
+                    })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -1198,7 +1348,10 @@ export function ElizaAgentsTable({
             </AlertDialogCancel>
             <AlertDialogAction
               onClick={() =>
-                deleteId && !deleteTargetBusy && handleDelete(deleteId)
+                deleteIds &&
+                deleteIds.length > 0 &&
+                !deleteTargetBusy &&
+                handleDelete(deleteIds)
               }
               disabled={isDeleting || deleteTargetBusy}
               className="bg-destructive hover:bg-accent-hover text-accent-foreground disabled:opacity-50"

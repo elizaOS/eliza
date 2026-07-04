@@ -42,7 +42,7 @@ import {
 import { ApiError, api } from "../../../lib/api-client";
 import { useSessionAuth } from "../../../lib/use-session-auth";
 import { useCloudT } from "../../../shell/CloudI18nProvider";
-import { DEFAULT_LOGIN_RETURN_TO } from "../../lib/login-return-to";
+import { defaultLoginReturnTo } from "../../lib/login-return-to";
 
 interface InviteDetails {
   organization_name: string;
@@ -161,7 +161,7 @@ export default function InviteAcceptPage() {
         // open so the new member can pool their API key immediately (#11332).
         const destination = connectIntent
           ? "/dashboard/organization?tab=credentials&contribute=1"
-          : DEFAULT_LOGIN_RETURN_TO;
+          : defaultLoginReturnTo();
         setTimeout(() => navigate(destination), 1500);
       } else {
         setError(

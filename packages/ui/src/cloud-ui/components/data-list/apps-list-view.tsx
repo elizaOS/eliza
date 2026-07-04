@@ -13,6 +13,7 @@ import {
 import type { ReactNode } from "react";
 
 import { Badge } from "../../../components/ui/badge";
+import { Checkbox } from "../../../components/ui/checkbox";
 import { StatusBadge } from "../../../components/ui/status-badge";
 import { DashboardDataList } from "./dashboard-data-list";
 import { ListActionMenu } from "./list-action-menu";
@@ -41,6 +42,10 @@ export interface AppsListViewProps {
   renderAppLink: (props: AppsListLinkRenderProps) => ReactNode;
   onCopyUrl?: (app: AppsListItem) => void;
   onDeleteApp?: (app: AppsListItem) => void;
+  /** When provided (with `selectedIds`), each row grows a selection checkbox —
+   * the host owns the selection state and any bulk actions on it. */
+  onToggleSelect?: (app: AppsListItem, selected: boolean) => void;
+  selectedIds?: ReadonlySet<string>;
 }
 
 function formatRelativeTime(value: string | Date) {
@@ -71,6 +76,8 @@ export function AppsListView({
   renderAppLink,
   onCopyUrl,
   onDeleteApp,
+  onToggleSelect,
+  selectedIds,
 }: AppsListViewProps) {
   if (apps.length === 0) {
     return null;
@@ -86,6 +93,15 @@ export function AppsListView({
           <div className="px-3 py-2.5">
             <div className="flex items-center justify-between gap-2">
               <div className="flex min-w-0 flex-1 items-center gap-2">
+                {onToggleSelect ? (
+                  <Checkbox
+                    aria-label={`Select ${app.name}`}
+                    checked={selectedIds?.has(app.id) ?? false}
+                    onCheckedChange={(checked) =>
+                      onToggleSelect(app, checked === true)
+                    }
+                  />
+                ) : null}
                 {renderAppLink({
                   app,
                   className:

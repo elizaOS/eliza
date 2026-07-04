@@ -26,9 +26,9 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
+import { BrandCard } from "../../../cloud-ui/components/brand/brand-card";
 import {
   Badge,
-  BrandCard,
   Button,
   Dialog,
   DialogContent,
@@ -49,7 +49,9 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "../../../cloud-ui";
+  // Deep primitive/brand imports per the packages/ui extension rules — the
+  // root cloud-ui barrel would drag the entire kit into this chunk graph.
+} from "../../../cloud-ui/components/primitives";
 import { api, apiFetch } from "../../lib/api-client";
 import { formatUsd as formatCurrency } from "../../lib/format-usd";
 import { useCloudT } from "../../shell/CloudI18nProvider";
@@ -158,7 +160,8 @@ const STATUS_COLORS: Record<string, string> = {
   pending: "bg-status-warning-bg text-status-warning border-status-warning/30",
   approved: "bg-bg-muted text-muted-strong border-border",
   processing: "bg-bg-muted text-muted-strong border-border",
-  completed: "bg-status-success-bg text-status-success border-status-success/30",
+  completed:
+    "bg-status-success-bg text-status-success border-status-success/30",
   failed: "bg-destructive-subtle text-destructive border-destructive/30",
   rejected: "bg-destructive-subtle text-destructive border-destructive/30",
 };
@@ -885,10 +888,7 @@ export function EarningsPageClient() {
           </div>
 
           <DialogFooter>
-            <Button
-              variant="ghost"
-              onClick={() => setShowRedeemDialog(false)}
-            >
+            <Button variant="ghost" onClick={() => setShowRedeemDialog(false)}>
               {t("cloud.earnings.cancel", { defaultValue: "Cancel" })}
             </Button>
             <Button

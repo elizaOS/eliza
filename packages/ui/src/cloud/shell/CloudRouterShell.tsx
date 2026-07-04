@@ -34,13 +34,14 @@ import {
   useLocation,
   useParams,
 } from "react-router-dom";
-import { ELIZA_CLOUD_CONTROL_PLANE_HOSTS } from "../../utils/cloud-agent-base";
 import { queryClient } from "../lib/query-client";
 import { useSessionAuth } from "../lib/use-session-auth";
+import { isApexControlPlaneHost } from "./apex-host";
 import {
   CloudI18nProvider,
   resolveInitialCloudLang,
 } from "./CloudI18nProvider";
+import { ConsoleShell } from "./ConsoleShell";
 import {
   type CloudRouteDef,
   getCloudRouteGate,
@@ -202,11 +203,18 @@ function CloudProviders({
   );
 }
 
+/** Route groups that render inside the console chrome (left sidebar + top
+ * bar). Everything console-shaped is one of these; auth/payment/public token
+ * routes stay chrome-free. */
+const CONSOLE_CHROME_GROUPS = new Set(["dashboard", "admin"]);
+
 /**
  * Render a single registered cloud route. Authenticated routes are wrapped in
  * the Steward auth provider (which itself lazy-loads the heavy `@stwd/*` runtime
- * only when needed); public token routes (payment / approve / ballot /
- * sensitive / shared chat) render WITHOUT app-shell chrome and WITHOUT Steward.
+ * only when needed); console routes (`dashboard`/`admin` groups) additionally
+ * render inside the {@link ConsoleShell} sidebar chrome; public token routes
+ * (payment / approve / ballot / sensitive / shared chat) render WITHOUT
+ * app-shell chrome and WITHOUT Steward.
  */
 function CloudRouteElement({
   route,
@@ -216,6 +224,13 @@ function CloudRouteElement({
   const body = applyRouteGate(route.gate, renderRouteElement(route.element));
   if (route.public) {
     return <>{body}</>;
+  }
+  if (route.group && CONSOLE_CHROME_GROUPS.has(route.group)) {
+    return (
+      <StewardAuthProvider>
+        <ConsoleShell>{body}</ConsoleShell>
+      </StewardAuthProvider>
+    );
   }
   return (
     <StewardAuthProvider>
@@ -231,26 +246,6 @@ export interface CloudRouterShellProps {
    * under the catch-all `/*` route. The host owns its `AppProvider`.
    */
   appElement: ReactNode;
-}
-
-/**
- * Apex control-plane hosts that serve THIS console UI but have no same-origin
- * agent backend — so an unauthenticated visitor must land on the Steward
- * `/login` page, not the agent shell (which 401-walls on `/api/*`).
- * `api.elizacloud.ai` is the API origin (it never serves this shell); per-agent
- * `<id>.elizacloud.ai` subdomains are NOT in the control-plane set and boot
- * their real runtime, so they fall through untouched.
- */
-const APEX_UI_CONTROL_PLANE_HOSTS = new Set(
-  // Exclude the API origins (api. / api-staging.) — they never serve this shell.
-  [...ELIZA_CLOUD_CONTROL_PLANE_HOSTS].filter((h) => !/^api[.-]/.test(h)),
-);
-
-function isApexControlPlaneHost(): boolean {
-  if (typeof window === "undefined") return false;
-  return APEX_UI_CONTROL_PLANE_HOSTS.has(
-    window.location.hostname.toLowerCase(),
-  );
 }
 
 /**
