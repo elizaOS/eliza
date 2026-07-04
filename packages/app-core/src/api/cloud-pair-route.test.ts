@@ -232,6 +232,35 @@ describe("handleCloudPairRoute", () => {
     expect(harness.headers()["x-frame-options"]).toBe("DENY");
   });
 
+  it("emits a fail-visible handoff branch (console.error + message, guarded redirect) rather than a silent redirect on failure", async () => {
+    globalThis.fetch = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(
+          JSON.stringify({ apiKey: "agent_secret_value", agentName: "Nova" }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+      ) as unknown as typeof globalThis.fetch;
+
+    const harness = fakeRes();
+    const req = fakeReq({ pathname: "/pair", search: "?token=abc" });
+    await handleCloudPairRoute(req, harness.res);
+    const body = harness.body();
+
+    // The catch is no longer empty: it logs and shows a visible failure.
+    expect(body).not.toMatch(/catch\s*\(e\)\s*\{\s*\}/);
+    expect(body).toContain("console.error(");
+    expect(body).toContain("Pairing failed.");
+    // The redirect is guarded behind an early return in the catch, so a failed
+    // handoff no longer lands the user at "/" unpaired.
+    const catchStart = body.indexOf("catch (e)");
+    const redirectPos = body.indexOf('window.location.replace("/")');
+    const returnPos = body.indexOf("return;", catchStart);
+    expect(catchStart).toBeGreaterThanOrEqual(0);
+    expect(returnPos).toBeGreaterThan(catchStart);
+    expect(returnPos).toBeLessThan(redirectPos);
+  });
+
   it("safely escapes an apiKey containing </script>", async () => {
     const evilToken = `agent_a"</script><script>alert(1)</script>`;
     globalThis.fetch = vi.fn().mockResolvedValue(

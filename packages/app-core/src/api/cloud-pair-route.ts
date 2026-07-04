@@ -106,7 +106,18 @@ function renderRedirectHtml(apiKey: string): string {
         window.__ELIZAOS_APP_BOOT_CONFIG__ = next;
         window.__ELIZA_APP_BOOT_CONFIG__ = next;
         window[slot] = { current: next };
-      } catch (e) {}
+      } catch (e) {
+        // A failed handoff must NOT silently redirect to "/" unpaired — the
+        // user would land signed-out with no clue why. Surface it: log to the
+        // browser console and show a visible failure instead of redirecting.
+        console.error("[cloud-pair] failed to persist the paired token", e);
+        var p = document.querySelector("p");
+        if (p) {
+          p.textContent =
+            "Pairing failed. Close this window and try signing in again.";
+        }
+        return;
+      }
       window.location.replace("/");
     })();
   </script>

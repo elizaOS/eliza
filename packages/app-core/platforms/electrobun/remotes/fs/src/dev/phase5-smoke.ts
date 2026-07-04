@@ -49,6 +49,15 @@ try {
       path.join(tempRoot, "escape-link"),
     );
   } catch {}
+  // A dangling symlink to a missing in-root target: lstat succeeds but realpath
+  // fails (FS_PATH_NOT_FOUND). Unlike escape-link/.env/node_modules (designed
+  // exclusions), this is a genuine per-entry failure that must be surfaced.
+  // The failedEntries assertion below depends on this fixture, so a setup
+  // failure fails the smoke loudly rather than silently skipping the check.
+  symlinkSync(
+    path.join(tempRoot, "missing-target"),
+    path.join(tempRoot, "broken-link"),
+  );
 
   process.env.ELIZA_FS_ROOTS = tempRoot;
   process.env.ELIZA_FS_ENABLE_WRITES = "0";
@@ -73,6 +82,29 @@ try {
   assert(
     !listing.entries.some((entry) => entry.name === "node_modules"),
     "list skips generated folders",
+  );
+  // A genuinely-broken child (dangling symlink → realpath fails) must be
+  // reported as a partial-listing failure, not silently dropped.
+  assert(
+    listing.failedEntries.some((failure) =>
+      failure.path.endsWith("broken-link"),
+    ),
+    "list surfaces the dangling broken-link in failedEntries",
+  );
+  assert(
+    listing.failedEntries.every((failure) => failure.error.length > 0),
+    "each failedEntries record carries an error message",
+  );
+  // Designed exclusions (sandbox boundary + policy filters) must NOT be
+  // reported as failures — they are excluded by design, not broken.
+  assert(
+    !listing.failedEntries.some(
+      (failure) =>
+        failure.path.endsWith("escape-link") ||
+        failure.path.endsWith(".env") ||
+        failure.path.endsWith("node_modules"),
+    ),
+    "list does not report designed exclusions as failedEntries",
   );
 
   const read = await service.readText({
@@ -136,6 +168,7 @@ try {
         ok: true,
         root: roots[0]?.path,
         entries: listing.entries.map((entry) => entry.name),
+        failedEntries: listing.failedEntries,
         searchMatches: search.matches.length,
         writesEnabledChecked: originalWrites === "1",
       },

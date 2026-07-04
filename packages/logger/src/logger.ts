@@ -349,6 +349,8 @@ function getFs(): typeof import("node:fs") | null {
     _fs = require("node:fs");
     return _fs;
   } catch {
+    // error-policy:J7 logger is a leaf and cannot report through itself; no
+    // node:fs (browser build) legitimately means "no file sink", not a failure.
     return null;
   }
 }
@@ -421,7 +423,7 @@ function ensureFileLog(): boolean {
         try {
           fs2.closeSync(_fileLogFd);
         } catch {
-          /* ignore */
+          // error-policy:J6 best-effort fd close on process exit.
         }
         _fileLogFd = null;
       }
@@ -429,7 +431,7 @@ function ensureFileLog(): boolean {
         try {
           fs2.closeSync(_promptLogFd);
         } catch {
-          /* ignore */
+          // error-policy:J6 best-effort fd close on process exit.
         }
         _promptLogFd = null;
       }
@@ -437,7 +439,7 @@ function ensureFileLog(): boolean {
         try {
           fs2.closeSync(_chatLogFd);
         } catch {
-          /* ignore */
+          // error-policy:J6 best-effort fd close on process exit.
         }
         _chatLogFd = null;
       }
@@ -445,6 +447,9 @@ function ensureFileLog(): boolean {
 
     return true;
   } catch {
+    // error-policy:J7 ensureFileLog sets up the logger's own optional file
+    // sink; the logger cannot report a failure to initialize itself through
+    // itself, so a failed setup degrades to no file logging (returns false).
     return false;
   }
 }

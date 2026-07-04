@@ -43,12 +43,22 @@ export type FileListParams = {
   ignore?: string[];
 };
 
+export type FileListFailure = {
+  path: string;
+  error: string;
+};
+
 export type FileListResult = {
   root: FileRoot;
   path: string;
   entries: FileStat[];
   truncated: boolean;
   totalAfterIgnore: number;
+  // Entries that matched the directory scan but could not be resolved or
+  // stat-ed. Non-empty means the listing is partial — a caller that treats
+  // `entries` as complete would be silently wrong (a permission-revoked or
+  // broken-symlink child would just vanish). Surfaced here instead of dropped.
+  failedEntries: FileListFailure[];
 };
 
 export type FileReadTextParams = {

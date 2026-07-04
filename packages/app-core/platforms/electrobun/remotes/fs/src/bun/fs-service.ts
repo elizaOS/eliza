@@ -8,12 +8,14 @@ import {
   writeFile,
 } from "node:fs/promises";
 import path from "node:path";
-import { throwFileRemoteError } from "./errors.ts";
+import { FileRemoteException, throwFileRemoteError } from "./errors.ts";
 import { type FileLimits, loadFileLimits } from "./file-limits.ts";
 import { type GuardedPath, PathGuard } from "./path-guard.ts";
 import type {
+  FileListFailure,
   FileListParams,
   FileListResult,
+  FileRemoteErrorCode,
   FileReadTextParams,
   FileReadTextResult,
   FileRoot,
@@ -83,6 +85,7 @@ export class FileRemoteService {
 
     const entries = await readdir(guarded.realPath, { withFileTypes: true });
     const result: FileStat[] = [];
+    const failedEntries: FileListFailure[] = [];
     let totalAfterIgnore = 0;
     for (const entry of entries.sort((left, right) =>
       left.name.localeCompare(right.name),
@@ -95,14 +98,30 @@ export class FileRemoteService {
           path: entryPath,
           includeHidden: params.includeHidden === true,
         });
-      } catch {
+      } catch (err) {
+        // Two distinct outcomes share this catch. A DENIED/OUTSIDE_ROOT
+        // rejection is the sandbox doing its job (sensitive/generated/hidden
+        // names, escaping symlinks) — a designed exclusion, skipped silently
+        // like an ignore-glob match (J4). Any other code (a not-found race, an
+        // I/O error resolving the child) is a genuine failure that would
+        // otherwise vanish — record it so the listing reports itself partial.
+        if (!isExpectedListingExclusion(err)) {
+          failedEntries.push({ path: entryPath, error: errorText(err) });
+        }
         continue;
       }
       try {
         const stat = await this.toFileStat(entryGuarded);
         totalAfterIgnore += 1;
         if (result.length < limit) result.push(stat);
-      } catch {}
+      } catch (err) {
+        // stat/lstat failed (permission revoked, broken symlink, race with a
+        // delete). Surface it in the DTO; do not let the entry vanish.
+        failedEntries.push({
+          path: entryGuarded.absolutePath,
+          error: errorText(err),
+        });
+      }
     }
 
     return {
@@ -111,6 +130,7 @@ export class FileRemoteService {
       entries: result,
       truncated: totalAfterIgnore > result.length,
       totalAfterIgnore,
+      failedEntries,
     };
   }
 
@@ -384,4 +404,26 @@ function clampLimit(
   if (value === undefined) return defaultValue;
   if (!Number.isFinite(value) || value <= 0) return defaultValue;
   return Math.min(Math.floor(value), maxValue);
+}
+
+function errorText(err: unknown): string {
+  if (err instanceof Error) {
+    return err.message.length > 0 ? err.message : err.name;
+  }
+  return String(err);
+}
+
+// Path-guard rejections that mean "the sandbox deliberately excludes this
+// child", not "this child is broken". These are skipped from a listing the
+// same way an ignore-glob match is — they must NOT be reported as failures.
+const EXPECTED_LISTING_EXCLUSIONS = new Set<FileRemoteErrorCode>([
+  "FS_PATH_DENIED",
+  "FS_PATH_OUTSIDE_ROOT",
+]);
+
+function isExpectedListingExclusion(err: unknown): boolean {
+  return (
+    err instanceof FileRemoteException &&
+    EXPECTED_LISTING_EXCLUSIONS.has(err.code)
+  );
 }
