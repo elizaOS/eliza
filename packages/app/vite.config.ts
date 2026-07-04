@@ -1389,6 +1389,24 @@ const VENDOR_DRACO_TEST = /\/node_modules\/draco3d(gltf)?\//;
 function resolveManualChunk(id: string): string | undefined {
   const normalizedId = id.split(path.sep).join("/");
 
+  // Build-generated leaf shims shared by the eager entry graph AND the pinned
+  // vendor-crypto graph: Vite's dynamic-import preload helper, the node-builtin
+  // browser stubs, and the buffer ESM shim. All are self-contained (no
+  // imports), so they can never form a cross-chunk cycle. Without an explicit
+  // assignment, Rollup FOLDS them into `vendor-crypto` (a pinned module's
+  // unassigned dependencies join the manual chunk), and any eager module that
+  // needs one — e.g. @elizaos/core's browser bundle importing the buffer shim,
+  // or any dynamic-importing entry module needing the preload helper — then
+  // statically imports the whole multi-MB wallet chunk at boot. The eagerness
+  // guard in scripts/verify-chunk-safety.mjs fails the build on that regression.
+  if (
+    normalizedId.includes("vite/preload-helper") ||
+    normalizedId.includes("native-stub:") ||
+    normalizedId.includes(BUFFER_ESM_SHIM_ID)
+  ) {
+    return "runtime-shims";
+  }
+
   if (VENDOR_OPTIMIZED_WALLET_TEST.test(normalizedId)) {
     return "vendor-crypto";
   }

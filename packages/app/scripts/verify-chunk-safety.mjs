@@ -158,7 +158,8 @@ console.log(
 // residual). This guard walks the entry's static-import closure and fails if
 // any heavyweight lazy-by-design vendor chunk is reachable without a dynamic
 // `import()` boundary.
-const MUST_STAY_LAZY = /^vendor-(crypto|solana|wallet|three|vrm|draco|phonemizer)-/;
+const MUST_STAY_LAZY =
+  /^vendor-(crypto|solana|wallet|three|vrm|draco|phonemizer)-/;
 
 function collectEntryStaticClosure() {
   let indexHtml;
