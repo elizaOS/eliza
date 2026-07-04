@@ -136,9 +136,9 @@ describe("createMeetingTranscriptionPipeline", () => {
       useModel,
     } as unknown as IAgentRuntime;
 
-    expect(() => createMeetingTranscriptionPipeline(options({ runtime }))).toThrow(
-      "Local TRANSCRIPTION provider is required",
-    );
+    expect(() =>
+      createMeetingTranscriptionPipeline(options({ runtime })),
+    ).toThrow("Local TRANSCRIPTION provider is required");
     expect(useModel).not.toHaveBeenCalled();
   });
 

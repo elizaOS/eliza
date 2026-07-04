@@ -28,8 +28,13 @@ export type CloudTranscriptionInput =
   | TranscriptionParams
   | OpenAITranscriptionParams;
 
-function isCoreTranscriptionParams(input: object): input is TranscriptionParams {
-  return "audioUrl" in input && typeof (input as { audioUrl: unknown }).audioUrl === "string";
+function isCoreTranscriptionParams(
+  input: object,
+): input is TranscriptionParams & { audioUrl: string } {
+  return (
+    "audioUrl" in input &&
+    typeof (input as { audioUrl: unknown }).audioUrl === "string"
+  );
 }
 
 /**

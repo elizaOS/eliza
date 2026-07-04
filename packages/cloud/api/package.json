@@ -27,6 +27,7 @@
     "@ai-sdk/gateway": "^3.0.37",
     "@ai-sdk/openai": "^3.0.54",
     "@cloudflare/workers-types": "^4.20260429.1",
+    "@elevenlabs/elevenlabs-js": "^2.45.0",
     "@elizaos/cloud-shared": "workspace:*",
     "@elizaos/security": "workspace:*",
     "@fal-ai/client": "^1.10.1",

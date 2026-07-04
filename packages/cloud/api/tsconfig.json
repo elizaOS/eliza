@@ -38,6 +38,8 @@
       "@elizaos/cloud-routing": ["../routing/src/index.ts"],
       "@elizaos/contracts": ["../../contracts/src/index.ts"],
       "@elizaos/contracts/*": ["../../contracts/src/*"],
+      "@elizaos/auth": ["../../auth/src/index.ts"],
+      "@elizaos/auth/*": ["../../auth/src/*"],
       "@elizaos/core": ["../../../packages/core/src/index.node.ts"],
       "@elizaos/core/*": ["../../../packages/core/src/*"],
       "@elizaos/logger": ["../../../packages/logger/src/index.ts"],

@@ -36,7 +36,13 @@ import type { AppEnv } from "@/types/cloud-worker-env";
  * "still processing".
  */
 function isUpstreamVoiceAbsent(error: unknown): boolean {
-  return error instanceof ElevenLabsError && error.statusCode === 404;
+  return isElevenLabsStatusError(error) && error.statusCode === 404;
+}
+
+function isElevenLabsStatusError(
+  error: unknown,
+): error is { message?: string; statusCode?: number } {
+  return error instanceof ElevenLabsError;
 }
 
 /**
@@ -61,7 +67,7 @@ function toUpstreamBoundaryError(error: unknown): unknown {
   if (error instanceof ElevenLabsTimeoutError) {
     return new ApiError(503);
   }
-  if (!(error instanceof ElevenLabsError)) {
+  if (!isElevenLabsStatusError(error)) {
     return error;
   }
   const upstream = error.statusCode;

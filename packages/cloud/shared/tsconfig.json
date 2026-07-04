@@ -31,6 +31,8 @@
       "@elizaos/app-core/account-pool": ["../../app-core/src/account-pool.ts"],
       "@elizaos/contracts": ["../../contracts/src/index.ts"],
       "@elizaos/contracts/*": ["../../contracts/src/*"],
+      "@elizaos/auth": ["../../auth/src/index.ts"],
+      "@elizaos/auth/*": ["../../auth/src/*"],
       "@elizaos/plugin-sql": ["../../../plugins/plugin-sql/src/index.ts"],
       "@elizaos/plugin-sql/*": ["../../../plugins/plugin-sql/src/*"],
       "@elizaos/core": ["../../../packages/core/src/index.node.ts"],

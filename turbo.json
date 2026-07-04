@@ -120,6 +120,16 @@
       "dependsOn": ["@elizaos/core#build", "^build"],
       "outputs": []
     },
+    "@elizaos/plugin-local-inference#build": {
+      "dependsOn": [
+        "@elizaos/core#build",
+        "@elizaos/shared#build",
+        "@elizaos/plugin-aosp-local-inference#build",
+        "@elizaos/plugin-capacitor-bridge#build",
+        "@elizaos/plugin-computeruse#build"
+      ],
+      "outputs": ["dist/**"]
+    },
     "eliza-next-example#build": {
       "dependsOn": ["@elizaos/core#build", "^build"],
       "outputs": []

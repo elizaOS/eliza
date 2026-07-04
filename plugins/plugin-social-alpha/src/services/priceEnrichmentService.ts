@@ -1058,7 +1058,10 @@ export class PriceEnrichmentService {
 
 			return null;
 		} catch (error) {
-			logger.error({ error }, `Error searching DexScreener for symbol ${symbol}`);
+			logger.error(
+				{ error },
+				`Error searching DexScreener for symbol ${symbol}`,
+			);
 			return null;
 		}
 	}

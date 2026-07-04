@@ -25,6 +25,7 @@ import {
   type Plugin,
   parseBooleanFromText,
   resolveSetting,
+  type TranscriptionParams,
 } from "@elizaos/core";
 
 function parseTtsOutputFormat(
@@ -511,7 +512,7 @@ export const elevenLabsPlugin: Plugin = {
     },
     [ModelType.TRANSCRIPTION]: async (
       runtime: IAgentRuntime,
-      input: string | Buffer | { audioUrl: string; prompt?: string },
+      input: string | Buffer | TranscriptionParams,
     ) => {
       const settings = getTranscriptionSettings(runtime);
 

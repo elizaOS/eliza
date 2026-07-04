@@ -48,12 +48,14 @@ function isBuffer(value: unknown): value is Buffer {
   return typeof Buffer !== "undefined" && Buffer.isBuffer(value);
 }
 
-function isCoreTranscriptionParams(value: unknown): value is CoreTranscriptionParams {
+function isCoreTranscriptionParams(
+  value: unknown
+): value is CoreTranscriptionParams & { audioUrl: string } {
   return (
     typeof value === "object" &&
     value !== null &&
     "audioUrl" in value &&
-    typeof (value as CoreTranscriptionParams).audioUrl === "string"
+    typeof (value as { audioUrl: unknown }).audioUrl === "string"
   );
 }
 
