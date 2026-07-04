@@ -97,4 +97,41 @@ describe("TaskDrain", () => {
 			baseInterval: 30_000,
 		});
 	});
+
+	test("dispose surfaces a failed deleteTask via reportError instead of swallowing it", async () => {
+		const createdId = "00000000-0000-0000-0000-0000000000aa";
+		const deleteError = new Error("db handle closed");
+		const reportError = vi.fn();
+		const runtime = createMockRuntime({
+			agentId: AGENT_ID,
+			reportError,
+			getTasksByName: async () => [],
+			createTask: vi.fn(async () => createdId),
+			deleteTask: vi.fn(async () => {
+				throw deleteError;
+			}),
+		});
+
+		const drain = new TaskDrain(
+			{
+				taskName: "BATCHER_DRAIN",
+				intervalMs: 30_000,
+				taskMetadata: { affinityKey: "autonomy" },
+				skipRegisterWorker: true,
+			},
+			30_000,
+		);
+
+		await drain.start(runtime);
+		expect(drain.id).toBe(createdId);
+
+		// dispose must complete (not reject) even though deleteTask fails, and the
+		// failure must be reported rather than silently swallowed.
+		await expect(drain.dispose(runtime)).resolves.toBeUndefined();
+		expect(runtime.deleteTask).toHaveBeenCalledWith(createdId);
+		expect(reportError).toHaveBeenCalledTimes(1);
+		expect(reportError).toHaveBeenCalledWith("TaskDrain.dispose", deleteError, {
+			taskId: createdId,
+		});
+	});
 });

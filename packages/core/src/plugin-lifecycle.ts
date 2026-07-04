@@ -570,6 +570,8 @@ async function stopOwnedServices(
 		const key = serviceType as ServiceTypeName;
 		const inFlightStart = privateState.startingServices.get(key);
 		if (inFlightStart) {
+			// error-policy:J6 best-effort teardown — wait for an in-flight start to
+			// settle before stopping it; a failed start is irrelevant to the stop path.
 			await inFlightStart.catch(() => null);
 		}
 

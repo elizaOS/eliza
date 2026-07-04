@@ -451,7 +451,14 @@ export class EvaluatorService extends BaseService {
 				completed,
 				...(error ? { error } : {}),
 			})
-			.catch(() => {});
+			// error-policy:J7 diagnostics-must-not-kill-the-loop — a broken event bus
+			// must not abort evaluation, but a swallowed emit is invisible; surface it.
+			.catch((err) =>
+				this.runtime.reportError("EvaluatorService.emitEvent", err, {
+					event: EventType.EVALUATOR_COMPLETED,
+					evaluatorId,
+				}),
+			);
 	}
 
 	private async readEvaluatorOutput(params: {
@@ -702,7 +709,14 @@ export class EvaluatorService extends BaseService {
 				evaluatorName: "post_turn",
 				startTime: Date.now(),
 			})
-			.catch(() => {});
+			// error-policy:J7 diagnostics-must-not-kill-the-loop — a broken event bus
+			// must not abort evaluation, but a swallowed emit is invisible; surface it.
+			.catch((err) =>
+				this.runtime.reportError("EvaluatorService.emitEvent", err, {
+					event: EventType.EVALUATOR_STARTED,
+					evaluatorId,
+				}),
+			);
 
 		const prompt = buildPrompt({
 			runtime: this.runtime,

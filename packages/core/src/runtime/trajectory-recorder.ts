@@ -436,9 +436,11 @@ async function atomicWriteJson(
 			"[TrajectoryRecorder] atomic write failed",
 		);
 		try {
+			// error-policy:J6 best-effort teardown — removing the orphaned tmp file
+			// after a failed write; its own failure is not actionable.
 			await fs.unlink(tmp).catch(() => undefined);
 		} catch {
-			// ignore — best effort cleanup of the tmp file
+			// error-policy:J6 best-effort teardown of the tmp file
 		}
 	}
 }
@@ -460,9 +462,11 @@ async function atomicWriteText(
 			"[TrajectoryRecorder] markdown write failed",
 		);
 		try {
+			// error-policy:J6 best-effort teardown — removing the orphaned tmp file
+			// after a failed write; its own failure is not actionable.
 			await fs.unlink(tmp).catch(() => undefined);
 		} catch {
-			// ignore - best effort cleanup of the tmp file
+			// error-policy:J6 best-effort teardown of the tmp file
 		}
 	}
 }
@@ -1301,10 +1305,14 @@ class JsonFileTrajectoryRecorder implements TrajectoryRecorder {
 		const trajectoryId = trajectory.trajectoryId;
 		const snapshot = cloneForRecord(trajectory);
 		const previous = this.flushQueues.get(trajectoryId) ?? Promise.resolve();
+		// error-policy:J5 rejection-suppression — a prior flush's failure (already
+		// surfaced inside flushSnapshot) must not chain-block this snapshot's flush.
 		const next = previous
 			.catch(() => undefined)
 			.then(() => this.flushSnapshot(snapshot));
 		this.flushQueues.set(trajectoryId, next);
+		// error-policy:J5 rejection-suppression — the returned `next` is observed by
+		// the caller; this branch only cleans up the queue map without re-surfacing.
 		void next
 			.finally(() => {
 				if (this.flushQueues.get(trajectoryId) === next) {
@@ -1424,8 +1432,9 @@ async function awaitBounded(
 		]);
 	} finally {
 		if (timer !== undefined) clearTimeout(timer);
-		// A raced-out `work` may still reject later; keep that from surfacing as
-		// an unhandled rejection.
+		// error-policy:J5 rejection-suppression — a raced-out `work` may still reject
+		// later; the timeout result is already returned, so keep the late rejection
+		// from surfacing as an unhandled rejection.
 		void work.catch(() => undefined);
 	}
 }

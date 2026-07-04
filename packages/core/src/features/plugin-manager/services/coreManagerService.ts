@@ -650,6 +650,9 @@ export class CoreManagerService extends Service {
 		}
 
 		const version = await this.readCorePackageVersion(packageDir);
+		// error-policy:J3 untrusted-input probe — an npm (non-git) install has no
+		// git metadata; null commit / empty status is the explicit "not a checkout"
+		// signal, matching the null-commit npm branch above (not a masked failure).
 		const commitHash = await this.gitStdout(
 			["rev-parse", "HEAD"],
 			monorepoDir,

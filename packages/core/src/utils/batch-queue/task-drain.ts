@@ -200,7 +200,14 @@ export class TaskDrain {
 	async dispose(runtime: IAgentRuntime): Promise<void> {
 		this.disposed = true;
 		if (this.taskId && typeof runtime.deleteTask === "function") {
-			await runtime.deleteTask(this.taskId).catch(() => {});
+			const taskId = this.taskId;
+			// error-policy:J7 diagnostics-must-not-kill-the-loop — dispose must always
+			// complete, but a failed delete leaves an orphaned task row; surface it.
+			await runtime
+				.deleteTask(taskId)
+				.catch((err) =>
+					runtime.reportError("TaskDrain.dispose", err, { taskId }),
+				);
 			this.taskId = null;
 		}
 		// Runtime has no unregisterTaskWorker; a later service may call registerTaskWorker again.

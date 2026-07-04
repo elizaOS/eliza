@@ -2038,6 +2038,8 @@ export class RelationshipsService extends Service {
 			);
 			await this.execSql("COMMIT");
 		} catch (err) {
+			// error-policy:J6 best-effort teardown — roll back the aborted transaction;
+			// a failed ROLLBACK must not mask the original error rethrown below.
 			await this.execSql("ROLLBACK").catch(() => undefined);
 			throw err;
 		}

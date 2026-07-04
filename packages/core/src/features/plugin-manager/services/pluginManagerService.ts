@@ -886,7 +886,11 @@ export class PluginManagerService extends Service implements PluginRegistry {
 			);
 			if (registrySourceDir !== tempDir) {
 				await execAsync(`${pm} run build`, { cwd: registrySourceDir }).catch(
-					() => {},
+					(err) =>
+						this.runtime.reportError("PluginManager", err, {
+							targetDir: registrySourceDir,
+							step: "build",
+						}),
 				);
 				await fs.copy(registrySourceDir, targetDir);
 				return;
@@ -894,7 +898,12 @@ export class PluginManagerService extends Service implements PluginRegistry {
 
 			const tsDir = path.join(tempDir, "typescript");
 			if (await fs.pathExists(tsDir)) {
-				await execAsync(`${pm} run build`, { cwd: tsDir }).catch(() => {});
+				await execAsync(`${pm} run build`, { cwd: tsDir }).catch((err) =>
+					this.runtime.reportError("PluginManager", err, {
+						targetDir: tsDir,
+						step: "build",
+					}),
+				);
 				await fs.copy(tsDir, targetDir);
 			} else {
 				await fs.copy(tempDir, targetDir);

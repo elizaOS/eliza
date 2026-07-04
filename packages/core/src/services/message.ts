@@ -4750,6 +4750,8 @@ function synthesizeSimpleReplyFromPlainText(
 				JSON.parse(replyText);
 				return false;
 			} catch {
+				// error-policy:J3 untrusted-input parse probe — a parse failure IS the
+				// signal (text looks like incomplete structured output, not valid JSON).
 				return true;
 			}
 		})();
@@ -6090,11 +6092,16 @@ export async function runV5MessageRuntimeStage1(args: {
 		);
 
 		// RESPONSE_HANDLER_DURING (non-blocking): fire-and-forget alongside the model
-		// call. We don't await — the user contract is "during". Errors are
-		// logged inside `runActionsByMode`.
+		// call. We don't await — the user contract is "during".
+		// error-policy:J7 diagnostics-must-not-kill-the-loop — a rejection escaping
+		// runActionsByMode must not abort the turn, but it must surface.
 		void args.runtime
 			.runActionsByMode("RESPONSE_HANDLER_DURING", args.message, args.state)
-			.catch(() => {});
+			.catch((err) =>
+				args.runtime.reportError("MessageService.runActionsByMode", err, {
+					mode: "RESPONSE_HANDLER_DURING",
+				}),
+			);
 
 		// Per-turn structure forcing. `buildResponseGrammar` composes the
 		// HANDLE_RESPONSE envelope skeleton (fixed key order + the `contexts`
@@ -6837,11 +6844,17 @@ export async function runV5MessageRuntimeStage1(args: {
 			{ selectedContexts },
 		);
 		// CONTEXT_DURING (non-blocking): runs in parallel with the planner.
+		// error-policy:J7 diagnostics-must-not-kill-the-loop — a rejection escaping
+		// runActionsByMode must not abort the planner, but it must surface.
 		void args.runtime
 			.runActionsByMode("CONTEXT_DURING", args.message, plannerState, {
 				selectedContexts,
 			})
-			.catch(() => {});
+			.catch((err) =>
+				args.runtime.reportError("MessageService.runActionsByMode", err, {
+					mode: "CONTEXT_DURING",
+				}),
+			);
 
 		let plannerResult: PlannerLoopResult;
 		try {
@@ -8390,7 +8403,13 @@ export class DefaultMessageService implements IMessageService {
 				await runtime.runActionsByMode("ALWAYS_BEFORE", message);
 				// ALWAYS_DURING (non-blocking): fire-and-forget alongside the
 				// rest of the pipeline. Telemetry, logging, side effects.
-				void runtime.runActionsByMode("ALWAYS_DURING", message).catch(() => {});
+				// error-policy:J7 diagnostics-must-not-kill-the-loop — a rejection
+				// escaping runActionsByMode must not abort the turn, but it must surface.
+				void runtime.runActionsByMode("ALWAYS_DURING", message).catch((err) =>
+					runtime.reportError("MessageService.runActionsByMode", err, {
+						mode: "ALWAYS_DURING",
+					}),
+				);
 			} catch (error) {
 				runtime.logger.warn(
 					{

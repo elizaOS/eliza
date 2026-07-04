@@ -117,6 +117,9 @@ async function withCoreBuildLock<T>(build: () => Promise<T>): Promise<T> {
 				throw error;
 			}
 
+			// error-policy:J3 existence probe — null means the lock dir vanished (or
+			// cannot be stat'd) between the EEXIST and here; the staleness check below
+			// treats a missing stat as "no owner mtime", never as a masked failure.
 			const stat = await fs.stat(lockDir).catch(() => null);
 			const ownerPid = await readLockOwnerPid();
 			if (
@@ -138,6 +141,8 @@ async function withCoreBuildLock<T>(build: () => Promise<T>): Promise<T> {
 	try {
 		return await build();
 	} finally {
+		// error-policy:J6 best-effort teardown — release the build lock dir; a failed
+		// cleanup must not mask the build result (or error) propagating from the try.
 		await removeLockDir().catch(() => {});
 	}
 }
