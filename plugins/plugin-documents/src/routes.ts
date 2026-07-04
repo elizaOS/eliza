@@ -69,7 +69,19 @@ type DocumentFilter = {
   timeRangeStart?: number;
   timeRangeEnd?: number;
   tags?: string[];
+  /** First-class source-room filter (#13593). */
+  roomId?: UUID;
+  /**
+   * Media-format facet (#13593): image | audio | video | pdf | text |
+   * transcript | file. Matched against `metadata.mediaFormat` or the
+   * `media-format:<format>` tag, so both explicitly-tagged records and
+   * mime-derived ones compose.
+   */
+  mediaFormat?: string;
 };
+
+/** Namespaced tag prefix carrying the media-format facet on knowledge records. */
+const MEDIA_FORMAT_TAG_PREFIX = "media-format:";
 
 type DocumentReadableMemory = {
   id?: UUID;
@@ -248,6 +260,10 @@ function filtersFromSearchParams(
       url.searchParams.get("end"),
   );
   const tags = parseTagsFromSearchParams(url.searchParams);
+  const roomId = asUuid(url.searchParams.get("roomId"));
+  const mediaFormat = trimString(
+    url.searchParams.get("mediaFormat") ?? url.searchParams.get("format"),
+  )?.toLowerCase();
   return {
     ...(scope ? { scope } : {}),
     ...(scopedToEntityId ? { scopedToEntityId } : {}),
@@ -256,6 +272,8 @@ function filtersFromSearchParams(
     ...(typeof timeRangeStart === "number" ? { timeRangeStart } : {}),
     ...(typeof timeRangeEnd === "number" ? { timeRangeEnd } : {}),
     ...(tags.length > 0 ? { tags } : {}),
+    ...(roomId ? { roomId } : {}),
+    ...(mediaFormat ? { mediaFormat } : {}),
   };
 }
 
@@ -351,15 +369,24 @@ function matchesDocumentFilter(
   if (filters.addedBy && metadata?.addedBy !== filters.addedBy) {
     return false;
   }
+  const documentTags = Array.isArray(metadata?.tags)
+    ? metadata.tags.filter(
+        (value): value is string => typeof value === "string",
+      )
+    : [];
   if (filters.tags && filters.tags.length > 0) {
-    const documentTags = Array.isArray(metadata?.tags)
-      ? metadata.tags.filter(
-          (value): value is string => typeof value === "string",
-        )
-      : [];
     if (!filters.tags.every((tag) => documentTags.includes(tag))) {
       return false;
     }
+  }
+  if (filters.roomId && documentRoomId(metadata) !== filters.roomId) {
+    return false;
+  }
+  if (
+    filters.mediaFormat &&
+    documentMediaFormat(metadata, documentTags) !== filters.mediaFormat
+  ) {
+    return false;
   }
 
   const timestamp =
@@ -410,6 +437,29 @@ function documentScopedEntityId(
     asUuid(metadata?.addedBy) ??
     asUuid(memory.entityId)
   );
+}
+
+/** Source-room id recorded on a knowledge record (#13593), if any. */
+function documentRoomId(
+  metadata: Record<string, unknown> | undefined,
+): UUID | undefined {
+  return asUuid(metadata?.roomId);
+}
+
+/**
+ * Media-format facet for a knowledge record (#13593). Prefer an explicit
+ * `metadata.mediaFormat`; fall back to the `media-format:<format>` tag so
+ * records tagged by the ingest pipeline (or backfill) still match without a
+ * dedicated column.
+ */
+function documentMediaFormat(
+  metadata: Record<string, unknown> | undefined,
+  tags: string[],
+): string | undefined {
+  const explicit = trimString(metadata?.mediaFormat)?.toLowerCase();
+  if (explicit) return explicit;
+  const tagged = tags.find((tag) => tag.startsWith(MEDIA_FORMAT_TAG_PREFIX));
+  return tagged ? tagged.slice(MEDIA_FORMAT_TAG_PREFIX.length) : undefined;
 }
 
 function canReadDocumentMemory(
@@ -484,10 +534,16 @@ function buildRouteMessage({
 
 function serviceSearchScope(
   filters: DocumentFilter,
-): { entityId?: UUID } | undefined {
-  return filters.scopedToEntityId
-    ? { entityId: filters.scopedToEntityId }
-    : undefined;
+): { entityId?: UUID; roomId?: UUID } | undefined {
+  // Push room scoping into the service BEFORE ranking/capping so a room-filtered
+  // search isn't starved by higher-ranked matches from other rooms filling the
+  // capped result set (the service filters on the document memory's roomId,
+  // which the attachment-ingest writer sets to the source room). scopedToEntityId
+  // continues to narrow to a user's private space.
+  const scope: { entityId?: UUID; roomId?: UUID } = {};
+  if (filters.scopedToEntityId) scope.entityId = filters.scopedToEntityId;
+  if (filters.roomId) scope.roomId = filters.roomId;
+  return scope.entityId || scope.roomId ? scope : undefined;
 }
 
 function decodeMatchedPathComponent(

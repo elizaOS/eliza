@@ -61,6 +61,8 @@ const PAGE_SCOPE_BRIEF: Record<string, string> = {
     "The user is in the Settings view. They can tune models, providers, permissions, connectors, wallet RPC, cloud account state, appearance, updates, and feature toggles. Action vocabulary: UPDATE_IDENTITY, UPDATE_AI_PROVIDER, TOGGLE_CAPABILITY, and TOGGLE_AUTO_TRAINING. When the user asks what to do, recommend the smallest concrete settings change that fits the visible section. Ask before changes that affect security, spending, or external accounts. Never invent provider status, account state, or permission grants.",
   "page-wallet":
     "The user is in the Wallet view. They can inspect token inventory, NFTs, LP position status, current balance, P&L, activity, EVM/Solana addresses, RPC/provider readiness, wallet/RPC settings, and native Hyperliquid and Polymarket readiness. There are no chain filters in this surface. When the user asks what to do, recommend the smallest concrete wallet action and confirm asset/market, amount, destination/outcome, slippage/risk limits, and execution path before invoking any available action. If the user asks about Hyperliquid or Polymarket, prefer native app surfaces for reads/status. Never invent balances, positions, fills, markets, odds, or execution support.",
+  "page-knowledge":
+    "The user is in the Knowledge view. This surface lists knowledge records, including chat attachments ingested by room, sender, sender role, and media format (image, audio, video, pdf, text, transcript, file). Owner/DM-chat knowledge is owner-private and never surfaces into public rooms; public/community-room attachments are scoped to their sender. The user can browse, search, retag, rescope (owner-only), and delete knowledge items; deleting the sole referent of a media file makes those bytes garbage-collectible. When the user asks what to do, ground answers in the live knowledge state below (recent-attachment counts by source and format) and recommend the smallest concrete filing, retag, rescope, or cleanup action. Never invent knowledge records, media, tags, or scopes.",
   "automation-draft":
     "This is an automation-creation room. The user wants to create exactly one automation. Decide the right shape based on their description and call the matching action exactly once:\n" +
     '- Recurring prompt or scheduled instruction (e.g. "every morning summarize my inbox") → TRIGGER with op="create" specifying displayName, instructions, and schedule (interval/once/cron). The agent transparently materializes a single-node workflow that runs the instructions when the trigger fires.\n' +
@@ -560,6 +562,103 @@ async function renderAutomationsLiveState(
   }
 }
 
+const KNOWLEDGE_LIVE_STATE_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+const KNOWLEDGE_LIVE_STATE_SCAN_LIMIT = 500;
+const ATTACHMENT_DOCUMENT_TAG = "attachment";
+const MEDIA_FORMAT_TAG_PREFIX = "media-format:";
+const TRANSCRIPT_DOCUMENT_TAG = "transcript";
+
+function documentStringTags(
+  metadata: Record<string, unknown> | undefined,
+): string[] {
+  const tags = metadata?.tags;
+  return Array.isArray(tags)
+    ? tags.filter((value): value is string => typeof value === "string")
+    : [];
+}
+
+function documentMediaFormat(
+  metadata: Record<string, unknown> | undefined,
+  tags: string[],
+): string {
+  if (typeof metadata?.mediaFormat === "string" && metadata.mediaFormat) {
+    return metadata.mediaFormat;
+  }
+  const tagged = tags.find((tag) => tag.startsWith(MEDIA_FORMAT_TAG_PREFIX));
+  return tagged ? tagged.slice(MEDIA_FORMAT_TAG_PREFIX.length) : "file";
+}
+
+/**
+ * Live knowledge state for the Knowledge view (#13593): counts of recently
+ * ingested chat attachments (and transcript mirrors) over the trailing week,
+ * broken down by media format. This is the count surface slice 2's proactive
+ * greeting reads ("You have N new attachments from Discord this week…").
+ */
+async function renderKnowledgeLiveState(
+  runtime: IAgentRuntime,
+): Promise<string | null> {
+  const now = Date.now();
+  const windowStart = now - KNOWLEDGE_LIVE_STATE_WINDOW_MS;
+  let recentAttachments = 0;
+  let recentTranscripts = 0;
+  const byFormat = new Map<string, number>();
+
+  try {
+    const batch = await runtime.getMemories({
+      tableName: "documents",
+      // Scope to THIS agent so a shared/multi-agent adapter does not count
+      // another agent's attachment/transcript records into this page's context.
+      agentId: runtime.agentId,
+      count: KNOWLEDGE_LIVE_STATE_SCAN_LIMIT,
+      offset: 0,
+    });
+    for (const memory of batch) {
+      if (memory.agentId && memory.agentId !== runtime.agentId) continue;
+      const metadata = (memory.metadata ?? undefined) as
+        | Record<string, unknown>
+        | undefined;
+      const tags = documentStringTags(metadata);
+      const isAttachment = tags.includes(ATTACHMENT_DOCUMENT_TAG);
+      const isTranscript = tags.includes(TRANSCRIPT_DOCUMENT_TAG);
+      if (!isAttachment && !isTranscript) continue;
+      const at =
+        (typeof metadata?.addedAt === "number"
+          ? metadata.addedAt
+          : undefined) ??
+        (typeof metadata?.timestamp === "number"
+          ? metadata.timestamp
+          : undefined) ??
+        (typeof memory.createdAt === "number" ? memory.createdAt : undefined);
+      if (typeof at === "number" && at < windowStart) continue;
+      if (isAttachment) {
+        recentAttachments += 1;
+        const format = documentMediaFormat(metadata, tags);
+        byFormat.set(format, (byFormat.get(format) ?? 0) + 1);
+      } else if (isTranscript) {
+        recentTranscripts += 1;
+      }
+    }
+  } catch (err) {
+    runtime.reportError("PageScopedContext.knowledgeLiveState", err);
+    return "Live knowledge state: unavailable (documents store unreachable).";
+  }
+
+  const lines: string[] = [
+    `Live knowledge state (last 7 days): ${recentAttachments} ingested chat attachment${
+      recentAttachments === 1 ? "" : "s"
+    }, ${recentTranscripts} transcript mirror${
+      recentTranscripts === 1 ? "" : "s"
+    }.`,
+  ];
+  if (byFormat.size > 0) {
+    const parts = [...byFormat.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([format, count]) => `${format}=${count}`);
+    lines.push(`Attachments by format: ${parts.join(", ")}.`);
+  }
+  return lines.join("\n");
+}
+
 async function renderLiveStateForScope(
   runtime: IAgentRuntime,
   scope: ConversationScope,
@@ -567,6 +666,8 @@ async function renderLiveStateForScope(
   switch (scope) {
     case "page-character":
       return renderCharacterLiveState(runtime);
+    case "page-knowledge":
+      return renderKnowledgeLiveState(runtime);
     case "page-browser":
       return renderBrowserLiveState(runtime);
     case "page-automations":
