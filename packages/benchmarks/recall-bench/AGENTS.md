@@ -1,9 +1,9 @@
 # @elizaos/recall-bench
 
-Precision/Recall/nDCG/latency benchmark + CI gate for the **real** memory-recall
-+ knowledge-retrieval pipeline (#9956). Drives shipped `@elizaos/core` code over
-a committed, document-scale, labeled corpus — see [README.md](./README.md) for
-the what/why and the committed baseline.
+Precision/Recall/nDCG/latency benchmark you run to measure regressions in the
+**real** memory-recall + knowledge-retrieval pipeline (#9956). Drives shipped
+`@elizaos/core` code over a committed, document-scale, labeled corpus — see
+[README.md](./README.md) for the what/why and the committed baseline.
 
 ## Layout
 
@@ -12,7 +12,7 @@ metrics.ts        Pure IR metrics (P@K/R@K/MRR/nDCG/HitRate, percentiles) + summ
 embedding.ts      Deterministic feature-hash embedding (FNV-1a tokens + char trigrams, L2-norm, 384d)
 corpus.ts         buildCorpus(tier) + buildFacts(tier) + buildMorphologyCorpus() — labeled, deterministic PRNG
 runtime.ts        buildBenchRuntime() — real AgentRuntime + plugin-sql/PGlite + DocumentService
-run.ts            The runner: ingest → drive every SearchMode → emit report → budget gate (exit 0/1/2)
+run.ts            The runner: ingest → drive every SearchMode → emit report → compare to thresholds (exit 0/1/2)
 budgets.json      Committed per-mode floors + min observable fail-open drop (1k baseline + ~20% headroom)
 baseline-1k.json  Committed reference metrics (the "before/after" artifact)
 scripts/check-registry.py   Orchestrator-registration contract check (CI)

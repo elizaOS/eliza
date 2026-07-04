@@ -1,11 +1,11 @@
 # recall-bench (#9956)
 
 Precision / Recall / nDCG / latency benchmark for the agent's **memory-recall +
-knowledge-retrieval** path, plus a CI regression gate. The repo measures
+knowledge-retrieval** path that you run to measure regressions. The repo measures
 retrieval *cost* (`memperf`) and LLM *context-window* attention (`context_bench`)
 but never retrieval *correctness* at document scale — and the recall path **fails
 open** (a slow/errored embed silently degrades semantic recall to keyword-only)
-with no metric guarding it. This bench closes that gap.
+with no metric that surfaces it. This bench closes that gap.
 
 It drives the **real `@elizaos/core` code** — no Python re-implementation, no
 mocked `searchMemories`:
