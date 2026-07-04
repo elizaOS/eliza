@@ -86,6 +86,14 @@ function parseCacheValue<T>(value: unknown): T {
 export class CacheClient {
   private redis: CacheRedisClient | null = null;
   private enabled: boolean | null = null;
+  /**
+   * Whether a real cache backend was CONFIGURED (credentials/binding present or
+   * an explicit memory/wadis backend). Unlike `enabled`, this is NOT flipped to
+   * false by a runtime connect failure or circuit-open — so
+   * {@link isBackendConfigured} can tell "nothing to invalidate" from "a backend
+   * exists but is currently unreachable". (#13417)
+   */
+  private backendConfigured = false;
   private initialized = false;
   private failureCount = 0;
   private lastFailureTime = 0;
@@ -146,6 +154,7 @@ export class CacheClient {
   }
 
   private initializeWadis(): void {
+    this.backendConfigured = true;
     this.nativeRedisReady = false;
     this.nativeRedisConnectPromise = import("wadis")
       .then(({ Wadis }) => {
@@ -179,6 +188,7 @@ export class CacheClient {
     if (this.enabled && process.env.MOCK_REDIS === "1") {
       this.nativeRedisConnectPromise = null;
       this.nativeRedisReady = true;
+      this.backendConfigured = true;
       this.redis = new MemoryCacheAdapter();
       logger.info("[Cache] ✓ Cache client initialized with in-memory mock (MOCK_REDIS=1)");
       return;
@@ -231,6 +241,7 @@ export class CacheClient {
 
       this.nativeRedisConnectPromise = null;
       this.nativeRedisReady = true;
+      this.backendConfigured = true;
       this.redis = new MemoryCacheAdapter();
       logger.info("[Cache] ✓ Cache client initialized with in-memory local test backend");
       return;
@@ -250,6 +261,7 @@ export class CacheClient {
     if (inWorker && backendPreference !== "redis-rest" && backendPreference !== "redis") {
       const kv = this.getKvBinding();
       if (kv) {
+        this.backendConfigured = true;
         this.redis = new KvCacheAdapter(kv);
         this.nativeRedisConnectPromise = null;
         this.nativeRedisReady = true;
@@ -262,6 +274,7 @@ export class CacheClient {
     // works for RESP2. Use the SocketRedis adapter whenever we're in a Worker and
     // a real REDIS_URL is set.
     if (inWorker && socketRedisConfigured && redisUrl && backendPreference !== "redis-rest") {
+      this.backendConfigured = true;
       this.redis = new SocketRedisAdapter(new SocketRedis({ url: redisUrl }));
       this.nativeRedisConnectPromise = null;
       this.nativeRedisReady = true;
@@ -276,6 +289,7 @@ export class CacheClient {
       redisUrl &&
       (backendPreference === "auto" || backendPreference === "redis")
     ) {
+      this.backendConfigured = true;
       const client = createClient({ url: redisUrl });
 
       client.on("error", (error: unknown) => {
@@ -315,6 +329,7 @@ export class CacheClient {
     ) {
       this.nativeRedisConnectPromise = null;
       this.nativeRedisReady = true;
+      this.backendConfigured = true;
       this.redis = new UpstashRedisAdapter(
         new UpstashRedis({
           url: restUrl,
@@ -396,6 +411,22 @@ export class CacheClient {
       (this.redis || this.nativeRedisConnectPromise) &&
       !this.isCircuitOpen()
     );
+  }
+
+  /**
+   * Whether a cache backend is CONFIGURED at all (independent of transient
+   * availability / circuit-breaker state). Distinguishes "no backend, nothing to
+   * invalidate" from "backend configured but temporarily unreachable" so
+   * {@link delConfirmed} / {@link delPatternConfirmed} can fail closed only in
+   * the latter case. (#13417)
+   */
+  isBackendConfigured(): boolean {
+    this.initialize();
+    // Reflects that a backend was SELECTED (creds/binding/memory/wadis present),
+    // even if a later connect attempt failed and downgraded `enabled` — a stale
+    // entry may still live in that configured backend, so an unconfirmed delete
+    // against it must fail closed, not report "nothing to invalidate".
+    return this.backendConfigured;
   }
 
   /**
@@ -709,11 +740,35 @@ export class CacheClient {
   /**
    * Deletes a key from cache.
    *
+   * Best-effort: swallows a backend delete failure (logs a warning) and returns
+   * `void`. Callers on a security-sensitive invalidation path (revoked
+   * credentials, logout, permission changes) must instead use
+   * {@link delConfirmed} so they can fail closed on an unconfirmed delete
+   * rather than assume a stale entry is gone. (#13417)
+   *
    * @param key - Cache key to delete.
    */
   async del(key: string): Promise<void> {
+    await this.delConfirmed(key);
+  }
+
+  /**
+   * Deletes a key from cache, reporting whether the delete was confirmed.
+   *
+   * @param key - Cache key to delete.
+   * @returns `true` when the delete is confirmed against the backend, OR when no
+   *   cache backend is CONFIGURED at all (nothing could be caching a stale
+   *   entry, so there is nothing to invalidate). `false` when a configured
+   *   backend rejected the delete OR is temporarily unavailable (circuit
+   *   breaker open / still connecting) — in that brownout a stale entry may
+   *   still live in the backend, so the delete is NOT confirmed. The previous
+   *   void-only `del` contract silently reported all of these as success, so a
+   *   revoked key/session kept serving from cache until its TTL lapsed.
+   *   Security-sensitive invalidation MUST fail closed on `false`. (#13417)
+   */
+  async delConfirmed(key: string): Promise<boolean> {
     const redis = await this.getRedisClient();
-    if (!redis) return;
+    if (!redis) return !this.isBackendConfigured();
 
     try {
       const start = Date.now();
@@ -722,12 +777,14 @@ export class CacheClient {
       logger.debug(`[Cache] DEL: ${key}`);
       this.resetFailures();
       this.logMetric(key, "del", Date.now() - start);
+      return true;
     } catch (error) {
       this.recordFailure();
       logger.warn("[Cache] DEL failed", {
         key,
         error: error instanceof Error ? error.message : String(error),
       });
+      return false;
     }
   }
 
@@ -768,13 +825,42 @@ export class CacheClient {
    *
    * Uses SCAN instead of KEYS to avoid blocking Redis on large keysets.
    *
+   * Best-effort: returns `void`; a partial sweep (runaway-iteration guard) is
+   * indistinguishable from a complete one to the caller. Security-sensitive
+   * invalidation must use {@link delPatternConfirmed} instead. (#13417)
+   *
    * @param pattern - Pattern to match (e.g., "org:*:cache")
    * @param batchSize - Number of keys to scan per iteration (default: 100)
    * @param maxIterations - Maximum iterations to prevent runaway scans (default: 1000)
    */
   async delPattern(pattern: string, batchSize = 100, maxIterations = 1000): Promise<void> {
+    await this.delPatternConfirmed(pattern, batchSize, maxIterations);
+  }
+
+  /**
+   * Delete all keys matching a pattern using SCAN, reporting completeness.
+   *
+   * @param pattern - Pattern to match (e.g., "org:*:cache")
+   * @param batchSize - Number of keys to scan per iteration (default: 100)
+   * @param maxIterations - Maximum iterations to prevent runaway scans (default: 1000)
+   * @returns `true` when the full keyspace matching `pattern` was scanned and
+   *   deleted (or there is no backend to invalidate); `false` when the scan hit
+   *   the runaway-iteration guard and therefore left matching keys behind — a
+   *   PARTIAL invalidation that previously returned normally and was
+   *   indistinguishable from a complete one. Security-sensitive callers MUST
+   *   fail closed on `false`. (A thrown scan/del error still propagates.)
+   *   (#13417)
+   */
+  async delPatternConfirmed(
+    pattern: string,
+    batchSize = 100,
+    maxIterations = 1000,
+  ): Promise<boolean> {
     const redis = await this.getRedisClient();
-    if (!redis) return;
+    // No backend configured -> nothing to invalidate (true). Configured but
+    // temporarily unavailable (circuit open / connecting) -> unconfirmed sweep
+    // over a backend that may still hold matching keys (false, fail closed).
+    if (!redis) return !this.isBackendConfigured();
 
     const start = Date.now();
     // Thread the cursor as an opaque string. Cloudflare KV returns a base64-ish
@@ -834,6 +920,10 @@ export class CacheClient {
     }
 
     this.logMetric(pattern, "del_pattern", duration);
+    // A hit on the runaway-iteration guard means keys matching `pattern` were
+    // left behind: report the invalidation as INCOMPLETE so callers can fail
+    // closed instead of assuming a clean sweep.
+    return !hitMaxIterations;
   }
 
   /**

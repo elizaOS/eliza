@@ -158,12 +158,18 @@ export class ApiKeysService {
   }
 
   /**
-   * Invalidate cache for a specific API key (call on update/delete).
+   * Invalidate cache for a specific API key (call on update/delete). Fails
+   * closed.
    *
    * Clears BOTH the validation cache (16-char-prefix key) AND the inference
    * hot-path auth-context entry (full-hash key, #9899). Every api-key mutation
    * site routes through here, so a revoked/updated key stops fast-pathing
    * inference immediately rather than waiting out the IAC TTL.
+   *
+   * @throws when either backend delete is not confirmed. A revoked key whose
+   *   cache entry was NOT removed keeps authenticating until its TTL lapses, so
+   *   the mutation path must surface an unconfirmed invalidation (error-policy:J1)
+   *   rather than silently discard `cache.del`'s failure (#13417).
    */
   async invalidateCache(keyHash: string): Promise<void> {
     const shortHash = keyHash.substring(0, 16);
@@ -171,10 +177,25 @@ export class ApiKeysService {
     // key would keep authenticating until each TTL expires. All revoke/update/
     // deactivate paths funnel through here: the per-key validation cache and the
     // #9899 inference hot-path auth-context entry (keyed by full hash).
-    await Promise.all([
-      cache.del(CacheKeys.apiKey.validation(shortHash)),
+    const [validationDeleted, inferenceDeleted] = await Promise.all([
+      cache.delConfirmed(CacheKeys.apiKey.validation(shortHash)),
       invalidateInferenceAuthContextByKeyHash(keyHash),
     ]);
+
+    if (!validationDeleted || !inferenceDeleted) {
+      const unconfirmed = [
+        validationDeleted ? null : "validation",
+        inferenceDeleted ? null : "inference-auth-context",
+      ].filter((entry): entry is string => entry !== null);
+      logger.error("[ApiKeys] API key cache invalidation not confirmed", {
+        shortHash,
+        unconfirmed,
+      });
+      throw new Error(
+        `API key cache invalidation not confirmed (${unconfirmed.join(", ")}); revoked key may still authenticate until TTL`,
+      );
+    }
+
     logger.debug("[ApiKeys] Invalidated API key + inference auth-context cache");
   }
 
@@ -305,9 +326,25 @@ export class ApiKeysService {
 
   async revokeForAgent(agentSandboxId: string): Promise<void> {
     const name = ApiKeysService.agentApiKeyName(agentSandboxId);
-    const keys = await apiKeysRepository.deleteByName(name);
-    for (const key of keys) {
-      await this.invalidateCache(key.key_hash);
+    // Unlike update/delete (which invalidate BEFORE the DB mutation and so can
+    // safely fail closed by throwing), this path deletes the rows FIRST — the
+    // credential is already DB-revoked. A cache-invalidation failure here must
+    // NOT abort agent (re)provisioning: the stale entry is TTL-bounded and the
+    // authoritative row is gone. So invalidation is best-effort — but the
+    // failure is surfaced observably (error-policy:J5), never swallowed silently.
+    for (const key of await apiKeysRepository.deleteByName(name)) {
+      try {
+        await this.invalidateCache(key.key_hash);
+      } catch (error) {
+        logger.error(
+          "[ApiKeys] revokeForAgent: cache invalidation not confirmed for a DB-revoked key; " +
+            "stale entry bounded by TTL, provisioning continues",
+          {
+            agentSandboxId,
+            error: error instanceof Error ? error.message : String(error),
+          },
+        );
+      }
     }
   }
 }

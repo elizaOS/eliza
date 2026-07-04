@@ -120,19 +120,52 @@ export async function writeInferenceAuthContext(ctx: InferenceAuthContext): Prom
  * mutation (revoke/update/delete/deactivate) so a revoked key stops fast-pathing
  * immediately rather than waiting out the TTL.
  */
-export async function invalidateInferenceAuthContextByKeyHash(keyHash: string): Promise<void> {
-  await cache.del(CacheKeys.inference.authContext(keyHash));
+/**
+ * Invalidate the inference auth-context entry for a single key hash.
+ *
+ * @returns `true` when the delete is confirmed, `false` when the backend
+ *   rejected it. Callers on a credential-revocation path (see
+ *   {@link ../api-keys}) must fail closed on `false` — a discarded failure here
+ *   let a revoked key keep fast-pathing inference until the IAC TTL lapsed
+ *   (#13417).
+ */
+export async function invalidateInferenceAuthContextByKeyHash(keyHash: string): Promise<boolean> {
+  return await cache.delConfirmed(CacheKeys.inference.authContext(keyHash));
 }
 
 /**
  * Fan-out invalidation for every supplied key hash (used at ban / deactivate,
- * where the caller resolves the user's key hashes from the DB). Best-effort.
+ * where the caller resolves the user's key hashes from the DB).
+ *
+ * FAILS CLOSED: every hash is attempted, but if ANY per-key delete is
+ * unconfirmed (backend rejected it or the cache is configured-but-unavailable)
+ * this THROWS naming the still-warm hashes. Ban/deactivate callers simply
+ * `await` this and do not inspect a return value, so a thrown error is what
+ * makes them fail closed instead of completing the ban while warm IAC entries
+ * keep authorizing until TTL. Callers that intentionally want best-effort
+ * (e.g. a lifecycle write that must not be blocked by a cache brownout) wrap
+ * this in their own try/catch — that stays a deliberate, visible choice rather
+ * than a silently-swallowed one. (#13417)
+ *
+ * @throws when any key's invalidation is not confirmed.
  */
 export async function invalidateInferenceAuthContextsByKeyHashes(
   keyHashes: readonly string[],
 ): Promise<void> {
   if (keyHashes.length === 0) return;
-  await Promise.all(keyHashes.map((h) => cache.del(CacheKeys.inference.authContext(h))));
+  const results = await Promise.all(
+    keyHashes.map((h) => cache.delConfirmed(CacheKeys.inference.authContext(h))),
+  );
+  const unconfirmed = keyHashes.filter((_h, i) => !results[i]);
+  if (unconfirmed.length > 0) {
+    logger.error("[InferenceAuthCache] Fan-out invalidation not confirmed", {
+      unconfirmedCount: unconfirmed.length,
+      total: keyHashes.length,
+    });
+    throw new Error(
+      `Inference auth-context invalidation not confirmed for ${unconfirmed.length}/${keyHashes.length} key(s); revoked credentials may keep authorizing until TTL`,
+    );
+  }
 }
 
 export async function readOrgBalanceHint(orgId: string): Promise<OrgBalanceHint | null> {
