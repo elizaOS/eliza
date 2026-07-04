@@ -27,7 +27,7 @@ export interface SseStream {
 export function createSseStream(
   reverseFn: ReverseFn,
   emit: (text: string) => void,
-  finish: () => void,
+  finish: () => void
 ): SseStream {
   const decoder = new StringDecoder("utf8");
   let pending = "";

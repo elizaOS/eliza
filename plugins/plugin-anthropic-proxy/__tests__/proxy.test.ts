@@ -21,10 +21,7 @@ import { reverseMap } from "../src/proxy/reverse-map.js";
 import { applyReplacements } from "../src/proxy/sanitize.js";
 import { ProxyServer } from "../src/proxy/server.js";
 import { applyQuotedRenames } from "../src/proxy/tool-rename.js";
-import {
-  AnthropicProxyService,
-  resolveConfig,
-} from "../src/services/proxy-service.js";
+import { AnthropicProxyService, resolveConfig } from "../src/services/proxy-service.js";
 import { loadCredentials } from "../src/utils/credentials-loader.js";
 
 // String literals chosen from the eliza-fingerprint dictionaries shipped
@@ -49,10 +46,7 @@ afterEach(async () => {
   }
 });
 
-function withEnv<T>(
-  overrides: Record<string, string | undefined>,
-  fn: () => T,
-): T {
+function withEnv<T>(overrides: Record<string, string | undefined>, fn: () => T): T {
   const prev: Record<string, string | undefined> = {};
   for (const [k, v] of Object.entries(overrides)) {
     prev[k] = process.env[k];
@@ -121,9 +115,7 @@ describe("billing fingerprint", () => {
     expect(a).toBe(b);
     expect(a).toHaveLength(3);
     expect(/^[0-9a-f]{3}$/.test(a)).toBe(true);
-    const c = computeBillingFingerprint(
-      "a completely different prompt body for hashing",
-    );
+    const c = computeBillingFingerprint("a completely different prompt body for hashing");
     expect(c).toHaveLength(3);
     expect([a, c].length).toBe(2);
   });
@@ -132,7 +124,7 @@ describe("billing fingerprint", () => {
 describe("AnthropicProxyService modes", () => {
   it("starts in off mode and does not listen", async () => {
     const service = await withEnv({ CLAUDE_MAX_PROXY_MODE: "off" }, () =>
-      AnthropicProxyService.start({} as unknown as never),
+      AnthropicProxyService.start({} as unknown as never)
     );
     cleanup.push(() => service.stop());
     expect(service.getEffectiveMode()).toBe("off");
@@ -149,20 +141,16 @@ describe("AnthropicProxyService modes", () => {
         res.end();
       }
     });
-    await new Promise<void>((resolve) =>
-      upstream.listen(0, "127.0.0.1", resolve),
-    );
+    await new Promise<void>((resolve) => upstream.listen(0, "127.0.0.1", resolve));
     const port = (upstream.address() as { port: number }).port;
-    cleanup.push(
-      () => new Promise<void>((resolve) => upstream.close(() => resolve())),
-    );
+    cleanup.push(() => new Promise<void>((resolve) => upstream.close(() => resolve())));
 
     const service = await withEnv(
       {
         CLAUDE_MAX_PROXY_MODE: "shared",
         CLAUDE_MAX_PROXY_UPSTREAM: `http://127.0.0.1:${port}`,
       },
-      () => AnthropicProxyService.start({} as unknown as never),
+      () => AnthropicProxyService.start({} as unknown as never)
     );
     cleanup.push(() => service.stop());
     expect(service.getEffectiveMode()).toBe("shared");
@@ -179,7 +167,7 @@ describe("AnthropicProxyService modes", () => {
         CLAUDE_MAX_PROXY_PORT: "0",
         CLAUDE_CODE_OAUTH_TOKEN: "test-oauth-token-not-real",
       },
-      () => AnthropicProxyService.start({} as unknown as never),
+      () => AnthropicProxyService.start({} as unknown as never)
     );
     cleanup.push(() => service.stop());
 
@@ -198,7 +186,7 @@ describe("AnthropicProxyService modes", () => {
         CLAUDE_MAX_PROXY_AUTH_TOKEN: undefined,
         CLAUDE_CODE_OAUTH_TOKEN: "test-oauth-token-not-real",
       },
-      () => AnthropicProxyService.start({} as unknown as never),
+      () => AnthropicProxyService.start({} as unknown as never)
     );
     cleanup.push(() => service.stop());
     expect(service.getEffectiveMode()).toBe("off");
@@ -211,7 +199,7 @@ describe("AnthropicProxyService modes", () => {
         CLAUDE_MAX_PROXY_MODE: "shared",
         CLAUDE_MAX_PROXY_UPSTREAM: "http://example.com/proxy",
       },
-      () => AnthropicProxyService.start({} as unknown as never),
+      () => AnthropicProxyService.start({} as unknown as never)
     );
     cleanup.push(() => service.stop());
     expect(service.getEffectiveMode()).toBe("off");
@@ -224,7 +212,7 @@ describe("AnthropicProxyService modes", () => {
         CLAUDE_MAX_PROXY_MODE: "sharedd",
         CLAUDE_CODE_OAUTH_TOKEN: "test-oauth-token-not-real",
       },
-      () => AnthropicProxyService.start({} as unknown as never),
+      () => AnthropicProxyService.start({} as unknown as never)
     );
     cleanup.push(() => service.stop());
     expect(service.getEffectiveMode()).toBe("off");
@@ -238,13 +226,9 @@ describe("AnthropicProxyService modes", () => {
       res.writeHead(204);
       res.end();
     });
-    await new Promise<void>((resolve) =>
-      blocker.listen(0, "127.0.0.1", resolve),
-    );
+    await new Promise<void>((resolve) => blocker.listen(0, "127.0.0.1", resolve));
     const port = (blocker.address() as { port: number }).port;
-    cleanup.push(
-      () => new Promise<void>((resolve) => blocker.close(() => resolve())),
-    );
+    cleanup.push(() => new Promise<void>((resolve) => blocker.close(() => resolve())));
     try {
       const service = await withEnv(
         {
@@ -252,7 +236,7 @@ describe("AnthropicProxyService modes", () => {
           CLAUDE_MAX_PROXY_PORT: String(port),
           CLAUDE_CODE_OAUTH_TOKEN: "test-oauth-token-not-real",
         },
-        () => AnthropicProxyService.start({} as unknown as never),
+        () => AnthropicProxyService.start({} as unknown as never)
       );
       cleanup.push(() => service.stop());
       expect(service.getEffectiveMode()).toBe("off");
@@ -300,7 +284,7 @@ describe("ProxyServer auth and URL contracts", () => {
     await expect(
       fetch(`${url}/health`, {
         headers: { Authorization: "Bearer proxy-token" },
-      }),
+      })
     ).resolves.toMatchObject({
       status: 200,
     });
@@ -312,7 +296,7 @@ describe("credentials loader", () => {
     const result = withEnv({ CLAUDE_CODE_OAUTH_TOKEN: undefined }, () =>
       loadCredentials({
         credentialsPath: "/nonexistent/path/that/does/not/exist.json",
-      }),
+      })
     );
     if (result.creds === null) {
       expect(result.error).toBeDefined();
@@ -338,7 +322,7 @@ describe("config resolver", () => {
         CLAUDE_MAX_PROXY_PORT: undefined,
         CLAUDE_MAX_PROXY_BIND_HOST: undefined,
       },
-      () => resolveConfig(),
+      () => resolveConfig()
     );
     expect(cfg.mode).toBe("inline");
     expect(cfg.port).toBe(18801);
@@ -362,7 +346,7 @@ describe("config resolver", () => {
           paraphrase: '{"type":"text","text":"Short framework policy."}',
           minStripLen: 10,
         },
-      }),
+      })
     );
 
     const cfg = withEnv(
@@ -370,14 +354,12 @@ describe("config resolver", () => {
         CLAUDE_MAX_PROXY_CONFIG_PATH: configPath,
         CLAUDE_MAX_PROXY_MODE: "off",
       },
-      () => resolveConfig(),
+      () => resolveConfig()
     );
 
     expect(cfg.configError).toBeUndefined();
     expect(cfg.configPath).toBe(configPath);
-    expect(cfg.fingerprintConfig?.replacements).toEqual([
-      ["framework-A", "framework-B"],
-    ]);
+    expect(cfg.fingerprintConfig?.replacements).toEqual([["framework-A", "framework-B"]]);
     expect(cfg.fingerprintConfig?.systemPromptStrip).toMatchObject({
       start: "FRAMEWORK_START",
       end: "FRAMEWORK_END",
@@ -391,7 +373,7 @@ describe("config resolver", () => {
         CLAUDE_MAX_PROXY_CONFIG_PATH: "/missing/anthropic-proxy-config.json",
         CLAUDE_MAX_PROXY_MODE: "inline",
       },
-      () => resolveConfig(),
+      () => resolveConfig()
     );
     expect(cfg.mode).toBe("inline");
     expect(cfg.configError).toContain("CLAUDE_MAX_PROXY_CONFIG_PATH not found");

@@ -16,10 +16,10 @@ describe("createSseStream", () => {
       (text) => emitted.push(text),
       () => {
         finished = true;
-      },
+      }
     );
 
-    stream.write(Buffer.from("x".repeat(70) + "ocp", "utf8"));
+    stream.write(Buffer.from(`${"x".repeat(70)}ocp`, "utf8"));
     stream.write(Buffer.from("latform", "utf8"));
     stream.end();
 
@@ -33,7 +33,7 @@ describe("createSseStream", () => {
     const stream = createSseStream(
       (text) => text,
       (text) => emitted.push(text),
-      () => undefined,
+      () => undefined
     );
     const payload = Buffer.from(`data: ${"x".repeat(70)} 中文 🚀\n\n`, "utf8");
     const splitInsideRocket = payload.indexOf(Buffer.from("🚀")) + 2;
@@ -55,7 +55,7 @@ describe("createSseStream", () => {
       (text) => emitted.push(text),
       () => {
         finished = true;
-      },
+      }
     );
 
     stream.end();

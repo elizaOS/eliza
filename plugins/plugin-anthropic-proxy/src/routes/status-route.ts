@@ -4,12 +4,7 @@
  * External health/diagnostic surface for the Anthropic proxy.
  */
 
-import type {
-  IAgentRuntime,
-  Route,
-  RouteRequest,
-  RouteResponse,
-} from "@elizaos/core";
+import type { IAgentRuntime, Route, RouteRequest, RouteResponse } from "@elizaos/core";
 import {
   ANTHROPIC_PROXY_SERVICE_NAME,
   type AnthropicProxyService,
@@ -18,11 +13,9 @@ import {
 async function handleStatus(
   _req: RouteRequest,
   res: RouteResponse,
-  runtime: IAgentRuntime,
+  runtime: IAgentRuntime
 ): Promise<void> {
-  const service = runtime.getService<AnthropicProxyService>(
-    ANTHROPIC_PROXY_SERVICE_NAME,
-  );
+  const service = runtime.getService<AnthropicProxyService>(ANTHROPIC_PROXY_SERVICE_NAME);
   if (!service) {
     res.status(503).json({
       error: "AnthropicProxyService not loaded",

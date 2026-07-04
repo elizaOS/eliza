@@ -44,7 +44,7 @@ function installUpstream(statusCode = 200, body = "{}") {
         return upstream;
       }) as ClientRequest["end"];
       return upstream;
-    },
+    }
   );
 }
 

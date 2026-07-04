@@ -5,10 +5,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import {
-  type ProcessBodyConfig,
-  processBody,
-} from "../src/proxy/process-body.js";
+import { type ProcessBodyConfig, processBody } from "../src/proxy/process-body.js";
 
 const baseConfig: ProcessBodyConfig = {
   replacements: [],
@@ -21,10 +18,7 @@ const baseConfig: ProcessBodyConfig = {
   sessionId: "session-test",
 };
 
-function parseProcessed(
-  body: unknown,
-  overrides: Partial<ProcessBodyConfig> = {},
-) {
+function parseProcessed(body: unknown, overrides: Partial<ProcessBodyConfig> = {}) {
   const result = processBody(JSON.stringify(body), {
     ...baseConfig,
     ...overrides,

@@ -49,7 +49,7 @@ function jwtExpiresAt(token: string): number {
 }
 
 export function loadCredentials(
-  opts: { credentialsPath?: string; envToken?: string } = {},
+  opts: { credentialsPath?: string; envToken?: string } = {}
 ): LoadResult {
   if (opts.envToken) {
     return {
@@ -69,9 +69,7 @@ export function loadCredentials(
   candidates.push(join(home, ".claude", "credentials.json"));
 
   for (const candidate of candidates) {
-    const resolved = candidate.startsWith("~")
-      ? join(home, candidate.slice(1))
-      : candidate;
+    const resolved = candidate.startsWith("~") ? join(home, candidate.slice(1)) : candidate;
     try {
       if (existsSync(resolved) && statSync(resolved).size > 0) {
         let raw = readFileSync(resolved, "utf8");
@@ -84,7 +82,7 @@ export function loadCredentials(
           };
         };
         const oauth = parsed.claudeAiOauth;
-        if (!oauth || !oauth.accessToken) {
+        if (!oauth?.accessToken) {
           return {
             creds: null,
             error: `credentials file ${resolved} missing claudeAiOauth.accessToken`,

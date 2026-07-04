@@ -22,9 +22,7 @@ export const proxyStatusAction: Action = {
   contexts: ["debug", "operations"],
   validate: async () => true,
   handler: async (runtime: IAgentRuntime): Promise<ActionResult> => {
-    const service = runtime.getService<AnthropicProxyService>(
-      ANTHROPIC_PROXY_SERVICE_NAME,
-    );
+    const service = runtime.getService<AnthropicProxyService>(ANTHROPIC_PROXY_SERVICE_NAME);
     if (!service) {
       return {
         success: false,
@@ -43,9 +41,7 @@ export const proxyStatusAction: Action = {
       lines.push(`requests: ${status.stats.requestsServed}`);
       lines.push(`uptime: ${status.stats.uptimeSec}s`);
       if (status.stats.tokenExpiresInHours !== null) {
-        lines.push(
-          `tokenExpiresInHours: ${status.stats.tokenExpiresInHours.toFixed(1)}`,
-        );
+        lines.push(`tokenExpiresInHours: ${status.stats.tokenExpiresInHours.toFixed(1)}`);
       }
       lines.push(`subscription: ${status.stats.subscriptionType ?? "unknown"}`);
     }
@@ -53,7 +49,7 @@ export const proxyStatusAction: Action = {
       lines.push(
         `upstream: reachable=${status.upstream.reachable} ` +
           `status=${status.upstream.status ?? "n/a"}` +
-          (status.upstream.error ? ` error=${status.upstream.error}` : ""),
+          (status.upstream.error ? ` error=${status.upstream.error}` : "")
       );
     }
     return {

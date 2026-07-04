@@ -5,8 +5,7 @@
  */
 import { buildPlugin } from "../plugin-build";
 
-const reexport = (from: string) =>
-  `export * from "${from}";\nexport { default } from "${from}";\n`;
+const reexport = (from: string) => `export * from "${from}";\nexport { default } from "${from}";\n`;
 
 await buildPlugin({
   name: "@elizaos/plugin-anthropic-proxy",

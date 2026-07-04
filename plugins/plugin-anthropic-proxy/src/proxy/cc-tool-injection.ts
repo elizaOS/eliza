@@ -44,7 +44,7 @@ export interface ToolSectionResult {
 export function processToolsSection(
   m: string,
   stripDescriptions: boolean,
-  injectSyntheticTools: boolean,
+  injectSyntheticTools: boolean
 ): ToolSectionResult {
   const toolsIdx = m.indexOf('"tools":[');
   if (toolsIdx === -1) {
@@ -80,10 +80,7 @@ export function processToolsSection(
     if (injectSyntheticTools) {
       const insertAt = '"tools":['.length;
       section =
-        section.slice(0, insertAt) +
-        CC_SYNTHETIC_TOOLS.join(",") +
-        "," +
-        section.slice(insertAt);
+        section.slice(0, insertAt) + CC_SYNTHETIC_TOOLS.join(",") + "," + section.slice(insertAt);
       syntheticToolsInjected = CC_SYNTHETIC_TOOLS.length;
     }
     return {
@@ -96,11 +93,7 @@ export function processToolsSection(
   if (injectSyntheticTools) {
     const insertAt = toolsIdx + '"tools":['.length;
     return {
-      body:
-        m.slice(0, insertAt) +
-        CC_SYNTHETIC_TOOLS.join(",") +
-        "," +
-        m.slice(insertAt),
+      body: m.slice(0, insertAt) + CC_SYNTHETIC_TOOLS.join(",") + "," + m.slice(insertAt),
       descriptionsStripped: 0,
       syntheticToolsInjected: CC_SYNTHETIC_TOOLS.length,
     };

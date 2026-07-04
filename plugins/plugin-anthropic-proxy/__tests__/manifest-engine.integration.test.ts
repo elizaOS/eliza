@@ -30,7 +30,7 @@ describe("manifest engine integration: plugin-anthropic-proxy", () => {
   it("reads the manifest and reports enabled=true for CLAUDE_MAX_PROXY_MODE=inline", async () => {
     const verdict = await evaluatePluginManifest(
       candidate,
-      ctxFromEnv({ CLAUDE_MAX_PROXY_MODE: "inline" }),
+      ctxFromEnv({ CLAUDE_MAX_PROXY_MODE: "inline" })
     );
     expect(verdict).not.toBeNull();
     expect(verdict?.enabled).toBe(true);
@@ -40,7 +40,7 @@ describe("manifest engine integration: plugin-anthropic-proxy", () => {
   it("reads the manifest and reports enabled=true for CLAUDE_MAX_PROXY_MODE=shared", async () => {
     const verdict = await evaluatePluginManifest(
       candidate,
-      ctxFromEnv({ CLAUDE_MAX_PROXY_MODE: "shared" }),
+      ctxFromEnv({ CLAUDE_MAX_PROXY_MODE: "shared" })
     );
     expect(verdict?.enabled).toBe(true);
   });
@@ -48,7 +48,7 @@ describe("manifest engine integration: plugin-anthropic-proxy", () => {
   it("reads the manifest and reports enabled=false for CLAUDE_MAX_PROXY_MODE=off", async () => {
     const verdict = await evaluatePluginManifest(
       candidate,
-      ctxFromEnv({ CLAUDE_MAX_PROXY_MODE: "off" }),
+      ctxFromEnv({ CLAUDE_MAX_PROXY_MODE: "off" })
     );
     expect(verdict?.enabled).toBe(false);
     expect(verdict?.error).toBeNull();

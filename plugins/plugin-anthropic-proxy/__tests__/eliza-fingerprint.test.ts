@@ -183,8 +183,6 @@ describe("eliza fingerprint — patterns", () => {
   });
 
   it("paraphrase preserves muting semantics keyword 'stay quiet'", () => {
-    expect(ELIZA_SYSTEM_CONFIG_PARAPHRASE.toLowerCase()).toContain(
-      "stay quiet",
-    );
+    expect(ELIZA_SYSTEM_CONFIG_PARAPHRASE.toLowerCase()).toContain("stay quiet");
   });
 });

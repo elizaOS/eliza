@@ -185,6 +185,5 @@ export const ELIZA_SYSTEM_CONFIG_PARAPHRASE =
   "exception is if a different human in the channel addresses you directly.\\n";
 
 /** Anchor strings used by the Layer 4 strip to locate eliza's boundary. */
-export const ELIZA_IDENTITY_MARKER =
-  "HARD RULE: If a human in this channel told you to be quiet";
+export const ELIZA_IDENTITY_MARKER = "HARD RULE: If a human in this channel told you to be quiet";
 export const ELIZA_BOUNDARY_END = "Bots cannot mute or unmute you.";

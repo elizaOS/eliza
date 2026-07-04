@@ -3,17 +3,9 @@
  * from proxy.js v2.2.3 in a controllable Service-friendly object.
  */
 
-import {
-  createServer,
-  type IncomingMessage,
-  type Server,
-  type ServerResponse,
-} from "node:http";
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { request as httpsRequest } from "node:https";
-import {
-  type LoadResult,
-  loadCredentials,
-} from "../utils/credentials-loader.js";
+import { type LoadResult, loadCredentials } from "../utils/credentials-loader.js";
 import {
   CC_VERSION,
   DEFAULT_PORT,
@@ -165,7 +157,7 @@ export class ProxyServer {
         server.removeListener("error", reject);
         this.listening = true;
         this.logger.info(
-          `anthropic-proxy listening on http://${this.bindHost}:${this.port} (cc=${CC_VERSION})`,
+          `anthropic-proxy listening on http://${this.bindHost}:${this.port} (cc=${CC_VERSION})`
         );
         resolve();
       });
@@ -187,9 +179,7 @@ export class ProxyServer {
   getUrl(): string {
     const address = this.server?.address();
     const port =
-      address && typeof address === "object" && "port" in address
-        ? address.port
-        : this.port;
+      address && typeof address === "object" && "port" in address ? address.port : this.port;
     return `http://${this.bindHost}:${port}`;
   }
 
@@ -209,9 +199,7 @@ export class ProxyServer {
   private handleRequest(req: IncomingMessage, res: ServerResponse): void {
     if (this.proxyAuthToken && !this.isAuthorized(req)) {
       res.writeHead(401, { "Content-Type": "application/json" });
-      res.end(
-        JSON.stringify({ type: "error", error: { message: "unauthorized" } }),
-      );
+      res.end(JSON.stringify({ type: "error", error: { message: "unauthorized" } }));
       return;
     }
     if (req.url === "/health" && req.method === "GET") {
@@ -232,7 +220,7 @@ export class ProxyServer {
           JSON.stringify({
             type: "error",
             error: { message: credsResult.error ?? "no credentials" },
-          }),
+          })
         );
         return;
       }
@@ -272,11 +260,8 @@ export class ProxyServer {
         headers[k] = v;
       }
 
-      const existingBeta =
-        (headers["anthropic-beta"] as string | undefined) ?? "";
-      const betas = existingBeta
-        ? existingBeta.split(",").map((b) => b.trim())
-        : [];
+      const existingBeta = (headers["anthropic-beta"] as string | undefined) ?? "";
+      const betas = existingBeta ? existingBeta.split(",").map((b) => b.trim()) : [];
       for (const b of REQUIRED_BETAS) {
         if (!betas.includes(b)) betas.push(b);
       }
@@ -284,7 +269,7 @@ export class ProxyServer {
 
       if (this.verbose) {
         this.logger.info(
-          `#${reqNum} ${req.method} ${req.url} (${originalSize}b -> ${body.length}b)`,
+          `#${reqNum} ${req.method} ${req.url} (${originalSize}b -> ${body.length}b)`
         );
       }
 
@@ -330,7 +315,7 @@ export class ProxyServer {
                   reverseMap: this.reverseMapPairs,
                 }),
               (text) => res.write(text),
-              () => res.end(),
+              () => res.end()
             );
             upRes.on("data", (chunk: Buffer) => stream.write(chunk));
             upRes.on("end", () => stream.end());
@@ -351,7 +336,7 @@ export class ProxyServer {
               res.end(respBody);
             });
           }
-        },
+        }
       );
       upstream.on("error", (e) => {
         this.logger.error(`#${reqNum} upstream error: ${(e as Error).message}`);
@@ -361,7 +346,7 @@ export class ProxyServer {
             JSON.stringify({
               type: "error",
               error: { message: (e as Error).message },
-            }),
+            })
           );
         }
       });
@@ -393,12 +378,10 @@ export class ProxyServer {
           requestsServed: stats.requestsServed,
           uptime: `${stats.uptimeSec}s`,
           tokenExpiresInHours:
-            stats.tokenExpiresInHours === null
-              ? "n/a"
-              : stats.tokenExpiresInHours.toFixed(1),
+            stats.tokenExpiresInHours === null ? "n/a" : stats.tokenExpiresInHours.toFixed(1),
           subscriptionType: stats.subscriptionType ?? "unknown",
           layers: stats.layers,
-        }),
+        })
       );
     } catch (e) {
       res.writeHead(500, { "Content-Type": "application/json" });
@@ -406,7 +389,7 @@ export class ProxyServer {
         JSON.stringify({
           status: "error",
           message: (e as Error).message,
-        }),
+        })
       );
     }
   }

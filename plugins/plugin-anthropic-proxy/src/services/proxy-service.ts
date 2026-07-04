@@ -57,8 +57,7 @@ function isLoopbackHost(host: string): boolean {
 function isPrivateHost(host: string): boolean {
   const normalized = host.trim().toLowerCase();
   if (isLoopbackHost(normalized)) return true;
-  if (normalized.endsWith(".local") || normalized.endsWith(".internal"))
-    return true;
+  if (normalized.endsWith(".local") || normalized.endsWith(".internal")) return true;
   if (/^10\./.test(normalized)) return true;
   if (/^192\.168\./.test(normalized)) return true;
   const match = normalized.match(/^172\.(\d+)\./);
@@ -72,7 +71,7 @@ function validateSharedUpstream(upstream: string): string {
     return upstream.replace(/\/$/, "");
   }
   throw new Error(
-    "CLAUDE_MAX_PROXY_UPSTREAM must use https unless it points to a loopback/private host",
+    "CLAUDE_MAX_PROXY_UPSTREAM must use https unless it points to a loopback/private host"
   );
 }
 
@@ -120,19 +119,11 @@ function readSystemPromptStrip(value: unknown): SystemPromptStripConfig {
     typeof record.paraphrase !== "string" ||
     record.paraphrase.length === 0
   ) {
-    throw new Error(
-      "systemPromptStrip requires non-empty start, end, and paraphrase strings",
-    );
+    throw new Error("systemPromptStrip requires non-empty start, end, and paraphrase strings");
   }
-  const minStripLen =
-    record.minStripLen === undefined ? undefined : Number(record.minStripLen);
-  if (
-    minStripLen !== undefined &&
-    (!Number.isFinite(minStripLen) || minStripLen < 0)
-  ) {
-    throw new Error(
-      "systemPromptStrip.minStripLen must be a non-negative number",
-    );
+  const minStripLen = record.minStripLen === undefined ? undefined : Number(record.minStripLen);
+  if (minStripLen !== undefined && (!Number.isFinite(minStripLen) || minStripLen < 0)) {
+    throw new Error("systemPromptStrip.minStripLen must be a non-negative number");
   }
   return {
     start: record.start,
@@ -200,8 +191,7 @@ function resolveFingerprintConfig(): {
 
 export function resolveConfig(): ProxyServiceConfig {
   const modeRaw = (readEnv("CLAUDE_MAX_PROXY_MODE") ?? "inline").toLowerCase();
-  const validMode =
-    modeRaw === "off" || modeRaw === "shared" || modeRaw === "inline";
+  const validMode = modeRaw === "off" || modeRaw === "shared" || modeRaw === "inline";
   const mode: ProxyMode = validMode ? modeRaw : "off";
 
   const portRaw = readEnv("CLAUDE_MAX_PROXY_PORT");
@@ -236,19 +226,13 @@ export class AnthropicProxyService extends Service {
   private effectiveUrl: string | null = null;
   private startError: string | null = null;
 
-  constructor(runtime?: IAgentRuntime) {
-    super(runtime);
-  }
-
   static async start(runtime: IAgentRuntime): Promise<AnthropicProxyService> {
     const service = new AnthropicProxyService(runtime);
     const config = resolveConfig();
     service.proxyConfig = config;
     if (config.configError) {
       service.startError = config.configError;
-      logger.warn(
-        `[anthropic-proxy] ${service.startError} — falling back to off`,
-      );
+      logger.warn(`[anthropic-proxy] ${service.startError} — falling back to off`);
       service.effectiveMode = "off";
       service.effectiveUrl = null;
       return service;
@@ -264,7 +248,7 @@ export class AnthropicProxyService extends Service {
     if (config.mode === "shared") {
       if (!config.upstream) {
         logger.warn(
-          "[anthropic-proxy] mode=shared but CLAUDE_MAX_PROXY_UPSTREAM not set — falling back to off",
+          "[anthropic-proxy] mode=shared but CLAUDE_MAX_PROXY_UPSTREAM not set — falling back to off"
         );
         service.effectiveMode = "off";
         return service;
@@ -274,16 +258,12 @@ export class AnthropicProxyService extends Service {
         service.effectiveUrl = validateSharedUpstream(config.upstream);
       } catch (e) {
         service.startError = (e as Error).message;
-        logger.warn(
-          `[anthropic-proxy] ${service.startError} — falling back to off`,
-        );
+        logger.warn(`[anthropic-proxy] ${service.startError} — falling back to off`);
         service.effectiveMode = "off";
         return service;
       }
       setAnthropicBaseUrl(service.effectiveUrl);
-      logger.info(
-        `[anthropic-proxy] mode=shared — using upstream ${service.effectiveUrl}`,
-      );
+      logger.info(`[anthropic-proxy] mode=shared — using upstream ${service.effectiveUrl}`);
       return service;
     }
 
@@ -291,9 +271,7 @@ export class AnthropicProxyService extends Service {
     if (!isLoopbackHost(config.bindHost) && !config.proxyAuthToken) {
       service.startError =
         "CLAUDE_MAX_PROXY_AUTH_TOKEN is required when CLAUDE_MAX_PROXY_BIND_HOST is not loopback";
-      logger.warn(
-        `[anthropic-proxy] ${service.startError} — falling back to off`,
-      );
+      logger.warn(`[anthropic-proxy] ${service.startError} — falling back to off`);
       service.effectiveMode = "off";
       return service;
     }
@@ -321,14 +299,12 @@ export class AnthropicProxyService extends Service {
       service.effectiveMode = "inline";
       service.effectiveUrl = server.getUrl();
       setAnthropicBaseUrl(service.effectiveUrl);
-      logger.info(
-        `[anthropic-proxy] mode=inline — listening on ${service.effectiveUrl}`,
-      );
+      logger.info(`[anthropic-proxy] mode=inline — listening on ${service.effectiveUrl}`);
     } catch (e) {
       service.startError = (e as Error).message;
       logger.warn(
         `[anthropic-proxy] failed to start inline proxy (${service.startError}). ` +
-          "Run 'claude auth login' to authenticate. Service will degrade to off mode.",
+          "Run 'claude auth login' to authenticate. Service will degrade to off mode."
       );
       service.effectiveMode = "off";
       service.effectiveUrl = null;
@@ -376,9 +352,7 @@ export class AnthropicProxyService extends Service {
     let stats: ReturnType<ProxyServer["getStats"]> | null = null;
     if (this.server) stats = this.server.getStats();
 
-    let upstream:
-      | { reachable: boolean; status?: number; error?: string }
-      | undefined;
+    let upstream: { reachable: boolean; status?: number; error?: string } | undefined;
     if (this.effectiveMode === "shared" && this.effectiveUrl) {
       try {
         const r = await fetch(`${this.effectiveUrl}/health`, {

@@ -21,9 +21,7 @@ describe("plugin-anthropic-proxy auto-enable", () => {
   });
 
   it("is case-insensitive and trims whitespace", () => {
-    expect(shouldEnable(ctx({ CLAUDE_MAX_PROXY_MODE: "  INLINE  " }))).toBe(
-      true,
-    );
+    expect(shouldEnable(ctx({ CLAUDE_MAX_PROXY_MODE: "  INLINE  " }))).toBe(true);
     expect(shouldEnable(ctx({ CLAUDE_MAX_PROXY_MODE: "Shared" }))).toBe(true);
   });
 
@@ -47,14 +45,10 @@ describe("plugin-anthropic-proxy auto-enable", () => {
   });
 
   it("ignores ANTHROPIC_BASE_URL (the plugin SETS that, doesn't read it)", () => {
-    expect(
-      shouldEnable(ctx({ ANTHROPIC_BASE_URL: "http://127.0.0.1:18801/v1" })),
-    ).toBe(false);
+    expect(shouldEnable(ctx({ ANTHROPIC_BASE_URL: "http://127.0.0.1:18801/v1" }))).toBe(false);
   });
 
   it("ignores CLAUDE_MAX_CREDENTIALS_PATH alone", () => {
-    expect(
-      shouldEnable(ctx({ CLAUDE_MAX_CREDENTIALS_PATH: "/some/path.json" })),
-    ).toBe(false);
+    expect(shouldEnable(ctx({ CLAUDE_MAX_CREDENTIALS_PATH: "/some/path.json" }))).toBe(false);
   });
 });

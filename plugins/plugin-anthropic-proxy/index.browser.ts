@@ -11,8 +11,7 @@ import type { Plugin } from "@elizaos/core";
 
 const anthropicProxyPluginBrowserUnavailable: Plugin = {
   name: "anthropic-proxy",
-  description:
-    "Anthropic proxy (unavailable in browser; only functional in Node environments)",
+  description: "Anthropic proxy (unavailable in browser; only functional in Node environments)",
   services: [],
   actions: [],
   providers: [],

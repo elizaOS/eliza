@@ -21,10 +21,7 @@
  */
 
 import { SYSTEM_CONFIG_PARAPHRASE } from "./constants.js";
-import {
-  ELIZA_BOUNDARY_END,
-  ELIZA_IDENTITY_MARKER,
-} from "./eliza-fingerprint.js";
+import { ELIZA_BOUNDARY_END, ELIZA_IDENTITY_MARKER } from "./eliza-fingerprint.js";
 
 const MIN_STRIP_LEN = 200;
 
@@ -56,7 +53,7 @@ const DEFAULT_STRIP_CONFIG: SystemPromptStripConfig = {
 
 export function stripSystemConfig(
   m: string,
-  config: SystemPromptStripConfig = DEFAULT_STRIP_CONFIG,
+  config: SystemPromptStripConfig = DEFAULT_STRIP_CONFIG
 ): {
   body: string;
   stripped: number;

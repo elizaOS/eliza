@@ -6,11 +6,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import {
-  DEFAULT_REVERSE_MAP,
-  DEFAULT_TOOL_RENAMES,
-  getStainlessHeaders,
-} from "../index.js";
+import { DEFAULT_REVERSE_MAP, DEFAULT_TOOL_RENAMES, getStainlessHeaders } from "../index.js";
 
 describe("package entry exports (#11496)", () => {
   it("exports getStainlessHeaders returning the CC identity header set", () => {

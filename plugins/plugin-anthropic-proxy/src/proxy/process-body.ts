@@ -88,10 +88,7 @@ function findMatchingObjectEnd(str: string, start: number): number {
   return -1;
 }
 
-export function processBody(
-  bodyStr: string,
-  config: ProcessBodyConfig,
-): ProcessBodyResult {
+export function processBody(bodyStr: string, config: ProcessBodyConfig): ProcessBodyResult {
   let m = bodyStr;
 
   // Layer 2: String trigger sanitization
@@ -115,7 +112,7 @@ export function processBody(
   const toolResult = processToolsSection(
     m,
     config.stripToolDescriptions !== false,
-    config.injectCCSyntheticTools !== false,
+    config.injectCCSyntheticTools !== false
   );
   m = toolResult.body;
 
@@ -219,8 +216,7 @@ export function processBody(
             stripFrom = i;
             break;
           }
-          if (m[i] !== " " && m[i] !== "\n" && m[i] !== "\r" && m[i] !== "\t")
-            break;
+          if (m[i] !== " " && m[i] !== "\n" && m[i] !== "\r" && m[i] !== "\t") break;
         }
         m = m.slice(0, stripFrom) + m.slice(last.end + 1);
         positions.pop();
@@ -241,10 +237,7 @@ export function processBody(
     }
     const msgsIdx2 = m.indexOf('"messages":[');
     if (msgsIdx2 !== -1) {
-      for (const marker of [
-        '{"type":"thinking"',
-        '{"type":"redacted_thinking"',
-      ]) {
+      for (const marker of ['{"type":"thinking"', '{"type":"redacted_thinking"']) {
         let searchFrom = msgsIdx2;
         while (true) {
           const idx = m.indexOf(marker, searchFrom);

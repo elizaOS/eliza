@@ -9,16 +9,10 @@
  */
 
 import { createHash } from "node:crypto";
-import {
-  BILLING_HASH_INDICES,
-  BILLING_HASH_SALT,
-  CC_VERSION,
-} from "./constants.js";
+import { BILLING_HASH_INDICES, BILLING_HASH_SALT, CC_VERSION } from "./constants.js";
 
 export function computeBillingFingerprint(firstUserText: string): string {
-  const chars = BILLING_HASH_INDICES.map((i) => firstUserText[i] ?? "0").join(
-    "",
-  );
+  const chars = BILLING_HASH_INDICES.map((i) => firstUserText[i] ?? "0").join("");
   const input = `${BILLING_HASH_SALT}${chars}${CC_VERSION}`;
   return createHash("sha256").update(input).digest("hex").slice(0, 3);
 }

@@ -15,11 +15,7 @@
 import { type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
 import { proxyStatusAction } from "./src/actions/proxy-status.action.js";
 import { anthropicProxyRoutes } from "./src/routes/status-route.js";
-import {
-  ANTHROPIC_PROXY_SERVICE_NAME,
-  AnthropicProxyService,
-  resolveConfig,
-} from "./src/services/proxy-service.js";
+import { AnthropicProxyService, resolveConfig } from "./src/services/proxy-service.js";
 
 export { computeBillingFingerprint } from "./src/proxy/billing-fingerprint.js";
 export {
@@ -71,20 +67,15 @@ const anthropicProxyPlugin: Plugin = {
     },
   },
 
-  init: async (
-    _config: Record<string, string>,
-    _runtime: IAgentRuntime,
-  ): Promise<void> => {
+  init: async (_config: Record<string, string>, _runtime: IAgentRuntime): Promise<void> => {
     const cfg = resolveConfig();
     if (cfg.mode === "off") {
-      logger.info(
-        "[anthropic-proxy] init — mode=off (ANTHROPIC_BASE_URL unchanged)",
-      );
+      logger.info("[anthropic-proxy] init — mode=off (ANTHROPIC_BASE_URL unchanged)");
       return;
     }
 
     logger.info(
-      `[anthropic-proxy] init — mode=${cfg.mode}; service start will set ANTHROPIC_BASE_URL after validation`,
+      `[anthropic-proxy] init — mode=${cfg.mode}; service start will set ANTHROPIC_BASE_URL after validation`
     );
   },
 };
