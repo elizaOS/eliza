@@ -1,3 +1,4 @@
+/** Predicate distinguishing a bare repost (references an original, no added content) from a quote-post. */
 export function isPureRepost(post: {
   originalPostId?: string | null;
   content: string;

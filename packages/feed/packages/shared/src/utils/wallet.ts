@@ -1,3 +1,7 @@
+/**
+ * Wallet display helpers: block-explorer transaction URLs for the active chain and
+ * fixed-point formatting of raw token balances for the UI.
+ */
 import { getCurrentChainId } from "../config";
 
 /**
