@@ -19,55 +19,55 @@ import { createUniqueUuid } from "../../entities.ts";
 import type { Room, World } from "../../types/environment.ts";
 import type { UUID } from "../../types/primitives.ts";
 import type {
-  IAgentRuntime,
-  MessageConnectorTarget,
+	IAgentRuntime,
+	MessageConnectorTarget,
 } from "../../types/runtime.ts";
 
 type ParticipantUserState = "FOLLOWED" | "MUTED" | null;
 
 export type EffectiveMuteState =
-  | { muted: false }
-  | { muted: true; scope: "room"; roomId: UUID }
-  | { muted: true; scope: "server"; worldId: UUID };
+	| { muted: false }
+	| { muted: true; scope: "room"; roomId: UUID }
+	| { muted: true; scope: "server"; worldId: UUID };
 
 function readMuteUntilIso(
-  metadata: Record<string, unknown> | undefined,
+	metadata: Record<string, unknown> | undefined,
 ): string | undefined {
-  const value = metadata?.agentMuteUntilIso;
-  return typeof value === "string" && value.length > 0 ? value : undefined;
+	const value = metadata?.agentMuteUntilIso;
+	return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
 /** True when a timed mute carries an ISO expiry that has already passed. */
 export function muteExpiryDue(
-  untilIso: string | undefined,
-  now: number,
+	untilIso: string | undefined,
+	now: number,
 ): boolean {
-  if (!untilIso) return false;
-  const expiry = Date.parse(untilIso);
-  return Number.isFinite(expiry) && expiry <= now;
+	if (!untilIso) return false;
+	const expiry = Date.parse(untilIso);
+	return Number.isFinite(expiry) && expiry <= now;
 }
 
 /** Read-only: is this world under an active (non-expired) server-wide mute? */
 export function worldMuteActive(
-  world: World | null | undefined,
-  now: number = Date.now(),
+	world: World | null | undefined,
+	now: number = Date.now(),
 ): boolean {
-  const metadata = world?.metadata;
-  if (metadata?.agentMuteState !== "MUTED") return false;
-  return !muteExpiryDue(readMuteUntilIso(metadata), now);
+	const metadata = world?.metadata;
+	if (metadata?.agentMuteState !== "MUTED") return false;
+	return !muteExpiryDue(readMuteUntilIso(metadata), now);
 }
 
 /** Read-only: is this room under an active (non-expired) participant mute? */
 export function roomMuteActive(
-  participantState: ParticipantUserState,
-  room: Room | null | undefined,
-  now: number = Date.now(),
+	participantState: ParticipantUserState,
+	room: Room | null | undefined,
+	now: number = Date.now(),
 ): boolean {
-  if (participantState !== "MUTED") return false;
-  return !muteExpiryDue(
-    readMuteUntilIso(room?.metadata as Record<string, unknown> | undefined),
-    now,
-  );
+	if (participantState !== "MUTED") return false;
+	return !muteExpiryDue(
+		readMuteUntilIso(room?.metadata as Record<string, unknown> | undefined),
+		now,
+	);
 }
 
 /**
@@ -85,61 +85,61 @@ export function roomMuteActive(
  * for its LLM-off check just before this resolver runs.
  */
 export async function resolveEffectiveMuteState(
-  runtime: IAgentRuntime,
-  args: {
-    roomIds: readonly UUID[];
-    worldId?: UUID;
-    primaryParticipantState?: ParticipantUserState;
-  },
-  now: number = Date.now(),
+	runtime: IAgentRuntime,
+	args: {
+		roomIds: readonly UUID[];
+		worldId?: UUID;
+		primaryParticipantState?: ParticipantUserState;
+	},
+	now: number = Date.now(),
 ): Promise<EffectiveMuteState> {
-  let worldId = args.worldId;
-  let primaryRoom: Room | null | undefined;
+	let worldId = args.worldId;
+	let primaryRoom: Room | null | undefined;
 
-  for (const roomId of args.roomIds) {
-    const state =
-      roomId === args.roomIds[0] && args.primaryParticipantState !== undefined
-        ? args.primaryParticipantState
-        : await runtime.getParticipantUserState(roomId, runtime.agentId);
-    if (state !== "MUTED") continue;
-    const room = await runtime.getRoom(roomId);
-    if (roomId === args.roomIds[0]) primaryRoom = room;
-    const untilIso = readMuteUntilIso(
-      room?.metadata as Record<string, unknown> | undefined,
-    );
-    if (!muteExpiryDue(untilIso, now)) {
-      return { muted: true, scope: "room", roomId };
-    }
-    // Timed mute reached its ISO expiry — auto-unmute and keep processing.
-    await runtime.updateParticipantUserState(roomId, runtime.agentId, null);
-    if (room?.metadata && "agentMuteUntilIso" in room.metadata) {
-      const { agentMuteUntilIso: _expired, ...rest } = room.metadata;
-      await runtime.updateRoom({ ...room, metadata: rest });
-    }
-  }
+	for (const roomId of args.roomIds) {
+		const state =
+			roomId === args.roomIds[0] && args.primaryParticipantState !== undefined
+				? args.primaryParticipantState
+				: await runtime.getParticipantUserState(roomId, runtime.agentId);
+		if (state !== "MUTED") continue;
+		const room = await runtime.getRoom(roomId);
+		if (roomId === args.roomIds[0]) primaryRoom = room;
+		const untilIso = readMuteUntilIso(
+			room?.metadata as Record<string, unknown> | undefined,
+		);
+		if (!muteExpiryDue(untilIso, now)) {
+			return { muted: true, scope: "room", roomId };
+		}
+		// Timed mute reached its ISO expiry — auto-unmute and keep processing.
+		await runtime.updateParticipantUserState(roomId, runtime.agentId, null);
+		if (room?.metadata && "agentMuteUntilIso" in room.metadata) {
+			const { agentMuteUntilIso: _expired, ...rest } = room.metadata;
+			await runtime.updateRoom({ ...room, metadata: rest });
+		}
+	}
 
-  if (!worldId) {
-    if (primaryRoom === undefined) {
-      primaryRoom = await runtime.getRoom(args.roomIds[0]);
-    }
-    worldId = primaryRoom?.worldId;
-  }
-  if (!worldId) return { muted: false };
+	if (!worldId) {
+		if (primaryRoom === undefined) {
+			primaryRoom = await runtime.getRoom(args.roomIds[0]);
+		}
+		worldId = primaryRoom?.worldId;
+	}
+	if (!worldId) return { muted: false };
 
-  const world = await runtime.getWorld(worldId);
-  if (world?.metadata?.agentMuteState !== "MUTED") {
-    return { muted: false };
-  }
-  if (muteExpiryDue(readMuteUntilIso(world.metadata), now)) {
-    const {
-      agentMuteState: _state,
-      agentMuteUntilIso: _until,
-      ...rest
-    } = world.metadata;
-    await runtime.updateWorld({ ...world, metadata: rest });
-    return { muted: false };
-  }
-  return { muted: true, scope: "server", worldId };
+	const world = await runtime.getWorld(worldId);
+	if (world?.metadata?.agentMuteState !== "MUTED") {
+		return { muted: false };
+	}
+	if (muteExpiryDue(readMuteUntilIso(world.metadata), now)) {
+		const {
+			agentMuteState: _state,
+			agentMuteUntilIso: _until,
+			...rest
+		} = world.metadata;
+		await runtime.updateWorld({ ...world, metadata: rest });
+		return { muted: false };
+	}
+	return { muted: true, scope: "server", worldId };
 }
 
 /**
@@ -147,29 +147,29 @@ export async function resolveEffectiveMuteState(
  * Returns the updated world, or null when the world does not exist.
  */
 export async function setWorldMuteState(
-  runtime: IAgentRuntime,
-  worldId: UUID,
-  mute: { untilIso?: string } | null,
+	runtime: IAgentRuntime,
+	worldId: UUID,
+	mute: { untilIso?: string } | null,
 ): Promise<World | null> {
-  const world = await runtime.getWorld(worldId);
-  if (!world) return null;
-  const {
-    agentMuteState: _state,
-    agentMuteUntilIso: _until,
-    ...rest
-  } = world.metadata ?? {};
-  const updated: World = {
-    ...world,
-    metadata: mute
-      ? {
-          ...rest,
-          agentMuteState: "MUTED" as const,
-          ...(mute.untilIso ? { agentMuteUntilIso: mute.untilIso } : {}),
-        }
-      : rest,
-  };
-  await runtime.updateWorld(updated);
-  return updated;
+	const world = await runtime.getWorld(worldId);
+	if (!world) return null;
+	const {
+		agentMuteState: _state,
+		agentMuteUntilIso: _until,
+		...rest
+	} = world.metadata ?? {};
+	const updated: World = {
+		...world,
+		metadata: mute
+			? {
+					...rest,
+					agentMuteState: "MUTED" as const,
+					...(mute.untilIso ? { agentMuteUntilIso: mute.untilIso } : {}),
+				}
+			: rest,
+	};
+	await runtime.updateWorld(updated);
+	return updated;
 }
 
 /**
@@ -179,25 +179,25 @@ export async function setWorldMuteState(
  * silently-unstored expiry would make the timed mute permanent again.
  */
 export async function setRoomMuteUntil(
-  runtime: IAgentRuntime,
-  roomId: UUID,
-  untilIso: string | null,
+	runtime: IAgentRuntime,
+	roomId: UUID,
+	untilIso: string | null,
 ): Promise<void> {
-  const room = await runtime.getRoom(roomId);
-  if (!room) {
-    if (untilIso === null) return;
-    throw new Error(`Cannot store mute expiry: room ${roomId} not found`);
-  }
-  if (untilIso === null) {
-    if (!room.metadata || !("agentMuteUntilIso" in room.metadata)) return;
-    const { agentMuteUntilIso: _cleared, ...rest } = room.metadata;
-    await runtime.updateRoom({ ...room, metadata: rest });
-    return;
-  }
-  await runtime.updateRoom({
-    ...room,
-    metadata: { ...(room.metadata ?? {}), agentMuteUntilIso: untilIso },
-  });
+	const room = await runtime.getRoom(roomId);
+	if (!room) {
+		if (untilIso === null) return;
+		throw new Error(`Cannot store mute expiry: room ${roomId} not found`);
+	}
+	if (untilIso === null) {
+		if (!room.metadata || !("agentMuteUntilIso" in room.metadata)) return;
+		const { agentMuteUntilIso: _cleared, ...rest } = room.metadata;
+		await runtime.updateRoom({ ...room, metadata: rest });
+		return;
+	}
+	await runtime.updateRoom({
+		...room,
+		metadata: { ...(room.metadata ?? {}), agentMuteUntilIso: untilIso },
+	});
 }
 
 /**
@@ -209,40 +209,40 @@ export async function setRoomMuteUntil(
  * report unmuted.
  */
 export async function resolveMutedTargetFlags(
-  runtime: IAgentRuntime,
-  targets: readonly MessageConnectorTarget[],
-  now: number = Date.now(),
+	runtime: IAgentRuntime,
+	targets: readonly MessageConnectorTarget[],
+	now: number = Date.now(),
 ): Promise<boolean[]> {
-  const worldMuteCache = new Map<string, boolean>();
-  const isServerMuted = async (serverId: string): Promise<boolean> => {
-    const cached = worldMuteCache.get(serverId);
-    if (cached !== undefined) return cached;
-    const world = await runtime.getWorld(createUniqueUuid(runtime, serverId));
-    const active = worldMuteActive(world, now);
-    worldMuteCache.set(serverId, active);
-    return active;
-  };
+	const worldMuteCache = new Map<string, boolean>();
+	const isServerMuted = async (serverId: string): Promise<boolean> => {
+		const cached = worldMuteCache.get(serverId);
+		if (cached !== undefined) return cached;
+		const world = await runtime.getWorld(createUniqueUuid(runtime, serverId));
+		const active = worldMuteActive(world, now);
+		worldMuteCache.set(serverId, active);
+		return active;
+	};
 
-  return Promise.all(
-    targets.map(async (entry) => {
-      const roomId =
-        entry.target.roomId ??
-        (entry.target.channelId
-          ? createUniqueUuid(runtime, entry.target.channelId)
-          : undefined);
-      if (roomId) {
-        const state = await runtime.getParticipantUserState(
-          roomId,
-          runtime.agentId,
-        );
-        if (state === "MUTED") {
-          const room = await runtime.getRoom(roomId);
-          if (roomMuteActive(state, room, now)) return true;
-        }
-      }
-      return entry.target.serverId
-        ? isServerMuted(entry.target.serverId)
-        : false;
-    }),
-  );
+	return Promise.all(
+		targets.map(async (entry) => {
+			const roomId =
+				entry.target.roomId ??
+				(entry.target.channelId
+					? createUniqueUuid(runtime, entry.target.channelId)
+					: undefined);
+			if (roomId) {
+				const state = await runtime.getParticipantUserState(
+					roomId,
+					runtime.agentId,
+				);
+				if (state === "MUTED") {
+					const room = await runtime.getRoom(roomId);
+					if (roomMuteActive(state, room, now)) return true;
+				}
+			}
+			return entry.target.serverId
+				? isServerMuted(entry.target.serverId)
+				: false;
+		}),
+	);
 }

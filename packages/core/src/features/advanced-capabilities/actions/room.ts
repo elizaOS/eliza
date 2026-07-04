@@ -177,9 +177,7 @@ function normalizeString(value: unknown): string | undefined {
 function normalizeScope(value: unknown): RoomOpScope {
 	if (typeof value !== "string") return "room";
 	const normalized = value.trim().toLowerCase();
-	return normalized === "server" || normalized === "guild"
-		? "server"
-		: "room";
+	return normalized === "server" || normalized === "guild" ? "server" : "room";
 }
 
 function muteUntilIsoFromDuration(
@@ -594,9 +592,7 @@ async function applyServerScopedOp(args: {
 		text:
 			op === "mute"
 				? `Server muted: ${serverName}${
-						args.durationMinutes
-							? ` for ${args.durationMinutes} minutes`
-							: ""
+						args.durationMinutes ? ` for ${args.durationMinutes} minutes` : ""
 					}`
 				: `Server unmuted: ${serverName}`,
 		values: {
@@ -816,9 +812,7 @@ export const roomOpAction: Action = {
 							roomId: explicitRoomId,
 							chatName,
 						})
-					: await runtime.getRoom(
-							(explicitRoomId ?? message.roomId) as UUID,
-						);
+					: await runtime.getRoom((explicitRoomId ?? message.roomId) as UUID);
 			return applyServerScopedOp({
 				runtime,
 				message,

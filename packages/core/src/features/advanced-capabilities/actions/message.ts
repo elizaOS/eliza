@@ -2925,9 +2925,9 @@ async function handleListConnections(
 		try {
 			const targets = (await connector.listRooms?.(context)) ?? [];
 			roomCount = targets.length;
-			mutedRoomCount = (
-				await resolveMutedTargetFlags(runtime, targets)
-			).filter(Boolean).length;
+			mutedRoomCount = (await resolveMutedTargetFlags(runtime, targets)).filter(
+				Boolean,
+			).length;
 		} catch (error) {
 			logger.debug(
 				`[MESSAGE/list_connections] listRooms failed for ${connector.source}: ${
