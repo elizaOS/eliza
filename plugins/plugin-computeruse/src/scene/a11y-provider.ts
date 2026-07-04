@@ -29,6 +29,7 @@
  */
 
 import { execFileSync } from "node:child_process";
+import { logger } from "@elizaos/core";
 import { commandExists, currentPlatform } from "../platform/helpers.js";
 import type { SceneAxNode } from "./scene-types.js";
 
@@ -171,6 +172,8 @@ except Exception as e:
         .filter((n) => n && typeof n === "object")
         .map((n, i) => mapAtspiNode(n as Record<string, unknown>, i));
     } catch {
+      // error-policy:J4 AT-SPI probe; empty result advances the failover chain
+      // to the Wayland compositor tier (see snapshot()).
       return [];
     }
   }
@@ -197,6 +200,8 @@ except Exception as e:
       });
       return parseHyprlandClients(text);
     } catch {
+      // error-policy:J4 Hyprland IPC probe; empty result advances the failover
+      // chain to the Sway tier (see tryWaylandCompositor()).
       return [];
     }
   }
@@ -210,6 +215,8 @@ except Exception as e:
       });
       return parseSwayTree(text);
     } catch {
+      // error-policy:J4 Sway IPC probe; empty result is the last failover tier,
+      // leaving the Linux provider with no reachable a11y nodes.
       return [];
     }
   }
@@ -231,6 +238,8 @@ export function parseHyprlandClients(text: string): SceneAxNode[] {
   try {
     raw = JSON.parse(text);
   } catch {
+    // error-policy:J3 untrusted `hyprctl` output; unparseable JSON yields the
+    // explicit empty node list rather than a fabricated window.
     return [];
   }
   if (!Array.isArray(raw)) return [];
@@ -278,6 +287,8 @@ export function parseSwayTree(text: string): SceneAxNode[] {
   try {
     raw = JSON.parse(text) as SwayNode;
   } catch {
+    // error-policy:J3 untrusted `swaymsg` output; unparseable JSON yields the
+    // explicit empty node list rather than a fabricated window.
     return [];
   }
   if (!raw) return [];
@@ -398,7 +409,17 @@ export class DarwinAccessibilityProvider implements AccessibilityProvider {
           displayId: 0,
         } as SceneAxNode;
       });
-    } catch {
+    } catch (err) {
+      // error-policy:J4 the interface contract is [] = "no reachable nodes" so
+      // the scene-builder always produces a Scene; but osascript failing
+      // (a11y permission revoked, binary missing) is a failure, not an empty
+      // desktop — surface it so revocation is visible instead of silently
+      // shrinking the scene the agent trusts as complete.
+      logger.warn(
+        `[DarwinAccessibilityProvider] a11y snapshot failed; returning no nodes: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
       return [];
     }
   }
@@ -462,7 +483,16 @@ $out | ConvertTo-Json -Depth 4 -Compress
             displayId: 0,
           } as SceneAxNode;
         });
-    } catch {
+    } catch (err) {
+      // error-policy:J4 the interface contract is [] = "no reachable nodes" so
+      // the scene-builder always produces a Scene; but PowerShell/UIA failing
+      // is a failure, not an empty desktop — surface it so the shrunken scene
+      // is visible instead of silently trusted as complete.
+      logger.warn(
+        `[WindowsAccessibilityProvider] a11y snapshot failed; returning no nodes: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
       return [];
     }
   }

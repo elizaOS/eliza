@@ -59,6 +59,8 @@ export function commandExists(command: string): boolean {
     });
     return true;
   } catch {
+    // error-policy:J3 existence probe; a non-zero `which`/`where` exit means the
+    // command is absent — false is the expected-miss signal, not a swallowed bug.
     return false;
   }
 }

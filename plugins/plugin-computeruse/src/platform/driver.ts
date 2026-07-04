@@ -11,6 +11,7 @@
  * and `screenshot.ts` modules remain importable for the legacy code path.
  */
 
+import { logger } from "@elizaos/core";
 import type { ScreenRegion } from "../types.js";
 import {
   desktopClick,
@@ -61,8 +62,7 @@ export function selectedDriver(): DriverName {
   if (requested === "legacy") return "legacy";
   if (requested !== "nutjs") {
     if (!warned) {
-      // eslint-disable-next-line no-console
-      console.warn(
+      logger.warn(
         `[computeruse] Unknown ELIZA_COMPUTERUSE_DRIVER=${requested}; falling back to legacy.`,
       );
       warned = true;
@@ -71,8 +71,7 @@ export function selectedDriver(): DriverName {
   }
   if (!nutAvailable()) {
     if (!warned) {
-      // eslint-disable-next-line no-console
-      console.warn(
+      logger.warn(
         `[computeruse] nutjs driver unavailable (${loadFailureReason()}); falling back to legacy shell drivers.`,
       );
       warned = true;

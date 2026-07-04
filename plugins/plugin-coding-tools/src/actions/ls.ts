@@ -264,7 +264,11 @@ export async function lsHandler(
         type = "file";
         size = st.size;
       }
-    } catch {}
+    } catch {
+      // error-policy:J6 best-effort per-entry enrichment; a name that vanished
+      // between readdir and lstat (transient race) must not abort the whole
+      // listing. The entry name is still truthful; only its type/size default.
+    }
     enriched.push(size === undefined ? { name, type } : { name, type, size });
   }
 
