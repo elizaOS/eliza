@@ -1,10 +1,25 @@
 # Evidence — #12283 LifeOps persona-journey scenarios (first B1 increment)
 
 Issue #12283 asks for 72 persona-journey scenarios across 8 packs. This is the
-first increment: the B1 (night-owl-anchored-day) pack, live-only surface, driven
-against a **live** model and hand-reviewed.
+first increment: two live-only scenarios (packs B1 and A1) driven against a
+**live** model and hand-reviewed.
 
-## Scenario
+## Scenario 2 — A1 adhd-capture-and-start (tier T1)
+
+`plugins/plugin-personal-assistant/test/scenarios/adhd-buried-commitment-ramble.scenario.ts`.
+Premise (issue A1 table): *one load-bearing task buried in a rambling multi-topic
+message*. casey_adhd sends a tangent-filled message (barking dog, unwatched
+documentary, weird coffee, mercury retrograde) with one real commitment buried
+in it — call the pharmacy before 5pm about a refill.
+
+Live run (Cerebras `gpt-oss-120b`): **passed, 7857ms**. Trajectory reviewed:
+`actionsCalled: ["OWNER_REMINDERS"]`; reply *"The reminder has been set: call the
+pharmacy before 5 PM today about your prescription refill…"* — captured the one
+buried task **with** its deadline and created **no** distractor tasks.
+`definitionCountDelta` matched "call the pharmacy"; `judgeRubric` **1.00**. Report:
+`.github/issue-evidence/12283-lifeops-personas/adhd-buried-commitment-ramble.report.json`.
+
+## Scenario 1 — B1 night-owl-anchored-day (tier T1)
 
 `plugins/plugin-personal-assistant/test/scenarios/night-owl-flexible-habit-any-time-today.scenario.ts`
 (`lane: "live-only"`, pack B1, tier T1). Persona-as-data (night-owl framing in

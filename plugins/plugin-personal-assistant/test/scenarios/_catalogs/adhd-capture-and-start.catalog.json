@@ -12,5 +12,14 @@
       "status flips planned -> authored once the scenario file/literal exists; -> verified once a real-LLM run has been captured and hand-reviewed per PR_EVIDENCE.md."
     ]
   },
-  "scenarios": []
+  "scenarios": [
+    {
+      "id": "adhd-buried-commitment-ramble",
+      "pack": "A1",
+      "tier": "T1",
+      "surface": "scenario-runner",
+      "status": "verified",
+      "notes": "Live Cerebras gpt-oss-120b run passed (judge 1.00): extracted the one buried pharmacy-callback commitment (before 5pm) from a rambling multi-topic message, ignored the tangents."
+    }
+  ]
 }
