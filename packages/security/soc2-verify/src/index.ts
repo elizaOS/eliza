@@ -1,3 +1,7 @@
+/**
+ * Public SOC2 verification harness exports for checks, runners, report writers, and types.
+ */
+
 export { ALL_CHECKS } from "./controls/index.js";
 export {
   defaultOutDir,

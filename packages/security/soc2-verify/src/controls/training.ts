@@ -1,3 +1,7 @@
+/**
+ * SOC2 checks for training data consent and signed model publishing evidence.
+ */
+
 import { join } from "node:path";
 import type { Check, CheckResult } from "../types.js";
 import { readUtf8Safe } from "../util/fs.js";

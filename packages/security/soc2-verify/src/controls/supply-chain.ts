@@ -1,3 +1,7 @@
+/**
+ * SOC2 checks for secret scanning and pinned GitHub Actions supply-chain controls.
+ */
+
 import { execSync } from "node:child_process";
 import { join } from "node:path";
 import type { Check, CheckResult } from "../types.js";

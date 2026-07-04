@@ -1,3 +1,7 @@
+/**
+ * Vitest configuration for the SOC2 verification harness tests.
+ */
+
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({

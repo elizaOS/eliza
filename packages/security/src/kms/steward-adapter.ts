@@ -1,3 +1,7 @@
+/**
+ * Steward KMS HTTP client that implements the production key-management wire contract.
+ */
+
 import {
   type EncryptResult,
   type GetOrCreateKeyOptions,

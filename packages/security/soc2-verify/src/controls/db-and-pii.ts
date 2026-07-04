@@ -1,3 +1,7 @@
+/**
+ * SOC2 checks for database transport security, encryption columns, and PII retention controls.
+ */
+
 import { join } from "node:path";
 import type { Check, CheckResult } from "../types.js";
 import { fileExists, readUtf8Safe } from "../util/fs.js";

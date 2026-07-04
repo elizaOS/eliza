@@ -1,3 +1,7 @@
+/**
+ * Network-policy helpers for normalizing host-like values and blocking private/link-local IPs.
+ */
+
 import net from "node:net";
 
 const ALWAYS_BLOCKED_IP_PATTERNS: RegExp[] = [

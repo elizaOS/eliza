@@ -1,3 +1,7 @@
+/**
+ * Shared SOC2 verification types for checks, evidence reports, and runner configuration.
+ */
+
 export type CheckStatus = "pass" | "fail" | "warn" | "skip";
 export type CheckSeverity = "critical" | "high" | "medium" | "low";
 

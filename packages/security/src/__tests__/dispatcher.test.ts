@@ -1,3 +1,7 @@
+/**
+ * Tests audit dispatcher fan-out, validation, metadata redaction, and HTTP delivery behavior.
+ */
+
 import { describe, expect, it, vi } from "vitest";
 import { AuditDispatcher } from "../audit/dispatcher.js";
 import { type AuditSink, HttpSink, InMemorySink } from "../audit/sink.js";

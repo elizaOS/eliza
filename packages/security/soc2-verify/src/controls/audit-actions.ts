@@ -1,3 +1,7 @@
+/**
+ * SOC2 checks for the security audit action registry's required event coverage.
+ */
+
 import { join } from "node:path";
 import type { Check, CheckResult } from "../types.js";
 import { readUtf8Safe } from "../util/fs.js";

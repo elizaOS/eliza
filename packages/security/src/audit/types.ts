@@ -1,3 +1,7 @@
+/**
+ * Audit-event schemas and primitives shared by the dispatcher and downstream audit sinks.
+ */
+
 import { z } from "zod";
 import { AUDIT_ACTIONS, type AuditAction } from "./actions.js";
 

@@ -1,3 +1,7 @@
+/**
+ * Structured KMS key identifiers for system, organization, and user-scoped security material.
+ */
+
 import type { KeyId, KeyVersion } from "./types.js";
 import { KmsError } from "./types.js";
 

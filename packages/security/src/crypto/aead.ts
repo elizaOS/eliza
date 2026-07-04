@@ -1,3 +1,7 @@
+/**
+ * AES-256-GCM helpers for KMS adapters that require authenticated associated data.
+ */
+
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 
 export const AEAD_KEY_BYTES = 32;

@@ -1,3 +1,7 @@
+/**
+ * Dynamic SOC2 checks that exercise live security adapters instead of static source inspection.
+ */
+
 import {
   AuditDispatcher,
   InMemorySink,

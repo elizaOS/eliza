@@ -1,3 +1,7 @@
+/**
+ * Tests the Steward KMS client wire contract with an injected fetch implementation.
+ */
+
 import { describe, expect, it } from "vitest";
 import { StewardKmsAdapter } from "../kms/steward-adapter.js";
 import { KmsError } from "../kms/types.js";

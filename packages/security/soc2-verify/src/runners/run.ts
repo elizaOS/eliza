@@ -1,3 +1,7 @@
+/**
+ * SOC2 verification runner that executes selected checks and aggregates evidence by control.
+ */
+
 import { execSync } from "node:child_process";
 import { ALL_CHECKS } from "../controls/index.js";
 import type {

@@ -1,3 +1,7 @@
+/**
+ * SOC2 checks for monitoring configuration and security alert-rule availability.
+ */
+
 import { join } from "node:path";
 import type { Check, CheckResult } from "../types.js";
 import { fileExists, readUtf8Safe } from "../util/fs.js";

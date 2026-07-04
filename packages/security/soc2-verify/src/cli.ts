@@ -1,4 +1,8 @@
 #!/usr/bin/env bun
+/**
+ * CLI entrypoint for running SOC2 control verification and writing evidence reports.
+ */
+
 import { existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import {

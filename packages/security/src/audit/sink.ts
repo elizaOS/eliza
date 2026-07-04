@@ -1,3 +1,7 @@
+/**
+ * Audit sink implementations for in-memory tests, structured logs, files, and HTTP collectors.
+ */
+
 import { appendFile } from "node:fs/promises";
 import type { AuditEvent } from "./types.js";
 
