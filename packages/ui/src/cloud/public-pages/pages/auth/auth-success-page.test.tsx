@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
 
+/**
+ * `AuthSuccessPage` opener handling: it auto-closes and shows close
+ * instructions only when the page has a live `window.opener`, and otherwise
+ * never calls `window.close`. The router and i18n provider are doubled.
+ */
+
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 

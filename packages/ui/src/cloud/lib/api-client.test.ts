@@ -1,11 +1,13 @@
 // @vitest-environment jsdom
-//
-// Transport-bridge regression for the cloud dashboard's `api-client`. The
-// load-bearing guarantee: the WEB path stays same-origin-only and STILL throws
-// `CROSS_ORIGIN_API_URL` on any cross-origin absolute URL, while native /
-// Electrobun resolves to the single allowlisted Eliza Cloud API host and rides
-// `CapacitorHttp` — but ONLY that one host (every other cross-origin target
-// still throws, even on native).
+
+/**
+ * Transport-bridge contract for the cloud dashboard's `api-client`. The
+ * load-bearing guarantee: the WEB path stays same-origin-only and throws
+ * `CROSS_ORIGIN_API_URL` on any cross-origin absolute URL, while native /
+ * Electrobun resolves to the single allowlisted Eliza Cloud API host and rides
+ * `CapacitorHttp` — but ONLY that one host (every other cross-origin target
+ * still throws, even on native). `@capacitor/core` is doubled to toggle native.
+ */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 

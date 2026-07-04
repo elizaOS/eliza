@@ -189,8 +189,8 @@ function readLiveNativeStewardToken(token: string): string | null {
  * Authorization header and 401'd (#11930). The chain mirrors the canonical
  * `getCloudAuthToken()` in `../../api/client-cloud.ts` (steward JWT → owner cloud
  * API key), read here from boot config because this module has no client handle.
- * The Cloud API accepts both a Steward JWT and the owner API key. Web stays
- * byte-identical (steward token or nothing, exactly as before).
+ * The Cloud API accepts both a Steward JWT and the owner API key. On web the
+ * fallback never applies — it resolves to the steward token or nothing.
  */
 function readCloudBearerToken(): string | null {
   const stewardToken = readStewardToken()?.trim();
@@ -416,9 +416,9 @@ export async function apiFetch(
     // A 401 on an authed call means our session was rejected (token revoked or
     // expired out from under the proactive refresh). Nudge the Steward runtime
     // to refresh-or-clear so a stale session self-heals instead of leaving the
-    // UI "authed" until the next interaction. Purely additive — the call still
-    // throws ApiError exactly as before; the listener is single-flight and never
-    // retries the request.
+    // UI "authed" until the next interaction. The nudge is a side effect only:
+    // the call still throws ApiError, and the listener is single-flight and
+    // never retries the request.
     if (res.status === 401 && !skipAuth && typeof window !== "undefined") {
       try {
         window.dispatchEvent(new CustomEvent("steward-unauthorized"));

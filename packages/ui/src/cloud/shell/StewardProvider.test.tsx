@@ -1,5 +1,12 @@
 // @vitest-environment jsdom
 
+/**
+ * `StewardAuthProvider` route-gating: it lazy-loads the Steward auth runtime
+ * only on routes that need auth (app-auth), fails loud on an invalid Steward
+ * URL there, bypasses the runtime entirely on public routes, and shows a
+ * loading state instead of auth-consuming children during the lazy-load (#10680).
+ */
+
 import { act, cleanup, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { MemoryRouter } from "react-router-dom";

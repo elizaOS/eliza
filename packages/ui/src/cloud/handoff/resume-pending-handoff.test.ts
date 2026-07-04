@@ -1,5 +1,13 @@
 // @vitest-environment jsdom
 
+/**
+ * Boot-time resume of a persisted shared→dedicated cloud-agent handoff that was
+ * interrupted by a reload. Collaborators (the handoff supervisor, bridge
+ * delete, cloud auth, runtime state) are doubled so the test drives the
+ * decision logic deterministically: same dedicated target on resume, repoint +
+ * bridge-delete on success, no delete on failure, and stale-marker clearing.
+ */
+
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 type HandoffResult = {

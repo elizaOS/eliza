@@ -1,5 +1,12 @@
 // @vitest-environment jsdom
 
+/**
+ * `AppAuthAuthorizePage` mounts `AuthorizeContent` inside `StewardAuthProvider`
+ * so `useAuth()` resolves on this public route (#9881). The provider,
+ * authorize-content, i18n provider, and page-title hook are doubled to isolate
+ * the wiring.
+ */
+
 import { cleanup, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";

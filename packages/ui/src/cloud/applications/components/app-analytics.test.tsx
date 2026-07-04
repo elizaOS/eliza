@@ -1,5 +1,12 @@
 // @vitest-environment jsdom
 
+/**
+ * `AppAnalytics` sessions tab (#11349): it loads and renders the session
+ * summary, funnel, and recent-sessions list straight from the analytics DTO.
+ * The api-client, `sonner`, and `recharts` are doubled; the component renders
+ * for real against the mocked DTO.
+ */
+
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";

@@ -1,5 +1,13 @@
 // @vitest-environment jsdom
 
+/**
+ * `silentlyRepointToDedicated` seamlessly moves the live client onto the
+ * dedicated agent without a visible reconnect. Client, state, and profile
+ * collaborators are doubled to assert it repoints via `repointBaseUrl` (not the
+ * hard `setBaseUrl`) and persists the dedicated agent as the restorable active
+ * server + active profile.
+ */
+
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({

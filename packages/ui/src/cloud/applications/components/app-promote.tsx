@@ -1,16 +1,9 @@
 /**
  * Application detail — Promote tab.
  *
- * Two larp blocks from the original are dropped (per the migration scope):
- *   - the hard-coded "Quick Stats" tiles (Social Posts: 0 / SEO Score: -- /
- *     Ad Campaigns: 0) which never reflected real data, and
- *   - the static "Promotional Assets" placeholder grid (four dashed boxes with
- *     no behaviour).
- *
- * The real surfaces are kept and wired to the typed `api` client: the
- * promotion-suggestions GET, the connected-ad-accounts GET, the
- * generate-assets POST (now re-fetching instead of `window.location.reload()`),
- * and the shared `PromoteAppDialog` from cloud-ui.
+ * Renders the live promotion surfaces wired to the typed `api` client:
+ * promotion-suggestions (GET), connected ad accounts (GET), asset generation
+ * (POST, then re-fetch), and the shared `PromoteAppDialog` from cloud-ui.
  */
 
 import { ExternalLink, Loader2, Megaphone, Plus, Sparkles } from "lucide-react";

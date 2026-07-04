@@ -1,5 +1,14 @@
 // @vitest-environment jsdom
 
+/**
+ * `AppFrontendHosting` deployment tab (#10690): lists deployments newest-first
+ * with a live badge, shows the empty state, recovers a load error via Retry,
+ * publishes picked files as a base64 bundle (with/without activate) and
+ * refreshes, and surfaces a publish failure via toast without losing the
+ * selection. Also unit-covers `filesToBundle` / `stripCommonRootDir`. The
+ * api-client, `sonner`, and i18n provider are doubled; the component is real.
+ */
+
 import {
   cleanup,
   fireEvent,

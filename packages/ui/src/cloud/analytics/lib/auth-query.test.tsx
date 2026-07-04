@@ -1,14 +1,16 @@
 // @vitest-environment jsdom
 
+/**
+ * `useAuthenticatedQueryGate` as used by the analytics + api-keys surfaces. The
+ * gate must resolve the session from the persisted localStorage JWT like the
+ * rest of the console; gating on the raw Steward SDK context (MemoryStorage,
+ * empty on every full page load) leaves it permanently disabled for a signed-in
+ * user — analytics stuck on its skeleton, keys never fetched. These tests
+ * reproduce the page-reload reality: ONLY a persisted JWT, no Steward provider.
+ */
+
 import { renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
-// The analytics + api-keys query gates must resolve the session the same way
-// the rest of the console does. Gating on the raw Steward SDK context (whose
-// MemoryStorage session is empty on every full page load) left the gate
-// permanently disabled for a signed-in user — analytics stuck on its loading
-// skeleton, keys never fetched. These tests reproduce the page-reload reality:
-// ONLY a persisted localStorage JWT, no Steward provider mounted.
 
 import { useAuthenticatedQueryGate } from "../../lib/auth-query";
 

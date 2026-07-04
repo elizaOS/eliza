@@ -1,5 +1,14 @@
 // @vitest-environment jsdom
 
+/**
+ * `CliLoginPage` device-login flow: an unauthenticated visitor is redirected
+ * straight to /login (no CLI interstitial) with a per-session guard so it never
+ * loops; an authenticated visitor POSTs /complete, notifies the opener, and
+ * shows success without redirecting or closing; a missing session id or a
+ * completion failure renders the error panel with no POST. The router,
+ * session-auth hook, api-client, Steward provider, and i18n are doubled.
+ */
+
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 

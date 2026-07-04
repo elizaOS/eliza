@@ -1,5 +1,13 @@
 // @vitest-environment jsdom
 
+/**
+ * `registerCloudSettingsSections` populates the shared settings-section
+ * registry: the Cloud group lands between System and Security and Developer
+ * between Cloud and Security, plain users see the cloud sections while the
+ * developer sections stay gated, and the cloud Security additions merge into
+ * the security group with non-colliding ids.
+ */
+
 import { beforeAll, describe, expect, it } from "vitest";
 import { listSettingsSections } from "../../components/settings/settings-section-registry";
 import {

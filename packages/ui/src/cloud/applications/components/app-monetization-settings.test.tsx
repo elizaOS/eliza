@@ -1,5 +1,14 @@
 // @vitest-environment jsdom
 
+/**
+ * `AppMonetizationSettings` review gate: a draft app must be submitted for
+ * review before monetization can be enabled, an approved app renders an enabled
+ * toggle with no submit button, and a rejected/pending app stays gated (with
+ * resubmission offered). A legacy enabled-but-unapproved app can always be
+ * turned OFF — never trapped ON. The api-client, `sonner`, i18n provider, and
+ * native nav are doubled; the component renders for real.
+ */
+
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";

@@ -1,5 +1,12 @@
 // @vitest-environment jsdom
 
+/**
+ * The shared `useAuthenticatedQueryGate` resolving its session from the
+ * persisted localStorage JWT only — the page-reload reality where the Steward
+ * SDK context's MemoryStorage session is empty and no provider is mounted.
+ * `@capacitor/core` is doubled to exercise both web and native platforms.
+ */
+
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 

@@ -98,7 +98,7 @@ describe("CloudRouterShell apex catch-all (Gate B)", () => {
 
   it("redirects an unauthenticated staging apex visitor to /login", () => {
     // staging.elizacloud.ai is a control-plane apex too — it must behave like
-    // prod (redirect to /login), so staging can validate the fix before prod.
+    // prod and redirect an unauthenticated visitor to /login.
     setHostname("staging.elizacloud.ai");
     renderCatchAll();
     expect(screen.getByTestId("login-page")).toBeTruthy();
