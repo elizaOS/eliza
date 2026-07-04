@@ -228,6 +228,31 @@ describe("plugin-embeddings handleBatchTextEmbedding", () => {
       /duplicate index 0/i
     );
   });
+
+  it("throws when the response index is not an integer", async () => {
+    const fetchMock = vi.fn(
+      async () =>
+        ({
+          ok: true,
+          status: 200,
+          statusText: "OK",
+          json: async () => ({
+            object: "list",
+            data: [
+              { object: "embedding", embedding: vectorOf(1536), index: 0.5 },
+              { object: "embedding", embedding: vectorOf(1536), index: 1 },
+            ],
+            model: "text-embedding-3-small",
+          }),
+          text: async () => "",
+        }) as unknown as Response
+    );
+    vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock as unknown as typeof fetch);
+
+    await expect(handleBatchTextEmbedding(createRuntime(), ["one", "two"])).rejects.toThrow(
+      /out-of-range index 0.5/i
+    );
+  });
 });
 
 describe("plugin-embeddings input truncation", () => {

@@ -144,7 +144,7 @@ async function requestEmbeddings(
   const vectors: number[][] = new Array(expectedCount);
   for (const item of data.data) {
     const idx = typeof item.index === "number" ? item.index : undefined;
-    if (idx === undefined || idx < 0 || idx >= expectedCount) {
+    if (idx === undefined || !Number.isInteger(idx) || idx < 0 || idx >= expectedCount) {
       throw new Error(
         `Embedding API returned out-of-range index ${String(item.index)} (expected 0..${expectedCount - 1})`
       );
