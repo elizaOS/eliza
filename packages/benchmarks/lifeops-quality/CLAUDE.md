@@ -12,19 +12,19 @@ Recorded-baseline LifeOps quality benchmarks (#10723). Full docs: `README.md`.
   The timeliness oracle must never call the production cron walker — its
   expectations are hand-authored instants (unit lane cross-checks them via
   Intl tzdata).
-- **`baseline.json` is a recorded reference, `budgets.json` is the gate.**
-  Corpus/fixture edits require re-recording the baseline in the same change
-  (run the gates, copy `results/*.json` blocks). Floors are calibrated to
-  trip on one additional misclassification / any fire-count defect — the
-  unit lane enforces that calibration; don't loosen floors to make a red
-  gate green.
+- **`baseline.json` is a recorded reference, `budgets.json` holds the
+  thresholds the benchmarks compare against.** Corpus/fixture edits require
+  re-recording the baseline in the same change (run the benchmarks, copy
+  `results/*.json` blocks). Floors are calibrated to trip on one additional
+  misclassification / any fire-count defect — the unit lane enforces that
+  calibration; don't loosen floors to make a red run green.
 - **Fire counts are contracts, not tolerances:** missed/duplicate/early/
   occurrence-mismatch must stay exactly 0, and `maxDeviationMs` stays at
   the tick cadence (300000ms).
 - Lanes: `bun run test` (unit, fast) · `bun run bench[:triage|:timeliness]`
-  (gates; timeliness ~3min). CI: `.github/workflows/lifeops-quality-bench.yml`.
+  (the benchmark runs; timeliness ~3min).
 - `vitest.gate.config.ts` reuses plugin-personal-assistant's
-  `vitest.src-integration.config.ts` wiring — if the gate lane breaks on
+  `vitest.src-integration.config.ts` wiring — if the benchmark lane breaks on
   resolve/alias errors, fix it there, not with a parallel config here.
 
 `CLAUDE.md` and `AGENTS.md` are identical — edit `CLAUDE.md`, copy to

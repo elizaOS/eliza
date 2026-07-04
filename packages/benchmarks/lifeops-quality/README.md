@@ -1,12 +1,12 @@
 # lifeops-quality — recorded-baseline LifeOps benchmarks (#10723)
 
 Two keyless, deterministic quality benchmarks over **real** LifeOps code
-paths, with committed baselines and ratchet-style regression gates
-(mirrors `packages/benchmarks/recall-bench`).
+paths, with committed baselines and reference thresholds you measure
+regressions against (mirrors `packages/benchmarks/recall-bench`).
 
 ## Lanes
 
-| Lane | Code under test | Corpus | Gate |
+| Lane | Code under test | Corpus | Thresholds checked |
 | --- | --- | --- | --- |
 | **triage** | `plugins/plugin-inbox/src/inbox/triage-classifier.ts` — `classifyMessages`'s prompt-build → parse → validate → fail-closed path | 56 labeled inbox items (`triage/corpus.ts`) + a committed fixed-quality mock model (`triage/fixtures.ts`, 7 deliberate errors) | per-class precision/recall + accuracy + macro-F1 floors (`budgets.json`), plus an EXACT match against `baseline.json` (the pipeline is fully deterministic) |
 | **timeliness** | `plugins/plugin-personal-assistant/src/lifeops/scheduled-task/scheduler.ts` — `processDueScheduledTasks` on a real PGlite runtime with an injected clock | two 4-day 2026 DST windows (spring-forward + fall-back), 5-minute cadence, cron/once/interval across NY/Berlin/Kolkata/Sydney/UTC (`timeliness/corpus.ts`) | missed/duplicate/early/occurrence-mismatch fire counts must be **exactly 0**; max/mean fire-time deviation under `budgets.json` ceilings |
