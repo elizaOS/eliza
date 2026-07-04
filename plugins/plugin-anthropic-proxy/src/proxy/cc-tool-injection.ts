@@ -79,8 +79,8 @@ export function processToolsSection(
     let syntheticToolsInjected = 0;
     if (injectSyntheticTools) {
       const insertAt = '"tools":['.length;
-      section =
-        section.slice(0, insertAt) + CC_SYNTHETIC_TOOLS.join(",") + "," + section.slice(insertAt);
+      const syntheticTools = CC_SYNTHETIC_TOOLS.join(",");
+      section = `${section.slice(0, insertAt)}${syntheticTools},${section.slice(insertAt)}`;
       syntheticToolsInjected = CC_SYNTHETIC_TOOLS.length;
     }
     return {
@@ -92,8 +92,9 @@ export function processToolsSection(
 
   if (injectSyntheticTools) {
     const insertAt = toolsIdx + '"tools":['.length;
+    const syntheticTools = CC_SYNTHETIC_TOOLS.join(",");
     return {
-      body: m.slice(0, insertAt) + CC_SYNTHETIC_TOOLS.join(",") + "," + m.slice(insertAt),
+      body: `${m.slice(0, insertAt)}${syntheticTools},${m.slice(insertAt)}`,
       descriptionsStripped: 0,
       syntheticToolsInjected: CC_SYNTHETIC_TOOLS.length,
     };

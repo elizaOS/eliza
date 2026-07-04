@@ -36,7 +36,8 @@ function jwtExpiresAt(token: string): number {
   try {
     const parts = token.split(".");
     if (parts.length < 2) return 0;
-    const payload = parts[1]!;
+    const payload = parts[1];
+    if (!payload) return 0;
     // base64url -> base64
     const b64 = payload.replace(/-/g, "+").replace(/_/g, "/");
     const padded = b64 + "=".repeat((4 - (b64.length % 4)) % 4);
