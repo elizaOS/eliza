@@ -4,7 +4,7 @@ from format_for_training import format_record
 from privacy_filter_trajectories import PrivacyFilterError
 
 
-def _attested(row):
+def _attested(row, *, passed: bool = True):
     metadata = row.setdefault("metadata", {})
     metadata["privacy_attestation"] = {
         "schema": "eliza.privacy_filter_attestation.v1",
@@ -12,7 +12,7 @@ def _attested(row):
         "source": "unit",
         "redacted": True,
         "reviewed": True,
-        "passed": True,
+        "passed": passed,
     }
     return row
 
@@ -177,6 +177,22 @@ def test_format_record_rejects_unattested_native_rows():
         "response": {"text": "hi"},
         "metadata": {"task_type": "response"},
     }
+
+    with pytest.raises(PrivacyFilterError, match="lacks privacy attestation"):
+        format_record(row)
+
+
+def test_format_record_rejects_failed_native_privacy_attestation():
+    row = _attested(
+        {
+            "format": "eliza_native_v1",
+            "boundary": "vercel_ai_sdk.generateText",
+            "request": {"messages": [{"role": "user", "content": "hello"}]},
+            "response": {"text": "hi"},
+            "metadata": {"task_type": "response"},
+        },
+        passed=False,
+    )
 
     with pytest.raises(PrivacyFilterError, match="lacks privacy attestation"):
         format_record(row)

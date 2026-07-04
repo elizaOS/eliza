@@ -180,9 +180,9 @@ def _is_privacy_attested(record: dict[str, Any]) -> bool:
         if (
             schema == PRIVACY_ATTESTATION_SCHEMA
             and version == PRIVACY_ATTESTATION_VERSION
+            and passed is True
             and (
-                passed is True
-                or reviewed is True
+                reviewed is True
                 or redacted is True
                 or privacy.get("reviewed") is True
             )

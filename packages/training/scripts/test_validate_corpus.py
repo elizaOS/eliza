@@ -12,14 +12,14 @@ sys.path.insert(0, str(SCRIPT_DIR.parent))
 from validate_corpus import run as validate_corpus_run  # noqa: E402
 
 
-def _attestation() -> dict[str, Any]:
+def _attestation(*, passed: bool = True) -> dict[str, Any]:
     return {
         "schema": "eliza.privacy_filter_attestation.v1",
         "version": 1,
         "source": "unit",
         "redacted": True,
         "reviewed": True,
-        "passed": True,
+        "passed": passed,
     }
 
 
@@ -36,6 +36,7 @@ def _native_row(
     text: str = "what is 2+2?",
     response_text: str = "4",
     attested: bool = True,
+    attestation_passed: bool = True,
 ) -> dict[str, Any]:
     row: dict[str, Any] = {
         "format": "eliza_native_v1",
@@ -49,7 +50,9 @@ def _native_row(
         },
     }
     if attested:
-        row["metadata"]["privacy_attestation"] = _attestation()
+        row["metadata"]["privacy_attestation"] = _attestation(
+            passed=attestation_passed
+        )
     return row
 
 
@@ -59,6 +62,26 @@ def test_validate_corpus_rejects_missing_native_privacy_attestation(
     corpus = tmp_path / "native.jsonl"
     report = tmp_path / "report.json"
     _write_jsonl(corpus, [_native_row(attested=False)])
+
+    code = validate_corpus_run(corpus, report, strict=True, max_records=None)
+
+    assert code == 1
+    parsed = json.loads(report.read_text(encoding="utf-8"))
+    assert parsed["invalid_records"] == 1
+    assert (
+        parsed["errors_by_task_type"]["response"][
+            "native_v1_missing_privacy_attestation"
+        ]
+        == 1
+    )
+
+
+def test_validate_corpus_rejects_failed_native_privacy_attestation(
+    tmp_path: Path,
+) -> None:
+    corpus = tmp_path / "native.jsonl"
+    report = tmp_path / "report.json"
+    _write_jsonl(corpus, [_native_row(attestation_passed=False)])
 
     code = validate_corpus_run(corpus, report, strict=True, max_records=None)
 

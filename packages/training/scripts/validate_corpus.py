@@ -145,9 +145,9 @@ def _has_privacy_attestation(record: dict[str, Any]) -> bool:
         if (
             attestation.get("schema") == PRIVACY_ATTESTATION_SCHEMA
             and attestation.get("version") == PRIVACY_ATTESTATION_VERSION
+            and attestation.get("passed") is True
             and (
-                attestation.get("passed") is True
-                or attestation.get("reviewed") is True
+                attestation.get("reviewed") is True
                 or attestation.get("redacted") is True
                 or privacy.get("reviewed") is True
             )
