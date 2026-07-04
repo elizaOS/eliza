@@ -1,3 +1,7 @@
+/**
+ * Playwright UI-smoke spec for the Browser Workspace app flow using the real
+ * renderer fixture.
+ */
 import { type APIRequestContext, expect, test } from "@playwright/test";
 import {
   installDefaultAppRoutes,

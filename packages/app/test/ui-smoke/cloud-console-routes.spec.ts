@@ -1,3 +1,7 @@
+/**
+ * Playwright UI-smoke spec for the Cloud Console Routes app flow using the
+ * real renderer fixture.
+ */
 import { STEWARD_TOKEN_KEY } from "@elizaos/shared/steward-session-client";
 import { expect, type Page, test } from "@playwright/test";
 import {

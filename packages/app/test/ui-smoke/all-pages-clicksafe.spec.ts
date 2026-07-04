@@ -1,3 +1,7 @@
+/**
+ * Playwright UI-smoke spec for the All Pages Clicksafe app flow using the real
+ * renderer fixture.
+ */
 import { expect, type Locator, type Page, test } from "@playwright/test";
 import {
   DIRECT_ROUTE_CASES,

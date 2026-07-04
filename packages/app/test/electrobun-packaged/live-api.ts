@@ -1,3 +1,7 @@
+/**
+ * Live API helper used by packaged Electrobun specs that exercise a real app
+ * backend.
+ */
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 import { startApiServer } from "../../../app-core/src/api/server.ts";

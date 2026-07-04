@@ -1,3 +1,7 @@
+/**
+ * Packaged Electrobun spec for the Electrobun Relaunch E2e desktop app
+ * behavior.
+ */
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";

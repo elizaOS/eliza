@@ -1,3 +1,7 @@
+/**
+ * Test helper that finds an available local port for app smoke servers and
+ * Playwright fixtures.
+ */
 import { createServer } from "node:net";
 
 export function getFreePort() {

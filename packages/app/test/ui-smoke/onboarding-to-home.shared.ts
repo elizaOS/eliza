@@ -1,3 +1,7 @@
+/**
+ * Shared onboarding-to-home flow helpers used by desktop and mobile UI-smoke
+ * specs.
+ */
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { expect, type Locator, type Page, type Route } from "@playwright/test";

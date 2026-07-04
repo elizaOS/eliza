@@ -1,3 +1,7 @@
+/**
+ * Playwright UI-smoke spec for the Cloud Wallet Import app flow using the real
+ * renderer fixture.
+ */
 import { expect, type Page, test } from "@playwright/test";
 import {
   installCloudWalletImportApiOverrides,

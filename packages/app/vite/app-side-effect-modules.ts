@@ -1,3 +1,7 @@
+/**
+ * Declares side-effect app modules that must stay visible to the renderer
+ * bundler.
+ */
 import fs from "node:fs";
 import path from "node:path";
 

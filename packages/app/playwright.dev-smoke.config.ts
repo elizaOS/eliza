@@ -1,3 +1,7 @@
+/**
+ * Playwright configuration for the Playwright Dev Smoke app test lane,
+ * including browser projects and app-server wiring.
+ */
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

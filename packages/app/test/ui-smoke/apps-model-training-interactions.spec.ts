@@ -1,3 +1,7 @@
+/**
+ * Playwright UI-smoke spec for the Apps Model Training Interactions app flow
+ * using the real renderer fixture.
+ */
 import {
   expect,
   type Locator,

@@ -1,3 +1,7 @@
+/**
+ * Unit tests for the Patch Ios Plist app packaging script behavior and
+ * platform guardrails.
+ */
 import { describe, expect, it } from "vitest";
 
 import { ensurePlistUrlScheme } from "../../app-core/scripts/lib/ios-plist-url-scheme.mjs";

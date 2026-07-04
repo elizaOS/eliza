@@ -1,3 +1,7 @@
+/**
+ * Unit tests for the Chat Gesture Coverage app shell contract and coverage
+ * guardrail.
+ */
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

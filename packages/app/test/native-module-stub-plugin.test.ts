@@ -1,3 +1,7 @@
+/**
+ * Unit tests for the Native Module Stub Plugin app shell contract and coverage
+ * guardrail.
+ */
 import { createRequire } from "node:module";
 import { describe, expect, it } from "vitest";
 

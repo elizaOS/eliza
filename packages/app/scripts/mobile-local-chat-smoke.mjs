@@ -1,4 +1,8 @@
 #!/usr/bin/env node
+/**
+ * Command-line helper for the Mobile Local Chat Smoke app packaging, mobile,
+ * or Playwright automation lane.
+ */
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import fs from "node:fs";

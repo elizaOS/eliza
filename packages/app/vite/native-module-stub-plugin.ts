@@ -1,3 +1,7 @@
+/**
+ * Vite plugin that replaces Node and native-only modules with browser-safe
+ * renderer stubs.
+ */
 import path from "node:path";
 import type { Plugin } from "vite";
 

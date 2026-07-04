@@ -1,3 +1,7 @@
+/**
+ * Playwright UI-smoke spec for the All Views Interaction app flow using the
+ * real renderer fixture.
+ */
 import {
   type ElementHandle,
   expect,

@@ -1,3 +1,7 @@
+/**
+ * Plugin-view case fixtures used by UI-smoke specs to exercise registered
+ * plugin surfaces.
+ */
 export type ViewCase = {
   id: string;
   viewType: "gui" | "tui";

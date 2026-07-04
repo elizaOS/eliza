@@ -1,3 +1,7 @@
+/**
+ * Device matrix fixtures for UI-smoke specs that compare desktop and mobile
+ * app layouts.
+ */
 export const ASSERTION_GRADE_DASHBOARD_SPECS =
   /(browser-workspace|character-editor|wallet-inventory|workflow-editor)\.spec\.ts/;
 

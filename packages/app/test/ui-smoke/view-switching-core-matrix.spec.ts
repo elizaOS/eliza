@@ -1,3 +1,7 @@
+/**
+ * Playwright UI-smoke spec for the View Switching Core Matrix app flow using
+ * the real renderer fixture.
+ */
 import { expect, type Page, test } from "@playwright/test";
 import {
   installDefaultAppRoutes,

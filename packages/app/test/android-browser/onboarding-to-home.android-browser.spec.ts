@@ -1,3 +1,7 @@
+/**
+ * Android-browser Playwright spec for the Onboarding To Home Android Browser
+ * mobile app onboarding flow.
+ */
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import {

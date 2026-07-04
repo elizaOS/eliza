@@ -1,3 +1,7 @@
+/**
+ * Playwright UI-smoke spec for the Wallet Inventory app flow using the real
+ * renderer fixture.
+ */
 import { expect, type Locator, type Page, test } from "@playwright/test";
 import {
   hideContinuousChatOverlay,

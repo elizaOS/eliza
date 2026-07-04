@@ -1,3 +1,7 @@
+/**
+ * Command-line helper for the Run Ui Playwright app packaging, mobile, or
+ * Playwright automation lane.
+ */
 import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";

@@ -1,3 +1,7 @@
+/**
+ * Unit tests for the Screenshot Quality app shell contract and coverage
+ * guardrail.
+ */
 import sharp from "sharp";
 import { describe, expect, it, vi } from "vitest";
 import {

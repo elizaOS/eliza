@@ -1,3 +1,7 @@
+/**
+ * Windows packaged-test bootstrap for preparing Electrobun app paths before
+ * specs run.
+ */
 function hasRequestForPath(
   requests: readonly string[],
   pathname: string,

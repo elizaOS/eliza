@@ -1,3 +1,7 @@
+/**
+ * Android device smoke spec for the Native Plugin View Smoke Android native
+ * plugin app surface.
+ */
 import fs from "node:fs";
 import path from "node:path";
 import {

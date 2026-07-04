@@ -1,3 +1,7 @@
+/**
+ * Unit tests for the Ai Qa Review Lib app audit helper used by visual review
+ * evidence.
+ */
 import { describe, expect, it } from "vitest";
 import {
   aggregateVerdicts,

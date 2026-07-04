@@ -1,3 +1,7 @@
+/**
+ * Playwright HMR spec for the Hmr Dependency Levels app development-server
+ * behavior.
+ */
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

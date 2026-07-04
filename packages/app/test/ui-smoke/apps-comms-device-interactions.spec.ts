@@ -1,3 +1,7 @@
+/**
+ * Playwright UI-smoke spec for the Apps Comms Device Interactions app flow
+ * using the real renderer fixture.
+ */
 import { expect, type Page, test } from "@playwright/test";
 import {
   assertReadyChecks,

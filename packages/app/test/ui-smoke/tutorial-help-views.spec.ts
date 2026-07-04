@@ -1,3 +1,7 @@
+/**
+ * Playwright UI-smoke spec for the Tutorial Help Views app flow using the real
+ * renderer fixture.
+ */
 import { expect, test } from "@playwright/test";
 import { installDefaultAppRoutes, openAppPath } from "./helpers";
 

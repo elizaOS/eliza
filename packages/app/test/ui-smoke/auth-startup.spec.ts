@@ -1,3 +1,7 @@
+/**
+ * Playwright UI-smoke spec for the Auth Startup app flow using the real
+ * renderer fixture.
+ */
 import { expect, type Page, type Route, test } from "@playwright/test";
 import {
   installDefaultAppRoutes,

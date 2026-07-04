@@ -1,3 +1,7 @@
+/**
+ * Shared Playwright helpers for app UI-smoke fixtures, navigation, logging,
+ * and assertions.
+ */
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { expect, type Locator, type Page, type Route } from "@playwright/test";

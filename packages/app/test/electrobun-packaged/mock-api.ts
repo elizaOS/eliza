@@ -1,3 +1,7 @@
+/**
+ * Mock API helper used by packaged Electrobun specs that isolate renderer
+ * startup behavior.
+ */
 import { randomUUID } from "node:crypto";
 import http from "node:http";
 import type { AddressInfo } from "node:net";

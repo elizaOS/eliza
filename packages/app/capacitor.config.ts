@@ -1,3 +1,7 @@
+/**
+ * Builds the Capacitor mobile configuration from the shared app identity and
+ * runtime settings.
+ */
 import type { CapacitorConfig } from "@capacitor/cli";
 import appConfig from "./app.config";
 

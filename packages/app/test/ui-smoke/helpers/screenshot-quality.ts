@@ -1,3 +1,7 @@
+/**
+ * Screenshot-quality helper used by UI-smoke specs to reject blank or
+ * low-signal captures.
+ */
 import type { Page } from "@playwright/test";
 import sharp from "sharp";
 

@@ -1,3 +1,7 @@
+/**
+ * Playwright configuration for the Playwright Electrobun Packaged app test
+ * lane, including browser projects and app-server wiring.
+ */
 import { defineConfig } from "@playwright/test";
 
 // NOTE: this config intentionally has no `webServer`. The packaged Electrobun

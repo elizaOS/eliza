@@ -1,3 +1,7 @@
+/**
+ * Browser-runner script that hosts Eliza task execution inside the app public
+ * runner sandbox.
+ */
 const CONFIG_KEY = "eliza.background.config";
 const LAST_WAKE_KEY = "eliza.background.lastWake";
 const LAST_RESULT_KEY = "eliza.background.lastResult";

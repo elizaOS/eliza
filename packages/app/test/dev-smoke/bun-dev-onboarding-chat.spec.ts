@@ -1,3 +1,7 @@
+/**
+ * Development smoke spec for the Bun Dev Onboarding Chat Bun dev app boot
+ * path.
+ */
 import { expect, test } from "@playwright/test";
 import {
   browserFailureCollector,

@@ -1,3 +1,7 @@
+/**
+ * Unit tests for the Aesthetic Audit Rules app audit helper used by visual
+ * review evidence.
+ */
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";

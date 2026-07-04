@@ -1,3 +1,7 @@
+/**
+ * Playwright UI-smoke spec for the Multi Client Desync app flow using the real
+ * renderer fixture.
+ */
 import { type BrowserContext, expect, type Page, test } from "@playwright/test";
 import {
   installDefaultAppRoutes,

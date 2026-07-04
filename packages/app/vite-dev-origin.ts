@@ -1,3 +1,7 @@
+/**
+ * Resolves the Vite dev server origin and port used by the app renderer and
+ * desktop shell during development.
+ */
 export interface ViteHmrConfig {
   host?: string;
   port: number;

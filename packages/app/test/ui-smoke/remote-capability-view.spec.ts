@@ -1,3 +1,7 @@
+/**
+ * Playwright UI-smoke spec for the Remote Capability View app flow using the
+ * real renderer fixture.
+ */
 import {
   createServer,
   type IncomingMessage,

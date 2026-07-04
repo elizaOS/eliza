@@ -1,3 +1,7 @@
+/**
+ * Runs the app design-review capture workflow over generated screenshots and
+ * review prompts.
+ */
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

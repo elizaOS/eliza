@@ -1,3 +1,7 @@
+/**
+ * Unit tests for the Ios Store Engine Gate app packaging script behavior and
+ * platform guardrails.
+ */
 import { describe, expect, it } from "vitest";
 import { evaluateIosStoreEngineGate } from "./ios-store-engine-gate.mjs";
 

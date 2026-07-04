@@ -1,3 +1,7 @@
+/**
+ * Unit tests for the View Switching Core Matrix Coverage app shell contract
+ * and coverage guardrail.
+ */
 import { describe, expect, it } from "vitest";
 import { SETTINGS_SECTION_META } from "../../ui/src/components/settings/settings-section-meta";
 import {

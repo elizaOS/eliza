@@ -1,3 +1,7 @@
+/**
+ * Configures the app package Vitest suite, including jsdom setup and
+ * package-local test boundaries.
+ */
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";

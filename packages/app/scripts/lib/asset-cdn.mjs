@@ -1,3 +1,7 @@
+/**
+ * Shared script library for Asset Cdn capture and packaging helpers used by
+ * app automation.
+ */
 export {
   buildJsDelivrAssetBase,
   buildManagedAssetUrl,

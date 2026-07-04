@@ -1,3 +1,6 @@
+/**
+ * Development smoke spec for the Bun Dev App Shell Bun dev app boot path.
+ */
 import { expect, test } from "@playwright/test";
 
 /**

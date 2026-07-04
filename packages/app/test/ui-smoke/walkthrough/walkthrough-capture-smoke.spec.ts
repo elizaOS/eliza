@@ -1,3 +1,7 @@
+/**
+ * Playwright UI-smoke spec for the Walkthrough Capture Smoke app flow using
+ * the real renderer fixture.
+ */
 import {
   expect,
   type Page,

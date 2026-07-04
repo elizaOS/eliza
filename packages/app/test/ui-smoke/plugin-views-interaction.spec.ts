@@ -1,3 +1,7 @@
+/**
+ * Playwright UI-smoke spec for the Plugin Views Interaction app flow using the
+ * real renderer fixture.
+ */
 import { expect, type Locator, test } from "@playwright/test";
 import {
   installDefaultAppRoutes,

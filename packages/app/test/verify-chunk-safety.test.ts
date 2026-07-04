@@ -1,3 +1,7 @@
+/**
+ * Unit tests for the Verify Chunk Safety app shell contract and coverage
+ * guardrail.
+ */
 import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";

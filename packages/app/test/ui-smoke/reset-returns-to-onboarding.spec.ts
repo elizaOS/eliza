@@ -1,3 +1,7 @@
+/**
+ * Playwright UI-smoke spec for the Reset Returns To Onboarding app flow using
+ * the real renderer fixture.
+ */
 import { expect, test } from "@playwright/test";
 import {
   installDefaultAppRoutes,

@@ -1,3 +1,7 @@
+/**
+ * Windows packaged-test environment helpers for Electrobun startup and
+ * filesystem paths.
+ */
 const STRIPPED_ENV_KEYS = [
   "ELIZA_API_BASE",
   "ELIZA_API_BASE_URL",

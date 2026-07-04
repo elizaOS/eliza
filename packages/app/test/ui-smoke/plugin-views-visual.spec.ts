@@ -1,3 +1,7 @@
+/**
+ * Playwright UI-smoke spec for the Plugin Views Visual app flow using the real
+ * renderer fixture.
+ */
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { expect, type Page, test } from "@playwright/test";

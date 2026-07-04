@@ -1,3 +1,7 @@
+/**
+ * Playwright UI-smoke spec for the Files View app flow using the real renderer
+ * fixture.
+ */
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { expect, test } from "@playwright/test";

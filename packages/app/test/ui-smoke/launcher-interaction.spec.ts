@@ -1,3 +1,7 @@
+/**
+ * Playwright UI-smoke spec for the Launcher Interaction app flow using the
+ * real renderer fixture.
+ */
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { expect, type Locator, type Page, test } from "@playwright/test";

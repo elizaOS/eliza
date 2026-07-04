@@ -1,3 +1,7 @@
+/**
+ * Playwright UI-smoke spec for the Runtime Configurability app flow using the
+ * real renderer fixture.
+ */
 import { expect, type Page, type Route, test } from "@playwright/test";
 import {
   expectNoRenderTelemetryErrors,

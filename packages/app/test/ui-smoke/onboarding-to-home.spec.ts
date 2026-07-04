@@ -1,3 +1,7 @@
+/**
+ * Playwright UI-smoke spec for the Onboarding To Home app flow using the real
+ * renderer fixture.
+ */
 import { rm } from "node:fs/promises";
 import path from "node:path";
 import { expect, type Locator, test } from "@playwright/test";

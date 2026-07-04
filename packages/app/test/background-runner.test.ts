@@ -1,3 +1,7 @@
+/**
+ * Unit tests for the Background Runner app shell contract and coverage
+ * guardrail.
+ */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import vm from "node:vm";

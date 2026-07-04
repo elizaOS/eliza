@@ -1,3 +1,7 @@
+/**
+ * Shared view-switching matrix used by UI-smoke specs to cover core app
+ * navigation paths.
+ */
 export type CoreViewSwitchTarget = {
   id: string;
   label: string;

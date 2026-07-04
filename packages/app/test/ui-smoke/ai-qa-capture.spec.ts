@@ -1,3 +1,7 @@
+/**
+ * Playwright UI-smoke spec for the Ai Qa Capture app flow using the real
+ * renderer fixture.
+ */
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";

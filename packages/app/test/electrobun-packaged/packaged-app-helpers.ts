@@ -1,3 +1,7 @@
+/**
+ * Shared helpers for launching and inspecting packaged Electrobun app builds
+ * in tests.
+ */
 import { type ChildProcess, execFile, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";

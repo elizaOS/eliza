@@ -1,3 +1,7 @@
+/**
+ * Playwright configuration for the Playwright Android app test lane, including
+ * browser projects and app-server wiring.
+ */
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "@playwright/test";

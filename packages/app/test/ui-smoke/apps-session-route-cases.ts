@@ -1,3 +1,7 @@
+/**
+ * Route-case fixtures for apps-session UI-smoke coverage across direct and
+ * shell navigation paths.
+ */
 export function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }

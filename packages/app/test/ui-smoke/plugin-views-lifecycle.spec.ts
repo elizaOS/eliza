@@ -1,3 +1,7 @@
+/**
+ * Playwright UI-smoke spec for the Plugin Views Lifecycle app flow using the
+ * real renderer fixture.
+ */
 import { expect, type Page, test } from "@playwright/test";
 import {
   expectNoPageDiagnostics,

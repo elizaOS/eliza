@@ -1,3 +1,7 @@
+/**
+ * Brand-color scanner helpers that flag forbidden palette drift in UI-smoke
+ * screenshots.
+ */
 import type { Page } from "@playwright/test";
 import { bucket } from "../aesthetic-audit-rules";
 

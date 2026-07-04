@@ -1,4 +1,8 @@
 #!/usr/bin/env node
+/**
+ * Command-line helper for the Mobile Release Preflight app packaging, mobile,
+ * or Playwright automation lane.
+ */
 
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";

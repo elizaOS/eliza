@@ -1,3 +1,7 @@
+/**
+ * Playwright UI-smoke spec for the Launcher Cloud Gating app flow using the
+ * real renderer fixture.
+ */
 import { copyFile, mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

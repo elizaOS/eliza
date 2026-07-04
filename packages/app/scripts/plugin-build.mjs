@@ -1,4 +1,8 @@
 #!/usr/bin/env node
+/**
+ * Command-line helper for the Plugin Build app packaging, mobile, or
+ * Playwright automation lane.
+ */
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";

@@ -1,3 +1,7 @@
+/**
+ * Shared script library for Android Capture capture and packaging helpers used
+ * by app automation.
+ */
 import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";

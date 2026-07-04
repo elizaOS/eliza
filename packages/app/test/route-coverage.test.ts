@@ -1,3 +1,6 @@
+/**
+ * Unit tests for the Route Coverage app shell contract and coverage guardrail.
+ */
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

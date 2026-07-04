@@ -1,3 +1,7 @@
+/**
+ * Playwright UI-smoke spec for the Apps Session app flow using the real
+ * renderer fixture.
+ */
 import { test } from "@playwright/test";
 import {
   assertReadyChecks,

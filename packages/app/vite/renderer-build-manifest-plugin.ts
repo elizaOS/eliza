@@ -1,3 +1,7 @@
+/**
+ * Vite plugin that records renderer build outputs for desktop and mobile
+ * packaging steps.
+ */
 import { execSync } from "node:child_process";
 import type { Plugin } from "vite";
 import {

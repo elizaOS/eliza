@@ -1,3 +1,7 @@
+/**
+ * Playwright UI-smoke spec for the Settings Background app flow using the real
+ * renderer fixture.
+ */
 import { mkdir, rm } from "node:fs/promises";
 import path from "node:path";
 import { expect, type Page, type Route, test } from "@playwright/test";

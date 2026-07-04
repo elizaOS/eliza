@@ -1,3 +1,7 @@
+/**
+ * Test coverage for macOS Shortcuts handoff automation used by the desktop app
+ * shell.
+ */
 import { execFile, spawn } from "node:child_process";
 import fs from "node:fs/promises";
 import os from "node:os";

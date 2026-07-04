@@ -1,3 +1,7 @@
+/**
+ * Playwright configuration for the Playwright Android Browser app test lane,
+ * including browser projects and app-server wiring.
+ */
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

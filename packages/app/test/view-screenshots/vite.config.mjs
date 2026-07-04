@@ -1,3 +1,7 @@
+/**
+ * Vite config for the view screenshot harness that renders app views for
+ * visual evidence.
+ */
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import react from "@vitejs/plugin-react";

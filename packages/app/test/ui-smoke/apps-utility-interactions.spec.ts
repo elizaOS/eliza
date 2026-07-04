@@ -1,3 +1,7 @@
+/**
+ * Playwright UI-smoke spec for the Apps Utility Interactions app flow using
+ * the real renderer fixture.
+ */
 import { expect, type Locator, type Page, test } from "@playwright/test";
 import { DIRECT_ROUTE_CASES } from "./apps-session-route-cases";
 import {

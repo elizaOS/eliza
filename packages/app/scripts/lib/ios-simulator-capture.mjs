@@ -1,3 +1,7 @@
+/**
+ * Shared script library for Ios Simulator Capture capture and packaging
+ * helpers used by app automation.
+ */
 import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";

@@ -1,3 +1,7 @@
+/**
+ * Playwright UI-smoke spec for the Chat View Memory Stability app flow using
+ * the real renderer fixture.
+ */
 import { expect, type Locator, type Page, test } from "@playwright/test";
 import { CHAT_PREFILL_EVENT } from "../../../ui/src/events";
 import {

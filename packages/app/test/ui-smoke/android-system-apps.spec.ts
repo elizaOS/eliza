@@ -1,3 +1,7 @@
+/**
+ * Playwright UI-smoke spec for the Android System Apps app flow using the real
+ * renderer fixture.
+ */
 import { type BrowserContext, expect, type Page, test } from "@playwright/test";
 import {
   assertReadyChecks,

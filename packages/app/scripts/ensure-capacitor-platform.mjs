@@ -1,4 +1,8 @@
 #!/usr/bin/env node
+/**
+ * Command-line helper for the Ensure Capacitor Platform app packaging, mobile,
+ * or Playwright automation lane.
+ */
 
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";

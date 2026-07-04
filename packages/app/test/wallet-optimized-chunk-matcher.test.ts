@@ -1,3 +1,7 @@
+/**
+ * Unit tests for the Wallet Optimized Chunk Matcher app shell contract and
+ * coverage guardrail.
+ */
 import { describe, expect, it } from "vitest";
 import { VENDOR_OPTIMIZED_WALLET_TEST } from "../vite/wallet-chunk-matcher.ts";
 

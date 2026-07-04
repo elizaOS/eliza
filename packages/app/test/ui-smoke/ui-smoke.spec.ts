@@ -1,3 +1,7 @@
+/**
+ * Playwright UI-smoke spec for the Ui Smoke app flow using the real renderer
+ * fixture.
+ */
 import { expect, test } from "@playwright/test";
 import {
   assertReadyChecks,

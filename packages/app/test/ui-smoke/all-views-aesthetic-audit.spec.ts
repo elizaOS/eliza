@@ -1,3 +1,7 @@
+/**
+ * Playwright UI-smoke spec for the All Views Aesthetic Audit app flow using
+ * the real renderer fixture.
+ */
 import { readFileSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";

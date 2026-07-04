@@ -1,3 +1,7 @@
+/**
+ * Playwright UI-smoke spec for the Apps Session Direct A app flow using the
+ * real renderer fixture.
+ */
 import { expect, test } from "@playwright/test";
 import { DIRECT_ROUTE_CASES, escapeRegExp } from "./apps-session-route-cases";
 import {

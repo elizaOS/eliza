@@ -1,3 +1,7 @@
+/**
+ * Command-line helper for the Capacitor Plugin Names app packaging, mobile, or
+ * Playwright automation lane.
+ */
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

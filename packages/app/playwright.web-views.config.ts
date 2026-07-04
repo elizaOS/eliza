@@ -1,3 +1,7 @@
+/**
+ * Playwright configuration for the Playwright Web Views app test lane,
+ * including browser projects and app-server wiring.
+ */
 import { defineConfig, devices } from "@playwright/test";
 
 export default defineConfig({
