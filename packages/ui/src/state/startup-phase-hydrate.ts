@@ -76,6 +76,7 @@ export interface HydratingDeps {
   setTab: (t: Tab) => void;
   setTabRaw: (t: Tab) => void;
   firstRunCompletionCommittedRef: React.MutableRefObject<boolean>;
+  firstRunCompletionJustCommittedRef: React.MutableRefObject<boolean>;
   initialTabSetRef: React.MutableRefObject<boolean>;
 }
 
@@ -270,7 +271,7 @@ export async function runHydrating(
   // contradicting each other (and sometimes stranding the user on character
   // select instead of the view they asked for).
   const shouldCharSelect =
-    (deps.firstRunCompletionCommittedRef.current ||
+    (deps.firstRunCompletionJustCommittedRef.current ||
       shouldStartAtCharacterSelectOnLaunch({
         firstRunNeedsOptions: false,
         navPath,
@@ -280,12 +281,14 @@ export async function runHydrating(
   if (!deps.initialTabSetRef.current) {
     deps.initialTabSetRef.current = true;
     if (shouldCharSelect) {
+      deps.firstRunCompletionJustCommittedRef.current = false;
       deps.firstRunCompletionCommittedRef.current = false;
       deps.setTab("character-select");
       void deps.loadCharacter();
     } else if (isRoot) {
       deps.setTab(resolveDefaultLandingTab());
     } else {
+      deps.firstRunCompletionJustCommittedRef.current = false;
       deps.firstRunCompletionCommittedRef.current = false;
     }
   }

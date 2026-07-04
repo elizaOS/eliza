@@ -38,11 +38,15 @@ export function useFirstRunCallbacks(deps: FirstRunCallbacksDeps) {
     loadCharacter,
   } = deps;
 
-  const { completionCommittedRef: firstRunCompletionCommittedRef } = firstRun;
+  const {
+    completionCommittedRef: firstRunCompletionCommittedRef,
+    completionJustCommittedRef: firstRunCompletionJustCommittedRef,
+  } = firstRun;
 
   const completeFirstRun = useCallback(
     (landingTab: Tab = defaultLandingTab) => {
       firstRunCompletionCommittedRef.current = true;
+      firstRunCompletionJustCommittedRef.current = true;
       setPostFirstRunChecklistDismissed(false);
       setFirstRunComplete(true);
       coordinatorFirstRunCompleteRef.current?.();
@@ -59,6 +63,7 @@ export function useFirstRunCallbacks(deps: FirstRunCallbacksDeps) {
       loadCharacter,
       coordinatorFirstRunCompleteRef,
       initialTabSetRef,
+      firstRunCompletionJustCommittedRef,
     ],
   );
 

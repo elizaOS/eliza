@@ -68,11 +68,15 @@ describe("useFirstRunState seeds the completion ref from durable storage", () =>
     // A new process would create this ref anew; seeding it from the durable
     // flag is what keeps onboarding committed across the restart.
     expect(result.current.completionCommittedRef.current).toBe(true);
+    // The post-onboarding character-select handoff is intentionally not
+    // durable; a relaunch must go home/chat, not replay character select.
+    expect(result.current.completionJustCommittedRef.current).toBe(false);
   });
 
   it("a fresh mount with no prior onboarding starts uncommitted", () => {
     const { result } = renderHook(() => useFirstRunState());
     expect(result.current.completionCommittedRef.current).toBe(false);
+    expect(result.current.completionJustCommittedRef.current).toBe(false);
   });
 });
 

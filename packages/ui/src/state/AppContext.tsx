@@ -649,6 +649,7 @@ function AppProviderInner({
       cloudProvisionedContainer: firstRunCloudProvisionedContainer,
     },
     completionCommittedRef: firstRunCompletionCommittedRefFromHook,
+    completionJustCommittedRef: firstRunCompletionJustCommittedRefFromHook,
   } = firstRun;
 
   const {
@@ -806,6 +807,8 @@ function AppProviderInner({
   const _restartNotificationSignatureRef = useRef<string | null>(null);
   const _heartbeatNotificationKeyRef = useRef<string | null>(null);
   const firstRunCompletionCommittedRef = firstRunCompletionCommittedRefFromHook;
+  const firstRunCompletionJustCommittedRef =
+    firstRunCompletionJustCommittedRefFromHook;
 
   // --- Confirm Modal ---
   const { modalProps } = useConfirm();
@@ -1493,6 +1496,7 @@ function AppProviderInner({
     setConversations,
     requestGreetingWhenRunningRef,
     firstRunCompletionCommittedRef,
+    firstRunCompletionJustCommittedRef,
     initialTabSetRef,
     activeConversationIdRef,
     elizaCloudPollInterval,
