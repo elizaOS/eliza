@@ -14,7 +14,6 @@
  */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-import { Hono } from "hono";
 
 const addCredits = mock(async () => ({ newBalance: 8.25 }));
 const createInvoice = mock(async () => undefined);
@@ -57,7 +56,9 @@ mock.module("@/lib/services/invoices", () => ({
   },
 }));
 mock.module("@/lib/services/organizations", () => ({
-  organizationsService: { getById: mock(async () => ({ credit_balance: "0" })) },
+  organizationsService: {
+    getById: mock(async () => ({ credit_balance: "0" })),
+  },
 }));
 mock.module("@/lib/security/safe-fetch", () => ({ safeFetch: webhookFetch }));
 mock.module("@/lib/stripe", () => ({

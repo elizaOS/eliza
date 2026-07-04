@@ -6,9 +6,9 @@
  * `===` was replaced with `timingSafeEqualSecret`; these drive the real route.
  */
 
+import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
 
 const mintAgentToken = mock(async (agentId: string) => ({

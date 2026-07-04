@@ -8,7 +8,15 @@
  * no-op — the account mutation runs exactly once.
  */
 
-import { afterAll, beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  mock,
+  test,
+} from "bun:test";
 import { Hono } from "hono";
 
 process.env.DATABASE_URL ||= "pglite://memory";
@@ -38,9 +46,12 @@ mock.module("@/lib/stripe", () => ({
   requireStripe: () => ({ webhooks: { constructEventAsync } }),
   isStripeConfigured: () => true,
 }));
-mock.module("@elizaos/cloud-shared/db/repositories/stripe-connect-accounts", () => ({
-  stripeConnectAccountsRepository: { updateByAccountId },
-}));
+mock.module(
+  "@elizaos/cloud-shared/db/repositories/stripe-connect-accounts",
+  () => ({
+    stripeConnectAccountsRepository: { updateByAccountId },
+  }),
+);
 mock.module("@elizaos/cloud-shared/lib/services/stripe-connect-payout", () => ({
   mapConnectWebhookEvent,
 }));

@@ -7,7 +7,15 @@
  * second delivery as a no-op.
  */
 
-import { afterAll, beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  mock,
+  test,
+} from "bun:test";
 import { Hono } from "hono";
 
 process.env.DATABASE_URL ||= "pglite://memory";

@@ -34,9 +34,7 @@ mock.module("../cache/redis-factory", () => ({
   isCloudflareWorkerRuntime: () => false,
 }));
 
-const { rateLimit, RateLimitPresets, getIpKey } = await import(
-  "./rate-limit-hono-cloudflare"
-);
+const { rateLimit, RateLimitPresets, getIpKey } = await import("./rate-limit-hono-cloudflare");
 
 // A configured, non-disabled env so getRedis returns the (throwing) client.
 const ENV = { REDIS_URL: "redis://mock:6379", NODE_ENV: "production" };
