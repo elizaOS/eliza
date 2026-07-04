@@ -1,3 +1,6 @@
+/**
+ * Plugin entry point that registers facewear actions, providers, services, routes, and views.
+ */
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
 import { displayFacewearTextAction } from "./actions/display-text.ts";
 import { facewearConnectAction } from "./actions/facewear-connect.ts";

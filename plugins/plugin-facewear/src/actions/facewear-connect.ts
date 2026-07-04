@@ -1,3 +1,6 @@
+/**
+ * Agent action that returns pairing instructions for supported facewear devices.
+ */
 import type {
   Action,
   HandlerCallback,

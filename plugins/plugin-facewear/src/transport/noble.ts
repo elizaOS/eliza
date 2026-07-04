@@ -1,3 +1,6 @@
+/**
+ * Node BLE transport for Even Realities smartglasses using Noble-compatible adapters.
+ */
 import type { EventEmitter } from "node:events";
 import {
   EVEN_G1_UART,

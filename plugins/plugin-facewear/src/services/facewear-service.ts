@@ -1,3 +1,6 @@
+/**
+ * Coordinator service that reports active XR and smartglasses devices as one facewear surface.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import { Service } from "@elizaos/core";
 import type { SmartglassesService } from "./smartglasses-service.ts";

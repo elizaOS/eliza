@@ -1,3 +1,6 @@
+/**
+ * Prompt provider for connected XR headset and smartglasses context.
+ */
 import type {
   IAgentRuntime,
   Memory,

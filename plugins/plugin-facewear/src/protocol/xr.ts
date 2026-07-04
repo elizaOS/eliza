@@ -1,13 +1,15 @@
-// Binary frame layout:
-//   bytes 0–3  : big-endian uint32 — JSON header length
-//   bytes 4–N  : UTF-8 JSON header
-//   bytes N+1… : raw binary payload (audio PCM/Opus, JPEG, etc.)
-//
-// Text frames are JSON control messages (no binary payload).
+/**
+ * XR websocket protocol shapes shared by the facewear runtime, routes, and
+ * browser panels.
+ *
+ * Binary frames start with a big-endian uint32 JSON header length, followed by
+ * the UTF-8 header and raw audio or image payload bytes. Text frames carry JSON
+ * control messages with no binary payload.
+ */
 
 export type XRDeviceType = "quest3" | "xreal" | "even-realities" | "simulator";
 
-// ── Client → Server (text frames) ──────────────────────────────────────────
+// Client -> server text frames.
 
 /** View panel state reported back from the XR device */
 export interface XRViewPanelState {
@@ -39,7 +41,7 @@ export type XRClientControl =
   | { type: "view_closed"; viewId: string }
   | { type: "view_event"; viewId: string; event: string; payload?: unknown };
 
-// ── Client → Server (binary frames) ────────────────────────────────────────
+// Client -> server binary frames.
 
 export interface XRAudioHeader {
   type: "audio";
@@ -63,7 +65,7 @@ export interface XRFrameHeader {
 
 export type XRBinaryHeader = XRAudioHeader | XRFrameHeader;
 
-// ── Server → Client (text frames) ──────────────────────────────────────────
+// Server -> client text frames.
 
 /** XR panel sizing options */
 export interface XRPanelConfig {

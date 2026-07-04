@@ -1,3 +1,6 @@
+/**
+ * Audio pipeline that transcribes PCM frames streamed from XR headset clients.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
 import type { XRAudioHeader } from "../protocol/xr.ts";

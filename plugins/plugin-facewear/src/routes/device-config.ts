@@ -1,3 +1,6 @@
+/**
+ * JSON routes for facewear device profiles and connected-device status.
+ */
 import type { Route } from "@elizaos/core";
 import {
   getAllDeviceProfiles,

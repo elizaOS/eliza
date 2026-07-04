@@ -1,3 +1,6 @@
+/**
+ * Agent diagnostics action for the facewear coordinator, XR session, and smartglasses services.
+ */
 import type {
   Action,
   HandlerCallback,

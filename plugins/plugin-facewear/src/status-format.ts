@@ -1,3 +1,6 @@
+/**
+ * Formatting helpers for smartglasses setup and connection status across actions and providers.
+ */
 import type { SmartglassesStatus } from "./services/smartglasses-service.ts";
 import type { SmartglassesConnectedLenses } from "./transport/types.ts";
 

@@ -1,3 +1,6 @@
+/**
+ * Pairing page route for opening the headset WebXR app from a local network URL.
+ */
 import { networkInterfaces } from "node:os";
 import type { Route } from "@elizaos/core";
 

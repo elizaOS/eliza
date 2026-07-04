@@ -1,3 +1,6 @@
+/**
+ * UI registration module for the Wearables settings section.
+ */
 import { registerSettingsSection } from "@elizaos/ui/components/settings/settings-section-registry";
 import { Glasses } from "lucide-react";
 import { WearablesSettingsSection } from "./components/WearablesSettingsSection.tsx";

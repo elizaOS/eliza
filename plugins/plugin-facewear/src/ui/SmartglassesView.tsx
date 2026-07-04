@@ -1,3 +1,6 @@
+/**
+ * Smartglasses settings panel for pairing, diagnostics, display tests, Wi-Fi setup, and events.
+ */
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { Button } from "@elizaos/ui/components/ui/button";
 import { Input } from "@elizaos/ui/components/ui/input";

@@ -1,3 +1,6 @@
+/**
+ * Agent action for toggling the Even Realities microphone transport.
+ */
 import {
   type Action,
   type ActionResult,

@@ -1,3 +1,6 @@
+/**
+ * Agent control surface for Even Realities smartglasses operations.
+ */
 import {
   type Action,
   type ActionResult,

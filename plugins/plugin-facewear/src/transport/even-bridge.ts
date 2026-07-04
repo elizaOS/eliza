@@ -1,3 +1,6 @@
+/**
+ * Smartglasses transport adapter for the native Even bridge surface.
+ */
 import {
   encodeMicCommand,
   G1Command,

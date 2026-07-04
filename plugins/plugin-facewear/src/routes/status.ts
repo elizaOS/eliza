@@ -1,3 +1,6 @@
+/**
+ * XR status route for active headset connections and session state.
+ */
 import type { Route } from "@elizaos/core";
 import {
   XR_SERVICE_TYPE,

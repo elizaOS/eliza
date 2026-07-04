@@ -1,3 +1,6 @@
+/**
+ * WebSocket service for XR headset sessions, frame ingestion, voice events, and view control.
+ */
 import type {
   Content,
   HandlerCallback,

@@ -1,3 +1,6 @@
+/**
+ * Agent action that asks the active XR headset camera frame for visual context.
+ */
 import type {
   Action,
   ActionResult,

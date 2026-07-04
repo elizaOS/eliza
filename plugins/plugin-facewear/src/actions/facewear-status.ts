@@ -1,3 +1,6 @@
+/**
+ * Agent action that summarizes the current smartglasses connection and setup state.
+ */
 import type { Action, ActionResult, IAgentRuntime } from "@elizaos/core";
 import { getSmartglassesService } from "../services/smartglasses-service.ts";
 import {

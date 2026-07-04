@@ -1,7 +1,10 @@
-// Pure smartglasses report/diagnostics helpers split out of SmartglassesView.tsx
-// so that file exports only the React component and stays Fast-Refresh-compatible
-// (Vite full-reloads a component file that also exports plain functions/types).
-// SmartglassesView.tsx and the report test both import from here.
+/**
+ * Smartglasses report and diagnostics helpers shared by the panel component and
+ * its report tests.
+ *
+ * Keeping the plain functions outside the React component module lets Vite
+ * preserve fast refresh for SmartglassesView.
+ */
 
 import {
   type DisplayPage,

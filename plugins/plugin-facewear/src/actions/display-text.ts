@@ -1,3 +1,6 @@
+/**
+ * Agent action for sending paginated text to Even Realities smartglasses.
+ */
 import {
   type Action,
   type ActionResult,

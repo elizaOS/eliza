@@ -1,3 +1,6 @@
+/**
+ * Agent action that reports desktop OpenXR runtime readiness and install guidance.
+ */
 import type {
   Action,
   HandlerCallback,

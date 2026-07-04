@@ -1,3 +1,6 @@
+/**
+ * Vision pipeline that stores headset camera frames and sends the freshest frame to a VLM.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
 import type { XRFrameHeader } from "../protocol/xr.ts";
@@ -8,7 +11,7 @@ export interface LatestFrame {
   receivedAt: number;
 }
 
-// A frame older than this is considered stale and won't be described
+// Stale headset frames are ignored rather than described out of context.
 const FRAME_MAX_AGE_MS = 10_000;
 
 export class VisionPipeline {

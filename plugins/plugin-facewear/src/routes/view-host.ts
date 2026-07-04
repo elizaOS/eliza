@@ -1,3 +1,6 @@
+/**
+ * XR view host route for rendering registered elizaOS views inside headset panels.
+ */
 import type { Route } from "@elizaos/core";
 
 /**

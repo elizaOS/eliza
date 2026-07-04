@@ -1,3 +1,6 @@
+/**
+ * Meta Quest WebXR capability constants for the facewear device registry.
+ */
 export { DEVICE_REGISTRY } from "./registry.ts";
 export const META_QUEST_WEBXR_FEATURES = [
   "hand-tracking",

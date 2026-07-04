@@ -1,8 +1,10 @@
-// Pure facewear device-profile data + connected-state derivation, used by the
-// unified data wrapper (FacewearView.tsx). Split out so the .tsx files export
-// only React components
-// and stay Fast-Refresh-compatible (Vite full-reloads a component file that also
-// exports plain data/functions).
+/**
+ * Device-profile rows and connected-state derivation for the facewear data
+ * wrapper.
+ *
+ * Keeping the plain data outside React component files lets Vite preserve fast
+ * refresh for the component modules that consume these helpers.
+ */
 
 import type { FacewearDeviceType } from "../devices/registry.ts";
 

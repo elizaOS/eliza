@@ -1,3 +1,6 @@
+/**
+ * View catalog route for XR-capable plugin views.
+ */
 import { listViews } from "@elizaos/agent/api/views-registry";
 import type { Route } from "@elizaos/core";
 import {

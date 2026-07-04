@@ -1,3 +1,6 @@
+/**
+ * Canonical facewear device profiles shared by routes, actions, and setup views.
+ */
 export type FacewearDeviceType =
   | "meta-quest"
   | "xreal"

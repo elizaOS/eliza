@@ -1,3 +1,6 @@
+/**
+ * Transport contract shared by native bridge, Web Bluetooth, Noble, and mock smartglasses drivers.
+ */
 import type {
   G1Event,
   GlassSide,

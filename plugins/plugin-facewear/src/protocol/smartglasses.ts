@@ -1,3 +1,6 @@
+/**
+ * Even Realities G1 binary protocol types, encoders, decoders, and display layout helpers.
+ */
 export type GlassSide = "left" | "right";
 export type G1ConnectionReadyMode = "lens-specific" | "official" | "android-f4";
 export type SmartglassesAudioEncoding = "pcm16" | "lc3" | "unknown";

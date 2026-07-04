@@ -1,3 +1,6 @@
+/**
+ * Prompt provider that exposes Even Realities connection, microphone, Wi-Fi, and event status.
+ */
 import type { Provider } from "@elizaos/core";
 import { getSmartglassesService } from "../services/smartglasses-service.ts";
 import {

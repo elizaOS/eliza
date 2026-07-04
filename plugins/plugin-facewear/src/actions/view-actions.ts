@@ -1,3 +1,6 @@
+/**
+ * Agent actions for opening, closing, listing, switching, and resizing XR view panels.
+ */
 import { listViews } from "@elizaos/agent/api/views-registry";
 import type {
   Action,

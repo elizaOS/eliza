@@ -1,3 +1,6 @@
+/**
+ * XREAL device and SDK constants for the facewear device registry.
+ */
 export { DEVICE_REGISTRY } from "./registry.ts";
 export const XREAL_SDK_VERSION = "3.0.0";
 export const XREAL_WEBXR_FEATURES = ["local-floor", "hit-test", "dom-overlay"];
@@ -9,5 +12,5 @@ export const XREAL_DEVICE_TYPES = [
   "xreal-one",
 ] as const;
 export type XrealDeviceType = (typeof XREAL_DEVICE_TYPES)[number];
-// XREAL SDK 3.0.0: NRCameraRig replaces Camera2 for camera access
+// XREAL SDK 3.0.0 exposes camera access through NRCameraRig.
 export const XREAL_CAMERA_RIG_CLASS = "com.xreal.nrsdk.NRCameraRig";

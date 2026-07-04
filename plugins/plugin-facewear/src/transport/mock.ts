@@ -1,3 +1,6 @@
+/**
+ * Deterministic smartglasses transport used by tests and local UI harnesses.
+ */
 import {
   encodeMicCommand,
   type G1Event,

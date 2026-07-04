@@ -1,3 +1,6 @@
+/**
+ * Runtime route for desktop OpenXR detection and install planning.
+ */
 import type { Route } from "@elizaos/core";
 import { detectOpenXrRuntimeNow } from "../runtime/node-probe.ts";
 import { planOpenXrInstall } from "../runtime/openxr-runtime.ts";

@@ -1,3 +1,6 @@
+/**
+ * Browser Web Bluetooth transport for Even Realities smartglasses.
+ */
 import {
   EVEN_G1_UART,
   encodeMicCommand,

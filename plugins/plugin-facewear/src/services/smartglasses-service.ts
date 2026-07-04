@@ -1,3 +1,6 @@
+/**
+ * Smartglasses service that owns Even Realities transport selection, protocol writes, and status.
+ */
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
 import {
   type DisplayPage,
