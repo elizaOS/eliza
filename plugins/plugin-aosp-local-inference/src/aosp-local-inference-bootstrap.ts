@@ -1926,6 +1926,18 @@ function isFfiNullPointer(value: unknown): boolean {
   return value === null || value === undefined || value === 0 || value === 0n;
 }
 
+/**
+ * Assert a bun:ffi `dlopen(...).symbols` table as the fused-LLM FFI surface.
+ * bun's inferred symbol-table type does not structurally line up with the
+ * hand-written {@link AospFusedLlmSymbols} interface (different function
+ * representations), so the assertion is centralized here — one auditable FFI
+ * boundary instead of the same `as unknown as` double-cast repeated inline at
+ * every `createAospStreamingLlmBinding` call site (#12452 type-safety ratchet).
+ */
+function asFusedLlmSymbols(symbols: unknown): AospFusedLlmSymbols {
+  return symbols as AospFusedLlmSymbols;
+}
+
 // Free RAM (MiB) at or above which the resident chat model is KEPT across a cold
 // voice-model load instead of being evicted. Eviction frees room for the ~1.4 GB
 // ASR / ~0.66 GB TTS load so it cannot trip lmkd, but it forces a synchronous
@@ -2930,7 +2942,7 @@ export async function tryBuildAospFusedTextLoader(): Promise<AospLoader | null> 
           ctx,
           binding: createAospStreamingLlmBinding({
             ctx,
-            symbols: symbols as unknown as AospFusedLlmSymbols,
+            symbols: asFusedLlmSymbols(symbols),
             helpers,
           }),
           bundleRoot,
@@ -2969,7 +2981,7 @@ export async function tryBuildAospFusedTextLoader(): Promise<AospLoader | null> 
       }
       state.binding = createAospStreamingLlmBinding({
         ctx: state.ctx,
-        symbols: symbols as unknown as AospFusedLlmSymbols,
+        symbols: asFusedLlmSymbols(symbols),
         helpers,
         ...(typeof args.gpuLayers === "number"
           ? { gpuLayers: args.gpuLayers }
@@ -3051,7 +3063,7 @@ export async function tryBuildAospFusedTextLoader(): Promise<AospLoader | null> 
         });
         active.binding = createAospStreamingLlmBinding({
           ctx: active.ctx,
-          symbols: active.symbols as unknown as AospFusedLlmSymbols,
+          symbols: asFusedLlmSymbols(active.symbols),
           helpers: active.helpers,
           ...(typeof active.gpuLayers === "number"
             ? { gpuLayers: active.gpuLayers }
