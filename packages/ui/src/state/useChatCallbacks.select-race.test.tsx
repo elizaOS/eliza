@@ -24,6 +24,7 @@
 // getConversationMessages resolves on command — reproducing the exact race.
 
 import { MESSAGE_SOURCE_AGENT_GREETING } from "@elizaos/core";
+import { logger } from "@elizaos/logger";
 import { act, renderHook } from "@testing-library/react";
 import type { MutableRefObject } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -483,6 +484,37 @@ describe("rapid conversation switching must never delete a real conversation", (
     await selectAndCommit(result, h, "conv-c", realHistory("c"));
 
     expect(mocks.client.deleteConversation).not.toHaveBeenCalled();
+  });
+
+  // #12267: the empty-draft cleanup delete is best-effort (server-side sweep is
+  // the backstop) but must NOT swallow its failure silently — a dropped delete
+  // used to be invisible. Drive the real rejection and assert it surfaces.
+  it("a failed empty-draft cleanup delete surfaces to the logger, not a silent swallow", async () => {
+    const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
+    const h = makeHarness(SEED);
+    mocks.client.deleteConversation.mockRejectedValue(
+      new Error("server rejected delete"),
+    );
+    const { result } = mountChat(h);
+
+    // Commit the greeting-only draft, then switch away — the real cleanup path
+    // fires deleteConversation("draft-d"), which now rejects.
+    await selectAndCommit(result, h, "draft-d", [greetingMessage()]);
+    await act(async () => {
+      const selectB = result.current.callbacks.handleSelectConversation("conv-b");
+      // Let the fire-and-forget delete's rejection propagate to its catch.
+      await Promise.resolve();
+      await Promise.resolve();
+      h.resolveLoad("conv-b", realHistory("b"));
+      await selectB;
+    });
+
+    expect(mocks.client.deleteConversation).toHaveBeenCalledWith("draft-d");
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ conversationId: "draft-d" }),
+      expect.stringContaining("failed to delete empty draft on select"),
+    );
+    warnSpy.mockRestore();
   });
 
   it("new-chat race: handleNewConversation must not delete a real conversation whose load has not committed", async () => {

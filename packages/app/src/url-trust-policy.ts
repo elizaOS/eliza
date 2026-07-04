@@ -104,6 +104,8 @@ export function createUrlTrustPolicy(ctx: UrlTrustPolicyContext) {
     try {
       return host === new URL(ctx.cloudApiBase).hostname;
     } catch {
+      // error-policy:J3 fail-closed URL parse: a malformed cloudApiBase is not
+      // a trusted host match.
       return false;
     }
   }
@@ -164,6 +166,8 @@ export function createUrlTrustPolicy(ctx: UrlTrustPolicyContext) {
         !isPrivateOrLoopbackApiHost(parsed.hostname)
       );
     } catch {
+      // error-policy:J3 fail-closed URL parse: an unparseable WebSocket URL is
+      // never trusted.
       return false;
     }
   }

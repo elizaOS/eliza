@@ -47,6 +47,10 @@ export function loadSavedCustomCommands(): SavedCustomCommand[] {
     if (!Array.isArray(parsed)) return [];
     return parsed.filter(isSavedCustomCommand);
   } catch {
+    // error-policy:J3 the saved custom-commands blob is untrusted persisted
+    // input (localStorage read / JSON.parse); a corrupt store must not wedge the
+    // command palette — start clean. An absent key already returns [] above, so
+    // "corrupt" and "none" render the same empty palette by design.
     return [];
   }
 }

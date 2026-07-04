@@ -30,6 +30,8 @@ function parseHttpUrl(value: string): URL | null {
     const url = new URL(value);
     return url.protocol === "http:" || url.protocol === "https:" ? url : null;
   } catch {
+    // error-policy:J3 untrusted URL string → explicit invalid (null); callers
+    // treat null as "not a usable http(s) URL".
     return null;
   }
 }

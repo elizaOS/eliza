@@ -36,9 +36,13 @@ export async function fetchSuggestedLanguage(): Promise<UiLanguage | null> {
   try {
     res = await fetchWithCsrf(`${localeBase()}/api/i18n/locale`);
   } catch {
+    // error-policy:J4 advisory-only first-visit language hint; an unreachable
+    // endpoint degrades to "no suggestion" (null) and the caller falls back to
+    // the browser's own language. Not a required data load.
     return null;
   }
   if (!res.ok) return null;
+  // error-policy:J4 malformed suggestion body → no suggestion (advisory only).
   const body = (await res.json().catch(() => null)) as {
     language?: unknown;
   } | null;

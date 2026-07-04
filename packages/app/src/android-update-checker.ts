@@ -38,6 +38,8 @@ export const AndroidUpdateChecker = {
       if (info.platform !== "android") return false;
       return import.meta.env.VITE_ANDROID_BUILD_VARIANT === "sideload";
     } catch {
+      // error-policy:J4 no Device bridge → not an Android sideload build; the
+      // OTA checker stays inert on web/desktop.
       return false;
     }
   },
@@ -92,6 +94,9 @@ export const AndroidUpdateChecker = {
 
       return { updateAvailable, manifest, currentVersion, currentVersionCode };
     } catch (err) {
+      // error-policy:J4 background OTA check is best-effort; a network/parse
+      // failure degrades to "no update this cycle" (null → no prompt) and the
+      // 24h cadence retries. It must never block app boot on a GitHub outage.
       console.warn("[AndroidUpdateChecker] check() error:", err);
       return null;
     }

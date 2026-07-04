@@ -11,6 +11,7 @@
  */
 
 import { Capacitor } from "@capacitor/core";
+import { logger } from "@elizaos/logger";
 import { MOBILE_RUNTIME_MODE_STORAGE_KEY } from "../first-run/mobile-runtime-mode";
 
 /**
@@ -44,6 +45,7 @@ function isNativePlatform(): boolean {
       platform === "android"
     );
   } catch {
+    // error-policy:J4 no Capacitor bridge → web runtime; treat as non-native.
     return false;
   }
 }
@@ -107,6 +109,8 @@ async function preferencesResponded(): Promise<boolean> {
     );
     return await Promise.race([probe, timeout]);
   } catch {
+    // error-policy:J4 probe contract is "did the plugin answer?"; a thrown
+    // read means it did not (still cold) — the caller retries.
     return false;
   } finally {
     if (timeoutId !== null) clearTimeout(timeoutId);
@@ -123,6 +127,9 @@ async function readPreferenceWithTimeout(key: string): Promise<string | null> {
     const result = await Promise.race([Preferences.get({ key }), timeout]);
     return result?.value ?? null;
   } catch {
+    // error-policy:J4 hydration read is best-effort; a failed/timed-out read
+    // skips this key for the pass. The warm-up probe gates `initialized`, so a
+    // cold bridge re-hydrates rather than permanently dropping the key.
     return null;
   } finally {
     if (timeoutId !== null) clearTimeout(timeoutId);
@@ -180,7 +187,9 @@ export async function initializeStorageBridge(): Promise<void> {
     try {
       window.localStorage.setItem(key, value);
     } catch {
-      // localStorage might fail in some contexts
+      // error-policy:J4 localStorage mirror is best-effort; the authoritative
+      // copy lives in `preferencesCache` (set above). A quota/private-mode
+      // write failure must not abort hydration of the remaining keys.
     }
   }
 
@@ -230,7 +239,16 @@ function setupStorageProxy(): void {
       setTimeout(() => {
         loadPreferences()
           .then(({ Preferences }) => Preferences.set({ key, value }))
-          .catch(() => {});
+          .catch((err) => {
+            // A dropped synced write silently diverges a critical key
+            // (session/auth/first-run) across restarts — surface it instead
+            // of swallowing. Fire-and-forget scheduling stays; the value is
+            // already in `preferencesCache` for this session.
+            logger.error(
+              { err, key },
+              "[StorageBridge] failed to sync key to Preferences",
+            );
+          });
       }, 0);
     }
   };
@@ -253,7 +271,15 @@ function setupStorageProxy(): void {
       setTimeout(() => {
         loadPreferences()
           .then(({ Preferences }) => Preferences.remove({ key }))
-          .catch(() => {});
+          .catch((err) => {
+            // A dropped synced removal leaves a stale key in Preferences that
+            // out-of-sync-hydrates on the next restart — surface it instead of
+            // swallowing. The in-session cache was already cleared above.
+            logger.error(
+              { err, key },
+              "[StorageBridge] failed to remove key from Preferences",
+            );
+          });
       }, 0);
     }
   };

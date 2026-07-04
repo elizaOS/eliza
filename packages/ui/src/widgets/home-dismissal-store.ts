@@ -51,7 +51,9 @@ function readPersisted(): Record<string, HomeWidgetLifecycle> {
     }
     return out;
   } catch {
-    // A corrupt/partial value must not wedge the home — start clean.
+    // error-policy:J3 corrupt/partial persisted value is untrusted input; start
+    // clean rather than wedge the home. Absence and corruption both render empty
+    // here by design — there is no data to surface.
     return {};
   }
 }

@@ -6,6 +6,7 @@
  */
 
 import { MESSAGE_SOURCE_AGENT_GREETING } from "@elizaos/core";
+import { logger } from "@elizaos/logger";
 import { type MutableRefObject, useCallback, useEffect, useRef } from "react";
 import type {
   ChatTurnStatus,
@@ -1028,7 +1029,15 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
           });
           void client
             .deleteConversation(previousConversationId)
-            .catch(() => {});
+            .catch((err) => {
+              // error-policy:J6 best-effort reap of an empty draft; the
+              // server-side cleanupEmptyConversations({ keepId }) sweep is the
+              // backstop. Surface the failure rather than swallow it silently.
+              logger.warn(
+                { err, conversationId: previousConversationId },
+                "[useChatCallbacks] failed to delete replaced draft conversation",
+              );
+            });
         }
         void client
           .cleanupEmptyConversations({ keepId: conversation.id })
@@ -1044,7 +1053,15 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
               return next;
             });
           })
-          .catch(() => {});
+          .catch((err) => {
+            // error-policy:J6 best-effort empty-conversation sweep; failure
+            // leaves harmless orphan drafts reaped on the next sweep. Surface
+            // it rather than swallow it silently.
+            logger.warn(
+              { err },
+              "[useChatCallbacks] cleanupEmptyConversations failed",
+            );
+          });
       } catch {
         setActiveConversationId(previousConversationId);
         activeConversationIdRef.current = previousConversationId;
@@ -1119,7 +1136,15 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
           !hasUserMessage &&
           prevMessages.length <= 1
         ) {
-          void client.deleteConversation(prevId).catch(() => {});
+          void client.deleteConversation(prevId).catch((err) => {
+            // error-policy:J6 best-effort reap of an empty draft on switch; the
+            // server-side cleanupEmptyConversations({ keepId }) sweep is the
+            // backstop. Surface the failure rather than swallow it silently.
+            logger.warn(
+              { err, conversationId: prevId },
+              "[useChatCallbacks] failed to delete empty draft on select",
+            );
+          });
           // The draft is gone — drop its persisted composer text too so it
           // can't resurface or bleed into the next conversation's draft.
           clearChatDraft(prevId);
