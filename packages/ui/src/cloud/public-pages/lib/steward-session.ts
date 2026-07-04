@@ -78,6 +78,29 @@ export async function syncStewardSessionCookie(
 }
 
 /**
+ * Non-destructively detect whether the current URL is an OAuth/token callback
+ * (`?code=`, `#code=`, `?token=`, or `#token=`, including a snapshotted
+ * `__stewardOAuthHash`). Unlike the `consume*` helpers this does NOT strip
+ * anything from history — it only peeks — so it is safe to call from a render
+ * pass to gate the UI into a "completing sign-in" state while the async
+ * exchange runs. Without this gate the login section renders the full provider
+ * options during the exchange round-trip, which reads as the login flashing
+ * back to the sign-in options after a successful callback.
+ */
+export function hasStewardOAuthCallbackInUrl(): boolean {
+  if (typeof window === "undefined") return false;
+
+  const query = new URLSearchParams(window.location.search);
+  if (query.get("code") || query.get("token")) return true;
+
+  const stewardWindow = window as Window & { __stewardOAuthHash?: string };
+  const hash = stewardWindow.__stewardOAuthHash || window.location.hash;
+  if (!hash || hash.length < 2) return false;
+  const hashParams = new URLSearchParams(hash.replace(/^#/, ""));
+  return Boolean(hashParams.get("code") || hashParams.get("token"));
+}
+
+/**
  * Read the one-time OAuth code from `?code=` or `#code=` (nonce-exchange flow).
  * Strips it from history immediately so it can't leak via history / shared URLs,
  * then returns it. Null when no code is present.
