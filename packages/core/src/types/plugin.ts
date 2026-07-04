@@ -1203,6 +1203,21 @@ export interface Plugin {
 	/** Remote-mode configuration. Required when {@link Plugin.mode} is `"remote"`. */
 	remote?: RemotePluginConfig;
 
+	/**
+	 * Optional pre-initialization hook invoked by the plugin resolver once the
+	 * plugin module has loaded, before `init` runs. Use it to prepare a
+	 * plugin-owned load-time dependency that must exist before the plugin's
+	 * services start — for example linking or building a companion binary the
+	 * plugin's own service spawns lazily later.
+	 *
+	 * The resolver calls this generically for every plugin that declares it, so
+	 * package-specific preparation lives with the plugin instead of a name-keyed
+	 * branch in the resolver. A missing optional dependency should degrade (log
+	 * and return) rather than throw: `preflight` prepares, it does not gate the
+	 * load. Reserve throwing for a genuinely fatal precondition.
+	 */
+	preflight?: () => Promise<void> | void;
+
 	// Initialize plugin with runtime services
 	init?: (
 		config: Record<string, string>,

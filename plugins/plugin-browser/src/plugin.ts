@@ -33,6 +33,7 @@ import {
 } from "./routes/bridge.js";
 import { browserWorkspaceRoutes } from "./routes/workspace-setup.js";
 import { browserBridgeSchema } from "./schema.js";
+import { preflightStagehandServer } from "./targets/stagehand-target.js";
 
 function json(res: http.ServerResponse, data: unknown, status = 200): void {
   httpSendJson(res, data, status);
@@ -243,6 +244,9 @@ export const browserPlugin: Plugin = {
   routes: [...browserBridgePluginRoutes, ...browserWorkspaceRoutes],
   services: [BrowserService as ServiceClass],
   providers: [browserWorkspaceProvider],
+  // Prepare the optional local stagehand-server before services start. Owned
+  // here so the resolver no longer special-cases this plugin by name (#12665).
+  preflight: () => preflightStagehandServer(),
   actions: [
     ...promoteSubactionsToActions(browserAction),
     ...promoteSubactionsToActions(manageBrowserBridgeAction),

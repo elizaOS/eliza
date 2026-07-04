@@ -61,11 +61,11 @@ export {
   PROVIDER_PLUGIN_MAP,
 } from "./plugin-collector.ts";
 
+import { STATIC_ELIZA_PLUGIN_LOADERS } from "./plugin-types.ts";
+
 export {
   CUSTOM_PLUGINS_DIRNAME,
   EJECTED_PLUGINS_DIRNAME,
-  ensureBrowserServerLink,
-  findPluginBrowserStagehandDir,
   findRuntimePluginExport,
   mergeDropInPlugins,
   type PluginModuleShape,
@@ -436,6 +436,14 @@ const BLOCKING_STATIC_PLUGIN_LOADERS: Readonly<
     load: () => getPluginLocalEmbedding(),
   },
 };
+
+// Expose the required SQL loader to the resolver as a generic bundle-inlined
+// fallback. On mobile the static registry can be empty when loadSinglePlugin
+// runs first (Bun.build TLA scheduling), and there is no node_modules tree to
+// dynamic-import from. Registering the memoized loader here — keyed by name in a
+// shared map — lets the resolver recover without a `=== "@elizaos/plugin-sql"`
+// branch. Ownership of the fallback stays with this loader table (#12665).
+STATIC_ELIZA_PLUGIN_LOADERS["@elizaos/plugin-sql"] = () => getPluginSql();
 
 function buildBlockingStaticRegistrations(): CoreStaticPluginRegistration[] {
   return BLOCKING_CORE_PLUGINS.map((packageName) => {

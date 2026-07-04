@@ -48,7 +48,6 @@ import {
 import {
   CUSTOM_PLUGINS_DIRNAME,
   EJECTED_PLUGINS_DIRNAME,
-  ensureBrowserServerLink,
   findRuntimePluginExport,
   mergeDropInPlugins,
   type PluginModuleShape,
@@ -56,6 +55,7 @@ import {
   repairBrokenInstallRecord,
   resolveElizaPluginImportSpecifier,
   resolvePackageEntry,
+  STATIC_ELIZA_PLUGIN_LOADERS,
   STATIC_ELIZA_PLUGINS,
   scanDropInPlugins,
 } from "./plugin-types.ts";
@@ -1830,32 +1830,6 @@ export async function resolvePlugins(
         );
       };
 
-    // Pre-flight: opportunistically prepare special plugin dependencies.
-    // For plugin-browser, stagehand-server is only needed by the optional
-    // `stagehand` backend. The app workspace and Chrome/Safari bridge backends
-    // do not require it, and native mobile should prefer the app browser
-    // surface anyway.
-    if (pluginName === "@elizaos/plugin-browser") {
-      if (!ensureBrowserServerLink()) {
-        const platform = (
-          process.env.ELIZA_MOBILE_PLATFORM ??
-          process.env.ELIZA_PLATFORM ??
-          process.env.CAPACITOR_PLATFORM ??
-          ""
-        ).toLowerCase();
-        const mobile =
-          platform === "ios" || platform === "android" || platform === "mobile";
-        const message =
-          "[eliza] plugin-browser: stagehand-server binary not found — loading app workspace and bridge browser backends anyway. " +
-          "The optional `stagehand` fallback will stay disabled until plugins/plugin-browser/stagehand-server is built or a STAGEHAND_SERVER_URL is configured.";
-        if (mobile) {
-          logger.debug(`${message} Native mobile prefers the app browser.`);
-        } else {
-          logger.info(message);
-        }
-      }
-    }
-
     try {
       let mod: PluginModuleShape;
 
@@ -1874,16 +1848,15 @@ export async function resolvePlugins(
         // This keeps local node_modules links working while avoiding staging
         // bugs in workspace packages with nested symlinked dependencies.
         mod = staticElizaPlugin as PluginModuleShape;
-      } else if (pluginName === "@elizaos/plugin-sql") {
-        // Mobile bundles run without a node_modules tree. The static plugin
-        // registry is the normal fast path, but use a literal import fallback
-        // so Bun can still inline the required SQL plugin if module init order
-        // leaves the registry empty.
-        const sqlPluginModule = await import(
-          /* @vite-ignore */ "@elizaos/plugin-sql"
-        );
+      } else if (STATIC_ELIZA_PLUGIN_LOADERS[pluginName]) {
+        // Mobile bundles run without a node_modules tree. The static registry is
+        // the normal fast path, but a Bun.build TLA scheduling quirk can dispatch
+        // this load before `ensureCoreStaticPluginsRegistered()` has populated it.
+        // The declaring loader table in eliza.ts registers a memoized fallback
+        // loader here so we recover generically — no per-plugin name branch.
+        const loadedModule = await STATIC_ELIZA_PLUGIN_LOADERS[pluginName]();
         mod = Object.fromEntries(
-          Object.entries(sqlPluginModule),
+          Object.entries(loadedModule as Record<string, unknown>),
         ) as PluginModuleShape;
       } else if (workspaceOverridePath) {
         const shouldPreferRepoNodeModules =
@@ -1980,6 +1953,11 @@ export async function resolvePlugins(
       const pluginInstance = findRuntimePluginExport(mod);
 
       if (pluginInstance) {
+        // Generic pre-init hook: a plugin owning a load-time dependency (e.g.
+        // plugin-browser's optional stagehand-server) prepares it here, before
+        // its services start. Runs for every plugin that declares `preflight`,
+        // so the resolver no longer special-cases any plugin by name (#12665).
+        await pluginInstance.preflight?.();
         // Wrap the plugin's init function with an error boundary.
         // Core plugins re-throw on init failure; optional plugins degrade gracefully.
         const wrappedPlugin = wrapPluginWithErrorBoundary(

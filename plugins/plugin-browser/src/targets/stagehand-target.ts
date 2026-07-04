@@ -30,6 +30,37 @@ const STAGEHAND_BASE_URL_ENV = [
 const STAGEHAND_AUTO_SETUP_ENV = "ELIZA_BROWSER_STAGEHAND_AUTO_SETUP";
 const STAGEHAND_ALLOW_MOBILE_ENV = "ELIZA_BROWSER_ALLOW_STAGEHAND_ON_MOBILE";
 
+/**
+ * Prepare the optional local stagehand-server before the browser service starts.
+ *
+ * Registered as `browserPlugin.preflight`; the plugin resolver invokes it
+ * generically at load time. The stagehand backend is optional — the app
+ * workspace and Chrome/Safari bridge backends do not need it — so a missing or
+ * unbuildable server degrades with a log line and never blocks the load. The
+ * server is also discovered/built lazily by {@link maybeCreateStagehandTarget}
+ * on first use; running the same preparation here surfaces the "stagehand
+ * unavailable" notice at boot instead of on the first browser command.
+ */
+export function preflightStagehandServer(
+  env: NodeJS.ProcessEnv = process.env,
+): void {
+  if (isDisabled(env.ELIZA_BROWSER_STAGEHAND_ENABLED)) return;
+  if (isDisabled(env[STAGEHAND_AUTO_SETUP_ENV])) return;
+
+  if (ensureLocalStagehandServer(env)) return;
+
+  const message =
+    "[BrowserService] stagehand-server not available — the app workspace and " +
+    "Chrome/Safari bridge browser backends load anyway. The optional stagehand " +
+    "fallback stays disabled until plugins/plugin-browser/stagehand-server is " +
+    "built or a STAGEHAND_SERVER_URL is configured.";
+  if (isMobileRuntime(env)) {
+    logger.debug(`${message} Native mobile prefers the app browser.`);
+  } else {
+    logger.info(message);
+  }
+}
+
 export async function maybeCreateStagehandTarget(
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<BrowserTarget | null> {

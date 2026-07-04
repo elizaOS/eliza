@@ -7,14 +7,12 @@
  * @module plugin-types
  */
 import type { Dirent } from "node:fs";
-import { existsSync, symlinkSync } from "node:fs";
+import { existsSync } from "node:fs";
 import fs from "node:fs/promises";
-import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-import { logger, type Plugin } from "@elizaos/core";
-import { formatError } from "@elizaos/shared";
+import type { Plugin } from "@elizaos/core";
 
 import type { ElizaConfig } from "../config/config.ts";
 import type { PluginInstallRecord } from "../config/types.eliza.ts";
@@ -51,6 +49,23 @@ export interface PluginModuleShape {
  * circular dependency.
  */
 export const STATIC_ELIZA_PLUGINS: Record<string, unknown> = {};
+
+/**
+ * On-demand loaders for statically-bundled plugins, keyed by registry name.
+ *
+ * `STATIC_ELIZA_PLUGINS` is normally populated ahead of resolution by
+ * `ensureCoreStaticPluginsRegistered()` in eliza.ts. But a Bun.build TLA
+ * scheduling quirk can dispatch `loadSinglePlugin(name)` before that registration
+ * has run, leaving the entry undefined in the mobile bundle. eliza.ts registers a
+ * memoized loader here for each such plugin; the resolver consults this map
+ * generically when `STATIC_ELIZA_PLUGINS[name]` is empty, instead of branching on
+ * a literal plugin name. Ownership of *which* plugins have a bundle-inlined
+ * fallback stays with the declaring loader table in eliza.ts.
+ */
+export const STATIC_ELIZA_PLUGIN_LOADERS: Record<
+  string,
+  () => Promise<unknown>
+> = {};
 
 /** Subdirectory under the Eliza state dir for drop-in custom plugins. */
 export const CUSTOM_PLUGINS_DIRNAME = "plugins/custom";
@@ -216,114 +231,6 @@ export function resolveElizaPluginImportSpecifier(
   const indexPath = path.resolve(distRoot, "plugins", shortName, "index.js");
 
   return existsSync(indexPath) ? pathToFileURL(indexPath).href : pluginName;
-}
-
-export function findPluginBrowserStagehandDir(startDir: string): string | null {
-  let dir = path.resolve(startDir);
-  for (let depth = 0; depth < 14; depth++) {
-    const candidate = path.join(
-      dir,
-      "plugins",
-      "plugin-browser",
-      "stagehand-server",
-    );
-    const distIndex = path.join(candidate, "dist", "index.js");
-    const srcEntry = path.join(candidate, "src", "index.ts");
-    if (existsSync(distIndex) || existsSync(srcEntry)) {
-      return candidate;
-    }
-    const parent = path.dirname(dir);
-    if (parent === dir) break;
-    dir = parent;
-  }
-  return null;
-}
-
-/**
- * `@elizaos/plugin-browser` expects `dist/server/` with the stagehand binary
- * tree inside the npm package, but the published tarball does not ship it.
- * When missing, symlink to a repo checkout at `plugins/plugin-browser/stagehand-server`
- * (discovered via {@link findPluginBrowserStagehandDir}) so the plugin's
- * process-manager can spawn the server.
- *
- * **Why:** Without the symlink, browser automation fails at runtime even when
- * the user built stagehand locally -- the plugin only looks under its package root.
- *
- * @returns `true` when `dist/server` already resolves or symlink succeeded.
- */
-export function ensureBrowserServerLink(): boolean {
-  try {
-    // Resolve the plugin-browser package root via its package.json.
-    const req = createRequire(import.meta.url);
-    const pkgJsonPath = req.resolve("@elizaos/plugin-browser/package.json");
-    const pluginRoot = path.dirname(pkgJsonPath);
-    const serverDir = path.join(pluginRoot, "dist", "server");
-    const serverIndex = path.join(serverDir, "dist", "index.js");
-
-    // Already linked / available -- nothing to do.
-    if (existsSync(serverIndex)) return true;
-
-    const thisDir = path.dirname(fileURLToPath(import.meta.url));
-    const stagehandDir = findPluginBrowserStagehandDir(thisDir);
-    if (!stagehandDir) {
-      logger.debug(
-        "[eliza] plugin-browser: no stagehand-server under plugins/plugin-browser — " +
-          "run node scripts/link-browser-server.mjs or add the plugin checkout",
-      );
-      return false;
-    }
-    const stagehandIndex = path.join(stagehandDir, "dist", "index.js");
-
-    // Auto-build if source exists but dist doesn't
-    if (
-      !existsSync(stagehandIndex) &&
-      existsSync(path.join(stagehandDir, "src", "index.ts"))
-    ) {
-      logger.info(
-        `[eliza] Stagehand server not built — attempting auto-build...`,
-      );
-      try {
-        const cp = createRequire(import.meta.url)(
-          "node:child_process",
-        ) as typeof import("node:child_process");
-        if (!existsSync(path.join(stagehandDir, "node_modules"))) {
-          cp.execSync("bun install --ignore-scripts", {
-            cwd: stagehandDir,
-            stdio: "ignore",
-            timeout: 60_000,
-          });
-        }
-        // Prefer local tsc binary, fall back to bunx
-        const localTsc = path.join(stagehandDir, "node_modules", ".bin", "tsc");
-        const tscCmd = existsSync(localTsc) ? localTsc : "bunx tsc";
-        cp.execSync(tscCmd, {
-          cwd: stagehandDir,
-          stdio: "ignore",
-          timeout: 60_000,
-        });
-        logger.info(`[eliza] Stagehand server built successfully`);
-      } catch (buildErr) {
-        logger.debug(`[eliza] Auto-build failed: ${formatError(buildErr)}`);
-      }
-    }
-
-    if (!existsSync(stagehandIndex)) {
-      logger.debug(
-        "[eliza] plugin-browser: stagehand-server present but dist/index.js missing — build it",
-      );
-      return false;
-    }
-
-    // Create symlink: dist/server -> stagehand-server
-    symlinkSync(stagehandDir, serverDir, "dir");
-    logger.info(
-      `[eliza] Linked browser server: ${serverDir} -> ${stagehandDir}`,
-    );
-    return true;
-  } catch (err) {
-    logger.debug(`[eliza] Could not link browser server: ${formatError(err)}`);
-    return false;
-  }
 }
 
 /** @internal Exported for testing. */
