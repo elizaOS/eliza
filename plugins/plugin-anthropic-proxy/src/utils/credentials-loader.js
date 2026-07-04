@@ -23,6 +23,8 @@ function jwtExpiresAt(token) {
         if (parts.length < 2)
             return 0;
         const payload = parts[1];
+        if (!payload)
+            return 0;
         // base64url -> base64
         const b64 = payload.replace(/-/g, "+").replace(/_/g, "/");
         const padded = b64 + "=".repeat((4 - (b64.length % 4)) % 4);
@@ -52,9 +54,7 @@ export function loadCredentials(opts = {}) {
     candidates.push(join(home, ".claude", ".credentials.json"));
     candidates.push(join(home, ".claude", "credentials.json"));
     for (const candidate of candidates) {
-        const resolved = candidate.startsWith("~")
-            ? join(home, candidate.slice(1))
-            : candidate;
+        const resolved = candidate.startsWith("~") ? join(home, candidate.slice(1)) : candidate;
         try {
             if (existsSync(resolved) && statSync(resolved).size > 0) {
                 let raw = readFileSync(resolved, "utf8");
@@ -62,7 +62,7 @@ export function loadCredentials(opts = {}) {
                     raw = raw.slice(1);
                 const parsed = JSON.parse(raw);
                 const oauth = parsed.claudeAiOauth;
-                if (!oauth || !oauth.accessToken) {
+                if (!oauth?.accessToken) {
                     return {
                         creds: null,
                         error: `credentials file ${resolved} missing claudeAiOauth.accessToken`,

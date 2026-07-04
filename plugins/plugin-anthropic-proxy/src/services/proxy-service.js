@@ -86,8 +86,7 @@ function readSystemPromptStrip(value) {
         throw new Error("systemPromptStrip requires non-empty start, end, and paraphrase strings");
     }
     const minStripLen = record.minStripLen === undefined ? undefined : Number(record.minStripLen);
-    if (minStripLen !== undefined &&
-        (!Number.isFinite(minStripLen) || minStripLen < 0)) {
+    if (minStripLen !== undefined && (!Number.isFinite(minStripLen) || minStripLen < 0)) {
         throw new Error("systemPromptStrip.minStripLen must be a non-negative number");
     }
     return {
@@ -176,9 +175,6 @@ export class AnthropicProxyService extends Service {
     effectiveMode = "off";
     effectiveUrl = null;
     startError = null;
-    constructor(runtime) {
-        super(runtime);
-    }
     static async start(runtime) {
         const service = new AnthropicProxyService(runtime);
         const config = resolveConfig();
