@@ -1,0 +1,24 @@
+# MoonCycles CoreDevice capabilities over the wireless (localNetwork) tunnel
+# Captured 2026-07-04T17:41:30Z. Device UDID 00008140-0006491E2E90801C (iPhone 16 Pro Max, iOS 18.7.8).
+# transportType: localNetwork (WiFi) — NO USB cable present (system_profiler SPUSBDataType shows no iPhone).
+
+## PRESENT (lifecycle-control primitives the wireless tunnel exposes):
+    • Device Orientation (com.apple.coredevice.feature.remote.devicecontrol.orientation)
+    • Get Display Information (com.apple.coredevice.feature.getdisplayinfo)
+    • Get Lock State (com.apple.coredevice.feature.getlockstate)
+    • HID Button (com.apple.coredevice.feature.remote.hid.button)
+    • HID Digitizer (com.apple.coredevice.feature.remote.hid.digitizer)
+    • HID Keyboard (com.apple.coredevice.feature.remote.hid.keyboard)
+    • HID Scroll (com.apple.coredevice.feature.remote.hid.scroll)
+    • Launch Application (com.apple.coredevice.feature.launchapplication)
+    • Monitor Process for Termination (com.apple.coredevice.feature.monitorprocesstermination)
+    • Process Control (com.apple.coredevice.feature.processcontrol)
+    • Reboot Device (com.apple.coredevice.feature.rebootdevice)
+    • Send Memory Warning to Process (com.apple.coredevice.feature.sendmemorywarningtoprocess)
+    • Send Signal to Process (com.apple.coredevice.feature.sendsignaltoprocess)
+    • Start Media Stream (com.apple.coredevice.feature.startmediastream)
+    • Start Video Output (com.apple.coredevice.feature.startvideooutput)
+    • Uninstall Application (com.apple.coredevice.feature.uninstallapp)
+
+## ABSENT over wireless (the blocker): com.apple.coredevice.feature.installapp — 'Install Application'
+## devicectl install error was: CoreDeviceError 1001 (0x3E9) CapabilityFeatureIdentifier=com.apple.coredevice.feature.installapp
