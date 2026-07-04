@@ -1580,23 +1580,32 @@ export async function startEliza(
         throw apiErr;
       }
 
-      // WHY: `startApiServer` may bind a different port than requested (busy
-      // socket, upstream policy). Shells, scripts, and follow-up code reading
-      // env must match the real listener or health checks and user-facing URLs
-      // disagree with `GET /api/health`.
-      syncResolvedApiPort(process.env, actualApiPort, {
-        overwriteUiPort: true,
-      });
-      // Invalidate cached CORS port set so the new port is allowed.
-      // server-cors is statically imported at the top of this module — the
-      // previous dynamic import was INEFFECTIVE_DYNAMIC_IMPORT.
-      invalidateCorsAllowedPorts();
+      if (!skipApiListen) {
+        // WHY: `startApiServer` may bind a different port than requested (busy
+        // socket, upstream policy). Shells, scripts, and follow-up code reading
+        // env must match the real listener or health checks and user-facing URLs
+        // disagree with `GET /api/health`. In local-agent IPC mode no port is
+        // bound, so syncing env to `actualApiPort` (a never-bound port) or
+        // emitting a "listening on http://…" URL would be a lie.
+        syncResolvedApiPort(process.env, actualApiPort, {
+          overwriteUiPort: true,
+        });
+        // Invalidate cached CORS port set so the new port is allowed.
+        // server-cors is statically imported at the top of this module — the
+        // previous dynamic import was INEFFECTIVE_DYNAMIC_IMPORT.
+        invalidateCorsAllowedPorts();
 
-      logger.info(
-        `[eliza] API server listening on http://localhost:${actualApiPort} (agent booting…)`,
-      );
-      console.log(`[eliza] Control UI: http://localhost:${actualApiPort}`);
-      bootLap("startEliza:API bound (webview can connect, ready:false)");
+        logger.info(
+          `[eliza] API server listening on http://localhost:${actualApiPort} (agent booting…)`,
+        );
+        console.log(`[eliza] Control UI: http://localhost:${actualApiPort}`);
+        bootLap("startEliza:API bound (webview can connect, ready:false)");
+      } else {
+        logger.info(
+          "[eliza] Local-agent IPC mode: route kernel ready (no TCP listener bound)",
+        );
+        bootLap("startEliza:route kernel ready (IPC mode, no TCP bind)");
+      }
 
       // Now boot the runtime; the API is already reachable (state "starting"),
       // so the UI is connecting + hydrating while this runs, then flips to
