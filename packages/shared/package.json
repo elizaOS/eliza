@@ -73,6 +73,16 @@
       "import": "./dist/config/allowed-hosts.js",
       "default": "./dist/config/allowed-hosts.js"
     },
+    "./config/brand-env-aliases": {
+      "types": "./dist/config/brand-env-aliases.d.ts",
+      "eliza-source": {
+        "types": "./src/config/brand-env-aliases.ts",
+        "import": "./src/config/brand-env-aliases.ts",
+        "default": "./src/config/brand-env-aliases.ts"
+      },
+      "import": "./dist/config/brand-env-aliases.js",
+      "default": "./dist/config/brand-env-aliases.js"
+    },
     "./dev-settings-banner-style": {
       "types": "./dist/dev-settings-banner-style.d.ts",
       "import": "./dist/dev-settings-banner-style.js",

@@ -5,6 +5,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { getBootConfig, setBootConfig } from "../config/boot-config.js";
+import { buildBrandEnvAliases } from "../config/brand-env-aliases.js";
 import {
   DEFAULT_APP_ROUTE_PLUGIN_MODULES,
   isEnvDisabled,
@@ -53,6 +54,12 @@ describe("readAliasedEnv (non-ELIZA brand, zero-mutation resolution)", () => {
     [`${BRAND}_HOME_PORT`, "ELIZA_HOME_PORT"],
     [`${BRAND}_GATEWAY_PORT`, "ELIZA_GATEWAY_PORT"],
     [`${BRAND}_ALLOWED_ORIGINS`, "ELIZA_ALLOWED_ORIGINS"],
+    [`${BRAND}_ALLOWED_HOSTS`, "ELIZA_ALLOWED_HOSTS"],
+    [`${BRAND}_DISABLE_AUTO_API_TOKEN`, "ELIZA_DISABLE_AUTO_API_TOKEN"],
+    [`${BRAND}_ALLOW_WS_QUERY_TOKEN`, "ELIZA_ALLOW_WS_QUERY_TOKEN"],
+    [`${BRAND}_PAIRING_DISABLED`, "ELIZA_PAIRING_DISABLED"],
+    [`${BRAND}_WALLET_EXPORT_TOKEN`, "ELIZA_WALLET_EXPORT_TOKEN"],
+    [`${BRAND}_TERMINAL_RUN_TOKEN`, "ELIZA_TERMINAL_RUN_TOKEN"],
   ];
   const tracked = pairs.flat();
   const savedEnv: Record<string, string | undefined> = {};
@@ -92,6 +99,22 @@ describe("readAliasedEnv (non-ELIZA brand, zero-mutation resolution)", () => {
     expect(readAliasedEnv("ELIZA_ALLOWED_ORIGINS")).toBe(
       "https://acme.example",
     );
+  });
+
+  it("resolves previously-divergent security aliases from branded keys", () => {
+    process.env[`${BRAND}_ALLOWED_HOSTS`] = "acme.example";
+    process.env[`${BRAND}_DISABLE_AUTO_API_TOKEN`] = "1";
+    process.env[`${BRAND}_ALLOW_WS_QUERY_TOKEN`] = "1";
+    process.env[`${BRAND}_PAIRING_DISABLED`] = "1";
+    process.env[`${BRAND}_WALLET_EXPORT_TOKEN`] = "wallet-token";
+    process.env[`${BRAND}_TERMINAL_RUN_TOKEN`] = "terminal-token";
+
+    expect(readAliasedEnv("ELIZA_ALLOWED_HOSTS")).toBe("acme.example");
+    expect(readAliasedEnv("ELIZA_DISABLE_AUTO_API_TOKEN")).toBe("1");
+    expect(readAliasedEnv("ELIZA_ALLOW_WS_QUERY_TOKEN")).toBe("1");
+    expect(readAliasedEnv("ELIZA_PAIRING_DISABLED")).toBe("1");
+    expect(readAliasedEnv("ELIZA_WALLET_EXPORT_TOKEN")).toBe("wallet-token");
+    expect(readAliasedEnv("ELIZA_TERMINAL_RUN_TOKEN")).toBe("terminal-token");
   });
 
   it("performs zero alias writes to process.env while resolving", () => {
@@ -194,6 +217,41 @@ describe("syncElizaEnvAliases", () => {
       expect(process.env.ELIZA_APP_ROUTE_PLUGIN_MODULES).toBe(
         DEFAULT_APP_ROUTE_PLUGIN_MODULES.join(","),
       );
+    } finally {
+      for (const [key, value] of previous) {
+        if (value === undefined) {
+          delete process.env[key];
+        } else {
+          process.env[key] = value;
+        }
+      }
+    }
+  });
+
+  it("materializes every canonical brand alias target from the shared table", () => {
+    const aliases = buildBrandEnvAliases("BRAND");
+    const defaultedKeys = [
+      "ELIZA_CLOUD_MANAGED_AGENTS_API_SEGMENT",
+      "ELIZA_APP_ROUTE_PLUGIN_MODULES",
+    ];
+    const tracked = Array.from(new Set([...aliases.flat(), ...defaultedKeys]));
+    const previous = new Map(
+      tracked.map((key) => [key, process.env[key]] as const),
+    );
+
+    try {
+      for (const key of tracked) {
+        delete process.env[key];
+      }
+      for (const [from] of aliases) {
+        process.env[from] = `${from}-value`;
+      }
+
+      syncElizaEnvAliases({ brandedPrefix: "BRAND" });
+
+      for (const [from, to] of aliases) {
+        expect(process.env[to]).toBe(`${from}-value`);
+      }
     } finally {
       for (const [key, value] of previous) {
         if (value === undefined) {

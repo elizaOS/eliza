@@ -33,6 +33,7 @@ export * from "./config/boot-config.js";
 // from the package root because they pull in React at module load time.
 // This keeps node-side benchmark / agent boot paths React-free.
 export * from "./config/boot-config-store.js";
+export * from "./config/brand-env-aliases.js";
 export * from "./config/branding.js";
 export * from "./config/cloud-only.js";
 export * from "./config/config.js";
