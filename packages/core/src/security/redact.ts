@@ -477,7 +477,7 @@ function redactLogArg(
 	}
 	const result: Record<string, unknown> = {};
 	for (const [key, entry] of Object.entries(value)) {
-		if (isSensitiveKeyName(key) && typeof entry === "string") {
+		if (isSensitiveKeyName(key)) {
 			result[key] = REDACTED_MASK;
 			continue;
 		}

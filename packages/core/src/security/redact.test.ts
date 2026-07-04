@@ -193,6 +193,19 @@ describe("redactLogArgs (log-sink redaction, not opt-in)", () => {
 		expect(JSON.stringify(ctx)).toContain("[REDACTED]");
 	});
 
+	it("masks the whole value under a credential-named key, even when it is not a string", () => {
+		const [ctx] = redactLogArgs([
+			{
+				authorization: {
+					scheme: "Bearer",
+					value: "nested-supersecret-value",
+				},
+			},
+		]) as [Record<string, unknown>];
+		expect(ctx.authorization).toBe("[REDACTED]");
+		expect(JSON.stringify(ctx)).not.toContain("nested-supersecret-value");
+	});
+
 	it("scrubs a secret interpolated into an Error message", () => {
 		const [err] = redactLogArgs([
 			new Error("failed with token=sk-abcdefghijklmnop1234"),
