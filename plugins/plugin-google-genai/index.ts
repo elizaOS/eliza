@@ -81,6 +81,7 @@ const pluginTests = [
               throw new Error("Failed to generate embedding");
             }
           } catch (error) {
+            // error-policy:J2 context-adding rethrow — log the failing self-test, rethrow.
             logger.error(
               `Error in test_text_embedding: ${error instanceof Error ? error.message : String(error)}`,
             );
@@ -100,6 +101,7 @@ const pluginTests = [
             }
             logger.log("Generated with TEXT_SMALL:", text);
           } catch (error) {
+            // error-policy:J2 context-adding rethrow — log the failing self-test, rethrow.
             logger.error(
               `Error in test_text_small: ${error instanceof Error ? error.message : String(error)}`,
             );
@@ -122,6 +124,7 @@ const pluginTests = [
               `${text.substring(0, 100)}...`,
             );
           } catch (error) {
+            // error-policy:J2 context-adding rethrow — log the failing self-test, rethrow.
             logger.error(
               `Error in test_text_large: ${error instanceof Error ? error.message : String(error)}`,
             );
@@ -151,6 +154,7 @@ const pluginTests = [
               );
             }
           } catch (error) {
+            // error-policy:J2 context-adding rethrow — log the failing self-test, rethrow.
             logger.error(
               `Error in test_image_description: ${error instanceof Error ? error.message : String(error)}`,
             );
@@ -183,6 +187,7 @@ const pluginTests = [
               throw new Error("Generated structured output is empty");
             }
           } catch (error) {
+            // error-policy:J2 context-adding rethrow — log the failing self-test, rethrow.
             logger.error(
               `Error in test_structured_output_via_text_large: ${error instanceof Error ? error.message : String(error)}`,
             );

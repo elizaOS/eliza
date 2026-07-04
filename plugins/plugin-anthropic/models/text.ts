@@ -1021,6 +1021,9 @@ async function generateTextWithModel(
   if (params.stream && !streamDisabled && !paramsWithAttachments.responseSchema) {
     try {
       const streamResult = streamText(generateParams);
+      // error-policy:J5 unhandled-rejection suppression — provider metadata is
+      // usage-normalization enrichment only; the underlying stream failure is
+      // observed in `textStreamWithUsage` (finishReason await rethrows).
       const providerMetadataPromise: Promise<unknown> = Promise.resolve(
         (streamResult as { providerMetadata?: PromiseLike<unknown> }).providerMetadata
       ).catch((): undefined => undefined);
@@ -1039,6 +1042,9 @@ async function generateTextWithModel(
         const providerMetadata = await providerMetadataPromise;
         return normalizeAnthropicUsage(usage as AnthropicUsageWithCache, providerMetadata);
       });
+      // error-policy:J5 unhandled-rejection suppression — usage emission is
+      // telemetry; the underlying stream failure is observed in
+      // `textStreamWithUsage` (finishReason await rethrows), never here.
       const ignoreUsageError = (): undefined => undefined;
       async function* textStreamWithUsage(): AsyncIterable<string> {
         let completed = false;
@@ -1055,6 +1061,9 @@ async function generateTextWithModel(
           await streamResult.finishReason;
           completed = true;
         } catch (error) {
+          // error-policy:J2 context-adding rethrow — formatModelError wraps the
+          // provider error with `cause`; an errored/empty stream surfaces to
+          // the consumer instead of silently yielding "".
           throw formatModelError(operationName, error);
         } finally {
           if (completed) {
@@ -1062,12 +1071,13 @@ async function generateTextWithModel(
           }
         }
       }
-      // The streaming path primarily consumes `textStream`. The AI SDK's
-      // companion promises (text/toolCalls/finishReason/usage) reject on an
-      // empty stream ("No output generated") even when no caller awaits them,
-      // which otherwise surfaces as an unhandled rejection. Attach a no-op catch
-      // so each bare promise is always considered handled; real consumers still
-      // observe the value or error. Mirrors plugin-openai's `handledPromise`.
+      // error-policy:J5 unhandled-rejection suppression — the streaming path
+      // primarily consumes `textStream`. The AI SDK's companion promises
+      // (text/toolCalls/finishReason/usage) reject on an empty stream ("No
+      // output generated") even when no caller awaits them, which otherwise
+      // surfaces as an unhandled rejection. Attach a no-op catch so each bare
+      // promise is always considered handled; real consumers still observe the
+      // value or error. Mirrors plugin-openai's `handledPromise`.
       const handledPromise = <T>(value: T | PromiseLike<T>): Promise<T> => {
         const promise = Promise.resolve(value);
         promise.catch(() => {});
@@ -1090,6 +1100,8 @@ async function generateTextWithModel(
         ),
       };
     } catch (error) {
+      // error-policy:J2 context-adding rethrow — formatModelError wraps the
+      // provider error with `cause` and a caller-facing reason.
       throw formatModelError(operationName, error);
     }
   }
@@ -1113,6 +1125,8 @@ async function generateTextWithModel(
 
     return response.text;
   } catch (error) {
+    // error-policy:J2 context-adding rethrow — formatModelError wraps the
+    // provider error with `cause` and a caller-facing reason.
     throw formatModelError(operationName, error);
   }
 }

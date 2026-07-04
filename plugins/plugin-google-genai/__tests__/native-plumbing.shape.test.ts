@@ -15,6 +15,22 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@elizaos/core", () => ({
+  ElizaError: class ElizaError extends Error {
+    code?: string;
+    context?: Record<string, unknown>;
+    constructor(
+      message: string,
+      options?: {
+        code?: string;
+        cause?: unknown;
+        context?: Record<string, unknown>;
+      },
+    ) {
+      super(message, { cause: options?.cause });
+      this.code = options?.code;
+      this.context = options?.context;
+    }
+  },
   buildCanonicalSystemPrompt: vi.fn(
     ({ character }) => `canonical:${character?.name ?? "unknown"}`,
   ),

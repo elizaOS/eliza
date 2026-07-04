@@ -86,6 +86,8 @@ export async function handleImageDescription(
       description: parseDescription(response.text),
     };
   } catch (error) {
+    // error-policy:J2 context-adding rethrow — formatModelError wraps the
+    // provider error with `cause`; never fabricate a { title, description }.
     logger.error(
       `[Anthropic] IMAGE_DESCRIPTION failed for ${modelName} ` +
         `(${sanitizeUrlForLogs(imageUrl)}): ${error instanceof Error ? error.message : String(error)}`

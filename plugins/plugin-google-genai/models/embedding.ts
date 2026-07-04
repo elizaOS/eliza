@@ -96,6 +96,8 @@ export async function handleTextEmbedding(
     logger.log(`Got embedding with length ${embedding.length}`);
     return embedding;
   } catch (error) {
+    // error-policy:J2 context-adding rethrow — never fabricate a vector; the
+    // provider failure surfaces to the caller (#9324: throw, never fabricate).
     logger.error(
       `Error generating embedding: ${error instanceof Error ? error.message : String(error)}`,
     );

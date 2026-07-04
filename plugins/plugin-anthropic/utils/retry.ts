@@ -64,7 +64,8 @@ function readProviderErrorMessage(error: unknown): string | undefined {
         return parsed.error.message.trim();
       }
     } catch {
-      // Fall through to the SDK error message.
+      // error-policy:J3 untrusted-input sanitizing — an unparseable provider
+      // error body falls through to the SDK error message; nothing is masked.
     }
   }
 
@@ -127,6 +128,9 @@ export async function executeWithRetry<T>(
     try {
       return await fn();
     } catch (error) {
+      // error-policy:J2 context-adding rethrow — transient errors are retried
+      // with backoff; non-retryable errors and exhausted attempts rethrow the
+      // original provider error unchanged. No failure is converted to a result.
       if (!isRetryableModelError(error) || attempt === config.maxRetries) {
         throw error;
       }
@@ -181,6 +185,8 @@ export function sanitizeUrlForLogs(url: string): string {
     const parsed = new URL(url);
     return `${parsed.origin}${parsed.pathname}`;
   } catch {
+    // error-policy:J3 untrusted-input sanitizing — "[invalid-url]" is the
+    // explicit invalid marker for log output, never a fabricated URL.
     return "[invalid-url]";
   }
 }

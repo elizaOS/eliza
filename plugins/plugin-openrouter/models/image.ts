@@ -83,6 +83,8 @@ export async function handleImageDescription(
       description: parseDescription(response.text),
     };
   } catch (error: unknown) {
+    // error-policy:J2 context-adding rethrow — never fabricate a description;
+    // the provider failure surfaces to the caller unchanged.
     const message = error instanceof Error ? error.message : String(error);
     logger.error(`Error describing image: ${message}`);
     throw error instanceof Error ? error : new Error(message);
@@ -118,6 +120,8 @@ export async function handleImageGeneration(
       caption: prompt,
     };
   } catch (error: unknown) {
+    // error-policy:J2 context-adding rethrow — never fabricate an image URL;
+    // the provider failure surfaces to the caller unchanged.
     const message = error instanceof Error ? error.message : String(error);
     logger.error(`Error generating image: ${message}`);
     throw error instanceof Error ? error : new Error(message);

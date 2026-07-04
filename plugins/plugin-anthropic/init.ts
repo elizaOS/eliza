@@ -53,6 +53,9 @@ export function initializeAnthropic(_config: PluginConfig, runtime: IAgentRuntim
         if (result?.exitCode !== 0) throw new Error("claude not found");
         logger.log("[Anthropic] CLI mode — using `claude -p` for all model calls");
       } catch {
+        // error-policy:J5 unhandled-rejection suppression — this preflight runs
+        // in a detached async block (init must not crash boot); a missing CLI
+        // rethrows observably at model-call time in utils/claude-cli.ts.
         logger.warn(
           "[Anthropic] CLI mode enabled but `claude` command not found. Install Claude Code: https://code.claude.com"
         );
@@ -73,6 +76,10 @@ export function initializeAnthropic(_config: PluginConfig, runtime: IAgentRuntim
           logger.log("[Anthropic] OAuth configured via CLAUDE_CODE_OAUTH_TOKEN env var");
         }
       } catch (error: unknown) {
+        // error-policy:J5 unhandled-rejection suppression — this preflight runs
+        // in a detached async block (init must not crash boot); the same
+        // credential failure rethrows observably when providers/anthropic.ts
+        // resolves the OAuth token for a real model call.
         const message = error instanceof Error ? error.message : String(error);
         logger.warn(
           `[Anthropic] OAuth credential issue: ${message} — ` +

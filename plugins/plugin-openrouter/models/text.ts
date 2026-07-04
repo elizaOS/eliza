@@ -527,6 +527,9 @@ function handleStreamingGeneration(
 
     return emitModelUsageEvent(runtime, modelType, prompt, usage, modelName, modelLabel);
   });
+  // error-policy:J5 unhandled-rejection suppression — usage emission is
+  // telemetry; the underlying stream failure is observed in
+  // `textStreamWithUsage` below (capturedStreamError rethrow), never here.
   const ignoreUsageError = (): undefined => undefined;
 
   async function* textStreamWithUsage(): AsyncIterable<string> {
@@ -536,6 +539,9 @@ function handleStreamingGeneration(
         yield chunk;
       }
       completed = true;
+      // error-policy:J2 context-adding rethrow — a rejected finishReason is
+      // captured and rethrown as the typed stream error just below; it is never
+      // swallowed into a healthy-empty stream.
       await Promise.resolve(streamResult.finishReason).catch((error) => {
         capturedStreamError ??= error;
       });

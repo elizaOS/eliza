@@ -120,6 +120,8 @@ export async function handleTextEmbedding(
 
     return embedding;
   } catch (error: unknown) {
+    // error-policy:J2 context-adding rethrow — never fabricate a vector; the
+    // provider failure surfaces to the caller (#9324: throw, never fabricate).
     const message = error instanceof Error ? error.message : String(error);
     logger.error(`Error generating embedding: ${message}`);
     throw error instanceof Error ? error : new Error(message);

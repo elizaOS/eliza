@@ -167,6 +167,7 @@ export const openrouterPlugin: Plugin = {
               }
               logger.log({ text }, "generated with test_text_small");
             } catch (error: unknown) {
+              // error-policy:J2 context-adding rethrow — log the failing self-test, rethrow.
               const message = error instanceof Error ? error.message : String(error);
               logger.error(`Error in test_text_small: ${message}`);
               throw error;
@@ -186,6 +187,7 @@ export const openrouterPlugin: Plugin = {
               }
               logger.log({ text }, "generated with test_text_large");
             } catch (error: unknown) {
+              // error-policy:J2 context-adding rethrow — log the failing self-test, rethrow.
               const message = error instanceof Error ? error.message : String(error);
               logger.error(`Error in test_text_large: ${message}`);
               throw error;
@@ -209,6 +211,7 @@ export const openrouterPlugin: Plugin = {
                 throw new Error("Failed to generate structured output");
               }
             } catch (error: unknown) {
+              // error-policy:J2 context-adding rethrow — log the failing self-test, rethrow.
               const message = error instanceof Error ? error.message : String(error);
               logger.error(`Error in test_structured_output_via_text_large: ${message}`);
               throw error;
@@ -225,6 +228,7 @@ export const openrouterPlugin: Plugin = {
               });
               logger.log({ embedding }, "embedding");
             } catch (error: unknown) {
+              // error-policy:J2 context-adding rethrow — log the failing self-test, rethrow.
               const message = error instanceof Error ? error.message : String(error);
               logger.error(`Error in test_text_embedding: ${message}`);
               throw error;

@@ -43,6 +43,9 @@ export function initializeGoogleGenAI(
         `Google AI API key validated. Available models: ${models.length}`,
       );
     } catch (error) {
+      // error-policy:J5 unhandled-rejection suppression — this preflight runs in
+      // a detached async block (init must not crash boot); the same credential /
+      // network failure rethrows observably at model-call time in models/*.
       logger.warn(
         `Google AI configuration error: ${error instanceof Error ? error.message : String(error)}`,
       );

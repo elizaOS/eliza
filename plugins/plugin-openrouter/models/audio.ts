@@ -217,6 +217,8 @@ export async function handleTranscription(
   });
 
   if (!response.ok) {
+    // error-policy:J6 best-effort diagnostics on an already-failed response —
+    // the typed failure below throws regardless of whether the body was readable.
     const errorText = await response.text().catch(() => "Unknown error");
     throw new Error(
       `OpenRouter transcription failed: ${response.status} ${response.statusText} - ${errorText}`

@@ -143,8 +143,12 @@ export async function generateViaCli(
   let data: ClaudeCliResult;
   try {
     data = JSON.parse(output) as ClaudeCliResult;
-  } catch {
-    throw new Error(`[Anthropic CLI] Failed to parse JSON. Raw: ${output.slice(0, 500)}`);
+  } catch (error) {
+    // error-policy:J2 context-adding rethrow — surface the raw CLI output that
+    // failed to parse, with the parse error as cause.
+    throw new Error(`[Anthropic CLI] Failed to parse JSON. Raw: ${output.slice(0, 500)}`, {
+      cause: error,
+    });
   }
 
   logger.debug(
@@ -218,6 +222,7 @@ export function streamViaCli(
     const reader = proc.stdout.getReader();
     const decoder = new TextDecoder();
     let lineBuf = "";
+    let streamFailed = false;
 
     try {
       while (true) {
@@ -234,6 +239,10 @@ export function streamViaCli(
           try {
             parsed = JSON.parse(line);
           } catch {
+            // error-policy:J3 untrusted-input sanitizing — `--verbose` CLI
+            // output interleaves non-JSON lines with the stream-json protocol;
+            // skipping a non-parsing line is the expected filter, and a wholly
+            // broken stream still surfaces via the CLI's non-zero exit.
             continue;
           }
           if (!isClaudeStreamEvent(parsed)) continue;
@@ -271,10 +280,25 @@ export function streamViaCli(
           }
         }
       }
+
+      // The CLI signals failure via its exit code. A stream that ended after a
+      // non-zero exit is a provider failure, not an empty completion — throw so
+      // the consumer sees the real error instead of a fabricated "end_turn"
+      // with zero chunks (#9324: throw, never fabricate).
+      const exitCode = await proc.exited;
+      if (exitCode !== 0) {
+        streamFailed = true;
+        // error-policy:J6 best-effort diagnostics on an already-failed process —
+        // the typed failure below throws regardless of stderr readability.
+        const stderrText = await new Response(proc.stderr).text().catch(() => "");
+        throw new Error(
+          `[Anthropic CLI] claude -p stream failed (exit ${exitCode}): ${stderrText.slice(0, 500)}`
+        );
+      }
     } finally {
       resolveText(fullText);
       if (!usageResolved) resolveUsage(undefined);
-      if (!finishResolved) resolveFinish("end_turn");
+      if (!finishResolved) resolveFinish(streamFailed ? "error" : "end_turn");
     }
   }
 

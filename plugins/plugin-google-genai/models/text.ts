@@ -26,6 +26,7 @@ import type {
 } from "@elizaos/core";
 import {
   buildCanonicalSystemPrompt,
+  ElizaError,
   logger,
   ModelType,
   recordLlmCall,
@@ -621,6 +622,22 @@ async function generateContentWithTrajectory(
     return normalized;
   });
 
+  // A completion with no text and no tool calls is a provider failure (safety
+  // block, empty candidates, truncation) — never a legitimate result. Returning
+  // "" here would fabricate a healthy-empty completion the planner cannot
+  // distinguish from a real answer (#9324: throw, never fabricate).
+  if (response.text.length === 0 && response.toolCalls.length === 0) {
+    throw new ElizaError(
+      `[Google GenAI] ${modelType} returned an empty completion${
+        response.finishReason ? ` (finishReason: ${response.finishReason})` : ""
+      }`,
+      {
+        code: "MODEL_EMPTY_COMPLETION",
+        context: { modelType, finishReason: response.finishReason },
+      },
+    );
+  }
+
   emitModelUsageEvent(runtime, modelType, prompt, response.usage);
 
   if (shouldReturnNativeResult) {
@@ -682,6 +699,9 @@ export async function handleTextSmall(
       usesNativeTextResult(params),
     );
   } catch (error) {
+    // error-policy:J2 context-adding rethrow — log the model label for
+    // operators, then rethrow the original provider error unchanged so the
+    // planner/runtime sees the real failure.
     logger.error(
       `[TEXT_SMALL] Error: ${error instanceof Error ? error.message : String(error)}`,
     );
@@ -741,6 +761,8 @@ export async function handleTextLarge(
       usesNativeTextResult(params),
     );
   } catch (error) {
+    // error-policy:J2 context-adding rethrow — log the model label for
+    // operators, then rethrow the original provider error unchanged.
     logger.error(
       `[TEXT_LARGE] Error: ${error instanceof Error ? error.message : String(error)}`,
     );
@@ -836,6 +858,8 @@ async function handleTextWithType(
       usesNativeTextResult(params),
     );
   } catch (error) {
+    // error-policy:J2 context-adding rethrow — log the model label for
+    // operators, then rethrow the original provider error unchanged.
     logger.error(
       `[${modelType}] Error: ${error instanceof Error ? error.message : String(error)}`,
     );

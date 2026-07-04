@@ -40,6 +40,9 @@ export function initializeOpenRouter(
         logger.log("OpenRouter API key validated successfully");
       }
     } catch (error: unknown) {
+      // error-policy:J5 unhandled-rejection suppression — this preflight runs in
+      // a detached async block (init must not crash boot); the same credential /
+      // network failure rethrows observably at model-call time in models/*.
       const message = error instanceof Error ? error.message : String(error);
       logger.warn(`Error validating OpenRouter API key: ${message}`);
     }

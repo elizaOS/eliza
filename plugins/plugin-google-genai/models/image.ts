@@ -123,7 +123,8 @@ export async function handleImageDescription(
         };
       }
     } catch {
-      // Fall through to text parsing
+      // error-policy:J3 untrusted-input sanitizing — a non-JSON completion is
+      // an expected model-output shape; fall through to prose title parsing.
     }
 
     const titleMatch = responseText.match(/title[:\s]+(.+?)(?:\n|$)/i);
@@ -134,9 +135,9 @@ export async function handleImageDescription(
 
     return { title, description };
   } catch (error) {
-    // Do not fabricate a `{ title, description }` on failure — the caller/model
-    // must see the real error, not an "Error: ..." string dressed up as a
-    // successful image description.
+    // error-policy:J2 context-adding rethrow — do not fabricate a
+    // `{ title, description }` on failure; the caller/model must see the real
+    // error, not an "Error: ..." string dressed up as a successful description.
     const message = error instanceof Error ? error.message : String(error);
     logger.error(`Error analyzing image: ${message}`);
     throw error instanceof Error ? error : new Error(message);

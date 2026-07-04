@@ -302,6 +302,7 @@ function readFromCredentialStore(): ClaudeCredentials | null {
   try {
     return JSON.parse(raw);
   } catch (error) {
+    // error-policy:J2 context-adding rethrow — typed CREDENTIALS_CORRUPT with cause.
     throw new ElizaError("Claude credential file is corrupt (invalid JSON)", {
       code: "CREDENTIALS_CORRUPT",
       cause: error,
@@ -330,6 +331,7 @@ function readFromMacKeychain(): ClaudeCredentials | null {
   try {
     return JSON.parse(raw);
   } catch (error) {
+    // error-policy:J2 context-adding rethrow — typed CREDENTIALS_CORRUPT with cause.
     throw new ElizaError("Claude keychain credential is corrupt (invalid JSON)", {
       code: "CREDENTIALS_CORRUPT",
       cause: error,

@@ -137,6 +137,9 @@ export function createAnthropicClientWithTopPSupport(runtime: IAgentRuntime) {
             body = parsed as Record<string, unknown>;
           }
         } catch {
+          // error-policy:J3 untrusted-input sanitizing — an unparseable body
+          // just skips the top_p/temperature patch; the request is forwarded
+          // unchanged and the provider surfaces its own typed error.
           body = undefined;
         }
 
