@@ -47,7 +47,6 @@ import {
 	setInferenceModelProvider,
 } from "./inference-timing";
 import { createLogger } from "./logger";
-import { isAutomatedSenderTurn } from "./messaging/automated-turns";
 import { simpleHash } from "./optimization/ab-analysis";
 import { getOptimizationRootDir } from "./optimization-root-dir";
 import { installRuntimePluginLifecycle } from "./plugin-lifecycle";
@@ -60,7 +59,6 @@ import {
 	resolveNativeRuntimeFeatureFromPluginName,
 	resolveNativeRuntimeFeatureFromServiceType,
 } from "./plugins/native-features";
-import { checkSenderRole } from "./roles";
 import {
 	executeChainWithFallback,
 	isLocalProvider,
@@ -75,7 +73,6 @@ import {
 } from "./runtime/action-routing-context";
 import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "./runtime/builtin-field-evaluators";
 import { ChatPreHandlerRegistry } from "./runtime/chat-pre-handler-registry";
-import { satisfiesRoleGate } from "./runtime/context-gates";
 import { ContextRegistry } from "./runtime/context-registry";
 import { DEFAULT_CONTEXT_DEFINITIONS } from "./runtime/default-contexts";
 import { findEquivalentFactId } from "./runtime/fact-write-dedupe";
@@ -242,7 +239,7 @@ import type {
 	ChatPreHandlerContext,
 	ChatPreHandlerResult,
 } from "./types/chat-pre-handler";
-import type { AgentContext, RoleGateRole } from "./types/contexts";
+import type { AgentContext } from "./types/contexts";
 import type { IMessageService } from "./types/message-service";
 import {
 	afterMemoryPersistedPipelineHookContext,
@@ -4050,39 +4047,6 @@ export class AgentRuntime implements IAgentRuntime {
 		);
 	}
 
-	/**
-	 * Sender roles used to enforce provider roleGates on explicitly-requested
-	 * provider lists (composeState onlyInclude). Mirrors Stage-1 semantics:
-	 * the agent's own synthetic messages act as OWNER, and a failed or absent
-	 * world-role lookup degrades to the lenient USER default so local-only
-	 * usage is never blocked.
-	 */
-	private async resolveSenderRolesForProviderGating(
-		message: Memory,
-	): Promise<RoleGateRole[]> {
-		if (
-			typeof message.entityId === "string" &&
-			message.entityId === this.agentId
-		) {
-			return ["OWNER"];
-		}
-		try {
-			const result = await checkSenderRole(this, message);
-			if (result?.role) {
-				return [result.role as RoleGateRole];
-			}
-		} catch (error) {
-			// error-policy:J4 role lookup is best-effort prompt gating — degrade to
-			// the lenient USER default (same as resolveStage1SenderRole) instead of
-			// failing the whole state composition.
-			this.logger.debug(
-				{ src: "agent", agentId: this.agentId, error },
-				"Sender role lookup for provider gating failed; defaulting to USER",
-			);
-		}
-		return ["USER"];
-	}
-
 	async composeState(
 		message: Memory,
 		includeList: string[] | null = null,
@@ -4124,31 +4088,15 @@ export class AgentRuntime implements IAgentRuntime {
 		);
 		const providerNames = new Set<string>();
 		if (filterList && filterList.length > 0) {
-			// The onlyInclude path hands a fixed name list straight through, which
-			// historically bypassed every provider's declared roleGate — the Stage-1
-			// response state force-includes FACTS for every sender, so relay
-			// webhooks and bridge bots pulled role-gated personal fact pools into
-			// their prompts. Enforce the declared gate here, but ONLY for turns
-			// structurally stamped as automation (`fromBot` / bridge sources):
-			// unassigned human world members resolve to GUEST by default
-			// (roles.ts getEntityRole), so blanket enforcement would silently strip
-			// FACTS recall and baseline context from ordinary humans. Role lookup
-			// is lazy — lists with no role-gated providers pay nothing.
-			const roleGateByName = new Map<string, Provider["roleGate"]>();
-			for (const provider of this.providers) {
-				if (provider.roleGate && filterList.includes(provider.name)) {
-					roleGateByName.set(provider.name, provider.roleGate);
-				}
-			}
-			const senderRoles =
-				roleGateByName.size > 0 && isAutomatedSenderTurn(message)
-					? await this.resolveSenderRolesForProviderGating(message)
-					: null;
+			// The onlyInclude path honors the explicit name list without enforcing
+			// provider roleGates: the Stage-1 response state deliberately
+			// force-includes recall providers like FACTS for every sender, and
+			// unassigned senders (ordinary humans AND relay/webhook bridges
+			// carrying human conversation) resolve to GUEST by default (roles.ts
+			// getEntityRole), so gate enforcement here would silently strip
+			// cross-turn recall from exactly the turns that need it. Callers that
+			// name a provider explicitly own that inclusion decision.
 			for (const name of filterList) {
-				const gate = roleGateByName.get(name);
-				if (gate && senderRoles && !satisfiesRoleGate(senderRoles, gate)) {
-					continue;
-				}
 				providerNames.add(name);
 			}
 		} else {

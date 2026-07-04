@@ -2,10 +2,11 @@
  * Unit tests for `factsProvider` (advanced-capabilities): asserts BM25 keyword
  * retrieval surfaces the relevant durable/current facts (including a direct-recall
  * fallback and current-fact time weighting), that rendering attributes facts by
- * provenance (speaker vs room, with the room pool skipped for bot/bridge
- * senders), and that the provider never requests embeddings. Uses a hand-built
- * deterministic runtime mock — no live model, no DB — whose `useModel` throws
- * to enforce the no-embeddings invariant.
+ * provenance (speaker vs neutral room header) while room-fact recall stays
+ * intact for bot/bridge senders — relays carry real human questions — and that
+ * the provider never requests embeddings. Uses a hand-built deterministic
+ * runtime mock — no live model, no DB — whose `useModel` throws to enforce the
+ * no-embeddings invariant.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { IAgentRuntime, Memory, UUID } from "../../../types/index.ts";
@@ -278,17 +279,10 @@ describe("factsProvider provenance attribution", () => {
 		expect(result.text).not.toContain("Known facts in this room");
 	});
 
-	it("skips the room pool entirely for connector-stamped bot/webhook senders", async () => {
-		const humanRuntime = makeRuntime({
-			roomFacts: [roomFactAboutSomeoneElse],
-			entityFacts: [],
-		});
-		const humanResult = await factsProvider.get(
-			humanRuntime,
-			memory("msg-human", "who created the remilio project?"),
-			{ values: {}, data: {}, text: "" },
-		);
-
+	it("keeps room facts recallable for connector-stamped bot/webhook senders, under the neutral header", async () => {
+		// Relays carry real human questions (the ZenithProxy pattern): a human
+		// asks through the bridge, so the room pool must stay recallable on the
+		// bot-stamped turn — only the attribution changes.
 		const botRuntime = makeRuntime({
 			roomFacts: [roomFactAboutSomeoneElse],
 			entityFacts: [],
@@ -307,22 +301,20 @@ describe("factsProvider provenance attribution", () => {
 			text: "",
 		});
 
-		// Room-scoped fetch never happens on the bot turn.
+		// The room-scoped fetch still happens on the bot turn.
 		const botFactCalls = botRuntime.getMemories.mock.calls.filter(
 			([params]: [{ tableName: string; roomId?: UUID }]) =>
 				params.tableName === "facts" && params.roomId,
 		);
-		expect(botFactCalls.length).toBe(0);
+		expect(botFactCalls.length).toBe(1);
 
-		// No misattributed facts, and the prompt footprint drops vs the same
-		// pools on a human turn.
-		expect(botResult.text).toBe("No facts available.");
-		expect(botResult.text).not.toContain("nubs created");
-		expect(humanResult.text).toContain("nubs created the remilio project");
-		expect(botResult.text.length).toBeLessThan(humanResult.text.length);
+		// Recall preserved; the room fact is never attributed to the bridge bot.
+		expect(botResult.text).toContain("nubs created the remilio project");
+		expect(botResult.text).toContain("Known facts in this room");
+		expect(botResult.text).not.toContain("knows about");
 	});
 
-	it("skips the room pool for internal bridge sources but keeps the sender's own facts", async () => {
+	it("keeps both the sender's own facts and room facts for internal bridge sources", async () => {
 		const bridgeOwnFact = memory(
 			"fact-bridge-1",
 			"the relay mirrors the minecraft server chat",
@@ -337,7 +329,10 @@ describe("factsProvider provenance attribution", () => {
 			roomFacts: [roomFactAboutSomeoneElse],
 			entityFacts: [bridgeOwnFact],
 		});
-		const message = memory("msg-bridge", "what does the relay mirror?");
+		const message = memory(
+			"msg-bridge",
+			"who created the remilio project the relay mirrors?",
+		);
 		message.content.source = "acpx:sub-agent-router";
 		const result = await factsProvider.get(runtime, message, {
 			values: {},
@@ -345,12 +340,10 @@ describe("factsProvider provenance attribution", () => {
 			text: "",
 		});
 
-		const roomFactCalls = runtime.getMemories.mock.calls.filter(
-			([params]: [{ tableName: string; roomId?: UUID }]) =>
-				params.tableName === "facts" && params.roomId,
-		);
-		expect(roomFactCalls.length).toBe(0);
+		// Sender-cluster facts keep the speaker header; room facts about other
+		// participants stay recallable under the neutral header.
 		expect(result.text).toContain("mirrors the minecraft server chat");
-		expect(result.text).not.toContain("nubs created");
+		expect(result.text).toContain("nubs created the remilio project");
+		expect(result.text).toContain("Known facts in this room");
 	});
 });

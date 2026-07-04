@@ -1,12 +1,11 @@
 /**
- * Exercises provider roleGate enforcement on the `composeState` onlyInclude
- * path: role-gated providers are dropped for automated (connector-stamped
- * bot/webhook or bridge-source) senders that resolve to GUEST, kept for
- * automated senders with an explicit world role, kept unconditionally for
- * human senders (unassigned humans default to GUEST, so blanket enforcement
- * would strip Stage-1 recall), and the agent's own synthetic turns act as
- * OWNER. Uses a real AgentRuntime + InMemoryDatabaseAdapter with a real world
- * and room; no model.
+ * Pins that the `composeState` onlyInclude path honors the explicit provider
+ * list without enforcing declared roleGates, for every sender kind. Stage-1
+ * force-includes recall providers (FACTS declares minRole USER) for all
+ * senders, and both unassigned humans AND relay/webhook bridges resolve to
+ * GUEST by default — so gate enforcement here would strip cross-turn recall
+ * from relayed human conversation (the ZenithProxy pattern). Uses a real
+ * AgentRuntime + InMemoryDatabaseAdapter with a real world and room; no model.
  */
 import { describe, expect, it } from "vitest";
 import { InMemoryDatabaseAdapter } from "../database/inMemoryAdapter";
@@ -17,7 +16,6 @@ import { ChannelType } from "../types";
 const WORLD_ID = "11111111-1111-1111-1111-111111111110" as UUID;
 const ROOM_ID = "11111111-1111-1111-1111-111111111111" as UUID;
 const UNASSIGNED_SENDER = "22222222-2222-2222-2222-222222222221" as UUID;
-const GRANTED_SENDER = "22222222-2222-2222-2222-222222222222" as UUID;
 
 function staticProvider(name: string, extra: Partial<Provider> = {}): Provider {
 	return {
@@ -39,7 +37,7 @@ async function makeRuntime(): Promise<AgentRuntime> {
 			id: WORLD_ID,
 			agentId: runtime.agentId,
 			name: "test world",
-			metadata: { roles: { [GRANTED_SENDER]: "USER" } },
+			metadata: { roles: {} },
 		},
 	]);
 	await adapter.createRooms([
@@ -61,26 +59,29 @@ async function makeRuntime(): Promise<AgentRuntime> {
 function makeMessage(
 	id: string,
 	entityId: UUID,
-	contentMetadata?: Record<string, unknown>,
+	overrides: {
+		contentMetadata?: Record<string, unknown>;
+		source?: string;
+	} = {},
 ): Memory {
 	return {
 		id: id as UUID,
 		entityId,
 		roomId: ROOM_ID,
 		worldId: WORLD_ID,
-		content: { text: "gm", source: "discord", metadata: contentMetadata },
+		content: {
+			text: "gm",
+			source: overrides.source ?? "discord",
+			metadata: overrides.contentMetadata,
+		},
 	} as Memory;
 }
 
-describe("composeState onlyInclude provider roleGate", () => {
-	it("keeps role-gated providers for human senders regardless of world role", async () => {
+describe("composeState onlyInclude ignores provider roleGates", () => {
+	it("keeps role-gated providers for human senders without a world role", async () => {
 		const runtime = await makeRuntime();
-		const message = makeMessage(
-			"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1",
-			UNASSIGNED_SENDER,
-		);
 		const state = await runtime.composeState(
-			message,
+			makeMessage("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1", UNASSIGNED_SENDER),
 			["GATED", "OPEN"],
 			true,
 			true,
@@ -89,33 +90,28 @@ describe("composeState onlyInclude provider roleGate", () => {
 		expect(state.text).toContain("OPEN-content");
 	});
 
-	it("drops role-gated providers for bot-authored senders without a world role", async () => {
+	it("keeps role-gated providers for bot-authored senders without a world role", async () => {
+		// A roleless relay webhook resolves to GUEST; if the gate were enforced
+		// here, FACTS-style recall providers would silently vanish from every
+		// relayed human turn.
 		const runtime = await makeRuntime();
-		const humanState = await runtime.composeState(
-			makeMessage("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa2", UNASSIGNED_SENDER),
+		const state = await runtime.composeState(
+			makeMessage("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa2", UNASSIGNED_SENDER, {
+				contentMetadata: { fromBot: true },
+			}),
 			["GATED", "OPEN"],
 			true,
 			true,
 		);
-		const botState = await runtime.composeState(
+		expect(state.text).toContain("GATED-content");
+		expect(state.text).toContain("OPEN-content");
+	});
+
+	it("keeps role-gated providers for internal bridge sources without a world role", async () => {
+		const runtime = await makeRuntime();
+		const state = await runtime.composeState(
 			makeMessage("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa3", UNASSIGNED_SENDER, {
-				fromBot: true,
-			}),
-			["GATED", "OPEN"],
-			true,
-			true,
-		);
-		expect(botState.text).toContain("OPEN-content");
-		expect(botState.text).not.toContain("GATED-content");
-		// The prompt footprint drops on the automated turn.
-		expect(botState.text.length).toBeLessThan(humanState.text.length);
-	});
-
-	it("keeps role-gated providers for bot senders granted an explicit world role", async () => {
-		const runtime = await makeRuntime();
-		const state = await runtime.composeState(
-			makeMessage("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa4", GRANTED_SENDER, {
-				fromBot: true,
+				source: "acpx:sub-agent-router",
 			}),
 			["GATED", "OPEN"],
 			true,
@@ -123,21 +119,5 @@ describe("composeState onlyInclude provider roleGate", () => {
 		);
 		expect(state.text).toContain("GATED-content");
 		expect(state.text).toContain("OPEN-content");
-	});
-
-	it("treats the agent's own synthetic turns as OWNER", async () => {
-		const runtime = await makeRuntime();
-		runtime.registerProvider(
-			staticProvider("ADMIN_GATED", { roleGate: { minRole: "ADMIN" } }),
-		);
-		const state = await runtime.composeState(
-			makeMessage("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa5", runtime.agentId, {
-				fromBot: true,
-			}),
-			["ADMIN_GATED", "OPEN"],
-			true,
-			true,
-		);
-		expect(state.text).toContain("ADMIN_GATED-content");
 	});
 });

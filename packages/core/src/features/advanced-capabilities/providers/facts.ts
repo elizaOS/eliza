@@ -7,8 +7,9 @@
  * then ranks each kind locally with BM25 keyword scoring weighted by a
  * per-kind confidence × recency prior. Rendering attributes facts by
  * provenance — only sender-cluster facts appear under the "about the speaker"
- * header, room-pool facts render under a neutral room header — and the room
- * pool is skipped entirely for automated (webhook/bridge-bot) senders.
+ * header; room-pool facts about other participants render under a neutral
+ * room header, so relay/webhook turns keep room recall without the room's
+ * facts being misattributed to the bridge sender.
  * Retrieval deliberately avoids vector search so relevance is computed from the
  * fact's own words and extracted keywords; a keyword-miss on durable facts
  * falls back to the highest-prior candidates so direct recall still works. The
@@ -17,7 +18,6 @@
  */
 import { requireProviderSpec } from "../../../generated/spec-helpers.ts";
 import { getRelatedEntityIds } from "../../../identity-clusters.ts";
-import { isAutomatedSenderTurn } from "../../../messaging/automated-turns.ts";
 import type {
 	FactKind,
 	FactMetadata,
@@ -278,28 +278,24 @@ const factsProvider: Provider = {
 			// instead of vector search: relevance is computed locally from extracted
 			// fact keywords and the fact's own words.
 			//
-			// The room pool holds facts about EVERY participant in the room, so it
-			// is skipped entirely when the sender is automation (a relay webhook,
-			// bridge bot, or sub-agent row): those turns arrive in bulk, the room
-			// facts describe other people, and rendering them here floods every
-			// relay turn's prompt with context that has nothing to do with the
-			// sender. Facts stored against the automated sender's own entity still
-			// load — they genuinely describe the speaker.
+			// The room pool is fetched for every sender, automated or human: relay
+			// webhooks and bridge bots carry real human conversation, so dropping
+			// the room pool for them would zero out fact recall on exactly those
+			// turns. Misattribution is prevented at render time instead — facts
+			// are attributed by provenance, so room facts about other participants
+			// never render under the sender's header.
 			const relatedEntityIds = await getRelatedEntityIds(
 				runtime,
 				message.entityId,
 			);
-			const includeRoomPool = !isAutomatedSenderTurn(message);
 			const [roomFacts, ...entityFactPools] = await Promise.all([
-				includeRoomPool
-					? runtime.getMemories({
-							tableName: "facts",
-							roomId: message.roomId,
-							worldId: message.worldId,
-							count: CANDIDATE_POOL_PER_SEARCH,
-							unique: false,
-						})
-					: Promise.resolve([] as Memory[]),
+				runtime.getMemories({
+					tableName: "facts",
+					roomId: message.roomId,
+					worldId: message.worldId,
+					count: CANDIDATE_POOL_PER_SEARCH,
+					unique: false,
+				}),
 				...relatedEntityIds.map((entityId) =>
 					runtime.getMemories({
 						tableName: "facts",

@@ -1,20 +1,13 @@
 /**
- * Structural classifiers for message turns authored by automation rather than
- * a human speaker. Two independent signals, both stamped structurally (never
- * inferred from message text):
- *
- *   - internal bridge rows — messages injected by the agent's own machinery
- *     (sub-agent relay, swarm synthesis), identified by `content.source` or
- *     sub-agent metadata; and
- *   - connector-stamped bot/webhook authorship — the `fromBot` metadata flag
- *     connectors set at ingestion for webhook and bot-account senders.
- *
- * Prompt-composition consumers gate on these: RECENT_MESSAGES strips bridge
- * rows from the transcript, FACTS skips room-scoped fact pools for automated
- * senders (room facts describe other participants and must not be attributed
- * to a relay bot), and the composeState onlyInclude path enforces provider
- * roleGates for automated senders. Absence of every signal means the turn is
- * treated as human — connectors that stamp nothing keep today's behavior.
+ * Structural classifier for message rows injected by the agent's own bridge
+ * machinery (sub-agent relay, swarm synthesis), identified by `content.source`
+ * or sub-agent metadata — stamped structurally, never inferred from message
+ * text. RECENT_MESSAGES uses it to strip bridge rows from the transcript.
+ * Consumers must only use this signal to change HOW a turn is presented,
+ * never to withhold recall: bridge rows sit inside real human conversation,
+ * so gating context providers off this signal silently blinds the agent on
+ * exactly those turns. Absence of the signal means the turn is treated as
+ * human — connectors that stamp nothing keep today's behavior.
  */
 import type { Memory } from "../types/memory";
 
@@ -39,17 +32,4 @@ export function isInternalBridgeMessage(memory: Memory): boolean {
 		return true;
 	}
 	return metadataRecord(memory.content?.metadata)?.subAgent === true;
-}
-
-/** Message whose sender the connector positively stamped as a bot/webhook. */
-export function isBotAuthoredMessage(memory: Memory): boolean {
-	return (
-		metadataRecord(memory.content?.metadata)?.fromBot === true ||
-		metadataRecord(memory.metadata)?.fromBot === true
-	);
-}
-
-/** Either automation signal — the turn was not authored by a human speaker. */
-export function isAutomatedSenderTurn(memory: Memory): boolean {
-	return isBotAuthoredMessage(memory) || isInternalBridgeMessage(memory);
 }
