@@ -1,3 +1,4 @@
+// Exercises cloud admin daemons provisioning worker.test automation behavior with deterministic script fixtures.
 import { describe, expect, it, mock } from "bun:test";
 import {
   assertProvisioningWorkerPreflight,

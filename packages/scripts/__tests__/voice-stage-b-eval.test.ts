@@ -1,3 +1,4 @@
+// Exercises tests voice stage b eval.test automation behavior with deterministic script fixtures.
 import { describe, expect, test } from "bun:test";
 import fs from "node:fs/promises";
 import os from "node:os";

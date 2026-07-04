@@ -157,7 +157,7 @@ export function resolveSandboxRouting(
     };
   }
 
-  // Legacy host routing (no headscale_ip): reach the agent through the docker
+  // Host-routing compatibility path (no headscale_ip): reach the agent through the docker
   // host's published bridge/web ports. Off by default — requires the explicit
   // AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK opt-in.
   let bridgePort: number | null =

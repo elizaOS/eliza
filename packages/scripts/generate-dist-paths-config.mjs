@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// Drives repo automation generate dist paths config with explicit CLI and CI behavior.
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

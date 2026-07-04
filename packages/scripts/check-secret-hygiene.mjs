@@ -1,3 +1,4 @@
+// Drives repo automation check secret hygiene with explicit CLI and CI behavior.
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";

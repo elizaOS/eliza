@@ -58,7 +58,7 @@ const MARKDOWN_OUT_PATH = path.join(
   "issue-evidence",
   "10195-type-duplication.md",
 );
-// Post-cleanup baseline of per-class candidate counts (#10201). Drift against
+// Reviewed baseline of per-class candidate counts (#10201). Drift against
 // it is advisory only — the script never fails the build on it (see --check).
 const BASELINE_PATH = path.join(
   ROOT,
@@ -1164,7 +1164,7 @@ function renderMarkdown(report) {
 
 // ── Advisory baseline (#10201) ────────────────────────────────────────────
 // The baseline records the per-class candidate counts after the first
-// human-reviewed cleanup so future drift is *visible* without blocking the
+// human-reviewed consolidation so future drift is visible without blocking the
 // build. It is intentionally count-only (not a per-finding ratchet): the
 // finder is advisory, and many new local types are legitimate.
 

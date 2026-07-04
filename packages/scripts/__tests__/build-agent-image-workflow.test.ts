@@ -1,3 +1,4 @@
+// Exercises tests build agent image workflow.test automation behavior with deterministic script fixtures.
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 

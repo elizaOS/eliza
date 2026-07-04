@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// Drives cloud admin cloud admin postinstall automation with explicit environment and CI invariants.
 
 import {
   existsSync,

@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+// Drives cloud admin cloud admin live cloud provision smoke automation with explicit environment and CI invariants.
 
 import { randomBytes } from "node:crypto";
 import { dbWrite } from "@elizaos/cloud-shared/db/helpers";

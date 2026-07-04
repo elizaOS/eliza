@@ -1,3 +1,4 @@
+// Drives repo automation validate capability router github live evidence with explicit CLI and CI behavior.
 import { readFileSync } from "node:fs";
 
 type Step = {

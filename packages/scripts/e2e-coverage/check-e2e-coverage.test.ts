@@ -1,3 +1,4 @@
+// Exercises e2e coverage check e2e coverage.test automation behavior with deterministic script fixtures.
 import { describe, expect, test } from "bun:test";
 import {
   type CoverageGateResult,

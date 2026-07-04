@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// Drives repo automation with package build lock with explicit CLI and CI behavior.
 import { execFile, spawn } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";

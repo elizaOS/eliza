@@ -9,9 +9,9 @@
 // densities, so re-running reproduces byte-comparable output.
 //
 // Outputs (under packages/app-core/platforms/android/app/src/main/res):
-//   mipmap-<d>/ic_launcher.png            legacy square icon (white mark on
+//   mipmap-<d>/ic_launcher.png            compatibility square icon (white mark on
 //                                          elizaOS blue)
-//   mipmap-<d>/ic_launcher_round.png      legacy round icon (blue circle)
+//   mipmap-<d>/ic_launcher_round.png      compatibility round icon (blue circle)
 //   mipmap-<d>/ic_launcher_foreground.png adaptive foreground (white mark,
 //                                          transparent, safe-zone inset)
 //   mipmap-<d>/ic_launcher_monochrome.png themed-icon glyph (white mark,
@@ -20,7 +20,7 @@
 //                                          on elizaOS blue)
 //
 // Background-color choices:
-//   - Adaptive + legacy icon background: elizaOS blue #0B35F1. The face mark
+//   - Adaptive + compatibility icon background: elizaOS blue #0B35F1. The face mark
 //     is a white knockout, so blue gives the strongest contrast and matches
 //     the boot animation / Plymouth splash. (The adaptive bg is also set via
 //     @color/ic_launcher_background in res/values/ic_launcher_background.xml.)
@@ -51,7 +51,7 @@ const RES_DIR = path.join(
 const BLUE = { r: 0x0b, g: 0x35, b: 0xf1, alpha: 1 };
 const TRANSPARENT = { r: 0, g: 0, b: 0, alpha: 0 };
 
-// Legacy launcher icon edge (px) per density bucket.
+// Compatibility launcher icon edge (px) per density bucket.
 const LAUNCHER_SIZES = {
   "mipmap-mdpi": 48,
   "mipmap-hdpi": 72,
@@ -82,7 +82,7 @@ const SPLASH_SIZES = {
   "drawable-port-xxxhdpi": [1280, 1920],
 };
 
-// Fraction of the icon edge the mark occupies. Legacy icons fill more of the
+// Fraction of the icon edge the mark occupies. Compatibility icons fill more of the
 // tile; adaptive foreground keeps the mark inside the ~66dp safe zone so the
 // launcher mask never clips it.
 const LEGACY_MARK_RATIO = 0.66;

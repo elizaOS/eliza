@@ -1,3 +1,4 @@
+// Drives repo automation audit capability router live ci with explicit CLI and CI behavior.
 import { readFileSync } from "node:fs";
 
 const workflowPath = ".github/workflows/test.yml";

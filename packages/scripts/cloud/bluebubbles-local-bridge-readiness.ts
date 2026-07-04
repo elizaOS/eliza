@@ -1,3 +1,4 @@
+// Drives repo automation cloud bluebubbles local bridge readiness with explicit CLI and CI behavior.
 export type BlueBubblesSendMethod =
   | "apple-script"
   | "private-api"

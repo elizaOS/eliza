@@ -1,3 +1,4 @@
+// Drives repo automation copy package assets with explicit CLI and CI behavior.
 import { spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync } from "node:fs";
 import path from "node:path";

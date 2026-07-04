@@ -1,3 +1,4 @@
+// Drives cloud admin cloud admin migrate with diagnostics automation with explicit environment and CI invariants.
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";

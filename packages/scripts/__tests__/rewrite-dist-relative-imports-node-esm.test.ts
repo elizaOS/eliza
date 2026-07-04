@@ -1,3 +1,4 @@
+// Exercises tests rewrite dist relative imports node esm.test automation behavior with deterministic script fixtures.
 import { afterEach, describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";

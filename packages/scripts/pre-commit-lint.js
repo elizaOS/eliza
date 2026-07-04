@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// Drives repo automation pre commit lint with explicit CLI and CI behavior.
 
 import { existsSync } from "node:fs";
 

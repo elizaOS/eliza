@@ -1,3 +1,4 @@
+// Drives cloud admin cloud admin seed local dev automation with explicit environment and CI invariants.
 import { sql } from "drizzle-orm";
 import { loadEnvFiles } from "./local-dev-helpers";
 

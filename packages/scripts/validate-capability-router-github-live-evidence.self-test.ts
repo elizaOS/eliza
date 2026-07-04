@@ -1,3 +1,4 @@
+// Exercises validate capability router github live evidence.self test automation behavior with deterministic script fixtures.
 import { validateGithubLiveEvidence } from "./validate-capability-router-github-live-evidence.ts";
 
 const observedGreenRun = {

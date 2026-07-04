@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// Exercises with test runtime automation behavior with deterministic script fixtures.
 
 import { spawnSync } from "node:child_process";
 import path from "node:path";

@@ -302,7 +302,7 @@ async function main(): Promise<void> {
 
   // Canonical caller env: HF_TOKEN. HF_TOKEN_SECRET is the Vast-side
   // secret slot, HUGGINGFACE_HUB_TOKEN matches the Python convention,
-  // HUGGING_FACE_HUB_TOKEN is the legacy TS variant. Whichever the
+  // HUGGING_FACE_HUB_TOKEN is the compatibility TS variant. Whichever the
   // operator sets, forward both common names. The Python hub library reads
   // HUGGINGFACE_HUB_TOKEN natively; the worker scripts login from the older
   // HUGGING_FACE_HUB_TOKEN name.

@@ -1,3 +1,4 @@
+// Exercises tests e2e coverage.test automation behavior with deterministic script fixtures.
 import { describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";

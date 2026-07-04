@@ -1,3 +1,4 @@
+// Exercises launch qa check mobile artifacts.test automation behavior with deterministic script fixtures.
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";

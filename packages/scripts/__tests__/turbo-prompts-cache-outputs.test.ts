@@ -1,3 +1,4 @@
+// Exercises tests turbo prompts cache outputs.test automation behavior with deterministic script fixtures.
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import path from "node:path";

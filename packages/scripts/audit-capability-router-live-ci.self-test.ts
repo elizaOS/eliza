@@ -1,3 +1,4 @@
+// Exercises audit capability router live ci.self test automation behavior with deterministic script fixtures.
 import { readFileSync } from "node:fs";
 import {
   checks,

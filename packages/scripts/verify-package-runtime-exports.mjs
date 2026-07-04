@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// Drives repo automation verify package runtime exports with explicit CLI and CI behavior.
 import fs from "node:fs";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";

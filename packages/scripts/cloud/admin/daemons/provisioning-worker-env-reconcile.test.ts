@@ -1,3 +1,4 @@
+// Exercises cloud admin daemons provisioning worker env reconcile.test automation behavior with deterministic script fixtures.
 import { describe, expect, it } from "bun:test";
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -110,7 +111,7 @@ function runReconcile(opts: {
     writeFileSync(envFile, "");
   }
   // The workflow uses `sudo`; replace it with a no-op so the loop runs
-  // unprivileged in the scratch dir, and bind ENV_FILE to our temp path.
+  // unprivileged in the scratch dir, and bind ENV_FILE to the test path.
   const script = [
     "set -euo pipefail",
     'sudo() { "$@"; }',

@@ -1,3 +1,4 @@
+// Exercises cloud admin prune node disk.test automation behavior with deterministic script fixtures.
 import { describe, expect, it } from "bun:test";
 import { parsePruneArgs } from "./prune-node-disk";
 

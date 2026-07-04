@@ -1,3 +1,4 @@
+// Drives repo automation cloud eliza1 dashboard alerts with explicit CLI and CI behavior.
 import crypto from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, relative, resolve } from "node:path";

@@ -722,7 +722,7 @@ async function runScenario(
     createdAt: Date.now(),
   };
 
-  // The state object's `availableContexts` is a legacy hint. Stage 1 reads
+  // The state object's `availableContexts` is a compatibility hint. Stage 1 reads
   // the live `runtime.contexts` registry — which after `runtime.initialize()`
   // contains all 28 first-party contexts plus any plugin-registered contexts —
   // so we leave it empty here.

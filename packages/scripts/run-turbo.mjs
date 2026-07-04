@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// Drives repo automation run turbo with explicit CLI and CI behavior.
 
 import { spawn } from "node:child_process";
 import fs from "node:fs";

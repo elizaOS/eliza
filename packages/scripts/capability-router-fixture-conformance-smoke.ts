@@ -1,3 +1,4 @@
+// Drives repo automation capability router fixture conformance smoke with explicit CLI and CI behavior.
 import { type ChildProcessByStdio, spawn } from "node:child_process";
 import { once } from "node:events";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";

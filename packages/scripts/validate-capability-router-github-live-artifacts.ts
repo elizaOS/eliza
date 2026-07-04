@@ -1,3 +1,4 @@
+// Drives repo automation validate capability router github live artifacts with explicit CLI and CI behavior.
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";

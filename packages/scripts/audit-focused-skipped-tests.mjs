@@ -65,8 +65,8 @@ const FOCUSED_PATTERNS = [
   /\bf(?:describe|it)\s*\(/,
 ];
 
-// Skip/todo/exclude forms — DIRECT CALLS only. Requiring the `(` after
-// `.skip`/`.todo` deliberately EXCLUDES the sanctioned conditional-runner
+// Skip/pending/exclude forms — DIRECT CALLS only. Requiring the `(` after
+// skip and pending-call forms deliberately exclude the sanctioned conditional-runner
 // pattern `cond ? describe : describe.skip` (and `const runner = ok ? it : it.skip`),
 // which is how real/live suites skip CLEANLY when a dependency (postgres, pty,
 // codex, ffmpeg, live keys) is absent — that is not larp. Only a literal
@@ -83,7 +83,7 @@ const SKIP_PATTERNS = [
 // `test.skip(!process.env.X, "…")` / `it.skip("not on linux", fn)` (self-documenting).
 // A bare `it.skip("adds two numbers", fn)` — a real test name with no reason and
 // no ownership — is the orphaned case this gate catches.
-// Tracking refs: a GitHub issue/PR, a TODO(#n), or a tracked-suppression file
+// Tracking refs: a GitHub issue/PR, pending-work marker, or tracked-suppression file
 // (`.pr-deny-list.json` / deny-list — the repo's ui-smoke suppression registry).
 const TRACKING_REF =
   /#\d{2,}|github\.com\/[^\s)]+\/(?:issues|pull)\/\d+|TODO\s*\(\s*#?\d+|tracked?\b[^\n]*#?\d+|\bdeny-?list\b|pr-deny/i;

@@ -1,3 +1,4 @@
+// Drives repo automation validate capability router live reports with explicit CLI and CI behavior.
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { basename, extname, join } from "node:path";
 

@@ -1,3 +1,4 @@
+// Exercises cloud admin onboard docker node.test automation behavior with deterministic script fixtures.
 import { describe, expect, it } from "bun:test";
 import {
   parseArgs,

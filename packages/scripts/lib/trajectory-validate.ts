@@ -1,3 +1,4 @@
+// Shares script lib trajectory validate helpers across repo automation entrypoints.
 import { computeCallCostUsd } from "./cost-table";
 
 export type RecordedStageKind =

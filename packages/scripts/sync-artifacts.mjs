@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// Drives repo automation sync artifacts with explicit CLI and CI behavior.
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { once } from "node:events";

@@ -1,3 +1,4 @@
+// Exercises tests trajectory validate.test automation behavior with deterministic script fixtures.
 import { describe, expect, test } from "bun:test";
 import { computeCallCostUsd } from "../lib/cost-table";
 import {

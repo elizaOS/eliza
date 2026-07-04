@@ -1,3 +1,4 @@
+// Exercises tests lint lane coverage.test automation behavior with deterministic script fixtures.
 import { afterEach, describe, expect, test } from "bun:test";
 import fs from "node:fs";
 import os from "node:os";

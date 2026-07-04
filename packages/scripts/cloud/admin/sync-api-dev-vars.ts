@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+// Drives cloud admin cloud admin sync api dev vars automation with explicit environment and CI invariants.
 import crypto from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";

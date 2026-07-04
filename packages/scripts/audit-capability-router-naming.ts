@@ -1,3 +1,4 @@
+// Drives repo automation audit capability router naming with explicit CLI and CI behavior.
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { delimiter, join } from "node:path";
 

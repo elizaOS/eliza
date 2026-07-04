@@ -1,0 +1,25 @@
+packages/scripts comment-only sweep
+
+133 source files changed
+144 insertions
+24 deletions
+
+Representative touched areas:
+- packages/scripts/__tests__/*.ts
+- packages/scripts/*.mjs
+- packages/scripts/*.ts
+- packages/scripts/cloud/**/*.ts
+- packages/scripts/cloud/**/*.mjs
+- packages/scripts/distro-android/*.mjs
+- packages/scripts/e2e-coverage/*.ts
+- packages/scripts/launch-qa/*.mjs
+- packages/scripts/launch-qa/*.ts
+- packages/scripts/lib/*.mjs
+- packages/scripts/lib/*.ts
+- packages/scripts/sweeper/*.mjs
+
+Validation summary:
+- Header/churn audit: 256 source files, 0 missing headers, 0 churn comments
+- bun run check:comment-only: passed
+- git diff --check: passed
+- bun run verify: attempted; failed in unrelated @elizaos/plugin-computeruse#lint baseline after initial repo audits passed

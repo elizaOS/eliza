@@ -1,3 +1,4 @@
+// Drives cloud admin cloud admin run api worker e2e automation with explicit environment and CI invariants.
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { createConnection } from "node:net";

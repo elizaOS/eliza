@@ -1,3 +1,4 @@
+// Drives cloud admin cloud admin local dev helpers automation with explicit environment and CI invariants.
 import crypto from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";

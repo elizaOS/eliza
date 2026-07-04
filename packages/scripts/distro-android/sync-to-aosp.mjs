@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// Drives brand-aware Android distro distro android sync to aosp automation for CI and device builds.
 import { spawnSync } from "node:child_process";
 /**
  * sync-to-aosp.mjs — Copy the brand vendor tree into an AOSP checkout.

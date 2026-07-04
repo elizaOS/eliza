@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// Exercises run live test with artifacts automation behavior with deterministic script fixtures.
 
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";

@@ -67,7 +67,7 @@ async function main() {
   const diskFileSet = new Set(migrationFilesOnDisk);
 
   // Only enforce duplicate-prefix checks for journal-tracked files. The repo has a
-  // few historical helper/legacy SQL files that are intentionally not in the Drizzle journal.
+  // few historical helper and compatibility SQL files that are intentionally not in the Drizzle journal.
   const trackedFilesByPrefix = new Map<string, string[]>();
   for (const file of journalFiles) {
     const prefix = file.split("_")[0] ?? "";

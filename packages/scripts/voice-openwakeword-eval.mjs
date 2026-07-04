@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// Drives repo automation voice openwakeword eval with explicit CLI and CI behavior.
 
 import fs from "node:fs";
 import path from "node:path";

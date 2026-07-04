@@ -1,3 +1,4 @@
+// Exercises validate capability router live reports.self test automation behavior with deterministic script fixtures.
 import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";

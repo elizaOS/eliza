@@ -27,7 +27,7 @@ const cleanupHelperScript = join(
   "rm-path-recursive.mjs",
 );
 // @elizaos/core source lives under packages/core (current) or packages/typescript
-// (legacy). Prefer the current name and fall back so older branches still work.
+// (compatibility path). Prefer the current name and fall back so older branches still work.
 const localCoreDist = existsSync(join(repoRoot, "packages", "core", "dist"))
   ? join(repoRoot, "packages", "core", "dist")
   : join(repoRoot, "packages", "typescript", "dist");

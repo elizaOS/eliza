@@ -1094,7 +1094,7 @@ async function runInfraMaintenanceCycle(
     },
   );
 
-  // Disk cleanup runs RIGHT AFTER the node-health check so it sees fresh node
+  // Disk retention runs right after the node-health check so it sees fresh node
   // status (only `healthy` nodes are pruned) and BEFORE the image pre-pull, so a
   // node we just reclaimed has room for the next warm-image pull instead of
   // failing it on `no space left on device`. Bounded by PHASE_TIMEOUT_MS like

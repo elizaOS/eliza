@@ -1,3 +1,4 @@
+// Exercises validate capability router github live artifacts.self test automation behavior with deterministic script fixtures.
 import { validateGithubLiveArtifacts } from "./validate-capability-router-github-live-artifacts.ts";
 
 const observedGreenRun = {

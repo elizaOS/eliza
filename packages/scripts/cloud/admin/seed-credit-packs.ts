@@ -1,3 +1,4 @@
+// Drives cloud admin cloud admin seed credit packs automation with explicit environment and CI invariants.
 import { loadEnvFiles } from "./local-dev-helpers";
 
 loadEnvFiles([".env", { path: ".env.local", override: true }]);

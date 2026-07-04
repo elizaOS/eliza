@@ -1,3 +1,4 @@
+// Exercises cloud admin daemons arm apps daemon workflow.test automation behavior with deterministic script fixtures.
 import { describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
 import path from "node:path";

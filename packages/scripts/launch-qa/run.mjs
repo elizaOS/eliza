@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// Runs launch QA launch qa run automation for release-readiness checks.
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";

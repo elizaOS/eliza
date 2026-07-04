@@ -250,7 +250,7 @@ export function validateProductLayer(vendorDir, brand) {
     path.join(vendorDir, "products", `${brand.productName}.mk`),
   );
   // The product makefile must inherit from a device tree. By default we
-  // assume the legacy Cuttlefish base (`aosp_cf.mk`); brand configs for
+  // assume the compatibility Cuttlefish base (`aosp_cf.mk`); brand configs for
   // non-Cuttlefish products (e.g. real-hardware SoC fusions like the
   // OpenAgent E1) MUST declare `aospDeviceTreePaths` listing the device
   // tree files they expect to find in the imported AOSP checkout. The
@@ -402,7 +402,7 @@ export function validateProductLayer(vendorDir, brand) {
     '"Launcher3QuickStep"',
     '"Dialer"',
     // Both "messaging" (lowercase, the actual Soong module name from
-    // packages/apps/Messaging/Android.bp) and "Messaging" (legacy
+    // packages/apps/Messaging/Android.bp) and "Messaging" (compatibility
     // / lineage variants) — the lowercase one is the load-bearing
     // entry; the capital is kept for non-AOSP forks that diverge.
     '"messaging"',

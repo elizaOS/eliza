@@ -1,3 +1,4 @@
+// Shares script lib voice openwakeword eval helpers across repo automation entrypoints.
 import fs from "node:fs";
 import path from "node:path";
 

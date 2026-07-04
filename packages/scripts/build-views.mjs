@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// Drives repo automation build views with explicit CLI and CI behavior.
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { readdir } from "node:fs/promises";

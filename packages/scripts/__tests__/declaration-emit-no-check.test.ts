@@ -1,3 +1,4 @@
+// Exercises tests declaration emit no check.test automation behavior with deterministic script fixtures.
 import { describe, expect, test } from "bun:test";
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";

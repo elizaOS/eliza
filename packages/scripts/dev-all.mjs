@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// Drives repo automation dev all with explicit CLI and CI behavior.
 import { execFileSync, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import net from "node:net";

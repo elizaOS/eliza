@@ -1,3 +1,4 @@
+// Drives repo automation view bundle vite.config with explicit CLI and CI behavior.
 import path from "node:path";
 import { defineConfig, type UserConfig } from "vite";
 

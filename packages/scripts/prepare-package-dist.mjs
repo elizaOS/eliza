@@ -1,3 +1,4 @@
+// Drives repo automation prepare package dist with explicit CLI and CI behavior.
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

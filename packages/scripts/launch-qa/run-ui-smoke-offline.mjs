@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// Runs launch QA launch qa run ui smoke offline automation for release-readiness checks.
 import { spawn } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -88,7 +89,7 @@ async function stopChild(child) {
       try {
         child.kill(signal);
       } catch {
-        // Best effort cleanup.
+        // Best-effort browser shutdown.
       }
     }
   };

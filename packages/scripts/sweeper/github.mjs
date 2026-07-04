@@ -1,3 +1,4 @@
+// Runs connector sweeper sweeper github automation for local account maintenance.
 import { makeUnavailableSweep } from "./_unavailable.mjs";
 
 export default makeUnavailableSweep({

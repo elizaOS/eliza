@@ -1,3 +1,4 @@
+// Exercises cloud bluebubbles local bridge readiness.test automation behavior with deterministic script fixtures.
 import { describe, expect, it } from "bun:test";
 import {
   type BlueBubblesServerInfoForReadiness,

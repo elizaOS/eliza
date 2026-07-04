@@ -1,3 +1,4 @@
+// Drives Vast cloud cloud vast manifest automation for model endpoint provisioning.
 import { readdirSync, readFileSync } from "node:fs";
 import { dirname, isAbsolute, join } from "node:path";
 import { fileURLToPath } from "node:url";

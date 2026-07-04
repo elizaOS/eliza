@@ -1,3 +1,4 @@
+// Drives cloud admin cloud admin run e2e smoke automation with explicit environment and CI invariants.
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import net from "node:net";

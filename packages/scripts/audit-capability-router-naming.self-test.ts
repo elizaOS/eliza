@@ -1,3 +1,4 @@
+// Exercises audit capability router naming.self test automation behavior with deterministic script fixtures.
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";

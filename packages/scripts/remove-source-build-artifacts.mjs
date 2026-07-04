@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// Drives repo automation remove source build artifacts with explicit CLI and CI behavior.
 import { readdir, rm } from "node:fs/promises";
 import path from "node:path";
 import { parseArgs } from "node:util";

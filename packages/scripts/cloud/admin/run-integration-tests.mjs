@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// Drives cloud admin cloud admin run integration tests automation with explicit environment and CI invariants.
 
 import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";

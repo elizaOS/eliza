@@ -1,3 +1,4 @@
+// Shares script lib sync eliza env aliases helpers across repo automation entrypoints.
 import { syncElizaEnvAliases as syncSharedElizaEnvAliases } from "@elizaos/shared/utils/env";
 
 /**

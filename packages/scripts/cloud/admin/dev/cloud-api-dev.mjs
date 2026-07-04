@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// Drives cloud admin cloud admin dev cloud api dev automation with explicit environment and CI invariants.
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { createRequire } from "node:module";

@@ -147,7 +147,7 @@ function resolveLocalFile(file) {
 
 // Does the target package's exports map permit `subpath`? Mirrors Node's
 // coarse subpath-matching: exact key, or a "./*" pattern whose prefix/suffix
-// bracket the subpath. No `exports` => legacy resolution allows any file.
+// bracket the subpath. No `exports` means compatibility resolution allows any file.
 function exportsPermit(targetPkg, subpath) {
   const exportsField = targetPkg.exports;
   if (exportsField === undefined) return true; // legacy: any internal file allowed

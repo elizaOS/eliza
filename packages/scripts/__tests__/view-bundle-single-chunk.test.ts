@@ -1,3 +1,4 @@
+// Exercises tests view bundle single chunk.test automation behavior with deterministic script fixtures.
 import { describe, expect, test } from "bun:test";
 import { createViewBundleConfig } from "../view-bundle-vite.config.ts";
 

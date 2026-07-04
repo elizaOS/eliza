@@ -1,4 +1,5 @@
 #!/usr/bin/env tsx
+// Drives repo automation lifeops readonly connector snapshot with explicit CLI and CI behavior.
 import crypto from "node:crypto";
 import fs from "node:fs";
 

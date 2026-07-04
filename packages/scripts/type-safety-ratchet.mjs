@@ -265,7 +265,7 @@ function collectUnsafeCasts(sourceText, relPath) {
 
   // Type-error suppression directives, read from TypeScript's own directive
   // table so we never miscount directive text that appears inside a string or
-  // an unrelated comment. Covers expect-error and its legacy ignore form.
+  // an unrelated comment. Covers expect-error and its compatibility ignore form.
   for (const directive of sourceFile.commentDirectives ?? []) {
     const pos = sourceFile.getLineAndCharacterOfPosition(directive.range.pos);
     findings.push({

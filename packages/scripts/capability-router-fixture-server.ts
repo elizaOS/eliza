@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+// Drives repo automation capability router fixture server with explicit CLI and CI behavior.
 
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import {

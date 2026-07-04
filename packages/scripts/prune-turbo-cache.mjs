@@ -4,7 +4,7 @@
 // Turbo's local cache is content-addressed (each task hash maps to a fixed set
 // of filenames), so lookups stay O(1) regardless of cache size — a large cache
 // does not slow builds. The only real costs of an unbounded cache are disk
-// space and orphaned temp files left behind by interrupted writes. This script
+// space and orphaned fragments left behind by interrupted writes. This script
 // addresses both:
 //   1. Deletes orphaned `*.tmp` write fragments.
 //   2. Enforces a max total size by evicting the oldest complete entries
@@ -42,7 +42,7 @@ const rm = (p) => {
 
 const dirents = fs.readdirSync(CACHE_DIR, { withFileTypes: true });
 
-// 1. Orphaned temp fragments.
+// 1. Orphaned write fragments.
 let tmpFreed = 0;
 let tmpCount = 0;
 for (const d of dirents) {

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// Drives repo automation ci path gate with explicit CLI and CI behavior.
 import { spawnSync } from "node:child_process";
 import { appendFileSync, readFileSync } from "node:fs";
 

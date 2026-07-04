@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// Runs launch QA launch qa check model data automation for release-readiness checks.
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

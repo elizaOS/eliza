@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// Exercises check live test artifact coverage automation behavior with deterministic script fixtures.
 
 import { spawnSync } from "node:child_process";
 import {

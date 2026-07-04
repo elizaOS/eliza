@@ -1,3 +1,4 @@
+// Drives cloud admin cloud admin generate llms txt automation with explicit environment and CI invariants.
 import fs from "node:fs/promises";
 import path from "node:path";
 

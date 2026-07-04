@@ -1,3 +1,4 @@
+// Drives repo automation coverage policy with explicit CLI and CI behavior.
 export const coverageThresholds = Object.freeze({
   lines: 25,
   functions: 25,

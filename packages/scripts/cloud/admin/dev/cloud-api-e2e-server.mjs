@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// Drives cloud admin cloud admin dev cloud api e2e server automation with explicit environment and CI invariants.
 import { createServer } from "node:http";
 import path from "node:path";
 import { Readable } from "node:stream";

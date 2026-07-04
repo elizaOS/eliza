@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+// Drives cloud admin cloud admin backfill steward users automation with explicit environment and CI invariants.
 
 import type { StewardUserBackfillOptions } from "@/lib/services/steward-user-migration";
 import { loadEnvFiles } from "./local-dev-helpers";

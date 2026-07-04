@@ -1,3 +1,4 @@
+// Exercises tests voice matrix.test automation behavior with deterministic script fixtures.
 import { describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";

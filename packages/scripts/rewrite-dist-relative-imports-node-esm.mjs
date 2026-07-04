@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// Drives repo automation rewrite dist relative imports node esm with explicit CLI and CI behavior.
 import { readdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { findWorkspaceRoot } from "./lib/repo-root.mjs";

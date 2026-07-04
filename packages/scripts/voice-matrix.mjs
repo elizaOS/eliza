@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// Drives repo automation voice matrix with explicit CLI and CI behavior.
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";

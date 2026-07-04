@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// Drives repo automation sync prerelease dist tags with explicit CLI and CI behavior.
 
 import { spawnSync } from "node:child_process";
 import { readdirSync, readFileSync } from "node:fs";

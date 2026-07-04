@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// Drives repo automation dev agent watch with explicit CLI and CI behavior.
 import { execFileSync, spawn } from "node:child_process";
 import { existsSync, statSync, watch } from "node:fs";
 import path from "node:path";
