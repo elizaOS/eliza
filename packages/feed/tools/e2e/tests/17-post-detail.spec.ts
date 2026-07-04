@@ -1,3 +1,8 @@
+/**
+ * Playwright e2e coverage driving a real MetaMask wallet (@avalix/chroma + Privy) against a live Feed dev server; every spec skips when the /api/health check fails.
+ *
+ * Covers the post-detail page: load, interactions, and comment threads.
+ */
 import type { Page } from "@playwright/test";
 import { expect, test } from "./fixtures";
 import { pageContainsText } from "./helpers/interaction-helpers";

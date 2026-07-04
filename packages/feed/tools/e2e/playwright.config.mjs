@@ -1,3 +1,11 @@
+/**
+ * Playwright configuration for the Feed web end-to-end suite. Runs the tests/
+ * specs serially (single worker, one retry) under desktop Chromium against a
+ * live app. The webServer block boots the keyless localnet harness (anvil +
+ * contracts + app via tools/chroma/dev-server.ts) when the target port is free
+ * and reuses an already-running server otherwise, gating readiness on
+ * /api/health returning 200.
+ */
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig, devices } from "@playwright/test";

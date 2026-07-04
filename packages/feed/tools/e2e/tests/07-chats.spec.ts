@@ -1,3 +1,8 @@
+/**
+ * Playwright e2e coverage driving a real MetaMask wallet (@avalix/chroma + Privy) against a live Feed dev server; every spec skips when the /api/health check fails.
+ *
+ * Covers the chats layout and messaging surface.
+ */
 import { expect, test } from "./fixtures";
 import {
   clickTab,
