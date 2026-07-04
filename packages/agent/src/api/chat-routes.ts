@@ -33,6 +33,8 @@ import {
   type UUID,
 } from "@elizaos/core";
 import type {
+  ChatFailureKind,
+  ChatTurnStatus,
   LinkedAccountProviderId,
   LogEntry,
   ReadJsonBodyOptions,
@@ -1385,19 +1387,6 @@ export function getChatFailureReply(
   return getProviderIssueChatReply();
 }
 
-/**
- * Discriminator the conversation route includes in its 200 response so the
- * renderer can distinguish "provider configured but throwing" from "no
- * provider configured at all" — the latter is a UX gate ("Connect a
- * provider"), not a chat reply.
- */
-export type ChatFailureKind =
-  | "insufficient_credits"
-  | "no_provider"
-  | "provider_issue"
-  | "rate_limited"
-  | "local_inference";
-
 export function classifyChatFailure(
   err: unknown,
   logBuffer: LogEntry[],
@@ -1669,32 +1658,6 @@ export function writeChatTokenSse(
   fullText: string,
 ): void {
   writeSse(res, { type: "token", text, fullText });
-}
-
-/**
- * In-flight assistant-turn status, surfaced to the UI as an additive SSE
- * `{ type: "status", ... }` event so the chat can show what the agent is *doing*
- * rather than just breathing dots. The `token` / `done` / `error` contract is
- * unchanged — a client that ignores `status` events behaves exactly as before.
- *
- * The canonical (and only consumer-facing) definition lives in
- * `@elizaos/ui` `api/client-types-chat.ts` (`ChatTurnStatus`). It is re-declared
- * here — not imported — because the server must not depend on the React UI
- * package; this mirrors the existing `ChatFailureKind` arrangement. The two
- * declarations are kept structurally identical by the SSE-status unit test.
- */
-export interface ChatTurnStatus {
-  kind:
-    | "thinking"
-    | "streaming"
-    | "running_action"
-    | "running_tool"
-    | "evaluating"
-    | "waking"
-    | "speaking";
-  label?: string;
-  actionName?: string;
-  toolName?: string;
 }
 
 export function writeChatStatusSse(

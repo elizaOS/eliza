@@ -1,7 +1,8 @@
 import type http from "node:http";
+import type { ChatTurnStatus } from "@elizaos/shared";
 import { describe, expect, it, vi } from "vitest";
 
-import { type ChatTurnStatus, writeChatStatusSse } from "./chat-routes.ts";
+import { writeChatStatusSse } from "./chat-routes.ts";
 
 /** Minimal ServerResponse stand-in capturing the bytes written to the wire. */
 function makeRes(): {
@@ -52,10 +53,9 @@ describe("writeChatStatusSse (#8813)", () => {
     expect(writes).toHaveLength(0);
   });
 
-  it("accepts every ChatTurnStatus kind in the contract", () => {
-    // Compile-time + runtime guard that the server kind union stays in lockstep
-    // with the canonical @elizaos/ui ChatTurnStatus union (#8813). If a kind is
-    // added on one side and not the other, this array stops type-checking.
+  it("emits every kind in the shared ChatTurnStatus contract", () => {
+    // The union comes from the single @elizaos/shared contract (#12409); this
+    // asserts writeChatStatusSse renders each phase kind onto the wire.
     const kinds: ChatTurnStatus["kind"][] = [
       "thinking",
       "streaming",
