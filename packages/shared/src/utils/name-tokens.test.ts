@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { replaceNameTokens, tokenizeNameOccurrences } from "./name-tokens";
+import {
+  replaceIndexedNameTokens,
+  replaceNameTokens,
+  tokenizeNameOccurrences,
+} from "./name-tokens";
 
 /**
  * Character-name token helpers. `replaceNameTokens` expands `{{name}}` /
@@ -34,6 +38,18 @@ describe("replaceNameTokens", () => {
 
   it("returns empty/falsey input unchanged", () => {
     expect(replaceNameTokens("", "Momo")).toBe("");
+  });
+});
+
+describe("replaceIndexedNameTokens (re-exported from core)", () => {
+  it("resolves indexed example-slot tokens $-safely", () => {
+    expect(
+      replaceIndexedNameTokens("{{name1}} met {{user2}}", ["Ada", "Bo"]),
+    ).toBe("Ada met Bo");
+    // Same $-sequence protection as replaceNameTokens; the former `.replaceAll`
+    // mirrors mangled these.
+    expect(replaceIndexedNameTokens("{{name1}}", ["Cash$$"])).toBe("Cash$$");
+    expect(replaceIndexedNameTokens("{{name1}}", ["M$&M"])).toBe("M$&M");
   });
 });
 

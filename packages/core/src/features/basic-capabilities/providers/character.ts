@@ -1,4 +1,8 @@
 import { requireProviderSpec } from "../../../generated/spec-helpers.ts";
+import {
+	replaceIndexedNameTokens,
+	replaceNameTokens,
+} from "../../../name-tokens.ts";
 import { buildCanonicalSystemPrompt } from "../../../runtime/system-prompt.ts";
 import { getTrajectoryContext } from "../../../trajectory-context.ts";
 import type {
@@ -24,18 +28,10 @@ function resolveCharacterPlaceholders(
 	agentName: string,
 	exampleNames: string[] = [],
 ): string {
-	let resolved = (text ?? "")
-		.replaceAll("{{agentName}}", agentName)
-		.replaceAll("{{name}}", agentName);
-
-	exampleNames.forEach((name, index) => {
-		const slot = index + 1;
-		resolved = resolved
-			.replaceAll(`{{name${slot}}}`, name)
-			.replaceAll(`{{user${slot}}}`, name);
-	});
-
-	return resolved;
+	return replaceIndexedNameTokens(
+		replaceNameTokens(text ?? "", agentName),
+		exampleNames,
+	);
 }
 
 function resolveCharacterList(

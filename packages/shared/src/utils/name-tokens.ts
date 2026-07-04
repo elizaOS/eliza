@@ -1,9 +1,10 @@
-// `replaceNameTokens` is owned by `@elizaos/core` (canonical `{{name}}` /
-// `{{agentName}}` substitution — whitespace-tolerant, `$`-sequence safe) and
+// `replaceNameTokens` (`{{name}}` / `{{agentName}}`) and
+// `replaceIndexedNameTokens` (`{{name1}}` / `{{user1}}` example slots) are owned
+// by `@elizaos/core` — both whitespace-tolerant and `$`-sequence safe — and
 // re-exported here so existing `@elizaos/shared` / `@elizaos/ui` consumers keep
-// their import path. The core symbol is exported from both the node and browser
-// barrels, so this re-export resolves in browser bundles too.
-export { replaceNameTokens } from "@elizaos/core";
+// their import path. The core symbols are exported from both the node and
+// browser barrels, so this re-export resolves in browser bundles too.
+export { replaceIndexedNameTokens, replaceNameTokens } from "@elizaos/core";
 
 /**
  * Reverse of `replaceNameTokens` — rewrite whole-word occurrences of the

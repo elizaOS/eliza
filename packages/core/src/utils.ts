@@ -2,6 +2,7 @@ import Handlebars from "handlebars";
 import z from "zod";
 
 import logger from "./logger";
+import { replaceIndexedNameTokens } from "./name-tokens";
 import type { TemplateType } from "./types/agent";
 import type { Entity } from "./types/environment";
 import type { Memory } from "./types/memory";
@@ -356,19 +357,13 @@ const composeRandomUser = (
 	seed = "prompt-users",
 ) => {
 	// {{nameX}}/{{userX}} placeholders only appear in example-conversation
-	// templates; production system/response templates have none. Skip the name
-	// generation + 20 full-string replaceAll passes when no placeholder exists.
+	// templates; production system/response templates have none. Skip the
+	// deterministic-name generation entirely when no placeholder is present.
 	if (!template.includes("{{name") && !template.includes("{{user")) {
 		return template;
 	}
 	const exampleNames = getDeterministicNames(length, seed);
-	let result = template;
-	for (let i = 0; i < exampleNames.length; i++) {
-		result = result.replaceAll(`{{name${i + 1}}}`, exampleNames[i]);
-		result = result.replaceAll(`{{user${i + 1}}}`, exampleNames[i]);
-	}
-
-	return result;
+	return replaceIndexedNameTokens(template, exampleNames);
 };
 
 export const formatPosts = ({

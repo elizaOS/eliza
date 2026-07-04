@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { replaceNameTokens } from "./name-tokens";
+import { replaceIndexedNameTokens, replaceNameTokens } from "./name-tokens";
 import { getRecentMessagesData } from "./recent-messages-state";
 import type { Memory, State } from "./types";
 
@@ -31,6 +31,47 @@ describe("replaceNameTokens (canonical core impl)", () => {
 
 	it("returns falsey input unchanged", () => {
 		expect(replaceNameTokens("", "Momo")).toBe("");
+	});
+
+	it("leaves indexed tokens for replaceIndexedNameTokens", () => {
+		// `{{name}}` must not consume `{{name1}}`; the two helpers own disjoint
+		// token shapes and compose in either order.
+		expect(replaceNameTokens("{{name}} vs {{name1}}", "Momo")).toBe(
+			"Momo vs {{name1}}",
+		);
+	});
+});
+
+describe("replaceIndexedNameTokens (canonical core impl)", () => {
+	it("resolves {{nameN}} / {{userN}} against the positional array", () => {
+		expect(
+			replaceIndexedNameTokens("{{name1}} met {{user2}}", ["Ada", "Bo"]),
+		).toBe("Ada met Bo");
+	});
+
+	it("tolerates whitespace inside the braces", () => {
+		expect(replaceIndexedNameTokens("hi {{ name1 }}", ["Ada"])).toBe("hi Ada");
+	});
+
+	it("leaves out-of-range slots untouched (never blanks a token)", () => {
+		// The former `.replaceAll` mirrors iterated the name pool, so an unfilled
+		// slot was simply skipped and left literal; preserve that.
+		expect(replaceIndexedNameTokens("{{name3}}", ["Ada"])).toBe("{{name3}}");
+		expect(replaceIndexedNameTokens("{{name1}}", [])).toBe("{{name1}}");
+	});
+
+	it("inserts names containing $-sequences literally", () => {
+		// The `.replaceAll(placeholder, value)` mirrors corrupted these: `$$` ->
+		// `$`, `$&` -> matched token, `$1` -> capture group. The replacer-function
+		// impl inserts them verbatim.
+		expect(replaceIndexedNameTokens("{{name1}}", ["Cash$$"])).toBe("Cash$$");
+		expect(replaceIndexedNameTokens("{{name1}}", ["M$&M"])).toBe("M$&M");
+		expect(replaceIndexedNameTokens("{{user1}}", ["A$1P"])).toBe("A$1P");
+		expect(replaceIndexedNameTokens("{{name1}}", ["net$"])).toBe("net$");
+	});
+
+	it("returns falsey input unchanged", () => {
+		expect(replaceIndexedNameTokens("", ["Ada"])).toBe("");
 	});
 });
 
