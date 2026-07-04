@@ -308,7 +308,7 @@ function judgeExpectation(reference: string, rubric: string[]): string {
 }
 
 export const SEED_TASKS: Record<string, SeedTask> = {
-  // calendar_extract is the live calendar action planner, not the later
+  // calendar_extract is the live calendar action planner, not the downstream
   // create-event field extractor. Keep the baseline and rows aligned with
   // CALENDAR_PLAN_INSTRUCTIONS and CalendarLlmPlan.
   calendar_extract: {

@@ -1,3 +1,4 @@
+// Exercises workflow engine unit behavior and credential handling.
 import { describe, expect, test } from 'bun:test';
 import {
   rankWorkflowsByQuery,

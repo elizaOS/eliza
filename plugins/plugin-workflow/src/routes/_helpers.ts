@@ -1,3 +1,4 @@
+// Shares typed route helpers for workflow API handlers.
 import type { IAgentRuntime } from '@elizaos/core';
 import type { WorkflowService } from '../services/workflow-service';
 import { WORKFLOW_SERVICE_TYPE } from '../services/workflow-service';

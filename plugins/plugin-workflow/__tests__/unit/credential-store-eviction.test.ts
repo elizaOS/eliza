@@ -1,3 +1,4 @@
+// Exercises workflow engine unit behavior and credential handling.
 import { describe, expect, mock, test } from 'bun:test';
 import type { EventPayload, IAgentRuntime } from '@elizaos/core';
 import { WorkflowCredentialStore } from '../../src/services/workflow-credential-store';

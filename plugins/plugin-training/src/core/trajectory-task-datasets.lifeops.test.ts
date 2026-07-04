@@ -1,3 +1,4 @@
+// Exercises training core utilities used by trajectory and LifeOps datasets.
 import type { Trajectory } from "@elizaos/agent";
 import { describe, expect, it } from "vitest";
 import {

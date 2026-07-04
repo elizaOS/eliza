@@ -1,3 +1,4 @@
+// Configures the task coordinator live e2e Vitest lane.
 import { defineConfig } from "vitest/config";
 
 // Live e2e config. The default `vitest.config.ts` (and the repo root config)

@@ -1,3 +1,4 @@
+// Composes the mobile coding cockpit route from deck, session, and terminal panes.
 import {
   Button,
   CockpitView,

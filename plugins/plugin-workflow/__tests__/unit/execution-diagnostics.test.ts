@@ -1,3 +1,4 @@
+// Exercises workflow engine unit behavior and credential handling.
 import { describe, expect, it } from 'bun:test';
 import type { WorkflowExecution } from '../../src/types/index';
 import {

@@ -1,3 +1,4 @@
+// Exercises training core utilities used by trajectory and LifeOps datasets.
 import { describe, expect, it } from "vitest";
 import type {
   CerebrasChatRequest,

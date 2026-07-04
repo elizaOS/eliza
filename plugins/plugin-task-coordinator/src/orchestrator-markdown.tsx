@@ -1,3 +1,4 @@
+// Renders safe markdown prose inside orchestrator transcripts.
 import { Button } from "@elizaos/ui/components/ui/button";
 import { Input } from "@elizaos/ui/components/ui/input";
 import { Check, Copy } from "lucide-react";

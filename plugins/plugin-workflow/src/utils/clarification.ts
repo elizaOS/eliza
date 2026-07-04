@@ -1,3 +1,4 @@
+// Builds clarification prompts for incomplete workflow drafts.
 import type { ClarificationRequest } from '../types';
 
 /**

@@ -1,3 +1,4 @@
+// Renders collapsible reasoning blocks in orchestrator transcripts.
 import { Button } from "@elizaos/ui/components/ui/button";
 import { Brain, ChevronRight } from "lucide-react";
 import { type ReactNode, useState } from "react";

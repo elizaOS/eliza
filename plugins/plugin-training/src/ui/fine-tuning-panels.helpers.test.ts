@@ -1,3 +1,4 @@
+// Exercises fine-tuning dashboard helper behavior.
 import { describe, expect, it } from "vitest";
 import {
   asTrainingEvent,

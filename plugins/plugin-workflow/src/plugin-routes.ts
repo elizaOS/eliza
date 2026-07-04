@@ -179,7 +179,7 @@ const workflowRouteList: Route[] = [
     rawPath: true,
     handler: automationsHandler,
   },
-  // Workbench todos CRUD (runtime tasks tagged `workbench-todo`). Ordered
+  // Workbench task-list CRUD for runtime tasks tagged as workbench items. Ordered
   // most-specific-first so `/:id/complete` matches before `/:id`.
   {
     type: 'GET',

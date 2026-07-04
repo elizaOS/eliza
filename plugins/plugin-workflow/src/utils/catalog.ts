@@ -1,3 +1,4 @@
+// Searches the workflow node catalog for generation and repair steps.
 import defaultNodesData from '../data/defaultNodes.json';
 import type {
   IntegrationFilterResult,

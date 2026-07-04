@@ -1,3 +1,4 @@
+// Exercises prompt-optimizer scoring and view-switching dataset behavior.
 import { describe, expect, it } from "vitest";
 import { LIFEOPS_TRAINING_TASKS } from "../core/trajectory-task-datasets.js";
 import {

@@ -1,3 +1,4 @@
+// Implements the public training service for trajectory export and dataset builds.
 import type { Trajectory, TrajectoryListResult } from "@elizaos/agent";
 import type { AgentRuntime } from "@elizaos/core";
 import { createHashAnonymizer } from "../core/privacy-filter.js";

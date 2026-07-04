@@ -1,3 +1,4 @@
+// Renders file diffs from orchestrator tool results.
 import type { ReactNode } from "react";
 import { type DiffRow, lineDiff } from "./orchestrator-diff.helpers";
 

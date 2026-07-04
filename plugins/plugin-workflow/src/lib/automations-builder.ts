@@ -584,7 +584,7 @@ export async function buildAutomationListResponse(
   // current workflow list is an ORPHAN: the workflow was deleted but the chat
   // room/conversation wasn't cleaned up. Surfacing those creates ghost
   // rows the user can't dismiss. Skip them; the UI's deleteWorkflow path
-  // also deletes the conversation, so later deletions won't leak rooms.
+  // also deletes the conversation, so future deletions do not leak rooms.
   const workflowOffline = workflowFetchError !== null;
   if (workflowOffline) {
     for (const [workflowId, room] of workflowRooms.entries()) {

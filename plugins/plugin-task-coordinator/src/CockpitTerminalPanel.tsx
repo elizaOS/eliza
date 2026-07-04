@@ -1,3 +1,4 @@
+// Streams read-only PTY output into the cockpit session panel.
 import { Button, type CodingAgentSession } from "@elizaos/ui";
 import { TerminalSquare } from "lucide-react";
 import { useState } from "react";

@@ -215,7 +215,7 @@ export async function runTrainCli(argv: string[]): Promise<number> {
       } catch (err) {
         // Fallback: write the artifact directly to <stateDir>/optimized-prompts/<task>/vN.json
         // when @elizaos/core fails to load (e.g. transient drizzle-orm
-        // resolution issues during cleanup). Keeps the optimizer output
+        // resolution issues during artifact finalization). Keeps the optimizer output
         // recoverable.
         const fs = await import("node:fs");
         const dir = path.join(stateDir, "optimized-prompts", promptTask);

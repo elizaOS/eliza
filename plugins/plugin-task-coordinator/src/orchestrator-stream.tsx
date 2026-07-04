@@ -1,3 +1,4 @@
+// Builds the orchestrator conversation stream from events and tool messages.
 import { Button } from "@elizaos/ui/components/ui/button";
 import {
   Check,

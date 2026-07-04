@@ -1,3 +1,4 @@
+// Stores workflow credential mappings and connector-disconnect eviction state.
 import { type IAgentRuntime, logger, Service } from '@elizaos/core';
 import { and, eq, sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';

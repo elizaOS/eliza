@@ -1,3 +1,4 @@
+// Renders the tap-in PTY terminal used by the coding cockpit.
 import { Button, client } from "@elizaos/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PtyTerminalPane } from "./PtyTerminalPane";

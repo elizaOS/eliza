@@ -1,3 +1,4 @@
+// Exercises prompt-optimizer scoring and view-switching dataset behavior.
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";

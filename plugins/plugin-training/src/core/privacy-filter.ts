@@ -303,7 +303,7 @@ function transformText(
   state: InternalState,
   collectedEntities: Set<string>,
 ): string {
-  // Geo first so JSON `coords` blocks collapse before any later pass can see
+  // Geo first so JSON `coords` blocks collapse before any subsequent pass can see
   // a stray decimal pair inside them.
   const geoRedacted = redactGeo(value, state);
   const credRedacted = redactCredentials(

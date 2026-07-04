@@ -134,7 +134,7 @@ describe('workbench todos CRUD route', () => {
       'type',
     ]);
 
-    // Tag convention preserved: stored task carries `workbench-todo` + `todo`.
+    // Tag convention preserved: stored task carries both workbench item tags.
     const stored = store.tasks.get(todo.id as string);
     expect(stored?.tags).toEqual(['workbench-todo', 'todo']);
   });
@@ -150,7 +150,7 @@ describe('workbench todos CRUD route', () => {
   test('GET lists only workbench todos, sorted by name', async () => {
     await call(store.runtime, 'POST', '/api/workbench/todos', { name: 'Zebra' });
     await call(store.runtime, 'POST', '/api/workbench/todos', { name: 'Apple' });
-    // A non-todo task must be excluded from the listing.
+    // A plain workbench task must be excluded from the listing.
     store.seed({
       id: 'plain-1',
       name: 'not a todo',

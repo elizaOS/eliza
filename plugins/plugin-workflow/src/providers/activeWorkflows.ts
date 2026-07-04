@@ -1,3 +1,4 @@
+// Provides active workflow context to workflow-aware agent turns.
 import { type IAgentRuntime, logger, type Memory, type Provider, type State } from '@elizaos/core';
 import { WORKFLOW_SERVICE_TYPE, type WorkflowService } from '../services/index';
 

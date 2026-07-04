@@ -467,7 +467,7 @@ export class WorkflowService extends Service {
     // We pass empty `relevantNodes` / `relevantCredTypes` here before
     // node-catalog search runs: `preferredProviders` is derived from the
     // host's connector config alone (independent of node search). The
-    // full runtime context (with credentials + facts) is fetched again later
+    // full runtime context (with credentials + facts) is fetched again after search
     // once we have the filtered node list.
     const earlyContext = await this.fetchRuntimeContext([], opts?.userId ?? 'local');
     const preferredProviders = earlyContext?.preferredProviders;

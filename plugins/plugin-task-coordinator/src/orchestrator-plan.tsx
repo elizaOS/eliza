@@ -1,9 +1,10 @@
+// Renders the live orchestrator plan checklist.
 import { Button } from "@elizaos/ui/components/ui/button";
 import { Check, ChevronRight, Circle, Loader } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
 
-// The orchestrator's current plan/todo list. The sub-agent (opencode) emits its
-// todo snapshot as an ACP `plan` update; the backend sanitizes it onto the
+// The orchestrator's current plan checklist. The sub-agent (opencode) emits its
+// checklist snapshot as an ACP `plan` update; the backend sanitizes it onto the
 // task's `currentPlan`, and this dock renders it the way Codex/Claude/opencode
 // surface a live checklist: a pinned, collapsible panel with per-item status
 // (pending / in-progress / done) and a progress count. Color is meaning-only —
@@ -57,7 +58,7 @@ export function PlanDock({
   // dock once there's an active step keeps the live work visible.
   const hasActive = entries.some((entry) => entry.status === "in_progress");
   const [open, setOpen] = useState(hasActive);
-  // A plan can start all-pending (collapsed) and only later gain an in-progress
+  // A plan can start all-pending (collapsed) and then gain an in-progress
   // step; the lazy init above runs once at mount, so reopen on the false→true
   // transition. Only forces open (never re-collapses), preserving manual toggle.
   useEffect(() => {

@@ -1,3 +1,4 @@
+// Exercises local file URL helpers used by training artifacts.
 import { describe, expect, it } from "vitest";
 import { toLocalFileUrl } from "./local-file-url";
 

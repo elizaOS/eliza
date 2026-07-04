@@ -1,3 +1,4 @@
+// Provides pending workflow draft context for confirmation turns.
 import type { IAgentRuntime, Memory, Provider, State } from '@elizaos/core';
 import type { WorkflowDraft } from '../types/index';
 

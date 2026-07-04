@@ -1,3 +1,4 @@
+// Exercises workflow engine unit behavior and credential handling.
 import { describe, expect, test } from 'bun:test';
 import { evalCodeAction } from '../../src/actions/eval-code';
 import { evalQuickJsCode } from '../../src/services/embedded-workflow-service';
