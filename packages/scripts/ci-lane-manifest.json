@@ -67,10 +67,6 @@
       "@elizaos/scenario-runner",
       "@elizaos/skills"
     ],
-    "nonEmptyScriptLanes": [
-      "test",
-      "test:e2e",
-      "test:integration"
-    ]
+    "nonEmptyScriptLanes": ["test", "test:e2e", "test:integration"]
   }
 }
