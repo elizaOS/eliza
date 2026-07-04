@@ -340,6 +340,7 @@ def test_recipe_sidecar_manifest_fragment_complete():
     recipe. Verify the helper produces all four for every method.
     """
     from _kernel_manifest import (
+        KERNEL_CODEBOOK_HASHES,
         KERNEL_TARGETS,
         kernel_manifest_fragment,
     )
@@ -363,9 +364,33 @@ def test_recipe_sidecar_manifest_fragment_complete():
             assert frag["codebook_hash"][target], (
                 f"{method}/{target}: empty codebook_hash"
             )
+            assert frag["codebook_hash"][target] == KERNEL_CODEBOOK_HASHES[target]
+            assert frag["codebook_hash"][target].startswith("sha256:"), (
+                f"{method}/{target}: codebook_hash must be a real sha256 digest"
+            )
+            assert len(frag["codebook_hash"][target]) == len("sha256:") + 64
             assert frag["per_block_tolerance"][target] > 0, (
                 f"{method}/{target}: non-positive per_block_tolerance"
             )
+
+
+def test_kernel_manifest_codebook_hashes_match_pinned_sources():
+    """Manifest codebook hashes are computed from C/kernel source content.
+
+    Any drift in the committed C codebook/layout source must fail here until
+    the pinned digest is reviewed and updated in the same PR.
+    """
+    from _kernel_manifest import (
+        KERNEL_CODEBOOK_HASHES,
+        PINNED_KERNEL_CODEBOOK_SHA256,
+        assert_kernel_codebook_hashes_current,
+    )
+
+    observed = assert_kernel_codebook_hashes_current()
+    assert observed == PINNED_KERNEL_CODEBOOK_SHA256
+    assert KERNEL_CODEBOOK_HASHES == {
+        target: f"sha256:{digest}" for target, digest in observed.items()
+    }
 
 
 def test_kernel_manifest_fragment_rejects_unknown_method():

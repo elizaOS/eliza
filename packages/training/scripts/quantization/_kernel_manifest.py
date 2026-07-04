@@ -16,26 +16,107 @@ manifest correctness without loading a model.
 
 from __future__ import annotations
 
+import hashlib
+import re
+from pathlib import Path
 
-# Codebook hashes pinned to the canonical kernel references.
-#
-# turbo3/turbo4/turbo3_tcq codebooks live in
-#   packages/native/plugins/turboquant-cpu/include/turboquant/turboquant.h
-# polar_q4 centroids live in
-#   packages/native/plugins/polarquant-cpu/include/polarquant/polar_centroids.h
-# qjl1_256 has no centroid table — it's sign-only — so its "hash" identifies
-# the block layout convention rather than a numeric codebook.
-#
-# Mismatches surface in test_recipes_smoke.py::
-#   test_polarquant_centroids_match_c_reference
-#   test_polarquant_qjl_correction_magnitude_matches_c
-#   test_qjl_block_layout_packing_matches_c_ref
+
+_REPO_ROOT = Path(__file__).resolve().parents[4]
+
+
+def _sha256_file(relpath: str) -> str:
+    path = _REPO_ROOT / relpath
+    if not path.is_file():
+        raise RuntimeError(f"kernel codebook hash source missing: {path}")
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _sha256_c_initializer(relpath: str, symbol: str) -> str:
+    path = _REPO_ROOT / relpath
+    if not path.is_file():
+        raise RuntimeError(f"kernel codebook hash source missing: {path}")
+    text = path.read_text(encoding="utf-8")
+    match = re.search(
+        rf"(?:static\s+)?const\s+(?:float|int8_t)\s+{re.escape(symbol)}"
+        r"\s*\[[^\]]+\]\s*=\s*\{(?P<body>.*?)\}\s*;",
+        text,
+        flags=re.DOTALL,
+    )
+    if match is None:
+        raise RuntimeError(f"kernel codebook symbol {symbol!r} missing in {path}")
+    normalized = re.sub(r"\s+", " ", match.group(0).strip()).encode("utf-8")
+    return hashlib.sha256(normalized).hexdigest()
+
+
+KERNEL_CODEBOOK_HASH_SOURCES: dict[str, tuple[str, str | None]] = {
+    "turbo3": (
+        "packages/native/plugins/turboquant-cpu/src/tbq_block_ref.c",
+        "TBQ3_CODEBOOK",
+    ),
+    "turbo4": (
+        "packages/native/plugins/turboquant-cpu/src/tbq_block_ref.c",
+        "TBQ4_CODEBOOK",
+    ),
+    "turbo3_tcq": (
+        "plugins/plugin-local-inference/native/reference/turbo_kernels.c",
+        "ELIZA_TURBO3_TCQ_CODEBOOK",
+    ),
+    "polar_q4": (
+        "packages/native/plugins/polarquant-cpu/include/polarquant/polar_centroids.h",
+        "POLAR_Q4_CENTROIDS",
+    ),
+    # QJL is sign-only: there is no centroid table. Its manifest hash pins the
+    # public packed-layout header that defines QJL_PACKED_BYTES, projection
+    # dimensions, and qjl_block_qjl1_256.
+    "qjl1_256": ("packages/native/plugins/qjl-cpu/include/qjl/qjl.h", None),
+}
+
+PINNED_KERNEL_CODEBOOK_SHA256 = {
+    "turbo3": "edc3ccfadf06e038e79d9dd763b89a6fb359742521ddf1950fe7b40fe55f0a5e",
+    "turbo4": "2e8b3c0c2668f3e2243734a0b679ea57d333b5509fea097122afce8066b959a5",
+    "turbo3_tcq": "df82e32eed0df23f5a88fe9afbb077a03e3067c8690dcc55997ad01fb54e96be",
+    "polar_q4": "cce740dff7143a258ea01a482a539f2485acc959895e8dbc3ce2945f034ec329",
+    "qjl1_256": "84048dea7812cf87e0c002aa2be69443e4228c10b326a9e5b1aa2d3668fbab58",
+}
+
+
+def compute_kernel_codebook_sha256() -> dict[str, str]:
+    """Return current sha256 digests from the kernel reference sources."""
+    out: dict[str, str] = {}
+    for target, (relpath, symbol) in KERNEL_CODEBOOK_HASH_SOURCES.items():
+        out[target] = (
+            _sha256_file(relpath)
+            if symbol is None
+            else _sha256_c_initializer(relpath, symbol)
+        )
+    return out
+
+
+def assert_kernel_codebook_hashes_current() -> dict[str, str]:
+    """Fail loudly if a committed kernel codebook/layout source drifted.
+
+    The manifest must not emit stale hand-written labels. A source constant
+    change needs a matching pinned digest update in the same PR so the publish
+    gate can prove recipe/kernel parity from content hashes.
+    """
+    current = compute_kernel_codebook_sha256()
+    mismatches = {
+        target: (PINNED_KERNEL_CODEBOOK_SHA256[target], observed)
+        for target, observed in current.items()
+        if PINNED_KERNEL_CODEBOOK_SHA256[target] != observed
+    }
+    if mismatches:
+        detail = ", ".join(
+            f"{target}: pinned={pinned} observed={observed}"
+            for target, (pinned, observed) in sorted(mismatches.items())
+        )
+        raise RuntimeError(f"kernel codebook hash drift: {detail}")
+    return current
+
+
+KERNEL_CODEBOOK_SHA256 = assert_kernel_codebook_hashes_current()
 KERNEL_CODEBOOK_HASHES = {
-    "turbo3": "turbo_centroids_3bit:8xfp32:seed42:v1",
-    "turbo4": "turbo_centroids_4bit:16xfp32:seed42:v1",
-    "turbo3_tcq": "turbo3_tcq_codebook:512xfp32:seed42:v1",
-    "polar_q4": "polar_q4_centroids:16xfp32:lloyd_max_niter100:v1",
-    "qjl1_256": "qjl1_256_layout:34bytes:lsb_first:bf16_norm:v1",
+    target: f"sha256:{digest}" for target, digest in KERNEL_CODEBOOK_SHA256.items()
 }
 
 # Block layout versions. A non-backward-compatible change to any of these
