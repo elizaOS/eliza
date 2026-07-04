@@ -3,15 +3,21 @@
 // Document*, Memory*, MCP*, Share*
 // ---------------------------------------------------------------------------
 
-import type { LinkedAccountProviderId } from "@elizaos/shared";
+import type {
+  ChatFailureKind,
+  ChatTurnStatus,
+  LinkedAccountProviderId,
+} from "@elizaos/shared";
 import type {
   ConversationMetadata,
   ConversationScope,
 } from "./client-types-core";
 
 // Single-source SSE chat contract lives in @elizaos/shared (#12409); re-exported
-// here so existing `@elizaos/ui` `api` consumers keep their import path.
-export type { ChatFailureKind, ChatTurnStatus } from "@elizaos/shared";
+// here so existing `@elizaos/ui` `api` consumers keep their import path. Imported
+// (not export-from) because `failureKind` fields below reference the type in this
+// module's scope.
+export type { ChatFailureKind, ChatTurnStatus };
 
 // Conversations
 export interface Conversation {
