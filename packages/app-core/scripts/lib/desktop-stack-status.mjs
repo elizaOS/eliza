@@ -8,9 +8,18 @@
  */
 
 import { createConnection } from "node:net";
+import {
+  DEFAULT_DESKTOP_UI_PORT,
+  resolveDesktopApiPort,
+} from "@elizaos/shared";
 
-const DEFAULT_UI_PORT = 2138;
-const DEFAULT_API_PORT = 2138;
+// Dev mode splits the API from the Vite UI: API on 31337, UI on 2138. The
+// canonical `DEFAULT_DESKTOP_API_PORT`/`resolveDesktopApiPort` live in
+// `@elizaos/shared/runtime-env`; do NOT re-declare a default API port here (a
+// second, drifted copy previously hardwired 2138 — the Vite UI port — so an
+// API-only stack with no `ELIZA_API_PORT` in the shell probed the wrong port,
+// reported "Nothing listening", and exited 1 while the API was healthy on
+// 31337). Only the UI-port default is app-local (env → /api/dev/stack → default).
 const CONNECT_TIMEOUT_MS = 800;
 const FETCH_TIMEOUT_MS = 2500;
 
@@ -20,14 +29,6 @@ function parsePositivePort(value) {
   return Number.isInteger(parsed) && parsed > 0 && parsed < 65536
     ? parsed
     : NaN;
-}
-
-function resolveDesktopApiPort(env) {
-  return (
-    parsePositivePort(env.ELIZA_API_PORT) ||
-    parsePositivePort(env.ELIZA_PORT) ||
-    DEFAULT_API_PORT
-  );
 }
 
 /**
@@ -126,7 +127,7 @@ export async function gatherDesktopStackStatus(
   const uiPort =
     (Number.isFinite(uiFromEnv) ? uiFromEnv : NaN) ||
     (Number.isFinite(uiFromApi) ? uiFromApi : NaN) ||
-    DEFAULT_UI_PORT;
+    DEFAULT_DESKTOP_UI_PORT;
 
   const uiListening = await checkPort(uiPort);
 
