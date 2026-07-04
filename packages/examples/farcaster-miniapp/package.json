@@ -10,7 +10,10 @@
     "start": "node server.js",
     "test": "bun test",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
-    "typecheck": "tsgo --noEmit"
+    "lint:check": "bunx @biomejs/biome check .",
+    "typecheck": "tsgo --noEmit",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format ."
   },
   "dependencies": {
     "@farcaster/miniapp-sdk": "^0.3.0",
