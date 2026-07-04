@@ -91,6 +91,7 @@ function resolveServerUrl(value: string | undefined): string | undefined {
     if (!isPrivateOrLoopbackHost(parsed.hostname)) return undefined;
     return parsed.href.replace(/\/$/, "");
   } catch {
+    // error-policy:J3 invalid test-only server URL disables the override
     return undefined;
   }
 }

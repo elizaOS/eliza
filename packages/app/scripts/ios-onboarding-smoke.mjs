@@ -389,6 +389,7 @@ async function pollResult(udid, appId) {
       try {
         parsed = JSON.parse(lastRaw);
       } catch {
+        // error-policy:J3 malformed simulator preference is not a completed result
         parsed = null;
       }
       if (parsed?.ok === true) return parsed;
@@ -423,6 +424,7 @@ async function pollRelaunchResult(udid, appId) {
       try {
         parsed = JSON.parse(lastRaw);
       } catch {
+        // error-policy:J3 malformed simulator preference is not a completed result
         parsed = null;
       }
       if (parsed?.ok === true) return parsed;

@@ -903,9 +903,11 @@ async function fetchIosMixedContentHealth(apiBase: string): Promise<
     try {
       body = await response.clone().json();
     } catch {
+      // error-policy:J7 diagnostics preserve status even when body is not JSON
       try {
         body = await response.text();
       } catch {
+        // error-policy:J7 diagnostics preserve the health failure without a body
         body = null;
       }
     }
@@ -916,6 +918,7 @@ async function fetchIosMixedContentHealth(apiBase: string): Promise<
       body,
     };
   } catch (error) {
+    // error-policy:J7 diagnostics preserve the failed health probe for the harness
     return {
       ok: false,
       url,
@@ -992,6 +995,8 @@ async function runIosMixedContentSmokeIfRequested(options?: {
       storage: readIosOnboardingSmokeStorageSnapshot(),
     });
   } catch (error) {
+    // error-policy:J1 smoke boundary — the failure is written to the
+    // harness result sink
     await writeIosMixedContentSmokeResult({
       ok: false,
       phase: "failed",
