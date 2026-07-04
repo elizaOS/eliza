@@ -39,8 +39,10 @@
   "license": "MIT",
   "scripts": {
     "build": "tsc --noCheck -p tsconfig.json --noEmit",
-    "typecheck": "tsgo -p tsconfig.json --noEmit",
+    "typecheck": "tsgo --noEmit -p tsconfig.json",
     "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist .turbo node_modules",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format .",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "test": "bun test __tests__"
