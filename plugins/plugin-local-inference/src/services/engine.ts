@@ -66,11 +66,11 @@ import {
 } from "./voice/kokoro/runtime-selection";
 import type { VoicePipelineEvents } from "./voice/pipeline";
 import { type MtpTextRunner, mtpTextRunner } from "./voice/pipeline-impls";
-import { getSharedVoiceProfileStore } from "./voice/speaker/profile-store-factory";
 import {
 	createEvictableModelRole,
 	SharedResourceRegistry,
 } from "./voice/shared-resources";
+import { getSharedVoiceProfileStore } from "./voice/speaker/profile-store-factory";
 import type {
 	RejectedTokenRange,
 	TextToken,
