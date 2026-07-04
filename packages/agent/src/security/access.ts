@@ -95,7 +95,14 @@ export async function hasPrivateAccess(
       context.message,
     );
     return access?.hasPrivateAccess === true;
-  } catch {
+  } catch (err) {
+    // error-policy:J4 fail closed — deny private access on a failed check, but
+    // surface it: a throw here is a broken role/world-resolution pipeline (a
+    // missing world already returns null upstream, not a throw), and a silently
+    // denied check would keep denying forever with no signal to fix it.
+    context.runtime.reportError("Access.hasPrivateAccess", err, {
+      entityId: context.message.entityId,
+    });
     return false;
   }
 }

@@ -14,7 +14,6 @@ import type {
   State,
   UUID,
 } from "@elizaos/core";
-import { logger } from "@elizaos/core";
 import { getValidationKeywordTerms } from "@elizaos/shared";
 import {
   extractConversationMetadataFromRoom,
@@ -137,10 +136,14 @@ export const recentConversationsProvider: Provider = {
         },
       };
     } catch (error) {
-      logger.error(
-        "[recent-conversations] Error:",
-        error instanceof Error ? error.message : String(error),
-      );
+      // error-policy:J4 recall failure degrades to no recent-conversations text,
+      // but must be distinguishable from a legit-empty recall: reportError
+      // surfaces the broken pipeline to the agent via RECENT_ERRORS instead of
+      // it reading as "no recent history".
+      runtime.reportError("RecentConversationsProvider", error, {
+        entityId: message.entityId,
+        roomId: message.roomId,
+      });
       return { text: "", values: {}, data: {} };
     }
   },

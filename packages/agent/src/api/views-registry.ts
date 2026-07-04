@@ -322,6 +322,9 @@ export async function registerPluginViews(
   if (runtime && registered.length > 0) {
     setImmediate(() => {
       for (const entry of registered) {
+        // error-policy:J5 indexView self-degrades (its own catch logs and falls
+        // back to keyword search); this only suppresses a stray rejection from a
+        // synchronous pre-embed throw so a background task cannot crash the loop.
         void viewSearchIndex.indexView(entry, runtime).catch(() => {});
       }
     });
@@ -421,6 +424,9 @@ export function registerBuiltinViews(runtime?: IAgentRuntime): void {
   if (runtime && registered.length > 0) {
     setImmediate(() => {
       for (const entry of registered) {
+        // error-policy:J5 indexView self-degrades (its own catch logs and falls
+        // back to keyword search); this only suppresses a stray rejection from a
+        // synchronous pre-embed throw so a background task cannot crash the loop.
         void viewSearchIndex.indexView(entry, runtime).catch(() => {});
       }
     });

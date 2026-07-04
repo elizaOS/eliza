@@ -16,7 +16,7 @@ import type {
   State,
   UUID,
 } from "@elizaos/core";
-import { embedRecallQuery, logger, stringToUuid } from "@elizaos/core";
+import { embedRecallQuery, stringToUuid } from "@elizaos/core";
 import { getValidationKeywordTerms } from "@elizaos/shared";
 import {
   extractConversationMetadataFromRoom,
@@ -170,6 +170,9 @@ export const relevantConversationsProvider: Provider = {
           try {
             roomCache.set(rid, await runtime.getRoom(rid));
           } catch {
+            // error-policy:J4 one room's source tag degrades to untagged; the
+            // outer catch reports a wholesale recall failure, this per-room miss
+            // is cosmetic and must not abort the whole provider.
             roomCache.set(rid, null);
           }
         }
@@ -204,10 +207,14 @@ export const relevantConversationsProvider: Provider = {
         },
       };
     } catch (error) {
-      logger.error(
-        "[relevant-conversations] Error:",
-        error instanceof Error ? error.message : String(error),
-      );
+      // error-policy:J4 recall failure degrades to no relevant-conversations
+      // text, but must be distinguishable from a legit-empty recall: reportError
+      // surfaces the broken pipeline to the agent via RECENT_ERRORS instead of
+      // it reading as "no relevant history".
+      runtime.reportError("RelevantConversationsProvider", error, {
+        entityId: message.entityId,
+        roomId: message.roomId,
+      });
       return { text: "", values: {}, data: {} };
     }
   },
