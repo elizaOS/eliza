@@ -1,3 +1,7 @@
+/**
+ * Storybook coverage for the app permissions settings panel as it settles from
+ * backend fetch into empty/error and responsive states.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { withMockApp } from "../../storybook/mock-providers.helpers";
 import { AppPermissionsSection } from "./AppPermissionsSection";

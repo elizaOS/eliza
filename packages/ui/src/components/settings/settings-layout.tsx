@@ -1,3 +1,7 @@
+/**
+ * Defines the shared Settings layout primitives that keep section groups and
+ * rows consistent across built-in and plugin-provided settings panels.
+ */
 import { ChevronRight } from "lucide-react";
 import type * as React from "react";
 import { cn } from "../../lib/utils";

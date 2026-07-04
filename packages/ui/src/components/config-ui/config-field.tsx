@@ -1,3 +1,7 @@
+/**
+ * Renders one plugin configuration field with the standard label, status,
+ * renderer, validation, and help-text structure used by config panels.
+ */
 import type {
   FieldRenderer,
   FieldRenderProps,

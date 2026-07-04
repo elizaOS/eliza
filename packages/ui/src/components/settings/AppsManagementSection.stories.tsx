@@ -1,3 +1,7 @@
+/**
+ * Storybook coverage for the apps management settings panel and its backendless
+ * loading, empty, error, and responsive toolbar states.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { mockApp, withMockApp } from "../../storybook/mock-providers.helpers";
 import { AppsManagementSection } from "./AppsManagementSection";

@@ -1,3 +1,7 @@
+/**
+ * Coordinates the onboarding soft-ask permission sequence across web, desktop,
+ * and native registries without prompting the OS until the user opts in.
+ */
 import type {
   IPermissionsRegistry,
   PermissionId,

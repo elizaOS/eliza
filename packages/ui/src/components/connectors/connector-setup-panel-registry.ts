@@ -1,3 +1,7 @@
+/**
+ * Maps connector plugin ids to built-in setup panel tokens while keeping panel
+ * availability checks outside the connector list renderer.
+ */
 import { getBootConfig } from "../../config/boot-config";
 
 /**

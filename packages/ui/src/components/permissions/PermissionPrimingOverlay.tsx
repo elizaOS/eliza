@@ -1,3 +1,7 @@
+/**
+ * Mounts permission priming at the shell root once first-run and tutorial
+ * gates allow the post-login soft-ask sequence to appear.
+ */
 import * as React from "react";
 import { useIsAuthenticated } from "../../hooks/useAuthStatus";
 import { useAppSelector } from "../../state";

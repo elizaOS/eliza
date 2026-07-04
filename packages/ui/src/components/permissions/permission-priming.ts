@@ -1,3 +1,7 @@
+/**
+ * Declares the platform-specific permission priming sets, rationale copy, and
+ * persisted shown-state for the onboarding soft-ask flow.
+ */
 import type { PermissionId } from "@elizaos/shared/contracts/permissions";
 import { getFrontendPlatform } from "../../platform/platform-guards";
 

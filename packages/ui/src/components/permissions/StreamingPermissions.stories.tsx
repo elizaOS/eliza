@@ -1,3 +1,7 @@
+/**
+ * Storybook states for the streaming permission settings card across web,
+ * mobile, and voice-focused copy variants.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { withMockApp } from "../../storybook/mock-providers.helpers";
 import { StreamingPermissionsSettingsView } from "./StreamingPermissions";

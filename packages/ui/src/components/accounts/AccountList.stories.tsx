@@ -1,3 +1,7 @@
+/**
+ * Storybook coverage for account-list provider variants and the backendless
+ * empty state produced by the account client hook.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { withMockApp } from "../../storybook/mock-providers.helpers";
 import { AccountList } from "./AccountList";

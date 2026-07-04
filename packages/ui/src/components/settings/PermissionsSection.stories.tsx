@@ -1,3 +1,7 @@
+/**
+ * Storybook states for the Settings permissions section across roomy, narrow,
+ * and card-framed layouts with the web permission surface selected.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { withMockApp } from "../../storybook/mock-providers.helpers";
 import { PermissionsSection } from "./PermissionsSection";

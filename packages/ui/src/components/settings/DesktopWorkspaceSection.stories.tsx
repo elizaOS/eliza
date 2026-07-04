@@ -1,3 +1,7 @@
+/**
+ * Storybook states for the desktop workspace settings section, including the
+ * web-shell fallback where Electrobun bridges are unavailable.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { withMockApp } from "../../storybook/mock-providers.helpers";
 import { DesktopWorkspaceSection } from "./DesktopWorkspaceSection";
