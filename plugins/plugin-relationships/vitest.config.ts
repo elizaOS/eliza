@@ -1,3 +1,4 @@
+/** Vitest config for @elizaos/plugin-relationships: extends the shared base config with the package's local aliases. */
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

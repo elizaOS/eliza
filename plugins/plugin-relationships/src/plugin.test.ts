@@ -1,3 +1,4 @@
+/** Contract tests asserting @elizaos/plugin-relationships registers its action, provider, and schema. */
 import { describe, expect, it } from "vitest";
 
 import { entityAction } from "./actions/entity.js";

@@ -1,3 +1,4 @@
+/** Unit tests for presentDocument: deterministic mapping of document Memory metadata to display cards (no runtime). */
 import type { Memory, UUID } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { presentDocument } from "./document-presenter";

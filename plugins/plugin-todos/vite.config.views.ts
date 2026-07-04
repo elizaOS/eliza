@@ -1,3 +1,4 @@
+/** Vite bundle config for the todos dashboard view (emits to dist/views). */
 import { createViewBundleConfig } from "../../packages/scripts/view-bundle-vite.config.ts";
 
 export default createViewBundleConfig({

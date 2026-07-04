@@ -1,3 +1,8 @@
+/**
+ * TodosService — the drizzle-backed CRUD store for user-scoped todos. Rows are
+ * scoped by `(agentId, entityId)` with optional `roomId`/`worldId` narrowing.
+ * Requires `runtime.db` from `@elizaos/plugin-sql`; throws if it is absent.
+ */
 import { type IAgentRuntime, logger, Service, type UUID } from "@elizaos/core";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";

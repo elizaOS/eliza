@@ -1,3 +1,4 @@
+/** CURRENT_TODOS provider (position -5): injects the user's pending + in-progress todos as a markdown checklist into the planner context each turn in the tasks/todos/automation contexts. */
 import type {
   IAgentRuntime,
   Memory,

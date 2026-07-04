@@ -1,3 +1,4 @@
+/** Vitest config for @elizaos/plugin-reminders: node environment over the src + test suites. */
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({

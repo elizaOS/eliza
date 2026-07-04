@@ -1,3 +1,4 @@
+/** Route-handler tests for the documents REST surface, driving handleDocumentsRoutes against a mocked document service and fetch impl. */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { DocumentRouteContext } from "../src/routes.js";
 import {

@@ -1,3 +1,4 @@
+/** Render tests for the relationships spatial view over the TUI surface (deterministic static markup, no live runtime). */
 import { visibleWidth } from "@elizaos/tui";
 import { SpatialSurface } from "@elizaos/ui/spatial";
 import {
