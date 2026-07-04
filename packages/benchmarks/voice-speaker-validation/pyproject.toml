@@ -1,6 +1,6 @@
 [build-system]
 requires = ["setuptools>=68"]
-build-backend = "setuptools.backends.legacy:build"
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "voice-speaker-validation"
@@ -12,8 +12,8 @@ dependencies = [
     "scipy>=1.11",
     "soundfile>=0.12",
     "librosa>=0.10",
-    "torch>=2.0",
-    "torchaudio>=2.0",
+    "torch>=2.4,<2.5",
+    "torchaudio>=2.4,<2.5",
     "speechbrain>=1.0",
     "scikit-learn>=1.3",
     "onnxruntime>=1.16",
@@ -33,3 +33,6 @@ addopts = [
     "--tb=short",
     "--no-header",
 ]
+
+[tool.setuptools]
+py-modules = ["single_stream_gate", "voice_profile_lifecycle"]
