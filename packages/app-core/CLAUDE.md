@@ -64,7 +64,7 @@ Run from repo root with `--cwd packages/app-core`:
 - `bun run --cwd packages/app-core typecheck` — `tsgo --noEmit -p tsconfig.json`
 - `bun run --cwd packages/app-core test` — vitest (config `vitest.config.ts`)
 - `bun run --cwd packages/app-core test:auth` — auth/auth-bootstrap/auth-store suites, no file parallelism
-- `bun run --cwd packages/app-core lint` / `lint:fix` / `format` / `format:fix` — Biome
+- `bun run --cwd packages/app-core lint` / `lint:check` / `format` / `format:check` — Biome
 - `bun run --cwd packages/app-core benchmark:server` — action benchmark harness
 - SMS-gateway, flatpak, codesign, and voice scripts are namespaced (`sms-gateway:*`, `build:flatpak*`, `codesign:mas*`, `voice:*`) — see `package.json`.
 

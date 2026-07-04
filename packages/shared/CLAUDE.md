@@ -161,10 +161,10 @@ bun run --cwd packages/shared build:i18n     # regenerate src/i18n/generated/
 bun run --cwd packages/shared build:dist     # tsc only (does not regenerate i18n)
 bun run --cwd packages/shared typecheck      # tsgo --noEmit
 bun run --cwd packages/shared test           # vitest run
-bun run --cwd packages/shared lint           # biome check src
-bun run --cwd packages/shared lint:fix       # biome check --write src
-bun run --cwd packages/shared format         # biome format src (read-only check)
-bun run --cwd packages/shared format:fix     # biome format --write src
+bun run --cwd packages/shared lint           # biome check --write src
+bun run --cwd packages/shared lint:check     # biome check src (read-only)
+bun run --cwd packages/shared format         # biome format --write src
+bun run --cwd packages/shared format:check   # biome format src (read-only)
 bun run --cwd packages/shared clean          # rm -rf dist
 bun run --cwd packages/shared sync           # copy assets to consumer public/ dirs
 ```

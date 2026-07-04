@@ -93,9 +93,10 @@ bun run --cwd packages/agent start            # bun run src/bin.ts (defaults to 
 bun run --cwd packages/agent dev              # bun --hot src/bin.ts
 bun run --cwd packages/agent typecheck        # tsgo --noEmit -p tsconfig.json
 bun run --cwd packages/agent test             # vitest run --config vitest.config.ts
-bun run --cwd packages/agent lint             # biome check (curated src subdirs)
-bun run --cwd packages/agent lint:fix
-bun run --cwd packages/agent format
+bun run --cwd packages/agent lint             # biome check --write (curated src subdirs)
+bun run --cwd packages/agent lint:check       # biome check read-only
+bun run --cwd packages/agent format           # biome format --write
+bun run --cwd packages/agent format:check     # biome format read-only
 bun run --cwd packages/agent build            # build:dist (tsc --noCheck → prepare-package-dist → rewrite imports)
 bun run --cwd packages/agent build:mobile     # bun scripts/build-mobile-bundle.mjs
 bun run --cwd packages/agent build:ios-bun    # mobile bundle, --target=ios
@@ -143,7 +144,7 @@ supervisor relaunches) — never a silent `process.exit`.
 - `bin.ts` statically imports `node:fs` and pins AOSP/mobile bootstrap symbols onto `globalThis` to defeat tree-shaking in the mobile bundle — do not remove those guards.
 - `core-plugins.ts` splits plugins into blocking vs deferred boot phases; slow feature/provider plugins must stay in the deferred set or boot regresses.
 - Several barrel re-exports avoid duplicate-symbol (`TS2308`) collisions and lazy-load heavy plugins (wallet, app-manager, elizacloud) — read the inline comments in `index.ts`/`api/index.ts`/`services/index.ts` before adding broad `export *` lines.
-- `lint`/`lint:fix` only cover a curated subset of `src/` directories (see the script in `package.json`); `format` covers all of `src`.
+- `lint`/`lint:check` only cover a curated subset of `src/` directories (see the script in `package.json`); `format` covers all of `src`.
 - TEE work (dstack) is gated behind `services/tee-boot-gate*` and validated by `scripts/validate-tee-*.mjs` + `scripts/tee-*-smoke.ts`; see `docs/tee-agent-implementation-plan.md`.
 - **Files / media storage.** Attachment bytes live in one content-addressed store, `api/media-store.ts` (`${STATE_DIR}/media/<sha256>.<ext>`, served pre-auth at `/api/media/<sha256>` with `nosniff` + a download `Content-Disposition` for SVG/active types). `services/file-storage.ts` (`LocalFileStorageService`, fills `ServiceType.REMOTE_FILES`) is the contract the rest of the system resolves via `runtime.getService(ServiceType.REMOTE_FILES)` — `store`/`getUrl`/`list`/`delete`; the authenticated `api/files-routes.ts` (`GET`/`DELETE /api/files`) and the `actions/files.ts` `FILES` agent tool both go through it. `api/media-runtime.ts` rehosts inline `data:` and remote generated-media URLs into the store on the outgoing path (SSRF-guarded) and runs the reference-aware orphan GC (which also counts document `metadata.mediaUrl`). Do NOT add a second file store, a `files` DB table, or a refcount/GC engine — see issue #8876 and the root AGENTS.md anti-pattern clause.
 
