@@ -48,6 +48,7 @@ async function fileExists(path: string): Promise<boolean> {
     const stat = await fsp.stat(path);
     return stat.isFile();
   } catch {
+    // error-policy:J4 stat unavailable -> file absent
     return false;
   }
 }
@@ -63,6 +64,7 @@ async function isGgufHeader(path: string): Promise<boolean> {
       await fd.close();
     }
   } catch {
+    // error-policy:J3 unreadable/short file is not a GGUF header
     return false;
   }
 }

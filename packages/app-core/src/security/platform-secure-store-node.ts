@@ -159,6 +159,7 @@ class MacOSKeychainPlatformSecureStore implements PlatformSecureStore {
       await execFileAsync("security", ["-h"], { encoding: "utf8" });
       return true;
     } catch {
+      // error-policy:J4 keychain tool unavailable (probe)
       return false;
     }
   }

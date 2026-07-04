@@ -196,6 +196,7 @@ function readStartupTraceBootstrapFile(
     }
     return bootstrap;
   } catch {
+    // error-policy:J3 invalid bootstrap JSON -> no bootstrap
     return null;
   }
 }

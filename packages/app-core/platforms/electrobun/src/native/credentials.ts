@@ -66,6 +66,7 @@ function readJsonFile<T>(filePath: string): T | null {
     const content = fs.readFileSync(filePath, "utf8");
     return JSON.parse(content) as T;
   } catch {
+    // error-policy:J3 absent/invalid JSON credential file
     return null;
   }
 }
@@ -95,6 +96,7 @@ async function isCliInstalled(name: string): Promise<boolean> {
     await proc.exited;
     return proc.exitCode === 0;
   } catch {
+    // error-policy:J4 CLI absent (spawn probe)
     return false;
   }
 }
@@ -112,6 +114,7 @@ async function readKeychainCredential(service: string): Promise<string | null> {
     const trimmed = output.trim();
     return trimmed.length > 0 ? trimmed : null;
   } catch {
+    // error-policy:J4 keychain credential absent
     return null;
   }
 }
@@ -391,6 +394,7 @@ function decryptChromiumCookieValue(
     ]);
     return decrypted.toString("utf8");
   } catch {
+    // error-policy:J3 cookie ciphertext not decryptable -> not decodable
     return null;
   }
 }

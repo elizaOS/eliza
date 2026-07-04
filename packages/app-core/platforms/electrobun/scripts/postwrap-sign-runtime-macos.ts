@@ -218,6 +218,7 @@ function resolveDeveloperId(
     const match = output.match(/"([^"]*Developer ID Application[^"]*)"/);
     return match?.[1] ?? null;
   } catch {
+    // error-policy:J4 signing identity absent when `security find-identity` fails
     return null;
   }
 }

@@ -148,6 +148,7 @@ export function isAllowedOrigin(
     const port = u.port || (u.protocol === "https:" ? "443" : "80");
     return isLocal && ports.has(port);
   } catch {
+    // error-policy:J3 unparseable origin rejected (fail-closed)
     return false;
   }
 }

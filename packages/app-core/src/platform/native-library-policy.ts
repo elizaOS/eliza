@@ -36,6 +36,7 @@ function realpath(value: string): string | null {
     try {
       return realpathSync(value);
     } catch {
+      // error-policy:J4 path does not resolve on either realpath
       return null;
     }
   }

@@ -167,6 +167,7 @@ function isExecutable(p: string): boolean {
     fs.accessSync(p, fs.constants.X_OK);
     return true;
   } catch {
+    // error-policy:J4 path not executable (access probe)
     return false;
   }
 }
@@ -181,6 +182,7 @@ function isCommandOnPath(cmd: string): boolean {
     });
     return result.status === 0;
   } catch {
+    // error-policy:J4 command not on PATH (spawn probe)
     return false;
   }
 }

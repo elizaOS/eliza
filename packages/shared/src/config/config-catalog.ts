@@ -345,6 +345,7 @@ export const builtInValidators: Record<string, ValidationFunction> = {
     try {
       return new RegExp(args.pattern).test(value);
     } catch {
+      // error-policy:J3 invalid user-supplied regex -> validation fails
       return false;
     }
   },
@@ -366,6 +367,7 @@ export const builtInValidators: Record<string, ValidationFunction> = {
       new URL(value);
       return true;
     } catch {
+      // error-policy:J3 invalid user-supplied URL -> validation fails
       return false;
     }
   },

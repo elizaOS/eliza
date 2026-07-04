@@ -236,6 +236,7 @@ export class TunnelToMobileClient {
       this.socket.send(JSON.stringify(frame));
       return true;
     } catch {
+      // error-policy:J4 frame send failed -> reported to caller as false
       return false;
     }
   }

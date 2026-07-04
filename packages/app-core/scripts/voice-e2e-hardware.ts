@@ -416,6 +416,7 @@ function fsProbe() {
       try {
         return fs.statSync(p).size;
       } catch {
+        // error-policy:J4 stat unavailable (fs probe)
         return null;
       }
     },
@@ -427,6 +428,7 @@ function fsProbe() {
         fs.closeSync(fd);
         return buf.toString("utf8");
       } catch {
+        // error-policy:J4 header bytes unreadable (fs probe)
         return null;
       }
     },

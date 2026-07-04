@@ -39,6 +39,7 @@ async function fetchJson<T>(
     if (!response.ok) return null;
     return (await response.json()) as T;
   } catch {
+    // error-policy:J4 loopback agent unreachable -> caller degrades to no data
     return null;
   }
 }

@@ -184,6 +184,7 @@ function tryParseObject(input: string): Record<string, unknown> | null {
       ? (parsed as Record<string, unknown>)
       : null;
   } catch {
+    // error-policy:J3 input is not a JSON object
     return null;
   }
 }

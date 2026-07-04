@@ -183,6 +183,7 @@ export async function runMainMenuResetAfterApiBaseResolved(
       const payload = (await res.json()) as { complete?: unknown };
       return typeof payload.complete === "boolean" ? payload.complete : null;
     } catch {
+      // error-policy:J4 first-run status endpoint unreachable -> unknown
       return null;
     }
   };

@@ -84,6 +84,7 @@ export function detectNvidiaGpu(): DetectedGpu | null {
 
     return { name, vram_mb, cuda_compute };
   } catch {
+    // error-policy:J4 nvidia-smi unavailable/unparseable -> no discrete GPU
     // nvidia-smi not found, timed out, or any other error.
     return null;
   }

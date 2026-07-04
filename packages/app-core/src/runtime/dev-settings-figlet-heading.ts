@@ -24,6 +24,7 @@ function loadFiglet(): FigletModule | null {
   try {
     return require("figlet") as FigletModule;
   } catch {
+    // error-policy:J4 optional figlet module absent
     return null;
   }
 }

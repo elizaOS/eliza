@@ -89,6 +89,7 @@ function consumeStoredPkceVerifier(storage: Storage): string | null {
     storage.removeItem(STEWARD_PKCE_VERIFIER_STORAGE_KEY);
     return parseStoredPkceVerifier(verifier);
   } catch {
+    // error-policy:J4 web storage unavailable -> no verifier
     return null;
   }
 }

@@ -103,6 +103,7 @@ function readCredentialsFile():
       fs.readFileSync(credPath, "utf-8"),
     ) as Partial<PersistedStewardCredentials> & StewardCredentialsMetadata;
   } catch {
+    // error-policy:J3 absent/invalid credentials JSON
     return null;
   }
 }

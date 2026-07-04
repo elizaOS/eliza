@@ -97,6 +97,7 @@ function isLoopbackHttpBase(value: string | undefined): boolean {
         parsed.hostname === "::1")
     );
   } catch {
+    // error-policy:J3 malformed URL is not a loopback base
     return false;
   }
 }

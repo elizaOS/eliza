@@ -285,6 +285,7 @@ async function readJsonEndpoint<T>(
     if (!response.ok) return null;
     return parse(await response.json());
   } catch {
+    // error-policy:J4 loopback endpoint unreachable -> caller degrades to no data
     return null;
   }
 }

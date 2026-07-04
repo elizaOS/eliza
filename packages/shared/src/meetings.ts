@@ -153,6 +153,7 @@ function safeDecodeUriComponent(value: string): string | null {
   try {
     return decodeURIComponent(value);
   } catch {
+    // error-policy:J3 malformed percent-escape -> not a recognizable link
     return null;
   }
 }

@@ -2918,6 +2918,7 @@ function wasStartupCrashAlreadyPrompted(updatedAt: string): boolean {
     const markerPath = resolveStartupCrashPromptMarkerPath();
     return fs.readFileSync(markerPath, "utf8").trim() === updatedAt;
   } catch {
+    // error-policy:J4 crash-prompt marker absent/unreadable -> treated as not yet prompted
     return false;
   }
 }

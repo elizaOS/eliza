@@ -72,6 +72,7 @@ function readVersionFromJson(
       ? trimToNull(parsed.version)
       : null;
   } catch {
+    // error-policy:J3 invalid version JSON -> no version
     return null;
   }
 }

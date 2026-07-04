@@ -96,6 +96,7 @@ export function isTrustedElizaUrl(value: string): boolean {
       (suffix) => hostname === suffix || hostname.endsWith(`.${suffix}`),
     );
   } catch {
+    // error-policy:J3 untrusted/unparseable URL rejected (fail-closed)
     return false;
   }
 }
@@ -149,6 +150,7 @@ function isTrustedElizaCloseMessage(event: HostMessageEventLike): boolean {
       const parsed = JSON.parse(detail) as { type?: unknown };
       return parsed.type === TRUSTED_ELIZA_CLOSE_MESSAGE_TYPE;
     } catch {
+      // error-policy:J3 malformed close-message JSON is not a trusted signal
       return false;
     }
   }

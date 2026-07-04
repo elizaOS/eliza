@@ -51,6 +51,7 @@ export function normalizeApiBase(raw: string | undefined): string | null {
     }
     return parsed.origin;
   } catch {
+    // error-policy:J3 malformed API base URL is not a valid origin
     return null;
   }
 }
@@ -269,6 +270,7 @@ export function resolveHttpLoopbackRendererOriginForApiClient(
     if (!isLoopbackHttpHostname(u.hostname)) return null;
     return u.origin;
   } catch {
+    // error-policy:J3 malformed renderer URL is not a loopback origin
     return null;
   }
 }

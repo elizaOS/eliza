@@ -85,6 +85,7 @@ function parseEnvelope(raw: string): JwksCacheEnvelope | null {
   try {
     parsed = JSON.parse(raw);
   } catch {
+    // error-policy:J3 invalid JWKS cache JSON -> no envelope
     return null;
   }
   if (!parsed || typeof parsed !== "object") return null;

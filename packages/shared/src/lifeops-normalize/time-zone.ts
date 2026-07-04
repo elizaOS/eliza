@@ -17,6 +17,7 @@ export function isValidTimeZone(timeZone: string): boolean {
     new Intl.DateTimeFormat("en-US", { timeZone }).format(new Date());
     return true;
   } catch {
+    // error-policy:J3 invalid IANA time zone -> false
     return false;
   }
 }

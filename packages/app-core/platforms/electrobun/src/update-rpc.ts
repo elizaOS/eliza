@@ -108,6 +108,7 @@ export const readUpdateStatusViaHttp: UpdateStatusReader = async (
     if (!response.ok) return null;
     return parseUpdateStatusSnapshot(await response.json());
   } catch {
+    // error-policy:J4 update-status endpoint unreachable -> unknown
     return null;
   }
 };

@@ -152,6 +152,7 @@ function parseTelegramUserId(userField: string | null): string | null {
   try {
     parsed = JSON.parse(userField);
   } catch {
+    // error-policy:J3 malformed Telegram user field -> invalid
     return null;
   }
   if (

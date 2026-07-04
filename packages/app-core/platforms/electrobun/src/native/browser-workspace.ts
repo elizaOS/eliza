@@ -404,6 +404,7 @@ $bmp.Dispose()`;
     const buf = fs.readFileSync(tmpPath);
     return buf.length > 100 ? { data: buf.toString("base64") } : null;
   } catch {
+    // error-policy:J4 screen capture unavailable -> no image
     return null;
   } finally {
     try {

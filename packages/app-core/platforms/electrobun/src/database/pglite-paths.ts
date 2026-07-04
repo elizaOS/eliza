@@ -48,6 +48,7 @@ function parentWritable(targetPath: string): boolean {
     fs.accessSync(parent, fs.constants.W_OK);
     return true;
   } catch {
+    // error-policy:J4 parent dir not creatable/writable -> reported as not writable
     return false;
   }
 }

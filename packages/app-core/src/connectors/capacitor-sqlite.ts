@@ -171,6 +171,7 @@ export async function isSqliteAvailable(): Promise<boolean> {
     });
     return true;
   } catch {
+    // error-policy:J4 SQLite native plugin unavailable (probe)
     return false;
   }
 }

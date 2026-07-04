@@ -25,6 +25,7 @@ export function shouldProxyToApiBase(apiBase: string | undefined): boolean {
   try {
     scheme = new URL(apiBase).protocol;
   } catch {
+    // error-policy:J3 malformed api base URL -> proxy inert
     return false;
   }
   return scheme === "http:" || scheme === "https:";

@@ -16,6 +16,7 @@ async function readPackageName(dir: string): Promise<string | null> {
     const parsed = JSON.parse(raw) as { name?: unknown };
     return typeof parsed.name === "string" ? parsed.name : null;
   } catch {
+    // error-policy:J3 absent/invalid package.json
     return null;
   }
 }
@@ -26,6 +27,7 @@ function readPackageNameSync(dir: string): string | null {
     const parsed = JSON.parse(raw) as { name?: unknown };
     return typeof parsed.name === "string" ? parsed.name : null;
   } catch {
+    // error-policy:J3 absent/invalid package.json
     return null;
   }
 }
