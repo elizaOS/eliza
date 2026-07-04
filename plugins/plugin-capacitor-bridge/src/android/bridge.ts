@@ -1,40 +1,34 @@
 /**
- * android-mobile-bridge.ts — Android counterpart to ios-bridge.ts.
+ * Android counterpart to the iOS stdio bridge — the native-side of the
+ * port-free local-agent transport (#12352, #12180 phase 2).
  *
- * On Android, the elizaOS agent runs as a Bun child process managed by
- * `ElizaAgentService`. Unlike the iOS path (which uses a stdio JSON-RPC
- * bridge to a JSContext host), the Android Bun process boots the full
- * elizaOS backend as an HTTP server listening on 127.0.0.1:31337.
+ * On Android the elizaOS agent runs as a Bun child process managed by
+ * `ElizaAgentService`. This module boots that runtime with `localAgentMode`
+ * so it binds NO TCP listener (unless `ELIZA_API_EXPOSE_PORT` re-opens it for
+ * dev/LAN/e2e), then serves the WebView over an NDJSON pipe on stdin/stdout —
+ * the same in-process `dispatchRoute` kernel the HTTP server used, with no
+ * loopback hop. `ElizaAgentService.requestLocalAgent` / `requestLocalAgentStream`
+ * write request frames to this process's stdin and read response frames from its
+ * stdout; the WebView `Agent.request` / `requestStream` Capacitor contract is
+ * unchanged.
  *
- * The agent bundle entry-point (`serve` / `start` command) already binds
- * the server when `ELIZA_DISABLE_DIRECT_RUN` is unset.  This module:
- *   1. Sets Android-specific environment variables before any module import.
- *   2. Installs the mobile fs sandbox shim.
- *   3. Boots the elizaOS runtime via the canonical `startEliza` path.
- *   4. Wires the `ELIZA_DEVICE_BRIDGE_ENABLED` inference delegation layer
- *      so the Capacitor WebView's llama-cpp plugin routes through the
- *      on-device agent over loopback.
+ * Frame protocol (shared kernel `createStdioBridge`):
+ *   in:  {"id","method":"http_request"|"http_request_stream","stream?":true,"payload":{path,method,headers,body}}
+ *   out (buffered):  {"id","ok":true,"result":{status,statusText,headers,body,bodyBase64,bodyEncoding}}
+ *   out (streaming): {"id","stream":"response",status,statusText,headers}
+ *                    {"id","stream":"chunk","dataBase64"}
+ *                    {"id","stream":"complete"[,"error"]}
+ * stdout is reserved for the protocol; all logging goes to the file logger.
  *
  * This module is imported by the agent bundle's `android-bridge` CLI command:
  *   `bun agent-bundle.js android-bridge`
  *
- * Environment variables set here mirror those set by `ElizaAgentService`:
- *   - ELIZA_PLATFORM=android
- *   - ELIZA_MOBILE_PLATFORM=android
- *   - ELIZA_ANDROID_LOCAL_BACKEND=1   (Android-specific backend flag)
- *   - ELIZA_HEADLESS=1                (no terminal UI)
- *   - ELIZA_API_BIND=127.0.0.1        (loopback only)
- *   - ELIZA_VAULT_BACKEND=file
- *   - ELIZA_DISABLE_VAULT_PROFILE_RESOLVER=1
- *   - ELIZA_DISABLE_AGENT_WALLET_BOOTSTRAP=1
- *   - LOG_LEVEL=error                 (quiet on-device)
- *
- * All values use the `||=` pattern so that values pre-set by the
- * `ElizaAgentService` environment take precedence over these defaults.
- * The service sets richer values (e.g. `ELIZA_API_TOKEN`, port, state dir)
+ * Environment defaults set here mirror `ElizaAgentService` and use `||=` so the
+ * service's values (state dir, tokens) win. The service sets richer values
  * before spawning the bundle; this module only fills gaps for direct runs.
  */
 
+import { Buffer } from "node:buffer";
 import process from "node:process";
 
 // ── Step 1: set Android env vars before any elizaOS module import ──────────
@@ -45,7 +39,6 @@ process.env.ELIZA_MOBILE_PLATFORM ||= "android";
 process.env.ELIZA_ANDROID_LOCAL_BACKEND ||= "1";
 process.env.ELIZA_DISABLE_DIRECT_RUN ||= "1";
 process.env.ELIZA_HEADLESS ||= "1";
-process.env.ELIZA_API_BIND ||= "127.0.0.1";
 process.env.ELIZA_VAULT_BACKEND ||= "file";
 process.env.ELIZA_DISABLE_VAULT_PROFILE_RESOLVER ||= "1";
 process.env.ELIZA_DISABLE_AGENT_WALLET_BOOTSTRAP ||= "1";
@@ -61,11 +54,30 @@ process.env.ELIZA_DISABLE_TRAJECTORY_LOGGING ||= "1";
 
 import * as nodeFs from "node:fs";
 import nodePath from "node:path";
+import type { IAgentRuntime } from "@elizaos/core";
 import { installMobileFsShim } from "../shared/fs-shim.ts";
+import {
+	createStdioBridge,
+	type StdioBridgeResponseFrame,
+} from "../shared/stdio-bridge.ts";
+import {
+	type AndroidDispatchRoute,
+	type AndroidRequestPayload,
+	dispatchBufferedRequest,
+	dispatchStreamingRequest,
+} from "./dispatch.ts";
 
-type StartEliza = (options: { serverOnly: true }) => Promise<unknown>;
+type StartEliza = (options: {
+	serverOnly: true;
+	localAgentMode: true;
+}) => Promise<IAgentRuntime | undefined>;
 
-async function loadStartEliza(): Promise<StartEliza> {
+interface AndroidAgentModule {
+	startEliza: StartEliza;
+	dispatchRoute: AndroidDispatchRoute;
+}
+
+async function loadAgentModule(): Promise<AndroidAgentModule> {
 	// Literal specifier with @vite-ignore: Vite skips it (so the WebView build's
 	// import-analysis boundary gate doesn't try to pull @elizaos/agent into the
 	// renderer bundle), while Bun.build — which ignores @vite-ignore — sees the
@@ -75,8 +87,9 @@ async function loadStartEliza(): Promise<StartEliza> {
 	// `Cannot find module '@elizaos/agent'` (no node_modules on device).
 	const mod = (await import(/* @vite-ignore */ "@elizaos/agent")) as {
 		startEliza: StartEliza;
+		dispatchRoute: AndroidDispatchRoute;
 	};
-	return mod.startEliza;
+	return { startEliza: mod.startEliza, dispatchRoute: mod.dispatchRoute };
 }
 
 // ── Resolve canonical paths and install mobile fs sandbox ─────────────────
@@ -155,10 +168,109 @@ function _logToFile(line: string): void {
 	}
 }
 
-// ── Step 3: boot the runtime ──────────────────────────────────────────────
+// ── Step 3: reserve stdout for the NDJSON protocol ─────────────────────────
+//
+// stdin/stdout are the request/response pipe to ElizaAgentService. Any stray
+// runtime write to stdout (a stray console.log, a plugin banner) would corrupt
+// the protocol, so route all console output to the file logger and expose the
+// original stdout only through `writeProtocolLine`. Must run before any runtime
+// import so nothing has captured the original stdout first.
+
+const _protocolWrite = process.stdout.write.bind(process.stdout);
+
+function writeProtocolLine(frame: StdioBridgeResponseFrame): void {
+	_protocolWrite(`${JSON.stringify(frame)}\n`);
+}
+
+function reserveStdoutForProtocol(): void {
+	const stderrWrite = process.stderr.write.bind(process.stderr);
+	try {
+		process.stdout.write = ((chunk: unknown, ...rest: unknown[]) =>
+			(stderrWrite as (c: unknown, ...r: unknown[]) => boolean)(
+				chunk,
+				...rest,
+			)) as typeof process.stdout.write;
+	} catch {
+		// Some embedded Bun builds expose stdout.write as readonly; protocol
+		// writes still use the captured `_protocolWrite`, this only means stray
+		// third-party stdout noise can't be force-rerouted.
+	}
+	console.log = (...args: unknown[]) =>
+		_logToFile(`[console.log] ${args.map(String).join(" ")}`);
+	console.info = (...args: unknown[]) =>
+		_logToFile(`[console.info] ${args.map(String).join(" ")}`);
+	console.debug = (...args: unknown[]) =>
+		_logToFile(`[console.debug] ${args.map(String).join(" ")}`);
+}
+
+// ── Step 4: NDJSON stdio request loop ──────────────────────────────────────
+//
+// Feeds newline-delimited request frames from stdin into the shared bridge
+// kernel and writes response frames back on the reserved stdout. Buffered
+// `http_request` frames dispatch in-process and return one result; streaming
+// `http_request_stream` frames push response/chunk/complete frames as the SSE
+// body arrives (mirrors the iOS bridge stdin reader).
+
+function runStdioRequestLoop(
+	runtime: IAgentRuntime,
+	dispatchRoute: AndroidDispatchRoute,
+	onStop: () => void,
+): void {
+	const stdioBridge = createStdioBridge({
+		request: async (frame) =>
+			dispatchBufferedRequest(
+				runtime,
+				dispatchRoute,
+				(frame.payload ?? {}) as AndroidRequestPayload,
+			),
+		requestStream: async (frame, sink) =>
+			dispatchStreamingRequest(
+				runtime,
+				dispatchRoute,
+				(frame.payload ?? {}) as AndroidRequestPayload,
+				sink,
+			),
+		writeFrame: writeProtocolLine,
+	});
+
+	let buffered = "";
+	const stdin = process.stdin as typeof process.stdin & {
+		setEncoding?: (encoding: BufferEncoding) => void;
+		resume?: () => void;
+	};
+	stdin.setEncoding?.("utf8");
+	stdin.on("data", (chunk: Buffer | string) => {
+		buffered += typeof chunk === "string" ? chunk : chunk.toString("utf8");
+		for (;;) {
+			const newline = buffered.indexOf("\n");
+			if (newline < 0) break;
+			const line = buffered.slice(0, newline).replace(/\r$/, "");
+			buffered = buffered.slice(newline + 1);
+			void stdioBridge.handleLine(line);
+		}
+	});
+	stdin.once("end", () => {
+		if (buffered.trim()) {
+			const line = buffered;
+			buffered = "";
+			void stdioBridge.handleLine(line);
+		}
+		void stdioBridge.drain().finally(onStop);
+	});
+	stdin.once("error", (err) => {
+		_logToFile(
+			`[android-bridge] stdin error: ${err instanceof Error ? err.message : String(err)}`,
+		);
+		onStop();
+	});
+	stdin.resume?.();
+}
+
+// ── Step 5: boot the runtime + serve over stdio ────────────────────────────
 
 export async function runAndroidBridgeCli(): Promise<void> {
 	setupAndroidBridgeEnvironment();
+	reserveStdoutForProtocol();
 
 	// Log the process exit code for every exit (including process.exit(N) calls
 	// from deep inside the runtime that bypass our try/catch).
@@ -203,18 +315,22 @@ export async function runAndroidBridgeCli(): Promise<void> {
 		);
 	});
 
-	_logToFile("[android-bridge] importing startEliza...");
-	const startEliza = await loadStartEliza();
-	_logToFile("[android-bridge] calling startEliza({ serverOnly: true })...");
+	_logToFile("[android-bridge] importing agent module...");
+	const { startEliza, dispatchRoute } = await loadAgentModule();
+	_logToFile(
+		"[android-bridge] calling startEliza({ serverOnly: true, localAgentMode: true })...",
+	);
 
 	// Heartbeat: log every 10s during startEliza so we can see where it stalls.
 	const _hb = setInterval(() => {
 		_logToFile("[android-bridge] startEliza still running...");
 	}, 10_000);
 
-	let runtime: unknown;
+	let runtime: IAgentRuntime | undefined;
 	try {
-		runtime = await startEliza({ serverOnly: true });
+		// localAgentMode: no TCP listener binds (the WebView reaches us over the
+		// stdio pipe below). ELIZA_API_EXPOSE_PORT re-opens the port for dev/e2e.
+		runtime = await startEliza({ serverOnly: true, localAgentMode: true });
 	} catch (err: unknown) {
 		const msg = err instanceof Error ? err.stack || err.message : String(err);
 		_logToFile(`[android-bridge] startEliza THREW: ${msg}`);
@@ -222,14 +338,17 @@ export async function runAndroidBridgeCli(): Promise<void> {
 	} finally {
 		clearInterval(_hb);
 	}
-	_logToFile(
-		`[android-bridge] startEliza returned: ${runtime ? "present" : "null"}`,
-	);
 
 	_logToFile(
 		`[android-bridge] startEliza returned: runtime=${runtime ? "present" : "null"}, ` +
 			`ELIZA_ANDROID_LOCAL_BACKEND=${process.env.ELIZA_ANDROID_LOCAL_BACKEND ?? "(unset)"}`,
 	);
+
+	if (!runtime) {
+		throw new Error(
+			"[android-bridge] startEliza returned no runtime; cannot serve stdio requests",
+		);
+	}
 
 	// ── Step 4: wire inference delegation if device-bridge enabled ────────────
 	// Registers TEXT_SMALL/TEXT_LARGE/TEXT_EMBEDDING handlers (registerModel) on
@@ -269,12 +388,25 @@ export async function runAndroidBridgeCli(): Promise<void> {
 		}
 	}
 
-	// Keep the process alive indefinitely — ElizaAgentService will SIGTERM
-	// when the user stops the service or the app is swiped away.
-	await new Promise<void>((resolve) => {
-		process.once("SIGINT", resolve);
-		process.once("SIGTERM", resolve);
+	// ── Serve WebView requests over the stdin/stdout NDJSON pipe ──────────────
+	// The runtime is up with the in-process route kernel wired but no TCP
+	// listener; drive dispatchRoute from native request frames until stdin closes
+	// or ElizaAgentService sends SIGTERM (user stops the service / app swiped).
+	let stop: (() => void) | null = null;
+	const stopped = new Promise<void>((resolve) => {
+		stop = resolve;
 	});
+	process.once("SIGINT", () => stop?.());
+	process.once("SIGTERM", () => stop?.());
 
+	runStdioRequestLoop(runtime, dispatchRoute, () => stop?.());
+
+	// Bun's stdio does not always keep the event loop alive while a native pipe
+	// is idle; this host-owned timer holds the process up until an explicit stop.
+	const keepAlive = setInterval(() => {}, 2_147_483_647);
+	_logToFile("[android-bridge] stdio request loop ready");
+
+	await stopped;
+	clearInterval(keepAlive);
 	_logToFile("[android-bridge] shutdown signal received, exiting.");
 }

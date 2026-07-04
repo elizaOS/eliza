@@ -120,6 +120,7 @@ import {
   isElizaSettingsDebugEnabled,
   isMobilePlatform,
   migrateLegacyRuntimeConfig,
+  resolveApiExposePort,
   resolveDeploymentTargetInConfig,
   resolveDesktopApiPort,
   resolveElizaCloudTopology,
@@ -3488,6 +3489,14 @@ export interface StartElizaOptions {
    */
   serverOnly?: boolean;
   /**
+   * When true, this runtime is the local agent behind a native IPC transport
+   * (Android stdio bridge / Capacitor). The route kernel still initializes for
+   * in-process `dispatchRoute`, but the API server binds no TCP listener unless
+   * `ELIZA_API_EXPOSE_PORT` is truthy — so local mode opens no port on the agent
+   * API by default (dev tooling / LAN / e2e harnesses re-open it via the flag).
+   */
+  localAgentMode?: boolean;
+  /**
    * Internal guard to prevent infinite retry loops when recovering from
    * corrupt PGLite state.
    */
@@ -5467,9 +5476,18 @@ export async function startEliza(
     const apiPort = process.env.ELIZA_API_PORT
       ? resolveDesktopApiPort(process.env)
       : resolveServerOnlyPort(process.env);
+    // Local-agent IPC mode (Android stdio bridge / Capacitor): the WebView
+    // reaches the runtime over a native pipe, so bind no TCP listener unless a
+    // caller explicitly opts back in via ELIZA_API_EXPOSE_PORT (dev tooling, LAN
+    // access, e2e harnesses). Every non-local boot leaves localAgentMode unset,
+    // so skipApiListen is false and the port binds exactly as before.
+    const skipApiListen =
+      opts?.localAgentMode === true &&
+      resolveApiExposePort(process.env) !== true;
     const { port: actualApiPort } = await startApiServer({
       port: apiPort,
       runtime,
+      skipListen: skipApiListen,
       onRestart: async () => {
         logger.info("[eliza] Hot-reload: Restarting runtime...");
         try {
@@ -5751,9 +5769,15 @@ export async function startEliza(
         }
       },
     });
-    const dashboardUrl = `http://localhost:${actualApiPort}`;
-    logger.info(`[eliza] Control UI: ${dashboardUrl}`);
-    // API is now listening — safe to begin the deferred plugin waves.
+    if (skipApiListen) {
+      logger.info(
+        "[eliza] Local-agent IPC mode — API route kernel ready in-process, no TCP listener bound",
+      );
+    } else {
+      const dashboardUrl = `http://localhost:${actualApiPort}`;
+      logger.info(`[eliza] Control UI: ${dashboardUrl}`);
+    }
+    // Route kernel is ready — safe to begin the deferred plugin waves.
     kickoffDeferredBoot();
   } catch (apiErr) {
     // Log to both stderr (visible to Electrobun agent.ts) and the in-memory
