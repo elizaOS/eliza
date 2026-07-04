@@ -20,7 +20,7 @@ permissions:
 jobs:
   changes:
     name: Classify changed paths
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, hetzner-robot]
     outputs:
       windows_dev: ${{ steps.filter.outputs.windows_dev }}
     steps:
