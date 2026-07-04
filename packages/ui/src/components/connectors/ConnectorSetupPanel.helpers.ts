@@ -1,6 +1,7 @@
 import type React from "react";
 import { getBootConfig } from "../../config/boot-config";
 import { parseConnectorAccountManagementPanelPluginId } from "./connector-account-options";
+import { resolveConnectorSetupPanelToken } from "./connector-setup-panel-registry";
 
 export function normalizePluginId(pluginId: string): string {
   return pluginId
@@ -33,7 +34,7 @@ export function hasConnectorSetupPanel(pluginId: string): boolean {
   if (parseConnectorAccountManagementPanelPluginId(pluginId)) {
     return true;
   }
-  // Check registry first
+  // Plugin-registered panels take precedence over the built-in registry.
   if (connectorSetupRegistry.has(normalized)) {
     return true;
   }
@@ -43,21 +44,5 @@ export function hasConnectorSetupPanel(pluginId: string): boolean {
   ) {
     return Boolean(getBootConfig().lifeOpsBrowserSetupPanel);
   }
-  if (normalized.includes("telegramaccount")) {
-    return true;
-  }
-  if (normalized.includes("plugintelegram")) {
-    return true;
-  }
-  switch (normalized) {
-    case "whatsapp":
-    case "signal":
-    case "discordlocal":
-    case "bluebubbles":
-    case "imessage":
-    case "telegram":
-      return true;
-    default:
-      return false;
-  }
+  return resolveConnectorSetupPanelToken(normalized) !== null;
 }

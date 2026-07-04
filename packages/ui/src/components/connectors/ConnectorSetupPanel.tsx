@@ -11,6 +11,7 @@ import {
   getConnectorPluginManagedAccountOption,
   parseConnectorAccountManagementPanelPluginId,
 } from "./connector-account-options";
+import { resolveConnectorSetupPanelToken } from "./connector-setup-panel-registry";
 import { DiscordLocalConnectorPanel } from "./DiscordLocalConnectorPanel";
 import { IMessageStatusPanel } from "./IMessageStatusPanel";
 import { SignalQrOverlay } from "./SignalQrOverlay";
@@ -57,7 +58,7 @@ export function ConnectorSetupPanel({ pluginId }: { pluginId: string }) {
     return <RegisteredPanel />;
   }
 
-  // Fall back to hardcoded components
+  // Fall back to the built-in panels resolved from the setup-panel registry.
   if (
     normalized.includes("lifeopsbrowser") ||
     normalized.includes("browserbridg")
@@ -65,13 +66,11 @@ export function ConnectorSetupPanel({ pluginId }: { pluginId: string }) {
     const BrowserBridgeSetupPanel = getBootConfig().lifeOpsBrowserSetupPanel;
     return BrowserBridgeSetupPanel ? <BrowserBridgeSetupPanel /> : null;
   }
-  if (normalized.includes("telegramaccount")) {
-    return <TelegramAccountConnectorPanel />;
-  }
-  if (normalized.includes("plugintelegram")) {
-    return <TelegramBotSetupPanel />;
-  }
-  switch (normalized) {
+  switch (resolveConnectorSetupPanelToken(normalized)) {
+    case "telegram-account":
+      return <TelegramAccountConnectorPanel />;
+    case "telegram-bot":
+      return <TelegramBotSetupPanel />;
     case "whatsapp":
       return (
         <ConnectorAccountSetupScope provider="whatsapp" connectorId={pluginId}>
@@ -88,14 +87,12 @@ export function ConnectorSetupPanel({ pluginId }: { pluginId: string }) {
           )}
         </ConnectorAccountSetupScope>
       );
-    case "discordlocal":
+    case "discord-local":
       return <DiscordLocalConnectorPanel />;
     case "bluebubbles":
       return <BlueBubblesStatusPanel />;
     case "imessage":
       return <IMessageStatusPanel />;
-    case "telegram":
-      return <TelegramBotSetupPanel />;
     default:
       return null;
   }
