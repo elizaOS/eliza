@@ -11,8 +11,7 @@ import { emitViewInteraction } from "../../view-telemetry";
 import { ViewIcon } from "./ViewIcon";
 
 // Brand rule: no blue anywhere — the deterministic tile gradients stay in the
-// warm/neutral/green range (former blue + indigo entries were recolored to
-// gold + fuchsia).
+// warm/neutral/green/gold/fuchsia range.
 const LAUNCHER_ICON_PALETTES: ReadonlyArray<{
   from: string;
   to: string;

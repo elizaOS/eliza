@@ -1,3 +1,8 @@
+/**
+ * Storybook states for ViewIcon covering each resolution path: a named lucide
+ * glyph, an image source (URL / data URI), the keyword fallback, and a size
+ * override via className.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { ViewIcon } from "./ViewIcon";
 
@@ -27,7 +32,7 @@ export const ImageSource: Story = {
   },
 };
 
-/** Unknown / missing icon falls back to the first letter of the label. */
+/** Unknown / missing icon falls back to a keyword-inferred glyph from the label. */
 export const LetterFallback: Story = {
   args: { icon: null, label: "Wallet" },
 };

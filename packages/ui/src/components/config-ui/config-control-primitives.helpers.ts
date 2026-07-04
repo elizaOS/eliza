@@ -1,3 +1,8 @@
+/**
+ * Tailwind class builders for config-form input and textarea controls, shared by
+ * `ConfigRenderer`'s field renderers and `UiRenderer`. Centralizes the density
+ * (compact/regular) and error-state styling so every config control looks the same.
+ */
 import { cn } from "../../lib/utils";
 
 export function getConfigInputClassName({

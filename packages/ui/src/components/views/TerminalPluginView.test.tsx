@@ -1,4 +1,9 @@
 // @vitest-environment jsdom
+//
+// TerminalPluginView: renders the typed TUI status surface, falls back to
+// default commands, runs a command via keyboard/click (asserting the POST body
+// and the `eliza:tui-command` event), and shows failures in the transcript.
+// `fetchWithCsrf` is mocked; the component and its interact wiring are real.
 
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";

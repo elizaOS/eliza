@@ -1,3 +1,12 @@
+/**
+ * Per-field-type control renderers for the plugin-config form (text, password,
+ * number, boolean, url, select, textarea, email, color, radio, multiselect,
+ * date, json, code, array, key-value, datetime, file, markdown, custom) plus the
+ * `defaultRenderers` map keyed by field type. `ConfigField` picks a renderer from
+ * this map; each renderer reads `FieldRenderProps` and can fire hint-bound actions
+ * via `fireAction`. Controls share the config-input styling from
+ * config-control-primitives.helpers.
+ */
 import { ChevronDown, X } from "lucide-react";
 import React, {
   useCallback,

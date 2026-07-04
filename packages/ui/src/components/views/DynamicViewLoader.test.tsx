@@ -1,5 +1,10 @@
 // @vitest-environment jsdom
-
+//
+// DynamicViewLoader: the same-origin bundle-URL gate (the RCE guard), that the
+// test-only import hook is stripped from minified production builds, and the
+// runtime load/cache/error behavior. The origin gate and the production-strip
+// check compile the REAL DynamicViewLoader.tsx source with esbuild rather than
+// asserting against a mock.
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";

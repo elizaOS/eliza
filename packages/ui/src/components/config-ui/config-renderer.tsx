@@ -1,3 +1,11 @@
+/**
+ * Renders a JSON-Schema-described plugin config as a form: resolves the schema
+ * into ordered fields (basic + advanced groups), evaluates per-field visibility,
+ * delegates each field to `ConfigField` + the registry's renderer, and surfaces
+ * a validation summary. Exposes an imperative `validateAll()` via
+ * `ConfigRendererHandle` so a parent form can gate submission. Group icons and
+ * plugin theme tokens style the output; secret reveal is delegated to the caller.
+ */
 import type React from "react";
 import {
   forwardRef,

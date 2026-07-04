@@ -1,3 +1,8 @@
+/**
+ * Maps a permission's string icon key (cursor, mic, camera, calendar, …) to its
+ * lucide glyph for permission rows across the settings + streaming surfaces.
+ * Unknown keys fall back to the Settings gear.
+ */
 import {
   Bell,
   Calendar,

@@ -1,4 +1,9 @@
 // @vitest-environment jsdom
+//
+// usePermissionPriming sequencing: mount-time status check skips already-granted
+// items, "Enable" fires exactly one OS request (soft-ask), denial keeps the card
+// active for recovery, and the sequence advances/completes correctly. The
+// permissions client (`getPermission`/`requestPermission`) is mocked; the hook is real.
 import type {
   PermissionId,
   PermissionState,

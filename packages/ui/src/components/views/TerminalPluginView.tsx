@@ -1,3 +1,11 @@
+/**
+ * Terminal-style surface for a plugin view whose interact protocol is TUI
+ * rather than GUI. Renders the view's declared capabilities as clickable
+ * commands and its endpoints as chips, then POSTs each command to
+ * `/api/views/:id/interact?viewType=tui` (via CSRF-guarded fetch) and appends
+ * the JSON result to an in-panel transcript. Also emits an `eliza:tui-command`
+ * DOM event per run for host-side observers.
+ */
 import {
   Activity,
   CheckCircle2,

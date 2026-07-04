@@ -1,4 +1,9 @@
 // @vitest-environment jsdom
+//
+// PermissionPrimingModal rendering: the active card's rationale + Enable/Not now,
+// the recovery callout for a denied card, the loading state, single onComplete
+// firing, and Skip-for-now. Drives the modal through an injected
+// `controllerOverride` stub (the live hook is covered by use-permission-priming.test).
 import type { PermissionId } from "@elizaos/shared/contracts/permissions";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { ReactElement } from "react";

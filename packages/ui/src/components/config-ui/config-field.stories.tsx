@@ -1,3 +1,8 @@
+/**
+ * Storybook states for ConfigField — the label/help/error wrapper around a field
+ * renderer — across required-empty, configured, error, and help-text cases. A
+ * mock `t` supplies the label/status copy.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import type {
   FieldRenderer,

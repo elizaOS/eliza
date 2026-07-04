@@ -1,3 +1,4 @@
+/** Shared config-form control primitive: the stacked list of field validation errors, rendered by both `ConfigRenderer` and `UiRenderer`. */
 export function ConfigFieldErrors({
   errors,
 }: {

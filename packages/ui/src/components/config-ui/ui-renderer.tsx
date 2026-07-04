@@ -1,3 +1,12 @@
+/**
+ * Renders a declarative `UiSpec` (the plugin-config UI-spec engine's element
+ * tree) into React. Walks the spec's element graph from its root, resolves
+ * bound props / state paths / visibility conditions against a live state store,
+ * runs field validators, and fires `UiAction`s back through the `onAction`
+ * callback. Link hrefs are sanitized (`sanitizeLinkHref`) and only supported
+ * component types render; the spec is data, not code. Contrast with
+ * `ConfigRenderer`, which drives a JSON-Schema config form rather than a spec tree.
+ */
 import type React from "react";
 import {
   createContext,

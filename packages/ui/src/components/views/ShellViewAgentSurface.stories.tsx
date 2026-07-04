@@ -1,3 +1,8 @@
+/**
+ * Storybook states for ShellViewAgentSurface — the wrapper that makes a builtin
+ * shell page agent-controllable. Stories render placeholder page content across
+ * the gui / terminal / voice view types.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { ShellViewAgentSurface } from "./ShellViewAgentSurface";
 

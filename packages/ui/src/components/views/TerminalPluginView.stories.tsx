@@ -1,3 +1,7 @@
+/**
+ * Storybook states for TerminalPluginView — the TUI plugin-view surface — across
+ * command/endpoint counts and the no-commands default fallback.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { TerminalPluginView } from "./TerminalPluginView";
 

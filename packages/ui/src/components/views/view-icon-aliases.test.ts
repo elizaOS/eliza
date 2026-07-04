@@ -1,3 +1,6 @@
+// resolveViewIconId maps plugin/builtin view ids onto their nearest baked icon,
+// passes through ids that resolve directly, and every alias target is verified
+// against the real generated VIEW_ICONS map so no alias points at a missing icon.
 import { describe, expect, it } from "vitest";
 import { resolveViewIconId, VIEW_ICON_ALIASES } from "./view-icon-aliases";
 import { VIEW_ICONS } from "./view-icons.generated";

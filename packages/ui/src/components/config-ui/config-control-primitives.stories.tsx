@@ -1,3 +1,4 @@
+/** Storybook state for the ConfigFieldErrors control primitive (the stacked field-error list). */
 import type { Meta, StoryObj } from "@storybook/react";
 import { ConfigFieldErrors } from "./config-control-primitives";
 

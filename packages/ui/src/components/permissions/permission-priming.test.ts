@@ -1,4 +1,9 @@
 // @vitest-environment jsdom
+//
+// permission-priming policy: the per-platform priming set (voice-first on iOS,
+// etc.), the presence of rationale copy for every primed permission, and the
+// localStorage-backed "already primed" flag. Pure logic + real localStorage — no
+// OS calls.
 import { afterEach, describe, expect, it } from "vitest";
 import {
   hasPrimedPermissions,
