@@ -167,7 +167,7 @@ export default defineConfig({
       // so each surface is exercised at the same WebView viewport that ships on
       // Capacitor iOS/Android.
       testMatch:
-        /(apps-personal-assistant-decomposed-interactions|chat-clear-swipe|chat-send-voice-newchat-fuzz|gesture-matrix|input-modality)\.spec\.ts/,
+        /(apps-personal-assistant-decomposed-interactions|chat-clear-swipe|chat-send-voice-newchat-fuzz|gesture-matrix|input-modality|launcher-gesture-loop)\.spec\.ts/,
       use: { ...devices["Pixel 7"] },
     },
     // WebKit cross-engine lane (opt-in). Only added when PLAYWRIGHT_WEBKIT=1 so a
