@@ -1,23 +1,27 @@
 # Voice Workbench report
 
-**Overall:** PASS — 18 ran, 0 skipped of 18
+**Overall:** PASS — 24 ran, 0 skipped of 24
 
 ## Metrics
 
 | Metric | Mean | Worst | n |
 | --- | --- | --- | --- |
-| WER | 0 | 0 | 44 |
-| EOT false-trigger rate | 0 | 0 | 18 |
+| WER | 0 | 0 | 65 |
+| EOT false-trigger rate | 0 | 0 | 24 |
 | EOT latency p50 (ms) | — | | |
 | EOT latency p95 (ms) | — | | |
-| Diarization DER | 0.0133 | 0.2394 | 18 |
-| Respond accuracy | 1 | 1 | 18 |
+| Diarization DER | 0.01 | 0.2394 | 24 |
+| Respond accuracy | 1 | 1 | 24 |
 | Entity F1 | 1 | 1 | 5 |
-| Voice→entity match | 1 | 1 | 18 |
-| First-audio (ms) | 250 | 250 | 38 |
-| Echo rejection rate | 1 | 1 | 2 |
+| Voice→entity match | 1 | 1 | 24 |
+| First-audio (ms) | 250 | 250 | 55 |
+| Echo rejection rate | 1 | 1 | 4 |
 | Owner accuracy | 1 | 1 | 2 |
 | Impostor-accept rate | 0 | 0 | 2 |
+| Barge-in gating accuracy | 1 | 1 | 1 |
+| Barge-in cancel (ms) | 120 | 120 | 1 |
+| ERLE (dB) | — | — | 0 |
+| Partial retractions | — | — | 0 |
 
 ## Scenarios
 
@@ -41,3 +45,9 @@
 | echo-mistranscribed | echo-rejection | pass | 8 | — |
 | owner-enrollment-inference | owner-security, voice-recognition | pass | 15 | — |
 | owner-vs-intruder | owner-security, respond-no-respond, multi-speaker | pass | 10 | — |
+| endpoint-latency | endpoint-latency, eot | pass | 8 | — |
+| tail-off-thinking | tail-off, eot, pauses | pass | 7 | — |
+| streaming-partials-monotonic | streaming-partials, eot | pass | 6 | — |
+| speaker-gated-barge-in | speaker-gated-barge-in, echo-rejection | pass | 14 | — |
+| desktop-aec-echo | desktop-aec, echo-rejection | pass | 10 | — |
+| long-turn-diarization | long-turn-diarization, diarization, multi-speaker | pass | 20 | — |

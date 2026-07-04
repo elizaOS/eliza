@@ -11,7 +11,7 @@ production speak-back loop (Pipeline B) and windows long turns.
 | Same speaker re-identified across turns (disk-backed) | `synthetic-multispeaker-attribution.json` → `reidentifiedAsSpeakerA: true`, profile A `sampleCount: 2`, `totalDurationMs: 17000` |
 | Long turn is windowed: 5 s windows decode DURING capture, only the trailing partial post-endpoint | `synthetic-multispeaker-attribution.json` → `windowsDiarizedDuringCapture: 2`, `postEndpointWindowSeconds: 4` |
 | `beginMatch` resolves speaker identity at speech-start (parallel with ASR) | `synthetic-multispeaker-attribution.json` → `speechStartSpeculativeMatch: vp_4eb2…` (resolved before `finalize`) |
-| Shipped decision logic (respond / echo / owner-security / diarization scoring) does not regress | `workbench-logic-report.{json,md}` → PASS, 18/18, no regressions vs baseline |
+| Shipped decision logic (respond / echo / owner-security / diarization / long-turn / barge-in scoring) does not regress | `workbench-logic-report.{json,md}` → PASS, 24/24, no regressions vs baseline (post-#12258) |
 | The `--real` acoustic lane fails honestly when GGUFs are unstaged (no false-pass) | `real-lane-hardfail.txt` (exit 1) |
 
 ## Reproduce
@@ -27,11 +27,14 @@ bun run --cwd plugins/plugin-local-inference voice:workbench -- --logic \
 
 ## DER vs the #12258 ceilings
 
-`workbench-logic-report.json` — **Diarization DER mean 0.0133, worst 0.2394**
-across 18 scenarios (real shipped decision logic, ground-truth diarization
-timelines; the DER scorer is `diarization-error-rate.ts`, exact permutation
-≤ 7 speakers). No regression vs the committed logic baseline, so the windowing
-change does not degrade the scored decision paths.
+`workbench-logic-report.json` — **Diarization DER mean 0.01, worst 0.2394**
+across 24 scenarios (post-#12258; real shipped decision logic, ground-truth
+diarization timelines; the DER scorer is `diarization-error-rate.ts`, exact
+permutation ≤ 7 speakers). Includes #12258's new `long-turn-diarization` (20
+cases) and `speaker-gated-barge-in` (14 cases) scenarios — both PASS. Owner
+accuracy 1.0, impostor-accept 0, barge-in gating accuracy 1.0. No regression vs
+the committed logic baseline, so the windowing change does not degrade the
+scored decision paths.
 
 #12258's offline pyannote ceilings are **VoxConverse 11.3% / AMI 18.8%**, and
 the streaming budget for windowed decoding is **+10 pp** (parent research,
