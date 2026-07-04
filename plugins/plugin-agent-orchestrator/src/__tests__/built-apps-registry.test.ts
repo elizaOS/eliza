@@ -10,10 +10,13 @@
  * Covers:
  *  1. pure derivation for both deploy targets (custom static host URL-shape
  *     match; eliza-cloud app-build gate + code-host/loopback exclusion);
- *  2. registry round-trip + redeploy dedupe on the runtime cache;
+ *  2. registry round-trip + redeploy dedupe + delete on the runtime cache;
  *  3. the REAL router path: handleEvent("task_complete") with a live URL
  *     served by a local HTTP server → verification probes it → the registry
- *     record lands in the runtime cache with that URL.
+ *     record lands in the runtime cache with that URL;
+ *  4. the HTTP management surface: register → DELETE → list over a real HTTP
+ *     server dispatching handleOrchestratorRoutes (404 when absent, 200
+ *     {deleted:true} on success, list reflects immediately).
  */
 
 import { createServer, type Server } from "node:http";
@@ -22,9 +25,12 @@ import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { makeGrillingRuntime } from "../../test/scenarios/_helpers/orchestrator-grilling-harness.ts";
 import { makeSpawnCapturingAcp } from "../../test/scenarios/_helpers/reflexion-scenario.ts";
+import { handleOrchestratorRoutes } from "../api/orchestrator-routes.ts";
+import type { RouteContext } from "../api/route-utils.ts";
 import {
   BUILT_APPS_CACHE_KEY,
   type BuiltAppRecord,
+  deleteBuiltApp,
   deriveBuiltApp,
   listBuiltApps,
   registerBuiltApp,
@@ -159,10 +165,25 @@ describe("registry round-trip", () => {
     expect(apps[0]).toEqual(redeploy);
   });
 
+  it("deletes one record by target+slug and reports absence honestly", async () => {
+    const { runtime } = cacheRuntime();
+    await registerBuiltApp(runtime, record());
+    await registerBuiltApp(runtime, record({ slug: "todo", name: "Todo" }));
+
+    expect(await deleteBuiltApp(runtime, "custom", "snake-game")).toBe(true);
+    expect(await listBuiltApps(runtime)).toMatchObject([{ slug: "todo" }]);
+
+    // Already gone / never existed / wrong target: false, list untouched.
+    expect(await deleteBuiltApp(runtime, "custom", "snake-game")).toBe(false);
+    expect(await deleteBuiltApp(runtime, "eliza-cloud", "todo")).toBe(false);
+    expect(await listBuiltApps(runtime)).toHaveLength(1);
+  });
+
   it("degrades gracefully when the runtime has no cache", async () => {
     const bare = {} as IAgentRuntime;
     expect(await registerBuiltApp(bare, record())).toBe(false);
     expect(await listBuiltApps(bare)).toEqual([]);
+    expect(await deleteBuiltApp(bare, "custom", "snake-game")).toBe(false);
     expect(
       await registerBuiltAppsForCompletion(bare, { id: "s" }, [
         "https://example.org/apps/x/",
@@ -365,5 +386,85 @@ describe("task_complete → registry record (real router path)", () => {
       label: "build snake game",
     });
     expect(apps[0].registeredAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+  });
+});
+
+describe("HTTP management surface: register → DELETE → list round-trip", () => {
+  // Drives the real route dispatcher over a real HTTP server. The runtime has
+  // NO orchestrator task service registered, which proves the built-apps legs
+  // dispatch before the service gate — were they behind it, every request here
+  // would 503 instead.
+  let server: Server;
+  let baseUrl: string;
+  let runtime: IAgentRuntime;
+
+  beforeEach(async () => {
+    const cache = new Map<string, unknown>();
+    runtime = {
+      getCache: async (key: string) => cache.get(key),
+      setCache: async (key: string, value: unknown) => {
+        cache.set(key, value);
+        return true;
+      },
+      getService: () => undefined,
+      hasService: () => false,
+    } as unknown as IAgentRuntime;
+    const ctx: RouteContext = {
+      runtime,
+      acpService: null,
+      workspaceService: null,
+    };
+    server = createServer((req, res) => {
+      const pathname = new URL(req.url ?? "/", "http://localhost").pathname;
+      handleOrchestratorRoutes(req, res, pathname, ctx).then((handled) => {
+        if (!handled && !res.headersSent) {
+          res.writeHead(404).end();
+        }
+      });
+    });
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  });
+
+  afterEach(async () => {
+    await new Promise<void>((resolve, reject) =>
+      server.close((err) => (err ? reject(err) : resolve())),
+    );
+  });
+
+  it("DELETE /built-apps/:target/:slug removes the app; the list reflects immediately", async () => {
+    await registerBuiltApp(runtime, record());
+    await registerBuiltApp(runtime, record({ slug: "todo", name: "Todo" }));
+
+    const listed = await fetch(`${baseUrl}/api/orchestrator/built-apps`);
+    expect(listed.status).toBe(200);
+    expect((await listed.json()).apps).toHaveLength(2);
+
+    const deleted = await fetch(
+      `${baseUrl}/api/orchestrator/built-apps/custom/snake-game`,
+      { method: "DELETE" },
+    );
+    expect(deleted.status).toBe(200);
+    expect(await deleted.json()).toEqual({ deleted: true });
+
+    const after = await fetch(`${baseUrl}/api/orchestrator/built-apps`);
+    expect((await after.json()).apps).toMatchObject([{ slug: "todo" }]);
+
+    // Deleting the same app again: honest 404, not a fake success.
+    const repeat = await fetch(
+      `${baseUrl}/api/orchestrator/built-apps/custom/snake-game`,
+      { method: "DELETE" },
+    );
+    expect(repeat.status).toBe(404);
+  });
+
+  it("rejects a malformed delete path with 400", async () => {
+    const missingSlug = await fetch(
+      `${baseUrl}/api/orchestrator/built-apps/custom`,
+      { method: "DELETE" },
+    );
+    expect(missingSlug.status).toBe(400);
   });
 });

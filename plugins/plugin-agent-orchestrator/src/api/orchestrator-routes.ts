@@ -11,7 +11,10 @@
  */
 
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { listBuiltApps } from "../services/built-apps-registry.js";
+import {
+  deleteBuiltApp,
+  listBuiltApps,
+} from "../services/built-apps-registry.js";
 import {
   LLM_GOAL_VERIFIER_NAME,
   verifyGoalCompletion,
@@ -187,6 +190,30 @@ async function dispatchOrchestratorRoutes(
   // is dispatched before the service gate.
   if (method === "GET" && pathname === `${PREFIX}/built-apps`) {
     sendJson(res, { apps: await listBuiltApps(ctx.runtime) });
+    return true;
+  }
+
+  // DELETE /api/orchestrator/built-apps/:target/:slug — remove one record by
+  // its registry key. Without this leg a registered app could only leave the
+  // registry via the MAX_BUILT_APPS cap or a same-slug redeploy overwrite.
+  // Same service-independence as the GET above, so it too dispatches before
+  // the service gate. 404 when the target+slug pair is not registered.
+  if (method === "DELETE" && pathname.startsWith(`${PREFIX}/built-apps/`)) {
+    const segments = pathname
+      .slice(`${PREFIX}/built-apps/`.length)
+      .split("/")
+      .filter((s) => s.length > 0);
+    if (segments.length !== 2) {
+      sendError(res, "Expected /built-apps/:target/:slug", 400);
+      return true;
+    }
+    const target = decodeURIComponent(segments[0] ?? "");
+    const slug = decodeURIComponent(segments[1] ?? "");
+    if (!(await deleteBuiltApp(ctx.runtime, target, slug))) {
+      sendError(res, "Built app not found", 404);
+      return true;
+    }
+    sendJson(res, { deleted: true });
     return true;
   }
 

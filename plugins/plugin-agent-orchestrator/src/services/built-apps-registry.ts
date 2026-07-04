@@ -6,8 +6,9 @@
  * artifacts, so the app never appears in any management surface — nothing can
  * list, revisit, or delete what the agent shipped. This module records one
  * {@link BuiltAppRecord} per successful app-deploy completion in the runtime
- * cache (DB-backed, survives restarts) and exposes a read API for management
- * consumers (`GET /api/orchestrator/built-apps`).
+ * cache (DB-backed, survives restarts) and exposes a read + delete API for
+ * management consumers (`GET /api/orchestrator/built-apps`,
+ * `DELETE /api/orchestrator/built-apps/:target/:slug`).
  *
  * Derivation is structural, matching the two deploy targets the spawn-time
  * contract injects (see app-deploy-guidance):
@@ -170,6 +171,27 @@ export async function registerBuiltApp(
     BUILT_APPS_CACHE_KEY,
     [record, ...rest].slice(0, MAX_BUILT_APPS),
   );
+  return true;
+}
+
+/**
+ * Remove one record by its registry key (target+slug). Returns false when no
+ * such record exists — or the runtime has no cache, in which case the registry
+ * is structurally empty — so the route can answer 404 without a separate
+ * existence check.
+ */
+export async function deleteBuiltApp(
+  runtime: unknown,
+  target: string,
+  slug: string,
+): Promise<boolean> {
+  if (!hasCache(runtime)) return false;
+  const existing = await listBuiltApps(runtime);
+  const rest = existing.filter(
+    (entry) => !(entry.target === target && entry.slug === slug),
+  );
+  if (rest.length === existing.length) return false;
+  await runtime.setCache(BUILT_APPS_CACHE_KEY, rest);
   return true;
 }
 
