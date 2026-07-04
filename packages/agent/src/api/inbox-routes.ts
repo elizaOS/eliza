@@ -43,6 +43,11 @@ import type {
   UUID,
   World,
 } from "@elizaos/core";
+import {
+  resolveEffectiveMuteState,
+  setRoomMuteUntil,
+  setWorldMuteState,
+} from "@elizaos/core";
 import type { DiscordService as IDiscordService } from "@elizaos/plugin-discord/service";
 import {
   expandConnectorSourceFilter,
@@ -50,11 +55,6 @@ import {
   PostInboxMessageRequestSchema,
 } from "@elizaos/shared";
 import { z } from "zod";
-import {
-  resolveEffectiveMuteState,
-  setRoomMuteUntil,
-  setWorldMuteState,
-} from "../../../core/src/services/message/mute-state.ts";
 
 let discordModulePromise: Promise<{
   cacheDiscordAvatarUrl: (

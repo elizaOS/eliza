@@ -8,8 +8,9 @@
  * (one configured agent) and `AgentDefaultsSchema` (fallbacks applied to every
  * agent). `.strict()` throughout, so unknown keys surface as validation errors.
  */
+
+import { parseDurationMs } from "@elizaos/shared";
 import * as zod from "zod";
-import { parseDurationMs } from "../../../shared/src/cli/parse-duration.ts";
 import {
   BlockStreamingChunkSchema,
   BlockStreamingCoalesceSchema,
