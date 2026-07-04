@@ -1566,8 +1566,10 @@ function isRecursivePackageSymlinkTarget(
   resolvedTarget: string,
 ): boolean {
   let targetStats: fs.Stats;
+  let realTarget: string;
   try {
     targetStats = fs.statSync(resolvedTarget);
+    realTarget = fs.realpathSync.native(resolvedTarget);
   } catch {
     return true;
   }
@@ -1576,7 +1578,7 @@ function isRecursivePackageSymlinkTarget(
     return false;
   }
 
-  const relative = path.relative(resolvedTarget, entry);
+  const relative = path.relative(realTarget, entry);
   return (
     relative === "" ||
     (Boolean(relative) &&

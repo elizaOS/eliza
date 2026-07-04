@@ -12,7 +12,7 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -315,6 +315,33 @@ describe("assertRequiredBundledPackagesLanded", () => {
       true,
     );
     expect(shouldCopyPackageEntry(uiReadme, "@elizaos/ui", uiRoot)).toBe(false);
+  });
+
+  it("skips Bun package self-links before dereferenced desktop copies", () => {
+    const packageRoot = path.join(
+      tmpDir,
+      ".bun",
+      "lucide-react@1.18.0",
+      "node_modules",
+      "lucide-react",
+    );
+    const rootPackageLink = path.join(nodeModulesDir, "lucide-react");
+    const selfLink = path.join(packageRoot, "lucide-react");
+    const externalAssets = path.join(tmpDir, "external-assets");
+    const externalAssetsLink = path.join(packageRoot, "external-assets");
+
+    mkdirSync(packageRoot, { recursive: true });
+    mkdirSync(externalAssets, { recursive: true });
+    symlinkSync(packageRoot, rootPackageLink, "dir");
+    symlinkSync(rootPackageLink, selfLink, "dir");
+    symlinkSync(externalAssets, externalAssetsLink, "dir");
+
+    expect(shouldCopyPackageEntry(selfLink, "lucide-react", packageRoot)).toBe(
+      false,
+    );
+    expect(
+      shouldCopyPackageEntry(externalAssetsLink, "lucide-react", packageRoot),
+    ).toBe(true);
   });
 
   it("uses the top-level Octokit peer for git-workspace-service", () => {
