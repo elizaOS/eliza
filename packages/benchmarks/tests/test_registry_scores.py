@@ -131,6 +131,14 @@ def _meeting_transcription_real_metrics() -> dict[str, float]:
         "p95_end_to_end_latency_ms": 1300,
         "notes_factuality": 0.93,
         "action_item_extraction": 0.89,
+        "face_count_accuracy": 0.9,
+        "active_speaker_f1": 0.88,
+        "active_speaker_map": 0.87,
+        "audio_video_association_accuracy": 0.86,
+        "off_screen_speaker_detection_accuracy": 0.85,
+        "room_feed_heuristic_precision": 0.83,
+        "room_feed_heuristic_recall": 0.82,
+        "visual_acoustic_disagreement_rate": 0.12,
     }
 
 
@@ -164,6 +172,7 @@ def _meeting_transcription_real_report() -> dict[str, object]:
         "capture_paths": [{"id": "google_meet_bot_free"}],
         "speaker_operations": [{"id": "speaker_name_correction"}],
         "speaker_name_provenance": [{} for _ in range(8)],
+        "audio_visual_cases": [{} for _ in range(7)],
     }
 
 
@@ -195,6 +204,24 @@ def test_meeting_transcription_real_lane_requires_speaker_name_provenance() -> N
         _score_from_meeting_transcription_proof_json(report)
 
 
+def test_meeting_transcription_real_lane_requires_audio_visual_cases() -> None:
+    report = _meeting_transcription_real_report()
+    report["audio_visual_cases"] = [{} for _ in range(6)]
+
+    with pytest.raises(ValueError, match="audio_visual_cases"):
+        _score_from_meeting_transcription_proof_json(report)
+
+
+def test_meeting_transcription_real_lane_requires_audio_visual_metrics() -> None:
+    report = _meeting_transcription_real_report()
+    metrics = report["metrics"]
+    assert isinstance(metrics, dict)
+    metrics.pop("active_speaker_f1")
+
+    with pytest.raises(ValueError, match="audio-visual metrics"):
+        _score_from_meeting_transcription_proof_json(report)
+
+
 def test_meeting_transcription_real_lane_score_is_publishable_with_evidence() -> None:
     extraction = _score_from_meeting_transcription_proof_json(_meeting_transcription_real_report())
 
@@ -203,3 +230,6 @@ def test_meeting_transcription_real_lane_score_is_publishable_with_evidence() ->
     assert extraction.metrics["publishable"] is True
     assert extraction.metrics["evidence_file_count"] == 11
     assert extraction.metrics["speaker_name_provenance_count"] == 8
+    assert extraction.metrics["audio_visual_case_count"] == 7
+    assert extraction.metrics["active_speaker_f1"] == pytest.approx(0.88)
+    assert extraction.metrics["visual_acoustic_disagreement_rate"] == pytest.approx(0.12)

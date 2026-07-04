@@ -82,6 +82,16 @@ policy, and expected resolution. Low-confidence inferred names cannot be
 reported as confirmed identities; they must request confirmation, withhold the
 name, or preserve an unknown speaker label.
 
+Real manifests must include audio-visual case metadata for AVA-ActiveSpeaker,
+MISP 2025, EasyCom where license permits, synthetic room-feed smoke, off-screen
+speaker handling, visual/acoustic disagreement, and audio/video association.
+These rows declare video frame, face-track, audio stream, transcript, speaker,
+source metadata, active-speaker, person-count, off-screen, association, and
+room-feed coverage. The contract reports face-count accuracy, active-speaker
+F1/mAP, audio-video association accuracy, off-screen speaker detection accuracy,
+room-feed precision/recall, and visual/acoustic disagreement rate while
+forbidding face-only identity binding and sensitive attribute shortcuts.
+
 ## Fixture Manifest
 
 `fixtures/mock-meeting-manifest.json` describes the minimum canonical meeting

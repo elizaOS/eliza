@@ -60,6 +60,62 @@ REQUIRED_SPEAKER_OPERATION_FIELDS = {
     "privacy_control",
     "confidence_policy",
 }
+REQUIRED_AUDIO_VISUAL_CASES = {
+    "ava_active_speaker",
+    "misp_2025_meeting",
+    "easycom_license_permitting",
+    "synthetic_room_feed_smoke",
+    "off_screen_speaker",
+    "visual_acoustic_disagreement",
+    "audio_video_association",
+}
+REQUIRED_AUDIO_VISUAL_FIELDS = {
+    "id",
+    "dataset",
+    "coverage",
+    "tasks",
+    "metrics",
+    "evidence",
+    "identity_policy",
+}
+REQUIRED_AUDIO_VISUAL_COVERAGE = {
+    "video_frames",
+    "face_tracks",
+    "audio_streams",
+    "transcripts",
+    "speaker_ids",
+    "source_metadata",
+    "active_speaker_labels",
+    "person_count_labels",
+    "off_screen_speaker_labels",
+    "audio_video_association_labels",
+    "room_feed_labels",
+}
+REQUIRED_AUDIO_VISUAL_TASKS = {
+    "face_count",
+    "active_speaker",
+    "off_screen_speaker",
+    "audio_video_association",
+    "room_feed",
+    "visual_acoustic_disagreement",
+}
+REQUIRED_AUDIO_VISUAL_METRICS = {
+    "face_count_accuracy",
+    "active_speaker_f1",
+    "active_speaker_map",
+    "audio_video_association_accuracy",
+    "off_screen_speaker_detection_accuracy",
+    "room_feed_heuristic_precision",
+    "room_feed_heuristic_recall",
+    "visual_acoustic_disagreement_rate",
+}
+ALLOWED_AUDIO_VISUAL_IDENTITY_SOURCES = {
+    "voice_profile",
+    "user_correction",
+    "calendar_participant",
+    "platform_roster",
+    "none",
+}
 REQUIRED_SPEAKER_NAME_PROVENANCE_CASES = {
     "platform_roster_name",
     "calendar_attendee_name",
@@ -193,6 +249,7 @@ REQUIRED_DETAILED_METRICS = {
     "p95_end_to_end_latency_ms",
     "notes_factuality",
     "action_item_extraction",
+    *REQUIRED_AUDIO_VISUAL_METRICS,
 }
 RATIO_METRICS = {
     *REQUIRED_QUALITY_METRICS,
@@ -207,6 +264,7 @@ RATIO_METRICS = {
     "voice_profile_false_reject_rate",
     "notes_factuality",
     "action_item_extraction",
+    *REQUIRED_AUDIO_VISUAL_METRICS,
 }
 LATENCY_METRICS = {"end_of_turn_latency_ms", "barge_in_latency_ms", "p95_end_to_end_latency_ms"}
 KNOWN_METRICS = REQUIRED_QUALITY_METRICS | REQUIRED_DETAILED_METRICS
@@ -659,6 +717,105 @@ def _validate_speaker_name_provenance(manifest: dict[str, Any]) -> tuple[list[di
     return sorted(normalized, key=lambda speaker_name: speaker_name["id"]), referenced_evidence
 
 
+def _validate_audio_visual_cases(manifest: dict[str, Any]) -> tuple[list[dict[str, Any]], set[str]]:
+    cases = manifest.get("audio_visual_cases")
+    if not isinstance(cases, list) or not cases:
+        raise ValueError("audio_visual_cases must be a non-empty array")
+
+    case_ids: set[str] = set()
+    covered_fields: set[str] = set()
+    covered_tasks: set[str] = set()
+    covered_metrics: set[str] = set()
+    referenced_evidence: set[str] = set()
+    normalized: list[dict[str, Any]] = []
+    for index, case in enumerate(cases):
+        if not isinstance(case, dict):
+            raise ValueError(f"audio_visual_cases[{index}] must be an object")
+        missing_fields = REQUIRED_AUDIO_VISUAL_FIELDS - set(case)
+        if missing_fields:
+            raise ValueError(f"audio_visual_cases[{index}] missing fields: {sorted(missing_fields)}")
+        case_id = case.get("id")
+        if not isinstance(case_id, str) or not case_id.strip():
+            raise ValueError(f"audio_visual_cases[{index}].id must be a non-empty string")
+        case_ids.add(case_id)
+        dataset = case.get("dataset")
+        if not isinstance(dataset, str) or not dataset.strip():
+            raise ValueError(f"audio_visual_cases[{index}].dataset must be a non-empty string")
+        coverage = _as_set(case.get("coverage"), field=f"audio_visual_cases[{index}].coverage")
+        unknown_coverage = coverage - REQUIRED_AUDIO_VISUAL_COVERAGE
+        if unknown_coverage:
+            raise ValueError(f"audio_visual_cases[{index}] references unknown coverage: {sorted(unknown_coverage)}")
+        tasks = _as_set(case.get("tasks"), field=f"audio_visual_cases[{index}].tasks")
+        unknown_tasks = tasks - REQUIRED_AUDIO_VISUAL_TASKS
+        if unknown_tasks:
+            raise ValueError(f"audio_visual_cases[{index}] references unknown tasks: {sorted(unknown_tasks)}")
+        metrics = _as_set(case.get("metrics"), field=f"audio_visual_cases[{index}].metrics")
+        unknown_metrics = metrics - REQUIRED_AUDIO_VISUAL_METRICS
+        if unknown_metrics:
+            raise ValueError(f"audio_visual_cases[{index}] references unknown metrics: {sorted(unknown_metrics)}")
+        evidence = _as_set(case.get("evidence"), field=f"audio_visual_cases[{index}].evidence")
+        unknown_evidence = evidence - REQUIRED_EVIDENCE
+        if unknown_evidence:
+            raise ValueError(f"audio_visual_cases[{index}] references unknown evidence: {sorted(unknown_evidence)}")
+
+        identity_policy = case.get("identity_policy")
+        if not isinstance(identity_policy, dict):
+            raise ValueError(f"audio_visual_cases[{index}].identity_policy must be an object")
+        face_binding = identity_policy.get("face_identity_binding")
+        if face_binding != "forbidden_without_explicit_opt_in":
+            raise ValueError(
+                f"audio_visual_cases[{index}].identity_policy.face_identity_binding "
+                "must be forbidden_without_explicit_opt_in"
+            )
+        sensitive_policy = identity_policy.get("sensitive_attribute_policy")
+        if sensitive_policy != "forbidden":
+            raise ValueError(
+                f"audio_visual_cases[{index}].identity_policy.sensitive_attribute_policy must be forbidden"
+            )
+        identity_sources = _as_set(
+            identity_policy.get("allowed_identity_sources"),
+            field=f"audio_visual_cases[{index}].identity_policy.allowed_identity_sources",
+        )
+        unknown_sources = identity_sources - ALLOWED_AUDIO_VISUAL_IDENTITY_SOURCES
+        if unknown_sources:
+            raise ValueError(
+                f"audio_visual_cases[{index}] references unknown identity sources: {sorted(unknown_sources)}"
+            )
+        covered_fields.update(coverage)
+        covered_tasks.update(tasks)
+        covered_metrics.update(metrics)
+        referenced_evidence.update(evidence)
+        normalized.append(
+            {
+                "id": case_id,
+                "dataset": dataset,
+                "coverage": sorted(coverage),
+                "tasks": sorted(tasks),
+                "metrics": sorted(metrics),
+                "evidence": sorted(evidence),
+                "identity_policy": {
+                    "face_identity_binding": face_binding,
+                    "sensitive_attribute_policy": sensitive_policy,
+                    "allowed_identity_sources": sorted(identity_sources),
+                },
+            }
+        )
+
+    missing_cases = REQUIRED_AUDIO_VISUAL_CASES - case_ids
+    if missing_cases:
+        raise ValueError(f"missing audio visual cases: {sorted(missing_cases)}")
+    missing_coverage = REQUIRED_AUDIO_VISUAL_COVERAGE - covered_fields
+    if missing_coverage:
+        raise ValueError(f"audio_visual_cases missing coverage: {sorted(missing_coverage)}")
+    missing_tasks = REQUIRED_AUDIO_VISUAL_TASKS - covered_tasks
+    if missing_tasks:
+        raise ValueError(f"audio_visual_cases missing tasks: {sorted(missing_tasks)}")
+    missing_metrics = REQUIRED_AUDIO_VISUAL_METRICS - covered_metrics
+    if missing_metrics:
+        raise ValueError(f"audio_visual_cases missing metrics: {sorted(missing_metrics)}")
+    return sorted(normalized, key=lambda case: case["id"]), referenced_evidence
+
+
 def validate_manifest(manifest: dict[str, Any], *, lane: str, manifest_path: Path) -> dict[str, Any]:
     if lane not in LANES:
         raise ValueError(f"lane must be one of {sorted(LANES)}")
@@ -717,6 +874,7 @@ def validate_manifest(manifest: dict[str, Any], *, lane: str, manifest_path: Pat
     capture_paths, capture_evidence_types = _validate_capture_paths(manifest)
     speaker_operations, speaker_operation_evidence_types = _validate_speaker_operations(manifest)
     speaker_name_provenance, speaker_name_evidence_types = _validate_speaker_name_provenance(manifest)
+    audio_visual_cases, audio_visual_evidence_types = _validate_audio_visual_cases(manifest)
 
     metric_values = _validate_metrics(manifest.get("metrics"), lane=lane)
 
@@ -744,6 +902,9 @@ def validate_manifest(manifest: dict[str, Any], *, lane: str, manifest_path: Pat
         missing_speaker_name_evidence = speaker_name_evidence_types - set(evidence_files)
         if missing_speaker_name_evidence:
             raise ValueError(f"speaker name evidence files missing: {sorted(missing_speaker_name_evidence)}")
+        missing_audio_visual_evidence = audio_visual_evidence_types - set(evidence_files)
+        if missing_audio_visual_evidence:
+            raise ValueError(f"audio visual evidence files missing: {sorted(missing_audio_visual_evidence)}")
 
     return {
         "surfaces": sorted(surfaces),
@@ -755,6 +916,7 @@ def validate_manifest(manifest: dict[str, Any], *, lane: str, manifest_path: Pat
         "capture_paths": capture_paths,
         "speaker_operations": speaker_operations,
         "speaker_name_provenance": speaker_name_provenance,
+        "audio_visual_cases": audio_visual_cases,
         "metrics": metric_values,
         "evidence_files": evidence_files,
         "provider_mode": provider_mode,

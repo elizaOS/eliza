@@ -482,6 +482,147 @@
       "expected_resolution": "preserve_unknown"
     }
   ],
+  "audio_visual_cases": [
+    {
+      "id": "ava_active_speaker",
+      "dataset": "AVA-ActiveSpeaker",
+      "coverage": ["video_frames", "face_tracks", "active_speaker_labels", "source_metadata"],
+      "tasks": ["active_speaker", "face_count"],
+      "metrics": ["active_speaker_f1", "active_speaker_map", "face_count_accuracy"],
+      "evidence": ["video", "screenshots", "metrics"],
+      "identity_policy": {
+        "face_identity_binding": "forbidden_without_explicit_opt_in",
+        "sensitive_attribute_policy": "forbidden",
+        "allowed_identity_sources": ["none"]
+      }
+    },
+    {
+      "id": "misp_2025_meeting",
+      "dataset": "MISP 2025",
+      "coverage": [
+        "video_frames",
+        "face_tracks",
+        "audio_streams",
+        "transcripts",
+        "speaker_ids",
+        "active_speaker_labels",
+        "source_metadata"
+      ],
+      "tasks": ["active_speaker", "audio_video_association", "face_count"],
+      "metrics": ["active_speaker_f1", "active_speaker_map", "audio_video_association_accuracy", "face_count_accuracy"],
+      "evidence": ["audio", "video", "transcript_artifact", "speaker_profile_artifact", "metrics"],
+      "identity_policy": {
+        "face_identity_binding": "forbidden_without_explicit_opt_in",
+        "sensitive_attribute_policy": "forbidden",
+        "allowed_identity_sources": ["voice_profile", "user_correction"]
+      }
+    },
+    {
+      "id": "easycom_license_permitting",
+      "dataset": "EasyCom",
+      "coverage": [
+        "video_frames",
+        "face_tracks",
+        "audio_streams",
+        "transcripts",
+        "speaker_ids",
+        "audio_video_association_labels",
+        "source_metadata"
+      ],
+      "tasks": ["audio_video_association", "face_count"],
+      "metrics": ["audio_video_association_accuracy", "face_count_accuracy"],
+      "evidence": ["audio", "video", "transcript_artifact", "speaker_profile_artifact", "metrics"],
+      "identity_policy": {
+        "face_identity_binding": "forbidden_without_explicit_opt_in",
+        "sensitive_attribute_policy": "forbidden",
+        "allowed_identity_sources": ["voice_profile", "calendar_participant", "user_correction"]
+      }
+    },
+    {
+      "id": "synthetic_room_feed_smoke",
+      "dataset": "synthetic",
+      "coverage": [
+        "video_frames",
+        "face_tracks",
+        "audio_streams",
+        "transcripts",
+        "speaker_ids",
+        "room_feed_labels",
+        "person_count_labels",
+        "source_metadata"
+      ],
+      "tasks": ["room_feed", "face_count"],
+      "metrics": ["room_feed_heuristic_precision", "room_feed_heuristic_recall", "face_count_accuracy"],
+      "evidence": ["audio", "video", "screenshots", "metrics"],
+      "identity_policy": {
+        "face_identity_binding": "forbidden_without_explicit_opt_in",
+        "sensitive_attribute_policy": "forbidden",
+        "allowed_identity_sources": ["none"]
+      }
+    },
+    {
+      "id": "off_screen_speaker",
+      "dataset": "synthetic",
+      "coverage": [
+        "video_frames",
+        "audio_streams",
+        "transcripts",
+        "speaker_ids",
+        "off_screen_speaker_labels",
+        "source_metadata"
+      ],
+      "tasks": ["off_screen_speaker", "audio_video_association"],
+      "metrics": ["off_screen_speaker_detection_accuracy", "audio_video_association_accuracy"],
+      "evidence": ["audio", "video", "transcript_artifact", "metrics"],
+      "identity_policy": {
+        "face_identity_binding": "forbidden_without_explicit_opt_in",
+        "sensitive_attribute_policy": "forbidden",
+        "allowed_identity_sources": ["voice_profile", "user_correction"]
+      }
+    },
+    {
+      "id": "visual_acoustic_disagreement",
+      "dataset": "synthetic",
+      "coverage": [
+        "video_frames",
+        "face_tracks",
+        "audio_streams",
+        "transcripts",
+        "speaker_ids",
+        "active_speaker_labels",
+        "source_metadata"
+      ],
+      "tasks": ["visual_acoustic_disagreement", "active_speaker"],
+      "metrics": ["visual_acoustic_disagreement_rate", "active_speaker_f1"],
+      "evidence": ["audio", "video", "speaker_profile_artifact", "metrics"],
+      "identity_policy": {
+        "face_identity_binding": "forbidden_without_explicit_opt_in",
+        "sensitive_attribute_policy": "forbidden",
+        "allowed_identity_sources": ["voice_profile", "user_correction"]
+      }
+    },
+    {
+      "id": "audio_video_association",
+      "dataset": "synthetic",
+      "coverage": [
+        "video_frames",
+        "face_tracks",
+        "audio_streams",
+        "transcripts",
+        "speaker_ids",
+        "audio_video_association_labels",
+        "source_metadata"
+      ],
+      "tasks": ["audio_video_association", "active_speaker"],
+      "metrics": ["audio_video_association_accuracy", "active_speaker_f1"],
+      "evidence": ["audio", "video", "transcript_artifact", "speaker_profile_artifact", "metrics"],
+      "identity_policy": {
+        "face_identity_binding": "forbidden_without_explicit_opt_in",
+        "sensitive_attribute_policy": "forbidden",
+        "allowed_identity_sources": ["voice_profile", "platform_roster", "user_correction"]
+      }
+    }
+  ],
   "metrics": {
     "transcript_quality": 1.0,
     "diarization_quality": 1.0,
@@ -494,6 +635,14 @@
     "jer": 0.0,
     "overlap_aware_wer": 0.0,
     "active_speaker_accuracy": 1.0,
+    "face_count_accuracy": 1.0,
+    "active_speaker_f1": 1.0,
+    "active_speaker_map": 1.0,
+    "audio_video_association_accuracy": 1.0,
+    "off_screen_speaker_detection_accuracy": 1.0,
+    "room_feed_heuristic_precision": 1.0,
+    "room_feed_heuristic_recall": 1.0,
+    "visual_acoustic_disagreement_rate": 0.0,
     "voice_profile_false_accept_rate": 0.0,
     "voice_profile_false_reject_rate": 0.0,
     "end_of_turn_latency_ms": 0,

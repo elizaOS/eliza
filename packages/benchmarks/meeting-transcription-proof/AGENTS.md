@@ -49,6 +49,23 @@ overlap-aware WER, active-speaker accuracy, voice-profile false accept/reject
 rates, end-of-turn latency, barge-in latency, P95 end-to-end latency, notes
 factuality, and action-item extraction.
 
+## Audio-Visual Contract
+
+The manifest must enumerate audio-visual case coverage for AVA-ActiveSpeaker,
+MISP 2025, EasyCom where license permits, synthetic room-feed smoke,
+off-screen speaker handling, visual/acoustic disagreement, and audio/video
+association. Each case declares video frames, face tracks, audio streams,
+transcripts, speaker ids, source metadata, active-speaker labels, person-count
+labels, off-screen labels, association labels, and room-feed labels as
+applicable. Case metrics include face-count accuracy, active-speaker F1/mAP,
+audio-video association accuracy, off-screen speaker detection accuracy,
+room-feed precision/recall, and visual/acoustic disagreement rate.
+
+Face tracks are localization evidence only. Identity binding from face data is
+forbidden without an explicit opt-in identity source such as a voice profile,
+user correction, calendar participant, or platform roster. Sensitive-attribute
+shortcuts are always forbidden.
+
 ## Dataset Contract
 
 The real lane requires external dataset sources covering speech over music,

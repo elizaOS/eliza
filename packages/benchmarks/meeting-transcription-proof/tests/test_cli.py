@@ -31,6 +31,10 @@ def _fixture_speaker_name_provenance() -> list[object]:
     return json.loads(FIXTURE_MANIFEST.read_text(encoding="utf-8"))["speaker_name_provenance"]
 
 
+def _fixture_audio_visual_cases() -> list[object]:
+    return json.loads(FIXTURE_MANIFEST.read_text(encoding="utf-8"))["audio_visual_cases"]
+
+
 def _base_manifest(provider_mode: str = "real_zoom_meet") -> dict[str, object]:
     return {
         "provider_mode": provider_mode,
@@ -57,6 +61,7 @@ def _base_manifest(provider_mode: str = "real_zoom_meet") -> dict[str, object]:
         "capture_paths": _fixture_capture_paths(),
         "speaker_operations": _fixture_speaker_operations(),
         "speaker_name_provenance": _fixture_speaker_name_provenance(),
+        "audio_visual_cases": _fixture_audio_visual_cases(),
         "metrics": {
             "transcript_quality": 0.91,
             "diarization_quality": 0.82,
@@ -69,6 +74,14 @@ def _base_manifest(provider_mode: str = "real_zoom_meet") -> dict[str, object]:
             "jer": 0.22,
             "overlap_aware_wer": 0.2,
             "active_speaker_accuracy": 0.84,
+            "face_count_accuracy": 0.9,
+            "active_speaker_f1": 0.88,
+            "active_speaker_map": 0.87,
+            "audio_video_association_accuracy": 0.86,
+            "off_screen_speaker_detection_accuracy": 0.85,
+            "room_feed_heuristic_precision": 0.83,
+            "room_feed_heuristic_recall": 0.82,
+            "visual_acoustic_disagreement_rate": 0.12,
             "voice_profile_false_accept_rate": 0.03,
             "voice_profile_false_reject_rate": 0.08,
             "end_of_turn_latency_ms": 280,
@@ -98,6 +111,7 @@ def test_mocked_plumbing_fixture_is_not_publishable() -> None:
     assert len(report["capture_paths"]) == len(_fixture_capture_paths())
     assert len(report["speaker_operations"]) == len(_fixture_speaker_operations())
     assert len(report["speaker_name_provenance"]) == len(_fixture_speaker_name_provenance())
+    assert len(report["audio_visual_cases"]) == len(_fixture_audio_visual_cases())
 
 
 def test_real_lane_requires_non_mock_provider(tmp_path: Path) -> None:
@@ -432,6 +446,56 @@ def test_speaker_name_policies_reject_sensitive_attribute_shortcuts(tmp_path: Pa
         build_report(lane="real_product", manifest_path=manifest)
 
 
+def test_real_lane_requires_audio_visual_cases(tmp_path: Path) -> None:
+    manifest_data = _base_manifest()
+    manifest_data.pop("audio_visual_cases")
+    manifest = _write_manifest(tmp_path, manifest_data)
+
+    with pytest.raises(ValueError, match="audio_visual_cases must be a non-empty array"):
+        build_report(lane="real_product", manifest_path=manifest)
+
+
+def test_audio_visual_cases_require_all_case_ids(tmp_path: Path) -> None:
+    manifest_data = _base_manifest()
+    manifest_data["audio_visual_cases"] = [
+        case
+        for case in _fixture_audio_visual_cases()
+        if isinstance(case, dict) and case.get("id") != "ava_active_speaker"
+    ]
+    manifest = _write_manifest(tmp_path, manifest_data)
+
+    with pytest.raises(ValueError, match="missing audio visual cases"):
+        build_report(lane="real_product", manifest_path=manifest)
+
+
+def test_audio_visual_cases_forbid_face_identity_binding(tmp_path: Path) -> None:
+    manifest_data = _base_manifest()
+    cases = _fixture_audio_visual_cases()
+    assert isinstance(cases[0], dict)
+    policy = cases[0].get("identity_policy")
+    assert isinstance(policy, dict)
+    cases[0] = {**cases[0], "identity_policy": {**policy, "face_identity_binding": "allowed"}}
+    manifest_data["audio_visual_cases"] = cases
+    manifest = _write_manifest(tmp_path, manifest_data)
+
+    with pytest.raises(ValueError, match="face_identity_binding"):
+        build_report(lane="real_product", manifest_path=manifest)
+
+
+def test_audio_visual_cases_reject_sensitive_attribute_policy(tmp_path: Path) -> None:
+    manifest_data = _base_manifest()
+    cases = _fixture_audio_visual_cases()
+    assert isinstance(cases[0], dict)
+    policy = cases[0].get("identity_policy")
+    assert isinstance(policy, dict)
+    cases[0] = {**cases[0], "identity_policy": {**policy, "sensitive_attribute_policy": "allowed"}}
+    manifest_data["audio_visual_cases"] = cases
+    manifest = _write_manifest(tmp_path, manifest_data)
+
+    with pytest.raises(ValueError, match="sensitive_attribute_policy"):
+        build_report(lane="real_product", manifest_path=manifest)
+
+
 def test_real_lane_scores_lowest_required_quality_and_resolves_evidence(tmp_path: Path) -> None:
     evidence_names = [
         "audio",
@@ -487,6 +551,21 @@ def test_real_lane_scores_lowest_required_quality_and_resolves_evidence(tmp_path
         "preserve_unknown",
     }
     assert all("confidence" in case for case in report["speaker_name_provenance"])
+    assert {case["id"] for case in report["audio_visual_cases"]} >= {
+        "ava_active_speaker",
+        "misp_2025_meeting",
+        "easycom_license_permitting",
+        "synthetic_room_feed_smoke",
+        "off_screen_speaker",
+        "visual_acoustic_disagreement",
+        "audio_video_association",
+    }
+    assert all(
+        case["identity_policy"]["face_identity_binding"] == "forbidden_without_explicit_opt_in"
+        for case in report["audio_visual_cases"]
+    )
+    assert report["metrics"]["active_speaker_f1"] == pytest.approx(0.88)
+    assert report["metrics"]["visual_acoustic_disagreement_rate"] == pytest.approx(0.12)
     assert all(dataset["version"] for dataset in report["dataset_sources"])
     assert all(dataset["checksum"] for dataset in report["dataset_sources"])
     assert all(dataset["sample_count"] > 0 for dataset in report["dataset_sources"])

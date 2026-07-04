@@ -926,6 +926,17 @@ _MEETING_PROOF_REQUIRED_REAL_METRICS = {
     "action_item_extraction",
 }
 
+_MEETING_PROOF_REQUIRED_AV_METRICS = {
+    "face_count_accuracy",
+    "active_speaker_f1",
+    "active_speaker_map",
+    "audio_video_association_accuracy",
+    "off_screen_speaker_detection_accuracy",
+    "room_feed_heuristic_precision",
+    "room_feed_heuristic_recall",
+    "visual_acoustic_disagreement_rate",
+}
+
 
 def _score_from_meeting_transcription_proof_json(data: JSONValue) -> ScoreExtraction:
     """Extract the #12486 meeting transcription proof score.
@@ -955,6 +966,8 @@ def _score_from_meeting_transcription_proof_json(data: JSONValue) -> ScoreExtrac
     speaker_name_provenance_count = (
         len(speaker_name_provenance) if isinstance(speaker_name_provenance, list) else 0
     )
+    audio_visual_cases = root.get("audio_visual_cases")
+    audio_visual_case_count = len(audio_visual_cases) if isinstance(audio_visual_cases, list) else 0
     publishable = root.get("publishable") is True
     if lane == "real_product":
         if not publishable:
@@ -984,6 +997,14 @@ def _score_from_meeting_transcription_proof_json(data: JSONValue) -> ScoreExtrac
         # check; the speaker-name provenance requirement is additive on top of it.
         if speaker_name_provenance_count < 8:
             raise ValueError("meeting_transcription_proof: real lane requires speaker name provenance")
+        if audio_visual_case_count < 7:
+            raise ValueError("meeting_transcription_proof: real lane requires audio_visual_cases")
+        missing_av_metrics = _MEETING_PROOF_REQUIRED_AV_METRICS - set(metrics)
+        if missing_av_metrics:
+            raise ValueError(
+                "meeting_transcription_proof: real lane requires audio-visual metrics "
+                f"{sorted(missing_av_metrics)}"
+            )
     elif publishable:
         raise ValueError("meeting_transcription_proof: mocked lane cannot be publishable")
 
@@ -996,10 +1017,19 @@ def _score_from_meeting_transcription_proof_json(data: JSONValue) -> ScoreExtrac
             "publishable": publishable,
             "evidence_file_count": evidence_count,
             "speaker_name_provenance_count": speaker_name_provenance_count,
+            "audio_visual_case_count": audio_visual_case_count,
             "transcript_quality": metrics.get("transcript_quality") or 0,
             "diarization_quality": metrics.get("diarization_quality") or 0,
             "speaker_identity_quality": metrics.get("speaker_identity_quality") or 0,
             "consent_retention_quality": metrics.get("consent_retention_quality") or 0,
+            "face_count_accuracy": metrics.get("face_count_accuracy") or 0,
+            "active_speaker_f1": metrics.get("active_speaker_f1") or 0,
+            "active_speaker_map": metrics.get("active_speaker_map") or 0,
+            "audio_video_association_accuracy": metrics.get("audio_video_association_accuracy") or 0,
+            "off_screen_speaker_detection_accuracy": metrics.get("off_screen_speaker_detection_accuracy") or 0,
+            "room_feed_heuristic_precision": metrics.get("room_feed_heuristic_precision") or 0,
+            "room_feed_heuristic_recall": metrics.get("room_feed_heuristic_recall") or 0,
+            "visual_acoustic_disagreement_rate": metrics.get("visual_acoustic_disagreement_rate") or 0,
             "provider_mode": root.get("provider_mode") or "",
         },
     )
