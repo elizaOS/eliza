@@ -1,3 +1,10 @@
+/**
+ * Deterministic unit tests for the channel-topics search capability (#8927): the
+ * SEARCH_CHANNEL_TOPICS action and the GET /api/channel-topics/search route. The
+ * `channel_topics` service is a vi.fn stub, covering validate gating on service
+ * presence, param-vs-message-text query resolution, and the route's 200/400/503
+ * status contract.
+ */
 import { describe, expect, it, vi } from "vitest";
 import { channelTopicSearchAction } from "./actions/channel-topic-search.ts";
 import { CHANNEL_TOPICS_SEARCH_ROUTE } from "./channel-topics-routes.ts";

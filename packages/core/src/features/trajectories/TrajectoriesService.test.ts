@@ -1,3 +1,12 @@
+/**
+ * Unit coverage for `TrajectoriesService`: it disables capture when the runtime
+ * adapter exposes no SQL executor, bounds and JSON-sanitizes LLM-call payloads
+ * (truncation, circular refs, functions) before persisting, keeps queued step
+ * writes parseable, skips internal embedding calls, and surfaces persisted
+ * metadata on list rows. The runtime and its SQL executor are stubbed
+ * (`executeRawSql` overridden against an in-memory row) — deterministic, no real
+ * database.
+ */
 import { describe, expect, it } from "vitest";
 import type { IAgentRuntime } from "../../types";
 import { TrajectoriesService } from "./TrajectoriesService";

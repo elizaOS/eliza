@@ -1,3 +1,11 @@
+/**
+ * Deterministic unit test for BrokerSecretStorage (features/secrets/storage):
+ * the non-decrypting invariant (get() returns serialized handles, refuses to
+ * pass through smuggled plaintext, and the source imports no decrypt path),
+ * read-only vs write-capable set(), and fail-closed-vs-soft error handling under
+ * strict/non-strict config. Uses vi-mocked broker clients and reads its own
+ * backend source for the structural guard.
+ */
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";

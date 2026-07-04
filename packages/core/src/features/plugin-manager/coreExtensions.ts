@@ -5,7 +5,7 @@ import type { ServiceTypeName } from "../../types/service.ts";
  * Core Runtime Extensions
  *
  * This module provides extensions to the core runtime for plugin management.
- * `unregisterEvent` is now a first-class method on `AgentRuntime` / `IAgentRuntime`,
+ * `unregisterEvent` is a first-class method on `AgentRuntime` / `IAgentRuntime`,
  * so this file only retains component unregistration helpers (action/provider/
  * service) that live outside the runtime contract.
  */

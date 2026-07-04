@@ -1,3 +1,11 @@
+/**
+ * Deterministic unit test for SetupService (features/secrets/setup): the
+ * {{settingName}} substitution and updatedKey reporting in processMessage's
+ * settingUpdated path, plus startTelegramSetup dispatching the owner deep link
+ * through the runtime send registry (and staying silent without ownership
+ * metadata). Uses createMockRuntime with a seeded in-memory session — no live
+ * Telegram.
+ */
 import { describe, expect, it, vi } from "vitest";
 import { createMockRuntime } from "../../../testing/mock-runtime.ts";
 import type { Memory, TargetInfo, UUID } from "../../../types/index.ts";
@@ -53,8 +61,8 @@ describe("SetupService.processMessage — settingUpdated message", () => {
 			content: { text: "sk-test-value" },
 		} as Memory);
 
-		// Before the fix, `.replace` bound only to the DEFAULT, so a custom
-		// message shipped the raw placeholder.
+		// The substitution must bind to the resolved (custom or default) message;
+		// a custom message must not ship the raw placeholder.
 		expect(result.response).toContain("Saved your OpenAI Key securely.");
 		expect(result.response).not.toContain("{{settingName}}");
 	});

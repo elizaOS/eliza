@@ -1,3 +1,8 @@
+/**
+ * Unit coverage for the ACTIONS provider's `isFollowUpCapableAction` helper:
+ * follow-up capability is recognized only via the `FOLLOW_UP_CAPABLE_ACTION_TAG`
+ * tag, never inferred from an action's name. Pure and deterministic — no runtime.
+ */
 import { describe, expect, it } from "vitest";
 import { FOLLOW_UP_CAPABLE_ACTION_TAG } from "../../../types/index.ts";
 import { isFollowUpCapableAction } from "./actions.ts";

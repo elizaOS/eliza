@@ -1,3 +1,12 @@
+/**
+ * The read-only cross-channel search action for the messaging-triage
+ * capability, registered under the shared `MESSAGE` action name. It runs
+ * combinable filters (source/connector, world/account, channel, sender,
+ * content keyword, tags, time range) through the TriageService and returns
+ * merged, cited hits with priority annotations. Strictly non-mutating —
+ * drafting, replying, sending, and other message mutations are handled by the
+ * sibling triage actions.
+ */
 import { logger } from "../../../../logger.ts";
 import type {
 	Action,

@@ -1,3 +1,10 @@
+/**
+ * The CURRENT_TIME provider: injects the current date and time into the prompt
+ * in several formats (ISO, unix, date-only, time-only, day-of-week, and a human
+ * readable full form), resolved against the agent's TIMEZONE setting (default
+ * UTC) so the agent can reason about "now". Text content comes from the
+ * centralized CURRENT_TIME provider spec.
+ */
 import { requireProviderSpec } from "../../../generated/spec-helpers.ts";
 import type {
 	IAgentRuntime,

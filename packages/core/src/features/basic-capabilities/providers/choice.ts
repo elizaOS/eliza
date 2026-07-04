@@ -1,3 +1,9 @@
+/**
+ * The CHOICE provider: surfaces the room's pending tasks tagged AWAITING_CHOICE
+ * that carry selectable options, rendered as a numbered list the user can answer
+ * by naming an option. Returns a "no pending choices" placeholder when none are
+ * awaiting selection. Text content comes from the centralized CHOICE provider spec.
+ */
 import { requireProviderSpec } from "../../../generated/spec-helpers.ts";
 import type {
 	IAgentRuntime,
@@ -10,13 +16,6 @@ import type {
 // Get text content from centralized specs
 const spec = requireProviderSpec("CHOICE");
 
-// Define an interface for option objects
-/**
- * Interface for an object representing an option.
- * @typedef {Object} OptionObject
- * @property {string} name - The name of the option.
- * @property {string} [description] - The description of the option (optional).
- */
 /**
  * Interface for an object representing an option.
  * @typedef {Object} OptionObject

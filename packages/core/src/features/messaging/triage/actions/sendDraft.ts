@@ -1,3 +1,20 @@
+/**
+ * The outbound compose-and-send action for the messaging-triage capability,
+ * registered under the shared `MESSAGE` action name. When no draft id is
+ * supplied it extracts the target platform, recipient, and body from the user's
+ * request (via `outboundDraftOptionsFromMessage`, which is model-driven so it
+ * works in any language) and persists a draft; when a draft id is supplied it
+ * sends that draft. If the TriageService adapter cannot create a draft it falls
+ * back to a locally stored draft so the confirmation flow still works.
+ *
+ * Two independent gates guard every send. The user-confirmation gate refuses to
+ * send without an explicit `confirmed: true`, returning a preview instead; the
+ * owner SendPolicy gate (when a policy is registered) can defer any send for
+ * owner approval, enqueuing the sendDraft executor for later replay.
+ *
+ * `outboundDraftOptionsFromMessage` is exported for the unit tests in
+ * `sendDraft.test.ts`.
+ */
 import crypto from "node:crypto";
 import { logger } from "../../../../logger.ts";
 import type {

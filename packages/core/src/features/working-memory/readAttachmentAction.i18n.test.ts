@@ -1,3 +1,8 @@
+/**
+ * Unit coverage for readAttachmentActionKind — the ATTACHMENT action's routing of
+ * the planner-emitted `action`/`subaction` enum (plus dash/space aliases) to read
+ * vs save_as_document. Pure-function assertions, no runtime or model.
+ */
 import { describe, expect, it } from "vitest";
 import { readAttachmentActionKind } from "./readAttachmentAction.ts";
 

@@ -1,3 +1,11 @@
+/**
+ * Shared harness for the personality capability's unit tests: builds a minimal
+ * in-memory IAgentRuntime stub (Map-backed memory store, role resolution driven
+ * by an optional owner/admin set) wired to a real PersonalityStore, plus helpers
+ * to seed default profiles, craft messages, and capture handler callbacks. The
+ * store and the reply-gate/verbosity logic under test are real; only the runtime
+ * around them is faked — no live model and no database.
+ */
 import type {
 	Character,
 	Content,
@@ -104,12 +112,10 @@ export function makeFakeRuntime(options: FakeRuntimeOptions = {}): FakeRuntime {
 		async getParticipantUserState(): Promise<null> {
 			return null;
 		},
-		// hasRoleAccess uses these
 		// hasRoleAccess reads the canonical-owner config here: when `owner` is set
 		// it is exposed as ELIZA_ADMIN_ENTITY_ID so a message from that entity
-		// resolves to OWNER (>= ADMIN). Correct way to grant admin now that
-		// hasRoleAccess fails CLOSED on an unresolved role (no longer treats
-		// "no world context" as admin).
+		// resolves to OWNER (>= ADMIN). hasRoleAccess fails CLOSED on an
+		// unresolved role, so this is how these tests grant admin.
 		getSetting: (key: string) =>
 			key === "ELIZA_ADMIN_ENTITY_ID" && owner ? owner : undefined,
 		_test_owner: owner,

@@ -1,3 +1,9 @@
+/**
+ * Unit-tests the verbosity enforcer (enforceVerbosity, approximateTokenCount):
+ * pass-through for normal/verbose/null, and terse truncation at the sentence
+ * boundary or via ellipsis once a reply exceeds the terse token cap. Pure
+ * functions, no runtime.
+ */
 import { describe, expect, test } from "vitest";
 import { MAX_TERSE_TOKENS } from "../types.ts";
 import {

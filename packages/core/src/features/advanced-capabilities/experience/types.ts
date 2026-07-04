@@ -1,3 +1,12 @@
+/**
+ * Type contracts and the service-type registration for the experience
+ * advanced-capability. Declares the `Experience` record (context/action/result/
+ * learning plus categorization, confidence/importance, temporal, correction, and
+ * provenance fields), the `ExperienceType`/`OutcomeType` enums, and the query,
+ * analysis, dedupe, graph, and event shapes consumed by ExperienceService and
+ * its formatting/relationship utilities. The `declare module` augmentation adds
+ * `EXPERIENCE` to the core ServiceTypeRegistry so the service can register under it.
+ */
 import type { Memory } from "../../../types/memory.ts";
 import type {
 	JsonObject,
@@ -15,7 +24,6 @@ declare module "../../../types/service.ts" {
 	}
 }
 
-// Export service type constant
 export const ExperienceServiceType = {
 	EXPERIENCE: "EXPERIENCE" as const,
 } satisfies Partial<ServiceTypeRegistry>;

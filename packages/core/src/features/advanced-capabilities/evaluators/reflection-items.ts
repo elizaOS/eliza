@@ -1,3 +1,24 @@
+/**
+ * The post-response reflection evaluator bundle for the advanced-capabilities
+ * feature: `factMemory`, `relationships`, `identities`, and `success`, exported
+ * together as `reflectionItems`. Each runs after the agent replies, extracts
+ * structured output from the recent conversation via a strict-JSON-schema model
+ * call, and writes it back into runtime memory — durable/current fact-store ops,
+ * relationship edges between known room participants, platform-identity claims,
+ * and a task-completion assessment respectively.
+ *
+ * The evaluators share a single reflection-context prepare step (recent messages,
+ * entities in room, existing relationships) and gate on `canEvaluateMessage`.
+ * Fact dedupe is purely lexical (keyword / search-text similarity), so the
+ * factMemory path never issues an embedding call.
+ *
+ * Every response `schema` here is hand-written to survive strict
+ * structured-output mode (Groq / Cerebras / OpenAI strict): every object node
+ * declares `properties` and `additionalProperties: false`, and no value-constraint
+ * keyword (maxItems, pattern, …) appears — those caps are enforced in code
+ * instead. Violating that invariant 400s the whole extraction call and silently
+ * drops the turn's memories, which reflection-items.test.ts guards against.
+ */
 import { v4 } from "uuid";
 import z from "zod";
 import { getEntityDetails } from "../../../entities.ts";

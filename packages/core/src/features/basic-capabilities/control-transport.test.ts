@@ -1,3 +1,10 @@
+/**
+ * Integration tests for basic-capabilities control-message delivery. Each test
+ * boots a real AgentRuntime (allowNoDatabase, migrations skipped) with the
+ * basic-capabilities plugin plus a stub transport service, asserting that
+ * sendControlMessage routes through the typed CONTROL_TRANSPORT service and does
+ * NOT fall back to a substring-name-matched socket service.
+ */
 import { describe, expect, it, vi } from "vitest";
 import { AgentRuntime } from "../../runtime.ts";
 import type { IAgentRuntime } from "../../types/runtime.ts";

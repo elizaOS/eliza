@@ -1,3 +1,13 @@
+/**
+ * Text utilities for the experience capability: `sanitizeExperienceText` redacts
+ * PII/secrets (emails, IPs, home-dir usernames, prefixed/opaque tokens) and caps
+ * length before an experience is persisted; `detectExperienceDomain` maps free
+ * text to a coarse domain; `extractExperienceKeywords` tokenizes, stems, and
+ * frequency-ranks searchable terms; and `isDuplicateLearning` /
+ * `findDuplicateExperienceByLearning` decide near-duplicate learnings via
+ * normalized-substring, Jaccard, and containment thresholds. Consumed by
+ * ExperienceService for keyword derivation and dedupe maintenance.
+ */
 import type { Experience } from "../types.ts";
 
 /** Minimal interface of ExperienceService used by this module. */

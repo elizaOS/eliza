@@ -1,3 +1,10 @@
+/**
+ * Unit tests for the CREATE_OAUTH_INTENT action, which mints an OAuth intent
+ * envelope and reports the eligible delivery targets for its hosted link.
+ * Deterministic harness: the runtime and the OAuthIntentsClient service are
+ * hand-rolled vi.fn mocks — no live model, network, or database. Covers the
+ * happy path plus provider/scope/state-token validation guards.
+ */
 import { describe, expect, test, vi } from "vitest";
 import {
 	OAUTH_INTENTS_CLIENT_SERVICE,

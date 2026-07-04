@@ -1,3 +1,22 @@
+/**
+ * Runs the `SecurityModule` service — the threat-detection core of the trust
+ * capability. Analyzes messages for prompt injection, social-engineering
+ * pressure (urgency, authority, intimidation, liking, reciprocity, and so on),
+ * and credential theft, and detects account-level abuse: multi-account linkage,
+ * phishing campaigns, username impersonation, and coordinated activity. Scoring
+ * is deterministic — regex banks (shared via `../injection-primitives`),
+ * obfuscation-aware keyword matching, behavioral-profile similarity, and
+ * Levenshtein/visual-similarity comparisons — with no model calls.
+ *
+ * Confirmed events are logged to the runtime log and best-effort persisted to
+ * the `securityIncidents` table (`SecurityStore`), then mapped to trust evidence
+ * fed back into the {@link TrustEngine}. Per-entity message/action history and
+ * behavioral profiles are held in memory, bounded by an LRU cap
+ * ({@link MAX_TRACKED_ENTITIES}) so a long-lived agent that talks to many users
+ * cannot grow without limit. The runtime-facing wrapper is
+ * `SecurityModuleServiceWrapper`.
+ */
+
 import { logger } from "../../../logger.ts";
 import type { IAgentRuntime, UUID } from "../../../types/index.ts";
 import {
@@ -84,8 +103,8 @@ export class SecurityModule {
 	}
 
 	// INJECTION_PATTERNS / INJECTION_KEYWORDS and the URGENCY/AUTHORITY/
-	// INTIMIDATION social-engineering banks now live in `../injection-primitives`
-	// (the single source shared with the should-respond risk gate, issue #9949).
+	// INTIMIDATION social-engineering banks live in `../injection-primitives`,
+	// the single source shared with the should-respond risk gate (issue #9949).
 
 	// Additional patterns for credential theft
 	private readonly CREDENTIAL_PATTERNS = [
@@ -445,7 +464,7 @@ export class SecurityModule {
 	}
 
 	/**
-	 * Log security event (now public)
+	 * Log security event
 	 */
 	async logSecurityEvent(
 		event: Omit<SecurityEvent, "id" | "timestamp" | "handled">,

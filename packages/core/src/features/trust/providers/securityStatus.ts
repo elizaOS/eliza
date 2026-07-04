@@ -1,3 +1,13 @@
+/**
+ * Provider for the trust capability that injects a security assessment of the
+ * incoming message during state composition: it runs the SecurityModule's
+ * prompt-injection analysis, recent-incident count, and threat-level scoring,
+ * and emits explicit refusal directives when the current message is flagged.
+ * Skips the agent's own messages and short-circuits to an admin_request signal
+ * when the sender resolves as admin context (see resolveAdminContext), so
+ * legitimate admins are not gated as adversarial input. Restricted to
+ * admin/settings contexts and a minimum ADMIN role.
+ */
 import { logger } from "../../../logger.ts";
 import type {
 	IAgentRuntime,

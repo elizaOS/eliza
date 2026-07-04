@@ -1,3 +1,11 @@
+/**
+ * Shared trajectory types and helpers for the skill-learning evaluators
+ * (skill-items.ts): the trajectory / step / service shapes, a defensive
+ * `getTrajectoryService` lookup that returns null unless the "trajectories" service
+ * exposes both list and detail, a tolerant JSON-object parser, and
+ * `formatTrajectoryForPrompt`, which renders a trajectory (step by step, prompts
+ * truncated) into the digest fed to the extraction model.
+ */
 import type { IAgentRuntime } from "../../../types/index.ts";
 
 export interface SkillTrajectoryLlmCall {

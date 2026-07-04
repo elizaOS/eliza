@@ -1,3 +1,11 @@
+/**
+ * Behavioral tests for the RECENT_MESSAGES provider's transcript hygiene:
+ * dropping internal bridge / sub-agent / tool / path-dump / synthetic-failure /
+ * transient rows, deduping, compaction-ledger inclusion, and the conversation-
+ * window cap. Deterministic — drives `recentMessagesProvider.get` against a
+ * hand-built in-memory runtime of `vi.fn` stubs; no live model or database.
+ */
+
 import { describe, expect, it, vi } from "vitest";
 import {
 	ChannelType,

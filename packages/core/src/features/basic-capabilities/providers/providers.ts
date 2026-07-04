@@ -1,3 +1,13 @@
+/**
+ * PROVIDERS provider — injects the catalog of available data providers into the
+ * planner prompt so the model can pick which context sources to pull on the next
+ * turn. Renders each provider's (compressed) description alongside a set of
+ * selection hints that map request kinds to provider names, and filters the list
+ * to providers whose declared contexts match the turn's active routing contexts.
+ * Suppresses the list entirely when the message looks like non-actionable
+ * chatter. Part of the basic-capabilities bundle.
+ */
+
 import {
 	getProviderSpec,
 	requireProviderSpec,
@@ -19,21 +29,6 @@ import { looksLikeNonActionableChatter } from "./non-actionable-chatter.ts";
 // Get text content from centralized specs
 const spec = requireProviderSpec("PROVIDERS");
 
-/**
- * Provider for retrieving list of all data providers available for the agent to use.
- * @type { Provider }
- */
-/**
- * Object representing the providersProvider, which contains information about data providers available for the agent.
- *
- * @type {Provider}
- * @property {string} name - The name of the provider ("PROVIDERS").
- * @property {string} description - Description of the provider.
- * @property {Function} get - Async function that filters dynamic providers, creates formatted text for each provider, and provides data for potential use.
- * @param {IAgentRuntime} runtime - The runtime of the agent.
- * @param {Memory} _message - The memory message.
- * @returns {Object} An object containing the formatted text and data for potential programmatic use.
- */
 export const providersProvider: Provider = {
 	name: spec.name,
 	description: spec.description,

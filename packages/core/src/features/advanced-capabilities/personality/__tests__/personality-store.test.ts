@@ -1,3 +1,9 @@
+/**
+ * Unit-tests the PersonalityStore service (built on the in-memory FakeRuntime):
+ * per-user vs global slot isolation, trait writes and their audit entries, FIFO
+ * directive eviction at the cap, profile load/save, and the seeded default
+ * profiles. Deterministic — no live model.
+ */
 import { describe, expect, test } from "vitest";
 import { defaultProfiles } from "../profiles/index.ts";
 import {

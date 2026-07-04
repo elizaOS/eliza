@@ -1,3 +1,11 @@
+/**
+ * Tests the USER_EMOTION_SIGNAL provider: emitting the `USER_SIGNAL` line for
+ * above-threshold voice emotion and non-none text emotion, staying silent below
+ * threshold / with no signal / when opted out, and its planner-contract position
+ * and contextGate. Deterministic — a fake runtime whose `getSetting` returns the
+ * opt-out flag; no live model.
+ */
+
 import { describe, expect, it } from "vitest";
 import type { IAgentRuntime, Memory, State } from "../../../types/index.ts";
 import type { UUID } from "../../../types/primitives.ts";

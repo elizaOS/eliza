@@ -1,3 +1,11 @@
+/**
+ * Unit coverage for the owner-side trajectory viewer read routes
+ * (`tryHandleTrajectoryReadRoutes`): path/method gating, the list/detail/stats
+ * UI wire shapes (including the timeout→error status collapse and step→phase
+ * flattening), search-param forwarding, opt-in room-context resolution, and the
+ * service-absent empty-200 fallback. The `ServerResponse` and runtime/service
+ * are hand-rolled fakes — deterministic, no HTTP server or database.
+ */
 import type { ServerResponse } from "node:http";
 import { describe, expect, it } from "vitest";
 import type { IAgentRuntime } from "../../types";

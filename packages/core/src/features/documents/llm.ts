@@ -1,3 +1,14 @@
+/**
+ * Provider-agnostic text-generation and embedding helpers for the documents
+ * (RAG) pipeline. `generateText` dispatches to Anthropic / OpenAI / OpenRouter /
+ * Google (with ephemeral prompt-caching paths for Claude and Gemini on
+ * OpenRouter), and `generateTextEmbedding` / `generateTextEmbeddingsBatch`
+ * produce embeddings via those providers or the runtime's local model. Every
+ * call resolves provider/model/key config from {@link validateModelConfig} and
+ * is wrapped in trajectory logging. The Vercel `ai` SDK and provider packages
+ * are imported lazily so this module — reachable from `@elizaos/core`'s browser
+ * entry — never pulls the SDK into the frontend bundle.
+ */
 import type { EmbeddingModel, ModelMessage } from "ai";
 import { logger } from "../../logger";
 import {

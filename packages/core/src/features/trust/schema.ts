@@ -1,3 +1,11 @@
+/**
+ * Drizzle table definitions for the trust capability, all under the `trust`
+ * Postgres schema: multi-dimensional trust profiles and the evidence feeding
+ * them, contextual role assignments, permission delegations, behavioral
+ * profiles (anomaly / multi-account detection), security incidents,
+ * cross-platform identity links, and anonymous whistleblower reports. Wired into
+ * the trust plugin's `schema` and materialized by the SQL adapters.
+ */
 import { sql } from "drizzle-orm";
 import {
 	boolean,

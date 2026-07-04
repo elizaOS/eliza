@@ -1,3 +1,9 @@
+/**
+ * Unit-tests the pure reply-gate helpers (resolveEffectiveReplyGate,
+ * decideReplyGate, messageContainsLiftSignal): user-over-global precedence, the
+ * never_until_lift / on_mention / always modes, and lift-signal detection. Pure
+ * functions over plain slot objects — no runtime, model, or store.
+ */
 import { describe, expect, test } from "vitest";
 import {
 	decideReplyGate,

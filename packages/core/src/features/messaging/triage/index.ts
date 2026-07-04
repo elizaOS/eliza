@@ -1,3 +1,10 @@
+/**
+ * Barrel for the messaging-triage capability: re-exports the individual triage
+ * actions, the message adapters, the message-ref/send-policy/triage-engine/
+ * triage-service singletons and their types, and `messagingTriageActions` — the
+ * action list the runtime registers, which is the unified `messageAction` from
+ * advanced-capabilities.
+ */
 export { draftFollowupAction } from "./actions/draftFollowup.ts";
 export { draftReplyAction } from "./actions/draftReply.ts";
 export { listInboxAction } from "./actions/listInbox.ts";

@@ -1,3 +1,11 @@
+/**
+ * Type system and constants for the personality capability: the
+ * `PersonalitySlot`, `PersonalityProfile`, and `PersonalityAuditEntry` shapes;
+ * the verbosity/tone/formality/reply-gate/trait/scope enums and their canonical
+ * value lists; memory-table names; the global-scope token; slot/directive
+ * limits; and the `ServiceTypeRegistry` augmentation for this capability's
+ * services. Shared by the store, providers, actions, and enforcer here.
+ */
 import type { UUID } from "../../../types/primitives.ts";
 import type { ServiceTypeRegistry } from "../../../types/service.ts";
 

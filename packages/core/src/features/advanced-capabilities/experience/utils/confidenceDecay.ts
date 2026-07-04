@@ -1,3 +1,12 @@
+/**
+ * Confidence-decay model for the experience capability: `ConfidenceDecayManager`
+ * ages an experience's stored confidence toward a floor along a configurable
+ * half-life after a grace period, with per-type and per-domain tuning (facts and
+ * safety/security lessons decay slower; performance and user-preference insights
+ * decay faster). ExperienceService uses the decayed confidence as the dominant
+ * quality signal when ranking and filtering recall; the manager also exposes
+ * reinforcement boosts and confidence-over-time trends.
+ */
 import type { Experience } from "../types";
 import { ExperienceType } from "../types";
 

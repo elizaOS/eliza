@@ -1,3 +1,9 @@
+/**
+ * Tests the credential-proxy client — request signing (canonical string + versioned
+ * HMAC) and forwarding a target URL to the broker origin, plus the fail-closed per-host
+ * route allowlist. Deterministic: real node:crypto, a stub `fetch` that records calls
+ * instead of hitting the network, and a fixed clock.
+ */
 import { createHash, createHmac } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {

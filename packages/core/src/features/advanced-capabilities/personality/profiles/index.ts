@@ -1,3 +1,8 @@
+/**
+ * Data module for the personality capability: the built-in named profiles that
+ * `PersonalityStore` registers on startup and that admins can load into the
+ * global slot via the PERSONALITY action.
+ */
 import type { PersonalityProfile } from "../types.ts";
 
 /**

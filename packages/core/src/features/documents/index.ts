@@ -1,3 +1,13 @@
+/**
+ * Barrel and plugin factory for the documents capability — elizaOS's native RAG
+ * (document ingestion + retrieval). `createDocumentsPlugin` assembles the
+ * `Plugin` that registers {@link DocumentService}, {@link documentsProvider},
+ * and the DOCUMENT action, and disposes the service on unload. The
+ * `documentsPlugin` / `documentsPluginCore` (provider-only) /
+ * `documentsPluginHeadless` presets toggle the action and provider surfaces.
+ * The module also re-exports the feature's public API: BM25 scoring, URL
+ * ingestion, recall embedding, and the shared types.
+ */
 import type { IAgentRuntime, Plugin } from "../../types";
 import { documentActions } from "./actions";
 import { documentsProvider } from "./provider";

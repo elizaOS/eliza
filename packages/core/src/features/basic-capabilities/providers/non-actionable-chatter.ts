@@ -1,3 +1,12 @@
+/**
+ * Text heuristics that classify an inbound user message as non-actionable
+ * chatter (idle small talk, venting, open-ended advice-seeking) or as a one-off
+ * relationship follow-up reminder. The PROVIDERS and ACTIONS providers consume
+ * these to suppress the full provider/action catalog for such messages — only
+ * GENERIC_CHAT_ACTIONS survive (plus follow-up-capable actions for reminders) —
+ * so the model isn't prompted to act on pure chatter. Matching runs over
+ * normalized user message text.
+ */
 import type { Memory } from "../../../types/index.ts";
 import { normalizeUserMessageText } from "../../../utils/message-text.ts";
 

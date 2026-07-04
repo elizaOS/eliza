@@ -1,3 +1,14 @@
+/**
+ * Handler for the TRUST umbrella's `update_role` subaction: assigns
+ * OWNER/ADMIN/NONE roles to entities within a group or world channel. A
+ * `TEXT_LARGE` extraction resolves who-gets-what from the request (explicit
+ * action parameters take precedence over the model output), the OWNER-only rule
+ * in `canModifyRole` is enforced per assignment, and results are persisted into
+ * `world.metadata.roles`. Requires `state`, a GROUP/WORLD channel, a `serverId`,
+ * and a resolvable world; each rejection path replies via the callback and
+ * returns a structured `ActionResult`.
+ */
+
 import dedent from "dedent";
 import { logger } from "../../../logger.ts";
 import {

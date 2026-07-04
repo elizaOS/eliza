@@ -1,3 +1,9 @@
+/**
+ * The ENTITIES provider: injects the people present in the current room —
+ * formatted entity details under a "People in the Room" header plus the sender's
+ * resolved name — so the agent knows who it is talking to. Text content comes
+ * from the centralized ENTITIES provider spec.
+ */
 import { formatEntities, getEntityDetails } from "../../../entities.ts";
 import { requireProviderSpec } from "../../../generated/spec-helpers.ts";
 import type {

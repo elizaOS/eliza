@@ -1,3 +1,13 @@
+/**
+ * Registry data layer for the plugin-manager capability: fetches and normalizes
+ * the elizaOS plugin registry. Pulls `generated-registry.json` (falling back to
+ * the leaner `index.json`) from plugins.elizacloud.ai, scans the local
+ * `plugins/` directory for `elizaos.plugin.json` manifests that override remote
+ * entries, and caches the merged `Map<name, RegistryPlugin>` in memory for one
+ * hour. Exposes the lookup (`getRegistryEntry`, with fuzzy `@elizaos/`-prefix
+ * resolution), content-scored search, metadata conversion, and clone helpers
+ * that `PluginManagerService` builds its install/eject flows on top of.
+ */
 import { execFile } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";

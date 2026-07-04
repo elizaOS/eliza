@@ -1,3 +1,10 @@
+/**
+ * Provider for the trust capability that injects the sender's trust profile —
+ * overall score, per-dimension breakdown (reliability/competence/integrity/
+ * benevolence/transparency), trend direction, and recent positive/negative
+ * interaction counts — by evaluating the TrustEngine for the message sender.
+ * Gated to admin/settings contexts and a minimum ADMIN role.
+ */
 import { logger } from "../../../logger.ts";
 import type {
 	IAgentRuntime,

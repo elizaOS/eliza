@@ -1,3 +1,11 @@
+/**
+ * Unit coverage for the ATTACHMENTS provider (`attachmentsProvider`): stale
+ * room attachments stay out of unrelated prompt text and out of sub-agent
+ * result turns, relevance is judged from the current/reply message text, and
+ * an `ATTACHMENT action=read` is advertised only when readable text is stored —
+ * with images the exception when a vision (`IMAGE_DESCRIPTION`) model is
+ * registered. Deterministic harness: a hand-stubbed runtime, no live model or DB.
+ */
 import { describe, expect, it } from "vitest";
 import {
 	type IAgentRuntime,

@@ -1,3 +1,10 @@
+/**
+ * Tests for the CHANNEL_TOPICS provider — asserts it renders the room's topic
+ * LRU most-recent-first, no-ops when the room has no topics or the service is
+ * unregistered, and reflects topics hydrated from persisted room metadata after
+ * a restart. Deterministic: a real ChannelTopicsService over an in-memory mock
+ * runtime, no live model.
+ */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ChannelTopicsService } from "../../../services/channel-topics";
 import { createMockRuntime } from "../../../testing/mock-runtime";

@@ -1,3 +1,10 @@
+/**
+ * The `SUMMARIZED_CONTEXT` provider of the advanced-memory capability: injects
+ * the room's current rolling session summary (text, message range, date, and
+ * topics) into prompt context. Reads the summary from `MemoryService` via
+ * `runtime.getService("memory")`, trimming the body and topic list to bounded
+ * lengths; contributes nothing when no service or summary exists.
+ */
 import { logger } from "../../../logger.ts";
 import type {
 	IAgentRuntime,

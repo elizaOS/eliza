@@ -1,3 +1,11 @@
+/**
+ * Shared type surface for the plugin-manager capability: the `ServiceTypeRegistry`
+ * augmentation and `PluginManagerServiceType` constants for its four services,
+ * the `PluginStatus` lifecycle enum, the in-runtime plugin/component tracking
+ * shapes (`PluginState`, `PluginComponents`, `PluginRegistry`,
+ * `ComponentRegistration`), and the result/progress DTOs for install, uninstall,
+ * eject, sync, and reinject operations plus registry metadata.
+ */
 import type { EventPayload, EventPayloadMap } from "../../types/events.ts";
 import type { Plugin as ElizaPlugin } from "../../types/plugin.ts";
 import type { ServiceTypeName } from "../../types/service.ts";

@@ -1,3 +1,10 @@
+/**
+ * Deterministic unit test for the SECRETS_INFO provider (features/secrets):
+ * asserts it injects a type-grouped summary of configured secrets, stays
+ * language-agnostic rather than gating its context on English secret keywords,
+ * and returns empty text when the secrets service is unavailable. Runs against
+ * a hand-built mock runtime — no live model or database.
+ */
 import { describe, expect, test } from "vitest";
 import type { IAgentRuntime, Memory } from "../../../types/index.ts";
 import {

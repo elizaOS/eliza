@@ -1,3 +1,8 @@
+/**
+ * Unit tests for the PLAN action's create/update/review/finalize subactions.
+ * Deterministic — the handler runs against a stub runtime with no model call;
+ * assertions cover the returned plan body and persistence metadata.
+ */
 import { describe, expect, test } from "vitest";
 import { CANONICAL_SUBACTION_KEY } from "../../../actions/subaction-dispatch.ts";
 import { planAction } from "./plan.ts";

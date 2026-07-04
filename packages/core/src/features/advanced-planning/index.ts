@@ -1,3 +1,9 @@
+/**
+ * Barrel and plugin factory for the advanced-planning capability:
+ * `createAdvancedPlanningPlugin` registers the PLAN action and PlanningService,
+ * and disposes the service on unload. Also re-exports the capability's public
+ * types.
+ */
 import type { IAgentRuntime, Plugin } from "../../types/index.ts";
 import { planAction } from "./actions/plan.ts";
 import { PlanningService } from "./services/planning-service.ts";

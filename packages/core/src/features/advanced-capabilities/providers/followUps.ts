@@ -1,3 +1,11 @@
+/**
+ * FOLLOW_UPS provider: surfaces the agent's scheduled contact follow-ups into
+ * the prompt context. Reads upcoming follow-ups for the next 7 days plus
+ * relationship-lapse suggestions from the FollowUpService, resolves each
+ * contact's entity name, and renders a text summary split into overdue and
+ * upcoming groups (with days-overdue / days-until labels and reasons). Emits
+ * zero-count values and stays silent when the FollowUpService is unavailable.
+ */
 import { requireProviderSpec } from "../../../generated/spec-helpers.ts";
 import type { FollowUpService } from "../../../services/followUp.ts";
 import type {

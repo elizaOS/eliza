@@ -1,3 +1,11 @@
+/**
+ * Unit tests for `DocumentService`'s batched fragment-embedding path
+ * (`TEXT_EMBEDDING_BATCH`): one batch call embeds every fragment in order, and an
+ * absent batch model or a wrong-shaped batch result falls back to the serial
+ * per-fragment embed with no fragment left unembedded. Drives `createMockRuntime`
+ * with a deterministic text-derived fake embedding (a vector traces back to the
+ * exact fragment text) — no live model or DB.
+ */
 import { describe, expect, test } from "vitest";
 import { createMockRuntime } from "../../testing/mock-runtime";
 import type { Memory, UUID } from "../../types";

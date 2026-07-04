@@ -1,3 +1,11 @@
+/**
+ * Tests the BM25 scoring helpers (tokenize / bm25Scores / normalizeBm25Scores)
+ * and DocumentService.searchDocuments across vector, keyword, and hybrid modes,
+ * including the fail-open-to-keyword path when the recall embed is slow or errors
+ * (issue #47). Deterministic: a real DocumentService and real BM25 run over an
+ * in-memory fragment list while the runtime's embedding model and memory reads
+ * are vi.fn stubs (fake embedding vectors); no live model or database.
+ */
 import { describe, expect, it, vi } from "vitest";
 import type { Memory, UUID } from "../../../types";
 import { MemoryType, ModelType } from "../../../types";

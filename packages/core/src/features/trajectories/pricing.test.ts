@@ -1,3 +1,11 @@
+/**
+ * Unit coverage for the trajectories cost/pricing table: asserts the static
+ * per-provider rate card and context-window entries, the longest-family-key
+ * substring fallback for versioned model ids, the local-provider zero-cost rule,
+ * cache read/write accounting, and the MODEL_PRICES_JSON / MODEL_CONTEXT_WINDOWS_JSON
+ * env overrides. Fully deterministic — no live model; env is stubbed via
+ * vi.stubEnv.
+ */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	computeCallCostUsd,

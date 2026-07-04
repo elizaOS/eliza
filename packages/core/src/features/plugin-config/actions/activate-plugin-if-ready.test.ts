@@ -1,3 +1,10 @@
+/**
+ * Unit coverage for the ACTIVATE_PLUGIN_IF_READY action of the plugin-config
+ * capability: it activates a plugin and emits PluginActivated once every
+ * required secret is present, and stays a no-op (reason "not_ready") while keys
+ * are still missing. Runs against a hand-built stub runtime and an in-memory
+ * PluginConfigClient — no live model or database.
+ */
 import { describe, expect, test } from "vitest";
 import { ChannelType } from "../../../types/primitives";
 import { activatePluginIfReadyAction } from "./activate-plugin-if-ready";

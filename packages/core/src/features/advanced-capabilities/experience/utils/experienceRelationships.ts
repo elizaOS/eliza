@@ -1,3 +1,12 @@
+/**
+ * Relationship graph for the experience capability: `ExperienceRelationshipManager`
+ * holds directed links between experiences (causes/contradicts/supports/
+ * supersedes/related) keyed by source id, and derives higher-order structure —
+ * causal chains from hypothesis to validation, contradictions (same action +
+ * opposite outcome in one domain, or an explicit `contradicts` link), and an
+ * impact score. ExperienceService owns an instance and consults it when
+ * recording experiences and when building the experience graph snapshot.
+ */
 import type { UUID } from "../../../../types/primitives.ts";
 import type { Experience, JsonObject } from "../types";
 import { ExperienceType, OutcomeType } from "../types";
@@ -123,7 +132,7 @@ export class ExperienceRelationshipManager {
 	}
 
 	private contentSimilarity(exp1: Experience, exp2: Experience): number {
-		// Simple keyword overlap for now
+		// Jaccard overlap of lowercased learning words
 		const words1 = new Set(exp1.learning.toLowerCase().split(/\s+/));
 		const words2 = new Set(exp2.learning.toLowerCase().split(/\s+/));
 

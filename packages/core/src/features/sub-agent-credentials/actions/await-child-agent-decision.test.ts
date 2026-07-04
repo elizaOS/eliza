@@ -1,3 +1,10 @@
+/**
+ * Covers the AWAIT_CHILD_AGENT_DECISION action, which blocks until the spawned
+ * child session emits a decision via the SubAgentChildDecisionBus service. The
+ * harness is deterministic: the bus is a `vi.fn` mock, so the tests assert the
+ * default 600s timeout, a caller-supplied `timeoutMs`, and validation failure
+ * when `childSessionId` is absent — no real bus or child process is involved.
+ */
 import { describe, expect, test, vi } from "vitest";
 import {
 	SUB_AGENT_CHILD_DECISION_BUS_SERVICE,

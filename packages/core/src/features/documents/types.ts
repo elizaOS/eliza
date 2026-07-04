@@ -1,3 +1,12 @@
+/**
+ * Type and schema definitions for the documents capability: the stored-document
+ * shape, document/fragment memory metadata, visibility scopes, added-by role and
+ * source enums, load results, and the `ModelConfigSchema` zod schema (embedding /
+ * text-provider selection, rate-limit knobs, and startup-load config). Also
+ * registers the `DOCUMENTS: "documents"` entry into the runtime
+ * `ServiceTypeRegistry`. Shared across `service.ts`, `provider.ts`, and the
+ * document processors.
+ */
 import z from "zod";
 import type {
 	Content,

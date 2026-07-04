@@ -1,3 +1,9 @@
+/**
+ * Unit tests for the plugin-manager owner/admin access wrappers
+ * (`hasOwnerAccess` / `hasAdminAccess`). Fully deterministic: role resolution
+ * is supplied through injected `SecurityDeps` fakes, so there is no runtime,
+ * database, or live model in play.
+ */
 import { describe, expect, it } from "vitest";
 import type { RoleCheckResult, RoleName } from "../../roles.ts";
 import type { IAgentRuntime, Memory } from "../../types/index.ts";

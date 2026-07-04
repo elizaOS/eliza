@@ -1,3 +1,11 @@
+/**
+ * The CONTEXT_BENCH provider: bridges a benchmark harness into the message loop.
+ * When the inbound message carries a `benchmarkContext` metadata string it
+ * surfaces that text to the model and flags `benchmark_has_context` in state, so
+ * the message service forces REPLY/action execution and the full provider ->
+ * model -> action -> evaluator loop runs during benchmarks. See the provider doc
+ * below for the harness contract.
+ */
 import { requireProviderSpec } from "../../../generated/spec-helpers.ts";
 import type {
 	IAgentRuntime,

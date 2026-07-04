@@ -1,3 +1,17 @@
+/**
+ * The skill-learning evaluator bundle for advanced-capabilities: `skillProposal`
+ * and `skillRefinement`, exported as `skillItems`. Both read the latest recorded
+ * trajectory from the trajectories service and, via a strict-JSON-schema model
+ * call, curate on-disk SKILL.md files under the runtime state dir. `skillProposal`
+ * drafts a new proposed skill when a completed, multi-step trajectory that used no
+ * curated skill contains a reusable procedure; `skillRefinement` rewrites (or, past
+ * MAX_AUTO_REFINEMENTS, re-stages under proposed/) the active skills a failed or
+ * retried trajectory exercised, tracking provenance in each file's frontmatter.
+ *
+ * Both evaluators go through `getLatestTrajectory`, which memoizes the latest-
+ * trajectory lookup per message id so their parallel shouldRun/prepare hooks don't
+ * repeat the store round-trip.
+ */
 import {
 	existsSync,
 	mkdirSync,

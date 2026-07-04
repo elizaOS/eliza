@@ -1,3 +1,11 @@
+/**
+ * Deterministic unit test for SecretsService's broker wiring (features/secrets):
+ * the local composite store stays the default until both broker env vars are set
+ * and a client is supplied, broker-held keys return serialized handles (never
+ * plaintext) with fall-through to local for unheld keys, and strict mode fails
+ * closed on an unreachable broker while non-strict degrades to local. Runs
+ * against createMockRuntime with vi-mocked broker clients — no network.
+ */
 import { describe, expect, it, vi } from "vitest";
 import { createMockRuntime } from "../../../testing/mock-runtime.ts";
 import type { IAgentRuntime } from "../../../types/index.ts";

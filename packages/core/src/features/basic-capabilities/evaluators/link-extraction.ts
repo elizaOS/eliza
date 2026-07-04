@@ -1,3 +1,17 @@
+/**
+ * The link-extraction evaluator (`linkExtractionEvaluator`) for the
+ * basic-capabilities bundle: an inbound auto-capture evaluator that scans
+ * incoming message text for http(s) URLs, fetches a title/summary preview for
+ * each, and persists them as `link` memories in the `links` table.
+ *
+ * Registered through `evaluators/index.ts`. URLs are attacker-controlled, so
+ * every preview fetch is routed through the SSRF guard (`fetchWithSsrfGuard`),
+ * and the summary is produced by a `TEXT_SMALL` model call over the fetched
+ * page body. Capture is best-effort: the raw URL is still persisted when the
+ * preview fetch or summarization fails, per-message URLs are deduped and capped
+ * at `MAX_LINKS_PER_MESSAGE`, and per-URL errors are logged and swallowed so
+ * the evaluator never blocks the planner.
+ */
 import { v4 } from "uuid";
 import { fetchWithSsrfGuard } from "../../../network/index.ts";
 import { EvaluatorPriority } from "../../../services/evaluator-priorities.ts";
@@ -137,7 +151,7 @@ async function fetchLinkPreview(
 	// URLs come straight from inbound message text, so this fetch is attacker-
 	// controlled — route it through the SSRF guard (DNS-pinned, private/internal
 	// targets blocked, redirects validated per hop). Any failure (blocked,
-	// invalid, timeout, network) → no preview, exactly as before.
+	// invalid, timeout, network) → no preview.
 	let release: (() => Promise<void>) | undefined;
 	try {
 		const guarded = await fetchWithSsrfGuard({

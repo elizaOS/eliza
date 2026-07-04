@@ -1,3 +1,10 @@
+/**
+ * Unit tests for `ExperienceService.findSimilarExperiences` and its shared
+ * recall-embedder wiring: a mocked `embedRecallQuery` verifies that a null embed
+ * (timeout/error) fails open to the recency/quality fallback set, and that ranking
+ * always routes through the shared embedder rather than a direct useModel call.
+ * Uses the in-memory mock runtime — no live model, no real DB.
+ */
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { createMockRuntime } from "../../../testing/mock-runtime";
 import type { Memory } from "../../../types/memory.ts";

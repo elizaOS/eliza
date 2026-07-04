@@ -1,3 +1,11 @@
+/**
+ * Pure reply-gate decision logic for the personality capability. Given a user's
+ * and the global slot's `reply_gate` setting, decides whether the agent may
+ * respond at all before the model call — supporting the `on_mention` and
+ * `never_until_lift` mute modes and an explicit, testable list of lift phrases
+ * that unmute the agent. Consumed by the message runtime to short-circuit muted
+ * conversations without spending a model call.
+ */
 import type { PersonalitySlot, ReplyGateMode } from "./types.ts";
 
 /**

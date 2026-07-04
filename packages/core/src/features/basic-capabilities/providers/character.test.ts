@@ -1,3 +1,9 @@
+/**
+ * Tests the CHARACTER provider's topics-sentence formatting — the
+ * "is also interested in" clause is omitted when the picked topic is the only
+ * topic, and rendered (excluding the picked topic) when other topics exist.
+ * Deterministic: a hand-built runtime stub, no live model.
+ */
 import { describe, expect, it, vi } from "vitest";
 import type { IAgentRuntime, Memory, State } from "../../../types/index.ts";
 import { ChannelType } from "../../../types/index.ts";

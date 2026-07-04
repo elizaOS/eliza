@@ -1,3 +1,10 @@
+/**
+ * Unit tests (deterministic, no runtime) for the fact keyword tooling behind
+ * lexical fact retrieval. Tokenization strips punctuation/stopwords, splits
+ * hyphens, and applies length floors; extraction dedupes + ranks by frequency;
+ * lexical similarity blends coverage + jaccard (1.0 for identical keyword sets,
+ * 0 for disjoint).
+ */
 import { describe, expect, it } from "vitest";
 import {
 	buildFactQueryText,
@@ -5,13 +12,6 @@ import {
 	factLexicalSimilarity,
 	tokenizeFactText,
 } from "./fact-keywords.ts";
-
-/**
- * Fact keyword extraction backs lexical fact retrieval. Tokenization strips
- * punctuation/stopwords, splits hyphens, and applies length floors; extraction
- * dedupes + ranks by frequency; lexical similarity blends coverage + jaccard
- * (1.0 for identical keyword sets, 0 for disjoint).
- */
 
 describe("tokenizeFactText", () => {
 	it("lowercases, strips punctuation/stopwords, splits hyphens, floors length", () => {

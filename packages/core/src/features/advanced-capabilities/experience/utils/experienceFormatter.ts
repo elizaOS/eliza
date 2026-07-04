@@ -1,3 +1,12 @@
+/**
+ * Pure formatting and aggregation helpers for the experience capability. Renders
+ * an `Experience` for display, prompt injection, list, and RAG-storage text
+ * (with per-type emoji), groups experiences by domain, and computes aggregate
+ * stats (counts by type/outcome/domain, average confidence/importance, and
+ * success rate). Keyword extraction falls back to deriving terms from
+ * tags/learning/action/type/outcome/domain when none are stored. Consumed by the
+ * experience providers/prompts and pinned by experienceFormatter.test.ts.
+ */
 import type { Experience } from "../types";
 import { ExperienceType, OutcomeType } from "../types";
 

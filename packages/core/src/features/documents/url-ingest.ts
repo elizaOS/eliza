@@ -1,3 +1,15 @@
+/**
+ * SSRF-guarded remote-URL ingestion for the documents capability. Fetches a URL
+ * with DNS pinning and a private/link-local address blocklist (the pinned lookup
+ * prevents DNS rebinding between the safety check and the socket connect),
+ * rejects redirects, and caps the response body size. Classifies the payload and
+ * returns document-ready content: YouTube transcripts, HTML flattened to plain
+ * text, plain text, or binary document types as base64.
+ *
+ * `__setDocumentUrlFetchImplForTests` swaps the pinned-socket fetch for a
+ * deterministic stub so the safety and parsing logic can be tested without real
+ * sockets.
+ */
 import { Buffer } from "node:buffer";
 import { lookup as dnsLookup } from "node:dns/promises";
 import {

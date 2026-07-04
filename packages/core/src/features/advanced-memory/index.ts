@@ -1,3 +1,11 @@
+/**
+ * Entry point for the advanced-memory capability. `createAdvancedMemoryPlugin`
+ * assembles the `memory` plugin from the summary + long-term evaluators, the
+ * summarized-context + long-term-recall providers, and `MemoryService`. The
+ * file also re-exports the capability's public surface — those
+ * evaluators/providers, the backend-agnostic schema definitions, the service,
+ * and its types.
+ */
 import type { IAgentRuntime, Plugin } from "../../types/index.ts";
 import { memoryItems } from "./evaluators/index.ts";
 import {

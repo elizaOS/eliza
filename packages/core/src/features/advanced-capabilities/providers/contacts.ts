@@ -1,3 +1,10 @@
+/**
+ * Provider in advanced-capabilities that injects the agent's saved contacts,
+ * grouped by category, into the prompt. Reads from `RelationshipsService`,
+ * caps the list at `MAX_CONTACTS`, resolves display names from entities, and
+ * emits per-category counts as provider values. Returns empty context when the
+ * relationships service is unavailable or on error.
+ */
 import { requireProviderSpec } from "../../../generated/spec-helpers.ts";
 import type { RelationshipsService } from "../../../services/relationships.ts";
 import type {

@@ -1,3 +1,9 @@
+/**
+ * Static shape check of the payments plugin: it registers PAYMENT as its only
+ * canonical action (with the six-value subaction discriminator enum) and
+ * contributes no services, providers, or evaluators. No runtime.
+ */
+
 import { describe, expect, test } from "vitest";
 import { paymentsPlugin } from "./plugin";
 

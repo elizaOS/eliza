@@ -1,3 +1,12 @@
+/**
+ * The `LONG_TERM_MEMORY` provider of the advanced-memory capability: injects the
+ * persistent facts and preferences stored about the current user into prompt
+ * context, rendered as "What I Know About You" with a per-category count. Reads
+ * the memories from `MemoryService` via `runtime.getService("memory")`, formats
+ * the already-fetched rows (rather than re-querying, to keep the count and text
+ * in agreement), and bounds the rendered text length; contributes nothing for
+ * the agent's own entity or when no service/memories exist.
+ */
 import { logger } from "../../../logger.ts";
 import type {
 	IAgentRuntime,

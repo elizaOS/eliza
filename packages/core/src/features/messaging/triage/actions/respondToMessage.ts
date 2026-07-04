@@ -1,3 +1,12 @@
+/**
+ * The one-shot reply action for the messaging-triage capability, registered
+ * under the shared `MESSAGE` action name. It resolves a target message (by
+ * explicit messageId or a natural-language lookup through the TriageService),
+ * drafts a reply, and then either sends immediately or, when a SendPolicy is
+ * registered, hands the draft off for owner approval. When the request omits a
+ * concrete body it synthesizes a conservative, approval-gated acknowledgment
+ * from the original message's subject/snippet rather than guessing content.
+ */
 import { logger } from "../../../../logger.ts";
 import type {
 	Action,

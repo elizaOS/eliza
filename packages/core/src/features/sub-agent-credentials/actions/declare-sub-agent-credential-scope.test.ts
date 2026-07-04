@@ -1,3 +1,11 @@
+/**
+ * Covers the DECLARE_SUB_AGENT_CREDENTIAL_SCOPE action, which asks the
+ * SubAgentCredentialBridge to open a credential scope for a child session. The
+ * harness is deterministic: the bridge is a `vi.fn` mock. Tests assert the
+ * owner-only actor/delivery defaults, that the scoped token never leaks through
+ * the user-facing callback, and both validation and handler degradation when
+ * the bridge service is missing or `credentialKeys` is empty.
+ */
 import { describe, expect, test, vi } from "vitest";
 import {
 	SUB_AGENT_CREDENTIAL_BRIDGE_SERVICE,

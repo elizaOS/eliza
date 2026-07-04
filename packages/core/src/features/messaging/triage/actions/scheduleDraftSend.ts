@@ -1,3 +1,11 @@
+/**
+ * The deferred-send action for the messaging-triage capability, registered
+ * under the shared `MESSAGE` action name. Given an existing draft id and a
+ * target time, it schedules the draft to send later through the TriageService,
+ * preferring the adapter's native scheduling and falling back to a
+ * process-local timer. It verifies the draft exists before scheduling and
+ * reports the resolved send time.
+ */
 import { logger } from "../../../../logger.ts";
 import type {
 	Action,

@@ -1,3 +1,9 @@
+/**
+ * Deterministic unit tests for ContextualPermissionSystem's role→permission
+ * mapping (#12087 Item 5) and world-scoped role resolution (#12087 Item 8). No
+ * runtime or DB: resolveEntityRole is mocked and getWorld is a stub, while the
+ * real CANONICAL_ROLE_RANK drives the rank-tier assertions.
+ */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { IAgentRuntime, UUID } from "../../../types/index.ts";
 

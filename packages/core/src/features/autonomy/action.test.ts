@@ -1,3 +1,10 @@
+/**
+ * Unit test for the autonomy capability's ESCALATE action, covering the
+ * escalation targets it does not implement. Drives `escalateAction.handler`
+ * directly with cast-empty runtime/memory (no model, no service), asserting that
+ * `owner` and `third_party` targets fail with the `unsupported_escalation_target`
+ * error code rather than silently succeeding.
+ */
 import { describe, expect, it } from "vitest";
 import type { IAgentRuntime, Memory } from "../../types";
 import { escalateAction } from "./action";

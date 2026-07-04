@@ -1,3 +1,14 @@
+/**
+ * Implements the DOCUMENT umbrella action for the documents capability. One
+ * planner-routed action whose structured `action`/`subaction` enum dispatches to
+ * a per-subaction handler (list / search / read / write / edit / delete /
+ * import_file / import_url), each backed by {@link DocumentService}. Routing
+ * goes through {@link resolveActionArgs} on the structured params, never
+ * natural-language keyword matching. Enforces the four visibility scopes
+ * (global / owner-private / user-private / agent-private) and role-gated
+ * write/mutation access, and registers the `documents` search category as a
+ * side effect of validate/handler.
+ */
 import * as fs from "node:fs";
 import * as path from "node:path";
 import {

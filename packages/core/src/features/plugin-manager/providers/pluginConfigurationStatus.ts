@@ -1,3 +1,10 @@
+/**
+ * The `pluginConfigurationStatus` provider: injects per-plugin configuration
+ * readiness into the prompt — which registered plugins are configured versus
+ * missing required env keys/secrets — derived from each plugin's config schema
+ * via PluginConfigurationService. Owner-gated and relevance-gated to the
+ * connectors/settings contexts, so it only fires on plugin-configuration talk.
+ */
 import type { Provider, ProviderResult } from "../../../types/components.ts";
 import type { Memory } from "../../../types/memory.ts";
 import type { IAgentRuntime } from "../../../types/runtime.ts";

@@ -1,3 +1,11 @@
+/**
+ * Pure helpers for the documents capability: extracting text from file buffers
+ * (DOCX via mammoth, PDF via unpdf, plain text plus a UTF-8 fallback),
+ * classifying content types as binary vs text, deriving document titles and safe
+ * ASCII note filenames, normalizing source labels and S3 URLs, detecting base64
+ * payloads, and computing a stable content-based UUID used as the document
+ * dedupe key. Consumed by `service.ts` and the document processors.
+ */
 import { Buffer } from "node:buffer";
 import { createHash } from "node:crypto";
 import * as mammoth from "mammoth";

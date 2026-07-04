@@ -1,3 +1,11 @@
+/**
+ * Exercises `getSecretHandler`, the SECRETS umbrella's `action=get` path:
+ * returns the masked value by default, reports a null value (unmasked) when the
+ * secret is missing, and fails when the key parameter is absent. The runtime is
+ * a deterministic stub whose `SECRETS` service returns a canned `get()` value —
+ * no live model or database.
+ */
+
 import { describe, expect, test } from "vitest";
 import { ChannelType } from "../../../types/primitives";
 import { getSecretHandler } from "./get-secret";

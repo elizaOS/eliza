@@ -1,3 +1,10 @@
+/**
+ * Deterministic unit tests for the CHOOSE_OPTION action (`choiceAction`). The
+ * runtime is a vi.fn stub (getTasks/getTaskWorker/getRoom) — no live model, no
+ * DB — covering full-UUID and short-id task lookup, the #12087 Item 17
+ * authorization contract (validate checks only a pending choice, never a stored
+ * world role), and unknown-id rejection.
+ */
 import { describe, expect, it, vi } from "vitest";
 import type {
 	HandlerOptions,

@@ -1,3 +1,12 @@
+/**
+ * Service for the trust capability that adjudicates access requests. `checkAccess`
+ * runs a request through an ordered pipeline — prompt-injection block
+ * (SecurityModule), role-based grants (cumulative canonical-rank tiers),
+ * trust-threshold grants (TrustEngine, read-only actions only), active temporary
+ * elevations, then delegated permissions — and caches allow decisions in a
+ * TTL-bounded LRU. Also mints time-boxed elevations (trust-gated, never for
+ * admin-only actions) and tracks inter-entity permission delegations.
+ */
 import { logger } from "../../../logger.ts";
 import {
 	CANONICAL_ROLE_RANK,
@@ -43,15 +52,13 @@ export class ContextualPermissionSystem {
 	private delegations = new Map<UUID, PermissionDelegation[]>();
 
 	/**
-	 * Role→action grants as cumulative rank tiers (#12087 Item 5). The prior map
-	 * was keyed per-role and non-cumulative, so it had two bugs: GUEST/USER/MEMBER
-	 * had no row at all (roleHasPermission returned false — FEWER grants than the
-	 * unauthenticated NONE tier), and the ADMIN row omitted the base grants
-	 * (send_message/view_content), so an admin could not even send a message.
-	 * Grants now accumulate by canonical rank: everyone at NONE and above gets
-	 * BASE_PERMISSIONS; ADMIN and above additionally get ADMIN_PERMISSIONS; OWNER
-	 * gets everything. (Full target: derive each requirement from the capability it
-	 * protects; the tier sets remain the interim source of truth.)
+	 * Role→action grants as cumulative rank tiers (#12087 Item 5). Grants
+	 * accumulate by canonical rank so no tier ever holds fewer grants than the
+	 * unauthenticated NONE floor: everyone at NONE and above gets BASE_PERMISSIONS
+	 * (including send_message/view_content); ADMIN and above additionally get
+	 * ADMIN_PERMISSIONS; OWNER gets everything. (Full target: derive each
+	 * requirement from the capability it protects; the tier sets remain the interim
+	 * source of truth.)
 	 */
 	private static readonly BASE_PERMISSIONS = new Set([
 		"send_message",
@@ -451,10 +458,10 @@ export class ContextualPermissionSystem {
 		context: PermissionContext,
 	): Promise<string[]> {
 		if (context.worldId) {
-			// #12087 Item 8: context.worldId is ALREADY a hashed world id. The prior
-			// getUserServerRole(runtime, entityId, context.worldId) re-hashed it as a
-			// serverId, found no world, and returned NONE for everyone. resolveEntityRole
-			// reads the world directly and applies canonical-owner/demotion rules.
+			// #12087 Item 8: context.worldId is ALREADY a hashed world id, so it must
+			// not be re-hashed as a serverId (doing so finds no world and yields NONE
+			// for everyone). resolveEntityRole reads the world directly and applies
+			// canonical-owner/demotion rules.
 			const world = await this.runtime.getWorld(context.worldId as UUID);
 			const role = await resolveEntityRole(
 				this.runtime,

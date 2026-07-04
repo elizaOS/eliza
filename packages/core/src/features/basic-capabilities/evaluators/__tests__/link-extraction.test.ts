@@ -1,3 +1,10 @@
+/**
+ * Unit coverage for the link-extraction evaluator (`linkExtractionEvaluator`):
+ * URL gating, preview fetch/summarize, dedupe and trailing-punctuation
+ * stripping, platform stamping, and output parsing. The harness is fully
+ * deterministic — a hand-mocked runtime with a `vi.fn` `useModel`, a stubbed
+ * `globalThis.fetch`, and no real network, model, or database.
+ */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
 	EvaluatorRunContext,

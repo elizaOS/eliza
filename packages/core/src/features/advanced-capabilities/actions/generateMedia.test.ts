@@ -1,3 +1,10 @@
+/**
+ * Covers the GENERATE_MEDIA action's validate/handler: provider gating (media
+ * service vs IMAGE-model fallback), missing-URL failure, attachment delivery,
+ * and i18n-safe media-kind routing (#10471). Runs against a deterministic mock
+ * runtime (vi.fn media service, no live model).
+ */
+
 import { describe, expect, it, vi } from "vitest";
 import { ModelType, ServiceType } from "../../../types/index.ts";
 import { generateMediaAction } from "./generateMedia.ts";
@@ -164,8 +171,8 @@ describe("generateMediaAction media-kind routing is i18n-safe (#10471)", () => {
 			url: "https://cdn.example.com/i.png",
 			mimeType: "image/png",
 		}));
-		// English "video"/"music" words in the prompt must no longer steer the
-		// media kind — only the structured enum does. Absent enum ⇒ image.
+		// English "video"/"music" words in the prompt must not steer the media
+		// kind — only the structured enum does. Absent enum ⇒ image.
 		const englishyMessage = {
 			id: "msg",
 			roomId: "room",

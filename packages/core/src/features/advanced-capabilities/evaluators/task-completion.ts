@@ -1,3 +1,9 @@
+/**
+ * Shared task-completion contract for the reflection `success` evaluator: the
+ * `TaskCompletionAssessment` shape, its cache-key builder, and the provider-facing
+ * status formatter. reflection-items.ts writes an assessment here and caches it by
+ * message id; downstream providers render it via `formatTaskCompletionStatus`.
+ */
 import type { UUID } from "../../../types/index.ts";
 
 export interface TaskCompletionAssessment {

@@ -1,3 +1,11 @@
+/**
+ * Guards that the conversation-history providers keep distinct, non-overlapping
+ * descriptions — RECENT_MESSAGES (the transcript), PLATFORM_CHAT_CONTEXT and
+ * PLATFORM_USER_CONTEXT (connector metadata), ADMIN_CHAT_HISTORY (autonomy
+ * control room) — so the planner never conflates them. Deterministic: asserts on
+ * the imported provider objects' static `description` strings; no runtime or model.
+ */
+
 import { describe, expect, it, vi } from "vitest";
 import { adminChatProvider } from "../../autonomy/providers.ts";
 import {

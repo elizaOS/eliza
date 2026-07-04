@@ -1,3 +1,10 @@
+/**
+ * Exercises `listSecretsHandler`, the SECRETS umbrella's `action=list` path,
+ * which returns sorted keys plus per-key metadata (setAt/ttl) but never the
+ * values, and supports prefix filtering. The runtime is a deterministic stub
+ * whose `SECRETS` service returns canned metadata — no live model or database.
+ */
+
 import { describe, expect, test } from "vitest";
 import { ChannelType } from "../../../types/primitives";
 import { listSecretsHandler } from "./list-secrets";

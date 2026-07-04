@@ -1,3 +1,16 @@
+/**
+ * The `core_manager` service (`CoreManagerService`) of the plugin-manager
+ * capability: ejects, syncs, and reinjects the `@elizaos/core` package itself.
+ * Ejecting clones the elizaOS monorepo into `<stateDir>/core`, installs and
+ * builds it, then rewrites `tsconfig.json` `paths` so `@elizaos/core` resolves
+ * to the ejected `dist`; sync merges upstream and rebuilds; reinject removes
+ * the checkout and restores the default resolution.
+ *
+ * All git/build operations run behind a single serialized lock (`serialise`),
+ * git URLs/branches are validated against strict allowlists, and every
+ * write/remove is confined to the core base dir via `isWithinEjectedCoreDir`
+ * to prevent path escape. Upstream provenance is tracked in `.upstream.json`.
+ */
 import { exec, execFile } from "node:child_process";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -298,7 +311,7 @@ export class CoreManagerService extends Service {
 		return { ok: true };
 	}
 
-	// Public API methods matching original functionality
+	// Public API methods
 
 	async ejectCore(): Promise<CoreEjectResult> {
 		return this.serialise(async () => {

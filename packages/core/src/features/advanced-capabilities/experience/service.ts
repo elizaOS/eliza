@@ -1,3 +1,23 @@
+/**
+ * Runs the ExperienceService, the long-lived singleton behind the experience
+ * advanced-capability: it records what the agent tried, the outcome, and the
+ * lesson learned, then makes those experiences retrievable to inform future
+ * decisions. Registers under the EXPERIENCE service type.
+ *
+ * Experiences live in an in-memory Map hydrated on start from the `experiences`
+ * memory table (the same table writes go back to), with secondary indexes by
+ * domain and type. Access counts accrue in memory and batch-persist on a 60s
+ * timer; a daily maintenance timer runs learning-text dedupe. Retrieval is
+ * semantic — a shared per-turn recall-query embedding plus cosine similarity —
+ * reranked so vector relevance dominates (70%) and quality signals (decayed
+ * confidence, importance, recency, access frequency) only tiebreak (30%), with a
+ * similarity floor and a recency-sort fallback when embeddings are unavailable.
+ *
+ * Confidence decay and inter-experience relationships/graph links are delegated
+ * to ConfidenceDecayManager and ExperienceRelationshipManager; on record,
+ * same-action / opposite-outcome experiences in one domain are cross-linked as
+ * `contradicts`.
+ */
 import { v4 as uuidv4 } from "uuid";
 import { logger } from "../../../logger.ts";
 import type { Memory } from "../../../types/memory.ts";

@@ -629,9 +629,8 @@ export const roomOpAction: Action = {
 		const chatName = normalizeString(params.chatName);
 		const durationMinutes = normalizeDurationMinutes(params.durationMinutes);
 
-		// Connector-targeted path (replaces CHAT_THREAD).
-		// Skip the model gate and act directly on the named room; preserves
-		// the previous CHAT_THREAD shape.
+		// Connector-targeted path: skip the model gate and act directly on the
+		// named room resolved by platform + roomId/chatName.
 		if (platform && (explicitRoomId || chatName)) {
 			const targetRoom = await resolveTargetRoom({
 				runtime: runtime as RuntimeLike,
@@ -701,9 +700,7 @@ export const roomOpAction: Action = {
 			return result;
 		}
 
-		// Default path: operate on the current room with model-decision gating
-		// (matches previous MUTE_ROOM / UNMUTE_ROOM / FOLLOW_ROOM / UNFOLLOW_ROOM
-		// behavior).
+		// Default path: operate on the current room with model-decision gating.
 		if (!state) {
 			return {
 				text: "State is required for ROOM",

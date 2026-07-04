@@ -1,3 +1,12 @@
+/**
+ * Type and enum definitions for the trust capability's scoring model: the five
+ * `TrustDimensions`, the `TrustEvidenceType` enum and `TrustEvidence` records
+ * that move each dimension, the computed `TrustProfile` (dimensions, overall
+ * score, confidence, trend), the `TrustContext` evaluations run in, and the
+ * `TrustDecision`/`TrustRequirements`/`TrustInteraction`/`TrustCalculationConfig`
+ * shapes. Consumed by the TrustEngine and, via evidence mapping, the SecurityModule.
+ */
+
 import type { UUID } from "../../../types/index.ts";
 
 /**

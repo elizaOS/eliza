@@ -15,8 +15,8 @@ import { createFakeRuntime } from "./fake-runtime.ts";
 
 /**
  * Mirrors what a connector plugin does at init: define an adapter for its own
- * source and register it into the shared TriageService. Core no longer ships
- * any connector-named adapters — they live in their owning plugins and register
+ * source and register it into the shared TriageService. Core ships no
+ * connector-named adapters — they live in their owning plugins and register
  * themselves. These tests pin that contract.
  */
 class TestConnectorAdapter extends BaseMessageAdapter {

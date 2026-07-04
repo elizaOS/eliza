@@ -1,3 +1,12 @@
+/**
+ * RELATIONSHIPS provider: injects the people the current speaker interacts with
+ * into the prompt context, sorted by interaction strength. Resolves the
+ * speaker's related-entity cluster, loads their relationship edges, keeps the
+ * strongest 30, and formats each counterpart as names + tags + a bounded slice
+ * of that entity's metadata. Output is hard-capped both per entity and in total
+ * because raw entity metadata can accumulate arbitrarily large blobs and would
+ * otherwise push the planner prompt past small-context model limits.
+ */
 import { requireProviderSpec } from "../../../generated/spec-helpers.ts";
 import { getRelatedEntityIds } from "../../../identity-clusters.ts";
 import type {
@@ -24,17 +33,10 @@ const MAX_METADATA_CHARS_PER_ENTITY = 240;
 const MAX_RELATIONSHIPS_OUTPUT_CHARS = 4000;
 
 /**
- * Formats the provided relationships based on interaction strength and returns a string.
- * @param {IAgentRuntime} runtime - The runtime object to interact with the agent.
- * @param {Relationship[]} relationships - The relationships to format.
- * @returns {string} The formatted relationships as a string.
- */
-/**
- * Asynchronously formats relationships based on their interaction strength.
- *
- * @param {IAgentRuntime} runtime The runtime instance.
- * @param {Relationship[]} relationships The relationships to be formatted.
- * @returns {Promise<string>} A formatted string of the relationships.
+ * Sorts relationships by interaction strength, resolves each counterpart entity
+ * relative to the speaker's own ids, and renders the bounded names/tags/metadata
+ * block. `currentEntityIds` are the speaker's clustered ids, used to pick which
+ * side of each edge is the counterpart.
  */
 async function formatRelationships(
 	runtime: IAgentRuntime,

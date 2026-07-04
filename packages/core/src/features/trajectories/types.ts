@@ -1,3 +1,22 @@
+/**
+ * The trajectory subsystem's canonical type system: the rich in-memory shapes a
+ * recorded agent episode is captured in and the derived shapes it is exported
+ * or persisted as.
+ *
+ * `Trajectory` is the top-level episode — an ordered list of `TrajectoryStep`s,
+ * each pairing an `EnvironmentState` observation with the agent's cognition
+ * (`LLMCall[]`, `ProviderAccess[]`) and the `ActionAttempt` it took, plus reward
+ * signals. `TrajectoryRecord` is the flattened database row (JSON columns +
+ * indexed scalars) that `TrajectoriesService` reads and writes. `ARTTrajectory`
+ * / `ChatMessage` / `TrajectoryGroup` / `TrainingBatch` are the RL-training
+ * (RULER/OpenPipe ART) projection produced by `art-format`, and the
+ * `Reward*`/`ContextObjectTrajectoryExport` types describe the AI-judge scoring
+ * request/response and the v5 context-object export envelope.
+ *
+ * These interfaces are the shared vocabulary across the whole feature (service,
+ * exporters, read routes, rewards); widen additively so on-disk rows and the
+ * viewer wire shapes stay backward-compatible.
+ */
 import type { JsonObject, JsonPrimitive, JsonValue, UUID } from "../../types";
 import type { ContextEvent } from "../../types/context-object";
 

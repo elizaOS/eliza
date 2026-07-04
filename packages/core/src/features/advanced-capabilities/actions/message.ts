@@ -1,13 +1,15 @@
-// MESSAGE — single polymorphic action surface for the messaging domain.
-//
-// Dispatches to a switch over MESSAGE_OPS. Connector-backed ops (read_channel,
-// search, list_channels, list_servers, react, edit, delete, pin, join, leave,
-// get_user) call MessageConnector hooks directly. read_with_contact resolves a
-// person via the relationships graph and views their conversations across
-// every connected platform. Triage / inbox / draft ops delegate to the
-// existing triage actions in features/messaging/triage.
-//
-// Former leaf message actions are gone — MESSAGE is the only registration.
+/**
+ * MESSAGE — single polymorphic action surface for the messaging domain, and the
+ * only messaging action the runtime registers (there are no per-op leaf
+ * actions).
+ *
+ * Dispatches on a switch over MESSAGE_OPS. Connector-backed ops (read_channel,
+ * search, list_channels, list_servers, react, edit, delete, pin, join, leave,
+ * get_user) call MessageConnector hooks directly. read_with_contact resolves a
+ * person via the relationships graph and views their conversations across every
+ * connected platform. Triage / inbox / draft ops delegate to the triage actions
+ * in features/messaging/triage.
+ */
 
 import { getConnectorAccountManager } from "../../../connectors/account-manager.ts";
 import { findEntityByName } from "../../../entities.ts";
@@ -737,7 +739,7 @@ function opErrorWrap(op: MessageOperation, error: unknown): ActionResult {
 }
 
 // ---------------------------------------------------------------------------
-// op=send (folded from sendMessage.ts)
+// op=send
 // ---------------------------------------------------------------------------
 
 const ADMIN_TARGETS = new Set(["admin", "owner"]);
@@ -2323,7 +2325,7 @@ async function handleReadChannel(
 		);
 	}
 
-	// Local-room fallback (replaces former read-channel leaf behavior on agent runtime).
+	// Local-room fallback: read the channel from the agent runtime's own rooms.
 	if (!channel) {
 		return opFailure(
 			"read_channel",

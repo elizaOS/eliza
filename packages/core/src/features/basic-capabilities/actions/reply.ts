@@ -1,3 +1,17 @@
+/**
+ * Implements the REPLY action of the basic-capabilities bundle — the agent's
+ * primary way to speak to the user. It extends the centralized REPLY spec with
+ * `ASK`/`CLARIFY` similes and a compressed description, and exposes two handler
+ * branches.
+ *
+ * The structured-question branch fires when a `questions` param is supplied: it
+ * validates 1-4 `ReplyQuestion` items (each with a header/question and optional
+ * multi-select options), renders them to text, and returns
+ * `requiresUserInteraction: true`. The free-text branch composes state and asks
+ * TEXT_LARGE for a reply — or echoes caller-provided `text` verbatim — parsing
+ * the model's JSON `{ thought, text }` and falling back to planner-supplied text
+ * when the model yields nothing usable.
+ */
 import { requireActionSpec } from "../../../generated/spec-helpers.ts";
 import { logger } from "../../../logger.ts";
 import { replyTemplate } from "../../../prompts.ts";
@@ -306,7 +320,7 @@ export const replyAction = {
 			};
 		}
 
-		// Free-text branch (the original REPLY behavior).
+		// Free-text branch: compose a reply from state, or echo caller text.
 		const actionContext = _options?.actionContext;
 		const previousResults = actionContext?.previousResults || [];
 

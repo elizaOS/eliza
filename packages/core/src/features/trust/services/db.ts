@@ -1,3 +1,10 @@
+/**
+ * Resolves the runtime's Drizzle database handle for the trust capability's
+ * data-access layer and defines the minimal chainable `DrizzleDB` shape those
+ * queries use. `getDb` throws when no adapter is attached; consumed by
+ * SecurityStore, TrustEngine, and SecurityModule.
+ */
+
 import type { IAgentRuntime } from "../../../types/index.ts";
 
 /**

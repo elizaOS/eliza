@@ -1,3 +1,15 @@
+/**
+ * The PLATFORM_CHAT_CONTEXT and PLATFORM_USER_CONTEXT providers: inject
+ * connector-specific metadata for the current platform target. Chat context
+ * carries per-connector room metadata (source, channel/thread ids, summaries,
+ * output guidance) — deliberately NOT the canonical transcript, which the
+ * RECENT_MESSAGES provider owns; user context carries sender identity (handles,
+ * aliases, account labels). Connectors are selected by matching the message
+ * source, or by overlapping explicit routing contexts when no source is set, and
+ * each connector hook's result is normalized to JSON-safe ProviderValues. Recent
+ * messages are stripped from the emitted prompt text but kept in `data` for
+ * diagnostics.
+ */
 import type {
 	AgentContext,
 	IAgentRuntime,
@@ -45,9 +57,9 @@ const MAX_CONNECTOR_CONTEXTS = 8;
 // adds a per-connector view of the same conversation (so the model can
 // see e.g. that the same room is bridged across Discord and Telegram).
 // Five messages is enough to disambiguate the connector source without
-// re-shipping the full history twice. Was 10, lowered because two-connector
-// rooms (e.g. Discord default account + Discord stealth account) were
-// double-counting and pushing ~130K extra characters into the prompt.
+// re-shipping the full history twice. Kept low because two-connector rooms
+// (e.g. Discord default account + Discord stealth account) double-count and
+// would otherwise push ~130K extra characters into the prompt.
 const MAX_RECENT_MESSAGES = 5;
 const PLATFORM_OUTPUT_GUIDANCE: Record<string, string[]> = {
 	discord: [

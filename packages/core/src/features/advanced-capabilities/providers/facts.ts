@@ -1,3 +1,16 @@
+/**
+ * FACTS provider: injects the durable and current facts the agent knows about
+ * the speaker into the prompt context. Pulls bounded recent candidate pools
+ * from the `facts` memory table (one room-scoped, one per related entity in the
+ * speaker's identity cluster), partitions them into durable (identity-level,
+ * never decays) and current (time-decayed) kinds, then ranks each kind locally
+ * with BM25 keyword scoring weighted by a per-kind confidence × recency prior.
+ * Retrieval deliberately avoids vector search so relevance is computed from the
+ * fact's own words and extracted keywords; a keyword-miss on durable facts
+ * falls back to the highest-prior candidates so direct recall still works. The
+ * ranking curves and two-store model are documented in
+ * docs/architecture/fact-memory.md.
+ */
 import { requireProviderSpec } from "../../../generated/spec-helpers.ts";
 import { getRelatedEntityIds } from "../../../identity-clusters.ts";
 import type {

@@ -1,3 +1,8 @@
+/**
+ * Covers the shape of `subAgentCredentialsPlugin`: it registers exactly the
+ * four atomic credential-bridge actions in declared order and contributes no
+ * services, providers, or evaluators. Pure object inspection — no runtime.
+ */
 import { describe, expect, test } from "vitest";
 import { subAgentCredentialsPlugin } from "./plugin";
 

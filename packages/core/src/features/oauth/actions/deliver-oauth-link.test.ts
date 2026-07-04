@@ -1,3 +1,10 @@
+/**
+ * Unit tests for the DELIVER_OAUTH_LINK action, which routes a pending OAuth
+ * intent's hosted link to an eligible target through the sensitive-request
+ * dispatch registry. Deterministic harness: the runtime, OAuthIntentsClient,
+ * and dispatch registry are vi.fn mocks — no real delivery adapter. Covers
+ * successful dispatch, missing-intent, and ineligible-target rejection.
+ */
 import { describe, expect, test, vi } from "vitest";
 import type { SensitiveRequestDispatchRegistry } from "../../../sensitive-requests/dispatch-registry";
 import {

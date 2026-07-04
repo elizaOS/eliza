@@ -1,3 +1,14 @@
+/**
+ * Type and helper definitions for the trust capability's permission and
+ * access-control subsystem: permission contexts, contextual (time-bounded,
+ * trust-gated) role assignments, permissions with constraints, decision and
+ * audit shapes, and elevation/delegation requests and results. Also defines a
+ * Unix-style octal permission model (`UnixPermission`, `ActionPermission`) and
+ * the `PermissionUtils` helpers that evaluate owner/group/other read/write/exec
+ * bits against a caller. Consumed by `ContextualPermissionSystem` and the
+ * service wrappers.
+ */
+
 import type { Role, UUID } from "../../../types/index.ts";
 import type { TrustRequirements } from "./trust.ts";
 

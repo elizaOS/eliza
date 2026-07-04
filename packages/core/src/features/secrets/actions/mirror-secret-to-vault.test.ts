@@ -1,3 +1,11 @@
+/**
+ * Exercises `mirrorSecretToVaultHandler`, the SECRETS umbrella's `action=mirror`
+ * path, which copies a stored secret into a named external vault service and
+ * returns `mirrored=false` when that service is not registered. The runtime is a
+ * deterministic stub: the `SECRETS` service returns a canned value and the vault
+ * is an in-memory stub recording its `setSecret` writes — no live model or DB.
+ */
+
 import { describe, expect, test } from "vitest";
 import { ChannelType } from "../../../types/primitives";
 import { mirrorSecretToVaultHandler } from "./mirror-secret-to-vault";
