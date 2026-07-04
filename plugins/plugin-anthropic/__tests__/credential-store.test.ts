@@ -1,4 +1,5 @@
 /** Unit tests for OAuth token resolution in the credential store; uses real temp dirs and env-var manipulation, no live API. */
+import { ElizaError } from "@elizaos/core";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -11,6 +12,7 @@ describe("Anthropic credential store", () => {
   const originalNamespace = process.env.ELIZA_NAMESPACE;
   const originalEnvToken = process.env.CLAUDE_CODE_OAUTH_TOKEN;
   const originalAnthropicEnvToken = process.env.ANTHROPIC_OAUTH_TOKEN;
+  const originalConfigDir = process.env.CLAUDE_CONFIG_DIR;
 
   beforeEach(() => {
     stateDir = join(tmpdir(), `anthropic-credentials-${Date.now()}`);
@@ -43,6 +45,11 @@ describe("Anthropic credential store", () => {
     } else {
       process.env.ANTHROPIC_OAUTH_TOKEN = originalAnthropicEnvToken;
     }
+    if (originalConfigDir === undefined) {
+      delete process.env.CLAUDE_CONFIG_DIR;
+    } else {
+      process.env.CLAUDE_CONFIG_DIR = originalConfigDir;
+    }
     rmSync(stateDir, { recursive: true, force: true });
   });
 
@@ -61,5 +68,47 @@ describe("Anthropic credential store", () => {
     );
 
     expect(getClaudeOAuthToken().accessToken).toBe("fresh-app-token");
+  });
+
+  it("throws CREDENTIALS_CORRUPT when ~/.claude/.credentials.json is unparseable, not a silent null", () => {
+    // No env token and no app-managed creds: resolution reaches the file store.
+    delete process.env.CLAUDE_CODE_OAUTH_TOKEN;
+    delete process.env.ANTHROPIC_OAUTH_TOKEN;
+    const configDir = join(stateDir, "claude-config");
+    mkdirSync(configDir, { recursive: true });
+    // A file that EXISTS but is corrupt must surface — never downgrade to "no
+    // credentials", which would look identical to an absent file.
+    writeFileSync(join(configDir, ".credentials.json"), "{ this is not valid json ");
+    process.env.CLAUDE_CONFIG_DIR = configDir;
+    clearTokenCache();
+
+    try {
+      getClaudeOAuthToken();
+      expect.unreachable("a corrupt credential file must throw, not return null");
+    } catch (thrown) {
+      expect(thrown).toBeInstanceOf(ElizaError);
+      expect((thrown as ElizaError).code).toBe("CREDENTIALS_CORRUPT");
+    }
+  });
+
+  it("returns the honest 'not authenticated' error when the credential file is simply absent", () => {
+    delete process.env.CLAUDE_CODE_OAUTH_TOKEN;
+    delete process.env.ANTHROPIC_OAUTH_TOKEN;
+    const configDir = join(stateDir, "claude-config-absent");
+    mkdirSync(configDir, { recursive: true });
+    process.env.CLAUDE_CONFIG_DIR = configDir; // dir exists, .credentials.json does not
+    clearTokenCache();
+
+    // Absent (ENOENT) is not corrupt: the file reader returns null, and the
+    // caller raises the standard "could not read OAuth token" guidance error
+    // (a plain Error), NOT a CREDENTIALS_CORRUPT ElizaError.
+    try {
+      getClaudeOAuthToken();
+      expect.unreachable("no credentials means the caller must throw its guidance error");
+    } catch (thrown) {
+      expect(thrown).toBeInstanceOf(Error);
+      expect((thrown as ElizaError).code).not.toBe("CREDENTIALS_CORRUPT");
+      expect((thrown as Error).message).toContain("OAuth token");
+    }
   });
 });

@@ -53,6 +53,9 @@ export const lmStudioPlugin: Plugin = {
     // Auto-enable when LM Studio is reachable at the default localhost endpoint, even
     // without an env var. Mirrors how plugin-ollama auto-detects.
     shouldEnable: async () => {
+      // error-policy:J4 explicit degrade — this is a reachability probe run at
+      // load time; a connection/timeout failure to the local endpoint IS the
+      // "not available, don't auto-enable" answer (false), not a swallowed error.
       try {
         const result = await detectLMStudio({ timeoutMs: 750 });
         return result.available;

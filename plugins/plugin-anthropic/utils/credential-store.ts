@@ -11,7 +11,7 @@
  * (env var → keychain → ~/.claude/.credentials.json).
  */
 
-import type { AnthropicAccountPoolBridge } from "@elizaos/core";
+import { type AnthropicAccountPoolBridge, ElizaError } from "@elizaos/core";
 
 interface OAuthToken {
   accessToken: string;
@@ -253,7 +253,10 @@ function readAppManagedAnthropicToken(): OAuthToken | null {
         return token;
       }
     } catch {
-      // Try the next known app-managed credential location.
+      // error-policy:J3 untrusted-input sanitizing — this probes a fixed list of
+      // known app-managed credential locations of which at most one exists;
+      // a read/parse miss at one location is the expected "not here" signal and
+      // moves to the next. Exhausting all yields the honest null below.
     }
   }
 
@@ -274,24 +277,61 @@ function readFromCredentialStore(): ClaudeCredentials | null {
 
   const configDir = getEnvVar("CLAUDE_CONFIG_DIR") ?? join(homedir(), ".claude");
   const credPath = join(configDir, ".credentials.json");
+  const { readFileSync } = require("node:fs") as typeof import("node:fs");
+
+  let raw: string;
   try {
-    const { readFileSync } = require("node:fs") as typeof import("node:fs");
-    const raw = readFileSync(credPath, "utf-8");
+    raw = readFileSync(credPath, "utf-8");
+  } catch (error) {
+    // error-policy:J3 untrusted-input sanitizing — a missing credential file is
+    // the expected "not authenticated this way" signal (null). Any other read
+    // failure (permissions, I/O) is a real problem the caller must not read as
+    // "no credentials", so it surfaces as a typed error.
+    if ((error as NodeJS.ErrnoException)?.code === "ENOENT") return null;
+    throw new ElizaError("Failed to read Claude credential file", {
+      code: "CREDENTIALS_UNREADABLE",
+      cause: error,
+      context: { credPath },
+    });
+  }
+
+  // A file that exists but does not parse is corrupt, not absent — surfacing it
+  // prevents a silent downgrade of auth that would look identical to "no creds".
+  try {
     return JSON.parse(raw);
-  } catch {
-    return null;
+  } catch (error) {
+    throw new ElizaError("Claude credential file is corrupt (invalid JSON)", {
+      code: "CREDENTIALS_CORRUPT",
+      cause: error,
+      context: { credPath },
+    });
   }
 }
 
 function readFromMacKeychain(): ClaudeCredentials | null {
+  const { execSync } = require("node:child_process") as typeof import("node:child_process");
+
+  let raw: string;
   try {
-    const { execSync } = require("node:child_process") as typeof import("node:child_process");
-    const raw = execSync('security find-generic-password -s "Claude Code-credentials" -w', {
+    raw = execSync('security find-generic-password -s "Claude Code-credentials" -w', {
       encoding: "utf-8",
       stdio: ["pipe", "pipe", "pipe"],
     }).trim();
-    return JSON.parse(raw);
   } catch {
+    // error-policy:J3 untrusted-input sanitizing — a non-zero `security` exit
+    // means no matching keychain entry (absent → null), the expected "not stored
+    // here" outcome. The file-based reader is the next source tried by the caller.
     return null;
+  }
+
+  // The entry exists; if its payload does not parse it is corrupt, not absent.
+  try {
+    return JSON.parse(raw);
+  } catch (error) {
+    throw new ElizaError("Claude keychain credential is corrupt (invalid JSON)", {
+      code: "CREDENTIALS_CORRUPT",
+      cause: error,
+      context: { source: "macos-keychain" },
+    });
   }
 }

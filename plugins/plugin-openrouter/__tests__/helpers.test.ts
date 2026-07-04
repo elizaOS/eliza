@@ -1,12 +1,14 @@
+import { ElizaError } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { extractJsonFromText, handleObjectGenerationError } from "../utils/helpers";
 
 /**
- * extractJsonFromText is the fallback chain that recovers a JSON object from a
- * model's text completion: raw JSON → ```json fenced block → generic fenced
- * block (only if it looks like an object) → first {...} span. A miss returns {}
- * rather than throwing, so structured-output handlers degrade gracefully on
- * chatty model responses.
+ * extractJsonFromText recovers a JSON object from a model's text completion (raw
+ * JSON → ```json fenced block → generic fenced block that looks like an object →
+ * first {...} span) and returns `null` on a total miss so an unparseable
+ * completion is distinguishable from a legitimately empty `{}`. Deterministic
+ * string fixtures — no model call. handleObjectGenerationError must rethrow a
+ * typed ElizaError, never fabricate a success-shaped `{ error }`.
  */
 
 describe("extractJsonFromText", () => {
@@ -27,14 +29,31 @@ describe("extractJsonFromText", () => {
     expect(extractJsonFromText('the result is {"value": 42} ok')).toEqual({ value: 42 });
   });
 
-  it("returns {} when no JSON can be recovered", () => {
-    expect(extractJsonFromText("no json here at all")).toEqual({});
+  it("returns null (not a fabricated {}) when no JSON can be recovered", () => {
+    expect(extractJsonFromText("no json here at all")).toBeNull();
+  });
+
+  it("returns null when a brace span is present but unparseable", () => {
+    expect(extractJsonFromText("almost {not: valid json,} really")).toBeNull();
   });
 });
 
 describe("handleObjectGenerationError", () => {
-  it("wraps the error message under an error key", () => {
-    expect(handleObjectGenerationError(new Error("boom"))).toEqual({ error: "boom" });
-    expect(handleObjectGenerationError("plain")).toEqual({ error: "plain" });
+  it("rethrows a typed ElizaError preserving the cause, never a fake success", () => {
+    const cause = new Error("boom");
+    try {
+      handleObjectGenerationError(cause);
+      expect.unreachable("handleObjectGenerationError must throw");
+    } catch (thrown) {
+      expect(thrown).toBeInstanceOf(ElizaError);
+      const err = thrown as ElizaError;
+      expect(err.code).toBe("MODEL_OBJECT_GENERATION_FAILED");
+      expect(err.message).toContain("boom");
+      expect(err.cause).toBe(cause);
+    }
+  });
+
+  it("wraps a non-Error thrown value", () => {
+    expect(() => handleObjectGenerationError("plain")).toThrow(ElizaError);
   });
 });
