@@ -1,3 +1,13 @@
+/**
+ * Aggregates the shell's floating overlays into one render slot: the dev perf
+ * HUD, command palette, restart banner, bug-report modal, computer-use approval
+ * overlay, keyboard-shortcuts overlay, and the transient action-notice toast.
+ *
+ * Also owns the share-target sink: drains any queued OS share payloads and
+ * subscribes to SHARE_TARGET_EVENT, routing shared text into the chat composer
+ * when the chat tab is active or surfacing it as a toast otherwise. Mounts the
+ * layout-shift + frame-budget monitors that feed the perf HUD.
+ */
 import { useEffect } from "react";
 import { SHARE_TARGET_EVENT } from "../../events";
 import { useFrameBudgetMonitor, useLayoutShiftMonitor } from "../../hooks";

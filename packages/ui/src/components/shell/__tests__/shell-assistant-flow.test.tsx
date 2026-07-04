@@ -1,4 +1,9 @@
 // @vitest-environment jsdom
+//
+// End-to-end open→send→close flow across the shell trio (HomePill +
+// AssistantOverlay + ChatSurface) wired through a local phase/message harness:
+// open from the pill, send by button and Enter, keep real output visible, and
+// close with Escape/pill restoring focus. Real components in jsdom, no server.
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import * as React from "react";

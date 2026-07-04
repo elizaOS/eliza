@@ -1,3 +1,8 @@
+/**
+ * Keyboard-shortcuts reference dialog mounted in the shell overlay stack. Toggles
+ * on Shift+? (ignored while typing in an input/textarea/select) and closes on
+ * Escape, and lists the `COMMON_SHORTCUTS` table with platform-formatted keys.
+ */
 import { useEffect, useState } from "react";
 import { reportShortcutFired } from "../../chat/useSlashCommandController";
 import { COMMON_SHORTCUTS } from "../../hooks";

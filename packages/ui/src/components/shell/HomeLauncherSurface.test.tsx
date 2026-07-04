@@ -1,4 +1,9 @@
 // @vitest-environment jsdom
+//
+// HomeLauncherSurface's Home ↔ Launcher paging: both pages stay mounted, flicks
+// and store navigation flip between them, and the fine-pointer rail edge buttons
+// hide on coarse pointers. Real component in jsdom with matchMedia stubbed to
+// simulate pointer capabilities.
 import {
   act,
   cleanup,

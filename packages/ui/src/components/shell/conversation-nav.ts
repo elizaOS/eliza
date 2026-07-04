@@ -1,3 +1,9 @@
+/**
+ * Pure adjacent-conversation resolution for the chat overlay's horizontal swipe.
+ * The list is most-recent-first, so "prev" is the newer neighbor and "next" the
+ * older; useShellController wraps these into the `ConversationNav` the overlay
+ * consumes. No React, no state — just index math over the conversation list.
+ */
 import type { Conversation } from "../../api/client-types-chat";
 
 /** Adjacent-conversation navigation for the overlay's horizontal swipe. */

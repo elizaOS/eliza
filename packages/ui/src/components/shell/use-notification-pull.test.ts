@@ -1,3 +1,6 @@
+// Unit coverage for revealOffsetForTravel — the pure pull-to-reveal easing for
+// the notification pull gesture: clamps to 0 below zero travel, tracks 1:1 to a
+// soft cap, then rubber-bands (monotonic, diminishing). Pure math, no harness.
 import { describe, expect, it } from "vitest";
 import { revealOffsetForTravel } from "./use-notification-pull";
 

@@ -1,4 +1,9 @@
 // @vitest-environment jsdom
+//
+// The prompt-suggestion strip: the pure computePromptSuggestions fallback (always
+// 3, deduped, daypart-/page-aware) plus the usePromptSuggestions hook that fetches
+// model suggestions. The API client is mocked, so the hook exercises the static
+// fallback path in jsdom.
 
 import { cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";

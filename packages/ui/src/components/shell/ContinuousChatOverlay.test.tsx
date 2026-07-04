@@ -1,4 +1,9 @@
 // @vitest-environment jsdom
+//
+// Core behavior of the floating chat overlay: the mic ↔ send composer swap,
+// draft persistence, thread rendering, back-intent/prefill events, and the
+// press-and-hold copy gesture. Renders the real overlay in jsdom with the API
+// client + clipboard mocked (no network).
 
 import {
   act,

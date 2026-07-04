@@ -1,3 +1,9 @@
+/**
+ * Bottom-right banner prompting the user to restart the agent when config
+ * changes have marked one pending. Mounted in the shell overlay stack; renders
+ * null unless `pendingRestart` is set and the banner hasn't been dismissed. Lists
+ * the pending reasons and offers "Restart now" (via `triggerRestart`) or "Later".
+ */
 import { useCallback, useState } from "react";
 import { useAppSelectorShallow } from "../../state";
 import { Button } from "../ui/button";

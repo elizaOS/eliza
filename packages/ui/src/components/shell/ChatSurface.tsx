@@ -1,3 +1,13 @@
+/**
+ * Presentational chat transcript + glass composer for the shell surfaces.
+ *
+ * Renders a scrollable list of `ShellMessage`s (via the shared ChatBubble /
+ * TypingIndicator composites) plus an input row with optional mic and VISION
+ * buttons. It owns only local draft + scroll state; message data, send, and
+ * capabilities arrive as props (driven by useShellController). Tail-following
+ * and the jump-to-latest control come from the one shared `useThreadAutoScroll`
+ * engine, not a local scroll handler.
+ */
 import { ArrowDown } from "lucide-react";
 import * as React from "react";
 

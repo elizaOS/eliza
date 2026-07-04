@@ -1,4 +1,11 @@
 // @vitest-environment jsdom
+//
+// The shell controller hook end to end in jsdom: conversation load watchdog,
+// swipe interleaving (#9954), turnStatus derivation, voice-capture routing,
+// transcription mode, TTS reset on conversation change, mic-failure notices,
+// wake-word gating, and the no-provider path. The voice-capture factory, app
+// store, and voice-output hook are mocked; localStorage is backed by an
+// in-memory Storage so hands-free persistence is real.
 
 import { act, cleanup, renderHook } from "@testing-library/react";
 import {

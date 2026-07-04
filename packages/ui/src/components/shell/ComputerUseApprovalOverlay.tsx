@@ -1,3 +1,12 @@
+/**
+ * Approval prompt for pending computer-use (agent screen-control) actions,
+ * mounted in the shell overlay stack (ShellOverlays). Subscribes to the
+ * `/api/computer-use/approvals/stream` SSE feed (with a 1.5s polling fallback
+ * on native IPC bases where EventSource cannot reach) and lets the user approve
+ * or deny each request. Dormant until the shared auth snapshot reports
+ * authenticated — the shell mounts it before the auth probe resolves, so
+ * without that gate every unauthenticated tab would fire 401s (#11084).
+ */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supportsFullAppShellRoutes } from "../../api/app-shell-capabilities";
 import { type ComputerUseApprovalSnapshot, client } from "../../api/client";

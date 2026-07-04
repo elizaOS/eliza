@@ -1,4 +1,8 @@
 // @vitest-environment jsdom
+//
+// Rendering + interaction for the topic UI (#8928): TopicChipsBar renders a chip
+// per topic and reports selection (nothing when empty); TopicGroup collapses to a
+// count pill and expands on click. Real components in jsdom.
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";

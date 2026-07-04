@@ -1,3 +1,18 @@
+/**
+ * The single stateful engine behind the shell's chat + voice surface, exposed as
+ * the `ShellController` returned by `useShellController`. It drives the shell
+ * phase (booting → summoned → listening → responding), the rendered message
+ * list, send + vision-capture, and the whole voice stack: mic capture (via the
+ * voice-capture factory), wake-word listening, end-of-turn aggregation,
+ * hands-free conversation looping, transcription-mode long-form recording, and
+ * spoken assistant output (through useShellVoiceOutput). Conversation switching
+ * and horizontal swipe navigation resolve through conversation-nav.
+ *
+ * ChatSurface / AssistantOverlay / ContinuousChatOverlay and the home surfaces
+ * are the consumers; they read the controller and render, holding no chat/voice
+ * state of their own. ShellControllerContext provides one instance so the pill
+ * and the overlay stay in lock-step without double-mounting this hook.
+ */
 import type { TranscriptSegment } from "@elizaos/shared/transcripts";
 import * as React from "react";
 import type {

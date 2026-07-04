@@ -1,4 +1,8 @@
 // @vitest-environment jsdom
+//
+// ChatSurface presentation + send wiring: renders the greeting on an empty
+// thread, bubbles for prior messages, and gates the send button on non-empty
+// input (firing onSend with the trimmed text). Real component in jsdom.
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";

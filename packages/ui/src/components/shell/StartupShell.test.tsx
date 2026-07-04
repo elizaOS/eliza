@@ -1,4 +1,8 @@
 // @vitest-environment jsdom
+//
+// StartupShell's view gating (loading vs failure vs pairing vs bootstrap) and
+// its splash-delay + first-paint telemetry mark. Child surfaces are stubbed so
+// only the shell's own gating runs; the telemetry module is real.
 
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

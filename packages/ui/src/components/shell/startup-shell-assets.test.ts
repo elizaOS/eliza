@@ -1,3 +1,6 @@
+// Source-grep guard: asserts StartupShell.tsx stays a pure pre-boot renderer —
+// free of app-state/API/bridge/voice behavior imports and of references to
+// removed legacy startup background images. Reads the file off disk; no render.
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
