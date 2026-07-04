@@ -19,6 +19,8 @@ export const creditBalanceProvider: Provider = {
   contextGate: { anyOf: ["settings", "finance"] },
   cacheStable: false,
   cacheScope: "turn",
+  // Cloud credit balance is operator/billing context — admin+ only (#12094 item 3).
+  roleGate: { minRole: "ADMIN" },
   position: 91,
   async get(runtime: IAgentRuntime, _message: Memory, _state: State): Promise<ProviderResult> {
     const auth = runtime.getService("CLOUD_AUTH") as CloudAuthService | undefined;

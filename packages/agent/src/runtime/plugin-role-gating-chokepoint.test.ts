@@ -70,9 +70,10 @@ function message(metadata: Record<string, unknown> = {}): Memory {
   } as Memory;
 }
 
-function provider(name: string): Provider {
+function provider(name: string, minRole?: string): Provider {
   return {
     name,
+    ...(minRole ? { roleGate: { minRole } } : {}),
     get: vi.fn(async () => ({ text: `${name}: visible` })),
   } as unknown as Provider;
 }
@@ -106,15 +107,16 @@ describe("registerPlugin chokepoint gates post-boot plugins", () => {
 
   it("gates a plugin registered AFTER boot identically to a boot-registered one", async () => {
     // "boot" plugin — registered during the initial gating pass.
-    const bootProvider = provider("SECRETS_STATUS"); // admin tier
+    const bootProvider = provider("SECRETS_STATUS", "ADMIN"); // admin-gated
     await registerViaChokepoint(
       pluginWithProviders("boot-plugin", [bootProvider]),
     );
 
     // "post-boot" plugin — the exact hot-install path: a later
-    // runtime.registerPlugin with a wallet/secrets provider. Before the fix this
-    // plugin bypassed gating entirely and leaked owner-tier context to everyone.
-    const hotProvider = provider("walletPortfolio"); // owner tier
+    // runtime.registerPlugin with an owner-gated provider. Before the chokepoint
+    // this plugin bypassed gating entirely and leaked owner-tier context to
+    // everyone.
+    const hotProvider = provider("wallet", "OWNER"); // owner-gated
     await registerViaChokepoint(
       pluginWithProviders("hot-wallet-plugin", [hotProvider]),
     );
@@ -136,9 +138,7 @@ describe("registerPlugin chokepoint gates post-boot plugins", () => {
     expect(await callGet(hotProvider, "GUEST")).toBe("");
     expect(await callGet(hotProvider, "USER")).toBe("");
     expect(await callGet(hotProvider, "ADMIN")).toBe("");
-    expect(await callGet(hotProvider, "OWNER")).toBe(
-      "walletPortfolio: visible",
-    );
+    expect(await callGet(hotProvider, "OWNER")).toBe("wallet: visible");
   });
 
   it("leaves non-sensitive providers untouched", async () => {
@@ -151,12 +151,15 @@ describe("registerPlugin chokepoint gates post-boot plugins", () => {
     const errorSpy = vi.spyOn(logger, "error").mockImplementation(() => {});
 
     // A sensitive provider whose `get` is a read-only data property, so
-    // gateProvider's reassignment throws. The fail-closed path must withhold it
+    // the wrap path.s reassignment throws. The fail-closed path must withhold it
     // rather than register it exposed.
     const original = vi.fn(
-      async (): Promise<ProviderResult> => ({ text: "walletPortfolio: leak" }),
+      async (): Promise<ProviderResult> => ({ text: "wallet: leak" }),
     );
-    const locked = { name: "walletPortfolio" } as unknown as Provider;
+    const locked = {
+      name: "wallet",
+      roleGate: { minRole: "OWNER" },
+    } as unknown as Provider;
     Object.defineProperty(locked, "get", {
       value: original,
       writable: false,

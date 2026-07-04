@@ -23,6 +23,8 @@ export const modelRegistryProvider: Provider = {
   contextGate: { anyOf: ["settings", "finance"] },
   cacheStable: false,
   cacheScope: "turn",
+  // Cloud model registry is operator/settings context — admin+ only (#12094 item 3).
+  roleGate: { minRole: "ADMIN" },
   position: 92,
   async get(runtime: IAgentRuntime, _message: Memory, _state: State): Promise<ProviderResult> {
     try {

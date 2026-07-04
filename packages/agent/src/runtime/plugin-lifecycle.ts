@@ -690,7 +690,7 @@ function installPluginViewSync(runtime: RuntimeWithPluginLifecycle): void {
       // went through registerPlugin but never the boot gating pass, so their
       // owner-tier providers were exposed to any sender. This runs inside the try,
       // so a gating failure fails closed — the plugin is unloaded, not left with
-      // ungated providers. gateProvider is idempotent, so boot plugins already
+      // ungated providers. provider gating is idempotent, so boot plugins already
       // covered by the boot pass are unaffected.
       applyPluginRoleGating([plugin]);
       await migratePluginSchemasIfReady(runtime, plugin);

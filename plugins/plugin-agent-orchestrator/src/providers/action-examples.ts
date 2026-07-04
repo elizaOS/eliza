@@ -29,6 +29,9 @@ export const codingAgentExamplesProvider: Provider = {
   position: -1,
   contexts: ["code", "agent_internal"],
   contextGate: { anyOf: ["code", "agent_internal"] },
+  // Task-agent action guidance embeds live framework/auth state — admin+ only
+  // (#12094 item 3).
+  roleGate: { minRole: "ADMIN" },
   // Not agent-cacheable: the body embeds live framework state
   // (frameworkState.preferred / configuredSubscriptionProvider), which changes
   // as auth/availability changes during the agent's lifetime. Recompute per turn

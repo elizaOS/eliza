@@ -1,10 +1,16 @@
 /**
- * Legacy provider role gating.
+ * Provider role gating.
+ *
+ * Sensitive providers declare their own `roleGate` (core `types/components.ts`)
+ * in the plugin that owns them; this module is the runtime chokepoint that
+ * enforces that declaration by withholding the provider's context from callers
+ * below the declared `minRole`. There is no top-down, name-keyed override table:
+ * the gate travels with the provider, so renaming or moving a provider can never
+ * silently drop its gate (the previous name-keyed override map was
+ * fail-OPEN on exactly that drift — #12094 item 3).
  *
  * Action access is declared on each action's `roleGate` and enforced by core
- * execution paths. This module only keeps provider redaction for legacy
- * providers that still use direct provider registration instead of the
- * context catalog.
+ * execution paths; only provider redaction lives here.
  *
  * @module plugin-role-gating
  */
@@ -19,66 +25,28 @@ import type {
 } from "@elizaos/core";
 import { logger, satisfiesRoleGate } from "@elizaos/core";
 
-// Lowercase tier alias kept for override-map ergonomics. Each tier normalizes to
-// a canonical `RoleGateRole` (`TIER_TO_CANONICAL_ROLE`) so the pass/fail decision
-// runs through the shared `satisfiesRoleGate` primitive instead of a local rank
-// reimplementation.
-type RoleGateTier = "user" | "admin" | "owner";
-
-const TIER_TO_CANONICAL_ROLE: Readonly<Record<RoleGateTier, RoleGateRole>> = {
-  user: "USER",
-  admin: "ADMIN",
-  owner: "OWNER",
-};
-
 // ---------------------------------------------------------------------------
-// Provider-level gating — providers that expose sensitive context.
-// Keys are exact provider `name` strings.
+// Sensitivity classification
 // ---------------------------------------------------------------------------
+// A provider is "sensitive" — and therefore gated — iff it declares a
+// `roleGate.minRole` that actually restricts anyone. NONE / GUEST are the
+// bottom of the rank hierarchy and gate nothing, so they are treated as
+// un-declared (a provider gated to GUEST is public).
 
-const PROVIDER_ROLE_OVERRIDES: Readonly<Record<string, RoleGateTier>> = {
-  // Shell
-  shellHistoryProvider: "admin",
-  terminalUsage: "admin",
-
-  // Orchestrator
-  ACTIVE_WORKSPACE_CONTEXT: "admin",
-  CODING_AGENT_EXAMPLES: "admin",
-
-  // Secrets
-  SECRETS_STATUS: "admin",
-  SECRETS_INFO: "admin",
-  MISSING_SECRETS: "admin",
-
-  // Cron
-  cronContext: "admin",
-
-  // Cloud
-  elizacloud_status: "admin",
-  elizacloud_credits: "admin",
-  elizacloud_health: "admin",
-  elizacloud_models: "admin",
-
-  // Todos
-  todos: "user",
-
-  // Browser / wallet operational state
-  app_browser_workspace: "owner",
-  computerState: "owner",
-  "get-balance": "owner",
-  "solana-wallet": "owner",
-  wallet: "owner",
-  walletBalance: "owner",
-  walletPortfolio: "owner",
-  tokenPrices: "owner",
-  chainInfo: "owner",
-
-  // Apps / plugins expose local installation/runtime state.
-  available_apps: "owner",
-  pluginConfigurationStatus: "owner",
-  pluginState: "owner",
-  registryPlugins: "owner",
-};
+/**
+ * The effective gating floor for a provider, or `undefined` when the provider
+ * declares no restricting gate. Single source of truth for "is this provider
+ * sensitive?" — used both by the normal wrap path and by the fail-closed
+ * withhold path so the two never disagree about which providers matter.
+ */
+function gatedMinRole(provider: Provider): RoleGateRole | undefined {
+  const minRole = (provider as { roleGate?: { minRole?: RoleGateRole } })
+    .roleGate?.minRole;
+  if (minRole && minRole !== "NONE" && minRole !== "GUEST") {
+    return minRole;
+  }
+  return undefined;
+}
 
 // ---------------------------------------------------------------------------
 // Sender-role lookup dedup
@@ -87,11 +55,11 @@ const PROVIDER_ROLE_OVERRIDES: Readonly<Record<string, RoleGateTier>> = {
 // resolveEntityRole). When state composition runs, every gated provider's
 // wrapped `get()` calls it in parallel via `Promise.all`. With even a
 // modest set of gated providers (ACTIVE_WORKSPACE_CONTEXT,
-// CODING_AGENT_EXAMPLES, SECRETS_STATUS, walletPortfolio, etc. —
-// 10+ providers gated to admin or owner), that's 20+ DB queries per
-// turn before the planner is prompted. On a busy host the per-validator
-// stats compound and the provider provider-loop hits its overall
-// timeout cap, dropping providers from the prompt's context.
+// CODING_AGENT_EXAMPLES, SECRETS_STATUS, wallet, etc. — 10+ providers gated to
+// admin or owner), that's 20+ DB queries per turn before the planner is
+// prompted. On a busy host the per-validator stats compound and the provider
+// provider-loop hits its overall timeout cap, dropping providers from the
+// prompt's context.
 //
 // This intentionally dedups only live in-flight checks. Provider redaction is
 // security-sensitive, and `checkSenderRole` also depends on live connector
@@ -192,8 +160,8 @@ async function getCachedSenderRole(
 /**
  * Wrap a provider's get function so it returns empty content for callers below
  * `minRole`. Providers don't block; they just withhold context. `marker` records
- * the applied gate on the provider so re-application is idempotent (Item 1's
- * registration-time gating re-runs over already-gated boot plugins).
+ * the applied gate on the provider so re-application is idempotent (the
+ * registration-time chokepoint re-runs over already-gated boot plugins).
  */
 function wrapProviderWithMinRole(
   provider: Provider,
@@ -221,11 +189,6 @@ function wrapProviderWithMinRole(
   (provider as { __roleGate?: string }).__roleGate = marker;
 }
 
-/** Gate a provider by an override tier (marker = the lowercase tier). */
-function gateProvider(provider: Provider, tier: RoleGateTier): void {
-  wrapProviderWithMinRole(provider, TIER_TO_CANONICAL_ROLE[tier], tier);
-}
-
 /**
  * Hard-withhold a provider's output. Used as the fail-closed fallback when a
  * sensitive provider cannot be gated normally: rather than leaving its original
@@ -248,7 +211,7 @@ function withholdProvider(provider: Provider): void {
   }
   // Mark as gated at the strictest tier so a subsequent pass treats it as done.
   try {
-    (provider as { __roleGate?: RoleGateTier }).__roleGate = "owner";
+    (provider as { __roleGate?: string }).__roleGate = "OWNER";
   } catch {
     // Best-effort marker only; the withholding above already applied.
   }
@@ -257,8 +220,7 @@ function withholdProvider(provider: Provider): void {
 function withholdSensitiveProviders(plugin: Plugin): number {
   let withheld = 0;
   for (const provider of plugin.providers ?? []) {
-    const providerName = (provider as { name?: string }).name ?? "";
-    if (!PROVIDER_ROLE_OVERRIDES[providerName]) continue;
+    if (!gatedMinRole(provider)) continue;
     withholdProvider(provider);
     withheld++;
   }
@@ -267,11 +229,12 @@ function withholdSensitiveProviders(plugin: Plugin): number {
 
 /**
  * Apply role gating to the given plugins. Safe to call repeatedly and per
- * plugin: `gateProvider` is idempotent (already-gated providers are skipped),
- * so this doubles as the register-time chokepoint hook.
+ * plugin: `wrapProviderWithMinRole` is idempotent (already-gated providers are
+ * skipped), so this doubles as the register-time chokepoint hook.
  *
- * Providers in PROVIDER_ROLE_OVERRIDES get gated. Actions are intentionally
- * not wrapped here; use action.roleGate.
+ * Providers that declare a restricting `roleGate.minRole` get wrapped so their
+ * `get()` short-circuits to empty for callers below that role. Actions are
+ * intentionally not wrapped here; use action.roleGate.
  *
  * Fail-closed: if wrapping a sensitive provider throws, its content is withheld
  * entirely and the failure is logged at ERROR — redaction is never silently
@@ -282,45 +245,25 @@ export function applyPluginRoleGating(plugins: Plugin[]): void {
   let withheldProviders = 0;
 
   for (const plugin of plugins) {
-    // Gate providers
-    if (plugin.providers?.length) {
-      for (const provider of plugin.providers) {
+    if (!plugin.providers?.length) continue;
+    for (const provider of plugin.providers) {
+      const minRole = gatedMinRole(provider);
+      if (!minRole) continue;
+      try {
+        wrapProviderWithMinRole(provider, minRole, minRole);
+        gatedProviders++;
+      } catch (err) {
+        // Fail closed: a sensitive provider we could not wrap must not be
+        // exposed. Withhold its content and report loudly — never silently
+        // leave redaction disabled.
+        withholdProvider(provider);
+        withheldProviders++;
         const providerName = (provider as { name?: string }).name ?? "";
-        const providerTier = PROVIDER_ROLE_OVERRIDES[providerName];
-        if (providerTier) {
-          try {
-            gateProvider(provider, providerTier);
-            gatedProviders++;
-          } catch (err) {
-            // Fail closed: a sensitive provider we could not wrap must not be
-            // exposed. Withhold its content and report loudly — never silently
-            // leave redaction disabled.
-            withholdProvider(provider);
-            withheldProviders++;
-            logger.error(
-              `[role-gating] Failed to gate sensitive provider "${providerName}" (tier=${providerTier}); withholding its content to fail closed: ${
-                err instanceof Error ? err.message : String(err)
-              }`,
-            );
-          }
-          continue;
-        }
-        // #12087 Item 14: a provider that DECLARES a roleGate is now enforced at
-        // execution time here (its get() is short-circuited to empty for callers
-        // below minRole), so the declaration is no longer decorative and the
-        // provider needs no in-body hasAdminAccess/hasOwnerAccess preamble. NONE /
-        // GUEST minRoles gate nothing, so skip them.
-        const declaredMinRole = (
-          provider as { roleGate?: { minRole?: RoleGateRole } }
-        ).roleGate?.minRole;
-        if (
-          declaredMinRole &&
-          declaredMinRole !== "NONE" &&
-          declaredMinRole !== "GUEST"
-        ) {
-          wrapProviderWithMinRole(provider, declaredMinRole, declaredMinRole);
-          gatedProviders++;
-        }
+        logger.error(
+          `[role-gating] Failed to gate sensitive provider "${providerName}" (minRole=${minRole}); withholding its content to fail closed: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
       }
     }
   }
@@ -377,6 +320,3 @@ export function installProviderRoleGatingChokepoint(
 
   runtime.__elizaProviderRoleGatingInstalled = true;
 }
-
-/** Exported for testing. */
-export { PROVIDER_ROLE_OVERRIDES, TIER_TO_CANONICAL_ROLE };

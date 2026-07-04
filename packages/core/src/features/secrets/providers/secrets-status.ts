@@ -38,7 +38,9 @@ export const secretsStatusProvider: Provider = {
 	contextGate: { anyOf: ["secrets", "settings"] },
 	cacheStable: false,
 	cacheScope: "turn",
-	roleGate: { minRole: "OWNER" },
+	// Secret presence/values are operator context — admin+ (preserves the tier
+	// the former name-keyed override map enforced; #12094 item 3).
+	roleGate: { minRole: "ADMIN" },
 
 	get: async (
 		runtime: IAgentRuntime,
@@ -176,7 +178,9 @@ export const secretsInfoProvider: Provider = {
 	contextGate: { anyOf: ["secrets", "settings"] },
 	cacheStable: false,
 	cacheScope: "turn",
-	roleGate: { minRole: "OWNER" },
+	// Secret presence/values are operator context — admin+ (preserves the tier
+	// the former name-keyed override map enforced; #12094 item 3).
+	roleGate: { minRole: "ADMIN" },
 
 	get: async (
 		runtime: IAgentRuntime,

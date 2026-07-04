@@ -25,6 +25,10 @@ export const browserWorkspaceProvider: Provider = {
   contextGate: { anyOf: ["browser", "web"] },
   cacheStable: false,
   cacheScope: "turn",
+  // Live browser workspace (dispatch mode + open tabs/URLs) is owner-operator
+  // context (#12094 item 3: gate travels with the provider so a rename can't
+  // silently drop it).
+  roleGate: { minRole: "OWNER" },
   get: async () => {
     try {
       const mode = getBrowserWorkspaceMode();

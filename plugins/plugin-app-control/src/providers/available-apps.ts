@@ -29,6 +29,9 @@ export const availableAppsProvider: Provider = {
 	contextGate: { anyOf: ["settings", "automation"] },
 	cacheStable: false,
 	cacheScope: "turn",
+	// Installed-app inventory + running counts are local install state — owner
+	// context (#12094 item 3).
+	roleGate: { minRole: "OWNER" },
 	dynamic: true,
 
 	get: async (

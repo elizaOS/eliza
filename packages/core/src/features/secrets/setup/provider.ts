@@ -231,7 +231,9 @@ export const missingSecretsProvider: Provider = {
 	contextGate: { anyOf: ["settings"] },
 	cacheStable: false,
 	cacheScope: "turn",
-	roleGate: { minRole: "OWNER" },
+	// Which secrets are still missing is operator context — admin+ (preserves the
+	// tier the former name-keyed override map enforced; #12094 item 3).
+	roleGate: { minRole: "ADMIN" },
 
 	get: async (
 		runtime: IAgentRuntime,

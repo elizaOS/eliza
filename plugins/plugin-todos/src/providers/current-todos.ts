@@ -36,6 +36,9 @@ export const currentTodosProvider: Provider = {
   position: -5,
   contexts: [...TODOS_CONTEXTS],
   contextGate: { anyOf: [...TODOS_CONTEXTS] },
+  // The user's personal todos are member-scoped context — withheld from
+  // guest/anonymous callers (#12094 item 3).
+  roleGate: { minRole: "USER" },
   get: async (
     runtime: IAgentRuntime,
     message: Memory,

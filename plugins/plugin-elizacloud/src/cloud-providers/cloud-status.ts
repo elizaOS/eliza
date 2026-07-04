@@ -20,6 +20,8 @@ export const cloudStatusProvider: Provider = {
   contextGate: { anyOf: ["settings", "finance"] },
   cacheStable: false,
   cacheScope: "turn",
+  // Cloud account/connection state is operator context — admin+ only (#12094 item 3).
+  roleGate: { minRole: "ADMIN" },
   async get(runtime: IAgentRuntime, _message: Memory, _state: State): Promise<ProviderResult> {
     try {
       const auth = runtime.getService("CLOUD_AUTH") as CloudAuthService | undefined;

@@ -8,9 +8,10 @@ import { installRuntimePluginLifecycle } from "./plugin-lifecycle.ts";
  * REGISTERS (via the plugin-lifecycle registerPlugin wrapper), not only in the
  * one-shot boot pass. Otherwise a plugin hot-installed after boot (plugin
  * manager / VFS) went through registerPlugin but never the boot gating pass, so
- * its owner/admin-tier providers (SECRETS_STATUS, walletPortfolio, shellHistory)
- * stayed exposed to any sender. The `__roleGate` marker proves gateProvider
- * wrapped the provider at registration.
+ * its owner/admin-tier providers (SECRETS_STATUS, wallet, SHELL_HISTORY)
+ * stayed exposed to any sender. Gating is driven by the provider's own declared
+ * `roleGate`; the `__roleGate` marker proves the provider was wrapped at
+ * registration.
  */
 function pluginWith(providers: Provider[], name = "hot-installed"): Plugin {
   return { name, description: "hot plugin", providers };
@@ -24,25 +25,27 @@ describe("provider role gating on post-boot plugin registration (#12087 Item 1)"
     const secrets = {
       name: "SECRETS_STATUS",
       description: "secrets",
+      roleGate: { minRole: "ADMIN" },
       get: async () => ({ text: "SENSITIVE" }),
     } as Provider;
     await runtime.registerPlugin(pluginWith([secrets], "hot-secrets"));
 
-    expect((secrets as { __roleGate?: string }).__roleGate).toBe("admin");
+    expect((secrets as { __roleGate?: string }).__roleGate).toBe("ADMIN");
   });
 
-  it("gates an owner-tier provider (walletPortfolio) on registration", async () => {
+  it("gates an owner-tier provider on registration", async () => {
     const runtime = createTestRuntime();
     installRuntimePluginLifecycle(runtime);
 
     const wallet = {
-      name: "walletPortfolio",
+      name: "wallet",
       description: "wallet",
+      roleGate: { minRole: "OWNER" },
       get: async () => ({ text: "0x…balance" }),
     } as Provider;
     await runtime.registerPlugin(pluginWith([wallet], "hot-wallet"));
 
-    expect((wallet as { __roleGate?: string }).__roleGate).toBe("owner");
+    expect((wallet as { __roleGate?: string }).__roleGate).toBe("OWNER");
   });
 
   it("leaves a non-sensitive provider un-wrapped", async () => {

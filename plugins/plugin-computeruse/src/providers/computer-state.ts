@@ -28,6 +28,9 @@ export const computerStateProvider: Provider = {
   },
   cacheStable: false,
   cacheScope: "turn",
+  // Live computer-use state (screen, tools, approval queue) is owner context
+  // (#12094 item 3).
+  roleGate: { minRole: "OWNER" },
   get: async (
     runtime: IAgentRuntime,
     _message: Memory,
