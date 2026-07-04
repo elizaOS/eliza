@@ -7,6 +7,17 @@ import { pathToFileURL } from "node:url";
 import { resolveMainAppDir } from "./lib/app-dir.mjs";
 import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
 
+const IOS_AUTH_CALLBACK_SMOKE_REQUEST_KEY = "eliza:auth-callback-smoke:request";
+const IOS_AUTH_CALLBACK_SMOKE_RESULT_KEY = "eliza:auth-callback-smoke:result";
+const IOS_AUTH_CALLBACK_ATTEMPTS = Number.parseInt(
+  process.env.IOS_AUTH_CALLBACK_SMOKE_ATTEMPTS ?? "60",
+  10,
+);
+const IOS_AUTH_CALLBACK_DELAY_MS = Number.parseInt(
+  process.env.IOS_AUTH_CALLBACK_SMOKE_DELAY_MS ?? "1000",
+  10,
+);
+
 // Resolve the app directory this smoke should target. When this elizaOS
 // checkout is nested inside a consumer monorepo that wraps it as `eliza/`,
 // `resolveRepoRootFromImportMeta` (by design for consumer wrappers) walks up
@@ -236,7 +247,198 @@ function runCommand(command, args, label) {
   }
 }
 
-function runIosSimulator(app, url, options) {
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function preferenceNativeKeys(key) {
+  return [`CapacitorStorage.${key}`, key];
+}
+
+function tryRunCommand(command, args) {
+  try {
+    return execFileSync(command, args, {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    }).trim();
+  } catch {
+    return null;
+  }
+}
+
+function iosPrefsDomainPath(device, appId) {
+  const container = tryRunCommand("xcrun", [
+    "simctl",
+    "get_app_container",
+    device,
+    appId,
+    "data",
+  ]);
+  if (!container) return null;
+  return path.join(container, "Library", "Preferences", appId);
+}
+
+function writeIosPreference(device, appId, key, value) {
+  for (const nativeKey of preferenceNativeKeys(key)) {
+    runCommand(
+      "xcrun",
+      [
+        "simctl",
+        "spawn",
+        device,
+        "defaults",
+        "write",
+        appId,
+        nativeKey,
+        "-string",
+        value,
+      ],
+      `iOS preference write for ${key}`,
+    );
+  }
+}
+
+function readIosPreference(device, appId, key) {
+  const domainPath = iosPrefsDomainPath(device, appId);
+  if (domainPath) {
+    const plist = `${domainPath}.plist`;
+    if (fs.existsSync(plist)) {
+      const json = tryRunCommand("plutil", ["-convert", "json", "-o", "-", plist]);
+      if (json) {
+        try {
+          const parsed = JSON.parse(json);
+          for (const nativeKey of preferenceNativeKeys(key)) {
+            if (typeof parsed[nativeKey] === "string") return parsed[nativeKey];
+          }
+        } catch {
+          // Fall through to defaults read.
+        }
+      }
+    }
+    for (const nativeKey of preferenceNativeKeys(key)) {
+      const value = tryRunCommand("defaults", ["read", domainPath, nativeKey]);
+      if (value !== null) return value;
+    }
+  }
+
+  for (const nativeKey of preferenceNativeKeys(key)) {
+    const value = tryRunCommand("xcrun", [
+      "simctl",
+      "spawn",
+      device,
+      "defaults",
+      "read",
+      appId,
+      nativeKey,
+    ]);
+    if (value !== null) return value;
+  }
+  return null;
+}
+
+function deleteIosPreference(device, appId, key) {
+  for (const nativeKey of preferenceNativeKeys(key)) {
+    tryRunCommand("xcrun", [
+      "simctl",
+      "spawn",
+      device,
+      "defaults",
+      "delete",
+      appId,
+      nativeKey,
+    ]);
+  }
+  const domainPath = iosPrefsDomainPath(device, appId);
+  if (domainPath) {
+    for (const nativeKey of preferenceNativeKeys(key)) {
+      tryRunCommand("defaults", ["delete", domainPath, nativeKey]);
+    }
+  }
+}
+
+function flushIosPreferences(device) {
+  tryRunCommand("xcrun", ["simctl", "spawn", device, "killall", "cfprefsd"]);
+}
+
+export function expectedAuthCallbackFromUrl(url) {
+  const parsed = new URL(url);
+  return {
+    path: [parsed.host, parsed.pathname.replace(/^\/+|\/+$/g, "")]
+      .filter(Boolean)
+      .join("/"),
+    state: parsed.searchParams.get("state") ?? "",
+    code: parsed.searchParams.get("code") ?? "",
+  };
+}
+
+function armIosAuthCallbackSmoke(device, app, url) {
+  const expected = expectedAuthCallbackFromUrl(url);
+  deleteIosPreference(device, app.appId, IOS_AUTH_CALLBACK_SMOKE_RESULT_KEY);
+  writeIosPreference(
+    device,
+    app.appId,
+    IOS_AUTH_CALLBACK_SMOKE_REQUEST_KEY,
+    JSON.stringify({
+      expected,
+      armedAt: new Date().toISOString(),
+    }),
+  );
+  writeIosPreference(
+    device,
+    app.appId,
+    IOS_AUTH_CALLBACK_SMOKE_RESULT_KEY,
+    JSON.stringify({
+      ok: false,
+      phase: "requested",
+      expected,
+      updatedAt: new Date().toISOString(),
+    }),
+  );
+  flushIosPreferences(device);
+  return expected;
+}
+
+async function pollIosAuthCallbackSmoke(device, app, expected) {
+  let lastRaw = "";
+  for (let attempt = 1; attempt <= IOS_AUTH_CALLBACK_ATTEMPTS; attempt += 1) {
+    lastRaw = readIosPreference(
+      device,
+      app.appId,
+      IOS_AUTH_CALLBACK_SMOKE_RESULT_KEY,
+    ) ?? "";
+    if (lastRaw) {
+      let parsed = null;
+      try {
+        parsed = JSON.parse(lastRaw);
+      } catch {
+        parsed = null;
+      }
+      if (parsed?.ok === true) {
+        if (parsed.path !== expected.path) {
+          throw new Error(
+            `iOS auth callback path mismatch: expected ${expected.path}, got ${parsed.path}`,
+          );
+        }
+        if (parsed.state !== expected.state || parsed.code !== expected.code) {
+          throw new Error(
+            `iOS auth callback query mismatch: expected state/code ${expected.state}/${expected.code}, got ${parsed.state}/${parsed.code}`,
+          );
+        }
+        return parsed;
+      }
+      if (parsed?.phase === "failed" || parsed?.error) {
+        throw new Error(`iOS auth callback smoke failed: ${lastRaw}`);
+      }
+    }
+    await sleep(IOS_AUTH_CALLBACK_DELAY_MS);
+  }
+  throw new Error(
+    `iOS auth callback smoke timed out after ${IOS_AUTH_CALLBACK_ATTEMPTS} attempts. Last result: ${lastRaw || "<none>"}`,
+  );
+}
+
+async function runIosSimulator(app, url, options) {
   const device = options.device || "booted";
   const appContainer = runCommand(
     "xcrun",
@@ -258,6 +460,7 @@ function runIosSimulator(app, url, options) {
       `Installed iOS app ${app.appId} does not include the ${app.urlScheme} URL scheme. Rebuild and reinstall the app on the simulator before rerunning this smoke test.`,
     );
   }
+  const expected = armIosAuthCallbackSmoke(device, app, url);
   runCommand(
     "xcrun",
     ["simctl", "launch", device, app.appId],
@@ -268,7 +471,13 @@ function runIosSimulator(app, url, options) {
     ["simctl", "openurl", device, url],
     `iOS callback openurl for ${url}`,
   );
-  return { platform: "ios", device, openedUrl: url };
+  const handled = await pollIosAuthCallbackSmoke(device, app, expected);
+  return {
+    platform: "ios",
+    device,
+    openedUrl: url,
+    handled,
+  };
 }
 
 function resolveAdb() {
@@ -447,7 +656,7 @@ function runAndroidSimulator(app, url, options) {
   };
 }
 
-function main() {
+async function main() {
   const options = parseArgs(process.argv.slice(2));
   const { appDir, source: appDirSource } = resolveTargetAppDir(options.appDir);
   const app = readAppIdentity(appDir);
@@ -481,11 +690,14 @@ function main() {
     return;
   }
 
-  const simulatorResults = platforms.map((platform) =>
-    platform === "ios"
-      ? runIosSimulator(app, url, options)
-      : runAndroidSimulator(app, url, options),
-  );
+  const simulatorResults = [];
+  for (const platform of platforms) {
+    simulatorResults.push(
+      platform === "ios"
+        ? await runIosSimulator(app, url, options)
+        : runAndroidSimulator(app, url, options),
+    );
+  }
 
   console.log(
     JSON.stringify(
@@ -506,5 +718,8 @@ if (
   process.argv[1] &&
   pathToFileURL(process.argv[1]).href === import.meta.url
 ) {
-  main();
+  main().catch((error) => {
+    console.error(error instanceof Error ? error.message : error);
+    process.exit(1);
+  });
 }
