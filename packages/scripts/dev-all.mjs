@@ -4,6 +4,7 @@ import { execFileSync, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import net from "node:net";
 import process from "node:process";
+import { resolveDevAllSkipPlugins } from "./lib/script-metadata.mjs";
 
 const args = new Set(process.argv.slice(2));
 const dryRun = args.has("--dry-run");
@@ -131,10 +132,12 @@ const agentEnv = {
     "ELIZA_DISABLE_LOCAL_EMBEDDINGS",
     "true",
   ),
+  // Plugins that opt out of the dev-all agent stack declare
+  // `elizaos.scripts.devStack.skipInDevAll` in their own package.json; resolved
+  // through the discovery seam so no plugin names live in this file.
   ELIZA_SKIP_PLUGINS: [
     process.env.ELIZA_SKIP_PLUGINS,
-    "@elizaos/plugin-personal-assistant",
-    "@elizaos/plugin-wallet",
+    ...resolveDevAllSkipPlugins({ repoRoot }),
   ]
     .filter(Boolean)
     .join(","),

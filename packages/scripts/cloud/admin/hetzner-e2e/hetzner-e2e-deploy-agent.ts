@@ -7,6 +7,7 @@
  */
 
 import { randomBytes } from "node:crypto";
+import { SMOKE_AGENT_PLUGINS } from "../smoke-agent-plugins";
 import { appendStateAtomic } from "./state-file";
 
 const DEFAULT_BASE_URL = "https://api-staging.elizacloud.ai";
@@ -82,7 +83,7 @@ async function createAgent(): Promise<string> {
           bio: ["Hetzner E2E agent."],
           topics: ["e2e"],
           adjectives: ["concise"],
-          plugins: ["@elizaos/plugin-sql", "@elizaos/plugin-elizacloud"],
+          plugins: [...SMOKE_AGENT_PLUGINS],
           settings: { secrets: {} },
         },
         environmentVars: { HETZNER_E2E_RUN_ID: runId },

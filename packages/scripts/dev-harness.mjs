@@ -11,11 +11,15 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, unlinkSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { resolveDevHarnessBuildDirs } from "./lib/script-metadata.mjs";
 
 const ROOT = resolve(import.meta.dirname, "../..");
 const INSTALL_STAMP = join(ROOT, ".eliza", "plugin-dev-needs-install");
 
-const PLUGIN_TYPESCRIPT = ["plugins/plugin-sql", "plugins/plugin-ollama"];
+// Packages whose dist the agent harness needs built before the watch loop
+// declare `elizaos.scripts.devStack.harnessBuild` in their own package.json;
+// resolved through the discovery seam so no plugin names live in this file.
+const PLUGIN_TYPESCRIPT = resolveDevHarnessBuildDirs({ repoRoot: ROOT });
 
 function run(cmd, args, opts = {}) {
   execFileSync(cmd, args, { cwd: ROOT, stdio: "inherit", ...opts });

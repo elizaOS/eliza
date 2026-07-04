@@ -2,6 +2,7 @@
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { resolveRegistryFallbackTags } from "./lib/script-metadata.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "../..");
@@ -32,14 +33,14 @@ const packageDir = path.resolve(repoRoot, packageDirArg);
 const packageJsonPath = path.join(packageDir, "package.json");
 const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8"));
 const workspaceVersions = collectWorkspaceVersions(repoRoot);
-const skipLocalUpstreams =
-  process.env.ELIZA_SKIP_LOCAL_UPSTREAMS === "1" ||
-  process.env.ELIZA_SKIP_LOCAL_UPSTREAMS === "1";
-const OPTIONAL_PLUGIN_FALLBACK_VERSIONS = new Map([
-  ["@elizaos/plugin-sql", "beta"],
-  ["@elizaos/plugin-ollama", "beta"],
-  ["@elizaos/plugin-local-ai", "beta"],
-]);
+const skipLocalUpstreams = process.env.ELIZA_SKIP_LOCAL_UPSTREAMS === "1";
+// npm dist-tag to fall back to when an optional/independently-published plugin's
+// workspace: version cannot be resolved (ELIZA_SKIP_LOCAL_UPSTREAMS=1). Each
+// plugin declares `elizaos.scripts.publish.registryFallbackTag` in its own
+// package.json; resolved through the discovery seam so no plugin names live here.
+const OPTIONAL_PLUGIN_FALLBACK_VERSIONS = resolveRegistryFallbackTags({
+  repoRoot,
+});
 
 const publishManifest = {
   ...packageJson,

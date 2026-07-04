@@ -8,6 +8,7 @@ import { users } from "@elizaos/cloud-shared/db/schemas/users";
 import { apiKeysService } from "@elizaos/cloud-shared/lib/services/api-keys";
 import { eq } from "drizzle-orm";
 import { privateKeyToAccount } from "viem/accounts";
+import { SMOKE_AGENT_PLUGINS } from "./smoke-agent-plugins";
 
 type JsonObject = Record<string, unknown>;
 
@@ -317,7 +318,7 @@ async function createAgent(): Promise<void> {
           bio: ["Cloud provisioning smoke test agent."],
           topics: ["cloud provisioning smoke"],
           adjectives: ["concise"],
-          plugins: ["@elizaos/plugin-sql", "@elizaos/plugin-elizacloud"],
+          plugins: [...SMOKE_AGENT_PLUGINS],
           settings: { secrets: {} },
         },
         environmentVars: {

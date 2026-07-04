@@ -82,6 +82,7 @@ import {
   discoverGuardedRealLiveFiles,
   formatRealLiveSummaryLines,
 } from "./lib/real-live-suites.mjs";
+import { resolveTestLaneDirs } from "./lib/script-metadata.mjs";
 import {
   isParallelSafeTask,
   normalizeConcurrency,
@@ -169,6 +170,7 @@ const barePlanFlag = parseFlag("--plan");
 let filterFlag;
 let patternFlag;
 let onlyFlag;
+let laneFilterFlag;
 let excludeFlags;
 let concurrencyFlag;
 let planFlag;
@@ -177,12 +179,29 @@ try {
   filterFlag = parseFlagValue("--filter");
   patternFlag = parseFlagValue("--pattern");
   onlyFlag = parseFlagValue("--only"); // "e2e" | "test"
+  laneFilterFlag = parseFlagValue("--lane"); // "server" | "client" | …
   excludeFlags = parseRepeatedFlagValue("--exclude");
   concurrencyFlag = parseFlagValue("--concurrency");
   planFlag = parseFlagValue("--plan");
   minTasksFlag = parseFlagValue("--min-tasks");
 } catch (error) {
   failUsage(error.message);
+}
+
+// A named root lane (`--lane server`) resolves the anchored package filter it
+// used to hardcode as a `TEST_PACKAGE_FILTER` regex in the root package.json:
+// membership is declared per-package via `elizaos.scripts.testLanes`, so adding
+// or removing a package to a lane is a package.json edit, not a script edit
+// (#12334). The `(<dir>)` anchor matches the task label `<name> (<dir>)#<script>`.
+function laneFilterRegex(lane) {
+  const dirs = resolveTestLaneDirs(lane, { repoRoot });
+  if (dirs.length === 0) {
+    failUsage(
+      `--lane "${lane}" resolved no packages; declare elizaos.scripts.testLanes on the lane's members`,
+    );
+  }
+  const escaped = dirs.map((dir) => dir.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  return `\\((?:${escaped.join("|")})\\)`;
 }
 const allFlag = parseFlag("--all");
 const planEnabled = planFlag !== null || barePlanFlag;
@@ -198,6 +217,7 @@ if (helpFlag) {
       "  --filter=<regex>     Filter package tasks by `<name> (<dir>)#<script>`.",
       "  --pattern=<regex>    Same surface as --filter; combined via intersection.",
       "  --only=e2e | test    Forward VITEST_E2E_ONLY / VITEST_UNIT_ONLY env to children.",
+      "  --lane=<name>        Restrict to packages tagged elizaos.scripts.testLanes=<name>.",
       "  --all                Explicitly run every discovered test lane (default without --only).",
       "  --exclude=<path>     Exclude a repo-relative test path from this lane.",
       "  --concurrency=<n>    Run parallel-safe `test` tasks through an n-worker",
@@ -361,13 +381,15 @@ const NO_CLOUD_PACKAGE_DIRS = new Set([
   path.join("packages", "test", "cloud-e2e"),
 ]);
 
-// Combine --filter, --pattern, and TEST_PACKAGE_FILTER. All three (when set)
-// must match a task's label for it to run — they intersect rather than
-// override each other so callers can stack a package filter (--filter) and a
-// per-test filter (--pattern) on top of one another.
+// Combine --filter, --pattern, --lane, and TEST_PACKAGE_FILTER. All (when set)
+// must match a task's label for it to run — they intersect rather than override
+// each other so callers can stack a package filter (--filter) and a per-test
+// filter (--pattern) on top of one another. `--lane` resolves to the same
+// `(<dir>)`-anchored regex the lane used to hardcode in the root package.json.
 const packageFilters = [
   filterFlag,
   patternFlag,
+  laneFilterFlag ? laneFilterRegex(laneFilterFlag) : null,
   process.env.TEST_PACKAGE_FILTER,
 ]
   .filter((value) => typeof value === "string" && value.length > 0)

@@ -22,9 +22,10 @@
  *   node scripts/training-harvest/build-manifest.mjs [--out <path>]
  */
 import { execFileSync } from "node:child_process";
-import { readdirSync, statSync, writeFileSync, existsSync } from "node:fs";
+import { existsSync, readdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { listPackages } from "../../packages/scripts/lib/workspaces.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, "..", "..");
@@ -57,24 +58,40 @@ function countFiles(dir, suffix) {
 // slow re-boot of the loader on every rebuild.
 const MEASURED_EXPANSION = {
   "packages/test/scenarios": { existing: 707, total: 7777 },
-  "plugins/plugin-personal-assistant/test/scenarios": { existing: 197, total: 2167 },
+  "plugins/plugin-personal-assistant/test/scenarios": {
+    existing: 197,
+    total: 2167,
+  },
   "plugins/plugin-app-control/test/scenarios": { existing: 15, total: 165 },
   "plugins/plugin-health/test/scenarios": { existing: 8, total: 88 },
   "plugins/plugin-cloud-apps/test/scenarios": { existing: 1, total: 11 },
-  "plugins/plugin-agent-orchestrator/test/scenarios": { existing: 8, total: 88 },
+  "plugins/plugin-agent-orchestrator/test/scenarios": {
+    existing: 8,
+    total: 88,
+  },
 };
 
-const SCENARIO_DIRS = [
-  "packages/test/scenarios",
-  "packages/scenario-runner/test/scenarios",
-  "plugins/plugin-personal-assistant/test/scenarios",
-  "plugins/plugin-app-control/test/scenarios",
-  "plugins/plugin-health/test/scenarios",
-  "plugins/plugin-cloud-apps/test/scenarios",
-  "plugins/plugin-agent-orchestrator/test/scenarios",
-];
+// The test-harness's canonical corpus root. It keeps scenarios directly under
+// `scenarios/` (not `test/scenarios/`), so the per-package convention glob below
+// does not reach it; include it explicitly. This is the scenario-runner's
+// DEFAULT_SCENARIO_ROOT, a well-known path constant — not a plugin coupling.
+const DEFAULT_SCENARIO_ROOT = "packages/test/scenarios";
 
-const TSCONFIG = path.join(REPO_ROOT, "tsconfig.json");
+// Every workspace package's `test/scenarios` dir that exists on disk, discovered
+// through the shared workspace seam (#12332) rather than a hardcoded plugin list.
+// `scenarioFamily` skips any dir with zero `.scenario.ts` files, so a package
+// without scenarios contributes nothing — adding or removing a plugin with
+// scenarios updates the corpus with no edit to this file.
+const SCENARIO_DIRS = [
+  DEFAULT_SCENARIO_ROOT,
+  ...listPackages({ repoRoot: REPO_ROOT }).map((pkg) =>
+    path.posix.join(pkg.dir, "test", "scenarios"),
+  ),
+]
+  .filter((rel) => existsSync(path.join(REPO_ROOT, rel)))
+  .filter((rel, index, all) => all.indexOf(rel) === index)
+  .sort((a, b) => a.localeCompare(b));
+
 const SCENARIO_CLI = "packages/scenario-runner/src/cli.ts";
 
 function scenarioFamily() {
@@ -88,7 +105,7 @@ function scenarioFamily() {
       total: files.length * 10,
     };
     items.push({
-      id: rel.replace(/[\/]/g, "__"),
+      id: rel.replace(/[/]/g, "__"),
       dir: rel,
       scenarioFiles: files.length,
       baseScenarios: expansion.existing,
@@ -135,9 +152,12 @@ function scenarioFamily() {
       "<NATIVE>",
     ],
     trajectoryLands: {
-      report: "<RUNDIR>/report.json (or --report path): aggregate + per-scenario status",
-      perTurn: "<RUNDIR>/trajectories/<agentId>/<trajId>.json (RecordedTrajectory)",
-      native: "<NATIVE>: eliza_native_v1 JSONL (rows carry scenarioStatus + judgeScore)",
+      report:
+        "<RUNDIR>/report.json (or --report path): aggregate + per-scenario status",
+      perTurn:
+        "<RUNDIR>/trajectories/<agentId>/<trajId>.json (RecordedTrajectory)",
+      native:
+        "<NATIVE>: eliza_native_v1 JSONL (rows carry scenarioStatus + judgeScore)",
       manifest: "<NATIVE>.manifest.json",
     },
     verdictSource:
@@ -166,13 +186,17 @@ function benchmarkFamily() {
     const m = line.match(/^-\s+(\S+)\s+dir=(\S+)\s+cwd=(.+)$/);
     if (m) adapters.push({ id: m[1], dir: m[2], cwd: m[3].trim() });
   }
-  if (adapters.length === 0) adapters = [{ error: "orchestrator list-benchmarks produced no parseable adapters" }];
+  if (adapters.length === 0)
+    adapters = [
+      { error: "orchestrator list-benchmarks produced no parseable adapters" },
+    ];
   return {
     kind: "benchmark",
     emitsTrajectory: "wiring-needed",
     trajectoryFormat: "eliza_native_v1 (after wiring)",
     source: "packages/benchmarks/registry/commands.py",
-    listCommand: "python3 -m benchmarks.orchestrator list-benchmarks (cwd=packages)",
+    listCommand:
+      "python3 -m benchmarks.orchestrator list-benchmarks (cwd=packages)",
     runInvocationTemplate:
       "python3 -m benchmarks.orchestrator run --benchmarks <ID> --provider cli --model gpt-5.5 (cwd=packages)",
     resultLands:
@@ -230,21 +254,26 @@ const manifest = {
   repoRoot: REPO_ROOT,
   goal: "Run every elizaOS scenario+benchmark+e2e through gpt-5.5 (Codex subscription), harvest correct eliza_native_v1 trajectories, GEPA-repair failures, fine-tune on Nebius.",
   provider: {
-    mechanism: "ELIZA_CHAT_VIA_CLI CLI-subscription backend (packages/core/src/testing/live-provider.ts selectCliProvider)",
+    mechanism:
+      "ELIZA_CHAT_VIA_CLI CLI-subscription backend (packages/core/src/testing/live-provider.ts selectCliProvider)",
     backend: "codex",
     model: "gpt-5.5",
     modelOverrideEnv: "ELIZA_CLI_CODEX_MODEL",
     plugin: "@elizaos/plugin-cli-inference",
-    credentialsPath: "~/.codex/auth.json (ChatGPT-OAuth; eliza never sees the token)",
+    credentialsPath:
+      "~/.codex/auth.json (ChatGPT-OAuth; eliza never sees the token)",
     env: { ELIZA_CHAT_VIA_CLI: "codex", ELIZA_CLI_CODEX_MODEL: "gpt-5.5" },
     note: "Stage-1 leg S1 proves ONE real scenario through this seam live. The driver consumes S1's proven provider env verbatim.",
   },
   trajectoryFormat: {
     name: "eliza_native_v1",
-    definedIn: "packages/core/src/services/trajectory-types.ts (ElizaNativeTrajectoryRow)",
+    definedIn:
+      "packages/core/src/services/trajectory-types.ts (ElizaNativeTrajectoryRow)",
     contract: "packages/training/docs/dataset/CANONICAL_RECORD.md",
-    converter: "packages/scenario-runner/src/native-export.ts (exportScenarioNativeJsonl)",
-    trainingPrep: "packages/training/scripts/prepare_eliza1_trajectory_dataset.py",
+    converter:
+      "packages/scenario-runner/src/native-export.ts (exportScenarioNativeJsonl)",
+    trainingPrep:
+      "packages/training/scripts/prepare_eliza1_trajectory_dataset.py",
   },
   families: {
     scenario: scenarioFamily(),

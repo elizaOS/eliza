@@ -15,6 +15,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { resolveBuildModelExceptions } from "./lib/script-metadata.mjs";
 
 const repoRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -23,23 +24,13 @@ const repoRoot = path.resolve(
 );
 const WORKSPACE_GLOBS = ["packages", "plugins"];
 
-// Deliberate, documented exceptions (keep this list short and justified).
-const ALLOW = {
-  // @elizaos/core: build uses tsconfig.build.json but typecheck uses
-  // tsconfig.json — a possible coverage delta; converting needs a deliberate
-  // framework decision, not a blind --noCheck (issue #9626).
-  // @elizaos/plugin-streaming: under --noCheck, tsc reorders an inferred
-  // union member in services/stream-manager.d.ts (functionally identical but
-  // not byte-identical), so its declaration emit deliberately keeps the full
-  // check to preserve byte-stable published types (#9626).
-  doubleCheck: new Set(["@elizaos/core", "@elizaos/plugin-streaming"]),
-  // These packages currently fail `tsgo` (it flags errors `tsc` does not);
-  // kept on `tsc` until those are resolved.
-  tscTypecheck: new Set([
-    "@elizaos/plugin-social-alpha",
-    "@elizaos/plugin-personal-assistant",
-  ]),
-};
+// Deliberate, documented exceptions to the "tsgo checks, tsc emits" model. Each
+// package opts in via `elizaos.scripts.buildModel` in its own package.json (e.g.
+// @elizaos/core / plugin-streaming keep a full build type-check for byte-stable
+// declaration emit; plugin-social-alpha / plugin-personal-assistant stay on
+// `tsc` for typecheck pending a tsgo fix, #9626). Resolved through the discovery
+// seam so no package names live in this file.
+const ALLOW = resolveBuildModelExceptions({ repoRoot });
 
 const CUSTOM_PLUGIN_BUILD_ALLOW = new Map([
   [

@@ -34,18 +34,15 @@
  */
 
 import crypto from "node:crypto";
+import { resolveTestSerialPackages } from "./script-metadata.mjs";
 
 /**
  * Packages whose `test` script must not run concurrently with others, even in
- * the PR lane. `plugin-personal-assistant` and `plugin-agent-orchestrator` are
- * already excluded from the concurrent `test:plugins` sweep in the root
- * package.json; `plugin-sql` owns the shared database harness.
+ * the PR lane. Membership is declared per-package via `elizaos.scripts.testSerial`
+ * (a shared DB harness or fixed-port contention makes concurrency unsafe) and
+ * resolved here through the discovery seam — no plugin names live in this file.
  */
-export const SERIALIZE_PACKAGES = new Set([
-  "@elizaos/plugin-personal-assistant",
-  "@elizaos/plugin-agent-orchestrator",
-  "@elizaos/plugin-sql",
-]);
+export const SERIALIZE_PACKAGES = resolveTestSerialPackages();
 
 /**
  * Whether a discovered test task may run concurrently with other tasks.

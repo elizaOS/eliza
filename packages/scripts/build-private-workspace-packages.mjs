@@ -26,41 +26,22 @@ import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { resolveBuildOnInstallPackages } from "./lib/script-metadata.mjs";
 
 const REPO_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "../..",
 );
 
-// Dependency-ordered list. Build leaves first, then their dependents.
-// `freshnessSentinel` is the file whose existence proves the package was
-// already built; missing => run `bun run build` for that package.
-const PACKAGES = [
-  {
-    // `@elizaos/core/src/logger.ts` re-exports `@elizaos/logger`. Bun's
-    // runtime resolution hits the package's default dist export in dev, so a
-    // fresh checkout needs this built before `bun run dev`.
-    dir: "packages/logger",
-    freshnessSentinel: "dist/index.js",
-  },
-  {
-    dir: "packages/security",
-    freshnessSentinel: "dist/index.js",
-  },
-  {
-    dir: "packages/plugin-remote-manifest",
-    freshnessSentinel: "dist/index.js",
-  },
-  {
-    // `@elizaos/agent/src/services/remote-plugin-bridge.ts` imports
-    // Compatibility package for worker authors that still import
-    // `@elizaos/plugin-worker-runtime`. The wrapper resolves through
-    // `@elizaos/plugin-remote-manifest/worker-runtime`, so keep its dist
-    // built for dev/runtime consumers that use the historical package name.
-    dir: "packages/plugin-worker-runtime",
-    freshnessSentinel: "dist/error.js",
-  },
-];
+// Dependency-ordered set, resolved through the discovery seam. Each private
+// package declares `elizaos.scripts.buildOnInstall = { sentinel, order }` in its
+// own package.json — `order` builds leaves before dependents (logger/security
+// before plugin-remote-manifest, whose worker-runtime wrapper comes last), and
+// `sentinel` is the dist file whose presence proves it is already built. No
+// package names live in this file.
+const PACKAGES = resolveBuildOnInstallPackages({ repoRoot: REPO_ROOT }).map(
+  (pkg) => ({ dir: pkg.dir, freshnessSentinel: pkg.sentinel }),
+);
 
 function log(msg) {
   process.stderr.write(`[build-private-workspace-packages] ${msg}\n`);
