@@ -70,6 +70,8 @@ export async function createStripeCheckoutSession(
     body: JSON.stringify(request),
   });
 
+  // error-policy:J3 a non-JSON checkout body → null; the failure is surfaced by
+  // the throw below when `response.ok` is false or `body.url` is absent.
   const body = (await response
     .json()
     .catch(() => null)) as StripeCheckoutResponse | null;

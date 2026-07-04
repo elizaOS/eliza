@@ -325,7 +325,7 @@ export const BROWSER_TAB_PRELOAD_SCRIPT = `
         fireMouseEvent(target, "mousedown", x, y, button, 1);
         // Most form controls expect focus between mousedown and click.
         if (typeof target.focus === "function") {
-          try { target.focus({ preventScroll: true }); } catch (_e) { try { target.focus(); } catch (_e2) {} }
+          try { target.focus({ preventScroll: true }); } catch (_e) { try { target.focus(); } catch (_e2) { /* error-policy:J6 best-effort DOM emulation on foreign page */ } }
         }
         firePointerEvent(target, "pointerup", x, y, button, 0);
         fireMouseEvent(target, "mouseup", x, y, button, 0);
@@ -375,13 +375,13 @@ export const BROWSER_TAB_PRELOAD_SCRIPT = `
       if (!target) return Promise.resolve();
       const opts = options || {};
       const delay = Math.max(0, Math.min(200, typeof opts.perCharDelayMs === "number" ? opts.perCharDelayMs : 18));
-      try { target.focus({ preventScroll: true }); } catch (_e) { try { target.focus(); } catch (_e2) {} }
+      try { target.focus({ preventScroll: true }); } catch (_e) { try { target.focus(); } catch (_e2) { /* error-policy:J6 best-effort DOM emulation on foreign page */ } }
       if (opts.replace) {
         try {
           if (typeof target.setSelectionRange === "function") {
             target.setSelectionRange(0, (target.value || "").length);
           }
-        } catch (_e) {}
+        } catch (_e) { /* error-policy:J6 best-effort DOM/wallet emulation on foreign page */ }
         setNativeValue(target, "");
         target.dispatchEvent(new Event("input", { bubbles: true, composed: true }));
       }
@@ -396,7 +396,7 @@ export const BROWSER_TAB_PRELOAD_SCRIPT = `
         fireKey(target, "keydown", ch);
         try {
           target.dispatchEvent(new InputEvent("beforeinput", { bubbles: true, cancelable: true, composed: true, data: ch, inputType: "insertText" }));
-        } catch (_e) {}
+        } catch (_e) { /* error-policy:J6 best-effort DOM/wallet emulation on foreign page */ }
         const next = (target.value || "") + ch;
         setNativeValue(target, next);
         try {
@@ -440,7 +440,7 @@ export const BROWSER_TAB_PRELOAD_SCRIPT = `
       const dt = new DataTransfer();
       dt.items.add(file);
       target.files = dt.files;
-      try { target.focus({ preventScroll: true }); } catch (_e) {}
+      try { target.focus({ preventScroll: true }); } catch (_e) { /* error-policy:J6 best-effort DOM/wallet emulation on foreign page */ }
       target.dispatchEvent(new Event("input", { bubbles: true, composed: true }));
       target.dispatchEvent(new Event("change", { bubbles: true, composed: true }));
       return { name: file.name, size: file.size, type: file.type };
@@ -626,7 +626,7 @@ export const BROWSER_TAB_PRELOAD_SCRIPT = `
             evmChainId = next;
             ethereum.chainId = formatChainId(evmChainId);
             for (const listener of Array.from(eventListeners.chainChanged)) {
-              try { listener(ethereum.chainId); } catch (_e) {}
+              try { listener(ethereum.chainId); } catch (_e) { /* error-policy:J6 best-effort DOM/wallet emulation on foreign page */ }
             }
             return result;
           });
@@ -635,11 +635,11 @@ export const BROWSER_TAB_PRELOAD_SCRIPT = `
           return callHost("evm", method, params).then((accounts) => {
             ethereum.selectedAddress = Array.isArray(accounts) ? (accounts[0] || null) : null;
             for (const listener of Array.from(eventListeners.accountsChanged)) {
-              try { listener(accounts); } catch (_e) {}
+              try { listener(accounts); } catch (_e) { /* error-policy:J6 best-effort DOM/wallet emulation on foreign page */ }
             }
             if (ethereum.selectedAddress) {
               for (const listener of Array.from(eventListeners.connect)) {
-                try { listener({ chainId: ethereum.chainId }); } catch (_e) {}
+                try { listener({ chainId: ethereum.chainId }); } catch (_e) { /* error-policy:J6 best-effort DOM/wallet emulation on foreign page */ }
               }
             }
             return accounts;
@@ -690,7 +690,7 @@ export const BROWSER_TAB_PRELOAD_SCRIPT = `
       const set = eventListeners[event];
       if (!set) return;
       for (const listener of Array.from(set)) {
-        try { listener(payload); } catch (_e) {}
+        try { listener(payload); } catch (_e) { /* error-policy:J6 best-effort DOM/wallet emulation on foreign page */ }
       }
     };
 
@@ -703,7 +703,7 @@ export const BROWSER_TAB_PRELOAD_SCRIPT = `
     } catch (_err) {
       // Some pages freeze window.ethereum after their wallet detected it;
       // fall back to direct assignment when defineProperty is blocked.
-      try { window.ethereum = ethereum; } catch (_e) {}
+      try { window.ethereum = ethereum; } catch (_e) { /* error-policy:J6 best-effort DOM/wallet emulation on foreign page */ }
     }
 
     // ── Solana (Phantom-shaped + Wallet Standard) ──
@@ -806,7 +806,7 @@ export const BROWSER_TAB_PRELOAD_SCRIPT = `
           this.publicKey = makePublicKey(result.publicKey);
           this.isConnected = true;
           for (const listener of Array.from(solanaListeners.connect)) {
-            try { listener(this.publicKey); } catch (_e) {}
+            try { listener(this.publicKey); } catch (_e) { /* error-policy:J6 best-effort DOM/wallet emulation on foreign page */ }
           }
         }
         return { publicKey: this.publicKey };
@@ -815,7 +815,7 @@ export const BROWSER_TAB_PRELOAD_SCRIPT = `
         this.publicKey = null;
         this.isConnected = false;
         for (const listener of Array.from(solanaListeners.disconnect)) {
-          try { listener(); } catch (_e) {}
+          try { listener(); } catch (_e) { /* error-policy:J6 best-effort DOM/wallet emulation on foreign page */ }
         }
       },
       signMessage: async function (message, _encoding) {
@@ -898,12 +898,12 @@ export const BROWSER_TAB_PRELOAD_SCRIPT = `
         if (ctor && typeof ctor.deserialize === "function") {
           return ctor.deserialize(bytes);
         }
-      } catch (_err) {}
+      } catch (_err) { /* error-policy:J6 best-effort DOM/wallet emulation on foreign page */ }
       try {
         if (ctor && typeof ctor.from === "function") {
           return ctor.from(bytes);
         }
-      } catch (_err) {}
+      } catch (_err) { /* error-policy:J6 best-effort DOM/wallet emulation on foreign page */ }
       return {
         serialize: () => bytes,
         __signedBytes: bytes,
@@ -1025,18 +1025,18 @@ export const BROWSER_TAB_PRELOAD_SCRIPT = `
       const register = (api) => {
         try {
           api.register(wallet);
-        } catch (_err) {}
+        } catch (_err) { /* error-policy:J6 best-effort DOM/wallet emulation on foreign page */ }
       };
       const fireRegister = () => {
         try {
           window.dispatchEvent(new CustomEvent("wallet-standard:register-wallet", { detail: register }));
-        } catch (_err) {}
+        } catch (_err) { /* error-policy:J6 best-effort DOM/wallet emulation on foreign page */ }
       };
       try {
         window.addEventListener("wallet-standard:app-ready", (event) => {
           if (event && event.detail) register(event.detail);
         });
-      } catch (_err) {}
+      } catch (_err) { /* error-policy:J6 best-effort DOM/wallet emulation on foreign page */ }
       fireRegister();
       if (document.readyState === "loading") {
         document.addEventListener("DOMContentLoaded", fireRegister, { once: true });
@@ -1053,13 +1053,13 @@ export const BROWSER_TAB_PRELOAD_SCRIPT = `
         configurable: true,
       });
     } catch (_err) {
-      try { window.solana = solana; } catch (_e) {}
+      try { window.solana = solana; } catch (_e) { /* error-policy:J6 best-effort DOM/wallet emulation on foreign page */ }
     }
     try {
       const phantomNs = window.phantom || {};
       phantomNs.solana = solana;
       window.phantom = phantomNs;
-    } catch (_err) {}
+    } catch (_err) { /* error-policy:J6 best-effort DOM/wallet emulation on foreign page */ }
 
     // Announce the provider per EIP-6963 (https://eips.ethereum.org/EIPS/eip-6963).
     // Keys:
@@ -1079,7 +1079,7 @@ export const BROWSER_TAB_PRELOAD_SCRIPT = `
           provider: ethereum,
         });
         window.dispatchEvent(new CustomEvent("eip6963:announceProvider", { detail: detail }));
-      } catch (_err) {}
+      } catch (_err) { /* error-policy:J6 best-effort DOM/wallet emulation on foreign page */ }
     };
     window.addEventListener("eip6963:requestProvider", announceEthereum);
     setTimeout(announceEthereum, 0);

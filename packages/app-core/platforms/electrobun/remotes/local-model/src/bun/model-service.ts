@@ -90,6 +90,10 @@ export class ModelRemoteService {
     params: { apiBase?: string } = {},
   ): Promise<LocalModelCatalogEntry[]> {
     const api = this.api(params.apiBase);
+    // error-policy:J4 the catalog aggregates independent sources so the local
+    // model UI still renders when one is unreachable: an offline runtime hub → no
+    // remote entries, an unreadable install dir → no installed rows, an
+    // unknown active status → the built-in eliza-1 catalog still shows.
     const runtime = await api.catalog().catch(() => null);
     const installed = await this.installed(params).catch(() => []);
     const active = await this.active(params).catch(() => ({

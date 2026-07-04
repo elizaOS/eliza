@@ -37,5 +37,7 @@ export function scheduleUpdateNotification(): void {
           `${theme.muted("Run")} ${theme.command("eliza update")} ${theme.muted("to install")}\n\n`,
       );
     })
+    // error-policy:J6 fire-and-forget update check; a network/registry failure
+    // must never disrupt CLI startup and there is nothing to notify about.
     .catch(() => {});
 }

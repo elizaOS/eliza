@@ -1136,6 +1136,8 @@ export function patchHttpCreateServerForCompat(): () => void {
           const u = new URL(ref);
           return isAllowedOrigin(ref, corsAllowedPorts) ? u.origin : null;
         } catch {
+          // error-policy:J3 untrusted Referer header — an unparseable URL is
+          // treated as "no allowed origin" (request is denied below).
           return null;
         }
       })();

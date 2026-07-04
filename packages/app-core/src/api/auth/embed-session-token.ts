@@ -167,6 +167,8 @@ export function verifyEmbedSessionToken(
       Buffer.from(payload, "base64url").toString("utf8"),
     ) as EmbedSessionClaims;
   } catch {
+    // error-policy:J3 untrusted token payload — a malformed base64/JSON segment
+    // yields a null (invalid token) result, never fabricated claims.
     return null;
   }
   if (

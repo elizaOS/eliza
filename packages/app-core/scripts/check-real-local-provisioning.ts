@@ -79,6 +79,8 @@ async function main(): Promise<void> {
     assert.equal(after.complete, true, "first-run must report complete");
     console.log("[local-prov] PASS provisioning: first-run completed");
   } finally {
+    // error-policy:J6 best-effort teardown of the harness fixtures; a cleanup
+    // failure must not mask the assertion outcome that preceded it.
     await server.close().catch(() => undefined);
     await runtimeResult.cleanup().catch(() => undefined);
     await configEnv.restore().catch(() => undefined);

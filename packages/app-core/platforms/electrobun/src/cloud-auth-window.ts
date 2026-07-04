@@ -80,7 +80,7 @@ const TRUSTED_ELIZA_WINDOW_PRELOAD = `(() => {
     try {
       window.close = closeSelf;
       globalThis.close = closeSelf;
-    } catch {}
+    } catch { /* error-policy:J6 best-effort window.close override in injected auth-window script; last-resort assignment may be blocked on a locked page */ }
   }
 })();`;
 

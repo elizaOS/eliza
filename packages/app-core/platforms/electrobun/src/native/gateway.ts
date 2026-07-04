@@ -44,7 +44,14 @@ async function loadDiscoveryModule(): Promise<boolean> {
       bonjourModule = (await import(pkg)) as BonjourModuleProvider;
       logger.info(`[Gateway] Loaded ${pkg} module`);
       return true;
-    } catch {}
+    } catch (err) {
+      // Probe each optional mDNS backend in turn. A not-installed module is
+      // expected (we fall through to the next); a module that IS present but
+      // throws on import is a real problem, so keep it out of the silent void.
+      logger.debug(
+        `[Gateway] mDNS module "${pkg}" unavailable: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   }
 
   logger.warn(

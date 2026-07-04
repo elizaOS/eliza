@@ -579,6 +579,8 @@ async function readJsonBody(
   try {
     return JSON.parse(body);
   } catch {
+    // error-policy:J3 untrusted request body — malformed JSON is an explicit
+    // null "invalid" signal the caller rejects, not a fabricated value.
     return null;
   }
 }

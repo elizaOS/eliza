@@ -136,6 +136,8 @@ function jwtExpiryMs(accessToken: string): number | null {
       ? payload.exp * 1000
       : null;
   } catch {
+    // error-policy:J3 untrusted JWT payload — an undecodable segment yields a
+    // null expiry (caller treats as "unknown/expired"), not a fake timestamp.
     return null;
   }
 }
@@ -178,6 +180,8 @@ export async function adoptRotatedCodexTokens(
         readFileSync(authPath, "utf-8"),
       ) as MaterializedCodexAuthJson;
     } catch {
+      // error-policy:J3 externally-maintained auth.json — an unreadable/malformed
+      // file means "no usable credential", handled as a false refresh result.
       return false;
     }
     const tokens = parsed?.tokens;

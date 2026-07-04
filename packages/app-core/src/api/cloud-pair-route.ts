@@ -263,6 +263,8 @@ export async function handleCloudPairRoute(
     clearTimeout(timeoutId);
     status = resp.status;
     if (resp.ok) {
+      // error-policy:J3 a 2xx with a non-JSON body → null, surfaced as a failed
+      // exchange by the null-check that follows.
       exchanged = (await resp.json().catch(() => null)) as PairResponse | null;
     } else {
       logger.warn(

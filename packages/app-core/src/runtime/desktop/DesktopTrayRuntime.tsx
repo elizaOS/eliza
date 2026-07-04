@@ -276,6 +276,9 @@ export function DesktopTrayRuntime() {
         }
       };
 
+      // error-policy:J6 best-effort UI dispatch from a DOM event handler; a
+      // failed tray action leaves the window in its current (visible) state,
+      // which the user sees and can retry — nothing to unwind here.
       void run().catch(() => {});
     };
 

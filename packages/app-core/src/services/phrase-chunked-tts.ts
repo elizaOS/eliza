@@ -199,8 +199,8 @@ export class PhraseChunkedTts {
     }
     const tail = this.chunker.flushPending();
     if (tail) this.dispatchPhrase(tail);
-    // Settle every TTS call; rethrow the first error if any (unless caller
-    // chose to swallow).
+    // error-policy:J5 the per-call rejection is observed via `firstError`,
+    // rethrown below; this only settles all in-flight calls before checking.
     await Promise.all(this.inflight.map((p) => p.catch(() => undefined)));
     if (this.firstError !== null) throw this.firstError;
   }

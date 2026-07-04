@@ -497,13 +497,26 @@ export function migrateDesktopStateDirFromPath(
         skippedReason: "source-not-directory",
       };
     }
-  } catch {
+  } catch (err) {
+    // Only a genuinely-absent source is a successful no-op. Any other stat
+    // failure (permissions, ENOTDIR, IO) is a real error and must not be
+    // fabricated into a "source-missing" success — that would silently drop a
+    // migration the user expected to happen.
+    if ((err as NodeJS.ErrnoException | null)?.code === "ENOENT") {
+      return {
+        ok: true,
+        migrated: false,
+        fromPath: source,
+        toPath: target,
+        skippedReason: "source-missing",
+      };
+    }
     return {
-      ok: true,
+      ok: false,
       migrated: false,
       fromPath: source,
       toPath: target,
-      skippedReason: "source-missing",
+      error: err instanceof Error ? err.message : String(err),
     };
   }
 
@@ -1104,6 +1117,7 @@ async function waitForHealthy(
         signal: AbortSignal.timeout(2_000),
       });
       if (response.ok) {
+        // error-policy:J3 health body may be non-JSON mid-boot; null → not-ready
         const health = (await response.json().catch(() => null)) as {
           ready?: boolean;
           agentState?: string;
@@ -1168,6 +1182,7 @@ async function isStartupStatusReachable(
       headers,
       signal: AbortSignal.timeout(2_000),
     });
+    // error-policy:J3 status body may be non-JSON mid-boot; null → inspected below
     const body = await response.json().catch(() => null);
     if (response.ok) return true;
     return isNonFatalStartupStatus(body);
@@ -2461,6 +2476,7 @@ export class AgentManager {
         // Process may have already exited between check and kill
       }
       // Wait briefly for SIGKILL to take effect
+      // error-policy:J6 teardown — we only await that the killed child settles
       await Promise.race([proc.exited.catch(() => {}), Bun.sleep(1_000)]);
     }
 

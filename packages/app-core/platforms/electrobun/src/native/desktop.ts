@@ -1571,6 +1571,8 @@ X-GNOME-Autostart-enabled=true
       return;
     }
     this.appExitStarted = true;
+    // error-policy:J6 teardown — surfacing the window before shutdown is
+    // best-effort; a failed show must not block the exit sequence.
     await this.showWindow().catch(() => {});
     this.send("desktopShutdownStarted", { reason });
     await new Promise((resolve) => setTimeout(resolve, 150));
@@ -1859,6 +1861,8 @@ X-GNOME-Autostart-enabled=true
   /** Match the Dock icon to full-window presence; only in dockless mode. */
   private syncTrayFirstDock(): void {
     if (!this.trayFirstMode) return;
+    // error-policy:J6 best-effort cosmetic Dock-icon sync; a transient failure
+    // self-corrects on the next window-presence change.
     void this.setDockIconVisibility({
       visible: this.fullWindowKeys.size > 0,
     }).catch(() => {});
