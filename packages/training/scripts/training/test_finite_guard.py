@@ -19,6 +19,7 @@ from torch import nn
 from scripts.training.instrumentation import (
     FiniteWeightsCallback,
     InstrumentationConfig,
+    assert_finite_loss,
     assert_finite_step,
     make_finite_weights_callback,
     make_hf_callback,
@@ -58,6 +59,21 @@ def test_passes_on_finite_weights() -> None:
     model = _TinyLM()
     # No exception on healthy weights.
     assert_finite_step(model, step=10)
+
+
+def test_passes_on_finite_loss() -> None:
+    assert_finite_loss(torch.tensor(0.1234), context="unit-test loss")
+
+
+def test_raises_on_nan_loss() -> None:
+    with pytest.raises(RuntimeError, match="non-finite .*unit-test loss"):
+        assert_finite_loss(torch.tensor(float("nan")), context="unit-test loss")
+
+
+def test_raises_on_inf_loss_vector() -> None:
+    loss = torch.tensor([0.1, float("inf"), float("nan")])
+    with pytest.raises(RuntimeError, match="2/3 non-finite"):
+        assert_finite_loss(loss, context="vector loss")
 
 
 def test_raises_on_nan_weight() -> None:

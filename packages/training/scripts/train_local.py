@@ -857,6 +857,8 @@ def main() -> int:
     # which fails when Liger fused chunked-CE returns logits=None. When the
     # model already produces `outputs.loss` (Liger or model-side loss), use
     # that directly. Also handles the FSDP+APOLLO `create_optimizer` rebuild.
+    from training.instrumentation import assert_finite_loss
+
     class _ElizaSFTTrainer(SFTTrainer):
         def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
             # Forward — pass labels so the model computes loss internally
@@ -867,9 +869,17 @@ def main() -> int:
             outputs = model(**inputs)
             if outputs.loss is not None:
                 loss = outputs.loss
+                assert_finite_loss(loss, context="SFT model loss")
                 return (loss, outputs) if return_outputs else loss
-            return super().compute_loss(model, inputs, return_outputs=return_outputs,
-                                        num_items_in_batch=num_items_in_batch)
+            computed = super().compute_loss(
+                model,
+                inputs,
+                return_outputs=return_outputs,
+                num_items_in_batch=num_items_in_batch,
+            )
+            loss = computed[0] if return_outputs else computed
+            assert_finite_loss(loss, context="SFT trainer loss")
+            return computed
 
         def create_optimizer(self, model=None):
             # transformers 5.7 calls `create_optimizer(model)`; older releases

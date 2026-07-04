@@ -393,6 +393,32 @@ def assert_finite_step(model: Any, *, step: int, max_reported: int = 5) -> None:
         )
 
 
+def assert_finite_loss(loss: Any, *, context: str = "training loss") -> None:
+    """Raise ``RuntimeError`` if a trainer loss tensor is NaN or Inf.
+
+    This guard sits at the loss boundary, before optimizer state or checkpoint
+    bytes can be polluted. It complements :func:`assert_finite_step`, which
+    catches any non-finite trainable weight that appears after a step.
+    """
+    import torch
+
+    if not torch.is_tensor(loss):
+        return
+    if torch.isfinite(loss).all():
+        return
+    detached = loss.detach()
+    if detached.numel() == 1:
+        observed = str(detached.item())
+    else:
+        finite = torch.isfinite(detached)
+        bad_count = int((~finite).sum().item())
+        observed = f"{bad_count}/{detached.numel()} non-finite element(s)"
+    raise RuntimeError(
+        f"non-finite (NaN/Inf) {context}: {observed}. "
+        "Training diverged — aborting before optimizer step or checkpoint save."
+    )
+
+
 class FiniteWeightsCallback:
     """HF Trainer callback that hard-fails a divergent run.
 
@@ -448,6 +474,7 @@ __all__ = [
     "InstrumentationCallback",
     "InstrumentationConfig",
     "MemorySnapshot",
+    "assert_finite_loss",
     "assert_finite_step",
     "gpu_memory",
     "log_environment",
