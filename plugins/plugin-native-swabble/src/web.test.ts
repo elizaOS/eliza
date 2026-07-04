@@ -240,4 +240,41 @@ describe("SwabbleWeb fallback", () => {
     expect(offMessage).toHaveBeenCalled();
     expect(states).toHaveBeenLastCalledWith({ state: "idle" });
   });
+
+  it("surfaces an error event when native mic capture is denied", async () => {
+    const swabbleStart = vi.fn(async () => ({ started: true }));
+    setWindow({
+      __ELIZA_ELECTROBUN_RPC__: {
+        request: {
+          swabbleStart,
+          swabbleAudioChunk: vi.fn(async () => undefined),
+        },
+        onMessage: vi.fn(),
+        offMessage: vi.fn(),
+      },
+    });
+    setNavigator({
+      mediaDevices: {
+        getUserMedia: vi.fn(async () => {
+          throw new DOMException("Permission denied", "NotAllowedError");
+        }),
+      } as unknown as MediaDevices,
+    });
+
+    const plugin = new SwabbleWeb();
+    const errors = vi.fn();
+    await plugin.addListener("error", errors);
+
+    await expect(
+      plugin.start({ config: { triggers: ["eliza"] } }),
+    ).resolves.toEqual({ started: true });
+
+    expect(errors).toHaveBeenCalledWith(
+      expect.objectContaining({
+        code: "mic-permission",
+        recoverable: false,
+        message: expect.stringContaining("Permission denied"),
+      }),
+    );
+  });
 });

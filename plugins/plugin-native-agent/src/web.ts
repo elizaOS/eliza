@@ -56,6 +56,9 @@ function assertRequestPath(path: unknown): string {
       );
     }
   } catch (err) {
+    // error-policy:J3 untrusted path input — new URL() throws on the valid
+    // relative-path case, so only our own absolute-URL rejection rethrows;
+    // a genuine relative path falls through to the validated return below.
     if (err instanceof Error && err.message.includes("absolute URL")) {
       throw err;
     }
@@ -202,6 +205,8 @@ export class AgentWeb extends WebPlugin implements AgentPlugin {
           parsed.pathname.startsWith("//ipc/"))
       );
     } catch {
+      // error-policy:J3 untrusted base input — an unparseable base is simply
+      // not a local-agent IPC base; the predicate reports false, not a failure.
       return false;
     }
   }

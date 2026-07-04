@@ -219,8 +219,11 @@ export class ScreenCaptureWeb extends WebPlugin {
 
     this.mediaStream.getVideoTracks()[0].addEventListener("ended", () => {
       if (this.isRecording) {
-        this.stopRecording().catch((err) => {
-          console.error("[ScreenCapture] Auto-stop on track end failed:", err);
+        this.stopRecording().catch((err: unknown) => {
+          this.notifyListeners("error", {
+            code: "AUTO_STOP_FAILED",
+            message: `Auto-stop on track end failed: ${err instanceof Error ? err.message : String(err)}`,
+          });
         });
       }
     });
@@ -260,8 +263,11 @@ export class ScreenCaptureWeb extends WebPlugin {
 
       if (overLimit) {
         autoStopping = true;
-        this.stopRecording().catch((err) => {
-          console.error("[ScreenCapture] Auto-stop recording failed:", err);
+        this.stopRecording().catch((err: unknown) => {
+          this.notifyListeners("error", {
+            code: "AUTO_STOP_FAILED",
+            message: `Auto-stop recording failed: ${err instanceof Error ? err.message : String(err)}`,
+          });
         });
       }
     }, 500);

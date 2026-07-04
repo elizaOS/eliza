@@ -206,8 +206,9 @@ async function probeNativeIosCapabilities(): Promise<NativeIosCapabilities | nul
       try {
         return await plugin.getDeviceCapabilities();
       } catch {
-        // Plugin call failed at runtime — fall through and try the next
-        // candidate, then drop to null so the adapter fallback wins.
+        // error-policy:J4 optional native capability probe; a runtime failure
+        // falls through to the next candidate, then to null so the adapter's
+        // own hardware fallback wins (this function never throws per docblock).
       }
     }
   }
@@ -235,7 +236,7 @@ export class DeviceBridgeClient {
       try {
         this.socket.close(1000, "client-stop");
       } catch {
-        /* best effort */
+        // error-policy:J6 best-effort teardown; the socket is being discarded.
       }
       this.socket = null;
     }
@@ -259,6 +260,8 @@ export class DeviceBridgeClient {
     try {
       ws = new WebSocket(url);
     } catch (err) {
+      // error-policy:J1 transport boundary: surface the construction failure as
+      // an observable "error" state and schedule a reconnect.
       this.config.onStateChange?.(
         "error",
         err instanceof Error ? err.message : String(err),
@@ -283,7 +286,7 @@ export class DeviceBridgeClient {
       try {
         ws.close();
       } catch {
-        /* best effort */
+        // error-policy:J6 best-effort close of the timed-out socket.
       }
       this.scheduleReconnect();
     }, CONNECT_TIMEOUT_MS);
@@ -300,6 +303,7 @@ export class DeviceBridgeClient {
       try {
         msg = JSON.parse(String(event.data)) as AgentInbound;
       } catch {
+        // error-policy:J3 drop a malformed frame from the untrusted socket.
         return;
       }
       void this.handleAgentMessage(ws, msg);
@@ -479,6 +483,8 @@ export class DeviceBridgeClient {
           loadedPath: msg.modelPath,
         });
       } catch (err) {
+        // error-policy:J1 RPC boundary: relay the failure to the agent as a
+        // structured {ok:false,error} result over the bridge.
         this.send(ws, {
           type: "loadResult",
           correlationId: msg.correlationId,
@@ -499,6 +505,8 @@ export class DeviceBridgeClient {
           ok: true,
         });
       } catch (err) {
+        // error-policy:J1 RPC boundary: relay the failure to the agent as a
+        // structured {ok:false,error} result over the bridge.
         this.send(ws, {
           type: "unloadResult",
           correlationId: msg.correlationId,
@@ -531,6 +539,8 @@ export class DeviceBridgeClient {
             : {}),
         });
       } catch (err) {
+        // error-policy:J1 RPC boundary: relay the failure to the agent as a
+        // structured {ok:false,error} result over the bridge.
         this.send(ws, {
           type: "generateResult",
           correlationId: msg.correlationId,
@@ -553,6 +563,8 @@ export class DeviceBridgeClient {
           tokens: result.tokens,
         });
       } catch (err) {
+        // error-policy:J1 RPC boundary: relay the failure to the agent as a
+        // structured {ok:false,error} result over the bridge.
         this.send(ws, {
           type: "embedResult",
           correlationId: msg.correlationId,
@@ -577,6 +589,8 @@ export class DeviceBridgeClient {
           prompt,
         });
       } catch (err) {
+        // error-policy:J1 RPC boundary: relay the failure to the agent as a
+        // structured {ok:false,error} result over the bridge.
         this.send(ws, {
           type: "formatChatResult",
           correlationId: msg.correlationId,

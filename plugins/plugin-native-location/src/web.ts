@@ -174,6 +174,9 @@ export class LocationWeb extends WebPlugin {
                 : "prompt",
         };
       } catch {
+        // error-policy:J4 permissions.query throws on browsers that don't
+        // support the "geolocation" permission name; "prompt" (unknown, will
+        // ask) is the correct state to report, not a masked failure.
         return { location: "prompt" };
       }
     }
@@ -187,6 +190,8 @@ export class LocationWeb extends WebPlugin {
       await this.getCurrentPosition({ timeout: 5000 });
       return { location: "granted" };
     } catch (error) {
+      // error-policy:J4 translate the geolocation rejection into an explicit
+      // permission state (denied vs unknown/prompt) for the caller to render.
       const e = error as { code: string };
       if (e.code === "PERMISSION_DENIED") {
         return { location: "denied" };

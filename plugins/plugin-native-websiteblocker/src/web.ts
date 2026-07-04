@@ -41,6 +41,8 @@ function normalizeHostname(value: unknown): string | null {
     try {
       return normalizeHostname(new URL(trimmed).hostname);
     } catch {
+      // error-policy:J3 untrusted hostname input — an unparseable URL is
+      // reported as an explicit invalid (null), never a fake-valid default.
       return null;
     }
   }

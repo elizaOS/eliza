@@ -386,4 +386,70 @@ describe("ScreenCaptureWeb", () => {
       fileSize: 5,
     });
   });
+
+  it("surfaces an error event when auto-stop on track end fails", async () => {
+    vi.useFakeTimers();
+    installDocument();
+    vi.stubGlobal("MediaRecorder", FakeMediaRecorder);
+
+    const videoTrack = new FakeTrack("video");
+    const displayStream = new FakeStream([videoTrack]);
+    const getDisplayMedia = vi.fn(
+      async () => displayStream as unknown as MediaStream,
+    );
+    setNavigator({
+      mediaDevices: { getDisplayMedia } as unknown as MediaDevices,
+    });
+
+    const plugin = new ScreenCaptureWeb();
+    const errors = vi.fn();
+    await plugin.addListener("error", errors);
+    await plugin.startRecording();
+
+    vi.spyOn(plugin, "stopRecording").mockRejectedValue(new Error("stop boom"));
+    videoTrack.dispatchEnded();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(errors).toHaveBeenCalledWith({
+      code: "AUTO_STOP_FAILED",
+      message: expect.stringContaining(
+        "Auto-stop on track end failed: stop boom",
+      ),
+    });
+  });
+
+  it("surfaces an error event when auto-stop over the limit fails", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000);
+    installDocument();
+    vi.stubGlobal("MediaRecorder", FakeMediaRecorder);
+
+    const videoTrack = new FakeTrack("video");
+    const displayStream = new FakeStream([videoTrack]);
+    const getDisplayMedia = vi.fn(
+      async () => displayStream as unknown as MediaStream,
+    );
+    setNavigator({
+      mediaDevices: { getDisplayMedia } as unknown as MediaDevices,
+    });
+
+    const plugin = new ScreenCaptureWeb();
+    const errors = vi.fn();
+    await plugin.addListener("error", errors);
+    await plugin.startRecording({ maxDuration: 1 });
+
+    vi.spyOn(plugin, "stopRecording").mockRejectedValue(
+      new Error("limit boom"),
+    );
+    vi.setSystemTime(3_000);
+    await vi.advanceTimersByTimeAsync(500);
+
+    expect(errors).toHaveBeenCalledWith({
+      code: "AUTO_STOP_FAILED",
+      message: expect.stringContaining(
+        "Auto-stop recording failed: limit boom",
+      ),
+    });
+  });
 });

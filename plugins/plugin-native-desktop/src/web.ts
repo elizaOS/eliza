@@ -355,6 +355,11 @@ export class DesktopWeb extends WebPlugin {
           idleTime: 0,
         };
       } catch (err) {
+        // error-policy:J4 the Battery API is an optional web capability; when a
+        // present getBattery() rejects we degrade to the honest "unknown" power
+        // state below rather than fail the call. No elizaOS logger is reachable
+        // in this dependency-free Capacitor web plugin; console is the webview
+        // surface.
         console.debug("[Desktop] Battery API access failed:", err);
       }
     }

@@ -473,6 +473,8 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
             try {
               listener(token, this.tokenIndex);
             } catch {
+              // error-policy:J7 a throwing listener must not kill the token
+              // emit loop for the others; drop the broken listener and continue.
               this.tokenListeners.delete(listener);
             }
           }
@@ -485,6 +487,8 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
     try {
       return await this.pluginLoadPromise;
     } catch (err) {
+      // error-policy:J2 clear the memoized load promise so a later call retries
+      // the native import, then rethrow the failure to the caller.
       this.pluginLoadPromise = null;
       throw err;
     }
@@ -518,6 +522,8 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
         const info = await this.getHardwareInfo();
         result = info.isSimulator === true;
       } catch {
+        // error-policy:J4 documented degrade: a probe failure resolves to
+        // `false` so real devices / Android are never forced onto CPU.
         result = false;
       }
     }
@@ -549,6 +555,8 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
           if (variant !== undefined) forkVariant = variant;
           else if (nativeKernels.length > 0) forkVariant = "buun-llama-cpp";
         } catch (err) {
+          // error-policy:J7 optional fork-kernel probe; diagnostics only, keep
+          // the stock-build fallback (empty kernels + "stock-llama-cpp").
           const message = err instanceof Error ? err.message : String(err);
           console.debug("[capacitor-llama] getNativeKernels probe failed", {
             error: message,
@@ -561,6 +569,8 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
         forkVariant,
       };
     } catch (error) {
+      // error-policy:J4 native probe failed; degrade to fallback info that
+      // carries the failure message (surfaced via HardwareInfo.mtpReason).
       return fallbackHardwareInfo(
         platform,
         error instanceof Error ? error.message : "native hardware probe failed",
@@ -635,8 +645,8 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
       try {
         await plugin.releaseContext({ contextId: this.contextId });
       } catch {
-        // The native side may have already cleared this context; safe to
-        // proceed to reinit on the same id.
+        // error-policy:J6 best-effort release before reusing the context id;
+        // the native side may have already cleared it — safe to reinit.
       }
     }
     this.loadedPath = null;
@@ -707,13 +717,14 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
         params,
       });
     } catch (err) {
-      // Unload-on-failure (#11612): a failed/partial init must not leave
-      // wired GPU buffers mapped — on iOS that footprint alone gets the
-      // process jetsammed on the next allocation.
+      // error-policy:J2 unload-on-failure (#11612): a failed/partial init must
+      // not leave wired GPU buffers mapped — on iOS that footprint alone gets
+      // the process jetsammed on the next allocation. Release, then rethrow.
       try {
         await plugin.releaseContext({ contextId: this.contextId });
       } catch {
-        // Native side may have already cleaned up the failed context.
+        // error-policy:J6 best-effort cleanup; the native side may have
+        // already cleaned up the failed context.
       }
       throw err;
     }
@@ -734,6 +745,8 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
           draftMax: options.draftMax ?? 3,
         });
       } catch (err) {
+        // error-policy:J4 optional fork feature; degrade to no spec-decode and
+        // warn observably, leaving the loaded context otherwise intact.
         const message = err instanceof Error ? err.message : String(err);
         console.warn(
           "[capacitor-llama] setSpecType failed; spec decode disabled",
@@ -754,6 +767,8 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
           cacheTypeV: options.cacheTypeV ?? "f16",
         });
       } catch (err) {
+        // error-policy:J4 optional fork bridge; degrade to the params-bag cache
+        // types and warn observably that the setter did not apply.
         const message = err instanceof Error ? err.message : String(err);
         console.warn(
           "[capacitor-llama] setCacheType failed; cache types may be unchanged",
@@ -770,7 +785,8 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
     try {
       await this.plugin.releaseContext({ contextId: this.contextId });
     } catch {
-      // Fall back to a release-all only when the per-context release fails:
+      // error-policy:J6 teardown recovery — fall back to a release-all only
+      // when the per-context release fails:
       // it risks tearing down sibling adapter instances, so it is reserved
       // for the pathological case where the native side has lost track of
       // our contextId.
@@ -984,6 +1000,8 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
     try {
       completionPromise = this.runNativeCompletion(options, params);
     } catch (err) {
+      // error-policy:J1 stream boundary: surface a synchronous launch failure
+      // as an observable error event on the generation stream.
       unsubscribe();
       const message = err instanceof Error ? err.message : String(err);
       yield { kind: "error", message, recoverable: false };
@@ -1005,6 +1023,8 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
         completionState.result = result;
       })
       .catch((err: unknown) => {
+        // error-policy:J1 capture the native rejection into stream state; it is
+        // surfaced below as an error event (and drives unload-on-failure).
         completionState.error =
           err instanceof Error ? err : { message: String(err) };
       })
@@ -1036,6 +1056,8 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
       try {
         await this.unload();
       } catch (unloadErr) {
+        // error-policy:J6 best-effort teardown after a decode failure; warn
+        // observably, then still surface the original error event below.
         console.warn(
           "[capacitor-llama] failed to unload after generation error",
           {
@@ -1160,11 +1182,13 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
         });
         tokenCount = tokenized.tokens.length;
       } catch (err) {
+        // error-policy:J7 the embedding already succeeded; the token count is
+        // auxiliary telemetry. A tokenize-probe failure is logged and the count
+        // stays at its 0 initializer — it never fails the embed.
         const message = err instanceof Error ? err.message : String(err);
         console.debug("[capacitor-llama] tokenize fallback", {
           error: message,
         });
-        tokenCount = 0;
       }
     }
     return { embedding: result.embedding, tokens: tokenCount };

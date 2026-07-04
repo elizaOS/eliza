@@ -139,6 +139,8 @@ async function getBatterySnapshot(): Promise<{
   try {
     battery = await nav.getBattery();
   } catch {
+    // error-policy:J4 Battery Status API present but rejects (permission/blocked);
+    // null triple is the designed "battery unknown" degrade, distinct from 0/false.
     return { onBattery: null, batteryLevel: null, isCharging: null };
   }
   const charging =

@@ -16,6 +16,10 @@ let warned = false;
 function warnOnce(): void {
   if (warned) return;
   warned = true;
+  // error-policy:J4 designed platform degrade — Wi-Fi is Android-only; on
+  // web/desktop the fallback returns empty/disabled DTOs (not failed data) and
+  // announces the unavailability once. No elizaOS logger is reachable in this
+  // dependency-free Capacitor web plugin; console is the webview surface.
   console.warn(`[ElizaWiFi] ${UNAVAILABLE_MESSAGE}`);
 }
 
