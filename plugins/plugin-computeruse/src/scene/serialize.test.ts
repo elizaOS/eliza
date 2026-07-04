@@ -1,15 +1,14 @@
+/**
+ * Scene serialization tests pin the token-budgeted JSON fence that the scene
+ * provider injects into prompts.
+ *
+ * The serializer caps per-display OCR, prefers the focused-display AX subtree,
+ * and clips background apps so high-resolution multi-monitor sessions stay
+ * prompt-sized while preserving actionable structure.
+ */
 import { describe, expect, it } from "vitest";
 import type { Scene, SceneApp, SceneOcrBox } from "./scene-types.js";
 import { serializeSceneForPrompt } from "./serialize.js";
-
-/**
- * Token-budget Scene serialization (#9105 M3 / WS6). `serializeSceneForPrompt`
- * caps the per-display OCR list, prefers the focused-display AX subtree, and
- * clips background apps so a 4k multi-monitor session doesn't blow the prompt
- * to thousands of tokens. `scene-provider.test.ts` only asserts a few
- * substrings of the output; none of the cap/sort/trim branches were pinned.
- * This does that, parsing the fenced JSON to assert structure.
- */
 
 const baseScene = (o: Partial<Scene> = {}): Scene => ({
   timestamp: 1000,

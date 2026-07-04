@@ -1,18 +1,16 @@
-// Normalized 0–1000 coordinate space for Computer Use × Vision (issue #9105, M2).
-//
-// Every grounder/OCR backend reports element positions in its own device-pixel
-// space, which is DPI- and resolution-dependent: the same on-screen button is
-// (1280, 720) on a 2560×1440 panel and (640, 360) on a 1280×720 one. The GET_SCREEN
-// envelope needs ONE canonical, DPI-stable coordinate space so a model's chosen
-// target maps back to a click identically regardless of capture resolution.
-//
-// Following the Unlimited-OCR prior art cited in the EPIC, that canonical space is
-// a 0–1000 normalized grid: positions are a fraction of the display, quantized to
-// 1000 buckets per axis. Convert to normalized at the grounding boundary, reason
-// in normalized space, then `fromNormalized()` back to logical pixels (which
-// `coords.ts:localToGlobal` then maps to the input driver's global space).
-//
-// Pure + deterministic; no DOM, no platform calls.
+/**
+ * Normalized coordinate conversion for Computer Use and Vision grounding.
+ *
+ * Grounders and OCR backends report positions in device-pixel spaces that vary
+ * by DPI and capture resolution. The GET_SCREEN envelope uses one 0-1000
+ * display-relative grid so a model's chosen target maps back to a click
+ * consistently across screen sizes.
+ *
+ * Conversion happens at the grounding boundary: positions enter normalized
+ * space for reasoning, then return to logical pixels before `coords.ts` maps
+ * them into the input driver's global coordinate space. The module is pure and
+ * deterministic, with no DOM or platform calls.
+ */
 
 import type { ScreenRegion } from "../types.js";
 

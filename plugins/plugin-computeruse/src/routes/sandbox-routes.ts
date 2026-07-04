@@ -1361,7 +1361,7 @@ function getPlatformInfo(): Record<string, string | boolean> {
     arch: require("node:os").arch(),
     dockerInstalled,
     dockerRunning,
-    // Legacy compat: dockerAvailable = running (old clients check this)
+    // Compatibility field: dockerAvailable mirrors the running daemon state.
     dockerAvailable: dockerRunning,
     appleContainerAvailable,
     wsl2: os === "win32" ? isWsl2Available() : false,

@@ -1,9 +1,12 @@
+/**
+ * Linux accessibility parser tests cover Hyprland and Sway window enumeration
+ * for the scene grounding tier.
+ *
+ * Both parsers are pure adapters over `hyprctl clients -j` and
+ * `swaymsg -t get_tree`, so fixture assertions can run on any CI host.
+ */
 import { describe, expect, it } from "vitest";
 import { parseHyprlandClients, parseSwayTree } from "./a11y-provider.js";
-
-// #9105 — Linux window enumeration for the a11y grounding tier reads `hyprctl
-// clients -j` (Hyprland) and `swaymsg -t get_tree` (Sway). Both parsers are pure
-// and Linux-specific, so lock them here (the right host to test them on).
 
 describe("parseHyprlandClients", () => {
   it("maps each client to a window node with display-absolute bbox", () => {

@@ -1,9 +1,13 @@
+/**
+ * Security hardening tests cover file-path credential blocklists and child
+ * process environment sanitization across POSIX and Windows path semantics.
+ */
 import os from "node:os";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ComputerUseApprovalManager } from "../approval-manager.js";
 import { sanitizeChildEnv, validateFilePath } from "../platform/security.js";
 
-// Captured at module load, BEFORE any test fakes `process.platform`. POSIX
+// Captured at module load before any test fakes `process.platform`. POSIX
 // absolute paths (`/etc/shadow`, `/home/<user>/…`) are only meaningful when
 // `node:path` resolves with POSIX semantics; on a Windows host `path.win32`
 // rewrites `/etc/shadow` → `C:\etc\shadow`, so the POSIX assertions cannot be

@@ -1,9 +1,10 @@
+/**
+ * Approval-mode guard tests validate untrusted strings received from disk or
+ * the route layer before they can affect the computer-use safety gate.
+ */
 import { describe, expect, it } from "vitest";
 import { isApprovalMode } from "./approval-manager.js";
 
-// #9105 computer-use — the approval mode persisted to disk / received over the
-// API is an untrusted string; the guard is what keeps an invalid mode from
-// silently disabling the safety gate. Pin every accepted + rejected value.
 describe("isApprovalMode", () => {
   it("accepts exactly the four real approval modes", () => {
     for (const m of ["full_control", "smart_approve", "approve_all", "off"]) {

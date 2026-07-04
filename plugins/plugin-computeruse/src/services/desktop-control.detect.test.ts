@@ -1,3 +1,10 @@
+/**
+ * Capability detection tests pin the desktop-control report consumed before
+ * computer-use capture or input dispatch attempts real platform work.
+ *
+ * The detector must degrade gracefully on headless CI hosts while staying
+ * internally consistent across Linux, macOS, and Windows capability fields.
+ */
 import { describe, expect, it } from "vitest";
 import {
   type DesktopControlCapability,
@@ -5,10 +12,6 @@ import {
   isHeadfulGuiAvailable,
 } from "./desktop-control.js";
 
-// #9105 — the Linux/macOS/Windows capability detector is what the CUA loop reads
-// before attempting capture/control. It must degrade gracefully (never throw)
-// and stay internally consistent across headful + headless hosts, so this test
-// is safe in CI either way.
 const isCap = (c: DesktopControlCapability) => {
   expect(typeof c.available).toBe("boolean");
   expect(typeof c.tool).toBe("string");

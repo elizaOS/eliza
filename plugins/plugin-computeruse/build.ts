@@ -6,8 +6,8 @@
  * Three Node/ESM entrypoints are bundled with linked sourcemaps and flat
  * `[name].[ext]` naming (index + register-routes at the dist root, the mobile
  * OCR provider under dist/mobile). Declarations are emitted declaration-only
- * from tsconfig.build.json. The emitted `dist/` is byte-identical to the
- * previous hand-rolled build.
+ * from tsconfig.build.json, preserving the package's established `dist/`
+ * layout for downstream imports.
  */
 import { buildPlugin } from "../plugin-build";
 

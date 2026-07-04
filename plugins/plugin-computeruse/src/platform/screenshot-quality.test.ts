@@ -1,17 +1,15 @@
+/**
+ * Screenshot quality tests pin the pure classifier that guards real-driver
+ * screenshot evidence lanes from empty or visually blank PNG captures.
+ *
+ * Synthetic metrics lock the empty floor, single-color rule, and dominant-color
+ * threshold without depending on live display capture.
+ */
 import { describe, expect, it } from "vitest";
 import {
   type ScreenshotQuality,
   screenshotQualityIssues,
 } from "./screenshot-quality";
-
-/**
- * Screenshot blank/one-color detection (#9105). `screenshotQualityIssues` is the
- * pure classifier that turns decoded PNG metrics into human-readable quality
- * problems — it gates the real-driver screenshot lanes, but the classifier
- * itself (the empty floor, the one-color rule, and the `>0.995` "effectively
- * one color" boundary) was only ever exercised through live PNG decoding. These
- * pin the thresholds against synthetic metrics.
- */
 
 const quality = (o: Partial<ScreenshotQuality>): ScreenshotQuality => ({
   width: 100,

@@ -1,12 +1,12 @@
+/**
+ * Multi-monitor coordinate translation tests cover local display pixels,
+ * OS-global pixels, macOS backing-store scaling, and display hit-testing.
+ *
+ * The input driver targets global coordinates, so this math is the boundary
+ * between model/display-local actions and platform-level mouse dispatch.
+ */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { DisplayInfo } from "./displays.js";
-
-/**
- * Multi-monitor coordinate translation (#9105/#9170). Each display has a local
- * top-left origin; the driver needs OS-global pixels. The math must offset by
- * the display origin, divide backing-store coords by scaleFactor on macOS only,
- * and map a global point back to the display that contains it.
- */
 
 const DISPLAYS: DisplayInfo[] = [
   {
