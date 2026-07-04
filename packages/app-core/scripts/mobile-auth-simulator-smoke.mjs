@@ -3,15 +3,44 @@
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { resolveMainAppDir } from "./lib/app-dir.mjs";
 import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
 
-const repoRoot = resolveRepoRootFromImportMeta(import.meta.url, {
-  fallbackToCwd: true,
-});
-const appDir = resolveMainAppDir(repoRoot, "app");
+// Resolve the app directory this smoke should target. When this elizaOS
+// checkout is nested inside a consumer monorepo that wraps it as `eliza/`,
+// `resolveRepoRootFromImportMeta` (by design for consumer wrappers) walks up
+// to the OUTER repo, so `resolveMainAppDir` audits the consumer's manifest
+// and fires the consumer's URL scheme (e.g. `milady://auth/callback`) instead
+// of this repo's `ai.elizaos.app` / `elizaos://`. Mirror the Android build
+// lane's `ELIZA_MOBILE_REPO_ROOT` pin (run-mobile-build.mjs) and add an
+// explicit `--app-dir` override so each repo's `test:sim:auth:*` lane
+// deterministically targets its own app. Precedence:
+//   --app-dir  >  ELIZA_MOBILE_REPO_ROOT  >  repo-root walk.
+export function resolveTargetAppDir(cliAppDir) {
+  if (cliAppDir) {
+    return { appDir: path.resolve(cliAppDir), source: "--app-dir" };
+  }
+  const pinned = process.env.ELIZA_MOBILE_REPO_ROOT?.trim();
+  if (pinned) {
+    const pinnedRoot = path.resolve(pinned);
+    return {
+      appDir: resolveMainAppDir(pinnedRoot, "app"),
+      source: "ELIZA_MOBILE_REPO_ROOT",
+      repoRoot: pinnedRoot,
+    };
+  }
+  const repoRoot = resolveRepoRootFromImportMeta(import.meta.url, {
+    fallbackToCwd: true,
+  });
+  return {
+    appDir: resolveMainAppDir(repoRoot, "app"),
+    source: "repo-root-walk",
+    repoRoot,
+  };
+}
 
-function parseArgs(argv) {
+export function parseArgs(argv) {
   const options = {
     platform: "both",
     registrationOnly: false,
@@ -20,6 +49,7 @@ function parseArgs(argv) {
     path: "auth/callback",
     query: "state=simulator-oauth-state&code=simulator-oauth-code",
     url: "",
+    appDir: "",
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -46,6 +76,9 @@ function parseArgs(argv) {
       case "--url":
         options.url = argv[++index] ?? "";
         break;
+      case "--app-dir":
+        options.appDir = argv[++index] ?? "";
+        break;
       case "--help":
       case "-h":
         printUsageAndExit();
@@ -68,11 +101,13 @@ Options:
   --serial <adb-serial>         Android emulator/device serial
   --path <path>                 Callback path. Default: auth/callback
   --query <query>               Callback query. Default: state=...&code=...
-  --url <url>                   Full callback URL override`);
+  --url <url>                   Full callback URL override
+  --app-dir <dir>               Pin the target app directory (overrides
+                                ELIZA_MOBILE_REPO_ROOT and the repo-root walk)`);
   process.exit(0);
 }
 
-function readAppIdentity() {
+function readAppIdentity(appDir) {
   const cfgPath = path.join(appDir, "app.config.ts");
   if (!fs.existsSync(cfgPath)) {
     throw new Error(`app.config.ts not found at ${cfgPath}`);
@@ -97,7 +132,7 @@ function assertFileExists(filePath) {
   }
 }
 
-function assertIosRegistration(app) {
+function assertIosRegistration(app, appDir) {
   const plistPath = path.join(appDir, "ios", "App", "App", "Info.plist");
   assertFileExists(plistPath);
   const plist = fs.readFileSync(plistPath, "utf8");
@@ -114,7 +149,7 @@ function assertIosRegistration(app) {
   return { platform: "ios", file: plistPath, scheme: app.urlScheme };
 }
 
-function assertAndroidRegistration(app) {
+function assertAndroidRegistration(app, appDir) {
   const manifestPath = path.join(
     appDir,
     "android",
@@ -180,7 +215,7 @@ function requestedPlatforms(platform) {
   }
 }
 
-function buildCallbackUrl(app, options) {
+export function buildCallbackUrl(app, options) {
   if (options.url) return options.url;
   const callbackPath = options.path.replace(/^\/+/, "");
   const query = options.query.replace(/^\?/, "");
@@ -279,9 +314,93 @@ function shellSingleQuote(value) {
   return `'${value.replace(/'/g, "'\\''")}'`;
 }
 
+// Parse the winning component from `cmd package resolve-activity` output.
+// We invoke it with `--brief`, which prints the resolved component as a bare
+// `<package>/<activity>` line (e.g. `ai.elizaos.app/.MainActivity`), or
+// `No activity found` when nothing handles the intent. To stay robust across
+// Android/adb versions we also accept the verbose `ResolveInfo` form:
+//   `packageName=<pkg>` is the PACKAGE identity (preferred),
+//   `name=<...>` is the ACTIVITY CLASS (NOT the package — must not be mistaken
+//   for the package), and `<pkg>/<activity>` may also appear inline.
+// Returns the resolved package identity (bare `<pkg>` or `<pkg>/<activity>`),
+// or "" when unresolved. Pure so it is unit-testable without a device.
+export function parseResolvedActivity(output) {
+  const lines = output
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  // `--brief` line: a bare `<pkg>/<activity>` component (contains a `/`, no `=`).
+  for (const line of lines) {
+    if (
+      line.includes("/") &&
+      !line.includes("=") &&
+      !/\s/.test(line) &&
+      /^[A-Za-z0-9_.]+\//.test(line)
+    ) {
+      return line;
+    }
+  }
+  // Verbose form: packageName= is authoritative for the package identity.
+  const packageName = output.match(/\bpackageName=([^\s]+)/)?.[1];
+  if (packageName) return packageName;
+  // Verbose ResolveInfo often embeds the component as `<pkg>/<activity>` after
+  // the flags; capture that (but NOT a bare `name=` activity class).
+  const inlineComponent = output.match(
+    /\b([A-Za-z0-9_.]+\/[A-Za-z0-9_.$]+)/,
+  )?.[1];
+  if (inlineComponent) return inlineComponent;
+  return "";
+}
+
+// Whether a resolved component belongs to the expected package. Pure/testable.
+export function resolvedActivityMatchesApp(resolvedName, appId) {
+  return resolvedName.startsWith(`${appId}/`) || resolvedName === appId;
+}
+
+// Assert the deep link resolves to the EXPECTED package before we fire it.
+// Without this the callback leg is effectively fire-and-forget: `am start`
+// with a VIEW intent will happily launch whatever app claims the scheme, so
+// a wrong-target run (consumer app registering the same-shaped scheme, or a
+// nested-checkout mis-resolution) exits 0 silently. `cmd package
+// resolve-activity` names the winning component up front so a mismatch fails
+// loudly. Returns the resolved component string for the JSON result.
+function assertAndroidResolvesToPackage(adb, serial, app, url) {
+  const resolveCommand = [
+    "cmd",
+    "package",
+    "resolve-activity",
+    "--brief",
+    "-a",
+    "android.intent.action.VIEW",
+    "-d",
+    shellSingleQuote(url),
+  ].join(" ");
+  const output = runCommand(
+    adb,
+    ["-s", serial, "shell", resolveCommand],
+    `Android resolve-activity for ${url}`,
+  );
+  const resolvedName = parseResolvedActivity(output);
+  if (!resolvedActivityMatchesApp(resolvedName, app.appId)) {
+    throw new Error(
+      `Android deep link ${url} does not resolve to ${app.appId} ` +
+        `(resolved to "${resolvedName || "<none>"}"). resolve-activity output:\n${output}`,
+    );
+  }
+  return resolvedName;
+}
+
 function runAndroidSimulator(app, url, options) {
   const adb = resolveAdb();
   const serial = resolveAndroidSerial(adb, options.serial);
+  // Preflight: the scheme must resolve to OUR package, not a consumer app
+  // that also claims it. Fails loudly on a wrong-target topology.
+  const resolvedActivity = assertAndroidResolvesToPackage(
+    adb,
+    serial,
+    app,
+    url,
+  );
   runCommand(
     adb,
     [
@@ -320,54 +439,72 @@ function runAndroidSimulator(app, url, options) {
       `Android callback did not resolve to ${app.appId}. am start output:\n${output}`,
     );
   }
-  return { platform: "android", serial, openedUrl: url };
+  return {
+    platform: "android",
+    serial,
+    openedUrl: url,
+    resolvedActivity,
+  };
 }
 
-const options = parseArgs(process.argv.slice(2));
-const app = readAppIdentity();
-const platforms = requestedPlatforms(options.platform);
-const registrationResults = platforms.map((platform) =>
-  platform === "ios"
-    ? assertIosRegistration(app)
-    : assertAndroidRegistration(app),
-);
-const url = buildCallbackUrl(app, options);
+function main() {
+  const options = parseArgs(process.argv.slice(2));
+  const { appDir, source: appDirSource } = resolveTargetAppDir(options.appDir);
+  const app = readAppIdentity(appDir);
+  const platforms = requestedPlatforms(options.platform);
+  const registrationResults = platforms.map((platform) =>
+    platform === "ios"
+      ? assertIosRegistration(app, appDir)
+      : assertAndroidRegistration(app, appDir),
+  );
+  const url = buildCallbackUrl(app, options);
 
-console.log(
-  `[mobile-auth-smoke] ${app.appName} (${app.appId}) callback URL: ${url}`,
-);
+  console.log(
+    `[mobile-auth-smoke] ${app.appName} (${app.appId}) scheme=${app.urlScheme} ` +
+      `appDir=${appDir} (${appDirSource}) callback URL: ${url}`,
+  );
 
-if (options.registrationOnly) {
+  if (options.registrationOnly) {
+    console.log(
+      JSON.stringify(
+        {
+          appDir,
+          appDirSource,
+          app,
+          registrationOnly: true,
+          registrations: registrationResults,
+        },
+        null,
+        2,
+      ),
+    );
+    return;
+  }
+
+  const simulatorResults = platforms.map((platform) =>
+    platform === "ios"
+      ? runIosSimulator(app, url, options)
+      : runAndroidSimulator(app, url, options),
+  );
+
   console.log(
     JSON.stringify(
       {
         appDir,
+        appDirSource,
         app,
-        registrationOnly: true,
         registrations: registrationResults,
+        simulators: simulatorResults,
       },
       null,
       2,
     ),
   );
-  process.exit(0);
 }
 
-const simulatorResults = platforms.map((platform) =>
-  platform === "ios"
-    ? runIosSimulator(app, url, options)
-    : runAndroidSimulator(app, url, options),
-);
-
-console.log(
-  JSON.stringify(
-    {
-      appDir,
-      app,
-      registrations: registrationResults,
-      simulators: simulatorResults,
-    },
-    null,
-    2,
-  ),
-);
+if (
+  process.argv[1] &&
+  pathToFileURL(process.argv[1]).href === import.meta.url
+) {
+  main();
+}
