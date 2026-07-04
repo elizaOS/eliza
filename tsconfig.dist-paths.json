@@ -21,6 +21,9 @@
       "@elizaos/app-model-tester": [
         "./plugins/app-model-tester/dist/index.d.ts"
       ],
+      "@elizaos/auth": [
+        "./packages/auth/dist/index.d.ts"
+      ],
       "@elizaos/bench-eliza-1": [
         "./packages/benchmarks/eliza-1/src/index.ts"
       ],
@@ -110,6 +113,9 @@
       ],
       "@elizaos/cloud-services-common": [
         "./packages/cloud/services/_common/src/index.ts"
+      ],
+      "@elizaos/cloud-ui": [
+        "./packages/cloud-ui/dist/index.d.ts"
       ],
       "@elizaos/configbench": [
         "./packages/benchmarks/configbench/dist/index.d.ts"
@@ -233,6 +239,9 @@
       ],
       "@elizaos/plugin-documents": [
         "./plugins/plugin-documents/dist/index.d.ts"
+      ],
+      "@elizaos/plugin-e2b-sandbox": [
+        "./plugins/plugin-e2b-sandbox/dist/index.d.ts"
       ],
       "@elizaos/plugin-edge-tts": [
         "./plugins/plugin-edge-tts/dist/index.d.ts"
@@ -458,6 +467,9 @@
       ],
       "@elizaos/plugin-telegram": [
         "./plugins/plugin-telegram/dist/index.d.ts"
+      ],
+      "@elizaos/plugin-telegram-standalone": [
+        "./plugins/plugin-telegram-standalone/dist/src/index.d.ts"
       ],
       "@elizaos/plugin-todos": [
         "./plugins/plugin-todos/dist/index.d.ts"
