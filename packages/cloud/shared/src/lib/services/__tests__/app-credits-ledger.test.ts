@@ -598,6 +598,14 @@ describe("checkBalance — reads the org ledger", () => {
       "Unable to read organization credit_balance",
     );
   });
+
+  test("rejects JavaScript-only org balance strings", async () => {
+    findOrgById.mockResolvedValue({ id: ORG_ID, credit_balance: "0x10" });
+
+    await expect(freshService().checkBalance(APP_ID, USER_ID, 40)).rejects.toThrow(
+      "Unable to read organization credit_balance",
+    );
+  });
 });
 
 // The per-inference billing PRICE quoted on the LLM hot path

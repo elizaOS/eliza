@@ -79,7 +79,10 @@ async function invalidateAppCacheKeys(appId: string, slug?: string): Promise<voi
 }
 
 function parseOrgCreditBalance(value: string | number | null | undefined): number {
-  if (value === null || value === undefined || String(value).trim() === "") {
+  if (value === null || value === undefined) {
+    throw new Error("Unable to read organization credit_balance");
+  }
+  if (typeof value === "string" && !/^[+-]?(?:\d+|\d*\.\d+)$/.test(value.trim())) {
     throw new Error("Unable to read organization credit_balance");
   }
   const balance = Number(value);

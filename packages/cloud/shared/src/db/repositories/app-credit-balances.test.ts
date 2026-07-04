@@ -10,6 +10,10 @@ describe("parseAppCreditBalanceNumber", () => {
     expect(parseAppCreditBalanceNumber("12.50", "credit_balance")).toBe(12.5);
   });
 
+  test("parses valid decimal strings with surrounding whitespace", () => {
+    expect(parseAppCreditBalanceNumber(" 12.50 ", "credit_balance")).toBe(12.5);
+  });
+
   test("parses valid numeric aggregate values", () => {
     expect(parseAppCreditBalanceNumber(3, "userCount")).toBe(3);
   });
@@ -32,5 +36,10 @@ describe("parseAppCreditBalanceNumber", () => {
     expect(() => parseAppCreditBalanceNumber("12.5oops", "totalPurchased")).toThrow(
       /totalPurchased/,
     );
+  });
+
+  test("throws on JavaScript-only numeric strings", () => {
+    expect(() => parseAppCreditBalanceNumber("0x10", "credit_balance")).toThrow(/credit_balance/);
+    expect(() => parseAppCreditBalanceNumber("1e3", "credit_balance")).toThrow(/credit_balance/);
   });
 });
