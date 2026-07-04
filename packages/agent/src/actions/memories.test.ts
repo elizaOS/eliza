@@ -13,6 +13,7 @@ const AGENT_ID = "00000000-0000-0000-0000-0000000000aa" as UUID;
 const USER_ID = "00000000-0000-0000-0000-0000000000bb" as UUID;
 const ROOM_ID = "00000000-0000-0000-0000-0000000000cc" as UUID;
 const SIBLING_ID = "00000000-0000-0000-0000-0000000000dd" as UUID;
+const OTHER_USER_ID = "00000000-0000-0000-0000-0000000000ee" as UUID;
 
 type StoredRow = { memory: Memory; tableName: string; unique?: boolean };
 
@@ -337,6 +338,49 @@ describe("MEMORY op:delete by query", () => {
     expect((result.values as { deletedCount: number }).deletedCount).toBe(3);
     expect(rows).toHaveLength(1);
     expect(rows[0].memory.content.text).toBe("nubs lives on a boat");
+  });
+
+  it("scopes delete-by-query to the requesting user's identity cluster", async () => {
+    // Multi-user room: another entity holds a fact with the exact same text.
+    // "Forget that I play guitar" from USER_ID must remove only USER_ID's
+    // row — a text-only match would silently delete the other user's fact.
+    const { runtime, rows } = makeRuntime();
+    seedFact(rows, { text: "i play guitar", entityId: USER_ID });
+    seedFact(rows, { text: "i play guitar", entityId: OTHER_USER_ID });
+
+    const result = await runAction(runtime, makeMessage(), {
+      action: "delete",
+      query: "i play guitar",
+      confirm: true,
+    });
+
+    expect(result.success).toBe(true);
+    expect((result.values as { deletedCount: number }).deletedCount).toBe(1);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].memory.entityId).toBe(OTHER_USER_ID);
+  });
+
+  it("deletes cluster-sibling rows of the requester but not a third user's", async () => {
+    // The requester scope is identity-cluster expanded (getRelatedEntityIds),
+    // so duplicates stored under the requester's sibling ids are still one
+    // logical fact — while an unrelated user's identical text stays out.
+    const { runtime, rows } = makeRuntime({
+      clusters: { [USER_ID]: [SIBLING_ID] },
+    });
+    seedFact(rows, { text: "i play guitar", entityId: USER_ID });
+    seedFact(rows, { text: "i play guitar", entityId: SIBLING_ID });
+    seedFact(rows, { text: "i play guitar", entityId: OTHER_USER_ID });
+
+    const result = await runAction(runtime, makeMessage(), {
+      action: "delete",
+      query: "i play guitar",
+      confirm: true,
+    });
+
+    expect(result.success).toBe(true);
+    expect((result.values as { deletedCount: number }).deletedCount).toBe(2);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].memory.entityId).toBe(OTHER_USER_ID);
   });
 
   it("refuses an ambiguous query matching distinct memories and lists ids", async () => {

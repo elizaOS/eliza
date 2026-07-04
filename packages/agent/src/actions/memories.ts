@@ -367,6 +367,7 @@ async function doUpdate(
 
 async function doDelete(
   runtime: IAgentRuntime,
+  message: Memory,
   params: MemoryParams,
 ): Promise<ActionResult> {
   const memoryParam = parseUuidParam(params.memoryId, "memoryId");
@@ -401,7 +402,7 @@ async function doDelete(
   if (!query) {
     return fail("memoryId or query is required.", "MEMORY_MISSING_ID");
   }
-  return doDeleteByQuery(runtime, params, query);
+  return doDeleteByQuery(runtime, message, params, query);
 }
 
 /**
@@ -411,9 +412,15 @@ async function doDelete(
  * one logical fact — so all rows of the single matched text are removed.
  * A query that strongly matches more than one distinct text is ambiguous:
  * refuse and list the candidates so the model can delete by exact id.
+ *
+ * The read is pinned to the requesting entity's identity cluster: a text-only
+ * match in a multi-user room would also hit another user's identical-text
+ * fact, so "forget that I play guitar" may only remove the asking user's own
+ * rows. Cross-entity deletes must go through op:search + delete by memoryId.
  */
 async function doDeleteByQuery(
   runtime: IAgentRuntime,
+  message: Memory,
   params: MemoryParams,
   query: string,
 ): Promise<ActionResult> {
@@ -424,10 +431,16 @@ async function doDeleteByQuery(
   const roomParam = parseUuidParam(params.roomId, "roomId");
   if (!roomParam.ok) return roomParam.result;
 
+  // Requester wins over a model-supplied entityId: model ids arrive as free
+  // text and could name another user, reopening the cross-user match this
+  // scope exists to close. The parsed param is a fallback only for messages
+  // that carry no entity (internal maintenance invocations).
+  const scopeEntityId = message.entityId ?? entityParam.id;
+
   const limit = clampLimit(params.limit, 50);
   const candidates = await collectCandidates(runtime, {
     type,
-    entityId: entityParam.id,
+    entityId: scopeEntityId,
     roomId: roomParam.id,
     query,
     limit,
@@ -546,7 +559,7 @@ export const memoryAction: Action = {
         case "update":
           return await doUpdate(runtime, params);
         case "delete":
-          return await doDelete(runtime, params);
+          return await doDelete(runtime, message, params);
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -607,7 +620,7 @@ export const memoryAction: Action = {
     {
       name: "query",
       description:
-        "search/delete: case-insensitive text match against memory content. delete: resolves the memory to remove when memoryId is unknown.",
+        "search/delete: case-insensitive text match against memory content. delete: resolves the memory to remove when memoryId is unknown; scoped to the requesting user's own memories.",
       required: false,
       schema: { type: "string" as const },
     },
