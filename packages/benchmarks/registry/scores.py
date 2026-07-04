@@ -998,6 +998,24 @@ def _score_from_meeting_transcription_proof_json(data: JSONValue) -> ScoreExtrac
                     score_row["observed_score"],
                     ctx=f"meeting_transcription_proof:generated_artifact_scores[{index}].observed_score",
                 )
+    baseline_comparisons = root.get("baseline_comparisons")
+    baseline_count = len(baseline_comparisons) if isinstance(baseline_comparisons, list) else 0
+    open_source_run_count = 0
+    internal_baseline_count = 0
+    if isinstance(baseline_comparisons, list):
+        for comparison in baseline_comparisons:
+            if not isinstance(comparison, dict):
+                continue
+            if comparison.get("comparison_type") == "open_source" and comparison.get("run_status") in {
+                "run",
+                "imported",
+            }:
+                open_source_run_count += 1
+            if (
+                comparison.get("id") == "eliza_current_baseline"
+                and comparison.get("comparison_type") == "internal_baseline"
+            ):
+                internal_baseline_count += 1
     publishable = root.get("publishable") is True
     if lane == "real_product":
         if not publishable:
@@ -1040,6 +1058,12 @@ def _score_from_meeting_transcription_proof_json(data: JSONValue) -> ScoreExtrac
             raise ValueError(
                 "meeting_transcription_proof: real lane requires complete generated artifact scores"
             )
+        if baseline_count < 7:
+            raise ValueError("meeting_transcription_proof: real lane requires baseline comparisons")
+        if open_source_run_count < 1:
+            raise ValueError("meeting_transcription_proof: real lane requires an open-source baseline run")
+        if internal_baseline_count < 1:
+            raise ValueError("meeting_transcription_proof: real lane requires current Eliza baseline")
     elif publishable:
         raise ValueError("meeting_transcription_proof: mocked lane cannot be publishable")
 
@@ -1061,6 +1085,9 @@ def _score_from_meeting_transcription_proof_json(data: JSONValue) -> ScoreExtrac
             "evidence_file_count": evidence_count,
             "speaker_name_provenance_count": speaker_name_provenance_count,
             "audio_visual_case_count": audio_visual_case_count,
+            "baseline_comparison_count": baseline_count,
+            "open_source_baseline_run_count": open_source_run_count,
+            "internal_baseline_count": internal_baseline_count,
             "transcript_quality": metrics.get("transcript_quality") or 0,
             "diarization_quality": metrics.get("diarization_quality") or 0,
             "speaker_identity_quality": metrics.get("speaker_identity_quality") or 0,

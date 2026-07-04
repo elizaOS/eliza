@@ -156,6 +156,15 @@ action items, decisions, open questions, memory entities, hallucination rate,
 omission rate, and source grounding. Live-model artifact scores are still
 expected to attach real trajectories and reviewed outputs in the manifest.
 
+Real manifests must include baseline comparison rows for the current Eliza path,
+Otter-style bot transcription, Granola-style bot-free capture, Zoom native
+notes/transcripts, Google Meet/Gemini notes, WhisperX + pyannote, and NeMo
+Sortformer. Rows must mark each system as `run`, `imported`, or `not_run` with a
+reason for skipped systems; at least one open-source baseline must be run or
+imported, and the current Eliza production baseline must always be present. Rows
+track capture/privacy mode, covered meeting conditions, comparison metrics,
+artifact references, manual review status, evidence, and the failure policy.
+
 ## Fixture Manifest
 
 `fixtures/mock-meeting-manifest.json` describes the minimum canonical meeting

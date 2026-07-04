@@ -136,6 +136,60 @@ REQUIRED_GENERATED_ARTIFACT_SCORE_FIELDS = {
     "proof",
 }
 GENERATED_ARTIFACT_JUDGE_MODES = {"deterministic", "live_model", "manual"}
+REQUIRED_BASELINE_COMPARISONS = {
+    "eliza_current_baseline",
+    "otter_product_baseline",
+    "granola_product_baseline",
+    "zoom_native_notes_baseline",
+    "google_meet_gemini_notes_baseline",
+    "whisperx_pyannote_open_source_baseline",
+    "nemo_sortformer_open_source_baseline",
+}
+REQUIRED_BASELINE_COMPARISON_FIELDS = {
+    "id",
+    "system",
+    "comparison_type",
+    "run_status",
+    "capture_mode",
+    "privacy_mode",
+    "conditions",
+    "metrics",
+    "eliza_artifact",
+    "baseline_artifact",
+    "manual_review_status",
+    "evidence",
+    "failure_policy",
+}
+BASELINE_COMPARISON_TYPES = {
+    "external_product",
+    "open_source",
+    "internal_baseline",
+}
+BASELINE_RUN_STATUSES = {"run", "imported", "not_run"}
+BASELINE_REVIEW_STATUSES = {"reviewed", "not_applicable"}
+REQUIRED_BASELINE_CONDITIONS = {
+    "speech_over_music",
+    "speech_over_noise",
+    "speech_over_babble",
+    "overlapped_speech",
+    "far_field_reverberant_room",
+    "multiple_people_single_stream",
+    "shared_room_microphone",
+}
+REQUIRED_BASELINE_METRICS = {
+    "wer",
+    "cer",
+    "der",
+    "jer",
+    "cpwer",
+    "wder",
+    "speaker_name_accuracy",
+    "action_item_f1",
+    "decision_f1",
+    "unsupported_claim_rate",
+    "latency_ms",
+    "privacy_capture_mode",
+}
 REQUIRED_SPEAKER_NAME_PROVENANCE_CASES = {
     "platform_roster_name",
     "calendar_attendee_name",
@@ -928,6 +982,124 @@ def _validate_generated_artifact_scores(manifest: dict[str, Any]) -> list[dict[s
     return sorted(normalized, key=lambda row: row["id"])
 
 
+def _validate_baseline_comparisons(manifest: dict[str, Any]) -> tuple[list[dict[str, Any]], set[str]]:
+    baseline_comparisons = manifest.get("baseline_comparisons")
+    if not isinstance(baseline_comparisons, list) or not baseline_comparisons:
+        raise ValueError("baseline_comparisons must be a non-empty array")
+
+    comparison_ids: set[str] = set()
+    comparison_types: set[str] = set()
+    covered_conditions: set[str] = set()
+    covered_metrics: set[str] = set()
+    referenced_evidence: set[str] = set()
+    has_open_source_run = False
+    has_internal_baseline = False
+    normalized: list[dict[str, Any]] = []
+
+    for index, comparison in enumerate(baseline_comparisons):
+        if not isinstance(comparison, dict):
+            raise ValueError(f"baseline_comparisons[{index}] must be an object")
+        missing_fields = REQUIRED_BASELINE_COMPARISON_FIELDS - set(comparison)
+        if missing_fields:
+            raise ValueError(f"baseline_comparisons[{index}] missing fields: {sorted(missing_fields)}")
+        comparison_id = comparison.get("id")
+        if not isinstance(comparison_id, str) or not comparison_id.strip():
+            raise ValueError(f"baseline_comparisons[{index}].id must be a non-empty string")
+        comparison_ids.add(comparison_id)
+        system = comparison.get("system")
+        if not isinstance(system, str) or not system.strip():
+            raise ValueError(f"baseline_comparisons[{index}].system must be a non-empty string")
+        comparison_type = comparison.get("comparison_type")
+        if not isinstance(comparison_type, str) or comparison_type not in BASELINE_COMPARISON_TYPES:
+            raise ValueError(
+                f"baseline_comparisons[{index}].comparison_type must be one of {sorted(BASELINE_COMPARISON_TYPES)}"
+            )
+        comparison_types.add(comparison_type)
+        run_status = comparison.get("run_status")
+        if not isinstance(run_status, str) or run_status not in BASELINE_RUN_STATUSES:
+            raise ValueError(
+                f"baseline_comparisons[{index}].run_status must be one of {sorted(BASELINE_RUN_STATUSES)}"
+            )
+        not_run_reason = comparison.get("not_run_reason")
+        if run_status == "not_run" and (
+            not isinstance(not_run_reason, str) or not not_run_reason.strip()
+        ):
+            raise ValueError(f"baseline_comparisons[{index}].not_run_reason must explain skipped systems")
+        capture_mode = comparison.get("capture_mode")
+        if not isinstance(capture_mode, str) or not capture_mode.strip():
+            raise ValueError(f"baseline_comparisons[{index}].capture_mode must be a non-empty string")
+        privacy_mode = comparison.get("privacy_mode")
+        if not isinstance(privacy_mode, str) or not privacy_mode.strip():
+            raise ValueError(f"baseline_comparisons[{index}].privacy_mode must be a non-empty string")
+        conditions = _as_set(comparison.get("conditions"), field=f"baseline_comparisons[{index}].conditions")
+        metrics = _as_set(comparison.get("metrics"), field=f"baseline_comparisons[{index}].metrics")
+        unknown_metrics = metrics - REQUIRED_BASELINE_METRICS
+        if unknown_metrics:
+            raise ValueError(f"baseline_comparisons[{index}] references unknown metrics: {sorted(unknown_metrics)}")
+        eliza_artifact = comparison.get("eliza_artifact")
+        if not isinstance(eliza_artifact, str) or not eliza_artifact.strip():
+            raise ValueError(f"baseline_comparisons[{index}].eliza_artifact must be a non-empty string")
+        baseline_artifact = comparison.get("baseline_artifact")
+        if not isinstance(baseline_artifact, str) or not baseline_artifact.strip():
+            raise ValueError(f"baseline_comparisons[{index}].baseline_artifact must be a non-empty string")
+        manual_review_status = comparison.get("manual_review_status")
+        if not isinstance(manual_review_status, str) or manual_review_status not in BASELINE_REVIEW_STATUSES:
+            raise ValueError(
+                f"baseline_comparisons[{index}].manual_review_status must be one of {sorted(BASELINE_REVIEW_STATUSES)}"
+            )
+        evidence = _as_set(comparison.get("evidence"), field=f"baseline_comparisons[{index}].evidence")
+        unknown_evidence = evidence - REQUIRED_EVIDENCE
+        if unknown_evidence:
+            raise ValueError(f"baseline_comparisons[{index}] references unknown evidence: {sorted(unknown_evidence)}")
+        failure_policy = comparison.get("failure_policy")
+        if not isinstance(failure_policy, str) or not failure_policy.strip():
+            raise ValueError(f"baseline_comparisons[{index}].failure_policy must be a non-empty string")
+
+        covered_conditions.update(conditions)
+        covered_metrics.update(metrics)
+        referenced_evidence.update(evidence)
+        if comparison_type == "open_source" and run_status in {"run", "imported"}:
+            has_open_source_run = True
+        if comparison_id == "eliza_current_baseline" and comparison_type == "internal_baseline":
+            has_internal_baseline = True
+        normalized.append(
+            {
+                "id": comparison_id,
+                "system": system,
+                "comparison_type": comparison_type,
+                "run_status": run_status,
+                "not_run_reason": not_run_reason if isinstance(not_run_reason, str) else "",
+                "capture_mode": capture_mode,
+                "privacy_mode": privacy_mode,
+                "conditions": sorted(conditions),
+                "metrics": sorted(metrics),
+                "eliza_artifact": eliza_artifact,
+                "baseline_artifact": baseline_artifact,
+                "manual_review_status": manual_review_status,
+                "evidence": sorted(evidence),
+                "failure_policy": failure_policy,
+            }
+        )
+
+    missing_comparisons = REQUIRED_BASELINE_COMPARISONS - comparison_ids
+    if missing_comparisons:
+        raise ValueError(f"missing baseline comparisons: {sorted(missing_comparisons)}")
+    missing_types = BASELINE_COMPARISON_TYPES - comparison_types
+    if missing_types:
+        raise ValueError(f"baseline_comparisons missing types: {sorted(missing_types)}")
+    missing_conditions = REQUIRED_BASELINE_CONDITIONS - covered_conditions
+    if missing_conditions:
+        raise ValueError(f"baseline_comparisons missing conditions: {sorted(missing_conditions)}")
+    missing_metrics = REQUIRED_BASELINE_METRICS - covered_metrics
+    if missing_metrics:
+        raise ValueError(f"baseline_comparisons missing metrics: {sorted(missing_metrics)}")
+    if not has_open_source_run:
+        raise ValueError("baseline_comparisons must include at least one open-source run or import")
+    if not has_internal_baseline:
+        raise ValueError("baseline_comparisons must include the current Eliza internal baseline")
+    return sorted(normalized, key=lambda comparison: comparison["id"]), referenced_evidence
+
+
 def validate_manifest(manifest: dict[str, Any], *, lane: str, manifest_path: Path) -> dict[str, Any]:
     if lane not in LANES:
         raise ValueError(f"lane must be one of {sorted(LANES)}")
@@ -988,6 +1160,7 @@ def validate_manifest(manifest: dict[str, Any], *, lane: str, manifest_path: Pat
     speaker_name_provenance, speaker_name_evidence_types = _validate_speaker_name_provenance(manifest)
     audio_visual_cases, audio_visual_evidence_types = _validate_audio_visual_cases(manifest)
     generated_artifact_scores = _validate_generated_artifact_scores(manifest)
+    baseline_comparisons, baseline_evidence_types = _validate_baseline_comparisons(manifest)
 
     metric_values = _validate_metrics(manifest.get("metrics"), lane=lane)
 
@@ -1018,6 +1191,9 @@ def validate_manifest(manifest: dict[str, Any], *, lane: str, manifest_path: Pat
         missing_audio_visual_evidence = audio_visual_evidence_types - set(evidence_files)
         if missing_audio_visual_evidence:
             raise ValueError(f"audio visual evidence files missing: {sorted(missing_audio_visual_evidence)}")
+        missing_baseline_evidence = baseline_evidence_types - set(evidence_files)
+        if missing_baseline_evidence:
+            raise ValueError(f"baseline comparison evidence files missing: {sorted(missing_baseline_evidence)}")
 
     return {
         "surfaces": sorted(surfaces),
@@ -1031,6 +1207,7 @@ def validate_manifest(manifest: dict[str, Any], *, lane: str, manifest_path: Pat
         "speaker_name_provenance": speaker_name_provenance,
         "audio_visual_cases": audio_visual_cases,
         "generated_artifact_scores": generated_artifact_scores,
+        "baseline_comparisons": baseline_comparisons,
         "metrics": metric_values,
         "evidence_files": evidence_files,
         "provider_mode": provider_mode,

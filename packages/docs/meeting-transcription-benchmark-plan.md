@@ -55,6 +55,14 @@ attribution, and shared-room uncertainty handling. Each operation must declare
 evidence, metrics, privacy controls, and the confidence policy for when speaker
 names are applied or withheld.
 
+Every manifest must also enumerate baseline comparisons against external
+products, open-source baselines, and the current elizaOS production path. The
+required comparison rows are Otter-style bot transcription, Granola-style
+bot-free capture, Zoom native notes/transcripts, Google Meet/Gemini notes,
+WhisperX + pyannote, NeMo Sortformer, and `eliza_current_baseline`. Commercial
+systems that cannot be run are `not_run` with a reason, never counted as pass.
+At least one open-source row must be run or imported.
+
 ## Registry Contract
 
 The integrated benchmark id is `meeting_transcription_proof`.
@@ -81,6 +89,9 @@ The real lane refuses non-evidence reports. It requires:
 - speaker operation coverage for enrollment, recognition, unknown speaker
   creation, naming correction, merge/split, deletion, post-deletion replay,
   multi-speaker single-stream attribution, and shared-room uncertainty;
+- baseline comparison coverage for required external product, open-source, and
+  internal baseline rows, with at least one open-source run/import and the
+  current Eliza production baseline;
 - all required scenario coverage IDs;
 - each scenario's evidence references are valid and covered by the manifest's
   evidence inventory;
@@ -130,3 +141,6 @@ without reading code:
   consent/retention pass status.
 - dataset manifests/checksums/license notes showing the public or controlled
   corpus inputs behind the acoustic stress cases.
+- baseline comparison artifacts for each compared system, including terms/usage
+  notes for commercial imports and manual review notes for at least one
+  transcript and one notes artifact per compared system.

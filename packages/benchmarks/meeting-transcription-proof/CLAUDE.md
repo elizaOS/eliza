@@ -113,6 +113,18 @@ expected resolution. Low-confidence inferred names cannot be reported as
 confirmed identities; they must request confirmation, withhold the name, or
 preserve an unknown speaker label.
 
+## Baseline Comparison Contract
+
+The real lane requires baseline comparison rows for the current Eliza path,
+Otter-style bot transcription, Granola-style bot-free capture, Zoom native
+notes/transcripts, Google Meet/Gemini notes, WhisperX + pyannote, and NeMo
+Sortformer. Rows must mark each system as `run`, `imported`, or `not_run` with a
+reason for skipped systems; at least one open-source baseline must be run or
+imported, and the current Eliza production baseline must always be present.
+Rows track capture/privacy mode, covered meeting conditions, comparison
+metrics, artifact references, manual review status, evidence, and the failure
+policy.
+
 ## Evidence
 
 Mocked reports prove plumbing only. Real reports must reference reviewed audio,

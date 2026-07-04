@@ -39,6 +39,10 @@ def _fixture_generated_artifact_scores() -> list[object]:
     return json.loads(FIXTURE_MANIFEST.read_text(encoding="utf-8"))["generated_artifact_scores"]
 
 
+def _fixture_baseline_comparisons() -> list[object]:
+    return json.loads(FIXTURE_MANIFEST.read_text(encoding="utf-8"))["baseline_comparisons"]
+
+
 def _base_manifest(provider_mode: str = "real_zoom_meet") -> dict[str, object]:
     return {
         "provider_mode": provider_mode,
@@ -67,6 +71,7 @@ def _base_manifest(provider_mode: str = "real_zoom_meet") -> dict[str, object]:
         "speaker_name_provenance": _fixture_speaker_name_provenance(),
         "audio_visual_cases": _fixture_audio_visual_cases(),
         "generated_artifact_scores": _fixture_generated_artifact_scores(),
+        "baseline_comparisons": _fixture_baseline_comparisons(),
         "metrics": {
             "transcript_quality": 0.91,
             "diarization_quality": 0.82,
@@ -126,6 +131,7 @@ def test_mocked_plumbing_fixture_is_not_publishable() -> None:
     assert len(report["speaker_name_provenance"]) == len(_fixture_speaker_name_provenance())
     assert len(report["audio_visual_cases"]) == len(_fixture_audio_visual_cases())
     assert len(report["generated_artifact_scores"]) == len(_fixture_generated_artifact_scores())
+    assert len(report["baseline_comparisons"]) == len(_fixture_baseline_comparisons())
 
 
 def test_real_lane_requires_non_mock_provider(tmp_path: Path) -> None:
@@ -556,6 +562,55 @@ def test_generated_artifact_scores_require_judge_proof(tmp_path: Path) -> None:
         build_report(lane="real_product", manifest_path=manifest)
 
 
+def test_real_lane_requires_baseline_comparisons(tmp_path: Path) -> None:
+    manifest_data = _base_manifest()
+    manifest_data.pop("baseline_comparisons")
+    manifest = _write_manifest(tmp_path, manifest_data)
+
+    with pytest.raises(ValueError, match="baseline_comparisons must be a non-empty array"):
+        build_report(lane="real_product", manifest_path=manifest)
+
+
+def test_baseline_comparisons_require_all_systems(tmp_path: Path) -> None:
+    manifest_data = _base_manifest()
+    manifest_data["baseline_comparisons"] = [
+        row
+        for row in _fixture_baseline_comparisons()
+        if isinstance(row, dict) and row.get("id") != "otter_product_baseline"
+    ]
+    manifest = _write_manifest(tmp_path, manifest_data)
+
+    with pytest.raises(ValueError, match="missing baseline comparisons"):
+        build_report(lane="real_product", manifest_path=manifest)
+
+
+def test_baseline_not_run_rows_require_reason(tmp_path: Path) -> None:
+    manifest_data = _base_manifest()
+    rows = _fixture_baseline_comparisons()
+    assert isinstance(rows[1], dict)
+    rows[1] = {key: value for key, value in rows[1].items() if key != "not_run_reason"}
+    manifest_data["baseline_comparisons"] = rows
+    manifest = _write_manifest(tmp_path, manifest_data)
+
+    with pytest.raises(ValueError, match="not_run_reason must explain skipped systems"):
+        build_report(lane="real_product", manifest_path=manifest)
+
+
+def test_baseline_comparisons_require_open_source_run_or_import(tmp_path: Path) -> None:
+    manifest_data = _base_manifest()
+    rows: list[object] = []
+    for row in _fixture_baseline_comparisons():
+        if isinstance(row, dict) and row.get("comparison_type") == "open_source":
+            rows.append({**row, "run_status": "not_run", "not_run_reason": "not installed for this test"})
+        else:
+            rows.append(row)
+    manifest_data["baseline_comparisons"] = rows
+    manifest = _write_manifest(tmp_path, manifest_data)
+
+    with pytest.raises(ValueError, match="at least one open-source run or import"):
+        build_report(lane="real_product", manifest_path=manifest)
+
+
 def test_real_lane_scores_lowest_required_quality_and_resolves_evidence(tmp_path: Path) -> None:
     evidence_names = [
         "audio",
@@ -638,6 +693,20 @@ def test_real_lane_scores_lowest_required_quality_and_resolves_evidence(tmp_path
     }
     assert report["metrics"]["summary_factuality"] == pytest.approx(0.92)
     assert report["metrics"]["hallucination_rate"] == pytest.approx(0.02)
+    assert {row["id"] for row in report["baseline_comparisons"]} >= {
+        "eliza_current_baseline",
+        "otter_product_baseline",
+        "granola_product_baseline",
+        "zoom_native_notes_baseline",
+        "google_meet_gemini_notes_baseline",
+        "whisperx_pyannote_open_source_baseline",
+        "nemo_sortformer_open_source_baseline",
+    }
+    assert any(
+        row["comparison_type"] == "open_source" and row["run_status"] in {"run", "imported"}
+        for row in report["baseline_comparisons"]
+    )
+    assert any(row["comparison_type"] == "internal_baseline" for row in report["baseline_comparisons"])
     assert all(dataset["version"] for dataset in report["dataset_sources"])
     assert all(dataset["checksum"] for dataset in report["dataset_sources"])
     assert all(dataset["sample_count"] > 0 for dataset in report["dataset_sources"])
