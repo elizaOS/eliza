@@ -112,7 +112,8 @@ export function InboxUnreadWidget({
       // Skip the state update (and the re-render) when the poll is unchanged.
       setUnread((prev) => (unreadEqual(prev, next) ? prev : next));
     } catch {
-      // Best-effort: keep the last good data on a transient fetch failure.
+      // error-policy:J4 glance tile — keep the last good data on a transient
+      // fetch failure; the next tick refreshes.
     } finally {
       setLoaded(true);
     }

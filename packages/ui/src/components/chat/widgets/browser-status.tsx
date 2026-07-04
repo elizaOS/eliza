@@ -34,6 +34,7 @@ function tabLabel(tab: BrowserWorkspaceTab): string {
   try {
     return new URL(url).hostname.replace(/^www\./, "") || url;
   } catch {
+    // error-policy:J3 unparseable tab URL — label with the raw string
     return url;
   }
 }
@@ -74,7 +75,8 @@ export function BrowserStatusSidebarWidget(_props: ChatSidebarWidgetProps) {
       const next = await client.getBrowserWorkspace();
       setSnapshot(next);
     } catch {
-      // Transient errors — keep the last snapshot.
+      // error-policy:J4 4s poll — keep the last good snapshot on a transient
+      // failure; the next tick refreshes.
     }
   }, [authenticated]);
 
@@ -102,7 +104,9 @@ export function BrowserStatusSidebarWidget(_props: ChatSidebarWidgetProps) {
       try {
         await client.showBrowserWorkspaceTab?.(tab.id);
       } catch {
-        // Ignore — navigation still happens.
+        // error-policy:J4 focusing the tab is a best-effort enhancement (web
+        // mode has no backend for it); the /browser navigation below is the
+        // outcome the user sees either way.
       }
     })();
     setTab("browser");

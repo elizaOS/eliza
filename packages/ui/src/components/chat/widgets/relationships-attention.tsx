@@ -155,8 +155,8 @@ export function RelationshipsAttentionWidget({
       // Skip the state update (and the re-render) when the poll is unchanged.
       setData((prev) => (relationshipsEqual(prev, next) ? prev : next));
     } catch {
-      // Network/agent failure — keep the last good data (or empty); never
-      // surface a broken card. Matches todo.tsx's silent-fallback catch.
+      // error-policy:J4 glance tile — keep the last good data on a poll
+      // failure; never surface a broken card (todo.tsx pattern).
     }
   }, [authenticated]);
 

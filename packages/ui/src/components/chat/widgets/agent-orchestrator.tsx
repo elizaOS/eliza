@@ -487,6 +487,7 @@ function AppRunsWidget({
           if (changed) setState("appRuns", nextRunsSafe);
         });
       } catch (refreshError) {
+        // error-policy:J4 load failure renders the widget's error state
         if (cancelled) return;
         setError(
           getClientErrorMessage(
@@ -829,7 +830,8 @@ function OrchestratorRoomWidget(_props: ChatSidebarWidgetProps) {
       const next = await client.getOrchestratorRooms();
       setRooms(next);
     } catch {
-      // Leave the last good roster in place on a transient poll failure.
+      // error-policy:J4 poll — leave the last good roster in place on a
+      // transient failure; the next tick refreshes.
     } finally {
       setLoading(false);
     }

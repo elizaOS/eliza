@@ -133,6 +133,8 @@ function formatMinor(amountMinor: number, currency: string): string {
       currency,
     }).format(value);
   } catch {
+    // error-policy:J3 Intl throws on an unknown currency code from the feed —
+    // render the amount with a plain suffix instead
     return `${value.toFixed(2)} ${currency}`;
   }
 }
@@ -225,7 +227,8 @@ function FinancesAlertsWidget({
       // Skip the state update (and the re-render) when the poll is unchanged.
       setData((prev) => (financesEqual(prev, next) ? prev : next));
     } catch {
-      // Transient/poll failure: keep the last good snapshot (todo.tsx pattern).
+      // error-policy:J4 glance-tile poll — keep the last good snapshot on a
+      // transient failure (todo.tsx pattern); the next tick refreshes.
     }
   }, [authenticated]);
 

@@ -147,7 +147,8 @@ export function TaskWidget({ threadId, fallbackTitle }: TaskWidgetProps) {
       }
       setDetail(next);
     } catch {
-      // Silent for transient failures, but count consecutive errors so a
+      // error-policy:J4 silent for transient poll failures, but count
+      // consecutive errors so a
       // 401/403 stale-token loop can't poll the endpoint forever. After
       // MAX_CONSECUTIVE_ERRORS we freeze on the last good state.
       if (cancelledRef.current) return;

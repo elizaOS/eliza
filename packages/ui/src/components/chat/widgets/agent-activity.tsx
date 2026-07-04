@@ -103,8 +103,8 @@ export function AgentActivityWidget({
           : items.length;
       setState({ items, total, loading: false });
     } catch {
-      // Network/agent failure — settle to empty so the card resolves rather than
-      // spinning forever; never surface a broken card.
+      // error-policy:J4 glance tile — settle to empty so the card resolves
+      // rather than spinning forever; never surface a broken card.
       if (signal.cancelled) return;
       setState({ items: [], total: 0, loading: false });
     }

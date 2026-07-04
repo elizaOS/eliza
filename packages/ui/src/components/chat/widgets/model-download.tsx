@@ -138,7 +138,8 @@ export function useLocalModelDownloads(): LocalModelDownloads {
           loading: false,
         });
       } catch {
-        // Settle (keep last-good status, drop the loading flag) so the tile
+        // error-policy:J4 settle (keep last-good status, drop the loading
+        // flag) so the tile
         // resolves to not-required/null instead of spinning. A hung native
         // bridge or a transient error must never leave a permanent "Loading…".
         if (cancelled) return;
@@ -233,7 +234,8 @@ export function ModelDownloadWidget({
     try {
       await client.startLocalInferenceDownload(failedModelId);
     } catch {
-      // Re-enqueue failed (e.g. all tiers pending on the hub) — drop the
+      // error-policy:J4 re-enqueue failed (e.g. all tiers pending on the hub)
+      // — drop the
       // optimistic flip so the error state (with its retry affordance) returns.
       setRetrying(false);
     }

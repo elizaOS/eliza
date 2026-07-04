@@ -82,6 +82,7 @@ export function MusicPlayerSidebarWidget(_props: ChatSidebarWidgetProps) {
       setPlayer({ kind: "idle" });
       setAudioPaused(true);
     } catch {
+      // error-policy:J4 designed error state — the tile renders the failure
       setPlayer({
         kind: "error",
         message: "Could not reach the music player.",
@@ -120,9 +121,9 @@ export function MusicPlayerSidebarWidget(_props: ChatSidebarWidgetProps) {
       setAudioPaused(true);
       return;
     }
-    el.play().catch(() => {
-      /* Browser autoplay policy may require the user to press play. */
-    });
+    // error-policy:J4 browser autoplay policy can reject play(); the audio
+    // element stays paused and the user presses play manually.
+    el.play().catch(() => {});
   }, [player]);
 
   useEffect(() => {

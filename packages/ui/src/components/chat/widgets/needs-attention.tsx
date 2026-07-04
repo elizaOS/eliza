@@ -80,7 +80,8 @@ export function useApprovals(): {
       if (!mountedRef.current) return;
       setPending((prev) => (pendingEqual(prev, next) ? prev : next));
     } catch {
-      // Best-effort: keep the last good data on a transient fetch failure.
+      // error-policy:J4 glance tile — keep the last good data on a transient
+      // fetch failure; the next tick refreshes.
     } finally {
       if (mountedRef.current) {
         setLoaded(true);

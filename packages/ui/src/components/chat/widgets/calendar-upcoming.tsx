@@ -202,7 +202,8 @@ export function CalendarUpcomingWidget({
       // Skip the state update (and the re-render) when the poll is unchanged.
       setEvents((prev) => (eventsEqual(prev, next) ? prev : next));
     } catch {
-      // Timeout / network — settle via the finally so the tile shows
+      // error-policy:J4 timeout / network — settle via the finally so the
+      // glance tile shows
       // "No events today" instead of spinning on "Loading…".
     } finally {
       setFeedLoaded(true);

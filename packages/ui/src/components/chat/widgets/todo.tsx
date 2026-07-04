@@ -201,6 +201,8 @@ function TodoSidebarWidget({
           setTodos(dedupeTodos(result.todos));
         }
       } catch {
+        // error-policy:J4 glance tile — fall back to the workbench snapshot
+        // already in view state rather than surfacing a broken card.
         if (mountedRef.current && (workbench?.todos?.length ?? 0) > 0) {
           setTodos(dedupeTodos(workbench?.todos ?? []));
         }

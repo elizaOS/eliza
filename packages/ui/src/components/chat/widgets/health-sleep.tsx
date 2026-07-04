@@ -203,7 +203,8 @@ export function HealthSleepWidget({
       // Skip the state update (and the re-render) when the poll is unchanged.
       setData((prev) => (sleepEqual(prev, next) ? prev : next));
     } catch {
-      // Silent fallback to the last good render (matches todo.tsx); never log.
+      // error-policy:J4 glance tile — keep the last good render on a poll
+      // failure (todo.tsx pattern); the next tick refreshes.
     }
   }, [authenticated]);
 

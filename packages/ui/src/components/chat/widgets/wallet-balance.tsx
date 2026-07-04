@@ -34,6 +34,7 @@ function formatPrice(priceUsd: number): string {
       maximumFractionDigits: digits,
     }).format(priceUsd);
   } catch {
+    // error-policy:J3 Intl rejected the locale/currency — plain formatting
     return `$${priceUsd.toFixed(digits)}`;
   }
 }
