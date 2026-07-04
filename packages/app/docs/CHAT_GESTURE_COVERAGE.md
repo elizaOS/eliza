@@ -72,7 +72,7 @@ gate's `sites`). `Coverage` = the levels with a real test today.
 | 3 | Long-press copy on message (420 ms, move-cancel) | overlay row | `ContinuousChatOverlay.tsx` | L3 `run-chat-sheet-e2e.mjs` |
 | 4 | Tap-reveal action row (touch) / hover rail (desktop) | chat-message | `chat-message.tsx` | L2 `chat-message.tap-reveal.test.tsx` |
 | 5 | Long-press conversation item → context menu (450 ms) | chat-conversation-item | `usePressAndHold.ts` (spread by `chat-conversation-item.tsx`) | L2 `chat-conversation-item.test.tsx`, `gestures.test.ts` |
-| 6 | Push-to-talk hold (composer + overlay mic) | composer + overlay mic | `usePushToTalk.ts` (pointer-capture hold) | L2 `chat-composer.test.tsx`, `usePushToTalk.test.tsx` |
+| 6 | Push-to-talk hold (composer + overlay + ChatSurface mic) | composer + overlay + ChatSurface mic | `usePushToTalk.ts` (pointer-capture hold) | L2 `chat-composer.test.tsx`, `ChatSurface.test.tsx`, `usePushToTalk.test.tsx` |
 | 7 | Tap-outside collapse; drag-vs-tap slop; scrim click-through | overlay | `ContinuousChatOverlay.tsx` | L3 `gesture-matrix.spec.ts` |
 | 8 | Notification pull / pull-to-refresh; ghost-click gate | home top edge | `use-notification-pull.ts`, `HomeScreen.tsx` | L1 `use-notification-pull.test.ts`; L3 `gesture-matrix.spec.ts`; L4 Android `touch-gesture.android.spec.ts` |
 | 9 | Home↔launcher pager swipe, nested-pager arbitration (#12179) | pager | `useHorizontalPager.ts`, `HomeLauncherSurface.tsx`, `HomeScreen.tsx` | L1 `useHorizontalPager.test.ts`; L3 `gesture-matrix.spec.ts` + `run-home-screen-e2e.mjs` (video) + `HomeLauncherSurface.test.tsx`; L4 Android |
@@ -83,7 +83,7 @@ gate's `sites`). `Coverage` = the levels with a real test today.
 | 14 | Auto-scroll at bottom vs reading-scrollback | thread | `ContinuousChatOverlay.tsx` | L3 `run-chat-sheet-e2e.mjs` (video) |
 | 15 | Kiosk window drag; sidebar/panel resize drags | shell surfaces | `KioskViewCanvas.tsx`, `TasksEventsPanel.tsx`, `sidebar-root.tsx` | L2 `KioskViewCanvas.gestures.test.tsx` |
 | 16 | Graph pan/pinch/wheel-zoom | RelationshipsGraphPanel | `RelationshipsGraphPanel.tsx` | **gap** — L3 planned (app-side `touchPinch`/`touchPan`) |
-| 17 | Slash menu open/dismiss (incl. outside pointerdown) | composer | _composer_ | L2 `ContinuousChatOverlay.slash.test.tsx` + `MessageContent.slash-command.test.tsx` |
+| 17 | Slash menu open/dismiss (incl. outside pointerdown) | composer | _composer_ | L2 `ContinuousChatOverlay.slash.test.tsx` + `composer-core.test.tsx` + `MessageContent.slash-command.test.tsx` |
 | 18 | Pinch/dblclick on chat surface (should NOT zoom/break layout) | overlay | `ContinuousChatOverlay.tsx` | **gap** — L3 negative test planned |
 
 ## Coverage gaps
