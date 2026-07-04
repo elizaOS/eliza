@@ -10,6 +10,10 @@
 
 import { fetchWithCsrf } from "../api/csrf-client";
 import { resolveApiUrl } from "../utils";
+import {
+  markTtsPlaybackEnded,
+  markTtsPlaybackStarted,
+} from "./tts-playback-activity";
 
 const PLAYBACK_FRAMES_PATH = "/api/voice/playback-frames";
 const TARGET_SAMPLE_RATE = 16_000;
@@ -274,6 +278,9 @@ class PlaybackFrameSession implements PlaybackFrameTap {
     if (this.running) return;
     this.running = true;
     this.startTimestampMs = startTimestampMs;
+    // The session brackets real audible playback — raise the capture-side
+    // echo gate for its duration + cooldown (#12256 layer 1).
+    markTtsPlaybackStarted();
     this.flushTimer = setInterval(() => {
       void this.flush(false);
     }, this.flushIntervalMs);
@@ -305,6 +312,7 @@ class PlaybackFrameSession implements PlaybackFrameTap {
     options: { reset?: boolean; drain?: boolean } = {},
   ): Promise<void> {
     if (!this.running && !options.reset) return;
+    if (this.running) markTtsPlaybackEnded(this.nowMs());
     this.running = false;
     if (this.flushTimer) {
       clearInterval(this.flushTimer);

@@ -69,4 +69,47 @@ describe("local ASR capture", () => {
       shouldStop: true,
     });
   });
+
+  it("suppresses quiet echo while the TTS echo gate is active (#12256 layer 1)", () => {
+    // Gate always on: the multiplier (4x) lifts the peak bar from 0.012 to
+    // 0.048, so a quiet 0.02-peak echo tail no longer reads as speech.
+    const detect = createLocalAsrAutoStopDetector(
+      { startGraceMs: 0, isTtsEchoGateActive: () => true },
+      0,
+    );
+    if (!detect) throw new Error("auto-stop detector was not created");
+    const quietEcho = new Float32Array([0.02, -0.02, 0.018]);
+    expect(detect(quietEcho, 100)).toEqual({
+      shouldBuffer: false,
+      shouldStop: false,
+    });
+  });
+
+  it("still hears a loud barge-in through the active echo gate", () => {
+    const detect = createLocalAsrAutoStopDetector(
+      { startGraceMs: 0, isTtsEchoGateActive: () => true },
+      0,
+    );
+    if (!detect) throw new Error("auto-stop detector was not created");
+    // A loud, close interjection (0.2 peak) clears even the raised 0.048 bar.
+    const loudInterjection = new Float32Array([0.2, -0.22, 0.19]);
+    expect(detect(loudInterjection, 100)).toEqual({
+      shouldBuffer: true,
+      shouldStop: false,
+    });
+  });
+
+  it("returns to the normal bar once the gate is inactive", () => {
+    const detect = createLocalAsrAutoStopDetector(
+      { startGraceMs: 0, isTtsEchoGateActive: () => false },
+      0,
+    );
+    if (!detect) throw new Error("auto-stop detector was not created");
+    // Same quiet echo, gate off → now above the default 0.012 peak bar.
+    const quiet = new Float32Array([0.02, -0.02, 0.018]);
+    expect(detect(quiet, 100)).toEqual({
+      shouldBuffer: true,
+      shouldStop: false,
+    });
+  });
 });

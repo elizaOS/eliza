@@ -2,6 +2,11 @@
  * Mic-capture recorder for local ASR: records mono PCM16, exposes a live analyser
  * for amplitude visualization, and stops/cancels the audio context cleanly.
  */
+import {
+  DEFAULT_POST_TTS_COOLDOWN_MS,
+  isTtsEchoGateActive as sharedTtsEchoGateActive,
+} from "./tts-playback-activity";
+
 export interface LocalAsrRecorder {
   stop(): Promise<Uint8Array>;
   cancel(): void;
@@ -19,6 +24,12 @@ export interface LocalAsrAutoStopOptions {
   maxSpeechMs?: number;
   speechRmsThreshold?: number;
   speechPeakThreshold?: number;
+  /** Post-TTS cooldown (ms) during which the raised echo gate stays active.
+   * Default {@link DEFAULT_POST_TTS_COOLDOWN_MS} (1500). */
+  postTtsCooldownMs?: number;
+  /** Injectable playback-activity probe (tests). Defaults to the shared
+   * renderer signal in tts-playback-activity.ts. */
+  isTtsEchoGateActive?: (nowMs: number) => boolean;
 }
 
 export interface LocalAsrRecorderOptions {
@@ -116,6 +127,15 @@ export function isSilentPcmAudio(pcm: Float32Array): boolean {
   return measurePcmAudio(pcm).peak < 0.0005;
 }
 
+/**
+ * Speech-threshold multiplier applied while the TTS echo gate is active
+ * (#12256 layer 1): during agent playback + the post-TTS cooldown, quiet
+ * far-field echo must not read as speech, while loud close speech (a real
+ * barge-in) still clears the raised bar. 4x lifts the default RMS gate from
+ * 0.003 to 0.012 and the peak gate from 0.012 to 0.048.
+ */
+export const POST_TTS_ECHO_THRESHOLD_MULTIPLIER = 4;
+
 export const DEFAULT_LOCAL_ASR_AUTO_STOP: LocalAsrAutoStopConfig = {
   startGraceMs: 250,
   minSpeechMs: 180,
@@ -137,6 +157,10 @@ export function createLocalAsrAutoStopDetector(
     ...DEFAULT_LOCAL_ASR_AUTO_STOP,
     ...options,
   };
+  const cooldownMs = options.postTtsCooldownMs ?? DEFAULT_POST_TTS_COOLDOWN_MS;
+  const echoGateActive =
+    options.isTtsEchoGateActive ??
+    ((atMs: number) => sharedTtsEchoGateActive(atMs, cooldownMs));
   let firstSpeechAtMs: number | null = null;
   let lastSpeechAtMs: number | null = null;
   let stopped = false;
@@ -150,9 +174,16 @@ export function createLocalAsrAutoStopDetector(
     }
 
     const stats = measurePcmAudio(pcm);
+    // Echo gate (#12256 layer 1): while the agent's TTS is playing (and for a
+    // short cooldown after), demand louder speech before treating the frame as
+    // a turn — the agent's own tail must not self-trigger an ASR submission,
+    // but a loud, close interjection (real barge-in) still clears the bar.
+    const gateMultiplier = echoGateActive(sampleTimeMs)
+      ? POST_TTS_ECHO_THRESHOLD_MULTIPLIER
+      : 1;
     const speechDetected =
-      stats.rms >= config.speechRmsThreshold ||
-      stats.peak >= config.speechPeakThreshold;
+      stats.rms >= config.speechRmsThreshold * gateMultiplier ||
+      stats.peak >= config.speechPeakThreshold * gateMultiplier;
 
     if (speechDetected) {
       if (firstSpeechAtMs === null) firstSpeechAtMs = sampleTimeMs;
