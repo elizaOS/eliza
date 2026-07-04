@@ -571,6 +571,28 @@ def _manifest_text_context_blockers(manifest: Mapping[str, Any], tier: str) -> l
     return blockers
 
 
+def _manifest_text_architecture_blockers(manifest: Mapping[str, Any]) -> list[str]:
+    files = manifest.get("files")
+    if not isinstance(files, Mapping):
+        return ["missing manifest files block"]
+    text_entries = files.get("text")
+    if not isinstance(text_entries, list) or not text_entries:
+        return ["missing files.text block"]
+    blockers: list[str] = []
+    for entry in text_entries:
+        if not isinstance(entry, Mapping):
+            blockers.append("files.text entry: not an object")
+            continue
+        path = entry.get("path")
+        label = path if isinstance(path, str) else "files.text entry"
+        architecture = entry.get("architecture")
+        if not isinstance(architecture, str) or not architecture:
+            blockers.append(f"{label}: architecture missing")
+        elif not architecture.lower().startswith("gemma"):
+            blockers.append(f"{label}: architecture={architecture!r}")
+    return blockers
+
+
 def _manifest_required_file_blockers(
     manifest: Mapping[str, Any],
     *,
@@ -1639,6 +1661,13 @@ def audit_hf_release(
             f"{tier} manifest records native and half context text variants",
             not text_context_blockers,
             ", ".join(text_context_blockers[:8]) + (f" (+{len(text_context_blockers) - 8} more)" if len(text_context_blockers) > 8 else ""),
+        )
+        text_architecture_blockers = _manifest_text_architecture_blockers(manifest)
+        report.check(
+            f"{tier} manifest text architectures are Gemma",
+            not text_architecture_blockers,
+            ", ".join(text_architecture_blockers[:8])
+            + (f" (+{len(text_architecture_blockers) - 8} more)" if len(text_architecture_blockers) > 8 else ""),
         )
         manifest_required_file_blockers = _manifest_required_file_blockers(
             manifest,

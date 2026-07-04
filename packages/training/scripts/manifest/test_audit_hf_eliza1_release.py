@@ -69,6 +69,7 @@ def _complete_model_paths() -> list[str]:
     for tier, tier_plan in build_plan().items():
         paths.append(f"bundles/{tier}/eliza-1.manifest.json")
         paths.extend(f"bundles/{tier}/{rel}" for rel in tier_plan.required_files)
+        paths.extend(f"bundles/{tier}/{rel}" for rel in QUANTIZATION_SIDECARS)
         paths.extend(
             f"bundles/{tier}/{target.evidence_path}"
             for target in tier_plan.required_platform_evidence
@@ -771,10 +772,12 @@ def _passing_model_manifest(tier: str) -> str:
     for rel in build_plan()[tier].required_files:
         root = rel.split("/", 1)[0]
         entry: dict[str, object] = {"path": rel, "sha256": "a" * 64}
-        if root == "text" and "-128k" in rel:
-            entry["ctx"] = 131072
-        elif root == "text" and "-256k" in rel:
-            entry["ctx"] = 262144
+        if root == "text":
+            entry["architecture"] = "gemma4"
+            if "-128k" in rel:
+                entry["ctx"] = 131072
+            elif "-256k" in rel:
+                entry["ctx"] = 262144
         files_by_dir.setdefault(root, []).append(entry)
     return __import__("json").dumps(
         {
@@ -1009,6 +1012,26 @@ def test_hf_release_audit_blocks_missing_manifest_text_context_variant() -> None
     assert any(
         check["name"] == "2b manifest records native and half context text variants"
         and "text/eliza-1-2b-256k.gguf" in check["detail"]
+        for check in failed
+    )
+
+
+def test_hf_release_audit_blocks_non_gemma_manifest_text_architecture() -> None:
+    bad_manifest = __import__("json").loads(_passing_model_manifest("9b"))
+    bad_manifest["files"]["text"][0]["architecture"] = "qwen35"
+
+    report = audit_hf_release(
+        fetch_json=_fetcher(),
+        fetch_text=_text_fetcher(
+            model_manifests={"9b": __import__("json").dumps(bad_manifest)}
+        ),
+    )
+
+    assert not report.ok
+    failed = [check for check in report.checks if not check["ok"]]
+    assert any(
+        check["name"] == "9b manifest text architectures are Gemma"
+        and "architecture='qwen35'" in check["detail"]
         for check in failed
     )
 
