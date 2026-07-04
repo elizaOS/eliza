@@ -129,3 +129,36 @@ def test_publishable_report_requires_real_provider_hashes_and_metrics() -> None:
     }
 
     assert gate.validate_publishable_report(good_report) == []
+
+    bad_provider_type = {
+        **good_report,
+        "provider_metadata": {
+            **good_report["provider_metadata"],
+            "asr_provider": 123,
+        },
+    }
+    assert "provider_metadata.asr_provider is required" in gate.validate_publishable_report(
+        bad_provider_type
+    )
+
+    bad_sample_rate_string = {
+        **good_report,
+        "provider_metadata": {
+            **good_report["provider_metadata"],
+            "sample_rate_hz": "16000",
+        },
+    }
+    assert "provider_metadata.sample_rate_hz is required" in gate.validate_publishable_report(
+        bad_sample_rate_string
+    )
+
+    bad_sample_rate_bool = {
+        **good_report,
+        "provider_metadata": {
+            **good_report["provider_metadata"],
+            "sample_rate_hz": True,
+        },
+    }
+    assert "provider_metadata.sample_rate_hz is required" in gate.validate_publishable_report(
+        bad_sample_rate_bool
+    )

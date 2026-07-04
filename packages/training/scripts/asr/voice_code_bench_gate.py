@@ -190,10 +190,17 @@ def validate_publishable_report(report: dict[str, Any]) -> list[str]:
     if not isinstance(provider, dict):
         errors.append("provider_metadata is required")
     else:
-        for key in gate_contract()["provider_metadata_required"]:
+        for key in ("asr_provider", "asr_model", "artifact_revision", "run_started_at"):
             value = provider.get(key)
-            if not isinstance(value, str | int) or (isinstance(value, str) and not value.strip()):
+            if not isinstance(value, str) or not value.strip():
                 errors.append(f"provider_metadata.{key} is required")
+        sample_rate = provider.get("sample_rate_hz")
+        if (
+            isinstance(sample_rate, bool)
+            or not isinstance(sample_rate, int)
+            or sample_rate <= 0
+        ):
+            errors.append("provider_metadata.sample_rate_hz is required")
     hashes = report.get("hashes")
     if not isinstance(hashes, dict):
         errors.append("hashes are required")
