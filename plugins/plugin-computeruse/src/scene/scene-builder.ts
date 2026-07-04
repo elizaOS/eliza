@@ -33,7 +33,7 @@ import {
   captureDisplay,
   captureDisplayRegion,
 } from "../platform/capture.js";
-import { findDisplay, listDisplays } from "../platform/displays.js";
+import { listDisplays } from "../platform/displays.js";
 import type { DisplayDescriptor } from "../types.js";
 import {
   type AccessibilityProvider,
@@ -100,6 +100,18 @@ export interface SceneBuilderDeps {
     idState: OcrAdapterIdState,
   ) => Promise<SceneOcrBox[]>;
   log?: (msg: string) => void;
+  /**
+   * Diagnostic reporter for scan-level failures the agent must see (#12273):
+   * ComputerUseService wires this to `runtime.reportError` so an a11y scan
+   * that fails outright or drops windows (permission revoked mid-session)
+   * emits ERROR_REPORTED instead of silently thinning the scene. Optional —
+   * standalone builders (tests, the default singleton) run without a runtime.
+   */
+  reportError?: (
+    scope: string,
+    error: unknown,
+    context?: Record<string, unknown>,
+  ) => void;
 }
 
 interface PerDisplayState {
@@ -115,8 +127,11 @@ export interface SceneUpdateEvent {
 }
 
 export class SceneBuilder extends EventEmitter {
-  private readonly deps: Required<Omit<SceneBuilderDeps, "log">> & {
+  private readonly deps: Required<
+    Omit<SceneBuilderDeps, "log" | "reportError">
+  > & {
     log: (msg: string) => void;
+    reportError: SceneBuilderDeps["reportError"];
   };
   private readonly perDisplay = new Map<number, PerDisplayState>();
   private readonly ocrIdState: OcrAdapterIdState = makeOcrIdState();
@@ -153,6 +168,7 @@ export class SceneBuilder extends EventEmitter {
         ((crops, displayId, idState) =>
           runOcrOnRegions(crops, displayId, idState)),
       log,
+      reportError: deps.reportError,
     };
     setOcrLoggingHook(log);
   }
@@ -314,6 +330,8 @@ export class SceneBuilder extends EventEmitter {
               }),
             );
           } catch (err) {
+            // error-policy:J4 dirty-region capture is an optimization tier;
+            // empty crops route this display through full-frame OCR below.
             this.deps.log(
               `[scene-builder] captureRegion(${displayId}) failed: ${
                 err instanceof Error ? err.message : String(err)
@@ -410,6 +428,8 @@ export class SceneBuilder extends EventEmitter {
     try {
       return await this.deps.captureAll();
     } catch (err) {
+      // error-policy:J4 designed two-tier capture — the per-display loop
+      // below retries each display individually and logs every miss.
       this.deps.log(
         `[scene-builder] captureAllDisplays failed: ${err instanceof Error ? err.message : String(err)} — falling back to per-display capture`,
       );
@@ -419,6 +439,8 @@ export class SceneBuilder extends EventEmitter {
       try {
         out.push(await this.deps.captureOne(d.id));
       } catch (err) {
+        // error-policy:J4 a missing display is logged and visibly absent
+        // from the Scene rather than aborting the whole tick.
         this.deps.log(
           `[scene-builder] captureDisplay(${d.id}) failed: ${err instanceof Error ? err.message : String(err)} — display will be missing from scene`,
         );
@@ -431,6 +453,9 @@ export class SceneBuilder extends EventEmitter {
     try {
       return this.deps.enumerateApps();
     } catch (err) {
+      // error-policy:J4 the Scene ships without the app join for this tick;
+      // the failure is logged through the builder log hook (logger.warn in
+      // the service wiring), and displays/OCR/AX still populate the Scene.
       this.deps.log(
         `[scene-builder] enumerateApps failed: ${err instanceof Error ? err.message : String(err)}`,
       );
@@ -439,12 +464,39 @@ export class SceneBuilder extends EventEmitter {
   }
 
   private async safeSnapshotAx(): Promise<SceneAxNode[]> {
+    const provider = this.deps.accessibilityProvider;
     try {
-      return await this.deps.accessibilityProvider.snapshot();
+      const nodes = await provider.snapshot();
+      // Per-window misses (or a whole-scan failure the provider degraded to
+      // "no nodes") are reported ONCE per scan so a11y permission revocation
+      // is agent-visible instead of reading as an emptier desktop (#12273).
+      const stats = provider.lastScanStats?.();
+      if (stats && (stats.failedWindows > 0 || stats.error)) {
+        this.deps.reportError?.(
+          "Computeruse.a11yScan",
+          new Error(
+            stats.error ??
+              `a11y scan dropped ${stats.failedWindows}/${stats.totalWindows} windows`,
+          ),
+          {
+            failedWindows: stats.failedWindows,
+            totalWindows: stats.totalWindows,
+            provider: provider.name,
+          },
+        );
+      }
+      return nodes;
     } catch (err) {
+      // error-policy:J4 a sceneless turn is worse than a scene without AX
+      // nodes — the Scene still carries displays/OCR/apps; the failure is
+      // reported (agent-visible via ERROR_REPORTED), never silent.
       this.deps.log(
         `[scene-builder] accessibilityProvider.snapshot failed: ${err instanceof Error ? err.message : String(err)}`,
       );
+      this.deps.reportError?.("Computeruse.a11yScan", err, {
+        provider: provider.name,
+        phase: "snapshot",
+      });
       return [];
     }
   }

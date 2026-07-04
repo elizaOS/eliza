@@ -161,7 +161,13 @@ export class VisionContextProvider extends Service {
     try {
       return await source.refreshScene("agent-turn");
     } catch (error) {
+      // error-policy:J4 null is the explicit "scene unavailable" signal in
+      // the VisionContext snapshot; the failure is warned and reported so a
+      // broken scene pipeline is agent-visible, not silently sceneless.
       logger.warn("[vision-context] refreshScene failed:", errorMessage(error));
+      this.runtime.reportError("Computeruse.visionContext", error, {
+        phase: "refreshScene",
+      });
       return null;
     }
   }
@@ -185,6 +191,9 @@ export class VisionContextProvider extends Service {
       );
       if (typeof cached === "string" && cached.trim()) return cached.trim();
     } catch (error) {
+      // error-policy:J4 the cache is one tier of the goal-resolution chain;
+      // the setting tier below follows, and total absence is a legitimate
+      // null (no active task goal).
       logger.debug(
         "[vision-context] task goal cache read failed:",
         errorMessage(error),
@@ -194,7 +203,8 @@ export class VisionContextProvider extends Service {
       const setting = this.runtime.getSetting("VISION_CONTEXT_TASK_GOAL");
       if (typeof setting === "string" && setting.trim()) return setting.trim();
     } catch {
-      // Optional setting.
+      // error-policy:J4 the setting is optional by contract; null below is
+      // the legitimate "no task goal configured" result.
     }
     return null;
   }

@@ -3,7 +3,6 @@
  * Monitoring) into a typed PermissionDeniedError so callers can surface the exact
  * grant the user must enable rather than a generic failure.
  */
-import { execFileSync } from "node:child_process";
 import type { PermissionType } from "../types.js";
 
 type PermissionErrorOptions = {
@@ -241,6 +240,9 @@ export function probePermission(
     try {
       return probeWindowsCapabilityAccess("webcam");
     } catch (err) {
+      // error-policy:J3 registry probe; probed:false is the explicit
+      // "could not determine" signal (distinct from a probed denial) and
+      // details carries the failure for the caller's classification.
       return { granted: false, probed: false, details: toMessage(err) };
     }
   }
@@ -248,6 +250,9 @@ export function probePermission(
     try {
       return probeWindowsCapabilityAccess("microphone");
     } catch (err) {
+      // error-policy:J3 registry probe; probed:false is the explicit
+      // "could not determine" signal (distinct from a probed denial) and
+      // details carries the failure for the caller's classification.
       return { granted: false, probed: false, details: toMessage(err) };
     }
   }
@@ -255,6 +260,9 @@ export function probePermission(
     try {
       return probeWindowsCapabilityAccess("graphicsCaptureProgrammatic");
     } catch (err) {
+      // error-policy:J3 registry probe; probed:false is the explicit
+      // "could not determine" signal (distinct from a probed denial) and
+      // details carries the failure for the caller's classification.
       return { granted: false, probed: false, details: toMessage(err) };
     }
   }

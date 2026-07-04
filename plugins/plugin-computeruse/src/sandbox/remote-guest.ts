@@ -158,6 +158,8 @@ export class HttpGuestTransport implements RemoteGuestTransport {
       const body = (await res.json()) as GuestRpcResponse;
       return body;
     } catch (err) {
+      // error-policy:J1 RPC boundary — the transport failure returns as a
+      // structured {success:false,error} the sandbox driver surfaces.
       return {
         success: false,
         error: err instanceof Error ? err.message : String(err),

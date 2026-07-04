@@ -62,14 +62,16 @@ export async function captureScreenshot(
     try {
       unlinkSync(tmpFile);
     } catch {
-      /* cleanup best effort */
+      // error-policy:J6 best-effort temp-file teardown; the frame is already
+      // in memory.
     }
     return data;
   } catch (err) {
     try {
       unlinkSync(tmpFile);
     } catch {
-      /* ignore */
+      // error-policy:J6 best-effort temp-file teardown on the failure path;
+      // the original error below is what surfaces.
     }
 
     const operation = region ? "screenshot_region" : "screenshot_capture";
@@ -199,7 +201,9 @@ function detectX11ScreenSize(): string {
     const m = out.match(/dimensions:\s+(\d+)x(\d+)/);
     if (m) return `${m[1]}x${m[2]}`;
   } catch {
-    // fall through to the default below
+    // error-policy:J4 designed degrade — the ffmpeg x11grab caller only
+    // needs a plausible capture geometry; a wrong size fails loudly at
+    // capture, not silently here.
   }
   return "1920x1080";
 }
@@ -229,7 +233,8 @@ async function captureWindows(
       await runPsHost(psCmd, 15000);
       return;
     } catch {
-      /* warm host unavailable/errored — fall back to one-shot spawn */
+      // error-policy:J4 designed two-tier execution — the one-shot spawn
+      // below runs the SAME script, and its failure throws to the caller.
     }
   }
   execSync(`powershell -Command "${psCmd}"`, {

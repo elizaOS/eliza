@@ -237,7 +237,9 @@ export function validateFilePath(
         resolved = expanded;
       }
     } catch {
-      // Ignore nonexistent paths; the static blocklists still apply.
+      // error-policy:J3 8.3-shortname expansion probe; a nonexistent path
+      // cannot be expanded, and the static blocklists below still apply to
+      // the unexpanded form — nothing is bypassed.
     }
   }
 
@@ -346,6 +348,9 @@ export async function resolveSafeFileTarget(
     }
     return { allowed: true, resolvedPath: canonical };
   } catch (error) {
+    // error-policy:J3 errno-narrowed realpath probe — only ENOENT (the file
+    // does not exist yet) degrades to static path validation; every other
+    // failure returns an explicit not-allowed result below.
     if (errnoCode(error) === "ENOENT" && operation === "read") {
       const fallback = validateFilePath(resolved, operation);
       if (!fallback.allowed) {
@@ -372,6 +377,9 @@ export async function resolveSafeFileTarget(
         }
         return { allowed: true, resolvedPath: target };
       } catch (parentError) {
+        // error-policy:J3 errno-narrowed parent-dir probe — only ENOENT
+        // degrades to static validation; every other failure returns an
+        // explicit not-allowed result below.
         if (errnoCode(parentError) === "ENOENT") {
           const fallback = validateFilePath(resolved, operation);
           if (!fallback.allowed) {

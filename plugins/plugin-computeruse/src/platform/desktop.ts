@@ -992,6 +992,9 @@ export function win32TrySetValueByPattern(
     const out = runCommand("powershell", ["-Command", ps], 10000);
     return out.includes("VALUE_SET");
   } catch {
+    // error-policy:J4 false is the explicit "UIA SetValue tier unavailable"
+    // signal; the caller falls back to focus-click + keystroke typing, whose
+    // failure surfaces to the action result.
     return false;
   }
 }

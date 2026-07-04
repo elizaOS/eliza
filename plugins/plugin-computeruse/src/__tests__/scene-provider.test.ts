@@ -89,7 +89,7 @@ function makeScene(): Scene {
 function makeRuntime(
   scene: Scene | null,
   refresh?: () => Promise<Scene>,
-): IAgentRuntime {
+): IAgentRuntime & { reportedErrors: Array<{ scope: string }> } {
   const service = {
     getCurrentScene: () => scene,
     refreshScene:
@@ -98,10 +98,15 @@ function makeRuntime(
         throw new Error("no scene available");
       }),
   };
+  const reportedErrors: Array<{ scope: string }> = [];
   return {
     getService: (name: string) =>
       name === "computeruse" ? (service as unknown) : undefined,
-  } as unknown as IAgentRuntime;
+    reportError: (scope: string) => {
+      reportedErrors.push({ scope });
+    },
+    reportedErrors,
+  } as unknown as IAgentRuntime & { reportedErrors: Array<{ scope: string }> };
 }
 
 const dummyMessage: Memory = {} as Memory;
@@ -148,11 +153,16 @@ describe("sceneProvider", () => {
     expect(result.text).toBe("");
   });
 
-  it("returns empty when refresh fails and no scene is cached", async () => {
+  it("returns empty AND reports the failure when refresh fails and no scene is cached", async () => {
     const runtime = makeRuntime(null, async () => {
       throw new Error("boom");
     });
     const result = await sceneProvider.get(runtime, dummyMessage, dummyState);
     expect(result.text).toBe("");
+    // A broken scene pipeline must be agent-visible (#12273), not a
+    // silently-empty provider result.
+    expect(runtime.reportedErrors).toEqual([
+      { scope: "Computeruse.sceneProvider" },
+    ]);
   });
 });

@@ -30,6 +30,8 @@ export function commandExists(cmd: string): boolean {
     execSync(`${which} ${cmd}`, { stdio: "ignore", timeout: 3000 });
     exists = true;
   } catch {
+    // error-policy:J3 existence probe; a non-zero `which`/`where` exit means
+    // the command is absent — false is the expected-miss signal.
     exists = false;
   }
   commandExistsCache.set(cmd, exists);

@@ -52,7 +52,11 @@ export const sceneProvider: Provider = {
     if (!scene) {
       try {
         scene = await service.refreshScene("agent-turn");
-      } catch {
+      } catch (error) {
+        // error-policy:J4 the empty provider result is the designed degrade,
+        // and the failure is reported so the agent sees a broken scene
+        // pipeline via RECENT_ERRORS instead of a silently sceneless turn.
+        runtime.reportError("Computeruse.sceneProvider", error);
         return { text: "" };
       }
     }

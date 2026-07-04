@@ -122,7 +122,11 @@ export const computerStateProvider: Provider = {
           recentActions: recent.slice(-5),
         },
       };
-    } catch {
+    } catch (error) {
+      // error-policy:J4 the empty provider result is the designed degrade
+      // (prompt space is precious), and the failure is reported so the agent
+      // sees it via RECENT_ERRORS instead of a silently-blank computer state.
+      runtime.reportError("Computeruse.computerStateProvider", error);
       return { text: "", values: {}, data: {} };
     }
   },

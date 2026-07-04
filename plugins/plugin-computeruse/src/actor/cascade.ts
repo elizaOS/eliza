@@ -24,12 +24,7 @@ import type { Scene } from "../scene/scene-types.js";
 import type { Actor, ActorGroundArgs } from "./actor.js";
 import { resolveReference } from "./actor.js";
 import { BRAIN_MAX_ROIS, type Brain } from "./brain.js";
-import type {
-  BrainOutput,
-  BrainRoi,
-  CascadeResult,
-  ProposedAction,
-} from "./types.js";
+import type { BrainOutput, BrainRoi, CascadeResult } from "./types.js";
 
 export interface CascadeDeps {
   brain: Brain;
@@ -397,6 +392,9 @@ export class Cascade {
             };
           }
         } catch (err) {
+          // error-policy:J4 grounding refinement is an optional precision
+          // tier; the coarse bbox center below is a legitimate degraded
+          // target, and the miss is warned with the failing ref.
           logger.warn(
             `[computeruse/cascade] actor.ground failed for ref=${ref}: ${err instanceof Error ? err.message : String(err)} — using bbox center`,
           );
@@ -432,6 +430,9 @@ export class Cascade {
         y: Math.round(grounded.y),
       };
     } catch (err) {
+      // error-policy:J4 null is the explicit "ROI grounding unavailable"
+      // signal; the cascade falls back to its non-ROI strategies and the
+      // miss is warned. Never fabricates a coordinate.
       logger.warn(
         `[computeruse/cascade] actor.ground threw for ROI: ${err instanceof Error ? err.message : String(err)}`,
       );

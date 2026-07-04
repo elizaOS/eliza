@@ -16,6 +16,7 @@
  *   const result2 = await adapter.executePyAutoGUI("pyautogui.click(100, 200)");
  */
 
+import { logger } from "@elizaos/core";
 import { extractA11yTree, isA11yAvailable } from "../platform/a11y.js";
 import { captureScreenshot } from "../platform/screenshot.js";
 import type { ComputerUseService } from "../services/computer-use-service.js";
@@ -66,8 +67,15 @@ export class OSWorldAdapter {
     try {
       const buf = await captureScreenshot();
       screenshot = buf.toString("base64");
-    } catch {
-      // Screenshot failed — return empty
+    } catch (err) {
+      // error-policy:J4 "" is the explicit missing-screenshot value in the
+      // OSWorld observation protocol; the miss is warned so a benchmark run
+      // with blind observations cannot masquerade as a healthy one.
+      logger.warn(
+        `[osworld] screenshot capture failed; observation has no frame: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
     }
 
     let accessibility_tree: string | null = null;

@@ -250,6 +250,9 @@ export async function driverCaptureScreenshot(
     try {
       return await nutCaptureScreenshot(region);
     } catch {
+      // error-policy:J4 designed two-tier capture — the legacy shell driver
+      // performs the same capture, and its failure throws to the caller;
+      // nothing is masked.
       return legacyCaptureScreenshot(region);
     }
   }

@@ -25,6 +25,8 @@ export async function readFile(
       content: String(content).slice(0, 10000),
     };
   } catch (error) {
+    // error-policy:J1 file-op boundary — the failure returns as a structured
+    // {success:false,error} the action surfaces to the model.
     return {
       success: false,
       error: error instanceof Error ? error.message : String(error),
@@ -50,6 +52,8 @@ export async function writeFile(
       message: "File written.",
     };
   } catch (error) {
+    // error-policy:J1 file-op boundary — the failure returns as a structured
+    // {success:false,error} the action surfaces to the model.
     return {
       success: false,
       error: error instanceof Error ? error.message : String(error),
@@ -86,6 +90,8 @@ export async function editFile(
       message: "File edited.",
     };
   } catch (error) {
+    // error-policy:J1 file-op boundary — the failure returns as a structured
+    // {success:false,error} the action surfaces to the model.
     return {
       success: false,
       error: error instanceof Error ? error.message : String(error),
@@ -111,6 +117,8 @@ export async function appendFile(
       message: "Content appended.",
     };
   } catch (error) {
+    // error-policy:J1 file-op boundary — the failure returns as a structured
+    // {success:false,error} the action surfaces to the model.
     return {
       success: false,
       error: error instanceof Error ? error.message : String(error),
@@ -134,6 +142,8 @@ export async function deleteFile(
       message: "File deleted.",
     };
   } catch (error) {
+    // error-policy:J1 file-op boundary — the failure returns as a structured
+    // {success:false,error} the action surfaces to the model.
     return {
       success: false,
       error: error instanceof Error ? error.message : String(error),
@@ -162,17 +172,25 @@ export async function fileExists(
       is_directory: stat.isDirectory(),
       size: stat.size,
     };
-  } catch {
-    return {
-      success: true,
-      path: check.resolvedPath,
-      exists: false,
-      isFile: false,
-      isDirectory: false,
-      is_file: false,
-      is_directory: false,
-      size: 0,
-    };
+  } catch (error) {
+    // error-policy:J3 existence probe with errno narrowing — only an
+    // expected miss (ENOENT/ENOTDIR) reads as "does not exist"; permission
+    // and I/O failures surface as a structured failure instead of a
+    // fabricated "absent".
+    const code = (error as NodeJS.ErrnoException)?.code;
+    if (code === "ENOENT" || code === "ENOTDIR") {
+      return {
+        success: true,
+        path: check.resolvedPath,
+        exists: false,
+        isFile: false,
+        isDirectory: false,
+        is_file: false,
+        is_directory: false,
+        size: 0,
+      };
+    }
+    return fileOpError(error);
   }
 }
 
@@ -199,6 +217,8 @@ export async function listDirectory(
       count: items.length,
     };
   } catch (error) {
+    // error-policy:J1 file-op boundary — the failure returns as a structured
+    // {success:false,error} the action surfaces to the model.
     return {
       success: false,
       error: error instanceof Error ? error.message : String(error),
@@ -222,6 +242,8 @@ export async function deleteDirectory(
       message: "Directory deleted.",
     };
   } catch (error) {
+    // error-policy:J1 file-op boundary — the failure returns as a structured
+    // {success:false,error} the action surfaces to the model.
     return {
       success: false,
       error: error instanceof Error ? error.message : String(error),
@@ -267,6 +289,8 @@ export async function readBytes(
       size: buf.length,
     };
   } catch (error) {
+    // error-policy:J1 file-op boundary — the failure returns as a structured
+    // {success:false,error} the action surfaces to the model.
     return fileOpError(error);
   }
 }
@@ -294,6 +318,8 @@ export async function writeBytes(
       message: `Wrote ${buf.length} bytes.`,
     };
   } catch (error) {
+    // error-policy:J1 file-op boundary — the failure returns as a structured
+    // {success:false,error} the action surfaces to the model.
     return fileOpError(error);
   }
 }
@@ -316,6 +342,8 @@ export async function createDirectory(
       message: "Directory created.",
     };
   } catch (error) {
+    // error-policy:J1 file-op boundary — the failure returns as a structured
+    // {success:false,error} the action surfaces to the model.
     return fileOpError(error);
   }
 }
@@ -338,14 +366,22 @@ export async function directoryExists(
       is_directory: isDir,
       isDirectory: isDir,
     };
-  } catch {
-    return {
-      success: true,
-      path: check.resolvedPath,
-      exists: false,
-      is_directory: false,
-      isDirectory: false,
-    };
+  } catch (error) {
+    // error-policy:J3 existence probe with errno narrowing — only an
+    // expected miss (ENOENT/ENOTDIR) reads as "does not exist"; permission
+    // and I/O failures surface as a structured failure instead of a
+    // fabricated "absent".
+    const code = (error as NodeJS.ErrnoException)?.code;
+    if (code === "ENOENT" || code === "ENOTDIR") {
+      return {
+        success: true,
+        path: check.resolvedPath,
+        exists: false,
+        is_directory: false,
+        isDirectory: false,
+      };
+    }
+    return fileOpError(error);
   }
 }
 
@@ -369,6 +405,8 @@ export async function getFileSize(
       isDirectory: stat.isDirectory(),
     };
   } catch (error) {
+    // error-policy:J1 file-op boundary — the failure returns as a structured
+    // {success:false,error} the action surfaces to the model.
     return fileOpError(error);
   }
 }

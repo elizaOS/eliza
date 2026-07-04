@@ -13,6 +13,7 @@ import { existsSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { logger } from "@elizaos/core";
 import { assertBrowserExecuteAllowed } from "../security/browser-script-policy.js";
 import type {
   BrowserInfo,
@@ -134,7 +135,9 @@ function detectBrowserPath(): string | null {
         return match;
       }
     } catch {
-      // Ignore PATH misses.
+      // error-policy:J3 existence probe over PATH lookup candidates; a miss
+      // just advances to the next candidate. null below is the explicit
+      // "no browser found" signal callers turn into a structured failure.
     }
   }
 
@@ -156,7 +159,9 @@ async function ensureBrowser(): Promise<Page> {
       await activePage.evaluate("1");
       return activePage;
     } catch {
-      // Page disconnected, reset
+      // error-policy:J3 liveness probe on the cached page; a disconnected
+      // session resets the cache and falls through to the explicit
+      // "Browser not open" failure below — never a fake-healthy page.
       browser = null;
       activePage = null;
     }
@@ -232,6 +237,9 @@ export async function openBrowser(url?: string): Promise<BrowserState> {
         is_open: true,
       };
     } catch (error) {
+      // error-policy:J4 bounded launch-retry loop; every failure is kept in
+      // lastError and the final attempt's failure throws below with the
+      // retry count — nothing is masked.
       lastError = error;
       await closeBrowser();
       if (attempt < BROWSER_LAUNCH_ATTEMPTS) {
@@ -249,8 +257,12 @@ export async function closeBrowser(): Promise<void> {
   if (browser) {
     try {
       await browser.close();
-    } catch {
-      /* ignore */
+    } catch (err) {
+      // error-policy:J6 best-effort teardown; the session is being discarded
+      // either way, so a close failure is debug-only.
+      logger.debug(
+        `[browser] close failed during teardown: ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
     browser = null;
     activePage = null;
@@ -259,8 +271,12 @@ export async function closeBrowser(): Promise<void> {
   if (tempUserDataDir) {
     try {
       await rm(tempUserDataDir, { recursive: true, force: true });
-    } catch {
-      /* ignore */
+    } catch (err) {
+      // error-policy:J6 best-effort teardown of the temp profile dir; a
+      // leaked directory is debug-only, not a failure of the close.
+      logger.debug(
+        `[browser] temp profile cleanup failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
     tempUserDataDir = null;
   }
@@ -375,6 +391,8 @@ export async function getBrowserInfo(): Promise<BrowserInfo> {
       ...state,
     };
   } catch (error) {
+    // error-policy:J1 platform boundary — the failure returns as a structured
+    // {success:false,error} state the browser action surfaces to the model.
     return {
       success: false,
       isOpen: false,
@@ -487,6 +505,8 @@ export async function browserWait(
     }
     return { success: true, message: `Waited ${Math.min(timeout, 5000)}ms` };
   } catch (error) {
+    // error-policy:J1 platform boundary — the failure returns as a structured
+    // {success:false,error} result the browser action surfaces to the model.
     return {
       success: false,
       error: error instanceof Error ? error.message : String(error),

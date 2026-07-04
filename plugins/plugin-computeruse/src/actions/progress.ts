@@ -130,6 +130,9 @@ export async function withApprovalRelay<T>(
           buildApprovalPromptContent(approval, options),
           "COMPUTER_USE_APPROVAL",
         ).catch((error) => {
+          // error-policy:J5 the rejection is observed HERE (warn with the
+          // approval id); a failed relay must not abort the approval flow —
+          // the approval stays queued and resolvable via the routes/UI.
           logger.warn(
             {
               src: "plugin:computeruse",

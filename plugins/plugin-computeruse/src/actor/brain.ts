@@ -341,6 +341,9 @@ export class Brain {
       try {
         return parseBrainOutput(raw);
       } catch {
+        // error-policy:J3 untrusted model output; null is the explicit
+        // invalid signal that drives the escalation ladder (imageless →
+        // pixels → strict prompt). Total failure throws BrainParseError.
         return null;
       }
     };

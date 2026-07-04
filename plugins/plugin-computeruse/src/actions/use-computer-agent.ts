@@ -283,6 +283,9 @@ export async function runComputerUseAgentLoop(
     try {
       scene = await service.refreshScene("agent-turn");
     } catch (err) {
+      // error-policy:J1 loop boundary — the failure ends the run as a
+      // structured report (reason="error" + error) the model sees via the
+      // action result; never rethrown into the action plumbing half-run.
       report.reason = "error";
       report.error = `scene refresh failed: ${errorMessage(err)}`;
       return finalize();
@@ -298,6 +301,9 @@ export async function runComputerUseAgentLoop(
     try {
       proposed = await loop.predictStep({ scene, goal, captures });
     } catch (err) {
+      // error-policy:J1 loop boundary — planner failure ends the run as a
+      // structured report (reason="error" + error); the model sees it in the
+      // action result instead of a fabricated partial success.
       report.reason = "error";
       report.error = `agent loop "${loop.name}" failed: ${errorMessage(err)}`;
       return finalize();
@@ -351,8 +357,12 @@ export async function runComputerUseAgentLoop(
         maxSteps,
         ...reportStep,
       };
-      await emitStepProgress(deps.onStepProgress, progress);
-      await emitCompactStepProgress(deps.onCompactStepProgress, progress);
+      await emitStepProgress(runtime, deps.onStepProgress, progress);
+      await emitCompactStepProgress(
+        runtime,
+        deps.onCompactStepProgress,
+        progress,
+      );
     }
     if (!dispatchResult.success) {
       report.reason = "error";
@@ -371,6 +381,7 @@ export async function runComputerUseAgentLoop(
 }
 
 async function emitStepProgress(
+  runtime: IAgentRuntime | null,
   onStepProgress: AgentDeps["onStepProgress"],
   progress: ComputerUseAgentStepProgress,
 ): Promise<void> {
@@ -380,6 +391,9 @@ async function emitStepProgress(
   try {
     await onStepProgress(progress);
   } catch (err) {
+    // error-policy:J7 progress relay is telemetry; it must not kill the run,
+    // but the failure is warned AND reported so a broken progress channel is
+    // agent/owner-visible, not silent.
     logger.warn(
       {
         evt: "computeruse.agent.progress_callback_failed",
@@ -389,10 +403,16 @@ async function emitStepProgress(
       },
       "[computeruse/agent] progress callback failed",
     );
+    runtime?.reportError("Computeruse.agentProgress", err, {
+      step: progress.step,
+      goal: progress.goal,
+      channel: "onStepProgress",
+    });
   }
 }
 
 async function emitCompactStepProgress(
+  runtime: IAgentRuntime | null,
   onCompactStepProgress: AgentDeps["onCompactStepProgress"],
   progress: ComputerUseAgentStepProgress,
 ): Promise<void> {
@@ -411,6 +431,9 @@ async function emitCompactStepProgress(
       }),
     );
   } catch (err) {
+    // error-policy:J7 compact progress relay is telemetry; it must not kill
+    // the run, but the failure is warned AND reported so a broken progress
+    // channel is agent/owner-visible, not silent.
     logger.warn(
       {
         evt: "computeruse.agent.compact_progress_callback_failed",
@@ -420,6 +443,11 @@ async function emitCompactStepProgress(
       },
       "[computeruse/agent] compact progress callback failed",
     );
+    runtime?.reportError("Computeruse.agentProgress", err, {
+      step: progress.step,
+      goal: progress.goal,
+      channel: "onCompactStepProgress",
+    });
   }
 }
 
@@ -431,6 +459,10 @@ async function safeCapture(
     const caps = await captureAll();
     for (const c of caps) out.set(c.display.id, c);
   } catch (err) {
+    // error-policy:J4 the empty map is the explicit failure signal — the run
+    // loop aborts with reason="error" ("no displays captured"), so capture
+    // failure surfaces in the action result rather than reading as a blank
+    // desktop.
     logger.warn(
       `[computeruse/agent] captureAll failed: ${errorMessage(err)} — falling back to per-display lookup`,
     );
@@ -552,6 +584,9 @@ export const computerUseAgentAction: Action = {
     }
     return {
       success: report.reason === "finish",
+      // A non-finish run carries result.error so the planner loop shows the
+      // failure to the model (#12273) instead of a success-shaped text blob.
+      error: report.reason === "finish" ? undefined : (report.error ?? text),
       text,
       data: {
         source: "computeruse",

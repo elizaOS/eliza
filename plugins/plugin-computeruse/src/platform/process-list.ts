@@ -25,6 +25,7 @@
 
 import { execFileSync, execSync } from "node:child_process";
 import { readdirSync, readFileSync } from "node:fs";
+import { logger } from "@elizaos/core";
 import { currentPlatform } from "./helpers.js";
 
 export interface ProcessInfo {
@@ -45,7 +46,15 @@ function listLinux(): ProcessInfo[] {
   let entries: string[];
   try {
     entries = readdirSync("/proc");
-  } catch {
+  } catch (err) {
+    // error-policy:J4 [] is the explicit "process list unavailable" degrade
+    // for the scene join; /proc being unreadable on Linux is real breakage,
+    // so it is warned rather than read as a machine with no processes.
+    logger.warn(
+      `[process-list] /proc unreadable; process list unavailable: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
     return out;
   }
   for (const entry of entries) {
@@ -58,6 +67,9 @@ function listLinux(): ProcessInfo[] {
       // join-with-windows; a longer name (cmdline arg0 basename) is overkill.
       name = readFileSync(`/proc/${pid}/comm`, "utf8").trim();
     } catch {
+      // error-policy:J3 expected transient miss — the process can exit
+      // between readdir and the comm read; skipping the dead PID is the
+      // truthful result.
       continue;
     }
     if (!name) continue;
@@ -75,6 +87,8 @@ function listDarwin(): ProcessInfo[] {
     });
     return parsePsOutput(text);
   } catch {
+    // error-policy:J4 two-tier `ps` invocation; the BSD variant below is the
+    // designed second tier.
     try {
       // Fallback: BSD ps without `-c` (gives full path in comm).
       const text = execFileSync("ps", ["-axo", "pid=,comm="], {
@@ -83,7 +97,15 @@ function listDarwin(): ProcessInfo[] {
         stdio: ["ignore", "pipe", "ignore"],
       });
       return parsePsOutput(text);
-    } catch {
+    } catch (err) {
+      // error-policy:J4 [] is the explicit "process list unavailable"
+      // degrade for the scene join; both ps variants failing is warned, not
+      // read as a machine with no processes.
+      logger.warn(
+        `[process-list] ps enumeration failed; process list unavailable: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
       return [];
     }
   }
@@ -116,7 +138,15 @@ function listWindows(): ProcessInfo[] {
       { timeout: 8000, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
     );
     return parseWindowsProcessJson(text);
-  } catch {
+  } catch (err) {
+    // error-policy:J4 [] is the explicit "process list unavailable" degrade
+    // for the scene join; the PowerShell failure is warned, not read as a
+    // machine with no processes.
+    logger.warn(
+      `[process-list] Get-Process enumeration failed; process list unavailable: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
     return [];
   }
 }
@@ -131,6 +161,8 @@ export function parseWindowsProcessJson(text: string): ProcessInfo[] {
   try {
     raw = JSON.parse(text);
   } catch {
+    // error-policy:J3 untrusted PowerShell output; unparseable JSON yields
+    // the explicit empty list, never a fabricated process row.
     return [];
   }
   const items: WinProcessRow[] = Array.isArray(raw)

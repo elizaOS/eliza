@@ -79,6 +79,9 @@ function loadNut(): NutModule | null {
     cachedModule = mod;
     return mod;
   } catch (err) {
+    // error-policy:J3 native-module availability probe; null signals
+    // "nutjs unavailable" and the cause is preserved in loadError, surfaced
+    // by loadFailureReason() in the driver-selection warn.
     loadError = err instanceof Error ? err : new Error(String(err));
     return null;
   }
@@ -361,6 +364,9 @@ export async function nutDrag(
     try {
       await m.mouse.move(m.straightTo(new m.Point(sx2, sy2)));
     } catch {
+      // error-policy:J4 designed two-tier drag — manualDragMove performs the
+      // same motion via interpolated setPosition steps, and its failure
+      // throws to the caller.
       await manualDragMove(m, sx1, sy1, sx2, sy2);
     }
   } finally {
@@ -543,7 +549,8 @@ export async function nutCaptureScreenshot(
       try {
         unlinkSync(absolutePath);
       } catch {
-        /* best effort */
+        // error-policy:J6 best-effort temp-file teardown; the capture result
+        // has already been read into memory.
       }
     }
   }

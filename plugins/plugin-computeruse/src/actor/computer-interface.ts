@@ -200,6 +200,9 @@ export class DefaultComputerInterface implements ComputerInterface {
       try {
         return getPrimaryDisplay();
       } catch {
+        // error-policy:J4 seeds only the initial cursor-state display id
+        // (0 = conventional primary). Real display data always flows from
+        // listDisplays/capture, whose failures surface to the caller.
         return { id: 0 } as DisplayDescriptor;
       }
     })();

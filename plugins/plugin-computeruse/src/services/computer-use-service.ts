@@ -233,6 +233,11 @@ export class ComputerUseService extends Service {
   private displayIdDeprecationWarned = false;
   private sceneBuilder: SceneBuilder = new SceneBuilder({
     log: (msg) => logger.warn(msg),
+    // Deferred read of this.runtime: the closure runs at scan time, after the
+    // Service base constructor has bound the runtime. Makes a11y scan
+    // failures agent-visible via ERROR_REPORTED (#12273).
+    reportError: (scope, error, context) =>
+      this.runtime.reportError(scope, error, context),
   });
   /**
    * Single shared per-display capture for the turn (#9105 M3). OCR, the Brain,
@@ -259,6 +264,9 @@ export class ComputerUseService extends Service {
     try {
       instance.screenSize = getScreenSize();
     } catch (error) {
+      // error-policy:J4 the 1920x1080 default is a documented boot-time
+      // placeholder (warned); real geometry flows from listDisplays on every
+      // capture/dispatch, so a wrong guess fails loudly there, not here.
       logger.warn(
         `[computeruse] Falling back to default screen size: ${errorMessage(error)}`,
       );
@@ -282,6 +290,10 @@ export class ComputerUseService extends Service {
             warmScreenSizeCache(),
           ]),
         )
+        // error-policy:J5 each warm helper upholds a documented never-throws
+        // contract (failures latch/log inside ps-host and leave the sync
+        // paths authoritative); this catch only guards the fire-and-forget
+        // chain against an unhandled rejection.
         .catch(() => {});
     }
 
@@ -294,7 +306,8 @@ export class ComputerUseService extends Service {
     try {
       await closeBrowser();
     } catch {
-      // ignore browser shutdown failures
+      // error-policy:J6 best-effort teardown; the service is stopping and a
+      // failed browser close cannot affect the stopped state.
     }
     // Tear down the persistent PowerShell host and latch spawning off so a
     // late fire-and-forget warm continuation can't resurrect it post-stop.
@@ -618,6 +631,9 @@ export class ComputerUseService extends Service {
           result.screenshot = captured.base64;
           result.displayId = captured.displayId;
         } catch (error) {
+          // error-policy:J4 the action itself succeeded; the missing
+          // screenshot attachment is a warned, visible omission in the
+          // result rather than grounds to fail a completed input.
           logger.warn(
             `[computeruse] Post-action screenshot failed: ${errorMessage(error)}`,
           );
@@ -625,6 +641,9 @@ export class ComputerUseService extends Service {
       }
       return this.succeedEntry(entry, result);
     } catch (error) {
+      // error-policy:J1 action boundary — the failure (permission-classified
+      // when possible) returns as a structured {success:false,error} entry
+      // the model sees; permissionDenied flags drive the escalation UX.
       const permissionError = classifyPermissionDeniedError(error, {
         permissionType:
           params.action === "screenshot" ? "screen_recording" : "accessibility",
@@ -712,6 +731,8 @@ export class ComputerUseService extends Service {
         message: `OCR found ${blocks.length} text block(s) on display ${cap.display.id}.`,
       });
     } catch (error) {
+      // error-policy:J1 action boundary — the failure returns as a
+      // structured {success:false,error} entry the model sees.
       return this.failEntry(entry, {
         success: false,
         error: errorMessage(error),
@@ -770,8 +791,9 @@ export class ComputerUseService extends Service {
         message: `Set-of-Marks detected ${elements.length} numbered element(s) on display ${cap.display.id}.`,
       });
     } catch (error) {
-      // SoM is best-effort; surface a clear failure rather than silently
-      // dropping to OCR (the caller already chose SoM by registering it).
+      // error-policy:J1 action boundary — SoM failure surfaces as a clear
+      // structured {success:false,error} rather than silently dropping to
+      // OCR (the caller already chose SoM by registering it).
       return this.failEntry(entry, {
         success: false,
         error: `Set-of-Marks detection failed: ${errorMessage(error)}`,
@@ -805,6 +827,9 @@ export class ComputerUseService extends Service {
         ? this.succeedEntry(entry, result)
         : this.failEntry(entry, result);
     } catch (error) {
+      // error-policy:J1 action boundary — a browser-not-open failure gets one
+      // designed auto-open retry; every other failure (and the retry's own
+      // failure) returns as a structured {success:false,error} entry.
       if (this.shouldAutoOpenBrowser(params.action, error)) {
         return await this.retryBrowserActionAfterOpen(entry, params);
       }
@@ -833,6 +858,8 @@ export class ComputerUseService extends Service {
         ? this.succeedEntry(entry, retryResult)
         : this.failEntry(entry, retryResult);
     } catch (error) {
+      // error-policy:J1 action boundary — the failure returns as a
+      // structured {success:false,error} entry the model sees.
       return this.failEntry(entry, {
         success: false,
         error: errorMessage(error),
@@ -1187,6 +1214,9 @@ export class ComputerUseService extends Service {
           });
       }
     } catch (error) {
+      // error-policy:J1 action boundary — the failure (permission-classified
+      // when possible) returns as a structured {success:false,error} entry
+      // the model sees; permissionDenied flags drive the escalation UX.
       const permissionError = classifyPermissionDeniedError(error, {
         permissionType: "accessibility",
         operation: params.action,
@@ -1302,6 +1332,8 @@ export class ComputerUseService extends Service {
           });
       }
     } catch (error) {
+      // error-policy:J1 action boundary — the failure returns as a
+      // structured {success:false,error} entry the model sees.
       return this.failEntry(entry, {
         success: false,
         error: errorMessage(error),
@@ -1395,6 +1427,8 @@ export class ComputerUseService extends Service {
           });
       }
     } catch (error) {
+      // error-policy:J1 action boundary — the failure returns as a
+      // structured {success:false,error} entry the model sees.
       return this.failEntry(entry, {
         success: false,
         error: errorMessage(error),
@@ -1845,6 +1879,8 @@ export class ComputerUseService extends Service {
         displayId: result.display.id,
       };
     } catch (error) {
+      // error-policy:J4 designed two-tier capture — the driver capture below
+      // grabs the same screen, and its failure throws to the caller.
       logger.debug(
         `[computeruse] per-display capture failed (${errorMessage(error)}); falling back to driver capture`,
       );
@@ -2137,7 +2173,8 @@ export class ComputerUseService extends Service {
           return String(value);
         }
       } catch {
-        // ignore runtime setting lookup failures
+        // error-policy:J4 setting lookup falls through to the env-var tiers
+        // below — the documented config precedence, not a swallowed value.
       }
       return process.env[key] ?? process.env[`ELIZA_${key}`];
     };

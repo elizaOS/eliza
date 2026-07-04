@@ -236,7 +236,8 @@ function enumerateLinux(): DisplayInfo[] {
     const parsed = parseXrandrMonitors(output);
     if (parsed.length > 0) return parsed;
   } catch {
-    /* xrandr unavailable — fall through to empty */
+    // error-policy:J4 xrandr is one tier of the enumeration failover chain;
+    // [] advances to listDisplays' explicit fallbackPrimary degrade.
   }
   return [];
 }
@@ -252,7 +253,8 @@ function enumerateWayland(): DisplayInfo[] {
     const parsed = parseHyprlandMonitors(output);
     if (parsed.length > 0) return parsed;
   } catch {
-    /* try sway */
+    // error-policy:J4 Hyprland tier of the Wayland failover chain; the Sway
+    // tier below is attempted next.
   }
   // Sway
   try {
@@ -264,7 +266,8 @@ function enumerateWayland(): DisplayInfo[] {
     const parsed = parseSwayOutputs(output);
     if (parsed.length > 0) return parsed;
   } catch {
-    /* fall through to xrandr/xwayland */
+    // error-policy:J4 Sway tier of the Wayland failover chain; enumeration
+    // falls through to the xrandr/XWayland tier.
   }
   return [];
 }
@@ -285,6 +288,8 @@ export function parseHyprlandMonitors(output: string): DisplayInfo[] {
   try {
     raw = JSON.parse(output);
   } catch {
+    // error-policy:J3 untrusted `hyprctl` output; unparseable JSON yields the
+    // explicit empty list, never a fabricated display.
     return [];
   }
   if (!Array.isArray(raw)) return [];
@@ -322,6 +327,8 @@ export function parseSwayOutputs(output: string): DisplayInfo[] {
   try {
     raw = JSON.parse(output);
   } catch {
+    // error-policy:J3 untrusted `swaymsg` output; unparseable JSON yields the
+    // explicit empty list, never a fabricated display.
     return [];
   }
   if (!Array.isArray(raw)) return [];
@@ -372,6 +379,8 @@ export function parseDarwinDisplays(output: string): DisplayInfo[] {
   try {
     raw = JSON.parse(output);
   } catch {
+    // error-policy:J3 untrusted JXA output; unparseable JSON yields the
+    // explicit empty list, never a fabricated display.
     return [];
   }
   if (!Array.isArray(raw)) return [];
@@ -423,7 +432,8 @@ function enumerateDarwin(): DisplayInfo[] {
     const parsed = parseSystemProfilerDisplays(output);
     if (parsed.length > 0) return parsed;
   } catch {
-    /* fall through */
+    // error-policy:J4 system_profiler tier of the macOS failover chain; the
+    // JXA CoreGraphics tier below is attempted next.
   }
   // Last-resort: CGMainDisplay bounds + scale via osascript JXA.
   try {
@@ -456,6 +466,9 @@ function enumerateDarwin(): DisplayInfo[] {
       },
     ];
   } catch {
+    // error-policy:J4 last macOS tier failed; fallbackPrimary() is the
+    // designed synthetic-primary degrade (same value listDisplays substitutes
+    // for an empty enumeration) — a wrong geometry fails loudly at capture.
     return [fallbackPrimary()];
   }
 }
@@ -484,6 +497,8 @@ export function parseSystemProfilerDisplays(output: string): DisplayInfo[] {
   try {
     parsed = JSON.parse(output) as SPDisplaysRoot;
   } catch {
+    // error-policy:J3 untrusted system_profiler output; unparseable JSON
+    // yields the explicit empty list, never a fabricated display.
     return [];
   }
   const cards = parsed.SPDisplaysDataType;
@@ -549,6 +564,8 @@ export function parseWindowsScreens(output: string): DisplayInfo[] {
   try {
     raw = JSON.parse(output);
   } catch {
+    // error-policy:J3 untrusted PowerShell output; unparseable JSON yields
+    // the explicit empty list, never a fabricated display.
     return [];
   }
   const items: WinScreen[] = Array.isArray(raw)
@@ -606,7 +623,9 @@ function enumerateWindows(): DisplayInfo[] {
     const parsed = parseWindowsScreens(output);
     if (parsed.length > 0) return parsed;
   } catch {
-    /* fall through */
+    // error-policy:J4 PowerShell enumeration failed; fallbackPrimary() is the
+    // designed synthetic-primary degrade — a wrong geometry fails loudly at
+    // capture, not silently here.
   }
   return [fallbackPrimary()];
 }
@@ -629,6 +648,8 @@ export async function warmDisplaysCache(): Promise<void> {
       cachedAt = Date.now();
     }
   } catch {
-    /* leave cache untouched; sync enumeration remains the fallback */
+    // error-policy:J4 documented never-throws warm-cache contract; the sync
+    // enumeration path remains the authoritative fallback, so nothing is
+    // masked — only the pre-seeding speedup is lost.
   }
 }

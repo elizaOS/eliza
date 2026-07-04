@@ -143,7 +143,11 @@ function makeBuilder(
     captureAll: async () =>
       captures[Math.min(i++, captures.length - 1)] ??
       captures[captures.length - 1]!,
-    captureOne: async () => captures[0]![0]!,
+    captureOne: async () => {
+      const first = captures[0]?.[0];
+      if (!first) throw new Error("capture fixture list is empty");
+      return first;
+    },
     listDisplays: () => fakeDisplays,
     enumerateApps: () => options.apps ?? [],
     accessibilityProvider: makeFakeAxProvider(options.ax ?? []),

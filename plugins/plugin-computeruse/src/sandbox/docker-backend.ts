@@ -352,7 +352,8 @@ export class DockerBackend implements SandboxBackend {
       try {
         this.helper.stdin.end();
       } catch {
-        // ignore
+        // error-policy:J6 best-effort teardown; the helper process is being
+        // discarded and the container kill below still runs.
       }
       this.helper = null;
     }
@@ -394,6 +395,9 @@ export class DockerBackend implements SandboxBackend {
       try {
         parsed = JSON.parse(line);
       } catch (err) {
+        // error-policy:J3 untrusted helper output — unparseable JSON rejects
+        // the pending op with a typed SandboxInvocationError, never a
+        // fake-empty result.
         next.reject(
           new SandboxInvocationError(
             `Helper produced unparseable JSON for ${next.op}: ${err instanceof Error ? err.message : String(err)}`,

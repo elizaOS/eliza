@@ -9,6 +9,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { logger } from "@elizaos/core";
 import type {
   ApprovalMode,
   ApprovalResolution,
@@ -193,8 +194,18 @@ export class ComputerUseApprovalManager {
       if (typeof parsed.mode === "string" && isApprovalMode(parsed.mode)) {
         this.mode = parsed.mode;
       }
-    } catch {
-      // Keep the default mode when the config file is missing or invalid.
+    } catch (err) {
+      // error-policy:J3 untrusted on-disk config; a missing file (first run)
+      // keeps the default mode silently, while a corrupt/unreadable file is
+      // warned — smart_approve is the safe direction, but the operator must
+      // know their persisted choice did not load.
+      if ((err as NodeJS.ErrnoException)?.code !== "ENOENT") {
+        logger.warn(
+          `[ComputerUseApprovalManager] approval-mode config unreadable; using default "${this.mode}": ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      }
     }
   }
 
@@ -206,8 +217,15 @@ export class ComputerUseApprovalManager {
         JSON.stringify({ mode: this.mode }, null, 2),
         "utf8",
       );
-    } catch {
-      // Ignore persistence failures; approval mode still applies in-memory.
+    } catch (err) {
+      // error-policy:J4 the mode still applies in-memory (designed degrade),
+      // but a failed persist means the choice will not survive a restart —
+      // warn so the operator is not silently reverted to the default later.
+      logger.warn(
+        `[ComputerUseApprovalManager] failed to persist approval mode "${this.mode}": ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
     }
   }
 

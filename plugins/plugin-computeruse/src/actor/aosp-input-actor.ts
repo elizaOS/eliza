@@ -137,6 +137,8 @@ export class AospInputActor {
           await this.tap(bridge, x, y);
         }
       } catch (err) {
+        // error-policy:J1 dispatch boundary — the bridge failure returns as a
+        // structured {success:false,error} DispatchResult the loop/model sees.
         return driverError(err);
       }
       return { success: true, issued: action };
@@ -168,6 +170,8 @@ export class AospInputActor {
           DEFAULT_SWIPE_DURATION_MS,
         );
       } catch (err) {
+        // error-policy:J1 dispatch boundary — the bridge failure returns as a
+        // structured {success:false,error} DispatchResult the loop/model sees.
         return driverError(err);
       }
       return { success: true, issued: action };
@@ -196,6 +200,8 @@ export class AospInputActor {
           DEFAULT_SWIPE_DURATION_MS,
         );
       } catch (err) {
+        // error-policy:J1 dispatch boundary — the bridge failure returns as a
+        // structured {success:false,error} DispatchResult the loop/model sees.
         return driverError(err);
       }
       return { success: true, issued: action };

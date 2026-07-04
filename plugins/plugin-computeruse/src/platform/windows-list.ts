@@ -7,6 +7,7 @@
  */
 
 import { execFileSync, execSync } from "node:child_process";
+import { logger } from "@elizaos/core";
 import type { ScreenRegion, ScreenSize, WindowInfo } from "../types.js";
 import {
   commandExists,
@@ -45,12 +46,14 @@ async function runWindowsPowerShell(
     try {
       return await runPsHost(ps, budget);
     } catch (err) {
-      // A SCRIPT-level error (the warm host ran the script and it threw, e.g.
-      // `Window not found`) is authoritative — re-running it through a cold
-      // one-shot spawn can only repeat the same failure (slowly) or, on a
-      // Defender-heavy host where the cold spawn exceeds timeoutMs, mask it as
-      // an opaque ETIMEDOUT. Surface it directly. Only HOST-level failures
-      // (host unavailable / exited / timed out / disposed) fall back.
+      // error-policy:J4 designed two-tier failover. A SCRIPT-level error (the
+      // warm host ran the script and it threw, e.g. `Window not found`) is
+      // authoritative — re-running it through a cold one-shot spawn can only
+      // repeat the same failure (slowly) or, on a Defender-heavy host where
+      // the cold spawn exceeds timeoutMs, mask it as an opaque ETIMEDOUT.
+      // Surface it directly. Only HOST-level failures (host unavailable /
+      // exited / timed out / disposed) fall back to the cold spawn below,
+      // whose own failure propagates to the caller.
       if (
         err instanceof Error &&
         err.message.startsWith("ps-host script error:")
@@ -242,7 +245,8 @@ export async function warmWindowsCache(): Promise<void> {
     windowsCache = parseWindowsWindowList(output);
     windowsCachedAt = Date.now();
   } catch {
-    /* leave cache untouched; sync enumeration remains the fallback */
+    // error-policy:J4 documented never-throws warm-cache contract; the sync
+    // enumeration path remains the authoritative fallback.
   }
 }
 
@@ -303,6 +307,9 @@ function listWindowsDarwinViaSwift(): WindowInfo[] | null {
     });
     return parseDarwinWindowOutput(output);
   } catch {
+    // error-policy:J4 null is the documented "Swift tier unavailable/failed"
+    // signal; the caller falls back to the System Events tier, whose failure
+    // is warned there.
     return null;
   }
 }
@@ -336,7 +343,15 @@ function listWindowsDarwinViaSystemEvents(): WindowInfo[] {
       stdio: ["ignore", "pipe", "ignore"],
     });
     return parseDarwinWindowOutput(output);
-  } catch {
+  } catch (err) {
+    // error-policy:J4 [] is the explicit "window list unavailable" degrade
+    // (last macOS tier); an Accessibility-permission denial lands here, so
+    // it is warned rather than read as a desktop with no windows.
+    logger.warn(
+      `[windows-list] System Events window enumeration failed; window list unavailable: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
     return [];
   }
 }
@@ -375,7 +390,15 @@ function listWindowsLinux(): WindowInfo[] {
         title: line.trim(),
         app: "unknown",
       }));
-  } catch {
+  } catch (err) {
+    // error-policy:J4 [] is the explicit "window list unavailable" degrade;
+    // the wmctrl/xdotool failure is warned rather than read as a desktop
+    // with no windows.
+    logger.warn(
+      `[windows-list] X11 window enumeration failed; window list unavailable: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
     return [];
   }
 }
@@ -390,6 +413,8 @@ export function parseWindowsWindowList(output: string): WindowInfo[] {
       app: "unknown",
     }));
   } catch {
+    // error-policy:J3 untrusted PowerShell output; unparseable JSON yields
+    // the explicit empty list, never a fabricated window row.
     return [];
   }
 }
@@ -407,7 +432,15 @@ function listWindowsWindows(): WindowInfo[] {
       timeout: psSpawnTimeoutMs(15000),
     });
     return parseWindowsWindowList(output);
-  } catch {
+  } catch (err) {
+    // error-policy:J4 [] is the explicit "window list unavailable" degrade
+    // (the #9581 Defender-timeout failure mode); warned so a slow host is
+    // distinguishable from a desktop with no windows.
+    logger.warn(
+      `[windows-list] PowerShell window enumeration failed; window list unavailable: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
     return [];
   }
 }
@@ -468,6 +501,8 @@ export async function getActiveWindow(): Promise<WindowInfo | null> {
       return { id, title: title ?? "", app: app ?? "" };
     }
   } catch {
+    // error-policy:J4 null is the documented "no focused window / query
+    // unavailable" contract for this best-effort M12 probe.
     return null;
   }
   return null;
@@ -623,6 +658,9 @@ export async function focusWindow(windowId: string): Promise<void> {
     try {
       runDarwinWindowScript(commandTarget, "set frontmost of proc to true");
     } catch {
+      // error-policy:J4 designed two-tier focus — app-level `activate` is the
+      // fallback for windows System Events cannot address, and its failure
+      // throws to the caller.
       runCommand(
         "osascript",
         [
@@ -1027,7 +1065,8 @@ export async function warmScreenSizeCache(): Promise<void> {
       screenSizeCache = { width: b.Width, height: b.Height };
     }
   } catch {
-    /* leave cache untouched; computeScreenSize remains the fallback */
+    // error-policy:J4 documented never-throws warm-cache contract; the sync
+    // computeScreenSize path remains the authoritative fallback.
   }
 }
 
@@ -1053,7 +1092,8 @@ function computeScreenSize(): ScreenSize | null {
         return { width, height };
       }
     } catch {
-      /* fallback */
+      // error-policy:J4 one tier of the screen-size failover chain; the next
+      // tier (or the explicit null "unknown" result) follows.
     }
     try {
       const output = execSync(
@@ -1071,7 +1111,8 @@ function computeScreenSize(): ScreenSize | null {
         return { width, height };
       }
     } catch {
-      /* fallback */
+      // error-policy:J4 one tier of the screen-size failover chain; the next
+      // tier (or the explicit null "unknown" result) follows.
     }
     // Fallback: system_profiler
     try {
@@ -1091,7 +1132,8 @@ function computeScreenSize(): ScreenSize | null {
         };
       }
     } catch {
-      /* fallback */
+      // error-policy:J4 one tier of the screen-size failover chain; the next
+      // tier (or the explicit null "unknown" result) follows.
     }
     return null;
   }
@@ -1109,7 +1151,8 @@ function computeScreenSize(): ScreenSize | null {
           };
         }
       } catch {
-        /* fallback */
+        // error-policy:J4 one tier of the screen-size failover chain; the
+        // next tier (or the explicit null "unknown" result) follows.
       }
     }
     if (commandExists("xrandr")) {
@@ -1130,7 +1173,8 @@ function computeScreenSize(): ScreenSize | null {
           };
         }
       } catch {
-        /* fallback */
+        // error-policy:J4 one tier of the screen-size failover chain; the
+        // next tier (or the explicit null "unknown" result) follows.
       }
     }
     return null;
@@ -1152,7 +1196,8 @@ function computeScreenSize(): ScreenSize | null {
         return { width: bounds.Width, height: bounds.Height };
       }
     } catch {
-      /* fallback */
+      // error-policy:J4 one tier of the screen-size failover chain; the next
+      // tier (or the explicit null "unknown" result) follows.
     }
     return null;
   }

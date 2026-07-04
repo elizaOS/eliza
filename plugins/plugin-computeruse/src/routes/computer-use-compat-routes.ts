@@ -52,6 +52,8 @@ function isTrustedLocalRequest(
         return false;
       }
     } catch {
+      // error-policy:J3 untrusted Origin header; an unparseable origin is
+      // rejected (fail-closed), never treated as local.
       return false;
     }
   }
@@ -168,6 +170,9 @@ async function readCompatJsonBody(
       chunks.push(buf);
     }
   } catch {
+    // error-policy:J1 route boundary — a broken body stream becomes an
+    // explicit 400; null tells the route handler the response is already
+    // sent.
     sendJsonErrorResponse(res, 400, "Invalid request body");
     return null;
   }
@@ -184,6 +189,8 @@ async function readCompatJsonBody(
     }
     return parsed as Record<string, unknown>;
   } catch {
+    // error-policy:J3 untrusted request body; unparseable JSON becomes an
+    // explicit 400 — never an empty-object fake-valid body.
     sendJsonErrorResponse(res, 400, "Invalid JSON body");
     return null;
   }

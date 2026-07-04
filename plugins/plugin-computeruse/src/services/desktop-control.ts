@@ -686,6 +686,8 @@ function canCaptureMacScreen(): boolean {
     runCommand("screencapture", ["-x", "-R0,0,1,1", tmpFile], 5000);
     return true;
   } catch {
+    // error-policy:J3 capability probe; false feeds the capability matrix
+    // and the actual capture path raises its own permission-tagged error.
     return false;
   } finally {
     removeTempFile(tmpFile);
@@ -705,6 +707,8 @@ function canUseMacSystemEvents(): boolean {
     );
     return true;
   } catch {
+    // error-policy:J3 capability probe; false feeds the capability matrix
+    // and the real System Events path raises its own permission error.
     return false;
   }
 }
@@ -713,7 +717,7 @@ function removeTempFile(filePath: string): void {
   try {
     unlinkSync(filePath);
   } catch {
-    // Temp cleanup is best effort.
+    // error-policy:J6 best-effort temp-file teardown.
   }
 }
 

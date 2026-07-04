@@ -179,6 +179,8 @@ export const clipboardAction: Action = {
         action,
       } satisfies ClipboardActionParams);
     } catch (error) {
+      // error-policy:J1 action boundary — the platform failure becomes a
+      // structured {success:false,error} ActionResult the model sees.
       const message =
         error instanceof ClipboardUnavailableError
           ? error.message

@@ -41,7 +41,7 @@ import {
   pngDimensions,
 } from "../scene/dhash.js";
 import { SceneBuilder } from "../scene/scene-builder.js";
-import type { SceneAxNode, SceneOcrBox } from "../scene/scene-types.js";
+import type { SceneOcrBox } from "../scene/scene-types.js";
 import type { DisplayDescriptor } from "../types.js";
 
 // ── tiny PNG builder (shared shape with scene-builder.test.ts) ──────────────
@@ -322,7 +322,11 @@ describe("dirty-block re-OCR — wired to captureRegion", () => {
       captureAll: async () =>
         captures[Math.min(i++, captures.length - 1)] ??
         captures[captures.length - 1]!,
-      captureOne: async () => captures[0]![0]!,
+      captureOne: async () => {
+        const first = captures[0]?.[0];
+        if (!first) throw new Error("capture fixture list is empty");
+        return first;
+      },
       captureRegion: async (displayId, region) => {
         captureRegionCalls.push({ displayId, region });
         // Return a tiny PNG of arbitrary content; OCR is fully mocked so
@@ -398,7 +402,7 @@ describe("dirty-block re-OCR — wired to captureRegion", () => {
     expect(captureRegionCalls).toHaveLength(1);
     // The dirty rect should be inside the source frame and roughly near
     // (col=4, row=4) for a 16×16 grid on a 256×256 frame → ~(64, 64, 16, 16).
-    const reg = captureRegionCalls[0]!.region;
+    const reg = captureRegionCalls[0]?.region;
     expect(reg.x).toBeGreaterThanOrEqual(60);
     expect(reg.x).toBeLessThanOrEqual(80);
     expect(reg.y).toBeGreaterThanOrEqual(60);
@@ -681,8 +685,8 @@ describe("live smoke — getCurrentScene on this host", () => {
   it("listDisplays returns at least one display with positive bounds", () => {
     const all = listDisplays();
     expect(all.length).toBeGreaterThan(0);
-    expect(all[0]!.bounds[2]).toBeGreaterThan(0);
-    expect(all[0]!.bounds[3]).toBeGreaterThan(0);
+    expect(all[0]?.bounds[2]).toBeGreaterThan(0);
+    expect(all[0]?.bounds[3]).toBeGreaterThan(0);
   });
 });
 

@@ -116,7 +116,8 @@ export async function readClipboard(): Promise<string> {
     try {
       return await runPsHost("Get-Clipboard -Raw", clipboardTimeoutMs());
     } catch {
-      /* warm host unavailable/errored — fall back to one-shot spawn */
+      // error-policy:J4 designed two-tier execution — the one-shot spawn
+      // below runs the same read, and its failure throws to the caller.
     }
   }
   const plan = pickPlan();
@@ -156,7 +157,8 @@ export async function writeClipboard(text: string): Promise<void> {
       );
       return;
     } catch {
-      /* warm host unavailable/errored — fall back to one-shot spawn */
+      // error-policy:J4 designed two-tier execution — the one-shot spawn
+      // below performs the same write, and its failure throws to the caller.
     }
   }
   const plan = pickPlan();

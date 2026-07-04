@@ -14,10 +14,8 @@
  */
 
 import { execSync } from "node:child_process";
-import type { WindowInfo } from "../types.js";
+import { logger } from "@elizaos/core";
 import { commandExists, currentPlatform } from "./helpers.js";
-import { listProcesses, type ProcessInfo } from "./process-list.js";
-import { listWindows } from "./windows-list.js";
 
 export interface A11yNode {
   role: string;
@@ -66,7 +64,15 @@ export function extractA11yTree(): string | null {
     if (os === "win32") {
       return extractA11yWindows();
     }
-  } catch {
+  } catch (err) {
+    // error-policy:J4 null is the documented "a11y unavailable" contract for
+    // this OSWorld/benchmark surface; the failure is warned so a permission
+    // regression is distinguishable from an unsupported platform in the logs.
+    logger.warn(
+      `[a11y] extractA11yTree failed on ${os}: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
     return null;
   }
 
@@ -146,7 +152,15 @@ function extractA11yDarwin(): string | null {
     });
 
     return output.trim() || null;
-  } catch {
+  } catch (err) {
+    // error-policy:J4 null is the documented "a11y unavailable" signal for
+    // this OSWorld/benchmark surface; the warn keeps a permission regression
+    // distinguishable from an unsupported platform.
+    logger.warn(
+      `[a11y] macOS a11y extraction failed: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
     return null;
   }
 }
@@ -190,7 +204,15 @@ except Exception as e:
         },
       );
       return output.trim() || null;
-    } catch {
+    } catch (err) {
+      // error-policy:J4 null is the documented "a11y unavailable" signal for
+      // this OSWorld/benchmark surface; the warn keeps a permission
+      // regression distinguishable from an unsupported platform.
+      logger.warn(
+        `[a11y] Linux AT-SPI extraction failed: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
       return null;
     }
   }
@@ -232,7 +254,15 @@ $lines -join [Environment]::NewLine
       },
     );
     return output.trim() || null;
-  } catch {
+  } catch (err) {
+    // error-policy:J4 null is the documented "a11y unavailable" signal for
+    // this OSWorld/benchmark surface; the warn keeps a permission regression
+    // distinguishable from an unsupported platform.
+    logger.warn(
+      `[a11y] Windows UIA extraction failed: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
     return null;
   }
 }

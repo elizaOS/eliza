@@ -91,6 +91,8 @@ export function launchApp(
         stdio: "ignore",
       });
     } catch (err) {
+      // error-policy:J1 promise boundary — a sync spawn throw is translated
+      // into the rejection callers observe; nothing is swallowed.
       reject(err instanceof Error ? err : new Error(String(err)));
       return;
     }

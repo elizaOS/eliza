@@ -6,6 +6,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { platform, tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  logger,
   readJsonBody as parseJsonBody,
   readRequestBody,
   sendJson as sendJsonResponse,
@@ -869,15 +870,16 @@ function captureScreenshot(region?: {
     try {
       unlinkSync(tmpFile);
     } catch {
-      /* cleanup best effort */
+      // error-policy:J6 best-effort temp-file teardown; the frame is already
+      // in memory.
     }
     return data;
   } catch (err) {
-    // Clean up temp file on error
     try {
       unlinkSync(tmpFile);
     } catch {
-      /* ignore */
+      // error-policy:J6 best-effort temp-file teardown on the failure path;
+      // the rethrow below is what surfaces.
     }
     throw err;
   }
@@ -916,7 +918,15 @@ function listWindows(): Array<{ id: string; title: string; app: string }> {
             id: parts[2] ?? "0",
           };
         });
-    } catch {
+    } catch (err) {
+      // error-policy:J4 [] is the explicit "window list unavailable" degrade
+      // for this diagnostic sandbox route; warned so an Accessibility denial
+      // is not read as a desktop with no windows.
+      logger.warn(
+        `[sandbox-routes] macOS window enumeration failed: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
       return [];
     }
   }
@@ -938,7 +948,14 @@ function listWindows(): Array<{ id: string; title: string; app: string }> {
           title: line.trim(),
           app: "unknown",
         }));
-    } catch {
+    } catch (err) {
+      // error-policy:J4 [] is the explicit "window list unavailable" degrade
+      // for this diagnostic sandbox route; the tool failure is warned.
+      logger.warn(
+        `[sandbox-routes] X11 window enumeration failed: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
       return [];
     }
   }
@@ -956,7 +973,14 @@ function listWindows(): Array<{ id: string; title: string; app: string }> {
         title: p.MainWindowTitle,
         app: "unknown",
       }));
-    } catch {
+    } catch (err) {
+      // error-policy:J4 [] is the explicit "window list unavailable" degrade
+      // for this diagnostic sandbox route; the PowerShell failure is warned.
+      logger.warn(
+        `[sandbox-routes] PowerShell window enumeration failed: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
       return [];
     }
   }
@@ -1020,7 +1044,8 @@ async function recordAudio(durationMs: number): Promise<Buffer> {
   try {
     unlinkSync(tmpFile);
   } catch {
-    /* cleanup */
+    // error-policy:J6 best-effort temp-file teardown; the recording is
+    // already in memory.
   }
   return data;
 }
@@ -1058,7 +1083,8 @@ async function playAudio(data: Buffer, format: string): Promise<void> {
     try {
       unlinkSync(tmpFile);
     } catch {
-      /* cleanup */
+      // error-policy:J6 best-effort temp-file teardown; playback success or
+      // failure has already been decided.
     }
   }
 }
@@ -1334,7 +1360,8 @@ function getPlatformInfo(): Record<string, string | boolean> {
     execSync(`${which} docker`, { stdio: "ignore", timeout: 3000 });
     dockerInstalled = true;
   } catch {
-    /* not installed */
+    // error-policy:J3 existence probe; a `which` miss means docker is not
+    // installed — the diagnostic payload reports it explicitly.
   }
 
   // Check if docker daemon is running (docker info succeeds only when daemon is up)
@@ -1343,7 +1370,8 @@ function getPlatformInfo(): Record<string, string | boolean> {
       execSync("docker info", { stdio: "ignore", timeout: 5000 });
       dockerRunning = true;
     } catch {
-      /* installed but not running */
+      // error-policy:J3 daemon-liveness probe; failure means "installed but
+      // not running" — the diagnostic payload reports it explicitly.
     }
   }
 
@@ -1352,7 +1380,8 @@ function getPlatformInfo(): Record<string, string | boolean> {
       execSync("which container", { stdio: "ignore", timeout: 3000 });
       appleContainerAvailable = true;
     } catch {
-      /* */
+      // error-policy:J3 existence probe; a `which` miss means the Apple
+      // container CLI is absent — reported explicitly in the payload.
     }
   }
 
@@ -1375,6 +1404,8 @@ function isWsl2Available(): boolean {
     execSync("wsl --status", { stdio: "ignore", timeout: 5000 });
     return true;
   } catch {
+    // error-policy:J3 availability probe; a failing `wsl --status` means
+    // WSL2 is absent — false is the expected-miss signal.
     return false;
   }
 }
@@ -1413,7 +1444,8 @@ function attemptDockerStart(): {
           started = true;
           break;
         } catch {
-          /* try next path */
+          // error-policy:J4 one tier of the install-location failover chain;
+          // the next candidate path (or the start-menu tier) follows.
         }
       }
       if (!started) {
@@ -1445,7 +1477,8 @@ function attemptDockerStart(): {
           waitMs: 5000,
         };
       } catch {
-        /* systemctl may not be available */
+        // error-policy:J4 systemctl tier of the Linux daemon-start chain;
+        // the `service` tier below follows.
       }
 
       // Try service command
@@ -1460,7 +1493,8 @@ function attemptDockerStart(): {
           waitMs: 5000,
         };
       } catch {
-        /* */
+        // error-policy:J4 last Linux tier; the explicit structured failure
+        // below tells the caller exactly what to run manually.
       }
 
       return {
@@ -1477,6 +1511,8 @@ function attemptDockerStart(): {
       waitMs: 0,
     };
   } catch (err) {
+    // error-policy:J1 route-facing boundary — the failure returns as an
+    // explicit structured {success:false,message} payload.
     return {
       success: false,
       message: `Failed: ${String(err)}`,
@@ -1493,6 +1529,8 @@ function commandExists(cmd: string): boolean {
     execSync(`${which} ${cmd}`, { stdio: "ignore", timeout: 3000 });
     return true;
   } catch {
+    // error-policy:J3 existence probe; a `which`/`where` miss means the
+    // command is absent — false is the expected-miss signal.
     return false;
   }
 }

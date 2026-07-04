@@ -161,19 +161,19 @@ export function shutdownPsHost(): void {
     try {
       host.stdin.end();
     } catch {
-      /* best effort */
+      // error-policy:J6 best-effort teardown; the host is being discarded.
     }
     try {
       host.kill();
     } catch {
-      /* best effort */
+      // error-policy:J6 best-effort teardown; the host is being discarded.
     }
   }
   if (loopScriptPath) {
     try {
       unlinkSync(loopScriptPath);
     } catch {
-      /* best effort */
+      // error-policy:J6 best-effort teardown of the loop script temp file.
     }
     loopScriptPath = null;
   }
@@ -270,8 +270,9 @@ function sendRaw(script: string, timeoutMs: number): Promise<string> {
     try {
       host.stdin.write(`${token} ${b64}\n`);
     } catch (err) {
-      // Synchronous write failure (e.g. dead pipe). Surface as a rejection so
-      // the caller falls back, and tear the host down so the next call respawns.
+      // error-policy:J1 promise boundary — a synchronous write failure (e.g.
+      // dead pipe) surfaces as a rejection so the caller falls back to a
+      // one-shot spawn, and the host is torn down so the next call respawns.
       clearTimeout(timer);
       pending = null;
       shutdownPsHost();
@@ -296,6 +297,9 @@ export function runPsHost(script: string, timeoutMs: number): Promise<string> {
     return sendRaw(script, timeoutMs);
   };
   const run = chain.then(task, task);
+  // error-policy:J5 the rejection is observed by the caller of runPsHost()
+  // (which receives `run` itself); this catch only keeps the serialization
+  // chain alive so one failed request cannot wedge every later request.
   chain = run.catch(() => {});
   return run;
 }
@@ -310,6 +314,10 @@ export function warmPsHost(): Promise<void> {
   // (e.g. a service (re)start after a prior dispose).
   spawnAllowed = true;
   if (!psHostAvailable()) return Promise.resolve();
+  // error-policy:J5 the start failure is observed inside ensureHost (which
+  // latches startFailures until the host is disabled); every real consumer
+  // falls back to a one-shot spawn whose failure surfaces to its caller.
+  // This handler only upholds the documented never-rejects warm contract.
   return runPsHost("$null", startupTimeoutMs()).then(
     () => {},
     () => {},
@@ -339,7 +347,8 @@ process.once("exit", () => {
     try {
       host.kill();
     } catch {
-      /* best effort */
+      // error-policy:J6 best-effort teardown on process exit; nothing can
+      // observe a failure here.
     }
   }
 });

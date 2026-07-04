@@ -108,6 +108,9 @@ export async function runOcrOnPng(
         coordBlockToSceneBox(block, displayId, idState),
       );
     } catch (err) {
+      // error-policy:J4 the scene degrades to AX/pixel-only for this turn;
+      // the provider failure is logged through the scene-builder hook
+      // (logger.warn in the service wiring), never silent.
       logFn(
         `[scene-builder] CoordOcrProvider '${coord.name}' failed: ${err instanceof Error ? err.message : String(err)}`,
       );
@@ -127,6 +130,9 @@ export async function runOcrOnPng(
     });
     return result.lines.map((line) => toSceneBox(line, displayId, idState));
   } catch (err) {
+    // error-policy:J4 the scene degrades to AX/pixel-only for this turn;
+    // the provider failure is logged through the scene-builder hook, never
+    // silent.
     logFn(
       `[scene-builder] OCR provider '${provider.name}' failed: ${err instanceof Error ? err.message : String(err)}`,
     );
@@ -169,6 +175,8 @@ export async function runOcrOnRegions(
           });
           return result.blocks;
         } catch (err) {
+          // error-policy:J4 a failed dirty-region re-OCR degrades that
+          // region to its previous boxes for this turn; logged per region.
           logFn(
             `[scene-builder] CoordOcr region failed at ${crop.bbox.join(",")}: ${
               err instanceof Error ? err.message : String(err)
@@ -204,6 +212,8 @@ export async function runOcrOnRegions(
         });
         return { crop, lines: result.lines };
       } catch (err) {
+        // error-policy:J4 a failed dirty-region re-OCR degrades that region
+        // to its previous boxes for this turn; logged per region.
         logFn(
           `[scene-builder] OCR region failed at ${crop.bbox.join(",")}: ${
             err instanceof Error ? err.message : String(err)

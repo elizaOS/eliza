@@ -70,6 +70,8 @@ export async function dispatch(
         await deps.interface.doubleClick(displayPoint);
       else await deps.interface.rightClick(displayPoint);
     } catch (err) {
+      // error-policy:J1 dispatch boundary — the driver failure returns as a
+      // structured {success:false,error} DispatchResult the loop/model sees.
       return driverError(err);
     }
     return { success: true, issued: action };
@@ -82,6 +84,8 @@ export async function dispatch(
     try {
       await deps.interface.typeText({ text: action.text });
     } catch (err) {
+      // error-policy:J1 dispatch boundary — the driver failure returns as a
+      // structured {success:false,error} DispatchResult the loop/model sees.
       return driverError(err);
     }
     return { success: true, issued: action };
@@ -94,6 +98,8 @@ export async function dispatch(
     try {
       await deps.interface.pressKey({ key: action.key });
     } catch (err) {
+      // error-policy:J1 dispatch boundary — the driver failure returns as a
+      // structured {success:false,error} DispatchResult the loop/model sees.
       return driverError(err);
     }
     return { success: true, issued: action };
@@ -106,6 +112,8 @@ export async function dispatch(
     try {
       await deps.interface.hotkey({ keys: action.keys });
     } catch (err) {
+      // error-policy:J1 dispatch boundary — the driver failure returns as a
+      // structured {success:false,error} DispatchResult the loop/model sees.
       return driverError(err);
     }
     return { success: true, issued: action };
@@ -137,6 +145,8 @@ export async function dispatch(
         dy: action.dy,
       });
     } catch (err) {
+      // error-policy:J1 dispatch boundary — the driver failure returns as a
+      // structured {success:false,error} DispatchResult the loop/model sees.
       return driverError(err);
     }
     return { success: true, issued: action };
@@ -164,6 +174,8 @@ export async function dispatch(
         ],
       });
     } catch (err) {
+      // error-policy:J1 dispatch boundary — the driver failure returns as a
+      // structured {success:false,error} DispatchResult the loop/model sees.
       return driverError(err);
     }
     return { success: true, issued: action };

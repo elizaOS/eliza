@@ -170,7 +170,9 @@ function linuxPidMapFromWmctrl(): Map<string, number> {
       }
     }
   } catch {
-    /* best effort */
+    // error-policy:J4 the wmctrl pid-join is enrichment for the app/window
+    // join; an empty map degrades to name-based matching rather than
+    // failing scene assembly.
   }
   return out;
 }
