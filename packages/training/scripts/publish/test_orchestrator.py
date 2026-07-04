@@ -34,6 +34,7 @@ from scripts.publish.orchestrator import (  # noqa: E402
     EXIT_KERNEL_VERIFY_FAIL,
     EXIT_MISSING_FILE,
     EXIT_OK,
+    EXIT_HF_AUDIT_FAIL,
     EXIT_RELEASE_EVIDENCE_FAIL,
     EXIT_USAGE,
     OrchestratorError,
@@ -1290,6 +1291,7 @@ def test_real_publish_finalizes_and_uploads_hf_evidence(
     bundle = _build_fixture_bundle(tmp_path)
     metal = _metal_report(tmp_path)
     final_uploads: list[tuple[str, str]] = []
+    audit_calls: list[str] = []
 
     def fake_push_to_hf(
         ctx: PublishContext,
@@ -1326,12 +1328,18 @@ def test_real_publish_finalizes_and_uploads_hf_evidence(
         "push_final_release_evidence",
         fake_push_final_release_evidence,
     )
+    monkeypatch.setattr(
+        orchestrator,
+        "run_hf_release_audit",
+        lambda ctx: audit_calls.append(ctx.repo_id),
+    )
     monkeypatch.setattr(orchestrator, "tag_training_repo", lambda *args: "tagged")
 
     rc = run(_ctx("4b", bundle, metal=metal, dry_run=False))
 
     assert rc == EXIT_OK
     assert final_uploads == [("evidence/release.json", "checksums/SHA256SUMS")]
+    assert audit_calls == [ELIZA_1_HF_REPO]
     release = json.loads((bundle / "evidence" / "release.json").read_text())
     assert release["releaseState"] == "final"
     assert release["hf"]["status"] == "uploaded"
@@ -1414,11 +1422,60 @@ def test_real_base_v1_publish_rejects_retired_qwen_asr_provenance(
         "push_final_release_evidence",
         lambda *args: None,
     )
+    monkeypatch.setattr(orchestrator, "run_hf_release_audit", lambda *args: None)
     monkeypatch.setattr(orchestrator, "tag_training_repo", lambda *args: "tagged")
 
     rc = run(_ctx("4b", bundle, metal=metal, dry_run=False))
 
     assert rc == EXIT_RELEASE_EVIDENCE_FAIL
+
+
+def test_real_publish_blocks_when_hf_release_audit_fails(
+    tmp_path: Path, monkeypatch
+) -> None:
+    import scripts.publish.orchestrator as orchestrator  # noqa: PLC0415
+
+    bundle = _build_fixture_bundle(tmp_path)
+    metal = _metal_report(tmp_path)
+    tag_calls: list[str] = []
+
+    def fake_push_to_hf(
+        ctx: PublishContext,
+        manifest_path: Path,
+        readme_path: Path,
+        upload_pairs: list[tuple[Path, str]],
+    ) -> dict[str, Any]:
+        return {
+            "repoId": ctx.repo_id,
+            "status": "uploaded",
+            "commit": "payload123",
+            "url": f"https://huggingface.co/{ctx.repo_id}/commit/payload123",
+            "uploadedPaths": [
+                "bundles/4b/eliza-1.manifest.json",
+                "bundles/4b/README.md",
+                *(target for _, target in upload_pairs),
+            ],
+        }
+
+    def failing_audit(ctx: PublishContext) -> None:
+        raise orchestrator.OrchestratorError(
+            "HF release audit failed after upload; refusing to tag this publish.",
+            EXIT_HF_AUDIT_FAIL,
+        )
+
+    monkeypatch.setattr(orchestrator, "push_to_hf", fake_push_to_hf)
+    monkeypatch.setattr(orchestrator, "push_final_release_evidence", lambda *args: None)
+    monkeypatch.setattr(orchestrator, "run_hf_release_audit", failing_audit)
+    monkeypatch.setattr(
+        orchestrator,
+        "tag_training_repo",
+        lambda *args: tag_calls.append("tagged") or "tagged",
+    )
+
+    rc = run(_ctx("4b", bundle, metal=metal, dry_run=False))
+
+    assert rc == EXIT_HF_AUDIT_FAIL
+    assert tag_calls == []
 
 
 # ---------------------------------------------------------------------------

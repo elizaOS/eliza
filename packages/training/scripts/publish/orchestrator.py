@@ -98,6 +98,10 @@ from scripts.manifest.eliza1_platform_plan import (  # noqa: E402
 from scripts.manifest.eliza1_licenses import (  # noqa: E402
     verify_bundle_licenses,
 )
+from scripts.manifest.audit_hf_eliza1_release import (  # noqa: E402
+    DEFAULT_DATASET_REPO,
+    audit_hf_release,
+)
 
 # ---------------------------------------------------------------------------
 # Exit codes
@@ -112,6 +116,7 @@ EXIT_EVAL_GATE_FAIL = 13
 EXIT_MANIFEST_INVALID = 14
 EXIT_HF_PUSH_FAIL = 15
 EXIT_RELEASE_EVIDENCE_FAIL = 16
+EXIT_HF_AUDIT_FAIL = 17
 
 ELIZA_1_HF_ORG = "elizaos"
 
@@ -2735,6 +2740,28 @@ def push_final_release_evidence(
     )
 
 
+def run_hf_release_audit(ctx: PublishContext) -> None:
+    """Block completed publishes unless the public HF release surface is green."""
+
+    if ctx.dry_run:
+        log.info("[hf-audit] dry-run: skipped because no Hub upload occurred")
+        return
+    report = audit_hf_release(model_repo=ctx.repo_id, dataset_repo=DEFAULT_DATASET_REPO)
+    if report.ok:
+        log.info(
+            "[hf-audit] passed: model=%s dataset=%s checks=%d",
+            report.model_repo,
+            report.dataset_repo,
+            len(report.checks),
+        )
+        return
+    log.error("[hf-audit] failed after upload:\n%s", report.render())
+    raise OrchestratorError(
+        "HF release audit failed after upload; refusing to tag this publish.",
+        EXIT_HF_AUDIT_FAIL,
+    )
+
+
 def tag_training_repo(ctx: PublishContext, version: str, dry_run: bool) -> str | None:
     """Apply ``eliza-1-<tier>-v<version>`` to HEAD of the training repo.
 
@@ -2860,6 +2887,9 @@ def run(ctx: PublishContext) -> int:
                 upload_evidence,
             )
             push_final_release_evidence(ctx, release_path, checksum_path)
+
+        log.info("[stage 7/7] audit published HF release surface")
+        run_hf_release_audit(ctx)
 
         tag_name = tag_training_repo(ctx, version, ctx.dry_run)
         log.info("done. tag=%s", tag_name)
