@@ -1206,8 +1206,23 @@ export async function handleChatCompletionsPOST(
       // so it does not need the KV org-balance hint or a writable cache.
       let optimisticReady = false;
       const optimisticBillingEnabled = isOptimisticBillingEnabled();
+      // #12749: a request carrying an affiliate code must take the SYNCHRONOUS
+      // reserve. Both optimistic fast paths below admit on a BASE-cost estimate
+      // (calculateCost only) — the affiliate markup (attacker-set, up to 1000%)
+      // is invisible to them because resolveBillableAffiliate lives inside
+      // reserveCredits, and on this route billUsage runs WITHOUT the
+      // reservation (#10557), so nothing clamps the affiliate credit to
+      // collected money on those paths. An optimistically admitted marked-up
+      // request could therefore settle far past the admission gate's headroom
+      // while still minting the full cashable affiliate cut — an uncollectable-
+      // overage mint, one env flag away. Falling through folds the markup into
+      // the upfront hold (#11976 threaded affiliateCode → estimatedCostMultiplier)
+      // and 402s upfront when the balance can't cover base+markup (fail-closed).
+      // Affiliate-marked traffic is rare, so the hot path loses nothing.
+      const optimisticAllowedForRequest =
+        optimisticBillingEnabled && affiliateCode === null;
       const useDbLedger =
-        optimisticBillingEnabled && resolveInferenceBillingLedger() === "db";
+        optimisticAllowedForRequest && resolveInferenceBillingLedger() === "db";
 
       if (useDbLedger) {
         const { totalCost } = await calculateCost(
@@ -1253,7 +1268,7 @@ export async function handleChatCompletionsPOST(
       let estimatedCostUsd = 0;
       if (
         !optimisticReady &&
-        optimisticBillingEnabled &&
+        optimisticAllowedForRequest &&
         !useDbLedger &&
         isOptimisticBackstopAvailable()
       ) {

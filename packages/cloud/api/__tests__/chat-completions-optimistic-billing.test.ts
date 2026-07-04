@@ -30,6 +30,10 @@
  *   4. Flag OFF → synchronous reserve (default-safe).
  *   5. Non-durable backstop write → fall back to synchronous reserve (backstop
  *      attempted, optimistic settler NOT wired).
+ *   6. X-Affiliate-Code bypasses BOTH optimistic branches (KV backstop and
+ *      DB-ledger admission) and takes the synchronous reserve carrying the
+ *      code, so the hold folds the affiliate markup (#12749) — each with a
+ *      no-header positive control proving the branch still admits without it.
  */
 
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
@@ -42,6 +46,7 @@ import * as aiBillingActual from "@/lib/services/ai-billing";
 import * as contentModerationActual from "@/lib/services/content-moderation";
 import * as inferenceAuthContextActual from "@/lib/services/inference-auth-context";
 import * as fastPathActual from "@/lib/services/inference-billing-fast-path";
+import * as ledgerActual from "@/lib/services/inference-billing-ledger";
 import * as modelCatalogActual from "@/lib/services/model-catalog";
 import * as creditReservationActual from "@/lib/utils/credit-reservation";
 
@@ -60,6 +65,7 @@ let backstopAvailable = true;
 let gateBalanceUsd = 100;
 let thresholdUsd = 5;
 let backstopPersists = true;
+let billingLedger = "kv"; // anything but "db" → the KV backstop branch
 
 // --- spies on the two terminal billing paths --------------------------------
 const writePendingInferenceCharge = mock(async () => backstopPersists);
@@ -131,6 +137,19 @@ mock.module("@/lib/services/inference-billing-fast-path", () => ({
   createOptimisticDebitSettler,
 }));
 
+// DB-ledger optimistic branch (#12749): the ledger selector is a knob and the
+// admission/settler are spied so the tests can prove which branch admitted.
+const admitInferenceChargeViaLedger = mock(
+  async () => ({ admitted: true }) as never,
+);
+const createLedgerDebitSettler = mock(() => async () => null);
+mock.module("@/lib/services/inference-billing-ledger", () => ({
+  ...ledgerActual,
+  resolveInferenceBillingLedger: () => billingLedger,
+  admitInferenceChargeViaLedger,
+  createLedgerDebitSettler,
+}));
+
 // Synchronous reserve path — spied so we can prove it is the fallback.
 mock.module("@/lib/services/ai-billing", () => ({
   ...aiBillingActual,
@@ -161,6 +180,14 @@ const { handleChatCompletionsPOST } = await import(
 );
 
 afterAll(() => {
+  // Leave the knobs fail-safe BEFORE restoring the modules: bun's mock.module
+  // can leave already-evaluated importers (the route, first loaded by an
+  // earlier test file) bound to the mocked functions even after the registry
+  // restore below, and those closures read these knobs by reference. A leaked
+  // `billingEnabled=true` (or a "db" ledger) would silently flip LATER test
+  // files' requests onto an optimistic path their suites never account for.
+  billingEnabled = false;
+  billingLedger = "kv";
   mock.module("ai", () => aiActual);
   mock.module(
     "@/lib/services/inference-auth-context",
@@ -177,16 +204,18 @@ afterAll(() => {
     "@/lib/services/inference-billing-fast-path",
     () => fastPathActual,
   );
+  mock.module("@/lib/services/inference-billing-ledger", () => ledgerActual);
   mock.module("@/lib/services/ai-billing", () => aiBillingActual);
   mock.module("@/lib/utils/credit-reservation", () => creditReservationActual);
 });
 
-function makeRequest(): Request {
+function makeRequest(affiliateCode?: string): Request {
   return new Request("https://api.test/api/v1/chat/completions", {
     method: "POST",
     headers: {
       "content-type": "application/json",
       "x-request-id": CLIENT_REQUEST_ID,
+      ...(affiliateCode ? { "X-Affiliate-Code": affiliateCode } : {}),
     },
     body: JSON.stringify({
       model: "gpt-4o-mini",
@@ -196,10 +225,12 @@ function makeRequest(): Request {
   });
 }
 
-async function drive(): Promise<void> {
+async function drive(affiliateCode?: string): Promise<void> {
   // The handler owns its try/catch and always returns a Response (the stubbed
   // model call makes it an error response); we only read the spies.
-  await handleChatCompletionsPOST(makeRequest(), { skipOrgRateLimit: true });
+  await handleChatCompletionsPOST(makeRequest(affiliateCode), {
+    skipOrgRateLimit: true,
+  });
 }
 
 describe("chat/completions optimistic-billing route decision (#9899/#10066)", () => {
@@ -209,10 +240,13 @@ describe("chat/completions optimistic-billing route decision (#9899/#10066)", ()
     gateBalanceUsd = 100;
     thresholdUsd = 5;
     backstopPersists = true;
+    billingLedger = "kv";
     writePendingInferenceCharge.mockClear();
     reserveCredits.mockClear();
     createOptimisticDebitSettler.mockClear();
     createCreditReservationSettler.mockClear();
+    admitInferenceChargeViaLedger.mockClear();
+    createLedgerDebitSettler.mockClear();
   });
 
   test("eligible org takes the optimistic path: writes backstop, skips the synchronous reserve", async () => {
@@ -272,5 +306,62 @@ describe("chat/completions optimistic-billing route decision (#9899/#10066)", ()
     // ...but a non-durable write must fall through to the synchronous reserve.
     expect(reserveCredits).toHaveBeenCalledTimes(1);
     expect(createOptimisticDebitSettler).not.toHaveBeenCalled();
+  });
+
+  // #12749: the optimistic branches admit on a BASE-cost estimate and chat's
+  // billUsage runs without the reservation (#10557), so an affiliate markup
+  // (attacker-set, up to 1000%) would be minted as cashable earnings against
+  // money the admission gate never accounted for. A request carrying
+  // X-Affiliate-Code must therefore take the SYNCHRONOUS reserve, whose hold
+  // folds the markup (reserveCredits → resolveBillableAffiliate →
+  // estimatedCostMultiplier, threaded by #11976 — the markup arithmetic itself
+  // is pinned by chat-completions-affiliate-reserve.test.ts).
+  test("X-Affiliate-Code forces the synchronous reserve even when the KV optimistic path is eligible (#12749)", async () => {
+    // Positive control: WITHOUT the header the KV backstop admits and the
+    // synchronous reserve is skipped — proving the gate below is affiliate-
+    // specific, not a broken KV branch.
+    await drive();
+    expect(writePendingInferenceCharge).toHaveBeenCalledTimes(1);
+    expect(reserveCredits).not.toHaveBeenCalled();
+
+    writePendingInferenceCharge.mockClear();
+    createOptimisticDebitSettler.mockClear();
+    reserveCredits.mockClear();
+
+    await drive("PARTNER1000");
+    // Neither optimistic admission may see a marked-up request…
+    expect(writePendingInferenceCharge).not.toHaveBeenCalled();
+    expect(createOptimisticDebitSettler).not.toHaveBeenCalled();
+    // …the synchronous reserve runs and CARRIES the affiliate, so the hold
+    // covers base + markup and an uncollectable settle can't mint earnings.
+    expect(reserveCredits).toHaveBeenCalledTimes(1);
+    const reserveCalls = reserveCredits.mock.calls as unknown as Array<
+      [{ affiliateCode?: string | null }]
+    >;
+    expect(reserveCalls[0]?.[0]?.affiliateCode).toBe("PARTNER1000");
+  });
+
+  test("X-Affiliate-Code also bypasses the DB-ledger optimistic branch (#12749)", async () => {
+    billingLedger = "db";
+
+    // Positive control: WITHOUT the header the ledger branch admits and the
+    // synchronous reserve is skipped.
+    await drive();
+    expect(admitInferenceChargeViaLedger).toHaveBeenCalledTimes(1);
+    expect(createLedgerDebitSettler).toHaveBeenCalledTimes(1);
+    expect(reserveCredits).not.toHaveBeenCalled();
+
+    admitInferenceChargeViaLedger.mockClear();
+    createLedgerDebitSettler.mockClear();
+    reserveCredits.mockClear();
+
+    await drive("PARTNER1000");
+    expect(admitInferenceChargeViaLedger).not.toHaveBeenCalled();
+    expect(createLedgerDebitSettler).not.toHaveBeenCalled();
+    expect(reserveCredits).toHaveBeenCalledTimes(1);
+    const reserveCalls = reserveCredits.mock.calls as unknown as Array<
+      [{ affiliateCode?: string | null }]
+    >;
+    expect(reserveCalls[0]?.[0]?.affiliateCode).toBe("PARTNER1000");
   });
 });
