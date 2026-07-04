@@ -16,6 +16,7 @@ import { db } from "@feed/db";
 import { StaticDataRegistry } from "@feed/engine";
 import { logger } from "../../shared/logger";
 import type { JsonValue } from "../../types/common";
+import { createGuardedFetchImpl, guardedFetch } from "./guarded-fetch";
 
 type FeedRuntime = AgentRuntime & { a2aClient?: FeedA2AClient };
 
@@ -180,7 +181,7 @@ async function fetchAgentCard(): Promise<CachedAgentCard | null> {
       "FeedIntegration",
     );
 
-    const response = await fetch(agentCardUrl);
+    const response = await guardedFetch(agentCardUrl);
     if (!response.ok) {
       throw new Error(`Failed to fetch agent card: ${response.status}`);
     }
@@ -217,18 +218,15 @@ async function fetchAgentCard(): Promise<CachedAgentCard | null> {
 // =============================================================================
 
 /**
- * Create authenticated fetch for an agent that injects identity headers
- * Headers come from cached identity (refreshed every 5 minutes max)
+ * Create authenticated fetch for an agent that injects identity headers and
+ * routes through the SSRF guard. Headers come from cached identity (refreshed
+ * every 5 minutes max); the guard blocks private/rebinding targets so a
+ * malicious agent-card URL cannot reach internal services.
  */
 function createAuthenticatedFetchForAgent(
   identity: CachedAgentIdentity,
 ): typeof fetch {
-  const customFetch = async (
-    url: string | URL | Request,
-    init?: RequestInit,
-  ): Promise<Response> => {
-    const headers = new Headers(init?.headers);
-
+  return createGuardedFetchImpl((headers) => {
     // Always set agent ID for request correlation
     headers.set("x-agent-id", identity.agentUserId);
 
@@ -237,19 +235,7 @@ function createAuthenticatedFetchForAgent(
     if (apiKey) {
       headers.set("x-feed-api-key", apiKey);
     }
-
-    return fetch(url, { ...init, headers });
-  };
-
-  // Bun may expose a non-standard `fetch.preconnect`; preserve it when present.
-  const maybePreconnect = (fetch as { preconnect?: unknown })
-    .preconnect;
-  if (maybePreconnect) {
-    (customFetch as { preconnect?: unknown }).preconnect =
-      maybePreconnect;
-  }
-
-  return customFetch as typeof fetch;
+  });
 }
 
 /**

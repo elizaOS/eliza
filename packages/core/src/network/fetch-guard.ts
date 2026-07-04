@@ -324,14 +324,21 @@ export async function fetchWithSsrfGuard(
 						})
 					: await resolvePinnedHostname(parsedUrl.hostname, lookupFn);
 			} else {
-				// No lookupFn (e.g. environment-agnostic core, which has no node:dns
-				// to pin with): fall back to synchronous literal-host checks — block
+				// EDGE-SSRF: no socket pinning on workerd — egress network policy
+				// required. This branch runs where there is no node:dns to pin with
+				// (Cloudflare Workers / environment-agnostic core). It blocks literal
+				// internal targets but CANNOT defend against DNS rebinding (a public
+				// name that flips to a private address between check and connect,
+				// #12229 M5); on the edge that residual must be closed by a Cloudflare
+				// egress policy denying RFC1918/link-local, or by routing outbound
+				// through a resolve-and-connect-by-IP proxy. Operator follow-up.
+				//
+				// No lookupFn: fall back to synchronous literal-host checks — block
 				// literal private/loopback/link-local IPs (including the
 				// octal/hex/decimal forms the OS resolver honors) and blocked
 				// internal hostnames. The redirect loop below re-runs this check for
-				// every hop, so redirect-to-internal is caught too. This does NOT
-				// defend against DNS rebinding (a public name that resolves to a
-				// private address) — pass a lookupFn where that matters.
+				// every hop, so redirect-to-internal is caught too. Pass a lookupFn
+				// where rebinding protection matters.
 				const allowPrivate = Boolean(params.policy?.allowPrivateNetwork);
 				const host = parsedUrl.hostname.trim().toLowerCase().replace(/\.$/, "");
 				const allowed = new Set(

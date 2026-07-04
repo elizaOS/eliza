@@ -46,6 +46,11 @@ export function createPinnedLookup(address: string, family: number) {
  * daemon/Node sinks — where the SSRF-sensitive provisioning webhooks run — get
  * true IP pinning below.
  */
+// EDGE-SSRF: no socket pinning on workerd — egress network policy required.
+// The false branch below (edge fetch) cannot pin to the validated IP, so the
+// residual DNS-rebinding TOCTOU (#12229 M5) must be closed at the Cloudflare
+// egress: deny RFC1918/link-local, or route edge outbound through a
+// resolve-and-connect-by-IP proxy. Operator follow-up — tracked in the PR.
 function canPinSockets(): boolean {
   const userAgent = typeof navigator !== "undefined" ? navigator.userAgent : undefined;
   if (userAgent === "Cloudflare-Workers") {
@@ -255,6 +260,10 @@ export async function safeFetch(rawUrl: string, init: RequestInit = {}): Promise
     // workerd we cannot pin an arbitrary IP, so the platform fetch re-resolves
     // — a residual rebinding window documented on canPinSockets().
     const { url, address, family } = await resolveSafeOutboundTarget(currentUrl);
+    // EDGE-SSRF: no socket pinning on workerd — egress network policy required.
+    // The edge branch re-resolves DNS (a rebinding window between validate and
+    // connect, #12229 M5); it stays safe only behind a Cloudflare egress policy
+    // that blocks private ranges. The Node branch pins to the validated IP.
     const response = canPinSockets()
       ? await nodePinnedFetch(url, address, family, { ...currentInit, redirect: "manual" })
       : await fetch(url.toString(), { ...currentInit, redirect: "manual" });

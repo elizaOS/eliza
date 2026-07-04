@@ -8,6 +8,7 @@ import type { AgentCard, Message, Task } from "@a2a-js/sdk";
 import { A2AClient } from "@a2a-js/sdk/client";
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "../../shared/logger";
+import { createGuardedFetchImpl } from "./guarded-fetch";
 
 export interface FeedA2ARuntime extends IAgentRuntime {
   feedA2AClient?: A2AClient;
@@ -35,20 +36,15 @@ export async function initializeA2AClient(
     hasApiKey: !!effectiveApiKey,
   });
 
-  // Create custom fetch that includes API key header for authentication
-  const authenticatedFetch = async (
-    url: string | URL | Request,
-    init?: RequestInit,
-  ): Promise<Response> => {
-    const headers = new Headers(init?.headers);
-
+  // Custom fetch that injects the API key and routes through the SSRF guard:
+  // the card URL is operator/agent-supplied, so it must not be able to reach a
+  // private/rebinding target.
+  const authenticatedFetch = createGuardedFetchImpl((headers) => {
     // Add API key for A2A authentication
     if (effectiveApiKey) {
       headers.set("x-feed-api-key", effectiveApiKey);
     }
-
-    return fetch(url, { ...init, headers });
-  };
+  });
 
   // Use SDK to create client from agent card with authenticated fetch
   const client = await A2AClient.fromCardUrl(feedEndpoint, {
