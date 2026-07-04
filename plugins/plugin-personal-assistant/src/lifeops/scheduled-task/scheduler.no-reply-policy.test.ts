@@ -96,10 +96,15 @@ describe("processDueScheduledTasks — no-reply policy (#11793)", () => {
       runtime.agentId,
       reminder.taskId,
     );
+    // The retry rides on the snooze override (`state.firedAt` = nextRetryAt),
+    // NOT on a trigger rewrite — the original trigger must survive so
+    // recurring tasks keep their future occurrences.
     expect(retried?.trigger).toEqual({
       kind: "once",
-      atIso: "2026-05-09T12:31:00.000Z",
+      atIso: "2026-05-09T11:00:00.000Z",
     });
+    expect(retried?.state.status).toBe("scheduled");
+    expect(retried?.state.firedAt).toBe("2026-05-09T12:31:00.000Z");
     expect(retried?.metadata?.noReplyPolicy).toMatchObject({
       maxRetries: 1,
       retryCadenceMinutes: [60],
@@ -126,7 +131,7 @@ describe("processDueScheduledTasks — no-reply policy (#11793)", () => {
       {
         taskId: reminder.taskId,
         status: "fired",
-        reason: "once_due",
+        reason: "scheduled_override_due",
         occurrenceAtIso: "2026-05-09T12:31:00.000Z",
       },
     ]);

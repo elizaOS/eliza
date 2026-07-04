@@ -96,15 +96,27 @@ export class RelationshipsDomain {
         : (existing?.state ?? {}),
     });
 
+    // `RelationshipStore.upsert` is a full-replace write (`state_* =
+    // EXCLUDED.state_*`), so the edge's interaction-recency state must be
+    // carried forward explicitly: a contact edit that doesn't set
+    // `lastContactedAt` (notes/tags update, re-add via the dedup path) would
+    // otherwise wipe `lastInteractionAt` + `interactionCount` and make the
+    // cadence-overdue check nag about a contact the owner just talked to.
+    const existingEdge = await relationshipStore.get(
+      contactEdgeId(entity.entityId),
+    );
     const edge = await relationshipStore.upsert({
       relationshipId: contactEdgeId(entity.entityId),
       fromEntityId: SELF_ENTITY_ID,
       toEntityId: entity.entityId,
       type: input.relationshipType || "contact",
       metadata: { ...input.metadata },
-      state: input.lastContactedAt
-        ? { lastInteractionAt: input.lastContactedAt }
-        : {},
+      state: {
+        ...(existingEdge?.state ?? {}),
+        ...(input.lastContactedAt
+          ? { lastInteractionAt: input.lastContactedAt }
+          : {}),
+      },
       evidence: [LIFEOPS_CONTACT_TAG],
       confidence: 1,
       source: "import",

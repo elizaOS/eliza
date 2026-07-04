@@ -553,11 +553,17 @@ async function handleCompletionTimeout(args: {
       },
     };
     await args.repo.upsertScheduledTask(args.agentId, args.task);
+    // The snooze override (status back to `scheduled` + `state.firedAt` =
+    // untilIso) is the whole retry mechanism: `scheduledOverrideDue` fires the
+    // task AT the override instant for every trigger kind. The trigger itself
+    // must stay untouched — rewriting it to `once` here would permanently
+    // destroy a recurring trigger: once the retry settles (owner reply OR
+    // terminal no-reply), a `once` trigger with `firedAt` set resolves to a
+    // NULL next-fire, so a daily reminder would never fire again after a
+    // single unanswered occurrence.
     const snoozed = await args.runner.apply(args.task.taskId, "snooze", {
       untilIso: nextRetryAt,
     });
-    snoozed.trigger = { kind: "once", atIso: nextRetryAt };
-    delete snoozed.state.firedAt;
     snoozed.state.lastDecisionLog = `no_reply_retry_${state.retryCount + 1}: ${args.reason}`;
     await args.repo.upsertScheduledTask(args.agentId, snoozed);
     return {

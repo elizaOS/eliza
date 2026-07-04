@@ -50,11 +50,22 @@ function nextProjectedLocalInstant(args: {
   timezone: string;
   cursorMs: number;
   localHour: number;
+  /**
+   * Offset applied to the anchor to get the actual fire instant. The advance
+   * condition must be evaluated on `anchor + offset`, not the anchor alone: a
+   * negative offset (during_night, "before bedtime" offsets) can place the
+   * fire instant behind the cursor even when the anchor is ahead of it, and
+   * re-resolving from that fire instant would then return the SAME past
+   * instant forever — the scheduler loop refires the workflow `limit` times
+   * per tick instead of advancing to the next occurrence.
+   */
+  offsetMinutes: number;
   allowedWeekdays?: number[];
 }): number | null {
   const parts = getZonedDateParts(new Date(args.cursorMs), args.timezone);
   const totalMinutes = Math.round(args.localHour * 60);
   const minuteOfDay = ((totalMinutes % (24 * 60)) + 24 * 60) % (24 * 60);
+  const offsetMs = args.offsetMinutes * 60_000;
   for (let dayOffset = 0; dayOffset < 14; dayOffset += 1) {
     const candidate = buildUtcDateFromLocalParts(args.timezone, {
       year: parts.year,
@@ -64,9 +75,11 @@ function nextProjectedLocalInstant(args: {
       minute: minuteOfDay % 60,
       second: 0,
     }).getTime();
-    if (candidate <= args.cursorMs) {
+    if (candidate + offsetMs <= args.cursorMs) {
       continue;
     }
+    // Weekday restrictions apply to the anchor's local day (the sleep-day the
+    // occurrence belongs to), not the offsetted fire instant.
     if (weekdayMatches(candidate, args.timezone, args.allowedWeekdays)) {
       return candidate;
     }
@@ -172,6 +185,7 @@ export function resolveNextRelativeScheduleInstant(args: {
     timezone: state.timezone,
     cursorMs,
     localHour: projectedHour,
+    offsetMinutes,
     allowedWeekdays: args.schedule.onDays,
   });
   if (projectedAnchorMs === null) {
