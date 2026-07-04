@@ -216,6 +216,8 @@ export function startKeyboardDictationSession(
     const write = writeChain.then(() =>
       bridge.setDictationState({ status, sessionId }),
     );
+    // error-policy:J5 the serialization accumulator only sequences later writes;
+    // this write's own rejection is observed by the `write.then(ok, err)` below.
     writeChain = write.catch(() => undefined);
     return write.then(
       () => true,
