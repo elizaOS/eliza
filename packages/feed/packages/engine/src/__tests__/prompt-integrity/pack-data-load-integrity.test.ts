@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import type { Actor, Organization } from "../../types";
 import { NPCPersonaGenerator } from "../../services/npc-persona-generator";
 import { StaticDataRegistry } from "../../services/static-data-registry";
+import type { Actor, Organization } from "../../types";
 
 /**
  * Load-integrity guard for the recovered `./data/*` re-export modules.
@@ -16,7 +16,9 @@ describe("pack data load integrity", () => {
     const actors = StaticDataRegistry.getAllActors();
     expect(actors.length).toBeGreaterThan(10);
     // Real parody names, not blank placeholders.
-    expect(actors.every((a) => a.id.length > 0 && a.name.length > 0)).toBe(true);
+    expect(actors.every((a) => a.id.length > 0 && a.name.length > 0)).toBe(
+      true,
+    );
   });
 
   it("loads the default organization roster", () => {
@@ -34,7 +36,8 @@ describe("pack data load integrity", () => {
 
   it("produces non-empty org rivalries in NPC personas (regression: correlations field-name bug)", () => {
     const actors = StaticDataRegistry.getAllActors() as unknown as Actor[];
-    const orgs = StaticDataRegistry.getAllOrganizations() as unknown as Organization[];
+    const orgs =
+      StaticDataRegistry.getAllOrganizations() as unknown as Organization[];
     const personas = new NPCPersonaGenerator().assignPersonas(actors, orgs);
 
     expect(personas.size).toBeGreaterThan(0);

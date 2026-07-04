@@ -189,7 +189,10 @@ const ROOT_CWD_WRAPPER_ALLOWLIST = new Map([
   ["cloud:e2e", "cloud E2E package entrypoint"],
   ["cloud:e2e:headed", "cloud E2E headed mode entrypoint"],
   ["cloud:e2e:ui", "cloud E2E UI mode entrypoint"],
-  ["bench:personality:calibrate", "personality benchmark calibration entrypoint"],
+  [
+    "bench:personality:calibrate",
+    "personality benchmark calibration entrypoint",
+  ],
   ["bench:eliza-1", "benchmark suite root entrypoint"],
   ["bench:recall", "benchmark suite root entrypoint"],
   ["bench:recall:1k", "benchmark suite root entrypoint"],
@@ -207,6 +210,50 @@ const EXCLUDED_SUBTREES = [
   "packages/feed",
   "packages/benchmarks",
   "packages/elizaos/templates",
+];
+const PACKAGE_SCRIPT_CONTRACT_FILES = [
+  "packages/browser-extension/package.json",
+  "packages/contracts/package.json",
+  "packages/docs/package.json",
+  "packages/feed/apps/cli/package.json",
+  "packages/feed/apps/dag-visualizer/package.json",
+  "packages/feed/apps/mobile/package.json",
+  "packages/feed/apps/web/package.json",
+  "packages/feed/package.json",
+  "packages/feed/packages/a2a/package.json",
+  "packages/feed/packages/agents/package.json",
+  "packages/feed/packages/api/package.json",
+  "packages/feed/packages/contracts/package.json",
+  "packages/feed/packages/core/package.json",
+  "packages/feed/packages/crypto-browserify/package.json",
+  "packages/feed/packages/db/package.json",
+  "packages/feed/packages/engine/package.json",
+  "packages/feed/packages/examples/feed-typescript-agent/package.json",
+  "packages/feed/packages/examples/harness/package.json",
+  "packages/feed/packages/examples/local-a2a-server/package.json",
+  "packages/feed/packages/examples/package.json",
+  "packages/feed/packages/mcp/package.json",
+  "packages/feed/packages/pack-corporate-30-under-30/package.json",
+  "packages/feed/packages/pack-default/package.json",
+  "packages/feed/packages/shared/package.json",
+  "packages/feed/packages/sim/package.json",
+  "packages/feed/packages/testing/package.json",
+  "packages/feed/tools/chroma/package.json",
+  "packages/feed/tools/dag-visualizer/package.json",
+  "packages/feed/tools/e2e/package.json",
+  "packages/homepage/package.json",
+  "packages/import-conversations/package.json",
+  "packages/native/bun-runtime/package.json",
+  "packages/native/ios-deps/package.json",
+  "packages/os/android/system-ui/package.json",
+  "packages/os/homepage/package.json",
+  "packages/os/package.json",
+  "packages/os/setup/package.json",
+  "packages/os/shared-system/package.json",
+  "packages/os/usb-installer/package.json",
+  "packages/security/package.json",
+  "packages/security/soc2-verify/package.json",
+  "packages/vault/package.json",
 ];
 const SKIP_DIRS = new Set([
   "node_modules",
@@ -327,6 +374,110 @@ function isNoopSkip(body) {
     .filter(Boolean);
   // A genuine guard runs a real command alongside the echo; a no-op is echo only.
   return segments.every((segment) => /^echo\b/i.test(segment));
+}
+
+function isFakeSuccessGate(body) {
+  return isNoopSkip(body) || /\|\|\s*true\b/.test(body);
+}
+
+function hasScript(scripts, name) {
+  return typeof scripts[name] === "string" && scripts[name].trim().length > 0;
+}
+
+function packageHasTsconfig(root, relPackageJson) {
+  return existsSync(
+    path.join(root, path.dirname(relPackageJson), "tsconfig.json"),
+  );
+}
+
+function auditPackageScriptContracts(root) {
+  const failures = [];
+  const requiredEverywhere = [
+    "test",
+    "lint",
+    "lint:check",
+    "format",
+    "format:check",
+  ];
+
+  for (const rel of PACKAGE_SCRIPT_CONTRACT_FILES) {
+    const file = path.join(root, rel);
+    if (!existsSync(file)) {
+      failures.push(
+        `[package-contract] ${rel} is listed for script coverage but is missing.`,
+      );
+      continue;
+    }
+
+    const scripts = readJson(file).scripts ?? {};
+    for (const name of requiredEverywhere) {
+      if (!hasScript(scripts, name)) {
+        failures.push(
+          `[package-contract] ${rel} is missing required "${name}" script.`,
+        );
+      }
+    }
+
+    if (packageHasTsconfig(root, rel) && !hasScript(scripts, "typecheck")) {
+      failures.push(
+        `[package-contract] ${rel} has tsconfig.json but no "typecheck" script.`,
+      );
+    }
+
+    if (hasScript(scripts, "build") && !hasScript(scripts, "clean")) {
+      failures.push(
+        `[package-contract] ${rel} has "build" but no "clean" script.`,
+      );
+    }
+
+    if (hasScript(scripts, "clean") && !hasScript(scripts, "build")) {
+      failures.push(
+        `[package-contract] ${rel} has "clean" without a real "build" script.`,
+      );
+    }
+
+    if (hasScript(scripts, "lint") && !scripts.lint.includes("--write")) {
+      failures.push(
+        `[package-contract] ${rel} "lint" must be mutating and include --write.`,
+      );
+    }
+
+    if (
+      hasScript(scripts, "lint:check") &&
+      /\s--write\b/.test(scripts["lint:check"])
+    ) {
+      failures.push(
+        `[package-contract] ${rel} "lint:check" must be read-only.`,
+      );
+    }
+
+    if (hasScript(scripts, "format") && !scripts.format.includes("--write")) {
+      failures.push(
+        `[package-contract] ${rel} "format" must be mutating and include --write.`,
+      );
+    }
+
+    if (
+      hasScript(scripts, "format:check") &&
+      /\s--write\b/.test(scripts["format:check"])
+    ) {
+      failures.push(
+        `[package-contract] ${rel} "format:check" must be read-only.`,
+      );
+    }
+
+    for (const [name, body] of Object.entries(scripts)) {
+      if (typeof body !== "string") continue;
+      if (NOOP_GATE_KEYS.test(name) && isFakeSuccessGate(body)) {
+        failures.push(
+          `[package-contract] ${rel} script "${name}" is fake-success ` +
+            `(${JSON.stringify(body)}). Run a real gate instead.`,
+        );
+      }
+    }
+  }
+
+  return failures;
 }
 
 /** Candidate repo-relative file tokens referenced by a script body. */
@@ -492,6 +643,9 @@ function auditScripts(root) {
 
   // (d) Orphan script files inside packages/scripts/.
   failures.push(...auditScriptFiles(root));
+
+  // (e) Package-script contract coverage for the #12904 package split.
+  failures.push(...auditPackageScriptContracts(root));
 
   return failures;
 }

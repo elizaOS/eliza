@@ -125,7 +125,7 @@ Will a major music festival be held entirely in virtual reality by {resolutionDa
 
 export function getQuestionExamples(): string[] {
   return questionExamples
-    .split('\n')
+    .split("\n")
     .map((line) => line.trim())
     .filter((line) => /^Will\b.+\?$/.test(line));
 }

@@ -166,10 +166,11 @@ describe("LLMAgent - response parsing via decide()", () => {
     await agent.decide(ctx); // fail 3
 
     // Now fetch should NOT be called again (agent is in permanent HOLD)
-    const callsBefore = (failFetch as ReturnType<typeof mock>).mock.calls
-      .length;
+    const callsBefore = (failFetch as unknown as ReturnType<typeof mock>).mock
+      .calls.length;
     const decision = await agent.decide(ctx); // should HOLD without calling fetch
-    const callsAfter = (failFetch as ReturnType<typeof mock>).mock.calls.length;
+    const callsAfter = (failFetch as unknown as ReturnType<typeof mock>).mock
+      .calls.length;
 
     globalThis.fetch = origFetch;
 

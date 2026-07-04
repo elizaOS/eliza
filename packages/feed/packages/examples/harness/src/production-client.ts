@@ -27,7 +27,11 @@
  * ```
  */
 
-import type { A2AClient as A2AClientType, Message, Task } from "@a2a-js/sdk";
+import type { Message } from "@a2a-js/sdk";
+import type {
+  A2AClientOptions,
+  A2AClient as A2AClientType,
+} from "@a2a-js/sdk/client";
 import type {
   A2AClientInterface,
   AgentInfo,
@@ -71,17 +75,22 @@ export class FeedProductionClient implements A2AClientInterface {
     if (this.clientInstance) return this.clientInstance;
 
     // Dynamic import keeps the SDK optional if you only use HarnessA2AClient
-    const { A2AClient } = await import("@a2a-js/sdk");
+    const { A2AClient } = await import("@a2a-js/sdk/client");
     const cardUrl = `${this.config.baseUrl}/.well-known/agent-card`;
     const apiKey = this.config.apiKey;
 
-    this.clientInstance = await A2AClient.fromCardUrl(cardUrl, {
-      fetchImpl: (url: RequestInfo | URL, init?: RequestInit) => {
-        const headers = new Headers(init?.headers);
-        headers.set("x-feed-api-key", apiKey);
-        return fetch(url as RequestInfo, { ...(init ?? {}), headers });
-      },
-    } as Parameters<typeof A2AClient.fromCardUrl>[1]);
+    const fetchWithApiKey = ((
+      url: Parameters<typeof fetch>[0],
+      init?: Parameters<typeof fetch>[1],
+    ) => {
+      const headers = new Headers(init?.headers);
+      headers.set("x-feed-api-key", apiKey);
+      return fetch(url, { ...(init ?? {}), headers });
+    }) as typeof fetch;
+
+    const options: A2AClientOptions = { fetchImpl: fetchWithApiKey };
+
+    this.clientInstance = await A2AClient.fromCardUrl(cardUrl, options);
 
     return this.clientInstance;
   }
@@ -103,10 +112,17 @@ export class FeedProductionClient implements A2AClientInterface {
       ],
     };
 
-    const response = (await client.sendMessage({ message })) as Task | Message;
+    const response = await client.sendMessage({ message });
+
+    if ("error" in response) {
+      const message = response.error.message ?? "A2A message/send failed";
+      throw new Error(message);
+    }
+
+    const result = response.result;
 
     // Extract result data from artifacts or message parts
-    const artifacts = (response as Task).artifacts ?? [];
+    const artifacts = "artifacts" in result ? (result.artifacts ?? []) : [];
     for (const artifact of artifacts) {
       for (const part of artifact.parts ?? []) {
         if (part.kind === "data") {
@@ -116,7 +132,7 @@ export class FeedProductionClient implements A2AClientInterface {
     }
 
     // Fallback: check message parts
-    const parts = (response as Message).parts ?? [];
+    const parts = "parts" in result ? result.parts : [];
     for (const part of parts) {
       if (part.kind === "data") {
         return (part as { kind: "data"; data: T }).data;

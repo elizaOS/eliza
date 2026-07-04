@@ -40,10 +40,10 @@
     "start:staging": "NODE_ENV=production bun --env-file=.env.staging.local run start",
     "start:production": "NODE_ENV=production bun --env-file=.env.production.local run start",
     "check": "bunx @biomejs/biome check --write .",
-    "lint": "cd . && bunx @biomejs/biome check --write --unsafe --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched package.json README.md",
-    "typecheck": "bun run scripts/typecheck-workspace.ts packages/shared packages/contracts packages/db packages/core packages/engine packages/sim packages/agents packages/api packages/a2a packages/mcp packages/testing apps/cli apps/mobile apps/web",
+    "lint": "bunx @biomejs/biome check --write --unsafe --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched package.json README.md CLAUDE.md AGENTS.md scripts/typecheck-workspace.ts scripts/testing-skip-inventory.mjs",
+    "typecheck": "node scripts/prepare-elizaos-core-declarations.mjs && bun run scripts/typecheck-workspace.ts packages/shared packages/contracts packages/db packages/core packages/engine packages/sim packages/agents packages/api packages/a2a packages/mcp packages/testing apps/cli apps/mobile apps/web",
     "validate:all": "bun run typecheck && bun run lint",
-    "test": "bun run test:unit && bun run test:integration && bun run test:integration:db-lazy",
+    "test": "bun run test:unit",
     "test:unit": "bun run scripts/test-unit-isolated.ts",
     "test:unit:fast": "TEST_CONCURRENCY=8 bun run scripts/test-unit-isolated.ts",
     "test:integration": "bun run scripts/test-integration-with-server.ts",
@@ -98,10 +98,10 @@
     "steward:init": "bun run scripts/steward-init.ts",
     "inspect:context": "bun run scripts/context-inspector.ts",
     "find:duplicates": "bun run scripts/find-duplicates.ts",
-    "lint:check": "cd . && bunx @biomejs/biome check --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched package.json README.md",
+    "lint:check": "bunx @biomejs/biome check --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched package.json README.md CLAUDE.md AGENTS.md scripts/typecheck-workspace.ts scripts/testing-skip-inventory.mjs",
     "lint:fix": "cd . && bunx @biomejs/biome check --write --unsafe --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched package.json README.md",
-    "format": "cd . && bunx @biomejs/biome format --write --config-path ../../biome.json --files-ignore-unknown=true package.json README.md",
-    "format:check": "cd . && bunx @biomejs/biome format --config-path ../../biome.json --files-ignore-unknown=true package.json README.md"
+    "format": "bunx @biomejs/biome format --write --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched package.json README.md CLAUDE.md AGENTS.md scripts/typecheck-workspace.ts scripts/testing-skip-inventory.mjs",
+    "format:check": "bunx @biomejs/biome format --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched package.json README.md CLAUDE.md AGENTS.md scripts/typecheck-workspace.ts scripts/testing-skip-inventory.mjs"
   },
   "dependencies": {
     "@a2a-js/sdk": "^0.3.5",

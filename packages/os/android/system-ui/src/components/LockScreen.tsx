@@ -55,6 +55,7 @@ export function LockScreen({ cloudsModule }: LockScreenProps) {
         }}
       >
         <div
+          title={`Time ${formatted.time}`}
           style={{
             fontSize: "84px",
             fontWeight: 200,
@@ -64,7 +65,10 @@ export function LockScreen({ cloudsModule }: LockScreenProps) {
         >
           {formatted.time}
         </div>
-        <div style={{ marginTop: 8, fontSize: "18px", fontWeight: 500 }}>
+        <div
+          title={formatted.date}
+          style={{ marginTop: 8, fontSize: "18px", fontWeight: 500 }}
+        >
           {formatted.date}
         </div>
       </div>

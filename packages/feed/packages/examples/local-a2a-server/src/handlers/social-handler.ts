@@ -145,10 +145,10 @@ export class SocialHandler {
 
     if (existing) {
       // Unlike
-      this.db.run(
-        "DELETE FROM likes WHERE user_id = ? AND post_id = ?",
-        [userId, postId],
-      );
+      this.db.run("DELETE FROM likes WHERE user_id = ? AND post_id = ?", [
+        userId,
+        postId,
+      ]);
       this.db.run(
         "UPDATE posts SET likes_count = likes_count - 1 WHERE id = ?",
         [postId],
@@ -156,10 +156,11 @@ export class SocialHandler {
     } else {
       // Like
       const likeId = randomUUID();
-      this.db.run(
-        "INSERT INTO likes (id, user_id, post_id) VALUES (?, ?, ?)",
-        [likeId, userId, postId],
-      );
+      this.db.run("INSERT INTO likes (id, user_id, post_id) VALUES (?, ?, ?)", [
+        likeId,
+        userId,
+        postId,
+      ]);
       this.db.run(
         "UPDATE posts SET likes_count = likes_count + 1 WHERE id = ?",
         [postId],

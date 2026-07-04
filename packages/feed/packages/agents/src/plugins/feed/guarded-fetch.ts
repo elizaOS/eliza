@@ -46,7 +46,9 @@ export function createGuardedFetchImpl(
     url: string | URL | Request,
     init?: RequestInit,
   ): Promise<Response> => {
-    const headers = new Headers(url instanceof Request ? url.headers : undefined);
+    const headers = new Headers(
+      url instanceof Request ? url.headers : undefined,
+    );
     for (const [key, value] of new Headers(init?.headers)) {
       headers.set(key, value);
     }

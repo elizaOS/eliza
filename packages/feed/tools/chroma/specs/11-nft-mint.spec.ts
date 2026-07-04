@@ -325,7 +325,7 @@ test.describe("NFT Mint Flow - Full E2E with Transaction", () => {
 
     // Confirm transaction in MetaMask
     try {
-      await wallets.metamask.confirm();
+      await wallets.metamask.approve();
     } catch (error) {
       console.log("MetaMask transaction confirmation failed:", error);
       // Transaction might have timed out or failed

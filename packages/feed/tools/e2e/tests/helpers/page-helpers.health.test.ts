@@ -26,8 +26,7 @@ const server = Bun.serve({
         });
       }
       if (mode === "degraded") return Response.json({ status: "degraded" });
-      if (mode === "server-error")
-        return new Response("boom", { status: 500 });
+      if (mode === "server-error") return new Response("boom", { status: 500 });
       return new Response("Not Found", { status: 404 });
     }
     // Root answers 200 like any half-booted or wrong frontend would.

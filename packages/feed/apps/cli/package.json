@@ -10,7 +10,7 @@
   "scripts": {
     "build": "bun build src/index.ts --outdir dist --target bun",
     "cli": "bun run src/index.ts",
-    "lint": "cd ../.. && bunx @biomejs/biome check --write --unsafe --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched apps/cli/package.json apps/cli/tsconfig.json",
+    "lint": "bunx @biomejs/biome check --write --unsafe --config-path ../../../../biome.json --vcs-root=../../../.. --files-ignore-unknown=true --no-errors-on-unmatched package.json tsconfig.json src",
     "typecheck": "cd ../.. && bun run scripts/typecheck-workspace.ts apps/cli",
     "db": "bun run src/index.ts db",
     "admin": "bun run src/index.ts admin",
@@ -26,11 +26,12 @@
     "validate": "bun run src/index.ts game validate",
     "images": "bun run src/generate-actor-images.ts",
     "images:migrate": "bun run src/migrate-images-to-blob.ts",
-    "lint:check": "cd ../.. && bunx @biomejs/biome check --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched apps/cli/package.json apps/cli/tsconfig.json",
+    "lint:check": "bunx @biomejs/biome check --config-path ../../../../biome.json --vcs-root=../../../.. --files-ignore-unknown=true --no-errors-on-unmatched package.json tsconfig.json src",
     "lint:fix": "cd ../.. && bunx @biomejs/biome check --write --unsafe --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched apps/cli/package.json apps/cli/tsconfig.json",
-    "format": "cd ../.. && bunx @biomejs/biome format --write --config-path ../../biome.json --files-ignore-unknown=true apps/cli/package.json apps/cli/tsconfig.json",
-    "format:check": "cd ../.. && bunx @biomejs/biome format --config-path ../../biome.json --files-ignore-unknown=true apps/cli/package.json apps/cli/tsconfig.json",
-    "clean": "node ../../../../packages/scripts/rm-path-recursive.mjs dist"
+    "format": "bunx @biomejs/biome format --write --config-path ../../../../biome.json --vcs-root=../../../.. --files-ignore-unknown=true --no-errors-on-unmatched package.json tsconfig.json src",
+    "format:check": "bunx @biomejs/biome format --config-path ../../../../biome.json --vcs-root=../../../.. --files-ignore-unknown=true --no-errors-on-unmatched package.json tsconfig.json src",
+    "clean": "node ../../../scripts/rm-path-recursive.mjs dist .turbo",
+    "test": "bun run typecheck"
   },
   "dependencies": {
     "@feed/agents": "workspace:*",

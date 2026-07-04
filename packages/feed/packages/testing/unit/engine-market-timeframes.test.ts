@@ -16,9 +16,9 @@ import {
 
 describe("getTimeframeFromDuration", () => {
   it("buckets by the config max-duration thresholds", () => {
-    expect(getTimeframeFromDuration(TIMEFRAME_CONFIGS.flash.maxDurationMinutes)).toBe(
-      "flash",
-    );
+    expect(
+      getTimeframeFromDuration(TIMEFRAME_CONFIGS.flash.maxDurationMinutes),
+    ).toBe("flash");
     expect(
       getTimeframeFromDuration(TIMEFRAME_CONFIGS.flash.maxDurationMinutes + 1),
     ).toBe("intraday");
@@ -51,7 +51,9 @@ describe("calculateEndTime", () => {
   it("clamps a zero modifier up to the minimum duration", () => {
     const cfg = TIMEFRAME_CONFIGS.daily;
     const end = calculateEndTime(start, "daily", 0);
-    expect((end.getTime() - start.getTime()) / 60000).toBe(cfg.minDurationMinutes);
+    expect((end.getTime() - start.getTime()) / 60000).toBe(
+      cfg.minDurationMinutes,
+    );
   });
 });
 
@@ -59,6 +61,8 @@ describe("validateDuration", () => {
   it("accepts in-range, rejects below min", () => {
     const cfg = TIMEFRAME_CONFIGS.daily;
     expect(validateDuration(cfg.minDurationMinutes, "daily").valid).toBe(true);
-    expect(validateDuration(cfg.minDurationMinutes - 1, "daily").valid).toBe(false);
+    expect(validateDuration(cfg.minDurationMinutes - 1, "daily").valid).toBe(
+      false,
+    );
   });
 });

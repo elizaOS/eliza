@@ -22,7 +22,11 @@ export {
   loadOrganizationById,
 } from "./actors-loader";
 // State Store Adapters
-export { DbStateStore, InMemoryStateStore } from "./adapters";
+export {
+  DbStateStore,
+  InMemoryStateStore,
+  type SimulationConfig,
+} from "./adapters";
 // Alpha Group Configuration
 export {
   ALPHA_GROUP_CONFIG,

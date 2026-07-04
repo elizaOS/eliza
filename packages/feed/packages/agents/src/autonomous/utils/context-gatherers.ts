@@ -106,8 +106,7 @@ export async function getPerpMarkets(): Promise<PerpMarketContext[]> {
 
   for (const state of orgStates.slice(0, 8)) {
     const staticOrg = StaticDataRegistry.getOrganization(state.id);
-    if (!staticOrg || staticOrg.type !== "company" || !staticOrg.ticker)
-      continue;
+    if (staticOrg?.type !== "company" || !staticOrg.ticker) continue;
 
     const currentPrice = state.currentPrice ?? staticOrg.initialPrice ?? 100;
     const initialPrice = staticOrg.initialPrice ?? 100;

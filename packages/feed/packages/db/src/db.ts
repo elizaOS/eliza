@@ -746,23 +746,42 @@ function createModeAwareDbProxy(): DrizzleClient {
 
         const tableProxy = asTableClient(
           new Proxy({} as Record<string, never>, {
-          get(_tableTarget, method: string | symbol) {
-            const methodStr = String(method);
+            get(_tableTarget, method: string | symbol) {
+              const methodStr = String(method);
 
-            if (TABLE_READ_METHODS.has(methodStr)) {
-              if (boundMethodCache.has(method)) {
-                return boundMethodCache.get(method);
-              }
+              if (TABLE_READ_METHODS.has(methodStr)) {
+                if (boundMethodCache.has(method)) {
+                  return boundMethodCache.get(method);
+                }
 
-              const replicaClient = getReadReplicaDbClient();
-              if (replicaClient) {
-                const tableRepo = replicaClient[prop as keyof DrizzleClient];
+                const replicaClient = getReadReplicaDbClient();
+                if (replicaClient) {
+                  const tableRepo = replicaClient[prop as keyof DrizzleClient];
+                  if (tableRepo && typeof tableRepo === "object") {
+                    const replicaMethod = (
+                      tableRepo as Record<PropertyKey, unknown>
+                    )[method];
+                    if (typeof replicaMethod === "function") {
+                      const bound = replicaMethod.bind(tableRepo);
+                      if (boundMethodCache.size >= BOUND_METHOD_CACHE_MAX) {
+                        const firstKey = boundMethodCache.keys().next().value;
+                        if (firstKey !== undefined)
+                          boundMethodCache.delete(firstKey);
+                      }
+                      boundMethodCache.set(method, bound);
+                      return bound;
+                    }
+                    return replicaMethod;
+                  }
+                }
+                const lazyClient = createLazyPrimaryClientProxy();
+                const tableRepo = lazyClient[prop as keyof DrizzleClient];
                 if (tableRepo && typeof tableRepo === "object") {
-                  const replicaMethod = (
+                  const primaryMethod = (
                     tableRepo as Record<PropertyKey, unknown>
                   )[method];
-                  if (typeof replicaMethod === "function") {
-                    const bound = replicaMethod.bind(tableRepo);
+                  if (typeof primaryMethod === "function") {
+                    const bound = primaryMethod.bind(tableRepo);
                     if (boundMethodCache.size >= BOUND_METHOD_CACHE_MAX) {
                       const firstKey = boundMethodCache.keys().next().value;
                       if (firstKey !== undefined)
@@ -771,52 +790,33 @@ function createModeAwareDbProxy(): DrizzleClient {
                     boundMethodCache.set(method, bound);
                     return bound;
                   }
-                  return replicaMethod;
+                  return primaryMethod;
                 }
               }
-              const lazyClient = createLazyPrimaryClientProxy();
-              const tableRepo = lazyClient[prop as keyof DrizzleClient];
+
+              const client = getDbClient();
+              if (!client) {
+                if (isBuildTime) {
+                  return () => Promise.resolve(null);
+                }
+                throw new Error(
+                  "Database not initialized. Check DATABASE_URL or use initializeJsonMode().",
+                );
+              }
+
+              const tableRepo = client[prop as keyof DrizzleClient];
               if (tableRepo && typeof tableRepo === "object") {
-                const primaryMethod = (
-                  tableRepo as Record<PropertyKey, unknown>
-                )[method];
-                if (typeof primaryMethod === "function") {
-                  const bound = primaryMethod.bind(tableRepo);
-                  if (boundMethodCache.size >= BOUND_METHOD_CACHE_MAX) {
-                    const firstKey = boundMethodCache.keys().next().value;
-                    if (firstKey !== undefined)
-                      boundMethodCache.delete(firstKey);
-                  }
-                  boundMethodCache.set(method, bound);
-                  return bound;
+                const methodValue = (tableRepo as Record<PropertyKey, unknown>)[
+                  method
+                ];
+                if (typeof methodValue === "function") {
+                  return methodValue.bind(tableRepo);
                 }
-                return primaryMethod;
+                return methodValue;
               }
-            }
 
-            const client = getDbClient();
-            if (!client) {
-              if (isBuildTime) {
-                return () => Promise.resolve(null);
-              }
-              throw new Error(
-                "Database not initialized. Check DATABASE_URL or use initializeJsonMode().",
-              );
-            }
-
-            const tableRepo = client[prop as keyof DrizzleClient];
-            if (tableRepo && typeof tableRepo === "object") {
-              const methodValue = (tableRepo as Record<PropertyKey, unknown>)[
-                method
-              ];
-              if (typeof methodValue === "function") {
-                return methodValue.bind(tableRepo);
-              }
-              return methodValue;
-            }
-
-            return tableRepo;
-          },
+              return tableRepo;
+            },
           }),
         );
 
@@ -934,22 +934,22 @@ function createReplicaDbProxy(): DrizzleClient {
       ) {
         return asTableClient(
           new Proxy({} as Record<string, never>, {
-          get(_tableTarget, method: string | symbol) {
-            const tableRepo =
-              getReadReplicaDbClient()?.[prop as keyof DrizzleClient];
-            if (tableRepo && typeof tableRepo === "object") {
-              const methodValue = (tableRepo as Record<PropertyKey, unknown>)[
-                method
-              ];
-              if (typeof methodValue === "function") {
-                return methodValue.bind(tableRepo);
+            get(_tableTarget, method: string | symbol) {
+              const tableRepo =
+                getReadReplicaDbClient()?.[prop as keyof DrizzleClient];
+              if (tableRepo && typeof tableRepo === "object") {
+                const methodValue = (tableRepo as Record<PropertyKey, unknown>)[
+                  method
+                ];
+                if (typeof methodValue === "function") {
+                  return methodValue.bind(tableRepo);
+                }
+                return methodValue;
               }
-              return methodValue;
-            }
-            throw new Error(
-              "Database not initialized. Check DATABASE_URL or use initializeJsonMode().",
-            );
-          },
+              throw new Error(
+                "Database not initialized. Check DATABASE_URL or use initializeJsonMode().",
+              );
+            },
           }),
         );
       }

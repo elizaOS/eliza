@@ -213,7 +213,7 @@ function parsePairingJson(jsonValue: string): Partial<CompanionConfig> {
 
 async function refresh(refs: FormRefs): Promise<void> {
   const response = await sendMessage({ type: "browser-bridge:get-state" });
-  if (!response.ok || !response.state) {
+  if (!response.ok) {
     refs.statusTitle.textContent = "Agent Browser Bridge could not load";
     refs.statusDetail.textContent = response.error;
     return;
@@ -265,7 +265,7 @@ document.addEventListener("DOMContentLoaded", () => {
         : await sendMessage({
             type: "browser-bridge:auto-pair",
           });
-    if (!response.ok || !response.state) {
+    if (!response.ok) {
       refs.statusDetail.textContent = response.error;
       return;
     }
@@ -278,7 +278,7 @@ document.addEventListener("DOMContentLoaded", () => {
       type: "browser-bridge:save-config",
       config: readConfig(refs),
     });
-    if (!response.ok || !response.state) {
+    if (!response.ok) {
       refs.statusDetail.textContent = response.error;
       return;
     }
@@ -300,7 +300,7 @@ document.addEventListener("DOMContentLoaded", () => {
       type: "browser-bridge:save-config",
       config,
     });
-    if (!response.ok || !response.state) {
+    if (!response.ok) {
       refs.statusDetail.textContent = response.error;
       return;
     }
@@ -312,7 +312,7 @@ document.addEventListener("DOMContentLoaded", () => {
   refs.syncButton.addEventListener("click", async () => {
     refs.statusDetail.textContent = "Syncing this browser with Eliza…";
     const response = await sendMessage({ type: "browser-bridge:sync-now" });
-    if (!response.ok || !response.state) {
+    if (!response.ok) {
       refs.statusDetail.textContent = response.error;
       return;
     }
@@ -323,7 +323,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const response = await sendMessage({
       type: "browser-bridge:clear-config",
     });
-    if (!response.ok || !response.state) {
+    if (!response.ok) {
       refs.statusDetail.textContent = response.error;
       return;
     }

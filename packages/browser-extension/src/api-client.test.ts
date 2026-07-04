@@ -46,17 +46,14 @@ describe("BrowserBridgeRelayClient", () => {
 
     const request: CompanionSyncRequest = {
       companion: {
-        companionId: "companion-1",
         browser: "chrome",
         profileId: "default",
         profileLabel: "Default",
         label: "Agent Browser Bridge chrome Default",
+        extensionVersion: "1.0.0",
+        permissions: {},
       },
       tabs: [],
-      activeTabId: null,
-      capturedAt: "2026-01-01T00:00:00.000Z",
-      extensionVersion: "1.0.0",
-      permissions: [],
     };
 
     const client = new BrowserBridgeRelayClient(config);
@@ -83,20 +80,19 @@ describe("BrowserBridgeRelayClient", () => {
     vi.stubGlobal("fetch", fetchMock);
     const client = new BrowserBridgeRelayClient(config);
     const progress: CompanionSessionProgressRequest = {
-      status: "running",
-      note: "working",
-      pageContext: null,
+      currentActionIndex: 1,
+      metadata: { note: "working" },
     };
     const completion: CompanionSessionCompleteRequest = {
-      status: "completed",
+      status: "done",
       result: { ok: true },
-      error: null,
     };
 
     await client.updateSessionProgress("session/one two", progress);
     await client.completeSession("session/one two", completion);
 
-    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+    const calls = fetchMock.mock.calls as unknown as Array<[string]>;
+    expect(calls.map((call) => call[0])).toEqual([
       "https://agent.example.com/root/api/browser-bridge/companions/sessions/session%2Fone%20two/progress",
       "https://agent.example.com/root/api/browser-bridge/companions/sessions/session%2Fone%20two/complete",
     ]);

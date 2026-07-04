@@ -21,7 +21,6 @@ describe("UserAlphaGroupAssignmentService", () => {
       expect(UserAlphaGroupAssignmentService.DEFAULT_TIER).toBe(3);
     });
   });
-
 });
 
 describe("Assignment Prioritization Logic", () => {

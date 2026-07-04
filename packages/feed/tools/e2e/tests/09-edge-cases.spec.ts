@@ -89,10 +89,7 @@ test.describe("Edge Cases - Input Validation", () => {
     const isVisible = await submitBtn
       .isVisible({ timeout: 5000 })
       .catch(() => false);
-    test.skip(
-      !isVisible,
-      "no Post/Submit button rendered on the feed page",
-    );
+    test.skip(!isVisible, "no Post/Submit button rendered on the feed page");
     await expect(submitBtn).toBeDisabled();
   });
 

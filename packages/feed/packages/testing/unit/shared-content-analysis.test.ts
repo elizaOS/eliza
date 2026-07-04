@@ -12,9 +12,9 @@ import {
 
 describe("jaccardSimilarity", () => {
   it("scores 1 for identical, 0 for disjoint, fractional for overlap", () => {
-    expect(jaccardSimilarity("hello world example", "hello world example")).toBe(
-      1,
-    );
+    expect(
+      jaccardSimilarity("hello world example", "hello world example"),
+    ).toBe(1);
     expect(jaccardSimilarity("hello world", "planet saturn")).toBe(0);
     expect(jaccardSimilarity("hello world", "hello planet")).toBeCloseTo(1 / 3);
     // tokens of <= 3 chars are dropped → no comparable tokens → 0.

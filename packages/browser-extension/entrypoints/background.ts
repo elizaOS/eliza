@@ -211,6 +211,20 @@ function readAutoPairResponsePayload(
   };
 }
 
+function readAutoPairErrorMessage(payload: unknown): string | null {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return null;
+  }
+  const record = payload as { error?: unknown; message?: unknown };
+  if (typeof record.error === "string" && record.error.length > 0) {
+    return record.error;
+  }
+  if (typeof record.message === "string" && record.message.length > 0) {
+    return record.message;
+  }
+  return null;
+}
+
 async function requestAutoPairFromBackground(
   apiBaseUrl: string,
   request: CompanionAutoPairRequest,
@@ -236,9 +250,7 @@ async function requestAutoPairFromBackground(
         ok: false,
         status: response.status,
         error:
-          (payload &&
-            typeof payload === "object" &&
-            (payload.error ?? payload.message)) ||
+          readAutoPairErrorMessage(payload) ||
           `${response.status} ${response.statusText}`,
       };
     }
@@ -298,9 +310,7 @@ async function requestAutoPairFromTab(
               ok: false,
               status: response.status,
               error:
-                (data &&
-                  typeof data === "object" &&
-                  (data.error ?? data.message)) ||
+                readAutoPairErrorMessage(data) ||
                 `${response.status} ${response.statusText}`,
             };
           }
@@ -380,27 +390,14 @@ async function attemptAutoPair(
           apiBaseUrl,
           request,
         );
-        if (response.ok) {
-          const config = await saveCompanionConfig(response.data.config);
-          if (config) {
-            createAlarm(SYNC_ALARM, SYNC_INTERVAL_MINUTES);
-            await setState({
-              config,
-              lastError: null,
-              lastSessionStatus: `Auto-paired with ${apiBaseUrl}`,
-            });
-            return config;
-          }
+        if (!response.ok) {
+          lastErrorMessage = autoPairErrorMessage(
+            apiBaseUrl,
+            response.status,
+            response.error,
+          );
+          continue;
         }
-        lastErrorMessage = autoPairErrorMessage(
-          apiBaseUrl,
-          response.status,
-          response.error,
-        );
-      }
-
-      const response = await requestAutoPairFromBackground(apiBaseUrl, request);
-      if (response.ok) {
         const config = await saveCompanionConfig(response.data.config);
         if (config) {
           createAlarm(SYNC_ALARM, SYNC_INTERVAL_MINUTES);
@@ -411,12 +408,29 @@ async function attemptAutoPair(
           });
           return config;
         }
+        lastErrorMessage = "Auto-pair returned an invalid companion config.";
       }
-      lastErrorMessage = autoPairErrorMessage(
-        apiBaseUrl,
-        response.status,
-        response.error,
-      );
+
+      const response = await requestAutoPairFromBackground(apiBaseUrl, request);
+      if (!response.ok) {
+        lastErrorMessage = autoPairErrorMessage(
+          apiBaseUrl,
+          response.status,
+          response.error,
+        );
+        continue;
+      }
+      const config = await saveCompanionConfig(response.data.config);
+      if (config) {
+        createAlarm(SYNC_ALARM, SYNC_INTERVAL_MINUTES);
+        await setState({
+          config,
+          lastError: null,
+          lastSessionStatus: `Auto-paired with ${apiBaseUrl}`,
+        });
+        return config;
+      }
+      lastErrorMessage = "Auto-pair returned an invalid companion config.";
     }
 
     await setState({

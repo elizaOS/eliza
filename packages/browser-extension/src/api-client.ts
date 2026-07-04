@@ -4,13 +4,20 @@
  * with the Bearer pairing token from the companion config. Non-2xx responses
  * are wrapped in RelayApiError carrying the HTTP status and server error code.
  */
-import type { LifeOpsBrowserCompanionSyncResponse } from "@elizaos/shared";
 import type {
+  BrowserBridgeSettings,
   CompanionConfig,
+  CompanionSession,
   CompanionSessionCompleteRequest,
   CompanionSessionProgressRequest,
   CompanionSyncRequest,
 } from "./protocol";
+
+type BrowserBridgeCompanionSyncResponse = {
+  settings: BrowserBridgeSettings;
+  tabs: CompanionSyncRequest["tabs"];
+  session?: CompanionSession | null;
+};
 
 function joinUrl(baseUrl: string, path: string): string {
   return `${baseUrl.replace(/\/+$/, "")}${path}`;
@@ -27,7 +34,7 @@ export class RelayApiError extends Error {
   }
 }
 
-async function throwApiError(response: Response): never {
+async function throwApiError(response: Response): Promise<never> {
   let message: string;
   let code: string | null = null;
   try {
@@ -60,7 +67,7 @@ export class BrowserBridgeRelayClient {
 
   async sync(
     request: CompanionSyncRequest,
-  ): Promise<LifeOpsBrowserCompanionSyncResponse> {
+  ): Promise<BrowserBridgeCompanionSyncResponse> {
     const response = await fetch(
       joinUrl(this.config.apiBaseUrl, "/api/browser-bridge/companions/sync"),
       {
@@ -72,7 +79,7 @@ export class BrowserBridgeRelayClient {
     if (!response.ok) {
       await throwApiError(response);
     }
-    return (await response.json()) as LifeOpsBrowserCompanionSyncResponse;
+    return (await response.json()) as BrowserBridgeCompanionSyncResponse;
   }
 
   async updateSessionProgress(

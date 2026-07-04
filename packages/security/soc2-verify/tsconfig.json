@@ -15,7 +15,11 @@
     "skipLibCheck": true,
     "isolatedModules": true,
     "resolveJsonModule": true,
-    "noEmit": true
+    "noEmit": true,
+    "paths": {
+      "@elizaos/security": ["../src/index.ts"],
+      "@elizaos/security/*": ["../src/*"]
+    }
   },
   "include": ["src/**/*"]
 }

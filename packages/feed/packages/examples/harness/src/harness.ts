@@ -201,7 +201,7 @@ export class AgentHarness {
    */
   private async executeAction(
     decision: AgentDecision,
-    client: HarnessA2AClient,
+    client: A2AClientInterface,
     context: AgentContext,
   ): Promise<ActionResult> {
     switch (decision.action) {

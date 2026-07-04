@@ -321,8 +321,7 @@ export class MultiStepExecutor {
     let enabledFeatures: string[] = [];
     if (isNpc) {
       // Read per-character autonomy flags from PackActor feed metadata
-      const autonomy = (runtime.character as Record<string, unknown>)
-        ?.feed
+      const autonomy = (runtime.character as Record<string, unknown>)?.feed
         ? (
             (runtime.character as Record<string, unknown>).feed as {
               autonomy?: {
@@ -474,9 +473,8 @@ export class MultiStepExecutor {
         : (agent?.displayName ?? agentUserId);
 
       // Extract character voice/style for prompt injection
-      const characterStyle = (
-        runtime.character as Record<string, unknown>
-      )?.style as { post?: string[] } | undefined;
+      const characterStyle = (runtime.character as Record<string, unknown>)
+        ?.style as { post?: string[] } | undefined;
       const characterPostExamples = (
         runtime.character as Record<string, unknown>
       )?.postExamples as string[] | undefined;
@@ -1220,8 +1218,9 @@ export class MultiStepExecutor {
           attempt > 1
             ? 0.2
             : ((
-                (runtime.character as Record<string, unknown>)
-                  ?.settings as { temperature?: number } | undefined
+                (runtime.character as Record<string, unknown>)?.settings as
+                  | { temperature?: number }
+                  | undefined
               )?.temperature ?? 0.7),
         maxTokens: 1000,
         actionType: "multi_step_decision",

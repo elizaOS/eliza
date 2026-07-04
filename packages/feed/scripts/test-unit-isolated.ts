@@ -16,7 +16,7 @@ import { readdirSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 
 const ROOT = resolve(import.meta.dir, "..");
-const TEST_DIRS = [
+const DEFAULT_TEST_DIRS = [
   join(ROOT, "packages/testing/unit"),
   join(ROOT, "scripts"),
   join(ROOT, "packages/engine/src"),
@@ -29,6 +29,11 @@ const TEST_DIRS = [
   join(ROOT, "packages/shared/src"),
   join(ROOT, "apps/web/src"),
 ];
+const requestedDirs = process.argv.slice(2);
+const TEST_DIRS =
+  requestedDirs.length > 0
+    ? requestedDirs.map((dir) => resolve(ROOT, dir))
+    : DEFAULT_TEST_DIRS;
 const PRELOAD = join(ROOT, "packages/testing/unit/preload.ts");
 
 /** Directories to skip when collecting test files */

@@ -14,12 +14,13 @@
     "test:unit": "bunx vitest run --config ./vitest.extension.config.ts",
     "test:smoke": "node scripts/extension-smoke.mjs",
     "test:smoke:safari": "node scripts/extension-smoke-safari.mjs",
-    "clean": "node ../scripts/rm-path-recursive.mjs dist",
-    "lint": "bunx @biomejs/biome check --write --unsafe .",
-    "lint:check": "bunx @biomejs/biome check .",
+    "clean": "node ../scripts/rm-path-recursive.mjs dist .turbo",
+    "lint": "bunx @biomejs/biome check --write --unsafe --files-ignore-unknown=true package.json tsconfig.json entrypoints src scripts public vitest.extension.config.ts",
+    "lint:check": "bunx @biomejs/biome check --files-ignore-unknown=true package.json tsconfig.json entrypoints src scripts public vitest.extension.config.ts",
     "lint:fix": "bunx @biomejs/biome check --write --unsafe .",
-    "format": "bunx @biomejs/biome format --write .",
-    "format:check": "bunx @biomejs/biome format ."
+    "format": "bunx @biomejs/biome format --write --files-ignore-unknown=true package.json tsconfig.json entrypoints src scripts public vitest.extension.config.ts",
+    "format:check": "bunx @biomejs/biome format --files-ignore-unknown=true package.json tsconfig.json entrypoints src scripts public vitest.extension.config.ts",
+    "typecheck": "bun run --cwd ../shared build && tsgo --noEmit -p tsconfig.json"
   },
   "dependencies": {
     "@elizaos/shared": "workspace:*"

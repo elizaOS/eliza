@@ -15,9 +15,9 @@ import {
 describe("validateOASFSkillPath / validateOASFDomainPath", () => {
   it("accepts well-formed hierarchical paths", () => {
     expect(validateOASFSkillPath("trading")).toBe(true);
-    expect(validateOASFSkillPath("finance_and_business/trading_and_markets")).toBe(
-      true,
-    );
+    expect(
+      validateOASFSkillPath("finance_and_business/trading_and_markets"),
+    ).toBe(true);
     expect(validateOASFDomainPath("a/b/c")).toBe(true);
   });
 
@@ -37,6 +37,8 @@ describe("category enumerations", () => {
     const domains = getAllDomainCategories();
     expect(skills.length).toBeGreaterThan(0);
     expect(domains.length).toBeGreaterThan(0);
-    expect(skills.every((s) => typeof s === "string" && s.length > 0)).toBe(true);
+    expect(skills.every((s) => typeof s === "string" && s.length > 0)).toBe(
+      true,
+    );
   });
 });

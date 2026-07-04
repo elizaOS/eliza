@@ -9,7 +9,7 @@ type Callback<T> = (value: T) => void;
 
 type RawRuntime = {
   lastError?: { message?: string };
-  getManifest?: () => { version?: string };
+  getManifest?: () => { version?: string; permissions?: string[] };
   onInstalled?: { addListener: (listener: () => void) => void };
   onStartup?: { addListener: (listener: () => void) => void };
   onMessage?: {
@@ -228,9 +228,7 @@ function getLastError(): string | null {
   return api.runtime?.lastError?.message?.trim() ?? null;
 }
 
-function invokeAsync<T>(
-  call: (callback: Callback<T>) => Promise<T> | undefined,
-): Promise<T> {
+function invokeAsync<T>(call: (callback: Callback<T>) => unknown): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     try {
       const maybePromise = call((value) => {
@@ -241,8 +239,13 @@ function invokeAsync<T>(
         }
         resolve(value);
       });
-      if (maybePromise && typeof maybePromise.then === "function") {
-        maybePromise.then(resolve, reject);
+      if (
+        typeof maybePromise === "object" &&
+        maybePromise !== null &&
+        "then" in maybePromise &&
+        typeof maybePromise.then === "function"
+      ) {
+        (maybePromise as Promise<T>).then(resolve, reject);
       }
     } catch (error) {
       reject(error);

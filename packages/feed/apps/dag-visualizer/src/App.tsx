@@ -461,7 +461,7 @@ export function App() {
           )}
           {selectedNPC.trades?.map((t) => (
             <span
-              key={`${t.ticker ?? "trade"}-${t.success ? "filled" : "failed"}-${t.error ?? "ok"}`}
+              key={`${selectedNPC.npcId}-${t.action}-${t.ticker ?? "cash"}-${t.amount}-${t.success ? "ok" : "fail"}`}
               style={{
                 color: t.success ? "#4ade80" : "#ef4444",
                 fontWeight: 600,

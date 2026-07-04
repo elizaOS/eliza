@@ -22,8 +22,10 @@ function sortTabs(tabs: readonly RememberedTab[]): RememberedTab[] {
     if (leftRank !== rightRank) {
       return rightRank - leftRank;
     }
-    const leftAnchor = Date.parse(left.lastFocusedAt ?? left.lastSeenAt);
-    const rightAnchor = Date.parse(right.lastFocusedAt ?? right.lastSeenAt);
+    const leftAnchor = Date.parse(left.lastFocusedAt ?? left.lastSeenAt ?? "");
+    const rightAnchor = Date.parse(
+      right.lastFocusedAt ?? right.lastSeenAt ?? "",
+    );
     if (
       Number.isFinite(leftAnchor) &&
       Number.isFinite(rightAnchor) &&

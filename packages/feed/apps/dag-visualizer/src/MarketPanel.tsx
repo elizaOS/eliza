@@ -117,7 +117,7 @@ export function MarketPanel({ trace, selectedNPC }: Props) {
           </div>
           {questions.map((q) => (
             <div
-              key={q.text}
+              key={`${q.text}-${q.outcome}-${q.daysUntilResolution}`}
               style={{
                 padding: "5px 0",
                 borderBottom: "1px solid #1e293b22",
@@ -244,7 +244,7 @@ export function MarketPanel({ trace, selectedNPC }: Props) {
                   .slice(0, 5)
                   .map((a) => (
                     <div
-                      key={`${a.name}-${a.action}-${a.amount}`}
+                      key={`${m.ticker}-${a.name}-${a.action}-${a.amount}-${a.confidence}`}
                       style={{
                         fontSize: 9,
                         color:

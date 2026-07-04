@@ -26,6 +26,7 @@
     "lint:fix": "bunx @biomejs/biome check --write --unsafe .",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
-    "typecheck": "tsgo --noEmit -p tsconfig.json"
+    "typecheck": "tsgo --noEmit -p tsconfig.json",
+    "test": "bun run typecheck"
   }
 }

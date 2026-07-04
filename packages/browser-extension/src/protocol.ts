@@ -27,6 +27,7 @@ export type CompanionConfig = BrowserBridgeCompanionConfig;
 export type CompanionAutoPairRequest =
   CreateBrowserBridgeCompanionAutoPairRequest;
 export type CompanionAutoPairResponse = BrowserBridgeCompanionAutoPairResponse;
+export type { BrowserBridgeSettings };
 
 export type BackgroundState = {
   config: CompanionConfig | null;

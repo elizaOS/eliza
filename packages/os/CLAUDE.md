@@ -17,7 +17,7 @@ No other `@elizaos/*` package imports from here at runtime. The installer subpac
 
 ```
 packages/os/
-  package.json                 @elizaos/distro-os (private, no scripts)
+  package.json                 @elizaos/distro-os (private, root quality gates only)
   README.md                    human-facing overview
   CLAUDE.md / AGENTS.md        this file
 
@@ -108,7 +108,7 @@ packages/os/
 
 ## Key exports / surface
 
-This package itself has no JS exports — `"private": true`, no `scripts` in the root `package.json`.
+This package itself has no JS exports — `"private": true`, with root scripts limited to quality gates for the OS release tooling (`test`, `lint`, `lint:check`, `format`, `format:check`).
 
 Sub-packages that do export:
 
@@ -120,7 +120,17 @@ Sub-packages that do export:
 
 ## Commands
 
-Commands are defined per sub-package; run from repo root:
+The root package scripts cover release-tooling quality gates:
+
+```bash
+bun run --cwd packages/os test
+bun run --cwd packages/os lint
+bun run --cwd packages/os lint:check
+bun run --cwd packages/os format
+bun run --cwd packages/os format:check
+```
+
+Runtime/build commands are defined per sub-package; run from repo root:
 
 ```bash
 # USB Installer

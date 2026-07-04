@@ -68,10 +68,7 @@ test.describe("Agents - List", () => {
     const isVisible = await createBtn
       .isVisible({ timeout: 5000 })
       .catch(() => false);
-    test.skip(
-      !isVisible,
-      "no create-agent button rendered on the agents list",
-    );
+    test.skip(!isVisible, "no create-agent button rendered on the agents list");
     await expect(createBtn).toBeEnabled();
   });
 });
@@ -218,7 +215,10 @@ test.describe("Agents - Detail", () => {
     await navigateTo(page, ROUTES.AGENTS_BY_ID("test-agent"));
     await waitForPageLoad(page);
     const notFound = await pageContainsText(page, "not found", "404");
-    test.skip(notFound, 'agent "test-agent" does not exist in this environment');
+    test.skip(
+      notFound,
+      'agent "test-agent" does not exist in this environment',
+    );
     const hasChat = await pageContainsText(page, "chat", "message", "send");
     expect(hasChat).toBe(true);
   });
@@ -227,7 +227,10 @@ test.describe("Agents - Detail", () => {
     await navigateTo(page, ROUTES.AGENTS_BY_ID("test-agent"));
     await waitForPageLoad(page);
     const notFound = await pageContainsText(page, "not found", "404");
-    test.skip(notFound, 'agent "test-agent" does not exist in this environment');
+    test.skip(
+      notFound,
+      'agent "test-agent" does not exist in this environment',
+    );
     const hasTrades = await pageContainsText(
       page,
       "trade",

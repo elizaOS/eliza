@@ -114,10 +114,7 @@ test.describe("Settings - Profile Tab", () => {
       'input[name="username"], input[placeholder*="username" i]',
       "testuser123",
     );
-    test.skip(
-      result === null,
-      "no username input rendered on the profile tab",
-    );
+    test.skip(result === null, "no username input rendered on the profile tab");
     expect(result).toBe("testuser123");
   });
 
@@ -197,7 +194,10 @@ test.describe("Settings - Theme Tab", () => {
     const isVisible = await darkBtn
       .isVisible({ timeout: 5000 })
       .catch(() => false);
-    test.skip(!isVisible, "no dark-theme control rendered on the settings page");
+    test.skip(
+      !isVisible,
+      "no dark-theme control rendered on the settings page",
+    );
     const before = (await page.locator("html").getAttribute("class")) ?? "";
     await darkBtn.click({ force: true });
     await page.waitForTimeout(500);

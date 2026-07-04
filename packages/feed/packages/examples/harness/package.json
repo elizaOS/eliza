@@ -10,12 +10,12 @@
     "dev": "bun run src/cli.ts",
     "train": "bun run src/cli.ts train",
     "test:agents": "bun run src/cli.ts test",
-    "lint": "cd ../../.. && bunx @biomejs/biome check --write --unsafe --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched packages/examples/harness/package.json packages/examples/harness/tsconfig.json packages/examples/harness/README.md",
-    "lint:check": "cd ../../.. && bunx @biomejs/biome check --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched packages/examples/harness/package.json packages/examples/harness/tsconfig.json packages/examples/harness/README.md",
+    "lint": "bunx @biomejs/biome check --write --unsafe --config-path ../../../../../biome.json --vcs-root=../../../../.. --files-ignore-unknown=true --no-errors-on-unmatched package.json tsconfig.json src tests",
+    "lint:check": "bunx @biomejs/biome check --config-path ../../../../../biome.json --vcs-root=../../../../.. --files-ignore-unknown=true --no-errors-on-unmatched package.json tsconfig.json src tests",
     "lint:fix": "cd ../../.. && bunx @biomejs/biome check --write --unsafe --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched packages/examples/harness/package.json packages/examples/harness/tsconfig.json packages/examples/harness/README.md",
-    "format": "cd ../../.. && bunx @biomejs/biome format --write --config-path ../../biome.json --files-ignore-unknown=true packages/examples/harness/package.json packages/examples/harness/tsconfig.json packages/examples/harness/README.md",
-    "format:check": "cd ../../.. && bunx @biomejs/biome format --config-path ../../biome.json --files-ignore-unknown=true packages/examples/harness/package.json packages/examples/harness/tsconfig.json packages/examples/harness/README.md",
-    "typecheck": "bun run tsc -p . --noEmit"
+    "format": "bunx @biomejs/biome format --write --config-path ../../../../../biome.json --vcs-root=../../../../.. --files-ignore-unknown=true --no-errors-on-unmatched package.json tsconfig.json src tests",
+    "format:check": "bunx @biomejs/biome format --config-path ../../../../../biome.json --vcs-root=../../../../.. --files-ignore-unknown=true --no-errors-on-unmatched package.json tsconfig.json src tests",
+    "typecheck": "cd ../../../ && bun run tsc -p packages/examples/harness --noEmit"
   },
   "dependencies": {
     "@feed/engine": "workspace:*",

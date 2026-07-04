@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import {
-  secureShuffle,
   securePickN,
+  secureShuffle,
   shouldFireEvent,
   weightedPick,
 } from "../../engine/src/utils/entropy";
@@ -51,7 +51,9 @@ describe("shouldFireEvent", () => {
   });
 
   it("blocks before minCooldown and at zero probability, always fires at p=1", () => {
-    expect(shouldFireEvent(state({ minCooldown: 100 }) as never, 50)).toBe(false);
+    expect(shouldFireEvent(state({ minCooldown: 100 }) as never, 50)).toBe(
+      false,
+    );
     expect(shouldFireEvent(state({}) as never, 1000)).toBe(false); // p=0
     for (let i = 0; i < 20; i++) {
       expect(

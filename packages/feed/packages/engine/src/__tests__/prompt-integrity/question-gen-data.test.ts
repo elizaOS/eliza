@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { getQuestionExamples } from "../../data/question-examples";
-import { renderPrompt } from "../../prompts/loader";
 import { questionGeneration } from "../../prompts/game/question-generation";
+import { renderPrompt } from "../../prompts/loader";
 import { getRealityGrounding } from "../../prompts/reality-grounding";
 import { StaticDataRegistry } from "../../services/static-data-registry";
 
@@ -25,9 +25,9 @@ describe("question generation data integrity", () => {
   it("provides >50 well-formed example questions", () => {
     const examples = getQuestionExamples();
     expect(examples.length).toBeGreaterThan(50);
-    expect(examples.every((q) => q.startsWith("Will ") && q.endsWith("?"))).toBe(
-      true,
-    );
+    expect(
+      examples.every((q) => q.startsWith("Will ") && q.endsWith("?")),
+    ).toBe(true);
   });
 
   it("has enough eligible actors and companies to populate the prompt", () => {

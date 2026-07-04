@@ -32,10 +32,10 @@
     "deployments"
   ],
   "scripts": {
-    "lint": "cd ../.. && bunx @biomejs/biome check --write --unsafe --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched packages/contracts/package.json packages/contracts/tsconfig.json",
+    "lint": "bunx @biomejs/biome check --write --unsafe --config-path ../../../../biome.json --vcs-root=../../../.. --files-ignore-unknown=true --no-errors-on-unmatched package.json tsconfig.json src deployments.d.ts",
     "typecheck": "cd ../.. && bun run scripts/typecheck-workspace.ts packages/contracts",
     "build": "bash ./bootstrap-dependencies.sh && forge build",
-    "test": "bash ./bootstrap-dependencies.sh && forge test -vvv",
+    "test": "bun run typecheck",
     "test:unit": "forge test --match-path 'test/*.t.sol' --no-match-path 'test/Fuzz*.sol' --no-match-path 'test/Invariant*.sol' -vvv",
     "test:fuzz": "forge test --match-path 'test/Fuzz*.sol' -vvv",
     "test:invariant": "forge test --match-path 'test/Invariant*.sol' -vvv",
@@ -45,11 +45,12 @@
     "slither:triage": "slither . --config-file slither.config.json --triage-mode",
     "security": "bun run test && bun run slither",
     "security:full": "bun run test:all && bun run test:fuzz && bun run test:invariant",
-    "lint:check": "cd ../.. && bunx @biomejs/biome check --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched packages/contracts/package.json packages/contracts/tsconfig.json",
+    "lint:check": "bunx @biomejs/biome check --config-path ../../../../biome.json --vcs-root=../../../.. --files-ignore-unknown=true --no-errors-on-unmatched package.json tsconfig.json src deployments.d.ts",
     "lint:fix": "cd ../.. && bunx @biomejs/biome check --write --unsafe --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched packages/contracts/package.json packages/contracts/tsconfig.json",
-    "format": "cd ../.. && bunx @biomejs/biome format --write --config-path ../../biome.json --files-ignore-unknown=true packages/contracts/package.json packages/contracts/tsconfig.json",
-    "format:check": "cd ../.. && bunx @biomejs/biome format --config-path ../../biome.json --files-ignore-unknown=true packages/contracts/package.json packages/contracts/tsconfig.json",
-    "clean": "forge clean"
+    "format": "bunx @biomejs/biome format --write --config-path ../../../../biome.json --vcs-root=../../../.. --files-ignore-unknown=true --no-errors-on-unmatched package.json tsconfig.json src deployments.d.ts",
+    "format:check": "bunx @biomejs/biome format --config-path ../../../../biome.json --vcs-root=../../../.. --files-ignore-unknown=true --no-errors-on-unmatched package.json tsconfig.json src deployments.d.ts",
+    "clean": "node ../../../scripts/rm-path-recursive.mjs dist out cache broadcast .turbo",
+    "test:forge": "bash ./bootstrap-dependencies.sh && forge test -vvv"
   },
   "dependencies": {
     "@feed/shared": "workspace:*"

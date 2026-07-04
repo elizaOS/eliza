@@ -491,9 +491,9 @@ describe("DISPATCH_TO_AGENT handler()", () => {
 
       expect(callbackFn).toHaveBeenCalledTimes(1);
       const callArg = callbackFn.mock.calls[0]?.[0] as unknown as {
-        content: { success: boolean };
+        success: boolean;
       };
-      expect(callArg.content.success).toBe(true);
+      expect(callArg.success).toBe(true);
     });
 
     it("calls _callback with failure result on missing fields (error path)", async () => {
@@ -510,10 +510,11 @@ describe("DISPATCH_TO_AGENT handler()", () => {
 
       expect(callbackFn).toHaveBeenCalledTimes(1);
       const callArg = callbackFn.mock.calls[0]?.[0] as unknown as {
-        content: { success: boolean; text: string };
+        success: boolean;
+        text: string;
       };
-      expect(callArg.content.success).toBe(false);
-      expect(callArg.content.text).toContain("Missing");
+      expect(callArg.success).toBe(false);
+      expect(callArg.text).toContain("Missing");
     });
 
     it("calls _callback with failure result when dispatch fails", async () => {
@@ -537,10 +538,11 @@ describe("DISPATCH_TO_AGENT handler()", () => {
 
       expect(callbackFn).toHaveBeenCalledTimes(1);
       const callArg = callbackFn.mock.calls[0]?.[0] as unknown as {
-        content: { success: boolean; text: string };
+        success: boolean;
+        text: string;
       };
-      expect(callArg.content.success).toBe(false);
-      expect(callArg.content.text).toContain("Failed");
+      expect(callArg.success).toBe(false);
+      expect(callArg.text).toContain("Failed");
     });
   });
 
@@ -570,13 +572,10 @@ describe("DISPATCH_TO_AGENT handler()", () => {
     });
 
     it("has agentId and command in parameters schema", () => {
-      const params = dispatchToAgentAction.parameters as Record<
-        string,
-        unknown
-      >;
+      const params = dispatchToAgentAction.parameters;
       expect(params).toBeDefined();
-      expect(params.agentId).toBeDefined();
-      expect(params.command).toBeDefined();
+      expect(params?.some((param) => param.name === "agentId")).toBe(true);
+      expect(params?.some((param) => param.name === "command")).toBe(true);
     });
   });
 });

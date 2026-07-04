@@ -4,7 +4,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { derivePopupStatusModel } from "./popup-model";
-import type { BackgroundState } from "./protocol";
+import type { BackgroundState, BrowserBridgeSettings } from "./protocol";
 
 function baseState(overrides: Partial<BackgroundState> = {}): BackgroundState {
   return {
@@ -32,11 +32,19 @@ const config = {
   label: "Agent Browser Bridge chrome Default",
 };
 
-const enabledSettings = {
+const enabledSettings: BrowserBridgeSettings = {
   enabled: true,
   trackingMode: "active_tabs" as const,
   allowBrowserControl: true,
+  requireConfirmationForAccountAffecting: true,
+  incognitoEnabled: false,
+  siteAccessMode: "granted_sites",
+  grantedOrigins: [],
+  blockedOrigins: [],
+  maxRememberedTabs: 10,
   pauseUntil: null,
+  metadata: {},
+  updatedAt: null,
 };
 
 describe("derivePopupStatusModel", () => {

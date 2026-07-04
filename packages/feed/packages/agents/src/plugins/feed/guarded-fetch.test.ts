@@ -29,9 +29,9 @@ describe("Feed A2A guardedFetch SSRF guard (#12229 L9)", () => {
       headers.set("x-feed-api-key", "k");
       injected = headers.get("x-feed-api-key");
     });
-    await expect(
-      impl("http://169.254.169.254/tasks"),
-    ).rejects.toThrow(/private|internal|Blocked/i);
+    await expect(impl("http://169.254.169.254/tasks")).rejects.toThrow(
+      /private|internal|Blocked/i,
+    );
     // Header injection runs before the guard refuses the connect.
     expect(injected).toBe("k");
   });

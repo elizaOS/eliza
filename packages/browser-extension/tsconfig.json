@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "allowImportingTsExtensions": true,
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "noEmit": true,
+    "types": ["bun-types", "chrome", "jsdom", "vitest"]
+  },
+  "include": [
+    "entrypoints/**/*.ts",
+    "src/**/*.ts",
+    "vitest.extension.config.ts"
+  ]
+}

@@ -222,6 +222,7 @@
         "!packages/cloud/api/**",
         "!packages/cloud/shared/**",
         "!packages/examples/**",
+        "!packages/feed/**",
         "!packages/os/**",
         "!packages/research/robot/**",
         "!packages/scenario-runner/**",

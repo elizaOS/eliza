@@ -8,7 +8,7 @@
     "build": "bun --bun vite build",
     "deploy": "bunx wrangler pages deploy dist --project-name elizaos-homepage --branch main",
     "preview": "bun --bun vite preview --port 4455",
-    "typecheck": "tsc -b",
+    "typecheck": "bun run --cwd ../../shared build && tsc -b",
     "test": "node --test tests/smoke.node.test.mjs",
     "test:e2e": "../../../node_modules/.bin/playwright test",
     "screenshots": "node scripts/capture-screenshots.mjs",
@@ -18,7 +18,7 @@
     "format:check": "bunx @biomejs/biome format .",
     "predev": "node ../../shared/scripts/sync-to-public.mjs ./public --logos --ogembeds --concepts --background --background-videos",
     "prebuild": "node ../../shared/scripts/sync-to-public.mjs ./public --logos --ogembeds --concepts --background --background-videos",
-    "clean": "node ../../scripts/rm-path-recursive.mjs dist"
+    "clean": "node ../../scripts/rm-path-recursive.mjs dist .turbo"
   },
   "dependencies": {
     "@elizaos/ui": "workspace:*",

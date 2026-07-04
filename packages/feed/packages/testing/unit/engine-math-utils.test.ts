@@ -37,7 +37,7 @@ describe("lerp / roundTo", () => {
     expect(lerp(0, 10, 0.5)).toBe(5);
     expect(lerp(0, 10, 2)).toBe(10); // t clamped to 1
     expect(lerp(0, 10, -1)).toBe(0); // t clamped to 0
-    expect(roundTo(3.14159, 2)).toBe(3.14);
+    expect(roundTo(Math.PI, 2)).toBe(3.14);
     expect(roundTo(3.5, 0)).toBe(4);
     expect(() => roundTo(1, -1)).toThrow(RangeError);
   });

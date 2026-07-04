@@ -58,7 +58,7 @@ export async function callClaudeDirect(params: {
   const latencyMs = Date.now() - startTime;
 
   const firstContent = message.content[0];
-  if (!firstContent || firstContent.type !== "text") {
+  if (firstContent?.type !== "text") {
     throw new Error("Unexpected response format from Claude");
   }
 

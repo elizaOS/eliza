@@ -335,7 +335,8 @@ export class MarketHandler {
       // Try to find by wallet address (in case agentId format changed)
       // Or create user with default balance
       this.ensureUserExists(userId);
-      return this.deductUserBalance(userId, amount);
+      this.deductUserBalance(userId, amount);
+      return;
     }
 
     const balance = row.virtual_balance;

@@ -179,7 +179,10 @@ test.describe("Chats - Group Creation", () => {
       'button:has-text("New Group"), button:has-text("Create Group"), button:has-text("New Chat")',
     );
     if (modal === null) {
-      test.skip(true, "no group/chat creation button rendered on the chats page");
+      test.skip(
+        true,
+        "no group/chat creation button rendered on the chats page",
+      );
       return;
     }
     await expect(modal).toBeVisible();
@@ -192,7 +195,10 @@ test.describe("Chats - Group Creation", () => {
       'button:has-text("New Group"), button:has-text("Create Group"), button:has-text("New Chat")',
     );
     if (modal === null) {
-      test.skip(true, "no group/chat creation button rendered on the chats page");
+      test.skip(
+        true,
+        "no group/chat creation button rendered on the chats page",
+      );
       return;
     }
     const nameInput = modal
@@ -209,7 +215,10 @@ test.describe("Chats - Group Creation", () => {
       'button:has-text("New Group"), button:has-text("Create Group"), button:has-text("New Chat")',
     );
     if (modal === null) {
-      test.skip(true, "no group/chat creation button rendered on the chats page");
+      test.skip(
+        true,
+        "no group/chat creation button rendered on the chats page",
+      );
       return;
     }
     await closeModal(page);

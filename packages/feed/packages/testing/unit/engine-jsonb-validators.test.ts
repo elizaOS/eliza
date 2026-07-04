@@ -69,7 +69,9 @@ describe("validate* (write path — throws)", () => {
   });
 
   it("validateRelationshipUpdate enforces bounded sentimentChange", () => {
-    expect(() => validateRelationshipUpdate({ sentimentChange: 0.5 })).not.toThrow();
+    expect(() =>
+      validateRelationshipUpdate({ sentimentChange: 0.5 }),
+    ).not.toThrow();
     expect(() => validateRelationshipUpdate({ sentimentChange: 9 })).toThrow();
     expect(() => validateRelationshipUpdate({})).toThrow();
   });

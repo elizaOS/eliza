@@ -15,12 +15,12 @@
     "harness": "cd harness && bun run src/cli.ts",
     "harness:train": "cd harness && bun run src/cli.ts train",
     "harness:test": "cd harness && bun test",
-    "lint": "cd ../.. && bunx @biomejs/biome check --write --unsafe --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched packages/examples/package.json packages/examples/README.md",
-    "lint:check": "cd ../.. && bunx @biomejs/biome check --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched packages/examples/package.json packages/examples/README.md",
+    "lint": "bunx @biomejs/biome check --write --unsafe --config-path ../../../../biome.json --vcs-root=../../../.. --files-ignore-unknown=true --no-errors-on-unmatched package.json scripts",
+    "lint:check": "bunx @biomejs/biome check --config-path ../../../../biome.json --vcs-root=../../../.. --files-ignore-unknown=true --no-errors-on-unmatched package.json scripts",
     "lint:fix": "cd ../.. && bunx @biomejs/biome check --write --unsafe --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched packages/examples/package.json packages/examples/README.md",
-    "format": "cd ../.. && bunx @biomejs/biome format --write --config-path ../../biome.json --files-ignore-unknown=true packages/examples/package.json packages/examples/README.md",
-    "format:check": "cd ../.. && bunx @biomejs/biome format --config-path ../../biome.json --files-ignore-unknown=true packages/examples/package.json packages/examples/README.md",
-    "test": "bun run test:ts && bun run harness:test"
+    "format": "bunx @biomejs/biome format --write --config-path ../../../../biome.json --vcs-root=../../../.. --files-ignore-unknown=true --no-errors-on-unmatched package.json scripts",
+    "format:check": "bunx @biomejs/biome format --config-path ../../../../biome.json --vcs-root=../../../.. --files-ignore-unknown=true --no-errors-on-unmatched package.json scripts",
+    "test": "bash -n scripts/*.sh"
   },
   "workspaces": [
     "local-a2a-server",

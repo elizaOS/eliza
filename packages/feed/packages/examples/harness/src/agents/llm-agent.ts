@@ -302,8 +302,6 @@ export class LLMAgent implements TrainableAgent {
   }
 
   async initialize(config: AgentConfig): Promise<void> {
-    this.agentConfig = config;
-
     // Resolve provider: explicit config → GROQ_API_KEY → OPENAI_API_KEY → ANTHROPIC_API_KEY
     this.provider = this.llmConfig.provider ?? this.detectProvider();
     const defaults = PROVIDER_DEFAULTS[this.provider];

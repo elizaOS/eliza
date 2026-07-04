@@ -50,8 +50,8 @@ export class RandomAgent implements TrainableAgent {
   readonly name = "Random Agent";
   readonly language = "typescript" as const;
 
-  async initialize(config: AgentConfig): Promise<void> {
-    this.config = config;
+  async initialize(_config: AgentConfig): Promise<void> {
+    // No setup required for the random baseline.
   }
 
   async decide(context: AgentContext): Promise<AgentDecision> {

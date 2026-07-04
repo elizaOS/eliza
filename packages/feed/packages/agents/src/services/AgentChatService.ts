@@ -518,8 +518,7 @@ export async function dispatchAgentChat(
     state.data = {
       ...state.data,
       // Cast: Feed ActionTraceResult is a superset of elizaos ActionResult
-      actionResults:
-        traceActionResults as typeof state.data.actionResults,
+      actionResults: traceActionResults as typeof state.data.actionResults,
     };
     state.values = {
       ...state.values,

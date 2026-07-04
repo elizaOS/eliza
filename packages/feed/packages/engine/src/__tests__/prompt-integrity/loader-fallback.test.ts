@@ -19,9 +19,9 @@ const tmpl = (template: string) =>
  */
 describe("renderPrompt validation", () => {
   it("throws when a provided required var is an empty string", () => {
-    expect(() =>
-      renderPrompt(tmpl("hello {{name}}"), { name: "" }),
-    ).toThrow(/Required variable "name" is empty/);
+    expect(() => renderPrompt(tmpl("hello {{name}}"), { name: "" })).toThrow(
+      /Required variable "name" is empty/,
+    );
   });
 
   it("throws when a provided required var is null/undefined", () => {
@@ -32,9 +32,9 @@ describe("renderPrompt validation", () => {
   });
 
   it("allowEmpty suppresses the required-var validation", () => {
-    expect(renderPrompt(tmpl("hello {{name}}"), { name: "" }, { allowEmpty: true })).toBe(
-      "hello ",
-    );
+    expect(
+      renderPrompt(tmpl("hello {{name}}"), { name: "" }, { allowEmpty: true }),
+    ).toBe("hello ");
   });
 
   it("fills a provided required var", () => {

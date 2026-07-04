@@ -3,6 +3,7 @@
  * ordering; pure functions, no chrome.storage.
  */
 import { describe, expect, it } from "vitest";
+import type { CompanionConfig } from "./protocol";
 import {
   candidateApiBaseUrlsFromTabs,
   DEFAULT_BROWSER_BRIDGE_API_BASE_URL,
@@ -34,7 +35,7 @@ describe("candidateApiBaseUrlsFromTabs", () => {
 });
 
 describe("normalizeCompanionConfig", () => {
-  const baseConfig = {
+  const baseConfig: Partial<CompanionConfig> = {
     apiBaseUrl: "https://agent.example.com/api?debug=true#section",
     companionId: " companion-1 ",
     pairingToken: " token-1 ",
@@ -68,7 +69,7 @@ describe("normalizeCompanionConfig", () => {
     }
 
     expect(
-      normalizeCompanionConfig({ ...baseConfig, browser: "firefox" }),
+      normalizeCompanionConfig({ ...baseConfig, browser: "firefox" as never }),
     ).toBeNull();
   });
 

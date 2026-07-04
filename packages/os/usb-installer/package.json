@@ -29,7 +29,7 @@
     "package:darwin": "bunx electrobun build --platform darwin",
     "package:linux": "bunx electrobun build --platform linux",
     "package:win32": "bunx electrobun build --platform win32",
-    "clean": "node ../../scripts/rm-path-recursive.mjs dist",
+    "clean": "node ../../scripts/rm-path-recursive.mjs dist .turbo",
     "lint:check": "bunx @biomejs/biome check src tests server.ts vite.config.ts vitest.config.ts playwright.config.ts",
     "lint:fix": "bunx @biomejs/biome check --write --unsafe src tests server.ts vite.config.ts vitest.config.ts playwright.config.ts",
     "format": "bunx @biomejs/biome format --write src tests server.ts vite.config.ts vitest.config.ts playwright.config.ts",

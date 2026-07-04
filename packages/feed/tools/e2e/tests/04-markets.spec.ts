@@ -191,10 +191,7 @@ test.describe("Markets - Perps", () => {
     await expect(longBtn).toBeEnabled();
     await longBtn.click({ force: true });
     await page.waitForTimeout(300);
-    await expect(
-      shortBtn,
-      "Short side of the toggle is missing",
-    ).toBeVisible();
+    await expect(shortBtn, "Short side of the toggle is missing").toBeVisible();
     await shortBtn.click({ force: true });
     await expect(shortBtn).toBeEnabled();
   });
@@ -288,9 +285,7 @@ test.describe("Markets - Predictions", () => {
         '[data-testid*="prediction"], [data-testid*="market-card"], .market-card',
       )
       .first();
-    const hasCards = await card
-      .isVisible({ timeout: 5000 })
-      .catch(() => false);
+    const hasCards = await card.isVisible({ timeout: 5000 }).catch(() => false);
     test.skip(!hasCards, "no prediction cards rendered on the predictions tab");
     await expect(page.locator(SELECTORS.YES_BUTTON).first()).toBeVisible();
     await expect(page.locator(SELECTORS.NO_BUTTON).first()).toBeVisible();
@@ -321,7 +316,10 @@ test.describe("Markets - Predictions", () => {
     const isVisible = await card
       .isVisible({ timeout: 5000 })
       .catch(() => false);
-    test.skip(!isVisible, "no prediction cards rendered on the predictions tab");
+    test.skip(
+      !isVisible,
+      "no prediction cards rendered on the predictions tab",
+    );
     const beforeUrl = page.url();
     await card.click({ force: true });
     await page.waitForTimeout(2000);

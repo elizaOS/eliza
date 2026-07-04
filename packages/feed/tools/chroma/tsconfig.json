@@ -4,10 +4,12 @@
     "moduleResolution": "bundler",
     "target": "es2022",
     "strict": true,
+    "noImplicitAny": false,
     "skipLibCheck": true,
     "types": ["node", "bun"]
   },
   "include": [
+    "chroma.d.ts",
     "playwright.config.ts",
     "global-setup.ts",
     "dev-server.ts",

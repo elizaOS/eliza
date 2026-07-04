@@ -123,7 +123,7 @@ export const dispatchToAgentAction: Action = {
         success: false,
         text: "Missing required parameters for agent dispatch.",
       };
-      _callback?.({ text: failResult.text });
+      _callback?.({ success: false, text: failResult.text });
       return failResult;
     }
 
@@ -145,7 +145,7 @@ export const dispatchToAgentAction: Action = {
         text: `Failed to dispatch to agent "${agentId}": ${result.error ?? "Unknown error"}. Check the Team Members list for the correct agent [id: ...] and retry.`,
         values: { agentId, command, error: result.error },
       };
-      _callback?.({ text: failResult.text, agentId, command });
+      _callback?.({ success: false, text: failResult.text, agentId, command });
       return failResult;
     }
 
@@ -161,6 +161,7 @@ export const dispatchToAgentAction: Action = {
       },
     };
     _callback?.({
+      success: true,
       text: successResult.text,
       agentId: result.agentId,
       agentUsername: result.agentUsername,

@@ -8,8 +8,7 @@ import type { Page } from "@playwright/test";
 import { installSynpressDevAuth } from "./dev-auth";
 
 interface WalletMethods {
-  authorize: () => Promise<void>;
-  confirm: () => Promise<void>;
+  approve: () => Promise<void>;
   reject: () => Promise<void>;
   importSeedPhrase: (options: { seedPhrase: string }) => Promise<void>;
 }

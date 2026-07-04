@@ -296,7 +296,10 @@ test.describe("Admin Panel - Game Control", () => {
     const isVisible = await refreshBtn
       .isVisible({ timeout: 5000 })
       .catch(() => false);
-    test.skip(!isVisible, "no refresh control rendered on the Game Control tab");
+    test.skip(
+      !isVisible,
+      "no refresh control rendered on the Game Control tab",
+    );
     await expect(refreshBtn).toBeEnabled();
   });
 });

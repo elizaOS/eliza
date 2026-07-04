@@ -143,39 +143,81 @@ export class ActorContextBuilder {
       moodState,
       recentHeadlines,
     ] = await Promise.all([
-      fetchRelevantPosts(
-        findRelatedActorsByAffiliation(actorId, affiliations),
-        twoDaysAgo,
-        now,
+      this.withContextFallback(
+        "relevant posts",
+        [],
+        () =>
+          fetchRelevantPosts(
+            findRelatedActorsByAffiliation(actorId, affiliations),
+            twoDaysAgo,
+            now,
+          ),
+        { actorId },
       ),
-      this.getPersonalEvents(actorId, actor.name, now),
-      this.getRecentWorldEvents(twoDaysAgo, now),
-      this.getResolvedQuestions(),
-      this.getRelationships(actorId),
-      this.getMemories(actorId),
+      this.withContextFallback(
+        "personal events",
+        [],
+        () => this.getPersonalEvents(actorId, actor.name, now),
+        { actorId },
+      ),
+      this.withContextFallback(
+        "world events",
+        [],
+        () => this.getRecentWorldEvents(twoDaysAgo, now),
+        { actorId },
+      ),
+      this.withContextFallback(
+        "resolved questions",
+        [],
+        () => this.getResolvedQuestions(),
+        { actorId },
+      ),
+      this.withContextFallback(
+        "relationships",
+        [],
+        () => this.getRelationships(actorId),
+        { actorId },
+      ),
+      this.withContextFallback(
+        "memories",
+        "",
+        () => this.getMemories(actorId),
+        { actorId },
+      ),
       this.getDirectMessages(actorId, twoDaysAgo),
-      db
-        .select({ currentMood: actorState.currentMood })
-        .from(actorState)
-        .where(eq(actorState.id, actorId))
-        .limit(1)
-        .then((r) => r[0]?.currentMood ?? 0),
-      db
-        .select({
-          parodyTitle: parodyHeadlines.parodyTitle,
-          originalSource: parodyHeadlines.originalSource,
-        })
-        .from(parodyHeadlines)
-        .where(gte(parodyHeadlines.generatedAt, twoDaysAgo))
-        .orderBy(desc(parodyHeadlines.generatedAt))
-        .limit(8)
-        .then((rows) =>
-          rows.map((r) => ({
-            title: r.parodyTitle,
-            source: r.originalSource || "unknown",
-          })),
-        )
-        .catch(() => [] as Array<{ title: string; source: string }>),
+      this.withContextFallback(
+        "mood",
+        0,
+        () =>
+          db
+            .select({ currentMood: actorState.currentMood })
+            .from(actorState)
+            .where(eq(actorState.id, actorId))
+            .limit(1)
+            .then((r) => r[0]?.currentMood ?? 0),
+        { actorId },
+      ),
+      this.withContextFallback(
+        "headlines",
+        [],
+        () =>
+          db
+            .select({
+              parodyTitle: parodyHeadlines.parodyTitle,
+              originalSource: parodyHeadlines.originalSource,
+            })
+            .from(parodyHeadlines)
+            .where(gte(parodyHeadlines.generatedAt, twoDaysAgo))
+            .orderBy(desc(parodyHeadlines.generatedAt))
+            .limit(8)
+            .then((rows) =>
+              rows.map((r) => ({
+                title: r.parodyTitle,
+                source: r.originalSource || "unknown",
+              })),
+            ),
+        { actorId },
+      ),
     ]);
 
     // Build per-actor rules
@@ -238,6 +280,24 @@ export class ActorContextBuilder {
         financeGuardrails,
       },
     };
+  }
+
+  private async withContextFallback<T>(
+    label: string,
+    fallback: T,
+    operation: () => Promise<T>,
+    context: Record<string, unknown>,
+  ): Promise<T> {
+    try {
+      return await operation();
+    } catch (err) {
+      logger.warn(
+        `Failed to fetch ${label}`,
+        { ...context, error: err instanceof Error ? err.message : String(err) },
+        "ActorContextBuilder",
+      );
+      return fallback;
+    }
   }
 
   private async getPersonalEvents(

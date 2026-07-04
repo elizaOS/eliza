@@ -378,7 +378,7 @@ export async function handleVerifyEscrowPayment(
       where: { id: params.escrowId },
     });
 
-    if (!currentEscrow || currentEscrow.status !== "pending") {
+    if (currentEscrow?.status !== "pending") {
       throw new Error(
         `Escrow is already ${currentEscrow?.status || "not found"}`,
       );
@@ -520,7 +520,7 @@ export async function handleRefundEscrowPayment(
       where: { id: params.escrowId },
     });
 
-    if (!currentEscrow || currentEscrow.status !== "paid") {
+    if (currentEscrow?.status !== "paid") {
       throw new Error(
         `Cannot refund escrow with status: ${currentEscrow?.status || "not found"}`,
       );

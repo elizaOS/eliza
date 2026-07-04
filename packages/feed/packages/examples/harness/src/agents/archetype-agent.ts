@@ -21,7 +21,6 @@ export class ArchetypeAgent implements TrainableAgent {
   private archetype?: ArchetypeConfig;
 
   async initialize(config: AgentConfig): Promise<void> {
-    this.config = config;
     this.archetype = config.archetype;
   }
 

@@ -7,17 +7,17 @@
     "dev": "bun --bun vite",
     "prebuild": "node ../shared/scripts/sync-to-public.mjs ./public --logos --favicons --ogembeds --background --background-videos && node ../app-core/scripts/write-homepage-release-data.mjs",
     "build": "bun --bun vite build",
-    "clean": "node ../scripts/rm-path-recursive.mjs dist",
     "check:release-data": "node ../app-core/scripts/check-homepage-release-data.mjs",
     "test": "bun test tests/smoke.node.test.mjs tests/contact.test.ts",
     "test:e2e": "node ../app-core/scripts/write-homepage-release-data.mjs && playwright test",
     "test:audit": "node ../app-core/scripts/write-homepage-release-data.mjs && playwright test tests/e2e/aesthetic-audit.spec.ts && playwright test tests/e2e/contact-sheet-capture.spec.ts && node scripts/generate-contact-sheet.mjs",
-    "typecheck": "node ../app-core/scripts/write-homepage-release-data.mjs && tsc -b",
+    "typecheck": "bun run --cwd ../shared build && node ../app-core/scripts/write-homepage-release-data.mjs && tsc -b",
     "preview": "bun --bun vite preview --port 4444",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",
-    "format:check": "bunx @biomejs/biome format ."
+    "format:check": "bunx @biomejs/biome format .",
+    "clean": "node ../scripts/rm-path-recursive.mjs dist .turbo"
   },
   "dependencies": {
     "@elizaos/ui": "workspace:*",

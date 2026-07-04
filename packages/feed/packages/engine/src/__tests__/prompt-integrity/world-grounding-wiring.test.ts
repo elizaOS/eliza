@@ -1,17 +1,15 @@
 import { describe, expect, it } from "vitest";
+import { getQuestionExamples } from "../../data/question-examples";
 import { realityGroundingContent } from "../../data/reality-grounding";
 import { worldEventExamplesContent } from "../../data/world-event-examples";
 import { worldFactsContent } from "../../data/world-facts";
-import {
-  getQuestionExamples,
-} from "../../data/question-examples";
 import { baselineEvent } from "../../prompts/game/baseline-event";
+import { renderPrompt } from "../../prompts/loader";
 import {
   getFullRealityGrounding,
   getRealityGrounding,
   getWorldEventExamples,
 } from "../../prompts/reality-grounding";
-import { renderPrompt } from "../../prompts/loader";
 
 /**
  * The recovered grounding content (reality-grounding / world-facts /
@@ -30,8 +28,9 @@ describe("world grounding content is real", () => {
   it("world facts carry the Feed-branded baseline", () => {
     expect(worldFactsContent).toContain("FEED WORLD FACTS");
     expect(worldFactsContent.toLowerCase()).not.toContain("babylon");
-    expect(worldFactsContent.split("\n").filter((l) => l.startsWith("- ")).length)
-      .toBeGreaterThan(3);
+    expect(
+      worldFactsContent.split("\n").filter((l) => l.startsWith("- ")).length,
+    ).toBeGreaterThan(3);
   });
 
   it("world event examples are non-empty satirical events", () => {
@@ -42,9 +41,9 @@ describe("world grounding content is real", () => {
   it("question examples are well-formed prediction questions", () => {
     const examples = getQuestionExamples();
     expect(examples.length).toBeGreaterThan(50);
-    expect(examples.every((q) => q.startsWith("Will ") && q.endsWith("?"))).toBe(
-      true,
-    );
+    expect(
+      examples.every((q) => q.startsWith("Will ") && q.endsWith("?")),
+    ).toBe(true);
   });
 
   it("getRealityGrounding/getFullRealityGrounding inject the real body", () => {
