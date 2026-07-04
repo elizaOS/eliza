@@ -252,8 +252,22 @@ const RULES: readonly Rule[] = [
     const hour = localHour(inputs.nowMs, inputs.timezone);
     const { medianBedtimeLocalHour: bedtime, medianWakeLocalHour: wake } =
       inputs.baseline;
-    const normalized = hour < 12 ? hour + 24 : hour;
-    if (normalized >= bedtime || normalized < wake + 12) {
+    // Compare on the plain 24h clock. `medianBedtimeLocalHour` uses the
+    // baseline's 12..36 "hours past prior noon" convention while the current
+    // hour and `medianWakeLocalHour` are 0..24, so both windows are reduced
+    // mod 24 and evaluated circularly (a window may span midnight).
+    const hourOfDay = ((hour % 24) + 24) % 24;
+    const bedtimeHour = ((bedtime % 24) + 24) % 24;
+    const wakeHour = ((wake % 24) + 24) % 24;
+    const inCircularWindow = (
+      value: number,
+      start: number,
+      end: number,
+    ): boolean =>
+      start <= end
+        ? value >= start && value < end
+        : value >= start || value < end;
+    if (inCircularWindow(hourOfDay, bedtimeHour, wakeHour)) {
       return {
         name: "baseline.currentHourLikelyAsleep",
         contributes: "sleeping",
@@ -262,7 +276,7 @@ const RULES: readonly Rule[] = [
         reason: `within baseline bedtime window (${bedtime.toFixed(1)}h-${wake.toFixed(1)}h)`,
       };
     }
-    if (normalized >= wake && normalized < wake + 4) {
+    if (inCircularWindow(hourOfDay, wakeHour, (wakeHour + 4) % 24)) {
       return {
         name: "baseline.currentHourLikelyAwake",
         contributes: "awake",

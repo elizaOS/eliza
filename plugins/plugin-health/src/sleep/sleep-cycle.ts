@@ -15,6 +15,7 @@ import type {
 } from "../contracts/health.js";
 import { LIFEOPS_HEALTH_SIGNAL_SOURCES } from "../contracts/health.js";
 import {
+  addDaysToLocalDate,
   buildUtcDateFromLocalParts,
   getLocalDateKey,
   getZonedDateParts,
@@ -671,10 +672,10 @@ export function resolveLifeOpsDayBoundary(args: {
     minute: 0,
     second: 0,
   });
-  const nextDateParts = getZonedDateParts(
-    new Date(startOfDay.getTime() + 24 * 60 * 60 * 1_000),
-    args.timezone,
-  );
+  // Advance by calendar day, not by 24 elapsed hours: on a DST fall-back day
+  // (25 local hours) local-midnight + 24h is still 23:00 of the SAME local
+  // day, which would collapse the boundary to endOfDay === startOfDay.
+  const nextDateParts = addDaysToLocalDate(localDateParts, 1);
   const endOfDay = buildUtcDateFromLocalParts(args.timezone, {
     year: nextDateParts.year,
     month: nextDateParts.month,
