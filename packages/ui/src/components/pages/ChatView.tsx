@@ -875,7 +875,6 @@ export function ChatView({
           interimTranscript: voice.interimTranscript,
           isSpeaking: voice.isSpeaking,
           assistantTtsQuality: voice.assistantTtsQuality,
-          toggleListening: voice.toggleListening,
           startListening: beginVoiceCapture,
           stopListening: endVoiceCapture,
         }}
@@ -936,7 +935,6 @@ export function ChatView({
           interimTranscript: voice.interimTranscript,
           isSpeaking: voice.isSpeaking,
           assistantTtsQuality: voice.assistantTtsQuality,
-          toggleListening: voice.toggleListening,
           startListening: beginVoiceCapture,
           stopListening: endVoiceCapture,
         }}
@@ -1554,5 +1552,4 @@ const inertVoiceState = {
   startListening: () => {},
   stopListening: () => {},
   supported: false,
-  toggleListening: () => {},
 };

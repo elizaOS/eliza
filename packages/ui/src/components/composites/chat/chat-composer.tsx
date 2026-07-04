@@ -99,7 +99,6 @@ export interface ChatComposerVoiceState {
   ) => void | Promise<void>;
   stopListening: (options?: { submit?: boolean }) => void | Promise<void>;
   supported: boolean;
-  toggleListening: () => void;
 }
 
 export interface ChatComposerProps {

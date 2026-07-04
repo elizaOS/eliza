@@ -15,7 +15,6 @@ const voice: ChatComposerVoiceState = {
   startListening: vi.fn(),
   stopListening: vi.fn(),
   supported: false,
-  toggleListening: vi.fn(),
 };
 
 function renderInlineComposer(
