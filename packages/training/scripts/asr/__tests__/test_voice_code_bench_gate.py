@@ -1,3 +1,9 @@
+"""Contract tests for the VoiceCodeBench ASR gate.
+
+The suite verifies dataset provenance, eval-only policy, exact entity recovery,
+and publishable-report requirements without committing benchmark rows or audio.
+"""
+
 from __future__ import annotations
 
 import sys
