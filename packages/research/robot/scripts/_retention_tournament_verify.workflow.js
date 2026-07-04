@@ -1,3 +1,10 @@
+/**
+ * Multi-agent verification workflow for the Alberta retention tournament.
+ *
+ * Each verifier recomputes continual-learning metrics from raw benchmark JSON
+ * before the synthesis phase writes the retention/capacity comparison report.
+ */
+
 export const meta = {
   name: "alberta-retention-tournament-verify",
   description:
