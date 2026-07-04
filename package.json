@@ -88,6 +88,7 @@
     "cache:prune": "node packages/scripts/prune-turbo-cache.mjs",
     "test:dev-startup": "node packages/app-core/scripts/dev-startup-smoke.mjs",
     "test:hmr": "bun run --cwd packages/app test:hmr",
+    "test:desktop:packaged:windows": "bun run --cwd packages/app test:desktop:packaged:windows",
     "build:core": "node packages/scripts/build-core.mjs",
     "build:server": "node packages/scripts/run-turbo.mjs run build --filter=@elizaos/agent",
     "lint": "node packages/scripts/run-turbo.mjs run lint",
