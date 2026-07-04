@@ -693,4 +693,4 @@ export {
   SHA384_OID,
   TCG_DICE_TCB_INFO_OID,
   verifyCoveX509Chain,
-} from "./cove-quote-x509.ts";
+} from "./cove-quote-x509";

@@ -12,7 +12,7 @@ import {
   normalizeTeeEvidence,
   type TeeEvidence,
 } from "@elizaos/agent/services/tee-evidence";
-import { coveQuoteToTeeEvidence, verifyCoveQuote } from "./cove-quote.ts";
+import { coveQuoteToTeeEvidence, verifyCoveQuote } from "./cove-quote";
 
 const DEFAULT_DSTACK_EVIDENCE_PATHS = [
   "/run/dstack/tee-evidence.json",

@@ -6,11 +6,11 @@
  */
 import { registerTeeEvidenceProviderFactory } from "@elizaos/agent/services/tee-evidence-provider";
 import { logger, type Plugin } from "@elizaos/core";
-import { createDstackTeeProvider } from "./dstack-tee-provider.ts";
+import { createDstackTeeProvider } from "./dstack-tee-provider";
 
-export * from "./cove-quote.ts";
-export * from "./cove-quote-x509.ts";
-export * from "./dstack-tee-provider.ts";
+export * from "./cove-quote";
+export * from "./cove-quote-x509";
+export * from "./dstack-tee-provider";
 
 /**
  * Register the dstack/CoVE evidence provider with the host boot-gate seam
