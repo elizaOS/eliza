@@ -1,5 +1,7 @@
-// Node-side entry point — exports the Playwright fixture and mock server.
-// Do not import this from browser code.
+/**
+ * Node-side test entry point for the XR Playwright fixture and mock agent
+ * server.
+ */
 export {
   expect,
   MockAgentServer,

@@ -1,10 +1,9 @@
-// @vitest-environment jsdom
-//
-// Drives the unified SmartglassesPanelView (the single GUI/XR data wrapper) -
-// the same component the bundle exports for both the "gui" and "xr" modalities.
-// Asserts it mirrors the live report the full dashboard publishes on
-// window.facewearSmartglassesReport, toggles mic locally, and forwards the
-// Wi-Fi controls to the same native bridge the dashboard drives.
+/**
+ * @vitest-environment jsdom
+ *
+ * SmartglassesPanelView tests cover the compact GUI/XR panel, live report
+ * mirroring, local mic toggles, and native bridge Wi-Fi controls.
+ */
 
 import {
   act,

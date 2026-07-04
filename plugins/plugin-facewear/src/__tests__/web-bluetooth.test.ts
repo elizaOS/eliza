@@ -1,3 +1,7 @@
+/**
+ * Web Bluetooth transport tests exercise G1 lens discovery, writes, and
+ * notification parsing with browser-shaped fakes.
+ */
 import { describe, expect, it } from "vitest";
 import { G1Command } from "../protocol/smartglasses.ts";
 import { WebBluetoothG1Transport } from "../transport/web-bluetooth.ts";

@@ -1,3 +1,7 @@
+/**
+ * Smartglasses basic action tests cover display and microphone command behavior
+ * against the service boundary.
+ */
 import { describe, expect, it } from "vitest";
 import { displaySmartglassesTextAction } from "../actions/display-text.ts";
 import { smartglassesMicrophoneAction } from "../actions/microphone.ts";

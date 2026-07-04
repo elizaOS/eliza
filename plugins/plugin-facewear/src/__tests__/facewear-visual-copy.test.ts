@@ -1,3 +1,7 @@
+/**
+ * Visual-copy tests keep the facewear surfaces on shared spatial vocabulary and
+ * shell theme tokens instead of bespoke color literals.
+ */
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -8,9 +12,7 @@ function readSource(relativePath: string): string {
   return readFileSync(resolve(root, relativePath), "utf8");
 }
 
-// Glyphs the spatial / shell surfaces must not hardcode (custom palettes,
-// raw color literals, emoji). The collapsed facewear views render through the
-// shared spatial vocabulary + shell theme tokens, never a bespoke palette.
+// The collapsed facewear views render through shared spatial and shell tokens.
 const FORBIDDEN = ["#0a0a0c", "#6366f1", "#a1a1aa", "rgba("];
 
 describe("facewear visual copy", () => {
@@ -26,9 +28,7 @@ describe("facewear visual copy", () => {
         );
       }
     }
-    // FacewearView is a thin GUI/XR wrapper that delegates to FacewearSpatialView;
-    // the spatial primitives (and thus the @elizaos/ui/spatial import) live in
-    // the spatial view, never in raw HTML the wrapper would have to style itself.
+    // Spatial primitives stay in the spatial view, where the shell can theme them.
     expect(
       readSource("components/FacewearSpatialView.tsx"),
       "FacewearSpatialView renders via spatial primitives",

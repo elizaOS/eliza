@@ -1,3 +1,7 @@
+/**
+ * XR protocol tests verify binary frame encoding for audio, images, and pose
+ * metadata exchanged with headset clients.
+ */
 import { describe, expect, it } from "vitest";
 import { decodeBinaryFrame, encodeBinaryFrame } from "../protocol/xr.ts";
 

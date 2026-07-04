@@ -1,3 +1,7 @@
+/**
+ * OpenXR runtime tests exercise detection and install planning through an
+ * in-memory platform probe.
+ */
 import { describe, expect, it } from "vitest";
 import {
   detectOpenXrRuntime,
@@ -7,7 +11,7 @@ import {
   type RuntimeProbe,
 } from "./openxr-runtime.ts";
 
-/** A probe backed by an in-memory filesystem + a fixed platform. */
+/** In-memory filesystem and platform probe for deterministic runtime detection. */
 function fakeProbe(opts: {
   platform: string;
   files?: Record<string, string>;

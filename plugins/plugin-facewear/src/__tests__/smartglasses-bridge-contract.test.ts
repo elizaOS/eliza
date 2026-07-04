@@ -1,13 +1,7 @@
-// Contract test for the SmartglassesView Wi-Fi bridge parser against real-shaped
-// native-bridge responses. The field-name variants below are the contract the
-// plugin actually handles at runtime: they mirror the Even Realities / Mentra
-// native bridge shapes normalized in src/transport/even-bridge.ts
-// (normalizeBridgeWifiEvent / normalizeWifiResult) and the request `op` payloads
-// documented in docs/smartglasses.md ({op:"wifi_scan"|"wifi_status"|
-// "wifi_configure"|"wifi_setup"}). Each fixture's shape is verified against those
-// in-repo sources, not invented. This is the SmartglassesView (gui+xr) view's
-// external-data contract: SmartglassesView calls these exact parser helpers on
-// the bridge response when the user clicks Scan / Status / Configure / Setup.
+/**
+ * SmartglassesView Wi-Fi bridge contract tests cover real-shaped Even Realities
+ * and Mentra native bridge responses normalized by the UI parser helpers.
+ */
 
 import { describe, expect, it } from "vitest";
 import {

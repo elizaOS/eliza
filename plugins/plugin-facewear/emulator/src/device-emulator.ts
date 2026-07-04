@@ -1,3 +1,7 @@
+/**
+ * WebSocket client that speaks the facewear XR hello and frame protocol for
+ * local headset simulation.
+ */
 import { WebSocket } from "ws";
 
 export type FacewearDeviceType =
@@ -7,7 +11,7 @@ export type FacewearDeviceType =
   | "apple-vision-pro"
   | "simulator";
 
-// Maps FacewearDeviceType to the XR protocol deviceType field
+// XR sessions expect the protocol deviceType field, not the package profile id.
 const DEVICE_TYPE_MAP: Record<FacewearDeviceType, string> = {
   "meta-quest": "quest3",
   xreal: "xreal",

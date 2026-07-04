@@ -1,3 +1,7 @@
+/**
+ * Smartglasses status formatting tests pin setup hints and physical blocker
+ * summaries shown to wearable users.
+ */
 import { describe, expect, it } from "vitest";
 import { setupHintForStatus, setupSummaryForStatus } from "../status-format.ts";
 

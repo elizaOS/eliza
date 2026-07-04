@@ -1,3 +1,7 @@
+/**
+ * XR smartglasses bridge tests verify headset WebSocket messages are routed
+ * into SmartglassesService for native G1 frames and microphone audio.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, describe, expect, it } from "vitest";
 import WebSocket from "ws";

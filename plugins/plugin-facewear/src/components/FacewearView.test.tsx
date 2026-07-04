@@ -1,11 +1,9 @@
-// @vitest-environment jsdom
-//
-// Drives the unified FacewearView (the single GUI/XR data wrapper) through the
-// rendered DOM: the same component the bundle exports for both the "gui" and
-// "xr" modalities. Asserts the device rows, the connected header pill, the
-// even-realities -> /apps/smartglasses routing, the WebXR -> /api/xr/connect
-// routing, the XR connect/status quick-actions, and the Refresh re-fetch all
-// reach the native bridge with the exact arguments.
+/**
+ * @vitest-environment jsdom
+ *
+ * FacewearView tests drive the unified GUI/XR wrapper through device rows,
+ * routing actions, connect/status controls, and refresh fetches.
+ */
 
 import {
   act,

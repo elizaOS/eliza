@@ -1,3 +1,7 @@
+/**
+ * Even native bridge tests cover lens write ordering, event normalization, and
+ * Wi-Fi result shapes without loading a platform bridge.
+ */
 import { describe, expect, it } from "vitest";
 import { G1Command } from "../protocol/smartglasses.ts";
 import { EvenBridgeTransport } from "../transport/even-bridge.ts";

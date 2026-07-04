@@ -1,3 +1,7 @@
+/**
+ * Device registry tests pin every supported facewear profile and the public
+ * lookup helpers used by setup and status views.
+ */
 import { describe, expect, it } from "vitest";
 import {
   DEVICE_REGISTRY,

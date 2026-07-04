@@ -1,3 +1,7 @@
+/**
+ * Facewear service tests cover the coordinator behavior when XR and
+ * smartglasses services are absent or available through the runtime.
+ */
 import { describe, expect, it, vi } from "vitest";
 import {
   FACEWEAR_SERVICE_TYPE,

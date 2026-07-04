@@ -1,3 +1,7 @@
+/**
+ * Smartglasses protocol tests pin Even Realities G1 command encoders and parser
+ * behavior at the byte level.
+ */
 import { describe, expect, it } from "vitest";
 import {
   encodeAppWhitelist,

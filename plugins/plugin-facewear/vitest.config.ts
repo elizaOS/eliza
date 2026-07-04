@@ -1,3 +1,7 @@
+/**
+ * Vitest configuration for facewear unit, transport, and React view coverage
+ * against source aliases in this sparse workspace.
+ */
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

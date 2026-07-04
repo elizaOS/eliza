@@ -1,3 +1,7 @@
+/**
+ * Facewear spatial view tests verify HTML and terminal rendering for connected
+ * XR and smartglasses profile snapshots.
+ */
 import { visibleWidth } from "@elizaos/tui";
 import { SpatialSurface } from "@elizaos/ui/spatial";
 import {

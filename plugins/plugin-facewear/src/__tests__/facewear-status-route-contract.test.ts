@@ -1,10 +1,8 @@
-// End-to-end contract test for the FacewearView data source: the REAL
-// facewearStatusRoute handler runs over a REAL FacewearService (whose runtime
-// returns realistically-shaped XR + smartglasses services), and the JSON body is
-// asserted to match the exact { connected, devices:[{id,kind,deviceType}] } DTO
-// that the FacewearView wrapper parses from
-// fetch("/api/facewear/status"). This pins the producer (route) and the consumer
-// (view parser) to one shape.
+/**
+ * End-to-end route contract for the FacewearView data source. The route handler
+ * runs over FacewearService with realistically shaped XR and smartglasses
+ * services, then pins the status DTO consumed by the view wrapper.
+ */
 
 import type { Route } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";

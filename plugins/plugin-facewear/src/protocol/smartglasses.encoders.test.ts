@@ -1,3 +1,7 @@
+/**
+ * Even Realities G1 encoder tests pin fixed command opcodes and sequence byte
+ * wrapping for BLE packets.
+ */
 import { describe, expect, it } from "vitest";
 import {
   encodeBatteryStatusRequest,
@@ -9,13 +13,6 @@ import {
   encodeMicCommand,
   encodeSilentMode,
 } from "./smartglasses.js";
-
-/**
- * Even Realities G1 BLE command encoders. A wrong opcode byte sends the glasses
- * the wrong instruction, so the exact wire bytes are pinned. Command opcodes:
- * Brightness 0x01, SilentMode 0x03, OpenMic 0x0e, ExitFunction 0x18,
- * Heartbeat 0x25, Battery 0x2c, Init 0x4d, RightInit 0xf4, StartAi 0xf5.
- */
 
 const bytes = (u: Uint8Array): number[] => Array.from(u);
 

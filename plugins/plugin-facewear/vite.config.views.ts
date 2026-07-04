@@ -1,3 +1,7 @@
+/**
+ * View bundle configuration for the facewear settings panel served by the app
+ * plugin host.
+ */
 import { createViewBundleConfig } from "../../packages/scripts/view-bundle-vite.config.ts";
 
 export default createViewBundleConfig({

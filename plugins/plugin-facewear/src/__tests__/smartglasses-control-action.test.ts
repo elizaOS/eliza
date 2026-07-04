@@ -1,3 +1,7 @@
+/**
+ * Smartglasses control action tests exercise G1 command dispatch, validation
+ * errors, and mock transport state updates.
+ */
 import { describe, expect, it } from "vitest";
 import { smartglassesControlAction } from "../actions/facewear-control.ts";
 import { G1Command } from "../protocol/smartglasses.ts";

@@ -1,3 +1,7 @@
+/**
+ * Native build infrastructure tests verify that each facewear platform scaffold
+ * and emulator workspace can be found and parsed.
+ */
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";

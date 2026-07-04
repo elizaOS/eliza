@@ -1,4 +1,8 @@
 #!/usr/bin/env node
+/**
+ * Command-line WebSocket device emulator for exercising facewear XR sessions
+ * without a physical headset.
+ */
 // Usage: bun run src/cli.ts -- --device meta-quest --url ws://localhost:31338
 // Or:    node dist/cli.js --device simulator --url ws://localhost:31338
 

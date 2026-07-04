@@ -1,3 +1,7 @@
+/**
+ * Noble transport tests exercise BLE discovery, lens routing, and notification
+ * handling through in-memory peripherals.
+ */
 import { EventEmitter } from "node:events";
 import { describe, expect, it } from "vitest";
 import { G1Command } from "../protocol/smartglasses.ts";

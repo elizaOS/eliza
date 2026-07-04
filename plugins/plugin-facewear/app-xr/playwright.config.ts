@@ -1,3 +1,7 @@
+/**
+ * Playwright coverage for the headset WebXR client served through the facewear
+ * view-host route.
+ */
 import path from "node:path";
 import { defineConfig, devices } from "@playwright/test";
 

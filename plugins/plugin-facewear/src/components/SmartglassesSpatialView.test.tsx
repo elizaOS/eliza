@@ -1,3 +1,7 @@
+/**
+ * Smartglasses spatial view tests verify HTML and terminal rendering for G1
+ * diagnostic report snapshots.
+ */
 import { visibleWidth } from "@elizaos/tui";
 import { SpatialSurface } from "@elizaos/ui/spatial";
 import {

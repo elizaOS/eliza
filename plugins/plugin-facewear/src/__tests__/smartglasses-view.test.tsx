@@ -1,12 +1,10 @@
-// @vitest-environment jsdom
-//
-// Renders the real SmartglassesView component driven by a fake native bridge
-// (window.__evenBridge) so connectHeadset uses EvenBridgeTransport. Asserts the
-// populated data (lens pills, report rows, checklist, events, wifi chips) and
-// every interactive control's effect (connect, platform tabs, display presets,
-// Display/Clear/Mic/Run-Check handlers + disabled gating, Wi-Fi scan/status/
-// configure handlers + !bridge disabling, Report Copy/Download, tap-driven mic
-// auto-enable/disable, Events empty-state vs populated reversed list + overflow).
+/**
+ * @vitest-environment jsdom
+ *
+ * SmartglassesView tests render the dashboard against a fake native bridge so
+ * the EvenBridgeTransport path, report rows, Wi-Fi controls, and mic flows are
+ * exercised through the real component.
+ */
 
 import {
   act,
@@ -19,11 +17,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SmartglassesView } from "../ui/SmartglassesView.tsx";
 
-// A fake Even/Mentra native bridge. Only the methods SmartglassesView's
-// EvenBridgeTransport path actually calls are implemented:
-// - onEvent registers the event pump; pushEvent() feeds the component's onEvent.
-// - write/setMicState capture outbound writes (display, init, mic).
-// - the wifi methods return realistic native-bridge response shapes.
+// The fake bridge implements only the native operations the component invokes.
 function makeFakeBridge() {
   let eventCb: ((event: unknown) => void) | null = null;
   const writes: Array<{ side: string; first: number; bytes: number }> = [];

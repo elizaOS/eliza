@@ -1,3 +1,7 @@
+/**
+ * Smartglasses view report tests pin the diagnostic summary, bridge helpers,
+ * and display packet construction used by the wearable dashboard.
+ */
 import { describe, expect, it } from "vitest";
 import {
   G1AiStatus,

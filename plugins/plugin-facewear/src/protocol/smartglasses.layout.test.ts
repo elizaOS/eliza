@@ -1,15 +1,13 @@
+/**
+ * G1 display layout tests pin glyph measurement, line wrapping, and pagination
+ * for text shown on the lenses.
+ */
 import { describe, expect, it } from "vitest";
 import {
   formatDisplayLines,
   measureG1DisplayText,
   paginateDisplayText,
 } from "./smartglasses.js";
-
-/**
- * G1 display text layout: width measurement (per-script glyph widths), line
- * wrapping, and pagination with centered padding. These drive what the wearer
- * actually sees, so wrap points + page shape are pinned.
- */
 
 describe("measureG1DisplayText", () => {
   it("measures by script: empty=0, CJK=18, Korean=24, monotonic in length", () => {
