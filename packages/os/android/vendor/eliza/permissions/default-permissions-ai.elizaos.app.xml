@@ -35,6 +35,14 @@
         <permission name="android.permission.RECEIVE_SMS" fixed="true" />
         <permission name="android.permission.RECEIVE_MMS" fixed="true" />
         <permission name="android.permission.RECEIVE_WAP_PUSH" fixed="true" />
+        <!--
+          Pre-granted mic access backs every on-device voice surface: the
+          continuous-chat loop (ElizaVoiceCaptureService), the digital-assistant
+          session (ElizaVoiceInteractionService), and the voice-input keyboard
+          (ElizaVoiceInputMethodService, which records directly and transcribes
+          over the loopback ASR route). fixed="false" so the user can still
+          revoke it from Settings.
+        -->
         <permission name="android.permission.RECORD_AUDIO" fixed="false" />
         <permission name="android.permission.CAMERA" fixed="false" />
         <permission name="android.permission.ACCESS_FINE_LOCATION" fixed="false" />

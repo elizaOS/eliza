@@ -24,7 +24,10 @@
     "android.intent.action.VOICE_COMMAND"
   ],
   "assistantResolution": {
-    "activity": "ai.elizaos.app.ElizaAssistActivity",
+    "voiceInteractionService": "ai.elizaos.app.ElizaVoiceInteractionService",
+    "voiceInteractionSessionService": "ai.elizaos.app.ElizaVoiceInteractionSessionService",
+    "recognitionService": "ai.elizaos.app.ElizaRecognitionService",
+    "fallbackActivity": "ai.elizaos.app.ElizaAssistActivity",
     "defaultHolder": "ai.elizaos.app",
     "defaultHolderResource": "config_defaultAssistant",
     "intentActions": [
@@ -32,6 +35,7 @@
       "android.intent.action.VOICE_COMMAND"
     ],
     "role": "android.app.role.ASSISTANT",
+    "roleResolution": "config_defaultAssistant -> ai.elizaos.app resolves to the ElizaVoiceInteractionService now that the package exposes a VoiceInteractionService (RoleManager binds ROLE_ASSISTANT to the VIS holder, not to the ACTION_ASSIST activity). ElizaAssistActivity stays as the ACTION_ASSIST fallback for OEM flows that deliver the assist intent directly. The overlays/.../config.xml default remains valid and does not change.",
     "stockAssistantPackagesStripped": [
       "QuickSearchBox",
       "SetupWizard"
@@ -56,6 +60,17 @@
       "consumerPath": "Accessibility gesture dispatch when the user enables the service",
       "systemPath": "InputManager.injectInputEvent with INJECT_EVENTS"
     },
+    "inputMethod": {
+      "component": "ElizaVoiceInputMethodService",
+      "componentPolicy": "Declared in the AOSP/system and Play/sideload builds; stripped from android-cloud because its transcription depends on the on-device engine's loopback ASR, which the thin client does not ship.",
+      "intentAction": "android.view.InputMethod",
+      "metadata": "@xml/method",
+      "subtypeMode": "voice",
+      "notes": "Voice-input keyboard (FUTO Voice Input pattern). Records mic audio directly (Android IMEs may record) and transcribes over http://127.0.0.1:31337/api/asr/local-inference; hands off to the app via elizaos://voice?source=android-ime when the engine is unreachable. Uses the RECORD_AUDIO grant pre-granted below.",
+      "permission": "android.permission.BIND_INPUT_METHOD",
+      "permissionHolder": "system (framework binds to the IME; the app does not hold BIND_INPUT_METHOD)",
+      "status": "declared-system-and-play-service"
+    },
     "notificationListener": {
       "component": "ElizaNotificationListenerService",
       "componentPolicy": "Declare only in the AOSP/system build; cloud/Play builds must strip the service and Java source.",
@@ -77,6 +92,18 @@
       "foregroundService": "ElizaVoiceCaptureService",
       "foregroundServiceType": "microphone",
       "playPolicy": "strip background microphone foreground service from android-cloud"
+    },
+    "voiceInteraction": {
+      "component": "ElizaVoiceInteractionService",
+      "componentPolicy": "Declare only in the AOSP/system build; Play/cloud builds strip the service, its session + recognition services, and Java source.",
+      "intentAction": "android.service.voice.VoiceInteractionService",
+      "metadata": "@xml/eliza_voice_interaction_service",
+      "notes": "Digital-assistant (ROLE_ASSISTANT) holder. On the ROM, config_defaultAssistant -> ai.elizaos.app resolves the assistant role to this VoiceInteractionService, so the assist gesture / long-press-power / keyguard voice-assist launch invokes Eliza over the current app. The framework requires the paired session + recognition services (see recognitionService + sessionService) or it rejects the VIS and Eliza never appears as an assistant candidate.",
+      "permission": "android.permission.BIND_VOICE_INTERACTION",
+      "permissionHolder": "system (framework binds to the VIS; the app does not hold BIND_VOICE_INTERACTION — role ownership comes from config_defaultAssistant / ROLE_ASSISTANT, not a manifest permission)",
+      "recognitionService": "ElizaRecognitionService",
+      "sessionService": "ElizaVoiceInteractionSessionService",
+      "status": "declared-aosp-system-service"
     }
   },
   "claim_boundary": "scope_limited_to_structural_metadata_inventory_and_gate_diagnostics",
@@ -110,6 +137,11 @@
     }
   ],
   "generated_utc": "2026-05-20T22:14:10Z",
+  "hardwareKeyRemap": {
+    "status": "follow-up",
+    "mechanism": "none-present",
+    "notes": "A dedicated hardware key (e.g. a branded assistant button) could be routed to the assistant role via an input key-layout (.kl) file mapping the scancode to KEY_ASSIST/KEY_VOICECOMMAND, copied through PRODUCT_COPY_FILES. The vendor tree has no .kl / key-layout copy mechanism today (grep for *.kl and 'keylayout' returns nothing), so this is documented as a follow-up rather than inventing a partial one. On stock Pixel/Cuttlefish hardware the assist gesture / long-press-power already routes to the ROLE_ASSISTANT holder (the VoiceInteractionService above), so no key remap is required for those targets."
+  },
   "packageName": "ai.elizaos.app",
   "playStorePolicy": {
     "allowed": false,
@@ -119,7 +151,11 @@
       "ElizaAssistActivity",
       "ElizaBootReceiver",
       "ElizaNotificationListenerService",
-      "ElizaVoiceCaptureService"
+      "ElizaVoiceCaptureService",
+      "ElizaVoiceInteractionService",
+      "ElizaVoiceInteractionSessionService",
+      "ElizaRecognitionService",
+      "ElizaVoiceInputMethodService"
     ],
     "mustStripPermissions": [
       "android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION",
@@ -141,7 +177,7 @@
       "@elizaos/capacitor-screencapture",
       "@elizaos/capacitor-system"
     ],
-    "reason": "ROLE_ASSISTANT/default-role components, privileged permissions, screen capture, boot receivers, foreground local-agent/voice services, and local agent services are AOSP/system-image only.",
+    "reason": "ROLE_ASSISTANT/default-role components, the digital-assistant VoiceInteractionService trio, privileged permissions, screen capture, boot receivers, foreground local-agent/voice services, and local agent services are AOSP/system-image only. The voice-input IME is Play-compliant on its own but is stripped from android-cloud too because its transcription depends on the on-device engine's loopback ASR the thin client does not ship.",
     "stripTarget": "android-cloud"
   },
   "privilegedPermissions": [
