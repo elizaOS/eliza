@@ -12,7 +12,7 @@ import { runPlannerLoop } from "../planner-loop";
  * 8 successive `ACTION_STARTED actionName=TASKS op=provision_workspace` events,
  * until the trajectory limit fired and Discord showed the 120s timeout.
  *
- * Two framework mechanisms now bound and unblock this loop; these tests pin
+ * Two framework mechanisms bound and unblock this loop; these tests pin
  * both against the exact orchestrator shape from the issue:
  *
  *  1. Prior successful tool results ARE surfaced into the next planner turn's

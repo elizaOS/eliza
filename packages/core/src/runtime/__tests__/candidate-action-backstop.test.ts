@@ -1,3 +1,10 @@
+/**
+ * Exercises the per-runtime candidate-action backstop rule registry and its
+ * effect on planner candidate selection: a genuine scheduled-task candidate is
+ * protected while one that only accidentally surfaced on a coding turn is
+ * stripped in favor of the coding-delegation action. Deterministic, synthetic
+ * runtime — no model.
+ */
 import { describe, expect, it } from "vitest";
 import { messageHandlerFromFieldResult } from "../../services/message";
 import type { IAgentRuntime } from "../../types/runtime";

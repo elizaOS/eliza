@@ -1,3 +1,11 @@
+/**
+ * Nested planner descent for a parent action's declared sub-actions: resolves and
+ * gates the child actions (context + role policy, cycle detection), exposes each
+ * admissible child as its own native tool alongside the REPLY/IGNORE/STOP
+ * terminals, and runs a `runPlannerLoop` pass over them — recording a `subPlanner`
+ * trajectory stage so consumers can render the call tree.
+ */
+
 import { actionToJsonSchema } from "../actions/action-schema";
 import {
 	buildPlannerToolsFromActions,
@@ -185,13 +193,12 @@ export async function runSubPlanner(
 		params.action.contexts,
 		...declaredChildActions.map((child) => child.contexts),
 	);
-	// One gate for every path (#12087 Item 9). The prior `contextGated.has(child)
-	// || isActionAllowedByRolePolicy(child)` OR-filter admitted a child that passed
-	// its contextGate even when an ACTION_ROLE_POLICY entry the caller FAILS applied
-	// to it — policy is meant to REPLACE the declared gate, not be an alternative to
-	// it. canActionRun applies the same policy-or-gate precedence the executor uses.
-	// skipPrivateGate: child execution still runs through the executor, which
-	// enforces the private-action gate.
+	// One gate for every path (#12087 Item 9): canActionRun applies the same
+	// policy-or-gate precedence the executor uses. An ACTION_ROLE_POLICY entry
+	// REPLACES a child's declared contextGate rather than being an OR alternative to
+	// it, so a child the caller fails on policy is filtered even when its contextGate
+	// would admit it. skipPrivateGate: child execution still runs through the
+	// executor, which enforces the private-action gate.
 	const childActions = declaredChildActions.filter((child) =>
 		canActionRun(child, {
 			message: params.ctx.message,

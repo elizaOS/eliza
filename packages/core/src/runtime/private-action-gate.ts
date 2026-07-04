@@ -1,3 +1,8 @@
+/**
+ * Gate that keeps `private` actions off any non-autonomous turn — exposing and
+ * executing them only when the triggering message is one of the autonomy
+ * service's own self-prompts.
+ */
 import type { Action } from "../types/components";
 import type { Memory } from "../types/memory";
 

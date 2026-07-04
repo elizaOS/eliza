@@ -1,3 +1,9 @@
+/**
+ * Checks the context-hash helpers: deterministic key-ordered JSON
+ * serialization, order-independent segment hashing, and cumulative
+ * order-sensitive prefix hashes that back the prompt-cache prefix keys. Pure
+ * functions, no model.
+ */
 import { describe, expect, it } from "vitest";
 import {
 	computePrefixHashes,

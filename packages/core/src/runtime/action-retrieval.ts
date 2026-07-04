@@ -1,3 +1,9 @@
+/**
+ * Multi-stage action retrieval for the planner: scores catalog parents by
+ * exact-hint, candidate-regex, keyword, BM25, embedding tie-breaker, and
+ * context-match signals, then fuses the per-stage rankings with reciprocal-rank
+ * fusion into a tier-sized candidate set.
+ */
 import { countActionSearchKeywordMatches } from "../i18n/action-search-keywords";
 import type { ActionCatalog, ActionCatalogParent } from "./action-catalog";
 import { normalizeActionName } from "./action-catalog";
@@ -583,11 +589,10 @@ interface ParentScoringTokens {
 
 // Per-catalog-parent scoring tokens, memoized by the parent object. The parent's
 // searchText is static, so tokenization + the term-frequency map are pure
-// functions of it; previously scoreBm25 recomputed both on every message. Keyed
-// by object identity in a WeakMap so it's recomputed only when the catalog
-// rebuilds (new parent objects) and auto-collected when the catalog is dropped.
-// The returned termFrequency map is read-only at the call sites, so sharing it
-// across calls is safe.
+// functions of it. Keyed by object identity in a WeakMap so it's recomputed only
+// when the catalog rebuilds (new parent objects) and auto-collected when the
+// catalog is dropped. The returned termFrequency map is read-only at the call
+// sites, so sharing it across calls is safe.
 const parentScoringCache = new WeakMap<
 	ActionCatalogParent,
 	ParentScoringTokens

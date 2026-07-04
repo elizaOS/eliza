@@ -1,3 +1,9 @@
+/**
+ * Tolerant parsers for raw model output: unwrap code fences, extract every
+ * top-level `{...}` object from noisy text, repair invalid JSON string escapes,
+ * and strip leaked tool-call markup / punctuation-only replies. Used wherever
+ * the runtime must salvage structure from a weak model's not-quite-valid JSON.
+ */
 export function parseJsonObject<T extends object>(raw: string): T | null {
 	const trimmed = raw.trim();
 	if (!trimmed) {

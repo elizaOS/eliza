@@ -1,3 +1,9 @@
+/**
+ * Covers the model-output JSON salvage helpers — parseJsonObject,
+ * extractJsonObjects, and repairJsonStringEscapes — over trailing garbage, raw
+ * control chars, invalid backslash escapes, and prose-embedded objects. Pure
+ * functions, no runtime.
+ */
 import { describe, expect, it } from "vitest";
 
 import {

@@ -1,3 +1,8 @@
+/**
+ * Unit tests for the role and context gate filters (`filterByContextGate`,
+ * `normalizeGateRole`). Deterministic in-line literal fixtures — no runtime,
+ * model, or database.
+ */
 import { describe, expect, it } from "vitest";
 import type { AgentContext } from "../types/contexts";
 import type { RoleGateRole } from "./context-gates";

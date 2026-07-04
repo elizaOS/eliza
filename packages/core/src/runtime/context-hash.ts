@@ -1,3 +1,9 @@
+/**
+ * Deterministic hashing for prompt segments and their cumulative prefixes.
+ * Provides a key-sorted, undefined-dropping stable JSON serializer plus sha256
+ * helpers so identical context prefixes hash identically across runs — the basis
+ * for prompt-cache reuse and trajectory prefix matching.
+ */
 import { createHash } from "../utils/crypto-compat";
 
 export type StableJsonValue =

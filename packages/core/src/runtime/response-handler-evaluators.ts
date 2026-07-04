@@ -1,3 +1,9 @@
+/**
+ * Runs the registered response-handler evaluators over a Stage-1 message-handler
+ * result, applying each evaluator's patch to the plan — contexts, candidate
+ * actions, parent-action hints, deterministic tool call, reply — in priority
+ * order and collecting a per-evaluator trace of what changed.
+ */
 import type {
 	MessageHandlerAction,
 	MessageHandlerDeterministicToolCall,

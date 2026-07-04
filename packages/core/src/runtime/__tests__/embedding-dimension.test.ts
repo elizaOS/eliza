@@ -1,14 +1,7 @@
-import { describe, expect, it, vi } from "vitest";
-import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter";
-import {
-	AgentRuntime,
-	EmbeddingDimensionProbeError,
-	NoModelProviderConfiguredError,
-} from "../../runtime";
-import { type Character, type Memory, ModelType, type UUID } from "../../types";
-
 /**
- * Boot-time TEXT_EMBEDDING dimension-probe semantics (#10702 / #8769):
+ * Boot-time TEXT_EMBEDDING dimension-probe semantics (#10702 / #8769), driven
+ * against a real AgentRuntime + InMemoryDatabaseAdapter with canned/broken
+ * embedding handlers registered via registerModel (no live model):
  *
  * 1. The probe fails over across ALL registered TEXT_EMBEDDING providers in
  *    priority order — any probe error advances, first success wins, sizes the
@@ -23,6 +16,14 @@ import { type Character, type Memory, ModelType, type UUID } from "../../types";
  * 4. runtime.initialize() survives a total probe failure — boot stays alive in
  *    the degraded mode instead of crashing (#10702's original symptom).
  */
+import { describe, expect, it, vi } from "vitest";
+import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter";
+import {
+	AgentRuntime,
+	EmbeddingDimensionProbeError,
+	NoModelProviderConfiguredError,
+} from "../../runtime";
+import { type Character, type Memory, ModelType, type UUID } from "../../types";
 
 const ROOM_ID = "00000000-0000-0000-0000-000000000001" as UUID;
 

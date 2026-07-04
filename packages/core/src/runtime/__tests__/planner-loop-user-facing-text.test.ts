@@ -1,3 +1,10 @@
+/**
+ * Covers the planner's user-facing-text isolation: only a tool's explicit
+ * `userFacingText` (never its log-shaped `text`) reaches the reply, the
+ * single-verified-result filter ignores failed steps, and the spawn-arg-leak
+ * detector suppresses leaked TASKS envelopes. Deterministic — vitest-mocked
+ * `useModel` plus pure helper assertions; no live model.
+ */
 import { describe, expect, it, vi } from "vitest";
 import {
 	looksLikeSpawnEnvelopeJson,
@@ -8,28 +15,23 @@ import type { PlannerTrajectory } from "../planner-types";
 import type { TrajectoryRecorder } from "../trajectory-recorder";
 
 /**
- * Regression coverage for the structural fix that stops tool-diagnostic
- * `text` (shell prompts, `[exit 0]`, `--- stdout ---` wrappers, cwd
- * markers, byte counts) from being shown to users verbatim.
+ * Guards the `userFacingText` contract that keeps tool-diagnostic `text`
+ * (shell prompts, `[exit 0]`, `--- stdout ---` wrappers, cwd markers, byte
+ * counts) out of user replies.
  *
- * Before this PR, `latestToolResultText` returned `step.result.text` —
- * the tool's log-shaped projection. Tools like BASH emit:
+ * `PlannerToolResult` carries an explicit `userFacingText` field, and the
+ * terminal-FINISH fallback (used when the evaluator supplies no
+ * `messageToUser`) displays only that — never the tool's log-shaped `text`.
+ * A log-only tool like BASH emits a wrapper such as:
  *
  *   $ find /home/eliza/.eliza/trajectories -type f
  *   [exit 0] (cwd=/home/eliza/iqlabs/eliza/eliza, took=37ms)
  *   --- stdout ---
  *   443
  *
- * That entire wrapper string was leaking into Discord replies because
- * the planner-loop's terminal-FINISH fallback chain used it when the
- * evaluator didn't supply a `messageToUser`.
- *
- * The fix is structural: `PlannerToolResult` now carries an explicit
- * `userFacingText` field. The framework only uses that for direct user
- * display. Tools that emit logs leave it undefined → the framework
- * falls through to a synthesized response message instead of leaking
- * the wrapper. This avoids regex-based wrapper detection and gives
- * every tool a clear contract.
+ * and leaves `userFacingText` undefined, so the loop synthesizes a response
+ * instead of leaking the wrapper. This is a structural contract, not
+ * regex-based wrapper detection.
  */
 
 describe("planner-loop — user-facing tool text isolation", () => {

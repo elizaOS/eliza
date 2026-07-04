@@ -1,3 +1,10 @@
+/**
+ * Registry of the agent's context taxonomy. Stores normalized `ContextDefinition`
+ * records, validates on every mutation that parent and subcontext edges reference
+ * known contexts and form no cycles, and supports idempotent registration plus
+ * role-gated listing for prompt rendering. Exports a default registry seeded with
+ * the first-party context definitions.
+ */
 import type {
 	AgentContext,
 	ContextDefinition,

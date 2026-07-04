@@ -1,3 +1,9 @@
+/**
+ * The single role/context/policy gate every action exposure and execution path
+ * consults before an action may be surfaced to the planner or run — composing
+ * the private-action gate, the operator role policy, the context gate, and the
+ * top-level role gate in a fixed precedence.
+ */
 import type { Action } from "../types/components";
 import type { AgentContext, RoleGate, RoleGateRole } from "../types/contexts";
 import type { Memory } from "../types/memory";
@@ -49,10 +55,7 @@ export interface ActionGateContext {
  * Returns a human-readable failure reason, or `undefined` when the action is
  * allowed. Every exposure and execution path — planner selection, sub-planner
  * child filtering, the tool-call executor, and the shortcut gate — routes
- * through this one function so their outcomes cannot drift apart. This is the
- * chokepoint the previous three near-duplicate implementations
- * (`getGateFailure`, `actionPassesPlannerExecutionGates`, the sub-planner
- * OR-filter) collapsed into.
+ * through this one function so their outcomes cannot drift apart.
  */
 export function actionGateFailure(
 	action: GateableAction,

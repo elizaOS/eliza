@@ -1,3 +1,8 @@
+/**
+ * Coverage for `formatMessages` conversation-history rendering: attachment
+ * read-advertisement gating, reacted-to message restoration, and bot-sender
+ * tagging. Pure formatter test — no runtime or model.
+ */
 import { describe, expect, it } from "vitest";
 import type { Media, Memory, UUID } from "../types/index.ts";
 import { formatMessages } from "../utils.ts";

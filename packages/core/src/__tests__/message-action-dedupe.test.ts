@@ -1,3 +1,11 @@
+/**
+ * Exercises the message service's planner-action de-duplication
+ * (stripReplyWhenActionOwnsTurn) and sub-planner result collapse
+ * (subPlannerResultToPlannerToolResult): REPLY/alias dedupe, continueChain
+ * propagation from a terminal sub-action, and multi-step aggregation into the
+ * umbrella result. Runs against a stub runtime (actions + logger) — fully
+ * deterministic.
+ */
 import { describe, expect, it, vi } from "vitest";
 import {
 	stripReplyWhenActionOwnsTurn,

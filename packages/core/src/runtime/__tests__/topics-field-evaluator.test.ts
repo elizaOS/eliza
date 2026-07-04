@@ -1,3 +1,8 @@
+/**
+ * Unit coverage for the topics field evaluator and `normalizeTopics`
+ * (lowercasing, dedupe, length/count caps, scalar coercion) plus topics
+ * threading through `parseMessageHandlerOutput`. Pure, deterministic.
+ */
 import { describe, expect, it } from "vitest";
 import {
 	MAX_MESSAGE_TOPICS,

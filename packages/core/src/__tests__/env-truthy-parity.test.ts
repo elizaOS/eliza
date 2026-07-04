@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
+/**
+ * Pins the canonical env-truthiness contract (isTruthyEnvValue) and checks the
+ * boolean-parser wrappers (parseBooleanValue, parseBooleanText, readEnvBool)
+ * each keep their documented truthy/falsy token sets. Pure deterministic parser
+ * test.
+ */
 import { isTruthyEnvValue } from "../env-utils.js";
 import { parseBooleanText, parseBooleanValue } from "../utils/boolean.js";
 import { readEnvBool } from "../utils/read-env.js";
-
-// Pins the canonical env-truthiness contract after consolidating four
-// previously-duplicated copies onto core's `isTruthyEnvValue`, and verifies the
-// boolean parser wrappers preserve their documented (pre-consolidation) sets.
 
 const CANONICAL_TRUTHY = ["1", "true", "yes", "y", "on", "enabled"] as const;
 

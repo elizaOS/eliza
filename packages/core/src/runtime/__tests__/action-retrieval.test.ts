@@ -1,3 +1,12 @@
+/**
+ * Deterministic action catalogue assembly and multi-stage retrieval:
+ * buildActionCatalog's parent/child grouping (with non-fatal duplicate/missing
+ * sub-action warnings and virtual-subaction promotion) and retrieveActions'
+ * scoring stages — exact parent hints, regex over candidate namespaces/child
+ * names, BM25, the external i18n keyword signal, RRF fusion with optional
+ * embeddings, and recent-conversation gating for continuation-shaped turns.
+ * No model or embeddings; scores are computed from the in-memory catalog.
+ */
 import { describe, expect, it } from "vitest";
 import { promoteSubactionsToActions } from "../../actions/promote-subactions";
 import { searchMessagesAction } from "../../features/messaging/triage/actions/searchMessages";

@@ -1,3 +1,9 @@
+/**
+ * Coverage for the Stage 1 available-contexts catalog: `formatAvailableContextsForPrompt`
+ * rendering (compact and role-gated) and the role-scoped context list injected
+ * into the `runV5MessageRuntimeStage1` system prompt. Deterministic `vi`-mocked
+ * runtime with a canned tool-call response; no live model.
+ */
 import { describe, expect, it, vi } from "vitest";
 import { HANDLE_RESPONSE_TOOL_NAME } from "../actions/to-tool";
 import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../runtime/builtin-field-evaluators";

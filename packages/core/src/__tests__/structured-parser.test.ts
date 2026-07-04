@@ -1,3 +1,8 @@
+/**
+ * Unit tests for `parseKeyValueXml`: `<response>` block parsing and the
+ * prefix-extended-tag regression where a nested `<textarea>` inside `<text>`
+ * must not inflate close-tag matching. Deterministic parser test.
+ */
 import { describe, expect, it } from "vitest";
 import { parseKeyValueXml } from "../utils";
 

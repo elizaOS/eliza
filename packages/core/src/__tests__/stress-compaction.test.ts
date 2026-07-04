@@ -1,3 +1,9 @@
+/**
+ * Drives `runV5MessageRuntimeStage1` through a many-step website-build
+ * simulation to exercise planner compaction, quality-gate failure recovery, and
+ * trajectory export/metrics. Deterministic: a canned-response stub runtime with
+ * real trajectory recording written to a temp dir, no live model.
+ */
 import {
 	mkdirSync,
 	mkdtempSync,

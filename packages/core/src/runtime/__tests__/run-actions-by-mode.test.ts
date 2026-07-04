@@ -1,3 +1,9 @@
+/**
+ * Exercises `AgentRuntime.runActionsByMode` (the hook-mode action runner):
+ * mode filtering, `modePriority` ordering, parallel DURING execution, context
+ * gating, error isolation, and callback attribution. Real runtime over the
+ * in-memory adapter with a stubbed `composeState` — deterministic, no model.
+ */
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter";
 import { AgentRuntime } from "../../runtime";

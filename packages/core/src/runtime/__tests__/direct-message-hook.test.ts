@@ -1,3 +1,8 @@
+/**
+ * Covers the pre-LLM direct-message hook registry: per-runtime registration,
+ * first-hook-that-returns-a-result-wins ordering, unregistration, and isolation
+ * between runtimes. Pure in-memory — the runtime is a bare stub, no model or DB.
+ */
 import { describe, expect, it } from "vitest";
 import type { ActionResult } from "../../types/components";
 import type { Memory } from "../../types/memory";

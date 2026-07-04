@@ -1,3 +1,10 @@
+/**
+ * Covers Stage-1 response parsing: the replyText field evaluator (structural-
+ * punctuation and leaked tool-call-markup stripping), parseMessageHandlerOutput's
+ * candidate-action hint trim/dedupe/cap, and alignment of HANDLE_RESPONSE_SCHEMA
+ * with the composed field-registry schema. Deterministic — parses fixed JSON
+ * envelopes, no model.
+ */
 import { describe, expect, it } from "vitest";
 import { HANDLE_RESPONSE_SCHEMA } from "../../actions/to-tool";
 import {

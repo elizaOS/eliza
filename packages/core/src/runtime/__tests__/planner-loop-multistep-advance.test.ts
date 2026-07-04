@@ -1,3 +1,11 @@
+/**
+ * Regression coverage (#8007) for planner multi-step advance: each succeeded
+ * intermediate tool result is surfaced to the next turn so the loop advances
+ * (provision → spawn → submit) instead of re-dispatching the first step, and a
+ * weak model that re-emits an identical call is bounded. Deterministic —
+ * scripted `useModel` + tool executor shaped like the orchestrator's real
+ * returns; no live model.
+ */
 import { describe, expect, it, vi } from "vitest";
 import type { GenerateTextResult, ToolDefinition } from "../../types/model";
 import { runPlannerLoop } from "../planner-loop";

@@ -1,3 +1,10 @@
+/**
+ * Exercises the `compose_state_providers` pipeline hook on
+ * `AgentRuntime.composeState`: a hook may filter and add providers, pass through
+ * unchanged, and a corrupted or thrown hook falls back to the pre-hook
+ * selection. Uses a real in-memory AgentRuntime with synthetic providers; no
+ * database or model.
+ */
 import { describe, expect, it } from "vitest";
 import { AgentRuntime } from "../runtime";
 import type { Character, Memory, Provider, UUID } from "../types";

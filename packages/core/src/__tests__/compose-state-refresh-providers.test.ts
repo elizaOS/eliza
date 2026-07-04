@@ -1,3 +1,10 @@
+/**
+ * Exercises the `refreshProviders` argument to `AgentRuntime.composeState`:
+ * cached providers are reused while only the named ones re-run, an omitted set
+ * re-runs everything, and an uncached provider runs even when unnamed. Uses a
+ * real in-memory AgentRuntime with call-counting providers; no database or
+ * model.
+ */
 import { describe, expect, it } from "vitest";
 import { AgentRuntime } from "../runtime";
 import type { Character, Memory, Provider, UUID } from "../types";

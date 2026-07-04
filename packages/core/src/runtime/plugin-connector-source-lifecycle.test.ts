@@ -1,3 +1,8 @@
+/**
+ * Checks that a plugin's `connectorSources` declarations register their aliases
+ * and passive flag on plugin load and are fully removed on unload. Drives a real
+ * in-process `AgentRuntime`; no model or database.
+ */
 import { describe, expect, it } from "vitest";
 import {
 	getConnectorSourceAliases,

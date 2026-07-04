@@ -1,3 +1,10 @@
+/**
+ * Exercises the v5 tiered action surface through `runV5MessageRuntimeStage1`:
+ * Stage-1 hints promoting a parent to Tier A, sub-actions surfaced as
+ * first-class planner tools, hot-parent child capping, role-gated tool omission,
+ * and Tier-B sub-planner execution. Deterministic: a canned-response stub
+ * runtime, no live model.
+ */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { _resetActionRolePolicyCacheForTests } from "../runtime/action-role-policy";
 import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../runtime/builtin-field-evaluators";
@@ -227,10 +234,10 @@ function plannerUserContent(runtime: IAgentRuntime): string {
 }
 
 function availableActionsSection(runtime: IAgentRuntime): string {
-	// Post-PLAN_ACTIONS-wrapper refactor: actions are exposed as native tools
-	// on the planner call, not in an `available_actions` text block. Synthesize
-	// a section-like view from the tool definitions so the tier-A vs tier-B
-	// assertions in this file can still inspect action name presence and order.
+	// Actions are exposed as native tools on the planner call, not in an
+	// `available_actions` text block. Synthesize a section-like view from the
+	// tool definitions so the tier-A vs tier-B assertions in this file can still
+	// inspect action name presence and order.
 	const plannerCall = getCalls(runtime).find(
 		(call) => call.modelType === ModelType.ACTION_PLANNER,
 	);

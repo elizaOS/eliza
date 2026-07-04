@@ -1,3 +1,9 @@
+/**
+ * Shared type contracts for the planner subsystem: the planner/evaluator runtime
+ * shapes, a single tool call and its result, a trajectory step, and the loop's
+ * parameter and result envelopes. Consumed by planner-loop, the evaluator, and
+ * the message handler that drives them.
+ */
 import type { EvaluationResult } from "../types/components";
 import type { ContextObject } from "../types/context-object";
 import type {

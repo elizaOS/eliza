@@ -1,3 +1,9 @@
+/**
+ * Covers `emitStreamingHook` on the streaming context: no-op when a hook is
+ * absent, payload forwarding for tool/result/evaluation/context-event
+ * observers, and caller isolation from a throwing hook. Deterministic vitest
+ * spies, no runtime.
+ */
 import { describe, expect, it, vi } from "vitest";
 import { emitStreamingHook, type StreamingContext } from "../streaming-context";
 import type { EvaluationResult } from "../types/components";

@@ -1,3 +1,11 @@
+/**
+ * Unit coverage for guided-decode grammar assembly: the Stage-1 response
+ * envelope grammar/skeleton, the Stage-2 per-action grammars (loose and strict
+ * single-call union), per-action parameter skeletons, bounded-number rules, the
+ * per-span argmax sampler plan, and the guided-decode provider-option merge.
+ * Pure grammar construction over synthetic actions and field evaluators — no
+ * model, no runtime.
+ */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { normalizeActionJsonSchema } from "../../actions/action-schema";
 import type { Action } from "../../types";
@@ -958,9 +966,9 @@ describe("buildPlannerActionGrammarStrict — single-call per-action union gramm
 });
 
 describe("buildPlannerActionGrammarStrict — realistic action set (P2-4 production shape)", () => {
-	// Mirror the kind of schemas Phase A declared on real actions. The test
-	// catches regressions where the grammar generator silently drops a
-	// constraint someone added downstream.
+	// Mirror the kind of schemas real actions declare. The test catches
+	// regressions where the grammar generator silently drops a constraint
+	// someone added downstream.
 	const messageAction = makeAction("MESSAGE", {
 		parameters: [
 			{
@@ -1696,7 +1704,7 @@ describe("buildBoundedNumberRule — boundary, single-value, and degenerate rang
 		const result = buildPlannerActionGrammarStrict([action]);
 		expect(result).not.toBeNull();
 		if (!result) return;
-		// Inverted range fix landed: min > max is unsatisfiable, so the impl
+		// An inverted range (min > max) is unsatisfiable, so the impl
 		// falls back to the shared `jsonnumber` rule (same shape as the large-
 		// range and float cases) instead of emitting an empty rule body that
 		// would produce malformed GBNF.

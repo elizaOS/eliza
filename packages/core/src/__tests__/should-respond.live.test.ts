@@ -1,3 +1,8 @@
+/**
+ * Validates the shouldRespond classifier prompt against a live Ollama model
+ * (skipped unless ELIZA_RUN_LIVE_TESTS=1): reply/ignore/stop decisions over real
+ * TEXT_LARGE completions through a real AgentRuntime.
+ */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { InMemoryDatabaseAdapter } from "../database/inMemoryAdapter";
 import { shouldRespondTemplate } from "../prompts";

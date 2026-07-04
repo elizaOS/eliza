@@ -9,9 +9,9 @@ import { runWithTrajectoryContext } from "../../trajectory-context";
 /**
  * Reply-boundary egress test for the PII pseudonymization layer (#10827).
  *
- * The tool-call boundary (`execute-planned-tool-call.ts`) already restores real
- * PII into handler args, but a direct/terminal reply that does NOT go through a
- * tool call was shipping the surrogate to the user. `restorePiiInUserReplyText`
+ * The tool-call boundary (`execute-planned-tool-call.ts`) restores real PII into
+ * handler args, but a direct/terminal reply that does NOT go through a tool call
+ * would otherwise ship the surrogate to the user. `restorePiiInUserReplyText`
  * is the restore wired into `createV5ReplyStrategyResult` — the single chokepoint
  * every user-facing reply (direct `final_reply`, terminal `messageToUser`,
  * terminal planner `REPLY`, LifeOps direct) is built through. This proves the

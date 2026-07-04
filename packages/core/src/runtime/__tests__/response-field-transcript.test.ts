@@ -1,3 +1,11 @@
+/**
+ * Unit coverage for the text-mode response-field transcript parser
+ * (`parseFieldTranscript`, `extractReplyTextFromTranscript`,
+ * `looksLikeRawFieldTranscript`, `splitTranscriptList`) and the message-handler
+ * fallback that recovers a clean reply from a leaked `shouldRespond:/replyText:`
+ * envelope. Driven by deterministic string fixtures (the exact #11712 leak,
+ * plus quoting/fenced counter-examples); no model.
+ */
 import { describe, expect, it } from "vitest";
 import { parseMessageHandlerOutput } from "../message-handler";
 import {
@@ -135,9 +143,9 @@ describe("response field transcript — looksLikeRawFieldTranscript (send-bounda
 // A reply that QUOTES a transcript is content, not a leak. This repo's own
 // daily workflow: a user pastes a leaked `shouldRespond:/replyText:` transcript
 // into chat and asks the bot to diagnose it. The diagnosis legitimately carries
-// quoted field lines; the guard must not rewrite it (previously the send
-// boundary replaced the whole diagnosis with the QUOTED replyText value,
-// silently dropping the actual answer).
+// quoted field lines; the guard must not rewrite it — otherwise the send
+// boundary would replace the whole diagnosis with the QUOTED replyText value,
+// silently dropping the actual answer.
 const QUOTING_DIAGNOSIS = `the bug is in your parser — when the model emits:
 
 shouldRespond: RESPOND

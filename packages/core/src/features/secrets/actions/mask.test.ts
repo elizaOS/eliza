@@ -4,10 +4,10 @@ import { maskSecretValue } from "./mask";
 /**
  * Tests for the secret-display mask (#10317 credential bridge / #8801, #9943).
  * `maskSecretValue` decides exactly how much of a secret is shown when a value
- * is surfaced (logs, UI, the credential bridge). It had no assertions, yet a
- * bug here leaks the secret — so the invariants are pinned: short secrets are
- * fully hidden, only the first/last 4 chars of a long secret show, the middle
- * is never exposed, and the mask is capped so the length isn't revealed.
+ * is surfaced (logs, UI, the credential bridge). A bug here leaks the secret,
+ * so the invariants are pinned: short secrets are fully hidden, only the
+ * first/last 4 chars of a long secret show, the middle is never exposed, and
+ * the mask is capped so the length isn't revealed.
  */
 describe("maskSecretValue", () => {
 	it("fully masks secrets of 8 characters or fewer", () => {

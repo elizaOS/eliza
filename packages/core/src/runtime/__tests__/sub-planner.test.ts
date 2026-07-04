@@ -1,3 +1,10 @@
+/**
+ * Exercises the sub-planner helpers (`actionHasSubActions`,
+ * `detectSubActionCycles`, `resolveSubActions`, `runSubPlanner`): child-action
+ * resolution and simile matching, native-tool exposure, context propagation,
+ * and role/context gating. Mocked runtime with stubbed useModel/execute/evaluate;
+ * deterministic.
+ */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Action, IAgentRuntime, Memory } from "../../types";
 import { _resetActionRolePolicyCacheForTests } from "../action-role-policy";

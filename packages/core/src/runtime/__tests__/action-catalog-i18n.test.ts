@@ -1,3 +1,11 @@
+/**
+ * Locale-aware action-catalog example resolution: buildActionCatalog swaps
+ * English example pairs for registered localized [user, agent] translations via
+ * a resolver, falls back to English per-example when a locale entry is missing,
+ * passes non-pair example shapes through untouched, and localizes sub-action
+ * examples through the same resolver. Deterministic — an in-memory registry
+ * stands in for the multilingual prompt store; no model or I/O.
+ */
 import { describe, expect, it } from "vitest";
 import type { ActionExample } from "../../types/components";
 import {

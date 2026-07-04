@@ -1,3 +1,8 @@
+/**
+ * Verifies sanitizeReplyTextAfterMediaDelivery strips a delivered media URL (and
+ * its echo) from the reply while leaving non-echo prose, code indentation, and
+ * newlines untouched. Pure deterministic function test.
+ */
 import { describe, expect, it } from "vitest";
 import { sanitizeReplyTextAfterMediaDelivery } from "../services/message.ts";
 

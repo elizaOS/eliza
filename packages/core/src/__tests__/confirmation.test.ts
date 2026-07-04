@@ -1,3 +1,9 @@
+/**
+ * Covers `requireConfirmation`: it confirms a pending action only when the
+ * follow-up text is a metadata-marked wrapped external payload, and treats
+ * marker-shaped user text lacking that metadata as a cancellation. Deterministic:
+ * Map-backed runtime cache stub, no model or database.
+ */
 import { describe, expect, it } from "vitest";
 import { wrapExternalContent } from "../security/external-content";
 import type { IAgentRuntime, Memory, UUID } from "../types";

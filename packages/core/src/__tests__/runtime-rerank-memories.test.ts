@@ -1,3 +1,8 @@
+/**
+ * Coverage for `AgentRuntime.rerankMemories` — merging BM25 keyword ranking with
+ * zero-overlap vector hits so semantic-only and attachment-only memories survive
+ * reranking. Drives a real `AgentRuntime`; no model.
+ */
 import { describe, expect, it } from "vitest";
 import { AgentRuntime } from "../runtime";
 import type { Character, Memory } from "../types";

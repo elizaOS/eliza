@@ -1,3 +1,8 @@
+/**
+ * Checks that plugin-owned shortcuts register into the shortcut registry, are
+ * tracked under plugin ownership, and are unregistered on unload. Drives a real
+ * in-process `AgentRuntime`; no model or database.
+ */
 import { describe, expect, it } from "vitest";
 import { AgentRuntime } from "../runtime";
 import type { Plugin } from "../types/plugin";

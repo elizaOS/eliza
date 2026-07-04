@@ -1,3 +1,9 @@
+/**
+ * Guards serviceType uniqueness two ways: runtime warnings when duplicate
+ * serviceTypes register (real AgentRuntime) and a repo-wide TypeScript-AST scan
+ * of core, agent, and plugins that flags unallowlisted duplicate
+ * `static serviceType` declarations.
+ */
 import { readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

@@ -1,3 +1,10 @@
+/**
+ * Structural guards over the generated canonical action-docs aggregate: retired
+ * action names stay out, core-owned owner surfaces stay in while plugin-owned
+ * ones stay out, umbrella actions expose the `action` discriminator, and the
+ * fallback overlay preserves a plugin Action's own docs. Deterministic: imports
+ * the generated aggregate and concrete Action objects, no model or database.
+ */
 import { describe, expect, it } from "vitest";
 import { withCanonicalActionDocs } from "../action-docs.ts";
 import { secretsAction } from "../features/secrets/actions/manage-secret.ts";

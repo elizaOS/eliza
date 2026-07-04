@@ -1,3 +1,11 @@
+/**
+ * Tier assignment for the planner's exposed action surface: tierActionResults
+ * pins Tier-0 protocol controls, expands Tier-A parents with their children,
+ * keeps Tier-B parent-only, omits Tier-C, and applies Stage-1 candidate
+ * narrowing (promotion/demotion, simile-vs-canonical collision resolution,
+ * per-parent tier-A child capping) plus a deterministic surface hash.
+ * In-memory catalog; no model.
+ */
 import { describe, expect, it } from "vitest";
 import { buildActionCatalog } from "../action-catalog";
 import type { ActionRetrievalResult } from "../action-retrieval";

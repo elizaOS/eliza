@@ -1,3 +1,20 @@
+/**
+ * Guards the determinism of the Anthropic prompt-cache prefix hash as a CI gate.
+ *
+ * The stable prompt prefix (the canonical Stage 1 / Stage 2 envelope and the
+ * planner-tool schemas) must hash the same every run: if its hash drifts, the
+ * Anthropic cached prefix is busted and every subsequent turn pays ~80% extra
+ * input tokens. These tests pin the invariants that keep it stable — the
+ * stable-prefix hash is a well-formed sha256, appending a dynamic (unstable)
+ * suffix never churns it, and mutating a stable segment always does.
+ *
+ * A hash change caused by editing a stable segment, the planner tool schema, or
+ * the cache-key construction is an intentional cache bust — expect and account
+ * for it. Any other churn (a stray whitespace edit in a prompt template, a
+ * reordered action list, an environment-dependent string, or a new segment that
+ * should have been marked `stable: false`) is a source bug to fix, not to rebase
+ * around.
+ */
 import { describe, expect, it } from "vitest";
 
 import {
@@ -12,25 +29,6 @@ import {
 	normalizePromptSegments,
 } from "../context-renderer";
 import { buildProviderCachePlan } from "../provider-cache-plan";
-
-/**
- * Cache-key stability CI gate.
- *
- * These hashes are snapshots of the Anthropic prompt-cache key inputs for a
- * fixed canonical Stage 1 / Stage 2 / planner-tool envelope. If any of these
- * hashes drift, the Anthropic cached prefix is busted and every subsequent PR
- * pays ~80% extra tokens until someone notices.
- *
- * When a hash change is INTENTIONAL (you genuinely meant to alter a stable
- * prompt segment, the planner tool schema, or the cache-key construction),
- * update the literal hash baked in below and document the change in
- * `docs/audits/lifeops-2026-05-11/cache-key-stability.md`.
- *
- * When the change is UNINTENTIONAL — typically a whitespace edit in a
- * prompt template, a reordered action list, an environment-dependent string,
- * or a new prompt segment that should have been marked `stable: false` — fix
- * the source, do NOT just rebase the snapshot.
- */
 
 // -- Canonical Stage 1 prefix ------------------------------------------------
 //
@@ -91,8 +89,6 @@ function stableSegmentPrefixHash(segments: PromptSegment[]): string {
 describe("cache-key stability — Anthropic prompt-cache invariants", () => {
 	it("Stage 1 stable-prefix hash is byte-stable for canonical input", () => {
 		const prefixHash = stableSegmentPrefixHash(STAGE_1_CANONICAL_SEGMENTS);
-		// Snapshot captured when Stage 1 protocol text was updated for the
-		// per-action native-tools refactor (removed "PLAN_ACTIONS" wording).
 		expect(prefixHash).toMatch(/^[0-9a-f]{64}$/);
 	});
 
@@ -103,9 +99,9 @@ describe("cache-key stability — Anthropic prompt-cache invariants", () => {
 
 	it("terminal-sentinel tool envelope (CORE_PLANNER_TERMINALS) is byte-stable", () => {
 		const toolEnvelopeHash = hashStableJson(CORE_PLANNER_TERMINALS);
-		// CORE_PLANNER_TERMINALS replaces the prior STABLE_PLANNER_TOOLS pair —
-		// the hash is a snapshot of REPLY / IGNORE / STOP exposed as their own
-		// native tools and changes only when one of those shapes is edited.
+		// CORE_PLANNER_TERMINALS is REPLY / IGNORE / STOP exposed as their own
+		// native tools; its hash changes only when one of those tool shapes is
+		// edited.
 		expect(toolEnvelopeHash).toMatch(/^[0-9a-f]{64}$/);
 	});
 

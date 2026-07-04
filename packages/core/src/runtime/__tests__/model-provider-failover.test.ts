@@ -1,3 +1,11 @@
+/**
+ * Exercises `AgentRuntime.useModel` provider failover: an exhausted
+ * (rate-limited) provider falls through to the next registration, an
+ * `ELIZA_BRAIN_PROVIDER` pin is preferred yet still failed past when limited,
+ * and neither ordinary errors nor an explicitly requested provider trigger
+ * failover. A real runtime over the in-memory adapter drives stub handlers that
+ * throw the live subscription-limit envelope — no network model call.
+ */
 import { describe, expect, it, vi } from "vitest";
 import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter";
 import { AgentRuntime } from "../../runtime";

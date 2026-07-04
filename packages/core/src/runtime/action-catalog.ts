@@ -1,3 +1,9 @@
+/**
+ * Assembles the planner's action catalog: normalizes runtime actions into
+ * sorted parent/child entries with deduped keyword and search text, resolves
+ * declared sub-actions, applies locale-aware example swapping, and collects
+ * structural warnings (duplicate, missing, or invalid sub-actions).
+ */
 import {
 	type ActionSearchKeywordSource,
 	getActionSearchKeywordSources,

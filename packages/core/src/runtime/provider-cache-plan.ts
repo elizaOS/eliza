@@ -1,3 +1,9 @@
+/**
+ * Builds the per-provider prompt-cache plan from a rendered prompt's stable-
+ * prefix hash and segments: the OpenAI/Cerebras/OpenRouter cache keys, the
+ * Anthropic cache breakpoints under its four-block cap, and the eliza-local
+ * conversation-pinning options, for a single model generation.
+ */
 import type { PromptSegment } from "../types/model";
 import type { JsonValue } from "../types/primitives.ts";
 

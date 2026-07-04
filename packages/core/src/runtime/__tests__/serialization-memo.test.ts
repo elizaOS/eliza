@@ -1,14 +1,14 @@
+/**
+ * Memoization of the planner-loop routing-hints prompt block. Exercises
+ * `__renderRoutingHintsBlockForTests`: output is memoized on `context.events`
+ * identity via a WeakMap, so repeated within-turn renders return the same bytes
+ * for free (and drop when the context is GC'd), and the compress-mode env flag
+ * suppresses rendering. Deterministic, no model.
+ */
 import { afterEach, describe, expect, it } from "vitest";
 
 import { __renderRoutingHintsBlockForTests } from "../planner-loop";
 import type { ContextObject } from "../planner-types";
-
-// Wave 2-D: after the per-action-native-tools refactor, the
-// "available_actions" prompt block is gone (action info now rides on the
-// tools array). The only remaining memoized renderer covered here is the
-// routing-hints block, which is keyed on `context.events` identity so
-// within-turn recomputation is free. WeakMap; no leak when the context
-// object is GC'd.
 
 interface ToolEvent {
 	id: string;

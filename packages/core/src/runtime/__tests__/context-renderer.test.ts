@@ -1,3 +1,10 @@
+/**
+ * Covers the context renderer: `renderContextObject` orders provider and tool
+ * prefixes ahead of append-only events without duplicating native tools as text
+ * segments, `buildStageChatMessages` splits a stage call into one cacheable
+ * system prefix plus a dynamic user block, and `cachePrefixSegments` keeps only
+ * the longest leading stable-prefix run for cache keys. Pure, no model.
+ */
 import { describe, expect, it } from "vitest";
 import type { ContextObject } from "../../types/context-object";
 import {
@@ -81,11 +88,10 @@ describe("context renderer", () => {
 	});
 
 	it("does not emit synthetic tool-text segments alongside native tools", () => {
-		// Regression: `renderPrefixTool` previously emitted both the native
-		// tool definition AND a `tool: NAME\ndescription: ...` text segment in
-		// the system prompt. Native tools are sent on the wire; the text
-		// duplicate inflated prompt tokens and confused models that saw the
-		// same surface area twice.
+		// Native tools are sent on the wire, so `renderPrefixTool` must not also
+		// emit a `tool: NAME\ndescription: ...` text segment in the system
+		// prompt: a text duplicate inflates prompt tokens and gives the model two
+		// representations of the same surface to reconcile.
 		const context: ContextObject = {
 			id: "ctx-no-text",
 			version: "v5",
@@ -103,7 +109,8 @@ describe("context renderer", () => {
 		const rendered = renderContextObject(context);
 		expect(rendered.tools.map((tool) => tool.name)).toEqual(["X", "Y", "Z"]);
 		expect(rendered.promptSegments).toHaveLength(0);
-		// And no segment whose content begins with `tool: ` (the old shape).
+		// And no segment whose content begins with `tool: ` (the forbidden
+		// text-tool shape).
 		for (const segment of rendered.promptSegments) {
 			expect(segment.content).not.toMatch(/^tool:\s*[A-Z_]/);
 		}

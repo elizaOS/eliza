@@ -1,3 +1,10 @@
+/**
+ * Unit coverage for prompt-cache planning — `buildProviderCachePlan` and
+ * `buildPromptCacheKey` — verifying the per-provider `providerOptions` (OpenAI
+ * retention, Anthropic breakpoints, Cerebras/OpenRouter, Gemini, Gateway, and
+ * the eliza sidecar) and the 1024-char cache-key cap. Deterministic; no live
+ * provider call.
+ */
 import { describe, expect, it } from "vitest";
 import {
 	buildPromptCacheKey,

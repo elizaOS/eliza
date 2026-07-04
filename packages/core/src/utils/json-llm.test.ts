@@ -1,11 +1,12 @@
+/**
+ * Tests for `extractAndParseJSONObjectFromText`, the core LLM-output JSON parser:
+ * it turns a model's text into a structured object, so a regression here breaks
+ * every structured model output. Deterministic — exercises the parser on fixed
+ * strings, no live model.
+ */
 import { describe, expect, it } from "vitest";
 import { extractAndParseJSONObjectFromText } from "./json-llm";
 
-/**
- * Tests for `extractAndParseJSONObjectFromText`, the core LLM-output JSON parser
- * (#8801 / #9943): it turns a model's text into a structured object, so a
- * regression here breaks every structured model output.
- */
 describe("extractAndParseJSONObjectFromText", () => {
 	it("parses a plain JSON object", () => {
 		expect(extractAndParseJSONObjectFromText('{"a":1,"b":"two"}')).toEqual({

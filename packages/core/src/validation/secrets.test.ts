@@ -1,3 +1,10 @@
+/**
+ * Secret validation catches misconfigured API keys before they reach a provider
+ * (a wrong-shaped key fails the call at runtime, often after billing). Known
+ * keys are checked against a provider-specific pattern; unknown keys get basic
+ * checks that reject empty values and obvious placeholders ("your_api_key_here").
+ * inferValidationPatternKey maps prefixed/variant names back to the canonical key.
+ */
 import { describe, expect, it } from "vitest";
 import {
 	checkRequiredSecrets,
@@ -7,14 +14,6 @@ import {
 	validateSecretKey,
 	validateSecrets,
 } from "./secrets.ts";
-
-/**
- * Secret validation catches misconfigured API keys before they reach a provider
- * (a wrong-shaped key fails the call at runtime, often after billing). Known
- * keys are checked against a provider-specific pattern; unknown keys get basic
- * checks that reject empty values and obvious placeholders ("your_api_key_here").
- * inferValidationPatternKey maps prefixed/variant names back to the canonical key.
- */
 
 describe("validateSecretKey — known patterns", () => {
 	it("accepts a well-formed OpenAI key, rejects a malformed one", () => {

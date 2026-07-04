@@ -1,3 +1,10 @@
+/**
+ * The `core.voice_turn_signal_confirm` builtin response-handler evaluator: the
+ * positive-decision path that promotes a Stage-1 IGNORE to RESPOND on an explicit
+ * server agentShouldSpeak signal, while never overriding a STOP, an existing
+ * RESPOND, or a user-next turn. Deterministic — driven with hand-built voice
+ * Memory + handler-decision contexts, no model.
+ */
 import { describe, expect, it } from "vitest";
 import type { ResponseHandlerEvaluatorContext } from "../runtime/response-handler-evaluators";
 import { BUILTIN_RESPONSE_HANDLER_EVALUATORS } from "../services/message";

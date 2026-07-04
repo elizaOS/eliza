@@ -1,3 +1,10 @@
+/**
+ * Tier-aware action catalog assembly for the planner. Partitions
+ * retrieval-ranked catalog parents into protocol (tier 0), first-class (tier A),
+ * umbrella-only (tier B), and omitted (tier C) bands, narrows tier A to the
+ * Stage-1 candidate actions, caps parents and per-parent children, and emits the
+ * exposed action surface plus a stable hash for cache and trajectory keying.
+ */
 import {
 	type ActionCatalog,
 	type ActionCatalogChild,

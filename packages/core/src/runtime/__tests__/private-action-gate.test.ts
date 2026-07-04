@@ -1,3 +1,9 @@
+/**
+ * Unit coverage for the private-action turn gate — `isAutonomousTurn` and
+ * `privateActionAllowedOnTurn` — asserting that actions marked `private` are
+ * exposed only on autonomous turns and always-allowed otherwise. Pure
+ * predicates over an in-memory `Memory`; no runtime or model.
+ */
 import { describe, expect, it } from "vitest";
 import type { Memory } from "../../types/memory";
 import {

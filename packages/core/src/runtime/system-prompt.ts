@@ -1,3 +1,11 @@
+/**
+ * System-prompt assembly for a model call: builds the canonical prompt from a
+ * character's `system` + `bio` (name-token expanded) plus the caller's role, and
+ * resolves the effective system prompt from explicit params, a leading `system`
+ * chat message, or a fallback — de-duplicating that leading system message when it
+ * already matches the resolved prompt.
+ */
+
 import { replaceNameTokens } from "../name-tokens";
 import type { Character } from "../types/agent";
 import type { RoleGateRole } from "../types/contexts";

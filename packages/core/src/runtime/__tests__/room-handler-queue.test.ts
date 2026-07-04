@@ -1,3 +1,9 @@
+/**
+ * Unit coverage for `RoomHandlerQueue`: per-room serialization, cross-room
+ * concurrency, queue-depth accounting (`pendingFor`), drain (`quiesce` /
+ * `quiesceAll`), empty-queue garbage collection, and lifecycle events. Exercises
+ * the real queue with real timers; no model or runtime.
+ */
 import { describe, expect, it } from "vitest";
 import { RoomHandlerQueue, type RoomQueueEvent } from "../room-handler-queue";
 

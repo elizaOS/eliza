@@ -1,3 +1,10 @@
+/**
+ * Unit tests for the JSON-file trajectory recorder: stage recording, metrics
+ * roll-up, field capping/sanitization, price-table cost annotation, redacted
+ * markdown review artifacts, and finalize leak-guarding. Runs against real
+ * temp-dir filesystem writes with an in-process recorder — no live model;
+ * token/usage and cost inputs are hand-fed.
+ */
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";

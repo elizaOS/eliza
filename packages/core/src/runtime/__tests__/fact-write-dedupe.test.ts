@@ -1,3 +1,11 @@
+/**
+ * Structural write-time dedupe for the `facts` table, driven through a real
+ * AgentRuntime + InMemoryDatabaseAdapter (only the extraction model output is
+ * canned via registerModel). Regression-proves the live double-write: one
+ * extraction turn persisted the same claim twice — a fact row (kind=current)
+ * plus a relationship-echo row with no `kind`, which the FACTS reader then
+ * promoted to a durable fact ("nubs plays guitar" duplicated durable).
+ */
 import { describe, expect, it } from "vitest";
 import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter";
 import { factsProvider } from "../../features/advanced-capabilities/providers/facts";
@@ -7,15 +15,6 @@ import type { Memory } from "../../types/memory";
 import type { UUID } from "../../types/primitives";
 import type { State } from "../../types/state";
 import { runFactsAndRelationshipsStage } from "../facts-and-relationships";
-
-/**
- * Structural write-time dedupe for the `facts` table, driven through a real
- * AgentRuntime + InMemoryDatabaseAdapter (only the extraction model output is
- * canned via registerModel). Regression-proves the live double-write: one
- * extraction turn persisted the same claim twice — a fact row (kind=current)
- * plus a relationship-echo row with no `kind`, which the FACTS reader then
- * promoted to a durable fact ("nubs plays guitar" duplicated durable).
- */
 
 const USER = "00000000-0000-0000-0000-000000000001" as UUID;
 const OTHER_USER = "00000000-0000-0000-0000-000000000009" as UUID;

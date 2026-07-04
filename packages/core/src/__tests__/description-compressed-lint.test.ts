@@ -1,3 +1,9 @@
+/**
+ * Covers `lintDescriptionCompressed`, the compressed action-description linter:
+ * empty/whitespace rejection, absence of a length cap, banned filler phrases and
+ * long-form words (with abbreviation hints), and non-imperative leading verbs.
+ * Deterministic: pure linter, no model.
+ */
 import { describe, expect, it } from "vitest";
 import { lintDescriptionCompressed } from "../utils/description-compressed-lint";
 

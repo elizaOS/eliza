@@ -10,8 +10,8 @@ import { ModelType } from "../../types";
  * (`DocumentService._vectorSearch`/`_hybridSearch`), experience recall
  * (`ExperienceService.findSimilarExperiences`), and the relevant-conversations
  * provider. Because they all call this one function with the same runtime +
- * `runId` + (normalized) query text, the per-turn dedupe below collapses what
- * used to be 3 independent embed round-trips per turn into a single one.
+ * `runId` + (normalized) query text, the per-turn dedupe below collapses the
+ * 3 independent embed round-trips per turn into a single one.
  *
  * **Per-turn cache + in-flight dedupe.** The same query text is embedded more
  * than once per turn (vector + hybrid document search, experience recall,
@@ -27,12 +27,12 @@ import { ModelType } from "../../types";
  * blocked on an *error*, and recall is never silently dropped (we log it).
  *
  * There is deliberately NO app-level latency timeout here. A short, arbitrary
- * race (the former `RECALL_EMBED_TIMEOUT_MS`) fired on every healthy-but-slow
- * embed and silently degraded vector recall to keyword-only every turn — a
- * feature-kill switch, not a circuit breaker. Bounding a *hung* request is the
- * embedding model handler's job (it owns a real, cancelable request timeout);
- * keeping that bound at the request layer means a slow embed either completes
- * (rich recall) or genuinely errors (fail-open), with no silent middle ground.
+ * race on every healthy-but-slow embed would silently degrade vector recall to
+ * keyword-only every turn — a feature-kill switch, not a circuit breaker.
+ * Bounding a *hung* request is the embedding model handler's job (it owns a
+ * real, cancelable request timeout); keeping that bound at the request layer
+ * means a slow embed either completes (rich recall) or genuinely errors
+ * (fail-open), with no silent middle ground.
  */
 
 /** Normalize query text so trivially-different strings share one cache slot. */

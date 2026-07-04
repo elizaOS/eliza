@@ -1,3 +1,9 @@
+/**
+ * Exercises `composePromptFromState` with both string and function (callback)
+ * templates, and confirms `characterSchema` accepts function template values
+ * while rejecting non-string/non-function ones. Deterministic: pure prompt
+ * composition, no model.
+ */
 import { describe, expect, it } from "vitest";
 import { characterSchema } from "../schemas/character";
 import type { Character } from "../types/agent";

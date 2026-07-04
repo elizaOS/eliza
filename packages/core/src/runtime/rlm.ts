@@ -1,3 +1,12 @@
+/**
+ * Type contracts and the routing policy for the recursive-language-model (RLM)
+ * path — an iterative peek / grep / partition / map-subcall / summarize / stitch
+ * loop that reasons over context too large for a single model call. `decideRLMUse`
+ * is the gate: it decides whether a task engages the RLM instead of a direct
+ * one-shot model call, based on task kind, context token/character size, whether
+ * the context is external, and an explicit-request override.
+ */
+
 import type { JsonObject, JsonValue } from "../types/primitives";
 
 export type RLMOperation =

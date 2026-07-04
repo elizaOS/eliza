@@ -1,3 +1,11 @@
+/**
+ * Replays a `ContextObject` into the wire shape a model stage consumes: chat
+ * messages, native tool specs, and labeled prompt segments. Formats each context
+ * event (message, memory, provider, tool, instruction, segment, and compacted
+ * runtime events) into its prompt representation and assembles the single-system
+ * plus single-user plus assistant/tool-suffix message array each planner stage
+ * sends.
+ */
 import type {
 	ContextEvent,
 	ContextInstructionEvent,
@@ -39,17 +47,6 @@ export function segmentBlock(segment: PromptSegment): string {
 }
 
 /**
- * Build the wire-shape `messages` array for a stage call: ONE system message
- * (Tier 1: stable context segments + the stage's task instructions), ONE user
- * message (Tier 2: dynamic context segments + caller-supplied dynamic blocks),
- * and the trajectory's append-only assistant/tool suffix.
- *
- * Why: stacking many `system` messages fragments the cache prefix, confuses
- * turn boundaries, and triggers strict provider validation. The native chat
- * protocol expects a single system + user prefix followed by assistant/tool
- * turns for each iteration of the planner loop.
- */
-/**
  * Drop segments with empty content. Used by `normalizePromptSegments` and as a
  * post-step in renderers that build segment lists incrementally.
  */
@@ -90,6 +87,17 @@ export function cachePrefixSegments(
 	return prefix.length > 0 ? prefix : segments.slice(0, 1);
 }
 
+/**
+ * Build the wire-shape `messages` array for a stage call: ONE system message
+ * (Tier 1: stable context segments + the stage's task instructions), ONE user
+ * message (Tier 2: dynamic context segments + caller-supplied dynamic blocks),
+ * and the trajectory's append-only assistant/tool suffix.
+ *
+ * Why: stacking many `system` messages fragments the cache prefix, confuses
+ * turn boundaries, and triggers strict provider validation. The native chat
+ * protocol expects a single system + user prefix followed by assistant/tool
+ * turns for each iteration of the planner loop.
+ */
 export function buildStageChatMessages(args: {
 	contextSegments: PromptSegment[];
 	stageLabel: string;

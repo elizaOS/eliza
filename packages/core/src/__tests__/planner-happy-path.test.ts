@@ -1,3 +1,10 @@
+/**
+ * End-to-end coverage for the v5 message pipeline —
+ * messageHandler → planner → executor → evaluator — driven through
+ * `runV5MessageRuntimeStage1`. Uses a queued canned-response `vi` mock for the
+ * model, real action handlers, and real trajectory recording to a temp dir; no
+ * live model.
+ */
 import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";

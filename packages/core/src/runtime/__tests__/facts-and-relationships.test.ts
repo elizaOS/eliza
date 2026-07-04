@@ -1,3 +1,10 @@
+/**
+ * Covers the Stage-1 facts/relationships extraction: parseFactsAndRelationshipsOutput
+ * across the text and tool-call (arguments/input/args/params) response shapes, and
+ * runFactsAndRelationshipsStage's candidate filtering, secret-like redaction,
+ * persistence, and voice/text extraction parity. Deterministic — a mock runtime
+ * whose useModel/getMemories/createMemory are vi.fn, no live model or DB.
+ */
 import { describe, expect, it, vi } from "vitest";
 import type { Memory } from "../../types/memory";
 import { ModelType } from "../../types/model";

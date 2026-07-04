@@ -1,3 +1,9 @@
+/**
+ * Covers the plaintext serializers that flatten PTY task lifecycle events,
+ * typed agent-event streams, and trajectory summaries into bounded
+ * human-readable lines. Deterministic: pure functions over synthetic event
+ * objects, no model or database.
+ */
 import { describe, expect, it } from "vitest";
 import {
 	activityEventToPlaintext,

@@ -1,3 +1,10 @@
+/**
+ * Pins the planner's chat-message wire shape across loop iterations: an
+ * append-only array with a stable system+user prefix and one assistant+tool
+ * pair per completed step (prefix-cache-safe, no JSON trajectory dump).
+ * Deterministic — `useModel` is a vitest mock that captures each `messages`
+ * array; no live model.
+ */
 import { describe, expect, it, vi } from "vitest";
 import type {
 	ChatMessage,
@@ -138,15 +145,14 @@ describe("planner-loop message stacking regression", () => {
 	});
 
 	it("planner never appends a standalone trajectory JSON dump as the LAST message", async () => {
-		// The old bug: renderPlannerModelInput appended a role:"user" message at
-		// the END of the array as the LAST message containing `trajectory:\n[...]`.
-		// The fix: trajectory steps are now rendered as assistant/tool pairs, not
-		// as a standalone user message appended at the end.
+		// Regression guard: the LAST appended planner message must NOT be a
+		// role:"user" message whose content starts `trajectory:\n[` — trajectory
+		// steps render as assistant/tool pairs, never as a standalone user JSON
+		// dump appended at the end.
 		//
 		// Note: the context renderer (renderContextObject) legitimately includes
-		// trajectory state as part of messages[1] (the rendered context). That is
-		// expected. The regression guard is that the LAST appended planner message
-		// must NOT be a role:"user" message with content starting `trajectory:\n[`.
+		// trajectory state as part of messages[1] (the rendered context); that is
+		// expected and not what this guard checks.
 
 		const capturedMessages: ChatMessage[][] = [];
 		let callCount = 0;
@@ -187,9 +193,8 @@ describe("planner-loop message stacking regression", () => {
 		});
 
 		// For each planner call, the LAST message in the array must NOT be a
-		// role:"user" message with content starting `trajectory:\n[` (the old dump).
-		// After the fix, the last messages should be the assistant/tool pairs from
-		// trajectory steps.
+		// role:"user" message with content starting `trajectory:\n[`. The last
+		// messages are the assistant/tool pairs from trajectory steps.
 		for (const messages of capturedMessages) {
 			const lastMsg = messages[messages.length - 1];
 			const isJsonDump =
@@ -201,7 +206,7 @@ describe("planner-loop message stacking regression", () => {
 		}
 
 		// After the first tool executes, the second planner call must end with
-		// a role:"tool" message (the new append-only pattern).
+		// a role:"tool" message (append-only suffix).
 		if (capturedMessages.length >= 2) {
 			const secondPlannerMsgs = capturedMessages[1];
 			const lastMsg = secondPlannerMsgs?.[secondPlannerMsgs.length - 1];

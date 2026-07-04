@@ -1,3 +1,9 @@
+/**
+ * Covers InferenceTurnTimer and the inference-timing AsyncLocalStorage helpers:
+ * span roll-up by name, mark-derived timeToReply / timeToFirstToken,
+ * duplicate-mark anomaly detection, ALS attribution across async boundaries,
+ * and the emit / format / dev-payload registry. Deterministic — no live model.
+ */
 import { describe, expect, it } from "vitest";
 import {
 	buildInferenceTimingDevPayload,

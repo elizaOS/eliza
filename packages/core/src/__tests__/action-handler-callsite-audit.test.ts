@@ -1,3 +1,9 @@
+/**
+ * Static source-tree audit that greps the real repo for direct
+ * `action.handler(...)` callsites and asserts every one is classified in the
+ * allowlist — so voiced-response handling stays intentional — with no stale
+ * entries left behind. Reads files from disk; no model or database.
+ */
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

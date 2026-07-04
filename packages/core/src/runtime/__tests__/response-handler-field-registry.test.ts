@@ -1,3 +1,10 @@
+/**
+ * Unit coverage for `ResponseHandlerFieldRegistry`: registration/dedup and
+ * validation, priority ordering, composed-schema stability and field subsetting,
+ * prompt-slice rendering (active vs gated-off, compact vs full), and field
+ * dispatch (parse/handle outcomes, defaulting, preempt, and abort-signal
+ * short-circuit). Synthetic field evaluators over a stub runtime; no model.
+ */
 import { describe, expect, it } from "vitest";
 import type { Memory } from "../../types/memory";
 import type { IAgentRuntime } from "../../types/runtime";

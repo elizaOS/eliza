@@ -1,3 +1,9 @@
+/**
+ * Verifies the memoized action-catalog builder (`getCachedActionCatalog`)
+ * returns a stable instance for an unchanged action set and self-invalidates
+ * when actions are registered, unregistered, or a localized-example resolver is
+ * supplied. Deterministic: synthetic Action stubs, no model or database.
+ */
 import { describe, expect, it } from "vitest";
 import { getCachedActionCatalog } from "../services/message";
 import type { Action } from "../types/components";

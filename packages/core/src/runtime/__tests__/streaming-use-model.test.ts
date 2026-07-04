@@ -1,3 +1,10 @@
+/**
+ * Exercises structured/plain streaming through `AgentRuntime.useModel` and
+ * `isLocalProvider` routing: local-handler stream callbacks, non-local
+ * textStream fan-out, tool-call/usage passthrough, mid-stream abort, and
+ * suppression of hidden image-description calls from ambient chat streams. Real
+ * runtime over the in-memory adapter with registered fake handlers; deterministic.
+ */
 import { describe, expect, it, vi } from "vitest";
 import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter";
 import { AgentRuntime } from "../../runtime";

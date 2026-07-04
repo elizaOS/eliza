@@ -1,3 +1,10 @@
+/**
+ * Exercises the secret-swap ingress path in `AgentRuntime.useModel`: known
+ * secrets become per-session nonce placeholders before the model handler sees
+ * the prompt — including secrets added by pre_model hooks and secrets split
+ * across stream chunks — and never leak in the output. Real runtime over the
+ * in-memory adapter with a registered fake model handler; deterministic.
+ */
 import { describe, expect, it, vi } from "vitest";
 import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter";
 import { AgentRuntime } from "../../runtime";

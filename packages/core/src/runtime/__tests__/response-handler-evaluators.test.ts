@@ -1,3 +1,10 @@
+/**
+ * Unit coverage for `runResponseHandlerEvaluators`, the deterministic
+ * post-Stage-1 patch pass that rewrites the parsed plan (contexts, candidate
+ * actions, parent-action hints, reply, deterministic tool call) in priority
+ * order, isolates individual evaluator failures, and reports applied patches.
+ * Synthetic evaluators over a stub runtime; no model.
+ */
 import { describe, expect, it } from "vitest";
 import type { MessageHandlerResult } from "../../types/components";
 import type { Memory } from "../../types/memory";

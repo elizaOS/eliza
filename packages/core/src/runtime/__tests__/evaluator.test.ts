@@ -1,3 +1,9 @@
+/**
+ * Exercises the evaluator stage: parseEvaluatorOutput's JSON/prose recovery and
+ * runEvaluator's FINISH/CONTINUE decisions, messageToUser sanitization, and the
+ * injected clipboard/message effects. Deterministic — runtime.useModel returns
+ * canned strings, no live model or DB.
+ */
 import { describe, expect, it, vi } from "vitest";
 import { ModelType } from "../../types/model";
 import { parseEvaluatorOutput, runEvaluator } from "../evaluator";
@@ -143,7 +149,7 @@ df -h / /home
 		expect(evaluatorParams.messages[0].content).toContain("evaluator_stage:");
 		expect(evaluatorParams.messages[0].content).toContain("agent_name: Eliza");
 		// Provider events render as `provider:NAME:\n<text>` (label + content);
-		// the old shape baked `provider: <name>` into the body, duplicating it.
+		// the label must not also be duplicated into the body.
 		expect(evaluatorParams.messages[1].content).toContain(
 			"provider:RECENT_MESSAGES:",
 		);
@@ -151,8 +157,8 @@ df -h / /home
 		expect(evaluatorParams.messages[1].content).not.toMatch(
 			/provider:RECENT_MESSAGES:\nprovider: RECENT_MESSAGES/,
 		);
-		// After the stacking fix, trajectory steps are conveyed as assistant/tool
-		// message pairs, NOT as a JSON dump in the user message.
+		// Trajectory steps are conveyed as assistant/tool message pairs, NOT as a
+		// JSON dump in the user message.
 		expect(evaluatorParams.messages[1].content).not.toMatch(/^trajectory:\n\[/);
 		expect(
 			evaluatorParams.providerOptions.eliza.modelInputBudget,

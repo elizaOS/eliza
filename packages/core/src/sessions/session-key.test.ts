@@ -1,3 +1,9 @@
+/**
+ * Session keys (`agent:{agentId}:{rest}`) identify sessions, threads, and peer
+ * connections. Build/parse must round-trip, IDs must be normalized path-safe,
+ * and thread/ACP/subagent discriminators must be parsed correctly — a wrong key
+ * routes a message to the wrong session.
+ */
 import { describe, expect, it } from "vitest";
 import {
 	buildAcpSessionKey,
@@ -13,13 +19,6 @@ import {
 	resolveThreadParentSessionKey,
 	sanitizeAgentId,
 } from "./session-key.ts";
-
-/**
- * Session keys (`agent:{agentId}:{rest}`) identify sessions, threads, and peer
- * connections. Build/parse must round-trip, IDs must be normalized path-safe,
- * and thread/ACP/subagent discriminators must be parsed correctly — a wrong key
- * routes a message to the wrong session.
- */
 
 describe("build + parse round-trip", () => {
 	it("builds lowercased keys and parses them back", () => {

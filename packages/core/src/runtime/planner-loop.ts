@@ -1,3 +1,12 @@
+/**
+ * The planner's tool-calling agent loop: iteratively calls the planner model,
+ * dispatches queued tool calls, and either gates or runs the trajectory
+ * evaluator until a terminal signal, then synthesizes the final user-facing
+ * message under trajectory / repeated-failure / prompt-token limits. Also owns
+ * planner-output parsing (native plus text-recovered tool calls) and the
+ * user-safe-message projection that keeps tool/control JSON and pre-tool
+ * thoughts out of the reply.
+ */
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { computeCallCostUsd } from "../features/trajectories/pricing";
@@ -935,10 +944,9 @@ function normalizePlannerToolName(name: string): string {
 
 /**
  * Build a "Routing hints" block from each available action's
- * {@link Action.routingHint}. Replaces the hand-written domain-routing prose
- * that used to live inline in `plannerTemplate` — each action now carries
- * its own one-line hint as metadata, and the planner sees them only when the
- * action is actually exposed for this turn.
+ * {@link Action.routingHint}. Each action carries its own one-line hint as
+ * metadata, and the planner sees them only when the action is actually exposed
+ * for this turn.
  *
  * Returns `null` when no exposed action has a `routingHint` set, so the
  * planner prompt simply omits the section.
@@ -1300,8 +1308,8 @@ async function callPlanner(params: {
 	};
 	if (hasTools) {
 		modelParams.tools = params.tools;
-		// Force a native tool call. With actions exposed directly as tools
-		// (post-PLAN_ACTIONS-wrapper refactor), every viable planner outcome —
+		// Force a native tool call. With actions exposed directly as tools,
+		// every viable planner outcome —
 		// invoking an action, calling REPLY for a final message, or terminating
 		// via IGNORE / STOP — corresponds to a tool. There is no "the model
 		// shouldn't tool-call" case left, so `"required"` is the contract.
@@ -2374,12 +2382,11 @@ function normalizeBarePlannerAction(
 
 /**
  * Normalize a single raw planner tool call to a `PlannerToolCall`. With actions
- * exposed directly as native tools (post-PLAN_ACTIONS-wrapper refactor) the
- * tool name IS the action name; the universal terminal sentinels REPLY /
- * IGNORE / STOP arrive under their own names. We accept several legacy
- * adjacent fields (`toolName`, `tool`, `action`, `actionName`, `function`) so
- * provider quirks don't surface as parse failures, but no envelope unwrap or
- * compound-name decoding happens here anymore.
+ * exposed directly as native tools the tool name IS the action name; the
+ * universal terminal sentinels REPLY / IGNORE / STOP arrive under their own
+ * names. We accept several legacy adjacent fields (`toolName`, `tool`,
+ * `action`, `actionName`, `function`) so provider quirks don't surface as parse
+ * failures, but no envelope unwrap or compound-name decoding happens here.
  */
 
 function normalizeToolCall(entry: unknown): PlannerToolCall | null {
@@ -2708,13 +2715,9 @@ function terminalMessageFromToolCalls(
  * REPLY) must opt in by setting `userFacingText`. Tools that emit logs
  * (BASH, SHELL, fetchers, file readers) leave it unset; this function
  * then returns undefined and the caller falls through to the evaluator's
- * synthesized reply instead of dumping the log into the channel.
- *
- * Pre-PR, this function returned `step.result.text` directly — that's
- * how `$ find … [exit 0] (cwd=…) --- stdout --- 443` ever ended up as
- * a literal Discord reply. The fix is structural: tools tell the
- * framework what's safe, the framework doesn't guess by parsing
- * wrapper text.
+ * synthesized reply instead of dumping the log into the channel. The
+ * contract is structural: tools declare what is safe to show, the
+ * framework never guesses by parsing wrapper text.
  */
 function latestToolResultText(
 	trajectory: PlannerTrajectory,

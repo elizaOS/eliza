@@ -1,3 +1,10 @@
+/**
+ * Enum coverage over first-party action parameter schemas: asserts that
+ * targetKind, manageOperation, payment-context kind/scope, and character
+ * fieldsToSave are constrained to their canonical kind sets — both on the raw
+ * ActionParameter schema and on the JSON Schema derived via actionToJsonSchema.
+ * Deterministic; exercises the real action definitions and schema builder.
+ */
 import { describe, expect, it } from "vitest";
 import { actionToJsonSchema } from "../../actions/action-schema";
 import {

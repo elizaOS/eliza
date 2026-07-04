@@ -1,3 +1,11 @@
+/**
+ * Exercises AgentRuntime.dynamicPromptExecFromState: structured model calls
+ * request JSON-object response format, a validation failure feeds a corrective
+ * [REPAIR] context into the reroll, and exhausted retries return null while an
+ * explicit caller response format is preserved. Runs against a bare
+ * AgentRuntime (no DB adapter, logModelCall stubbed) with a registered vi.fn()
+ * model handler — fully deterministic, no live model.
+ */
 import { describe, expect, it, vi } from "vitest";
 import { AgentRuntime } from "../runtime";
 import { type Character, ModelType } from "../types";

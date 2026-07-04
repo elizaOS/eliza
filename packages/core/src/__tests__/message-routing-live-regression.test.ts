@@ -1,3 +1,11 @@
+/**
+ * Regression suite over the message-routing helpers exported from
+ * services/message and runtime/message-handler: sub-agent completion relays are
+ * never promoted to tooling, raw field-transcript leaks are recovered to their
+ * replyText, the complete-direct-reply valve, planner action/param extraction,
+ * web-lookup routing, and VIEWS/APP candidate inference. Deterministic — each
+ * case drives the pure helpers directly, not a live model.
+ */
 import { describe, expect, it, vi } from "vitest";
 import { parseActionParams } from "../actions";
 import type { Action, ActionResult, IAgentRuntime, Memory } from "../index";
@@ -369,14 +377,11 @@ describe("live routing regressions", () => {
 		).toEqual(["RESPOND"]);
 	});
 
-	// Removed: tests for compound-name splitting (`LIFE.add_goal` →
-	// `LIFE`), invented-action-name alias resolution (`TASKS_ADD_TODO` →
-	// `OWNER_TODOS`), and runtime-alias repair. With actions exposed as
-	// first-class tools + `toolChoice: "required"`, the model picks the
-	// canonical action name from the per-turn tool array directly — no
-	// compound-name decoding or alias repair is needed in the dispatch
-	// path. `PLANNER_ACTION_ALIASES` and `splitPlannerCompoundActionName`
-	// were deleted.
+	// No compound-name-splitting / invented-alias / runtime-alias-repair
+	// coverage here: with actions exposed as first-class tools under
+	// `toolChoice: "required"`, the model picks the canonical action name
+	// from the per-turn tool array directly, so the dispatch path does no
+	// compound-name decoding or alias repair.
 
 	it("infers safe params for explicit local shell checks", () => {
 		expect(

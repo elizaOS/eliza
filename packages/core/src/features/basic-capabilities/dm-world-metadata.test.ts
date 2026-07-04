@@ -4,9 +4,9 @@ import { buildDmWorldMetadata } from "./index.ts";
 
 /**
  * #12087 Item 2: a DM world grants OWNER only to a configured canonical owner.
- * Previously every DM sender was written as OWNER of their own DM world, so with
- * no canonical owner configured (the default) anyone who could DM the agent
- * cleared every minRole:OWNER gate (SECRETS, SHELL, …).
+ * Without this guard every DM sender is written as OWNER of their own DM world,
+ * so with no canonical owner configured (the default) anyone who could DM the
+ * agent clears every minRole:OWNER gate (SECRETS, SHELL, …).
  */
 
 function runtimeWith(settings: Record<string, string>): IAgentRuntime {

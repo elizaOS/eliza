@@ -1,3 +1,9 @@
+/**
+ * Confirms the planner loop extracts a native tool call (name, args, id) from a
+ * recorded Cerebras / AI SDK v6 response shape (`toolName`/`input`,
+ * `finishReason: "tool-calls"`). Deterministic: `useModel` is a vitest mock
+ * replaying a captured fixture — no live provider call.
+ */
 import { describe, expect, it, vi } from "vitest";
 import type { GenerateTextResult, ToolDefinition } from "../../types/model";
 import { runPlannerLoop } from "../planner-loop";
@@ -15,8 +21,8 @@ type CerebrasRecordedToolCall = NonNullable<
  * toolCalls[].name, toolCalls[].input) and assert the planner correctly
  * extracts the tool call name and args.
  *
- * The fixture matches the shape returned by the Cerebras provider via the
- * AI SDK v6 adapter used in this branch.
+ * The fixture matches the shape returned by the Cerebras provider via its
+ * AI SDK v6 adapter.
  */
 
 /**

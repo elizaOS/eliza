@@ -1,3 +1,9 @@
+/**
+ * Coverage for `ensureEmbeddingDimension` (core/provisioning.ts) — the daemon
+ * composition-path probe that snaps the embedding storage column to the
+ * configured width. Deterministic `createMockRuntime` with a mocked logger and
+ * adapter; no live model or DB.
+ */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createMockRuntime } from "../testing/mock-runtime";
 import type { IAgentRuntime } from "../types/runtime";
@@ -25,9 +31,9 @@ beforeEach(() => {
  * setting probe used by the daemon-composition path (createRuntimes({ provision:
  * true }) → provisionAgent). It has two silent early-returns — no TEXT_EMBEDDING
  * model, and an unset/invalid EMBEDDING_DIMENSION — plus the happy path that
- * snaps the storage column to the configured width. None were covered; a
- * regression dropping the model-or-dim guard would call
- * adapter.ensureEmbeddingDimension with a wrong/default width and ship silently.
+ * snaps the storage column to the configured width. A regression dropping the
+ * model-or-dim guard would call adapter.ensureEmbeddingDimension with a
+ * wrong/default width and ship silently.
  *
  * NOTE: managed cloud agents do NOT take this path — they boot
  * `new AgentRuntime(...)` + `runtime.initialize()` and snap the column via

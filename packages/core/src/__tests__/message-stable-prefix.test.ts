@@ -1,3 +1,8 @@
+/**
+ * Coverage for `renderMessageHandlerStablePrefix` — the cacheable system +
+ * tool-schema segment shared across a room's turns. Runs against a hand-built
+ * `vi`-mocked runtime with a stubbed `composeState`; no live model.
+ */
 import { describe, expect, it, vi } from "vitest";
 import { renderMessageHandlerStablePrefix } from "../services/message";
 import type { UUID } from "../types/primitives";

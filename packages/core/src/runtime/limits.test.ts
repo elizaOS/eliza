@@ -1,3 +1,11 @@
+/**
+ * Unit coverage for the planner runaway-loop guards (#8801 — these bound
+ * worst-case cost/looping but shipped untested): what stops a model that
+ * re-issues the same failing tool forever, or grows a trajectory past its token
+ * budget, from burning the turn. Pure deterministic tests — the
+ * threshold/signature/dedup helpers are exercised directly with synthetic
+ * failures and configs; no live model, no DB.
+ */
 import { describe, expect, it } from "vitest";
 import {
 	assertRepeatedFailureLimit,
@@ -9,13 +17,6 @@ import {
 	mergeChainingLoopConfig,
 	TrajectoryLimitExceeded,
 } from "./limits.ts";
-
-/**
- * Planner runaway-loop guards (#8801 — these bound worst-case cost/looping but
- * shipped untested). They are what stops a model that re-issues the same failing
- * tool forever, or grows a trajectory past its token budget, from burning the
- * turn. The threshold/signature/dedup logic is pinned here.
- */
 
 describe("mergeChainingLoopConfig", () => {
 	it("returns the defaults (with reserve marked non-explicit) when given nothing", () => {

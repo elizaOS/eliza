@@ -1,3 +1,10 @@
+/**
+ * Transcription-mode reply suppression: the transcriptionModeActive flag reader
+ * (client-transport metadata path and in-process top-level path) and the
+ * `core.transcription_mode` builtin response-handler evaluator that turns a
+ * flagged turn into IGNORE + clearReply. Deterministic — the evaluator runs
+ * against hand-built Memory, no model.
+ */
 import { describe, expect, it } from "vitest";
 import type { ResponseHandlerEvaluatorContext } from "../runtime/response-handler-evaluators";
 import {

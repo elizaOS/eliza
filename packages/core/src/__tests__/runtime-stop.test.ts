@@ -1,3 +1,8 @@
+/**
+ * Exercises `AgentRuntime.stop` fast-shutdown paths: not hanging on an
+ * unresolved service start, capping already-started stop waits, and surviving a
+ * synchronously-throwing stop. Deterministic: real runtime, no database.
+ */
 import { afterEach, describe, expect, it } from "vitest";
 import { AgentRuntime } from "../runtime";
 import type { IAgentRuntime } from "../types/runtime";

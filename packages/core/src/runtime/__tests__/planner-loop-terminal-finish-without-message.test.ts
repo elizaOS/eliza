@@ -1,3 +1,9 @@
+/**
+ * Guards that a terminal-only FINISH verdict is honored even when the evaluator
+ * omits `messageToUser`: the loop falls back to the planner's terminal text
+ * instead of coercing FINISH→CONTINUE and burning the terminal-continuation cap.
+ * Deterministic — vitest-mocked `useModel`; no live model.
+ */
 import { describe, expect, it, vi } from "vitest";
 import { runPlannerLoop } from "../planner-loop";
 

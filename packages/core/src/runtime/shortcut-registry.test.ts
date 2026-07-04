@@ -1,3 +1,11 @@
+/**
+ * Unit tests for the voice/text shortcut matcher (`normalizeForMatch`,
+ * `compileTemplate`, `matchShortcut`, `ShortcutRegistry`): the always-on explicit
+ * slash-command tier, the caller-enabled natural-language tier with slot
+ * extraction and a confidence floor, and action/context/auth gating. Pure
+ * deterministic functions — no model, no DB.
+ */
+
 import { describe, expect, it } from "vitest";
 import type { ShortcutDefinition } from "../types/shortcut";
 import {

@@ -1,3 +1,10 @@
+/**
+ * Unit coverage for the canonical system-prompt builder and helpers
+ * (`buildCanonicalSystemPrompt`, `resolveEffectiveSystemPrompt`,
+ * `dropDuplicateLeadingSystemMessage`): character/bio/role rendering,
+ * `{{name}}`/`{{agentName}}` substitution, and source precedence. Pure,
+ * deterministic.
+ */
 import { describe, expect, it } from "vitest";
 import {
 	buildCanonicalSystemPrompt,

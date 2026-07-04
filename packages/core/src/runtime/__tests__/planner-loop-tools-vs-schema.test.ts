@@ -1,3 +1,10 @@
+/**
+ * Pins the planner's `useModel` wire contract: native tool-calling and
+ * `responseSchema` are mutually exclusive (tools set ⇒ no schema, empty ⇒
+ * schema), plus `toolChoice` forcing and the required-tool-miss cap that
+ * surfaces a captured refusal. Deterministic — vitest mock captures each
+ * `useModel` param set; no live model.
+ */
 import { describe, expect, it, vi } from "vitest";
 import type { ToolDefinition } from "../../types/model";
 import { runPlannerLoop } from "../planner-loop";

@@ -1,3 +1,10 @@
+/**
+ * Role and context gate predicates for provider and action visibility. Decides
+ * whether a caller's roles satisfy a `RoleGate` (min-rank plus anyOf/allOf/noneOf)
+ * and whether the active agent contexts satisfy a `ContextGate`, and filters a
+ * candidate list by both. Role and context names are normalized before every
+ * comparison.
+ */
 import { CANONICAL_ROLE_RANK } from "../roles";
 import type {
 	AgentContext,
@@ -7,7 +14,7 @@ import type {
 } from "../types/contexts";
 import { normalizeContextList } from "./context-normalization";
 
-// #9948: single source of truth for role ranking (was a duplicate literal here).
+// #9948: single source of truth for role ranking — delegates to CANONICAL_ROLE_RANK.
 const ROLE_RANK: Record<string, number> = CANONICAL_ROLE_RANK;
 
 export function normalizeGateRole(role: RoleGateRole): RoleGateRole {

@@ -1,3 +1,9 @@
+/**
+ * Canonical first-party context ids and their normalization helpers. Lower-cases
+ * and underscores raw context ids, expands the narrow finance/crypto aliases to
+ * their canonical set, and de-duplicates a context list — the shared normal form
+ * every gate and registry comparison runs against.
+ */
 import type { AgentContext, FirstPartyAgentContext } from "../types/contexts";
 
 export const FIRST_PARTY_CONTEXT_IDS = [

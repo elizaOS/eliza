@@ -1,9 +1,3 @@
-import { describe, expect, it, vi } from "vitest";
-import { SecretSwapSession } from "../../security/secret-swap";
-import { runWithTrajectoryContext } from "../../trajectory-context";
-import type { Action, IAgentRuntime, Memory } from "../../types";
-import { executePlannedToolCall } from "../execute-planned-tool-call";
-
 /**
  * End-to-end egress test for the secret-swap layer (#10469).
  *
@@ -14,6 +8,11 @@ import { executePlannedToolCall } from "../execute-planned-tool-call";
  * instead of reaching the handler. The session is carried on the turn-scoped
  * trajectory context exactly as `useModel` stores it on ingress.
  */
+import { describe, expect, it, vi } from "vitest";
+import { SecretSwapSession } from "../../security/secret-swap";
+import { runWithTrajectoryContext } from "../../trajectory-context";
+import type { Action, IAgentRuntime, Memory } from "../../types";
+import { executePlannedToolCall } from "../execute-planned-tool-call";
 
 function makeRuntime(actions: Action[]): IAgentRuntime {
 	return {

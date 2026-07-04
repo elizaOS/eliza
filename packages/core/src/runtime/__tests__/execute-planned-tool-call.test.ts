@@ -1,3 +1,11 @@
+/**
+ * Drives executePlannedToolCall end to end: exact action-name matching, strict
+ * argument validation and planner-wrapper canonicalization, role/context/
+ * connector/private gating (including the ACTION_ROLE_POLICY override),
+ * ACTION_STARTED/ACTION_COMPLETED emission with sensitive-result suppression, and
+ * trajectory-step wiring; also unit-tests dropEmptyOptionalArgs. Deterministic —
+ * stub runtime with vi.fn handlers and in-memory connector storage, no live model.
+ */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	getConnectorAccountManager,

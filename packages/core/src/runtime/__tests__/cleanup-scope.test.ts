@@ -1,3 +1,9 @@
+/**
+ * Covers `withCleanup`: the cleanup callback runs only when the parent signal is
+ * aborted, fn results and errors propagate unchanged, and cleanup itself is
+ * time-bounded, aborting via `CleanupTimeoutError`. Deterministic timers, no
+ * runtime.
+ */
 import { describe, expect, it } from "vitest";
 import { CleanupTimeoutError, withCleanup } from "../cleanup-scope";
 

@@ -1,3 +1,9 @@
+/**
+ * Renders completed planner trajectory steps into native assistant/tool chat
+ * message pairs and projects a tool result to plain text for the next planner
+ * call, shaping everything append-only so the prompt prefix stays byte-stable
+ * for provider prompt caching. Also re-exports the provider cache-plan helpers.
+ */
 import type { ChatMessage, ChatMessageContentPart } from "../types/model";
 import type { JsonValue } from "../types/primitives.ts";
 import { stringifyForModel } from "./json-output";
@@ -29,7 +35,7 @@ export interface TrajectoryStepsToMessagesOptions {
 	 * any downstream consumer that wants the unredacted output. Only the
 	 * wire-shape message that goes to the next planner call is truncated.
 	 *
-	 * Default: undefined (no cap — exact pre-PR behavior).
+	 * Default: undefined (no cap).
 	 */
 	maxToolResultChars?: number;
 }

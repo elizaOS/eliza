@@ -1,3 +1,11 @@
+/**
+ * Source-text contract test: reads services/message.ts and asserts benchmark-mode
+ * detection stays centralized in hasInboundBenchmarkContext /
+ * isBenchmarkForcingToolCall (no inline benchmark-flag inspection at call sites),
+ * that benchmark context forces CONTEXT_BENCH into the provider list, and that
+ * the planner requires a tool call only when both the env opt-in and an inbound
+ * benchmark signal are present. Static assertions over the file — no runtime.
+ */
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vitest";

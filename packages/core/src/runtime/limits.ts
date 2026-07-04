@@ -1,3 +1,10 @@
+/**
+ * Bounds and guard functions for the planner chaining loop: the
+ * `ChainingLoopConfig` limit contract (max tool calls, repeated-failure and
+ * cumulative-token budgets, compaction thresholds), the typed
+ * `TrajectoryLimitExceeded` error, and the assert/count helpers that stop a
+ * runaway or stuck planner from burning a turn.
+ */
 export interface ChainingLoopConfig {
 	/** Maximum tool calls executed during one planner loop. */
 	maxToolCalls: number;
@@ -86,7 +93,7 @@ export interface ChainingLoopConfig {
 	 * single-step pathology without touching the trajectory's
 	 * archival/replay fidelity.
 	 *
-	 * Default: undefined (no cap — exact pre-PR behavior). Recommended
+	 * Default: undefined (no cap). Recommended
 	 * for tight-context models: ~8000 (one tool result still gets
 	 * roughly two pages of head + a half page of tail context).
 	 */

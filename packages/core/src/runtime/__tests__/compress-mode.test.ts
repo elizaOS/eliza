@@ -1,3 +1,9 @@
+/**
+ * Exercises `ELIZA_PROMPT_COMPRESS` token-budget mode: the optimized-prompt
+ * resolver drops few-shot demonstrations and the planner-loop routing-hints
+ * block is skipped when the env flag is set. Deterministic — toggles the env var
+ * directly, no model.
+ */
 import { afterEach, describe, expect, it } from "vitest";
 import type { OptimizedPromptService } from "../../services/optimized-prompt";
 import { resolveOptimizedPrompt } from "../../services/optimized-prompt-resolver";

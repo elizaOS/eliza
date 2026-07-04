@@ -1,3 +1,7 @@
+/**
+ * Deterministic unit tests for the unified action gate (`canActionRun` /
+ * `actionGateFailure`) — synthetic in-process actions, no live model or DB.
+ */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Action } from "../types/components";
 import type { AgentContext, RoleGateRole } from "../types/contexts";

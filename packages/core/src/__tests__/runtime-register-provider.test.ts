@@ -1,3 +1,8 @@
+/**
+ * Coverage for `AgentRuntime.registerProvider` — name-based deduplication and
+ * the `registerByDefault: false` opt-out across plugin and direct registration.
+ * Drives a real `AgentRuntime`; no model.
+ */
 import { describe, expect, it } from "vitest";
 import { AgentRuntime } from "../runtime";
 import type { Character, Provider } from "../types";

@@ -1,3 +1,9 @@
+/**
+ * Verifies `cacheProviderOptions` emits per-provider prompt-cache directives
+ * (eliza, cerebras, openai, anthropic, openrouter, gateway) derived from a
+ * prefix hash, with a deterministic, length-bounded cache key. Pure synchronous
+ * assertions — no model or network.
+ */
 import { describe, expect, it } from "vitest";
 import { cacheProviderOptions } from "../planner-loop";
 

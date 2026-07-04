@@ -1,3 +1,10 @@
+/**
+ * Instrumentation surface of retrieveActions: measurement mode exposes
+ * per-stage scores (exact/regex/keyword/bm25/embedding/contextMatch), the fused
+ * reciprocal-rank-fusion topK, and honors tierOverrides (topK cap, per-stage
+ * weights) without altering the primary results returned when it is off. Runs
+ * against a deterministic in-memory action catalog — no model or embeddings.
+ */
 import { describe, expect, it } from "vitest";
 import { buildActionCatalog } from "../action-catalog";
 import { retrieveActions } from "../action-retrieval";

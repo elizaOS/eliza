@@ -1,3 +1,11 @@
+/**
+ * Core planner-loop suite: `parsePlannerOutput` shape/recovery parsing and
+ * end-to-end `runPlannerLoop` behavior — tool dispatch, the evaluator FINISH
+ * gate, trajectory limits, coding/full-surface token caps, required-tool
+ * handling, suffix compaction, and `plannerTemplate` policy text. Deterministic
+ * — `useModel`, `executeToolCall`, and `evaluate` are vitest mocks; no live
+ * model.
+ */
 import { describe, expect, it, vi } from "vitest";
 import { plannerTemplate } from "../../prompts/planner";
 import { type ChatMessage, ModelType } from "../../types/model";
@@ -371,9 +379,8 @@ describe("v5 planner loop skeleton", () => {
 		]);
 		expect(plannerParams.messages[0].content).toContain("planner_stage:");
 		expect(plannerParams.messages[0].content).toContain("agent_name: Eliza");
-		// Provider events render as `provider:NAME:\n<text>` (label + content).
-		// The previous shape baked an extra `provider: <name>` line into the
-		// content body, doubling up with the label. The new render drops that.
+		// Provider events render as `provider:NAME:\n<text>` (label + content),
+		// with no duplicate `provider: <name>` line baked into the content body.
 		expect(plannerParams.messages[1].content).toContain(
 			"provider:RECENT_MESSAGES:",
 		);
@@ -381,9 +388,9 @@ describe("v5 planner loop skeleton", () => {
 		expect(plannerParams.messages[1].content).not.toMatch(
 			/provider:RECENT_MESSAGES:\nprovider: RECENT_MESSAGES/,
 		);
-		// After the stacking fix, trajectory steps are conveyed as assistant/tool
-		// message pairs, NOT as a JSON dump in the user message. The user message
-		// (messages[1]) should no longer contain "trajectory:\n[".
+		// Trajectory steps are conveyed as assistant/tool message pairs, NOT as a
+		// JSON dump in the user message, so messages[1] never starts with
+		// "trajectory:\n[".
 		expect(plannerParams.messages[1].content).not.toMatch(/^trajectory:\n\[/);
 		expect(plannerParams.providerOptions.eliza.modelInputBudget).toMatchObject({
 			reserveTokens: 10_000,

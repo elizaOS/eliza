@@ -1,3 +1,8 @@
+/**
+ * Unit tests for TurnControllerRegistry: per-room turn registration and
+ * cleanup, abort signalling, lifecycle events, and cross-room isolation. Fully
+ * in-process and deterministic (real timers, no model or DB).
+ */
 import { describe, expect, it } from "vitest";
 import {
 	TurnAbortedError,

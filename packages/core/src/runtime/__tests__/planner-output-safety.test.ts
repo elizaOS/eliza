@@ -1,3 +1,9 @@
+/**
+ * Guards `parsePlannerOutput` user-visible safety: evaluator/control envelope
+ * JSON emitted in the native text channel is consumed as control data (never
+ * shown as a reply), while a genuine user-requested JSON object round-trips to a
+ * visible message. Pure unit tests — no model or runtime.
+ */
 import { describe, expect, it } from "vitest";
 import {
 	looksLikeEvaluatorEnvelopeJson,

@@ -1,3 +1,9 @@
+/**
+ * Stage 1 of the message loop: parses the response-handler model output (the
+ * canonical JSON envelope or a plain-text keyed transcript) into a
+ * `MessageHandlerResult`, then routes the turn — direct reply, ignore/stop, or
+ * hand off to the planner — based on the selected contexts and tool hints.
+ */
 import type {
 	MessageHandlerAction,
 	MessageHandlerExtract,
@@ -44,9 +50,8 @@ export const SIMPLE_CONTEXT_ID = "simple";
  *
  * Expects the canonical response-handler field-registry envelope:
  * `{ shouldRespond, contexts, intents, replyText, candidateActionNames, facts,
- * relationships, addressedTo, emotion }`. The internal result still carries
- * the `plan` sub-object because the downstream runtime contract has not been
- * renamed.
+ * relationships, addressedTo, emotion }`. The internal result carries the
+ * `plan` sub-object to match the downstream runtime contract.
  */
 export function parseMessageHandlerOutput(
 	raw: string,

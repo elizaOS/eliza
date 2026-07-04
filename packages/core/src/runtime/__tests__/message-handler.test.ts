@@ -1,3 +1,9 @@
+/**
+ * Covers Stage-1 routing: routeMessageHandlerOutput's simple-reply vs planning vs
+ * ignore/stop decisions (including requiresTool / candidateActions promotion and
+ * its suppression), and parseMessageHandlerOutput's flat-envelope plus extract
+ * parsing. Deterministic — routes fixed output objects, no model.
+ */
 import { describe, expect, it } from "vitest";
 import { HANDLE_RESPONSE_SCHEMA } from "../../actions/to-tool";
 import {
@@ -353,11 +359,10 @@ describe("v5 message handler routing", () => {
 		]);
 	});
 
-	// Removed: "refusal suppression on planning path (elizaOS/eliza#7620)"
-	// describe block. The refusal-sanitization fallback was deleted along with
-	// the `refusal-detector` module. Under `toolChoice: "required"` + per-turn
-	// action tools, the model picks the right tool directly — there is no
-	// "model contradicts its own routing decision" case to repair.
+	// No refusal-sanitization repair runs on the planning path: under
+	// `toolChoice: "required"` + per-turn action tools the model picks the right
+	// tool directly, so there is no "model contradicts its own routing decision"
+	// case to repair.
 
 	it("maps shouldRespond IGNORE/STOP through routing", () => {
 		const ignore = parseMessageHandlerOutput(

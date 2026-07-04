@@ -1,3 +1,9 @@
+/**
+ * Evaluator stage of the planner loop: renders the evaluator model input, runs
+ * the evaluator model call, and parses/repairs/sanitizes its structured
+ * decision (FINISH / CONTINUE / NEXT_RECOMMENDED) before the loop acts on it.
+ * Also records each evaluation as a trajectory stage for offline review.
+ */
 import { computeCallCostUsd } from "../features/trajectories/pricing";
 import { evaluatorSchema, evaluatorTemplate } from "../prompts/evaluator";
 import {

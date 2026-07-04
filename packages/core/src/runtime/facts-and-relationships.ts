@@ -1,3 +1,23 @@
+/**
+ * Stage that runs in parallel with the planner whenever Stage 1
+ * (messageHandler) extracts candidate facts or relationships from the user
+ * message. It does NOT block the user reply: planner + facts run concurrently.
+ *
+ * Responsibilities:
+ *   1. Keyword/BM25-search the `facts` table for memories similar to each
+ *      candidate so the model can see what's already known.
+ *   2. Pull existing relationships for the user/agent so duplicates can be
+ *      filtered.
+ *   3. Surface room entities so the model can ground subject/object names.
+ *   4. Ask the model which candidates are NEW + WORTH WRITING. The model emits
+ *      cleaned text and drops anything that's a near-duplicate of existing
+ *      facts/relationships.
+ *   5. Persist the kept entries via `runtime.createMemory` (facts table) and
+ *      `runtime.createRelationship` (relationships table).
+ *
+ * The trajectory recorder logs this as a `facts_and_relationships` stage so
+ * extraction quality can be reviewed offline.
+ */
 import {
 	buildFactKeywordsForStorage,
 	scoreFactKeywordRelevance,
@@ -22,27 +42,6 @@ import type { State } from "../types/state";
 import { isSyntheticConversationArtifactMemory } from "../utils/synthetic-conversation-artifact";
 import { parseJsonObject } from "./json-output";
 import { buildCanonicalSystemPrompt } from "./system-prompt";
-
-/**
- * Stage that runs in parallel with the planner whenever Stage 1
- * (messageHandler) extracts candidate facts or relationships from the user
- * message. It does NOT block the user reply: planner + facts run concurrently.
- *
- * Responsibilities:
- *   1. Keyword/BM25-search the `facts` table for memories similar to each
- *      candidate so the model can see what's already known.
- *   2. Pull existing relationships for the user/agent so duplicates can be
- *      filtered.
- *   3. Surface room entities so the model can ground subject/object names.
- *   4. Ask the model which candidates are NEW + WORTH WRITING. The model emits
- *      cleaned text and drops anything that's a near-duplicate of existing
- *      facts/relationships.
- *   5. Persist the kept entries via `runtime.createMemory` (facts table) and
- *      `runtime.createRelationship` (relationships table).
- *
- * The trajectory recorder logs this as a `facts_and_relationships` stage so
- * extraction quality can be reviewed offline.
- */
 
 export const FACTS_AND_RELATIONSHIPS_TOOL_NAME =
 	"FACTS_AND_RELATIONSHIPS_VALIDATE";

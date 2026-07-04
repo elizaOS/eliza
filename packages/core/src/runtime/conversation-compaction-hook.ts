@@ -1,3 +1,10 @@
+/**
+ * Registration slot and typed contract for the message-history compaction hook
+ * a plugin attaches to the runtime. The hook rewrites conversation history
+ * inside `State` before a response/continuation stage renders and reports what
+ * it did through the telemetry shape defined here; register/get store it on the
+ * runtime under a well-known symbol.
+ */
 import type { Memory } from "../types/memory";
 import type { IAgentRuntime } from "../types/runtime";
 import type { State } from "../types/state";

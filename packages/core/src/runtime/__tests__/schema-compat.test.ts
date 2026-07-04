@@ -1,3 +1,9 @@
+/**
+ * Unit coverage for the Cerebras schema/function-name compatibility shims
+ * (`normalizeSchemaForCerebras`, `sanitizeFunctionNameForCerebras`): stripping
+ * empty object schemas, recursion into nested properties and array items, and
+ * identifier rewriting. Pure functions, deterministic.
+ */
 import { describe, expect, it } from "vitest";
 import {
 	normalizeSchemaForCerebras,

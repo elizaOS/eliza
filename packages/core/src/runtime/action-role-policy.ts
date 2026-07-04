@@ -1,3 +1,9 @@
+/**
+ * Reads, caches, and applies the operator `ACTION_ROLE_POLICY` override:
+ * per-action minimum-role resolution, role-based authorization checks, and
+ * startup warnings for policy keys that loosen a declared gate or match no
+ * registered action.
+ */
 import { logger } from "../logger";
 import type { RoleGateRole } from "../types/contexts";
 import {

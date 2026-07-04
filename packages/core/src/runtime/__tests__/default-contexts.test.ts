@@ -1,3 +1,9 @@
+/**
+ * Validates `DEFAULT_CONTEXT_DEFINITIONS`: unique ids and required fields, clean
+ * idempotent registration into a `ContextRegistry`, and role-scoped
+ * `listAvailable` filtering (OWNER-only vs USER vs GUEST contexts). Pure, no
+ * model.
+ */
 import { describe, expect, it } from "vitest";
 import { ContextRegistry } from "../context-registry";
 import { DEFAULT_CONTEXT_DEFINITIONS } from "../default-contexts";

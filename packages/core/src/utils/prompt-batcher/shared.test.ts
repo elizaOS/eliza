@@ -1,3 +1,10 @@
+/**
+ * Prompt-batcher shared helpers. sanitizeIdentifier must yield a valid
+ * identifier (prefix when it can't start with a letter/underscore); retry count
+ * is clamped to 0..2; getSourceMessageId derives a stable per-platform dedup key
+ * (so the same inbound message isn't batched twice); and rollingAverage folds a
+ * new sample into a running mean.
+ */
 import { describe, expect, it } from "vitest";
 import type { Memory } from "../../types/memory";
 import {
@@ -8,14 +15,6 @@ import {
 	rollingAverage,
 	sanitizeIdentifier,
 } from "./shared.ts";
-
-/**
- * Prompt-batcher shared helpers. sanitizeIdentifier must yield a valid
- * identifier (prefix when it can't start with a letter/underscore); retry count
- * is clamped to 0..2; getSourceMessageId derives a stable per-platform dedup key
- * (so the same inbound message isn't batched twice); and rollingAverage folds a
- * new sample into a running mean.
- */
 
 describe("sanitizeIdentifier", () => {
 	it("replaces non-identifier chars and guarantees a valid leading char", () => {

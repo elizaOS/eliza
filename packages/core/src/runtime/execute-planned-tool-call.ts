@@ -1,3 +1,10 @@
+/**
+ * Executes one planner-selected tool call against its Action: resolves the
+ * action, applies role and connector-account gates, normalizes and validates
+ * the args, restores real secrets/PII at the egress boundary, runs the handler
+ * inside the trajectory / action-routing context, and emits ACTION_STARTED /
+ * ACTION_COMPLETED around a normalized ActionResult.
+ */
 import { validateToolArgs } from "../actions/validate-tool-args";
 import { evaluateConnectorAccountPolicies } from "../connectors/account-manager";
 import { checkSenderRole } from "../roles";

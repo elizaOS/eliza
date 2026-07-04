@@ -1,3 +1,8 @@
+/**
+ * Covers the context registry and gate helpers: id normalization, first-party
+ * context registration, finance-alias expansion, context/role-gate candidate
+ * filtering, and parent/subcontext cycle detection. Pure, no model.
+ */
 import { describe, expect, it } from "vitest";
 import type { ContextDefinition } from "../../types/contexts";
 import {

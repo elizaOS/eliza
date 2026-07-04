@@ -1,3 +1,10 @@
+/**
+ * Exercises AgentRuntime model-registration observability: the
+ * `MODEL_REGISTERED` event payload, `getModelRegistrations()` returning
+ * handler-free metadata, plugin `modelMetadata` application, and failover
+ * surviving alongside the registry API. A real runtime over the in-memory
+ * adapter registers noop handlers — no live model.
+ */
 import { describe, expect, it, vi } from "vitest";
 import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter";
 import { AgentRuntime } from "../../runtime";

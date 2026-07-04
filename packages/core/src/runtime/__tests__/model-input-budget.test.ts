@@ -1,3 +1,9 @@
+/**
+ * Unit coverage for `buildModelInputBudget`: per-model context-window
+ * resolution, reserve-token scaling by the window fraction, compaction-
+ * threshold derivation, and the `MODEL_CONTEXT_WINDOWS_JSON` env override.
+ * Pure deterministic assertions — no live model, no database.
+ */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ChatMessage, ToolDefinition } from "../../types/model";
 import {
@@ -43,7 +49,7 @@ describe("buildModelInputBudget", () => {
 
 		it("preserves the legacy default reserve (10k) when no modelName provided", () => {
 			// This is the back-compat guarantee — callers that don't opt into
-			// the per-model lookup must see exactly the pre-PR threshold.
+			// the per-model lookup must see exactly the legacy threshold.
 			const budget = buildModelInputBudget({
 				messages: [userMessageOfChars(100)],
 			});

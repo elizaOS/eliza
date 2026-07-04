@@ -1,11 +1,11 @@
-import { describe, expect, it } from "vitest";
-import { type BackoffPolicy, computeBackoff } from "./retry";
-
 /**
  * Tests for the restart/retry backoff math. computeBackoff drives crash-recovery
  * and retry delays; these cover the exponential growth, the attempt clamp, the
  * maxMs cap, and the jitter bounds.
  */
+import { describe, expect, it } from "vitest";
+import { type BackoffPolicy, computeBackoff } from "./retry";
+
 const noJitter: BackoffPolicy = {
 	initialMs: 100,
 	maxMs: 10_000,

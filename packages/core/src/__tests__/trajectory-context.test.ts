@@ -1,3 +1,10 @@
+/**
+ * Async-scoped trajectory-context helpers: runWithTrajectoryPurpose overrides
+ * only the purpose tag while preserving the enclosing trajectory / step / run /
+ * room ids, and the suite pins the bare-context shape that would otherwise
+ * clobber the step id. Deterministic — drives the context manager directly, no
+ * model.
+ */
 import { describe, expect, it } from "vitest";
 import {
 	getTrajectoryContext,

@@ -1,3 +1,11 @@
+/**
+ * The uniform addressing gate messageAddressedToOtherParticipant (#9874):
+ * returns true only when a turn is directed at a resolvable OTHER room
+ * participant — bot or human alike — resolving @-names to ids via room
+ * entities, treating platform-alias self-addresses as self, failing safe on
+ * unresolvable names, and never consulting sender bot-ness. Runtime and its
+ * entity lookup are vi-mocked; no model or database.
+ */
 import { describe, expect, it, vi } from "vitest";
 import type { Entity, IAgentRuntime, Memory, UUID } from "../../types/index.ts";
 import { messageAddressedToOtherParticipant } from "../addressed-to.ts";

@@ -1,3 +1,9 @@
+/**
+ * Verifies plugin-registered contexts propagate their role gate onto actions,
+ * and that `executePlannedToolCall` enforces it — USER denied, OWNER allowed.
+ * Drives a real in-process `AgentRuntime` with a stubbed action handler; no
+ * model call.
+ */
 import { describe, expect, it, vi } from "vitest";
 import { AgentRuntime } from "../runtime";
 import type { Memory, Plugin } from "../types";

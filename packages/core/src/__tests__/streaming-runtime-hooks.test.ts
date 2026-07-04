@@ -1,3 +1,10 @@
+/**
+ * Covers the streaming observer hooks fired through the planner loop and
+ * sub-planner (tool call, tool result, evaluation, context event): execution
+ * ordering, caller isolation from throwing hooks, failed-tool-result emission,
+ * and sub-planner context events. Deterministic: a stub runtime with queued
+ * model responses, no live model.
+ */
 import { describe, expect, it, vi } from "vitest";
 import { executePlannedToolCall } from "../runtime/execute-planned-tool-call";
 import {

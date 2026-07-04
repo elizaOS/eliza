@@ -1,3 +1,10 @@
+/**
+ * Exercises the runtime message/post connector registries and the connector
+ * progress-UX dispatch (send / edit / typing / thread): registration,
+ * account-scoped send routing, read-time clone isolation, and capability
+ * gating. A real AgentRuntime over the in-memory adapter drives stub connector
+ * handlers — no live model or network.
+ */
 import { describe, expect, it, vi } from "vitest";
 import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter";
 import {

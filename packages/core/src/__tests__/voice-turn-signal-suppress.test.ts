@@ -1,13 +1,17 @@
+/**
+ * The `core.voice_turn_signal` suppression gate (#8786): the server veto that
+ * blocks a voice reply when semantic turn-taking says the next speaker is not the
+ * agent (agentShouldSpeak false, next speaker user, or end-of-turn probability
+ * below 0.4), and only on voice channels carrying the signal. Deterministic — the
+ * builtin evaluator runs against hand-built Memory + handler-decision contexts,
+ * no model.
+ */
 import { describe, expect, it } from "vitest";
 import type { ResponseHandlerEvaluatorContext } from "../runtime/response-handler-evaluators";
 import { BUILTIN_RESPONSE_HANDLER_EVALUATORS } from "../services/message";
 import type { Memory } from "../types/memory";
 import { ChannelType, type UUID } from "../types/primitives";
 
-// core.voice_turn_signal is the ORIGINAL #8786 mechanism — the suppression-only
-// server gate that vetoes a voice reply when semantic turn-taking says the next
-// speaker is not the agent. The positive confirm path has a test
-// (voice-turn-signal-confirm.test.ts) but the suppress path had none.
 const ROOM = "11111111-1111-1111-1111-111111111111" as UUID;
 const ENTITY = "22222222-2222-2222-2222-222222222222" as UUID;
 

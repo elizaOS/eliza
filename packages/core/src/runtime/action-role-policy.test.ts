@@ -1,3 +1,7 @@
+/**
+ * Deterministic unit tests for the `ACTION_ROLE_POLICY` operator override —
+ * env-var parse/cache and pure role authorization; no model or DB.
+ */
 import { afterEach, describe, expect, it } from "vitest";
 import {
 	_resetActionRolePolicyCacheForTests,

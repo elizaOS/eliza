@@ -1,3 +1,11 @@
+/**
+ * Exercises Stage 1 of the message runtime (runV5MessageRuntimeStage1): native
+ * HANDLE_RESPONSE tool request/parse, direct-vs-planned routing, PII surrogate
+ * restoration at the reply boundary, truncation and junk-reply handling, the
+ * empty-completion retry budget, and planner fallback. Runs against a fabricated
+ * runtime whose useModel returns queued responses (deterministic — no live
+ * model, no DB); a few cases assert directly over the services/message.ts source.
+ */
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
@@ -22,7 +30,7 @@ import type { IAgentRuntime } from "../types/runtime";
 import type { State } from "../types/state";
 
 // Mirrors the scheduled-task backstop rule that plugin-personal-assistant
-// registers via `registerCandidateActionBackstopRule`. Core no longer hardcodes
+// registers via `registerCandidateActionBackstopRule`. Core does not hardcode
 // these action names / heuristic; the coding-delegation backstop consults
 // whatever rules a plugin registers, threaded in via `candidateBackstopRules`.
 const SCHEDULING_BACKSTOP_RULE: CandidateActionBackstopRule = {
@@ -561,7 +569,7 @@ describe("runV5MessageRuntimeStage1", () => {
 
 	it("keeps a valid-but-terse numeric Stage 1 reply without a second model call", async () => {
 		// A correct-but-terse numeric answer ("4") trips the low-quality heuristic
-		// but is worth keeping. The direct-reply regeneration path is gone, so the
+		// but is worth keeping. There is no direct-reply regeneration path, so the
 		// uncapped Stage-1 reply is the single source of truth: it is kept verbatim
 		// with no second TEXT_SMALL call.
 		const runtime = makeRuntime([

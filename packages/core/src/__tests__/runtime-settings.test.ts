@@ -1,3 +1,9 @@
+/**
+ * Exercises `AgentRuntime.getSetting` resolution precedence (character env vs
+ * settings vs constructor settings vs DB-persisted values on restart) and
+ * prompt-batcher construction. Deterministic: real runtime over the in-memory
+ * adapter, no model calls.
+ */
 import { describe, expect, it } from "vitest";
 import { InMemoryDatabaseAdapter } from "../database/inMemoryAdapter";
 import { AgentRuntime } from "../runtime";

@@ -1,3 +1,10 @@
+/**
+ * Resolves and persists the message handler's `addressedTo` targets. Upserts
+ * "addressed" relationship edges from the speaker to each resolved participant,
+ * and decides whether an inbound turn is directed at another participant (so the
+ * agent is merely overhearing and should not act on it). All name/id resolution
+ * runs against the room's entity list, without an LLM call.
+ */
 import type { Entity, UUID } from "../types/index";
 import type { Memory } from "../types/memory";
 import type { IAgentRuntime } from "../types/runtime";

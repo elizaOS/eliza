@@ -1,3 +1,9 @@
+/**
+ * Guards the `@elizaos/core` public barrel: keeps test helpers out of the
+ * package root, ensures first-run provider value re-exports stay present, and
+ * asserts the filesystem-probing plugin-loader is absent. Reads the source
+ * files as text and asserts on their contents.
+ */
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";

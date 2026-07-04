@@ -1,3 +1,8 @@
+/**
+ * Verifies formatEntities enforces prompt-hygiene caps: alias and long-metadata
+ * truncation plus a ceiling on the number of rendered entities. Pure
+ * deterministic function test.
+ */
 import { describe, expect, it } from "vitest";
 import { formatEntities } from "../entities.ts";
 import type { Entity } from "../types/index.ts";

@@ -6,12 +6,12 @@ import { ChannelType } from "../../types/primitives.ts";
 import { createBasicCapabilitiesPlugin } from "./index.ts";
 
 /**
- * P0 regression: the DM-world setup in `syncSingleUser` used to hardcode
- * `ownership.ownerId = <sender>` + `roles[<sender>] = OWNER` for ANY DM world.
- * With no canonical owner configured (ELIZA_ADMIN_ENTITY_ID unset — the
- * DEFAULT), roles.ts then promoted EVERY DM sender to OWNER, clearing every
- * `minRole: OWNER` gate (including SECRETS). Ownership must be granted ONLY to a
- * configured owner, via roles.ts's `recordOwnerGrant`.
+ * P0 permission-bypass guard for the DM-world setup in `syncSingleUser`: a DM
+ * world must NOT hardcode `ownership.ownerId = <sender>` + `roles[<sender>] =
+ * OWNER` for ANY DM world. With no canonical owner configured
+ * (ELIZA_ADMIN_ENTITY_ID unset — the DEFAULT) that promotes EVERY DM sender to
+ * OWNER, clearing every `minRole: OWNER` gate (including SECRETS). Ownership is
+ * granted ONLY to a configured owner, via roles.ts's `recordOwnerGrant`.
  */
 
 const AGENT_ID = "00000000-0000-0000-0000-0000000000aa";

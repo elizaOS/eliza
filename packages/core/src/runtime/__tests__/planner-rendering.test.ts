@@ -1,3 +1,9 @@
+/**
+ * Exercises planner render helpers: `truncateToolResultText` head/marker/tail
+ * clamping and `trajectoryStepsToMessages` per-step tool-result truncation
+ * (rendered-only, leaving `PlannerStep.result.text` pristine). Pure unit tests —
+ * no model or runtime.
+ */
 import { describe, expect, it } from "vitest";
 import type { ChatMessage } from "../../types/model";
 import {

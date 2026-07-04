@@ -1,3 +1,9 @@
+/**
+ * Estimates a planner stage's model-input token count and derives its
+ * compaction budget: resolves the context window (per-model lookup > explicit
+ * arg > default), computes the reserve and compaction threshold, and reports
+ * whether the input should be compacted before the call.
+ */
 import { lookupModelContextWindow } from "../features/trajectories/pricing";
 import type {
 	ChatMessage,
@@ -123,16 +129,15 @@ export function buildModelInputBudget(args: {
 	//      authoritative because it reflects the actual hard limit you'd
 	//      hit on the wire.
 	//   2. `contextWindowTokens` passed by the caller — usually the
-	//      generic 128k default carried on `ChainingLoopConfig` from when
-	//      the loop assumed a single context size. Used when no lookup.
+	//      generic 128k default carried on `ChainingLoopConfig`. Used
+	//      when no lookup resolves.
 	//   3. `DEFAULT_CONTEXT_WINDOW_TOKENS` — last-resort fallback.
 	//
 	// This ordering means a caller can opt into the per-model ceiling
 	// just by setting `modelName`, without having to also unset the
 	// generic default. Callers who *need* an exact override (e.g. a
 	// custom long-context tier) can still pin a number explicitly by
-	// omitting `modelName` and passing `contextWindowTokens` — that path
-	// is unchanged from the pre-lookup behavior.
+	// omitting `modelName` and passing `contextWindowTokens`.
 	const lookup = lookupModelContextWindow(args.modelName);
 
 	const contextWindowTokens =
