@@ -31,7 +31,12 @@ describe("AppBackground", () => {
       '[data-testid="app-background-shader"]',
     );
     expect(shader).not.toBeNull();
-    expect(shader?.style.backgroundColor).toBe("rgb(239, 90, 31)");
+    // The "midnight ember" shader paints the seeded color as the top of a
+    // vertical field gradient (backgroundImage), not a flat backgroundColor, so
+    // the dark field can settle into a hair-warmer floor tone. Assert the
+    // seeded color drives the gradient rather than a flat fill.
+    expect(shader?.style.backgroundImage).toContain("rgb(239, 90, 31)");
+    expect(shader?.style.backgroundImage).toContain("linear-gradient");
     expect(
       container.querySelector('[data-testid="app-background-image"]'),
     ).toBeNull();
@@ -48,6 +53,22 @@ describe("AppBackground", () => {
     expect(
       container.querySelector('[data-testid="app-background-shader"]'),
     ).toBeNull();
+  });
+
+  it("always paints the legibility scrim inside the image wallpaper", () => {
+    seed({ mode: "image", color: "#000000", imageUrl: "/api/media/x.png" });
+    const { container } = render(<AppBackground />);
+    const scrim = container.querySelector<HTMLElement>(
+      '[data-testid="app-background-image-scrim"]',
+    );
+    expect(scrim).not.toBeNull();
+    // The scrim lives INSIDE the image layer (one background layer invariant)
+    // and darkens via the theme --bg token so content stays legible over any
+    // wallpaper in both themes.
+    expect(
+      scrim?.closest('[data-testid="app-background-image"]'),
+    ).not.toBeNull();
+    expect(scrim?.className).toContain("bg-bg/50");
   });
 
   it("renders the programmable shader (or its color-field fallback) for glsl mode", () => {

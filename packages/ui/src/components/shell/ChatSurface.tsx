@@ -164,7 +164,7 @@ export function ChatSurface({
             aria-label={t("chatsurface.jumpToLatest", {
               defaultValue: "Jump to latest",
             })}
-            className="absolute bottom-2 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-full border border-white/10 bg-card/80 px-3 py-1.5 text-xs text-txt shadow-md backdrop-blur-sm transition-colors hover:bg-card"
+            className="absolute bottom-2 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-full border border-border bg-card px-3 py-1.5 text-xs text-txt transition-colors hover:bg-bg-hover"
             data-testid="chat-surface-jump-to-latest"
           >
             <ArrowDown className="h-3.5 w-3.5" aria-hidden="true" />

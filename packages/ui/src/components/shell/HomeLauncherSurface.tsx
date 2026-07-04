@@ -104,7 +104,13 @@ export function HomeLauncherSurface({
       <div
         ref={pager.railRef}
         data-testid="home-launcher-rail"
-        className="absolute inset-0 flex w-[200%]"
+        // `touch-pan-y`: reserve vertical panning for the browser but claim every
+        // horizontal drag across the whole rail for the flick — so a swipe is
+        // never handed to the browser's own scroll/back gesture (which fires
+        // pointercancel instead of pointerup and silently drops the flick). The
+        // two halves also set it; the rail sets it so any gap between them is
+        // covered too.
+        className="absolute inset-0 flex w-[200%] touch-pan-y"
       >
         <div
           data-testid="home-launcher-home-page"

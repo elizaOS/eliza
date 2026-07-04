@@ -261,19 +261,35 @@ export function HomeScreen({
         )}
       >
         <style>{HOME_ENTER_CSS}</style>
-        <div className="mx-auto flex w-full max-w-2xl flex-col gap-4">
+        {/* The content column owns the FULL height of the scroller (min-h-full)
+            and lays its blocks out as a flex column so the vertical space is
+            distributed on purpose, not left as a void above the composer. The
+            editorial header (greeting/clock + weather) anchors the TOP; the
+            prioritized widget stack sits in a `flex-1` breathing region that
+            grows to absorb the reclaimed space and centres its content within
+            it, so an empty widget set reads as calm airiness rather than a
+            broken gap; the AOSP tiles settle at the BOTTOM. */}
+        <div className="mx-auto flex min-h-full w-full max-w-2xl flex-col">
           {/* The always-on base: a naked sized grid with the time + weather as
-            2×2 neighbours and the week strip — no card, white text on the
-            ambient field. */}
+            2×2 neighbours — no card, white text on the ambient field. Anchored
+            at the top of the column as the editorial header. */}
           <div className={enterClass} style={{ animationDelay: "70ms" }}>
             <DefaultHomeWidgets />
           </div>
 
-          {/* The prioritized data widgets (#9143) flow in below the base. Each
-            self-hides when empty, so the host renders nothing until a widget has
-            something to show — the base above keeps the dashboard from ever
-            being just the floating chat. */}
-          <div className={enterClass} style={{ animationDelay: "110ms" }}>
+          {/* The prioritized data widgets (#9143) live in the breathing region:
+            a `flex-1` block that grows to fill the space between the header and
+            the bottom tiles, so the column always spans the full height. Its
+            content is vertically centred within that region — when widgets are
+            present they sit in the visual middle (no top-heavy clustering with a
+            void beneath); when the host self-hides everything, the empty region
+            simply reads as calm, intentional space rather than a dead gap. A
+            little top padding sets the stack apart from the editorial header as
+            its own section. */}
+          <div
+            className={cn(enterClass, "flex flex-1 flex-col justify-center py-6")}
+            style={{ animationDelay: "110ms" }}
+          >
             <WidgetHost
               slot="home"
               layout="grid"
@@ -286,7 +302,7 @@ export function HomeScreen({
             <nav
               aria-label="Apps"
               data-testid="home-tiles"
-              className={cn(enterClass, "mt-2")}
+              className={cn(enterClass, "pt-2")}
               style={{ animationDelay: "150ms" }}
             >
               <div className="grid grid-cols-4 gap-3">

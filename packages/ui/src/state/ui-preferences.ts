@@ -57,6 +57,15 @@ export interface BackgroundConfig {
 /** The default shader color — preserves the prior warm-orange home look. */
 export const DEFAULT_BACKGROUND_COLOR = "#ef5a1f";
 
+/**
+ * The ember glow hue the shader layers over {@link DEFAULT_BACKGROUND_COLOR}:
+ * the warm orange that gives the dark field its banked-fire warmth without
+ * becoming the field itself. Matches the brand accent (`#ff6a1f`). The shader
+ * pools this glow low near the composer, so the field reads as a banked ember
+ * rather than a flat color wall.
+ */
+export const DEFAULT_BACKGROUND_GLOW = "#ff6a1f";
+
 export const DEFAULT_BACKGROUND_CONFIG: BackgroundConfig = {
   mode: "shader",
   color: DEFAULT_BACKGROUND_COLOR,

@@ -145,16 +145,17 @@ function isWidgetSlot(value: string): value is WidgetSlot {
 /**
  * Map a home widget's declared `size` to STATIC Tailwind grid-span classes.
  * The classes are spelled out as literals (never interpolated) so Tailwind's
- * content scanner keeps them. Default footprint is 2x1.
+ * content scanner keeps them.
+ *
+ * The home dashboard reads best as a vertical stack of full-width rows: the
+ * widgets are the hero, so each glanceable card gets a full row with a visible
+ * label + datum rather than being crammed two-up (which truncated labels to
+ * "New …" and "Website Build and …"). A `cols: 1` chip stays half-width for the
+ * rare compact pair; everything `cols: 2`+ spans the full 4-col grid.
  */
 function spanClassForSize(size: PluginWidgetDeclaration["size"]): string {
-  if (!size) return "col-span-2 row-span-1";
-  const cols =
-    size.cols === 1
-      ? "col-span-1"
-      : size.cols === 4
-        ? "col-span-4"
-        : "col-span-2";
+  if (!size) return "col-span-4 row-span-1";
+  const cols = size.cols === 1 ? "col-span-2" : "col-span-4";
   const rows = size.rows === 2 ? "row-span-2" : "row-span-1";
   return `${cols} ${rows}`;
 }
@@ -445,7 +446,7 @@ export function WidgetHost({
   // and non-grid layouts stay a vertical stack.
   const layoutClass =
     slot === "home"
-      ? "grid grid-cols-4 gap-2.5"
+      ? "grid grid-cols-4 gap-2.5 [grid-auto-rows:min-content]"
       : layout === "grid"
         ? "grid grid-cols-1 gap-3 sm:grid-cols-2"
         : "flex flex-col gap-3";

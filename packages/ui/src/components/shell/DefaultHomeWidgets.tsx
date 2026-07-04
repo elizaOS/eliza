@@ -17,18 +17,20 @@ import { cn } from "../../lib/utils";
 import { useAppSelector } from "../../state";
 
 /**
- * The home dashboard's always-on base widgets: a sized grid with the time and
- * weather as 2×2 neighbours. They have no card — white text sits directly on the
- * ambient orange field with a soft shadow for legibility ("background gone" per
- * the home redesign). The time needs only the device clock (offline-safe);
- * weather fetches current conditions from Open-Meteo + device location (see
- * {@link useWeather}) and degrades gracefully.
+ * The home dashboard's always-on base widgets: a deterministic 4-column grid
+ * with the time and weather as 2×2 neighbours. They have no card — white text
+ * sits directly on the ambient orange field with a soft shadow for legibility
+ * ("background gone" per the home redesign). The time needs only the device
+ * clock (offline-safe); weather fetches current conditions from Open-Meteo +
+ * device location (see {@link useWeather}) and degrades gracefully.
  *
  * Always rendered as the base of the home surface — the data-driven WidgetHost
  * cards flow in below it, so the dashboard is never bare.
  */
 
-// White text legibility over the bright orange field, no card behind it.
+// White text legibility over the bright orange field, no card behind it. The
+// wallpaper is a known field (not a theme surface), so `text-white` + this
+// shadow is the intended idiom here rather than themed text tokens.
 const FLOAT_SHADOW = "[text-shadow:0_1px_3px_rgba(0,0,0,0.38)]";
 
 const WEEKDAYS_LONG = [
@@ -72,7 +74,11 @@ function greeting(hour: number): string {
   return "Good night";
 }
 
-/** The weather half of the time/weather pair — a naked 2×2 tile. */
+/**
+ * The weather half of the time/weather pair — a naked 2×2 tile that mirrors the
+ * time tile's footprint (bottom-aligned so the reading settles against the same
+ * baseline band as the greeting, giving the pair a shared horizon).
+ */
 function WeatherTile(): React.JSX.Element {
   const weather = useWeather();
   const Icon = WEATHER_ICON[weather.kind];
@@ -81,36 +87,38 @@ function WeatherTile(): React.JSX.Element {
       data-testid="home-weather"
       data-status={weather.status}
       className={cn(
-        "col-span-2 row-span-2 flex aspect-square flex-col items-center justify-center gap-1 text-center text-white",
+        "col-span-2 row-span-2 flex min-w-0 flex-col items-end justify-end text-right text-white",
         FLOAT_SHADOW,
       )}
     >
       {weather.status === "loading" ? (
-        <div className="text-sm text-white/70">Loading weather…</div>
+        <div className="text-sm text-white/70">Loading…</div>
       ) : weather.status === "unavailable" ? (
         <>
-          <Cloud className="h-8 w-8 text-white/80" aria-hidden />
-          <div className="mt-1 text-sm font-medium text-white/85">Weather</div>
-          <div className="max-w-[8rem] text-xs text-white/65">
-            Enable location to see conditions
+          <Cloud className="h-7 w-7 text-white/70" aria-hidden />
+          <div className="mt-1.5 text-sm font-medium text-white/80">
+            Weather
+          </div>
+          <div className="mt-0.5 max-w-[11rem] text-xs-tight leading-tight text-white/60">
+            Enable location for conditions
           </div>
         </>
       ) : (
         <>
-          <div className="flex items-center justify-center gap-2">
-            <div className="text-[2.75rem] font-semibold leading-none tabular-nums tracking-tight">
+          <div className="flex items-center gap-2">
+            <Icon className="h-7 w-7 text-accent" aria-hidden />
+            <div className="text-4xl font-semibold leading-none tabular-nums tracking-tighter">
               {weather.temp}
-              <span className="align-top text-lg font-medium text-white/70">
+              <span className="align-top text-base font-medium text-white/60">
                 {weather.unit}
               </span>
             </div>
-            <Icon className="h-9 w-9 text-white" aria-hidden />
           </div>
-          <div className="text-sm font-medium text-white/85">
+          <div className="mt-1.5 text-sm font-medium text-white/85">
             {weather.condition}
           </div>
           {weather.city ? (
-            <div className="max-w-[8.5rem] truncate text-xs text-white/60">
+            <div className="mt-0.5 max-w-[9rem] truncate text-xs-tight text-white/60">
               {weather.city}
             </div>
           ) : null}
@@ -149,41 +157,45 @@ export function DefaultHomeWidgets(): React.JSX.Element | null {
   return (
     <div
       data-testid="default-home-widgets"
-      className="grid grid-cols-4 gap-2.5"
+      className="grid grid-cols-4 items-start gap-x-4 gap-y-2"
     >
-      {/* Time — naked 2×2 tile, white text on the ambient field */}
+      {/* Time, the editorial header. Big, left-aligned, with a tight tracking
+          display feel; the date + greeting sit beneath as a quiet stack so the
+          hierarchy is unmistakable (hero numeral, supporting line, soft
+          greeting). White on the ember field with a legibility shadow.
+
+          Hideable from Appearance settings (#10706): only render when the user
+          hasn't hidden the time tile. The tile footprint is reserved immediately;
+          the time text stays invisible (not unmounted) until the live clock
+          ticks, so nothing reflows when the epoch (1970) resolves. */}
       {showTime ? (
         <div
           data-testid="home-time-widget"
           className={cn(
-            "col-span-2 row-span-2 flex aspect-square flex-col items-center justify-center gap-1 text-center text-white",
+            "col-span-2 row-span-2 flex min-w-0 flex-col justify-end text-left text-white",
             FLOAT_SHADOW,
           )}
         >
-          {/* The tile footprint is reserved immediately; the time text stays
-              invisible (not unmounted) until the live clock ticks, so nothing
-              reflows when it appears. */}
-          <div
-            className={cn(
-              "flex flex-col items-center gap-1",
-              !timeReady && "invisible",
-            )}
-          >
-            <div className="text-[3.25rem] font-semibold leading-none tabular-nums tracking-tight">
-              {time}
-              <span className="ml-1.5 align-top text-base font-medium text-white/70">
+          <div className={cn("flex flex-col", !timeReady && "invisible")}>
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-6xl font-semibold leading-[0.9] tabular-nums tracking-tighter">
+                {time}
+              </span>
+              <span className="text-base font-semibold uppercase tracking-wide text-white/60">
                 {ampm}
               </span>
             </div>
-            <div className="mt-1 text-sm font-medium text-white/85">
+            <div className="mt-3 text-base font-medium text-white/85">
               {dateLabel}
             </div>
-            <div className="text-xs text-white/65">{greeting(hours)}</div>
+            <div className="mt-1 text-sm font-medium text-accent/90">
+              {greeting(hours)}
+            </div>
           </div>
         </div>
       ) : null}
 
-      {/* Weather — naked 2×2 tile next to the time */}
+      {/* Weather: a quiet right-aligned cluster, not a competing block. */}
       <WeatherTile />
     </div>
   );

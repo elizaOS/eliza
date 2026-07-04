@@ -16,6 +16,7 @@
   --color-card: var(--card);
   --color-card-fg: var(--card-foreground);
   --color-surface: var(--surface);
+  --color-scrim: var(--scrim);
 
   --color-txt: var(--text);
   --color-txt-strong: var(--text-strong);

@@ -3,9 +3,14 @@
 :root {
   /* Legacy alias retained for old theme references, neutralized per #8796. */
   --brand-blue: rgba(0, 0, 0, 0.6);
-  --brand-orange: #ff8a24;
-  --brand-black: #000000;
-  --brand-white: #ffffff;
+  /* Brand accent: warm orange (#ff6a1f). The prior #ff8a24 skewed yellow; this
+     is the locked Sol accent. */
+  --brand-orange: #ff6a1f;
+  /* No pure black anywhere. The brand near-black is a deep warm brown-black so
+     every dark surface carries a hint of ember warmth (pure #000 reads cold and
+     cheap, and never appears in the 2am editorial reference). */
+  --brand-black: #140c07;
+  --brand-white: #fdfaf7;
   --brand-gray: #d1d0d4;
   --sky-0: rgba(0, 0, 0, 0.6);
   --sky-1: rgba(0, 0, 0, 0.74);
@@ -42,13 +47,18 @@
   --border-hover: var(--brand-orange);
   --input: var(--brand-white);
   --ring: var(--brand-orange);
+  /* Modal/drawer/chat scrim: brand black at a fixed dim so an open sheet reads
+     as a genuine backdrop (never off-palette "ember" rgba). Defined here in
+     base.css — the file the running app imports — so `bg-scrim` resolves at
+     runtime, not only in the e2e theme layer. */
+  --scrim: rgba(20, 12, 7, 0.7);
 
   /* Accent */
   --accent: var(--brand-orange);
-  --accent-rgb: 255, 88, 0;
-  --accent-hover: #e54f00;
+  --accent-rgb: 255, 106, 31;
+  --accent-hover: #ff7d3a;
   --accent-muted: #c94400;
-  --accent-subtle: rgba(255, 88, 0, 0.14);
+  --accent-subtle: rgba(255, 106, 31, 0.14);
   --accent-foreground: var(--brand-white);
   --primary: var(--brand-orange);
   --primary-foreground: var(--brand-white);
@@ -59,10 +69,10 @@
   --ok-subtle: rgba(34, 197, 94, 0.12);
   --destructive: var(--brand-orange);
   --destructive-foreground: var(--brand-white);
-  --destructive-subtle: rgba(255, 88, 0, 0.12);
+  --destructive-subtle: rgba(255, 106, 31, 0.12);
   --warn: var(--brand-orange);
-  --warn-muted: rgba(255, 88, 0, 0.72);
-  --warn-subtle: rgba(255, 88, 0, 0.14);
+  --warn-muted: rgba(255, 106, 31, 0.72);
+  --warn-subtle: rgba(255, 106, 31, 0.14);
   --danger: var(--brand-orange);
   --info: var(--muted-strong);
 
@@ -78,7 +88,7 @@
   --status-info: var(--muted-strong);
   --status-info-bg: rgba(0, 0, 0, 0.06);
 
-  --focus: rgba(255, 88, 0, 0.2);
+  --focus: rgba(255, 106, 31, 0.2);
   --focus-ring: none;
   --scrollbar-track: rgba(255, 255, 255, 0.3);
   --scrollbar-thumb-start: rgba(0, 0, 0, 0.22);
@@ -113,16 +123,18 @@
   --shadow-xl: none;
   --shadow-2xl: none;
   --shadow-inset: none;
-  /* Brand: slight xs rounding. Never hard-edged, never pill-shaped. */
-  --radius-xs: 3px;
-  --radius-sm: var(--radius-xs);
-  --radius-md: var(--radius-xs);
-  --radius-lg: var(--radius-xs);
-  --radius-xl: var(--radius-xs);
-  --radius-2xl: var(--radius-xs);
-  --radius-3xl: var(--radius-xs);
+  /* A soft, intimate radius ramp. A companion surface should feel rounded and
+     calm, not hard-edged/utilitarian, but still restrained (no toy-like pills).
+     The ramp grows so chips stay tight while cards/sheets relax. */
+  --radius-xs: 6px;
+  --radius-sm: 8px;
+  --radius-md: 11px;
+  --radius-lg: 14px;
+  --radius-xl: 18px;
+  --radius-2xl: 22px;
+  --radius-3xl: 28px;
   --radius-full: 9999px;
-  --radius: var(--radius-xs);
+  --radius: var(--radius-md);
   --duration-normal: 150ms;
 
   /* Compact text sizes (replaces arbitrary text-[9px], text-[10px], text-[11px]) */
@@ -164,7 +176,15 @@
   --bg-hover: rgba(255, 255, 255, 0.08);
   --bg-muted: rgba(255, 255, 255, 0.06);
 
-  --card: rgba(0, 0, 0, 0.72);
+  /* Warm-dark SOLID surfaces. The home/chat float over a warm ember field, so a
+     translucent-black card let the field bleed through (the #1 "too
+     transparent" complaint). These are opaque warm near-blacks: an elevated
+     card tone and a hair-lighter raised tone, each tinted toward the ember so
+     they sit in the world instead of punching a cold hole in it. */
+  --surface-1: #1d130c;
+  --surface-2: #251810;
+  --surface-3: #2f1f15;
+  --card: var(--surface-1);
   --card-foreground: var(--brand-white);
   --surface: rgba(255, 255, 255, 0.06);
 
@@ -172,8 +192,10 @@
   --text-strong: var(--brand-white);
   --chat-text: var(--brand-white);
   --txt: var(--text);
-  --muted: rgba(255, 255, 255, 0.58);
-  --muted-strong: rgba(255, 255, 255, 0.74);
+  /* Warm-tinted muted text (toward the brand hue) reads richer than flat white
+     alpha on a warm-dark field. */
+  --muted: rgba(255, 240, 230, 0.56);
+  --muted-strong: rgba(255, 244, 236, 0.76);
 
   /* shadcn token aliases */
   --foreground: var(--text);
@@ -185,12 +207,15 @@
   --border-hover: var(--brand-orange);
   --input: rgba(255, 255, 255, 0.08);
   --ring: var(--brand-orange);
+  /* Modal/drawer/chat scrim: brand black at a fixed dim so an open sheet reads
+     as a genuine backdrop (never off-palette "ember" rgba). See :root note. */
+  --scrim: rgba(20, 12, 7, 0.72);
 
   --accent: var(--brand-orange);
-  --accent-rgb: 255, 88, 0;
-  --accent-hover: #ff6d1f;
+  --accent-rgb: 255, 106, 31;
+  --accent-hover: #ff7d3a;
   --accent-muted: #c94400;
-  --accent-subtle: rgba(255, 88, 0, 0.14);
+  --accent-subtle: rgba(255, 106, 31, 0.16);
   --accent-foreground: var(--brand-white);
   --primary: var(--brand-orange);
   --primary-foreground: var(--brand-white);
@@ -200,10 +225,10 @@
   --ok-subtle: rgba(74, 222, 128, 0.12);
   --destructive: var(--brand-orange);
   --destructive-foreground: var(--brand-white);
-  --destructive-subtle: rgba(255, 88, 0, 0.12);
+  --destructive-subtle: rgba(255, 106, 31, 0.12);
   --warn: var(--brand-orange);
-  --warn-muted: rgba(255, 88, 0, 0.7);
-  --warn-subtle: rgba(255, 88, 0, 0.12);
+  --warn-muted: rgba(255, 106, 31, 0.7);
+  --warn-subtle: rgba(255, 106, 31, 0.12);
   --danger: var(--brand-orange);
   --info: var(--muted-strong);
 
@@ -217,7 +242,7 @@
   --status-info: var(--muted-strong);
   --status-info-bg: rgba(255, 255, 255, 0.08);
 
-  --focus: rgba(255, 88, 0, 0.22);
+  --focus: rgba(255, 106, 31, 0.22);
   --focus-ring: none;
   --scrollbar-track: transparent;
   --scrollbar-thumb-start: rgba(255, 255, 255, 0.32);

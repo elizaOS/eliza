@@ -342,7 +342,7 @@ function SoftButton({
         // neutral hover, accent for active — never a background/border, never
         // blue.
         "grid h-11 w-11 shrink-0 place-items-center bg-transparent p-0 transition-colors hover:bg-transparent",
-        active ? "text-accent" : "text-white/75 hover:text-white",
+        active ? "text-accent" : "text-muted-strong hover:text-txt",
         disabled && "opacity-40",
       )}
     >
@@ -390,10 +390,10 @@ function HeaderButton({
         "grid h-9 w-9 shrink-0 place-items-center bg-transparent p-0 transition-colors hover:bg-transparent",
         disabled
           ? // On the view it targets: shown but inert + dimmed (we disable, not hide).
-            "cursor-default text-white/35"
+            "cursor-default text-muted"
           : active
             ? "text-accent"
-            : "text-white/75 hover:text-white",
+            : "text-muted-strong hover:text-txt",
       )}
     >
       <Icon className="h-[18px] w-[18px]" aria-hidden />
@@ -438,8 +438,8 @@ function SwipeEdgeHint({
       className={cn(
         "pointer-events-none absolute inset-y-0 z-20 w-16",
         side === "left"
-          ? "left-0 bg-gradient-to-r from-white/25 to-transparent"
-          : "right-0 bg-gradient-to-l from-white/25 to-transparent",
+          ? "left-0 bg-gradient-to-r from-border-strong to-transparent"
+          : "right-0 bg-gradient-to-l from-border-strong to-transparent",
       )}
       style={{ opacity }}
     />
@@ -531,8 +531,8 @@ function SheetGrabber({
           // Pulse while the mic is hot / a reply is speaking: the warm bar
           // breathes instead of sitting static, the "audio is on" cue.
           glow
-            ? "animate-pulse bg-[rgba(255,180,120,0.8)] motion-reduce:animate-none"
-            : "bg-white/45",
+            ? "animate-pulse bg-accent motion-reduce:animate-none"
+            : "bg-muted-strong",
         )}
       />
     </motion.button>
@@ -604,8 +604,8 @@ function PillHandle({
           // Same pulse as the SheetGrabber bar: while audio is on and the chat
           // is collapsed to the pill, the pill itself pulses.
           glow
-            ? "animate-pulse bg-[rgba(255,180,120,0.8)] motion-reduce:animate-none"
-            : "bg-white/45",
+            ? "animate-pulse bg-accent motion-reduce:animate-none"
+            : "bg-muted-strong",
         )}
       />
     </Button>
@@ -642,7 +642,7 @@ function TurnStatusIndicator({
           // neutral white glass. No blue anywhere.
           // #10698: no own scrim — the shared panel glass carries the contrast;
           // keep only the tone border (orange when speaking) + FLOAT_SHADOW.
-          speaking ? "border-[rgba(255,180,120,0.45)]" : "border-white/10",
+          speaking ? "border-accent/45" : "border-border",
         )}
       >
         <TurnStatus status={status} />
@@ -699,7 +699,7 @@ export function BootStatusIndicator({
     >
       <span
         className={cn(
-          "inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-sm font-medium text-white/85",
+          "inline-flex items-center gap-2 rounded-full border border-border bg-surface px-3 py-1.5 text-sm font-medium text-txt",
           FLOAT_SHADOW,
         )}
       >
@@ -719,7 +719,7 @@ export function BootStatusIndicator({
                 size="sm"
                 onClick={onOpenSettings}
                 data-testid="chat-boot-open-settings"
-                className="pointer-events-auto ml-1 h-auto rounded-full border border-white/20 bg-white/10 px-2 py-0.5 text-[12px] text-white/90 transition-colors hover:border-white/35 hover:bg-white/20"
+                className="pointer-events-auto ml-1 h-auto rounded-full border border-border-strong bg-surface px-2 py-0.5 text-xs text-txt transition-colors hover:border-border-hover hover:bg-bg-hover"
               >
                 Open settings
               </Button>
@@ -803,14 +803,14 @@ function renderOverlayMessageBody(
     return (
       <div
         className={cn(
-          "max-w-[85%] rounded-2xl rounded-bl-md border border-amber-300/30 bg-black/35 px-3.5 py-3 text-white",
+          "max-w-[85%] rounded-2xl rounded-bl-md border border-accent/30 bg-scrim px-3.5 py-3 text-txt",
           FLOAT_SHADOW,
         )}
       >
         <div className="mb-1 text-[14px] font-medium">
           Connect a provider to chat
         </div>
-        <div className="mb-2.5 whitespace-pre-wrap text-[13px] leading-relaxed text-white/80 [overflow-wrap:anywhere]">
+        <div className="mb-2.5 whitespace-pre-wrap text-[13px] leading-relaxed text-muted-strong [overflow-wrap:anywhere]">
           {message.text}
         </div>
         <Button
@@ -818,7 +818,7 @@ function renderOverlayMessageBody(
           size="sm"
           data-testid="chat-no-provider-settings"
           onClick={() => onOpenSettings?.()}
-          className="h-auto rounded-full border border-white/20 bg-white/15 px-3 py-1.5 text-[13px] font-medium text-white transition-colors hover:bg-white/25   "
+          className="h-auto rounded-full border border-border-strong bg-surface px-3 py-1.5 text-[13px] font-medium text-txt transition-colors hover:bg-bg-hover"
         >
           Open Settings
         </Button>
@@ -3523,7 +3523,14 @@ export function ContinuousChatOverlay({
         aria-hidden="true"
         data-testid="chat-sheet-backdrop"
         data-active={sheetOpen ? "true" : "false"}
-        className="fixed inset-0 bg-[linear-gradient(160deg,rgba(255,255,255,0.06)_0%,rgba(8,10,18,0.68)_46%,rgba(0,0,0,0.78)_100%)]"
+        // Overhaul: a solid warm-ember dim scrim (the --scrim token, brand-black
+        // at a fixed dim) so the open chat reads on an opaque dim field instead
+        // of letting the background bleed through. Flat system: no GPU blur
+        // (battery gate #9141) — the opaque scrim carries the contrast on its
+        // own. Outside-tap dismissal is NOT wired here on purpose: this element
+        // keeps pointerEvents:none (below) and the document-level pointerdown
+        // detector owns outside taps.
+        className="fixed inset-0 bg-scrim"
         // Opacity follows the live history height (motion value) — no re-render
         // during a drag. Pointer events stay disabled so background gestures
         // keep their original targets while chat is open.
@@ -3718,30 +3725,41 @@ export function ContinuousChatOverlay({
             aria-hidden="true"
             className={cn(
               "pointer-events-none absolute inset-0 z-0",
-              // Frosted-glass chat panel: a blurred, dark-tinted scrim behind the
-              // whole conversation so the white transcript + composer text stays
-              // legible over ANY surface — the warm ambient home, a photo
-              // wallpaper, or a live view. Fades in with the panel (glassOpacity)
-              // so the collapsed pill stays chrome-free. Hairline edge catches the
-              // light; full-bleed drops the border for a true edge-to-edge sheet.
-              fullBleed ? "border-0" : "border border-white/22",
+              // SOLID warm-dark panel. The chat floats over the live ember field,
+              // so a transparent/border-only surface let the home widgets bleed
+              // straight through the open thread (the #1 "too transparent"
+              // complaint). The panel is now an opaque warm near-black with a
+              // warm hairline edge that seats it above the field, so nothing
+              // behind it ever shows through. NOTE: the opaque fill is enforced
+              // by the inline backgroundColor below (inline wins over this
+              // class); this class supplies the edge. Flat system: depth =
+              // border, not a drop shadow (all shadow tokens are none).
+              fullBleed
+                ? "border-0 bg-card"
+                : "border border-border-strong bg-card",
             )}
             style={{
               opacity: glassOpacity,
               borderRadius: fullBleed ? 0 : panelRadius,
-              // Soft glass WITHOUT a GPU backdrop blur (#10698, #9141 battery
-              // gate): a dark translucent tint carries the contrast the removed
-              // blur used to add (bumped a touch to compensate), and a faint
-              // top-sheen gradient reads as glass. The battery gate bans the GPU
-              // backdrop blur, so it is intentionally absent. Inline (not a
-              // Tailwind class) so it renders identically in the raw-esbuild e2e.
+              // SOLID warm-dark fill (no translucency) so the ember field / home
+              // widgets can't bleed through the open thread (the #1 "too
+              // transparent" complaint this fixes). Kept inline (not just the
+              // Tailwind bg-card / --surface-1) because inline wins and this is
+              // the value that actually renders. No GPU backdrop blur (#10698,
+              // #9141 battery gate) is needed anymore since the fill is opaque; a
+              // faint top-sheen gradient (backgroundImage below) still reads as
+              // glass. The collapsed pill stays chrome-free via glassOpacity fade.
+              // Use `--card` (defined in BOTH themes: the ember `--surface-1`
+              // in dark, the warm off-white in light) rather than `--surface-1`
+              // directly — `--surface-1` is only declared under `.dark`, so an
+              // inline `var(--surface-1)` would compute to transparent in light
+              // mode and re-open the very see-through panel this fixes. The
+              // fallback keeps it opaque even if a theme ever drops `--card`.
               backgroundColor: fullBleed
-                ? "rgba(10,10,12,0.7)"
-                : threadPresented
-                  ? "rgba(10,10,12,0.68)"
-                  : "rgba(10,10,12,0.52)",
+                ? "var(--bg)"
+                : "var(--card, var(--surface-1))",
               backgroundImage:
-                "linear-gradient(180deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0) 24%)",
+                "linear-gradient(180deg, var(--surface) 0%, transparent 24%)",
               // Full-bleed: extend the glass UP through the safe-area-top so the
               // dark background reaches the true top of the screen. The panel
               // height comes from visualViewport (which excludes the Android
@@ -3832,7 +3850,7 @@ export function ContinuousChatOverlay({
             highlight. Subtle + non-interactive. */}
             <div
               aria-hidden="true"
-              className="pointer-events-none absolute inset-x-0 top-0 z-0 h-20 bg-gradient-to-b from-white/[0.07] to-transparent"
+              className="pointer-events-none absolute inset-x-0 top-0 z-0 h-20 bg-gradient-to-b from-surface to-transparent"
             />
 
             {/* Sheet header — shown at the HALF detent and up (not just FULL).
@@ -3982,7 +4000,7 @@ export function ContinuousChatOverlay({
                     <TopicChipsBar
                       topics={channelTopics}
                       onSelectTopic={scrollToTopic}
-                      className="sticky top-0 z-[2] -mx-5 mb-1 bg-gradient-to-b from-black/40 to-transparent px-5"
+                      className="sticky top-0 z-[2] -mx-5 mb-1 bg-gradient-to-b from-scrim to-transparent px-5"
                     />
                   ) : null}
                   {/* `mt-auto` keeps the latest line at the bottom (nearest the input)
@@ -4073,7 +4091,7 @@ export function ContinuousChatOverlay({
                           // Small visual disc, but a 44px-class hit zone via the
                           // invisible `before` overlay so it's thumb-tappable
                           // without crowding the tile.
-                          className="absolute -right-1.5 -top-1.5 grid h-5 w-5 place-items-center rounded-full border border-white/20 bg-black/70 p-0 text-xs text-white/90 transition-colors before:absolute before:-inset-3 before:content-[''] hover:bg-black/90"
+                          className="absolute -right-1.5 -top-1.5 grid h-5 w-5 place-items-center rounded-full border border-border-strong bg-scrim p-0 text-xs text-txt transition-colors before:absolute before:-inset-3 before:content-[''] hover:bg-bg"
                         >
                           ×
                         </Button>
@@ -4088,7 +4106,7 @@ export function ContinuousChatOverlay({
                             <img
                               src={`data:${img.mimeType};base64,${img.data}`}
                               alt={img.name}
-                              className="h-14 w-14 rounded-lg border border-white/20 object-cover"
+                              className="h-14 w-14 rounded-lg border border-border-strong object-cover"
                             />
                             {removeButton}
                           </div>
@@ -4103,11 +4121,11 @@ export function ContinuousChatOverlay({
                       return (
                         <div
                           key={tileKey}
-                          className="group relative flex h-14 min-w-[3.5rem] max-w-[10rem] shrink-0 items-center gap-2 rounded-lg border border-white/20 bg-white/10 px-2.5 text-white/90"
+                          className="group relative flex h-14 min-w-[3.5rem] max-w-[10rem] shrink-0 items-center gap-2 rounded-lg border border-border-strong bg-surface px-2.5 text-txt"
                           title={img.name}
                         >
-                          <KindIcon className="h-5 w-5 shrink-0 text-white/70" />
-                          <span className="min-w-0 truncate text-[11px] leading-tight">
+                          <KindIcon className="h-5 w-5 shrink-0 text-muted-strong" />
+                          <span className="min-w-0 truncate text-xs-tight leading-tight">
                             {img.name}
                           </span>
                           {removeButton}
@@ -4239,10 +4257,10 @@ export function ContinuousChatOverlay({
                 // During onboarding the placeholder is a directive hint ("Ask me
                 // anything — or pick an option"), so brighten it from the resting
                 // 45% to 70% so it reads clearly beside the seeded choices.
-                className={`max-h-[8.5rem] min-h-8 min-w-0 flex-1 resize-none self-center border-none bg-transparent px-1.5 py-1 text-left text-sm leading-relaxed text-white/[0.92] outline-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${
+                className={`max-h-[8.5rem] min-h-8 min-w-0 flex-1 resize-none self-center border-none bg-transparent px-1.5 py-1 text-left text-sm leading-relaxed text-txt outline-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${
                   firstRunOpen
-                    ? "placeholder:text-white/70"
-                    : "placeholder:text-white/45"
+                    ? "placeholder:text-muted-strong"
+                    : "placeholder:text-muted"
                 }`}
               />
               {booting && !noProviderConfigured ? (
