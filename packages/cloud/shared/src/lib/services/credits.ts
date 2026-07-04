@@ -222,15 +222,16 @@ function parseNumeric(value: string | number | null | undefined, fieldName: stri
  * Fail-closed semantics for this money-OUT trigger:
  *  - `null` / `undefined` (never configured) is a legitimate domain default of
  *    `0`, preserving the original `|| 0` behaviour (only trigger below $0).
- *  - a present-but-non-finite value (`"NaN"`, `""`, `"abc"`, `Infinity`) is a
- *    corrupt threshold we cannot reason about, so we throw and let the caller
- *    SKIP the charge rather than fire an unvalidatable auto-top-up.
+ *  - a present-but-non-finite or partially numeric value (`"NaN"`, `""`,
+ *    `"abc"`, `"10abc"`, `Infinity`) is a corrupt threshold we cannot reason
+ *    about, so we throw and let the caller SKIP the charge rather than fire an
+ *    unvalidatable auto-top-up.
  */
 function parseAutoTopUpThreshold(value: string | number | null | undefined): number {
   if (value === null || value === undefined) {
     return 0;
   }
-  const parsed = typeof value === "number" ? value : Number.parseFloat(String(value));
+  const parsed = typeof value === "number" ? value : Number(String(value));
   if (!Number.isFinite(parsed)) {
     throw new Error("[CreditsService] Invalid numeric auto_top_up_threshold");
   }

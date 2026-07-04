@@ -80,6 +80,18 @@ describe("CreditsService.checkAndTriggerAutoTopUp threshold fail-closed", () => 
     expect(exec).not.toHaveBeenCalled();
   });
 
+  test("partially numeric corrupt threshold SKIPS the charge", async () => {
+    const find = spyOn(organizationsRepository, "findById").mockResolvedValue(
+      orgRow({ auto_top_up_threshold: "25abc" }),
+    );
+    const exec = spyOn(autoTopUpService, "executeAutoTopUp").mockResolvedValue({} as never);
+    spies.push(find, exec);
+
+    await triggerGate(10);
+
+    expect(exec).not.toHaveBeenCalled();
+  });
+
   test("balance BELOW a well-formed threshold still fires the charge (unchanged)", async () => {
     const find = spyOn(organizationsRepository, "findById").mockResolvedValue(
       orgRow({ auto_top_up_threshold: "25" }),
