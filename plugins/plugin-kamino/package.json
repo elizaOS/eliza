@@ -1,0 +1,96 @@
+{
+  "name": "@elizaos/plugin-kamino",
+  "description": "Kamino lend, borrow, repay, withdraw etc. features for elizaos",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "packageType": "plugin",
+  "platform": "node",
+  "license": "MIT",
+  "author": "codebird-n4vnt",
+  "keywords": [
+    "plugin",
+    "elizaos",
+    "solana",
+    "kamino",
+    "defi",
+    "lending",
+    "borrowing"
+  ],
+  "repository": {
+    "type": "git",
+    "url": ""
+  },
+  "homepage": "https://elizaos.ai",
+  "bugs": {
+    "url": "https://github.com/codebird-n4vnt/eilza/issues"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    ".npmignore",
+    ".gitignore",
+    "package.json"
+  ],
+  "dependencies": {
+    "@elizaos/core": "^1.7.2",
+    "@elizaos/plugin-bootstrap": "^1.7.2",
+    "@elizaos/plugin-openai": "^1.6.0",
+    "@elizaos/plugin-openrouter": "^1.5.17",
+    "@kamino-finance/farms-sdk": "^3.2.26",
+    "@kamino-finance/klend-sdk": "^9.0.1",
+    "@kamino-finance/kliquidity-sdk": "^13.0.0",
+    "@kamino-finance/limo-sdk": "^2.0.4",
+    "@solana/kit": "^3.0.3",
+    "@solana/web3.js": "^1.98.4",
+    "bn.js": "^5.2.3",
+    "decimal.js": "^10.6.0",
+    "zod": "^4.3.5"
+  },
+  "devDependencies": {
+    "@elizaos/cli": "1.7.2",
+    "dotenv": "^17.2.3",
+    "prettier": "^3.7.4",
+    "typescript": "^5.9.3"
+  },
+  "scripts": {
+    "start": "elizaos start",
+    "dev": "elizaos dev",
+    "build": "bun run build.ts",
+    "build:watch": "bun run build.ts --watch",
+    "postinstall": "node -e \"const fs=require('fs');const path=require('path');const zodPath=path.join('node_modules','zod');if(fs.existsSync(zodPath)){fs.writeFileSync(path.join(zodPath,'v3.js'),'module.exports=require(\\\"./lib/index.js\\\");');fs.writeFileSync(path.join(zodPath,'v3.d.ts'),'export * from \\\"./lib/index\\\";');}\" || true",
+    "test": "bun test",
+    "format": "prettier --write ./src"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "resolutions": {
+    "zod": "4.3.5"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "SOLANA_RPC_URL": {
+        "type": "string",
+        "description": "Solana RPC URL"
+      },
+      "SOLANA_PRIVATE_KEY": {
+        "type": "string",
+        "description": "Base58 encoded private key of the wallet to use"
+      }
+    }
+  },
+  "gitHead": "d5bd5c43bfebeb7ac02f9e029f924cb6cd5c2ec7"
+}
