@@ -3491,11 +3491,11 @@ export const coreProvidersSpec = {
 		{
 			name: "RECENT_MESSAGES",
 			description:
-				"Provides recent message history from the current conversation including formatted messages, posts, action results, and recent interactions",
+				"Canonical bounded transcript for the current room, including prior dialogue, post-style turns, action results, and cross-room recent interactions for memory continuity",
 			position: 100,
 			dynamic: true,
 			descriptionCompressed:
-				"Recent conversation messages, posts, action results.",
+				"Canonical current-room transcript: dialogue, posts, action results, recent interactions.",
 		},
 		{
 			name: "ACTION_STATE",
@@ -3663,11 +3663,11 @@ export const allProvidersSpec = {
 		{
 			name: "RECENT_MESSAGES",
 			description:
-				"Provides recent message history from the current conversation including formatted messages, posts, action results, and recent interactions",
+				"Canonical bounded transcript for the current room, including prior dialogue, post-style turns, action results, and cross-room recent interactions for memory continuity",
 			position: 100,
 			dynamic: true,
 			descriptionCompressed:
-				"Recent conversation messages, posts, action results.",
+				"Canonical current-room transcript: dialogue, posts, action results, recent interactions.",
 		},
 		{
 			name: "ACTION_STATE",
