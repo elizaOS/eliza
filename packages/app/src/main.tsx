@@ -368,6 +368,10 @@ const IOS_FULL_BUN_SMOKE_REQUEST_KEY = "eliza:ios-full-bun-smoke:request";
 const IOS_FULL_BUN_SMOKE_RESULT_KEY = "eliza:ios-full-bun-smoke:result";
 const IOS_ONBOARDING_SMOKE_REQUEST_KEY = "eliza:ios-onboarding-smoke:request";
 const IOS_ONBOARDING_SMOKE_RESULT_KEY = "eliza:ios-onboarding-smoke:result";
+const IOS_ONBOARDING_RELAUNCH_SMOKE_REQUEST_KEY =
+  "eliza:ios-onboarding-relaunch-smoke:request";
+const IOS_ONBOARDING_RELAUNCH_SMOKE_RESULT_KEY =
+  "eliza:ios-onboarding-relaunch-smoke:result";
 const IOS_ONBOARDING_SMOKE_TIMEOUT_MS = 120_000;
 const IOS_FULL_BUN_SMOKE_ROUTE_TIMEOUT_MS = 300_000;
 const IOS_FULL_BUN_SMOKE_MESSAGE_TIMEOUT_MS = 600_000;
@@ -383,6 +387,7 @@ let mobileRuntimeModeListenerInstalled = false;
 let keyboardListenersRegistered = false;
 let iosFullBunSmokeStarted = false;
 let iosOnboardingSmokeStarted = false;
+let iosOnboardingRelaunchSmokeStarted = false;
 
 function isDesktopPlatform(): boolean {
   return isElectrobunRuntime();
@@ -674,6 +679,15 @@ async function writeIosOnboardingSmokeResult(
   await writeIosPreferenceSmokeResult(IOS_ONBOARDING_SMOKE_RESULT_KEY, result);
 }
 
+async function writeIosOnboardingRelaunchSmokeResult(
+  result: Record<string, unknown>,
+): Promise<void> {
+  await writeIosPreferenceSmokeResult(
+    IOS_ONBOARDING_RELAUNCH_SMOKE_RESULT_KEY,
+    result,
+  );
+}
+
 async function writeIosPreferenceSmokeResult(
   key: string,
   result: Record<string, unknown>,
@@ -904,6 +918,86 @@ async function runIosOnboardingSmokeIfRequested(): Promise<boolean> {
     }
     await boundedPreferenceWrite(() =>
       Preferences.remove({ key: IOS_ONBOARDING_SMOKE_REQUEST_KEY }),
+    );
+  }
+  return true;
+}
+
+async function runIosOnboardingRelaunchSmokeIfRequested(): Promise<boolean> {
+  if (!isIOS || iosOnboardingRelaunchSmokeStarted) {
+    return iosOnboardingRelaunchSmokeStarted;
+  }
+  let rawRequest: string | null = null;
+  try {
+    rawRequest = window.localStorage.getItem(
+      IOS_ONBOARDING_RELAUNCH_SMOKE_REQUEST_KEY,
+    );
+  } catch {
+    // error-policy:J3 unavailable storage reads as "no request"; the
+    // Preferences fallback below still serves the simulator harness
+    rawRequest = null;
+  }
+  if (!rawRequest) {
+    rawRequest = await boundedPreferenceGet(
+      IOS_ONBOARDING_RELAUNCH_SMOKE_REQUEST_KEY,
+    );
+  }
+  if (!rawRequest) return false;
+
+  iosOnboardingRelaunchSmokeStarted = true;
+  const request = parseIosOnboardingSmokeRequest(rawRequest);
+  await writeIosOnboardingRelaunchSmokeResult({
+    ok: false,
+    phase: "running",
+    startedAt: new Date().toISOString(),
+    apiBase: request.apiBase,
+  });
+  try {
+    const home = await waitForIosOnboardingElement<HTMLElement>(
+      '[data-testid="home-launcher-surface"][data-page="home"]',
+      { visible: true },
+    );
+    const composer = await waitForIosOnboardingElement<HTMLElement>(
+      '[data-testid="chat-composer-textarea"]',
+      { visible: true },
+    );
+    const onboardingHidden = !document.querySelector(
+      '[data-testid="first-run-chat"], [data-testid="startup-first-run-background"]',
+    );
+    const storage = await waitForIosOnboardingSmokeStorageSnapshot(
+      request.apiBase,
+    );
+
+    await writeIosOnboardingRelaunchSmokeResult({
+      ok: true,
+      phase: "complete",
+      finishedAt: new Date().toISOString(),
+      apiBase: request.apiBase,
+      homeVisible: Boolean(home),
+      composerVisible: Boolean(composer),
+      onboardingHidden,
+      storage,
+    });
+  } catch (error) {
+    // error-policy:J1 smoke boundary — the failure is written to the
+    // harness result sink
+    await writeIosOnboardingRelaunchSmokeResult({
+      ok: false,
+      phase: "failed",
+      finishedAt: new Date().toISOString(),
+      apiBase: request.apiBase,
+      error: error instanceof Error ? error.message : String(error),
+      storage: readIosOnboardingSmokeStorageSnapshot(),
+    });
+  } finally {
+    try {
+      window.localStorage.removeItem(IOS_ONBOARDING_RELAUNCH_SMOKE_REQUEST_KEY);
+    } catch {
+      // error-policy:J6 best-effort cleanup — Preferences removal below is
+      // authoritative for the simulator harness
+    }
+    await boundedPreferenceWrite(() =>
+      Preferences.remove({ key: IOS_ONBOARDING_RELAUNCH_SMOKE_REQUEST_KEY }),
     );
   }
   return true;
@@ -1518,6 +1612,7 @@ async function initializePlatform(): Promise<void> {
   initializeCapacitorBridge();
   void runIosFullBunSmokeIfRequested();
   void runIosOnboardingSmokeIfRequested();
+  void runIosOnboardingRelaunchSmokeIfRequested();
   void runIosAttachmentSmokeIfRequested({
     isIOS,
     getApiBaseUrl: () => client.getBaseUrl(),
