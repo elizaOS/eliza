@@ -19,13 +19,7 @@ export default scenario({
   title:
     "Delegation map surfaces seeded items and converts only the blocked one into a follow-up",
   domain: "executive.delegation",
-  tags: [
-    "lifeops",
-    "executive-assistant",
-    "prioritize",
-    "followup",
-    "outcome",
-  ],
+  tags: ["lifeops", "executive-assistant", "prioritize", "followup", "outcome"],
   isolation: "per-scenario",
   requires: {
     plugins: ["@elizaos/plugin-agent-skills"],

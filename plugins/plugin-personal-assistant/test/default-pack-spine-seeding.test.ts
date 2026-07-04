@@ -135,9 +135,7 @@ describe("default-pack catalog reconciliation", () => {
       (task) => task.idempotencyKey,
     );
     expect(keys).not.toContain("default-pack:inbox-triage-starter:daily");
-    expect(
-      keys.some((key) => key?.includes("inbox-triage")),
-    ).toBe(false);
+    expect(keys.some((key) => key?.includes("inbox-triage"))).toBe(false);
   });
 
   it("plugin init registers the catalog on the spine registry (production wiring)", () => {

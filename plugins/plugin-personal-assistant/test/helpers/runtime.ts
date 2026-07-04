@@ -53,9 +53,8 @@ function injectNotificationSink(
     },
     async stop() {},
   };
-  const services = (
-    runtime as unknown as { services: Map<string, unknown[]> }
-  ).services;
+  const services = (runtime as unknown as { services: Map<string, unknown[]> })
+    .services;
   const list = services.get("notification") ?? [];
   list.push(sink);
   services.set("notification", list);

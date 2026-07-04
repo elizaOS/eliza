@@ -180,7 +180,10 @@ function readIntEnv(name: string, fallback: number, min = 0): number {
 //   CEREBRAS_MAX_CONCURRENCY  in-flight cap (default 1 — full serialization)
 //   CEREBRAS_REQUEST_DELAY_MS delay after each request releases (default 350ms)
 // ---------------------------------------------------------------------------
-const MAX_CONCURRENCY = Math.max(1, readIntEnv("CEREBRAS_MAX_CONCURRENCY", 1, 1));
+const MAX_CONCURRENCY = Math.max(
+  1,
+  readIntEnv("CEREBRAS_MAX_CONCURRENCY", 1, 1),
+);
 const REQUEST_DELAY_MS = readIntEnv("CEREBRAS_REQUEST_DELAY_MS", 350, 0);
 
 let inFlight = 0;

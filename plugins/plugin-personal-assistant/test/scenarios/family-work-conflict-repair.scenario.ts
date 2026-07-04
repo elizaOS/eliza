@@ -22,13 +22,7 @@ export default scenario({
   title:
     "Family/work conflict repair grounds in seeded commitments without over-sharing",
   domain: "executive.family",
-  tags: [
-    "lifeops",
-    "executive-assistant",
-    "calendar",
-    "messaging",
-    "outcome",
-  ],
+  tags: ["lifeops", "executive-assistant", "calendar", "messaging", "outcome"],
   isolation: "per-scenario",
   requires: {
     plugins: ["@elizaos/plugin-agent-skills"],

@@ -20,13 +20,7 @@ export default scenario({
   title:
     "Luggage claim packet grounds in seeded flight and policy state; claim stays unsubmitted",
   domain: "executive.money",
-  tags: [
-    "lifeops",
-    "executive-assistant",
-    "money",
-    "documents",
-    "outcome",
-  ],
+  tags: ["lifeops", "executive-assistant", "money", "documents", "outcome"],
   isolation: "per-scenario",
   requires: {
     plugins: ["@elizaos/plugin-agent-skills"],

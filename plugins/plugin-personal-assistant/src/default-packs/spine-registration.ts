@@ -167,7 +167,10 @@ export function toSpineTaskInput(
   };
 }
 
-function isFirstRunOwned(pack: DefaultPack, record: ScheduledTaskSeed): boolean {
+function isFirstRunOwned(
+  pack: DefaultPack,
+  record: ScheduledTaskSeed,
+): boolean {
   if (FIRST_RUN_OWNED_PACK_KEYS.has(pack.key)) return true;
   return (
     typeof record.idempotencyKey === "string" &&

@@ -152,7 +152,9 @@ describe("adversarial: prompt-injection cannot override structural routing", () 
     // Weekday_only allows on a Wednesday → structure fires regardless of text.
     expect(fired.state.status).toBe("fired");
     expect(h.dispatches).toHaveLength(1);
-    expect(h.dispatches[0]?.promptInstructions).toBe(ungated.promptInstructions);
+    expect(h.dispatches[0]?.promptInstructions).toBe(
+      ungated.promptInstructions,
+    );
   });
 
   it("injected payload is dispatched verbatim as inert data with a typed DispatchResult", async () => {

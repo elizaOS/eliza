@@ -62,8 +62,7 @@ export default scenario({
       path: "/api/lifeops/definitions",
       body: {
         kind: "task",
-        title:
-          "Low-priority conference ask from the Quenby Group booth team",
+        title: "Low-priority conference ask from the Quenby Group booth team",
         timezone: "UTC",
         priority: 4,
         cadence: {

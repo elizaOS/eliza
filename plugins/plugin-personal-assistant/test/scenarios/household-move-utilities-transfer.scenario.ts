@@ -21,13 +21,7 @@ export default scenario({
   title:
     "Move checklist grounds in seeded utility accounts; account digits stay out of chat",
   domain: "executive.household",
-  tags: [
-    "lifeops",
-    "executive-assistant",
-    "household",
-    "documents",
-    "outcome",
-  ],
+  tags: ["lifeops", "executive-assistant", "household", "documents", "outcome"],
   isolation: "per-scenario",
   requires: {
     plugins: ["@elizaos/plugin-agent-skills"],

@@ -10,13 +10,7 @@ export default scenario({
   title:
     "Media correction grounds in seeded fact state; drafts stay behind counsel approval",
   domain: "executive.media",
-  tags: [
-    "lifeops",
-    "executive-assistant",
-    "media",
-    "legal",
-    "outcome",
-  ],
+  tags: ["lifeops", "executive-assistant", "media", "legal", "outcome"],
   isolation: "per-scenario",
   requires: {
     plugins: ["@elizaos/plugin-agent-skills"],

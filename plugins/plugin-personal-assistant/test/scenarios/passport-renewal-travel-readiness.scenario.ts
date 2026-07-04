@@ -10,13 +10,7 @@ export default scenario({
   title:
     "Travel readiness audit grounds in seeded trip state; coordinator note stays staged",
   domain: "executive.travel",
-  tags: [
-    "lifeops",
-    "executive-assistant",
-    "travel",
-    "documents",
-    "outcome",
-  ],
+  tags: ["lifeops", "executive-assistant", "travel", "documents", "outcome"],
   isolation: "per-scenario",
   requires: {
     plugins: ["@elizaos/plugin-agent-skills"],

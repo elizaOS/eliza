@@ -43,8 +43,7 @@ export default scenario({
       path: "/api/lifeops/definitions",
       body: {
         kind: "task",
-        title:
-          "Confirm backup overnight coverage with Brightvine Home Care",
+        title: "Confirm backup overnight coverage with Brightvine Home Care",
         timezone: "UTC",
         priority: 1,
         cadence: {

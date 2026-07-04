@@ -21,7 +21,9 @@ const KEY_ENV_VARS = [
   "WALLET_PRIVATE_KEY",
 ];
 
-function runtimeWith(settings: Record<string, string | undefined>): IAgentRuntime {
+function runtimeWith(
+  settings: Record<string, string | undefined>,
+): IAgentRuntime {
   return {
     getSetting: vi.fn((key: string) => settings[key]),
   } as unknown as IAgentRuntime;
@@ -71,13 +73,15 @@ describe("LocalEoaBackend.create — Solana key resolution", () => {
 
   it("surfaces a non-base58 configured key as a typed invalid-key error", async () => {
     await expect(
-      LocalEoaBackend.create(runtimeWith({ SOLANA_PRIVATE_KEY: "not valid base58 !!!" })),
+      LocalEoaBackend.create(
+        runtimeWith({ SOLANA_PRIVATE_KEY: "not valid base58 !!!" }),
+      ),
     ).rejects.toBeInstanceOf(SolanaPrivateKeyInvalidError);
   });
 
   it("still reports NO_WALLET_CONFIGURED when genuinely no key is set", async () => {
-    await expect(LocalEoaBackend.create(runtimeWith({}))).rejects.toBeInstanceOf(
-      WalletBackendNotConfiguredError,
-    );
+    await expect(
+      LocalEoaBackend.create(runtimeWith({})),
+    ).rejects.toBeInstanceOf(WalletBackendNotConfiguredError);
   });
 });

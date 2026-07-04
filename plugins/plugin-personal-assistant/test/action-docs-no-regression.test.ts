@@ -4,9 +4,9 @@ import { credentialsAction } from "../src/actions/credentials.ts";
 import { ownerDocumentsAction } from "../src/actions/document.ts";
 import { scheduledTaskAction } from "../src/actions/scheduled-task.ts";
 import {
-	ownerRemindersAction,
-	ownerTodosAction,
-	personalAssistantAction,
+  ownerRemindersAction,
+  ownerTodosAction,
+  personalAssistantAction,
 } from "../src/actions/owner-surfaces.ts";
 
 /**
@@ -25,35 +25,35 @@ import {
  * each action's docs from the Action object itself, unchanged.
  */
 describe("owner-surface action docs resolve from the plugin, not the core aggregate", () => {
-	const bakedNames = new Set(allActionDocs.map((doc) => doc.name));
+  const bakedNames = new Set(allActionDocs.map((doc) => doc.name));
 
-	const actionsCarryingOwnParameters = [
-		scheduledTaskAction,
-		credentialsAction,
-		personalAssistantAction,
-		ownerDocumentsAction,
-	];
+  const actionsCarryingOwnParameters = [
+    scheduledTaskAction,
+    credentialsAction,
+    personalAssistantAction,
+    ownerDocumentsAction,
+  ];
 
-	const actionsWithoutParameters = [ownerRemindersAction, ownerTodosAction];
+  const actionsWithoutParameters = [ownerRemindersAction, ownerTodosAction];
 
-	for (const action of [
-		...actionsCarryingOwnParameters,
-		...actionsWithoutParameters,
-	]) {
-		it(`${action.name} carries its own description and is absent from the core aggregate`, () => {
-			expect(typeof action.description).toBe("string");
-			expect(action.description.trim().length).toBeGreaterThan(0);
-			expect(
-				bakedNames.has(action.name),
-				`${action.name} is plugin-owned and must not be baked into the core aggregate`,
-			).toBe(false);
-		});
-	}
+  for (const action of [
+    ...actionsCarryingOwnParameters,
+    ...actionsWithoutParameters,
+  ]) {
+    it(`${action.name} carries its own description and is absent from the core aggregate`, () => {
+      expect(typeof action.description).toBe("string");
+      expect(action.description.trim().length).toBeGreaterThan(0);
+      expect(
+        bakedNames.has(action.name),
+        `${action.name} is plugin-owned and must not be baked into the core aggregate`,
+      ).toBe(false);
+    });
+  }
 
-	for (const action of actionsCarryingOwnParameters) {
-		it(`${action.name} declares its own parameters (overlay no longer needed)`, () => {
-			expect(Array.isArray(action.parameters)).toBe(true);
-			expect(action.parameters?.length ?? 0).toBeGreaterThan(0);
-		});
-	}
+  for (const action of actionsCarryingOwnParameters) {
+    it(`${action.name} declares its own parameters (overlay no longer needed)`, () => {
+      expect(Array.isArray(action.parameters)).toBe(true);
+      expect(action.parameters?.length ?? 0).toBeGreaterThan(0);
+    });
+  }
 });

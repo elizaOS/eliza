@@ -16,13 +16,7 @@ export default scenario({
   title:
     "Crisis comms plan is grounded in seeded counsel work and keeps the sensitive matter out of drafts",
   domain: "executive.escalation",
-  tags: [
-    "lifeops",
-    "executive-assistant",
-    "messaging",
-    "privacy",
-    "outcome",
-  ],
+  tags: ["lifeops", "executive-assistant", "messaging", "privacy", "outcome"],
   isolation: "per-scenario",
   requires: {
     plugins: ["@elizaos/plugin-agent-skills"],
@@ -42,8 +36,7 @@ export default scenario({
       path: "/api/lifeops/definitions",
       body: {
         kind: "task",
-        title:
-          "Coordinate crisis statements with attorneys Calloway & Finch",
+        title: "Coordinate crisis statements with attorneys Calloway & Finch",
         timezone: "UTC",
         priority: 1,
         cadence: {

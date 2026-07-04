@@ -63,8 +63,7 @@ export default scenario({
       path: "/api/lifeops/definitions",
       body: {
         kind: "task",
-        title:
-          "Confirm investor-meeting catering with Marigold & Rye",
+        title: "Confirm investor-meeting catering with Marigold & Rye",
         timezone: "UTC",
         priority: 2,
         cadence: {

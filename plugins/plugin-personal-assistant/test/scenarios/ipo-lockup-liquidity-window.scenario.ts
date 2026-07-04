@@ -10,13 +10,7 @@ export default scenario({
   title:
     "Lockup window plan grounds in seeded liquidity state; no trade is authorized",
   domain: "executive.money",
-  tags: [
-    "lifeops",
-    "executive-assistant",
-    "money",
-    "legal",
-    "outcome",
-  ],
+  tags: ["lifeops", "executive-assistant", "money", "legal", "outcome"],
   isolation: "per-scenario",
   requires: {
     plugins: ["@elizaos/plugin-agent-skills"],

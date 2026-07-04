@@ -115,8 +115,7 @@ export default scenario({
   finalChecks: [
     {
       type: "definitionCountDelta",
-      title:
-        "Containment checklist for the Paystream payroll vendor exposure",
+      title: "Containment checklist for the Paystream payroll vendor exposure",
       delta: 1,
       cadenceKind: "once",
     },

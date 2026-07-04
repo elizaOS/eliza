@@ -21,8 +21,7 @@ afterEach(async () => {
   runtimeResult = undefined;
 });
 
-interface Seed
-  extends Omit<ScheduledTask, "taskId" | "state" | "createdBy"> {
+interface Seed extends Omit<ScheduledTask, "taskId" | "state" | "createdBy"> {
   taskId?: string;
   state?: ScheduledTask["state"];
 }
@@ -67,7 +66,10 @@ describe("processDueScheduledTasks — fire-budget fairness (#10723)", () => {
         respectsGlobalPause: false,
         source: "user_chat",
         ownerVisible: true,
-        completionCheck: { kind: "user_acknowledged", followupAfterMinutes: 30 },
+        completionCheck: {
+          kind: "user_acknowledged",
+          followupAfterMinutes: 30,
+        },
         state: { status: "fired", followupCount: 0, firedAt: staleFiredAt },
       });
     }
@@ -96,7 +98,10 @@ describe("processDueScheduledTasks — fire-budget fairness (#10723)", () => {
     const fired = result.fires.find((f) => f.taskId === reminder.taskId);
     expect(fired?.status).toBe("fired");
 
-    const persisted = await repo.getScheduledTask(runtime.agentId, reminder.taskId);
+    const persisted = await repo.getScheduledTask(
+      runtime.agentId,
+      reminder.taskId,
+    );
     expect(persisted?.state.status).toBe("fired");
   });
 });

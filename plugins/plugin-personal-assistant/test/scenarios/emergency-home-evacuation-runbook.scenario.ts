@@ -18,13 +18,7 @@ export default scenario({
   title:
     "Evacuation runbook is grounded in seeded household state and schedules the reminder ladder",
   domain: "executive.household",
-  tags: [
-    "lifeops",
-    "executive-assistant",
-    "household",
-    "documents",
-    "outcome",
-  ],
+  tags: ["lifeops", "executive-assistant", "household", "documents", "outcome"],
   isolation: "per-scenario",
   requires: {
     plugins: ["@elizaos/plugin-agent-skills"],
@@ -64,8 +58,7 @@ export default scenario({
       path: "/api/lifeops/definitions",
       body: {
         kind: "task",
-        title:
-          "Sitter Rosalba covers school pickup if we evacuate",
+        title: "Sitter Rosalba covers school pickup if we evacuate",
         timezone: "UTC",
         priority: 1,
         cadence: {

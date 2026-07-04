@@ -22,13 +22,7 @@ export default scenario({
   title:
     "Payroll correction grounds in seeded timesheet state; wage rate stays gated",
   domain: "executive.household",
-  tags: [
-    "lifeops",
-    "executive-assistant",
-    "household",
-    "money",
-    "outcome",
-  ],
+  tags: ["lifeops", "executive-assistant", "household", "money", "outcome"],
   isolation: "per-scenario",
   requires: {
     plugins: ["@elizaos/plugin-agent-skills"],
