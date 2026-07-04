@@ -7,6 +7,7 @@
 import { client } from "@elizaos/app-core";
 import "./client";
 import type { HyperliquidClient } from "./client";
+import { postHyperliquidCommand } from "./hyperliquid-command-client";
 import type {
 	HyperliquidMarketsResponse,
 	HyperliquidOrdersResponse,
@@ -31,29 +32,6 @@ export async function loadHyperliquidTuiState(): Promise<{
 		hyperliquidClient.hyperliquidOrders(),
 	]);
 	return { status, markets, positions, orders };
-}
-
-async function postHyperliquidCommand(
-	path: string,
-	body: Record<string, unknown>,
-): Promise<unknown> {
-	const response = await fetch(path, {
-		method: "POST",
-		headers: { "Content-Type": "application/json" },
-		body: JSON.stringify(body),
-	});
-	const data = await response.json().catch(() => ({}));
-	if (!response.ok) {
-		const message =
-			typeof data === "object" &&
-			data !== null &&
-			"error" in data &&
-			typeof data.error === "string"
-				? data.error
-				: `Hyperliquid request failed with ${response.status}`;
-		throw new Error(message);
-	}
-	return data;
 }
 
 export async function interact(
