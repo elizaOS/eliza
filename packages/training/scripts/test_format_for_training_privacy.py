@@ -53,7 +53,17 @@ def _wrap_native_record(user_content: str, response_text: str | None = None) -> 
             ]
         },
         "response": {"text": response_text or "ok"},
-        "metadata": {"task_type": "response"},
+        "metadata": {
+            "task_type": "response",
+            "privacy_attestation": {
+                "schema": "eliza.privacy_filter_attestation.v1",
+                "version": 1,
+                "source": "unit",
+                "redacted": True,
+                "reviewed": True,
+                "passed": True,
+            },
+        },
     }
 
 
@@ -346,7 +356,17 @@ def _record_with_payloads(payloads: list[str]) -> dict[str, Any]:
             ]
         },
         "response": {"text": response_chunk},
-        "metadata": {"task_type": "response"},
+        "metadata": {
+            "task_type": "response",
+            "privacy_attestation": {
+                "schema": "eliza.privacy_filter_attestation.v1",
+                "version": 1,
+                "source": "unit",
+                "redacted": True,
+                "reviewed": True,
+                "passed": True,
+            },
+        },
     }
 
 

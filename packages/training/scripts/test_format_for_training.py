@@ -1,8 +1,24 @@
+import pytest
+
 from format_for_training import format_record
+from privacy_filter_trajectories import PrivacyFilterError
+
+
+def _attested(row):
+    metadata = row.setdefault("metadata", {})
+    metadata["privacy_attestation"] = {
+        "schema": "eliza.privacy_filter_attestation.v1",
+        "version": 1,
+        "source": "unit",
+        "redacted": True,
+        "reviewed": True,
+        "passed": True,
+    }
+    return row
 
 
 def test_format_record_renders_native_text_response():
-    row = {
+    row = _attested({
         "format": "eliza_native_v1",
         "boundary": "vercel_ai_sdk.generateText",
         "request": {
@@ -15,7 +31,7 @@ def test_format_record_renders_native_text_response():
             "text": '{"messageHandler":{"action":"RESPOND","contexts":[]}}'
         },
         "metadata": {"task_type": "should_respond"},
-    }
+    })
 
     formatted = format_record(row)
 
@@ -32,7 +48,7 @@ def test_format_record_renders_native_text_response():
 
 
 def test_format_record_renders_native_tool_call_response():
-    row = {
+    row = _attested({
         "format": "eliza_native_v1",
         "boundary": "vercel_ai_sdk.generateText",
         "request": {
@@ -55,7 +71,7 @@ def test_format_record_renders_native_tool_call_response():
             ],
         },
         "metadata": {"task_type": "action_planner"},
-    }
+    })
 
     formatted = format_record(row)
 
@@ -78,7 +94,7 @@ def test_format_record_renders_native_tool_call_response():
 
 
 def test_format_record_prepends_native_request_system():
-    row = {
+    row = _attested({
         "format": "eliza_native_v1",
         "boundary": "vercel_ai_sdk.generateText",
         "request": {
@@ -87,7 +103,7 @@ def test_format_record_prepends_native_request_system():
         },
         "response": {"text": "assistant response"},
         "metadata": {"task_type": "response"},
-    }
+    })
 
     formatted = format_record(row)
 
@@ -101,7 +117,7 @@ def test_format_record_prepends_native_request_system():
 
 
 def test_format_record_renders_native_system_prompt_request():
-    row = {
+    row = _attested({
         "format": "eliza_native_v1",
         "boundary": "vercel_ai_sdk.generateText",
         "request": {
@@ -110,7 +126,7 @@ def test_format_record_renders_native_system_prompt_request():
         },
         "response": {"text": "assistant response"},
         "metadata": {"task_type": "response"},
-    }
+    })
 
     formatted = format_record(row)
 
@@ -151,6 +167,41 @@ def test_format_record_rejects_native_rows_without_model_boundary():
     }
 
     assert format_record(row) is None
+
+
+def test_format_record_rejects_unattested_native_rows():
+    row = {
+        "format": "eliza_native_v1",
+        "boundary": "vercel_ai_sdk.generateText",
+        "request": {"messages": [{"role": "user", "content": "hello"}]},
+        "response": {"text": "hi"},
+        "metadata": {"task_type": "response"},
+    }
+
+    with pytest.raises(PrivacyFilterError, match="lacks privacy attestation"):
+        format_record(row)
+
+
+def test_format_record_allows_unattested_native_rows_with_operator_override(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    row = {
+        "format": "eliza_native_v1",
+        "boundary": "vercel_ai_sdk.generateText",
+        "request": {"messages": [{"role": "user", "content": "hello"}]},
+        "response": {"text": "hi"},
+        "metadata": {"task_type": "response"},
+    }
+    monkeypatch.setenv("ELIZA_TRAINING_PRIVACY_OVERRIDE_REASON", "unit test raw fixture")
+
+    formatted = format_record(row)
+
+    assert formatted == {
+        "messages": [
+            {"role": "user", "content": "hello"},
+            {"role": "assistant", "content": "hi"},
+        ]
+    }
 
 
 def test_format_record_accepts_eliza1_trajectory_record():

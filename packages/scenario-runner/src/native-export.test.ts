@@ -394,6 +394,12 @@ describe("exportScenarioNativeJsonl", () => {
       expect(parsed.metadata.source_dataset).toBe(
         "scenario_trajectory_boundary",
       );
+      expect(parsed.privacyAttestation.schema).toBe(
+        "eliza.privacy_filter_attestation.v1",
+      );
+      expect(parsed.metadata.privacy_attestation.schema).toBe(
+        "eliza.privacy_filter_attestation.v1",
+      );
       const manifest = JSON.parse(
         readFileSync(path.join(runDir, "native.manifest.json"), "utf-8"),
       );
@@ -411,6 +417,85 @@ describe("exportScenarioNativeJsonl", () => {
         scenarioIds: ["todos.create-basic"],
         agentIds: ["agent-test"],
       });
+      expect(manifest.privacy).toMatchObject({
+        reviewed: true,
+        redactions: 0,
+        residualFindings: 0,
+      });
+      const attestation = JSON.parse(
+        readFileSync(
+          path.join(runDir, "native.privacy-attestation.json"),
+          "utf-8",
+        ),
+      );
+      expect(attestation).toMatchObject({
+        schema: "eliza.privacy_filter_attestation.v1",
+        version: 1,
+        passed: true,
+        input_count: 1,
+        output_count: 1,
+        redaction_count: 0,
+      });
+    } finally {
+      rmSync(runDir, { recursive: true, force: true });
+    }
+  });
+
+  it("redacts secrets and coordinates before writing native JSONL", () => {
+    const runDir = mkdtempSync(path.join(tmpdir(), "scenario-native-privacy-"));
+    try {
+      const trajDir = path.join(runDir, "trajectories", "agent-test");
+      mkdirSync(trajDir, { recursive: true });
+      const trajectory = syntheticTrajectory() as ReturnType<
+        typeof syntheticTrajectory
+      >;
+      const planner = trajectory.stages[1];
+      if (!planner || !("model" in planner) || !planner.model) {
+        throw new Error("synthetic planner stage missing");
+      }
+      planner.model.messages = [
+        {
+          role: "user",
+          content:
+            "My API key is sk-AbCdEfGhIj0123456789 and location: 37.7749, -122.4194.",
+        },
+      ];
+      planner.model.response =
+        "Stored ghp_aaaaaaaaaaaaaaaaaaaaaaaaaa near lat: 48.8566, lng: 2.3522.";
+      writeFileSync(
+        path.join(trajDir, "tj-test-1.json"),
+        JSON.stringify(trajectory),
+        "utf-8",
+      );
+
+      const outPath = path.join(runDir, "native.jsonl");
+      const count = exportScenarioNativeJsonl(runDir, outPath);
+
+      expect(count).toBe(1);
+      const body = readFileSync(outPath, "utf-8");
+      expect(body).not.toContain("sk-AbCdEfGhIj0123456789");
+      expect(body).not.toContain("ghp_aaaaaaaaaaaaaaaaaaaaaaaaaa");
+      expect(body).not.toContain("37.7749");
+      expect(body).not.toContain("48.8566");
+      expect(body).toContain("<REDACTED:openai-key>");
+      expect(body).toContain("<REDACTED:github-token>");
+      expect(body).toContain("[REDACTED_GEO]");
+      const attestation = JSON.parse(
+        readFileSync(
+          path.join(runDir, "native.privacy-attestation.json"),
+          "utf-8",
+        ),
+      );
+      expect(attestation.passed).toBe(true);
+      expect(attestation.redaction_count).toBeGreaterThanOrEqual(4);
+      expect(attestation.gate.residual_findings.count).toBe(0);
+      const manifest = JSON.parse(
+        readFileSync(path.join(runDir, "native.manifest.json"), "utf-8"),
+      );
+      expect(manifest.privacy.redactions).toBe(attestation.redaction_count);
+      expect(manifest.privacy.attestationPath).toBe(
+        path.join(runDir, "native.privacy-attestation.json"),
+      );
     } finally {
       rmSync(runDir, { recursive: true, force: true });
     }

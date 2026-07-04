@@ -1,0 +1,43 @@
+{
+  "schema": "eliza_scenario_native_export",
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-04T03:02:35.455Z",
+  "runDir": "/var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/eliza-stage1-native-export-1PTzZL",
+  "trajectoriesDir": "/var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/eliza-stage1-native-export-1PTzZL/trajectories",
+  "jsonlPath": "/private/tmp/eliza-12318-stage1-corpus/.github/issue-evidence/12318-stage1-native-export.jsonl",
+  "manifestPath": "/private/tmp/eliza-12318-stage1-corpus/.github/issue-evidence/12318-stage1-native-export.manifest.json",
+  "privacyAttestationPath": "/private/tmp/eliza-12318-stage1-corpus/.github/issue-evidence/12318-stage1-native-export.privacy-attestation.json",
+  "counts": {
+    "trajectoryFiles": 1,
+    "parsedTrajectories": 1,
+    "skippedFiles": 0,
+    "rows": 1,
+    "passedRows": 1,
+    "failedRows": 0,
+    "skippedScenarioRows": 0,
+    "unknownOutcomeRows": 0
+  },
+  "runIds": [
+    "run-stage1-evidence"
+  ],
+  "scenarioIds": [
+    "stage1.privacy-evidence"
+  ],
+  "agentIds": [
+    "agent-evidence"
+  ],
+  "privacy": {
+    "reviewed": true,
+    "attestationSchema": "eliza.privacy_filter_attestation.v1",
+    "attestationVersion": 1,
+    "attestationPath": "/private/tmp/eliza-12318-stage1-corpus/.github/issue-evidence/12318-stage1-native-export.privacy-attestation.json",
+    "redactions": 4,
+    "residualFindings": 0,
+    "categories": {
+      "secret": 2,
+      "geo": 2,
+      "contact": 0,
+      "backend": 0
+    }
+  }
+}
