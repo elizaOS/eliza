@@ -153,6 +153,99 @@ ADAPTERS: tuple[dict[str, Any], ...] = (
             "note": "City-council benchmark rows stay eval-only unless product/legal approve training use.",
         },
     },
+    {
+        # zoomGroupStats (https://zoomgroupstats.org, MIT) turns Zoom cloud-recording
+        # exports into datasets. Its `transcript.vtt` maps 1:1 to canonical speaker
+        # turns, so unlike QMSum/MeetingBank (query-summary corpora) this adapter's
+        # native signal is transcript accuracy + DIARIZATION — the summarization
+        # metrics below are reference-free (judge-scored against the transcript), and
+        # the diarization/WER metrics are the primary gate. See zoom_vtt.py for the
+        # executable .vtt -> meeting-artifact importer.
+        "id": "zoomgroupstats_p0_smoke",
+        "source_url": "https://github.com/andrewpknight/zoomGroupStats",
+        "task_family": "transcription_diarization",
+        "license_access": {
+            "repo_license": "MIT",
+            "raw_data_policy": "downloaded-eval",
+            "notes": (
+                "zoomGroupStats is MIT-licensed and ships sample exports under "
+                "inst/extdata (meeting001-003 transcript.vtt/chat.txt/participants.csv) "
+                "usable with no Zoom account; real rows are a user's own Zoom cloud "
+                "recording (transcript.vtt from Recordings, participants.csv from "
+                "Reports), downloaded at run time. Raw rows are never committed; a "
+                "synthetic MIT-clean .vtt fixture drives the deterministic parser test."
+            ),
+        },
+        "selected_split": {
+            "dataset": "zoomGroupStats",
+            "split": "inst/extdata",
+            "source_domains": ["zoom_cloud_recording"],
+        },
+        "row_selection": {
+            "strategy": "first_n_after_download",
+            "row_count": 3,
+            "row_id_fields": ["meeting_id"],
+            "content_hash_fields": ["transcript_vtt", "participants_csv"],
+            "raw_rows_committed": False,
+        },
+        "required_hashes": [
+            "source_revision",
+            "row_id",
+            "transcript_sha256",
+            "participants_sha256",
+            "adapter_config_sha256",
+        ],
+        "output_schema": MEETING_ARTIFACT_SCHEMA,
+        "scenario_runner": {
+            "kind": "meeting_artifact_eval",
+            "scenario_id_prefix": "zoomgroupstats-p0",
+            "input_fields": ["transcript_vtt", "participants_csv"],
+            "expected_artifact_fields": [
+                "transcriptSpans",
+                "diarizedSpeakers",
+                "summary",
+                "action_items",
+                "topics",
+            ],
+        },
+        "score_json": {
+            # The 5 contract-required (reference-free / judge-scored) metrics ...
+            "metrics": sorted(
+                REQUIRED_SCORE_METRICS
+                # ... plus this adapter's PRIMARY transcription/diarization gate.
+                | {
+                    "diarization_error_rate",
+                    "transcript_word_error_rate",
+                    "speaker_attribution_accuracy",
+                }
+            ),
+            "primary_metrics": [
+                "diarization_error_rate",
+                "speaker_attribution_accuracy",
+                "transcript_word_error_rate",
+            ],
+            "baseline": {
+                # compare.py-style baseline: a reference system, not a fixed number.
+                "diarization_reference": "pyannote.audio speaker-diarization-3.1",
+                "transcript_reference": "whisper (large-v3) / Groq Whisper cascade",
+                "note": (
+                    "Diarization scored as DER vs the pyannote reference used in "
+                    "packages/benchmarks/voice-speaker-validation (test DER<=0.45, "
+                    "production target 0.25); transcript scored as WER vs a Whisper "
+                    "reference like voicebench. Summarization metrics are reference-"
+                    "free judge scores over the produced transcript."
+                ),
+            },
+            "requires_judge_model": True,
+            "requires_manual_review": True,
+            "publishable_requires_real_provider": True,
+        },
+        "training_eval_separation": {
+            "eval_only": True,
+            "training_allowed": False,
+            "note": "Zoom recordings are participant data; eval-only, never training, without explicit consent + approval.",
+        },
+    },
 )
 
 

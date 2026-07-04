@@ -24,6 +24,7 @@ def test_qmsum_and_meetingbank_contract_is_valid() -> None:
     assert {adapter["id"] for adapter in contract["adapters"]} == {
         "qmsum_p0_smoke",
         "meetingbank_p0_smoke",
+        "zoomgroupstats_p0_smoke",
     }
 
 
@@ -61,7 +62,9 @@ def test_adapters_emit_meeting_artifact_and_scenario_runner_metadata() -> None:
         assert adapter["scenario_runner"]["scenario_id_prefix"]
         assert adapter["scenario_runner"]["input_fields"]
         assert adapter["scenario_runner"]["expected_artifact_fields"]
-        assert set(adapter["score_json"]["metrics"]) == REQUIRED_SCORE_METRICS
+        # Every adapter carries at least the 5 contract-required metrics; a
+        # transcription/diarization adapter (zoomgroupstats) adds more (DER/WER).
+        assert REQUIRED_SCORE_METRICS <= set(adapter["score_json"]["metrics"])
         assert adapter["score_json"]["requires_judge_model"] is True
         assert adapter["score_json"]["requires_manual_review"] is True
         assert adapter["score_json"]["publishable_requires_real_provider"] is True
@@ -72,6 +75,27 @@ def test_adapters_are_eval_only_until_explicit_training_approval() -> None:
         assert adapter["training_eval_separation"]["eval_only"] is True
         assert adapter["training_eval_separation"]["training_allowed"] is False
         assert "training" in adapter["training_eval_separation"]["note"].lower()
+
+
+def test_zoomgroupstats_adapter_is_transcription_diarization_with_der_wer_baseline() -> None:
+    adapters = {a["id"]: a for a in build_adapter_contract()["adapters"]}
+    zgs = adapters["zoomgroupstats_p0_smoke"]
+
+    assert zgs["license_access"]["repo_license"] == "MIT"
+    assert zgs["task_family"] == "transcription_diarization"
+    assert zgs["row_selection"]["raw_rows_committed"] is False
+    # Native diarization/transcript metrics on top of the required 5.
+    metrics = set(zgs["score_json"]["metrics"])
+    assert REQUIRED_SCORE_METRICS <= metrics
+    assert {
+        "diarization_error_rate",
+        "transcript_word_error_rate",
+        "speaker_attribution_accuracy",
+    } <= metrics
+    # Baseline is a reference system (pyannote DER / Whisper WER), not a number.
+    baseline = zgs["score_json"]["baseline"]
+    assert "pyannote" in baseline["diarization_reference"].lower()
+    assert "whisper" in baseline["transcript_reference"].lower()
 
 
 def test_validator_rejects_publishable_mock_or_raw_data_contracts() -> None:
