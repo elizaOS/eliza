@@ -81,6 +81,7 @@ function parseCollectorLine(line: string): ParsedCollectorLine {
   try {
     parsed = JSON.parse(trimmed);
   } catch {
+    // error-policy:J3 malformed collector line; return an explicit "ignored" parse result
     return { kind: "ignored" };
   }
   if (!parsed || typeof parsed !== "object") return { kind: "ignored" };

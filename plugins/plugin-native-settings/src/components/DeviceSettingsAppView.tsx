@@ -99,6 +99,7 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
       setSystemStatus(statusResult);
       setBrightness(clampUnit(settingsResult.brightness));
     } catch (err) {
+      // error-policy:J4 surface the load failure into the view's error state (three-state UI)
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);
@@ -145,6 +146,7 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
       setBrightness(clampUnit(next.brightness));
       setNotice("Brightness updated.");
     } catch (err) {
+      // error-policy:J4 surface the brightness-save failure into the view's error state
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setSaving(null);
@@ -183,6 +185,7 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
           `${VOLUME_LABELS[volume.stream] ?? volume.stream} volume updated.`,
         );
       } catch (err) {
+        // error-policy:J4 surface the volume-save failure into the view's error state
         setError(err instanceof Error ? err.message : String(err));
       } finally {
         setSaving(null);
@@ -201,6 +204,7 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
       setSystemStatus(next);
       setNotice(`${ROLE_LABELS[role]} role updated.`);
     } catch (err) {
+      // error-policy:J4 surface the role-request failure into the view's error state
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setSaving(null);
@@ -220,6 +224,7 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
         if (action === "sound") await System.openSoundSettings();
         if (action === "network") await System.openNetworkSettings();
       } catch (err) {
+        // error-policy:J4 surface the open-settings failure into the view's error state
         setError(err instanceof Error ? err.message : String(err));
         return;
       }

@@ -224,6 +224,7 @@ async function runSet(
       },
     };
   } catch (err) {
+    // error-policy:J1 action boundary translates helper unavailability/failure into a structured ActionResult
     if (err instanceof MacosAlarmHelperUnavailableError) {
       logger.warn(`[ALARM/set] helper unavailable: ${err.reason}`);
       if (callback) {
@@ -292,6 +293,7 @@ async function runCancel(
       data: { actionName: "ALARM", subaction: "cancel", id: cancelled.id },
     };
   } catch (err) {
+    // error-policy:J1 action boundary translates helper unavailability/failure into a structured ActionResult
     if (err instanceof MacosAlarmHelperUnavailableError) {
       logger.warn(`[ALARM/cancel] helper unavailable: ${err.reason}`);
       return {
@@ -346,6 +348,7 @@ async function runList(
       },
     };
   } catch (err) {
+    // error-policy:J1 action boundary translates helper unavailability/failure into a structured ActionResult
     if (err instanceof MacosAlarmHelperUnavailableError) {
       logger.warn(`[ALARM/list] helper unavailable: ${err.reason}`);
       return {

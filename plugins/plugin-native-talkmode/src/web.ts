@@ -102,6 +102,7 @@ export class TalkModeWeb extends WebPlugin {
         try {
           this.recognition?.start();
         } catch (err) {
+          // error-policy:J6 best-effort restart of a stopped recognizer; genuine failures are warned
           const msg = err instanceof Error ? err.message : String(err);
           if (!msg.includes("already started")) {
             console.warn("[TalkMode] Failed to restart recognition:", msg);
@@ -114,6 +115,7 @@ export class TalkModeWeb extends WebPlugin {
       this.recognition.start();
       return { started: true };
     } catch (error) {
+      // error-policy:J1 boundary translates a recognizer start failure into a structured { started:false } result
       const message =
         error instanceof Error ? error.message : "Failed to start";
       return { started: false, error: message };
@@ -250,6 +252,7 @@ export class TalkModeWeb extends WebPlugin {
         microphone = result.state;
       }
     } catch {
+      // error-policy:J4 Permissions API cannot query microphone here; keep the "prompt" default
       // Permissions API may not support microphone query
     }
 
@@ -279,6 +282,7 @@ export class TalkModeWeb extends WebPlugin {
         track.stop();
       });
     } catch {
+      // error-policy:J4 mic prompt denied/unavailable; the real state is re-read by checkPermissions below
       // Permission denied or error
     }
 

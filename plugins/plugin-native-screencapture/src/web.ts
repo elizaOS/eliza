@@ -220,6 +220,7 @@ export class ScreenCaptureWeb extends WebPlugin {
     this.mediaStream.getVideoTracks()[0].addEventListener("ended", () => {
       if (this.isRecording) {
         this.stopRecording().catch((err: unknown) => {
+          // error-policy:J1 surface the auto-stop failure to listeners as a structured error event
           this.notifyListeners("error", {
             code: "AUTO_STOP_FAILED",
             message: `Auto-stop on track end failed: ${err instanceof Error ? err.message : String(err)}`,
@@ -264,6 +265,7 @@ export class ScreenCaptureWeb extends WebPlugin {
       if (overLimit) {
         autoStopping = true;
         this.stopRecording().catch((err: unknown) => {
+          // error-policy:J1 surface the auto-stop failure to listeners as a structured error event
           this.notifyListeners("error", {
             code: "AUTO_STOP_FAILED",
             message: `Auto-stop recording failed: ${err instanceof Error ? err.message : String(err)}`,
@@ -420,6 +422,7 @@ export class ScreenCaptureWeb extends WebPlugin {
       });
       microphone = result.state as "granted" | "denied" | "prompt";
     } catch {
+      // error-policy:J4 Permissions API cannot query microphone here; keep the "prompt" default
       // Permissions API may not support microphone query in this browser
     }
 
@@ -449,6 +452,7 @@ export class ScreenCaptureWeb extends WebPlugin {
       });
       microphone = "granted";
     } catch {
+      // error-policy:J4 microphone permission denied
       microphone = "denied";
     }
 

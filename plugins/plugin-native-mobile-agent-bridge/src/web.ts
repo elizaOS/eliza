@@ -13,6 +13,7 @@ function assertRelayUrl(value: unknown): string {
   try {
     parsed = new URL(value);
   } catch {
+    // error-policy:J3 untrusted relayUrl failed to parse; throw an explicit validation error
     throw new Error("relayUrl must be a valid URL");
   }
   if (

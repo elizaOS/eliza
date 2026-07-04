@@ -366,6 +366,7 @@ export class SwabbleWeb extends WebPlugin {
           return result;
         }
       } catch {
+        // error-policy:J4 native desktop bridge failed; degrade to the Web Speech API path below
         // Fall through to Web Speech API
       }
     }
@@ -576,6 +577,7 @@ export class SwabbleWeb extends WebPlugin {
         microphone = result.state;
       }
     } catch {
+      // error-policy:J4 Permissions API cannot query microphone here; keep the "prompt" default
       /* permissions.query not supported for microphone in some browsers */
     }
     let speechRecognition: SwabblePermissionStatus["speechRecognition"] =
@@ -607,6 +609,7 @@ export class SwabbleWeb extends WebPlugin {
       });
       return this.checkPermissions();
     } catch {
+      // error-policy:J4 mic prompt denied/unavailable; report the denied permission status
       return {
         microphone: "denied",
         speechRecognition: "denied",
@@ -629,6 +632,7 @@ export class SwabbleWeb extends WebPlugin {
         }));
       return { devices: audioInputs };
     } catch {
+      // error-policy:J4 enumerateDevices unavailable; same designed empty-list state as the no-API path
       return { devices: [] };
     }
   }

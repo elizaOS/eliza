@@ -881,6 +881,7 @@ export class CanvasWeb extends WebPlugin {
           clearInterval(checkReady);
           this.notifyListeners("webViewReady", { url: options.url, title });
         } catch {
+          // error-policy:J4 cross-origin popup blocks title reads; degrade to a ready event with no title
           // Cross-origin: fire ready without title
           clearInterval(checkReady);
           this.notifyListeners("webViewReady", { url: options.url, title: "" });
@@ -915,6 +916,7 @@ export class CanvasWeb extends WebPlugin {
       try {
         title = iframe.contentDocument?.title || "";
       } catch {
+        // error-policy:J4 cross-origin iframe blocks title reads; degrade to an empty title
         // Cross-origin: title inaccessible
       }
       this.notifyListeners("webViewReady", { url: options.url, title });
@@ -1015,6 +1017,7 @@ export class CanvasWeb extends WebPlugin {
         }
       }
     } catch {
+      // error-policy:J4 cross-origin/serialization blocks capture; degrade to the unavailable frame below
       // Cross-origin or serialization failed — fall through to an unavailable frame.
     }
 

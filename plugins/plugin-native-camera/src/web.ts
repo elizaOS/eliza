@@ -401,6 +401,7 @@ export class CameraWeb extends WebPlugin {
       if (overLimit) {
         autoStopping = true;
         this.stopRecording().catch((err) => {
+          // error-policy:J6 best-effort auto-stop teardown; the rejection is logged here
           console.error("[Camera] Auto-stop recording failed:", err);
         });
       }
@@ -570,6 +571,7 @@ export class CameraWeb extends WebPlugin {
         ],
       });
     } catch (e) {
+      // error-policy:J2 add focus-point context to the applyConstraints failure and rethrow
       throw new Error(
         `Failed to set focus point: ${e instanceof Error ? e.message : "unknown error"}`,
       );
@@ -600,6 +602,7 @@ export class CameraWeb extends WebPlugin {
         ],
       });
     } catch (e) {
+      // error-policy:J2 add exposure-point context to the applyConstraints failure and rethrow
       throw new Error(
         `Failed to set exposure point: ${e instanceof Error ? e.message : "unknown error"}`,
       );
@@ -632,6 +635,7 @@ export class CameraWeb extends WebPlugin {
       });
       cameraStatus = cameraResult.state as "granted" | "denied" | "prompt";
     } catch (err) {
+      // error-policy:J4 Permissions API cannot query camera in this browser; keep the "prompt" default
       console.debug("[Camera] permissions.query('camera') not supported:", err);
     }
 
@@ -641,6 +645,7 @@ export class CameraWeb extends WebPlugin {
       });
       microphoneStatus = micResult.state as "granted" | "denied" | "prompt";
     } catch (err) {
+      // error-policy:J4 Permissions API cannot query microphone in this browser; keep the "prompt" default
       console.debug(
         "[Camera] permissions.query('microphone') not supported:",
         err,
@@ -671,6 +676,7 @@ export class CameraWeb extends WebPlugin {
       cameraStatus = "granted";
       microphoneStatus = "granted";
     } catch {
+      // error-policy:J4 combined camera+mic prompt was denied; retry each capability separately
       try {
         const videoStream = await getMediaDevices().getUserMedia({
           video: true,
@@ -680,6 +686,7 @@ export class CameraWeb extends WebPlugin {
         });
         cameraStatus = "granted";
       } catch {
+        // error-policy:J4 camera permission denied
         cameraStatus = "denied";
       }
 
@@ -692,6 +699,7 @@ export class CameraWeb extends WebPlugin {
         });
         microphoneStatus = "granted";
       } catch {
+        // error-policy:J4 microphone permission denied
         microphoneStatus = "denied";
       }
     }

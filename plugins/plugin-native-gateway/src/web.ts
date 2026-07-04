@@ -84,6 +84,7 @@ function assertGatewayUrl(url: unknown): string {
   try {
     parsed = new URL(url);
   } catch {
+    // error-policy:J3 untrusted url failed to parse; throw an explicit validation error
     throw new Error("url must be a valid WebSocket URL");
   }
   if (parsed.protocol !== "ws:" && parsed.protocol !== "wss:") {
@@ -329,6 +330,7 @@ export class GatewayWeb extends WebPlugin {
     try {
       parsedValue = JSON.parse(raw) as JsonValue;
     } catch (err) {
+      // error-policy:J3 untrusted gateway frame failed to parse; drop it with an observable warn
       // A frame the gateway sent us failed to parse. Dropping it silently would
       // masquerade a protocol/transport fault as an idle connection, so surface
       // it the same way the sequence-gap and socket-error paths do.

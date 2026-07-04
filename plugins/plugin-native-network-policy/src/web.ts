@@ -47,6 +47,7 @@ function readNavigatorSaveData(): boolean | null {
     const saveData = nav?.connection?.saveData;
     return typeof saveData === "boolean" ? saveData : null;
   } catch {
+    // error-policy:J4 Network Information API unavailable; return null (unknown), never a fabricated false
     return null;
   }
 }
