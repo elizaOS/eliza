@@ -16,7 +16,7 @@ import {
   getUsageTimeSeries,
   type TimeGranularity,
 } from "../services/analytics";
-import { organizationsService } from "../services/organizations";
+import { type Organization, organizationsService } from "../services/organizations";
 
 /**
  * Enhanced filters for analytics queries with time range presets.
@@ -30,6 +30,25 @@ export interface EnhancedAnalyticsFilters {
   granularity?: TimeGranularity;
   /** Preset time range (overrides startDate/endDate if provided). */
   timeRange?: "daily" | "weekly" | "monthly";
+}
+
+export function parseProjectionCreditBalance(
+  organization: Organization | undefined,
+  organizationId: string,
+): number {
+  if (!organization) {
+    throw new Error(`Organization ${organizationId} not found while reading projection balance`);
+  }
+
+  // `credit_balance` is a Drizzle numeric string at the row boundary. A
+  // missing/corrupt value is not a $0 balance: projections and low-balance
+  // alerts are user-facing billing signals, so fail closed instead of emitting
+  // a success-shaped analytics payload with a fabricated zero.
+  const balance = Number.parseFloat(String(organization.credit_balance ?? ""));
+  if (!Number.isFinite(balance)) {
+    throw new Error(`Unable to read projection credit_balance for organization ${organizationId}`);
+  }
+  return balance;
 }
 
 /**
@@ -142,7 +161,7 @@ export async function getProjectionsData(request: Request, periods: number = 7) 
     organizationsService.getById(organizationId),
   ]);
 
-  const creditBalance = Number(org?.credit_balance || 0);
+  const creditBalance = parseProjectionCreditBalance(org, organizationId);
   const projections = generateProjections(historicalData, periods);
   const alerts = generateProjectionAlerts(historicalData, projections, creditBalance);
 
