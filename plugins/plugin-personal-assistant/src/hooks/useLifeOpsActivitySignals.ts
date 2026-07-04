@@ -1,3 +1,10 @@
+/**
+ * Side-effect hook that captures native mobile presence/health/screen-time
+ * snapshots via the Capacitor MobileSignals plugin and posts them to the
+ * LifeOps activity-signals endpoint, deduping by per-signal fingerprint and
+ * re-capturing on app resume. Returns nothing; runs only on capable devices,
+ * and quietly stands down when the runtime endpoint is not yet available.
+ */
 import { Capacitor } from "@capacitor/core";
 import {
   MobileSignals,

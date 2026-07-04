@@ -1,3 +1,8 @@
+/**
+ * Unit tests for owner focus-session detection: dwell-threshold gating on the
+ * latest foreground app and partitioning of deferrable proactive actions.
+ * Deterministic — foreground-app reporting is stubbed, no live tracker.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import type { ActivityForegroundApp } from "./activity-tracker-reporting.js";

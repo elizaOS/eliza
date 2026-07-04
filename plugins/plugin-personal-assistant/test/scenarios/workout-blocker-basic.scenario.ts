@@ -1,13 +1,11 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 /**
- * De-echoed for #9310: the old turn assertions ("workout" / "saved",
- * "workout") were satisfiable by parroting the prompt. The persisted daily
- * afternoon definition with the fixed-duration website unlock
- * (`definitionCountDelta` with `websiteAccess`) is the load-bearing outcome;
- * the turn checks now enforce the two-phase commit: the preview must lay out
- * the concrete block/unlock plan without claiming persistence, and the
- * confirm turn requires save-confirmation words the prompt never used.
+ * Live-model scenario: a workout-blocker request persists a daily afternoon
+ * definition with a fixed-duration website unlock (`definitionCountDelta` with
+ * `websiteAccess`). The turn checks enforce the two-phase commit: the preview
+ * must lay out the concrete block/unlock plan without claiming persistence, and
+ * the confirm turn requires save-confirmation words the prompt never used.
  */
 export default scenario({
   lane: "live-only",

@@ -1,3 +1,4 @@
+/** Barrel for the plugin's shared DTO types: briefings, document requests, and blocker settings-card props. */
 export type {
   AppBlockerSettingsCardProps,
   AppBlockerSettingsMode,

@@ -1,3 +1,8 @@
+/**
+ * The `lifeops_browser` provider: injects a bounded projection of the owner's
+ * browser-companion state (paired companions and open tabs) into the model
+ * prompt so the assistant can reason about the browser. Gated on owner access.
+ */
 import { hasOwnerAccess } from "@elizaos/agent";
 import {
   type IAgentRuntime,

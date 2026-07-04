@@ -1,3 +1,8 @@
+/**
+ * WhatsApp service mixin: declares the LifeOps WhatsApp service surface and the
+ * mixin that composes the whatsapp domain's fetch/send methods onto the
+ * LifeOpsService base.
+ */
 import type { LifeOpsWhatsAppConnectorStatus } from "@elizaos/shared";
 import type {
   WhatsAppMessage,

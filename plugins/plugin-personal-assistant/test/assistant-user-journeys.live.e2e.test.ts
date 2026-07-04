@@ -1,3 +1,8 @@
+/**
+ * Live-model e2e for the core assistant journeys: multi-platform message triage, mid-day
+ * recall, and surfacing the most overdue bill from email context. Boots a real AgentRuntime
+ * against a live LLM.
+ */
 import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";

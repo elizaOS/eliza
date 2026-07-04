@@ -1,3 +1,8 @@
+/**
+ * `createHealthSleepServiceMethods` — assembles the sleep history, regularity,
+ * and personal-baseline response DTOs from an episode repository, for the host
+ * to serve over the sleep routes.
+ */
 import type {
   LifeOpsPersonalBaselineResponse,
   LifeOpsSleepHistoryEpisode,

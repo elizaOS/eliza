@@ -1,3 +1,14 @@
+/**
+ * Due-evaluation math for the ScheduledTask spine.
+ *
+ * Given a task, the current instant, and optional owner facts / anchors, decides
+ * whether a task should fire now (`isScheduledTaskDue`) and whether a fired
+ * task's completion window has timed out. Purely structural — it reads
+ * `trigger`, `state`, and status, never `promptInstructions`. `event` / `manual`
+ * / `after_task` triggers are push-fired and report not-due here. Consumed by the
+ * scheduler tick and the runner.
+ */
+
 import { computeNextCronRunAtMs } from "@elizaos/core";
 
 import type { AnchorRegistry } from "../anchors/anchor-registry.js";

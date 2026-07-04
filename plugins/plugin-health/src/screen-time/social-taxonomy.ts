@@ -1,3 +1,7 @@
+/**
+ * Screen-time target classification — maps a target's category / device /
+ * service / browser onto a `LifeOpsHabitCategory`, and flags social categories.
+ */
 export type LifeOpsHabitCategory =
   | "browser"
   | "communication"

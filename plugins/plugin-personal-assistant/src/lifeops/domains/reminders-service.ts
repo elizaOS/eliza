@@ -1,3 +1,14 @@
+/**
+ * Reminders domain for LifeOps: the operating core that turns reminder plans
+ * into fired reminders on the owner's behalf. It resolves owner contacts and
+ * escalation channels, applies website-block enforcement windows, and drives the
+ * per-step reminder pipeline through the model with trajectory purpose tagging.
+ *
+ * It also owns the schedule-observation sync to Cloud and the persisted
+ * state-log rollover. Firing is structural — reminder steps are matched on their
+ * plan fields, never on prompt text — consistent with the shared scheduled-task
+ * architecture the LifeOps family runs on.
+ */
 import crypto from "node:crypto";
 import {
   loadOwnerContactRoutingHints,
@@ -5447,9 +5458,9 @@ export class RemindersDomain {
         agentId: this.ctx.agentId(),
         retentionDays: DEFAULT_TELEMETRY_RETENTION_DAYS,
       });
-      // Scheduled-task state-log rollup rides the same once-per-day gate.
-      // `rolloverStateLog` (90-day default retention) previously had no
-      // production caller, so `life_scheduled_task_log` grew unbounded.
+      // Scheduled-task state-log rollup rides the same once-per-day gate; this
+      // is the production caller for `rolloverStateLog` (90-day default
+      // retention) that bounds `life_scheduled_task_log` growth.
       const runner = getScheduledTaskRunner(this.ctx.runtime, {
         agentId: this.ctx.agentId(),
         now: () => now,

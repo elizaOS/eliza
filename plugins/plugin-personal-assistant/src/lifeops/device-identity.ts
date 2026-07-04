@@ -1,3 +1,9 @@
+/**
+ * Stable per-device identity for LifeOps: resolves (and caches to the state dir)
+ * a device fingerprint — id, hostname, platform — used to target intents at the
+ * owner's logical devices. Honors an env override before falling back to a
+ * generated, cached id.
+ */
 import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";

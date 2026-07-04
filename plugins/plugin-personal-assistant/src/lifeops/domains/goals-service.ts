@@ -1,3 +1,9 @@
+/**
+ * Goals domain for LifeOps: the assistant's owner-goals surface — CRUD, weekly
+ * reviews, experience-loop matching, and support suggestions — layered over
+ * `@elizaos/plugin-goals`. Ties goals to their reminder plans and occurrences so
+ * the scheduler can drive goal check-ins.
+ */
 import {
   GoalsService,
   scoreGoalSimilarity,

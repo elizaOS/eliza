@@ -278,9 +278,9 @@ describe("buildCadenceFromUpdateFields (once reschedule)", () => {
     expect(built).toBeNull();
   });
 
-  // Date-level moves ("push it to Friday / tomorrow / april 17") previously
-  // resolved only the TIME portion because the update extractor had no
-  // due* fields — the date silently stayed put.
+  // Date-level moves ("push it to Friday / tomorrow / april 17") must resolve
+  // the DATE, not just the time: the update extractor carries due* fields so
+  // the date advances instead of silently staying put.
   it("moves the dueAt to a named weekday + time", () => {
     // NOW is Wed 2026-07-01 (Denver). "Friday at 3pm" => Fri 2026-07-03 15:00 MDT.
     const built = buildCadenceFromUpdateFields({

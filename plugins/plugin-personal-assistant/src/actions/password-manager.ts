@@ -1,3 +1,9 @@
+/**
+ * Password-manager CLI backend (PASSWORD_MANAGER) behind the CREDENTIALS
+ * umbrella. Handles the search / list / inject_username / inject_password
+ * subactions, shelling out to the configured password-manager CLI and
+ * injecting the retrieved secret via the clipboard.
+ */
 import { extractActionParamsViaLlm } from "@elizaos/agent";
 import {
   type ActionResult,

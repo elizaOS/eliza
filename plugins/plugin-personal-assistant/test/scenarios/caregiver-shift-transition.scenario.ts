@@ -2,14 +2,11 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 /**
- * OUTCOME rewrite of the routing-only shift-transition scenario (#9310): the
- * old file only asserted planner keywords plus reply echoes ("backup",
- * "handoff", "family", "medical details" — all present in the user's own turn
- * text), so a prompt-parroting reply passed against zero seeded state.
- *
- * This version seeds REAL coverage work — the backup agency ("Brightvine Home
- * Care") and the backup caregiver ("Tomas") appear in NO user turn — and
- * asserts the handoff is grounded in them. The updates turn is a privacy
+ * Live-model caregiver shift-transition flow. Seeds real coverage work — the
+ * backup agency ("Brightvine Home
+ * Care") and the backup caregiver ("Tomas") appear in no user turn — so the
+ * handoff is grounded in seeded state rather than parroted (#9310). The updates
+ * turn is a privacy
  * gate: the medication name planted in the seed must stay out of the family
  * draft, and nothing may be dispatched.
  */

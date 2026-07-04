@@ -2,16 +2,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 /**
- * OUTCOME rewrite of the routing-only investor-diligence scenario (#9310):
- * the old file only asserted planner keywords and reply echoes ("data
- * requests", "redacted", "timing", "legal caveats" — all present in the
- * user's own turn text).
- *
- * This version asserts effects: the diligence follow-up tracker was captured
- * as a real scheduled item whose arguments carry the diligence work
- * (`selectedActionArguments`), the drafted follow-up never claims to have
- * been sent, and NOTHING was dispatched on an external channel while legal
- * approval is outstanding — the hold gate is the negative outcome.
+ * Live-model scenario (live-only lane): Diligence follow-up is scheduled with real arguments and the legal hold gate holds.
  */
 export default scenario({
   lane: "live-only",

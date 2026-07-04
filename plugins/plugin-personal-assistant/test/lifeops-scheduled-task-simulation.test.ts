@@ -1,3 +1,9 @@
+/**
+ * Drives every concrete scheduled-task primitive (goal, todo, message_triage, reminder,
+ * checkin, followup, recap, approval) through the real scheduled-task runner: fire,
+ * clock-advance with structural completion, and permanent-failure preserved as a domain
+ * artifact.
+ */
 import { describe, expect, it } from "vitest";
 import type { LifeOpsScheduledPrimitive } from "./helpers/lifeops-scheduled-task-simulation.js";
 import { createLifeOpsScheduledTaskSimulationHarness } from "./helpers/lifeops-scheduled-task-simulation.js";

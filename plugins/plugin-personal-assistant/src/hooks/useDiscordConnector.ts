@@ -1,3 +1,9 @@
+/**
+ * React hook exposing the LifeOps Discord connector status (owner or agent
+ * side) and its connect/disconnect controls, polling the LifeOps connector API.
+ * The Discord transport client itself lives in `@elizaos/plugin-discord`; this
+ * hook only reads and toggles the normalized connector status for the UI.
+ */
 import type {
   LifeOpsConnectorSide,
   LifeOpsDiscordConnectorStatus,

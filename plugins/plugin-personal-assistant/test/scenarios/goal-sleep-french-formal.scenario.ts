@@ -1,3 +1,6 @@
+/**
+ * Live-model scenario (LLM-judged): the sleep-goal grounding → preview → save loop driven in formal French (vous), with the assistant tracking the goal in-language.
+ */
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({

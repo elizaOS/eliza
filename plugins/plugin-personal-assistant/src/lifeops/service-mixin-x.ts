@@ -1,3 +1,8 @@
+/**
+ * X (Twitter) write service mixin: declares the LifeOps X write service surface
+ * and the mixin that composes the x domain's post/DM and connector-grant methods
+ * onto the LifeOpsService base.
+ */
 import type {
   CreateLifeOpsXPostRequest,
   LifeOpsConnectorGrant,

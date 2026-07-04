@@ -1,3 +1,4 @@
+/** Verifies the LifeOpsService delegates messaging (X post/DM) and Calendly calls through the connector runtime services. Deterministic vitest with stubbed runtime services. */
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import type { IAgentRuntime } from "@elizaos/core";

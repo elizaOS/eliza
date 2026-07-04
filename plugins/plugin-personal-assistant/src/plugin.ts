@@ -1,3 +1,13 @@
+/**
+ * Plugin definition for `@elizaos/plugin-personal-assistant`: assembles the
+ * assistant's actions, providers, evaluators, services, and routes and wires the
+ * init/dispose lifecycle. On init it registers the owner-facing surfaces,
+ * promotes subactions to actions, and injects the LifeOps scheduled-task runner
+ * dependencies into the always-loaded scheduling plugin.
+ *
+ * This is the composition root that turns the LifeOps domains, mixins, and
+ * default packs into a runnable Eliza plugin; it owns no domain logic itself.
+ */
 import {
   type ActionResult,
   EventType,

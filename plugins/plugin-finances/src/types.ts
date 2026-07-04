@@ -1,11 +1,7 @@
 /**
- * Shared type definitions for the @elizaos/plugin-finances surface.
- *
- * Kept intentionally minimal during the LifeOps decomposition scaffold —
- * the real types will be migrated from
- * `plugins/plugin-personal-assistant/src/actions/owner-surfaces.ts` (ownerFinancesAction)
- * and `plugins/plugin-personal-assistant/src/actions/payments.ts` /
- * `payments-recurring.ts` in a follow-up phase.
+ * Shared type definitions for the finance dashboard surface: currency code,
+ * transaction-status / recurring-cadence enums, and the transaction /
+ * recurring-charge / balance-summary DTOs the FinancesView renders.
  */
 
 /** Currency code in ISO 4217 form (e.g. "USD"). */

@@ -5,11 +5,7 @@ import {
 } from "./_helpers/approval-outcome.ts";
 
 /**
- * OUTCOME rewrite of the routing-only wealth-transfer scenario (#9310): the
- * old file only asserted the reply echoed prompt keywords ("wire", "signer",
- * "deadline", "fraud" — all present in the user's own turn text).
- *
- * This version seeds a REAL pending transfer-authorization approval on the
+ * Seeds a REAL pending transfer-authorization approval on the
  * live queue, has the assistant assemble the packet without exposing the
  * account fragment planted in the seeded context, and asserts the queue
  * outcome of the owner's explicit approval (pending -> approved/executing/done).

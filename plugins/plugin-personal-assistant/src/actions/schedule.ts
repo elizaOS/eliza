@@ -1,3 +1,9 @@
+/**
+ * Passive schedule-inference handler for the OWNER_ROUTINES `schedule_summary`
+ * / `schedule_inspect` verbs (no standalone SCHEDULE action is registered).
+ * Reads the current sleep window from plugin-health's CircadianInsightContract
+ * and composes it with LifeOpsService's own scheduler-tick inspection record.
+ */
 import type {
   ActionResult,
   Content,

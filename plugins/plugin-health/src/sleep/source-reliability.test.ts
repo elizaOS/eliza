@@ -1,3 +1,7 @@
+/**
+ * Unit test for `resolveActivitySignalReliability` / `resolveSourceReliability`
+ * — the per-source confidence weights used to rank activity signals.
+ */
 import { describe, expect, it } from "vitest";
 import {
   type LifeOpsMessageReliabilityChannel,

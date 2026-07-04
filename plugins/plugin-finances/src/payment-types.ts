@@ -1,3 +1,4 @@
+/** Payment-source / transaction / recurring-charge types for the finance back-end. */
 export type LifeOpsPaymentSourceKind =
   | "csv"
   | "plaid"

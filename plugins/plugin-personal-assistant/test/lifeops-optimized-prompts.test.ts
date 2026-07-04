@@ -1,3 +1,7 @@
+/**
+ * Covers optimized-prompt routing in LifeOps: swapping schedule_plan and reminder_dispatch
+ * instructions while preserving their scheduling/reminder context. Deterministic.
+ */
 import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { LifeOpsService } from "../src/lifeops/service.js";

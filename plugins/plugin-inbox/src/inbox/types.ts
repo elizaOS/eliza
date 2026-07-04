@@ -1,3 +1,9 @@
+/**
+ * Triage back-end domain types: `InboundMessage`, `TriageEntry`,
+ * `TriageExample`, `TriageResult`, and the classification / urgency / owner-
+ * action enums. Shared across the InboxService, InboxRepository, the classifier,
+ * and the routes. The view-facing display contract lives in `../types.ts`.
+ */
 import type { UUID } from "@elizaos/core";
 
 // ---------------------------------------------------------------------------

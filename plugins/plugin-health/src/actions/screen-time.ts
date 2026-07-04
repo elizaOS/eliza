@@ -1,3 +1,8 @@
+/**
+ * OWNER_SCREENTIME action implementation — planning, parameter parsing, and
+ * recap shaping for screen-time queries. Registered by host plugins via the
+ * factories in `./index.ts`; owner access checks and persistence stay in the host.
+ */
 import type {
   Action,
   ActionParameter,

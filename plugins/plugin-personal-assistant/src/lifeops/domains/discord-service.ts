@@ -1,3 +1,9 @@
+/**
+ * Discord domain for LifeOps: projects the owner's Discord DM inbox and message
+ * search into assistant connector DTOs by driving the desktop-CDP user-account
+ * scraper in `@elizaos/plugin-discord`. This layer owns the LifeOps connector
+ * grant/degradation projection only; capture and send happen in the discord plugin.
+ */
 import { logger } from "@elizaos/core";
 import type {
   BrowserBridgeCompanionStatus,

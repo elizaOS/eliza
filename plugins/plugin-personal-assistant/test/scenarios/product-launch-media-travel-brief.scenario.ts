@@ -2,17 +2,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 /**
- * OUTCOME rewrite of the routing-only launch-brief scenario (#9310): the old
- * file asserted planner keywords plus reply echoes ("press", "investor",
- * "flight", "talking" — all present in the user's own turn text) against zero
- * seeded state.
- *
- * This version seeds REAL trip state through the LifeOps definition API — the
- * launch flight "VK218 to Berlin" and the private "Northcliff Capital"
- * investor dinner — and asserts grounding + audience separation: the brief
- * must surface the seeded flight, the investor update must reference the
- * seeded investor (both tokens absent from every user turn), and nothing may
- * be delivered to either audience while the drafts are staged.
+ * Live-model scenario (live-only lane): Launch brief grounds in the seeded flight and keeps investor and press drafts separated.
  */
 export default scenario({
   lane: "live-only",

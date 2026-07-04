@@ -1,3 +1,10 @@
+/**
+ * Google Calendar → LifeOps mapping delegates: convert `@elizaos/plugin-google`
+ * wire objects (events, attendees, calendar-list entries, connector status)
+ * into contract-shaped `LifeOps*` calendar types, and resolve which Google
+ * connector account a request runs against. The external-API boundary for the
+ * Google provider path.
+ */
 import {
   type ConnectorAccount,
   getConnectorAccountManager,

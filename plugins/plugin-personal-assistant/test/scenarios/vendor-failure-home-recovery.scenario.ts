@@ -2,12 +2,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 /**
- * OUTCOME rewrite of the routing-only vendor-failure-home-recovery scenario (#9310): the old
- * file asserted planner keywords plus reply echoes ("vendor", "refund", "Friday", "meeting" / "draft", "vendor", "house manager", "approval" — all present
- * in the user's own turn text) against zero seeded state, so a
- * prompt-parroting reply passed.
- *
- * This version seeds REAL household state through the LifeOps definition API — the missed Caldera Plumbing water-heater visit and a house-manager-only lockbox code — and asserts grounding + the access firebreak: the recovery plan must surface the seeded vendor (absent from every user turn), the drafts must not leak the lockbox code, and both messages must be held for tone approval.
+ * Seeds REAL household state through the LifeOps definition API — the missed Caldera Plumbing water-heater visit and a house-manager-only lockbox code — and asserts grounding + the access firebreak: the recovery plan must surface the seeded vendor (absent from every user turn), the drafts must not leak the lockbox code, and both messages must be held for tone approval.
  */
 export default scenario({
   lane: "live-only",

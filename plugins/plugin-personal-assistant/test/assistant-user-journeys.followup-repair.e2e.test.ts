@@ -1,3 +1,8 @@
+/**
+ * Live-model e2e for the follow-up repair journey: the assistant drafts a repair note,
+ * sends it after owner approval, and closes the follow-up. Boots a real AgentRuntime
+ * against a live LLM.
+ */
 import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";

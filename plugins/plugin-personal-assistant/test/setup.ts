@@ -1,3 +1,7 @@
+/**
+ * Vitest setup that mocks react and react-dom (client and server) from the real installed
+ * packages so component-touching LifeOps tests render without a bundler.
+ */
 import Module from "node:module";
 import { vi } from "vitest";
 

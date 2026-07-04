@@ -1,3 +1,8 @@
+/**
+ * Unit tests for command serialization: projecting a CommandDefinition to its
+ * wire shape (auth flags, dynamic-choice tagging, source labels) and the
+ * per-surface visibility predicate.
+ */
 import { describe, expect, it } from "vitest";
 import { getCatalogCommands } from "../src/connector-catalog";
 import {

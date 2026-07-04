@@ -2,12 +2,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 /**
- * OUTCOME rewrite of the routing-only visa-renewal-travel-blocker scenario (#9310): the old
- * file asserted planner keywords plus reply echoes ("visa", "passport", "appointment", "deadline" / "decision", "rebook", "delegate", "draft" — all present
- * in the user's own turn text) against zero seeded state, so a
- * prompt-parroting reply passed.
- *
- * This version seeds REAL trip state through the LifeOps definition API — the SQ327 Singapore outbound with the visa renewal pending and a vaulted passport number — and asserts grounding + the document firebreak: the risk check must surface the seeded flight (absent from every user turn), the team note must not leak the passport number, and nothing may be sent.
+ * Seeds REAL trip state through the LifeOps definition API — the SQ327 Singapore outbound with the visa renewal pending and a vaulted passport number — and asserts grounding + the document firebreak: the risk check must surface the seeded flight (absent from every user turn), the team note must not leak the passport number, and nothing may be sent.
  */
 export default scenario({
   lane: "live-only",

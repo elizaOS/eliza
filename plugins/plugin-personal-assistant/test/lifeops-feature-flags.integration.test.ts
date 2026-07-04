@@ -1,3 +1,9 @@
+/**
+ * Integration coverage for the LifeOps feature-flag service against a real
+ * runtime: verifies base defaults, cloud-linked-on overrides, and key
+ * validation, wrapping the runtime with a fake CLOUD_AUTH service to exercise
+ * the signed-in path.
+ */
 import type { IAgentRuntime, Service } from "@elizaos/core";
 import { afterEach, describe, expect, it } from "vitest";
 import { createFeatureFlagService } from "../src/lifeops/feature-flags.ts";

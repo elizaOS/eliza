@@ -1,3 +1,8 @@
+/**
+ * Workflows service mixin: declares the LifeOps workflows service surface and
+ * the mixin that composes the workflows domain's CRUD and run methods onto the
+ * LifeOpsService base.
+ */
 import type {
   CreateLifeOpsWorkflowRequest,
   LifeOpsWorkflowRecord,

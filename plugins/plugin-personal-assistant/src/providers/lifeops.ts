@@ -1,3 +1,16 @@
+/**
+ * `lifeops` provider — the aggregated owner-operations context block.
+ *
+ * Owner-and-agent-only. Composes the LifeOps overview (active occurrences,
+ * goals, reminders) with live Google calendar and Gmail-triage projections and
+ * an owner profile summary, then emits both a large routing preamble (mapping
+ * owner intents to the right OWNER, CALENDAR, MESSAGE, and BLOCK actions) and
+ * structured `values`/`data` for the planner. Connector reads pass through the
+ * privacy-egress guard so per-account privacy policies redact what surfaces;
+ * connector/calendar/gmail fetch failures degrade to annotated lines rather
+ * than aborting the whole context.
+ */
+
 import {
   getAccountPrivacy,
   getConnectorAccountManager,

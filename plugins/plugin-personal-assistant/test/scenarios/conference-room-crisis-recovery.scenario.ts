@@ -2,14 +2,11 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 /**
- * OUTCOME rewrite of the routing-only room-crisis scenario (#9310): the old
- * file only asserted planner keywords plus reply echoes ("backup room",
- * "catering", "attendee", "facilities" — all present in the user's own turn
- * text), so a prompt-parroting reply passed against zero seeded state.
- *
- * This version seeds REAL crisis state — the AV vendor ("Lumivox") and the
- * caterer ("Marigold & Rye") appear in NO user turn — and asserts the triage
- * is grounded in them. The update turn is a hold gate: the meeting is not
+ * Live-model conference room-crisis recovery flow. Seeds real crisis state —
+ * the AV vendor ("Lumivox") and the
+ * caterer ("Marigold & Rye") appear in no user turn — so the triage
+ * is grounded in seeded state rather than parroted (#9310). The update turn is
+ * a hold gate: the meeting is not
  * moved and catering not changed before approval, and nothing may be
  * dispatched.
  */

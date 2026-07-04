@@ -1,3 +1,7 @@
+/**
+ * Runs the LifeOps prompt benchmark against a real runtime, driving conversations and
+ * capturing model trajectories (LLM calls) for scoring.
+ */
 import { setTimeout as sleep } from "node:timers/promises";
 import type { AgentRuntime } from "@elizaos/core";
 import { flushTrajectoryWrites } from "../../../../packages/agent/src/runtime/trajectory-storage.ts";

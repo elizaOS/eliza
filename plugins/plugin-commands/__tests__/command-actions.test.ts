@@ -1,3 +1,8 @@
+/**
+ * Deterministic-handler coverage for the slash-command actions (`/help`,
+ * `/status`, `/whoami`, runtime option setters). Exercises `runCommand` /
+ * `resolveCommand` against an in-memory runtime stub — no live model.
+ */
 import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { beforeEach, describe, expect, it } from "vitest";
 import {

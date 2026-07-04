@@ -1,3 +1,8 @@
+/**
+ * Sensitive-request delivery policy: decides how a request for secrets, payment,
+ * OAuth, or private info is delivered to the owner (inline owner app, private DM,
+ * etc.) so credentials and sensitive prompts never egress on an insecure channel.
+ */
 import type { ChannelContribution } from "./channels/contract.js";
 import type { DispatchResult } from "./connectors/contract.js";
 

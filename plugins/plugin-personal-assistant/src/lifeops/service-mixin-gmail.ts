@@ -1,3 +1,8 @@
+/**
+ * Gmail service mixin: declares the `LifeOpsGmailService` interface and the
+ * `withGmail` mixin that composes the Gmail domain's inbox-triage, search,
+ * reply-draft, and send methods onto the LifeOpsService base.
+ */
 import type {
   CreateLifeOpsGmailBatchReplyDraftsRequest,
   CreateLifeOpsGmailReplyDraftRequest,

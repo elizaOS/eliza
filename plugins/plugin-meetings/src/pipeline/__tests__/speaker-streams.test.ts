@@ -1,3 +1,8 @@
+/**
+ * SpeakerStreamManager confirmation logic — LocalAgreement-2 word-prefix
+ * matching and the full-text double-match fallback. Deterministic, injected
+ * clock.
+ */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   type AsrSegment,

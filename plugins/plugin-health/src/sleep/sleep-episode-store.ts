@@ -1,3 +1,7 @@
+/**
+ * `SleepEpisodeRepository` domain helpers — pure sleep-episode construction and
+ * classification with no SQL coupling; the host supplies the persistence adapter.
+ */
 import type {
   LifeOpsSleepCycleEvidenceSource,
   LifeOpsSleepCycleType,

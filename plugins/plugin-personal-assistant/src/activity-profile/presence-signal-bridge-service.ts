@@ -1,3 +1,9 @@
+/**
+ * Service that forwards device presence signals into the activity profile.
+ * Listens for message/action runtime events and translates them into
+ * LifeOps activity signals keyed by device id, so presence observed on one
+ * device contributes to the owner's activity/presence profile.
+ */
 import {
   type ActionEventPayload,
   EventType,

@@ -1,3 +1,8 @@
+/**
+ * Simulation harness that fires concrete scheduled-task primitives through the real
+ * scheduled-task runner with an in-memory store, advancing a controllable clock and
+ * recording dispatch results.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import type {
   ActivitySignalBusView,

@@ -1,3 +1,9 @@
+/**
+ * iMessage domain for LifeOps: reads and sends the owner's iMessages through the
+ * native runtime-service delegates (Full Disk Access-gated chat DB on macOS) and
+ * projects native status into assistant connector DTOs. The bridge implementation
+ * lives in the native macOS packages; this layer owns the assistant projection.
+ */
 import { basename } from "node:path";
 import type { Plugin } from "@elizaos/core";
 import { logger } from "@elizaos/core";

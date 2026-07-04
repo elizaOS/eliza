@@ -1,3 +1,4 @@
+/** Verifies inbox assembly and request resolution from inbound cross-channel messages. Deterministic vitest with fixture messages. */
 import { describe, expect, it } from "vitest";
 import type { InboundMessage } from "../inbox/types.js";
 import { buildInbox, resolveInboxRequest } from "./service-mixin-inbox.js";

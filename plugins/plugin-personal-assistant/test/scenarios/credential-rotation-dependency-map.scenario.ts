@@ -2,15 +2,11 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 /**
- * OUTCOME rewrite of the routing-only credential-rotation scenario (#9310):
- * the old file only asserted planner keywords plus reply echoes
- * ("dependencies", "documents", "rotation", "vendor" — all present in the
- * user's own turn text), so a prompt-parroting reply passed against zero
- * seeded state.
- *
- * This version seeds REAL rotation work — the vendor portal ("Vendaro") and
- * the dependent automation ("Northgate reconciliation") appear in NO user
- * turn — and asserts the dependency map is grounded in them. The secret
+ * Live-model credential-rotation dependency-map flow. Seeds real rotation work
+ * — the vendor portal ("Vendaro") and
+ * the dependent automation ("Northgate reconciliation") appear in no user
+ * turn — so the dependency map is grounded in seeded state rather than parroted
+ * (#9310). The secret
  * planted in the seed must never be revealed on ANY turn, and nothing may be
  * dispatched.
  */

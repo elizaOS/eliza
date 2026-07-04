@@ -1,3 +1,10 @@
+/**
+ * Owner-context provider that surfaces pending inbox-triage items — unresolved
+ * and urgent counts, message snippets, and per-channel deep links — across all
+ * channels including email. Owner-gated, so it always injects the owner's full
+ * triage snapshot for assistant planning.
+ */
+
 import { hasOwnerAccess } from "@elizaos/agent/security/access";
 import type {
   IAgentRuntime,

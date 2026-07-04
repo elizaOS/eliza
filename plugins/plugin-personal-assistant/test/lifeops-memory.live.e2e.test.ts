@@ -1,3 +1,8 @@
+/**
+ * Live-model e2e for LifeOps memory: advanced memory stays enabled by default,
+ * confirmation-gated task creation, and cross-channel recall of stored
+ * summaries/facts/long-term memories. Boots a real runtime against a live LLM.
+ */
 import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";

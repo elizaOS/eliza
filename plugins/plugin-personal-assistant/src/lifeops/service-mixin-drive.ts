@@ -1,3 +1,8 @@
+/**
+ * Google Drive service mixin: declares the LifeOps Drive service surface and the
+ * `withDrive` mixin that composes the Drive domain's file and connector-scope
+ * methods onto the LifeOpsService base.
+ */
 import type { GoogleDriveFile } from "@elizaos/plugin-google";
 import type {
   LifeOpsConnectorMode,

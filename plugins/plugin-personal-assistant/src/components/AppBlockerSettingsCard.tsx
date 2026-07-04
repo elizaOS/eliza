@@ -1,3 +1,8 @@
+/**
+ * Owner-facing settings card for the app blocker: shows current app-block status
+ * and lets the owner configure and start/stop app blocking. Rendered in the
+ * assistant settings surface; exported via the plugin's ui module.
+ */
 import { Button, client, Input } from "@elizaos/ui";
 import { useAppSelector } from "@elizaos/ui/state";
 import {

@@ -1,3 +1,9 @@
+/**
+ * Standalone `calendlyAction` — Calendly scheduling-link operations exposed as
+ * a top-level Action (Calendly is a connector/provider registered through the
+ * ConnectorRegistry, not a CALENDAR subaction). Extracts action params via the
+ * LLM and calls the Calendly connector for link and availability operations.
+ */
 import { extractActionParamsViaLlm } from "@elizaos/agent";
 import {
   type Action,

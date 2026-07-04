@@ -1,3 +1,8 @@
+/**
+ * Voice-affect consent and retention policy types: govern whether the assistant
+ * may store voice affect features, under what retention (ephemeral vs TTL), and
+ * the allow/deny decision the policy yields — the privacy contract for voice.
+ */
 export type VoiceAffectConsentState =
   | "none"
   | "ephemeral_only"

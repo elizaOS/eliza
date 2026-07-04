@@ -1,3 +1,8 @@
+/**
+ * Verifies the macOS-only platform guards short-circuit (non-Darwin, missing
+ * hosts file) for apple-reminders and website-blocker. Deterministic vitest with
+ * `@elizaos/core` mocked to avoid loading the full runtime.
+ */
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

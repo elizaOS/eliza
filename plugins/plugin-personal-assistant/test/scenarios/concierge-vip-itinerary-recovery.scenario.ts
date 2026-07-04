@@ -2,15 +2,11 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 /**
- * OUTCOME rewrite of the routing-only itinerary-recovery scenario (#9310):
- * the old file only asserted planner keywords plus reply echoes
- * ("reservation", "greeter", "receipts", "vendor" — all present in the user's
- * own turn text), so a prompt-parroting reply passed against zero seeded
- * state.
- *
- * This version seeds REAL recovery work — the dropped restaurant ("Maison
- * Verlaine") and the concierge vendor ("Silverpeak Concierge") appear in NO
- * user turn — and asserts the triage is grounded in them. The briefs turn is
+ * Live-model VIP concierge itinerary-recovery flow. Seeds real recovery work —
+ * the dropped restaurant ("Maison
+ * Verlaine") and the concierge vendor ("Silverpeak Concierge") appear in no
+ * user turn — so the triage is grounded in seeded state rather than parroted
+ * (#9310). The briefs turn is
  * a privacy gate: the guest name planted in the seed must never surface in
  * vendor-facing material, and nothing may be dispatched before approval.
  */

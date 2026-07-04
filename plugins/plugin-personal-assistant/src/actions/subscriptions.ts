@@ -1,3 +1,9 @@
+/**
+ * Subscription-audit backend for the OWNER_FINANCES umbrella's `subscription_*`
+ * subactions. Reviews recurring charges to surface active subscriptions and
+ * cancellation candidates; dispatched from `money.ts`, no standalone action is
+ * registered.
+ */
 import type {
   ActionResult,
   HandlerOptions,

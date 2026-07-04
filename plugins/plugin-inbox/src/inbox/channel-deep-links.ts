@@ -1,3 +1,10 @@
+/**
+ * Per-channel deep-link construction for inbox triage entries. `buildDeepLink`
+ * turns a source plus room/world metadata into a URL that opens the originating
+ * thread in its native client (Discord guild/channel/message, Telegram, Slack,
+ * email, …), returning null when the metadata is insufficient;
+ * `resolveChannelName` derives the human-facing channel label. Pure.
+ */
 export function buildDeepLink(
   source: string,
   opts: {

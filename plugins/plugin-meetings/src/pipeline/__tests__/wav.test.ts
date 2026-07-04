@@ -1,3 +1,8 @@
+/**
+ * PCM WAV codec goldens — the canonical 44-byte mono 16-bit header, the
+ * float32-to-WAV-and-back round trip, and buffer concatenation. Pure,
+ * deterministic.
+ */
 import { describe, expect, it } from "vitest";
 import { concatFloat32, float32ToWav, wavToFloat32 } from "../wav";
 

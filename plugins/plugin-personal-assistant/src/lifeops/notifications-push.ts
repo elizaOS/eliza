@@ -1,3 +1,9 @@
+/**
+ * Push-notification delivery for LifeOps via ntfy: sends owner-facing pushes
+ * (reminder fires, approvals) through a configured ntfy topic, wrapped in
+ * integration telemetry. Throws NtfyConfigError when the topic is unconfigured
+ * rather than silently dropping the notification.
+ */
 import { createIntegrationTelemetrySpan } from "@elizaos/agent";
 import { logger } from "@elizaos/core";
 

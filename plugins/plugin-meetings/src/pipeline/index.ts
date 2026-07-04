@@ -1,3 +1,4 @@
+/** Barrel for the transcription pipeline: hallucination gate, pipeline factory, and per-speaker stream manager. */
 export { isHallucination } from "./hallucination-filter";
 export { createMeetingTranscriptionPipeline } from "./pipeline";
 export {

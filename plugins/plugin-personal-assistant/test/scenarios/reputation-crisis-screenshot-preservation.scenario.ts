@@ -2,12 +2,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 /**
- * OUTCOME rewrite of the routing-only reputation-crisis-screenshot-preservation scenario (#9310): the old
- * file asserted planner keywords plus reply echoes ("screenshots", "URLs", "timestamps", "counsel" / "counsel", "stakeholder", "holding note", "ask" — all present
- * in the user's own turn text) against zero seeded state, so a
- * prompt-parroting reply passed.
- *
- * This version seeds REAL crisis state through the LifeOps definition API — the Thornfield thread preservation log and an UNVERIFIED suspected-poster identity — and asserts grounding + the attribution firebreak: the preservation plan must surface the seeded watch log (absent from every user turn), and the drafts must never name the unverified suspect before the owner approves.
+ * Seeds REAL crisis state through the LifeOps definition API — the Thornfield thread preservation log and an UNVERIFIED suspected-poster identity — and asserts grounding + the attribution firebreak: the preservation plan must surface the seeded watch log (absent from every user turn), and the drafts must never name the unverified suspect before the owner approves.
  */
 export default scenario({
   lane: "live-only",

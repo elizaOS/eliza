@@ -2,17 +2,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 /**
- * OUTCOME rewrite of the routing-only media-correction scenario (#9310): the
- * old file only asserted planner keywords plus reply echoes ("timeline",
- * "counsel", "correction", "holding line" — all present in the user's own
- * turn text), so a prompt-parroting reply passed against zero fact state.
- *
- * This version seeds REAL fact state through the LifeOps definition API (the
- * Averline acquisition timeline record and the counsel contact at Shore &
- * Templeman) and asserts the escalation is GROUNDED in it: both tokens never
- * appear in any user turn, so an echo cannot pass. Seeds are re-verified via
- * definitionCountDelta and the correction stays behind counsel approval via a
- * no-external-send predicate.
+ * Live-model scenario (live-only lane): Media correction grounds in seeded fact state; drafts stay behind counsel approval.
  */
 export default scenario({
   lane: "live-only",

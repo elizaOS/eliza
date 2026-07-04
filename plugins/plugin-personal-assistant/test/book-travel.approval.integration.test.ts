@@ -1,3 +1,8 @@
+/**
+ * Integration coverage for BOOK_TRAVEL approval: the handler queues an approval, then books
+ * and syncs the itinerary to calendar only after approval, and on rejection performs no
+ * order/payment/calendar side effects. Real approval queue, stubbed connectors.
+ */
 import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";

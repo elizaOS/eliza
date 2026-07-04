@@ -1,3 +1,8 @@
+/**
+ * Integration coverage for LifeOps work threads: routing, guarding, follow-up, and
+ * active-thread capping, plus multi-user/multi-channel thread-boundary enforcement with
+ * current-channel merge. Real scheduler over a mocked runtime.
+ */
 import type {
   ActionResult,
   HandlerOptions,

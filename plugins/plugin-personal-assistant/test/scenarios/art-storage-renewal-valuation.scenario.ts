@@ -2,13 +2,10 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 /**
- * OUTCOME rewrite of the routing-only storage-renewal scenario (#9310): the
- * old file only asserted planner keywords plus reply echoes ("valuation",
- * "insurance", "vendor", "invoice" — all present in the user's own turn text).
- *
- * This version seeds REAL renewal tasks — the storage vendor ("Silvermine
- * Vaults") and the broker ("Tanager & Co") appear in NO user turn — and
- * asserts the renewal review is grounded in them. The vendor-questions turn is
+ * Live-model art-storage renewal-and-revaluation review. Seeds real renewal
+ * tasks — the storage vendor ("Silvermine Vaults") and the broker ("Tanager &
+ * Co") appear in no user turn — so the renewal review is grounded in seeded
+ * state rather than parroted (#9310). The vendor-questions turn is
  * a hold gate: the confidential collection value planted in the seed must
  * never surface, and nothing may be dispatched before approval.
  */

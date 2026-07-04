@@ -1,3 +1,7 @@
+/**
+ * Unit tests for the calendar detail-coercion helpers (detailString/Number/
+ * Boolean/Array) used to read fields off an LLM plan record. Pure functions.
+ */
 import type { Memory } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {

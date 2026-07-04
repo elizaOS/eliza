@@ -1,13 +1,12 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 /**
- * De-echoed for #9310: the old turn assertions ("shower", "week" / "saved",
- * "shower") were satisfiable by parroting the prompt. The persisted weekly
- * Mon/Wed/Fri definition (`definitionCountDelta` with `requiredWeekdays` +
- * `requiredWindows`) is the load-bearing outcome; the turn checks now enforce
- * the derived spread (three concrete weekdays — no weekday name appears in any
- * user turn) and the two-phase commit: no persistence claim in the preview,
- * save-confirmation words the prompt never used on confirm.
+ * Live-model scenario: a weekly-shower request persists a Mon/Wed/Fri
+ * definition (`definitionCountDelta` with `requiredWeekdays` +
+ * `requiredWindows`). The turn checks enforce the derived spread (three
+ * concrete weekdays — no weekday name appears in any user turn) and the
+ * two-phase commit: no persistence claim in the preview, and save-confirmation
+ * words the prompt never used on confirm.
  */
 export default scenario({
   lane: "live-only",

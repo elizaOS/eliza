@@ -1,3 +1,4 @@
+/** Barrel for the connector registry: connector contributions, dispatch results, and the default connector pack. */
 export type {
   ConnectorContribution,
   ConnectorMode,

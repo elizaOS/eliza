@@ -1,3 +1,11 @@
+/**
+ * HTTP routes for the inbox triage surface, registered under
+ * `/api/lifeops/inbox`. Serves the triage-queue read (`GET .../triage`), the
+ * classify/persist write (`POST .../triage` through `InboxService.triage`), and
+ * the per-entry reply / snooze / archive / approve operations (dispatched via
+ * `executeInboxQueueOperation`). Owner-gated; validates and coerces request
+ * bodies before handing pre-validated input to the service.
+ */
 import type {
   IAgentRuntime,
   Route,

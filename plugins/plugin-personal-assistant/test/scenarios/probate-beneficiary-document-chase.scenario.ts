@@ -2,18 +2,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 /**
- * OUTCOME rewrite of the routing-only probate-chase scenario (#9310): the old
- * file asserted planner keywords plus reply echoes ("beneficiary", "attorney",
- * "document", "private" — all present in the user's own turn text) against
- * zero seeded state.
- *
- * This version seeds REAL estate state through the LifeOps definition API —
- * the "Estate of Rosalind Ferro" W-9 chase list and a sensitive family note
- * about a contested signet heirloom that must stay out of the shared packet —
- * and asserts grounding + the privacy firebreak: the chase list must surface
- * the seeded estate (absent from every user turn), the beneficiary drafts must
- * not mention the contested heirloom, and both drafts must stay held for the
- * owner's approval.
+ * Live-model scenario (live-only lane): Probate chase grounds in the seeded estate and keeps the family note out of drafts.
  */
 export default scenario({
   lane: "live-only",

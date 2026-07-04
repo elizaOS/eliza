@@ -1,3 +1,4 @@
+/** Barrel for the relationship store and edge extraction (who-relates-to-whom graph over owner entities). */
 export {
   applyExtractedEdges,
   type ExtractedEdge,

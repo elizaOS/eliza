@@ -1,3 +1,4 @@
+/** Subscription audit / candidate / cancellation types for the subscriptions back-end. */
 export type LifeOpsSubscriptionAuditStatus = "completed" | "failed";
 
 export type LifeOpsSubscriptionSource = "gmail" | "manual";

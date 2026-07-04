@@ -1,3 +1,7 @@
+/**
+ * Live-model scenario: Italian phrasing persists a "Take vitamins" habit tied
+ * to a meal window.
+ */
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({

@@ -1,3 +1,9 @@
+/**
+ * CONNECTOR action — owner-facing facade for personal-assistant connector
+ * status and control (list, status, enable/disable, mode and side selection).
+ * The actual connector clients live in their own plugins; this action only
+ * projects and toggles their normalized status through the ConnectorRegistry.
+ */
 import { extractActionParamsViaLlm } from "@elizaos/agent";
 import type {
   Action,

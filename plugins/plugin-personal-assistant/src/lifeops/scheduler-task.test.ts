@@ -1,3 +1,4 @@
+/** Verifies ensureLifeOpsSchedulerTask creates exactly one scheduler task and resolves the polling interval. Deterministic vitest with a stubbed runtime. */
 import type { IAgentRuntime, Task, UUID } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import {

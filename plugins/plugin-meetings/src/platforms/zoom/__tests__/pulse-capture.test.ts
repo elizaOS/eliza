@@ -1,3 +1,7 @@
+/**
+ * PulseAudio capture path — s16le-to-Float32 conversion and the PulsePcmCapture
+ * parecord lifecycle. Deterministic: a fake spawn plus stream, no PulseAudio.
+ */
 import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
 import { describe, expect, it } from "vitest";

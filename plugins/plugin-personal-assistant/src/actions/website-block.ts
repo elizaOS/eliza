@@ -1,3 +1,9 @@
+/**
+ * Desktop website-blocking backend for the `website` target of the BLOCK
+ * umbrella. Exposes the block/unblock/status/list subactions plus the owner
+ * validate gate; `block.ts` routes `target: "website"` here, and the actual
+ * hosts-file/SelfControl enforcement lives in `website-blocker/`.
+ */
 import type {
   ActionResult,
   HandlerOptions,

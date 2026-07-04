@@ -1,3 +1,7 @@
+/**
+ * Live e2e driving the SelfControl website/app blocker through chat against a spawned
+ * runtime and API. Gated on ELIZA_LIVE_TEST.
+ */
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import net from "node:net";

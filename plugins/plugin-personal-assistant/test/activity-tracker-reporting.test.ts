@@ -1,3 +1,8 @@
+/**
+ * Covers ActivityTracker foreground-activity reporting: latest active app, null on a
+ * trailing deactivation, and no fallback to a stale app when system inactivity is the most
+ * recent event. Deterministic, mocked event store.
+ */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({

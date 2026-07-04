@@ -1,3 +1,7 @@
+/**
+ * Property-based test (fast-check) for `normalizeHealthSignal` — asserts inbound
+ * health-signal payloads normalize to the contract shape or fail explicitly.
+ */
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import {

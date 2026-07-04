@@ -1,10 +1,10 @@
 /**
- * Minimal dispatch helpers retained from the now-deleted cross-channel-send.ts.
+ * Minimal post-approval `send_message` dispatch helpers.
  *
  * Only covers post-approval send_message dispatch (telegram, discord, imessage,
- * sms, x_dm). The Wave 2 OwnerSendPolicy + core triage stack is the canonical
- * path for new outbound flows; this surface exists for legacy approval-queue
- * entries whose payload action is still "send_message".
+ * sms, x_dm). The OwnerSendPolicy + core triage stack is the canonical path for
+ * new outbound flows; this surface exists for legacy approval-queue entries
+ * whose payload action is still "send_message".
  */
 
 import type { ActionResult, IAgentRuntime } from "@elizaos/core";

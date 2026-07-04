@@ -1,3 +1,9 @@
+/**
+ * Primitive input validators for the calendar service: string/boolean/number/
+ * ISO/timezone/capability normalizers that trim and validate untrusted request
+ * fields, failing with a `CalendarServiceError` (carrying an HTTP status) on
+ * invalid input.
+ */
 import {
   LIFEOPS_CONNECTOR_MODES,
   LIFEOPS_CONNECTOR_SIDES,

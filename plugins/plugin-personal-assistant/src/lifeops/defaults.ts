@@ -1,3 +1,8 @@
+/**
+ * Default LifeOps time windows (morning/afternoon/evening/night) and the
+ * adaptive window policy that reminder scheduling and check-ins anchor to, plus
+ * a re-export of the shared time-zone helpers.
+ */
 import {
   isValidTimeZone,
   normalizeTimeZone,
@@ -10,8 +15,8 @@ import type {
   LifeOpsWindowPolicy,
 } from "../contracts/index.js";
 
-// The time-zone helpers are now runtime-level primitives in `@elizaos/shared`;
-// re-exported here so historical `./defaults.js` callers keep working.
+// The time-zone helpers are runtime-level primitives in `@elizaos/shared`,
+// re-exported here for `./defaults.js` callers.
 export {
   isValidTimeZone,
   normalizeTimeZone,

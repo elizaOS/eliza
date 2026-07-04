@@ -1,3 +1,8 @@
+/**
+ * Vitest configuration for the background-real lane: extends the package's base
+ * config to include only `*.e2e.test` and `*.real.test` specs and wires the
+ * agent-source stubs those long-running, live-dependency tests need.
+ */
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

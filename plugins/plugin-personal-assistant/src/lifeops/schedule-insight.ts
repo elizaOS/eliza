@@ -1,3 +1,9 @@
+/**
+ * Schedule inspection for LifeOps: derives the owner's circadian summary — awake
+ * probability, day boundaries, sleep regularity, personal baseline — from
+ * historical activity and sleep episodes, producing the schedule insight that
+ * relative-time scheduling and check-ins consume.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import {
   type CircadianScorerResult,

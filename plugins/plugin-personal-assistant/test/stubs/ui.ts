@@ -1,3 +1,8 @@
+/**
+ * Test stub for @elizaos/ui: null and passthrough React components plus an empty
+ * ElizaClient, so LifeOps component tests can import the UI surface without its real
+ * implementation.
+ */
 import { createElement, Fragment, type ReactNode } from "react";
 
 type ComponentProps = Record<string, unknown>;

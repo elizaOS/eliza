@@ -1,3 +1,9 @@
+/**
+ * Diagnostic that fetches the LifeOps merged schedule state and raw
+ * observations from a running agent's API and prints a human-readable coverage
+ * report (circadian phase, sleep status, device activity, meal windows).
+ * Confirms the schedule-sync pipeline is producing live data end to end.
+ */
 import type {
   GetLifeOpsScheduleMergedStateResponse,
   LifeOpsScheduleMergedState,

@@ -2,12 +2,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 /**
- * OUTCOME rewrite of the routing-only vendor-negotiation scenario (#9310):
- * the old file only asserted planner keywords and reply echoes ("draft",
- * "counteroffer", "renewal" / "follow", "Tuesday", "price" — mostly present
- * in the user's own turn text).
- *
- * This version asserts effects instead:
+ * Asserts effects:
  *   - the counteroffer draft was materialized through a real messaging action
  *     whose captured arguments carry the negotiation content
  *     (`selectedActionArguments`), and NOTHING was dispatched on an external

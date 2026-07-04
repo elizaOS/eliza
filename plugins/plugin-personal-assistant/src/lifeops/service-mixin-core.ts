@@ -1,3 +1,13 @@
+/**
+ * Base class and mixin machinery for the LifeOpsService. Defines the shared
+ * service constructor, the `Constructor`/`MixinClass` helper types the mixin
+ * idiom needs (TS2545), and the base state every per-domain `with*` mixin
+ * extends: runtime, repository, audit-event emission, browser-permission and
+ * schedule-sync wiring, and the reminder-processing queues.
+ *
+ * The LifeOpsService is composed by layering the per-domain service-mixin-*
+ * files onto this base so one owner-facing service exposes every domain surface.
+ */
 import crypto from "node:crypto";
 import { getAgentEventService, resolveOwnerEntityId } from "@elizaos/agent";
 import { type IAgentRuntime, logger } from "@elizaos/core";

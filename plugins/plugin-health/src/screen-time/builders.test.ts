@@ -1,3 +1,7 @@
+/**
+ * Unit test for the pure screen-time summary / breakdown / metrics / visible-
+ * bucket builders. Deterministic fixtures, no runtime.
+ */
 import { describe, expect, it } from "vitest";
 import type {
   LifeOpsScreenTimeBreakdown,

@@ -1,3 +1,9 @@
+/**
+ * Workflows domain for LifeOps: CRUD and execution of owner workflow definitions
+ * — multi-step automations whose steps resolve through the workflow-step
+ * registry and whose cron/relative schedules compute the next run instant. Runs
+ * and audit events are persisted for owner review.
+ */
 import { computeNextCronRunAtMs } from "@elizaos/agent";
 import type {
   CreateLifeOpsWorkflowRequest,

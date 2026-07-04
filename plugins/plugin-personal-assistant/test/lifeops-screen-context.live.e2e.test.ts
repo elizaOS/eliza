@@ -1,3 +1,8 @@
+/**
+ * Live e2e for screen context: captures a real browser frame via the
+ * browser-capture bridge and samples it into LifeOps screen context. Gated on
+ * ELIZA_LIVE_TEST and Chrome/browser-capture support.
+ */
 import { rm, stat } from "node:fs/promises";
 import { createServer } from "node:http";
 import net from "node:net";

@@ -1,3 +1,8 @@
+/**
+ * Live-model scenario driving the full reminder lifecycle — create, deliver,
+ * acknowledge, and complete — across Discord and Telegram rooms via the LifeOps
+ * reminder API.
+ */
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 function assertApiBody(options: {

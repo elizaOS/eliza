@@ -1,3 +1,4 @@
+/** Barrel for the entity store and identity-merge engine (contact/person/org records and dedup). */
 export {
   decideIdentityOutcome,
   findIdentityMatches,

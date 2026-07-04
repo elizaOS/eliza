@@ -2,12 +2,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 /**
- * OUTCOME rewrite of the routing-only regulatory-comment-deadline scenario (#9310): the old
- * file asserted planner keywords plus reply echoes ("deadline", "counsel", "exhibits", "pre-read" / "approval", "reminder", "filing", "signoff" — all present
- * in the user's own turn text) against zero seeded state, so a
- * prompt-parroting reply passed.
- *
- * This version seeds REAL filing state through the LifeOps definition API — the ORX-2026-0114 comment-window docket and a privileged Halloran counsel memo — and asserts grounding + the privilege firebreak: the plan must surface the seeded docket (absent from every user turn), the approval route must not leak the privileged memo, and nothing may be submitted or sent to the regulator.
+ * Live-model scenario (live-only lane): Regulatory comment plan grounds in the seeded docket and keeps privileged counsel material held.
  */
 export default scenario({
   lane: "live-only",

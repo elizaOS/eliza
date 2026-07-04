@@ -1,3 +1,4 @@
+/** Verifies the connector runtime-service delegates (X, Calendly) forward calls and apply egress filtering. Deterministic vitest with stubbed runtime services. */
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import type { IAgentRuntime } from "@elizaos/core";

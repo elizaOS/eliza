@@ -1,3 +1,8 @@
+/**
+ * Covers author-facing task-definition compilation: reminder definitions compile into
+ * ScheduledTask seeds, incompatible completion checks are rejected before pack
+ * registration, and check-ins must declare a completion check. Deterministic.
+ */
 import { describe, expect, it } from "vitest";
 import {
   type ApprovalTaskDefinition,

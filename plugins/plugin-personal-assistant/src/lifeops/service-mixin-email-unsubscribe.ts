@@ -1,3 +1,8 @@
+/**
+ * Email-unsubscribe service mixin: declares the LifeOps unsubscribe service
+ * surface and the mixin that composes the email-unsubscribe domain's scan and
+ * unsubscribe methods onto the LifeOpsService base.
+ */
 import type {
   EmailSubscriptionScanResult,
   EmailUnsubscribeRecord,

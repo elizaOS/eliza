@@ -1,5 +1,9 @@
 // @vitest-environment jsdom
 
+/**
+ * Renders the Blocker settings cards in jsdom and asserts the owner-facing
+ * website/app block controls surface and toggle correctly.
+ */
 import {
   cleanup,
   fireEvent,

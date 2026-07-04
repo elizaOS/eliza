@@ -1,3 +1,8 @@
+/**
+ * `createHealthProvider` — builds the provider that injects the owner's health
+ * summary into agent context. Host plugins supply the access check and summary
+ * fetcher; `buildHealthProviderResult` projects the summary DTO into provider text.
+ */
 import type {
   IAgentRuntime,
   Memory,

@@ -2,12 +2,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 /**
- * OUTCOME rewrite of the routing-only school-family-calendar-carpool scenario (#9310): the old
- * file asserted planner keywords plus reply echoes ("conflict", "pickup", "draft" / "reminder", "noon", "investor" — all present
- * in the user's own turn text) against zero seeded state, so a
- * prompt-parroting reply passed.
- *
- * This version seeds REAL family state through the LifeOps definition API — the Brookfield Lower School 3:15 dismissal change and a family-only gate code on the carpool contact sheet — and asserts grounding + the privacy firebreak: the plan must surface the seeded school (absent from every user turn), the parent-thread draft must not leak the gate code, and the follow-up must land as a real scheduled task.
+ * Seeds REAL family state through the LifeOps definition API — the Brookfield Lower School 3:15 dismissal change and a family-only gate code on the carpool contact sheet — and asserts grounding + the privacy firebreak: the plan must surface the seeded school (absent from every user turn), the parent-thread draft must not leak the gate code, and the follow-up must land as a real scheduled task.
  */
 export default scenario({
   lane: "live-only",

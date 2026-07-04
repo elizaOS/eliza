@@ -1,3 +1,7 @@
+/**
+ * Live-model scenario: a sleep recap summarizes regularity without inventing
+ * metrics it does not have.
+ */
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({

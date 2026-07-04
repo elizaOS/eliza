@@ -1,3 +1,8 @@
+/**
+ * Transcript-fan-out throttling for MeetingEventEmitter (at most two events per
+ * second per session, with a trailing flush). Deterministic — fake runtime and
+ * fake timers.
+ */
 import type { MeetingTranscriptEvent } from "@elizaos/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MeetingEventEmitter } from "./events.js";

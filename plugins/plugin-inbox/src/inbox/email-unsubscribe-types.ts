@@ -1,3 +1,9 @@
+/**
+ * Type surface for the email-unsubscribe back-end: the unsubscribe method
+ * (HTTP one-click / POST / GET / mailto / manual-only), attempt status, sender
+ * scan results, and the persisted outcome record. Shared by
+ * `unsubscribe-service.ts`, `unsubscribe-repository.ts`, and the Gmail seam.
+ */
 export type EmailUnsubscribeMethod =
   | "http_one_click"
   | "http_post"

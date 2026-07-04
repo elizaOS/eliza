@@ -1,3 +1,4 @@
+/** Verifies the LifeOps scheduler tick processes scheduled work and surfaces subsystem failures rather than swallowing them. Deterministic vitest with the scheduled-work path mocked. */
 import type { IAgentRuntime, UUID } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { escalateUnacknowledgedIntents } from "./intent-sync.js";

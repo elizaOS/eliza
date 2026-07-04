@@ -5,11 +5,7 @@ import {
 } from "./_helpers/approval-outcome.ts";
 
 /**
- * OUTCOME rewrite of the routing-only trust-distribution scenario (#9310):
- * the old file only asserted the reply echoed prompt keywords ("trust",
- * "beneficiary", "tax", "approval" — all present in the user's own text).
- *
- * This version seeds a REAL pending trustee-authorization approval on the
+ * Seeds a REAL pending trustee-authorization approval on the
  * live queue, stages the trustee packet without exposing the distribution
  * amount planted in the seeded context, and asserts the queue outcome of the
  * trustee's explicit approval (pending -> approved/executing/done).

@@ -1,3 +1,18 @@
+/**
+ * The `/api/lifeops/*` REST surface — the owner-facing HTTP handler backing the
+ * LifeOps dashboard and connector cards.
+ *
+ * Dispatches reads and writes across the owner domains: occurrences, goals,
+ * task/workflow definitions, reminders, money/finances (delegated to
+ * `@elizaos/plugin-finances`), Gmail triage/search/reply/manage, the merged
+ * inbox, screen-time/sleep, activity signals, schedule state, connector status,
+ * and full-disk-access probing; calendar routes delegate to
+ * `@elizaos/plugin-calendar`. Handlers run behind the `LifeOpsRouteContext`
+ * exported here — `routes/plugin.ts` applies the auth token check and
+ * OWNER/ADMIN role gate before delegating, so this layer trusts the request is
+ * authorized and only re-checks that a runtime is present.
+ */
+
 import type http from "node:http";
 import {
   checkRateLimit,

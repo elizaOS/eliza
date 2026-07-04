@@ -1,3 +1,8 @@
+/**
+ * Phone-app blocking backend for the `app` target of the BLOCK umbrella.
+ * Exposes the app block/unblock/status subactions plus the validate and
+ * handler entry points; `block.ts` routes `target: "app"` requests here.
+ */
 import type {
   ActionResult,
   HandlerOptions,

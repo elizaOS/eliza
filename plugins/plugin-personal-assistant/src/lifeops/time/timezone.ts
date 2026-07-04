@@ -1,3 +1,4 @@
+/** Resolves colloquial time-zone names and abbreviations (e.g. "pacific", "pst") to IANA zone ids. */
 import { isValidTimeZone } from "../defaults.js";
 
 const TIME_ZONE_ALIASES: Record<string, string> = {

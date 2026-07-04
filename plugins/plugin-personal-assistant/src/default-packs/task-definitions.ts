@@ -1,3 +1,8 @@
+/**
+ * Compiles and validates default-pack task definitions into ScheduledTask seeds:
+ * the seed shape and validation the default packs use to contribute reminders,
+ * check-ins, and watchers into the shared scheduled-task runner.
+ */
 import type {
   ScheduledTask,
   ScheduledTaskContextRequest,

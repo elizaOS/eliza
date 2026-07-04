@@ -1,5 +1,11 @@
 /// <reference types="bun-types" />
 
+/**
+ * Maps LifeOps reminders and alarms onto the native macOS Apple Reminders
+ * bridge: builds the `nativeAppleReminder` metadata carried on scheduled items
+ * and resolves the platform-gated bridge dylib (Darwin only) via the
+ * permissions registry. Bridge implementation lives in `@elizaos/macosreminders`.
+ */
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import {

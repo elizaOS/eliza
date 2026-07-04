@@ -1,3 +1,9 @@
+/**
+ * Unit tests for AES-256-GCM connector-token encryption at rest: encrypt/decrypt
+ * round-trip, envelope detection, key resolution from env var vs generated
+ * keyfile, and cross-key decryption failure. Uses real Node crypto + a temp dir.
+ */
+
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";

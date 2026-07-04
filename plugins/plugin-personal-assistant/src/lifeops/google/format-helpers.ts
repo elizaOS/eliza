@@ -1,3 +1,7 @@
+/**
+ * Formatting helpers that render Google calendar/Gmail feed DTOs into the text
+ * projections the assistant's providers inject into the model prompt.
+ */
 import type { IAgentRuntime, Memory, ProviderDataRecord } from "@elizaos/core";
 import {
   assertActiveTrajectoryForLlmCall,

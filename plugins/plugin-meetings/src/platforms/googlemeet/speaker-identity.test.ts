@@ -1,3 +1,7 @@
+/**
+ * VoteLockTable vote-and-lock track-to-name attribution for Google Meet. Pure,
+ * deterministic.
+ */
 import { describe, expect, it } from "vitest";
 import { VoteLockTable } from "./speaker-identity.js";
 

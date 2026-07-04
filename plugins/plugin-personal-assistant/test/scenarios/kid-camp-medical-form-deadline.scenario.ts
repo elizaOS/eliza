@@ -2,18 +2,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 /**
- * OUTCOME rewrite of the routing-only camp-forms scenario (#9310): the old
- * file only asserted planner keywords plus reply echoes ("due date",
- * "pediatrician", "immunization", "checklist" — all present in the user's own
- * turn text), so a prompt-parroting reply passed against zero form state.
- *
- * This version seeds REAL form state through the LifeOps definition API (the
- * Camp Tamarind forms deadline, the pediatrician Dr. Anneke Voskuil, and a
- * private medication note) and asserts the triage is GROUNDED in it: the
- * seeded tokens never appear in any user turn, so an echo cannot pass, while
- * the medication detail stays gated. Seeds are re-verified via
- * definitionCountDelta and the requests stay staged via a no-external-send
- * predicate.
+ * Live-model scenario (live-only lane): Camp form triage grounds in seeded deadline state; medication detail stays gated.
  */
 export default scenario({
   lane: "live-only",

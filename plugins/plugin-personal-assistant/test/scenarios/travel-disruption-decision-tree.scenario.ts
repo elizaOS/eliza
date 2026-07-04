@@ -1,3 +1,7 @@
+/**
+ * Live-model scenario asserting the assistant lays out a travel-disruption
+ * decision tree before taking any booking action.
+ */
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({

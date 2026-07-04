@@ -1,3 +1,9 @@
+/**
+ * Runtime adapter binding the calendar HTTP routes to the agent runtime:
+ * resolves `CalendarService` at the request boundary, applies rate limiting, and
+ * delegates to the path→service dispatcher (`handleCalendarRoutes`), translating
+ * service-resolution and domain failures into structured error responses.
+ */
 import type http from "node:http";
 import {
   ElizaError,

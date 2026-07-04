@@ -1,3 +1,9 @@
+/**
+ * Test-runtime helpers for LifeOps: wraps createRealTestRuntime and provides an in-memory
+ * notification sink standing in for the production NotificationService, so in-app
+ * scheduled-task dispatches report honest DispatchResults and tests can assert what was
+ * delivered.
+ */
 import {
   createRealTestRuntime,
   type RealTestRuntimeOptions,

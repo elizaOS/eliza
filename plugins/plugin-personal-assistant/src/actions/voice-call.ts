@@ -1,3 +1,9 @@
+/**
+ * VOICE_CALL action — owner-initiated outbound phone calls via Twilio.
+ * Confirmation-gated; handles the place/status/end/list subactions and reports
+ * per-segment cost estimates. The telephony transport is Twilio; this action
+ * owns only the owner-facing call lifecycle.
+ */
 import {
   type Action,
   type ActionExample,

@@ -1,3 +1,9 @@
+/**
+ * Destructive-action confirmation gate for LifeOps actions: requires an explicit
+ * owner confirmation before a destructive action proceeds, returning a
+ * confirmed/pending/cancelled status so the action handler can halt until the
+ * owner approves.
+ */
 import type {
   ActionResult,
   HandlerCallback,

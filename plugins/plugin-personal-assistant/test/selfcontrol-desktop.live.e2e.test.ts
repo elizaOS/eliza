@@ -1,3 +1,7 @@
+/**
+ * Live e2e driving the SelfControl blocker through the desktop stack. Gated on
+ * ELIZA_LIVE_TEST, with an optional headless-desktop smoke path.
+ */
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import net from "node:net";

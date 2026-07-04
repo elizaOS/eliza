@@ -1,3 +1,8 @@
+/**
+ * Guards LifeOps package boundaries: CLAUDE.md/AGENTS.md stay identical, the docs frame
+ * LifeOps as the personal-assistant owner (not the health/connector implementation home),
+ * and health/screen-time actions stay plugin-health wrappers. Static source asserts.
+ */
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";

@@ -1,3 +1,9 @@
+/**
+ * React hook exposing the X (Twitter) LifeOps connector status (owner or agent
+ * side), its connect controls, and a post action. The X transport client lives
+ * in `@elizaos/plugin-x`; this hook reads and toggles the normalized connector
+ * status for the UI.
+ */
 import type {
   LifeOpsConnectorSide,
   LifeOpsXConnectorStatus,

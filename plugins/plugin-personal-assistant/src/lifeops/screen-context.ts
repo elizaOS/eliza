@@ -1,3 +1,9 @@
+/**
+ * Screen-context resolution for LifeOps: classifies the owner's current on-screen
+ * focus (work / leisure / transition / idle) from the browser-capture frame or
+ * vision source, so the assistant can time interventions to what the owner is
+ * doing.
+ */
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";

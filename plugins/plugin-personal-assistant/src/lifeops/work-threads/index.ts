@@ -1,3 +1,4 @@
+/** Barrel for work threads: the store and types for long-running owner work items the assistant tracks across turns. */
 export {
   type CreateWorkThreadInput,
   createWorkThreadStore,

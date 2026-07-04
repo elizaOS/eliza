@@ -2,12 +2,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 /**
- * OUTCOME rewrite of the routing-only utility-outage-reimbursement scenario (#9310): the old
- * file asserted planner keywords plus reply echoes ("claim", "receipts", "timestamps", "deadline" / "reimbursement", "insurer", "filing", "medical" — all present
- * in the user's own turn text) against zero seeded state, so a
- * prompt-parroting reply passed.
- *
- * This version seeds REAL claim state through the LifeOps definition API — the Lakeshore Power event OUT-3387 claim record and a private refrigerated-medicine list — and asserts grounding + the medical firebreak: the claim prep must surface the seeded event (absent from every user turn), the filing must not leak the medicine name, and nothing may be filed before approval.
+ * Seeds REAL claim state through the LifeOps definition API — the Lakeshore Power event OUT-3387 claim record and a private refrigerated-medicine list — and asserts grounding + the medical firebreak: the claim prep must surface the seeded event (absent from every user turn), the filing must not leak the medicine name, and nothing may be filed before approval.
  */
 export default scenario({
   lane: "live-only",

@@ -1,3 +1,8 @@
+/**
+ * Tests the contacts overlay-app descriptor and its registration against a
+ * mocked `@elizaos/ui` overlay registry: Android-only metadata and the
+ * exported descriptor.
+ */
 import { describe, expect, it, vi } from "vitest";
 
 const registerOverlayApp = vi.hoisted(() => vi.fn());

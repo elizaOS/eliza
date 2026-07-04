@@ -1,3 +1,7 @@
+/**
+ * Covers the proactive activity worker's inbox-digest request shape: personal inbox
+ * channels only, thread-grouped, missed-only, priority-sorted. Deterministic.
+ */
 import { describe, expect, it } from "vitest";
 import { proactiveInboxDigestRequest } from "../src/activity-profile/proactive-inbox-digest.js";
 

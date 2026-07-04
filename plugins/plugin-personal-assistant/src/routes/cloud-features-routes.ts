@@ -1,3 +1,15 @@
+/**
+ * `/api/cloud/features` route handlers — read and sync LifeOps feature flags
+ * against Eliza Cloud.
+ *
+ * GET returns the local feature-flag state; POST `/sync` proxies the Cloud
+ * `/api/v1/features` endpoint (authenticated via the CLOUD_AUTH service or a
+ * resolved API key), reconciles remote enable/disable state into the local
+ * flag service, and promotes the Cloud-linked default-on features that Cloud
+ * did not report. Fails with the upstream status when Cloud is unreachable or
+ * the caller is not signed in.
+ */
+
 import type http from "node:http";
 import type { CloudProxyConfigLike } from "@elizaos/agent";
 import {

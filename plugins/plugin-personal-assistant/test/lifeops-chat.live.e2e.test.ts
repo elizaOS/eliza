@@ -1,3 +1,7 @@
+/**
+ * Live-model chat e2e driving LifeOps conversations end to end through a booted runtime and
+ * the conversation API. Gated on live-provider credentials.
+ */
 import { afterEach, beforeEach, expect, it } from "vitest";
 import { describeIf } from "../../../packages/test/helpers/conditional-tests.ts";
 import { createConversation, req } from "../../../packages/test/helpers/http";

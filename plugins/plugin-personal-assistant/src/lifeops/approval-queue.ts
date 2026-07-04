@@ -1,3 +1,9 @@
+/**
+ * LifeOps owner-approval queue: enqueues and resolves the approval requests the
+ * assistant raises before taking sensitive actions (sending messages/email,
+ * scheduling, bookings). Backed by the shared approval service; this layer owns
+ * the LifeOps-specific payloads and list/resolution surface.
+ */
 import { randomUUID } from "node:crypto";
 import { resolveApprovalService } from "@elizaos/agent";
 import { type IAgentRuntime, logger, ServiceType } from "@elizaos/core";

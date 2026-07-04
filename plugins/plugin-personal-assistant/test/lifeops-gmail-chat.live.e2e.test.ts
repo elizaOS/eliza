@@ -1,3 +1,8 @@
+/**
+ * Live-model Gmail chat e2e: single-attempt lookups plus multi-attempt recovery of
+ * reply-needed Gmail threads. Boots a real runtime with the Google plugin against a live
+ * LLM.
+ */
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";

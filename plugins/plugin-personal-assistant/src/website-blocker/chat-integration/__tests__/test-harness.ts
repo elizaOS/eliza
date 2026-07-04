@@ -1,3 +1,9 @@
+/**
+ * Shared test harness for the website-blocker chat-integration suites: stands up
+ * a PGlite-backed runtime with the `life_block_rules` schema and a temp hosts
+ * file wired into the real SelfControl engine, plus todo seed/complete helpers.
+ */
+
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";

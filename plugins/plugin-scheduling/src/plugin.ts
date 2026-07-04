@@ -13,7 +13,7 @@ import {
 } from "./scheduled-task/seed-registry.js";
 
 /**
- * `@elizaos/plugin-scheduling` — the scheduling spine, now an always-loaded,
+ * `@elizaos/plugin-scheduling` — the scheduling spine, an always-loaded,
  * self-seeding runtime primitive.
  *
  * This plugin HOSTS the generic ScheduledTask runtime surface so scheduled

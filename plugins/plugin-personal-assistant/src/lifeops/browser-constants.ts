@@ -1,3 +1,4 @@
+/** Default browser-bridge permission state and settings the browser companion starts from. */
 import type {
   BrowserBridgePermissionState,
   BrowserBridgeSettings,

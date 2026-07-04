@@ -6,14 +6,12 @@ import {
 } from "./_helpers/approval-outcome.ts";
 
 /**
- * OUTCOME rewrite of the routing-only auction-bid scenario (#9310): the old
- * file only asserted the reply echoed prompt keywords ("estimate",
- * "insurance", "provenance", "approval" — all present in the user's own text).
+ * Live-model auction-bid approval-window flow.
  *
  * The capability under test is the NO-ACTION default: an unapproved bid must
- * never be placed. This version seeds a REAL pending bid authorization on the
+ * never be placed. Seeds a real pending bid authorization on the
  * live queue with a budget ceiling planted in the seeded context, and asserts
- * the negative outcome directly: the owner's expiry decision leaves the queue
+ * the negative outcome directly (#9310): the owner's expiry decision leaves the queue
  * row "rejected", no gated side effect runs, no external dispatch happens,
  * and the ceiling never leaks into chat.
  */

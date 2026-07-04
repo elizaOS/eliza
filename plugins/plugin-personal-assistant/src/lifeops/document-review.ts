@@ -1,3 +1,8 @@
+/**
+ * Document-review contract: the review modes (read/analyze/redline/explain/apply)
+ * and edit categories for the assistant's owner-document workflow, plus content
+ * hashing to key a document across review passes.
+ */
 import { createHash } from "node:crypto";
 
 export const DOCUMENT_REVIEW_MODES = [

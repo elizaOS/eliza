@@ -1,3 +1,8 @@
+/**
+ * Tests that the spatial calendar surface renders to real terminal lines
+ * through the `@elizaos/tui` registry, exercising the TUI modality of the
+ * unified CalendarSpatialView with deterministic fixture events.
+ */
 import { visibleWidth } from "@elizaos/tui";
 import { SpatialSurface } from "@elizaos/ui/spatial";
 import {

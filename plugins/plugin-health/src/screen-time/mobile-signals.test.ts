@@ -1,3 +1,7 @@
+/**
+ * Unit test for Android Usage Stats / iOS Screen Time signal parsing and the
+ * mobile data-source status helpers. Deterministic fixtures.
+ */
 import { describe, expect, it } from "vitest";
 import {
   androidUsageRowsFromSignals,

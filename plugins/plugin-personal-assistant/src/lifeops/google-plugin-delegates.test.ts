@@ -1,3 +1,4 @@
+/** Verifies the Google connector delegate resolution against a stubbed runtime. Deterministic vitest, no live Google API. */
 import { getConnectorAccountManager, type IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { LifeOpsService } from "./service.js";

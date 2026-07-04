@@ -1,3 +1,11 @@
+/**
+ * Reflection model calls that gate inbox message sends. Before a drafted reply
+ * is delivered, `reflectOnSendConfirmation` asks the model whether the owner
+ * actually intended to send; `reflectOnAutoReply` judges whether an unattended
+ * auto-reply is safe. Both parse the model's JSON verdict into a typed
+ * approve-or-hold decision for the triage flow, defaulting to hold on ambiguity.
+ */
+
 import type { IAgentRuntime } from "@elizaos/core";
 import {
   logger,

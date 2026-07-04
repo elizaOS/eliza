@@ -1,3 +1,8 @@
+/**
+ * `computeSleepRegularity` and `computePersonalBaseline` — score how consistent
+ * the owner's sleep schedule is and derive the per-user baseline from qualifying
+ * episodes (non-nap, sufficient duration, ended before now).
+ */
 import type {
   LifeOpsPersonalBaseline,
   LifeOpsScheduleRegularity,

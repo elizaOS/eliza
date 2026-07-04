@@ -1,3 +1,11 @@
+/**
+ * `workThreads` provider — surfaces active LifeOps work threads for the current
+ * room and owner. Threads whose source ref is the current channel are marked
+ * mutable so the planner may steer them via `lifeops_thread_control`;
+ * cross-channel threads render as read-only summaries. Owner-gated, capped at
+ * `MAX_THREADS`, current-room threads sorted ahead of the rest.
+ */
+
 import { hasOwnerAccess } from "@elizaos/agent";
 import type {
   IAgentRuntime,

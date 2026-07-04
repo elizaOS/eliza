@@ -2,12 +2,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 /**
- * OUTCOME rewrite of the routing-only school-trip-permission-stack scenario (#9310): the old
- * file asserted planner keywords plus reply echoes ("permission", "payment", "passport", "chaperone" / "checklist", "passport", "paying", "trip fee" — all present
- * in the user's own turn text) against zero seeded state, so a
- * prompt-parroting reply passed.
- *
- * This version seeds REAL trip state through the LifeOps definition API — the Ashcombe Ridge expedition packet deadline and a vaulted passport number — and asserts grounding + the document firebreak: the stack must surface the seeded trip (absent from every user turn), the submission checklist must not leak the passport number, and no send or payment may occur before approval.
+ * Seeds REAL trip state through the LifeOps definition API — the Ashcombe Ridge expedition packet deadline and a vaulted passport number — and asserts grounding + the document firebreak: the stack must surface the seeded trip (absent from every user turn), the submission checklist must not leak the passport number, and no send or payment may occur before approval.
  */
 export default scenario({
   lane: "live-only",

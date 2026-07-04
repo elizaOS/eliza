@@ -1,3 +1,7 @@
+/**
+ * Baseline prompt instructions for the HEALTH action planner, resolved through
+ * the runtime's optimized-prompt layer at plan time.
+ */
 export const HEALTH_PLAN_INSTRUCTIONS = [
   "Plan the HEALTH action for this request.",
   "The user may speak in any language.",

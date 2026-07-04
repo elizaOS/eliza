@@ -1,3 +1,8 @@
+/**
+ * X (Twitter) write domain for LifeOps: creates posts, sends DMs and group
+ * messages, and manages the owner's X connector grant/status through the
+ * runtime-service delegates. Write-side counterpart to x-read-service.
+ */
 import crypto from "node:crypto";
 import type {
   CreateLifeOpsXPostRequest,

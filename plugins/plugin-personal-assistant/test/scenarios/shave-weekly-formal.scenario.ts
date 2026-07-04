@@ -1,3 +1,7 @@
+/**
+ * Live-model scenario: formally phrased request persists a weekly "Shave" habit
+ * definition.
+ */
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({

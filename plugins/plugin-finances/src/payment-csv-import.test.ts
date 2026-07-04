@@ -1,3 +1,10 @@
+/**
+ * Unit tests for the RFC 4180 CSV parser and bank/card transaction extraction
+ * (`parseCsv`, `parseTransactionsCsv`) — column-hint detection, separate
+ * debit/credit columns, and amount/direction normalization. Pure functions, no
+ * I/O.
+ */
+
 import { describe, expect, it } from "vitest";
 import { parseCsv, parseTransactionsCsv } from "./payment-csv-import.js";
 

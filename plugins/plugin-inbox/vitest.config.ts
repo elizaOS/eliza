@@ -1,3 +1,10 @@
+/**
+ * Vitest config for plugin-inbox. Extends the workspace base config (which
+ * supplies the @elizaos source aliases plugin.ts needs) and pins a single React
+ * copy so the jsdom view-render tests do not mix the workspace and hoisted React
+ * peers. Live/real/e2e suites are excluded from the default unit lane.
+ */
+
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

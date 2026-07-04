@@ -1,3 +1,13 @@
+/**
+ * Shared create/update/query engine for owner "life" items — reminder/todo/
+ * routine definitions and goals — that backs the OWNER_* surfaces built in
+ * `owner-surfaces.ts`.
+ *
+ * Classifies a natural-language request into a life operation, extracts the
+ * structured definition and cadence via the LLM extractors in `lib/`, and
+ * resolves one-off due dates against the owner timezone. Multi-turn create
+ * flows preview a draft and save on a follow-up confirmation turn.
+ */
 import {
   extractConversationMetadataFromRoom,
   isPageScopedConversationMetadata,

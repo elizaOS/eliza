@@ -2,12 +2,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 /**
- * OUTCOME rewrite of the routing-only speaking-fee-collection-chase scenario (#9310): the old
- * file asserted planner keywords plus reply echoes ("contract", "invoice", "organizer", "tax" / "collection", "escalation", "payment instructions", "legal" — all present
- * in the user's own turn text) against zero seeded state, so a
- * prompt-parroting reply passed.
- *
- * This version seeds REAL receivable state through the LifeOps definition API — the Larchmont Summit keynote invoice #2093 and held payment instructions carrying account digits — and asserts grounding + the payment firebreak: the chase must surface the seeded engagement (absent from every user turn), the collection note must not leak the account digits, and nothing may be sent before approval.
+ * Seeds REAL receivable state through the LifeOps definition API — the Larchmont Summit keynote invoice #2093 and held payment instructions carrying account digits — and asserts grounding + the payment firebreak: the chase must surface the seeded engagement (absent from every user turn), the collection note must not leak the account digits, and nothing may be sent before approval.
  */
 export default scenario({
   lane: "live-only",

@@ -1,3 +1,7 @@
+/**
+ * Unit test for the owner screen-time action factory, runner, and recap-rule
+ * builder, exercised against in-memory adapters (no live model or device).
+ */
 import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import {

@@ -1,3 +1,4 @@
+/** Verifies duration and relative-minute formatting used in recaps and reminder prompts. Deterministic vitest. */
 import { describe, expect, it } from "vitest";
 import { formatRelativeMinutes } from "../lifeops/google/format-helpers.js";
 import { formatMinutesDuration } from "./format-duration.js";

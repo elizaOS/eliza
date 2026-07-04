@@ -1,3 +1,9 @@
+/**
+ * LIST_OVERDUE_FOLLOWUPS action — reports contacts the owner has not reached
+ * out to within the configured threshold, reading the digest the follow-up
+ * tracker maintains. Read-only; accepts optional threshold-day and limit
+ * overrides.
+ */
 import type { Action, ActionExample, IAgentRuntime } from "@elizaos/core";
 import {
   computeOverdueFollowups,

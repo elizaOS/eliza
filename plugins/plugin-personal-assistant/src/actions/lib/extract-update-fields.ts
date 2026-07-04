@@ -1,3 +1,9 @@
+/**
+ * LLM extractor for owner life-item update requests. Pulls the fields a user
+ * wants to change — title, cadence, priority, time-of-day — from a
+ * natural-language edit, validating the cadence kind against the known set so
+ * the update flow only applies recognized fields.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import { parseJsonModelRecord, runExtractorPipeline } from "@elizaos/core";
 

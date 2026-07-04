@@ -1,3 +1,8 @@
+/**
+ * Per-source confidence weights for activity signals. `resolveSourceReliability`
+ * and `resolveActivitySignalReliability` rank manual overrides, mobile-health,
+ * desktop-power, and message-channel evidence when inferring sleep/wake.
+ */
 import type { LifeOpsActivitySignalSource } from "../contracts/health.js";
 
 export type LifeOpsReliabilityKey =

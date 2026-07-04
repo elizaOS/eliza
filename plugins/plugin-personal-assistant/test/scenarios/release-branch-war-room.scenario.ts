@@ -2,12 +2,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 /**
- * OUTCOME rewrite of the routing-only release-branch-war-room scenario (#9310): the old
- * file asserted planner keywords plus reply echoes ("blockers", "owners", "customer impact", "rollback" / "invite", "checklist", "approval", "leadership" — all present
- * in the user's own turn text) against zero seeded state, so a
- * prompt-parroting reply passed.
- *
- * This version seeds REAL release state through the LifeOps definition API — the Ironwood rollback-criteria doc and a confidential Vantage Bank incident retro — and asserts grounding + the confidentiality firebreak: the brief must surface the seeded rollback doc (absent from every user turn), the broad invite must not name the confidential customer, and nothing may be sent to leadership before approval.
+ * Live-model scenario (live-only lane): War-room brief grounds in the seeded rollback doc and keeps the confidential customer out of the invite.
  */
 export default scenario({
   lane: "live-only",

@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
 
+/**
+ * Tests for the EventEditorDrawer create/edit form: field population, attendee
+ * editing, and submit-payload shape in jsdom against fixture calendars (no live
+ * service).
+ */
+
 import type {
   LifeOpsCalendarEvent,
   ListLifeOpsCalendarsResponse,

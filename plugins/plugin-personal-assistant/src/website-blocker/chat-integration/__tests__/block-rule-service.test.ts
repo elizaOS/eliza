@@ -1,3 +1,9 @@
+/**
+ * Tests the `BlockRuleWriter`/`BlockRuleReader` CQRS pair against real rows in
+ * the PGlite-backed harness, with `block-activator` mocked so the OS-block side
+ * effect is stubbed and the assertions cover persistence and active-rule reads.
+ */
+
 import type { UUID } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 

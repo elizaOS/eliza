@@ -1,3 +1,8 @@
+/**
+ * Guards plugin-meetings auto-enable: the package.json manifest wiring and the
+ * config-driven `shouldEnable` predicate. Deterministic — reads the real
+ * package.json, no runtime.
+ */
 import { readFileSync } from "node:fs";
 import type { PluginAutoEnableContext } from "@elizaos/core";
 import { describe, expect, it } from "vitest";

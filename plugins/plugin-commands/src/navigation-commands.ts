@@ -1,11 +1,10 @@
 /**
  * Navigation + client commands as first-class `CommandDefinition`s.
  *
- * These used to be defined inline in `connector-catalog.ts` as bare
- * `ConnectorCommand`s, which meant they could not carry `surfaces`, auth flags,
- * `category`, or flow through `serializeCommand` like agent commands do (#8790).
  * Defining them as `CommandDefinition`s with an explicit `target` and `surfaces`
- * lets the catalog treat agent / navigate / client commands uniformly:
+ * (rather than bare `ConnectorCommand`s) lets them carry `surfaces`, auth flags,
+ * and `category`, flow through `serializeCommand` like agent commands, and be
+ * treated uniformly by the catalog across agent / navigate / client kinds (#8790):
  *
  *   - `navigate` commands open a destination in the Eliza app; `path` is the
  *     in-app deep link a connector advertises, `tab`/`viewId`/`section` are the

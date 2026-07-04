@@ -1,3 +1,9 @@
+/**
+ * Locks the two structural ScheduledTask classifiers — `isRecurringTrigger` and
+ * `expectedReplyKindForTask` — so a new trigger/completion kind can't silently
+ * change recurrence or expected-reply routing. Pure functions, no runtime.
+ */
+
 import { describe, expect, it } from "vitest";
 import { expectedReplyKindForTask, isRecurringTrigger } from "./due.js";
 import type { ScheduledTask, ScheduledTaskTrigger } from "./types.js";

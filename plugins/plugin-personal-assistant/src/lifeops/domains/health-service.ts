@@ -1,3 +1,9 @@
+/**
+ * Health connector domain for LifeOps: connect/disconnect the owner's health
+ * data provider and project daily summaries and data points from
+ * `@elizaos/plugin-health` into assistant DTOs. All health/circadian domain
+ * logic lives in the health plugin; this is a thin owner-access wrapper.
+ */
 import {
   completeHealthConnectorOAuth,
   deleteStoredHealthToken,

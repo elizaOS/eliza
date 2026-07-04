@@ -1,3 +1,8 @@
+/**
+ * `normalizeHealthSignal` — validates and normalizes an inbound health-signal
+ * payload against the known signal sources, failing explicitly on invalid input
+ * rather than fabricating defaults.
+ */
 import type { LifeOpsHealthSignal } from "../contracts/health.js";
 import { LIFEOPS_HEALTH_SIGNAL_SOURCES } from "../contracts/health.js";
 import {

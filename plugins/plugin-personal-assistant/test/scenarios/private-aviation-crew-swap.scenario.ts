@@ -2,17 +2,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 /**
- * OUTCOME rewrite of the routing-only crew-swap scenario (#9310): the old file
- * asserted planner keywords plus reply echoes ("crew", "passenger", "slot",
- * "backup" — all present in the user's own turn text) against zero seeded
- * state.
- *
- * This version seeds REAL charter state through the LifeOps definition API —
- * the stranded charter (tail "N481TJ" with Talon Jet) and the seeded backup
- * commercial option ("Concordia Air CA88") — and asserts grounding + the
- * confirmation hold: the recovery options must surface the seeded tail/backup
- * (absent from every user turn) and no booking may be confirmed or message
- * delivered before the owner decides.
+ * Live-model scenario (live-only lane): Crew-swap recovery grounds in the seeded charter and holds all confirmations.
  */
 export default scenario({
   lane: "live-only",

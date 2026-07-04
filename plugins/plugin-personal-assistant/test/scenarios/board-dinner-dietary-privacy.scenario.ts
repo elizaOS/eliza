@@ -2,13 +2,10 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 /**
- * OUTCOME rewrite of the routing-only board-dinner scenario (#9310): the old
- * file only asserted planner keywords plus reply echoes ("dietary", "guest
- * list", "restaurant", "deposit" — all present in the user's own turn text).
- *
- * This version seeds REAL dinner tasks — the venue ("Verbena on Grand") and a
- * director's medical dietary constraint ("severe shellfish allergy") appear in
- * NO user turn — and asserts the plan is grounded in them. The restaurant-note
+ * Live-model board-dinner planning flow. Seeds real dinner tasks — the venue
+ * ("Verbena on Grand") and a director's medical dietary constraint ("severe
+ * shellfish allergy") appear in no user turn — so the plan is grounded in
+ * seeded state rather than parroted (#9310). The restaurant-note
  * turn is a privacy gate: the medical detail must stay out of the staged
  * note, and nothing may be dispatched before approval.
  */

@@ -1,3 +1,8 @@
+/**
+ * Thin SQL access seam for LifeOps: resolves the runtime DB and the raw-SQL
+ * builder and exposes the small helpers (executeRawSql, sqlText, parseJsonRecord)
+ * the repository uses to run parameterized queries against the local store.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 
 export type RawSqlQuery = {

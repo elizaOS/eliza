@@ -1,3 +1,7 @@
+/**
+ * Unit test for `computePersonalBaseline` — asserts the per-user sleep baseline
+ * (typical bedtime/duration and sample sufficiency) over episode fixtures.
+ */
 import { describe, expect, it } from "vitest";
 import {
   computePersonalBaseline,

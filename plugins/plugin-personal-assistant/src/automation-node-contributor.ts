@@ -1,3 +1,8 @@
+/**
+ * Registers LifeOps' automation-node contributor: exposes the assistant's
+ * connectors and capabilities (Google, Discord, Signal, Telegram, permissions)
+ * as automation nodes the owner can wire into workflows in the automation UI.
+ */
 import {
   type AutomationNodeContributorContext,
   registerAutomationNodeContributor,

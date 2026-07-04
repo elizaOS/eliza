@@ -1,3 +1,7 @@
+/**
+ * Asserts owner-only action handlers deny when the LifeOps access gate is closed.
+ * Deterministic, mocked access and extractor.
+ */
 import type {
   Action,
   ActionResult,

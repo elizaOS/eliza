@@ -1,3 +1,8 @@
+/**
+ * Travel service mixin: declares the LifeOps travel-booking service surface and
+ * the mixin that composes the travel domain's flight-search and booking methods
+ * onto the LifeOpsService base.
+ */
 import type {
   DuffelOffer,
   DuffelOrder,

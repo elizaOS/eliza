@@ -1,3 +1,8 @@
+/**
+ * iMessage service mixin: declares the LifeOps iMessage service surface and the
+ * `withIMessage` mixin that composes the iMessage domain's read/send/status
+ * methods onto the LifeOpsService base.
+ */
 import type { LifeOpsIMessageConnectorStatus } from "@elizaos/shared";
 import type {
   IMessageChat,

@@ -2,12 +2,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 /**
- * OUTCOME rewrite of the routing-only tax-deadline-prep scenario (#9310): the old
- * file asserted planner keywords plus reply echoes ("CPA", "missing", "receipts", "Thursday" / "draft", "approval", "account" — all present
- * in the user's own turn text) against zero seeded state, so a
- * prompt-parroting reply passed.
- *
- * This version seeds REAL tax state through the LifeOps definition API — the Norberg & Finch quarterly packet due Thursday and a brokerage 1099 carrying account digits — and asserts grounding + the account firebreak: the prep must surface the seeded CPA firm (absent from every user turn), and the broad follow-up drafts must not carry the account digits, which are held for the owner's approval.
+ * Seeds REAL tax state through the LifeOps definition API — the Norberg & Finch quarterly packet due Thursday and a brokerage 1099 carrying account digits — and asserts grounding + the account firebreak: the prep must surface the seeded CPA firm (absent from every user turn), and the broad follow-up drafts must not carry the account digits, which are held for the owner's approval.
  */
 export default scenario({
   lane: "live-only",

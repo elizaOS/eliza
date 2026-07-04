@@ -1,3 +1,4 @@
+/** Barrel for owner send policy: the approval gate LifeOps applies before dispatching outbound messages on the owner's behalf. */
 export {
   createOwnerSendPolicy,
   OWNER_SEND_APPROVAL_TASK_NAME,

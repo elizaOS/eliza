@@ -1,3 +1,6 @@
+/**
+ * Live-model smoke scenario: polite French (vous) phrasing yields a daily brushing habit, replying in-language while creating the scheduled reminder.
+ */
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({

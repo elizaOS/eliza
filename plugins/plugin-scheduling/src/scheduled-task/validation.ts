@@ -1,3 +1,13 @@
+/**
+ * Structural validation for `ScheduledTask` shapes beyond the Zod route schema.
+ *
+ * Checks enum membership (kind / priority / source / subject / output
+ * destination), field shapes, and the cross-field invariants that need the live
+ * registries — that referenced gate / completion-check / escalation-ladder kinds
+ * are registered — raising `ScheduledTaskValidationError` (a typed issue list)
+ * on violation.
+ */
+
 import type { CompletionCheckRegistry } from "./completion-check-registry.js";
 import type { EscalationLadderRegistry } from "./escalation.js";
 import type { TaskGateRegistry } from "./gate-registry.js";

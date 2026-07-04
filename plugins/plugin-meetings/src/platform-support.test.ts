@@ -1,3 +1,8 @@
+/**
+ * Capability probe plus Chromium resolution — display detection, headless-mode
+ * resolution, executable lookup, and overall meeting-runtime support.
+ * Deterministic: node:fs and playwright are stubbed, no real browser.
+ */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { IAgentRuntime } from "@elizaos/core";
 import { existsSync } from "node:fs";

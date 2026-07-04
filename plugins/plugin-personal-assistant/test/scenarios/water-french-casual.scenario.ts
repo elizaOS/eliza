@@ -1,3 +1,7 @@
+/**
+ * Live-model scenario: casual French (tu) phrasing persists a "Drink water"
+ * task.
+ */
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({

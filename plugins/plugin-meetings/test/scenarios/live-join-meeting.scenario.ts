@@ -1,11 +1,12 @@
+/**
+ * Live-LLM evidence scenario (#11856): a REAL model must route a natural "join
+ * this meeting and take notes" request (with a Google Meet URL) to the real
+ * JOIN_MEETING handler. MeetingService then attempts a genuine browser join; on
+ * a headless/keyless-Chrome host the join fails at the browser/admission step,
+ * which is fine — the trajectory proves planner → JOIN_MEETING → MeetingService
+ * with the real error surfaced.
+ */
 import type { ScenarioDefinition } from "@elizaos/scenario-runner/schema";
-
-// Live-LLM evidence scenario for #11856: a REAL model must route a natural
-// "join this meeting and take notes" request (with a Google Meet URL) to the
-// real @elizaos/plugin-meetings JOIN_MEETING handler. The MeetingService then
-// attempts a genuine browser join; on a headless/keyless-Chrome host the join
-// fails at the browser/admission step, which is fine — the trajectory proves
-// planner → JOIN_MEETING → MeetingService with the real error surfaced.
 
 export default {
   id: "live-join-meeting",

@@ -1,3 +1,4 @@
+/** Barrel for the calendar service internals: `CalendarService`, `CalendarRepository`, the connector gate, and feed preferences. */
 export {
   CalendarRepository,
   createLifeOpsCalendarSyncState,

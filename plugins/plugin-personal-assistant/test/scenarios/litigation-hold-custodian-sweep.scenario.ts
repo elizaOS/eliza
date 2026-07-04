@@ -2,17 +2,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 /**
- * OUTCOME rewrite of the routing-only litigation-hold scenario (#9310): the
- * old file only asserted planner keywords plus reply echoes ("custodians",
- * "shared drives", "counsel", "approval" — all present in the user's own turn
- * text), so a prompt-parroting reply passed against zero hold state.
- *
- * This version seeds REAL hold state through the LifeOps definition API (the
- * Danvers-matter custodian list and the unacknowledged custodian Tomas
- * Lindqvist) and asserts the sweep is GROUNDED in it: both tokens never
- * appear in any user turn, so an echo cannot pass. Seeds are re-verified via
- * definitionCountDelta and the follow-ups stay staged via a no-external-send
- * predicate.
+ * Live-model scenario (live-only lane): Litigation hold sweep grounds in seeded custodian state; follow-ups stay staged.
  */
 export default scenario({
   lane: "live-only",

@@ -1,3 +1,4 @@
+/** Vitest config for @elizaos/plugin-form: runs the node unit suite, gating the live extraction tests to the post-merge lane. */
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({

@@ -1,3 +1,6 @@
+/**
+ * Live-model scenario: a screen-time recap proposes exactly one focus adjustment.
+ */
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({

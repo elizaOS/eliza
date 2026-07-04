@@ -1,3 +1,7 @@
+/**
+ * Live e2e driving the SelfControl blocker against a spawned dev stack. Gated on
+ * ELIZA_LIVE_TEST.
+ */
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import net from "node:net";

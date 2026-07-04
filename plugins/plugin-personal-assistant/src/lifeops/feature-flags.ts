@@ -1,3 +1,8 @@
+/**
+ * LifeOps feature-flag service: reads and mutates the owner's feature-flag state
+ * over the flag registry, resolving defaults and notifying change listeners.
+ * Gates optional assistant capabilities on/off per owner.
+ */
 import { type IAgentRuntime, logger, type Service } from "@elizaos/core";
 import {
   ALL_FEATURE_KEYS,

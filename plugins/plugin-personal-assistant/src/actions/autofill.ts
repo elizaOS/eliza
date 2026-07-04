@@ -1,3 +1,9 @@
+/**
+ * Browser-extension form-fill backend (AUTOFILL) behind the CREDENTIALS
+ * umbrella. Handles the fill / whitelist_add / whitelist_list subactions,
+ * driving the browser companion to inject saved credential values into web
+ * forms only for whitelisted origins.
+ */
 import {
   type ActionResult,
   type HandlerOptions,

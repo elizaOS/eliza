@@ -1,3 +1,8 @@
+/**
+ * Input-normalization helpers for task-definition and feed requests: validate
+ * and coerce definition drafts, cadence/progression rules, and calendar/Gmail/
+ * health feed request params into the canonical shapes the domains trust.
+ */
 import {
   BROWSER_BRIDGE_ACTION_KINDS,
   type BrowserBridgeAction,

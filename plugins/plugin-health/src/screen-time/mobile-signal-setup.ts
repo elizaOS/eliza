@@ -1,3 +1,7 @@
+/**
+ * Mobile signal setup types and helpers — the permission/setup action shapes the
+ * screen-time UI uses to prompt for Android Usage Stats / iOS Screen Time access.
+ */
 export type MobileSignalSetupStatus = "ready" | "unavailable" | string;
 
 export interface MobileSignalSetupActionLike {

@@ -1,3 +1,8 @@
+/**
+ * Occurrence-performance helpers: compute a task definition's completion
+ * performance over rolling windows (last 7 / 30 days) from its occurrence
+ * history, feeding the overview and definition-scoring surfaces.
+ */
 import type {
   LifeOpsDefinitionPerformance,
   LifeOpsDefinitionPerformanceWindow,

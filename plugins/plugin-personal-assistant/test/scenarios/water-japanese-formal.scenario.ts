@@ -1,3 +1,7 @@
+/**
+ * Live-model scenario: Japanese formal phrasing persists a "Drink water" task
+ * with an interval reminder plan.
+ */
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({

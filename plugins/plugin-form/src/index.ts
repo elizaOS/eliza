@@ -7,6 +7,13 @@
  * @license MIT
  */
 
+/**
+ * Entry point for `@elizaos/plugin-form`. Assembles the form-filling plugin —
+ * the form action, the extractor evaluator, the context provider, and
+ * `FormService` — and re-exports the builder, session, schema, and extraction
+ * surface used to guide agents through structured multi-field user journeys.
+ */
+
 import type { IAgentRuntime, Plugin, ServiceClass } from "@elizaos/core";
 import { formEvaluator } from "./evaluators/extractor";
 import { FormService } from "./service";

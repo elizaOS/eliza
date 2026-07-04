@@ -1,3 +1,7 @@
+/**
+ * Unit test for the screen-time range labels, current/prior window computation,
+ * and history-day enumeration. Pure, deterministic.
+ */
 import { describe, expect, it } from "vitest";
 import {
   computePriorScreenTimeRange,

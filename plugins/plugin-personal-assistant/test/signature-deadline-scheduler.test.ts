@@ -1,3 +1,8 @@
+/**
+ * Covers the signature-deadline scheduler: an unsigned document task times out and
+ * schedules the SMS escalation follow-up through processDueScheduledTasks. DB-backed test
+ * runtime.
+ */
 import type { ScheduledTask } from "@elizaos/plugin-scheduling";
 import { afterEach, describe, expect, it } from "vitest";
 import { LifeOpsRepository } from "../src/lifeops/repository.ts";

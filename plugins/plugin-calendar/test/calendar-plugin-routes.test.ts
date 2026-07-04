@@ -1,3 +1,7 @@
+/**
+ * Tests the calendar plugin HTTP route registration and service-resolution
+ * behaviour against a mocked `CalendarService` (no live DB or connector).
+ */
 import type http from "node:http";
 import type { IAgentRuntime, LegacyRouteHandler, Route } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";

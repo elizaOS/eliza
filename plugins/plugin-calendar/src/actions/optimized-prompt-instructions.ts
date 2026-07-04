@@ -1,3 +1,9 @@
+/**
+ * Baseline prompt instructions for the calendar plan extractor: the fixed
+ * subaction vocabulary and the window/query rules the LLM follows to turn a
+ * request into a `CalendarLlmPlan`. Used as the default when no DSPy-optimized
+ * prompt is loaded for the calendar task.
+ */
 export const CALENDAR_PLAN_INSTRUCTIONS = [
   "Plan the calendar action for this request.",
   "The user may speak in any language.",

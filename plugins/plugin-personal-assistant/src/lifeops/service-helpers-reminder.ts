@@ -1,3 +1,9 @@
+/**
+ * Reminder-routing helpers: rank escalation-channel candidates and resolve the
+ * routing policy for a reminder given its urgency, intensity, prior attempts,
+ * and the owner's channel preferences. Shared by the reminder domain and
+ * contact-route policy.
+ */
 import type {
   LifeOpsActivitySignal,
   LifeOpsReminderAttempt,

@@ -1,3 +1,7 @@
+/**
+ * Unit test asserting the plugin-owned health and screen-time assistant
+ * commands are exported. Deterministic.
+ */
 import { describe, expect, it } from "vitest";
 import { HEALTH_ASSISTANT_COMMANDS } from "./assistant-commands.js";
 

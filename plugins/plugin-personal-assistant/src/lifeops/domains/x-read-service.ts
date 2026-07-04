@@ -1,3 +1,8 @@
+/**
+ * X (Twitter) read domain for LifeOps: fetches the owner's X feed, DMs, and post
+ * search through the runtime-service delegates and projects them into assistant
+ * DTOs. Read-only counterpart to the write-side x-service.
+ */
 import crypto from "node:crypto";
 import type { Memory } from "@elizaos/core";
 import type {

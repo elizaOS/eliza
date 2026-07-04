@@ -1,3 +1,8 @@
+/**
+ * Canonical inbox-fetch request shape for the proactive digest. Restricts the
+ * digest to channels with real personal-inbox semantics (gmail, x_dm, imessage,
+ * whatsapp, sms) since chat connectors lack reliable per-owner read state.
+ */
 import type { GetLifeOpsInboxRequest } from "@elizaos/shared";
 
 const PROACTIVE_INBOX_DIGEST_REQUEST = {

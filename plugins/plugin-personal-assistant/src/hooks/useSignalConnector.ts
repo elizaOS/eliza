@@ -1,3 +1,9 @@
+/**
+ * React hook exposing the Signal LifeOps connector status (owner or agent
+ * side) and its controls. Signal setup itself is managed by
+ * `@elizaos/plugin-signal`; this hook reads and toggles the normalized
+ * connector status and surfaces a managed-elsewhere fallback message.
+ */
 import type {
   LifeOpsConnectorSide,
   LifeOpsSignalConnectorStatus,

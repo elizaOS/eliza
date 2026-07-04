@@ -1,3 +1,8 @@
+/**
+ * Response-handler evaluator that extracts durable owner facts and relationship
+ * edges from the agent's own responses and persists them to the owner-fact store
+ * and relationship graph. Registered as the `owner.profile_extraction` evaluator.
+ */
 import { hasOwnerAccess, resolveKnowledgeGraphService } from "@elizaos/agent";
 import type {
   ResponseHandlerEvaluator,

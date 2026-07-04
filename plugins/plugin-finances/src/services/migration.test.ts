@@ -1,3 +1,9 @@
+/**
+ * Unit tests for the non-destructive finance-table copy migration
+ * (`migrateFinanceTable` / `migrateFinanceTables`) that moves rows from the old
+ * `app_lifeops` schema into `app_finances`, driven through a mock `SqlExecutor`.
+ */
+
 import { describe, expect, it } from "vitest";
 import {
   MIGRATED_FINANCE_TABLES,

@@ -2,18 +2,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 /**
- * OUTCOME rewrite of the routing-only investor-update scenario (#9310): the
- * old file only asserted planner keywords plus reply echoes ("investor",
- * "draft", "risk", "metrics" — all present in the user's own turn text), so a
- * prompt-parroting reply passed against zero board-note state.
- *
- * This version seeds REAL update inputs through the LifeOps definition API
- * (the shipped Fernhollow rollout, the Quillon contract-renewal risk, and a
- * sensitive customer reference that must stay unnamed) and asserts the digest
- * is GROUNDED in them: the seeded tokens never appear in any user turn, so an
- * echo cannot pass, while the sensitive customer name stays out of both
- * drafts. Seeds are re-verified via definitionCountDelta and the update stays
- * staged via a no-external-send predicate.
+ * Live-model scenario (live-only lane): Investor update grounds in seeded board notes; sensitive customer stays unnamed.
  */
 export default scenario({
   lane: "live-only",

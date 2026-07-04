@@ -1,3 +1,9 @@
+/**
+ * MeetingTranscriptionPipeline behavior — per-speaker buffering, ASR
+ * confirmation, hallucination filtering, TranscriptSegment assembly, and the
+ * retained-audio session mix. Deterministic: fake runtime plus scripted ASR, no
+ * real model.
+ */
 import type { Buffer } from "node:buffer";
 import type { IAgentRuntime, UUID } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

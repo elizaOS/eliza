@@ -2,17 +2,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 /**
- * OUTCOME rewrite of the routing-only media-prep scenario (#9310): the old
- * file only asserted planner keywords plus reply echoes ("talking points",
- * "metrics", "brief", "firebreak" — all present in the user's own turn text),
- * so a prompt-parroting reply passed against zero prep state.
- *
- * This version seeds REAL prep state through the LifeOps definition API (the
- * approved Cormorant launch talking points and the PR lead Saskia Hellwig's
- * approval status) and asserts the prep is GROUNDED in it: both tokens never
- * appear in any user turn, so an echo cannot pass. Seeds are re-verified via
- * definitionCountDelta and nothing reaches producers via a no-external-send
- * predicate.
+ * Live-model scenario (live-only lane): Media prep grounds in seeded talking points; brief never reaches producers.
  */
 export default scenario({
   lane: "live-only",

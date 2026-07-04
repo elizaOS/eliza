@@ -1,3 +1,4 @@
+/** Vitest config for plugin-health, wiring the shared provider-SDK aliases. */
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 import {

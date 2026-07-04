@@ -1,3 +1,12 @@
+/**
+ * `/api/lifeops/website-blocker/*` route handlers — start, stop, and report the
+ * SelfControl hosts-file block for owner website-blocking requests.
+ *
+ * Block/unblock delegate to the engine in `@elizaos/plugin-blocker`; the DELETE
+ * path refuses a soft restore while an active `harsh_no_bypass` rule exists so
+ * the reconciler cannot leave a window of unprotected state.
+ */
+
 import type { IAgentRuntime, RouteRequestContext } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import {

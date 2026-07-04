@@ -1,3 +1,8 @@
+/**
+ * RuntimeModelAsrBackend — the ASR seam that WAV-encodes a PCM window and routes
+ * it through `runtime.useModel(TRANSCRIPTION)`, returning text plus word
+ * timings. Deterministic: the model is a capturing fake.
+ */
 import { Buffer } from "node:buffer";
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

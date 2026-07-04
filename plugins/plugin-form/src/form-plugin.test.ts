@@ -1,3 +1,8 @@
+/**
+ * Tests plugin-form registration and the FORM_CONTEXT provider against a stub
+ * runtime whose `useModel` is a mock returning canned extraction responses — no
+ * live model.
+ */
 import type { IAgentRuntime, Memory, State, UUID } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { formAction } from "./actions/form";

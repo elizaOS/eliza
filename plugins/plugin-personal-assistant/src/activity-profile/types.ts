@@ -1,3 +1,8 @@
+/**
+ * Shared types for the activity-profile subsystem: time-of-day buckets and
+ * their hour ranges, per-platform activity records, activity signals, the
+ * assembled ActivityProfile, and the proactive-action shape.
+ */
 import type { LifeOpsHealthSignal } from "../contracts/index.js";
 
 export type TimeBucket =

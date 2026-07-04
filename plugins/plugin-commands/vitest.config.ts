@@ -1,3 +1,4 @@
+/** Vitest config for @elizaos/plugin-commands: runs the node-environment unit suite. */
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({

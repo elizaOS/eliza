@@ -1,3 +1,10 @@
+/**
+ * Tests `reconcileBlockRulesOnce` gate-release logic (until_todo completion,
+ * duration expiry) against real rows in the PGlite-backed harness, with
+ * `block-activator` mocked so the OS-block convergence is stubbed out and the
+ * assertions focus on which rules the reconciler deactivates.
+ */
+
 import type { UUID } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 

@@ -2,12 +2,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 /**
- * OUTCOME rewrite of the routing-only shareholder-letter-fact-check scenario (#9310): the old
- * file asserted planner keywords plus reply echoes ("board minutes", "metrics", "disclosure", "claims" / "CEO", "counsel", "claims", "evidence" — all present
- * in the user's own turn text) against zero seeded state, so a
- * prompt-parroting reply passed.
- *
- * This version seeds REAL letter state through the LifeOps definition API — the Foxglove Holdings Q3 metrics check and an embargoed Project Kestrel divestiture annex — and asserts grounding + the embargo firebreak: the fact-check must surface the seeded letter (absent from every user turn), and the correction brief must not drag the embargoed divestiture into circulation.
+ * Seeds REAL letter state through the LifeOps definition API — the Foxglove Holdings Q3 metrics check and an embargoed Project Kestrel divestiture annex — and asserts grounding + the embargo firebreak: the fact-check must surface the seeded letter (absent from every user turn), and the correction brief must not drag the embargoed divestiture into circulation.
  */
 export default scenario({
   lane: "live-only",

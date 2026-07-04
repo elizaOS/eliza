@@ -1,3 +1,8 @@
+/**
+ * Tests for the non-destructive app_lifeops→app_calendar table migration
+ * helpers: verifies copy-if-target-empty and skip-if-source-missing semantics
+ * against a stubbed SQL executor.
+ */
 import { describe, expect, it } from "vitest";
 import {
   MIGRATED_CALENDAR_TABLES,

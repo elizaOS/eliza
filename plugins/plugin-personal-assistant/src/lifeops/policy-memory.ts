@@ -1,3 +1,9 @@
+/**
+ * Owner policy-memory contract and store: the operations the assistant gates
+ * (read_aloud, delete, send, spend_money, bulk_cleanup, …) and their
+ * allow/deny effects, so remembered owner decisions can auto-approve or block
+ * future sensitive actions instead of re-prompting.
+ */
 export const LIFEOPS_POLICY_OPERATIONS = [
   "read_aloud",
   "delete",

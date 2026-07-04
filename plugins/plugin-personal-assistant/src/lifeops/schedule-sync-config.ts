@@ -1,3 +1,4 @@
+/** Resolves the Cloud schedule-sync configuration from the persisted Eliza config for the sync client. */
 import { loadElizaConfig } from "@elizaos/agent";
 import {
   type ResolvedLifeOpsScheduleSyncConfig,

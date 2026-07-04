@@ -1,3 +1,8 @@
+/**
+ * Tests the form-storage session scans: locating stale live form sessions and
+ * those expiring within a requested window, ignoring unrelated components. Runs
+ * against a stub component store, no live model.
+ */
 import type {
   Component,
   Entity,

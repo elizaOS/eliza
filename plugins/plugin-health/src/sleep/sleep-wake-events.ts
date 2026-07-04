@@ -1,3 +1,8 @@
+/**
+ * Derives the typed circadian-state event payloads emitted on each scheduler
+ * tick from the owner's merged schedule state — sleep/wake status, regularity,
+ * and bedtime-target timing — the sleep/wake `LifeOpsEventKind` events.
+ */
 import type {
   LifeOpsCircadianState,
   LifeOpsEventKind,

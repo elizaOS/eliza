@@ -2,12 +2,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 /**
- * OUTCOME rewrite of the routing-only subscription-cancel-save scenario (#9310): the old
- * file asserted planner keywords plus reply echoes ("renew", "invoice", "cancellation" / "draft", "decision", "renewal" — all present
- * in the user's own turn text) against zero seeded state, so a
- * prompt-parroting reply passed.
- *
- * This version seeds REAL renewal state through the LifeOps definition API — the Vectorline seat renewal and its $5,880 annual invoice — and asserts grounding + the two-phase commit: the audit must surface the seeded tool (absent from every user turn), and the cancel/downgrade draft must stay a draft — no completed-cancellation claim may appear before the owner decides.
+ * Seeds REAL renewal state through the LifeOps definition API — the Vectorline seat renewal and its $5,880 annual invoice — and asserts grounding + the two-phase commit: the audit must surface the seeded tool (absent from every user turn), and the cancel/downgrade draft must stay a draft — no completed-cancellation claim may appear before the owner decides.
  */
 export default scenario({
   lane: "live-only",

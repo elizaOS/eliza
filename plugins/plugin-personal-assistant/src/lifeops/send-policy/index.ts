@@ -1,3 +1,4 @@
+/** Barrel for the send-policy registry: pluggable rules that decide whether an outbound message may be sent. */
 export type {
   SendPolicyContext,
   SendPolicyContribution,

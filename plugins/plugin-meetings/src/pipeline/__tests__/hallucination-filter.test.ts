@@ -1,3 +1,7 @@
+/**
+ * Post-ASR hallucination gate (`isHallucination`) against the ported Vexa
+ * goldens. Pure, deterministic.
+ */
 import { describe, expect, it } from "vitest";
 import { isHallucination } from "../hallucination-filter";
 

@@ -1,3 +1,8 @@
+/**
+ * ZoomSpeakerAttributor — active-speaker-tile polling with vote-and-lock,
+ * rotating a segment key on confirmed speaker changes. Deterministic: a
+ * recording sink stub.
+ */
 import { describe, expect, it } from "vitest";
 import type { MeetingAudioSink } from "../../../types.js";
 import { ZoomSpeakerAttributor } from "../speaker-attribution.js";

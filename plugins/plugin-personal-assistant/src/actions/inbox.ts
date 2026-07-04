@@ -2,10 +2,10 @@
  * `INBOX` umbrella action — re-export shim.
  *
  * The cross-channel inbox triage domain (the INBOX list/search/summarize
- * fan-out action and its per-platform fetcher seam) moved to
- * `@elizaos/plugin-inbox`, which now registers the action. PA loads that plugin
- * via `ensureLifeOpsInboxPluginRegistered`. This shim re-exports the moved
- * public symbols so existing PA imports (and tests) keep resolving.
+ * fan-out action and its per-platform fetcher seam) lives in
+ * `@elizaos/plugin-inbox`, which registers the action. PA loads that plugin
+ * via `ensureLifeOpsInboxPluginRegistered`; this shim re-exports its public
+ * symbols so PA imports and tests keep resolving.
  */
 
 export {

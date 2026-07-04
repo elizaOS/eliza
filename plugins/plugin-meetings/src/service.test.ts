@@ -1,3 +1,8 @@
+/**
+ * MeetingService orchestration — join validation, the session state machine,
+ * single-bot-per-meeting enforcement, roster, transcript persistence, and
+ * listing. Deterministic: fake runtime plus scripted adapter/pipeline.
+ */
 import { describe, expect, it } from "vitest";
 import { MeetingJoinError, MeetingService } from "./service.js";
 import {
@@ -105,7 +110,8 @@ describe("MeetingService.requestJoin — validation", () => {
     // The failed session did NOT strand a non-terminal reservation.
     expect(service.listSessions()).toHaveLength(0);
 
-    // A second join for the same meeting is no longer blocked by `already_joined`.
+    // Because the reservation rolled back, a second join for the same meeting
+    // is not blocked by `already_joined`.
     const dto = await service.requestJoin({
       platform: "google_meet",
       meetingUrl: MEET_URL,

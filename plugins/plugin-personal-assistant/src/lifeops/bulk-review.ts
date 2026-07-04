@@ -1,3 +1,9 @@
+/**
+ * Bulk-cleanup review contract: the plan schema and operation kinds for the
+ * owner's mailbox/drive cleanup flow, where the assistant proposes a chunked set
+ * of destructive operations (archive/trash/delete) for the owner to review and
+ * approve before execution.
+ */
 export const CLEANUP_BULK_REVIEW_SCHEMA_VERSION = "lifeops.cleanup-plan.v1";
 export const DEFAULT_CLEANUP_EXECUTION_CHUNK_SIZE = 50;
 export const MAX_CLEANUP_EXECUTION_CHUNK_SIZE = 250;
