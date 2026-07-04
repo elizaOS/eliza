@@ -25,6 +25,7 @@ function cmd(
     requiresAuth: partial.requiresAuth ?? false,
     requiresElevated: partial.requiresElevated ?? false,
     target: partial.target ?? { kind: "agent" },
+    source: partial.source ?? "builtin",
     ...partial,
   };
 }

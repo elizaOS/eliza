@@ -5,6 +5,7 @@
  */
 
 export * from "./api/agent-api-types.js";
+export * from "./api/command-catalog-types.js";
 export * from "./api/http-helpers.js";
 export * from "./api/route-helpers.js";
 // Leaf modules (no internal collisions)
@@ -275,6 +276,7 @@ export * from "./process-guards.js";
 export * from "./recent-messages-state.js";
 export * from "./restart.js";
 export * from "./runtime-env.js";
+export * from "./sandbox-registry.js";
 export * from "./self-edit.js";
 // Settings debug helpers
 export {
@@ -320,6 +322,7 @@ export * from "./utils/trajectory-format.js";
 export * from "./utils/tts-debug.js";
 export * from "./validation-keywords.js";
 export * from "./view-hero-art.js";
+export * from "./view-interact-protocol.js";
 export * from "./voice/first-sentence-snip.js";
 export * from "./voice/voice-cancellation-token.js";
 export * from "./voice.js";

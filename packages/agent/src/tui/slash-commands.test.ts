@@ -25,6 +25,7 @@ function makeCommand(
     surfaces: overrides.surfaces,
     target: overrides.target ?? { kind: "agent" },
     icon: overrides.icon,
+    source: overrides.source ?? "builtin",
   };
 }
 
@@ -229,7 +230,12 @@ describe("resolveSlashDispatch", () => {
   it("sends tab/settings navigation to the agent (no terminal equivalent)", () => {
     const command = makeCommand({
       key: "settings",
-      target: { kind: "navigate", tab: "settings", section: "ai-model" },
+      target: {
+        kind: "navigate",
+        path: "/settings",
+        tab: "settings",
+        section: "ai-model",
+      },
     });
     expect(resolveSlashDispatch({ command, args: "" }, "/settings")).toEqual({
       kind: "send",
