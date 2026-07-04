@@ -979,7 +979,10 @@ def main() -> int:
         trainer.training_step = _fp8_training_step  # type: ignore[assignment]
 
     from training.instrumentation import (
-        InstrumentationConfig, log_environment, make_finite_weights_callback,
+        InstrumentationConfig,
+        assert_finite_checkpoint,
+        log_environment,
+        make_finite_weights_callback,
         make_hf_callback,
     )
     # Materialize the exact tokenizer this run trains with (including any chat-
@@ -1027,6 +1030,15 @@ def main() -> int:
     )
     trainer.save_model(str(out_dir / "final"))
     tokenizer.save_pretrained(str(out_dir / "final"))
+    numerics_report = assert_finite_checkpoint(out_dir / "final")
+    (out_dir / "final" / "numerics_scan.json").write_text(
+        json.dumps(numerics_report, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    log.info(
+        "checkpoint numerics scan passed: %s",
+        out_dir / "final" / "numerics_scan.json",
+    )
     log.info("done. full-parameter APOLLO checkpoint at %s", out_dir / "final")
     return 0
 
