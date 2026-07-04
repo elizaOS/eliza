@@ -75,6 +75,13 @@ export function useThreadAutoScroll<T extends HTMLElement = HTMLDivElement>({
   const [atBottom, setAtBottom] = useState(true);
   const followRaf = useRef<number | null>(null);
   const hasPinnedRef = useRef(false);
+  // Scroll height as of the previous follow pass. The growth effect runs AFTER
+  // the DOM has grown, so a live measureAtBottom(el) there uses the new (larger)
+  // scrollHeight against the preserved (old) scrollTop and misreads a reader
+  // pinned to the bottom as "scrolled up" whenever a single commit appends more
+  // than AT_BOTTOM_THRESHOLD_PX. Measuring against this pre-growth height instead
+  // recovers the true pre-growth position (#12348).
+  const lastGrowthHeightRef = useRef(0);
 
   const syncAtBottom = useCallback(() => {
     const el = scrollRef.current;
@@ -100,6 +107,7 @@ export function useThreadAutoScroll<T extends HTMLElement = HTMLDivElement>({
     } else {
       el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
     }
+    lastGrowthHeightRef.current = el.scrollHeight;
     setAtBottom(true);
   }, [reduceMotion]);
 
@@ -114,13 +122,23 @@ export function useThreadAutoScroll<T extends HTMLElement = HTMLDivElement>({
     const firstPin = !hasPinnedRef.current;
     hasPinnedRef.current = true;
 
-    if (firstPin || measureAtBottom(el)) {
+    // Decide follow against the PRE-growth geometry: the DOM has already grown,
+    // so measure the reader's position against the previous scroll height (with
+    // the preserved scrollTop) instead of a live re-measure that would misread a
+    // big single-commit append as "scrolled up". First growth always pins.
+    const prevHeight = lastGrowthHeightRef.current;
+    const wasAtBottom =
+      prevHeight - el.scrollTop - el.clientHeight < AT_BOTTOM_THRESHOLD_PX;
+    lastGrowthHeightRef.current = el.scrollHeight;
+
+    if (firstPin || wasAtBottom) {
       if (followRaf.current != null) cancelAnimationFrame(followRaf.current);
       followRaf.current = requestAnimationFrame(() => {
         followRaf.current = null;
         const node = scrollRef.current;
         if (!node) return;
         node.scrollTop = node.scrollHeight;
+        lastGrowthHeightRef.current = node.scrollHeight;
         setAtBottom(true);
       });
     } else {

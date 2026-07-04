@@ -41,6 +41,40 @@ function makeScroller(
   return el;
 }
 
+// Like makeScroller but clamps scrollTop to [0, scrollHeight - clientHeight]
+// (real browser behaviour, where "at the bottom" is scrollTop === that max, not
+// === scrollHeight) and reads scrollHeight from a live getter so a test can grow
+// the thread between renders. The unclamped makeScroller hides the >80px-growth
+// bug because it lets scrollTop rest at the full height.
+function makeClampingScroller(
+  getHeight: () => number,
+  clientHeight: number,
+): HTMLDivElement {
+  const el = document.createElement("div");
+  Object.defineProperty(el, "scrollHeight", {
+    configurable: true,
+    get: getHeight,
+  });
+  Object.defineProperty(el, "clientHeight", {
+    configurable: true,
+    get: () => clientHeight,
+  });
+  let top = 0;
+  const clamp = (v: number) =>
+    Math.max(0, Math.min(v, getHeight() - clientHeight));
+  Object.defineProperty(el, "scrollTop", {
+    configurable: true,
+    get: () => top,
+    set: (v: number) => {
+      top = clamp(v);
+    },
+  });
+  el.scrollTo = ((opts: ScrollToOptions) => {
+    top = clamp(opts.top ?? top);
+  }) as HTMLElement["scrollTo"];
+  return el;
+}
+
 interface SurfaceState {
   atBottom: boolean;
   jumpToLatest: () => void;
@@ -153,6 +187,32 @@ describe("useThreadAutoScroll", () => {
     // Their position is untouched; the jump control should be offered.
     expect(scroller.scrollTop).toBe(100);
     expect(cap.get().atBottom).toBe(false);
+  });
+
+  it("keeps following after a single large (>80px) growth while at the bottom (#12348 regression)", () => {
+    // Real browsers clamp scrollTop, so a reader at the bottom sits at
+    // scrollHeight - clientHeight, not at scrollHeight.
+    let height = 1000;
+    const clientHeight = 400;
+    const scroller = makeClampingScroller(() => height, clientHeight);
+    const cap = capture();
+    const { rerender } = render(
+      <Harness growthKey={1} scroller={scroller} onState={cap.onState} />,
+    );
+    flushRaf();
+    // First pin lands at the clamped bottom (1000 - 400).
+    expect(scroller.scrollTop).toBe(600);
+    expect(cap.get().atBottom).toBe(true);
+    // A single commit appends a block far taller than the 80px threshold — a
+    // multi-line paste or a batched stream burst — growing 1000 -> 1300 while
+    // scrollTop stays at 600. A live re-measure reads 1300-600-400=300 > 80 and
+    // wrongly stops following; the pre-growth measure (1000-600-400=0) follows.
+    height = 1300;
+    rerender(<Harness growthKey={2} scroller={scroller} onState={cap.onState} />);
+    flushRaf();
+    // Followed to the new clamped bottom (1300 - 400); reader stays pinned.
+    expect(scroller.scrollTop).toBe(900);
+    expect(cap.get().atBottom).toBe(true);
   });
 
   it("jumpToLatest scrolls to the newest line and re-pins atBottom", () => {
