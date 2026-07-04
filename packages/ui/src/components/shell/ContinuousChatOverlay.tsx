@@ -404,6 +404,31 @@ function HeaderButton({
 /** Horizontal travel (px) at which a conversation-swipe edge hint is fully lit. */
 const SWIPE_HINT_FULL = 96;
 
+/**
+ * Follow-the-finger conversation rail (#8929 tracking fix). While a horizontal
+ * swipe is in progress the transcript content translates with the finger (rather
+ * than the old edge-glow-only affordance, which never moved the content and read
+ * as "broken" / non-native). The live drag is rubber-band-damped past the edges
+ * of what the drag can commit, so the pull always feels attached but resists.
+ */
+/** Fraction of raw finger travel the content actually translates by. Slightly
+ *  under 1 gives the neighbour a touch of parallax lead (the edge hint sits
+ *  ahead of the content), so the rail reads as revealing a neighbour, not just
+ *  sliding the current thread. */
+const SWIPE_RAIL_TRACK_RATIO = 0.92;
+/** Extra damping applied to the portion of a drag that heads toward an edge with
+ *  no neighbour to commit to (first/last conversation) — the content still gives
+ *  a little so the gesture feels alive, but resists to signal the dead end. */
+const SWIPE_RAIL_EDGE_RESISTANCE = 0.32;
+/** Spring used to settle the rail back to rest (or animate the committed side
+ *  out) on release. Snappy but not brittle — mirrors the iOS pager feel. */
+const SWIPE_RAIL_SPRING = {
+  type: "spring",
+  stiffness: 520,
+  damping: 44,
+  mass: 1,
+} as const;
+
 /** Inert conversation-nav fallback for minimal mock controllers. */
 const EMPTY_CONVERSATION_NAV: ConversationNav = {
   hasPrev: false,
@@ -1013,7 +1038,50 @@ export function ContinuousChatOverlay({
   // on the first live drag and flush a dropped-frame/p95/fps summary into the
   // telemetry ring on release, so swipe jank is observable without the dev HUD.
   const swipeJank = useConversationSwipeJank();
+
+  // Follow-the-finger rail (#8929 tracking fix). `railX` is the live horizontal
+  // translate (px) of the transcript content — driven straight off the gesture's
+  // live drag so the content tracks the pointer instead of only lighting an edge
+  // glow. It's a MotionValue (not React state) so a per-frame drag writes to the
+  // compositor without a re-render; React state (`swipeDx`) is kept in parallel
+  // only for the (cheap, already-existing) edge-hint + jank telemetry.
+  const railX = useMotionValue(0);
+  // Reads used inside the gesture callbacks are funnelled through refs so the
+  // (stable) callback closures never go stale on a conversationNav / reduce
+  // change — `conversationSwipe` is memo-free but the gesture engine holds these
+  // handlers across a drag, so a mid-drag prop change must still be visible.
+  const railReduceRef = React.useRef(false);
+  const railHasNextRef = React.useRef(false);
+  const railHasPrevRef = React.useRef(false);
+  railHasNextRef.current = conversationNav.hasNext;
+  railHasPrevRef.current = conversationNav.hasPrev;
+  // Stop any in-flight settle spring the previous gesture left running before a
+  // fresh drag grabs the rail, so a new touch takes over from where it sits.
+  const railSettleRef = React.useRef<{ stop: () => void } | null>(null);
+  const stopRailSettle = React.useCallback(() => {
+    railSettleRef.current?.stop();
+    railSettleRef.current = null;
+  }, []);
+  // Spring the rail back to rest (0). Under reduced motion it jumps instantly so
+  // the follow-the-finger animation never fights the OS setting — this is the
+  // reduced-motion fallback for the settle (the drag itself already no-ops the
+  // translate when reduced, see the onDragX guard below).
+  const settleRailHome = React.useCallback(() => {
+    stopRailSettle();
+    if (railReduceRef.current) {
+      railX.set(0);
+      return;
+    }
+    railSettleRef.current = animate(railX, 0, SWIPE_RAIL_SPRING);
+  }, [railX, stopRailSettle]);
+
   const conversationSwipe = usePullGesture({
+    // The transcript is BOTH this horizontal swipe surface and the native
+    // vertical scroller. Bias axis-commit toward vertical so a thumb SCROLL is
+    // never captured as a conversation swipe and blocked from scrolling on real
+    // mobile web (#chat-scroll-web); a deliberate horizontal flick still
+    // navigates via the unchanged release-time recognition.
+    verticalScrollPriority: true,
     onDragX: (dx) => {
       // A non-zero offset means the gesture is actively dragging; 0 is the
       // settle/cancel reset the gesture emits on release. `begin` is idempotent,
@@ -1021,6 +1089,26 @@ export function ContinuousChatOverlay({
       if (dx !== 0) swipeJank.begin();
       else swipeJank.end();
       setSwipeDx(dx);
+      // Follow-the-finger: translate the transcript with the drag. `dx` is
+      // positive dragging LEFT (toward the next/older chat), so the content
+      // moves LEFT (negative translateX) to reveal the right neighbour. Under
+      // reduced motion the content stays put (the edge hint alone signals the
+      // pending nav — the reduced-motion fallback), matching the prior behaviour.
+      if (railReduceRef.current) return;
+      if (dx === 0) {
+        // The gesture's own settle/cancel reset — spring home rather than snap,
+        // unless a commit handler is about to drive the rail itself.
+        settleRailHome();
+        return;
+      }
+      stopRailSettle();
+      // Damp the portion of the drag that has no neighbour to commit to so the
+      // first/last conversation resists instead of sliding into a blank void.
+      const canGo = dx > 0 ? railHasNextRef.current : railHasPrevRef.current;
+      const tracked = canGo
+        ? dx * SWIPE_RAIL_TRACK_RATIO
+        : dx * SWIPE_RAIL_EDGE_RESISTANCE;
+      railX.set(-tracked);
     },
     onSwipeLeft: () => {
       setSwipeDx(0);
@@ -1029,21 +1117,36 @@ export function ContinuousChatOverlay({
       // Mirrors the ThreadLine tap-reveal selection guard.
       if (hasLiveTextSelection()) {
         swipeJank.end();
+        settleRailHome();
         return;
       }
       // Tag the flushed window with the committed direction so the ring shows
       // which way a janky swipe went (left → "next", the older conversation).
       swipeJank.end("next");
+      // Settle the rail home while the controller swaps in the neighbour's
+      // content underneath (the transcript re-renders with the new thread and
+      // cross-fades in via threadContentOpacity) — a native pager settles the
+      // committed page in; without the neighbour pre-rendered, springing home as
+      // the content swaps reads the same without a blank frame.
+      settleRailHome();
       conversationNav.goNext();
     },
     onSwipeRight: () => {
       setSwipeDx(0);
       if (hasLiveTextSelection()) {
         swipeJank.end();
+        settleRailHome();
         return;
       }
       swipeJank.end("prev");
+      settleRailHome();
       conversationNav.goPrev();
+    },
+    onCancel: () => {
+      // pointercancel / lost-capture with no committed swipe — bring the rail
+      // back to rest so a half-dragged transcript never sticks off-centre.
+      setSwipeDx(0);
+      settleRailHome();
     },
   });
 
@@ -1152,6 +1255,10 @@ export function ContinuousChatOverlay({
   // Honor the OS "reduce motion" setting: every overlay animation collapses to
   // a near-instant cross-fade with no positional movement when this is true.
   const reduce = useReducedMotion() ?? false;
+  // Keep the follow-the-finger rail's reduced-motion read current for the
+  // gesture callbacks (which capture a ref, not `reduce` directly, so a mid-drag
+  // OS-setting toggle takes effect and the callback identity stays stable).
+  railReduceRef.current = reduce;
 
   // The composer draft + pending attachments are the SHARED ChatComposerContext
   // slot (one draft per active conversation, edited by every surface): under
@@ -3989,9 +4096,18 @@ export function ContinuousChatOverlay({
                   until the thread overflows, then it scrolls. The ref measures
                   this content so onboarding can size the sheet to it (grow from
                   the bottom). */}
-                  <div
+                  <motion.div
                     ref={threadContentRef}
                     className="mt-auto flex flex-col pb-3 pt-1"
+                    // Follow-the-finger rail (#8929): the transcript content
+                    // tracks the horizontal swipe live (railX, px) and
+                    // spring-settles home on release. Transform-only (compositor,
+                    // no layout thrash); the scroll container + mask above stay
+                    // put so vertical scroll and the top fade are untouched. Under
+                    // reduced motion railX is never written (stays 0), so this is
+                    // an inert identity transform — the edge hint alone signals the
+                    // pending nav (the reduced-motion fallback).
+                    style={{ x: railX }}
                   >
                     {hasTopics
                       ? // Topic-grouped transcript: each cluster collapses via a
@@ -4053,7 +4169,7 @@ export function ContinuousChatOverlay({
                         />
                       ) : null}
                     </AnimatePresence>
-                  </div>
+                  </motion.div>
                 </motion.div>
               </motion.div>
             ) : null}
