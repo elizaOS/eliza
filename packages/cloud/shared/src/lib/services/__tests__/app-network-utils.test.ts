@@ -4,6 +4,7 @@ import {
   buildAppContainerSecurityFlags,
   buildAppEgressEnv,
   buildEnsureAppNetworkCmd,
+  buildLoopbackPortPublishFlag,
   buildSquidAllowlistConf,
 } from "../app-network-utils";
 
@@ -54,6 +55,13 @@ describe("buildAppContainerSecurityFlags — untrusted-image hardening", () => {
     expect(buildAppContainerSecurityFlags({ pidsLimit: 128 }).join(" ")).toContain(
       "--pids-limit=128",
     );
+  });
+});
+
+describe("buildLoopbackPortPublishFlag", () => {
+  test("binds published ports to host loopback only", () => {
+    expect(buildLoopbackPortPublishFlag(49001, 3000)).toBe("-p 127.0.0.1:49001:3000");
+    expect(buildLoopbackPortPublishFlag(49002, "8080")).toBe("-p 127.0.0.1:49002:8080");
   });
 });
 

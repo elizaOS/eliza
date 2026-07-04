@@ -20,6 +20,7 @@ import { signStewardMutatingRequest } from "../steward/sign";
 import { resolveServerStewardApiUrlFromEnv } from "../steward-url";
 import { logger } from "../utils/logger";
 import { withTimeout } from "../utils/with-timeout";
+import { buildAgentContainerSecurityFlags } from "./agent-container-security";
 import { ensureRegistryAccess } from "./containers/hetzner-client/registry";
 import { getNodeAutoscaler } from "./containers/node-autoscaler";
 import { resolveImageDigest } from "./containers/registry-probe";
@@ -1263,7 +1264,11 @@ export class DockerSandboxProvider implements SandboxProvider {
         ...(config.container?.memoryMb
           ? [`--memory ${shellQuote(`${Math.ceil(config.container.memoryMb)}m`)}`]
           : []),
-        ...(headscaleEnabled ? ["--cap-add=NET_ADMIN", "--device /dev/net/tun"] : []),
+        // Escape-hardening (#12230/#12302): drop ALL kernel capabilities, forbid
+        // privilege escalation, and bound the process count — then, under
+        // headscale only, re-add exactly NET_ADMIN + /dev/net/tun for the VPN.
+        // The builder guarantees --cap-drop=ALL precedes --cap-add=NET_ADMIN.
+        ...buildAgentContainerSecurityFlags({ headscaleEnabled }),
         `-v ${shellQuote(volumePath)}:/app/data`,
         `-v ${shellQuote(`${volumePath}/eliza`)}:/root/.eliza`,
         // The cloud image serves both API and web UI from PORT (default 3000).

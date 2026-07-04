@@ -4,16 +4,15 @@
  * Untrusted user app containers must NOT share the agent network or reach the
  * host/control plane. These pure builders produce the docker args that put each
  * app on its OWN `--internal` network (no direct egress, no inter-tenant
- * routing) behind a default-deny egress proxy, with capabilities dropped — the
- * opposite of the agent path, which uses a plain shared bridge and (under
- * headscale) NET_ADMIN + /dev/net/tun.
+ * routing) behind a default-deny egress proxy, with capabilities dropped. The
+ * capability/no-new-privileges/PID flags are also reusable by hosted-agent
+ * lanes that intentionally add back their own network capabilities afterward.
  *
  * Pure string/arg construction, so the isolation posture is a unit-testable
  * contract; kernel enforcement (does --internal actually block egress?) is
  * validated on a throwaway scratch network on the VPS, never here.
  *
- * ADDITIVE: nothing here touches the agent network config (`docker-sandbox-*`,
- * `containers-isolated`, DOCKER_NETWORK) — that path stays exactly as-is.
+ * ADDITIVE: callers opt into these args at their Docker command boundary.
  */
 
 import { shellQuote } from "./docker-sandbox-utils";
@@ -44,14 +43,23 @@ export function buildEnsureAppNetworkCmd(network: string): string {
 }
 
 /**
- * Hardening flags for an untrusted app container. Drops ALL capabilities,
- * forbids privilege escalation, and bounds processes. Deliberately NEVER emits
- * NET_ADMIN, `--device /dev/net/tun`, `--privileged`, or
- * `--add-host host.docker.internal:host-gateway` (the agent-only escapes).
+ * Hardening flags for an untrusted app or hosted-agent container. Drops ALL
+ * capabilities, forbids privilege escalation, and bounds processes.
+ * Deliberately NEVER emits NET_ADMIN, `--device /dev/net/tun`, `--privileged`,
+ * or `--add-host host.docker.internal:host-gateway`; agent callers that need
+ * tailnet plumbing must add NET_ADMIN/tun after this drop-all baseline.
  */
 export function buildAppContainerSecurityFlags(opts: { pidsLimit?: number } = {}): string[] {
   const pids = opts.pidsLimit ?? APP_NETWORK_DEFAULTS.pidsLimit;
   return ["--cap-drop=ALL", "--security-opt", "no-new-privileges", `--pids-limit=${pids}`];
+}
+
+/** Publish a container port only on the Docker host's loopback interface. */
+export function buildLoopbackPortPublishFlag(
+  hostPort: number,
+  containerPort: number | string,
+): string {
+  return `-p 127.0.0.1:${hostPort}:${containerPort}`;
 }
 
 /**
