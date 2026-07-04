@@ -21,6 +21,12 @@ export interface HomeModelStatus {
   etaMs: number | null;
   /** Display name of the assigned model, when known. */
   modelName: string | null;
+  /**
+   * Id of the assigned model (`assignedModelId`), when known — the handle the
+   * in-chat status card's cancel/retry controls pass to the downloads API.
+   * Optional: `not-required` and mock/test statuses carry no model.
+   */
+  modelId?: string | null;
   /** Distinct error messages from failed downloads / activation. */
   errors: string[];
 }
@@ -32,6 +38,13 @@ function maxOrNull(values: number[]): number | null {
 function firstModelName(slots: LocalInferenceSlotReadiness[]): string | null {
   for (const slot of slots) {
     if (slot.displayName) return slot.displayName;
+  }
+  return null;
+}
+
+function firstModelId(slots: LocalInferenceSlotReadiness[]): string | null {
+  for (const slot of slots) {
+    if (slot.assignedModelId) return slot.assignedModelId;
   }
   return null;
 }
@@ -51,6 +64,7 @@ export function deriveHomeModelStatus(
     (slot) => slot.assigned,
   );
   const modelName = firstModelName(assigned);
+  const modelId = firstModelId(assigned);
 
   if (assigned.length === 0) {
     return {
@@ -70,6 +84,7 @@ export function deriveHomeModelStatus(
       percent: null,
       etaMs: null,
       modelName,
+      modelId,
       errors: [],
     };
   }
@@ -84,6 +99,7 @@ export function deriveHomeModelStatus(
       percent: null,
       etaMs: null,
       modelName,
+      modelId,
       errors: [...new Set(failed.flatMap((slot) => slot.errors))],
     };
   }
@@ -102,6 +118,7 @@ export function deriveHomeModelStatus(
       percent: maxOrNull(percents),
       etaMs: maxOrNull(etas),
       modelName,
+      modelId,
       errors: [],
     };
   }
@@ -116,6 +133,7 @@ export function deriveHomeModelStatus(
       percent: null,
       etaMs: null,
       modelName,
+      modelId,
       errors: [],
     };
   }
@@ -127,6 +145,7 @@ export function deriveHomeModelStatus(
     percent: 100,
     etaMs: null,
     modelName,
+    modelId,
     errors: [],
   };
 }

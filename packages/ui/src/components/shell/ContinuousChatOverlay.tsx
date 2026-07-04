@@ -1702,6 +1702,11 @@ export function ContinuousChatOverlay({
   // True once the server has reported no LLM/model provider is configured (a
   // `no_provider` assistant turn). Defaulted for minimal mock controllers.
   const noProviderConfigured = controller.noProviderConfigured ?? false;
+  // Local text-model readiness (#12178 WI-4). While it `blocksSend`, the
+  // composer stays usable and the in-chat model-status card carries progress +
+  // cancel/switch controls; the placeholder tells the user they can keep typing.
+  const modelStatus = controller.modelStatus;
+  const modelBlocksSend = modelStatus?.blocksSend ?? false;
   // The shared action funnel — the SAME seam the transcript's CHOICE widgets
   // use. During onboarding the unlocked composer routes free text through it so
   // it reaches the in-chat conductor (and never the server); post-onboarding it
@@ -5080,9 +5085,13 @@ export function ContinuousChatOverlay({
                     ? "Ask me anything — or pick an option"
                     : noProviderConfigured
                       ? "Connect a model provider in Settings to chat"
-                      : booting
-                        ? `Ask ${agentName} — waking up…`
-                        : (viewChatBinding?.placeholder ?? `Ask ${agentName}`)
+                      : modelBlocksSend
+                        ? modelStatus?.kind === "downloading"
+                          ? `Downloading ${modelStatus.modelName ?? "your model"} — you can keep typing`
+                          : `Getting ${modelStatus?.modelName ?? "your model"} ready — you can keep typing`
+                        : booting
+                          ? `Ask ${agentName} — waking up…`
+                          : (viewChatBinding?.placeholder ?? `Ask ${agentName}`)
                 }
                 aria-label="message"
                 data-testid="chat-composer-textarea"

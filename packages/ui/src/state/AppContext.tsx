@@ -23,6 +23,7 @@ import {
   tryHandleFirstRunAction,
   tryHandleFirstRunText,
 } from "../first-run/first-run-action-channel";
+import { tryHandleModelAction } from "../first-run/model-action-channel";
 import {
   isMobileLocalAgentIpcBase,
   persistMobileRuntimeModeForServerTarget,
@@ -1177,6 +1178,10 @@ function AppProviderInner({
   // `sendActionMessage`, and so does the unlocked composer during onboarding.
   const sendActionMessage = useCallback(
     (text: string): Promise<void> => {
+      // The in-chat model-status card's `__model__:` controls (cancel / switch
+      // to cloud / retry / download) are consumed by the model-status conductor
+      // and NEVER reach the server — regardless of onboarding state.
+      if (tryHandleModelAction(text)) return Promise.resolve();
       switch (classifyActionMessage(text, firstRunComplete === true)) {
         case "first-run":
           tryHandleFirstRunAction(text);
