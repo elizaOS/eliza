@@ -74,7 +74,7 @@ train = [
   "liger-kernel>=0.5.0",
   # GGUF Q4_K_M quantization (scripts/quantization/gguf-q4_k_m_apply.py).
   # The wrapper uses the in-repo llama.cpp fork submodule at
-  # packages/inference/llama.cpp (its convert_hf_to_gguf.py + a one-shot
+  # plugins/plugin-local-inference/native/llama.cpp (its convert_hf_to_gguf.py + a one-shot
   # CPU cmake build of llama-quantize/llama-cli — see the script's
   # _VENDOR_HINT), but the llama-cpp-python wheel also ships a usable
   # `gguf` python module so the HF→f16 GGUF convert step works even

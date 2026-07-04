@@ -814,26 +814,32 @@ _KQUANT_SIBLINGS = (
     ("gguf-q6_k_apply",   "Q6_K"),
 )
 
+_CANONICAL_LLAMA_CPP_SUFFIX = Path(
+    "plugins/plugin-local-inference/native/llama.cpp"
+)
+
+
+def _load_module_from_quantization_file(module_basename: str):
+    import importlib.util
+
+    importable = module_basename.replace("-", "_")
+    quant_dir = Path(__file__).resolve().parent
+    spec_path = quant_dir / f"{module_basename}.py"
+    assert spec_path.exists(), f"missing quantization module: {spec_path}"
+
+    spec = importlib.util.spec_from_file_location(importable, spec_path)
+    assert spec is not None and spec.loader is not None
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
 
 @pytest.mark.parametrize("module_basename,expected_level", _KQUANT_SIBLINGS)
 def test_kquant_sibling_exports_constant(module_basename: str, expected_level: str):
     """Every K-quant ladder sibling exports a `QUANT_LEVEL` constant matching
     its filename. The publish path keys on this constant to pick the
     llama-quantize target type."""
-    import importlib
-
-    # Module names use hyphens on disk; importlib needs the underscore form.
-    importable = module_basename.replace("-", "_")
-    # Add the quantization dir to sys.path so the modules import on their
-    # own (they do `from _common import ...`).
-    quant_dir = Path(__file__).resolve().parent
-    spec_path = quant_dir / f"{module_basename}.py"
-    assert spec_path.exists(), f"missing K-quant sibling: {spec_path}"
-
-    spec = importlib.util.spec_from_file_location(importable, spec_path)
-    assert spec is not None and spec.loader is not None
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
+    mod = _load_module_from_quantization_file(module_basename)
     assert getattr(mod, "QUANT_LEVEL") == expected_level
 
 
@@ -844,16 +850,7 @@ def test_kquant_sibling_dry_run_prints_quant_level(
     """Every K-quant sibling supports the same --dry-run surface as the
     Q4_K_M baseline. Output is JSON and contains the recipe-level
     metadata."""
-    import importlib
-
-    importable = module_basename.replace("-", "_")
-    quant_dir = Path(__file__).resolve().parent
-    spec_path = quant_dir / f"{module_basename}.py"
-
-    spec = importlib.util.spec_from_file_location(importable, spec_path)
-    assert spec is not None and spec.loader is not None
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
+    mod = _load_module_from_quantization_file(module_basename)
     rc = mod.main([
         "--model", "google/gemma-4-E2B",
         "--output", str(tmp_path),
@@ -863,6 +860,46 @@ def test_kquant_sibling_dry_run_prints_quant_level(
     payload = json.loads(capsys.readouterr().out)
     assert payload["quant_level"] == _expected_level
     assert payload["dry_run"] is True
+
+
+@pytest.mark.parametrize(
+    "module_basename",
+    (
+        "gguf-q3_k_m_apply",
+        "gguf-q4_k_m_apply",
+        "gguf-q5_k_m_apply",
+        "gguf-q6_k_apply",
+        "gguf_asr_apply",
+        "gguf_kokoro_apply",
+    ),
+)
+def test_gguf_wrappers_default_to_runtime_llama_cpp_submodule(module_basename: str):
+    """Converter wrappers must default to the real in-repo llama.cpp fork.
+
+    The old `packages/inference/llama.cpp` path no longer exists; resolving it
+    made publish recipes fail unless callers remembered to set LLAMA_CPP_DIR.
+    """
+    source = (Path(__file__).resolve().parent / f"{module_basename}.py").read_text(
+        encoding="utf-8"
+    )
+    assert (
+        _CANONICAL_LLAMA_CPP_SUFFIX.as_posix() in source
+        or '"plugins" / "plugin-local-inference" / "native" / "llama.cpp"' in source
+    )
+    assert '"packages" / "inference" / "llama.cpp"' not in source
+    assert "packages/inference/llama.cpp" not in source
+
+
+def test_eliza_typed_gguf_resolver_uses_runtime_llama_cpp_submodule():
+    source = (Path(__file__).resolve().parent / "gguf_eliza1_apply.py").read_text(
+        encoding="utf-8"
+    )
+    assert (
+        _CANONICAL_LLAMA_CPP_SUFFIX.as_posix() in source
+        or '"plugins" / "plugin-local-inference" / "native" / "llama.cpp"' in source
+    )
+    assert '"packages" / "inference" / "llama.cpp"' not in source
+    assert "packages/inference/llama.cpp" not in source
 
 
 def test_gguf_asr_apply_dry_run_single_quant(capsys, tmp_path):

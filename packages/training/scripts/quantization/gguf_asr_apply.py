@@ -62,18 +62,20 @@ DEFAULT_MMPROJ_QUANT = "Q8_0"
 # Repo root — four parents up from this file
 # (packages/training/scripts/quantization/).
 _REPO_ROOT = _HERE.parents[3]
-_FORK_LLAMA_CPP = _REPO_ROOT / "packages" / "inference" / "llama.cpp"
+_FORK_LLAMA_CPP = (
+    _REPO_ROOT / "plugins" / "plugin-local-inference" / "native" / "llama.cpp"
+)
 
 _VENDOR_HINT = (
     "The llama.cpp fork submodule should already be checked out. If it's "
     "missing:\n"
-    "  git submodule update --init packages/inference/llama.cpp\n"
+    "  git submodule update --init plugins/plugin-local-inference/native/llama.cpp\n"
     "Then build the llama-quantize + llama-cli binaries from it (one-shot, "
     "CPU-only is enough):\n"
-    "  cmake -S packages/inference/llama.cpp -B packages/inference/llama.cpp/build \\\n"
+    "  cmake -S plugins/plugin-local-inference/native/llama.cpp -B plugins/plugin-local-inference/native/llama.cpp/build \\\n"
     "        -DCMAKE_BUILD_TYPE=Release -DLLAMA_CURL=OFF -DGGML_NATIVE=OFF "
     "-DBUILD_SHARED_LIBS=OFF\n"
-    "  cmake --build packages/inference/llama.cpp/build --target llama-quantize "
+    "  cmake --build plugins/plugin-local-inference/native/llama.cpp/build --target llama-quantize "
     "llama-cli -j\"$(nproc)\"\n"
     "Or pass --llama-cpp-dir <path-to-checkout> / set LLAMA_CPP_DIR / put the "
     "binaries on PATH."

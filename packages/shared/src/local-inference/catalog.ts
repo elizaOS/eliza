@@ -9,8 +9,9 @@
  * hybrid line — see #9033 and packages/training/scripts/training/model_registry.py
  * for the active registry). Gemma 4 is a dense SWA + shared-KV + per-layer-embedding
  * (PLE) + MQA architecture; KV is already minimal so the legacy
- * QJL/PolarQuant KV kernels are not used (stock KV), while TurboQuant
- * weight-quant remains active. External Hub search remains custom/opt-in and
+ * QJL/TurboQuant KV kernels are not used (stock KV), and the shipping
+ * GGUF weight quant is stock Q4_K_M unless a manifest proves a tier-specific
+ * PolarQuant recipe was actually applied. External Hub search remains custom/opt-in and
  * never enters first-run or default eligibility.
  * Separate-drafter MTP is still the required release shape, but runtime
  * metadata is gated until the Gemma drafter GGUFs are actually hosted.

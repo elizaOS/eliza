@@ -51,8 +51,10 @@ import sys
 from pathlib import Path
 
 _HERE = Path(__file__).resolve().parent
+# packages/training/scripts/quantization/ -> repo root is four parents up.
+_REPO_ROOT = _HERE.parents[3]
 _FORK_LLAMA_CPP = (
-    _HERE.parent.parent.parent / "plugins" / "plugin-local-inference" / "native" / "llama.cpp"
+    _REPO_ROOT / "plugins" / "plugin-local-inference" / "native" / "llama.cpp"
 )
 _VENDOR_HINT = (
     "Build the Eliza-1 llama.cpp fork first:\n"

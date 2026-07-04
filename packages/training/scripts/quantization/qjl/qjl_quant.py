@@ -4,10 +4,10 @@ Strongly-typed numpy helpers for the recipe and tests. Layout is the
 canonical ``(head_dim, proj_dim)`` row-major form mandated by the kernel
 references at:
 
-  * ``eliza/packages/native-plugins/qjl-cpu/include/qjl/qjl.h``
-  * ``eliza/packages/native-plugins/qjl-cpu/src/qjl_quantize_ref.c``
-  * ``eliza/packages/native-plugins/qjl-cpu/src/qjl_score_ref.c``
-  * ``eliza/packages/inference/verify/qjl_polar_ref.c`` (verify harness)
+  * ``eliza/packages/native/plugins/qjl-cpu/include/qjl/qjl.h``
+  * ``eliza/packages/native/plugins/qjl-cpu/src/qjl_quantize_ref.c``
+  * ``eliza/packages/native/plugins/qjl-cpu/src/qjl_score_ref.c``
+  * ``eliza/plugins/plugin-local-inference/native/verify/qjl_polar_ref.c`` (verify harness)
 
 The ``block_qjl1_256`` on-cache layout is 32 packed sign bytes (LSB-first
 within each byte) followed by a uint16 bf16 norm — 34 bytes total. The

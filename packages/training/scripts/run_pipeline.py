@@ -86,7 +86,7 @@ def _read_json(path: Path) -> dict | None:
 def _resolve_eliza1_llama_cpp() -> Path | None:
     """Locate the elizaOS/llama.cpp fork (Q4_POLAR / QJL1_256 / mtp GGML
     types). Order: $LLAMA_CPP_DIR → in-repo fork submodule
-    (packages/inference/llama.cpp) → ~/.cache/eliza-mtp/eliza-llama-cpp →
+    (plugins/plugin-local-inference/native/llama.cpp) → ~/.cache/eliza-mtp/eliza-llama-cpp →
     ~/src/eliza-llama.cpp. Returns None if none has a convert_hf_to_gguf.py."""
     import os
     cands: list[Path] = []
@@ -94,7 +94,7 @@ def _resolve_eliza1_llama_cpp() -> Path | None:
     if env:
         cands.append(Path(env))
     for p in Path(__file__).resolve().parents:
-        cand = p / "packages" / "inference" / "llama.cpp"
+        cand = p / "plugins" / "plugin-local-inference" / "native" / "llama.cpp"
         if cand.is_dir():
             cands.append(cand)
             break

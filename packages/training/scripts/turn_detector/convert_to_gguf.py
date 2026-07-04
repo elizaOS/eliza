@@ -12,7 +12,7 @@ The two ship targets for the semantic end-of-turn detector are:
 R8 §3.2 / §6.5 / §7.4: all three candidates are Llama-shaped (SmolLM2 is
 a LLaMA-2-style arch by Hugging Face's classification) or qwen2-shaped
 (pruned Qwen2.5), and the in-repo llama.cpp fork at
-``packages/inference/llama.cpp`` already supports both via
+``plugins/plugin-local-inference/native/llama.cpp`` already supports both via
 ``LLM_ARCH_LLAMA`` and ``LLM_ARCH_QWEN2``. ``convert_hf_to_gguf.py``
 handles the LM body conversion natively; the sequence-classification head
 is exposed through the standard ``forward()`` path so the runtime reads
@@ -74,17 +74,19 @@ SUPPORTED_QUANTS = ("Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0")
 DEFAULT_QUANT = "Q4_K_M"
 
 # In-repo llama.cpp fork submodule. Same path the K-quant LM siblings use.
-_FORK_LLAMA_CPP = _REPO_ROOT / "packages" / "inference" / "llama.cpp"
+_FORK_LLAMA_CPP = (
+    _REPO_ROOT / "plugins" / "plugin-local-inference" / "native" / "llama.cpp"
+)
 
 _VENDOR_HINT = (
     "The llama.cpp fork submodule should already be checked out. If it's "
     "missing:\n"
-    "  git submodule update --init packages/inference/llama.cpp\n"
+    "  git submodule update --init plugins/plugin-local-inference/native/llama.cpp\n"
     "Then build the llama-quantize binary from it:\n"
-    "  cmake -S packages/inference/llama.cpp -B packages/inference/llama.cpp/build \\\n"
+    "  cmake -S plugins/plugin-local-inference/native/llama.cpp -B plugins/plugin-local-inference/native/llama.cpp/build \\\n"
     "        -DCMAKE_BUILD_TYPE=Release -DLLAMA_CURL=OFF -DGGML_NATIVE=OFF "
     "-DBUILD_SHARED_LIBS=OFF\n"
-    "  cmake --build packages/inference/llama.cpp/build --target llama-quantize "
+    "  cmake --build plugins/plugin-local-inference/native/llama.cpp/build --target llama-quantize "
     "-j\"$(nproc)\""
 )
 

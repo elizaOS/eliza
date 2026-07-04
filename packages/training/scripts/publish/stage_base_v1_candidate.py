@@ -545,7 +545,7 @@ def main(argv: list[str] | None = None) -> int:
         "sourceModels": {
             "text": {
                 "repo": base_repo,
-                "convertedVia": "packages/inference/llama.cpp/convert_hf_to_gguf.py + scripts/optimize_for_eliza1.py (PolarQuant/QJL/TurboQuant)",
+                "convertedVia": "plugins/plugin-local-inference/native/llama.cpp/convert_hf_to_gguf.py + scripts/optimize_for_eliza1.py (PolarQuant/QJL/TurboQuant)",
                 "note": "Fine-tuned (APOLLO full-parameter SFT) then optimized; NOT strictly base-v1 semantics — this is a finetuned candidate.",
             },
             "voice": {
