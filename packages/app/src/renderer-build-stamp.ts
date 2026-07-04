@@ -68,7 +68,8 @@ export async function loadRendererBuildStamp(): Promise<RendererBuildStamp | nul
     );
     return stamp;
   } catch {
-    // No manifest (dev) or a transient fetch failure — never block boot.
+    // error-policy:J4 no manifest (dev) or a transient fetch failure — the
+    // stamp is diagnostics only and must never block boot.
     window.__ELIZA_RENDERER_BUILD__ = null;
     return null;
   }

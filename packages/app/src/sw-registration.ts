@@ -18,6 +18,7 @@ function isCapacitorNative(): boolean {
       typeof cap?.isNativePlatform === "function" && cap.isNativePlatform()
     );
   } catch {
+    // error-policy:J4 capability probe — no Capacitor bridge means not native
     return false;
   }
 }

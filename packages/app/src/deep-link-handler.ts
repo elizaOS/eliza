@@ -86,6 +86,7 @@ export function createDeepLinkHandler(ctx: DeepLinkHandlerContext) {
     try {
       parsed = new URL(url);
     } catch {
+      // error-policy:J3 untrusted deep-link URL — unparseable means "not ours"
       return;
     }
 
@@ -166,6 +167,7 @@ export function createDeepLinkHandler(ctx: DeepLinkHandlerContext) {
     try {
       validatedUrl = new URL(gatewayUrl);
     } catch {
+      // error-policy:J3 untrusted gateway URL — reject loudly, never connect
       console.error(`${ctx.logPrefix} Invalid gateway URL format`);
       return;
     }

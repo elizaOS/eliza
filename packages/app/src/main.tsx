@@ -390,6 +390,7 @@ function hasFirstRunRuntimeOverride(): boolean {
     const runtime = getWindowUrlSearchParams().get("runtime");
     return runtime === "first-run";
   } catch {
+    // error-policy:J3 unparseable location params — no override requested
     return false;
   }
 }
@@ -694,7 +695,8 @@ async function boundedPreferenceWrite(
       new Promise((resolve) => window.setTimeout(resolve, 2_000)),
     ]);
   } catch {
-    // The storage bridge also issued a fire-and-forget Preferences write from
+    // error-policy:J7 smoke-harness diagnostics write — the storage bridge
+    // also issued a fire-and-forget Preferences write from
     // localStorage.setItem. The simulator smoke will keep polling the native
     // defaults domain, but the WebView must not block forever on persistence.
   }
@@ -708,6 +710,8 @@ async function boundedPreferenceGet(key: string): Promise<string | null> {
     ]);
     return result?.value ?? null;
   } catch {
+    // error-policy:J7 smoke-harness preference probe — a blocked Preferences
+    // bridge must not wedge the smoke; the poll loop retries
     return null;
   }
 }
@@ -2256,6 +2260,7 @@ function isConfiguredCloudApiHost(host: string): boolean {
   try {
     return host === new URL(configured).hostname;
   } catch {
+    // error-policy:J3 unparseable configured base — fail closed (untrusted)
     return false;
   }
 }
@@ -2318,6 +2323,7 @@ function isTrustedNativeWebSocketUrl(value: string): boolean {
       parsed.protocol === "wss:" && !isPrivateOrLoopbackApiHost(parsed.hostname)
     );
   } catch {
+    // error-policy:J3 unparseable bridge URL — fail closed (untrusted)
     return false;
   }
 }
@@ -2497,6 +2503,7 @@ function resolveDeviceBridgeUrl(config: IosRuntimeConfig): string | null {
     const bridgeUrl = apiBaseToDeviceBridgeUrl(apiBase);
     return isTrustedNativeWebSocketUrl(bridgeUrl) ? bridgeUrl : null;
   } catch {
+    // error-policy:J3 underivable/untrusted bridge URL — fail closed (no bridge)
     return null;
   }
 }
@@ -2508,6 +2515,8 @@ async function readAndroidLocalAgentToken(): Promise<string | undefined> {
     const token = result?.token?.trim();
     return token ? token : undefined;
   } catch {
+    // error-policy:J4 bridge probe — tokenless config proceeds and the local
+    // agent's 401 surfaces through the request path
     return undefined;
   }
 }

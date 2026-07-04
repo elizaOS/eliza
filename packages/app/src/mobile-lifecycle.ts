@@ -169,7 +169,8 @@ export function createMobileLifecycle(ctx: MobileLifecycleContext) {
           // background (minimize) rather than killing it, so the agent + state
           // survive.
           void CapacitorApp.minimizeApp().catch(() => {
-            // minimizeApp is Android-only; ignore where unavailable.
+            // error-policy:J4 minimizeApp is Android-only; elsewhere the back
+            // press simply no-ops at the root view.
           });
         }
       }),
