@@ -55,6 +55,10 @@ def test_gate_contract_records_public_dataset_and_eval_only_policy() -> None:
     assert contract["raw_audio_committed"] is False
     assert contract["cache_policy"] == "download_or_cache_outside_git"
     assert contract["metrics"] == ["ctem", "tsr", "wer", "cer"]
+    assert len(contract["entity_types"]) == 26
+    assert {"cli_flag", "environment_variable", "ip_address", "reference_id"} <= set(
+        contract["entity_types"]
+    )
     assert contract["publishable_requires_real_asr"] is True
     assert contract["training_eval_separation"] == {
         "eval_only": True,

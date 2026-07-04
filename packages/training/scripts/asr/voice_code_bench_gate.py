@@ -18,17 +18,32 @@ DATASET_SPLIT = "test"
 DATASET_ROWS = 300
 
 ENTITY_TYPES = {
+    "account_or_record_number",
     "acronym_or_initialism",
+    "cli_flag",
+    "code_symbol",
+    "command",
+    "currency_amount",
+    "date",
     "domain_term",
     "email_address",
+    "environment_variable",
     "file_path",
+    "ip_address",
+    "measurement",
+    "percentage",
     "person_or_team_name",
     "phone_extension",
     "phone_number",
+    "plain_number",
+    "port_number",
     "postal_address",
+    "product_code",
+    "reference_id",
     "spelled_sequence",
     "time",
     "url",
+    "version",
 }
 
 
