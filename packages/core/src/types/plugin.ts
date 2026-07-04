@@ -1,3 +1,9 @@
+/**
+ * The `Plugin` contract itself: the object a plugin's `src/index.ts` exports,
+ * aggregating its actions, providers, evaluators, services, models, routes,
+ * events, and schema. The top-level unit the agent's plugin loader resolves,
+ * validates, and wires into the runtime.
+ */
 import type { AppPackageRouteContext } from "../api/route-helpers";
 import type { ConnectorSourceDefinition } from "../connectors";
 import type { ResponseHandlerEvaluator } from "../runtime/response-handler-evaluators";

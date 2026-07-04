@@ -1,3 +1,8 @@
+/**
+ * Evaluator contracts: the post-response processing step run after the agent
+ * replies. Defines the `Evaluator` interface plus its run/prompt/processor
+ * context shapes and the pluggable `EvaluatorProcessor` chain.
+ */
 import type { ActionResult, HandlerCallback } from "./components";
 import type { Memory } from "./memory";
 import type { JSONSchema, ModelTypeName } from "./model";

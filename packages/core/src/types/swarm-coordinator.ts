@@ -1,3 +1,8 @@
+/**
+ * Multi-agent swarm-coordination types: the coordinator service token, bind-state
+ * machine, and swarm event/listener and chat-routing shapes used to route a chat
+ * session across a coordinated group of agents.
+ */
 export const SWARM_COORDINATOR_SERVICE_TYPE = "SWARM_COORDINATOR";
 
 export interface SwarmCoordinatorBindState {

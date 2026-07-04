@@ -1,3 +1,8 @@
+/**
+ * Well-known `source` sentinels for messages the agent originates or routes
+ * internally (client chat, sub-agent, coding-agent, agent greeting), so routing
+ * and gating code can branch on provenance without magic strings.
+ */
 export const MESSAGE_SOURCE_CLIENT_CHAT = "client_chat" as const;
 export const MESSAGE_SOURCE_SUB_AGENT = "sub_agent" as const;
 export const MESSAGE_SOURCE_CODING_AGENT = "coding-agent" as const;

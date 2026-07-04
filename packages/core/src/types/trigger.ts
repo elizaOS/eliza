@@ -1,3 +1,9 @@
+/**
+ * Trigger-configuration types for scheduled and event-driven agent activations:
+ * interval/once/cron/event triggers whose target is either a workflow dispatch or
+ * a prompt-automation turn, plus per-run bookkeeping records. Consumed by the
+ * trigger-scheduling service.
+ */
 import type { UUID } from "./primitives";
 
 export const TRIGGER_SCHEMA_VERSION = 1 as const;

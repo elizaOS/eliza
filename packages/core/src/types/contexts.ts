@@ -1,3 +1,9 @@
+/**
+ * Agent-context taxonomy and gating types: the `FirstPartyAgentContext` union of
+ * named capability contexts (memory, documents, messaging, finance, …), context
+ * sensitivity/cache scopes, and the `RoleGate` / `ContextGate` shapes that decide
+ * which contexts and providers apply to a given turn.
+ */
 import type { Role } from "./environment";
 import type { JsonValue } from "./primitives";
 

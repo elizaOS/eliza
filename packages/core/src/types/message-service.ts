@@ -1,3 +1,8 @@
+/**
+ * Message-processing contracts for the incoming-message loop: options controlling
+ * a turn (retries, multi-step, streaming, continue-after-actions) and the result
+ * shapes the message service returns. Consumed by the runtime message handler.
+ */
 import type {
 	AgentContext,
 	HandlerCallback,

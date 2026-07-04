@@ -1,3 +1,9 @@
+/**
+ * Runtime event system: the `EventType` enum and the per-event payload shapes an
+ * agent emits and plugins subscribe to (world/entity/room/message/voice/model/
+ * pipeline events). The typed contract that decouples event producers from
+ * consumers across the runtime and plugins.
+ */
 import type { HandlerCallback } from "./components";
 import type { Entity, Room, World } from "./environment";
 import type { Memory } from "./memory";

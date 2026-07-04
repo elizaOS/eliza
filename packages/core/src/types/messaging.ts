@@ -1,3 +1,9 @@
+/**
+ * Messaging transport contracts: `TargetInfo` and send-handler signatures for
+ * delivering a message to a platform, the socket/stream event payloads, UI
+ * control messages, and the `IMessagingAdapter` server/channel model. The seam
+ * between the runtime and connector plugins that actually send messages.
+ */
 import type { Memory } from "./memory";
 import type { Content, UUID } from "./primitives";
 import type { IAgentRuntime } from "./runtime";

@@ -1,3 +1,9 @@
+/**
+ * Model-layer types: the `ModelType` registry, LLM-mode overrides, generation
+ * params/results, tool-definition and tool-call shapes, chat-message parts, and
+ * response-skeleton/sampler structures. Defines the model-agnostic interface the
+ * runtime calls through (`useModel`) and that model plugins implement.
+ */
 import type { StreamChunkCallback } from "./components";
 import type { AgentContext } from "./contexts";
 import type { JsonValue } from "./primitives";

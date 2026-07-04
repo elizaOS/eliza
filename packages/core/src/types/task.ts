@@ -1,3 +1,9 @@
+/**
+ * Scheduled/background task types: `Task`, `TaskStatus`, and the `TaskWorker`
+ * contract the runtime invokes when a task of a given name is due. Two gates
+ * exist by design — `shouldRun` (scheduler, no message/state) and `canExecute`
+ * (action-time, full context for auth). Backs the task scheduler service.
+ */
 import type { Memory } from "./memory";
 import type { JsonValue, UUID } from "./primitives";
 import type { IAgentRuntime } from "./runtime";

@@ -1,3 +1,9 @@
+/**
+ * Memory record types: `Memory` (the stored unit — content, embedding, scope,
+ * room/entity/world ids) plus the `MemoryType` and `MemoryScope` enumerations.
+ * The central data shape the runtime persists, embeds, and retrieves through the
+ * database adapter.
+ */
 import type { Content, MetadataValue, UUID } from "./primitives";
 
 /**

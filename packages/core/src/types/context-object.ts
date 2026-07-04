@@ -1,3 +1,9 @@
+/**
+ * Neutral in-memory representation of a prompt-assembly context: messages, tools,
+ * provider segments, and metadata collected before rendering into a model call.
+ * Event-typed and role-tagged so producers (providers, actions) and the renderer
+ * agree on a single intermediate shape independent of any model's wire format.
+ */
 import type { Action } from "./components";
 import type { AgentContext, ContextDefinition } from "./contexts";
 import type { Memory } from "./memory";

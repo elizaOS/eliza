@@ -1,3 +1,8 @@
+/**
+ * Types for the prompt batcher, which coalesces prompt sections across turns into
+ * batched ("drained") model calls. Describes section frequency, per-drain
+ * metadata, and the batching contract the runtime util implements.
+ */
 import type { Memory } from "./memory";
 import type { GenerateTextParams } from "./model";
 import type { Content } from "./primitives";

@@ -1,3 +1,9 @@
+/**
+ * Character-authoring and agent-record types: `Character` (personality, bio,
+ * settings, examples, plugins) and the runtime `Agent` record that extends it
+ * with status/enabled/lifecycle fields. These define how an agent is configured;
+ * consumed by the runtime, the character loader, and schema validation.
+ */
 import type { DocumentSourceItem } from "./documents";
 import type { Content, JsonObject, JsonValue } from "./primitives";
 import type { State } from "./state";

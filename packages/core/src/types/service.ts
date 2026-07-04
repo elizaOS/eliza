@@ -1,3 +1,9 @@
+/**
+ * Service abstraction: the `ServiceTypeRegistry` (extended by plugins via module
+ * augmentation) and the long-lived-singleton `Service` base contract. Services are
+ * clients/schedulers/connectors the runtime starts once and shares across the
+ * message loop.
+ */
 import type { JsonValue, Metadata } from "./primitives";
 import type { IAgentRuntime } from "./runtime";
 

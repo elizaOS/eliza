@@ -1,3 +1,10 @@
+/**
+ * The runtime-facing interface surface: `IAgentRuntime` (the contract plugins and
+ * services program against) plus the message-target and connector-account types
+ * it exposes for multi-account messaging connectors. Sits atop the type system —
+ * it pulls together components, memory, model, and database types into the single
+ * object the whole framework passes around.
+ */
 import type { ReportedError } from "../errors";
 import type { Logger } from "../logger";
 import type { ContextRegistry } from "../runtime/context-registry";

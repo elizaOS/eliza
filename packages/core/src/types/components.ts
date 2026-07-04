@@ -1,3 +1,10 @@
+/**
+ * Plugin-component contracts — the things a plugin registers into the runtime:
+ * `Action` (validate + handler), `Provider` (context injected into the prompt),
+ * and their supporting shapes (parameter schemas, handler/validator signatures,
+ * action modes, message-handler plan/extract results). The heart of the
+ * action/provider surface that the message loop dispatches against.
+ */
 import type { ConnectorAccountPolicy } from "./connector-account-policy";
 import type {
 	AgentContext,

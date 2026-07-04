@@ -1,3 +1,10 @@
+/**
+ * Access-control context threaded through memory reads: identifies the requester
+ * a retrieval runs on behalf of so a database adapter can filter results down to
+ * what that requester is permitted to see. Part of the canonical `@elizaos/core`
+ * type system; enforcement composes with the opt-in Postgres RLS in `plugin-sql`
+ * and is a no-op when omitted (single-tenant reads stay unfiltered).
+ */
 import type { RoleName } from "../roles";
 import type { UUID } from "./primitives";
 

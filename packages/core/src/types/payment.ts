@@ -1,3 +1,8 @@
+/**
+ * x402 paid-route types: per-route `PaymentConfigDefinition`, the built-in
+ * network/asset presets, and character-level payment defaults. Describe how a
+ * plugin route declares a price and which chain/asset settles it.
+ */
 import type { JsonObject } from "./primitives";
 
 /**

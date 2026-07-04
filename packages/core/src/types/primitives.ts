@@ -1,3 +1,9 @@
+/**
+ * Foundational scalar and JSON types shared across the whole type system: `UUID`,
+ * `Content`, `Media`, `Metadata`, the JSON value/object unions, and channel-type
+ * enums. The leaf dependency most other `types/*` modules build on; keep it
+ * free of runtime-specific imports so browser/edge builds can consume it.
+ */
 import type { InteractionBlock } from "./interactions";
 
 /**
