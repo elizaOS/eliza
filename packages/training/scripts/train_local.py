@@ -260,6 +260,7 @@ _TRACKED_DESTS = (
     "max_grad_norm", "train_dtype",
 )
 _SUPPORTED_TRAIN_DTYPES = {"bf16"}
+_LIGER_SUPPORTED_MODEL_TYPES = {"gemma4"}
 
 _FALLBACK_DEFAULTS: dict[str, Any] = {
     "model": "google/gemma-4-E2B",
@@ -514,6 +515,39 @@ def apply_resolved_defaults(args: argparse.Namespace) -> None:
         )
 
 
+def resolve_liger_arch_gate(
+    *,
+    use_liger: bool,
+    requested_mode: str,
+    model_type: str,
+    architectures: list[str],
+) -> bool:
+    """Apply the Gemma 4 Liger allowlist after model config is loaded."""
+    if not use_liger:
+        return False
+    normalized_model_type = model_type.lower()
+    if (
+        "gemma4_unified" in normalized_model_type
+        or any("Gemma4Unified" in arch for arch in architectures)
+    ):
+        reason = (
+            "Liger kernel is not validated for gemma4_unified; fused kernels "
+            "can corrupt the 12B/31B forward and produce NaN checkpoints."
+        )
+    elif normalized_model_type not in _LIGER_SUPPORTED_MODEL_TYPES:
+        reason = (
+            f"Liger kernel is not allowlisted for model_type={model_type!r}. "
+            "Add an explicit validation before enabling fused kernels for this arch."
+        )
+    else:
+        return True
+
+    if requested_mode == "on":
+        raise SystemExit(f"--use-liger=on requested but {reason}")
+    log.warning("%s Disabling Liger for this run.", reason)
+    return False
+
+
 def main() -> int:
     args = build_parser().parse_args()
     apply_resolved_defaults(args)
@@ -691,25 +725,14 @@ def main() -> int:
         else:
             log.warning(msg)
         use_liger = False
-    # Liger has no validated gemma4_unified (dense 12B/31B) kernel path. Its
-    # fused RMSNorm/RoPE/CE assume the Gemma2/3 layer layout and silently
-    # corrupt the gemma4_unified forward — which adds per-layer q_norm/k_norm,
-    # a layer_scalar, and logit softcapping the Gemma3 kernels don't model — so
-    # the loss NaNs within the first optimizer steps and the saved checkpoint is
-    # all-NaN. Force Liger off for this arch (E2B/E4B "gemma4" stay on). The
-    # generic finite-weights guard (make_finite_weights_callback) is the second
-    # line of defense; this is the specific known-arch prevention.
     _model_type = str(getattr(model.config, "model_type", "")).lower()
     _arch_names = getattr(model.config, "architectures", None) or []
-    if use_liger and (
-        "gemma4_unified" in _model_type
-        or any("Gemma4Unified" in a for a in _arch_names)
-    ):
-        log.warning(
-            "Liger kernel disabled for gemma4_unified arch (no validated fused "
-            "kernel path; avoids NaN divergence in 12B/31B SFT)."
-        )
-        use_liger = False
+    use_liger = resolve_liger_arch_gate(
+        use_liger=use_liger,
+        requested_mode=args.use_liger,
+        model_type=_model_type,
+        architectures=list(_arch_names),
+    )
     if use_liger and device == "cuda":
         try:
             from liger_kernel.transformers import _apply_liger_kernel_to_instance

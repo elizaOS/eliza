@@ -22,6 +22,9 @@ Slice covered here:
   checkpoints, non-finite tensors, and missing tensor-shard failures.
 - Threads registry-owned `train_dtype` through `train_local.py` and fails loud
   for unsupported future dtype declarations instead of silently training bf16.
+- Adds a Liger architecture allowlist gate: the validated `gemma4` path can use
+  fused kernels, unsupported archs disable in auto mode, and explicit
+  `--use-liger on` fails loud for unsupported / `gemma4_unified` configs.
 
 Verification run from repo root:
 
@@ -42,7 +45,7 @@ git diff --check
 python3 -m pytest \
   packages/training/scripts/training/test_model_registry.py \
   packages/training/scripts/test_train_local_low_vram_smoke.py -q
-# 40 passed
+# 44 passed
 
 python3 -m py_compile \
   packages/training/scripts/train_local.py \

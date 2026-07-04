@@ -125,6 +125,44 @@ def test_unsupported_train_dtype_fails_loud() -> None:
         _resolve(["--registry-key", "gemma4-e2b", "--train-dtype", "fp16"])
 
 
+def test_liger_arch_gate_allows_validated_gemma4() -> None:
+    assert train_local.resolve_liger_arch_gate(
+        use_liger=True,
+        requested_mode="auto",
+        model_type="gemma4",
+        architectures=["Gemma4ForCausalLM"],
+    ) is True
+
+
+def test_liger_arch_gate_disables_unsupported_auto() -> None:
+    assert train_local.resolve_liger_arch_gate(
+        use_liger=True,
+        requested_mode="auto",
+        model_type="qwen3",
+        architectures=["Qwen3ForCausalLM"],
+    ) is False
+
+
+def test_liger_arch_gate_fails_loud_for_requested_unsupported() -> None:
+    with pytest.raises(SystemExit, match="not allowlisted"):
+        train_local.resolve_liger_arch_gate(
+            use_liger=True,
+            requested_mode="on",
+            model_type="qwen3",
+            architectures=["Qwen3ForCausalLM"],
+        )
+
+
+def test_liger_arch_gate_fails_loud_for_requested_gemma4_unified() -> None:
+    with pytest.raises(SystemExit, match="gemma4_unified"):
+        train_local.resolve_liger_arch_gate(
+            use_liger=True,
+            requested_mode="on",
+            model_type="gemma4_unified",
+            architectures=["Gemma4UnifiedForCausalLM"],
+        )
+
+
 def test_low_vram_smoke_flag_lives_on_train_local_parser() -> None:
     """The flag must actually exist on the real parser. Catches the
     regression where someone removes the option but leaves the override
