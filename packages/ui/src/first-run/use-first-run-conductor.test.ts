@@ -1159,6 +1159,33 @@ describe("cloud-only onboarding (runtime chooser off — the production default)
     unmount();
   });
 
+  it("a token hydrating AFTER mount (native storage restore) auto-continues without a tap", async () => {
+    localStorage.removeItem("steward_session_token");
+    mocks.client.getCloudStatus.mockResolvedValue({ connected: false });
+    const spies = seedAppStore({ elizaCloudConnected: false });
+    const { turn, unmount } = renderConductor();
+    await waitForTurn(turn, "first-run:greeting");
+    expect(mocks.client.selectOrProvisionCloudAgent).not.toHaveBeenCalled();
+
+    // The storage bridge restores the durable token asynchronously on native;
+    // the conductor's 500ms poll must pick it up and skip the sign-in tap.
+    localStorage.setItem("steward_session_token", "cloud-token");
+    await waitFor(
+      () => {
+        expect(turn("first-run:cloud-signin")).toBeTruthy();
+      },
+      { timeout: 3_000 },
+    );
+    await waitFor(
+      () => {
+        expect(spies.completeFirstRun).toHaveBeenCalledTimes(1);
+      },
+      { timeout: 3_000 },
+    );
+    await waitForTurn(turn, "first-run:cloud-done");
+    unmount();
+  });
+
   it("needs-cloud-login re-offers the sign-in button only — never the runtime chooser", async () => {
     localStorage.removeItem("steward_session_token");
     mocks.client.getCloudStatus.mockResolvedValue({ connected: false });

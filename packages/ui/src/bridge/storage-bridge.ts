@@ -12,6 +12,7 @@
 
 import { Capacitor } from "@capacitor/core";
 import { logger } from "@elizaos/logger";
+import { STEWARD_TOKEN_KEY } from "@elizaos/shared/steward-session-client";
 import { MOBILE_RUNTIME_MODE_STORAGE_KEY } from "../first-run/mobile-runtime-mode";
 
 /**
@@ -57,6 +58,11 @@ const SYNCED_KEYS = new Set([
   "eliza.control.settings.v1",
   "eliza.device.identity",
   "eliza.device.auth",
+  // The Eliza Cloud session (#13377): with cloud-only onboarding this is THE
+  // credential — losing it to a WKWebView purge signs the user out and, mid-
+  // onboarding, restarts the sign-in ask (the mobile "login loop"). Same
+  // durability class as eliza.device.auth above.
+  STEWARD_TOKEN_KEY,
   "elizaos:active-server",
   "eliza:first-run-complete",
   "eliza:setup:step",

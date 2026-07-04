@@ -1079,6 +1079,7 @@ export function useFirstRunConductor(): void {
       // later without a tap (login from another same-origin tab, an injected
       // hosted-web session) auto-continue via the auto-resume effect.
       pendingCloudResumeRef.current = "cloud";
+      let tokenPoll: ReturnType<typeof setInterval> | null = null;
       if (elizaCloudConnectedRef.current || hasUsableStoredStewardToken()) {
         seedTurn(makeTurn("first-run:cloud-signin", CLOUD_WELCOME_BACK));
         runCloudResumeRef.current("cloud");
@@ -1089,8 +1090,25 @@ export function useFirstRunConductor(): void {
             `${CLOUD_SIGN_IN_GREETING}\n\n${CLOUD_SIGN_IN_CHOICE}`,
           ),
         );
+        // A usable session can also LAND after this mount without any
+        // elizaCloudConnected flip: the native storage bridge hydrates the
+        // durable token from Capacitor Preferences asynchronously, and a web
+        // login in another same-origin tab writes it directly. Poll cheaply
+        // (one localStorage read) and upgrade to the welcome-back skip the
+        // moment it appears; a pick already in flight always wins.
+        tokenPoll = setInterval(() => {
+          if (busyRef.current || provisionedRef.current) {
+            if (tokenPoll) clearInterval(tokenPoll);
+            return;
+          }
+          if (!hasUsableStoredStewardToken()) return;
+          if (tokenPoll) clearInterval(tokenPoll);
+          seedTurn(makeTurn("first-run:cloud-signin", CLOUD_WELCOME_BACK));
+          runCloudResumeRef.current("cloud");
+        }, 500);
       }
       return () => {
+        if (tokenPoll) clearInterval(tokenPoll);
         setFirstRunActionHandler(null);
         setFirstRunTextHandler(null);
       };
