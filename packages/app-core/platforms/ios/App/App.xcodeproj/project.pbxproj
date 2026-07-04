@@ -34,7 +34,6 @@
 		AUIT00010000000000000001 /* BootCaptureUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AUIT00010000000000000002 /* BootCaptureUITests.swift */; };
 		AUIT00010000000000000003 /* GestureSemanticsUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AUIT00010000000000000004 /* GestureSemanticsUITests.swift */; };
 		AUIT00010000000000000005 /* ViewWalkthroughUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AUIT00010000000000000006 /* ViewWalkthroughUITests.swift */; };
-		AUIT00010000000000000009 /* LauncherGestureLoopUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AUIT0001000000000000000A /* LauncherGestureLoopUITests.swift */; };
 		AUIT00010000000000000007 /* WidgetGalleryCaptureUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AUIT00010000000000000008 /* WidgetGalleryCaptureUITests.swift */; };
 		AUIT00010000000000000009 /* LauncherGestureLoopUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AUIT0001000000000000000A /* LauncherGestureLoopUITests.swift */; };
 /* End PBXBuildFile section */
@@ -135,7 +134,6 @@
 		AUIT00010000000000000002 /* BootCaptureUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BootCaptureUITests.swift; sourceTree = "<group>"; };
 		AUIT00010000000000000004 /* GestureSemanticsUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GestureSemanticsUITests.swift; sourceTree = "<group>"; };
 		AUIT00010000000000000006 /* ViewWalkthroughUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewWalkthroughUITests.swift; sourceTree = "<group>"; };
-		AUIT0001000000000000000A /* LauncherGestureLoopUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LauncherGestureLoopUITests.swift; sourceTree = "<group>"; };
 		AUIT00010000000000000008 /* WidgetGalleryCaptureUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetGalleryCaptureUITests.swift; sourceTree = "<group>"; };
 		AUIT0001000000000000000A /* LauncherGestureLoopUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LauncherGestureLoopUITests.swift; sourceTree = "<group>"; };
 		AUIT00010000000000000101 /* AppUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = AppUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -303,7 +301,6 @@
 				AUIT00010000000000000002 /* BootCaptureUITests.swift */,
 				AUIT00010000000000000004 /* GestureSemanticsUITests.swift */,
 				AUIT00010000000000000006 /* ViewWalkthroughUITests.swift */,
-				AUIT0001000000000000000A /* LauncherGestureLoopUITests.swift */,
 				AUIT00010000000000000008 /* WidgetGalleryCaptureUITests.swift */,
 				AUIT0001000000000000000A /* LauncherGestureLoopUITests.swift */,
 			);
@@ -635,7 +632,6 @@
 				AUIT00010000000000000001 /* BootCaptureUITests.swift in Sources */,
 				AUIT00010000000000000003 /* GestureSemanticsUITests.swift in Sources */,
 				AUIT00010000000000000005 /* ViewWalkthroughUITests.swift in Sources */,
-				AUIT00010000000000000009 /* LauncherGestureLoopUITests.swift in Sources */,
 				AUIT00010000000000000007 /* WidgetGalleryCaptureUITests.swift in Sources */,
 				AUIT00010000000000000009 /* LauncherGestureLoopUITests.swift in Sources */,
 			);
