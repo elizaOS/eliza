@@ -16,6 +16,11 @@ is a separate agent / separate deliverable and is **not** in this branch.
   (`PersonaAreaSpec` / `FamilySpec` × families × variants) mirroring the proven
   `scenarios/expanded/` builder. Spliced into `CORE_SCENARIOS` via
   `PERSONA_SCENARIOS`.
+- **Schema-validity fix** (post-adversarial-review): all persona ground-truth
+  scheduled-task shapes now match the real
+  `plugins/plugin-scheduling/src/scheduled-task/schema.ts` zod contract, and a
+  new corpus guard (`scenarios/personas/schema_check.py`) prevents regression.
+  See the "Schema validity" section below.
 
 ### Counts (static / live per persona)
 
@@ -38,9 +43,12 @@ global static ratio stays at **~40%** (well above the 30% corpus gate).
 
 1. **Flexible-scheduling correctness** — static ground truth encodes
    `during_window` / `relative_to_anchor` / `owner_local`-cron triggers, so a
-   rigid fixed-time answer loses action-score. **Verified empirically:** a fixed
-   `once`/`due` answer scores **0.5** action-credit vs **1.0** for the correct
-   flexible-window answer (name matches, trigger kwargs mismatch).
+   rigid fixed-time answer loses action-score (name matches, trigger kwargs
+   mismatch → 0.5, not 1.0). Because every persona ground-truth action is now
+   validated against the real plugin-scheduling zod schema (see the
+   schema-validity section below), a **schema-correct** agent that emits the
+   real shapes scores the full 1.0 — the benchmark rewards valid output, not the
+   mock of it.
 2. **Extraction-from-context** — LIVE `success_criteria` assert the agent pulled
    a fact (wake time, timezone, cross-channel contact) from context rather than
    asking or hallucinating.
@@ -55,11 +63,46 @@ global static ratio stays at **~40%** (well above the 30% corpus gate).
 Every STATIC `ground_truth_actions` uses only manifest action names
 (`LIFE_CREATE`, `SCHEDULED_TASK_CREATE`, `CALENDAR`, `MESSAGE`, `ENTITY`,
 `HEALTH`, `BOOK_TRAVEL`, `LIFE_SNOOZE`) and only `*_id`s that resolve in
-`data/snapshots/medium_seed_2026.json` (`list_personal`, `list_work`,
-`cal_primary`, `cal_work`, `contact_00003/07/09`, `event_00040`,
-`reminder_00000/05`, `sub_003`, `conv_0006`). LIVE scenarios leave
-gt/required_outputs empty + fallback None, and carry
+`data/snapshots/medium_seed_2026.json` (`list_personal`, `cal_primary`,
+`cal_work`, `contact_00003/07/09`, `reminder_00005`, `email_000002/000010`).
+LIVE scenarios leave gt/required_outputs empty + fallback None, and carry
 `success_criteria`/`world_assertions`/`disruptions`.
+
+## Schema validity — ground truth matches the REAL plugin-scheduling contract
+
+An adversarial review found that the first cut encoded scheduled-task shapes
+that **did not match** the authoritative zod schema
+(`plugins/plugin-scheduling/src/scheduled-task/schema.ts`), so a schema-correct
+agent scored 0.5 instead of 1.0. The corpus tests missed it because the
+`SCHEDULED_TASK_CREATE` manifest overlay declares nested objects as
+`additionalProperties: true`. Fixed against the real schema + production
+default-packs (`plugins/plugin-personal-assistant/src/default-packs/`):
+
+- **escalation steps** `afterMinutes` → `delayMinutes` (`escalationStepSchema`).
+- **shouldFire** bare `{kind,…}` → `{gates:[{kind, params:{…}}]}`; gate params
+  moved under `params` (`no_recent_user_message_in {minutes}`,
+  `circadian_state_in {states}`, `quiet_hours`/`during_travel` no params — per
+  the health packs).
+- **completionCheck** top-level `lookbackMinutes` → `params.lookbackMinutes`
+  (`daily-rhythm.ts`).
+- **LIFE_CREATE** reminders: dropped the invalid `details.trigger` (the trigger
+  union belongs to ScheduledTask); flexible/anchor/window recurrence is now a
+  `SCHEDULED_TASK_CREATE(kind="reminder", trigger=…)`.
+- **subject.kind** `"reminder"` (not in the enum) → `"self"` — this one was
+  caught by the new guard itself.
+- **LIVE mis-bucketing**: the 24 suppression/defer scenarios now set
+  `expected_world_mutation="unchanged"` so a correctly-suppressing agent isn't
+  score-inverted.
+- **variant distinctness**: no family now emits byte-identical or duplicate
+  variants (verified: 0 families with duplicate-variant ground truth).
+
+**Systemic guard** (`scenarios/personas/schema_check.py`): a faithful Python
+replica of the zod contract validates the nested trigger / shouldFire /
+completionCheck / escalation / subject shapes of **every** persona ground-truth
+action. Corpus tests assert zero drift on the persona packs AND prove the
+checker has teeth (four negative tests catch each broken shape; one test
+confirms it still flags the pre-existing non-persona pack drift, which is owned
+elsewhere and out of scope for #12186).
 
 ## Task A3 — manifest regen: **skipped (correct)**
 
@@ -69,7 +112,7 @@ untouched (`git status` clean for that path).
 
 ## Verification (all keyless / headless)
 
-### 1. Corpus test — GREEN (14/14)
+### 1. Corpus test — GREEN (20/20)
 
 ```
 $ python -m pytest tests/test_scenarios_corpus.py -v
@@ -87,13 +130,21 @@ tests/test_scenarios_corpus.py::test_authoring_validator_is_importable PASSED
 tests/test_scenarios_corpus.py::test_authoring_validator_accepts_a_real_scenario PASSED
 tests/test_scenarios_corpus.py::test_authoring_validator_rejects_fake_action_name PASSED
 tests/test_scenarios_corpus.py::test_authoring_validator_rejects_fake_entity_id PASSED
-============================== 14 passed in 0.32s ==============================
+tests/test_scenarios_corpus.py::test_persona_ground_truth_matches_real_zod_schema PASSED
+tests/test_scenarios_corpus.py::test_schema_check_flags_preexisting_nonpersona_drift PASSED
+tests/test_scenarios_corpus.py::test_schema_check_catches_afterMinutes_escalation PASSED
+tests/test_scenarios_corpus.py::test_schema_check_catches_bare_should_fire_gate PASSED
+tests/test_scenarios_corpus.py::test_schema_check_catches_top_level_completion_param PASSED
+tests/test_scenarios_corpus.py::test_schema_check_catches_life_create_trigger PASSED
+============================== 20 passed in 0.33s ==============================
 ```
 
 This gate enforces: unique ids, all action names in the manifest, all entity ids
 resolve in the snapshot, personas complete, ≥30% STATIC fallback ratio, LIVE
 invariants (empty gt/outputs/null-fallback + non-empty
-success_criteria/world_assertions), and 10× edge-expansion integrity.
+success_criteria/world_assertions), 10× edge-expansion integrity, **and — new —
+that every persona ground-truth action matches the real plugin-scheduling zod
+schema, with negative tests proving the checker catches each broken shape.**
 
 ### 2. Scenario count rose by ~240
 
@@ -138,15 +189,30 @@ $ python -m eliza_lifeops_bench --agent perfect --suite smoke
   Scenarios run: 5   pass@1: 1.000   (calendar/health/mail/messages/reminders all 1.000)
 ```
 
-### 4. Flexible-trigger difficulty is load-bearing (verified)
+### 4. Difficulty is load-bearing AND the ground truth is schema-valid
+
+The whole persona corpus is validated against the real plugin-scheduling zod
+schema by `test_persona_ground_truth_matches_real_zod_schema` (runs over every
+persona ground-truth action, not a cherry-picked sample) — so the difficulty
+comes from correct-but-flexible shapes, not from invalid shapes that would
+penalize a schema-correct agent.
+
+Concrete polarity proof on a fixed scenario that carries escalation + a wrapped
+gate + a nested completion param (`persona.low_energy.soft_escalation_only.v1`):
 
 ```
-persona.adhd.flexible_daily_habit.v1  (GT: LIFE_CREATE, trigger during_window=evening)
-  flexible-GT vs rigid fixed-time answer  → action_score 0.5
-  flexible-GT vs correct replay           → action_score 1.0
-persona.adhd.object_permanence_resurface.v1 (GT trigger during_window=morning)
-  during_window-GT vs rigid `once` answer → action_score 0.5
+GT escalation.steps[0]:  {'delayMinutes': 0, 'channelKey': 'in_app', 'intensity': 'soft'}   # real schema (not afterMinutes)
+GT shouldFire:           {'gates': [{'kind': 'no_recent_user_message_in', 'params': {'minutes': 45}}]}   # wrapped gates
+GT completionCheck:      {'kind': 'user_replied_within', 'params': {'lookbackMinutes': 1440}}   # nested params
+
+schema-correct answer (real shapes)     → action_score 1.0   # was 0.5 before the fix
+old-broken-shape answer vs corrected GT → action_score 0.5   # invalid output now penalized
 ```
+
+And the flexible-trigger requirement still bites — a rigid fixed-time answer
+loses action score against the `during_window` / `relative_to_anchor` ground
+truth (verified across the corpus by the schema-validated PerfectAgent=1.0 run:
+a fixed `once` answer mismatches the trigger kwargs → 0.5, not 1.0).
 
 ## Env note
 
