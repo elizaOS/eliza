@@ -224,6 +224,10 @@ describe("scan payload parsers (untrusted embedded-script output)", () => {
     expect(() => parseLinuxAtspiPayload("[]")).toThrow();
     expect(() => parseLinuxAtspiPayload("not json")).toThrow();
     expect(() => parseLinuxAtspiPayload("")).toThrow();
+    expect(() => parseLinuxAtspiPayload("{}")).toThrow();
+    expect(() =>
+      parseLinuxAtspiPayload(JSON.stringify({ nodes: [] })),
+    ).toThrow();
   });
 });
 

@@ -418,14 +418,26 @@ export function parseLinuxAtspiPayload(text: string): {
   if (obj.unavailable === true) {
     return { nodes: [], failedWindows: 0, totalWindows: 0, unavailable: true };
   }
-  const rawNodes = Array.isArray(obj.nodes) ? obj.nodes : [];
-  const nodes = rawNodes
+  if (!Array.isArray(obj.nodes)) {
+    throw new Error("AT-SPI payload is missing a nodes array");
+  }
+  const failedWindows = Number(obj.failed);
+  const totalWindows = Number(obj.total);
+  if (
+    !Number.isFinite(failedWindows) ||
+    !Number.isFinite(totalWindows) ||
+    failedWindows < 0 ||
+    totalWindows < 0
+  ) {
+    throw new Error("AT-SPI payload is missing valid failed/total counts");
+  }
+  const nodes = obj.nodes
     .filter((n) => n && typeof n === "object")
     .map((n, i) => mapAtspiNode(n as Record<string, unknown>, i));
   return {
     nodes,
-    failedWindows: Number(obj.failed) || 0,
-    totalWindows: Number(obj.total) || 0,
+    failedWindows,
+    totalWindows,
     unavailable: false,
     ...(typeof obj.error === "string" && obj.error !== ""
       ? { error: obj.error }

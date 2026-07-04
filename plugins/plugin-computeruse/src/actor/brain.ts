@@ -273,7 +273,8 @@ export class Brain {
     sceneSignature: string,
   ): BrainOutput | null {
     for (let i = this.dhashCache.length - 1; i >= 0; i--) {
-      const entry = this.dhashCache[i]!;
+      const entry = this.dhashCache[i];
+      if (!entry) continue;
       if (
         entry.goal === goal &&
         entry.sceneSignature === sceneSignature &&
