@@ -60,7 +60,8 @@ Disable the bundled coding CLIs at image-build time with
   fs/process operations.
 - `ELIZA_CODING_CONTAINER_WORKSPACE` — the container-facing workspace path used
   for path normalization in responses (default `/workspace`).
-- `HOST` (default `0.0.0.0`), `PORT` (default `3000`).
+- `HOST` (default `127.0.0.1`; set explicitly to opt into wider binds), `PORT`
+  (default `3000`).
 - `ELIZA_REMOTE_RUNNER_MAX_READ_BYTES` (default 5 MiB),
   `ELIZA_REMOTE_RUNNER_COMMAND_TIMEOUT_MS` (default 60000),
   `ELIZA_REMOTE_RUNNER_MAX_COMMAND_OUTPUT_BYTES` (default 1 MiB).
