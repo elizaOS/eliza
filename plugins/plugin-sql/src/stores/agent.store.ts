@@ -79,7 +79,8 @@ export class AgentStore implements Store {
   }
 
   async create(agent: Agent): Promise<boolean> {
-    if (!agent.name) {
+    const agentName = agent.name;
+    if (!agentName) {
       throw new ElizaError("Cannot create agent without a name", {
         code: "DB_INVALID_ARGUMENT",
         context: { table: "agents", agentId: agent.id },
@@ -105,7 +106,7 @@ export class AgentStore implements Store {
 
         const values: typeof agentTable.$inferInsert = {
           ...agent,
-          name: agent.name,
+          name: agentName,
           knowledge: documentsToDb(agent.knowledge),
           messageExamples: messageExamplesToDb(agent.messageExamples),
           createdAt: new Date(toEpochMillis(agent.createdAt)),

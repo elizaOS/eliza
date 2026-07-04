@@ -14,13 +14,6 @@ export function useAvailableViews() {
   };
 }
 
-// The launcher's catalog-loader pulls the imperative fetch alongside the hook;
-// the stub replaces the whole module, so it must export this too. No registry in
-// the fixture — the deterministic tiles come from the builtin views below.
-export async function fetchAvailableViews(): Promise<ViewRegistryEntry[]> {
-  return [];
-}
-
 function builtinView(
   id: string,
   label: string,

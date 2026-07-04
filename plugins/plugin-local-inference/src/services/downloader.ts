@@ -959,8 +959,8 @@ export class Downloader {
 					throw error;
 				}
 				logger.warn(
-					`[Downloader] model hub request failed via ${candidate.label ?? candidate.base}; trying next base`,
 					{ error },
+					`[Downloader] model hub request failed via ${candidate.label ?? candidate.base}; trying next base`,
 				);
 				await sleep(failoverBackoffMs(index));
 				continue;
@@ -1048,8 +1048,8 @@ export class Downloader {
 					throw error;
 				}
 				logger.warn(
-					`[Downloader] background model hub request failed via ${candidate.label ?? candidate.base}; trying next base`,
 					{ error },
+					`[Downloader] background model hub request failed via ${candidate.label ?? candidate.base}; trying next base`,
 				);
 				await sleep(failoverBackoffMs(index));
 			}

@@ -52,7 +52,11 @@ describe("DictationLiveActivityController", () => {
       isIos: false,
       plugin,
     });
-    await controller.sync({ active: true, phase: "recording", transcript: "hi" });
+    await controller.sync({
+      active: true,
+      phase: "recording",
+      transcript: "hi",
+    });
     expect(plugin.start).not.toHaveBeenCalled();
   });
 
@@ -86,7 +90,11 @@ describe("DictationLiveActivityController", () => {
       isIos: true,
       plugin,
     });
-    await controller.sync({ active: true, phase: "recording", transcript: "x" });
+    await controller.sync({
+      active: true,
+      phase: "recording",
+      transcript: "x",
+    });
     expect(plugin.start).not.toHaveBeenCalled();
   });
 
@@ -99,11 +107,19 @@ describe("DictationLiveActivityController", () => {
       now: () => clock,
       minUpdateIntervalMs: 800,
     });
-    await controller.sync({ active: true, phase: "recording", transcript: "a" });
+    await controller.sync({
+      active: true,
+      phase: "recording",
+      transcript: "a",
+    });
 
     // Transcript-only change within the throttle window: skipped.
     clock = 1200;
-    await controller.sync({ active: true, phase: "recording", transcript: "ab" });
+    await controller.sync({
+      active: true,
+      phase: "recording",
+      transcript: "ab",
+    });
     expect(plugin.update).not.toHaveBeenCalled();
 
     // Phase change: pushed immediately regardless of the window.
@@ -137,7 +153,11 @@ describe("DictationLiveActivityController", () => {
       plugin,
     });
     await controller.sync({ active: true, phase: "recording", transcript: "" });
-    await controller.sync({ active: false, phase: "recording", transcript: "" });
+    await controller.sync({
+      active: false,
+      phase: "recording",
+      transcript: "",
+    });
     expect(plugin.end).toHaveBeenCalledWith({ activityId: "act-1" });
   });
 
@@ -147,7 +167,11 @@ describe("DictationLiveActivityController", () => {
       isIos: true,
       plugin,
     });
-    await controller.sync({ active: false, phase: "recording", transcript: "" });
+    await controller.sync({
+      active: false,
+      phase: "recording",
+      transcript: "",
+    });
     expect(plugin.end).not.toHaveBeenCalled();
   });
 

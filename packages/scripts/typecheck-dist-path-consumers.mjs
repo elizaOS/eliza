@@ -11,6 +11,7 @@ const repoRoot = path.resolve(
 );
 const distPathsConfig = path.join(repoRoot, "tsconfig.dist-paths.json");
 const ignoredDirs = new Set([
+  ".claude",
   ".git",
   ".next",
   ".turbo",
