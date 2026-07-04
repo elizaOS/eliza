@@ -1710,7 +1710,6 @@ function connectFirstRunRemoteDeepLink(rawApiBase: string): void {
     kind: "remote",
     apiBase: validatedUrl.href,
     token: null,
-    allowPublicHttps: true,
   });
   const dispatchConnect = () => {
     dispatchAppEvent(CONNECT_EVENT, {
@@ -1858,7 +1857,6 @@ function handleDeepLink(url: string): void {
             kind: "remote",
             apiBase: validatedUrl.href,
             token: null,
-            allowPublicHttps: true,
           });
           dispatchAppEvent(CONNECT_EVENT, {
             gatewayUrl: connection.apiBase,

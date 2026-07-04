@@ -199,7 +199,6 @@ export function createDeepLinkHandler(ctx: DeepLinkHandlerContext) {
       kind: "remote",
       apiBase: validatedUrl.href,
       token: null,
-      allowPublicHttps: true,
     });
     dispatchAppEvent(CONNECT_EVENT, {
       gatewayUrl: connection.apiBase,
