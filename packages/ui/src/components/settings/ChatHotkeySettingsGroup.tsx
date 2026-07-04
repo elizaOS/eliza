@@ -1,3 +1,10 @@
+/**
+ * Desktop settings control for the programmable chat-overlay summon hotkey
+ * (#10716), embedded in the Desktop Workspace section. Persists the accelerator
+ * via `setChatOverlayHotkey` and re-registers the OS shortcut through the
+ * desktop bridge so a change takes effect without relaunching the shell.
+ */
+
 import { Keyboard } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { invokeDesktopBridgeRequest } from "../../bridge";
@@ -41,12 +48,8 @@ async function syncChatOverlayShortcut(
   }
 }
 
-/**
- * Desktop settings control for the programmable chat-overlay summon hotkey
- * (#10716): an enable toggle plus a keystroke recorder that captures the next
- * key combination as the accelerator. Persists via `setChatOverlayHotkey` and
- * re-registers the OS shortcut through the desktop bridge immediately.
- */
+/** Enable toggle plus a keystroke recorder that captures the next key
+ * combination as the chat-overlay accelerator. */
 export function ChatHotkeySettingsGroup() {
   const t = useAppSelector((s) => s.t);
   const hotkey = useChatOverlayHotkey();
