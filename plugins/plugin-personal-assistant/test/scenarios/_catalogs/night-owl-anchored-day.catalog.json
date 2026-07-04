@@ -12,5 +12,14 @@
       "status flips planned -> authored once the scenario file/literal exists; -> verified once a real-LLM run has been captured and hand-reviewed per PR_EVIDENCE.md."
     ]
   },
-  "scenarios": []
+  "scenarios": [
+    {
+      "id": "night-owl-flexible-habit-any-time-today",
+      "pack": "B1",
+      "tier": "T1",
+      "surface": "scenario-runner",
+      "status": "verified",
+      "notes": "Live Cerebras gpt-oss-120b run passed (judge 1.00): a flexible 'any time today' water habit; the model chose 1pm rather than a 9am/morning default."
+    }
+  ]
 }
