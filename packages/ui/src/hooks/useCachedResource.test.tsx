@@ -97,6 +97,43 @@ describe("useCachedResource", () => {
     expect(fetcher).toHaveBeenCalledTimes(2);
   });
 
+  it("refetch() settles only after the fresh value is committed to the cache", async () => {
+    let resolveInitial: (v: string) => void = () => {};
+    let resolveRefetch: (v: string) => void = () => {};
+    let call = 0;
+    const fetcher = vi.fn(
+      (_signal: AbortSignal) =>
+        new Promise<string>((r) => {
+          call += 1;
+          if (call === 1) resolveInitial = r;
+          else resolveRefetch = r;
+        }),
+    );
+    const { result } = renderHook(() =>
+      useCachedResource("k-refetch-await", fetcher, { staleTime: 10_000 }),
+    );
+    resolveInitial("v1");
+    await waitFor(() => expect(result.current.status).toBe("success"));
+
+    // Consumers (e.g. useViewCatalog's install flow) `await refetch()` before
+    // clearing optimistic UI — the promise must not resolve while the refetch
+    // is still in flight, or they resume against stale data.
+    let settled = false;
+    const pending = result.current.refetch().then(() => {
+      settled = true;
+    });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(settled).toBe(false);
+
+    resolveRefetch("v2");
+    await pending;
+    await waitFor(() => {
+      if (result.current.status === "success") {
+        expect(result.current.data).toBe("v2");
+      }
+    });
+  });
+
   it("revalidates stale data in the background while showing the cached value", async () => {
     let value = "v1";
     const fetcher = vi.fn(async (_signal: AbortSignal) => value);

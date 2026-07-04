@@ -27,7 +27,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import { getCached, revalidate, setCached, subscribe } from "./resource-cache";
-import type { FetchState, UseFetchDataResult } from "./useFetchData";
+import type { FetchMutator, FetchState } from "./useFetchData";
 
 export interface CachedResourceOptions {
   /**
@@ -41,9 +41,18 @@ export interface CachedResourceOptions {
   persist?: boolean;
 }
 
-// UseFetchDataResult is a discriminated union intersected with helpers, so this
-// is a type intersection (an interface cannot extend a union-based alias).
-export type UseCachedResourceResult<T> = UseFetchDataResult<T> & {
+// FetchState is a discriminated union intersected with helpers, so this is a
+// type intersection (an interface cannot extend a union-based alias). It
+// mirrors UseFetchDataResult except that `refetch` returns a promise.
+export type UseCachedResourceResult<T> = FetchState<T> & {
+  /**
+   * Force a fresh revalidation. Unlike the base `useFetchData` refetch, the
+   * returned promise settles only after the fresh value is committed to the
+   * shared cache (it never rejects — failures land in the hook's error state),
+   * so post-mutation flows can `await refetch()` before clearing optimistic UI.
+   */
+  refetch: () => Promise<void>;
+  mutate: FetchMutator<T>;
   /** True while a background revalidation is running over cached data. */
   isValidating: boolean;
 };
@@ -95,10 +104,10 @@ export function useCachedResource<T>(
   // Run a shared revalidation. `force` issues a fresh request even when one is
   // in-flight (for explicit refetch); background runs de-dup onto it.
   const doRevalidate = useCallback(
-    (force: boolean) => {
-      if (!key) return;
+    (force: boolean): Promise<void> => {
+      if (!key) return Promise.resolve();
       setIsValidating(true);
-      revalidate<T>(
+      return revalidate<T>(
         key,
         () => fetcherRef.current(new AbortController().signal),
         persist,
@@ -124,12 +133,15 @@ export function useCachedResource<T>(
     const snapshot = getCached<T>(key, persist);
     const isFresh = snapshot && Date.now() - snapshot.updatedAt < staleTime;
     if (isFresh) return;
-    doRevalidate(false);
+    void doRevalidate(false);
   }, [key, enabled, persist, staleTime, doRevalidate]);
 
-  const refetch = useCallback(() => {
-    doRevalidate(true);
-  }, [doRevalidate]);
+  // Return the settled-after-commit promise: callers that `await refetch()`
+  // (e.g. useViewCatalog's install flow clearing its optimistic "installing"
+  // state) must not resume before the fresh value is actually in the cache —
+  // a fire-and-forget void here made that await resolve immediately, so the
+  // optimistic state was dropped while the list still showed stale data.
+  const refetch = useCallback(() => doRevalidate(true), [doRevalidate]);
 
   const mutate = useCallback(
     (next: T | ((prev: T) => T)) => {

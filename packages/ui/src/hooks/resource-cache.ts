@@ -33,11 +33,20 @@ const store = new Map<string, CacheEntry<unknown>>();
 /** Shared in-flight revalidations, so concurrent consumers issue one request. */
 const inflight = new Map<string, Promise<unknown>>();
 /**
- * Monotonic request counter per key. A forced refetch can run concurrently with
- * an older in-flight request; only the latest sequence is allowed to commit, so
- * a slow stale response can never clobber a newer one (last-write-wins).
+ * Monotonic write counter per key — the last-write-wins guard. Every request
+ * (`revalidate`) takes the next sequence before fetching, and every committed
+ * write (`setCached` with actually-changed data, `invalidate`) advances it, so
+ * an in-flight response that started before the latest write can never commit
+ * over it: a slow stale fetch neither clobbers a newer forced refetch, nor a
+ * newer direct `setCached` (the `mutate()` optimistic-write path), nor
+ * resurrects a key that `invalidate` just dropped.
  */
 const requestSeq = new Map<string, number>();
+
+/** Advance the per-key write sequence so in-flight reads become stale. */
+function bumpRequestSeq(key: string): void {
+  requestSeq.set(key, (requestSeq.get(key) ?? 0) + 1);
+}
 const subscribers = new Map<string, Set<() => void>>();
 
 /**
@@ -163,13 +172,24 @@ export function setCached<T>(key: string, data: T, persist = false): void {
   }
   const entry: CacheEntry<T> = { data, updatedAt: Date.now() };
   store.set(key, entry);
+  // This write is newer truth than any request already in flight — advance the
+  // sequence so a slower response fetched before it cannot commit over it.
+  bumpRequestSeq(key);
   if (persist) writePersisted(key, { data, updatedAt: entry.updatedAt });
   notify(key);
 }
 
-/** Drop a key (in-memory + persisted) and notify subscribers. */
+/**
+ * Drop a key (in-memory + persisted) and notify subscribers. The invalidation
+ * also supersedes any in-flight revalidation for the key: its response was
+ * fetched before the invalidating event (typically a mutation/delete), so
+ * letting it commit would resurrect the dropped value — and later `revalidate`
+ * calls must issue a fresh request instead of de-duping onto that stale one.
+ */
 export function invalidate(key: string): void {
   store.delete(key);
+  bumpRequestSeq(key);
+  inflight.delete(key);
   if (typeof window !== "undefined") {
     try {
       window.localStorage.removeItem(`${PERSIST_PREFIX}${key}`);

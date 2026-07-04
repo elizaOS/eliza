@@ -401,7 +401,9 @@ describe("useAvailableViews", () => {
 
     const { result } = renderHook(() => useAvailableViews());
 
-    act(() => result.current.refresh());
+    act(() => {
+      result.current.refresh();
+    });
     freshGui.resolve(response(200, { views: [view("fresh")] }));
     freshTui.resolve(response(200, { views: [] }));
     freshXr.resolve(response(200, { views: [] }));
@@ -436,7 +438,9 @@ describe("useAvailableViews", () => {
     await flushHookEffects();
     expect(result.current.views[0]?.id).toBe("first");
 
-    act(() => result.current.refresh());
+    act(() => {
+      result.current.refresh();
+    });
     await flushHookEffects();
     expect(result.current.views[0]?.id).toBe("second");
 
