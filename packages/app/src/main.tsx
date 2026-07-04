@@ -368,6 +368,8 @@ const IOS_FULL_BUN_SMOKE_REQUEST_KEY = "eliza:ios-full-bun-smoke:request";
 const IOS_FULL_BUN_SMOKE_RESULT_KEY = "eliza:ios-full-bun-smoke:result";
 const IOS_ONBOARDING_SMOKE_REQUEST_KEY = "eliza:ios-onboarding-smoke:request";
 const IOS_ONBOARDING_SMOKE_RESULT_KEY = "eliza:ios-onboarding-smoke:result";
+const IOS_AUTH_CALLBACK_SMOKE_REQUEST_KEY = "eliza:auth-callback-smoke:request";
+const IOS_AUTH_CALLBACK_SMOKE_RESULT_KEY = "eliza:auth-callback-smoke:result";
 const IOS_ONBOARDING_RELAUNCH_SMOKE_REQUEST_KEY =
   "eliza:ios-onboarding-relaunch-smoke:request";
 const IOS_ONBOARDING_RELAUNCH_SMOKE_RESULT_KEY =
@@ -700,6 +702,13 @@ async function writeIosMixedContentSmokeResult(
     IOS_MIXED_CONTENT_SMOKE_RESULT_KEY,
     result,
   );
+}
+
+
+async function writeIosAuthCallbackSmokeResult(
+  result: Record<string, unknown>,
+): Promise<void> {
+  await writeIosPreferenceSmokeResult(IOS_AUTH_CALLBACK_SMOKE_RESULT_KEY, result);
 }
 
 async function writeIosPreferenceSmokeResult(
@@ -2024,6 +2033,43 @@ function connectFirstRunRemoteDeepLink(rawApiBase: string): void {
   dispatchConnect();
 }
 
+async function recordIosAuthCallbackSmoke(
+  parsed: URL,
+  path: string,
+  url: string,
+): Promise<void> {
+  if (!isIOS) return;
+  let rawRequest: string | null = null;
+  try {
+    rawRequest = window.localStorage.getItem(IOS_AUTH_CALLBACK_SMOKE_REQUEST_KEY);
+  } catch {
+    rawRequest = null;
+  }
+  rawRequest ??= await boundedPreferenceGet(IOS_AUTH_CALLBACK_SMOKE_REQUEST_KEY);
+  if (!rawRequest) return;
+
+  let request: Record<string, unknown> = {};
+  try {
+    const parsedRequest = JSON.parse(rawRequest);
+    if (parsedRequest && typeof parsedRequest === "object") {
+      request = parsedRequest as Record<string, unknown>;
+    }
+  } catch {
+    request = { malformedRequest: rawRequest };
+  }
+
+  await writeIosAuthCallbackSmokeResult({
+    ok: true,
+    phase: "handled",
+    path,
+    url,
+    state: parsed.searchParams.get("state") ?? "",
+    code: parsed.searchParams.get("code") ?? "",
+    query: Object.fromEntries(parsed.searchParams.entries()),
+    request,
+  });
+}
+
 function handleDeepLink(url: string): void {
   const firstRunRemote = parseFirstRunRemoteConnectDeepLink(
     url,
@@ -2055,6 +2101,11 @@ function handleDeepLink(url: string): void {
   const path = isAppLink
     ? parsed.pathname.replace(/^\/+|\/+$/g, "")
     : getDeepLinkPath(parsed);
+  if (path === "auth/callback") {
+    void recordIosAuthCallbackSmoke(parsed, path, url);
+    return;
+  }
+
   if (path === "first-run/runtime/remote") {
     const rawApiBase =
       parsed.searchParams.get("api")?.trim() ||
