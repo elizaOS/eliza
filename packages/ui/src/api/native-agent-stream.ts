@@ -125,6 +125,7 @@ export async function createNativeStreamingResponse(
     resolveHead = resolve;
     rejectHead = reject;
   });
+  void head.catch(() => {});
   let headSettled = false;
 
   const failStream = (reason: unknown): void => {
@@ -188,13 +189,13 @@ export async function createNativeStreamingResponse(
     }
   };
 
-  handles.push(await agent.addListener("agentStreamResponse", onResponse));
-  handles.push(await agent.addListener("agentStreamChunk", onChunk));
-  handles.push(await agent.addListener("agentStreamComplete", onComplete));
-
   if (stream.completion) {
     void stream.completion.catch(failStream);
   }
+
+  handles.push(await agent.addListener("agentStreamResponse", onResponse));
+  handles.push(await agent.addListener("agentStreamChunk", onChunk));
+  handles.push(await agent.addListener("agentStreamComplete", onComplete));
 
   return head;
 }
