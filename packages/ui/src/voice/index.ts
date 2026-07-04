@@ -18,6 +18,25 @@ export {
   type AudioFramePumpOptions,
   type AudioFramePumpStartResult,
 } from "./audio-frame-pump";
+export {
+  BOT_FREE_MEETING_AUDIO_SAMPLE_RATE,
+  type BotFreeMeetingAudioArtifact,
+  BotFreeMeetingAudioCaptureError,
+  type BotFreeMeetingAudioCaptureHandle,
+  type BotFreeMeetingAudioCaptureMode,
+  type BotFreeMeetingAudioCaptureOptions,
+  type BotFreeMeetingAudioCaptureResult,
+  type BotFreeMeetingAudioSourceKind,
+  type BotFreeMeetingAudioSourceMetadata,
+  type BotFreeMeetingAudioSourceStatus,
+  type BotFreeMeetingAudioSupport,
+  type BotFreeMeetingCapturedPcm,
+  buildBotFreeMeetingAudioArtifacts,
+  classifyBotFreeMeetingAudioCaptureMode,
+  getBotFreeMeetingAudioSupport,
+  mixBotFreeMeetingPcm,
+  startBotFreeMeetingAudioCapture,
+} from "./bot-free-meeting-audio-capture";
 export * from "./character-voice-config";
 export * from "./emotion";
 export {
