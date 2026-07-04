@@ -2,7 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildCoreTurboArgs } from "../build-core.mjs";
+import {
+  BUILD_CORE_PREREQUISITE_SCRIPTS,
+  buildCoreTurboArgs,
+} from "../build-core.mjs";
 import { CORE_BUILD_PACKAGES } from "../build-core-packages.mjs";
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -112,6 +115,12 @@ describe("build-core package set (issue #10200)", () => {
   test("buildCoreTurboArgs forwards extra turbo args after the filters", () => {
     const args = buildCoreTurboArgs(["--force"]);
     expect(args.at(-1)).toBe("--force");
+  });
+
+  test("build:core repairs workspace links before invoking turbo", () => {
+    expect(BUILD_CORE_PREREQUISITE_SCRIPTS).toContain(
+      "ensure-workspace-symlinks.mjs",
+    );
   });
 
   test("root build:core delegates to the driver (no re-inlined --filter list)", () => {

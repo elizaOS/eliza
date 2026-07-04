@@ -2,8 +2,9 @@
 /**
  * Build the "core" package set (issue #10200).
  *
- * Drives `run-turbo.mjs run build` over the leaf packages declared in
- * `build-core-packages.mjs`. This replaces the hand-maintained
+ * Ensures workspace package symlinks exist, then drives `run-turbo.mjs run
+ * build` over the leaf packages declared in `build-core-packages.mjs`. This
+ * replaces the hand-maintained
  * `--filter=@elizaos/… (×27)` string that used to live inline in the root
  * `build:core` package.json script. The emitted Turbo invocation is identical to
  * the old inline list — same `run build --filter=…` args, same default Turbo
@@ -24,6 +25,7 @@ import { CORE_BUILD_PACKAGES } from "./build-core-packages.mjs";
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const RUN_TURBO = path.join(SCRIPT_DIR, "run-turbo.mjs");
+export const BUILD_CORE_PREREQUISITE_SCRIPTS = ["ensure-workspace-symlinks.mjs"];
 
 /** The exact `run-turbo.mjs` argv for the core build, plus any forwarded args. */
 export function buildCoreTurboArgs(extra = []) {
@@ -37,6 +39,30 @@ export function buildCoreTurboArgs(extra = []) {
 
 function main() {
   const extra = process.argv.slice(2);
+  for (const script of BUILD_CORE_PREREQUISITE_SCRIPTS) {
+    console.log(`[build-core] running ${script}`);
+    const prerequisite = spawnSync(
+      process.execPath,
+      [path.join(SCRIPT_DIR, script)],
+      {
+        stdio: "inherit",
+      },
+    );
+    if (prerequisite.error) {
+      console.error(
+        `[build-core] could not run ${script}: ${prerequisite.error.message}\n` +
+          `[build-core] re-run after \`bun install\`: bun run build:core`,
+      );
+      process.exit(1);
+    }
+    if (prerequisite.status !== 0) {
+      console.error(
+        `[build-core] ${script} failed (exit ${prerequisite.status ?? "signal"}). ` +
+          `Re-run after \`bun install\`: bun run build:core`,
+      );
+      process.exit(prerequisite.status ?? 1);
+    }
+  }
   console.log(
     `[build-core] building ${CORE_BUILD_PACKAGES.length} core packages via turbo` +
       (extra.length ? ` (extra args: ${extra.join(" ")})` : ""),
