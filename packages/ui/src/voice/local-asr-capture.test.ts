@@ -1,13 +1,15 @@
 /**
  * Unit coverage for local-ASR capture helpers: WAV encoding, silence detection,
- * and audio measurement. Pure functions over PCM buffers, no mic.
+ * audio measurement (pure functions over PCM buffers, no mic), plus the
+ * recorder-start failure path driven through a fake browser audio stack.
  */
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createLocalAsrAutoStopDetector,
   encodeMonoPcm16Wav,
   isSilentPcmAudio,
   measurePcmAudio,
+  startLocalAsrRecorder,
 } from "./local-asr-capture";
 
 describe("local ASR capture", () => {
@@ -112,5 +114,36 @@ describe("local ASR capture", () => {
       shouldBuffer: true,
       shouldStop: false,
     });
+  });
+});
+
+describe("startLocalAsrRecorder resume failure", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("rejects and releases the mic when the AudioContext cannot resume", async () => {
+    // A suspended context that never resumes records pure silence; a swallowed
+    // resume failure would make that look like a healthy (dead) session.
+    const trackStop = vi.fn();
+    const stream = {
+      getTracks: () => [{ stop: trackStop }],
+    } as unknown as MediaStream;
+    const getUserMedia = vi.fn().mockResolvedValue(stream);
+    vi.stubGlobal("navigator", { mediaDevices: { getUserMedia } });
+
+    const contextClose = vi.fn().mockResolvedValue(undefined);
+    class FakeAudioContext {
+      state = "suspended";
+      resume = vi.fn().mockRejectedValue(new Error("autoplay policy"));
+      close = contextClose;
+    }
+    vi.stubGlobal("window", { AudioContext: FakeAudioContext });
+
+    await expect(startLocalAsrRecorder()).rejects.toThrow(
+      "AudioContext could not resume for local ASR capture",
+    );
+    expect(trackStop).toHaveBeenCalledTimes(1);
+    expect(contextClose).toHaveBeenCalledTimes(1);
   });
 });

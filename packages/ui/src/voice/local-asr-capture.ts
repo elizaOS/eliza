@@ -274,8 +274,19 @@ export async function startLocalAsrRecorder(
   if (context.state === "suspended") {
     // A context that cannot resume produces silence — surface the failure to
     // the caller (voice-capture-factory setState("error")) instead of
-    // recording a dead stream.
-    await context.resume();
+    // recording a dead stream. Release the mic + context first so the failed
+    // start does not leave the capture indicator on.
+    try {
+      await context.resume();
+    } catch (err) {
+      // error-policy:J2 release the hot mic, then rethrow with context
+      for (const track of stream.getTracks()) track.stop();
+      // error-policy:J6 teardown — the context may already be closed
+      await context.close().catch(() => undefined);
+      throw new Error("AudioContext could not resume for local ASR capture", {
+        cause: err,
+      });
+    }
   }
 
   const source = context.createMediaStreamSource(stream);
