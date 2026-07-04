@@ -18,7 +18,7 @@ Branch slice: normalize script contracts for three integration examples.
 
 ## Verification
 
-Current working tree: `origin/develop` at `c1f211d534`.
+Current working tree: `github/develop` at `c1f211d534`.
 
 Static guard:
 
@@ -63,33 +63,34 @@ packages/examples/farcaster: biome check passed for 5 files; biome format passed
 packages/examples/twitter-xai: biome check passed for 5 files; biome format passed for 5 files.
 ```
 
-## Runtime/test probes
+Typecheck:
 
-```text
-packages/examples/cloudflare test:
-  Worker not available at http://localhost:8787
-  Skipping integration tests (worker must be running)
-
-packages/examples/farcaster test:
-  Cannot find module '@elizaos/core'
-
-packages/examples/twitter-xai test:
-  Cannot find module '@elizaos/core'
+```bash
+bun run --cwd plugins/plugin-xai build
+bun run --cwd plugins/plugin-x build
+for pkg in packages/examples/cloudflare packages/examples/farcaster packages/examples/twitter-xai; do
+  bun run --cwd "$pkg" typecheck
+done
 ```
 
-Typecheck with a temporary
-`node_modules -> /Users/shawwalters/eliza/node_modules` symlink:
-
 ```text
-packages/examples/cloudflare:
-  TS2688 cannot find type definition file for '@cloudflare/workers-types'
-
-packages/examples/farcaster:
-  TS2688 cannot find type definition file for 'node'
-
-packages/examples/twitter-xai:
-  TS2688 cannot find type definition file for 'node'
+packages/examples/cloudflare: passed
+packages/examples/farcaster: passed
+packages/examples/twitter-xai: passed after building @elizaos/plugin-xai and @elizaos/plugin-x
 ```
 
-This auxiliary worktree has about 4 GiB free and no valid local install, so full
-`bun install` / `bun run verify` were not run here.
+Tests:
+
+```bash
+for pkg in packages/examples/cloudflare packages/examples/farcaster packages/examples/twitter-xai; do
+  timeout 60s bun run --cwd "$pkg" test
+done
+```
+
+```text
+packages/examples/cloudflare: skipped cleanly because no worker was running at http://localhost:8787
+packages/examples/farcaster: 2 tests passed
+packages/examples/twitter-xai: 6 tests passed
+```
+
+Full `bun run verify` was not rerun for this package-metadata-only slice.
