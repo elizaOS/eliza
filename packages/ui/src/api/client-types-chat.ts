@@ -9,9 +9,12 @@ import type {
   ConversationScope,
 } from "./client-types-core";
 
-// Single-source SSE chat contract lives in @elizaos/shared (#12409); re-exported
-// here so existing `@elizaos/ui` `api` consumers keep their import path.
-export type { ChatFailureKind, ChatTurnStatus } from "@elizaos/shared";
+// Single-source SSE chat contract lives in @elizaos/shared (#12409); imported for
+// local use below AND re-exported so existing `@elizaos/ui` `api` consumers keep
+// their import path. (A bare `export type … from` creates no local binding, so
+// the `failureKind?: ChatFailureKind` field reference below would fail TS2304.)
+import type { ChatFailureKind, ChatTurnStatus } from "@elizaos/shared";
+export type { ChatFailureKind, ChatTurnStatus };
 
 // Conversations
 export interface Conversation {
