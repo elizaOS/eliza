@@ -224,8 +224,30 @@ class OxaPayService {
     // Credit the invoice USD amount for ALL currencies.
     // - Underpayments: Rejected by OxaPay (underPaidCover: 0)
     // - Overpayments: User's responsibility, we credit invoice amount only
-    const invoiceAmount = Number.parseFloat(data.amount) || 0;
-    const nativePayAmount = Number.parseFloat(data.payAmount || "0");
+    //
+    // Fail closed on the invoice amount: every invoice is created with a positive
+    // amount, so a result=100 inquiry whose `amount` is missing, non-numeric, or
+    // non-positive is a malformed provider response. Coercing it to 0 (the old
+    // `parseFloat(...) || 0` behavior) let confirmPayment mark a CONFIRMED payment
+    // as settled while crediting $0 — silently eating the user's payment.
+    const invoiceAmount = Number.parseFloat(data.amount);
+    if (!Number.isFinite(invoiceAmount) || invoiceAmount <= 0) {
+      logger.error("[OxaPay] Invalid invoice amount in inquiry response", {
+        trackId: data.trackId,
+        status: data.status,
+        rawAmount: data.amount,
+      });
+      throw new OxaPayApiError(
+        `OxaPay inquiry returned invalid invoice amount ${JSON.stringify(data.amount ?? null)} for track ${data.trackId}`,
+      );
+    }
+
+    // Native pay amount is audit/debug metadata only (never credited); a
+    // malformed value degrades to undefined instead of failing the inquiry.
+    const parsedNativePayAmount = Number.parseFloat(data.payAmount ?? "");
+    const nativePayAmount = Number.isFinite(parsedNativePayAmount)
+      ? parsedNativePayAmount
+      : undefined;
 
     return {
       trackId: data.trackId,
