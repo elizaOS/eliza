@@ -16,7 +16,7 @@
 
 import type { LifeOpsCalendarEvent } from "@elizaos/shared";
 import { SpatialSurface } from "@elizaos/ui/spatial";
-import { cleanup, fireEvent, render } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { UseCalendarWeekResult } from "../../hooks/useCalendarWeek.js";
@@ -54,6 +54,13 @@ function agent(agentId: string): HTMLElement {
   const el = document.querySelector(`[data-agent-id="${agentId}"]`);
   if (!el) throw new Error(`no element with data-agent-id="${agentId}"`);
   return el as HTMLElement;
+}
+
+function installPointerCaptureShim() {
+  HTMLElement.prototype.hasPointerCapture ??= () => false;
+  HTMLElement.prototype.setPointerCapture ??= () => undefined;
+  HTMLElement.prototype.releasePointerCapture ??= () => undefined;
+  Element.prototype.scrollIntoView ??= () => undefined;
 }
 
 function evt(
@@ -106,6 +113,7 @@ function makeResult(
 
 describe("CalendarView (unified spatial wrapper)", () => {
   beforeEach(() => {
+    installPointerCaptureShim();
     vi.clearAllMocks();
     calendarState.current = makeResult();
   });
@@ -160,11 +168,17 @@ describe("CalendarView (unified spatial wrapper)", () => {
     expect(goToToday).toHaveBeenCalledTimes(1);
   });
 
-  it("changing the view-mode selector routes through to setViewMode", () => {
+  it("changing the view-mode selector routes through to setViewMode", async () => {
     render(<CalendarView />);
-    fireEvent.change(agent("mode") as HTMLSelectElement, {
-      target: { value: "month" },
+    fireEvent.pointerDown(agent("mode"), {
+      button: 0,
+      ctrlKey: false,
+      pageX: 1,
+      pageY: 1,
+      pointerId: 1,
+      pointerType: "mouse",
     });
+    fireEvent.click(await screen.findByText("month"));
     expect(setViewMode).toHaveBeenCalledWith("month");
   });
 
