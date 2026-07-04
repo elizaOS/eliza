@@ -2934,6 +2934,108 @@ describe("runV5MessageRuntimeStage1", () => {
 		);
 	});
 
+	it("includes the agent's own prior replies role-tagged as prior_message:agent", async () => {
+		// The current_turn_boundary contract tells the model the prior_message
+		// blocks are its ONLY chat-recall window, but the agent's own replies
+		// were structurally excluded from that window — so when asked "did you
+		// tell me X?" the model had nothing to ground on and confabulated
+		// ("I told you X" when it never did, or denying things it did say).
+		// The agent's own turns must be visible, clearly role-tagged, while
+		// non-dialogue agent artifacts (sub-agent transcripts) stay excluded.
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["simple"],
+				replyText: "Yes — I told you BTC was around $63,000.",
+				extra: { requiresTool: false },
+			}),
+		]);
+		const state: State = {
+			values: {
+				availableContexts: "simple, general",
+			},
+			data: {
+				providers: {
+					RECENT_MESSAGES: {
+						text: "# Conversation Messages\nprovider text should not render",
+						data: {
+							recentMessages: [
+								{
+									id: "00000000-0000-0000-0000-00000000cc01" as UUID,
+									entityId: "00000000-0000-0000-0000-00000000cc11" as UUID,
+									agentId: runtime.agentId,
+									roomId: "00000000-0000-0000-0000-000000001111" as UUID,
+									createdAt: 1,
+									content: { text: "whats the btc price", source: "discord" },
+									metadata: {
+										type: "message",
+										sender: { id: "discord-1gig", name: "1gig" },
+									},
+								},
+								{
+									id: "00000000-0000-0000-0000-00000000cc02" as UUID,
+									entityId: runtime.agentId,
+									agentId: runtime.agentId,
+									roomId: "00000000-0000-0000-0000-000000001111" as UUID,
+									createdAt: 2,
+									content: {
+										text: "BTC is around $63,000 right now.",
+										source: "discord",
+									},
+								},
+								{
+									id: "00000000-0000-0000-0000-00000000cc03" as UUID,
+									entityId: runtime.agentId,
+									agentId: runtime.agentId,
+									roomId: "00000000-0000-0000-0000-000000001111" as UUID,
+									createdAt: 3,
+									content: {
+										text: "[sub-agent: price check (opencode) — task_complete]\nraw transcript",
+										source: "acpx:sub-agent-router",
+										metadata: { subAgent: true },
+									},
+								},
+							],
+						},
+						providerName: "RECENT_MESSAGES",
+					},
+				},
+			},
+			text: "fallback text should not be needed",
+		};
+
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "did you tell me the btc price earlier?",
+			}),
+			state,
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		const firstCall = useModelCalls(runtime)[0];
+		const params = firstCall?.[1] as {
+			messages?: Array<{ role?: string; content?: string | null }>;
+		};
+		const userContent = params.messages?.[1]?.content ?? "";
+		// The user's turn keeps the user tag; the agent's own reply is present
+		// and role-tagged with the character name so recall is grounded.
+		expect(userContent).toContain("prior_message:user:\n1gig: whats the btc price");
+		expect(userContent).toContain(
+			"prior_message:agent:\nTest Agent: BTC is around $63,000 right now.",
+		);
+		// Chronological interleave: the agent reply follows the user turn.
+		expect(userContent.indexOf("prior_message:user:")).toBeLessThan(
+			userContent.indexOf("prior_message:agent:"),
+		);
+		// Non-dialogue agent artifacts stay out of the window.
+		expect(userContent).not.toContain("[sub-agent: price check");
+		expect(userContent).not.toContain("raw transcript");
+		// The contract now grounds own-reply recall on the prior_message:agent blocks.
+		expect(userContent).toContain(
+			"Your own prior replies are the prior_message:agent blocks",
+		);
+	});
+
 	it("recomposes planner state with selected context providers but excludes catalogs", async () => {
 		const runtime = makeRuntime([
 			stage1Response({
