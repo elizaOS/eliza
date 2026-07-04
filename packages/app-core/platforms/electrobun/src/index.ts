@@ -92,7 +92,6 @@ import { getDesktopManager } from "./native/desktop";
 import { disposeNativeModules, initializeNativeModules } from "./native/index";
 import {
   enableBackForwardNavigationGestures,
-  enableVibrancy,
   ensureShadow,
   setNativeDragRegion,
   setTrafficLightsPosition,
@@ -406,9 +405,14 @@ const MAC_NATIVE_DRAG_REGION_X = 92;
 const MAC_NATIVE_DRAG_REGION_HEIGHT = 38;
 
 /**
- * Vibrancy, shadow, traffic lights, and native chrome layout. Re-calls native
- * layout whenever the window or webview subtree may have reordered so the drag
- * view stays above WKWebView.
+ * Shadow, traffic lights, drag region, and native chrome layout. Re-calls
+ * native layout whenever the window or webview subtree may have reordered so
+ * the drag view stays above WKWebView.
+ *
+ * Deliberately applies NO vibrancy (#12184): a vibrancy NSVisualEffectView
+ * behind a transparent window renders as a full-window frosted-glass sheet over
+ * the desktop. Only the chromeless pill and the tray popover are transparent,
+ * and each paints its own surface — the dashboard is a normal opaque window.
  */
 function applyMacOSWindowEffects(win: BrowserWindow): void {
   if (process.platform !== "darwin") return;
@@ -419,12 +423,9 @@ function applyMacOSWindowEffects(win: BrowserWindow): void {
     return;
   }
 
-  const vibrancyEnabled = enableVibrancy(
-    ptr as Parameters<typeof enableVibrancy>[0],
-  );
   const shadowEnabled = ensureShadow(ptr as Parameters<typeof ensureShadow>[0]);
   updateCurrentMainWindowEffectsState({
-    vibrancyEnabled,
+    vibrancyEnabled: false,
     shadowEnabled,
   });
 
@@ -1059,8 +1060,9 @@ async function createMainWindow(rpc: ElizaDesktopRpc): Promise<BrowserWindow> {
         y: state.y,
       };
   const titleBarStyle = presentation.titleBarStyle;
-  // Bottom bar wants a transparent surface so the desktop shows through the
-  // empty region above the bar; on darwin it pairs with vibrancy. Win/Linux
+  // Only the chromeless bottom bar is transparent (macOS), so the desktop shows
+  // through the empty region above the pill. The full dashboard stays opaque —
+  // transparency there reads as a frosted-glass sheet (#12184). Win/Linux
   // transparency support varies, so the bar stays opaque there for now.
   const transparent = presentation.transparent;
   // The pill spans the full work-area width but only the small bar is visible;
@@ -1156,7 +1158,8 @@ async function createMainWindow(rpc: ElizaDesktopRpc): Promise<BrowserWindow> {
     return win;
   }
 
-  // Bottom-bar shell: pin always-on-top and (on darwin) apply vibrancy. The bar
+  // Bottom-bar shell: pin always-on-top and apply the macOS chrome (shadow,
+  // drag region — no vibrancy, so the pill is the only painted surface). The bar
   // has fixed, display-derived geometry, so skip bounds persistence + the
   // first-launch maximize entirely.
   if (bottomBar) {

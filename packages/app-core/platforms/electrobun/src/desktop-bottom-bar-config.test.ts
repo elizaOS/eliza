@@ -136,7 +136,7 @@ describe("desktop bottom-bar config", () => {
       ).toEqual({
         mode: "default",
         titleBarStyle: "hiddenInset",
-        transparent: true,
+        transparent: false,
       });
     });
 

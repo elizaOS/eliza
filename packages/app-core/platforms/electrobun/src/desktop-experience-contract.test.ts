@@ -52,6 +52,18 @@ describe("desktop experience contract — chat-first launch", () => {
     expect(presentation.transparent).toBe(true);
   });
 
+  it("keeps the full dashboard window opaque on macOS — transparency is the pill only (#12184)", () => {
+    // A transparent full window over dark web content renders as a full-window
+    // frosted-glass sheet; only the chromeless pill is transparent.
+    const presentation = resolveDesktopShellWindowPresentation(
+      { ELIZA_DESKTOP_BOTTOM_BAR: "0" },
+      [],
+      "darwin",
+    );
+    expect(presentation.mode).toBe("default");
+    expect(presentation.transparent).toBe(false);
+  });
+
   it("resolves kiosk presentation when requested", () => {
     const presentation = resolveDesktopShellWindowPresentation(
       { ELIZAOS_SHELL_MODE: "kiosk" },

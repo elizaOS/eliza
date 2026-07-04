@@ -78,6 +78,15 @@ export interface DesktopShellWindowPresentation {
   transparent: boolean;
 }
 
+/**
+ * Resolve the window presentation for the current shell mode.
+ *
+ * Transparency is scoped to the chromeless bottom-bar pill on macOS only. The
+ * full dashboard ("default") window and kiosk stay opaque: a transparent window
+ * over dark web content reads as a full-window frosted sheet (the pill is the
+ * only surface that should show the desktop through it). Win/Linux transparency
+ * support varies, so the pill also stays opaque there for now (fork gap G4).
+ */
 export function resolveDesktopShellWindowPresentation(
   env: Record<string, string | undefined> = process.env,
   argv: readonly string[] = process.argv,
@@ -93,7 +102,7 @@ export function resolveDesktopShellWindowPresentation(
         : platform === "darwin"
           ? "hiddenInset"
           : "default",
-    transparent: !kiosk && platform === "darwin",
+    transparent: bottomBar && platform === "darwin",
   };
 }
 

@@ -28,7 +28,7 @@ summoned on demand.
 | Concern | Function | Default |
 | --- | --- | --- |
 | Bottom-bar (chat-overlay) shell is the resting surface | `shouldStartBottomBar()` (`desktop-bottom-bar-config.ts`) | **ON** (#10350); opt out with `ELIZA_DESKTOP_BOTTOM_BAR=0` |
-| Window presentation (frameless / transparent / titleBarStyle) | `resolveDesktopShellWindowPresentation()` | `bottom-bar` unless kiosk |
+| Window presentation (frameless / transparent / titleBarStyle) | `resolveDesktopShellWindowPresentation()` | `bottom-bar` unless kiosk; **transparency is scoped to the pill (macOS)** — the full dashboard and kiosk stay opaque, and no window gets a vibrancy frost, so nothing renders as a full-window glass sheet (#12184) |
 | Renderer told to render the overlay shell | `appendChatOverlayShellModeParam()` → `?shellMode=chat-overlay` | appended in `createMainWindow()` (`index.ts`) |
 | Bar geometry (anchored to work-area bottom edge) | `computeBottomBarFrame()` | 140px tall, full width |
 | Kiosk (fullscreen, exclusive) | `isKioskShellMode()` | opt-in; wins over bottom-bar |
