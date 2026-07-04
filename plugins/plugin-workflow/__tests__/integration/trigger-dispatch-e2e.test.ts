@@ -27,14 +27,6 @@
  *       domain artifact (#12362 WI-6/WI-7)
  */
 
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { PGlite } from "@electric-sql/pglite";
-import type { IAgentRuntime, Task, TaskWorker, UUID } from "@elizaos/core";
-import { stringToUuid } from "@elizaos/core";
-import { TaskService } from "../../../../packages/core/src/services/task.ts";
-import { drizzle } from "drizzle-orm/pglite";
 import {
   afterEach,
   beforeEach,
@@ -43,7 +35,13 @@ import {
   setDefaultTimeout,
   test,
 } from "bun:test";
-
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { PGlite } from "@electric-sql/pglite";
+import type { IAgentRuntime, Task, TaskWorker, UUID } from "@elizaos/core";
+import { stringToUuid } from "@elizaos/core";
+import { drizzle } from "drizzle-orm/pglite";
 import {
   executeTriggerTask,
   readTriggerRuns,
@@ -54,17 +52,7 @@ import {
   buildTriggerMetadata,
 } from "../../../../packages/agent/src/triggers/scheduling.ts";
 import type { NormalizedTriggerDraft } from "../../../../packages/agent/src/triggers/types.ts";
-import * as dbSchema from "../../src/db/schema";
-import {
-  EMBEDDED_WORKFLOW_SERVICE_TYPE,
-  EmbeddedWorkflowService,
-  TRIGGER_TASK_NAME,
-} from "../../src/services/embedded-workflow-service";
-import {
-  registerWorkflowDispatchService,
-  WORKFLOW_DISPATCH_SERVICE_TYPE,
-} from "../../src/services/workflow-dispatch";
-
+import { TaskService } from "../../../../packages/core/src/services/task.ts";
 // The "one clock, two consumers" architecture (root AGENTS.md): the core
 // TaskService that fires workflow triggers is the SAME clock that drives the
 // LifeOps ScheduledTask spine. Case (f) proves the second consumer produces a
@@ -98,6 +86,16 @@ import {
   type ScheduledTaskLogStore,
 } from "../../../plugin-scheduling/src/scheduled-task/state-log.ts";
 import type { GlobalPauseView } from "../../../plugin-scheduling/src/scheduled-task/types.ts";
+import * as dbSchema from "../../src/db/schema";
+import {
+  EMBEDDED_WORKFLOW_SERVICE_TYPE,
+  EmbeddedWorkflowService,
+  TRIGGER_TASK_NAME,
+} from "../../src/services/embedded-workflow-service";
+import {
+  registerWorkflowDispatchService,
+  WORKFLOW_DISPATCH_SERVICE_TYPE,
+} from "../../src/services/workflow-dispatch";
 
 setDefaultTimeout(60_000);
 
@@ -295,7 +293,10 @@ function makeRealScheduledTaskSpine(agentId: string): RealScheduledTaskSpine {
     activity: { hasSignalSince: () => false },
     subjectStore: { wasUpdatedSince: () => false },
     dispatcher: TestNoopScheduledTaskDispatcher,
-    newTaskId: () => `spine-task-${(taskSeq += 1)}`,
+    newTaskId: () => {
+      taskSeq += 1;
+      return `spine-task-${taskSeq}`;
+    },
     now: () => new Date(),
   });
   return { runner, logStore, agentId };
