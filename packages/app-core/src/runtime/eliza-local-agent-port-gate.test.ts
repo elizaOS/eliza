@@ -19,10 +19,7 @@ import { describe, expect, it } from "vitest";
  *      (desktop launcher / `eliza start` / server-only) still binds the port.
  */
 
-const ELIZA_SRC = readFileSync(
-  join(import.meta.dirname, "eliza.ts"),
-  "utf8",
-);
+const ELIZA_SRC = readFileSync(join(import.meta.dirname, "eliza.ts"), "utf8");
 
 /** Mirror of the gate expression in eliza.ts (kept identical on purpose). */
 function shouldSkipApiListen(

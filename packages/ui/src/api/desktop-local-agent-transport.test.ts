@@ -88,9 +88,9 @@ describe("desktopLocalAgentTransportForUrl (#12180)", () => {
       `${IPC_BASE}/api/health`,
     );
     expect(transport).not.toBeNull();
-    await expect(transport?.request(`${IPC_BASE}/api/health`, {})).rejects.toThrow(
-      /localAgentRequest is not registered/,
-    );
+    await expect(
+      transport?.request(`${IPC_BASE}/api/health`, {}),
+    ).rejects.toThrow(/localAgentRequest is not registered/);
   });
 
   it("forwards a POST body through the RPC handler", async () => {
@@ -174,7 +174,9 @@ describe("resolver order (#12180)", () => {
       // the relative order (local before http) holds for the first call site
       // because the import lines are alphabetized the same way. Assert on the
       // chain by scanning past the import block.
-      const chainStart = src.indexOf("await androidNativeAgentTransportForUrl(");
+      const chainStart = src.indexOf(
+        "await androidNativeAgentTransportForUrl(",
+      );
       const chainLocal = src.indexOf(
         "desktopLocalAgentTransportForUrl(",
         chainStart,

@@ -168,33 +168,29 @@ describe("startApiServer skipListen — real boot in a Bun subprocess (#12180)",
     expect(existsSync(HARNESS_PATH)).toBe(true);
   });
 
-  it(
-    "binds NO TCP port when skipListen is true, and DOES bind when it is unset",
-    async () => {
-      // Two distinct free ports so the two boots never collide.
-      const skipResult = await runBootHarness("skip", 39321);
-      if (!skipResult.ok) {
-        // Sparse checkout: server.ts's module graph needs the built dist +
-        // generated i18n data to boot under Bun. Do NOT claim behavioral
-        // coverage we didn't get — surface the reason and skip explicitly.
-        console.warn(
-          `[server-skip-listen] behavioral boot unavailable in this environment: ${skipResult.error}`,
-        );
-        return;
-      }
+  it("binds NO TCP port when skipListen is true, and DOES bind when it is unset", async () => {
+    // Two distinct free ports so the two boots never collide.
+    const skipResult = await runBootHarness("skip", 39321);
+    if (!skipResult.ok) {
+      // Sparse checkout: server.ts's module graph needs the built dist +
+      // generated i18n data to boot under Bun. Do NOT claim behavioral
+      // coverage we didn't get — surface the reason and skip explicitly.
+      console.warn(
+        `[server-skip-listen] behavioral boot unavailable in this environment: ${skipResult.error}`,
+      );
+      return;
+    }
 
-      expect(skipResult.mode).toBe("skip");
-      expect(skipResult.bound).toBe(false); // no listener bound
+    expect(skipResult.mode).toBe("skip");
+    expect(skipResult.bound).toBe(false); // no listener bound
 
-      // Non-vacuous control: without skipListen the same boot DOES bind, so the
-      // assertion above is a real guarantee, not a port that was never going to
-      // bind anyway.
-      const bindResult = await runBootHarness("bind", 39323);
-      expect(bindResult.ok).toBe(true);
-      if (bindResult.ok) {
-        expect(bindResult.bound).toBe(true);
-      }
-    },
-    240_000,
-  );
+    // Non-vacuous control: without skipListen the same boot DOES bind, so the
+    // assertion above is a real guarantee, not a port that was never going to
+    // bind anyway.
+    const bindResult = await runBootHarness("bind", 39323);
+    expect(bindResult.ok).toBe(true);
+    if (bindResult.ok) {
+      expect(bindResult.bound).toBe(true);
+    }
+  }, 240_000);
 });

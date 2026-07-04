@@ -5504,9 +5504,11 @@ export async function startApiServer(opts?: {
       state.signalPairingSessions.clear();
     }
     if (state.telegramAccountAuthSession) {
-      void Promise.resolve(state.telegramAccountAuthSession.stop()).catch(() => {
-        /* non-fatal */
-      });
+      void Promise.resolve(state.telegramAccountAuthSession.stop()).catch(
+        () => {
+          /* non-fatal */
+        },
+      );
       state.telegramAccountAuthSession = null;
     }
     wss.close();

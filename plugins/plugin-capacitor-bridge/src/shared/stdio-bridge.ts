@@ -20,17 +20,17 @@
 
 /** A single inbound request frame: `{ id?, method?, payload? }`. */
 export interface StdioBridgeRequestFrame {
-  id?: unknown;
-  method?: unknown;
-  payload?: unknown;
+	id?: unknown;
+	method?: unknown;
+	payload?: unknown;
 }
 
 /** A single outbound response frame written back per request. */
 export interface StdioBridgeResponseFrame {
-  id: unknown;
-  ok: boolean;
-  result?: unknown;
-  error?: string;
+	id: unknown;
+	ok: boolean;
+	result?: unknown;
+	error?: string;
 }
 
 /**
@@ -39,39 +39,39 @@ export interface StdioBridgeResponseFrame {
  * never swallows a handler failure into a success frame.
  */
 export type StdioBridgeRequestHandler = (
-  request: StdioBridgeRequestFrame,
+	request: StdioBridgeRequestFrame,
 ) => Promise<unknown>;
 
 export interface CreateStdioBridgeOptions {
-  /** Buffered request/response handler. Required. */
-  request: StdioBridgeRequestHandler;
-  /**
-   * Writes one outbound frame to the peer. The caller owns the actual transport
-   * (which stdout FD, whether stdout is reserved for the protocol, etc.).
-   */
-  writeFrame: (frame: StdioBridgeResponseFrame) => void;
-  /**
-   * Optional pre-dispatch hook consulted per input line. Return `true` to claim
-   * the line so the kernel skips request dispatch for it — used by iOS to route
-   * host-call result frames that share the same stdin pipe. Defaults to never
-   * claiming.
-   */
-  interceptLine?: (line: string) => boolean;
+	/** Buffered request/response handler. Required. */
+	request: StdioBridgeRequestHandler;
+	/**
+	 * Writes one outbound frame to the peer. The caller owns the actual transport
+	 * (which stdout FD, whether stdout is reserved for the protocol, etc.).
+	 */
+	writeFrame: (frame: StdioBridgeResponseFrame) => void;
+	/**
+	 * Optional pre-dispatch hook consulted per input line. Return `true` to claim
+	 * the line so the kernel skips request dispatch for it — used by iOS to route
+	 * host-call result frames that share the same stdin pipe. Defaults to never
+	 * claiming.
+	 */
+	interceptLine?: (line: string) => boolean;
 }
 
 export interface StdioBridge {
-  /**
-   * Feed one raw input line. Blank lines are ignored. Lines claimed by
-   * `interceptLine` are not dispatched. Otherwise the line is parsed as a JSON
-   * request frame and dispatched; a response frame is always written (parse
-   * errors and handler failures included).
-   */
-  handleLine: (line: string) => Promise<void>;
-  /**
-   * Serialized tail of all in-flight `handleLine` dispatches — await before
-   * teardown so no response is dropped.
-   */
-  drain: () => Promise<void>;
+	/**
+	 * Feed one raw input line. Blank lines are ignored. Lines claimed by
+	 * `interceptLine` are not dispatched. Otherwise the line is parsed as a JSON
+	 * request frame and dispatched; a response frame is always written (parse
+	 * errors and handler failures included).
+	 */
+	handleLine: (line: string) => Promise<void>;
+	/**
+	 * Serialized tail of all in-flight `handleLine` dispatches — await before
+	 * teardown so no response is dropped.
+	 */
+	drain: () => Promise<void>;
 }
 
 /**
@@ -81,55 +81,55 @@ export interface StdioBridge {
  * error-to-frame translation.
  */
 export function createStdioBridge(
-  options: CreateStdioBridgeOptions,
+	options: CreateStdioBridgeOptions,
 ): StdioBridge {
-  const { request, writeFrame, interceptLine } = options;
+	const { request, writeFrame, interceptLine } = options;
 
-  const writeError = (id: unknown, err: unknown): void => {
-    writeFrame({
-      id: id ?? null,
-      ok: false,
-      error: err instanceof Error ? err.message : String(err),
-    });
-  };
+	const writeError = (id: unknown, err: unknown): void => {
+		writeFrame({
+			id: id ?? null,
+			ok: false,
+			error: err instanceof Error ? err.message : String(err),
+		});
+	};
 
-  const dispatchLine = async (line: string): Promise<void> => {
-    if (!line.trim()) return;
+	const dispatchLine = async (line: string): Promise<void> => {
+		if (!line.trim()) return;
 
-    let parsed: StdioBridgeRequestFrame;
-    try {
-      parsed = JSON.parse(line) as StdioBridgeRequestFrame;
-    } catch (err) {
-      writeError(null, err);
-      return;
-    }
+		let parsed: StdioBridgeRequestFrame;
+		try {
+			parsed = JSON.parse(line) as StdioBridgeRequestFrame;
+		} catch (err) {
+			writeError(null, err);
+			return;
+		}
 
-    const id = parsed.id ?? null;
-    try {
-      const result = await request(parsed);
-      writeFrame({ id, ok: true, result });
-    } catch (err) {
-      writeError(id, err);
-    }
-  };
+		const id = parsed.id ?? null;
+		try {
+			const result = await request(parsed);
+			writeFrame({ id, ok: true, result });
+		} catch (err) {
+			writeError(id, err);
+		}
+	};
 
-  // Serialize dispatches so responses are written in request order and teardown
-  // can await the tail. A single failing dispatch never breaks the chain.
-  let pending: Promise<void> = Promise.resolve();
+	// Serialize dispatches so responses are written in request order and teardown
+	// can await the tail. A single failing dispatch never breaks the chain.
+	let pending: Promise<void> = Promise.resolve();
 
-  const handleLine = (line: string): Promise<void> => {
-    if (interceptLine?.(line)) return Promise.resolve();
-    const next = pending
-      .then(() => dispatchLine(line))
-      .catch((err) => {
-        writeError(null, err);
-      });
-    pending = next;
-    return next;
-  };
+	const handleLine = (line: string): Promise<void> => {
+		if (interceptLine?.(line)) return Promise.resolve();
+		const next = pending
+			.then(() => dispatchLine(line))
+			.catch((err) => {
+				writeError(null, err);
+			});
+		pending = next;
+		return next;
+	};
 
-  return {
-    handleLine,
-    drain: () => pending.catch(() => undefined),
-  };
+	return {
+		handleLine,
+		drain: () => pending.catch(() => undefined),
+	};
 }
