@@ -28,6 +28,12 @@ try {
   writeJson(path.join(tempRoot, "packages/foo/package.json"), {
     name: "@fixture/foo",
     scripts: { build: "echo build" },
+    dependencies: { "@fixture/bar": "workspace:*" },
+  });
+  writeJson(path.join(tempRoot, "packages/bar/package.json"), {
+    name: "@fixture/bar",
+    scripts: { build: "echo build" },
+    dependencies: { "@fixture/foo": "workspace:*" },
   });
   writeJson(path.join(tempRoot, "turbo.json"), {
     tasks: {
@@ -44,6 +50,29 @@ try {
   });
   const failOutput = `${failResult.stdout}\n${failResult.stderr}`;
   if (failResult.status === 0) {
+    console.error("expected direct workspace cycle audit to fail");
+    process.exit(1);
+  }
+  if (!failOutput.includes("@fixture/bar <-> @fixture/foo")) {
+    console.error(
+      "missing expected audit output: @fixture/bar <-> @fixture/foo",
+    );
+    console.error(failOutput);
+    process.exit(1);
+  }
+
+  writeJson(path.join(tempRoot, "packages/bar/package.json"), {
+    name: "@fixture/bar",
+    scripts: { build: "echo build" },
+  });
+
+  const phantomResult = spawnSync(process.execPath, [scriptPath], {
+    cwd: tempRoot,
+    env: { ...process.env, AUDIT_TURBO_REPO_ROOT: tempRoot },
+    encoding: "utf8",
+  });
+  const phantomOutput = `${phantomResult.stdout}\n${phantomResult.stderr}`;
+  if (phantomResult.status === 0) {
     console.error("expected phantom override audit to fail");
     process.exit(1);
   }
@@ -51,9 +80,9 @@ try {
     '@fixture/foo#typecheck — owner package does not define script "typecheck"',
     "@fixture/missing#build — owner package is not a workspace member",
   ]) {
-    if (!failOutput.includes(expected)) {
+    if (!phantomOutput.includes(expected)) {
       console.error(`missing expected audit output: ${expected}`);
-      console.error(failOutput);
+      console.error(phantomOutput);
       process.exit(1);
     }
   }
@@ -61,6 +90,11 @@ try {
   writeJson(path.join(tempRoot, "packages/foo/package.json"), {
     name: "@fixture/foo",
     scripts: { build: "echo build", typecheck: "echo typecheck" },
+    dependencies: { "@fixture/bar": "workspace:*" },
+  });
+  writeJson(path.join(tempRoot, "packages/bar/package.json"), {
+    name: "@fixture/bar",
+    scripts: { build: "echo build" },
   });
   writeJson(path.join(tempRoot, "packages/missing/package.json"), {
     name: "@fixture/missing",
