@@ -403,6 +403,7 @@ describe("dirty-block re-OCR — wired to captureRegion", () => {
     // The dirty rect should be inside the source frame and roughly near
     // (col=4, row=4) for a 16×16 grid on a 256×256 frame → ~(64, 64, 16, 16).
     const reg = captureRegionCalls[0]?.region;
+    if (!reg) throw new Error("expected dirty-region capture call");
     expect(reg.x).toBeGreaterThanOrEqual(60);
     expect(reg.x).toBeLessThanOrEqual(80);
     expect(reg.y).toBeGreaterThanOrEqual(60);
@@ -685,8 +686,10 @@ describe("live smoke — getCurrentScene on this host", () => {
   it("listDisplays returns at least one display with positive bounds", () => {
     const all = listDisplays();
     expect(all.length).toBeGreaterThan(0);
-    expect(all[0]?.bounds[2]).toBeGreaterThan(0);
-    expect(all[0]?.bounds[3]).toBeGreaterThan(0);
+    const firstDisplay = all[0];
+    if (!firstDisplay) throw new Error("expected at least one display");
+    expect(firstDisplay.bounds[2]).toBeGreaterThan(0);
+    expect(firstDisplay.bounds[3]).toBeGreaterThan(0);
   });
 });
 
