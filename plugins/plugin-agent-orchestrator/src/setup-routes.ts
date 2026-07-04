@@ -50,6 +50,7 @@ function codingAgentRouteHandler(): LegacyRouteHandler {
       try {
         await agentRuntime.getServiceLoadPromise("ACP_SUBPROCESS_SERVICE");
       } catch {
+        // error-policy:J4 service load failure degrades to downstream 503
         // Service start failed — downstream handlers will surface 503.
       }
     }

@@ -60,6 +60,7 @@ export async function handleIssueRoutes(
       });
       sendJson(res, issues);
     } catch (error) {
+      // error-policy:J1 route boundary — translate to structured HTTP 500
       sendError(
         res,
         error instanceof Error ? error.message : "Failed to list issues",
@@ -93,6 +94,7 @@ export async function handleIssueRoutes(
       });
       sendJson(res, issue, 201);
     } catch (error) {
+      // error-policy:J1 route boundary — translate to structured HTTP 500
       sendError(
         res,
         error instanceof Error ? error.message : "Failed to create issue",
@@ -118,6 +120,7 @@ export async function handleIssueRoutes(
       const issue = await ctx.workspaceService.getIssue(repo, issueNumber);
       sendJson(res, issue);
     } catch (error) {
+      // error-policy:J1 route boundary — translate to structured HTTP 500
       sendError(
         res,
         error instanceof Error ? error.message : "Failed to get issue",
@@ -153,6 +156,7 @@ export async function handleIssueRoutes(
       );
       sendJson(res, comment, 201);
     } catch (error) {
+      // error-policy:J1 route boundary — translate to structured HTTP 500
       sendError(
         res,
         error instanceof Error ? error.message : "Failed to add comment",
@@ -178,6 +182,7 @@ export async function handleIssueRoutes(
       const issue = await ctx.workspaceService.closeIssue(repo, issueNumber);
       sendJson(res, issue);
     } catch (error) {
+      // error-policy:J1 route boundary — translate to structured HTTP 500
       sendError(
         res,
         error instanceof Error ? error.message : "Failed to close issue",

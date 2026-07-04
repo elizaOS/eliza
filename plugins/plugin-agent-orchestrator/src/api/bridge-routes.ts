@@ -225,6 +225,8 @@ async function handlePost(
   try {
     body = await parseBody(req);
   } catch (error) {
+    // error-policy:J3 untrusted-input sanitizing; a malformed request body is an
+    // explicit invalid result (400), never a fabricated success.
     sendJson(
       res,
       {

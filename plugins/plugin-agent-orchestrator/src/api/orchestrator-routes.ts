@@ -108,6 +108,7 @@ async function parseOptionalBody(
   try {
     return await parseBody(req);
   } catch {
+    // error-policy:J3 unparseable request body → null; callers emit an explicit 400.
     return null;
   }
 }
@@ -153,6 +154,8 @@ export async function handleOrchestratorRoutes(
   try {
     return await dispatchOrchestratorRoutes(req, res, pathname, ctx);
   } catch (error) {
+    // error-policy:J1 single route boundary — any thrown service call becomes a
+    // 500 response instead of an unhandled rejection.
     if (!res.headersSent) {
       sendError(
         res,
@@ -381,6 +384,7 @@ async function dispatchOrchestratorRoutes(
       try {
         deleted = await service.deleteTask(taskId);
       } catch (error) {
+        // error-policy:J1 route boundary — service failure becomes a 500 response.
         sendError(
           res,
           error instanceof Error ? error.message : "Failed to delete task",
@@ -402,6 +406,7 @@ async function dispatchOrchestratorRoutes(
       try {
         task = await service.pauseTask(taskId);
       } catch (error) {
+        // error-policy:J1 route boundary — service failure becomes a 500 response.
         sendError(
           res,
           error instanceof Error ? error.message : "Failed to pause task",
@@ -434,6 +439,7 @@ async function dispatchOrchestratorRoutes(
       try {
         task = await service.archiveTask(taskId);
       } catch (error) {
+        // error-policy:J1 route boundary — service failure becomes a 500 response.
         sendError(
           res,
           error instanceof Error ? error.message : "Failed to archive task",
@@ -542,6 +548,8 @@ async function dispatchOrchestratorRoutes(
           verifier: LLM_GOAL_VERIFIER_NAME,
         })
         .catch((error: unknown) => {
+          // error-policy:J1 route boundary — validation failure becomes a 409 response;
+          // the undefined sentinel is checked below to end the request.
           sendError(
             res,
             error instanceof Error ? error.message : "Validation failed",
@@ -575,6 +583,8 @@ async function dispatchOrchestratorRoutes(
           humanOverride: body.humanOverride === true,
         })
         .catch((error: unknown) => {
+          // error-policy:J1 route boundary — validation failure becomes a 409 response;
+          // the undefined sentinel is checked below to end the request.
           sendError(
             res,
             error instanceof Error ? error.message : "Validation failed",
@@ -626,6 +636,7 @@ async function dispatchOrchestratorRoutes(
             metadata: isRecord(body.metadata) ? body.metadata : undefined,
           });
         } catch (error) {
+          // error-policy:J1 route boundary — failure becomes a 409/500 response.
           sendError(
             res,
             error instanceof Error
@@ -673,6 +684,7 @@ async function dispatchOrchestratorRoutes(
           agent: asAgentOptions(body.agent),
         });
       } catch (error) {
+        // error-policy:J1 route boundary — failure becomes a 409/500 response.
         sendError(
           res,
           error instanceof Error ? error.message : "Failed to retry turn",
@@ -724,6 +736,7 @@ async function dispatchOrchestratorRoutes(
           agent: asAgentOptions(body.agent),
         });
       } catch (error) {
+        // error-policy:J1 route boundary — failure becomes a 409/500 response.
         sendError(
           res,
           error instanceof Error ? error.message : "Failed to rerun from event",
@@ -756,6 +769,7 @@ async function dispatchOrchestratorRoutes(
           agent: asAgentOptions(body.agent),
         });
       } catch (error) {
+        // error-policy:J1 route boundary — failure becomes a 409/500 response.
         sendError(
           res,
           error instanceof Error ? error.message : "Failed to restart task",
@@ -798,6 +812,7 @@ async function dispatchOrchestratorRoutes(
           agent: asAgentOptions(body.agent),
         });
       } catch (error) {
+        // error-policy:J1 route boundary — failure becomes a 409/500 response.
         sendError(
           res,
           error instanceof Error
@@ -907,6 +922,7 @@ async function dispatchOrchestratorRoutes(
             task: asString(body.task),
           });
         } catch (error) {
+          // error-policy:J1 route boundary — spawn failure becomes a 500 response.
           sendError(
             res,
             error instanceof Error ? error.message : "Failed to spawn agent",
@@ -932,6 +948,7 @@ async function dispatchOrchestratorRoutes(
         try {
           stopped = await service.stopTaskAgent(taskId, sessionId);
         } catch (error) {
+          // error-policy:J1 route boundary — stop failure becomes a 500 response.
           sendError(
             res,
             error instanceof Error ? error.message : "Failed to stop agent",

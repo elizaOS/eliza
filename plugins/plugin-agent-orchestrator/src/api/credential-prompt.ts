@@ -229,6 +229,7 @@ export async function emitCredentialPrompt(input: {
     );
     return true;
   } catch (error) {
+    // error-policy:J4 best-effort chat delivery unavailable → warn + honest false; credential request itself proceeds
     // Posting the prompt is a non-critical side-effect of the credential
     // bridge; never let a delivery failure break the request itself.
     logger.warn(
@@ -269,6 +270,7 @@ export async function emitCredentialResolved(input: {
     );
     return true;
   } catch (error) {
+    // error-policy:J4 best-effort follow-up delivery unavailable → warn + honest false
     logger.warn(
       `[credential-prompt] failed to post resolution follow-up: ${
         error instanceof Error ? error.message : String(error)

@@ -56,6 +56,8 @@ export async function parseBody(
       try {
         resolve(body ? JSON.parse(body) : {});
       } catch {
+        // error-policy:J3 untrusted-input sanitizing; malformed JSON rejects with
+        // a typed invalid-body error, never a fabricated empty object.
         reject(new Error("Invalid JSON body"));
       }
     });

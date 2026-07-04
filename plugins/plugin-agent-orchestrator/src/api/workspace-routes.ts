@@ -68,6 +68,7 @@ export async function handleWorkspaceRoutes(
         201,
       );
     } catch (error) {
+      // error-policy:J1 route boundary → 500 structured error response
       sendError(
         res,
         error instanceof Error
@@ -92,6 +93,7 @@ export async function handleWorkspaceRoutes(
       const status = await ctx.workspaceService.getStatus(workspaceId);
       sendJson(res, status);
     } catch (error) {
+      // error-policy:J1 route boundary → 500 structured error response
       sendError(
         res,
         error instanceof Error ? error.message : "Failed to get workspace",
@@ -121,6 +123,7 @@ export async function handleWorkspaceRoutes(
 
       sendJson(res, result);
     } catch (error) {
+      // error-policy:J1 route boundary → 500 structured error response
       sendError(
         res,
         error instanceof Error ? error.message : "Failed to commit",
@@ -151,6 +154,7 @@ export async function handleWorkspaceRoutes(
 
       sendJson(res, result);
     } catch (error) {
+      // error-policy:J1 route boundary → 500 structured error response
       sendError(
         res,
         error instanceof Error ? error.message : "Failed to push",
@@ -189,6 +193,7 @@ export async function handleWorkspaceRoutes(
 
       sendJson(res, result, 201);
     } catch (error) {
+      // error-policy:J1 route boundary → 500 structured error response
       sendError(
         res,
         error instanceof Error ? error.message : "Failed to create PR",
@@ -211,6 +216,7 @@ export async function handleWorkspaceRoutes(
       await ctx.workspaceService.removeWorkspace(workspaceId);
       sendJson(res, { success: true, workspaceId });
     } catch (error) {
+      // error-policy:J1 route boundary → 500 structured error response
       sendError(
         res,
         error instanceof Error ? error.message : "Failed to remove workspace",

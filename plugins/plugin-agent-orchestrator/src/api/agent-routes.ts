@@ -110,6 +110,8 @@ async function resolveSafeVenvPath(
       );
     }
   } catch (err) {
+    // error-policy:J3 expected-ENOENT (venv candidate not created yet) validates
+    // the parent instead; any other errno rethrows.
     const maybeErr = err as NodeJS.ErrnoException;
     if (maybeErr.code !== "ENOENT") throw err;
     const parentReal = await realpath(path.dirname(resolved));
@@ -128,6 +130,7 @@ async function fileExists(filePath: string): Promise<boolean> {
     await access(filePath);
     return true;
   } catch {
+    // error-policy:J3 existence probe — inaccessible path is a typed "absent".
     return false;
   }
 }
@@ -146,6 +149,7 @@ async function resolveRequirementsPath(
       const candidateReal = await realpath(candidate);
       if (isPathInside(workdirReal, candidateReal)) return candidateReal;
     } catch {
+      // error-policy:J3 malformed/inaccessible candidate is treated as not-a-match.
       // Ignore malformed candidate and keep scanning.
     }
   }
@@ -263,6 +267,7 @@ export async function handleAgentRoutes(
         [];
       sendJson(res, results);
     } catch (error) {
+      // error-policy:J1 route boundary — service failure becomes a 500 response.
       sendError(
         res,
         error instanceof Error ? error.message : "Preflight check failed",
@@ -328,6 +333,7 @@ export async function handleAgentRoutes(
         byAgentType,
       });
     } catch (error) {
+      // error-policy:J1 route boundary — service failure becomes a 500 response.
       sendError(
         res,
         error instanceof Error ? error.message : "Failed to load metrics",
@@ -383,6 +389,7 @@ export async function handleAgentRoutes(
       );
       sendJson(res, { success: true, scratch });
     } catch (error) {
+      // error-policy:J1 route boundary — maps failure to 404/500 response.
       const message = error instanceof Error ? error.message : String(error);
       const status = message.includes("not found") ? 404 : 500;
       sendError(res, message, status);
@@ -421,6 +428,7 @@ export async function handleAgentRoutes(
         files: [],
       });
     } catch (error) {
+      // error-policy:J1 route boundary — service failure becomes a 500 response.
       sendError(
         res,
         error instanceof Error
@@ -440,6 +448,7 @@ export async function handleAgentRoutes(
       const presets = listPresets();
       sendJson(res, presets);
     } catch (error) {
+      // error-policy:J1 route boundary — import/list failure becomes a 500 response.
       sendError(
         res,
         error instanceof Error ? error.message : "Failed to list presets",
@@ -490,6 +499,7 @@ export async function handleAgentRoutes(
     try {
       sendJson(res, { agentType, preset, transport: "acp" });
     } catch (error) {
+      // error-policy:J1 route boundary — service failure becomes a 500 response.
       sendError(
         res,
         error instanceof Error ? error.message : "Failed to generate config",
@@ -511,6 +521,7 @@ export async function handleAgentRoutes(
       const sessions = await ctx.acpService.listSessions();
       sendJson(res, sessions);
     } catch (error) {
+      // error-policy:J1 route boundary — service failure becomes a 500 response.
       sendError(
         res,
         error instanceof Error ? error.message : "Failed to list agents",
@@ -552,6 +563,7 @@ export async function handleAgentRoutes(
         try {
           workdir = await resolveAllowedWorkdir(workdir);
         } catch (error) {
+          // error-policy:J1 route boundary — invalid workdir becomes a 403 response.
           sendError(
             res,
             error instanceof Error ? error.message : "invalid workdir",
@@ -577,6 +589,8 @@ export async function handleAgentRoutes(
         try {
           await runBenchmarkPreflight(workdir);
         } catch (preflightError) {
+          // error-policy:J4 benchmark preflight is a best-effort venv pre-warm;
+          // failure degrades to on-demand install and the spawn still proceeds.
           logger.warn(
             `[coding-agent] benchmark preflight failed for ${workdir}: ${
               preflightError instanceof Error
@@ -662,6 +676,7 @@ export async function handleAgentRoutes(
         201,
       );
     } catch (error) {
+      // error-policy:J1 route boundary — spawn failure becomes a 500 response.
       sendError(
         res,
         error instanceof Error ? error.message : "Failed to spawn agent",
@@ -743,6 +758,7 @@ export async function handleAgentRoutes(
         return true;
       }
     } catch (error) {
+      // error-policy:J1 route boundary — send failure becomes a 500 response.
       sendError(
         res,
         error instanceof Error ? error.message : "Failed to send input",
@@ -766,6 +782,7 @@ export async function handleAgentRoutes(
       await ctx.acpService.stopSession(sessionId);
       sendJson(res, { success: true, sessionId });
     } catch (error) {
+      // error-policy:J1 route boundary — stop failure becomes a 500 response.
       sendError(
         res,
         error instanceof Error ? error.message : "Failed to stop agent",
@@ -796,6 +813,7 @@ export async function handleAgentRoutes(
       const output = await ctx.acpService.getSessionOutput?.(sessionId, lines);
       sendJson(res, { sessionId, output });
     } catch (error) {
+      // error-policy:J1 route boundary — service failure becomes a 500 response.
       sendError(
         res,
         error instanceof Error ? error.message : "Failed to get output",
@@ -820,6 +838,7 @@ export async function handleAgentRoutes(
       const output = await ctx.acpService.getSessionOutput(sessionId, 500);
       sendJson(res, { sessionId, output });
     } catch (error) {
+      // error-policy:J1 route boundary — service failure becomes a 500 response.
       sendError(
         res,
         error instanceof Error
