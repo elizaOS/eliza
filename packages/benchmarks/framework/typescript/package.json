@@ -9,7 +9,15 @@
     "bench:real-llm": "LOG_LEVEL=${LOG_LEVEL:-fatal} bun run src/bench.ts --real-llm",
     "bench:real-llm:quick": "LOG_LEVEL=${LOG_LEVEL:-fatal} bun run src/bench.ts --real-llm --scenarios=single-message,conversation-10",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format .",
     "typecheck": "tsgo --noEmit",
-    "build": "bun run typecheck"
+    "check": "bun run typecheck && bun run lint:check && bun run format:check"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-cli-inference": "workspace:*",
+    "@elizaos/plugin-openai": "workspace:*"
   }
 }
