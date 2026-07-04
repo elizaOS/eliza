@@ -24,12 +24,13 @@ jobs:
     env:
       # Baseline CI is secret-free. Live/provider-key E2E runs in dedicated
       # opt-in or post-merge workflows, not in the PR test job.
-      TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
-      TURBO_TEAM: ${{ vars.TURBO_TEAM }}
-      TURBO_CACHE: remote:rw
       PGLITE_WASM_MODE: node
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          # Full history so `turbo run typecheck --affected` can resolve the PR
+          # merge base (#12341); a shallow clone degrades to typechecking all.
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
@@ -53,7 +54,16 @@ jobs:
       - name: Build packages
         run: bun run build:core
 
-      - name: Run typecheck
+      # PR lane: typecheck only the merge base's dependency cone; on push to
+      # main typecheck the whole workspace (#12341).
+      - name: Run typecheck (affected — PR)
+        if: github.event_name == 'pull_request'
+        run: NODE_OPTIONS='--max-old-space-size=8192' node packages/scripts/run-turbo.mjs run typecheck --concurrency=8 --affected
+        env:
+          TURBO_SCM_BASE: ${{ github.event.pull_request.base.sha }}
+
+      - name: Run typecheck (full — push)
+        if: github.event_name != 'pull_request'
         run: bun run typecheck
 
       - name: Run tests
@@ -83,10 +93,6 @@ jobs:
     if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref_name == 'main')
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    env:
-      TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
-      TURBO_TEAM: ${{ vars.TURBO_TEAM }}
-      TURBO_CACHE: remote:rw
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
@@ -159,10 +165,6 @@ jobs:
     if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref_name == 'main')
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    env:
-      TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
-      TURBO_TEAM: ${{ vars.TURBO_TEAM }}
-      TURBO_CACHE: remote:rw
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
@@ -193,10 +195,6 @@ jobs:
     if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref_name == 'main')
     runs-on: ubuntu-latest
     timeout-minutes: 25
-    env:
-      TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
-      TURBO_TEAM: ${{ vars.TURBO_TEAM }}
-      TURBO_CACHE: remote:rw
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 

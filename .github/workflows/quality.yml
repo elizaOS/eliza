@@ -253,14 +253,14 @@ jobs:
     name: Develop Gate (lint)
     runs-on: ubuntu-24.04
     timeout-minutes: 25
-    env:
-      TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
-      TURBO_TEAM: ${{ vars.TURBO_TEAM }}
-      TURBO_CACHE: remote:rw
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           submodules: false
+          # Full history so `turbo run lint --affected` can resolve the PR's
+          # merge base (#12341); on a shallow clone turbo safely degrades to
+          # linting the whole graph.
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
@@ -278,5 +278,16 @@ jobs:
           skip-avatar-clone: "true"
           no-vision-deps: "true"
 
-      - name: Run lint
+      # PR lane: lint only the packages in the merge base's dependency cone; on
+      # push/merge_group lint the whole graph (exhaustive + turbo cache seeding).
+      # Turbo re-derives per-task hashes, so affected scoping never under-lints a
+      # genuinely changed package (#12341).
+      - name: Run lint (affected — PR)
+        if: github.event_name == 'pull_request'
+        run: node packages/scripts/run-turbo.mjs run lint --affected
+        env:
+          TURBO_SCM_BASE: ${{ github.event.pull_request.base.sha }}
+
+      - name: Run lint (full — push/merge_group)
+        if: github.event_name != 'pull_request'
         run: bun run lint

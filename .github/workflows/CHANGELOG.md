@@ -4,6 +4,31 @@ This changelog tracks meaningful CI policy and workflow-architecture changes.
 It is intentionally scoped to `.github/workflows` so product/package changelogs
 do not have to carry CI-only history.
 
+## 2026-07-04
+
+### Changed
+
+- Migrated the whole repo off the Vercel SaaS Turbo remote cache onto the
+  GitHub-native cache (#12341, epic #12191 phase 4). Removed every
+  `TURBO_TOKEN` / `TURBO_TEAM` / `TURBO_CACHE: remote:rw` env from all
+  workflows (108 lines across 11 files) and routed `setup-bun-workspace`'s
+  Turbo cache through the pinned `turbo-cache-github` shim, whose single
+  per-hash key replaces the former per-job-name key that fragmented the cache
+  across ~30 job names.
+
+  Why: project guidance is GitHub-native caching only; the SaaS env was
+  redundant with the `.turbo` `actions/cache` layer that already ran in the
+  shared setup action. `ci-workflow-dedup-contract.mjs` now **forbids** the
+  SaaS env anywhere and **requires** the GitHub-native cache on the publish
+  paths (nightly/release) — the inverse of its previous assertion, which
+  pinned the SaaS wiring.
+
+- PR-lane `typecheck` (`ci.yaml`) and `lint` (`quality.yml`) now run through
+  `turbo --affected` scoped to the PR merge base (`TURBO_SCM_BASE`), with full
+  history fetched so scoping resolves; `push`/`merge_group` still run the full
+  graph. A shallow clone degrades to running everything, so scoping never
+  under-checks.
+
 ## 2026-06-29
 
 ### Changed

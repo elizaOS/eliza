@@ -46,29 +46,16 @@ inputs:
 runs:
   using: "composite"
   steps:
-    # Persist Turbo's *local* filesystem cache across runs using GitHub Actions
-    # cache (free, no third-party SaaS remote cache). Turbo caches typecheck /
-    # build / lint / format:check results keyed by task inputs, so unchanged
-    # packages are replayed from cache instead of rerun — which keeps the full
-    # 14-way typecheck off the runner (it was OOM/SIGTERM-killing the test job on
-    # cold runs). The primary key is derived from Turbo-relevant content instead
-    # of github.sha so it can hit across commits while still rotating after real
-    # input changes; Turbo's own task hashes still decide whether each restored
-    # cache entry is reusable. Cache failures are non-fatal; a miss just means no
-    # speedup.
-    - name: Compute Turbo cache key
-      id: turbo_cache_key
-      shell: bash
-      run: node packages/scripts/turbo-cache-key.mjs --github-output
-
-    - name: Restore Turbo cache (GitHub Actions)
-      uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
-      with:
-        path: .turbo
-        key: turbo-${{ runner.os }}-${{ github.job }}-${{ steps.turbo_cache_key.outputs.turbo_cache_key }}
-        restore-keys: |
-          turbo-${{ runner.os }}-${{ github.job }}-
-          turbo-${{ runner.os }}-
+    # Persist Turbo's local filesystem cache (.turbo) through the pinned
+    # GitHub-native shim (#12341) — the single Turbo cache regime, replacing the
+    # Vercel SaaS remote cache. The shim keys on the deterministic
+    # turbo-cache-key hash with no github.job fragment, so one entry is shared
+    # across every job instead of the ~30-way fragmentation the old per-job key
+    # caused; Turbo re-validates task hashes on restore, so a cross-job hit is
+    # always safe. This keeps the full 14-way typecheck off the runner on warm
+    # caches (cold ran it OOM/SIGTERM). No SaaS, no secrets; a miss is non-fatal.
+    - name: Restore Turbo cache (GitHub-native)
+      uses: ./.github/actions/turbo-cache-github
 
     - name: Setup Python
       if: ${{ inputs.setup-python == 'true' }}

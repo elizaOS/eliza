@@ -43,9 +43,6 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     env:
-      TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
-      TURBO_TEAM: ${{ vars.TURBO_TEAM }}
-      TURBO_CACHE: remote:rw
       # Keyless: the ui-smoke stub is forced when CI=true (shouldForceStubStack).
       ELIZA_UI_SMOKE_FORCE_STUB: "1"
       ELIZA_AUDIT_APP_STRICT: ${{ github.event.inputs.strict == 'true' && '1' || '0' }}

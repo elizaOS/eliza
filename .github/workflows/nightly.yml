@@ -26,14 +26,6 @@ env:
   NODE_OPTIONS: "--max-old-space-size=4096"
   BUN_VERSION: "canary"
   NODE_VERSION: "24.15.0"
-  # Share Turbo's remote cache across the nightly build invocations
-  # (build-and-test, the desktop matrix, publish-npm) so unchanged packages
-  # replay from the same cache ci.yaml/test.yml populate. No-op on forks and
-  # when the secret is absent (Turbo falls back to the local .turbo cache that
-  # setup-bun-workspace already restores).
-  TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
-  TURBO_TEAM: ${{ vars.TURBO_TEAM }}
-  TURBO_CACHE: remote:rw
 
 permissions:
   contents: write

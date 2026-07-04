@@ -108,9 +108,6 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
-      TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
-      TURBO_TEAM: ${{ vars.TURBO_TEAM }}
-      TURBO_CACHE: remote:rw
       PGLITE_WASM_MODE: node
       # The TUI e2e capture test writes its .cast / viewport / scrollback
       # artifacts here during `test:server`; the upload step below attaches them.
@@ -240,10 +237,6 @@ jobs:
     if: github.event_name != 'pull_request' || needs.changes.outputs.client == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 60
-    env:
-      TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
-      TURBO_TEAM: ${{ vars.TURBO_TEAM }}
-      TURBO_CACHE: remote:rw
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
@@ -410,9 +403,6 @@ jobs:
       matrix:
         shard: [1, 2, 3, 4]
     env:
-      TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
-      TURBO_TEAM: ${{ vars.TURBO_TEAM }}
-      TURBO_CACHE: remote:rw
       TEST_SHARD: ${{ matrix.shard }}/4
       # Share compiled rust artifacts across all plugin crates so the
       # `elizaos = "2.0.0"` crate (and its sqlx/hyper/etc transitive deps)
@@ -523,9 +513,6 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     env:
-      TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
-      TURBO_TEAM: ${{ vars.TURBO_TEAM }}
-      TURBO_CACHE: remote:rw
       PGLITE_WASM_MODE: node
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
@@ -606,9 +593,6 @@ jobs:
       XAI_API_KEY: ""
       NVIDIA_API_KEY: ""
       ELIZAOS_CLOUD_API_KEY: ""
-      TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
-      TURBO_TEAM: ${{ vars.TURBO_TEAM }}
-      TURBO_CACHE: remote:rw
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
@@ -669,9 +653,6 @@ jobs:
       XAI_API_KEY: ""
       NVIDIA_API_KEY: ""
       ELIZAOS_CLOUD_API_KEY: ""
-      TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
-      TURBO_TEAM: ${{ vars.TURBO_TEAM }}
-      TURBO_CACHE: remote:rw
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
@@ -747,9 +728,6 @@ jobs:
       XAI_API_KEY: ""
       NVIDIA_API_KEY: ""
       ELIZAOS_CLOUD_API_KEY: ""
-      TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
-      TURBO_TEAM: ${{ vars.TURBO_TEAM }}
-      TURBO_CACHE: remote:rw
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
@@ -809,9 +787,6 @@ jobs:
       XAI_API_KEY: ""
       NVIDIA_API_KEY: ""
       ELIZAOS_CLOUD_API_KEY: ""
-      TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
-      TURBO_TEAM: ${{ vars.TURBO_TEAM }}
-      TURBO_CACHE: remote:rw
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
@@ -957,10 +932,6 @@ jobs:
     outputs:
       skip: ${{ steps.cloud.outputs.skip }}
       capability_skip: ${{ steps.cloud.outputs.capability_skip }}
-    env:
-      TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
-      TURBO_TEAM: ${{ vars.TURBO_TEAM }}
-      TURBO_CACHE: remote:rw
     steps:
       - name: Check cloud secrets
         id: cloud
@@ -1089,10 +1060,6 @@ jobs:
     timeout-minutes: 45
     outputs:
       skip: ${{ steps.providers.outputs.skip }}
-    env:
-      TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
-      TURBO_TEAM: ${{ vars.TURBO_TEAM }}
-      TURBO_CACHE: remote:rw
     steps:
       - name: Check provider endpoint secrets
         id: providers
@@ -1216,9 +1183,6 @@ jobs:
     timeout-minutes: 15
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
-      TURBO_TEAM: ${{ vars.TURBO_TEAM }}
-      TURBO_CACHE: remote:rw
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
