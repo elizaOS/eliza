@@ -20,8 +20,8 @@
  *     construct their own store or call `init()` again.
  */
 
-import { resolveStateDir } from "@elizaos/core";
 import path from "node:path";
+import { resolveStateDir } from "@elizaos/core";
 import { VoiceProfileStore } from "../profile-store";
 
 /** Canonical on-disk root for voice profiles under the resolved state dir. */

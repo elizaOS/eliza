@@ -309,7 +309,9 @@ export class VoiceAttributionPipeline {
 					...(init.startedAtMs !== undefined
 						? { startedAtMs: init.startedAtMs }
 						: {}),
-					...(args.endedAtMs !== undefined ? { endedAtMs: args.endedAtMs } : {}),
+					...(args.endedAtMs !== undefined
+						? { endedAtMs: args.endedAtMs }
+						: {}),
 					...(args.signal ? { signal: args.signal } : {}),
 				};
 				try {
