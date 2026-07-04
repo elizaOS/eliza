@@ -8,6 +8,7 @@ import type {
 import {
   ChannelType,
   createMessageMemory,
+  logger,
   ModelType,
   Service,
 } from "@elizaos/core";
@@ -69,11 +70,11 @@ export class XRSessionService extends Service {
 
     this.wss.on("connection", (ws: WebSocket) => this.onConnect(runtime, ws));
     this.wss.on("error", (err: Error) =>
-      console.error("[plugin-xr] WebSocket server error:", err),
+      logger.error("[XRSessionService] WebSocket server error:", String(err)),
     );
 
-    console.info(
-      `[plugin-xr] WebSocket server listening on ws://localhost:${port}`,
+    logger.info(
+      `[XRSessionService] WebSocket server listening on ws://localhost:${port}`,
     );
   }
 
@@ -194,7 +195,7 @@ export class XRSessionService extends Service {
           this.handleTextMessage(runtime, connId, ws, raw);
         }
       } catch (err) {
-        console.error("[plugin-xr] message handler error:", err);
+        logger.error("[XRSessionService] message handler error:", String(err));
       }
     });
 
@@ -203,11 +204,11 @@ export class XRSessionService extends Service {
       this.audioPipeline.clear(connId);
       this.visionPipeline.clear(connId);
       this.connections.delete(connId);
-      console.info(`[plugin-xr] device disconnected: ${connId}`);
+      logger.info(`[XRSessionService] device disconnected: ${connId}`);
     });
 
     ws.on("error", (err: Error) =>
-      console.error(`[plugin-xr] ws error on ${connId}:`, err),
+      logger.error(`[XRSessionService] ws error on ${connId}:`, String(err)),
     );
   }
 
@@ -233,7 +234,7 @@ export class XRSessionService extends Service {
       this.connections.set(connId, conn);
       ws.send(JSON.stringify({ type: "ready", sessionId: connId }));
       void this.ensureEntities(runtime, conn);
-      console.info(`[plugin-xr] ${msg.deviceType} connected: ${connId}`);
+      logger.info(`[XRSessionService] ${msg.deviceType} connected: ${connId}`);
       return;
     }
 
@@ -243,18 +244,18 @@ export class XRSessionService extends Service {
     }
 
     if (msg.type === "view_ready") {
-      console.info(`[plugin-xr] view ready on ${connId}: ${msg.viewId}`);
+      logger.info(`[XRSessionService] view ready on ${connId}: ${msg.viewId}`);
       return;
     }
 
     if (msg.type === "view_closed") {
-      console.info(`[plugin-xr] view closed on ${connId}: ${msg.viewId}`);
+      logger.info(`[XRSessionService] view closed on ${connId}: ${msg.viewId}`);
       return;
     }
 
     if (msg.type === "view_event") {
-      console.info(
-        `[plugin-xr] view event on ${connId}:`,
+      logger.info(
+        `[XRSessionService] view event on ${connId}:`,
         msg.viewId,
         msg.event,
       );
@@ -338,7 +339,7 @@ export class XRSessionService extends Service {
           : Buffer.from(audio as ArrayBuffer);
         this.sendAudio(connectionId, audioBuf);
       } catch (err) {
-        console.error("[plugin-xr] TTS error:", err);
+        logger.error("[XRSessionService] TTS error:", String(err));
       }
 
       // Persist agent response as memory
@@ -382,7 +383,7 @@ export class XRSessionService extends Service {
       await runtime.addParticipant(conn.entityId, conn.roomId);
       await runtime.addParticipant(runtime.agentId, conn.roomId);
     } catch (err) {
-      console.error("[plugin-xr] entity setup error:", err);
+      logger.error("[XRSessionService] entity setup error:", String(err));
     }
   }
 }

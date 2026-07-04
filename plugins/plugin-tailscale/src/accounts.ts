@@ -62,6 +62,7 @@ function parseAccountsJson(raw: string | undefined): RawAccountRecord[] {
         }));
     }
   } catch {
+    // error-policy:J3 malformed TAILSCALE_ACCOUNTS config JSON is untrusted input; empty list is the explicit "no accounts configured" signal.
     return [];
   }
   return [];

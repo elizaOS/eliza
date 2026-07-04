@@ -129,6 +129,7 @@ function todayIsoWithLocalHHMM(
     const atMs = localDate.getTime() - offsetMinutes * 60_000;
     return { atIso: new Date(atMs).toISOString() };
   } catch {
+    // error-policy:J3 an invalid tz makes Intl.DateTimeFormat throw RangeError; null is the explicit "unresolvable" signal callers handle.
     return null;
   }
 }

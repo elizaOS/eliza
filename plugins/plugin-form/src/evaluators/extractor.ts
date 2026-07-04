@@ -278,7 +278,7 @@ export const formEvaluator: Evaluator<
   schema: buildFormExtractorSchema(),
 
   async shouldRun({ runtime, message }) {
-    const formService = runtime.getService("FORM") as FormService | null;
+    const formService = runtime.getService<FormService>("FORM");
     if (!formService) return false;
 
     const entityId = message.entityId as UUID | undefined;
@@ -296,7 +296,7 @@ export const formEvaluator: Evaluator<
   },
 
   async prepare({ runtime, message }) {
-    const formService = runtime.getService("FORM") as FormService | null;
+    const formService = runtime.getService<FormService>("FORM");
     if (!formService) {
       throw new Error("FormService not found in prepare()");
     }

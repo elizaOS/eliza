@@ -7,6 +7,14 @@
  */
 import type { IAgentRuntime } from "@elizaos/core";
 
+// runtime.getSetting returns string | boolean | number | null; LINE settings are
+// always string-valued, so read them through this narrowing boundary instead of
+// an imprecise `as string` cast that would let a boolean/number reach `.trim()`.
+function getStringSetting(runtime: IAgentRuntime, key: string): string | undefined {
+  const value = runtime.getSetting(key);
+  return typeof value === "string" ? value : undefined;
+}
+
 /**
  * Default account identifier used when no specific account is configured
  */
@@ -151,7 +159,7 @@ export function listLineAccountIds(runtime: IAgentRuntime): string[] {
   const ids = new Set<string>();
 
   // Add default account if configured at base level
-  const envToken = runtime.getSetting("LINE_CHANNEL_ACCESS_TOKEN") as string | undefined;
+  const envToken = getStringSetting(runtime, "LINE_CHANNEL_ACCESS_TOKEN");
   if (config.channelAccessToken?.trim() || config.tokenFile || envToken?.trim()) {
     ids.add(DEFAULT_ACCOUNT_ID);
   }
@@ -220,7 +228,7 @@ export function resolveLineToken(runtime: IAgentRuntime, accountId: string): Lin
     }
 
     // Check environment/runtime settings
-    const envToken = runtime.getSetting("LINE_CHANNEL_ACCESS_TOKEN") as string | undefined;
+    const envToken = getStringSetting(runtime, "LINE_CHANNEL_ACCESS_TOKEN");
     if (envToken?.trim()) {
       return { token: envToken.trim(), source: "env" };
     }
@@ -247,7 +255,7 @@ export function resolveLineSecret(runtime: IAgentRuntime, accountId: string): st
       return multiConfig.channelSecret.trim();
     }
 
-    const envSecret = runtime.getSetting("LINE_CHANNEL_SECRET") as string | undefined;
+    const envSecret = getStringSetting(runtime, "LINE_CHANNEL_SECRET");
     if (envSecret?.trim()) {
       return envSecret.trim();
     }
@@ -272,8 +280,8 @@ function mergeLineAccountConfig(runtime: IAgentRuntime, accountId: string): Line
   const accountConfig = getAccountConfig(runtime, accountId) ?? {};
 
   // Get environment/runtime settings for the base config
-  const envDmPolicy = runtime.getSetting("LINE_DM_POLICY") as string | undefined;
-  const envGroupPolicy = runtime.getSetting("LINE_GROUP_POLICY") as string | undefined;
+  const envDmPolicy = getStringSetting(runtime, "LINE_DM_POLICY");
+  const envGroupPolicy = getStringSetting(runtime, "LINE_GROUP_POLICY");
 
   const envConfig: LineAccountConfig = {
     dmPolicy: envDmPolicy as LineAccountConfig["dmPolicy"] | undefined,

@@ -47,6 +47,7 @@ function parseAccountsJson(runtime: IAgentRuntime): Record<string, MatrixAccount
       ? (parsed as Record<string, MatrixAccountConfig>)
       : {};
   } catch {
+    // error-policy:J3 malformed MATRIX_ACCOUNTS JSON — no accounts configured, not a fabricated result.
     return {};
   }
 }

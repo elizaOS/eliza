@@ -48,6 +48,7 @@ function parseAccountsJson(runtime: IAgentRuntime): Record<string, InstagramAcco
       ? (parsed as Record<string, InstagramAccountConfig>)
       : {};
   } catch {
+    // error-policy:J3 malformed INSTAGRAM_ACCOUNTS env JSON yields no extra accounts
     return {};
   }
 }

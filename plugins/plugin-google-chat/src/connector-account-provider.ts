@@ -40,6 +40,7 @@ function extractServiceAccountEmail(serviceAccount?: string): string | undefined
     const parsed = JSON.parse(serviceAccount) as { client_email?: string };
     return typeof parsed.client_email === "string" ? parsed.client_email : undefined;
   } catch {
+    // error-policy:J3 email is a best-effort label; malformed service-account JSON yields no email.
     return undefined;
   }
 }

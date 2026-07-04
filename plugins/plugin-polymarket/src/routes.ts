@@ -650,6 +650,7 @@ function readStringArray(value: unknown): readonly string[] {
         })
       : [];
   } catch {
+    // error-policy:J3 untrusted string field; malformed JSON is treated as no array
     return [];
   }
 }

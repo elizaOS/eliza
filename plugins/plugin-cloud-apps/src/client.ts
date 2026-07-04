@@ -100,6 +100,7 @@ function isPlaceholderUrl(url: string): boolean {
     const host = new URL(url).hostname.toLowerCase();
     return host === "placeholder.invalid" || host === "placeholder.local";
   } catch {
+    // error-policy:J3 an unparseable URL is definitionally not a placeholder sentinel
     return false;
   }
 }

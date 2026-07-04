@@ -16,7 +16,13 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import type { IAgentRuntime, Route, RouteRequest, RouteResponse } from "@elizaos/core";
+import {
+  type IAgentRuntime,
+  logger,
+  type Route,
+  type RouteRequest,
+  type RouteResponse,
+} from "@elizaos/core";
 import type { WhatsAppPairingEvent } from "./pairing-service.js";
 import {
   sanitizeAccountId,
@@ -381,9 +387,8 @@ async function handleDisconnect(
   try {
     await whatsappLogout(workspaceDir, accountId);
   } catch (logoutErr) {
-    console.warn(
-      `[whatsapp] Logout failed for ${accountId}, deleting auth files directly:`,
-      String(logoutErr)
+    logger.warn(
+      `[whatsapp] Logout failed for ${accountId}, deleting auth files directly: ${String(logoutErr)}`
     );
     const authDir = path.join(workspaceDir, "whatsapp-auth", accountId);
     try {

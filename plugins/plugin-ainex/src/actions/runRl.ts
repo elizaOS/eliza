@@ -41,11 +41,7 @@ export const runRlAction: Action = {
     const text =
       getStringOption(options, "text", "") ||
       getStringOption(options, "task", "") ||
-      (typeof message?.content === "object" &&
-      message?.content !== null &&
-      typeof (message.content as { text?: unknown }).text === "string"
-        ? (message.content as { text: string }).text
-        : "");
+      (typeof message?.content?.text === "string" ? message.content.text : "");
     if (text === "") {
       const t = "AINEX_RUN_RL requires options.text or options.task.";
       await callback?.({ text: t });

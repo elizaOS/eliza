@@ -5,6 +5,7 @@
  * dispatch, runs periodic health checks, and owns outbound sends via the
  * `ReplyDispatcher`. One `WechatChannel` exists per configured account.
  */
+import { logger } from "@elizaos/core";
 import { Bot } from "./bot";
 import { startCallbackServer } from "./callback-server";
 import { LoginExpiredError, ProxyClient } from "./proxy-client";
@@ -60,7 +61,7 @@ export class WechatChannel {
     const resolved = this.resolveAccounts();
 
     if (resolved.length === 0) {
-      console.warn("[wechat] No configured accounts found");
+      logger.warn("[wechat] No configured accounts found");
       return;
     }
 
@@ -86,9 +87,9 @@ export class WechatChannel {
         );
       } catch (err) {
         const accountIds = accounts.map((a) => a.accountId).join(", ");
-        console.error(
+        logger.error(
           `[wechat] Failed to bind webhook server on port ${webhookPort} for accounts [${accountIds}]:`,
-          err,
+          String(err),
         );
       }
     }
@@ -111,13 +112,13 @@ export class WechatChannel {
 
       try {
         await client.registerWebhook(webhookUrl);
-        console.log(
+        logger.info(
           `[wechat] Account "${account.id}" registered webhook at ${webhookUrl}`,
         );
       } catch (err) {
-        console.error(
+        logger.error(
           `[wechat] Failed to register webhook for "${account.id}":`,
-          err,
+          String(err),
         );
         throw new Error(
           `Webhook registration failed for account "${account.id}": ${err instanceof Error ? err.message : String(err)}`,
@@ -207,7 +208,7 @@ export class WechatChannel {
   private routeIncoming(accountId: string, msg: WechatMessageContext): void {
     const entry = this.accounts.get(accountId);
     if (!entry) {
-      console.warn(
+      logger.warn(
         `[wechat] Received webhook for unknown account "${accountId}"`,
       );
       return;
@@ -236,13 +237,13 @@ export class WechatChannel {
     const status = await client.getStatus();
 
     if (status.loginState === "logged_in") {
-      console.log(
+      logger.info(
         `[wechat] Account "${accountId}" logged in as ${status.nickName ?? status.wcId}`,
       );
       return;
     }
 
-    console.log(
+    logger.info(
       `[wechat] Account "${accountId}" needs login — generating QR code...`,
     );
     const qrUrl = await client.getQRCode();
@@ -260,14 +261,14 @@ export class WechatChannel {
       const result = await client.checkLogin();
 
       if (result.status === "logged_in") {
-        console.log(
+        logger.info(
           `[wechat] Account "${accountId}" logged in as ${result.nickName ?? result.wcId}`,
         );
         return;
       }
 
       if (result.status === "need_verify") {
-        console.log(
+        logger.info(
           `[wechat] Verification needed: ${result.verifyUrl ?? "check your phone"}`,
         );
       }
@@ -283,13 +284,16 @@ export class WechatChannel {
       try {
         const status = await client.getStatus();
         if (status.loginState !== "logged_in") {
-          console.warn(
+          logger.warn(
             `[wechat] Account "${accountId}" login expired — attempting re-login`,
           );
           await this.ensureLoggedIn(accountId, client);
         }
       } catch (err) {
-        console.error(`[wechat] Health check failed for "${accountId}":`, err);
+        logger.error(
+          `[wechat] Health check failed for "${accountId}":`,
+          String(err),
+        );
       }
     }
   }

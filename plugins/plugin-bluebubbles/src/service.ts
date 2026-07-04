@@ -105,6 +105,7 @@ export function resolveBlueBubblesAutoStartConfig(
 			return null;
 		}
 	} catch {
+		// error-policy:J3 malformed serverUrl config -> no autostart plan (explicit null)
 		return null;
 	}
 
@@ -1466,6 +1467,7 @@ export class BlueBubblesService extends Service {
 				this.knownChats.set(chatGuid, fetchedChat);
 				return this.chatToState(fetchedChat);
 			} catch {
+				// error-policy:J4 unknown/unreachable chat -> absent context state (explicit null)
 				return null;
 			}
 		}

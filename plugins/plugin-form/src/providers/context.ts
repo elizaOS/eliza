@@ -100,8 +100,7 @@ export const formContextProvider: Provider = {
   ): Promise<ProviderResult> => {
     try {
       // Get form service
-      // WHY type cast: Runtime returns unknown, we know it's FormService
-      const formService = runtime.getService("FORM") as FormService;
+      const formService = runtime.getService<FormService>("FORM");
       if (!formService) {
         // WHY early return: No form plugin registered or FORM service not available
         return {

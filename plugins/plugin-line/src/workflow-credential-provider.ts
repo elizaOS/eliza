@@ -30,13 +30,14 @@ export class LineWorkflowCredentialProvider extends Service {
 
   async resolve(_userId: string, credType: string): Promise<CredentialProviderResult> {
     if (credType !== "httpHeaderAuth") return null;
-    let accessToken: string | undefined;
+    let accessToken: string | boolean | number | null;
     try {
-      accessToken = this.runtime.getSetting("LINE_CHANNEL_ACCESS_TOKEN") as string | undefined;
+      accessToken = this.runtime.getSetting("LINE_CHANNEL_ACCESS_TOKEN");
     } catch {
+      // error-policy:J1 credential lookup failure resolves to "no credential available" for the workflow plugin
       return null;
     }
-    if (!accessToken?.trim()) return null;
+    if (typeof accessToken !== "string" || !accessToken.trim()) return null;
     return {
       status: "credential_data",
       data: { name: "Authorization", value: `Bearer ${accessToken.trim()}` },

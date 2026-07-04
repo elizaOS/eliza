@@ -23,6 +23,14 @@ import type { WechatConfig } from "./types";
 const WECHAT_PROVIDER_ID = "wechat";
 const WECHAT_DEFAULT_ACCOUNT_ID = "default";
 
+function readStringSetting(
+  runtime: IAgentRuntime,
+  key: string,
+): string | undefined {
+  const value = runtime.getSetting?.(key);
+  return typeof value === "string" ? value : undefined;
+}
+
 function getWechatConfig(runtime: IAgentRuntime): WechatConfig | undefined {
   const character = runtime.character?.settings as
     | { connectors?: { wechat?: WechatConfig }; wechat?: WechatConfig }
@@ -46,12 +54,8 @@ function listWechatAccounts(runtime: IAgentRuntime): WechatResolvedAccount[] {
 
   if (!config) {
     // Single-account env-only fallback
-    const envApiKey = runtime.getSetting?.("WECHAT_API_KEY") as
-      | string
-      | undefined;
-    const envProxy = runtime.getSetting?.("WECHAT_PROXY_URL") as
-      | string
-      | undefined;
+    const envApiKey = readStringSetting(runtime, "WECHAT_API_KEY");
+    const envProxy = readStringSetting(runtime, "WECHAT_PROXY_URL");
     if (envApiKey?.trim() || envProxy?.trim()) {
       result.push({
         id: WECHAT_DEFAULT_ACCOUNT_ID,

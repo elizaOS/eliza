@@ -154,6 +154,8 @@ function CopyAddressButton({ value, label }: CopyButtonProps) {
       await navigator.clipboard.writeText(value);
       setCopied(true);
     } catch {
+      // Clipboard permission denial is user-facing non-fatal: skip the copied
+      // confirmation rather than surfacing an error for a convenience action.
       return;
     }
   }

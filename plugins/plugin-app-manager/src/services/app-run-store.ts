@@ -635,6 +635,7 @@ function readAppRunStoreFile(
       runs: Array.isArray(parsed.runs) ? parsed.runs : [],
     };
   } catch {
+    // error-policy:J3 unreadable/corrupt persisted store is quarantined and read as empty
     const corruptPath = `${filePath}.corrupt-${Date.now()}.json`;
     if (fs.existsSync(filePath)) {
       fs.renameSync(filePath, corruptPath);

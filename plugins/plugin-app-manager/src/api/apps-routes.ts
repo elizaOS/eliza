@@ -128,6 +128,7 @@ async function rewriteAppActionText(args: {
       ? parsed.response.trim()
       : fallback();
   } catch {
+    // error-policy:J3 model output is untrusted; unparseable JSON degrades to fallback text
     return fallback();
   }
 }
@@ -191,6 +192,7 @@ async function streamAppHero(
   try {
     data = await fs.readFile(absolutePath);
   } catch {
+    // error-policy:J4 missing hero image file degrades to a designed 404 response
     error(res, "Hero image not found", 404);
     return;
   }
@@ -245,6 +247,7 @@ async function pathExists(absolutePath: string): Promise<boolean> {
     await fs.access(absolutePath);
     return true;
   } catch {
+    // error-policy:J3 fs.access is an existence probe; any error means "does not exist"
     return false;
   }
 }
@@ -265,6 +268,7 @@ async function readPackageHeroImage(
     const heroImage = packageJson.elizaos?.app?.heroImage;
     return typeof heroImage === "string" ? heroImage : null;
   } catch {
+    // error-policy:J3 missing or malformed package.json yields no hero image
     return null;
   }
 }
@@ -296,6 +300,7 @@ async function resolveWorkspaceAppDirBySlug(
     try {
       entries = await fs.readdir(root, { withFileTypes: true });
     } catch {
+      // error-policy:J3 a non-existent candidate root is simply skipped in discovery
       continue;
     }
 
@@ -642,6 +647,7 @@ function parseCapturedBody(body: string): Record<string, unknown> | null {
       ? parsed
       : null;
   } catch {
+    // error-policy:J3 captured request body is untrusted; non-JSON yields null
     return null;
   }
 }

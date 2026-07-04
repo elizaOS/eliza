@@ -704,6 +704,7 @@ function normalizeSafeAppUrl(url: string): string | null {
     }
     return trimmed;
   } catch {
+    // error-policy:J3 an unparseable URL string is rejected as unsafe (null)
     return null;
   }
 }

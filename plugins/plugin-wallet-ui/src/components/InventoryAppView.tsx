@@ -127,6 +127,8 @@ function readHiddenTokenIds(): Set<string> {
       parsed.filter((item): item is string => typeof item === "string"),
     );
   } catch {
+    // Corrupt/unreadable localStorage is a non-fatal preference miss: treat as
+    // "no tokens hidden" rather than breaking the inventory render.
     return new Set();
   }
 }
@@ -139,6 +141,8 @@ function writeHiddenTokenIds(next: Set<string>): void {
       JSON.stringify([...next]),
     );
   } catch {
+    // Best-effort preference write: quota/private-mode failures must not block
+    // the UI, and the hide list is reconstructible from user action.
     return;
   }
 }

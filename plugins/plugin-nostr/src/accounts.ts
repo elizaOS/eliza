@@ -53,6 +53,7 @@ function parseAccountsJson(runtime: IAgentRuntime): Record<string, NostrAccountC
       ? (parsed as Record<string, NostrAccountConfig>)
       : {};
   } catch {
+    // error-policy:J3 untrusted NOSTR_ACCOUNTS JSON — malformed config yields no accounts
     return {};
   }
 }

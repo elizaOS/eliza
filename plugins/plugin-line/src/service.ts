@@ -202,16 +202,31 @@ function quickReplyItemsFromStrings(values: unknown): LineQuickReplyItem[] | und
   return items.length > 0 ? items : undefined;
 }
 
-function lineDataFromContent(content: Content): Record<string, unknown> {
-  const data = content.data as Record<string, unknown> | undefined;
-  if (data?.line && typeof data.line === "object") {
-    return data.line as Record<string, unknown>;
-  }
-  return data ?? {};
-}
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+// LINE join/leave events carry a group or room source; return whichever chat id
+// the source discriminant identifies. The `type` field narrows webhook.Source.
+function groupOrRoomId(source: webhook.Source | undefined): string | undefined {
+  if (source?.type === "group") {
+    return source.groupId;
+  }
+  if (source?.type === "room") {
+    return source.roomId;
+  }
+  return undefined;
+}
+
+function lineDataFromContent(content: Content): Record<string, unknown> {
+  const data = content.data;
+  if (!isRecord(data)) {
+    return {};
+  }
+  if (isRecord(data.line)) {
+    return data.line;
+  }
+  return data;
 }
 
 function isValidHttpsUrl(value: string): boolean {
@@ -219,6 +234,7 @@ function isValidHttpsUrl(value: string): boolean {
     const url = new URL(value);
     return url.protocol === "https:";
   } catch {
+    // error-policy:J3 untrusted URL string: a non-parseable value is not a valid HTTPS URL
     return false;
   }
 }
@@ -563,10 +579,12 @@ export class LineService extends Service implements ILineService {
 
     // Add quick replies to last message if provided
     if (options?.quickReplyItems && messages.length > 0) {
-      const lastIdx = messages.length - 1;
-      (messages[lastIdx] as { quickReply?: unknown }).quickReply = {
-        items: options.quickReplyItems,
-      } as unknown;
+      const lastMessage = messages[messages.length - 1];
+      // LineQuickReplyItem is a structural subset of the SDK's QuickReplyItem
+      // (narrower `action` union); the runtime shape matches LINE's items object.
+      lastMessage.quickReply = {
+        items: options.quickReplyItems as messagingApi.QuickReplyItem[],
+      };
     }
 
     return this.pushMessages(to, messages);
@@ -963,7 +981,7 @@ export class LineService extends Service implements ILineService {
 
       await this.client.pushMessage({
         to,
-        messages: batch as messagingApi.Message[],
+        messages: batch,
       });
     }
 
@@ -1013,12 +1031,7 @@ export class LineService extends Service implements ILineService {
         this.runtime.emitEvent([LineEventTypes.JOIN_GROUP], {
           runtime: this.runtime,
           source: "line",
-          groupId:
-            event.source?.type === "group"
-              ? (event.source as webhook.GroupSource).groupId
-              : event.source?.type === "room"
-                ? (event.source as webhook.RoomSource).roomId
-                : undefined,
+          groupId: groupOrRoomId(event.source),
           type: event.source?.type,
           timestamp: event.timestamp,
         } as EventPayload);
@@ -1027,12 +1040,7 @@ export class LineService extends Service implements ILineService {
         this.runtime.emitEvent([LineEventTypes.LEAVE_GROUP], {
           runtime: this.runtime,
           source: "line",
-          groupId:
-            event.source?.type === "group"
-              ? (event.source as webhook.GroupSource).groupId
-              : event.source?.type === "room"
-                ? (event.source as webhook.RoomSource).roomId
-                : undefined,
+          groupId: groupOrRoomId(event.source),
           type: event.source?.type,
           timestamp: event.timestamp,
         } as EventPayload);
@@ -1080,10 +1088,11 @@ export class LineService extends Service implements ILineService {
     }
 
     // Add group/room ID if applicable
-    if (event.source?.type === "group") {
-      message.groupId = (event.source as webhook.GroupSource).groupId;
-    } else if (event.source?.type === "room") {
-      message.roomId = (event.source as webhook.RoomSource).roomId;
+    const source = event.source;
+    if (source?.type === "group") {
+      message.groupId = source.groupId;
+    } else if (source?.type === "room") {
+      message.roomId = source.roomId;
     }
 
     // Emit message received event

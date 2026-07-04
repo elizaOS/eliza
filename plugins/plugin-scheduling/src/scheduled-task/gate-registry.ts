@@ -74,6 +74,7 @@ function localPartsAtTz(
     if (!intInRange(hours, 0, 23) || !intInRange(minutes, 0, 59)) return null;
     return { hours, minutes, dayOfWeek };
   } catch {
+    // error-policy:J3 an invalid tz makes Intl.DateTimeFormat throw RangeError; null is the explicit "unresolvable" signal callers handle.
     return null;
   }
 }

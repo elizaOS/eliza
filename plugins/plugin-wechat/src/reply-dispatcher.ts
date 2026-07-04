@@ -2,6 +2,7 @@
  * Outbound send path for WeChat replies: splits long text into proxy-safe chunks
  * and sends each chunk (and images) through the `ProxyClient`.
  */
+import { logger } from "@elizaos/core";
 import type { ProxyClient } from "./proxy-client";
 
 const DEFAULT_CHUNK_SIZE = 2000;
@@ -26,7 +27,7 @@ export class ReplyDispatcher {
       try {
         await this.client.sendText(to, chunk);
       } catch (err) {
-        console.error(`[wechat] Failed to send text to ${to}:`, err);
+        logger.error(`[wechat] Failed to send text to ${to}:`, String(err));
         throw err;
       }
     }
@@ -40,7 +41,7 @@ export class ReplyDispatcher {
     try {
       await this.client.sendImage(to, imagePath, caption);
     } catch (err) {
-      console.error(`[wechat] Failed to send image to ${to}:`, err);
+      logger.error(`[wechat] Failed to send image to ${to}:`, String(err));
       throw err;
     }
   }

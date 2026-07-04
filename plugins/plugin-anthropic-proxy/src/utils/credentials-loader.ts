@@ -36,7 +36,7 @@ function jwtExpiresAt(token: string): number {
   try {
     const parts = token.split(".");
     if (parts.length < 2) return 0;
-    const payload = parts[1]!;
+    const payload = parts[1];
     // base64url -> base64
     const b64 = payload.replace(/-/g, "+").replace(/_/g, "/");
     const padded = b64 + "=".repeat((4 - (b64.length % 4)) % 4);
@@ -44,6 +44,8 @@ function jwtExpiresAt(token: string): number {
     const parsed = JSON.parse(json) as { exp?: number };
     return typeof parsed.exp === "number" ? parsed.exp * 1000 : 0;
   } catch {
+    // error-policy:J3 untrusted token: a malformed/non-JWT string yields the
+    // documented 0 sentinel for this diagnostics-only expiry, never throws.
     return 0;
   }
 }

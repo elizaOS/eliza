@@ -48,6 +48,7 @@ export async function resolveCapacitorEnvironment(): Promise<CapacitorEnvironmen
     } | null;
     isCapacitor = core?.Capacitor?.isNativePlatform?.() === true;
   } catch {
+    // error-policy:J1 optional-peer import boundary: a missing/broken @capacitor/core means not-Capacitor.
     return { isCapacitor: false, runner: null };
   }
 
@@ -82,6 +83,7 @@ async function tryImport(specifier: string): Promise<unknown> {
   try {
     return (await import(/* @vite-ignore */ specifier)) as unknown;
   } catch {
+    // error-policy:J1 optional-peer import boundary: an uninstalled optional peer resolves to null.
     return null;
   }
 }

@@ -484,6 +484,7 @@ export class BirdclawService extends Service {
         trimmed;
       return { period, text };
     } catch {
+      // error-policy:J3 unparseable digest stdout is valid raw markdown, not a failure
       return { period, text: trimmed };
     }
   }

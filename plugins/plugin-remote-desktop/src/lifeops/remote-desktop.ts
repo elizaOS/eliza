@@ -113,6 +113,7 @@ async function probeTailscale(): Promise<TailscaleState> {
       parsed.Self?.DNSName?.replace(/\.$/, "") || parsed.Self?.HostName;
     return { authenticated, hostname };
   } catch {
+    // error-policy:J3 tailscale absent or non-JSON output → backend unavailable
     return { authenticated: false };
   }
 }
@@ -128,6 +129,7 @@ async function probeLocalVncServer(): Promise<boolean> {
       );
       return stdout.includes("com.apple.screensharing");
     } catch {
+      // error-policy:J3 launchctl probe failed → VNC server not present
       return false;
     }
   }
@@ -136,6 +138,7 @@ async function probeLocalVncServer(): Promise<boolean> {
       await execFileAsync("which", ["x11vnc"], { timeout: 2_000 });
       return true;
     } catch {
+      // error-policy:J3 `which` nonzero exit → x11vnc not installed
       return false;
     }
   }
@@ -148,6 +151,7 @@ async function probeNgrok(token?: string): Promise<boolean> {
     await execFileAsync("ngrok", ["version"], { timeout: 2_000 });
     return true;
   } catch {
+    // error-policy:J3 ngrok binary absent → tunnel backend unavailable
     return false;
   }
 }

@@ -66,6 +66,7 @@ function parseTailscaleStatus(stdout: string): TailscaleStatus | null {
   try {
     raw = JSON.parse(stdout);
   } catch {
+    // error-policy:J3 untrusted CLI stdout; null is the explicit "invalid status" signal, further validated by safeParse below.
     return null;
   }
   const result = tailscaleStatusSchema.safeParse(raw);

@@ -173,6 +173,7 @@ export function isValidPubkey(input: string): boolean {
       const decoded = nip19.decode(trimmed);
       return decoded.type === "npub";
     } catch {
+      // error-policy:J3 untrusted npub string — a decode failure means "not a valid npub"
       return false;
     }
   }

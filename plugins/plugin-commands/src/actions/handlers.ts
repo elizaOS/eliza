@@ -145,6 +145,8 @@ async function countRoomMessages(
 			unique: false,
 		});
 	} catch {
+		// error-policy:J4 best-effort diagnostic count; a failed count degrades to
+		// an omitted "Messages:" line in /status, never a fabricated zero.
 		return null;
 	}
 }

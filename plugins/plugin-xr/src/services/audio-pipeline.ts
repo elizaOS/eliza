@@ -1,5 +1,5 @@
 import type { IAgentRuntime } from "@elizaos/core";
-import { ModelType } from "@elizaos/core";
+import { logger, ModelType } from "@elizaos/core";
 import type { XRAudioHeader } from "../protocol.ts";
 
 // Prepend a RIFF/WAV header so Whisper can decode raw Float32 PCM.
@@ -107,8 +107,8 @@ export class AudioPipeline {
         await this.onTranscript(connectionId, text);
       }
     } catch (err) {
-      // log but don't crash the pipeline
-      console.error("[plugin-xr] transcription error:", err);
+      // error-policy:J7 a failed transcription must not tear down the streaming pipeline
+      logger.error("[AudioPipeline] transcription error:", String(err));
     }
   }
 

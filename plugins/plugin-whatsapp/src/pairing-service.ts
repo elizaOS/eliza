@@ -9,6 +9,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { logger } from "@elizaos/core";
 
 const LOG_PREFIX = "[whatsapp-pairing]";
 
@@ -92,7 +93,7 @@ export class WhatsAppPairingSession {
 
       if (qr) {
         this.qrAttempts++;
-        console.info(
+        logger.info(
           `${LOG_PREFIX} QR code received (attempt ${this.qrAttempts}/${this.MAX_QR_ATTEMPTS})`
         );
         if (this.qrAttempts > this.MAX_QR_ATTEMPTS) {
@@ -122,7 +123,7 @@ export class WhatsAppPairingSession {
 
       if (connection === "close") {
         const statusCode = (lastDisconnect?.error as InstanceType<typeof Boom>)?.output?.statusCode;
-        console.info(
+        logger.info(
           `${LOG_PREFIX} Connection closed, statusCode=${statusCode}, status=${this.status}`
         );
         if (statusCode === DisconnectReason.loggedOut) {
@@ -133,13 +134,13 @@ export class WhatsAppPairingSession {
           statusCode === DisconnectReason.connectionClosed ||
           statusCode === DisconnectReason.connectionReplaced
         ) {
-          console.info(`${LOG_PREFIX} Restarting pairing after transient close...`);
+          logger.info(`${LOG_PREFIX} Restarting pairing after transient close...`);
           this.socket = null;
           this.qrAttempts = 0;
           this.restartTimer = setTimeout(() => {
             this.restartTimer = null;
             this.start().catch((err) => {
-              console.error(`${LOG_PREFIX} Restart failed:`, err);
+              logger.error(`${LOG_PREFIX} Restart failed: ${String(err)}`);
               this.setStatus("error");
               this.options.onEvent({
                 type: "whatsapp-status",

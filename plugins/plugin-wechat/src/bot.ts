@@ -4,6 +4,7 @@
  * message to the `onMessage` callback. Sits between `callback-server` (which
  * normalizes proxy payloads) and the channel's dispatch into the runtime.
  */
+import { logger } from "@elizaos/core";
 import type { WechatMessageContext } from "./types";
 
 const DEFAULT_DEDUP_WINDOW_MS = 30 * 60 * 1000; // 30 minutes
@@ -62,7 +63,7 @@ export class Bot {
     }
 
     void Promise.resolve(this.onMessage(message)).catch((error: unknown) => {
-      console.error("[wechat] Failed to process inbound message:", error);
+      logger.error("[Bot] Failed to process inbound message:", String(error));
     });
   }
 

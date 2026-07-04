@@ -124,6 +124,7 @@ function isHttpUrl(value: string): boolean {
     const u = new URL(value);
     return u.protocol === "https:" || u.protocol === "http:";
   } catch {
+    // error-policy:J3 an unparseable value is not a valid http(s) URL
     return false;
   }
 }

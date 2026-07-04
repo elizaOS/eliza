@@ -10,6 +10,7 @@ import {
   type Content,
   getConnectorAccountManager,
   type IAgentRuntime,
+  logger,
   type Memory,
   type MessageConnectorTarget,
   stringToUuid,
@@ -388,7 +389,7 @@ const wechatPlugin: Plugin = {
         createWechatConnectorAccountProvider(runtime as IAgentRuntime),
       );
     } catch (err) {
-      console.warn(
+      logger.warn(
         "[wechat] Failed to register provider with ConnectorAccountManager:",
         err instanceof Error ? err.message : String(err),
       );
@@ -397,12 +398,12 @@ const wechatPlugin: Plugin = {
     const wechatConfig = resolveWechatConfig(config, runtime);
 
     if (!wechatConfig) {
-      console.warn("[wechat] No wechat config found in connectors — skipping");
+      logger.warn("[wechat] No wechat config found in connectors — skipping");
       return;
     }
 
     if (wechatConfig.enabled === false) {
-      console.log("[wechat] Plugin disabled via config");
+      logger.info("[wechat] Plugin disabled via config");
       return;
     }
 
@@ -425,14 +426,14 @@ const wechatPlugin: Plugin = {
 
     await channel.start();
     registerWechatMessageConnector(runtime, wechatConfig);
-    console.log("[wechat] Plugin initialized");
+    logger.info("[wechat] Plugin initialized");
 
     // Return cleanup function
     return async () => {
       if (channel) {
         await channel.stop();
         channel = null;
-        console.log("[wechat] Plugin stopped");
+        logger.info("[wechat] Plugin stopped");
       }
     };
   },
@@ -440,7 +441,7 @@ const wechatPlugin: Plugin = {
     if (channel) {
       await channel.stop();
       channel = null;
-      console.log("[wechat] Plugin disposed");
+      logger.info("[wechat] Plugin disposed");
     }
   },
 };

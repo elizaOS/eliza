@@ -1,5 +1,5 @@
 import type { IAgentRuntime } from "@elizaos/core";
-import { ModelType } from "@elizaos/core";
+import { logger, ModelType } from "@elizaos/core";
 import type { XRFrameHeader } from "../protocol.ts";
 
 export interface LatestFrame {
@@ -46,7 +46,7 @@ export class VisionPipeline {
       });
       return typeof description === "string" ? description : null;
     } catch (err) {
-      console.error("[plugin-xr] vision error:", err);
+      logger.error("[VisionPipeline] vision error:", String(err));
       return null;
     }
   }

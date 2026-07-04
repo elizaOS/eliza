@@ -30,7 +30,7 @@ const FEED_AGENT_SESSION_EXPIRES_AT_KEY = "FEED_AGENT_SESSION_EXPIRES_AT";
 // Helpers
 // ---------------------------------------------------------------------------
 
-function getRuntime(ctx: RouteContext): IAgentRuntime | null {
+function getRuntime(ctx: Pick<RouteContext, "runtime">): IAgentRuntime | null {
   return (asRuntimeLike(ctx.runtime) as IAgentRuntime | null) ?? null;
 }
 
@@ -195,11 +195,11 @@ function buildSessionState(
 ): AppSessionState {
   const agentId = getAgentId(config);
   const name =
-    (agentData?.displayName as string) ??
-    (agentData?.name as string) ??
+    asSessionString(agentData?.displayName) ??
+    asSessionString(agentData?.name) ??
     "Feed Agent";
-  const balance = (agentData?.balance as number) ?? 0;
-  const pnl = (agentData?.lifetimePnL as number) ?? 0;
+  const balance = asSessionNumber(agentData?.balance) ?? 0;
+  const pnl = asSessionNumber(agentData?.lifetimePnL) ?? 0;
 
   return {
     sessionId: agentId ?? "feed",
@@ -234,6 +234,10 @@ function buildSessionState(
 
 function asSessionNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function asSessionString(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
 }
 
 async function readSessionState(config: FeedConfig): Promise<AppSessionState> {
@@ -488,7 +492,7 @@ export async function refreshRunSession(
 export async function prepareLaunch(ctx: {
   runtime: IAgentRuntime | null;
 }): Promise<AppLaunchPreparation> {
-  const runtime = getRuntime({ runtime: ctx.runtime } as RouteContext);
+  const runtime = getRuntime({ runtime: ctx.runtime });
   return {
     diagnostics: await prepareFeedCredentials(runtime),
     launchUrl: resolveFeedClientUrl(runtime),
@@ -502,7 +506,7 @@ export async function prepareLaunch(ctx: {
 export async function resolveViewerAuthMessage(ctx: {
   runtime: IAgentRuntime | null;
 }): Promise<AppViewerAuthMessage | null> {
-  const runtime = getRuntime({ runtime: ctx.runtime } as RouteContext);
+  const runtime = getRuntime({ runtime: ctx.runtime });
   const config = resolveFeedConfig(runtime);
   const agentId = config.agentId;
   const sessionToken =

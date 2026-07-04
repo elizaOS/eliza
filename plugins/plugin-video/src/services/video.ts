@@ -374,6 +374,7 @@ export class VideoService extends IVideoService {
         hostname.endsWith(".vimeo.com")
       );
     } catch {
+      // error-policy:J3 unparseable URL string is not a video URL
       return false;
     }
   }

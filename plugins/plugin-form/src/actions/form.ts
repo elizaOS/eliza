@@ -45,7 +45,7 @@ async function handleRestore(
   callback?: HandlerCallback,
 ): Promise<ActionResult> {
   try {
-    const formService = runtime.getService("FORM") as FormService;
+    const formService = runtime.getService<FormService>("FORM");
     if (!formService) {
       await callback?.({
         text: "Sorry, I couldn't find the form service.",
@@ -186,7 +186,7 @@ export const formAction: Action = {
     message: Memory,
     _state?: State,
   ): Promise<boolean> => {
-    const formService = runtime.getService("FORM") as FormService;
+    const formService = runtime.getService<FormService>("FORM");
     if (!formService) return false;
 
     const entityId = message.entityId as UUID;

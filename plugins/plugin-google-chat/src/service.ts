@@ -902,6 +902,7 @@ export class GoogleChatService extends Service implements IGoogleChatService {
     try {
       return this.getState().settings;
     } catch {
+      // error-policy:J3 getState() throws for an unconfigured account; null is the "no settings" signal.
       return null;
     }
   }
@@ -991,6 +992,7 @@ export class GoogleChatService extends Service implements IGoogleChatService {
     try {
       return await this.getSpaces(state.accountId);
     } catch {
+      // error-policy:J4 degrade to the warm cache when the live space list fetch fails.
       return [...state.cachedSpaces];
     }
   }

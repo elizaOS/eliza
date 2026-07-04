@@ -369,6 +369,7 @@ export class BinaryResolver {
       const raw = await fsp.readFile(this.metaPath, "utf8");
       return JSON.parse(raw) as YtDlpMeta;
     } catch {
+      // error-policy:J3 missing or corrupt meta file reads as "no meta yet"
       return null;
     }
   }
@@ -524,6 +525,7 @@ async function isExecutable(p: string): Promise<boolean> {
     const st = await fsp.stat(p);
     return st.isFile();
   } catch {
+    // error-policy:J3 unreadable/absent path is simply not an executable
     return false;
   }
 }

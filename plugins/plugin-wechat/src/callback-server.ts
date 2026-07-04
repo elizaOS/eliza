@@ -12,6 +12,7 @@ import {
   type ServerResponse,
 } from "node:http";
 import type { AddressInfo } from "node:net";
+import { logger } from "@elizaos/core";
 import type { WechatMessageContext, WechatMessageType } from "./types";
 
 const WECHAT_TYPE_MAP: Record<
@@ -98,6 +99,7 @@ export async function startCallbackServer(
         res.writeHead(200);
         res.end("OK");
       } catch {
+        // error-policy:J3 untrusted-input — malformed webhook body → 400
         res.writeHead(400);
         res.end("Bad Request");
       }
@@ -130,15 +132,15 @@ export async function startCallbackServer(
 
   const address = server.address() as AddressInfo | null;
   const listeningPort = address?.port ?? port;
-  console.log(`[wechat] Webhook server listening on port ${listeningPort}`);
+  logger.info(`[wechat] Webhook server listening on port ${listeningPort}`);
 
   server.on("error", (err: Error) => {
     if ((err as NodeJS.ErrnoException).code === "EADDRINUSE") {
-      console.error(
+      logger.error(
         `[wechat] Port ${listeningPort} already in use — webhook server failed to start`,
       );
     } else {
-      console.error(`[wechat] Webhook server error:`, err);
+      logger.error(`[wechat] Webhook server error:`, String(err));
     }
   });
 
@@ -225,7 +227,7 @@ export function normalizePayload(
     (payload.content ? payload : null);
 
   if (!data) {
-    console.warn("[wechat] Unrecognized webhook payload format");
+    logger.warn("[wechat] Unrecognized webhook payload format");
     return null;
   }
 
@@ -249,7 +251,7 @@ export function normalizePayload(
   }
 
   if (msgType === "unknown") {
-    console.warn(`[wechat] Unknown message type code: ${typeCode}`);
+    logger.warn(`[wechat] Unknown message type code: ${typeCode}`);
     return null;
   }
 

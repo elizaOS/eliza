@@ -142,6 +142,7 @@ function isSafeRelayUrl(relay: string): boolean {
       !parsed.password
     );
   } catch {
+    // error-policy:J3 untrusted relay URL — an unparseable URL is not a safe relay
     return false;
   }
 }
@@ -858,6 +859,7 @@ export class NostrService extends Service implements INostrService {
     try {
       pubkey = normalizePubkey(trimmed);
     } catch {
+      // error-policy:J3 untrusted query — an unnormalizable pubkey yields no targets
       return [];
     }
 
@@ -879,6 +881,7 @@ export class NostrService extends Service implements INostrService {
     try {
       pubkey = normalizePubkey(entityId);
     } catch {
+      // error-policy:J3 untrusted entityId — an unnormalizable pubkey has no user context
       return null;
     }
 

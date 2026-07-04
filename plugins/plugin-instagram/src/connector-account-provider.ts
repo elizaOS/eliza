@@ -35,6 +35,7 @@ function toConnectorAccount(runtime: IAgentRuntime, accountId: string): Connecto
     username = config.username ?? "";
     connected = Boolean(config.username && config.password);
   } catch {
+    // error-policy:J4 unresolvable account config surfaces as a disabled account, not an error
     connected = false;
   }
   const now = Date.now();
