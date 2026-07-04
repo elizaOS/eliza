@@ -269,7 +269,7 @@ bun run --cwd packages/examples/smartglasses hardware:status-latest
 The browser hardware smoke example exercises the direct G1 BLE path:
 
 ```bash
-npm run smartglasses:dev:hardware
+bun run --cwd packages/examples/smartglasses dev:hardware
 ```
 
 ```bash
@@ -297,8 +297,8 @@ the serial proof.
 The EvenHub simulator can exercise the G2 bridge surface without physical hardware:
 
 ```bash
-npm run smartglasses:dev:simulator
-npm run smartglasses:simulator
+bun run --cwd packages/examples/smartglasses dev:simulator
+bun run --cwd packages/examples/smartglasses simulator
 ```
 
 ```bash
@@ -309,7 +309,7 @@ bun run --cwd packages/examples/smartglasses simulator
 An automated simulator smoke harness is also available:
 
 ```bash
-npm run smartglasses:smoke:simulator
+bun run --cwd packages/examples/smartglasses smoke:simulator
 ```
 
 ```bash
@@ -354,7 +354,7 @@ setup/status summary even when the smoke fails, and then run the strict
 validator:
 
 ```bash
-npm run smartglasses:hardware:prove
+bun run --cwd packages/examples/smartglasses hardware:prove:bleak
 ```
 
 ```bash
@@ -362,7 +362,7 @@ bun run --cwd packages/examples/smartglasses hardware:prove:bleak
 ```
 
 ```bash
-npm run smartglasses:hardware:prove:noble
+bun run --cwd packages/examples/smartglasses hardware:prove:noble
 ```
 
 ```bash
@@ -383,7 +383,7 @@ native Noble binding is not usable for this runtime; use the Bleak/CoreBluetooth
 proof or rebuild `@abandonware/noble` for the current Node/Bun ABI.
 
 ```bash
-npm run smartglasses:hardware:prove:watch
+bun run --cwd packages/examples/smartglasses hardware:prove:bleak:watch
 ```
 
 ```bash
@@ -391,7 +391,7 @@ bun run --cwd packages/examples/smartglasses hardware:prove:bleak:watch
 ```
 
 ```bash
-npm run smartglasses:hardware:prove:noble:watch
+bun run --cwd packages/examples/smartglasses hardware:prove:noble:watch
 ```
 
 ```bash
@@ -404,8 +404,8 @@ report to be fresh within ten minutes; use `hardware:validate-report <path>`
 for historical artifacts:
 
 ```bash
-npm run smartglasses:hardware:status
-npm run smartglasses:hardware:validate
+bun run --cwd packages/examples/smartglasses hardware:status-latest
+bun run --cwd packages/examples/smartglasses hardware:validate-latest
 ```
 
 ```bash

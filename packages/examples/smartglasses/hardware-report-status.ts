@@ -78,8 +78,8 @@ export function createMissingHardwareReportStatus(
       ? "Both G1 lenses are paired locally, but no latest proof report exists yet."
       : "No latest proof report exists yet. Pair both G1 lenses or use a native mobile bridge before running hardware proof.",
     nextAction: pairedWholeHeadset
-      ? "Remove both lenses from the charging base, wear them near this device, and run npm run smartglasses:hardware:prove:watch from the repo root."
-      : "Pair both G1 lenses, then run npm run smartglasses:hardware:prove:watch from the repo root.",
+      ? "Remove both lenses from the charging base, wear them near this device, then run `bun run --cwd packages/examples/smartglasses hardware:prove:bleak:watch` from the repo root."
+      : "Pair both G1 lenses, then run `bun run --cwd packages/examples/smartglasses hardware:prove:bleak:watch` from the repo root.",
     checks: null,
     audioChunks: 0,
     statusAudioChunks: 0,

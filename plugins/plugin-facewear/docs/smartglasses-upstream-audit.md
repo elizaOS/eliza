@@ -92,9 +92,9 @@ of silently leaving an older hardware report in place.
 Use the root helpers for the next hardware proof attempt:
 
 ```bash
-npm run smartglasses:hardware:prove:watch
-npm run smartglasses:hardware:status
-npm run smartglasses:hardware:validate
+bun run --cwd packages/examples/smartglasses hardware:prove:bleak:watch
+bun run --cwd packages/examples/smartglasses hardware:status-latest
+bun run --cwd packages/examples/smartglasses hardware:validate-latest
 ```
 
 The lower-level package commands remain available when debugging inside the
@@ -110,8 +110,8 @@ The Noble/Web Bluetooth paths are still available for adapter/browser-specific
 checks:
 
 ```bash
-npm run smartglasses:hardware:prove:noble
-npm run smartglasses:dev:hardware
+bun run --cwd packages/examples/smartglasses hardware:prove:noble
+bun run --cwd packages/examples/smartglasses dev:hardware
 ```
 
 The required evidence checklist is enforced by

@@ -110,28 +110,23 @@ function softwareGateFailures() {
       "package.json: missing verify:smartglasses-software root verification script",
     );
   }
-  const rootHardwareScripts = {
-    "smartglasses:hardware:doctor": "hardware:doctor",
-    "smartglasses:hardware:status": "hardware:status-latest",
-    "smartglasses:hardware:validate": "hardware:validate-latest",
-    "smartglasses:hardware:prove": "hardware:prove:bleak",
-    "smartglasses:hardware:prove:watch": "hardware:prove:bleak:watch",
-    "smartglasses:hardware:prove:noble": "hardware:prove:noble",
-    "smartglasses:hardware:prove:noble:watch": "hardware:prove:noble:watch",
-    "smartglasses:dev:hardware": "dev:hardware",
-    "smartglasses:dev:simulator": "dev:simulator",
-    "smartglasses:simulator": "simulator",
-    "smartglasses:smoke:simulator": "smoke:simulator",
-  };
-  for (const [scriptName, requiredTarget] of Object.entries(
-    rootHardwareScripts,
-  )) {
-    const script = String(rootScripts[scriptName] ?? "");
-    if (
-      !script.includes("packages/examples/smartglasses") ||
-      !script.includes(requiredTarget)
-    ) {
-      failures.push(`package.json: missing ${scriptName} root hardware helper`);
+  for (const scriptName of [
+    "hardware:doctor",
+    "hardware:status-latest",
+    "hardware:validate-latest",
+    "hardware:prove:bleak",
+    "hardware:prove:bleak:watch",
+    "hardware:prove:noble",
+    "hardware:prove:noble:watch",
+    "dev:hardware",
+    "dev:simulator",
+    "simulator",
+    "smoke:simulator",
+  ]) {
+    if (!scripts[scriptName]) {
+      failures.push(
+        `packages/examples/smartglasses/package.json: missing script ${scriptName}`,
+      );
     }
   }
   failures.push(
@@ -826,9 +821,9 @@ function softwareGateFailures() {
     "plugins/plugin-facewear/docs/smartglasses-completion-audit.md",
   );
   for (const expected of [
-    "npm run smartglasses:hardware:prove:watch",
-    "npm run smartglasses:hardware:doctor",
-    "npm run smartglasses:hardware:validate",
+    "bun run --cwd packages/examples/smartglasses hardware:prove:bleak:watch",
+    "bun run --cwd packages/examples/smartglasses hardware:doctor",
+    "bun run --cwd packages/examples/smartglasses hardware:validate-latest",
     "reportStale",
     "Blocked on physical headset advertising/availability",
   ]) {
@@ -868,16 +863,16 @@ function softwareGateFailures() {
   );
   for (const expected of [
     "npm run verify:smartglasses-software",
-    "npm run smartglasses:dev:hardware",
-    "npm run smartglasses:dev:simulator",
-    "npm run smartglasses:simulator",
-    "npm run smartglasses:smoke:simulator",
-    "npm run smartglasses:hardware:status",
-    "npm run smartglasses:hardware:validate",
-    "npm run smartglasses:hardware:prove",
-    "npm run smartglasses:hardware:prove:watch",
-    "npm run smartglasses:hardware:prove:noble",
-    "npm run smartglasses:hardware:prove:noble:watch",
+    "bun run --cwd packages/examples/smartglasses dev:hardware",
+    "bun run --cwd packages/examples/smartglasses dev:simulator",
+    "bun run --cwd packages/examples/smartglasses simulator",
+    "bun run --cwd packages/examples/smartglasses smoke:simulator",
+    "bun run --cwd packages/examples/smartglasses hardware:status-latest",
+    "bun run --cwd packages/examples/smartglasses hardware:validate-latest",
+    "bun run --cwd packages/examples/smartglasses hardware:prove:bleak",
+    "bun run --cwd packages/examples/smartglasses hardware:prove:bleak:watch",
+    "bun run --cwd packages/examples/smartglasses hardware:prove:noble",
+    "bun run --cwd packages/examples/smartglasses hardware:prove:noble:watch",
     "docs/smartglasses-upstream-audit.md",
     "SMARTGLASSES_DISPLAY_TEXT",
     "SMARTGLASSES_MICROPHONE",
@@ -902,24 +897,24 @@ function softwareGateFailures() {
     "npm run verify:smartglasses-software",
     "For the final auditable hardware proof run, use the root latest-report helpers.",
     "Check current setup state first:",
-    "npm run smartglasses:hardware:doctor",
-    "npm run smartglasses:hardware:status",
+    "bun run --cwd packages/examples/smartglasses hardware:doctor",
+    "bun run --cwd packages/examples/smartglasses hardware:status-latest",
     "Then run the default CoreBluetooth/Bleak proof:",
-    "npm run smartglasses:hardware:validate",
-    "npm run smartglasses:hardware:prove",
+    "bun run --cwd packages/examples/smartglasses hardware:validate-latest",
+    "bun run --cwd packages/examples/smartglasses hardware:prove:bleak",
     "Use Noble only when its native binding is compatible with the current runtime:",
-    "npm run smartglasses:hardware:prove:watch",
-    "npm run smartglasses:hardware:prove:noble",
-    "npm run smartglasses:hardware:prove:noble:watch",
+    "bun run --cwd packages/examples/smartglasses hardware:prove:bleak:watch",
+    "bun run --cwd packages/examples/smartglasses hardware:prove:noble",
+    "bun run --cwd packages/examples/smartglasses hardware:prove:noble:watch",
     "charging base, wear them",
     "keep them near this Mac",
     "safe before the first proof run",
     "Package-local equivalents are available when you are already working inside the",
     "Validate the fresh latest artifact independently before treating physical",
-    "npm run smartglasses:dev:hardware",
-    "npm run smartglasses:dev:simulator",
-    "npm run smartglasses:simulator",
-    "npm run smartglasses:smoke:simulator",
+    "bun run --cwd packages/examples/smartglasses dev:hardware",
+    "bun run --cwd packages/examples/smartglasses dev:simulator",
+    "bun run --cwd packages/examples/smartglasses simulator",
+    "bun run --cwd packages/examples/smartglasses smoke:simulator",
     "Even Realities research audit self-test",
     "Even Realities research audit",
     "smartglasses completion self-test",
@@ -941,17 +936,6 @@ function softwareGateFailures() {
     "audit:smartglasses-completion",
     "audit:smartglasses-completion:self-test",
     "verify:smartglasses-software",
-    "smartglasses:hardware:doctor",
-    "smartglasses:hardware:status",
-    "smartglasses:hardware:validate",
-    "smartglasses:hardware:prove",
-    "smartglasses:hardware:prove:watch",
-    "smartglasses:hardware:prove:noble",
-    "smartglasses:hardware:prove:noble:watch",
-    "smartglasses:dev:hardware",
-    "smartglasses:dev:simulator",
-    "smartglasses:simulator",
-    "smartglasses:smoke:simulator",
   ]) {
     if (!rootScripts[scriptName])
       failures.push(`package.json: missing script ${scriptName}`);
@@ -985,8 +969,8 @@ function missingHardwareGateSummary(path, bluetoothPreflight = null) {
     bluetoothPreflightSource: bluetoothPreflight ? "local" : "none",
     physicalBlocker: pairedWholeHeadset ? "headset_not_found" : null,
     nextAction: pairedWholeHeadset
-      ? "Remove both lenses from the base, keep them near this device, wear them, then run npm run smartglasses:hardware:prove:watch from the repo root."
-      : "From the repo root, run npm run smartglasses:hardware:prove:watch with both lenses worn.",
+      ? "Remove both lenses from the base, keep them near this device, wear them, then run `bun run --cwd packages/examples/smartglasses hardware:prove:bleak:watch` from the repo root."
+      : "From the repo root, run `bun run --cwd packages/examples/smartglasses hardware:prove:bleak:watch` with both lenses worn.",
   };
 }
 
@@ -1149,7 +1133,7 @@ function physicalBlocker(report) {
 function nextAction(report) {
   const blocker = physicalBlocker(report);
   if (blocker === "headset_not_found") {
-    return "Remove both lenses from the base, keep them near this device, wear them, then run npm run smartglasses:hardware:prove:watch from the repo root.";
+    return "Remove both lenses from the base, keep them near this device, wear them, then run `bun run --cwd packages/examples/smartglasses hardware:prove:bleak:watch` from the repo root.";
   }
   if (blocker === "wearing_state_missing") {
     return "Wear the connected glasses until physical=wearing, then single tap, speak, and double tap.";
@@ -1158,7 +1142,7 @@ function nextAction(report) {
     return "Reconnect both left and right lenses as one headset.";
   if (blocker === "transport_unavailable")
     return "Use Bleak/CoreBluetooth or repair the Noble native binding.";
-  return "Run npm run smartglasses:hardware:prove:watch from the repo root and satisfy all hardware evidence checks.";
+  return "Run `bun run --cwd packages/examples/smartglasses hardware:prove:bleak:watch` from the repo root and satisfy all hardware evidence checks.";
 }
 
 function inspectBluetoothPreflight() {
@@ -1457,7 +1441,7 @@ Bluetooth:
     missingSummary.pairedWholeHeadset !== true ||
     missingSummary.bluetoothPreflightSource !== "local" ||
     missingSummary.physicalBlocker !== "headset_not_found" ||
-    !missingSummary.nextAction.includes("smartglasses:hardware:prove:watch")
+    !missingSummary.nextAction.includes("hardware:prove:bleak:watch")
   ) {
     failures.push("missing report bluetooth preflight summary fixture failed");
   }

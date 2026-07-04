@@ -27,18 +27,18 @@ physical microphone and tap path.
 Completion requires a hardware report that passes:
 
 ```bash
-npm run smartglasses:hardware:validate
+bun run --cwd packages/examples/smartglasses hardware:validate-latest
 ```
 
 For the final physical attempt, the latest-report proof helpers run the smoke,
 print the status summary even on failure, then invoke the validator:
 
 ```bash
-npm run smartglasses:hardware:prove
+bun run --cwd packages/examples/smartglasses hardware:prove:bleak
 ```
 
 ```bash
-npm run smartglasses:hardware:prove:noble
+bun run --cwd packages/examples/smartglasses hardware:prove:noble
 ```
 
 The report must include:
@@ -73,7 +73,7 @@ The current latest report from 2026-05-20 10:39:00Z refreshed the physical
 proof attempt, but it now fails the completion gate with `reportStale`.
 CoreBluetooth was scanning and discovered 30 BLE devices, but
 zero matched Even/G1 names and zero advertised the G1 UART service UUID. It
-therefore did not discover either lens, and `npm run smartglasses:hardware:status` summarizes
+therefore did not discover either lens, and `bun run --cwd packages/examples/smartglasses hardware:status-latest` summarizes
 it with `wholeHeadsetConnected: false`, `wearingReady: false`, and
 `physicalBlocker: "headset_not_found"`. The completion gate hardware summary
 now also includes `pairedG1Devices`, `pairedG1DeviceCount`,
@@ -84,7 +84,7 @@ fields once the Bleak proof report contains them, and include
 `bluetoothPreflightSource` to distinguish report data from local fallback data.
 macOS Bluetooth system state still lists
 both G1 lenses as paired (`Even G1_51_L_138507` and `Even G1_51_R_8C0CDF`), but
-they are under "Not Connected"; `npm run smartglasses:hardware:doctor` reports this paired-but-not-
+they are under "Not Connected"; `bun run --cwd packages/examples/smartglasses hardware:doctor` reports this paired-but-not-
 advertising state directly. A Noble report from
 2026-05-20 07:26:42Z failed before scanning because the Noble native binding is
 unavailable for the current runtime and reported
@@ -99,20 +99,20 @@ shows `physical: "wearing"`, then perform single tap, speech, and double tap.
 Use the watch helper for a longer discovery and worn-state window:
 
 ```bash
-npm run smartglasses:hardware:prove
-npm run smartglasses:hardware:validate
+bun run --cwd packages/examples/smartglasses hardware:prove:bleak
+bun run --cwd packages/examples/smartglasses hardware:validate-latest
 ```
 
 ```bash
-npm run smartglasses:hardware:prove:watch
+bun run --cwd packages/examples/smartglasses hardware:prove:bleak:watch
 ```
 
 or the full watch proof wrapper:
 
 ```bash
-npm run smartglasses:hardware:prove:watch
+bun run --cwd packages/examples/smartglasses hardware:prove:bleak:watch
 ```
 
 ```bash
-npm run smartglasses:hardware:prove:noble:watch
+bun run --cwd packages/examples/smartglasses hardware:prove:noble:watch
 ```

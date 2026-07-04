@@ -52,7 +52,7 @@ bun run cloud:mock     # boot the full local cloud stack with mocks
 ```
 
 Scope any command to one package with `--cwd`:
-`bun run --cwd packages/core test`. The repo has 199 root scripts; the list
+`bun run --cwd packages/core test`. The repo has 188 root scripts; the list
 above is the day-to-day set. Use `bun run` with no args to print them all.
 
 ### Removed Root Command Migrations
@@ -71,6 +71,17 @@ above is the day-to-day set. Use `bun run` with no args to print them all.
 | `bun run voice:interactive` | `bun run --cwd packages/app-core voice:interactive` |
 | `bun run voice:duet` | `bun run --cwd packages/app-core voice:duet` |
 | `bun run voice:create-profile` | `bun run --cwd packages/app-core voice:create-profile` |
+| `bun run smartglasses:hardware:doctor` | `bun run --cwd packages/examples/smartglasses hardware:doctor` |
+| `bun run smartglasses:hardware:status` | `bun run --cwd packages/examples/smartglasses hardware:status-latest` |
+| `bun run smartglasses:hardware:validate` | `bun run --cwd packages/examples/smartglasses hardware:validate-latest` |
+| `bun run smartglasses:hardware:prove` | `bun run --cwd packages/examples/smartglasses hardware:prove:bleak` |
+| `bun run smartglasses:hardware:prove:watch` | `bun run --cwd packages/examples/smartglasses hardware:prove:bleak:watch` |
+| `bun run smartglasses:hardware:prove:noble` | `bun run --cwd packages/examples/smartglasses hardware:prove:noble` |
+| `bun run smartglasses:hardware:prove:noble:watch` | `bun run --cwd packages/examples/smartglasses hardware:prove:noble:watch` |
+| `bun run smartglasses:dev:hardware` | `bun run --cwd packages/examples/smartglasses dev:hardware` |
+| `bun run smartglasses:dev:simulator` | `bun run --cwd packages/examples/smartglasses dev:simulator` |
+| `bun run smartglasses:simulator` | `bun run --cwd packages/examples/smartglasses simulator` |
+| `bun run smartglasses:smoke:simulator` | `bun run --cwd packages/examples/smartglasses smoke:simulator` |
 | `bun run lint:all` | `bun run verify` |
 | `bun run build:typescript` | `node packages/scripts/run-turbo.mjs run build` |
 

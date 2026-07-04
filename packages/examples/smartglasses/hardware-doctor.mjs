@@ -173,10 +173,10 @@ export function chooseNextAction({
     !wholeHeadsetConnected &&
     latestReport?.physicalBlocker === "headset_not_found"
   ) {
-    return "Both G1 lenses are paired but not advertising/connectable. Remove them from the charging base, wear them, keep them near this Mac, and run npm run smartglasses:hardware:prove:watch from the repo root.";
+    return "Both G1 lenses are paired but not advertising/connectable. Remove them from the charging base, wear them, keep them near this Mac, then run `bun run --cwd packages/examples/smartglasses hardware:prove:bleak:watch` from the repo root.";
   }
   if (!wholeHeadsetConnected) {
-    return "Reconnect both paired G1 lenses and run npm run smartglasses:hardware:prove:watch from the repo root.";
+    return "Reconnect both paired G1 lenses, then run `bun run --cwd packages/examples/smartglasses hardware:prove:bleak:watch` from the repo root.";
   }
   return "Wear the connected glasses, single tap, speak, then double tap until hardware validation passes.";
 }

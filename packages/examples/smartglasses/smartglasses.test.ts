@@ -542,7 +542,7 @@ test("hardware report status prioritizes whole-headset setup hints", () => {
     setupHint:
       "The hardware transport is unavailable before headset discovery. Use the Bleak/CoreBluetooth smoke on macOS, or install/rebuild the Noble native BLE binding for this runtime.",
     nextAction:
-      "From the repo root, run npm run smartglasses:hardware:prove for macOS CoreBluetooth proof, or rebuild @abandonware/noble before using npm run smartglasses:hardware:prove:noble.",
+      "From the repo root, run `bun run --cwd packages/examples/smartglasses hardware:prove:bleak` for macOS CoreBluetooth proof, or rebuild @abandonware/noble before using `bun run --cwd packages/examples/smartglasses hardware:prove:noble`.",
   });
 
   const disconnectedReport = createHardwareEvidenceReport({
@@ -633,7 +633,7 @@ test("hardware report status prioritizes whole-headset setup hints", () => {
     setupHint:
       "No G1 lenses were found. Remove both lenses from the charging base, keep them near this device, and rerun hardware pairing.",
     nextAction:
-      "Remove both lenses from the charging base, keep them near this device, and run npm run smartglasses:hardware:prove:watch from the repo root.",
+      "Remove both lenses from the charging base, keep them near this device, then run `bun run --cwd packages/examples/smartglasses hardware:prove:bleak:watch` from the repo root.",
   });
 
   noLensReport.scanDiagnosis = "ble_seen_no_g1_candidates";
@@ -716,7 +716,7 @@ test("hardware report status prioritizes whole-headset setup hints", () => {
     wearingReady: false,
     physicalBlocker: "wearing_state_missing",
     nextAction:
-      "Wear the glasses until they report wearing, or run npm run smartglasses:hardware:prove:watch from the repo root for a longer latest-report proof window; then single tap, speak, and double tap.",
+      "Wear the glasses until they report wearing, or run `bun run --cwd packages/examples/smartglasses hardware:prove:bleak:watch` from the repo root for a longer latest-report proof window; then single tap, speak, and double tap.",
   });
 });
 
@@ -787,7 +787,7 @@ Bluetooth:
     setupHint:
       "Both G1 lenses are paired locally, but no latest proof report exists yet.",
     nextAction:
-      "Remove both lenses from the charging base, wear them near this device, and run npm run smartglasses:hardware:prove:watch from the repo root.",
+      "Remove both lenses from the charging base, wear them near this device, then run `bun run --cwd packages/examples/smartglasses hardware:prove:bleak:watch` from the repo root.",
     failures: ["missingReport"],
     failureDetails: [
       {
@@ -1239,5 +1239,5 @@ Bluetooth:
   expect(summary.nextAction).toContain(
     "paired but not advertising/connectable",
   );
-  expect(summary.nextAction).toContain("smartglasses:hardware:prove:watch");
+  expect(summary.nextAction).toContain("hardware:prove:bleak:watch");
 });

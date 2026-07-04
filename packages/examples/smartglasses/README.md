@@ -63,7 +63,7 @@ mic disable behavior, and reads the status provider.
 For a physical Even G1 smoke test with Web Bluetooth:
 
 ```bash
-npm run smartglasses:dev:hardware
+bun run --cwd packages/examples/smartglasses dev:hardware
 ```
 
 ```bash
@@ -75,8 +75,8 @@ Then open `http://127.0.0.1:5178/hardware-smoke.html` in a browser with Web Blue
 For EvenHub/G2 simulator testing, run the example dev server and point the simulator at the EvenHub smoke page. The plugin's `EvenBridgeTransport` supports the simulator-style `sendStartUpPage`, `onEvenHubEvent`, and `audioControl` bridge surface; the simulator's automation port can then screenshot the glasses framebuffer and inject click/double-click input.
 
 ```bash
-npm run smartglasses:dev:simulator
-npm run smartglasses:simulator
+bun run --cwd packages/examples/smartglasses dev:simulator
+bun run --cwd packages/examples/smartglasses simulator
 ```
 
 ```bash
@@ -87,7 +87,7 @@ bun run --cwd packages/examples/smartglasses simulator
 For an automated simulator run that starts Vite, boots the simulator, waits for the app readiness marker, checks the RGBA glasses framebuffer for lit pixels, and injects click/double-click input:
 
 ```bash
-npm run smartglasses:smoke:simulator
+bun run --cwd packages/examples/smartglasses smoke:simulator
 ```
 
 ```bash
@@ -136,24 +136,24 @@ validator requires the latest report to be fresh within ten minutes so an old
 Check current setup state first:
 
 ```bash
-npm run smartglasses:hardware:doctor
-npm run smartglasses:hardware:status
+bun run --cwd packages/examples/smartglasses hardware:doctor
+bun run --cwd packages/examples/smartglasses hardware:status-latest
 ```
 
-`smartglasses:hardware:status` is safe before the first proof run: if the
+`hardware:status-latest` is safe before the first proof run: if the
 latest report does not exist yet, it still prints local Bluetooth adapter and
 paired G1 lens state plus the next setup action.
 
 Then run the default CoreBluetooth/Bleak proof:
 
 ```bash
-npm run smartglasses:hardware:prove
+bun run --cwd packages/examples/smartglasses hardware:prove:bleak
 ```
 
 Use Noble only when its native binding is compatible with the current runtime:
 
 ```bash
-npm run smartglasses:hardware:prove:noble
+bun run --cwd packages/examples/smartglasses hardware:prove:noble
 ```
 
 If the short proof connects both lenses but does not observe wearing state, or
@@ -162,7 +162,7 @@ both lenses from the charging base, wear them, keep them near this Mac, and run
 the longer watch proof:
 
 ```bash
-npm run smartglasses:hardware:prove:watch
+bun run --cwd packages/examples/smartglasses hardware:prove:bleak:watch
 ```
 
 The latest report includes `discoveredDevices`, `discoveredDeviceCount`, and
@@ -192,7 +192,7 @@ bun run --cwd packages/examples/smartglasses hardware:prove:bleak:watch
 ```
 
 ```bash
-npm run smartglasses:hardware:prove:noble:watch
+bun run --cwd packages/examples/smartglasses hardware:prove:noble:watch
 ```
 
 ```bash
@@ -203,7 +203,7 @@ Validate the fresh latest artifact independently before treating physical
 hardware support as proven:
 
 ```bash
-npm run smartglasses:hardware:validate
+bun run --cwd packages/examples/smartglasses hardware:validate-latest
 ```
 
 To leave an auditable JSON artifact from the Noble smoke, set

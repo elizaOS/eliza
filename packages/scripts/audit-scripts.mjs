@@ -79,7 +79,6 @@ const ALLOWED_NAMESPACES = new Set([
   "fix-deps",
   "trajectory",
   "ensure-plugin-test-conventions",
-  "smartglasses",
   "capability-router",
   "browser-bridge",
 ]);

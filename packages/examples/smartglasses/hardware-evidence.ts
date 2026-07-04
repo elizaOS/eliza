@@ -477,13 +477,13 @@ export function nextActionForHardwareBlocker(
   physicalBlocker: HardwarePhysicalBlocker,
 ): string | null {
   if (physicalBlocker === "transport_unavailable") {
-    return "From the repo root, run npm run smartglasses:hardware:prove for macOS CoreBluetooth proof, or rebuild @abandonware/noble before using npm run smartglasses:hardware:prove:noble.";
+    return "From the repo root, run `bun run --cwd packages/examples/smartglasses hardware:prove:bleak` for macOS CoreBluetooth proof, or rebuild @abandonware/noble before using `bun run --cwd packages/examples/smartglasses hardware:prove:noble`.";
   }
   if (physicalBlocker === "disconnected") {
     return "Connect both lenses as one headset before running hardware validation.";
   }
   if (physicalBlocker === "headset_not_found") {
-    return "Remove both lenses from the charging base, keep them near this device, and run npm run smartglasses:hardware:prove:watch from the repo root.";
+    return "Remove both lenses from the charging base, keep them near this device, then run `bun run --cwd packages/examples/smartglasses hardware:prove:bleak:watch` from the repo root.";
   }
   if (physicalBlocker === "partial_headset") {
     return "Reconnect the whole headset so both left and right lenses are present.";
@@ -492,7 +492,7 @@ export function nextActionForHardwareBlocker(
     return "Remove both lenses from the charging base, wear the glasses, single tap, speak, then double tap.";
   }
   if (physicalBlocker === "wearing_state_missing") {
-    return "Wear the glasses until they report wearing, or run npm run smartglasses:hardware:prove:watch from the repo root for a longer latest-report proof window; then single tap, speak, and double tap.";
+    return "Wear the glasses until they report wearing, or run `bun run --cwd packages/examples/smartglasses hardware:prove:bleak:watch` from the repo root for a longer latest-report proof window; then single tap, speak, and double tap.";
   }
   return null;
 }
