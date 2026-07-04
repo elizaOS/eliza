@@ -299,7 +299,7 @@ def main(argv: list[str] | None = None) -> int:
         help=(
             "Local-debug escape hatch: when q4_polar cannot be emitted, "
             "fall back to f16/q8_0 and mark the sidecar as deferred. "
-            "Do not use for Eliza-1 release artifacts."
+            "Rejected when --release-state is set."
         ),
     )
     # Eliza-1 v1 = the upstream BASE models, GGUF-converted + fully optimized
@@ -432,6 +432,14 @@ def main(argv: list[str] | None = None) -> int:
         log.warning("Q4_POLAR conversion unavailable: %s", fallback_reason)
         args.outtype = "q8_0"
 
+    if fallback_reason is not None and args.release_state is not None:
+        log.error(
+            "refusing --allow-unoptimized-fallback with --release-state=%s: "
+            "fallback GGUFs are local-debug artifacts and are not release-eligible",
+            args.release_state,
+        )
+        return 2
+
     base_model = args.checkpoint.name
     if polar_sidecar:
         base_model = str(polar_sidecar.get("source_model") or base_model)
@@ -462,6 +470,7 @@ def main(argv: list[str] | None = None) -> int:
         "actual": args.outtype,
         "deferred": requested_outtype != args.outtype,
         "deferral_reason": fallback_reason,
+        "releaseEligible": fallback_reason is None,
         # PolarQuant codebook is still available as a sidecar even when the GGUF
         # body is q8_0/f16 — the runtime can apply it once the fork's converter
         # (or a runtime-side path) lands.
