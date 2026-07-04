@@ -158,6 +158,31 @@
                 android:resource="@xml/eliza_recognition_service" />
         </service>
 
+        <!--
+            Voice-input keyboard (IME, FUTO Voice Input pattern). Declaring an
+            InputMethodService with a voice-mode subtype (@xml/method) surfaces
+            Eliza under Settings -> System -> Languages & input -> On-screen
+            keyboard and lets other keyboards' mic long-press hand off to Eliza.
+            BIND_INPUT_METHOD is the system-held bind permission; the
+            android.view.im metadata declares the subtype + switch-back support.
+            Android IMEs may record audio (unlike iOS extensions), so this
+            keyboard records directly and transcribes via the on-device engine's
+            loopback ASR route, deep-linking into the app
+            (elizaos://voice?source=android-ime) when the engine isn't running.
+        -->
+        <service
+            android:name="ai.elizaos.app.ElizaVoiceInputMethodService"
+            android:exported="true"
+            android:label="@string/eliza_ime_label"
+            android:permission="android.permission.BIND_INPUT_METHOD">
+            <intent-filter>
+                <action android:name="android.view.InputMethod" />
+            </intent-filter>
+            <meta-data
+                android:name="android.view.im"
+                android:resource="@xml/method" />
+        </service>
+
         <activity
             android:name="ai.elizaos.app.ElizaShareActivity"
             android:exported="true"

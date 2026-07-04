@@ -125,6 +125,27 @@ const androidRecognitionService = readFileSync(
   ),
   "utf8",
 );
+const androidVoiceImeMethodXml = readFileSync(
+  path.join(
+    repoRoot,
+    "packages/app-core/platforms/android/app/src/main/res/xml/method.xml",
+  ),
+  "utf8",
+);
+const androidVoiceImeService = readFileSync(
+  path.join(
+    repoRoot,
+    "packages/app-core/platforms/android/app/src/main/java/ai/elizaos/app/ElizaVoiceInputMethodService.java",
+  ),
+  "utf8",
+);
+const androidVoiceImeLayout = readFileSync(
+  path.join(
+    repoRoot,
+    "packages/app-core/platforms/android/app/src/main/res/layout/eliza_voice_ime.xml",
+  ),
+  "utf8",
+);
 
 describe("native assistant entry contracts", () => {
   it("compiles the iOS App Intents source in the App target", () => {
@@ -354,5 +375,49 @@ describe("native assistant entry contracts", () => {
       "source=android-recognition-service",
     );
     expect(androidRecognitionServiceXml).toContain("recognition-service");
+  });
+
+  it("exposes the Android voice-input IME (FUTO voice-subtype pattern)", () => {
+    // Manifest: the InputMethodService must be declared, guarded by
+    // BIND_INPUT_METHOD, filter android.view.InputMethod, and point its
+    // android.view.im metadata at @xml/method. Without these Eliza never
+    // appears under Settings -> System -> On-screen keyboard.
+    expect(androidManifest).toContain("ElizaVoiceInputMethodService");
+    expect(androidManifest).toContain("android.permission.BIND_INPUT_METHOD");
+    expect(androidManifest).toContain("android.view.InputMethod");
+    expect(androidManifest).toContain('android:name="android.view.im"');
+    expect(androidManifest).toContain("@xml/method");
+
+    // method.xml: voice-mode subtype (imeSubtypeMode="voice") is what lets
+    // other keyboards' mic long-press hand off to Eliza; the switch-back
+    // affordance is declared via supportsSwitchingToNextInputMethod.
+    expect(androidVoiceImeMethodXml).toContain("input-method");
+    expect(androidVoiceImeMethodXml).toContain(
+      'android:imeSubtypeMode="voice"',
+    );
+    expect(androidVoiceImeMethodXml).toContain(
+      'android:supportsSwitchingToNextInputMethod="true"',
+    );
+
+    // Service: records audio, transcribes over the loopback ASR route, commits
+    // via InputConnection, and deep-links into the app with a distinct source
+    // tag when the on-device engine is unreachable (no silent fallback).
+    expect(androidVoiceImeService).toContain(
+      "extends InputMethodService",
+    );
+    expect(androidVoiceImeService).toContain("AudioRecord");
+    expect(androidVoiceImeService).toContain("/api/asr/local-inference");
+    expect(androidVoiceImeService).toContain("commitText");
+    expect(androidVoiceImeService).toContain(
+      "source=android-ime",
+    );
+    // The switch-back affordance is wired to the framework switch APIs.
+    expect(androidVoiceImeService).toContain("switchToPreviousInputMethod");
+    expect(androidVoiceImeService).toContain("switchToNextInputMethod");
+
+    // The keyboard surface renders the mic button + live level meter.
+    expect(androidVoiceImeLayout).toContain("@+id/eliza_ime_mic");
+    expect(androidVoiceImeLayout).toContain("@+id/eliza_ime_level");
+    expect(androidVoiceImeLayout).toContain("@+id/eliza_ime_switch");
   });
 });
