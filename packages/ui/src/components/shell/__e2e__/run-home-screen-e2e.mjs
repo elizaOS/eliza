@@ -7,12 +7,17 @@
  * Run: bun run --cwd packages/ui test:home-screen-e2e
  */
 
-import { mkdir, readdir, rename, rm, writeFile } from "node:fs/promises";
-import { builtinModules } from "node:module";
+import { mkdir, readdir, rename, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { build } from "esbuild";
 import { chromium } from "playwright";
+import {
+  createAssertGate,
+  createSnapper,
+  finishRun,
+  stubNodeBuiltins,
+  writeFixturePage,
+} from "../../../testing/e2e-runner/index.ts";
 import {
   FRAME_SAMPLER_INIT,
   summarizeFrameSamples,
@@ -53,18 +58,7 @@ async function clearGeneratedVideoArtifacts() {
   }
 }
 
-function stripTrailingLineWhitespace(text) {
-  return text.replace(/[ \t]+$/gm, "");
-}
-
 await clearGeneratedVideoArtifacts();
-
-let failures = 0;
-function assert(cond, msg) {
-  console.log(`${cond ? "✓" : "✗"} ${msg}`);
-  if (!cond) failures += 1;
-  return cond;
-}
 
 // Redirect the live data sources to deterministic stubs.
 const stubResolver = {
@@ -162,73 +156,31 @@ const stubElizaCore = {
 // The REAL WidgetHost subtree transitively reaches server-only code (the hooks
 // barrel pulls @elizaos/logger / @elizaos/shared, which import node builtins) —
 // DEAD in the browser (never executed at render; the home widgets fetch through
-// the mocked window.fetch + the stubbed client). Stub every node builtin to a
-// no-op Proxy so the browser bundle builds; if any of it actually ran at module
-// load the page-error guard below would catch it. (Mirrors run-chat-sheet-e2e.)
-const nodeBuiltins = new Set([
-  ...builtinModules,
-  ...builtinModules.map((m) => `node:${m}`),
-]);
-const stubNodeBuiltins = {
-  name: "stub-node-builtins",
-  setup(b) {
-    b.onResolve({ filter: /.*/ }, (args) => {
-      const bare = args.path.replace(/^node:/, "").split("/")[0];
-      if (
-        args.path.startsWith("node:") ||
-        nodeBuiltins.has(args.path) ||
-        builtinModules.includes(bare)
-      ) {
-        return { path: args.path, namespace: "node-stub" };
-      }
-      return null;
-    });
-    b.onLoad({ filter: /.*/, namespace: "node-stub" }, () => ({
-      contents:
-        "const n=()=>noop;const noop=new Proxy(n,{get:()=>noop});module.exports=noop;",
-      loader: "js",
-    }));
-  },
-};
+// the mocked window.fetch + the stubbed client). The shared stubNodeBuiltins
+// no-op-proxies every node builtin so the browser bundle builds; if any of it
+// actually ran at module load the page-error guard below would catch it.
 
-const result = await build({
-  entryPoints: [join(here, "home-screen-fixture.tsx")],
-  bundle: true,
-  format: "iife",
-  platform: "browser",
-  jsx: "automatic",
-  loader: { ".tsx": "tsx", ".ts": "ts" },
-  define: { "process.env.NODE_ENV": '"production"' },
-  plugins: [stubResolver, stubElizaCore, stubNodeBuiltins],
-  write: false,
+// The real app's viewport meta + the shell's runtime CSS vars: without the meta,
+// a mobile page falls back to the 980px layout viewport, so CSS `vw` units (the
+// sheet's `w-[min(440px,100vw-1rem)]`) mis-measure and the overlay mis-centers.
+const headHtml = `<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+<style>:root{--eliza-continuous-chat-clearance:5.25rem;--safe-area-bottom:0px;--eliza-mobile-nav-offset:0px}</style>`;
+const url = await writeFixturePage({
+  entry: join(here, "home-screen-fixture.tsx"),
+  outDir,
+  htmlName: "home-screen.html",
+  title: "home screen e2e",
+  plugins: [stubResolver, stubElizaCore, stubNodeBuiltins()],
+  processShim: true,
+  headHtml,
+  background: "#0a0d16",
 });
-const js = result.outputFiles[0].text;
-const html = stripTrailingLineWhitespace(`<!doctype html><html><head><meta charset="utf-8"><title>home screen e2e</title>
-<!-- Match the real app's viewport (packages/app/index.html): without it a
-     mobile page falls back to the 980px layout viewport, so CSS \`vw\` units
-     (the sheet's \`w-[min(440px,100vw-1rem)]\`) mis-measure and the overlay
-     mis-centers — a test-only artifact that hid the real overlay geometry. -->
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-<script src="https://cdn.tailwindcss.com"></script>
-<style>html,body{margin:0;height:100%;background:#0a0d16}
-:root{--eliza-continuous-chat-clearance:5.25rem;--safe-area-bottom:0px;--eliza-mobile-nav-offset:0px}</style>
-<!-- Shim node-ish globals some of the dead-in-browser graph touches at module
-     init (e.g. \`process.env\`). The real code paths never execute at render. -->
-<script>window.process=window.process||{env:{NODE_ENV:"production"},platform:"browser",cwd:function(){return "/"}};</script>
-</head><body><div id="root"></div><script>${js}</script></body></html>`);
-const htmlPath = join(outDir, "home-screen.html");
-await writeFile(htmlPath, html);
-const url = `file://${htmlPath}`;
 
 const sink = { errors: [] };
 const browser = await chromium.launch();
-let shot = 0;
-async function snap(p, name) {
-  shot += 1;
-  const file = `${String(shot).padStart(2, "0")}-${name}.png`;
-  await p.screenshot({ path: join(outDir, file) });
-  console.log(`  📸 ${file}`);
-}
+const gate = createAssertGate();
+const { assert } = gate;
+const snap = createSnapper({ outDir });
 // Mouse-drag paging for the DESKTOP page only (its context has no touch
 // support, and dragging the rail with a mouse is the real desktop input).
 // Every mobile-context swipe below goes through real CDP touch instead.
@@ -973,9 +925,9 @@ try {
 assert(sink.errors.length === 0, `no page errors (${sink.errors.length})`);
 for (const e of sink.errors) console.error(`  ⚠ ${e}`);
 
-console.log(`\nScreenshots (${shot}) → ${outDir}`);
-if (failures > 0) {
-  console.error(`\nHOME-SCREEN E2E FAILED (${failures})`);
-  process.exit(1);
-}
-console.log("\nHOME-SCREEN E2E PASSED");
+console.log(`\nScreenshots → ${outDir}`);
+finishRun({
+  failures: gate.failures,
+  passMessage: "\nHOME-SCREEN E2E PASSED",
+  failMessage: `\nHOME-SCREEN E2E FAILED (${gate.failures})`,
+});
