@@ -1,3 +1,8 @@
+/**
+ * Derives the log-line prefix (once, cached) from the runtime process's argv/cwd/
+ * env so structured log messages carry a consistent `[…]` tag. Reads a globalThis
+ * process shim, so it is safe in non-Node hosts where `process` is absent.
+ */
 let cachedPrefix: string | null = null;
 
 type RuntimeProcess = {

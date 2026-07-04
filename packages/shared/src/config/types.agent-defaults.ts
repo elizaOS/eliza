@@ -1,3 +1,9 @@
+/**
+ * `AgentDefaultsConfig` and sandbox-execution settings — the default behaviors
+ * (streaming, human-delay/typing, memory search) applied to every agent unless
+ * overridden per-agent, plus the Docker/browser/prune knobs for sandboxed runs.
+ * A slice of the `ElizaConfig` tree (see types.eliza.ts).
+ */
 import type {
   BlockStreamingChunkConfig,
   BlockStreamingCoalesceConfig,
@@ -10,7 +16,7 @@ export type { InboxTriageConfig } from "../contracts/inbox.js";
 
 import type { MemorySearchConfig } from "./types.tools.js";
 
-// --- Sandbox types (merged from types.sandbox.ts) ---
+// --- Sandbox execution settings ---
 
 export type SandboxDockerSettings = {
   /** Docker image to use for sandbox containers. */

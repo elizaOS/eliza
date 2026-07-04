@@ -1,3 +1,8 @@
+/**
+ * Cleans assistant text for display by detecting and stripping roleplay stage
+ * directions (`*beams*`, `*blushes*`, …). The leading-word set gates which
+ * asterisk-wrapped spans are treated as stage directions rather than emphasis.
+ */
 const STAGE_DIRECTION_FIRST_WORDS = new Set([
   "beam",
   "beams",

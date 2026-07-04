@@ -1,3 +1,4 @@
+/** Re-exports the core HTTP request/response helpers (body reading, JSON send) so shared consumers avoid a direct `@elizaos/core` import. */
 export type {
   ReadJsonBodyOptions,
   RequestBodyOptions,

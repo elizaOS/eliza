@@ -1,3 +1,9 @@
+/**
+ * API contract types for the LifeOps personal-assistant surface: schedule
+ * insights, sleep baselines, calendar feeds, and connector-degradation
+ * reporting. The shared shapes the PA plugin, API routes, and dashboard render
+ * against; re-exports the calendar and connector-degradation contracts.
+ */
 import type {
   GetLifeOpsCalendarFeedRequest,
   LifeOpsCalendarEventEndedFilters,
@@ -1661,8 +1667,7 @@ export interface LifeOpsScheduleRegularity {
  * Personal baseline derived from persisted sleep episodes over `windowDays`.
  * Medians are computed via circular mean (sin/cos projection) so bedtimes
  * crossing midnight produce correct answers. Returned as `null` on
- * `LifeOpsScheduleInsight` when `sampleCount < 5` — the scalar typical hours
- * that previously existed are deleted from the contract.
+ * `LifeOpsScheduleInsight` when `sampleCount < 5`.
  */
 export interface LifeOpsPersonalBaseline {
   /** Local wake hour in [0, 24). Circular mean over episode end instants. */

@@ -1,3 +1,8 @@
+/**
+ * Inbox contract types: auto-reply configuration and triage rules that classify
+ * inbound messages (urgent/ignore/notify). Consumed by the inbox surface and the
+ * agent-defaults config (`InboxTriageConfig`).
+ */
 export interface InboxAutoReplyConfig {
   enabled?: boolean;
   confidenceThreshold?: number;

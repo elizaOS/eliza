@@ -1,3 +1,9 @@
+/**
+ * Core zod schemas for validating config fragments (model API kinds, model
+ * compatibility flags, streaming/human-delay/tools/identity blocks) at runtime
+ * boundaries. Reused by zod-schema.agent-runtime.ts; string values that could be
+ * executed are gated through the exec-safety guard.
+ */
 import z from "zod";
 import { isSafeExecutableValue } from "../utils/exec-safety.js";
 

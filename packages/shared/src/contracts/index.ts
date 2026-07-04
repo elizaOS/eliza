@@ -1,3 +1,4 @@
+/** Barrel re-exporting every API route contract module (agent, apps, auth, wallet, inbox, …). */
 export * from "./agent-routes.js";
 export * from "./app-permissions.js";
 export * from "./app-permissions-routes.js";

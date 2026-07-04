@@ -1,3 +1,8 @@
+/**
+ * Canonical connector-id lists and config-schema constants — the authoritative
+ * `CONNECTOR_IDS` set (core connectors plus extensions) that config validation
+ * and connector-enumeration code across the stack reference.
+ */
 const ELIZA_CORE_CONNECTOR_IDS = [
   "bluebubbles",
   "telegram",

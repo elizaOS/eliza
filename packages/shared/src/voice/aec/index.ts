@@ -1,3 +1,4 @@
+/** Barrel for the acoustic echo cancellation (AEC) primitives: echo-delay estimation, the echo reference buffer, and the NLMS canceller. */
 export {
   DEFAULT_PLAYBACK_DELAY_MS,
   type EchoDelayEstimate,

@@ -1,3 +1,8 @@
+/**
+ * Cloud-topology contract: the set of Eliza Cloud services (inference, tts,
+ * media, embeddings, rpc) and helpers that resolve which of them a config routes
+ * to Cloud versus local, from deployment-target and linked-account settings.
+ */
 import {
   normalizeFirstRunProviderId,
   resolveDeploymentTargetInConfig,

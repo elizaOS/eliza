@@ -1,3 +1,4 @@
+/** Barrel for the runtime-agnostic config surface; React-eager modules are excluded so server boots stay React-free. */
 export * from "./allowed-hosts.js";
 export * from "./app-config.js";
 export * from "./boot-config.js";

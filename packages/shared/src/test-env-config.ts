@@ -1,3 +1,8 @@
+/**
+ * Canonical names of the environment variables that drive end-to-end test
+ * phases (ACME client creds, phase2/phase3 knobs, …). Centralized so tests and
+ * their harnesses reference one authoritative set of env var names.
+ */
 export type TestEnvRecord = Record<string, string | undefined>;
 
 export const TEST_ENV_NAMES = {

@@ -1,3 +1,8 @@
+/**
+ * Detects the runtime host kind (Cloudflare Worker, Capacitor background/
+ * foreground, browser, node) from an environment probe, so callers can gate
+ * behavior on what the current host actually supports.
+ */
 export type HostCapabilityKind =
   | "cloudflare-worker"
   | "capacitor-background-runner"

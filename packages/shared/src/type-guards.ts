@@ -1,3 +1,4 @@
+/** Shared TypeScript type guards for narrowing `unknown` values at runtime boundaries (plain objects, records, …). */
 export type UnknownRecord = Record<string, unknown>;
 
 export function isPlainObject(value: unknown): value is UnknownRecord {

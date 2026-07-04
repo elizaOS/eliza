@@ -1,3 +1,8 @@
+/**
+ * SQL identifier-quoting/sanitizing helpers plus per-runtime schema-repair
+ * bookkeeping. The `WeakSet`/`WeakMap` keyed by `AgentRuntime` make repair
+ * idempotent and race-safe (one in-flight repair promise shared per runtime).
+ */
 import type { AgentRuntime } from "@elizaos/core";
 
 const repairedRuntimes = new WeakSet<AgentRuntime>();

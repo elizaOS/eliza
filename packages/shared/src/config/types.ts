@@ -1,3 +1,7 @@
+/**
+ * Barrel re-exporting the `ElizaConfig` sub-type modules (agent-defaults,
+ * agents, eliza, gateway, hooks, messages, tools) as one flat surface.
+ */
 export * from "./types.agent-defaults.js";
 export * from "./types.agents.js";
 export * from "./types.eliza.js";

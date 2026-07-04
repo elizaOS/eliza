@@ -1,3 +1,10 @@
+/**
+ * Resolves runtime ports and API security config from environment variables
+ * (`ELIZA_PORT`, `ELIZA_API_PORT`, `ELIZA_API_BIND`, `ELIZA_API_TOKEN`,
+ * `ELIZA_ALLOWED_ORIGINS`/`_HOSTS`, …). The single place server boot derives its
+ * bind host, ports, and CORS/auth posture, so bind-mode classification
+ * (loopback vs wildcard) and dev's API/UI port split live here.
+ */
 import { isTruthyEnvValue } from "./env-utils.js";
 
 const DEFAULT_API_BIND_HOST = "127.0.0.1";

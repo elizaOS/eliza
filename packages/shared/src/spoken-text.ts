@@ -1,3 +1,8 @@
+/**
+ * Normalizes agent response text into a clean spoken form for TTS: strips URLs,
+ * thinking/tool markup, and collapses whitespace so the voice pipeline speaks
+ * only user-facing prose, not internal tags or link noise.
+ */
 function collapseWhitespace(input: string): string {
   return input.replace(/\s+/g, " ").trim();
 }

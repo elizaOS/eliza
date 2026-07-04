@@ -1,3 +1,8 @@
+/**
+ * Accessors for the `window`-scoped elizaOS globals (`__ELIZAOS_API_BASE__`, API
+ * token) that the injected renderer environment sets. Resolves the API base/token
+ * from the window or the boot-config store, returning null when off-browser.
+ */
 import { getBootConfig, setBootConfig } from "../config/boot-config-store.js";
 
 export type ElizaWindow = Window & {

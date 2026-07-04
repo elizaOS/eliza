@@ -1,3 +1,8 @@
+/**
+ * Process-scoped registry mapping an app's `uiExtension.detailPanelId` to the
+ * React component that renders its custom detail panel. Apps self-register on
+ * startup via side-effect import; the app-details UI looks up components here.
+ */
 import type { RegistryAppInfo } from "../contracts/apps.js";
 import type { AppDetailExtensionComponent } from "./detail-extension-types.js";
 

@@ -1,3 +1,8 @@
+/**
+ * Contract for agent self-update status: release channels, install method, and
+ * the zod schemas that validate update-check responses. Shared so the updater
+ * and the settings UI agree on channels and how the agent was installed.
+ */
 import z from "zod";
 import type { ReleaseChannel } from "./config.js";
 

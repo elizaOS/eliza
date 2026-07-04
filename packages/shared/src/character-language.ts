@@ -1,8 +1,3 @@
-import {
-  CHARACTER_LANGUAGES,
-  type CharacterLanguage,
-} from "./contracts/first-run-options.js";
-
 /**
  * Data-free character-language helpers.
  *
@@ -13,6 +8,10 @@ import {
  * character preset data (catchphrases/postExamples/bios) into the eager bundle.
  * This module depends only on the language enum + a tiny rules table.
  */
+import {
+  CHARACTER_LANGUAGES,
+  type CharacterLanguage,
+} from "./contracts/first-run-options.js";
 
 export const DEFAULT_CHARACTER_LANGUAGE: CharacterLanguage = "en";
 

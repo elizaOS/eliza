@@ -1,3 +1,8 @@
+/**
+ * Static data table of built-in character definitions (catchphrases, hints, post
+ * examples) plus per-language variants. Consumed by character-presets.ts to build
+ * the exported `StylePreset`s; this is the ~49KB payload kept off hot import paths.
+ */
 import type {
   CharacterLanguage,
   StylePreset,
