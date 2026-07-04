@@ -47,6 +47,7 @@ import {
 } from "../voice/local-asr-capture";
 import {
   isLocalInferenceAsrReady,
+  type TranscribeWavOptions,
   transcribeLocalInferenceWav,
 } from "../voice/local-asr-transcribe";
 import {
@@ -777,8 +778,20 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
   }, [applyTranscriptUpdate, resetListeningState]);
 
   const transcribeLocalInferenceAudio = useCallback(
-    async (audio: Uint8Array, signal?: AbortSignal): Promise<string> => {
-      const { text } = await transcribeLocalInferenceWav(audio, { signal });
+    async (
+      audio: Uint8Array,
+      signal?: AbortSignal,
+      timing?: LocalAsrRecorder["captureTiming"],
+    ): Promise<string> => {
+      const options: TranscribeWavOptions = {};
+      if (signal) options.signal = signal;
+      if (timing?.captureStartedAtMs !== undefined) {
+        options.captureStartedAtMs = timing.captureStartedAtMs;
+      }
+      if (timing?.captureEndedAtMs !== undefined) {
+        options.captureEndedAtMs = timing.captureEndedAtMs;
+      }
+      const { text } = await transcribeLocalInferenceWav(audio, options);
       return text;
     },
     [],
@@ -1042,7 +1055,11 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         if (recorder) {
           try {
             const audio = await recorder.stop();
-            const transcript = await transcribeLocalInferenceAudio(audio);
+            const transcript = await transcribeLocalInferenceAudio(
+              audio,
+              undefined,
+              recorder.captureTiming,
+            );
             applyTranscriptUpdate(transcript, true, {
               mode:
                 normalizeActiveVoiceSessionMode(mode) ??

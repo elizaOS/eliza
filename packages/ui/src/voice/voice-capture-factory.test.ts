@@ -90,6 +90,10 @@ describe("createVoiceCapture", () => {
           stop,
           cancel: vi.fn(),
           analyser: null,
+          captureTiming: {
+            captureStartedAtMs: 200,
+            captureEndedAtMs: 700,
+          },
         };
       },
     );
@@ -117,6 +121,13 @@ describe("createVoiceCapture", () => {
         backend: "local-inference",
         words: [],
       }),
+    );
+    expect(transcribeLocalInferenceWavMock).toHaveBeenCalledWith(
+      new Uint8Array([1, 2, 3]),
+      {
+        captureStartedAtMs: 200,
+        captureEndedAtMs: 700,
+      },
     );
     expect(onStateChange).toHaveBeenLastCalledWith("stopped", undefined);
   });

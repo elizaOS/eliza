@@ -52,6 +52,10 @@ describe("useVoiceChat local ASR", () => {
       stop,
       cancel: vi.fn(),
       analyser: null,
+      captureTiming: {
+        captureStartedAtMs: 100,
+        captureEndedAtMs: 350,
+      },
     });
     const onTranscript = vi.fn();
     const onTranscriptPreview = vi.fn();
@@ -93,7 +97,11 @@ describe("useVoiceChat local ASR", () => {
           "Content-Type": "application/json",
           Accept: "application/json",
         }),
-        body: JSON.stringify({ audioBase64: "AQIDBA==" }),
+        body: JSON.stringify({
+          audioBase64: "AQIDBA==",
+          captureStartedAtMs: 100,
+          captureEndedAtMs: 350,
+        }),
       }),
     );
     expect(onTranscriptPreview).toHaveBeenCalledWith(

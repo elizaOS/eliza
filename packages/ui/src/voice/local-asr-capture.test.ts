@@ -6,8 +6,10 @@ import { describe, expect, it } from "vitest";
 import {
   createLocalAsrAutoStopDetector,
   encodeMonoPcm16Wav,
+  isLocalAsrTtsCooldownStartAllowed,
   isSilentPcmAudio,
   measurePcmAudio,
+  resolveLocalAsrTtsCooldownGateConfig,
 } from "./local-asr-capture";
 
 describe("local ASR capture", () => {
@@ -67,6 +69,72 @@ describe("local ASR capture", () => {
     expect(detect(silence, 520)).toEqual({
       shouldBuffer: false,
       shouldStop: true,
+    });
+  });
+
+  it("parses the post-TTS cooldown with the conservative default", () => {
+    expect(resolveLocalAsrTtsCooldownGateConfig().postTtsCooldownMs).toBe(1500);
+    expect(
+      resolveLocalAsrTtsCooldownGateConfig({ postTtsCooldownMs: 250 })
+        .postTtsCooldownMs,
+    ).toBe(250);
+    expect(
+      resolveLocalAsrTtsCooldownGateConfig({ postTtsCooldownMs: -1 })
+        .postTtsCooldownMs,
+    ).toBe(1500);
+  });
+
+  it("raises the capture start gate during TTS cooldown but allows loud barge-in", () => {
+    const quietEcho = measurePcmAudio(new Float32Array([0.01, -0.01, 0.008]));
+    const loudBargeIn = measurePcmAudio(new Float32Array([0.04, -0.04, 0.035]));
+    const gate = {
+      lastPlaybackEndedAtMs: () => 1_000,
+      postTtsCooldownMs: 1_500,
+    };
+
+    expect(isLocalAsrTtsCooldownStartAllowed(quietEcho, gate, 1_400)).toBe(
+      false,
+    );
+    expect(isLocalAsrTtsCooldownStartAllowed(loudBargeIn, gate, 1_400)).toBe(
+      true,
+    );
+    expect(isLocalAsrTtsCooldownStartAllowed(quietEcho, gate, 2_600)).toBe(
+      true,
+    );
+  });
+
+  it("applies the TTS start gate only before speech begins", () => {
+    const detect = createLocalAsrAutoStopDetector(
+      {
+        startGraceMs: 0,
+        minSpeechMs: 100,
+        silenceMs: 200,
+        speechRmsThreshold: 0.003,
+        speechPeakThreshold: 0.012,
+        ttsCooldownGate: {
+          isPlaybackActive: () => true,
+          bargeInRmsThreshold: 0.025,
+          bargeInPeakThreshold: 0.08,
+        },
+      },
+      0,
+    );
+    if (!detect) throw new Error("auto-stop detector was not created");
+
+    const quietEcho = new Float32Array([0.01, -0.01, 0.008]);
+    const loudBargeIn = new Float32Array([0.04, -0.04, 0.035]);
+
+    expect(detect(quietEcho, 10)).toEqual({
+      shouldBuffer: false,
+      shouldStop: false,
+    });
+    expect(detect(loudBargeIn, 20)).toEqual({
+      shouldBuffer: true,
+      shouldStop: false,
+    });
+    expect(detect(quietEcho, 30)).toEqual({
+      shouldBuffer: true,
+      shouldStop: false,
     });
   });
 });

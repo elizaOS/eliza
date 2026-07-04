@@ -544,6 +544,51 @@ describe("VoiceService", () => {
     ]);
   });
 
+  it("holds low-RMS ASR starts during the post-TTS cooldown but allows loud barge-in", async () => {
+    const { voice, adapter } = harness({
+      ELIZA_VOICE_LIVE_RUNTIME: "1",
+      ELIZA_VOICE_LIVE_TTS: "1",
+    });
+
+    await voice.start({ mode: "local-runtime" });
+    await voice.synthesizeSpeech({ text: "assistant reply" });
+    adapter.emitAsrFinal({
+      text: "assistant reply echo",
+      metadata: { rms: 0.01 },
+    });
+    await flushVoiceEvents();
+
+    expect(adapter.runtimeHandoffCount).toBe(0);
+
+    adapter.emitAsrFinal({
+      text: "stop talking please",
+      metadata: { rms: 0.04 },
+    });
+    await flushVoiceEvents();
+
+    expect(adapter.runtimeHandoffCount).toBe(1);
+    expect(adapter.lastHandoffParams?.text).toBe("stop talking please");
+  });
+
+  it("honors ELIZA_VOICE_POST_TTS_COOLDOWN_MS=0", async () => {
+    const { voice, adapter } = harness({
+      ELIZA_VOICE_LIVE_RUNTIME: "1",
+      ELIZA_VOICE_LIVE_TTS: "1",
+      ELIZA_VOICE_POST_TTS_COOLDOWN_MS: "0",
+    });
+
+    await voice.start({ mode: "local-runtime" });
+    await voice.synthesizeSpeech({ text: "assistant reply" });
+    adapter.emitAsrFinal({
+      text: "quiet immediate follow up",
+      metadata: { rms: 0.01 },
+    });
+    await flushVoiceEvents();
+
+    expect(adapter.runtimeHandoffCount).toBe(1);
+    expect(adapter.lastHandoffParams?.text).toBe("quiet immediate follow up");
+  });
+
   it("returns structured errors for missing ASR, TTS, and playback", async () => {
     const { voice, adapter } = harness({
       ELIZA_VOICE_LIVE_RUNTIME: "1",

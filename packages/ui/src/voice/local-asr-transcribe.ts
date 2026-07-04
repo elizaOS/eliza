@@ -18,6 +18,10 @@ import { resolveApiUrl } from "../utils";
 export interface TranscribeWavOptions {
   /** Forwarded to `fetch` so callers can cancel an in-flight transcription. */
   signal?: AbortSignal;
+  /** Monotonic mic-capture start time, aligned with playback-frame timestamps. */
+  captureStartedAtMs?: number;
+  /** Monotonic mic-capture end time, aligned with playback-frame timestamps. */
+  captureEndedAtMs?: number;
 }
 
 export interface TranscribeWavResult {
@@ -92,6 +96,12 @@ function bytesToBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
+function finiteOptional(value: number | undefined): number | undefined {
+  return typeof value === "number" && Number.isFinite(value)
+    ? value
+    : undefined;
+}
+
 export async function transcribeLocalInferenceWav(
   audio: Uint8Array,
   options?: TranscribeWavOptions,
@@ -100,13 +110,27 @@ export async function transcribeLocalInferenceWav(
   // Android local-agent IPC only forwards string request bodies, so a binary
   // POST 503s with "only supports string request bodies". The ASR route accepts
   // `{ audioBase64 }` on every platform (web/desktop decode it identically).
+  const body: {
+    audioBase64: string;
+    captureStartedAtMs?: number;
+    captureEndedAtMs?: number;
+  } = { audioBase64: bytesToBase64(audio) };
+  const captureStartedAtMs = finiteOptional(options?.captureStartedAtMs);
+  const captureEndedAtMs = finiteOptional(options?.captureEndedAtMs);
+  if (captureStartedAtMs !== undefined) {
+    body.captureStartedAtMs = captureStartedAtMs;
+  }
+  if (captureEndedAtMs !== undefined) {
+    body.captureEndedAtMs = captureEndedAtMs;
+  }
+
   const res = await fetchWithCsrf(resolveApiUrl("/api/asr/local-inference"), {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Accept: "application/json",
     },
-    body: JSON.stringify({ audioBase64: bytesToBase64(audio) }),
+    body: JSON.stringify(body),
     signal: options?.signal,
   });
   if (!res.ok) {

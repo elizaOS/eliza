@@ -41,6 +41,7 @@ import type {
 	AudioFrameEvent,
 	EchoReferenceProvider,
 } from "../services/voice/audio-frame-consumer.js";
+import { getSharedFarEndEchoReference } from "../services/voice/far-end-echo-reference.js";
 import {
 	LiveDiarizationSession,
 	type RuntimeEventSink,
@@ -245,13 +246,13 @@ export async function handleLiveDiarizationRoute(
 	if (url.pathname === "/api/voice/playback-frames" && method === "POST") {
 		if (!ensureCompatApiAuthorized(req, res)) return true;
 		const current = getSession(state);
-		if (!current) {
-			sendJsonError(res, 503, "Runtime not ready");
-			return true;
-		}
 		const body = await readCompatJsonBody(req, res);
 		if (!body) return true;
-		if (body.reset === true) current.resetPlayback();
+		const sharedReference = getSharedFarEndEchoReference();
+		if (body.reset === true) {
+			current?.resetPlayback();
+			sharedReference.resetPlayback();
+		}
 		const rawFrames = body.frames;
 		if (rawFrames !== undefined && !Array.isArray(rawFrames)) {
 			sendJsonError(
@@ -272,7 +273,8 @@ export async function handleLiveDiarizationRoute(
 			);
 			return true;
 		}
-		current.pushPlayback(frames);
+		current?.pushPlayback(frames);
+		sharedReference.pushPlayback(frames);
 		sendJson(res, 200, { ok: true, framesPushed: frames.length });
 		return true;
 	}

@@ -8,6 +8,13 @@ import * as http from "node:http";
 import { Socket } from "node:net";
 import { ModelType } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { AudioFrameEvent } from "../services/voice/audio-frame-consumer";
+import { AUDIO_FRAME_PIPELINE_SAMPLE_RATE } from "../services/voice/audio-frame-consumer";
+import {
+	getSharedFarEndEchoReference,
+	resetSharedFarEndEchoReferenceForTesting,
+} from "../services/voice/far-end-echo-reference";
+import { encodeMonoPcm16Wav } from "../services/voice/wav-codec";
 import type { CompatRuntimeState } from "./compat-helpers";
 import { handleLocalInferenceAsrRoute } from "./local-inference-asr-route";
 import { transcribeWavWithWords } from "./local-inference-asr-transcribe";
@@ -28,6 +35,7 @@ const transcribeWavWithWordsMock = vi.mocked(transcribeWavWithWords);
 
 beforeEach(() => {
 	vi.clearAllMocks();
+	resetSharedFarEndEchoReferenceForTesting();
 	engineMock.canTranscribeLocally.mockResolvedValue(true);
 });
 
@@ -57,6 +65,59 @@ function wavBytes(): Uint8Array {
 		view.setInt16(44 + index * 2, pcm[index] ?? 0, true);
 	}
 	return new Uint8Array(buffer);
+}
+
+function syntheticSpeech(samples: number): Float32Array {
+	const out = new Float32Array(samples);
+	let seed = 0x9e3779b9;
+	for (let index = 0; index < samples; index += 1) {
+		seed = (seed * 1664525 + 1013904223) >>> 0;
+		out[index] =
+			Math.sin((2 * Math.PI * 180 * index) / AUDIO_FRAME_PIPELINE_SAMPLE_RATE) *
+				0.18 +
+			(seed / 0xffffffff - 0.5) * 0.06;
+	}
+	return out;
+}
+
+function encodeFramePcm16(pcm: Float32Array): string {
+	const bytes = Buffer.alloc(pcm.length * 2);
+	for (let index = 0; index < pcm.length; index += 1) {
+		const sample = Math.max(-1, Math.min(1, pcm[index] ?? 0));
+		bytes.writeInt16LE(Math.round(sample * 32767), index * 2);
+	}
+	return bytes.toString("base64");
+}
+
+function rms(pcm: Float32Array): number {
+	let sum = 0;
+	for (const sample of pcm) sum += sample * sample;
+	return Math.sqrt(sum / Math.max(1, pcm.length));
+}
+
+function playbackFrames(
+	pcm: Float32Array,
+	startedAtMs: number,
+): AudioFrameEvent[] {
+	const frames: AudioFrameEvent[] = [];
+	const frameSamples = 320;
+	for (let offset = 0; offset < pcm.length; offset += frameSamples) {
+		const chunk = pcm.subarray(
+			offset,
+			Math.min(pcm.length, offset + frameSamples),
+		);
+		frames.push({
+			pcm16: encodeFramePcm16(chunk),
+			sampleRate: AUDIO_FRAME_PIPELINE_SAMPLE_RATE,
+			channels: 1,
+			samples: chunk.length,
+			rms: rms(chunk),
+			timestamp:
+				startedAtMs + (offset / AUDIO_FRAME_PIPELINE_SAMPLE_RATE) * 1000,
+			frameIndex: frames.length,
+		});
+	}
+	return frames;
 }
 
 function fakeReq(
@@ -137,6 +198,12 @@ describe("local inference ASR route", () => {
 		expect(out.bodyJson()).toEqual({
 			ready: true,
 			provider: "local-inference",
+			aec: expect.objectContaining({
+				echoReferenceWired: false,
+				playbackFramesReceived: 0,
+				playbackSamplesReceived: 0,
+				asrFramesCancelled: 0,
+			}),
 		});
 		expect(getModel).toHaveBeenCalledWith(ModelType.TRANSCRIPTION);
 		expect(engineMock.canTranscribeLocally).toHaveBeenCalledTimes(1);
@@ -164,7 +231,14 @@ describe("local inference ASR route", () => {
 
 		expect(handled).toBe(true);
 		expect(out.status()).toBe(200);
-		expect(out.bodyJson()).toEqual({ ready: false, provider: null });
+		expect(out.bodyJson()).toEqual({
+			ready: false,
+			provider: null,
+			aec: expect.objectContaining({
+				echoReferenceWired: false,
+				asrFramesCancelled: 0,
+			}),
+		});
 		expect(engineMock.canTranscribeLocally).toHaveBeenCalledTimes(1);
 	});
 
@@ -188,7 +262,14 @@ describe("local inference ASR route", () => {
 
 		expect(handled).toBe(true);
 		expect(out.status()).toBe(200);
-		expect(out.bodyJson()).toEqual({ ready: false, provider: null });
+		expect(out.bodyJson()).toEqual({
+			ready: false,
+			provider: null,
+			aec: expect.objectContaining({
+				echoReferenceWired: false,
+				asrFramesCancelled: 0,
+			}),
+		});
 		expect(engineMock.canTranscribeLocally).not.toHaveBeenCalled();
 	});
 
@@ -248,5 +329,41 @@ describe("local inference ASR route", () => {
 			Array.from(transcribeWavWithWordsMock.mock.calls[0]?.[1] as Uint8Array),
 		).toEqual(Array.from(wavBytes()));
 		expect(out.bodyJson()).toEqual({ text: "hello from json", words: [] });
+	});
+
+	it("applies the shared playback reference to timed JSON audio before transcription", async () => {
+		transcribeWavWithWordsMock.mockResolvedValue({
+			text: "cleaned local voice",
+			words: [],
+		});
+		const startedAtMs = 1_500;
+		const far = syntheticSpeech(AUDIO_FRAME_PIPELINE_SAMPLE_RATE * 2);
+		const wav = encodeMonoPcm16Wav(far, AUDIO_FRAME_PIPELINE_SAMPLE_RATE);
+		getSharedFarEndEchoReference().pushPlayback(
+			playbackFrames(far, startedAtMs),
+		);
+		const state: CompatRuntimeState = {
+			current: {} as unknown as CompatRuntimeState["current"],
+		};
+		const req = fakeReq({
+			audioBase64: Buffer.from(wav).toString("base64"),
+			captureStartedAtMs: startedAtMs,
+			captureEndedAtMs: startedAtMs + 2_000,
+		});
+		req.headers["content-type"] = "application/json";
+		const out = fakeRes();
+
+		await handleLocalInferenceAsrRoute(req, out.res, state);
+
+		const forwarded = transcribeWavWithWordsMock.mock
+			.calls[0]?.[1] as Uint8Array;
+		expect(Array.from(forwarded)).not.toEqual(Array.from(wav));
+		expect(
+			getSharedFarEndEchoReference().status().asrFramesCancelled,
+		).toBeGreaterThan(0);
+		expect(out.bodyJson()).toEqual({
+			text: "cleaned local voice",
+			words: [],
+		});
 	});
 });

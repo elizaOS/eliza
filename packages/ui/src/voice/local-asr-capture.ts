@@ -5,11 +5,18 @@
 export interface LocalAsrRecorder {
   stop(): Promise<Uint8Array>;
   cancel(): void;
+  /** Monotonic capture timing, in the same clock used by playback-frame taps. */
+  readonly captureTiming?: LocalAsrCaptureTiming;
   /**
    * Live analyser tapped off the same mic stream, for amplitude visualization.
    * `null` once the recorder has been stopped / cancelled (the context closes).
    */
   analyser: AnalyserNode | null;
+}
+
+export interface LocalAsrCaptureTiming {
+  captureStartedAtMs: number;
+  captureEndedAtMs?: number;
 }
 
 export interface LocalAsrAutoStopOptions {
@@ -19,14 +26,16 @@ export interface LocalAsrAutoStopOptions {
   maxSpeechMs?: number;
   speechRmsThreshold?: number;
   speechPeakThreshold?: number;
+  ttsCooldownGate?: LocalAsrTtsCooldownGateOptions;
 }
 
 export interface LocalAsrRecorderOptions {
   autoStop?: LocalAsrAutoStopOptions;
+  ttsCooldownGate?: LocalAsrTtsCooldownGateOptions;
   onAutoStop?: () => void;
 }
 
-/** Fully-resolved auto-stop config (every {@link LocalAsrAutoStopOptions} field set). */
+/** Fully-resolved numeric auto-stop config. */
 export interface LocalAsrAutoStopConfig {
   startGraceMs: number;
   minSpeechMs: number;
@@ -41,11 +50,36 @@ export interface LocalAsrAutoStopUpdate {
   shouldStop: boolean;
 }
 
+export interface LocalAsrTtsCooldownGateOptions {
+  postTtsCooldownMs?: number;
+  bargeInRmsThreshold?: number;
+  bargeInPeakThreshold?: number;
+  isPlaybackActive?: () => boolean;
+  lastPlaybackEndedAtMs?: () => number | null | undefined;
+}
+
+export interface LocalAsrTtsCooldownGateConfig {
+  postTtsCooldownMs: number;
+  bargeInRmsThreshold: number;
+  bargeInPeakThreshold: number;
+}
+
 type AudioContextConstructor = typeof AudioContext;
 
 type WindowWithAudioContext = Window & {
   AudioContext?: AudioContextConstructor;
   webkitAudioContext?: AudioContextConstructor;
+};
+
+type WindowWithTtsPlaybackState = Window & {
+  __elizaVoiceTtsPlayback?: {
+    active?: boolean;
+    lastEndedAtMs?: number;
+  };
+};
+
+type ProcessWithEnv = {
+  env?: Record<string, string | undefined>;
 };
 
 function getAudioContextCtor(): AudioContextConstructor | undefined {
@@ -125,6 +159,114 @@ export const DEFAULT_LOCAL_ASR_AUTO_STOP: LocalAsrAutoStopConfig = {
   speechPeakThreshold: 0.012,
 };
 
+export const DEFAULT_LOCAL_ASR_POST_TTS_COOLDOWN_MS = 1500;
+export const DEFAULT_LOCAL_ASR_TTS_BARGE_IN_RMS_THRESHOLD = 0.025;
+export const DEFAULT_LOCAL_ASR_TTS_BARGE_IN_PEAK_THRESHOLD = 0.08;
+
+function readRuntimeEnvValue(key: string): string | undefined {
+  if (typeof process === "undefined") return undefined;
+  const env = (process as ProcessWithEnv).env;
+  if (!env) return undefined;
+  return env[key];
+}
+
+function parseNonNegativeMs(
+  value: string | number | undefined,
+  fallback: number,
+): number {
+  if (value === undefined) return fallback;
+  const parsed = typeof value === "number" ? value : Number(value.trim());
+  if (!Number.isFinite(parsed) || parsed < 0) return fallback;
+  return Math.round(parsed);
+}
+
+function finitePositive(value: number | undefined, fallback: number): number {
+  if (value === undefined) return fallback;
+  if (!Number.isFinite(value) || value <= 0) return fallback;
+  return value;
+}
+
+export function resolveLocalAsrTtsCooldownGateConfig(
+  options: LocalAsrTtsCooldownGateOptions = {},
+): LocalAsrTtsCooldownGateConfig {
+  return {
+    postTtsCooldownMs: parseNonNegativeMs(
+      options.postTtsCooldownMs ??
+        readRuntimeEnvValue("ELIZA_VOICE_POST_TTS_COOLDOWN_MS"),
+      DEFAULT_LOCAL_ASR_POST_TTS_COOLDOWN_MS,
+    ),
+    bargeInRmsThreshold: finitePositive(
+      options.bargeInRmsThreshold,
+      DEFAULT_LOCAL_ASR_TTS_BARGE_IN_RMS_THRESHOLD,
+    ),
+    bargeInPeakThreshold: finitePositive(
+      options.bargeInPeakThreshold,
+      DEFAULT_LOCAL_ASR_TTS_BARGE_IN_PEAK_THRESHOLD,
+    ),
+  };
+}
+
+function getWindowTtsPlaybackState():
+  | WindowWithTtsPlaybackState["__elizaVoiceTtsPlayback"]
+  | undefined {
+  if (typeof window === "undefined") return undefined;
+  return (window as WindowWithTtsPlaybackState).__elizaVoiceTtsPlayback;
+}
+
+function isDefaultPlaybackActive(): boolean {
+  if (typeof window === "undefined") return false;
+  const sidecar = getWindowTtsPlaybackState();
+  if (sidecar?.active === true) return true;
+  const synth = window.speechSynthesis;
+  return synth?.speaking === true || synth?.pending === true;
+}
+
+function defaultLastPlaybackEndedAtMs(): number | null | undefined {
+  return getWindowTtsPlaybackState()?.lastEndedAtMs;
+}
+
+export function markLocalAsrTtsPlaybackStarted(atMs = nowMs()): void {
+  if (typeof window === "undefined") return;
+  (window as WindowWithTtsPlaybackState).__elizaVoiceTtsPlayback = {
+    active: true,
+    lastEndedAtMs: atMs,
+  };
+}
+
+export function markLocalAsrTtsPlaybackEnded(atMs = nowMs()): void {
+  if (typeof window === "undefined") return;
+  (window as WindowWithTtsPlaybackState).__elizaVoiceTtsPlayback = {
+    active: false,
+    lastEndedAtMs: atMs,
+  };
+}
+
+export function isLocalAsrTtsCooldownStartAllowed(
+  stats: PcmAudioStats,
+  options: LocalAsrTtsCooldownGateOptions = {},
+  sampleTimeMs = nowMs(),
+): boolean {
+  const config = resolveLocalAsrTtsCooldownGateConfig(options);
+  const playbackActive =
+    options.isPlaybackActive?.() ?? isDefaultPlaybackActive();
+  const lastEndedAtMs =
+    options.lastPlaybackEndedAtMs?.() ?? defaultLastPlaybackEndedAtMs();
+  const elapsedSincePlaybackEndMs =
+    typeof lastEndedAtMs === "number" && Number.isFinite(lastEndedAtMs)
+      ? sampleTimeMs - lastEndedAtMs
+      : Number.POSITIVE_INFINITY;
+  const inCooldown =
+    elapsedSincePlaybackEndMs >= 0 &&
+    elapsedSincePlaybackEndMs < config.postTtsCooldownMs;
+
+  if (!playbackActive && !inCooldown) return true;
+
+  return (
+    stats.rms >= config.bargeInRmsThreshold ||
+    stats.peak >= config.bargeInPeakThreshold
+  );
+}
+
 export function createLocalAsrAutoStopDetector(
   options: LocalAsrAutoStopOptions | undefined,
   startedAtMs = nowMs(),
@@ -137,6 +279,7 @@ export function createLocalAsrAutoStopDetector(
     ...DEFAULT_LOCAL_ASR_AUTO_STOP,
     ...options,
   };
+  const ttsCooldownGate = options.ttsCooldownGate;
   let firstSpeechAtMs: number | null = null;
   let lastSpeechAtMs: number | null = null;
   let stopped = false;
@@ -150,9 +293,17 @@ export function createLocalAsrAutoStopDetector(
     }
 
     const stats = measurePcmAudio(pcm);
-    const speechDetected =
+    const normalSpeechDetected =
       stats.rms >= config.speechRmsThreshold ||
       stats.peak >= config.speechPeakThreshold;
+    const speechDetected =
+      normalSpeechDetected &&
+      (firstSpeechAtMs !== null ||
+        isLocalAsrTtsCooldownStartAllowed(
+          stats,
+          ttsCooldownGate,
+          sampleTimeMs,
+        ));
 
     if (speechDetected) {
       if (firstSpeechAtMs === null) firstSpeechAtMs = sampleTimeMs;
@@ -253,7 +404,13 @@ export async function startLocalAsrRecorder(
   const chunks: Float32Array[] = [];
   let stopped = false;
   let autoStopRequested = false;
+  const captureStartedAtMs = nowMs();
+  let captureEndedAtMs: number | undefined;
   const autoStopDetector = createLocalAsrAutoStopDetector(options.autoStop);
+  const ttsCooldownGate = options.autoStop?.ttsCooldownGate
+    ? undefined
+    : options.ttsCooldownGate;
+  let captureStartAccepted = false;
 
   processor.onaudioprocess = (event) => {
     if (stopped) return;
@@ -269,10 +426,20 @@ export async function startLocalAsrRecorder(
       }
     }
 
-    const autoStopUpdate = autoStopDetector?.(mono) ?? {
-      shouldBuffer: true,
-      shouldStop: false,
-    };
+    const autoStopUpdate =
+      autoStopDetector?.(mono) ??
+      (() => {
+        if (captureStartAccepted) {
+          return { shouldBuffer: true, shouldStop: false };
+        }
+        const stats = measurePcmAudio(mono);
+        const shouldBuffer = isLocalAsrTtsCooldownStartAllowed(
+          stats,
+          ttsCooldownGate,
+        );
+        if (shouldBuffer) captureStartAccepted = true;
+        return { shouldBuffer, shouldStop: false };
+      })();
     if (autoStopUpdate.shouldBuffer) {
       chunks.push(mono);
     }
@@ -314,8 +481,16 @@ export async function startLocalAsrRecorder(
     get analyser() {
       return analyser;
     },
+    get captureTiming() {
+      const timing: LocalAsrCaptureTiming = { captureStartedAtMs };
+      if (captureEndedAtMs !== undefined) {
+        timing.captureEndedAtMs = captureEndedAtMs;
+      }
+      return timing;
+    },
     async stop() {
       const sampleRate = context.sampleRate;
+      captureEndedAtMs = nowMs();
       await cleanup();
       const pcm = concatPcm(chunks);
       if (pcm.length === 0) {

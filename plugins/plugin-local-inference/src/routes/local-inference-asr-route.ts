@@ -14,6 +14,10 @@ import type http from "node:http";
 import { ModelType } from "@elizaos/core";
 import { localInferenceEngine } from "../services/engine";
 import {
+	type AsrEchoCancellationOptions,
+	getSharedFarEndEchoReference,
+} from "../services/voice/far-end-echo-reference";
+import {
 	type CompatRuntimeState,
 	ensureRouteAuthorized,
 	readCompatJsonBody,
@@ -23,8 +27,20 @@ import { transcribeWavWithWords } from "./local-inference-asr-transcribe";
 
 const MAX_LOCAL_ASR_AUDIO_BYTES = 16 * 1024 * 1024;
 
+interface LocalInferenceAsrAudio {
+	audio: Uint8Array;
+	captureStartedAtMs?: number;
+	captureEndedAtMs?: number;
+}
+
 function toUint8Array(value: Uint8Array | ArrayBuffer): Uint8Array {
 	return value instanceof Uint8Array ? value : new Uint8Array(value);
+}
+
+function finiteOptional(value: unknown): number | undefined {
+	return typeof value === "number" && Number.isFinite(value)
+		? value
+		: undefined;
 }
 
 function coercePreParsedAudio(value: unknown): Uint8Array | null {
@@ -39,9 +55,9 @@ function coercePreParsedAudio(value: unknown): Uint8Array | null {
 async function readRawAudioBody(
 	req: http.IncomingMessage,
 	res: http.ServerResponse,
-): Promise<Uint8Array | null> {
+): Promise<LocalInferenceAsrAudio | null> {
 	const preParsed = coercePreParsedAudio((req as { body?: unknown }).body);
-	if (preParsed) return preParsed;
+	if (preParsed) return { audio: preParsed };
 
 	const chunks: Buffer[] = [];
 	let totalBytes = 0;
@@ -61,7 +77,7 @@ async function readRawAudioBody(
 		return null;
 	}
 
-	return new Uint8Array(Buffer.concat(chunks));
+	return { audio: new Uint8Array(Buffer.concat(chunks)) };
 }
 
 function firstHeaderValue(value: string | string[] | undefined): string {
@@ -71,7 +87,7 @@ function firstHeaderValue(value: string | string[] | undefined): string {
 async function readLocalInferenceAsrAudio(
 	req: http.IncomingMessage,
 	res: http.ServerResponse,
-): Promise<Uint8Array | null> {
+): Promise<LocalInferenceAsrAudio | null> {
 	const contentType = firstHeaderValue(req.headers["content-type"])
 		.toLowerCase()
 		.split(";", 1)[0]
@@ -81,7 +97,18 @@ async function readLocalInferenceAsrAudio(
 		const body = await readCompatJsonBody(req, res);
 		if (!body) return null;
 		if (typeof body.audioBase64 === "string") {
-			return new Uint8Array(Buffer.from(body.audioBase64, "base64"));
+			const input: LocalInferenceAsrAudio = {
+				audio: new Uint8Array(Buffer.from(body.audioBase64, "base64")),
+			};
+			const captureStartedAtMs = finiteOptional(body.captureStartedAtMs);
+			const captureEndedAtMs = finiteOptional(body.captureEndedAtMs);
+			if (captureStartedAtMs !== undefined) {
+				input.captureStartedAtMs = captureStartedAtMs;
+			}
+			if (captureEndedAtMs !== undefined) {
+				input.captureEndedAtMs = captureEndedAtMs;
+			}
+			return input;
 		}
 		sendJson(res, 400, { error: "Missing audioBase64" });
 		return null;
@@ -115,6 +142,7 @@ export async function handleLocalInferenceAsrRoute(
 		sendJson(res, 200, {
 			ready,
 			provider: ready ? "local-inference" : null,
+			aec: getSharedFarEndEchoReference().status(),
 		});
 		return true;
 	}
@@ -125,9 +153,9 @@ export async function handleLocalInferenceAsrRoute(
 
 	if (!(await ensureRouteAuthorized(req, res, state))) return true;
 
-	const audio = await readLocalInferenceAsrAudio(req, res);
-	if (!audio) return true;
-	if (audio.byteLength === 0) {
+	const input = await readLocalInferenceAsrAudio(req, res);
+	if (!input) return true;
+	if (input.audio.byteLength === 0) {
 		sendJson(res, 400, { error: "Missing audio" });
 		return true;
 	}
@@ -153,9 +181,20 @@ export async function handleLocalInferenceAsrRoute(
 			});
 			return true;
 		}
+		const aecOptions: AsrEchoCancellationOptions = {};
+		if (input.captureStartedAtMs !== undefined) {
+			aecOptions.captureStartedAtMs = input.captureStartedAtMs;
+		}
+		if (input.captureEndedAtMs !== undefined) {
+			aecOptions.captureEndedAtMs = input.captureEndedAtMs;
+		}
+		const aec = getSharedFarEndEchoReference().cancelAsrWav(
+			input.audio,
+			aecOptions,
+		);
 		const { text, words } = await transcribeWavWithWords(
 			runtime,
-			audio,
+			aec.audio,
 			abortController.signal,
 		);
 		completed = true;

@@ -76,6 +76,19 @@ function isTruthy(value: string | undefined): boolean {
   );
 }
 
+const DEFAULT_POST_TTS_COOLDOWN_MS = 1500;
+const TTS_BARGE_IN_RMS_THRESHOLD = 0.025;
+
+function parseNonNegativeMs(
+  value: string | undefined,
+  fallback: number,
+): number {
+  if (value === undefined) return fallback;
+  const parsed = Number(value.trim());
+  if (!Number.isFinite(parsed) || parsed < 0) return fallback;
+  return Math.round(parsed);
+}
+
 function requireNonEmpty(value: string, field: string): string {
   const trimmed = value.trim();
   if (!trimmed) {
@@ -93,6 +106,18 @@ function mergeMetadata(
 ): Record<string, JsonValue> | undefined {
   if (!left && !right) return undefined;
   return { ...(left ?? {}), ...(right ?? {}) };
+}
+
+function metadataNumber(
+  metadata: Record<string, JsonValue> | undefined,
+  fields: readonly string[],
+): number | undefined {
+  if (!metadata) return undefined;
+  for (const field of fields) {
+    const value = metadata[field];
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+  }
+  return undefined;
 }
 
 function latencySummaryJson(
@@ -156,6 +181,7 @@ export class VoiceService {
   private readonly runtimeAdapter: VoiceRuntimeAdapter;
   private readonly pipelineId: VoicePipelineId;
   private readonly latencyBudget: VoiceLatencyBudget;
+  private readonly postTtsCooldownMs: number;
   private statusValue: VoicePipelineStatus = "idle";
   private mode: VoiceTestMode = "mock";
   private activeTurn: VoiceTurn | null = null;
@@ -170,6 +196,8 @@ export class VoiceService {
   /** Agent's most recent spoken reply + when it landed — feeds the echo guard. */
   private lastAgentReply: string | undefined;
   private lastAgentReplyAtMs: number | undefined;
+  private ttsPlaybackActive = false;
+  private lastTtsPlaybackEndedAtMs: number | undefined;
 
   constructor(options: VoiceServiceOptions = {}) {
     this.traceService = options.traceService ?? null;
@@ -196,6 +224,10 @@ export class VoiceService {
       });
     this.pipelineId = this.pipelineIdFactory();
     this.latencyBudget = getVoiceLatencyBudgetFromEnv(this.env);
+    this.postTtsCooldownMs = parseNonNegativeMs(
+      this.env.ELIZA_VOICE_POST_TTS_COOLDOWN_MS,
+      DEFAULT_POST_TTS_COOLDOWN_MS,
+    );
   }
 
   async status(): Promise<VoicePipelineSnapshot> {
@@ -300,6 +332,7 @@ export class VoiceService {
     });
     turn.responseText = text;
     this.statusValue = "speaking";
+    this.markTtsPlaybackActive();
     await this.updateTurn("tts_started");
     const started = await this.mark("tts", "started", {
       text,
@@ -327,6 +360,7 @@ export class VoiceService {
       text,
       voiceId: params.voiceId ?? null,
     });
+    this.markTtsPlaybackEnded();
     await this.finishTurn("completed");
     this.statusValue = "listening";
     return cloneVoiceTurn(turn);
@@ -477,6 +511,14 @@ export class VoiceService {
     turn.status = status;
     turn.updatedAt = this.timestamp();
     turn.completedAt = turn.updatedAt;
+    if (
+      this.ttsPlaybackActive &&
+      turn.marks.some(
+        (mark) => mark.stage === "tts" || mark.stage === "playback",
+      )
+    ) {
+      this.markTtsPlaybackEnded();
+    }
     if (message) turn.error = message;
     if (status === "error") {
       await this.trace(
@@ -687,6 +729,7 @@ export class VoiceService {
     metadata?: Record<string, JsonValue>;
   }): Promise<void> {
     const text = requireNonEmpty(event.text, "text");
+    if (this.shouldHoldAsrStartForTts(event.metadata)) return;
     const turn = await this.ensureTurn({
       trace: this.traceEnabled,
       metadata: event.metadata,
@@ -735,6 +778,7 @@ export class VoiceService {
     trace: boolean,
   ): Promise<void> {
     const text = requireNonEmpty(event.text, "text");
+    if (this.shouldHoldAsrStartForTts(event.metadata)) return;
     const turn = await this.ensureTurn({
       trace,
       metadata: event.metadata,
@@ -890,6 +934,45 @@ export class VoiceService {
     this.lastAgentReplyAtMs = this.now().getTime();
   }
 
+  private markTtsPlaybackActive(): void {
+    this.ttsPlaybackActive = true;
+  }
+
+  private markTtsPlaybackEnded(): void {
+    if (!this.ttsPlaybackActive) return;
+    this.ttsPlaybackActive = false;
+    this.lastTtsPlaybackEndedAtMs = this.now().getTime();
+  }
+
+  private ttsCaptureGateState():
+    | { phase: "speaking"; elapsedMs: 0 }
+    | { phase: "post-tts-cooldown"; elapsedMs: number }
+    | null {
+    if (this.ttsPlaybackActive || this.statusValue === "speaking") {
+      return { phase: "speaking", elapsedMs: 0 };
+    }
+    if (this.lastTtsPlaybackEndedAtMs === undefined) return null;
+    const elapsedMs = this.now().getTime() - this.lastTtsPlaybackEndedAtMs;
+    if (elapsedMs < 0 || elapsedMs >= this.postTtsCooldownMs) return null;
+    return { phase: "post-tts-cooldown", elapsedMs };
+  }
+
+  private shouldHoldAsrStartForTts(
+    metadata: Record<string, JsonValue> | undefined,
+  ): boolean {
+    if (
+      this.activeTurn?.transcriptPartial ||
+      this.activeTurn?.transcriptFinal
+    ) {
+      return false;
+    }
+    const gate = this.ttsCaptureGateState();
+    if (!gate) return false;
+    const rms = metadataNumber(metadata, ["rms", "audioRms", "inputRms"]);
+    if (rms === undefined) return false;
+    return rms < TTS_BARGE_IN_RMS_THRESHOLD;
+  }
+
   private async handleTtsResult(
     params: VoiceSynthesizeSpeechParams,
     result: VoiceSynthesisResult,
@@ -903,6 +986,7 @@ export class VoiceService {
     });
     turn.responseText = params.text;
     this.statusValue = "speaking";
+    this.markTtsPlaybackActive();
     await this.updateTurn("tts_started");
     const started = await this.mark("tts", "started", {
       text: params.text,
@@ -930,6 +1014,7 @@ export class VoiceService {
       },
     );
     if (!this.runtimeAdapter.playAudio) {
+      this.markTtsPlaybackEnded();
       await this.finishTurn("error", "Voice playback is unavailable.");
       throw new VoiceError(
         "VOICE_AUDIO_OUTPUT_UNAVAILABLE",
@@ -947,6 +1032,7 @@ export class VoiceService {
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Voice playback failed.";
+      this.markTtsPlaybackEnded();
       await this.finishTurn("error", message);
       throw error;
     }
@@ -982,6 +1068,7 @@ export class VoiceService {
       playback,
       event.metadata ?? {},
     );
+    this.markTtsPlaybackEnded();
     await this.finishTurn("completed");
     this.statusValue = "listening";
   }

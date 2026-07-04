@@ -409,7 +409,10 @@ export function createVoiceCapture(
       }
       try {
         const wav = await current.stop();
-        const { text, words } = await transcribeLocalInferenceWav(wav);
+        const { text, words } = await transcribeLocalInferenceWav(
+          wav,
+          current.captureTiming,
+        );
         onTranscript({
           text,
           final: true,

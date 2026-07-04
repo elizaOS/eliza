@@ -11,7 +11,7 @@ import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import tailwind from "@tailwindcss/postcss";
 import { build, type Plugin } from "esbuild";
-import postcss from "postcss";
+import postcss, { type AcceptedPlugin } from "postcss";
 
 export interface BundleFixtureOptions {
   /** Absolute path to the fixture entry (`.tsx`). */
@@ -140,7 +140,7 @@ export async function compileTailwindTheme({
 @import "${toUrl(join(stylesDir, "tailwind-theme.css"))}";
 ${sourceImports}
 `;
-  const result = await postcss([tailwind()]).process(input, {
+  const result = await postcss([tailwind() as AcceptedPlugin]).process(input, {
     from: toUrl(join(stylesDir, "styles.css")),
   });
   return result.css;
