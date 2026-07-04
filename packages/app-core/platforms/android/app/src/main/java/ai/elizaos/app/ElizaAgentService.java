@@ -10,6 +10,7 @@ import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
 import android.content.pm.ServiceInfo;
 import android.content.res.AssetManager;
 import android.net.LocalSocket;
@@ -88,6 +89,14 @@ public class ElizaAgentService extends Service {
     // trick, no custom domain, no symlinks: the binary just sits in the
     // app's writable data dir at canonical names.
     private static final String AGENT_DIR_NAME = "agent";
+    // Sibling dirs of AGENT_DIR_NAME under getFilesDir(), on the same filesystem
+    // so File.renameTo() between them is an atomic rename(2). Asset refreshes
+    // extract into the staging dir and swap it into place; the trash dir holds
+    // the previous extraction across the two-rename swap so a crash between them
+    // still leaves a recoverable last-good copy (#12453).
+    private static final String AGENT_STAGING_DIR_NAME = "agent.staging";
+    private static final String AGENT_TRASH_DIR_NAME = "agent.trash";
+    private static final String AGENT_STAMP_NAME = ".apk-stamp";
     private static final String AGENT_STATE_DIR_NAME = ".eliza";
     private static final String AGENT_BUNDLE_NAME = "agent-bundle.js";
     private static final String AGENT_LAUNCH_SCRIPT = "launch.sh";
@@ -624,12 +633,19 @@ public class ElizaAgentService extends Service {
     @Override
     public void onCreate() {
         super.onCreate();
-        appendDiagnosticEvent("service-onCreate", null);
-        logRecentApplicationExitReasons("service-onCreate");
         ensureNotificationChannel();
 
         Notification notification = buildNotification("Eliza agent", "Starting…");
 
+        // Enter the foreground BEFORE any diagnostic IO. Android's FGS-start
+        // timeout begins ticking at onCreate; spending it on the synchronous
+        // getHistoricalProcessExitReasons() + diagnostic file writes below (or,
+        // on a slow/loaded device, the later ~170 MB asset copy) trips
+        // "Timeout executing service" and AMS kills the process mid-work — which
+        // feeds the interrupted-extraction crashloop in #12453. startForeground()
+        // first stops that clock. The heavy asset copy stays off the main thread
+        // on the startWorker (requestAgentStart), so onCreate only needs to keep
+        // the FGS-start critical path free of blocking IO.
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
                 startForeground(
@@ -658,7 +674,13 @@ public class ElizaAgentService extends Service {
             foregroundStartDenied = true;
             shuttingDown = true;
             stopSelf();
+            return;
         }
+
+        // FGS is up; these diagnostic reads can no longer trip the FGS-start
+        // timeout.
+        appendDiagnosticEvent("service-onCreate", null);
+        logRecentApplicationExitReasons("service-onCreate");
     }
 
     @Override
@@ -896,39 +918,114 @@ public class ElizaAgentService extends Service {
     }
 
     /**
-     * Copy assets/agent/** into the app's data dir on first launch.
-     * Idempotent: skips files that already exist on disk and are
-     * non-empty. Sets +x on bun, the musl loader, and launch.sh.
+     * Materialise assets/agent/** into the app's data dir, crash-safely.
+     *
+     * <p>The extracted agent (~170 MB: agent-bundle.js + bun + ABI libs) lives
+     * in {@code files/agent/}. When the installed APK changes, the new payload
+     * is copied into {@code files/agent.staging/} and atomically swapped into
+     * place — the old extraction is never wiped before the replacement is fully
+     * staged and stamped, so an interrupted copy (ANR, LMK-kill, crash) always
+     * leaves the last-good extraction bootable instead of the permanent
+     * extract-failed loop of #12453. The crash-safety decision (when to swap,
+     * when to keep the existing extraction, when to fail) is the pure
+     * {@link ElizaAssetExtractionPolicy}; this method executes it.
+     *
+     * <p>Invariants: {@code .apk-stamp} is written INSIDE the staged tree so it
+     * lands with the swap and never runs ahead of a completed extraction; a UI-
+     * only build that lacks {@code assets/agent/*} keeps (never wipes) a valid
+     * full-agent extraction; a staging failure falls back to the last-good
+     * extraction rather than looping on a wipe.
      */
     private void extractAssetsIfNeeded(String abi) throws IOException {
+        File filesDir = getFilesDir();
         File root = agentRoot();
-        File abiDir = agentAbiDir(abi);
         File stateDir = agentStateDir();
-        if (!root.exists() && !root.mkdirs()) {
-            throw new IOException("Could not create " + root);
-        }
-        if (!abiDir.exists() && !abiDir.mkdirs()) {
-            throw new IOException("Could not create " + abiDir);
-        }
+        File staging = new File(filesDir, AGENT_STAGING_DIR_NAME);
+        File trash = new File(filesDir, AGENT_TRASH_DIR_NAME);
         if (!stateDir.exists() && !stateDir.mkdirs()) {
             throw new IOException("Could not create " + stateDir);
         }
 
-        // Compare APK source-file mtime against a stamp file in the agent
-        // root; when the APK was upgraded under us (adb push to
-        // /system/priv-app + reboot, a Play update, or an OTA) wipe the
-        // cached bundle + ABI binaries so the new asset payload gets
-        // re-extracted. Without this, copyAssetIfMissing silently keeps
-        // the previous extraction forever and shipping a fresh
-        // agent-bundle.js does nothing.
-        //
-        // We use the APK file's mtime (sourceDir → File.lastModified)
-        // rather than PackageInfo.lastUpdateTime because /system/priv-app
-        // installs (the AOSP image embed path) DO NOT bump
-        // lastUpdateTime — that field reflects pm-install + Play-update
-        // events. The on-disk APK mtime always reflects the current
-        // payload, which is what we need to invalidate cached extractions.
-        File stamp = new File(root, ".apk-stamp");
+        AssetManager assets = getAssets();
+
+        // Recover from a swap interrupted between its two renames: the trash dir
+        // still holds the last-good extraction, restore it before deciding.
+        recoverInterruptedAgentSwap(root, trash);
+
+        long pkgUpdate = computeApkUpdateTime();
+        long stampedUpdate = readApkStamp(root);
+        boolean apkChanged = ElizaAssetExtractionPolicy.apkChanged(pkgUpdate, stampedUpdate);
+        boolean apkHasAgentAssets = apkShipsAgentAssets(assets, abi);
+        boolean haveValidExtraction = extractionIsBootable(root, abi);
+
+        ElizaAssetExtractionPolicy.Action action = ElizaAssetExtractionPolicy.decide(
+            apkChanged, apkHasAgentAssets, haveValidExtraction);
+
+        boolean staged = false;
+        switch (action) {
+            case STAGE_AND_SWAP:
+                Log.i(TAG, "[ElizaAgentService] Refreshing agent assets via atomic staging "
+                    + "(apkChanged=" + apkChanged + ", validExtraction=" + haveValidExtraction
+                    + ", was=" + stampedUpdate + ", now=" + pkgUpdate + ")");
+                try {
+                    deleteRecursively(staging);
+                    stageAgentRoot(assets, abi, pkgUpdate, staging);
+                    swapStagedAgentRoot(staging, root, trash);
+                    staged = true;
+                    Log.i(TAG, "[ElizaAgentService] Atomic agent asset swap complete; stamp=" + pkgUpdate);
+                } catch (IOException error) {
+                    deleteRecursively(staging);
+                    if (extractionIsBootable(root, abi)) {
+                        // Fall back to the last-good extraction and leave the
+                        // stamp unchanged so a later boot retries the refresh.
+                        // Never loop on a wipe of a working extraction (#12453).
+                        Log.e(TAG, "[ElizaAgentService] Agent asset staging failed; "
+                            + "falling back to the existing last-good extraction and "
+                            + "leaving the stamp at " + stampedUpdate + " so the refresh retries.",
+                            error);
+                    } else {
+                        throw new IOException("Agent asset staging failed and no valid prior "
+                            + "extraction exists to fall back to", error);
+                    }
+                }
+                break;
+            case KEEP_MISSING_ASSETS:
+                // A UI-only / WebView-debug APK lacks assets/agent/* but bumped
+                // the APK mtime. Wiping here would brick a working full-agent
+                // install; keep it and leave the stamp so the guard re-checks.
+                Log.w(TAG, "[ElizaAgentService] Installed APK ships NO assets/agent/* for abi="
+                    + abi + " (UI-only build?); KEEPING the existing agent extraction rather than "
+                    + "wiping it. Stamp left unchanged (was=" + stampedUpdate + ", apk=" + pkgUpdate + ").");
+                break;
+            case FAIL_NO_ASSETS:
+                throw new IOException("Installed APK ships no assets/agent/* for abi=" + abi
+                    + " and there is no valid prior extraction to boot");
+            case USE_EXISTING:
+            default:
+                // Stamp matches and the extraction is bootable. Because the stamp
+                // only advances with a completed swap, the on-disk tree is
+                // complete by invariant — nothing to copy or wipe.
+                break;
+        }
+
+        // Aux runtime assets live OUTSIDE the atomically-swapped agent root
+        // (vector/fuzzy tarballs in files/, bundled models in .eliza/). They are
+        // small and/or persistent, their partial state does not brick boot, and
+        // they self-heal idempotently. Force-refresh the tarballs only when we
+        // just re-staged from a full APK.
+        extractAuxRuntimeAssets(assets, filesDir, stateDir, staged);
+    }
+
+    /**
+     * Resolve the current APK payload timestamp. Prefers the on-disk APK mtime
+     * ({@code sourceDir → File.lastModified}) over {@code lastUpdateTime}
+     * because /system/priv-app installs (the AOSP image embed path) do NOT bump
+     * {@code lastUpdateTime} — that field reflects pm-install + Play-update
+     * events, while the APK mtime always reflects the current payload, which is
+     * what invalidates a cached extraction. Returns 0 when unknown, which the
+     * policy reads as "no change" (safe: it boots the existing extraction).
+     */
+    private long computeApkUpdateTime() {
         long pkgUpdate = 0L;
         try {
             String sourceDir = getApplicationInfo().sourceDir;
@@ -939,101 +1036,121 @@ public class ElizaAgentService extends Service {
             long pmUpdate = getPackageManager()
                 .getPackageInfo(getPackageName(), 0).lastUpdateTime;
             if (pmUpdate > pkgUpdate) pkgUpdate = pmUpdate;
-        } catch (Exception ignored) {
-            // best-effort; no stamp known on early-boot failure
+        } catch (PackageManager.NameNotFoundException error) {
+            // The package cannot fail to find itself in practice; on the
+            // impossible path, an unknown APK time reads as "no change".
+            Log.w(TAG, "[ElizaAgentService] Could not resolve APK update time: " + error.getMessage());
         }
-        long stampedUpdate = 0L;
-        if (stamp.exists()) {
-            try (InputStream in = new java.io.FileInputStream(stamp)) {
-                byte[] buf = new byte[64];
-                int n = in.read(buf);
-                if (n > 0) {
-                    stampedUpdate = Long.parseLong(new String(buf, 0, n).trim());
-                }
-            } catch (Exception ignored) {
-                // corrupt stamp — treat as missing
+        return pkgUpdate;
+    }
+
+    /** Read the APK-mtime stamp from a completed extraction; 0 if absent/corrupt. */
+    private long readApkStamp(File root) {
+        File stamp = new File(root, AGENT_STAMP_NAME);
+        if (!stamp.isFile()) {
+            return 0L;
+        }
+        try (InputStream in = new java.io.FileInputStream(stamp)) {
+            byte[] buf = new byte[64];
+            int n = in.read(buf);
+            if (n > 0) {
+                return Long.parseLong(new String(buf, 0, n, StandardCharsets.UTF_8).trim());
             }
+        } catch (IOException | NumberFormatException error) {
+            Log.w(TAG, "[ElizaAgentService] Corrupt/unreadable " + AGENT_STAMP_NAME
+                + "; treating extraction as stale: " + error.getMessage());
         }
-        if (pkgUpdate > 0L && pkgUpdate != stampedUpdate) {
-            Log.i(TAG, "APK changed (was=" + stampedUpdate + ", now=" + pkgUpdate + "); refreshing extracted agent assets");
-            File bundle = new File(root, AGENT_BUNDLE_NAME);
-            if (bundle.exists() && !bundle.delete()) Log.w(TAG, "Could not delete stale agent-bundle.js");
-            File launchScript = new File(root, AGENT_LAUNCH_SCRIPT);
-            if (launchScript.exists() && !launchScript.delete()) Log.w(TAG, "Could not delete stale launch.sh");
-            File pgWasm = new File(root, "pglite.wasm");
-            if (pgWasm.exists()) pgWasm.delete();
-            File initDbWasm = new File(root, "initdb.wasm");
-            if (initDbWasm.exists()) initDbWasm.delete();
-            File pgData = new File(root, "pglite.data");
-            if (pgData.exists()) pgData.delete();
-            File ortWasmLoader = new File(root, "ort-wasm-simd-threaded.mjs");
-            if (ortWasmLoader.exists()) ortWasmLoader.delete();
-            File ortWasmBinary = new File(root, "ort-wasm-simd-threaded.wasm");
-            if (ortWasmBinary.exists()) ortWasmBinary.delete();
-            File vec = new File(getFilesDir(), "vector.tar.gz");
-            if (vec.exists()) vec.delete();
-            File fuzzy = new File(getFilesDir(), "fuzzystrmatch.tar.gz");
-            if (fuzzy.exists()) fuzzy.delete();
-            File pluginsManifest = new File(root, "plugins-manifest.json");
-            if (pluginsManifest.exists()) pluginsManifest.delete();
-            File[] abiContents = abiDir.listFiles();
-            if (abiContents != null) {
-                for (File f : abiContents) {
-                    try {
-                        java.nio.file.Files.deleteIfExists(f.toPath());
-                    } catch (IOException | SecurityException error) {
-                        Log.w(TAG, "Could not delete stale ABI asset " + f.getName() + ": " + error.getMessage());
-                    }
-                }
-            }
+        return 0L;
+    }
+
+    /** Persist the APK stamp; throws so a stamp-write failure fails the staging. */
+    private void writeApkStamp(File stamp, long value) throws IOException {
+        try (FileOutputStream out = new FileOutputStream(stamp)) {
+            out.write(Long.toString(value).getBytes(StandardCharsets.UTF_8));
+            out.flush();
+        }
+    }
+
+    /**
+     * Whether the installed APK actually ships the agent payload: the bundle
+     * asset AND a non-empty {@code assets/agent/<abi>/} dir. False for a UI-only
+     * WebView-debug build — the signal the missing-assets guard keys on.
+     */
+    private boolean apkShipsAgentAssets(AssetManager assets, String abi) {
+        boolean bundlePresent;
+        try (InputStream probe = assets.open("agent/" + AGENT_BUNDLE_NAME)) {
+            bundlePresent = true;
+        } catch (IOException missing) {
+            bundlePresent = false;
+        }
+        try {
+            String[] abiFiles = assets.list("agent/" + abi);
+            return bundlePresent && abiFiles != null && abiFiles.length > 0;
+        } catch (IOException error) {
+            Log.w(TAG, "[ElizaAgentService] Could not enumerate APK agent assets for abi="
+                + abi + "; treating as absent: " + error.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Whether an on-disk extraction can actually boot: bundle + launch.sh +
+     * bun + a musl loader all present and non-empty. Mirrors the guards in
+     * {@link #startAgentProcess()}, so a "valid extraction" is exactly one that
+     * would pass them.
+     */
+    private boolean extractionIsBootable(File root, String abi) {
+        File bundle = new File(root, AGENT_BUNDLE_NAME);
+        if (!bundle.isFile() || bundle.length() <= 0) {
+            return false;
+        }
+        File launch = new File(root, AGENT_LAUNCH_SCRIPT);
+        if (!launch.isFile() || launch.length() <= 0) {
+            return false;
+        }
+        File abiDir = new File(root, abi);
+        File bun = new File(abiDir, BUN_BINARY);
+        if (!bun.isFile() || bun.length() <= 0) {
+            return false;
+        }
+        return findMuslLoader(abiDir) != null;
+    }
+
+    /**
+     * Build a complete, ready-to-boot agent tree in {@code stagingRoot} from the
+     * APK assets — every agent-root file, the ABI binaries, +x bits, and the
+     * runtime symlinks — then write the {@code .apk-stamp} last so it lands only
+     * on a fully-staged tree. Throws on any failure; the caller keeps the last-
+     * good extraction and never swaps a partial tree into place.
+     */
+    private void stageAgentRoot(AssetManager assets, String abi, long pkgUpdate, File stagingRoot)
+            throws IOException {
+        File stagingAbiDir = new File(stagingRoot, abi);
+        if (!stagingRoot.isDirectory() && !stagingRoot.mkdirs()) {
+            throw new IOException("Could not create staging dir " + stagingRoot);
+        }
+        if (!stagingAbiDir.isDirectory() && !stagingAbiDir.mkdirs()) {
+            throw new IOException("Could not create staging abi dir " + stagingAbiDir);
         }
 
-        AssetManager assets = getAssets();
+        // Staging is fresh, so copyAssetIfMissing always copies here.
+        copyAssetIfMissing(assets, "agent/" + AGENT_BUNDLE_NAME, new File(stagingRoot, AGENT_BUNDLE_NAME));
+        copyAssetIfPresent(assets, "agent/" + AGENT_LAUNCH_SCRIPT, new File(stagingRoot, AGENT_LAUNCH_SCRIPT));
 
-        copyAssetIfMissing(assets, "agent/" + AGENT_BUNDLE_NAME, new File(root, AGENT_BUNDLE_NAME));
-        copyAssetIfPresent(assets, "agent/" + AGENT_LAUNCH_SCRIPT, new File(root, AGENT_LAUNCH_SCRIPT));
-
-        // PGlite runtime assets. pglite.wasm + initdb.wasm + pglite.data
-        // sit next to the bundle (`new URL("./pglite.X", import.meta.url)`);
-        // vector.tar.gz and fuzzystrmatch.tar.gz must live one directory
-        // ABOVE the bundle because PGlite resolves them via
-        // `new URL("../X.tar.gz", ...)`.
-        //
-        // aapt2 quirk: even with `androidResources.noCompress` listing
-        // `tar.gz` and `tar`, aapt2 strips the `.gz` suffix from
-        // `*.tar.gz` assets at packaging time (the `noCompress` flag
-        // only controls ZIP-level compression of the entry, not the
-        // pre-processing aapt2 does to "doubly compressed" extensions).
-        // The asset on disk inside the APK is therefore named
-        // `vector.tar` / `fuzzystrmatch.tar`, but PGlite's runtime
-        // loader still resolves `../vector.tar.gz` and
-        // `../fuzzystrmatch.tar.gz`. Look up under the aapt2-rewritten
-        // name and write to the runtime-expected `.tar.gz` name so the
-        // loader contract is preserved without changing the bundle.
-        copyAssetIfPresent(assets, "agent/pglite.wasm", new File(root, "pglite.wasm"));
-        copyAssetIfPresent(assets, "agent/initdb.wasm", new File(root, "initdb.wasm"));
-        copyAssetIfPresent(assets, "agent/pglite.data", new File(root, "pglite.data"));
+        // PGlite runtime assets. pglite.wasm + initdb.wasm + pglite.data sit
+        // next to the bundle (`new URL("./pglite.X", import.meta.url)`).
+        copyAssetIfPresent(assets, "agent/pglite.wasm", new File(stagingRoot, "pglite.wasm"));
+        copyAssetIfPresent(assets, "agent/initdb.wasm", new File(stagingRoot, "initdb.wasm"));
+        copyAssetIfPresent(assets, "agent/pglite.data", new File(stagingRoot, "pglite.data"));
         // Legacy ONNX Runtime Web sidecars used by the removed Android Kokoro
         // TTS path. Current AOSP TTS uses fused OmniVoice, so fresh bundles do
         // not ship these files; keep extraction best-effort for older APKs.
         copyAssetIfPresent(assets, "agent/ort-wasm-simd-threaded.mjs",
-            new File(root, "ort-wasm-simd-threaded.mjs"));
+            new File(stagingRoot, "ort-wasm-simd-threaded.mjs"));
         copyAssetIfPresent(assets, "agent/ort-wasm-simd-threaded.wasm",
-            new File(root, "ort-wasm-simd-threaded.wasm"));
-        // aapt2 not only strips `.gz` from `*.tar.gz` asset names, it also
-        // DECOMPRESSES them into raw tar bytes. PGlite's loader does
-        // `new URL("../X.tar.gz", ...)` then pipes the bytes through
-        // gunzip — fed raw tar it errors with `Z_DATA_ERROR: incorrect
-        // header check` and the agent crashloops at PGlite init. Re-gzip
-        // on extraction so the on-disk file matches what the loader
-        // expects: a gzipped tarball at `vector.tar.gz` /
-        // `fuzzystrmatch.tar.gz`.
-        copyAssetIfPresentAsGzipped(assets, "agent/vector.tar",
-            new File(getFilesDir(), "vector.tar.gz"));
-        copyAssetIfPresentAsGzipped(assets, "agent/fuzzystrmatch.tar",
-            new File(getFilesDir(), "fuzzystrmatch.tar.gz"));
+            new File(stagingRoot, "ort-wasm-simd-threaded.wasm"));
         copyAssetIfPresent(assets, "agent/plugins-manifest.json",
-            new File(root, "plugins-manifest.json"));
+            new File(stagingRoot, "plugins-manifest.json"));
 
         // ABI-specific binaries: bun + musl loader + libstdc++ + libgcc.
         String abiAssetDir = "agent/" + abi;
@@ -1043,7 +1160,7 @@ public class ElizaAgentService extends Service {
         }
         for (String name : abiFiles) {
             try {
-                copyAssetIfMissing(assets, abiAssetDir + "/" + name, new File(abiDir, name));
+                copyAssetIfMissing(assets, abiAssetDir + "/" + name, new File(stagingAbiDir, name));
             } catch (java.io.FileNotFoundException error) {
                 if ("libgcc_s.so.1".equals(name)) {
                     Log.w(TAG, "Optional runtime library missing from APK assets: " + abiAssetDir + "/" + name);
@@ -1053,6 +1170,21 @@ public class ElizaAgentService extends Service {
             }
         }
 
+        finalizeAgentAbiDir(stagingRoot, stagingAbiDir, abiFiles);
+
+        // Stamp LAST, inside staging, so it travels with the atomic swap and
+        // never gets ahead of a completed extraction.
+        if (pkgUpdate > 0L) {
+            writeApkStamp(new File(stagingRoot, AGENT_STAMP_NAME), pkgUpdate);
+        }
+    }
+
+    /**
+     * Set the +x bits and create the runtime symlinks on an extracted ABI dir.
+     * The libstdc++ soname symlink is relative and the packaged-native links are
+     * absolute, so both survive the staging→root rename intact.
+     */
+    private void finalizeAgentAbiDir(File root, File abiDir, String[] abiFiles) {
         File bun = new File(abiDir, BUN_BINARY);
         if (bun.exists()) bun.setExecutable(true, false);
         File llamaServer = new File(abiDir, "llama-server");
@@ -1061,9 +1193,9 @@ public class ElizaAgentService extends Service {
         if (launch.exists()) launch.setExecutable(true, false);
         for (String name : abiFiles) {
             // The musl loader (`ld-musl-<arch>.so.1`) needs +x. With the
-            // SIGSYS-shim wrapper installed (x86_64 only) the original
-            // Alpine loader is shipped as `ld-musl-<arch>.so.1.real` and
-            // ALSO needs +x because loader-wrap execve()s it directly.
+            // SIGSYS-shim wrapper installed (x86_64 only) the original Alpine
+            // loader is shipped as `ld-musl-<arch>.so.1.real` and ALSO needs +x
+            // because loader-wrap execve()s it directly.
             if (name.startsWith("ld-musl-")
                 && (name.endsWith(".so.1") || name.endsWith(".so.1.real"))) {
                 File loader = new File(abiDir, name);
@@ -1078,13 +1210,12 @@ public class ElizaAgentService extends Service {
         );
         linkPackagedRuntimeLibrary(abiDir, "libgcc_s.so.1", "libeliza_gcc_s.so");
 
-        // bun's binary requests `libstdc++.so.6` at runtime (the soname),
-        // but the actual file we shipped is the versioned realpath
-        // (`libstdc++.so.6.0.33`). Without a symlink the musl loader
-        // can't find the shared object and bun crashes with hundreds of
-        // "Error relocating: symbol not found" lines. Create the symlink
-        // pointing from the soname to the realpath inside the same abi
-        // dir so LD_LIBRARY_PATH resolution works without LD_PRELOAD.
+        // bun requests `libstdc++.so.6` (the soname) at runtime, but the file we
+        // shipped is the versioned realpath (`libstdc++.so.6.0.33`). Without a
+        // symlink the musl loader can't find the shared object and bun crashes
+        // with hundreds of "Error relocating: symbol not found" lines. Link the
+        // soname to the realpath inside the same abi dir so LD_LIBRARY_PATH
+        // resolution works without LD_PRELOAD.
         if (!stdcxxLinkedFromNative) {
             for (String name : abiFiles) {
                 if (name.startsWith("libstdc++.so.6.")) {
@@ -1108,49 +1239,140 @@ public class ElizaAgentService extends Service {
                 }
             }
         }
+    }
 
-        // Bundled default models (chat + embedding GGUF files staged by
-        // scripts/elizaos/stage-default-models.mjs at AOSP build time).
-        // Land them under $ELIZA_STATE_DIR/local-inference/models/ so
-        // the runtime's first-run bootstrap discovers them at canonical
-        // paths and registers them in the local-inference registry as
-        // eliza-owned models. The manifest.json carried alongside the
-        // GGUF files lets the bootstrap pick the right id + role for
-        // each file without re-deriving them from the filename.
-        //
-        // assets/agent/models/ may not exist on Capacitor (non-AOSP)
-        // builds — bundling defaults to off there since the desktop /
-        // Capacitor flows already have download UX. assets.list()
-        // returns null on missing paths, which we treat as "no models
-        // to extract".
+    /**
+     * Atomically replace {@code root} with {@code staging}: move the current
+     * extraction aside to {@code trash}, move the staged tree into place, then
+     * delete the trash. There is never an instant where both the working
+     * extraction is gone AND no recoverable copy exists — a crash between the
+     * two renames leaves the last-good tree in {@code trash} for
+     * {@link #recoverInterruptedAgentSwap} to restore on the next boot.
+     */
+    private void swapStagedAgentRoot(File staging, File root, File trash) throws IOException {
+        deleteRecursively(trash);
+        if (root.exists() && !root.renameTo(trash)) {
+            throw new IOException("Could not move current agent extraction aside to " + trash);
+        }
+        if (!staging.renameTo(root)) {
+            // Restore the last-good extraction before surfacing the failure.
+            if (trash.exists() && !root.exists() && !trash.renameTo(root)) {
+                Log.e(TAG, "[ElizaAgentService] Could not restore agent extraction from "
+                    + trash.getName() + " after a failed swap; next boot recovers it.");
+            }
+            throw new IOException("Could not move staged agent extraction into place at " + root);
+        }
+        deleteRecursively(trash);
+    }
+
+    /**
+     * Restore the last-good extraction if a prior swap died between its two
+     * renames. If {@code trash} exists and {@code root} already holds a bundle,
+     * the swap completed and the trash is just leftover — delete it. Otherwise
+     * the working root never landed; move the trash back into place.
+     */
+    private void recoverInterruptedAgentSwap(File root, File trash) {
+        if (!trash.isDirectory()) {
+            return;
+        }
+        if (new File(root, AGENT_BUNDLE_NAME).exists()) {
+            deleteRecursively(trash);
+            Log.w(TAG, "[ElizaAgentService] Cleaned leftover " + trash.getName()
+                + " from a prior interrupted asset swap; working extraction intact.");
+            return;
+        }
+        if (root.exists()) {
+            deleteRecursively(root);
+        }
+        if (trash.renameTo(root)) {
+            Log.w(TAG, "[ElizaAgentService] Restored the last-good agent extraction from "
+                + trash.getName() + " after an interrupted asset swap.");
+        } else {
+            Log.e(TAG, "[ElizaAgentService] Could not restore agent extraction from "
+                + trash.getName() + "; a fresh extraction will be staged.");
+        }
+    }
+
+    /**
+     * Extract the aux runtime assets that live outside the swapped agent root:
+     * the PGlite extension tarballs (files/) and bundled default models
+     * (.eliza/). Both self-heal idempotently. Force-refresh the tarballs on a
+     * fresh stage; never force-delete the large, persistent model files.
+     */
+    private void extractAuxRuntimeAssets(AssetManager assets, File filesDir, File stateDir,
+            boolean forceRefreshTarballs) throws IOException {
+        // vector.tar.gz / fuzzystrmatch.tar.gz must live one directory ABOVE the
+        // bundle (PGlite resolves them via `new URL("../X.tar.gz", ...)`), so
+        // they sit in files/ rather than the agent root. aapt2 strips the `.gz`
+        // from `*.tar.gz` asset names AND decompresses them to raw tar at
+        // packaging time (even with `androidResources.noCompress`), so the APK
+        // entry is `vector.tar` / `fuzzystrmatch.tar`; re-gzip on extraction so
+        // the on-disk file is the gzipped tarball the loader's gunzip expects
+        // (raw tar → `Z_DATA_ERROR: incorrect header check` → PGlite crashloop).
+        File vector = new File(filesDir, "vector.tar.gz");
+        File fuzzy = new File(filesDir, "fuzzystrmatch.tar.gz");
+        if (forceRefreshTarballs) {
+            if (vector.exists() && !vector.delete()) Log.w(TAG, "Could not delete stale vector.tar.gz");
+            if (fuzzy.exists() && !fuzzy.delete()) Log.w(TAG, "Could not delete stale fuzzystrmatch.tar.gz");
+        }
+        copyAssetIfPresentAsGzipped(assets, "agent/vector.tar", vector);
+        copyAssetIfPresentAsGzipped(assets, "agent/fuzzystrmatch.tar", fuzzy);
+
+        // Bundled default models (chat + embedding GGUF, staged by
+        // scripts/elizaos/stage-default-models.mjs at AOSP build time). Land
+        // them under $ELIZA_STATE_DIR/local-inference/models/ so the runtime's
+        // first-run bootstrap discovers them at canonical paths and registers
+        // them as eliza-owned models via the alongside manifest.json. Absent on
+        // Capacitor (non-AOSP) builds — assets.list() returns null, treated as
+        // "no models to extract".
         String modelsAssetDir = "agent/models";
         String[] modelFiles = assets.list(modelsAssetDir);
         if (modelFiles != null && modelFiles.length > 0) {
-            File modelsDest = new File(
-                new File(stateDir, "local-inference"),
-                "models"
-            );
+            File modelsDest = new File(new File(stateDir, "local-inference"), "models");
             if (!modelsDest.exists() && !modelsDest.mkdirs()) {
                 throw new IOException("Could not create " + modelsDest);
             }
             for (String name : modelFiles) {
-                copyAssetIfMissing(
-                    assets,
-                    modelsAssetDir + "/" + name,
-                    new File(modelsDest, name)
-                );
+                copyAssetIfMissing(assets, modelsAssetDir + "/" + name, new File(modelsDest, name));
             }
             Log.i(TAG, "Extracted " + modelFiles.length + " bundled model file(s) to " + modelsDest);
         }
+    }
 
-        // Persist the APK's mtime stamp so subsequent boots can detect a
-        // stale extraction and force a refresh.
-        if (pkgUpdate > 0L) {
-            try (FileOutputStream out = new FileOutputStream(stamp)) {
-                out.write(Long.toString(pkgUpdate).getBytes());
-            } catch (IOException error) {
-                Log.w(TAG, "Could not write APK stamp: " + error.getMessage());
+    /**
+     * Recursively delete a file tree, deleting symlinks as links (never
+     * following them into their targets — the ABI dir holds symlinks into the
+     * packaged nativeLibraryDir, which must not be traversed and wiped).
+     */
+    private void deleteRecursively(File target) {
+        if (target == null) {
+            return;
+        }
+        if (isSymlink(target)) {
+            if (!target.delete()) {
+                Log.w(TAG, "Could not delete symlink " + target);
             }
+            return;
+        }
+        if (!target.exists()) {
+            return;
+        }
+        File[] children = target.listFiles();
+        if (children != null) {
+            for (File child : children) {
+                deleteRecursively(child);
+            }
+        }
+        if (!target.delete()) {
+            Log.w(TAG, "Could not delete " + target);
+        }
+    }
+
+    private static boolean isSymlink(File file) {
+        try {
+            return java.nio.file.Files.isSymbolicLink(file.toPath());
+        } catch (SecurityException error) {
+            return false;
         }
     }
 
