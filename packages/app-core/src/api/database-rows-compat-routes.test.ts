@@ -20,7 +20,14 @@ import { handleDatabaseRowsCompatRoute } from "./database-rows-compat-routes";
 
 const mocks = vi.hoisted(() => ({
   executeRawSql: vi.fn(),
-  findActiveSession: vi.fn(),
+  findActiveSession: vi.fn(async (store, sessionId) => {
+    const findSession = (
+      store as { findSession?: (id: string) => Promise<unknown> }
+    )?.findSession;
+    return typeof findSession === "function"
+      ? ((await findSession.call(store, sessionId)) ?? null)
+      : null;
+  }),
   findIdentity: vi.fn(),
   verifyCsrfToken: vi.fn(),
 }));
@@ -82,12 +89,15 @@ vi.mock("./compat-route-shared", () => ({
 
 vi.mock("./auth/sessions.js", () => ({
   CSRF_HEADER_NAME: "x-eliza-csrf",
+  denyOnAuthStoreError: () => () => null,
   findActiveSession: mocks.findActiveSession,
   verifyCsrfToken: mocks.verifyCsrfToken,
 }));
 
 vi.mock("../services/auth-store.js", () => ({
   AuthStore: class MockAuthStore {
+    findSession = async (sessionId: string) =>
+      mocks.findActiveSession(undefined, sessionId);
     findIdentity = mocks.findIdentity;
   },
 }));

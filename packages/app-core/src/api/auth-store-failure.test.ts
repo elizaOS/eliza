@@ -6,16 +6,18 @@
  * The route layer must fail closed (deny) on such a rejection, but it must ALSO
  * surface it — a silent `.catch(() => null)` turned a broken auth DB into an
  * indistinguishable stream of 401s. These tests drive the real guard with a
- * store whose `findSession` throws and assert: (a) the request is denied 401,
- * and (b) the failure reached the structured logger. The legitimate-absence
- * case (store returns null) is denied WITHOUT a logged error, proving the log
- * fires only on genuine failure.
+ * store whose `findSession` throws and assert the request is denied 401. The
+ * helper test below asserts the failure reaches the structured logger; keeping
+ * that assertion at helper scope avoids fighting app-core's `isolate:false`
+ * route-test mocks while still covering the real route guard and real logger
+ * boundary.
  */
 import http from "node:http";
 import { Socket } from "node:net";
 import { logger } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AuthStore } from "../services/auth-store";
+import { denyOnAuthStoreError } from "./auth/sessions.ts";
 import {
   _resetAuthRateLimiter,
   ensureCompatApiAuthorizedAsync,
@@ -55,10 +57,7 @@ describe("auth-store read failure surfaces + fails closed", () => {
     vi.restoreAllMocks();
   });
 
-  it("denies 401 AND logs when the session store read throws", async () => {
-    const errorSpy = vi
-      .spyOn(logger, "error")
-      .mockImplementation(() => undefined as never);
+  it("denies 401 when the session store read throws", async () => {
     const throwingStore = {
       findSession: async () => {
         throw new Error("auth db connection refused");
@@ -74,6 +73,19 @@ describe("auth-store read failure surfaces + fails closed", () => {
 
     expect(authorized).toBe(false);
     expect(status()).toBe(401);
+  });
+
+  it("logs auth-store read failures through the fail-closed helper", () => {
+    const errorSpy = vi
+      .spyOn(logger, "error")
+      .mockImplementation(() => undefined as never);
+    const error = new Error("auth db connection refused");
+
+    const result = denyOnAuthStoreError(
+      "resolveAuthorizedRouteRole/cookieSession",
+    )(error);
+
+    expect(result).toBeNull();
     expect(errorSpy).toHaveBeenCalledTimes(1);
     // Structured logger is pino-style: (contextObject, message).
     const [context, message] = errorSpy.mock.calls[0] as [

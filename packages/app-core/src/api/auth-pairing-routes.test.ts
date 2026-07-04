@@ -135,9 +135,17 @@ const sessionMocks = vi.hoisted(() => ({
 }));
 
 vi.mock("./auth/sessions", () => ({
-  findActiveSession: vi.fn(async () => null),
+  findActiveSession: vi.fn(async (store, sessionId) => {
+    const findSession = (
+      store as { findSession?: (id: string) => Promise<unknown> }
+    )?.findSession;
+    return typeof findSession === "function"
+      ? ((await findSession.call(store, sessionId)) ?? null)
+      : null;
+  }),
   parseSessionCookie: vi.fn(() => null),
   createMachineSession: sessionMocks.createMachineSession,
+  denyOnAuthStoreError: () => () => null,
 }));
 
 const authStoreMocks = vi.hoisted(() => ({
