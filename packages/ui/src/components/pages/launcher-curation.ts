@@ -16,10 +16,11 @@
  * declared, so the whole set hides together in production.
  *
  * Curation is a blocklist + canonical dedup, not a fixed allow-list: known apps
- * are ordered, removed apps are hidden, duplicate registrations collapse to one
- * tile, and everything else that is genuinely loaded and visible still appears
- * so installing a new plugin app keeps working. Native-OS tiles (phone/messages/
- * contacts/camera/files) only appear on the AOSP ElizaOS fork.
+ * are ordered, removed apps are hidden, grouped sub-pages collapse under their
+ * parent tile, duplicate registrations collapse to one tile, and everything else
+ * that is genuinely loaded and visible still appears so installing a new plugin
+ * app keeps working. Native-OS tiles (phone/messages/contacts/camera/files) only
+ * appear on the AOSP ElizaOS fork.
  */
 
 import {
@@ -89,8 +90,7 @@ export const LAUNCHER_AOSP_ONLY_IDS: readonly string[] =
  * Views that never appear in the launcher grid:
  *  - shell surfaces reached another way (views/apps launchers; background +
  *    voice are set from Settings/chat; character-select is inline),
- *  - removed apps (companion, model tester, shopify, wearables),
- *  - wallet sub-views (hyperliquid/polymarket open from inside the Wallet app).
+ *  - removed apps (companion, model tester, shopify, wearables).
  */
 export const LAUNCHER_HIDDEN_IDS: ReadonlySet<string> = new Set([
   "views",
@@ -106,9 +106,6 @@ export const LAUNCHER_HIDDEN_IDS: ReadonlySet<string> = new Set([
   "shopify",
   "facewear",
   "smartglasses",
-  // Wallet sub-views — reached from inside the Wallet app, not the launcher.
-  "hyperliquid",
-  "polymarket",
 ]);
 
 /**
@@ -168,6 +165,13 @@ function launcherViewKind(canonicalId: string, entry: ViewEntry) {
   if (DEVELOPER_INDEX.has(canonicalId)) return "developer";
   if (LAUNCHER_PREVIEW_IDS.has(canonicalId)) return "preview";
   return resolveViewKind(entry);
+}
+
+function isGroupedLauncherSubPage(
+  canonicalId: string,
+  entry: ViewEntry,
+): boolean {
+  return entry.group === "wallet" && canonicalId !== "wallet";
 }
 
 /**
@@ -238,6 +242,7 @@ export function curateLauncherPages(
   for (const entry of entries) {
     const canonicalId = canonicalLauncherId(entry.id);
     if (LAUNCHER_HIDDEN_IDS.has(canonicalId)) continue;
+    if (isGroupedLauncherSubPage(canonicalId, entry)) continue;
     // Cloud-only tiles (e.g. the Cloud Applications dashboard) never surface
     // unless the user is signed into Eliza Cloud.
     if (LAUNCHER_CLOUD_IDS.has(canonicalId) && !cloudActive) continue;

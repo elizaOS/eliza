@@ -96,12 +96,24 @@ describe("curateLauncherPages", () => {
     expect(ids(page)).toEqual(["chat", "wallet"]);
   });
 
-  it("keeps hyperliquid/polymarket out of the launcher (wallet sub-views)", () => {
+  it("keeps wallet-group sub-pages out of the launcher", () => {
     const page = curateLauncherPages(
-      [entry("wallet"), entry("hyperliquid"), entry("polymarket")],
+      [
+        entry("wallet"),
+        entry("perps", { group: "wallet" }),
+        entry("predictions", { group: "wallet" }),
+      ],
       { isAosp: false, enabledKinds: ENABLED, cloudActive: true },
     );
     expect(ids(page)).toEqual(["wallet"]);
+  });
+
+  it("shows the same pages as ordinary apps when they do not declare a group", () => {
+    const page = curateLauncherPages(
+      [entry("wallet"), entry("perps"), entry("predictions")],
+      { isAosp: false, enabledKinds: ENABLED, cloudActive: true },
+    );
+    expect(ids(page)).toEqual(["wallet", "perps", "predictions"]);
   });
 
   it("gates native-OS tiles to the AOSP fork", () => {
@@ -284,12 +296,12 @@ describe("curateLauncherPages — full realistic view set", () => {
     entry("shopify"),
     entry("facewear", { viewKind: "preview" }),
     entry("smartglasses", { viewKind: "preview" }),
-    // Wallet + duplicate registrations + sub-views.
+    // Wallet + duplicate registrations + grouped sub-views.
     entry("wallet", { viewKind: "system" }),
     entry("inventory", { builtin: true, viewKind: "system" }),
     entry("wallet.inventory"),
-    entry("hyperliquid"),
-    entry("polymarket"),
+    entry("perps", { group: "wallet" }),
+    entry("predictions", { group: "wallet" }),
     // Automations + duplicates folded to one.
     entry("automations", { viewKind: "system" }),
     entry("triggers", { builtin: true }),

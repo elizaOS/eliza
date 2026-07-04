@@ -1,3 +1,9 @@
+/**
+ * Wallet section navigation renders sub-tabs from app-shell pages that declare
+ * the wallet group. The wallet inventory page owns the root `/wallet` tab while
+ * plugin pages join or leave the section through their own registration data.
+ */
+
 import { useSyncExternalStore } from "react";
 import {
   type AppShellPageRegistration,

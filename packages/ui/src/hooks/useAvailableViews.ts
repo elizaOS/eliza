@@ -72,6 +72,8 @@ export interface ViewRegistryEntry {
   tags?: string[];
   /** Sort priority for launcher/nav surfaces (lower = earlier). */
   order?: number;
+  /** Optional named group shared with app-shell page registrations. */
+  group?: string;
   /**
    * When true, the view only appears when Developer Mode is enabled.
    * Equivalent to `viewKind: "developer"`.
@@ -317,6 +319,7 @@ function appShellPageToViewEntry(
     developerOnly: page.developerOnly,
     viewKind: page.viewKind,
     order: page.order,
+    group: page.group,
     backgroundPolicy: page.backgroundPolicy,
     visibleInManager: true,
     builtin: false,
