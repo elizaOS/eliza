@@ -228,6 +228,23 @@ describe("processPurchase — funds the org ledger (#8253)", () => {
     expect(result.creditsAdded).toBe(0);
     expect(result.newBalance).toBe(42.5); // read straight off the org row
   });
+
+  test("webhook retry dedup fails closed on a corrupt org balance", async () => {
+    findTransactionByPaymentIntent.mockResolvedValue({ id: "existing-tx" });
+    findOrgById.mockResolvedValue({ id: ORG_ID, credit_balance: "42.50oops" });
+
+    await expect(
+      freshService().processPurchase({
+        appId: APP_ID,
+        userId: USER_ID,
+        organizationId: ORG_ID,
+        purchaseAmount: 10,
+        stripePaymentIntentId: "pi_123",
+      }),
+    ).rejects.toThrow("Unable to read organization credit_balance");
+
+    expect(addCredits).not.toHaveBeenCalled();
+  });
 });
 
 describe("deductCredits — debits the same org ledger", () => {
@@ -462,6 +479,24 @@ describe("reconcileCredits — charges/refunds the estimate↔actual delta (#914
     });
   });
 
+  test("no-op reconciliation fails closed on a corrupt org balance", async () => {
+    findOrgById.mockResolvedValue({ id: ORG_ID, credit_balance: "42.50oops" });
+
+    await expect(
+      freshService().reconcileCredits({
+        appId: APP_ID,
+        userId: USER_ID,
+        estimatedBaseCost: 1,
+        actualBaseCost: 1,
+        description: "recon",
+        reservationTransactionId: "app-hold-1",
+      }),
+    ).rejects.toThrow("Unable to read organization credit_balance");
+
+    expect(reserveAndDeductCredits).not.toHaveBeenCalled();
+    expect(refundCredits).not.toHaveBeenCalled();
+  });
+
   test("charges the markup'd delta to the org when actual exceeds estimated", async () => {
     const result = await freshService().reconcileCredits({
       appId: APP_ID,
@@ -554,6 +589,22 @@ describe("checkBalance — reads the org ledger", () => {
 
     const tooMuch = await freshService().checkBalance(APP_ID, USER_ID, 50);
     expect(tooMuch.sufficient).toBe(false);
+  });
+
+  test("fails closed when the org balance is corrupt", async () => {
+    findOrgById.mockResolvedValue({ id: ORG_ID, credit_balance: "42.50oops" });
+
+    await expect(freshService().checkBalance(APP_ID, USER_ID, 40)).rejects.toThrow(
+      "Unable to read organization credit_balance",
+    );
+  });
+
+  test("rejects JavaScript-only org balance strings", async () => {
+    findOrgById.mockResolvedValue({ id: ORG_ID, credit_balance: "0x10" });
+
+    await expect(freshService().checkBalance(APP_ID, USER_ID, 40)).rejects.toThrow(
+      "Unable to read organization credit_balance",
+    );
   });
 });
 

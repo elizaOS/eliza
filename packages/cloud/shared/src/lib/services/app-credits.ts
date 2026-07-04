@@ -78,6 +78,20 @@ async function invalidateAppCacheKeys(appId: string, slug?: string): Promise<voi
   await Promise.all(promises);
 }
 
+function parseOrgCreditBalance(value: string | number | null | undefined): number {
+  if (value === null || value === undefined) {
+    throw new Error("Unable to read organization credit_balance");
+  }
+  if (typeof value === "string" && !/^[+-]?(?:\d+|\d*\.\d+)$/.test(value.trim())) {
+    throw new Error("Unable to read organization credit_balance");
+  }
+  const balance = Number(value);
+  if (!Number.isFinite(balance)) {
+    throw new Error("Unable to read organization credit_balance");
+  }
+  return balance;
+}
+
 /**
  * Threshold for reconciliation - differences below this are ignored (6 decimal precision)
  */
@@ -311,7 +325,9 @@ export class AppCreditsService {
   /** The org credit balance — the single ledger app purchases fund and app inference debits (#8253). */
   private async readOrgBalance(organizationId: string): Promise<number> {
     const org = await organizationsRepository.findById(organizationId);
-    return org ? Number.parseFloat(String(org.credit_balance)) : 0;
+    // error-policy:J6 missing org preserves the existing no-credit result path; a present
+    // org with corrupt money data must fail closed.
+    return org ? parseOrgCreditBalance(org.credit_balance) : 0;
   }
 
   async processPurchase(params: AppCreditPurchaseParams): Promise<AppCreditPurchaseResult> {
@@ -836,11 +852,6 @@ export class AppCreditsService {
       }
     };
 
-    const readOrgBalance = async (): Promise<number> => {
-      const org = await organizationsRepository.findById(organizationId);
-      return org ? Number.parseFloat(String(org.credit_balance)) : 0;
-    };
-
     // Skip reconciliation for negligible differences
     if (Math.abs(baseCostDifference) < RECONCILIATION_THRESHOLD) {
       await markReservationSettled("no_adjustment");
@@ -849,7 +860,7 @@ export class AppCreditsService {
         difference: 0,
         action: "none",
         adjustedAmount: 0,
-        newBalance: await readOrgBalance(),
+        newBalance: await this.readOrgBalance(organizationId),
       };
     }
 
@@ -863,7 +874,7 @@ export class AppCreditsService {
         difference: baseCostDifference,
         action: "none",
         adjustedAmount: 0,
-        newBalance: await readOrgBalance(),
+        newBalance: await this.readOrgBalance(organizationId),
       };
     }
 
@@ -1214,7 +1225,9 @@ export class AppCreditsService {
       return { sufficient: false, balance: 0, required: requiredAmount };
     }
     const org = await organizationsRepository.findById(user.organization_id);
-    const balance = org ? Number.parseFloat(String(org.credit_balance)) : 0;
+    // error-policy:J6 missing org keeps the existing insufficient-credit result; corrupt
+    // present money data is not a zero balance.
+    const balance = org ? parseOrgCreditBalance(org.credit_balance) : 0;
     return {
       sufficient: balance >= requiredAmount,
       balance,

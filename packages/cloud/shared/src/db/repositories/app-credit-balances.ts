@@ -1,4 +1,6 @@
-// Persists app credit balances records for cloud services through the shared DB boundary.
+/**
+ * Persists app credit balance rows and aggregate balance reads for cloud services.
+ */
 import { and, desc, eq, sql } from "drizzle-orm";
 import { dbRead, dbWrite } from "../helpers";
 import {
@@ -6,6 +8,7 @@ import {
   appCreditBalances,
   type NewAppCreditBalance,
 } from "../schemas/app-credit-balances";
+import { parseAppCreditBalanceNumber } from "./app-credit-balances-numeric";
 
 export type { AppCreditBalance, NewAppCreditBalance };
 
@@ -66,7 +69,8 @@ export class AppCreditBalancesRepository {
    */
   async getBalance(appId: string, userId: string): Promise<number> {
     const balance = await this.findByAppAndUser(appId, userId);
-    return balance ? Number(balance.credit_balance) : 0;
+    // error-policy:J6 no per-app credit row means the user has not prepaid for this app.
+    return balance ? parseAppCreditBalanceNumber(balance.credit_balance, "credit_balance") : 0;
   }
 
   /**
@@ -89,10 +93,10 @@ export class AppCreditBalancesRepository {
       .where(eq(appCreditBalances.app_id, appId));
 
     return {
-      totalBalance: Number(result[0]?.totalBalance || 0),
-      totalPurchased: Number(result[0]?.totalPurchased || 0),
-      totalSpent: Number(result[0]?.totalSpent || 0),
-      userCount: Number(result[0]?.userCount || 0),
+      totalBalance: parseAppCreditBalanceNumber(result[0]?.totalBalance, "totalBalance"),
+      totalPurchased: parseAppCreditBalanceNumber(result[0]?.totalPurchased, "totalPurchased"),
+      totalSpent: parseAppCreditBalanceNumber(result[0]?.totalSpent, "totalSpent"),
+      userCount: parseAppCreditBalanceNumber(result[0]?.userCount, "userCount"),
     };
   }
 
@@ -194,7 +198,7 @@ export class AppCreditBalancesRepository {
 
       return {
         balance: updated,
-        newBalance: Number(updated.credit_balance),
+        newBalance: parseAppCreditBalanceNumber(updated.credit_balance, "credit_balance"),
       };
     });
   }
@@ -229,7 +233,7 @@ export class AppCreditBalancesRepository {
         };
       }
 
-      const currentBalance = Number(balance.credit_balance);
+      const currentBalance = parseAppCreditBalanceNumber(balance.credit_balance, "credit_balance");
 
       if (currentBalance < amount) {
         return {
