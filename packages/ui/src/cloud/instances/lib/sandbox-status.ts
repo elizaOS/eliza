@@ -2,42 +2,48 @@
  * Status dot + badge color maps and relative-time helpers for agent / sandbox
  * status display.
  *
- * Ported from `@elizaos/cloud-shared/lib/constants/sandbox-status.ts` with the
- * brand fix required by the app design rules (root AGENTS.md):
- * **no blue anywhere**. The shared version painted the "provisioning" state
- * `bg-blue-400` / `bg-blue-500` — here it uses the brand orange instead, which
- * also reads correctly as "work in progress" alongside the amber "pending" and
- * orange "disconnected" states.
+ * Ported from `@elizaos/cloud-shared/lib/constants/sandbox-status.ts` and
+ * converted to the app's semantic status tokens (see DESIGN-SYSTEM.md §2). The
+ * shared version emitted raw Tailwind palette classes (`emerald`/`amber`/`red`)
+ * plus `white/NN` ladders that bypass theming and break light mode. Here each
+ * state maps to the theme-aware status token set:
+ *   running       → status-success (the only non-brand hue permitted)
+ *   provisioning  → accent (brand orange, reads as "work in progress")
+ *   pending       → status-warning (orange by design)
+ *   stopped       → muted / neutral surface
+ *   sleeping      → muted-strong / neutral surface
+ *   disconnected  → status-danger (orange by design)
+ *   error         → status-danger (orange by design)
+ * No blue anywhere; every class resolves correctly in light and dark.
  */
 
 export const STATUS_DOT_COLORS: Record<string, string> = {
-  running: "bg-emerald-400",
-  provisioning: "bg-[var(--brand-orange)] animate-pulse",
-  pending: "bg-amber-400 animate-pulse",
-  stopped: "bg-white/30",
-  sleeping: "bg-white/45",
-  disconnected: "bg-orange-400",
-  error: "bg-red-400",
+  running: "bg-status-success",
+  provisioning: "bg-accent animate-pulse motion-reduce:animate-none",
+  pending: "bg-status-warning animate-pulse motion-reduce:animate-none",
+  stopped: "bg-muted",
+  sleeping: "bg-muted-strong",
+  disconnected: "bg-status-danger",
+  error: "bg-status-danger",
 };
 
 export const STATUS_BADGE_COLORS: Record<string, string> = {
-  running: "bg-emerald-500/15 text-emerald-400 border-emerald-500/25",
-  provisioning:
-    "bg-[var(--brand-orange)]/15 text-[var(--brand-orange)] border-[var(--brand-orange)]/25",
-  pending: "bg-amber-500/15 text-amber-400 border-amber-500/25",
-  stopped: "bg-white/5 text-white/40 border-white/10",
-  sleeping: "bg-white/[0.07] text-white/60 border-white/15",
-  disconnected: "bg-orange-500/15 text-orange-400 border-orange-500/25",
-  error: "bg-red-500/15 text-red-400 border-red-500/25",
+  running: "bg-status-success-bg text-status-success border-status-success",
+  provisioning: "bg-accent-subtle text-accent border-accent",
+  pending: "bg-status-warning-bg text-status-warning border-status-warning",
+  stopped: "bg-bg-muted text-muted border-border",
+  sleeping: "bg-surface text-muted-strong border-border-strong",
+  disconnected: "bg-status-danger-bg text-status-danger border-status-danger",
+  error: "bg-status-danger-bg text-status-danger border-status-danger",
 };
 
 export function statusDotColor(status: string): string {
-  return STATUS_DOT_COLORS[status] ?? "bg-white/30";
+  return STATUS_DOT_COLORS[status] ?? "bg-muted";
 }
 
 export function statusBadgeColor(status: string): string {
   return (
-    STATUS_BADGE_COLORS[status] ?? "bg-white/5 text-white/40 border-white/10"
+    STATUS_BADGE_COLORS[status] ?? "bg-bg-muted text-muted border-border"
   );
 }
 
