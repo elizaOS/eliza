@@ -90,16 +90,19 @@ export function isOxaPayConfigured(): boolean {
   return Boolean(process.env.OXAPAY_MERCHANT_API_KEY);
 }
 
-function parseOxaPayInvoiceAmount(rawAmount: string | undefined): number {
+function parseOxaPayDecimalAmount(rawAmount: string | undefined): number | null {
   const trimmedAmount = rawAmount?.trim();
   if (!trimmedAmount || !/^(?:\d+|\d+\.\d+|\.\d+)$/.test(trimmedAmount)) {
-    throw new OxaPayApiError(
-      `OxaPay inquiry returned invalid invoice amount ${JSON.stringify(rawAmount ?? null)}`,
-    );
+    return null;
   }
 
   const amount = Number(trimmedAmount);
-  if (!Number.isFinite(amount) || amount <= 0) {
+  return Number.isFinite(amount) ? amount : null;
+}
+
+function parseOxaPayInvoiceAmount(rawAmount: string | undefined): number {
+  const amount = parseOxaPayDecimalAmount(rawAmount);
+  if (amount === null || amount <= 0) {
     throw new OxaPayApiError(
       `OxaPay inquiry returned invalid invoice amount ${JSON.stringify(rawAmount ?? null)}`,
     );
@@ -243,10 +246,9 @@ class OxaPayService {
     // - Overpayments: User's responsibility, we credit invoice amount only
     //
     // Fail closed on the invoice amount: every invoice is created with a positive
-    // amount, so a result=100 inquiry whose `amount` is missing, non-numeric, or
-    // non-positive is a malformed provider response. Coercing it to 0 (the old
-    // `parseFloat(...) || 0` behavior) let confirmPayment mark a CONFIRMED payment
-    // as settled while crediting $0 — silently eating the user's payment.
+    // amount, so a result=100 inquiry whose `amount` is missing, malformed, or
+    // non-positive is a bad provider response. The parser is deliberately
+    // full-string strict; parseFloat would accept corrupt prefixes like "25 USD".
     let invoiceAmount: number;
     try {
       invoiceAmount = parseOxaPayInvoiceAmount(data.amount);
@@ -262,10 +264,7 @@ class OxaPayService {
 
     // Native pay amount is audit/debug metadata only (never credited); a
     // malformed value degrades to undefined instead of failing the inquiry.
-    const parsedNativePayAmount = Number.parseFloat(data.payAmount ?? "");
-    const nativePayAmount = Number.isFinite(parsedNativePayAmount)
-      ? parsedNativePayAmount
-      : undefined;
+    const nativePayAmount = parseOxaPayDecimalAmount(data.payAmount) ?? undefined;
 
     return {
       trackId: data.trackId,

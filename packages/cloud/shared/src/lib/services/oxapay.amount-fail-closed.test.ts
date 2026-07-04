@@ -97,6 +97,13 @@ describe("oxaPayService.getPaymentStatus — invoice amount fail-closed", () => 
     expect(status.transactions[0].nativeAmount).toBeUndefined();
   });
 
+  test("partial numeric audit-only payAmount degrades to undefined without failing", async () => {
+    stubInquiryResponse({ payAmount: "0.5 SOL" });
+    const status = await oxaPayService.getPaymentStatus("trk_1");
+    expect(status.amount).toBe(25);
+    expect(status.transactions[0].nativeAmount).toBeUndefined();
+  });
+
   test("missing payAmount degrades to undefined without failing", async () => {
     stubInquiryResponse({ payAmount: undefined });
     const status = await oxaPayService.getPaymentStatus("trk_1");
