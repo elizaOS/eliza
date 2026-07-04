@@ -8,9 +8,10 @@
  * action). Because the visible text is intentionally minimal, the full meaning
  * lives in `ariaLabel` for screen readers.
  *
- * Sits on the orange home wallpaper, so it's a translucent neutral glass tile
- * (orange is accent-only; resting neutral → neutral-with-opacity hover, never
- * orange→black — per the hover system).
+ * Sits on the orange home wallpaper as a solid warm-dark card tile (the `card`
+ * surface token). Orange is accent-only: resting neutral, escalating to the
+ * status hue on danger/warn, never orange→black — per the hover system. All
+ * color comes from tokens so the tile stays theme-aware.
  */
 
 import { type ReactNode, useMemo } from "react";
@@ -52,17 +53,21 @@ export function useWidgetNavigation(): {
 
 export type HomeWidgetTone = "default" | "danger" | "warn";
 
-// The datum tone. Default is high-contrast white on the warm-dark card; danger/
-// warn carry the accent so an at-risk widget reads at a glance.
+// The datum tone. Default is high-contrast text on the warm-dark card; danger/
+// warn carry the accent so an at-risk widget reads at a glance. `text-txt-strong`
+// resolves to the brand off-white on the dark ember card (theme-aware, not a
+// baked-in white), keeping the value crisp without a raw color.
 const TONE_VALUE_CLASS: Record<HomeWidgetTone, string> = {
-  default: "text-white",
+  default: "text-txt-strong",
   danger: "text-danger",
   warn: "text-warn",
 };
 
 // The icon chip tone: a warm-tinted resting chip, escalating to the status hue.
+// The default chip is the accent at its subtle fill with the accent glyph — the
+// tokenized equivalent of the old raw peach, so light/dark both resolve.
 const TONE_CHIP_CLASS: Record<HomeWidgetTone, string> = {
-  default: "bg-[rgba(255,106,31,0.12)] text-[#ffb488]",
+  default: "bg-accent-subtle text-accent",
   danger: "bg-danger/15 text-danger",
   warn: "bg-warn/15 text-warn",
 };
@@ -112,13 +117,15 @@ export function HomeWidgetCard({
       title={label}
       onClick={onActivate}
       className={cn(
-        // A SOLID warm-dark tile (var(--surface-1)) with a warm hairline edge,
-        // so it sits in the ember field instead of letting it bleed through
-        // (the old bg-black/55 was translucent). A left accent rail keys the
-        // tone. Tactile: a hair lift + warmer edge on hover, scale-press on tap.
-        "group relative flex w-full items-center gap-3 overflow-hidden rounded-2xl border border-white/[0.07] bg-[var(--surface-1)] px-3.5 py-3 text-left",
+        // A SOLID warm-dark tile (the card surface token) with a warm hairline
+        // edge, so it sits in the ember field instead of letting it bleed
+        // through (the old bg-black/55 was translucent). A left accent rail keys
+        // the tone. Tactile: a hair lift + warmer edge on hover, scale-press on
+        // tap. Surface/border/hover all resolve through tokens so the tile is
+        // theme-aware, never a baked-in white/black opacity ladder.
+        "group relative flex w-full items-center gap-3 overflow-hidden rounded-2xl border border-border bg-card px-3.5 py-3 text-left",
         "transition-[transform,border-color,background-color] duration-150",
-        "hover:border-[rgba(255,106,31,0.28)] hover:bg-[var(--surface-2)]",
+        "hover:border-border-hover hover:bg-bg-hover",
         "active:scale-[0.985] motion-reduce:active:scale-100",
       )}
     >
@@ -132,7 +139,7 @@ export function HomeWidgetCard({
             ? "bg-danger/70"
             : tone === "warn"
               ? "bg-warn/70"
-              : "bg-[rgba(255,106,31,0.35)] group-hover:bg-[rgba(255,106,31,0.7)]",
+              : "bg-accent/35 group-hover:bg-accent/70",
         )}
       />
       <span
@@ -146,7 +153,7 @@ export function HomeWidgetCard({
           <span
             aria-hidden
             className={cn(
-              "absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border border-[#1d130c]",
+              "absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border border-card",
               TONE_DOT_CLASS[tone],
             )}
           />
@@ -157,13 +164,13 @@ export function HomeWidgetCard({
           read as a real dashboard), with the single high-priority datum below
           it. When a widget supplies no datum, the label carries the row alone. */}
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <span className="truncate text-[0.6875rem] font-medium uppercase tracking-[0.08em] text-white/45">
+        <span className="truncate text-xs-tight font-medium uppercase tracking-[0.08em] text-muted">
           {label}
         </span>
         {value != null ? (
           <span
             className={cn(
-              "truncate text-[0.9375rem] font-semibold leading-tight",
+              "truncate text-sm font-semibold leading-tight",
               TONE_VALUE_CLASS[tone],
             )}
           >
@@ -173,19 +180,19 @@ export function HomeWidgetCard({
       </span>
 
       {meta != null ? (
-        <span className="shrink-0 text-[0.6875rem] tabular-nums text-white/55">
+        <span className="shrink-0 text-xs-tight tabular-nums text-muted-strong">
           {meta}
         </span>
       ) : null}
       {badge != null ? (
         <span
           className={cn(
-            "shrink-0 rounded-full px-2 py-0.5 text-[0.6875rem] font-semibold tabular-nums",
+            "shrink-0 rounded-full px-2 py-0.5 text-xs-tight font-semibold tabular-nums",
             tone === "danger"
               ? "bg-danger/15 text-danger"
               : tone === "warn"
                 ? "bg-warn/15 text-warn"
-                : "bg-[rgba(255,106,31,0.16)] text-[#ffb488]",
+                : "bg-accent-subtle text-accent",
           )}
         >
           {badge}
