@@ -16,6 +16,7 @@ import { Readable } from "node:stream";
 import { describe, expect, it, vi } from "vitest";
 import { handleOrchestratorRoutes } from "../../src/api/orchestrator-routes.js";
 import type { RouteContext } from "../../src/api/route-utils.js";
+import { BUILT_APPS_CACHE_KEY } from "../../src/services/built-apps-registry.js";
 import { OrchestratorTaskService } from "../../src/services/orchestrator-task-service.js";
 import { OrchestratorTaskStore } from "../../src/services/orchestrator-task-store.js";
 
@@ -43,12 +44,20 @@ function makeService(): OrchestratorTaskService {
   );
 }
 
-function ctxWith(service: OrchestratorTaskService | null): RouteContext {
+function ctxWith(
+  service: OrchestratorTaskService | null,
+  cache: Map<string, unknown> = new Map(),
+): RouteContext {
   return {
     runtime: {
       getService: () => service,
       hasService: () => service !== null,
       getServiceLoadPromise: () => Promise.resolve(undefined),
+      getCache: (key: string) => Promise.resolve(cache.get(key)),
+      setCache: (key: string, value: unknown) => {
+        cache.set(key, value);
+        return Promise.resolve();
+      },
     },
     acpService: null,
     workspaceService: null,
@@ -87,6 +96,7 @@ async function call(
   method: string,
   fullPath: string,
   body?: Record<string, unknown> | string,
+  cache?: Map<string, unknown>,
 ): Promise<CallResult> {
   const pathname = fullPath.split("?")[0] ?? fullPath;
   const raw =
@@ -101,7 +111,7 @@ async function call(
     req,
     res as unknown as ServerResponse,
     pathname,
-    ctxWith(service),
+    ctxWith(service, cache),
   );
   return { matched, status: res.statusCode, json: res.json() };
 }
@@ -148,6 +158,35 @@ describe("orchestrator routes — dispatch", () => {
     const result = await call(makeService(), "GET", "/api/orchestrator/status");
     expect(result.status).toBe(200);
     expect(result.json.taskCount).toBe(0);
+  });
+
+  it("serves built apps from the registry before the task service gate", async () => {
+    const cache = new Map<string, unknown>([
+      [
+        BUILT_APPS_CACHE_KEY,
+        [
+          {
+            slug: "launchpad",
+            name: "Launchpad",
+            url: "https://apps.example.test/apps/launchpad/",
+            target: "custom",
+            sessionId: "session-1",
+            registeredAt: "2026-07-04T00:00:00.000Z",
+          },
+        ],
+      ],
+    ]);
+    const result = await call(
+      null,
+      "GET",
+      "/api/orchestrator/built-apps",
+      undefined,
+      cache,
+    );
+
+    expect(result.matched).toBe(true);
+    expect(result.status).toBe(200);
+    expect(result.json.apps).toEqual(cache.get(BUILT_APPS_CACHE_KEY));
   });
 
   it("pauses and resumes all", async () => {
