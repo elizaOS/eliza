@@ -15,11 +15,15 @@ from benchmarks.orchestrator_lifecycle.evaluator import LifecycleEvaluator
 from benchmarks.orchestrator_lifecycle.types import Scenario, ScenarioTurn, TurnRecord
 
 
-def _scenario(turns: list[ScenarioTurn], scenario_id: str = "case") -> Scenario:
+def _scenario(
+    turns: list[ScenarioTurn],
+    scenario_id: str = "case",
+    category: str = "test",
+) -> Scenario:
     return Scenario(
         scenario_id=scenario_id,
         title=scenario_id,
-        category="test",
+        category=category,
         turns=turns,
     )
 
@@ -278,6 +282,7 @@ def test_summary_metric_reports_real_rate_never_overall_fallback() -> None:
             )
         ],
         scenario_id="cancel_task",
+        category="interrupt",
     )
     summary_scenario = _scenario(
         [
@@ -288,6 +293,7 @@ def test_summary_metric_reports_real_rate_never_overall_fallback() -> None:
             )
         ],
         scenario_id="final_stakeholder_summary",
+        category="completion_summary",
     )
     cancel_pass = evaluator.evaluate_scenario(
         cancel_scenario, [TurnRecord(reply_text="Shut down.", events=["cancel"])]
@@ -299,6 +305,50 @@ def test_summary_metric_reports_real_rate_never_overall_fallback() -> None:
     metrics = evaluator.compute_metrics([cancel_pass, summary_fail])
     assert metrics.overall_score == 0.5
     assert metrics.completion_summary_quality == 0.0
+
+
+def test_category_metrics_use_structural_category_not_id_substrings() -> None:
+    evaluator = LifecycleEvaluator()
+    status_scenario = _scenario(
+        [
+            ScenarioTurn(
+                actor="user",
+                message="How is it going? Give me a status update.",
+                expected_behaviors=["report_active_subagent_status"],
+            )
+        ],
+        scenario_id="check_in_while_running",
+        category="status",
+    )
+    clarification_scenario = _scenario(
+        [
+            ScenarioTurn(
+                actor="user",
+                message="Please handle this status-looking request without details.",
+                expected_behaviors=["ask_clarifying_question_before_start"],
+            )
+        ],
+        scenario_id="status_named_but_not_status_category",
+        category="clarification",
+    )
+    status_pass = evaluator.evaluate_scenario(
+        status_scenario,
+        [
+            TurnRecord(
+                reply_text="Collection done, analysis running.",
+                events=["status_query"],
+            )
+        ],
+    )
+    clarification_fail = evaluator.evaluate_scenario(
+        clarification_scenario,
+        [TurnRecord(reply_text="I will start now.", events=["spawn"])],
+    )
+    metrics = evaluator.compute_metrics([status_pass, clarification_fail])
+    assert status_pass.category == "status"
+    assert clarification_fail.category == "clarification"
+    assert metrics.status_accuracy_rate == 1.0
+    assert metrics.clarification_success_rate == 0.0
 
 
 def test_compute_metrics_aggregates_pass_rate() -> None:
