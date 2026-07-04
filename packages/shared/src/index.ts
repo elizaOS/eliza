@@ -210,6 +210,7 @@ export {
   getFirstRunProviderOption,
   getFirstRunProviderSignalEnvKeys,
   getStoredFirstRunProviderId,
+  getStoredSubscriptionProviderForRequest,
   normalizeFirstRunProviderId,
   sortFirstRunProviders,
 } from "./contracts/first-run-options.js";

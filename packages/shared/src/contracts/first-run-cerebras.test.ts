@@ -19,7 +19,9 @@ import { describe, expect, it } from "vitest";
 import {
   FIRST_RUN_PROVIDER_CATALOG as CORE_CATALOG,
   DIRECT_ACCOUNT_PROVIDER_BY_FIRST_RUN_PROVIDER as CORE_DIRECT_ACCOUNT_MAP,
+  SUBSCRIPTION_PROVIDER_SELECTIONS as CORE_SUBSCRIPTION_PROVIDER_SELECTIONS,
   getDirectAccountProviderForFirstRunProvider as coreGetDirectAccountProvider,
+  getStoredSubscriptionProviderForRequest as coreGetStoredSubscriptionProviderForRequest,
   normalizeFirstRunProviderId as coreNormalizeFirstRunProviderId,
 } from "../../../core/src/contracts/first-run-options";
 import {
@@ -28,7 +30,9 @@ import {
   getDirectAccountProviderForFirstRunProvider,
   getFirstRunProviderOption,
   getFirstRunProviderSignalEnvKeys,
+  getStoredSubscriptionProviderForRequest,
   normalizeFirstRunProviderId,
+  SUBSCRIPTION_PROVIDER_SELECTIONS,
 } from "./first-run-options";
 import { isLinkedAccountProviderId } from "./service-routing";
 
@@ -87,6 +91,12 @@ describe("first-run provider catalog core/shared alignment", () => {
     );
   });
 
+  it("core and shared expose identical subscription provider selections", () => {
+    expect(CORE_SUBSCRIPTION_PROVIDER_SELECTIONS).toEqual(
+      SUBSCRIPTION_PROVIDER_SELECTIONS,
+    );
+  });
+
   it("the canonical core copy includes Cerebras", () => {
     const coreCerebras = CORE_CATALOG.find((p) => p.id === "cerebras");
     expect(coreCerebras).toBeDefined();
@@ -99,5 +109,24 @@ describe("first-run provider catalog core/shared alignment", () => {
     expect(coreNormalizeFirstRunProviderId("CEREBRAS")).toBe("cerebras");
     expect(coreNormalizeFirstRunProviderId("cerebras-api")).toBe("cerebras");
     expect(coreGetDirectAccountProvider("cerebras")).toBe("cerebras-api");
+  });
+
+  it("subscription request storage ids are driven by the selection registry", () => {
+    for (const provider of SUBSCRIPTION_PROVIDER_SELECTIONS) {
+      expect(getStoredSubscriptionProviderForRequest(provider.id)).toBe(
+        provider.storedProvider,
+      );
+      expect(
+        getStoredSubscriptionProviderForRequest(provider.id.toUpperCase()),
+      ).toBe(provider.storedProvider);
+      expect(
+        getStoredSubscriptionProviderForRequest(provider.storedProvider),
+      ).toBe(provider.storedProvider);
+      expect(coreGetStoredSubscriptionProviderForRequest(provider.id)).toBe(
+        provider.storedProvider,
+      );
+    }
+    expect(getStoredSubscriptionProviderForRequest("openai")).toBeNull();
+    expect(getStoredSubscriptionProviderForRequest(null)).toBeNull();
   });
 });

@@ -20,12 +20,11 @@ import {
   DIRECT_ACCOUNT_PROVIDER_ENV,
   type DirectAccountProvider,
   isDirectAccountProvider,
-  isSubscriptionProvider,
 } from "@elizaos/auth/types";
 import {
   getDirectAccountProviderForFirstRunProvider,
   getFirstRunProviderOption,
-  getStoredFirstRunProviderId,
+  getStoredSubscriptionProviderForRequest,
   logger,
   MODEL_PROVIDER_SECRETS,
   normalizeFirstRunProviderId,
@@ -97,10 +96,7 @@ function directAccountProviderForRequest(
 }
 
 function subscriptionProviderForRequest(providerId: string): string | null {
-  const normalized = providerId.trim().toLowerCase();
-  if (isSubscriptionProvider(normalized)) return normalized;
-  const storedProvider = getStoredFirstRunProviderId(providerId);
-  return isSubscriptionProvider(storedProvider) ? storedProvider : null;
+  return getStoredSubscriptionProviderForRequest(providerId);
 }
 
 // ── Public API ───────────────────────────────────────────────────────

@@ -53,6 +53,7 @@ export {
 	getDirectAccountProviderForFirstRunProvider,
 	getFirstRunProviderOption,
 	getStoredFirstRunProviderId,
+	getStoredSubscriptionProviderForRequest,
 	isCloudInferenceSelectedInConfig,
 	migrateLegacyRuntimeConfig,
 	normalizeFirstRunProviderId,

@@ -769,6 +769,20 @@ export function getStoredSubscriptionProvider(
 	);
 }
 
+export function getStoredSubscriptionProviderForRequest(
+	providerId: unknown,
+): StoredSubscriptionProviderId | null {
+	const selection = normalizeSubscriptionProviderSelectionId(providerId);
+	if (selection) return getStoredSubscriptionProvider(selection);
+	if (typeof providerId !== "string") return null;
+	const normalized = providerId.trim().toLowerCase();
+	return (
+		SUBSCRIPTION_PROVIDER_SELECTIONS.find(
+			(provider) => provider.storedProvider === normalized,
+		)?.storedProvider ?? null
+	);
+}
+
 export function getSubscriptionProviderFamily(
 	selectionId: SubscriptionProviderSelectionId,
 ): "anthropic" | "openai" | "gemini" | "zai" | "moonshot" | "deepseek" {
