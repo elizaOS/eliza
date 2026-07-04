@@ -73,7 +73,7 @@ if (
   runs.push({
     name: "ui-playwright",
     cmd: bunCmd,
-    args: ["run", "test:ui:playwright"],
+    args: ["run", "--cwd", "packages/app", "test:e2e"],
     forceSerial: true,
   });
 }

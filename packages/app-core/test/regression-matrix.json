@@ -91,7 +91,7 @@
     },
     "ui-playwright-smoke": {
       "tier": "required",
-      "command": "bun run test:ui:playwright"
+      "command": "bun run --cwd packages/app test:e2e"
     },
     "live-cloud": {
       "tier": "heavy",

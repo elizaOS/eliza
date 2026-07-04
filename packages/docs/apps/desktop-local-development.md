@@ -177,15 +177,15 @@ Browser smoke tests target the **same renderer URL** Electrobun loads in watch m
 
 **Why Playwright:** the app already ships Playwright for renderer and packaged checks, so the browser smoke flows now use the same supported stack instead of a separate TestCafe toolchain. This removes the vulnerable `replicator` dependency entirely and keeps the UI E2E surface on one runner.
 
-**Dependency:** Playwright lives in **`@elizaai/app`** and the smoke specs live in `packages/app/test/ui-smoke/`. A normal root `bun install` still hoists workspace packages; these browser checks are opt-in via `test:ui:playwright*`.
+**Dependency:** Playwright lives in **`@elizaai/app`** and the smoke specs live in `packages/app/test/ui-smoke/`. A normal root `bun install` still hoists workspace packages; these browser checks are opt-in through the app package scripts.
 
 **Browser runtime:** the suite uses Playwright Chromium. Install the browser once with `cd packages/app && bunx playwright install chromium` if it is not already present on the machine.
 
 | Command | Purpose |
 |---------|---------|
-| `bun run test:ui:playwright` | Run [`packages/app/test/ui-smoke/ui-smoke.spec.ts`](../../../packages/app/test/ui-smoke/ui-smoke.spec.ts); auto-starts the Vite renderer on **:2138** when needed. |
-| `bun run test:ui:playwright:settings-chat` | Runs the companion media settings persistence smoke when that spec is present. |
-| `bun run test:ui:playwright:packaged` | Runs the packaged renderer smoke against `packages/app/dist/index.html`; skips if `dist` is missing. |
+| `bun run --cwd packages/app test:e2e` | Run [`packages/app/test/ui-smoke/ui-smoke.spec.ts`](../../../packages/app/test/ui-smoke/ui-smoke.spec.ts); auto-starts the Vite renderer on **:2138** when needed. |
+| `bun run --cwd packages/app test:e2e test/ui-smoke/settings-chat-control.spec.ts` | Runs the companion media settings persistence smoke. |
+| `bun run --cwd packages/app test:desktop:packaged` | Runs the packaged renderer smoke against `packages/app/dist/index.html`; skips if `dist` is missing. |
 
 **Full test matrix:** `bun run test` does **not** run Playwright UI smoke by default. Set **`ELIZA_TEST_UI_PLAYWRIGHT=1`** to append the UI suite to `test/scripts/test-parallel.mjs` (serial, after Vitest e2e). `ELIZA_TEST_UI_TESTCAFE=1` is still accepted as a legacy alias.
 

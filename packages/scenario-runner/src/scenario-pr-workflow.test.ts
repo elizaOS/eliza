@@ -598,7 +598,7 @@ describe("scenario PR workflow contract", () => {
   it("keeps cloud Playwright CI wired to real Playwright, including visual screenshot checks", () => {
     // The cloud frontend was consolidated into packages/app (the apex cutover):
     // the cloud Playwright + visual-screenshot e2e now runs against packages/app
-    // in the scenario PR workflow, and test:cloud:playwright points at packages/app.
+    // in the scenario PR workflow, without a root package wrapper.
     const prWorkflow = readFileSync(workflowPath, "utf8");
     const rootPackage = JSON.parse(readFileSync(rootPackagePath, "utf8")) as {
       scripts?: Record<string, string>;
@@ -607,9 +607,8 @@ describe("scenario PR workflow contract", () => {
     expect(prWorkflow).toContain("pull_request:");
     expect(prWorkflow).toContain("playwright install --with-deps chromium");
     expect(prWorkflow).toContain("bun run --cwd packages/app test:e2e");
-    expect(rootPackage.scripts?.["test:cloud:playwright"]).toBe(
-      "bun run --cwd packages/app test:e2e",
-    );
+    expect(rootPackage.scripts?.["test:cloud:playwright"]).toBeUndefined();
+    expect(rootPackage.scripts?.["test:ui:playwright"]).toBeUndefined();
     expect(rootPackage.scripts?.["test:cloud:playwright"]).not.toBe(
       "bun run --cwd packages/cloud-frontend test:e2e",
     );
