@@ -3,7 +3,7 @@
  * Renders ChatComposer in jsdom (real component, mocked voice state) to cover
  * its input/send/mic wiring and ref forwarding without a live voice pipeline.
  */
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { type ComponentProps, createRef } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ChatComposer, type ChatComposerVoiceState } from "./chat-composer";
@@ -34,7 +34,6 @@ function renderInlineComposer(
     layout: "inline",
     onAttachImage: vi.fn(),
     onChatInputChange: vi.fn(),
-    onKeyDown: vi.fn(),
     onSend: vi.fn(),
     onStop: vi.fn(),
     onStopSpeaking: vi.fn(),
@@ -88,5 +87,55 @@ describe("ChatComposer", () => {
       screen.getByRole("button", { name: "chat.releaseToSend" }),
     ).toBeTruthy();
     expect(screen.queryByRole("button", { name: "common.send" })).toBeNull();
+  });
+
+  it("sends on Enter and inserts a newline on Shift+Enter (composer-core keydown)", () => {
+    const onSend = vi.fn();
+    renderInlineComposer({ onSend });
+    const textarea = screen.getByTestId("chat-composer-textarea");
+
+    fireEvent.keyDown(textarea, { key: "Enter", shiftKey: true });
+    expect(onSend).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(textarea, { key: "Enter" });
+    expect(onSend).toHaveBeenCalledTimes(1);
+  });
+
+  it("never sends on the Enter that commits an IME composition (#9148)", () => {
+    const onSend = vi.fn();
+    renderInlineComposer({ onSend });
+    const textarea = screen.getByTestId("chat-composer-textarea");
+
+    fireEvent.keyDown(textarea, { key: "Enter", isComposing: true });
+    fireEvent.keyDown(textarea, { key: "Enter", keyCode: 229 });
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it("routes a pasted image into the attachment intake instead of the textarea", () => {
+    const addFiles = vi.fn();
+    const attachText = vi.fn();
+    renderInlineComposer({ pasteAttachments: { addFiles, attachText } });
+    const file = new File(["png-bytes"], "shot.png", { type: "image/png" });
+
+    fireEvent.paste(screen.getByTestId("chat-composer-textarea"), {
+      clipboardData: { files: [file], getData: () => "" },
+    });
+    expect(addFiles).toHaveBeenCalledWith([file]);
+    expect(attachText).not.toHaveBeenCalled();
+  });
+
+  it("attaches an oversized text paste as a text-attachment chip", () => {
+    const addFiles = vi.fn();
+    const attachText = vi.fn();
+    renderInlineComposer({ pasteAttachments: { addFiles, attachText } });
+
+    fireEvent.paste(screen.getByTestId("chat-composer-textarea"), {
+      clipboardData: {
+        files: [],
+        getData: (type: string) => (type === "text" ? "x".repeat(5000) : ""),
+      },
+    });
+    expect(addFiles).not.toHaveBeenCalled();
+    expect(attachText).toHaveBeenCalledTimes(1);
   });
 });

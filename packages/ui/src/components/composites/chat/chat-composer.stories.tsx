@@ -78,7 +78,6 @@ const meta = {
     textareaRef: { current: null },
     onAttachImage: () => {},
     onChatInputChange: () => {},
-    onKeyDown: () => {},
     onSend: () => {},
     onStop: () => {},
     onStopSpeaking: () => {},

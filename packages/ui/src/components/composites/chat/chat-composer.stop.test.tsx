@@ -86,7 +86,6 @@ function StopComposerHarness({
       t={translate}
       onAttachImage={() => {}}
       onChatInputChange={() => {}}
-      onKeyDown={() => {}}
       onSend={() => {}}
       onStop={onStop}
       onStopSpeaking={() => {}}

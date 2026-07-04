@@ -1,10 +1,12 @@
 /**
  * The chat message composer: auto-growing textarea plus send / attach / voice
  * controls, driving the primary text-and-voice input for every chat surface.
- * Owns the textarea auto-resize measurement, push-to-talk wiring
- * (`usePushToTalk`), and the send/stop/voice affordance state derived from the
- * passed voice-session mode. Pure presentation — the parent owns the value and
- * the actual send/voice actions.
+ * Owns the textarea auto-resize measurement plus the shared composer-core
+ * wiring — keyboard (IME-safe Enter-to-send via `useComposerKeydown`),
+ * clipboard (`useComposerPaste`), and push-to-talk (`usePushToTalk`) — and the
+ * send/stop/voice affordance state derived from the passed voice-session mode.
+ * Pure presentation otherwise — the parent owns the value and the actual
+ * send/voice/attachment-intake actions.
  */
 import {
   ArrowUp,
@@ -19,8 +21,6 @@ import {
 // biome-ignore lint/correctness/noUnusedImports: Required for this package's JSX transform in tests.
 import * as React from "react";
 import {
-  type ClipboardEvent,
-  type KeyboardEvent,
   type RefObject,
   useCallback,
   useEffect,
@@ -28,6 +28,11 @@ import {
   useRef,
   useState,
 } from "react";
+import {
+  type ComposerPasteOptions,
+  useComposerKeydown,
+  useComposerPaste,
+} from "../../../chat/composer-core";
 import { usePushToTalk } from "../../../hooks/usePushToTalk";
 import type { VoiceSessionMode } from "../../../voice/voice-chat-types";
 import { Button } from "../../ui/button";
@@ -119,13 +124,13 @@ export interface ChatComposerProps {
   layout?: "default" | "inline";
   onAttachImage: () => void;
   onChatInputChange: (value: string) => void;
-  onKeyDown: (event: KeyboardEvent<HTMLTextAreaElement>) => void;
   /**
-   * Clipboard paste handler — pastes an image/file as an attachment and a large
-   * text block as a collapsed text-attachment chip (matching the mobile
-   * overlay). Optional; when omitted the textarea pastes normally.
+   * Attachment intake for clipboard pastes (shared composer-core routing: an
+   * image/file paste attaches, a large text block becomes a collapsed
+   * text-attachment chip). Omit on surfaces without outbound attachments —
+   * the textarea then pastes normally.
    */
-  onPaste?: (event: ClipboardEvent<HTMLTextAreaElement>) => void;
+  pasteAttachments?: ComposerPasteOptions;
   onSend: () => void;
   onStop: () => void;
   onStopSpeaking: () => void;
@@ -156,8 +161,7 @@ export function ChatComposer({
   t,
   onAttachImage,
   onChatInputChange,
-  onKeyDown,
-  onPaste,
+  pasteAttachments,
   onSend,
   onStop,
   onStopSpeaking,
@@ -285,6 +289,14 @@ export function ChatComposer({
     textareaRef,
   ]);
 
+  // Shared composer-core keyboard + clipboard contracts: IME-safe
+  // Enter-to-send and paste-to-attachment behave identically on every surface.
+  const handleKeyDown = useComposerKeydown<HTMLTextAreaElement>({
+    onSend,
+    locked: isComposerLocked,
+  });
+  const handlePaste = useComposerPaste<HTMLTextAreaElement>(pasteAttachments);
+
   const { handlers: micHoldHandlers, shouldSuppressClick } = usePushToTalk({
     canBegin: () => !isComposerLocked && !voice.isListening,
     onHoldStart: () => {
@@ -344,8 +356,8 @@ export function ChatComposer({
           ref={textareaRef}
           value={chatInput}
           onChange={(event) => onChatInputChange(event.target.value)}
-          onKeyDown={onKeyDown}
-          onPaste={onPaste}
+          onKeyDown={handleKeyDown}
+          onPaste={handlePaste}
           data-testid="chat-composer-textarea"
           variant={null}
           density={null}
@@ -574,8 +586,8 @@ export function ChatComposer({
           ref={textareaRef}
           value={chatInput}
           onChange={(event) => onChatInputChange(event.target.value)}
-          onKeyDown={onKeyDown}
-          onPaste={onPaste}
+          onKeyDown={handleKeyDown}
+          onPaste={handlePaste}
           data-testid="chat-composer-textarea"
           variant={isInline ? null : undefined}
           density={isInline ? null : undefined}

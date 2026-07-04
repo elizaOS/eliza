@@ -16,9 +16,7 @@ import { logger } from "@elizaos/logger";
 import { RotateCcw } from "lucide-react";
 import {
   type ChangeEvent,
-  type ClipboardEvent,
   type DragEvent,
-  type KeyboardEvent,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -29,6 +27,7 @@ import {
 import { type CodingAgentSession, client } from "../../api/client";
 import {
   type ConversationMessage,
+  type ImageAttachment,
   isConversationMessage,
 } from "../../api/client-types-chat";
 import { isRoutineCodingAgentMessage } from "../../chat";
@@ -55,7 +54,6 @@ import {
   buildDroppedAttachmentNotice,
   CHAT_UPLOAD_ACCEPT,
   chatUploadKind,
-  classifyComposerPaste,
   intakeAttachmentFiles,
   MAX_CHAT_IMAGES,
 } from "../../utils/image-attachment";
@@ -526,14 +524,6 @@ export function ChatView({
     return () => clearTimeout(timer);
   }, [chatSending, chatFirstTokenReceived]);
 
-  const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (isComposerLocked) return;
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      void handleChatSend();
-    }
-  };
-
   const addImageFiles = useCallback(
     (files: FileList | File[]) => {
       void intakeAttachmentFiles(files)
@@ -585,28 +575,16 @@ export function ChatView({
     [addImageFiles],
   );
 
-  // Paste-to-attachment, matching the mobile overlay: a pasted image/file
-  // attaches; a large text block becomes a collapsed text-attachment chip;
-  // small text falls through to the textarea. Shared classification lives in
-  // utils/image-attachment.ts so both surfaces behave identically.
-  const handleComposerPaste = useCallback(
-    (e: ClipboardEvent<HTMLTextAreaElement>) => {
-      const intent = classifyComposerPaste({
-        files: Array.from(e.clipboardData?.files ?? []),
-        text: e.clipboardData?.getData("text") ?? "",
-      });
-      if (intent.kind === "files") {
-        e.preventDefault();
-        addImageFiles(intent.files);
-        return;
-      }
-      if (intent.kind === "text-attachment") {
-        e.preventDefault();
+  // Attachment intake for the shared composer-core paste routing (a pasted
+  // image/file attaches; an oversized text paste becomes a collapsed chip).
+  const pasteAttachments = useMemo(
+    () => ({
+      addFiles: addImageFiles,
+      attachText: (attachment: ImageAttachment) =>
         setChatPendingImages((prev) =>
-          [...prev, intent.attachment].slice(0, MAX_CHAT_IMAGES),
-        );
-      }
-    },
+          [...prev, attachment].slice(0, MAX_CHAT_IMAGES),
+        ),
+    }),
     [addImageFiles, setChatPendingImages],
   );
 
@@ -889,8 +867,7 @@ export function ChatView({
         t={t}
         onAttachImage={() => fileInputRef.current?.click()}
         onChatInputChange={(value) => setState("chatInput", value)}
-        onKeyDown={handleKeyDown}
-        onPaste={handleComposerPaste}
+        pasteAttachments={pasteAttachments}
         onSend={() => void handleChatSend()}
         onStop={handleChatStop}
         onStopSpeaking={stopSpeaking}
@@ -949,8 +926,7 @@ export function ChatView({
         t={t}
         onAttachImage={() => fileInputRef.current?.click()}
         onChatInputChange={(value) => setState("chatInput", value)}
-        onKeyDown={handleKeyDown}
-        onPaste={handleComposerPaste}
+        pasteAttachments={pasteAttachments}
         onSend={() => void handleChatSend()}
         onStop={handleChatStop}
         onStopSpeaking={stopSpeaking}
@@ -1386,17 +1362,6 @@ function InboxChatPanel({
     ],
   );
 
-  const handleReplyKeyDown = useCallback(
-    (event: KeyboardEvent<HTMLTextAreaElement>) => {
-      if (event.key !== "Enter" || event.shiftKey) {
-        return;
-      }
-      event.preventDefault();
-      void handleReplySend();
-    },
-    [handleReplySend],
-  );
-
   return (
     <div className="flex flex-1 min-h-0 min-w-0 flex-col">
       <div className="flex items-center justify-between px-5 py-3">
@@ -1533,7 +1498,6 @@ function InboxChatPanel({
               })}
               onAttachImage={() => {}}
               onChatInputChange={setReplyText}
-              onKeyDown={handleReplyKeyDown}
               onSend={() => void handleReplySend()}
               onStop={() => {}}
               onStopSpeaking={() => {}}
