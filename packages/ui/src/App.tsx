@@ -48,6 +48,7 @@ import { CustomActionEditor } from "./components/custom-actions/CustomActionEdit
 import { CustomActionsPanel } from "./components/custom-actions/CustomActionsPanel";
 import { AppsPageView } from "./components/pages/AppsPageView";
 import { TutorialOverlay } from "./components/pages/tutorial/TutorialOverlay";
+import { PermissionPrimingOverlay } from "./components/permissions/PermissionPrimingOverlay";
 import { ActionBanner } from "./components/shell/ActionBanner";
 import { AssistantOverlay } from "./components/shell/AssistantOverlay";
 import { BugReportModal } from "./components/shell/BugReportModal";
@@ -2499,6 +2500,13 @@ export function App() {
             only when the tutorial is active (launched from the home Tutorial
             tile or the Help view). */}
         <TutorialOverlay />
+        {/* Post-login permission priming: a one-time soft-ask modal that walks
+            the user through the platform's onboarding permission set (voice,
+            location, notifications) BEFORE any OS prompt. Self-gates on
+            authenticated + firstRunComplete !== false + no active tutorial, so
+            it never collides with the in-chat first-run conductor. Renders null
+            when not eligible; re-triggerable from Settings → Permissions. */}
+        <PermissionPrimingOverlay />
         {/* Notification center, headless for now: the visible bell is hidden,
             but this still self-boots the notification store (hydrate + live
             stream) and routes interrupt toasts through ActionNotice. Restore

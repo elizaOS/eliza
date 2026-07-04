@@ -246,7 +246,11 @@ export * from "./pages/TrajectoryDetailView";
 export * from "./pages/WorkflowEditor";
 export * from "./pages/workflow-graph-events";
 // DesktopWorkspaceSection omitted — App.tsx lazy-loads it.
+export * from "./permissions/PermissionPrimingModal";
+export * from "./permissions/PermissionPrimingOverlay";
 export * from "./permissions/PermissionRecoveryCallout";
+export * from "./permissions/permission-priming";
+export * from "./permissions/use-permission-priming";
 export * from "./RoleGate.tsx";
 export * from "./ShellModalityProvider.tsx";
 export * from "./ShellRoleProvider.tsx";

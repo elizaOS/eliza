@@ -18,6 +18,8 @@ import {
   openMobilePermissionSettings,
 } from "../../platform/mobile-permissions-client";
 import { useAppSelector } from "../../state";
+import { PermissionPrimingModal } from "../permissions/PermissionPrimingModal";
+import { resolvePrimingSet } from "../permissions/permission-priming";
 import { StreamingPermissionsSettingsView } from "../permissions/StreamingPermissions";
 import { CapabilityToggle, PermissionRow } from "./permission-controls";
 import { useDesktopPermissionsState } from "./permission-controls.hooks";
@@ -642,8 +644,75 @@ function DesktopPermissionsView() {
   );
 }
 
-export function PermissionsSection() {
+/**
+ * Re-trigger for the onboarding permission-priming modal. Lets a user who
+ * declined or mis-tapped a permission during onboarding re-run the guided
+ * soft-ask flow at any time. Renders nothing on platforms with no priming set
+ * (web), where every permission is requested just-in-time instead.
+ */
+function PermissionPrimingSettingsCard() {
+  const t = useAppSelector((s) => s.t);
+  const branding = useBranding();
+  const ids = useMemo(() => resolvePrimingSet(), []);
+  const [open, setOpen] = useState(false);
+
+  if (ids.length === 0) return null;
+
+  return (
+    <SettingsGroup
+      title={t("permissionssection.QuickSetup", {
+        defaultValue: "Quick setup",
+      })}
+      footer={t("permissionssection.QuickSetupNote", {
+        defaultValue:
+          "Walk through the key permissions ({{appName}} voice, location, notifications) with an explanation for each.",
+        ...appNameInterpolationVars(branding),
+      })}
+    >
+      <SettingsRow
+        label={t("permissionssection.SetUpPermissions", {
+          defaultValue: "Set up permissions",
+        })}
+        description={t("permissionssection.SetUpPermissionsDesc", {
+          defaultValue:
+            "Re-run the guided permission prompts, including any you previously declined.",
+        })}
+        control={
+          <SettingsActionButton
+            agentId="perm-priming-open"
+            agentLabel="Set up permissions"
+            agentGroup="permissions"
+            variant="default"
+            size="sm"
+            className="min-h-11 rounded-sm px-3 text-xs font-semibold"
+            onClick={() => setOpen(true)}
+          >
+            {t("permissionssection.Review", { defaultValue: "Review" })}
+          </SettingsActionButton>
+        }
+      />
+      {open ? (
+        <PermissionPrimingModal
+          ids={ids}
+          open={open}
+          onComplete={() => setOpen(false)}
+        />
+      ) : null}
+    </SettingsGroup>
+  );
+}
+
+function PermissionsSectionBody() {
   if (isWebPlatform()) return <WebPermissionsView />;
   if (isNative && !isDesktopPlatform()) return <MobilePermissionsView />;
   return <DesktopPermissionsView />;
+}
+
+export function PermissionsSection() {
+  return (
+    <SettingsStack>
+      <PermissionPrimingSettingsCard />
+      <PermissionsSectionBody />
+    </SettingsStack>
+  );
 }

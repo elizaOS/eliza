@@ -13,6 +13,8 @@ packages/ui/src/components/shell/__e2e__/output-voice-recording/
 packages/ui/src/components/pages/tutorial/__e2e__/output-tutorial/
 # FTU welcome e2e output (screenshots + webm — regenerate via test:ftu-home-e2e)
 packages/ui/src/components/chat/widgets/__e2e__/output-ftu/
+# Permission-priming e2e output (screenshots + webm + stubs — regenerate via test:permission-priming-e2e)
+packages/ui/src/components/permissions/__e2e__/output-permission-priming/
 # View-lifecycle e2e output (screenshots + webm + telemetry — regenerate via test:view-lifecycle-e2e)
 packages/ui/src/components/views/__e2e__/output-view-lifecycle/
 # Desktop bottom-bar e2e output (screenshots + webm — regenerate via test:bottombar-e2e; committed evidence lives in .github/issue-evidence/9953-windows-bottom-bar/)
