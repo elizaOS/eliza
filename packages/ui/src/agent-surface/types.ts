@@ -135,15 +135,8 @@ export interface AgentActionResult {
   value?: unknown;
 }
 
-/** Capability ids handled generically by the agent-surface registry. */
-export const AGENT_SURFACE_CAPABILITY_IDS: ReadonlySet<string> = new Set([
-  "list-elements",
-  "describe-element",
-  "get-focus",
-  "get-agent-state",
-  "agent-click",
-  "agent-fill",
-  "agent-focus",
-  "agent-scroll-to",
-  "set-highlight",
-]);
+// Capability ids handled generically by the agent-surface registry. The
+// canonical definition lives in @elizaos/shared so the agent server can dispatch
+// against it without importing UI internals (#12408); re-exported here for the
+// UI's agent-surface consumers.
+export { AGENT_SURFACE_CAPABILITY_IDS } from "@elizaos/shared/views/view-interact-protocol";

@@ -198,6 +198,16 @@
       "import": "./dist/contracts/apps.js",
       "default": "./dist/contracts/apps.js"
     },
+    "./views/view-interact-protocol": {
+      "types": "./dist/views/view-interact-protocol.d.ts",
+      "eliza-source": {
+        "types": "./src/views/view-interact-protocol.ts",
+        "import": "./src/views/view-interact-protocol.ts",
+        "default": "./src/views/view-interact-protocol.ts"
+      },
+      "import": "./dist/views/view-interact-protocol.js",
+      "default": "./dist/views/view-interact-protocol.js"
+    },
     "./voice-wer": {
       "types": "./dist/voice-wer.d.ts",
       "eliza-source": {

@@ -36,8 +36,10 @@ import {
   readJsonBody,
   type ShellNavigateViewPayload,
 } from "@elizaos/shared";
-import { AGENT_SURFACE_CAPABILITY_IDS } from "@elizaos/ui/agent-surface/types";
-import { STANDARD_CAPABILITIES } from "@elizaos/ui/views/view-interact-protocol";
+import {
+  AGENT_SURFACE_CAPABILITY_IDS,
+  STANDARD_CAPABILITIES,
+} from "@elizaos/shared/views/view-interact-protocol";
 import {
   type ActiveViewElement,
   clearActiveViewContext,
@@ -142,8 +144,9 @@ function contentTypeForViewAsset(assetPath: string): string {
  * `entry.capabilities` — the protocol's standard caps (get-state / refresh /
  * focus-element / get-text / click-element / fill-input) plus the agent-surface
  * caps the shell registry handles generically (list-elements / agent-click /
- * agent-fill / …). Derived from the single canonical ui-side sources so the
- * route never drifts from what the frontend actually dispatches. (#8798)
+ * agent-fill / …). Derived from the single canonical `@elizaos/shared`
+ * view-interact protocol source so the route never drifts from what the frontend
+ * actually dispatches. (#8798, #12408)
  */
 const STANDARD_CAPABILITY_IDS: ReadonlySet<string> = new Set<string>([
   ...Object.values(STANDARD_CAPABILITIES),
