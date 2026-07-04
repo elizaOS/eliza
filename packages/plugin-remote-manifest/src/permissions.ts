@@ -1,3 +1,9 @@
+/**
+ * Permission model helpers for remote plugins: normalize/flatten grants,
+ * merge and diff permission sets, and parse legacy permission shapes into the
+ * current host/Bun grant representation defined in types.ts.
+ */
+
 import {
   BUN_PERMISSIONS,
   type BunPermission,

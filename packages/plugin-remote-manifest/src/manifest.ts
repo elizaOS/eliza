@@ -1,3 +1,10 @@
+/**
+ * Consent-request builder and permission-diff utility over a `plugin.json`
+ * manifest. Turns a manifest's declared permission tags into the consent
+ * request the host prompts on, and computes what changes between two manifests
+ * on upgrade.
+ */
+
 import {
   flattenRemotePluginPermissions,
   normalizeRemotePluginPermissions,

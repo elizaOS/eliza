@@ -1,3 +1,5 @@
+/** Unit tests for the uninstall manifest key + idempotency helpers. Deterministic, in-memory. */
+
 import { describe, expect, it } from "vitest";
 import {
   classifyConversation,

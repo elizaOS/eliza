@@ -1,3 +1,5 @@
+/** Unit tests for the ChatGPT export parser: conversation-tree flattening and normalization, over tmp-file fixtures. Deterministic. */
+
 import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";

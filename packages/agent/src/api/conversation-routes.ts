@@ -96,10 +96,9 @@ interface DiscordProfileLike {
   username?: string;
 }
 
-// Lazy memoized loader — previously module-scope `await import`, which forced
-// @elizaos/plugin-discord (and its transitive deps) to load on every agent
-// boot. Now only loads when a conversation actually contains Discord-sourced
-// messages.
+// Lazy memoized loader: @elizaos/plugin-discord (and its transitive deps) loads
+// only when a conversation actually contains Discord-sourced messages. A
+// module-scope `await import` would load it on every agent boot.
 type DiscordConversationModule = {
   cacheDiscordAvatarForRuntime: (
     runtime: AgentRuntime,

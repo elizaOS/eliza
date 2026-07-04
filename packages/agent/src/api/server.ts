@@ -63,12 +63,11 @@ import { type WebSocket, WebSocketServer } from "ws";
 import { installPlugin as installPluginDirect } from "../services/plugin-installer.ts";
 import { handlePluginDirectoryRoutes } from "./plugin-directory-routes.ts";
 
-// `@elizaos/plugin-browser` and `@elizaos/plugin-x402` were previously
-// imported via module-scope top-level await, which forced both plugins to
-// load (and pulled their transitive native deps) whenever anything imported
-// `@elizaos/agent`. That blocked container boot in cloud sandboxes. They are
-// now lazily loaded. X402 is loaded only when runtime routes need validation;
-// browser is loaded on first browser route hit so neither gates API bind.
+// `@elizaos/plugin-browser` and `@elizaos/plugin-x402` load lazily: X402 only
+// when runtime routes need validation, browser on the first browser route hit,
+// so neither gates the API bind. A module-scope top-level await here would load
+// both plugins (and their transitive native deps) whenever anything imported
+// `@elizaos/agent`, which blocks container boot in cloud sandboxes.
 type BrowserPluginModule = typeof import("@elizaos/plugin-browser");
 type X402PluginModule = typeof import("@elizaos/plugin-x402");
 

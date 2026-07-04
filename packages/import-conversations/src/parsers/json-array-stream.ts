@@ -1,3 +1,9 @@
+/**
+ * Bounded streaming reader for a top-level JSON array, used to walk a
+ * conversation export's `conversations.json` one object at a time without
+ * loading the whole file into memory.
+ */
+
 import type { Readable } from "node:stream";
 
 /**

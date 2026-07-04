@@ -1,3 +1,11 @@
+/**
+ * Minimal zip reader: locate a single entry via the end-of-central-directory
+ * record and stream its inflated bytes. Lets the export parsers read
+ * `conversations.json` straight out of a `.zip` without unpacking the archive
+ * or pulling in a zip dependency. Handles zip64 sentinels; rejects encrypted
+ * entries.
+ */
+
 import { createReadStream } from "node:fs";
 import { open } from "node:fs/promises";
 import { Readable } from "node:stream";

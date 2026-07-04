@@ -1,3 +1,5 @@
+/** Unit tests for transcript rendering (headers, message formatting). Deterministic, string-in/string-out. */
+
 import { describe, expect, it } from "vitest";
 import { renderConversation, renderHeader, renderMessage } from "./render.ts";
 import type { NormalizedConversation, NormalizedMessage } from "./types.ts";

@@ -1,3 +1,11 @@
+/**
+ * Adapts a runtime DocumentService onto the pipeline's injectable `DocumentSink`
+ * port, so ingested transcripts land as scoped, searchable knowledge documents.
+ * `createDocumentServiceSink` binds the world/room/entity scope context once and
+ * derives a stable `clientDocumentId` (sha256-of-content UUIDv4) per document so
+ * re-imports are idempotent rather than duplicated.
+ */
+
 import { createHash } from "node:crypto";
 import type {
   DocumentScope,

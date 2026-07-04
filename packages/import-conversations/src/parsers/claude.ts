@@ -1,3 +1,11 @@
+/**
+ * Parser for Claude data exports (a `conversations.json` array, optionally
+ * inside a zip). Registers as a `ConversationImporter` and streams each
+ * conversation into the normalized message contract, keeping document-extract
+ * attachment text by default. Uses the bounded JSON-array and zip-entry readers
+ * so large exports stay within memory.
+ */
+
 import { createReadStream, existsSync } from "node:fs";
 import { stat } from "node:fs/promises";
 import path from "node:path";

@@ -1,3 +1,5 @@
+/** Unit tests for the plan/apply ReportBuilder counters and summary shape. Deterministic. */
+
 import { describe, expect, it } from "vitest";
 import {
   notImported,

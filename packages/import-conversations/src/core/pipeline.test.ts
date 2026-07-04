@@ -1,3 +1,5 @@
+/** End-to-end tests for the ingestion pipeline (redact → render → sink) driven through an in-memory DocumentSink; no runtime, no live model. */
+
 import { describe, expect, it } from "vitest";
 import {
   conv,

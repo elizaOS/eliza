@@ -1,3 +1,5 @@
+/** Unit tests for the Hermes home parser: detect() and session/memory normalization over tmp-dir fixtures. Deterministic. */
+
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";

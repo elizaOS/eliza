@@ -1,3 +1,10 @@
+/**
+ * Parser for Hermes agent home directories (per-session files plus optional
+ * `memories/*.md` notes). Registers as a `ConversationImporter` and normalizes
+ * each session into the shared message contract; chain-of-thought reasoning and
+ * `tool` messages are opt-in, daily memory notes are on by default.
+ */
+
 import { createReadStream, existsSync } from "node:fs";
 import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";

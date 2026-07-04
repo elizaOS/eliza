@@ -10,10 +10,10 @@ import { handlePushTokenRoute } from "./push-token-routes.ts";
 import { tryHandleRuntimePluginRoute } from "./runtime-plugin-routes.ts";
 import type { ServerState } from "./server-types.ts";
 
-// Lazy memoized loaders — previously these were module-scope `await import`,
-// which forced @elizaos/plugin-computeruse and @elizaos/plugin-elizacloud to
-// load whenever this module was reached in the static graph (i.e. on every
-// agent boot). Now each plugin only loads when its route group is first hit.
+// Lazy memoized loaders: each plugin loads only when its route group is first
+// hit. A module-scope `await import` would pull @elizaos/plugin-computeruse and
+// @elizaos/plugin-elizacloud into the static graph, loading them on every agent
+// boot even when their routes are never touched.
 type ComputeUsePluginModule = {
   handleSandboxRoute: (...args: unknown[]) => Promise<boolean>;
 };

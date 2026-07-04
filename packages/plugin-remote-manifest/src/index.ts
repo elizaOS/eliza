@@ -1,3 +1,5 @@
+/** Barrel re-export for the default "." entry of @elizaos/plugin-remote-manifest (manifest, permissions, store, wire types). */
+
 export type {
   RemotePluginConsentRequestInput,
   RemotePluginPermissionDiff,

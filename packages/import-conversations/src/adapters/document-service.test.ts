@@ -1,3 +1,5 @@
+/** Unit tests for createDocumentServiceSink: scope binding, idempotent clientDocumentId derivation, and status mapping against an in-memory fake DocumentService. */
+
 import { describe, expect, it } from "vitest";
 import type { SinkDocument } from "../core/sink.ts";
 import {

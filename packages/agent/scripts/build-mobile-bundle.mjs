@@ -668,9 +668,7 @@ const dedupeTargets = {
   // depends on. Building from src against the same `@elizaos/core` source the
   // runtime uses keeps the adapter and the runtime in lockstep.
   //
-  // The on-disk layout is `plugins/plugin-sql/src/index.node.ts`. (An earlier
-  // refactor staged a `plugins/plugin-sql/typescript/` mirror; that's gone
-  // now and the path here was stale.)
+  // The on-disk layout is `plugins/plugin-sql/src/index.node.ts`.
   "@elizaos/plugin-sql": path.resolve(
     repoRoot,
     "plugins",

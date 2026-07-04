@@ -1,3 +1,5 @@
+/** Unit tests for ConversationImporterRegistry registration, lookup, and source-detection dispatch. Deterministic. */
+
 import { describe, expect, it } from "vitest";
 import {
   type ConversationImporter,

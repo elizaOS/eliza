@@ -1,3 +1,5 @@
+/** Unit tests for the Claude export parser: detect() and parse() over tmp-file/zip fixtures. Deterministic. */
+
 import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";

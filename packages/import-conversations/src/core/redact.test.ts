@@ -1,3 +1,5 @@
+/** Unit tests for redactText secret-scrubbing over representative token/key shapes. Deterministic. */
+
 import { describe, expect, it } from "vitest";
 import { containsSecret, REDACTED_PLACEHOLDER, redactText } from "./redact.ts";
 

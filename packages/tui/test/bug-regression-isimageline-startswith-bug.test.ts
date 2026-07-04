@@ -1,15 +1,10 @@
 /**
- * Bug regression test for isImageLine() crash scenario
- *
- * Bug: When isImageLine() used startsWith() and terminal doesn't support images,
- * it would return false for lines containing image escape sequences, causing TUI to
- * crash with "Rendered line exceeds terminal width" error.
- *
- * Fix: Changed to use includes() to detect escape sequences anywhere in the line.
- *
- * This test demonstrates:
- * 1. The bug scenario with the old implementation
- * 2. That the fix works correctly
+ * Regression test for isImageLine(): a line carrying an iTerm2/kitty image
+ * escape sequence anywhere in it must be detected as an image line, not only
+ * when the sequence starts the line. A miss lets an oversized base64 image line
+ * reach the terminal-width check and crash the TUI with "Rendered line exceeds
+ * terminal width". Deterministic — imports the real isImageLine from
+ * terminal-image, no terminal I/O.
  */
 
 import assert from "node:assert";
@@ -68,7 +63,7 @@ describe("Bug regression: isImageLine() crash with image escape sequences", () =
       const lineWithImageSequence =
         "Read image file [image/jpeg]\x1b]1337;File=size=800,600;inline=1:base64data...\x07";
 
-      // New implementation should return true (FIX!)
+      // isImageLine detects the escape sequence mid-line
       const newResult = isImageLine(lineWithImageSequence);
       assert.strictEqual(
         newResult,
@@ -212,7 +207,7 @@ describe("Bug regression: isImageLine() crash with image escape sequences", () =
       // Verify line is very long
       assert(crashLine.length > 300000, "Test line should be > 300KB");
 
-      // New implementation should detect it (prevents crash)
+      // detected mid-line, so the width check is skipped
       const detected = isImageLine(crashLine);
       assert.strictEqual(
         detected,
