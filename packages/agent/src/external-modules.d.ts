@@ -927,10 +927,6 @@ declare module "@elizaos/ui" {
   export const primeIosFullBunRuntime: AnyFunction;
 }
 
-declare module "@elizaos/ui/navigation" {
-  export const TAB_PATHS: Record<string, string>;
-}
-
 declare module "@elizaos/plugin-discord" {
   import type { AgentRuntime } from "@elizaos/core";
 
