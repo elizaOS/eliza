@@ -223,8 +223,8 @@ function directAndroidCoreRoute(
 					coreRoutes.hasPersistedFirstRunState(coreRoutes.loadElizaConfig()),
 			);
 		} catch {
-			// An unreadable config cannot prove onboarding completion. Fail closed
-			// to "onboarding required" instead of skipping first-run on Android.
+			// error-policy:J3 an unreadable config cannot prove onboarding completion.
+			// Fail closed to "onboarding required" instead of skipping first-run on Android.
 			complete = false;
 		}
 		return jsonResponse(200, {
