@@ -13,13 +13,7 @@
  */
 
 import type http from 'node:http';
-import {
-  type AgentRuntime,
-  sendJson,
-  sendJsonError,
-  type Task,
-  type UUID,
-} from '@elizaos/core';
+import { type AgentRuntime, sendJson, sendJsonError, type Task, type UUID } from '@elizaos/core';
 import {
   PostWorkbenchTodoCompleteRequestSchema,
   PostWorkbenchTodoRequestSchema,
@@ -73,7 +67,7 @@ function normalizeTags(value: unknown, required: string[] = []): string[] {
 function decodePathComponent(
   raw: string,
   res: http.ServerResponse,
-  fieldName: string,
+  fieldName: string
 ): string | null {
   try {
     return decodeURIComponent(raw);
@@ -94,16 +88,12 @@ function readTodoMeta(task: Task): Record<string, unknown> {
 
 export function toWorkbenchTodoView(task: Task): WorkbenchTodoView | null {
   if (!isWorkbenchTodoTask(task)) return null;
-  const id =
-    typeof task.id === 'string' && task.id.trim().length > 0 ? task.id : null;
+  const id = typeof task.id === 'string' && task.id.trim().length > 0 ? task.id : null;
   if (!id) return null;
   const todoMeta = readTodoMeta(task);
   return {
     id,
-    name:
-      typeof task.name === 'string' && task.name.trim().length > 0
-        ? task.name
-        : 'Todo',
+    name: typeof task.name === 'string' && task.name.trim().length > 0 ? task.name : 'Todo',
     description:
       typeof todoMeta.description === 'string'
         ? todoMeta.description
@@ -114,9 +104,7 @@ export function toWorkbenchTodoView(task: Task): WorkbenchTodoView | null {
     isUrgent: todoMeta.isUrgent === true,
     isCompleted: readTaskCompleted(task),
     type:
-      typeof todoMeta.type === 'string' && todoMeta.type.trim().length > 0
-        ? todoMeta.type
-        : 'task',
+      typeof todoMeta.type === 'string' && todoMeta.type.trim().length > 0 ? todoMeta.type : 'task',
   };
 }
 
@@ -135,14 +123,11 @@ function readJsonObjectBody(req: http.IncomingMessage): Record<string, unknown> 
  * todos endpoint (and a response was written), `false` otherwise.
  */
 export async function handleWorkbenchTodosRoutes(
-  ctx: WorkbenchTodosRouteContext,
+  ctx: WorkbenchTodosRouteContext
 ): Promise<boolean> {
   const { req, res, method, pathname, runtime } = ctx;
 
-  if (
-    pathname !== '/api/workbench/todos' &&
-    !pathname.startsWith('/api/workbench/todos/')
-  ) {
+  if (pathname !== '/api/workbench/todos' && !pathname.startsWith('/api/workbench/todos/')) {
     return false;
   }
 
@@ -167,15 +152,9 @@ export async function handleWorkbenchTodosRoutes(
       sendJsonError(res, 'Agent runtime is not available', 503);
       return true;
     }
-    const parsedTodo = PostWorkbenchTodoRequestSchema.safeParse(
-      readJsonObjectBody(req),
-    );
+    const parsedTodo = PostWorkbenchTodoRequestSchema.safeParse(readJsonObjectBody(req));
     if (!parsedTodo.success) {
-      sendJsonError(
-        res,
-        parsedTodo.error.issues[0]?.message ?? 'name is required',
-        400,
-      );
+      sendJsonError(res, parsedTodo.error.issues[0]?.message ?? 'name is required', 400);
       return true;
     }
     const body = parsedTodo.data;
@@ -185,9 +164,7 @@ export async function handleWorkbenchTodosRoutes(
     const priority = parseNullableNumber(body.priority);
     const isUrgent = body.isUrgent === true;
     const type =
-      typeof body.type === 'string' && body.type.trim().length > 0
-        ? body.type.trim()
-        : 'task';
+      typeof body.type === 'string' && body.type.trim().length > 0 ? body.type.trim() : 'task';
 
     const metadata = {
       isCompleted,
@@ -216,29 +193,17 @@ export async function handleWorkbenchTodosRoutes(
   }
 
   // ── POST /api/workbench/todos/:id/complete ──────────────────────────
-  const todoCompleteMatch = /^\/api\/workbench\/todos\/([^/]+)\/complete$/.exec(
-    pathname,
-  );
+  const todoCompleteMatch = /^\/api\/workbench\/todos\/([^/]+)\/complete$/.exec(pathname);
   if (method === 'POST' && todoCompleteMatch) {
     if (!runtime) {
       sendJsonError(res, 'Agent runtime is not available', 503);
       return true;
     }
-    const decodedTodoId = decodePathComponent(
-      todoCompleteMatch[1],
-      res,
-      'todo id',
-    );
+    const decodedTodoId = decodePathComponent(todoCompleteMatch[1], res, 'todo id');
     if (!decodedTodoId) return true;
-    const parsedComp = PostWorkbenchTodoCompleteRequestSchema.safeParse(
-      readJsonObjectBody(req),
-    );
+    const parsedComp = PostWorkbenchTodoCompleteRequestSchema.safeParse(readJsonObjectBody(req));
     if (!parsedComp.success) {
-      sendJsonError(
-        res,
-        parsedComp.error.issues[0]?.message ?? 'Invalid request body',
-        400,
-      );
+      sendJsonError(res, parsedComp.error.issues[0]?.message ?? 'Invalid request body', 400);
       return true;
     }
     const isCompleted = parsedComp.data.isCompleted === true;
@@ -296,15 +261,9 @@ export async function handleWorkbenchTodosRoutes(
     }
 
     // PUT
-    const parsedPut = PutWorkbenchTodoRequestSchema.safeParse(
-      readJsonObjectBody(req),
-    );
+    const parsedPut = PutWorkbenchTodoRequestSchema.safeParse(readJsonObjectBody(req));
     if (!parsedPut.success) {
-      sendJsonError(
-        res,
-        parsedPut.error.issues[0]?.message ?? 'Invalid request body',
-        400,
-      );
+      sendJsonError(res, parsedPut.error.issues[0]?.message ?? 'Invalid request body', 400);
       return true;
     }
     const body = parsedPut.data;

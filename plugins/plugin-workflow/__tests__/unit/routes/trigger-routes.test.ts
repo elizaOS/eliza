@@ -173,7 +173,7 @@ describe('POST /api/triggers — kind parsing (WI-3)', () => {
   });
 });
 
-describe("PUT /api/triggers/:id — switching to prompt kind (WI-3 review fix #1)", () => {
+describe('PUT /api/triggers/:id — switching to prompt kind (WI-3 review fix #1)', () => {
   // A stored workflow trigger whose instructions are the synthesized default.
   const workflowCurrent = {
     version: 1,
@@ -192,7 +192,7 @@ describe("PUT /api/triggers/:id — switching to prompt kind (WI-3 review fix #1
 
   function putCtx(
     body: Record<string, unknown>,
-    current: Record<string, unknown> = workflowCurrent,
+    current: Record<string, unknown> = workflowCurrent
   ) {
     const built = makeCtx({
       method: 'PUT',
@@ -209,7 +209,7 @@ describe("PUT /api/triggers/:id — switching to prompt kind (WI-3 review fix #1
     expect(handled).toBe(true);
     expect(captured.status).toBe(400);
     expect((captured.body as { error: string }).error).toContain(
-      "instructions is required when kind is 'prompt'",
+      "instructions is required when kind is 'prompt'"
     );
   });
 
@@ -225,7 +225,7 @@ describe("PUT /api/triggers/:id — switching to prompt kind (WI-3 review fix #1
     expect(handled).toBe(true);
     expect(captured.status).toBe(400);
     expect((captured.body as { error: string }).error).not.toContain(
-      "instructions is required when kind is 'prompt'",
+      "instructions is required when kind is 'prompt'"
     );
   });
 
@@ -241,7 +241,7 @@ describe("PUT /api/triggers/:id — switching to prompt kind (WI-3 review fix #1
     expect(handled).toBe(true);
     // Falls through to the generic invalid-update path, not the instructions 400.
     expect((captured.body as { error: string }).error).not.toContain(
-      "instructions is required when kind is 'prompt'",
+      "instructions is required when kind is 'prompt'"
     );
   });
 });

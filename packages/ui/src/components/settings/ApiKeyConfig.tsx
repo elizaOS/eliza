@@ -18,9 +18,9 @@ import { API_KEY_PREFIX_HINTS } from "../../config/api-key-prefix-hints";
 import type { JsonSchemaObject } from "../../config/config-catalog";
 import { useTimeout } from "../../hooks/useTimeout";
 import { useAppSelector } from "../../state";
-import { OwnerOnlyNotice, RoleGate } from "../RoleGate";
 import type { ConfigUiHint } from "../../types";
 import { autoLabel } from "../../utils/labels";
+import { OwnerOnlyNotice, RoleGate } from "../RoleGate";
 import { SettingsActionButton } from "./settings-agent-rows";
 import { AdvancedSettingsDisclosure } from "./settings-control-primitives";
 

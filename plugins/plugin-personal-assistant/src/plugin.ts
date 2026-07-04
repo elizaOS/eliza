@@ -56,7 +56,12 @@ import { inboxPlugin } from "@elizaos/plugin-inbox/plugin";
 import { remindersPlugin } from "@elizaos/plugin-reminders";
 import { remoteDesktopPlugin } from "@elizaos/plugin-remote-desktop";
 import { XDmAdapter } from "@elizaos/plugin-x/lifeops-message-adapter";
-import type { IPermissionsRegistry, Prober } from "@elizaos/shared";
+import type {
+	IPermissionsRegistry,
+	PermissionState,
+	Platform,
+	Prober,
+} from "@elizaos/shared";
 import { blockAction } from "./actions/block.js";
 import { briefAction } from "./actions/brief.js";
 import { calendarAction } from "./actions/calendar.js";
@@ -218,10 +223,39 @@ function isPermissionsRegistry(value: unknown): value is IPermissionsRegistry {
   );
 }
 
+// plugin-blocker's SelfControl state lacks the shared contract's required
+// `platform` field; adapt at this boundary so the registry sees the full shape.
+const WEBSITE_BLOCKING_PLATFORM: Platform =
+  process.platform === "darwin" ||
+  process.platform === "win32" ||
+  process.platform === "linux"
+    ? process.platform
+    : "web";
+
+function toSharedPermissionState(state: {
+  status: PermissionState["status"];
+  lastChecked: number;
+  canRequest: boolean;
+  reason?: string;
+}): PermissionState {
+  const shared: PermissionState = {
+    id: "website-blocking",
+    status: state.status,
+    lastChecked: state.lastChecked,
+    canRequest: state.canRequest,
+    platform: WEBSITE_BLOCKING_PLATFORM,
+  };
+  if (state.reason !== undefined) {
+    shared.reason = state.reason;
+  }
+  return shared;
+}
+
 const websiteBlockingPermissionProber: Prober = {
   id: "website-blocking",
-  check: getSelfControlPermissionState,
-  request: async () => requestSelfControlPermission(),
+  check: async () => toSharedPermissionState(await getSelfControlPermissionState()),
+  request: async () =>
+    toSharedPermissionState(await requestSelfControlPermission()),
   openSettings: openSelfControlPermissionLocation,
 };
 

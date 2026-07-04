@@ -48,7 +48,9 @@ export const FullCatalog: Story = {};
 
 export const OpenElizaOnly: Story = {
   args: {
-    entries: [{ itemId: "tray-show-window", label: "Open Eliza", icon: "home" }],
+    entries: [
+      { itemId: "tray-show-window", label: "Open Eliza", icon: "home" },
+    ],
   },
 };
 

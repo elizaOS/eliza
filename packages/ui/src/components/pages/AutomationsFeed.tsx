@@ -578,9 +578,7 @@ export function AutomationsFeed({
                       setEditor({
                         kind: "task",
                         taskId:
-                          row.source.task?.id ??
-                          row.source.triggerId ??
-                          null,
+                          row.source.task?.id ?? row.source.triggerId ?? null,
                       });
                     } else {
                       setEditor({

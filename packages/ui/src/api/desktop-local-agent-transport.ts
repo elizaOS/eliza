@@ -2,12 +2,13 @@
  * AgentRequestTransport for the desktop-hosted local agent: dispatches requests
  * over the Electrobun renderer RPC to the in-process agent via its IPC base.
  */
+
+import { getElectrobunRendererRpc } from "../bridge/electrobun-rpc";
+import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
 import {
   isMobileLocalAgentIpcUrl,
   mobileLocalAgentPathFromUrl,
 } from "../first-run/mobile-runtime-mode";
-import { getElectrobunRendererRpc } from "../bridge/electrobun-rpc";
-import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
 import {
   type AgentRequestTransport,
   bodyToString,

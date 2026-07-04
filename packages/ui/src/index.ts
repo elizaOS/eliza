@@ -452,6 +452,7 @@ export * from "./first-run/first-run-config";
 export * from "./first-run/mobile-runtime-mode";
 export * from "./first-run/pre-seed-local-runtime";
 export * from "./genui/index";
+export * from "./gestures";
 export {
   DEFAULT_FRAME_BUDGET,
   FRAME_SAMPLER_INIT,
@@ -462,7 +463,6 @@ export {
   shouldReportFrameBudget,
   summarizeFrameSamples,
 } from "./hooks/frame-budget";
-export * from "./gestures";
 export * from "./hooks/index";
 export type { ActivityEvent } from "./hooks/useActivityEvents";
 export { useActivityEvents } from "./hooks/useActivityEvents";

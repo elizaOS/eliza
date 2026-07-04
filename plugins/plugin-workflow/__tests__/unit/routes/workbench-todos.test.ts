@@ -84,7 +84,7 @@ async function call(
   runtime: AgentRuntime,
   method: string,
   pathname: string,
-  body?: unknown,
+  body?: unknown
 ): Promise<{ handled: boolean; status: number; body: unknown }> {
   const { res, result } = createRes();
   const handled = await handleWorkbenchTodosRoutes({
@@ -171,15 +171,9 @@ describe('workbench todos CRUD route', () => {
 
     const found = await call(store.runtime, 'GET', `/api/workbench/todos/${id}`);
     expect(found.status).toBe(200);
-    expect((found.body as { todo: { name: string } }).todo.name).toBe(
-      'Read book',
-    );
+    expect((found.body as { todo: { name: string } }).todo.name).toBe('Read book');
 
-    const missing = await call(
-      store.runtime,
-      'GET',
-      '/api/workbench/todos/does-not-exist',
-    );
+    const missing = await call(store.runtime, 'GET', '/api/workbench/todos/does-not-exist');
     expect(missing.status).toBe(404);
     expect((missing.body as { error: string }).error).toBe('Todo not found');
   });
@@ -191,24 +185,18 @@ describe('workbench todos CRUD route', () => {
     });
     const id = (created.body as { todo: { id: string } }).todo.id;
 
-    const updated = await call(
-      store.runtime,
-      'PUT',
-      `/api/workbench/todos/${id}`,
-      { name: 'Renamed', priority: 5, isUrgent: true },
-    );
+    const updated = await call(store.runtime, 'PUT', `/api/workbench/todos/${id}`, {
+      name: 'Renamed',
+      priority: 5,
+      isUrgent: true,
+    });
     expect(updated.status).toBe(200);
     const todo = (updated.body as { todo: Record<string, unknown> }).todo;
     expect(todo.name).toBe('Renamed');
     expect(todo.priority).toBe(5);
     expect(todo.isUrgent).toBe(true);
 
-    const blank = await call(
-      store.runtime,
-      'PUT',
-      `/api/workbench/todos/${id}`,
-      { name: '   ' },
-    );
+    const blank = await call(store.runtime, 'PUT', `/api/workbench/todos/${id}`, { name: '   ' });
     expect(blank.status).toBe(400);
     expect((blank.body as { error: string }).error).toBe('name cannot be empty');
   });
@@ -219,26 +207,18 @@ describe('workbench todos CRUD route', () => {
     });
     const id = (created.body as { todo: { id: string } }).todo.id;
 
-    const done = await call(
-      store.runtime,
-      'POST',
-      `/api/workbench/todos/${id}/complete`,
-      { isCompleted: true },
-    );
+    const done = await call(store.runtime, 'POST', `/api/workbench/todos/${id}/complete`, {
+      isCompleted: true,
+    });
     expect(done.status).toBe(200);
     expect((done.body as { ok: boolean }).ok).toBe(true);
 
     const after = await call(store.runtime, 'GET', `/api/workbench/todos/${id}`);
-    expect((after.body as { todo: { isCompleted: boolean } }).todo.isCompleted).toBe(
-      true,
-    );
+    expect((after.body as { todo: { isCompleted: boolean } }).todo.isCompleted).toBe(true);
 
-    const missing = await call(
-      store.runtime,
-      'POST',
-      '/api/workbench/todos/nope/complete',
-      { isCompleted: true },
-    );
+    const missing = await call(store.runtime, 'POST', '/api/workbench/todos/nope/complete', {
+      isCompleted: true,
+    });
     expect(missing.status).toBe(404);
   });
 
@@ -248,20 +228,12 @@ describe('workbench todos CRUD route', () => {
     });
     const id = (created.body as { todo: { id: string } }).todo.id;
 
-    const del = await call(
-      store.runtime,
-      'DELETE',
-      `/api/workbench/todos/${id}`,
-    );
+    const del = await call(store.runtime, 'DELETE', `/api/workbench/todos/${id}`);
     expect(del.status).toBe(200);
     expect((del.body as { ok: boolean }).ok).toBe(true);
     expect(store.tasks.has(id)).toBe(false);
 
-    const again = await call(
-      store.runtime,
-      'DELETE',
-      `/api/workbench/todos/${id}`,
-    );
+    const again = await call(store.runtime, 'DELETE', `/api/workbench/todos/${id}`);
     expect(again.status).toBe(404);
   });
 

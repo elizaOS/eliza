@@ -11,8 +11,6 @@
  * for the public approval page.
  */
 
-import { CheckCircle2, Loader2, ShieldCheck, Wallet } from "lucide-react";
-import { useCallback, useState } from "react";
 import {
   Alert,
   AlertDescription,
@@ -20,6 +18,8 @@ import {
   Button,
   Textarea,
 } from "@elizaos/ui/components/primitives";
+import { CheckCircle2, Loader2, ShieldCheck, Wallet } from "lucide-react";
+import { useCallback, useState } from "react";
 import {
   type ApprovalRequest,
   formatApprovalTimestamp,

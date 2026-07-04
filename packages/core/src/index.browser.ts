@@ -114,6 +114,10 @@ export * from "./sandbox-policy";
 export * from "./schemas/character";
 export { type BaseTables, buildBaseTables } from "./schemas/index";
 export * from "./search";
+// Log/text redaction is pure string+object logic with no Node deps, so it is
+// browser-safe; cloud-shared's logger (bundled into the app UI) imports
+// isSensitiveKeyName/redactLogArgs from the root barrel (#12572 follow-up).
+export * from "./security/redact";
 export * from "./sensitive-request-policy";
 export * from "./sensitive-requests";
 export * from "./services";

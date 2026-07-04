@@ -292,7 +292,10 @@ describe("mediaFileRoute", () => {
     // this in-process route; a forwarded `Range` header is what lets an
     // `<audio>`/`<video>` element seek. `dispatchRoute` lowercases request
     // headers, so the handler reads `ctx.headers.range`.
-    const { fileName } = persistMediaBytes(Buffer.from("0123456789"), "audio/mpeg");
+    const { fileName } = persistMediaBytes(
+      Buffer.from("0123456789"),
+      "audio/mpeg",
+    );
     const result = await mediaFileRoute.routeHandler?.({
       params: { filename: fileName },
       method: "GET",
@@ -305,7 +308,10 @@ describe("mediaFileRoute", () => {
   });
 
   it("serves the full 200 when no Range header is present", async () => {
-    const { fileName } = persistMediaBytes(Buffer.from("full-body"), "audio/mpeg");
+    const { fileName } = persistMediaBytes(
+      Buffer.from("full-body"),
+      "audio/mpeg",
+    );
     const result = await mediaFileRoute.routeHandler?.({
       params: { filename: fileName },
       method: "GET",
@@ -313,6 +319,8 @@ describe("mediaFileRoute", () => {
     } as never);
     expect(result?.status).toBe(200);
     expect(result?.headers?.["Accept-Ranges"]).toBe("bytes");
-    expect((result?.body as Buffer).equals(Buffer.from("full-body"))).toBe(true);
+    expect((result?.body as Buffer).equals(Buffer.from("full-body"))).toBe(
+      true,
+    );
   });
 });

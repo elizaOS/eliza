@@ -42,7 +42,9 @@ survive.ref?.();
 if (fault === "rejection") {
   // A real unhandled promise rejection must be caught by the guard and left
   // non-fatal — the process must NOT die from it.
-  Promise.reject(new Error("process-guards-child: injected background rejection"));
+  Promise.reject(
+    new Error("process-guards-child: injected background rejection"),
+  );
 } else {
   // Throw asynchronously so it escapes as a genuine `uncaughtException` the
   // installed handler processes. A synchronous throw at module top level would

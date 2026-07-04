@@ -1,11 +1,5 @@
 import crypto from "node:crypto";
-import type {
-  IAgentRuntime,
-  Memory,
-  Service,
-  Task,
-  UUID,
-} from "@elizaos/core";
+import type { IAgentRuntime, Memory, Service, Task, UUID } from "@elizaos/core";
 import { ServiceType, stringToUuid } from "@elizaos/core";
 import {
   buildTriggerMetadata,
@@ -254,7 +248,9 @@ interface AutonomyRoomService {
 async function dispatchPrompt(
   runtime: IAgentRuntime,
   trigger: PromptTriggerConfig,
-): Promise<{ ok: true; executionId?: undefined } | { ok: false; error: string }> {
+): Promise<
+  { ok: true; executionId?: undefined } | { ok: false; error: string }
+> {
   const instructions = trigger.instructions.trim();
   if (!instructions) {
     return { ok: false, error: "prompt trigger missing instructions" };
@@ -265,8 +261,10 @@ async function dispatchPrompt(
   }
 
   const roomId =
-    (runtime.getService("AUTONOMY") as AutonomyRoomService | null)
-      ?.getAutonomousRoomId?.() ?? stringToUuid(`trigger-room:${runtime.agentId}`);
+    (
+      runtime.getService("AUTONOMY") as AutonomyRoomService | null
+    )?.getAutonomousRoomId?.() ??
+    stringToUuid(`trigger-room:${runtime.agentId}`);
   const entityId = stringToUuid(`trigger-entity:${trigger.triggerId}`);
 
   const message: Memory = {

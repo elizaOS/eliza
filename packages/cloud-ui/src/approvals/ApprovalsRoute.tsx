@@ -17,7 +17,7 @@
  * wrapper.
  */
 
-import { ShieldCheck } from "lucide-react";
+import { useRequireAuth } from "@elizaos/ui/cloud/lib/use-session-auth";
 import { DashboardLoadingState } from "@elizaos/ui/cloud-ui/components/dashboard/route-placeholders";
 import {
   Tabs,
@@ -25,7 +25,7 @@ import {
   TabsList,
   TabsTrigger,
 } from "@elizaos/ui/components/primitives";
-import { useRequireAuth } from "@elizaos/ui/cloud/lib/use-session-auth";
+import { ShieldCheck } from "lucide-react";
 import { ApprovalsTab } from "./components/approvals-tab";
 import { BallotsTab } from "./components/ballots-tab";
 import { SensitiveTab } from "./components/sensitive-tab";

@@ -79,7 +79,9 @@ export function deriveFirstRunResumeFieldsFromConfig(
   // The provider resumes only when the routing unambiguously names one: the
   // Eliza Cloud proxy route, or an explicit non-cloud backend.
   const firstRunProvider =
-    llmText && llmText.transport === "cloud-proxy" && llmBackend === "elizacloud"
+    llmText &&
+    llmText.transport === "cloud-proxy" &&
+    llmBackend === "elizacloud"
       ? "elizacloud"
       : llmBackend && llmBackend !== "elizacloud"
         ? llmBackend

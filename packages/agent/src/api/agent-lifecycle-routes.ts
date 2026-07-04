@@ -1,6 +1,6 @@
 import {
-  AUTONOMY_SERVICE_TYPE,
   type AgentRuntime,
+  AUTONOMY_SERVICE_TYPE,
   type RouteRequestMeta,
 } from "@elizaos/core";
 import type { RouteHelpers } from "@elizaos/shared";

@@ -74,7 +74,9 @@ describe("groupAppsForCatalog — declared curation", () => {
         category: "game",
       }),
     ]);
-    const byKey = new Map(sections.map((s) => [s.key, s.apps.map((a) => a.name)]));
+    const byKey = new Map(
+      sections.map((s) => [s.key, s.apps.map((a) => a.name)]),
+    );
     expect(byKey.get("featured")).toEqual(["@elizaos/plugin-featured"]);
     expect(byKey.get("finance")).toEqual(["@elizaos/plugin-money"]);
   });

@@ -166,7 +166,10 @@ export class DictationLiveActivityController {
     const snippetChanged = snippet !== this.lastSnippet;
     if (!phaseChanged && !snippetChanged) return;
     // Phase changes push immediately; transcript-only churn is throttled.
-    if (!phaseChanged && this.now() - this.lastPushMs < this.minUpdateIntervalMs) {
+    if (
+      !phaseChanged &&
+      this.now() - this.lastPushMs < this.minUpdateIntervalMs
+    ) {
       return;
     }
     await this.plugin.update({
@@ -226,7 +229,11 @@ export function useDictationLiveActivity(
   useEffect(() => {
     const controller = controllerRef.current;
     return () => {
-      void controller?.sync({ active: false, phase: "recording", transcript: "" });
+      void controller?.sync({
+        active: false,
+        phase: "recording",
+        transcript: "",
+      });
     };
   }, []);
 }
