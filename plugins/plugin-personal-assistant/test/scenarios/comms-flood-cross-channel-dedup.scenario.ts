@@ -32,7 +32,8 @@ function assertNoDoubleDispatch(ctx: ScenarioContext): string | undefined {
 export default scenario({
   lane: "live-only",
   id: "comms-flood-cross-channel-dedup",
-  title: "Comms flood: the same request on two channels is handled once, not twice",
+  title:
+    "Comms flood: the same request on two channels is handled once, not twice",
   domain: "lifeops.inbox",
   tags: ["lifeops", "comms-flood", "personas", "dedup", "12283"],
   status: "active",

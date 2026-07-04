@@ -19,7 +19,8 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 export default scenario({
   lane: "live-only",
   id: "comms-flood-important-not-urgent-resurfacing",
-  title: "Comms flood: an important-not-urgent item is held and resurfaces later, not dropped",
+  title:
+    "Comms flood: an important-not-urgent item is held and resurfaces later, not dropped",
   domain: "lifeops.inbox",
   tags: ["lifeops", "comms-flood", "personas", "12283"],
   status: "active",
