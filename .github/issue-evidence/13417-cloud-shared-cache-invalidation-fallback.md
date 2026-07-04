@@ -56,6 +56,11 @@ credential-revocation boundary.
   (the ban / org-deactivate fan-out) **throws** on any unconfirmed delete so its
   `await`-only callers (admin ban, user deactivate) fail closed automatically —
   the org-deactivate caller keeps its deliberate best-effort `try/catch`.
+- `inference-billing-fast-path` now contains the uncollected-debit
+  user-IAC eviction as explicit best-effort (error-policy:J5). The org balance
+  hint is already invalidated before the background user eviction, so the next
+  request leaves the optimistic path even if the user fan-out cache delete is
+  temporarily unavailable.
 - **Configured-vs-unavailable split (codex round-1 P1):** `delConfirmed` /
   `delPatternConfirmed` return `true` only when NO backend is configured (nothing
   could be caching a stale entry). When a backend IS configured but temporarily
@@ -78,6 +83,7 @@ credential-revocation boundary.
 | `lib/services/inference-auth-cache.ts` | `invalidateInferenceAuthContextByKeyHash` | discarded `cache.del` result | returns confirmation boolean | FIXED |
 | `lib/services/inference-auth-cache.ts` | `invalidateInferenceAuthContextsByKeyHashes` | fire-all, ignore | throws on any unconfirmed delete (ban/deactivate fail closed) | FIXED (J1) |
 | `lib/cache/client.ts` | `delConfirmed`/`delPatternConfirmed` (circuit-open) | returned `true` when circuit open over a configured backend | returns `false` when configured-but-unavailable (new `isBackendConfigured()`) | FIXED (codex P1) |
+| `lib/services/inference-billing-fast-path.ts` | uncollected-debit user IAC eviction | `void` background call assumed never-throwing old contract | explicit `.catch` + structured log; org hint already invalidated | FIXED (J5) |
 
 ## Focused tests
 
@@ -94,30 +100,41 @@ New:
   throws; `delete()` aborts BEFORE the DB row is removed on failed invalidation;
   confirmed invalidation lets the DB delete proceed; `invalidateInferenceContextForUser`
   unconfirmed fan-out throws (ban fails closed) / all-confirmed resolves.
+- `lib/services/inference-billing-fast-path.test.ts` — failed debit still
+  invalidates the org balance hint and contains a rejected background user-IAC
+  invalidation without surfacing an unhandled rejection.
 
 ```
-$ bun test <3 new files above>
- 20 pass
+$ bun test packages/cloud/shared/src/lib/cache/del-confirmed.test.ts packages/cloud/shared/src/lib/cache/service-cache.invalidate.test.ts
+ 14 pass
  0 fail
-(existing cache suite: 24 pass / 0 fail — no regression)
+
+$ bun test packages/cloud/shared/src/lib/services/api-keys.invalidation.test.ts
+ 8 pass
+ 0 fail
+
+$ bun test packages/cloud/shared/src/lib/services/inference-billing-fast-path.test.ts
+ 29 pass
+  0 fail
 ```
 
 ## Verification
 
 - `bunx @biomejs/biome check <touched files>` → clean (no fixes applied).
 - `bun run audit:error-policy-ratchet` → `no new fallback-slop in touched files` (EXIT 0).
-- `bun run --cwd packages/cloud/shared typecheck` → **0 errors in touched files.**
-  17 remaining errors are pre-existing baseline declaration noise in files NOT
-  touched by this change (`../../app-core/**` symlink artifacts,
-  `lib/cache/adapters/node-redis-adapter.ts`, `lib/eliza/plugin-mcp/utils/json.ts`,
-  `lib/providers/anthropic-web-search.ts`) — see CLAUDE.md "typecheck noise".
-- `git diff --check` → clean.
+- `bun run --cwd packages/cloud/shared typecheck` → nonzero from pre-existing
+  transitive `../../app-core/**` auth-alias diagnostics; filtered check for
+  `cache/client|cache/service-cache|api-keys|inference-auth-cache|inference-billing-fast-path`
+  produced no touched-file diagnostics.
+- `git diff --check origin/develop...HEAD && git diff --check` → clean.
 
 ## Structured log examples (changed runtime failure paths)
 
 - `invalidateCache` unconfirmed: `logger.error("[Cache] Invalidation not confirmed for <key>")` then throw.
 - `invalidateCachePattern` incomplete: `logger.error("[Cache] Pattern invalidation incomplete for <pattern>")` then throw.
 - `apiKeysService.invalidateCache` unconfirmed: `logger.error("[ApiKeys] API key cache invalidation not confirmed", { shortHash, unconfirmed: [...] })` then throw.
+- `inference-billing-fast-path` user eviction failure:
+  `logger.error("[InferenceBilling] failed to invalidate user inference auth context", { organizationId, userId, requestId, error })`.
 
 ## Evidence types (mandate)
 
