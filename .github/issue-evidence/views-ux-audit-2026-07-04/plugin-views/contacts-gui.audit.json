@@ -1,0 +1,333 @@
+{
+  "id": "contacts",
+  "viewType": "gui",
+  "path": "/contacts",
+  "visibleText": "@keyframes home-enter { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } } .home-enter { animation: home-enter 460ms cubic-bezier(0.22,1,0.36,1) both; } @media (prefers-reduced-motion: reduce) { .home-enter { animation: none; } } 2:58PMSaturday, July 4Good afternoonWeatherEnable location to see conditionsWelcome — ask me anything to get started.What's left today?What can you do?Summarize my dayDismissRunningAPI server unavailableNo games are runningConnect calendarChatSettingsWalletTasksBrowserCharacterKnowledgeTranscriptsRelationshipsMemoriesFeedStreamFine-TuningFine-TuningHelpRolodexTutorialTrajectoriesDatabasesRuntimeLogsSkillsPlugins",
+  "controls": [
+    {
+      "tag": "button",
+      "role": null,
+      "type": "button",
+      "text": "What's left today?",
+      "ariaLabel": null,
+      "disabled": false,
+      "inTuiRoot": false,
+      "terminalCommand": null
+    },
+    {
+      "tag": "button",
+      "role": null,
+      "type": "button",
+      "text": "What can you do?",
+      "ariaLabel": null,
+      "disabled": false,
+      "inTuiRoot": false,
+      "terminalCommand": null
+    },
+    {
+      "tag": "button",
+      "role": null,
+      "type": "button",
+      "text": "Summarize my day",
+      "ariaLabel": null,
+      "disabled": false,
+      "inTuiRoot": false,
+      "terminalCommand": null
+    },
+    {
+      "tag": "button",
+      "role": null,
+      "type": "button",
+      "text": "Dismiss",
+      "ariaLabel": "Dismiss welcome",
+      "disabled": false,
+      "inTuiRoot": false,
+      "terminalCommand": null
+    },
+    {
+      "tag": "button",
+      "role": null,
+      "type": "button",
+      "text": "",
+      "ariaLabel": "Open apps",
+      "disabled": false,
+      "inTuiRoot": false,
+      "terminalCommand": null
+    },
+    {
+      "tag": "button",
+      "role": null,
+      "type": "button",
+      "text": "Connect calendar",
+      "ariaLabel": "Connect a Google calendar. Open connector settings.",
+      "disabled": false,
+      "inTuiRoot": false,
+      "terminalCommand": null
+    },
+    {
+      "tag": "button",
+      "role": null,
+      "type": "button",
+      "text": "",
+      "ariaLabel": "Chat",
+      "disabled": false,
+      "inTuiRoot": false,
+      "terminalCommand": null
+    },
+    {
+      "tag": "button",
+      "role": null,
+      "type": "button",
+      "text": "",
+      "ariaLabel": "Settings",
+      "disabled": false,
+      "inTuiRoot": false,
+      "terminalCommand": null
+    },
+    {
+      "tag": "button",
+      "role": null,
+      "type": "button",
+      "text": "",
+      "ariaLabel": "Wallet",
+      "disabled": false,
+      "inTuiRoot": false,
+      "terminalCommand": null
+    },
+    {
+      "tag": "button",
+      "role": null,
+      "type": "button",
+      "text": "",
+      "ariaLabel": "Tasks",
+      "disabled": false,
+      "inTuiRoot": false,
+      "terminalCommand": null
+    },
+    {
+      "tag": "button",
+      "role": null,
+      "type": "button",
+      "text": "",
+      "ariaLabel": "Browser",
+      "disabled": false,
+      "inTuiRoot": false,
+      "terminalCommand": null
+    },
+    {
+      "tag": "button",
+      "role": null,
+      "type": "button",
+      "text": "",
+      "ariaLabel": "Character",
+      "disabled": false,
+      "inTuiRoot": false,
+      "terminalCommand": null
+    },
+    {
+      "tag": "button",
+      "role": null,
+      "type": "button",
+      "text": "",
+      "ariaLabel": "Knowledge",
+      "disabled": false,
+      "inTuiRoot": false,
+      "terminalCommand": null
+    },
+    {
+      "tag": "button",
+      "role": null,
+      "type": "button",
+      "text": "",
+      "ariaLabel": "Transcripts",
+      "disabled": false,
+      "inTuiRoot": false,
+      "terminalCommand": null
+    },
+    {
+      "tag": "button",
+      "role": null,
+      "type": "button",
+      "text": "",
+      "ariaLabel": "Relationships",
+      "disabled": false,
+      "inTuiRoot": false,
+      "terminalCommand": null
+    },
+    {
+      "tag": "button",
+      "role": null,
+      "type": "button",
+      "text": "",
+      "ariaLabel": "Memories",
+      "disabled": false,
+      "inTuiRoot": false,
+      "terminalCommand": null
+    },
+    {
+      "tag": "button",
+      "role": null,
+      "type": "button",
+      "text": "",
+      "ariaLabel": "Feed",
+      "disabled": false,
+      "inTuiRoot": false,
+      "terminalCommand": null
+    },
+    {
+      "tag": "button",
+      "role": null,
+      "type": "button",
+      "text": "",
+      "ariaLabel": "Stream",
+      "disabled": false,
+      "inTuiRoot": false,
+      "terminalCommand": null
+    },
+    {
+      "tag": "button",
+      "role": null,
+      "type": "button",
+      "text": "",
+      "ariaLabel": "Fine-Tuning",
+      "disabled": false,
+      "inTuiRoot": false,
+      "terminalCommand": null
+    },
+    {
+      "tag": "button",
+      "role": null,
+      "type": "button",
+      "text": "",
+      "ariaLabel": "Fine-Tuning",
+      "disabled": false,
+      "inTuiRoot": false,
+      "terminalCommand": null
+    },
+    {
+      "tag": "button",
+      "role": null,
+      "type": "button",
+      "text": "",
+      "ariaLabel": "Help",
+      "disabled": false,
+      "inTuiRoot": false,
+      "terminalCommand": null
+    },
+    {
+      "tag": "button",
+      "role": null,
+      "type": "button",
+      "text": "",
+      "ariaLabel": "Rolodex",
+      "disabled": false,
+      "inTuiRoot": false,
+      "terminalCommand": null
+    },
+    {
+      "tag": "button",
+      "role": null,
+      "type": "button",
+      "text": "",
+      "ariaLabel": "Tutorial",
+      "disabled": false,
+      "inTuiRoot": false,
+      "terminalCommand": null
+    },
+    {
+      "tag": "button",
+      "role": null,
+      "type": "button",
+      "text": "",
+      "ariaLabel": "Trajectories",
+      "disabled": false,
+      "inTuiRoot": false,
+      "terminalCommand": null
+    },
+    {
+      "tag": "button",
+      "role": null,
+      "type": "button",
+      "text": "",
+      "ariaLabel": "Databases",
+      "disabled": false,
+      "inTuiRoot": false,
+      "terminalCommand": null
+    },
+    {
+      "tag": "button",
+      "role": null,
+      "type": "button",
+      "text": "",
+      "ariaLabel": "Runtime",
+      "disabled": false,
+      "inTuiRoot": false,
+      "terminalCommand": null
+    },
+    {
+      "tag": "button",
+      "role": null,
+      "type": "button",
+      "text": "",
+      "ariaLabel": "Logs",
+      "disabled": false,
+      "inTuiRoot": false,
+      "terminalCommand": null
+    },
+    {
+      "tag": "button",
+      "role": null,
+      "type": "button",
+      "text": "",
+      "ariaLabel": "Skills",
+      "disabled": false,
+      "inTuiRoot": false,
+      "terminalCommand": null
+    },
+    {
+      "tag": "button",
+      "role": null,
+      "type": "button",
+      "text": "",
+      "ariaLabel": "Plugins",
+      "disabled": false,
+      "inTuiRoot": false,
+      "terminalCommand": null
+    },
+    {
+      "tag": "button",
+      "role": null,
+      "type": "button",
+      "text": "",
+      "ariaLabel": "Next page",
+      "disabled": false,
+      "inTuiRoot": false,
+      "terminalCommand": null
+    },
+    {
+      "tag": "button",
+      "role": null,
+      "type": "button",
+      "text": "",
+      "ariaLabel": "Home",
+      "disabled": false,
+      "inTuiRoot": false,
+      "terminalCommand": null
+    }
+  ],
+  "focusedAfterTabs": [
+    "textarea:combobox:message:chat-composer-textarea",
+    "button:talk:chat-composer-mic",
+    "body:Reconnecting... (attempt 4/15) @keyframes home-enter { from { opacity: 0; transf",
+    "button:Go back:shell-back-button",
+    "button:ftu-welcome-chip:What's left today?",
+    "button:ftu-welcome-chip:What can you do?",
+    "button:ftu-welcome-chip:Summarize my day",
+    "button:Dismiss welcome:ftu-welcome-dismiss:Dismiss",
+    "button:Open apps",
+    "button:Connect a Google calendar. Open connector settings.:chat-widget-calendar-upcoming-connect:Connect calendar",
+    "button:Chat",
+    "button:Settings",
+    "button:Wallet"
+  ]
+}
