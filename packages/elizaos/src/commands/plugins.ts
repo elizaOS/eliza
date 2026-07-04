@@ -68,7 +68,15 @@ export function registerPluginsCommand(program: Command): void {
     .option("--no-pr", "Create and push the branch but do not open a PR")
     .option("-y, --yes", "Skip confirmation prompts")
     .option("--skip-validation", "Skip npm and GitHub existence checks")
-    .action(submitPluginToRegistry);
+    .action(async (projectPath: string | undefined, options: SubmitOptions) => {
+      try {
+        await submitPluginToRegistry(projectPath, options);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error(pc.red(message));
+        process.exit(1);
+      }
+    });
 }
 
 export async function submitPluginToRegistry(
@@ -280,15 +288,32 @@ function repositoryValue(repository: PackageJson["repository"]): string | null {
 }
 
 function inferGithubRepoFromGit(projectDir: string): string | null {
-  try {
-    const remote = capture("git", ["config", "--get", "remote.origin.url"], {
-      cwd: projectDir,
-      quiet: true,
-    });
+  const result = spawnSync("git", ["config", "--get", "remote.origin.url"], {
+    cwd: projectDir,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  if (result.error) {
+    throw new Error(
+      `Failed to read git remote.origin.url: ${result.error.message}`,
+    );
+  }
+  if (result.status === 0) {
+    const remote = result.stdout;
     return normalizeGithubRepo(remote);
-  } catch {
+  }
+
+  const output = `${result.stdout || ""}\n${result.stderr || ""}`.trim();
+  if (result.status === 1 && !output) {
     return null;
   }
+  throw new Error(
+    output
+      ? `Failed to read git remote.origin.url: ${output}`
+      : `git config --get remote.origin.url failed with status ${
+          result.status ?? "unknown"
+        }`,
+  );
 }
 
 function normalizeKind(

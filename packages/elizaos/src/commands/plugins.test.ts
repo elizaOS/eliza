@@ -98,4 +98,42 @@ describe("submitPluginToRegistry", () => {
       }),
     ).rejects.toThrow(/Invalid registry repository/);
   });
+
+  it("reports missing repository metadata when git has no origin remote", async () => {
+    const dir = makePluginPackage({
+      name: "@acme/plugin-weather",
+      version: "1.0.0",
+      keywords: ["elizaos", "plugin"],
+    });
+
+    await expect(
+      submitPluginToRegistry(dir, { base: "main", dryRun: true }),
+    ).rejects.toThrow(
+      /Could not infer a GitHub repository\. Add repository\.url to package\.json\./,
+    );
+  });
+
+  it("surfaces corrupt git config when repository metadata must be inferred", async () => {
+    const dir = makePluginPackage({
+      name: "@acme/plugin-weather",
+      version: "1.0.0",
+      keywords: ["elizaos", "plugin"],
+    });
+    const badConfig = path.join(dir, "bad-git-config");
+    writeFileSync(badConfig, "[bad\n");
+    const previousConfig = process.env.GIT_CONFIG_GLOBAL;
+    process.env.GIT_CONFIG_GLOBAL = badConfig;
+
+    try {
+      await expect(
+        submitPluginToRegistry(dir, { base: "main", dryRun: true }),
+      ).rejects.toThrow(/Failed to read git remote\.origin\.url:/);
+    } finally {
+      if (previousConfig === undefined) {
+        delete process.env.GIT_CONFIG_GLOBAL;
+      } else {
+        process.env.GIT_CONFIG_GLOBAL = previousConfig;
+      }
+    }
+  });
 });
