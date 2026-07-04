@@ -1,23 +1,43 @@
 // @vitest-environment jsdom
 //
 // Unit suite for the shared gesture core (#12349): the pure recognizers
-// (resolvePull/resolveSwipe/commitAxis/rubberBand) are exercised as pure math,
-// and the React helper hooks (useRafCoalescer, useClickSuppression,
-// usePressAndHold) are driven with synthetic input to verify their internal
-// contracts (frame coalescing, click swallowing, hold timing). The real browser
-// pointer pipeline is covered by the CDP-touch e2e runners; this is logic-only.
+// (resolvePull/resolveSwipe/commitAxis/rubberBand/sqrtRubberBand) are exercised
+// as pure math, the tuned-constants table is pinned as a drift gate, and the
+// React helper hooks (useRafCoalescer, useClickSuppression, usePressAndHold,
+// usePointerPressAndHold) are driven with synthetic input to verify their
+// internal contracts (frame coalescing, click swallowing, hold timing). The real
+// browser pointer pipeline is covered by the CDP-touch e2e runners; this is
+// logic-only.
 import { act, renderHook } from "@testing-library/react";
 import type * as React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { AXIS_COMMIT_SLOP } from "./constants";
+import {
+  AXIS_COMMIT_SLOP,
+  COPY_HOLD_MS,
+  DEFAULT_HOLD_MS,
+  DEFAULT_PULL_VELOCITY,
+  DEFAULT_SWIPE_VELOCITY,
+  GRAPH_PAN_ENGAGE_SLOP,
+  HORIZONTAL_DOMINANCE_RATIO,
+  OVERSHOOT_RESISTANCE,
+  PAGER_AXIS_COMMIT_SLOP,
+  PAGER_AXIS_DOMINANCE_RATIO,
+  PAGER_FLICK_VELOCITY,
+  PUSH_TO_TALK_HOLD_MS,
+  SHEET_DETENT_OVERSHOOT_SCALE,
+  TAP_SLOP,
+  TOUCH_TAP_MOVE_SLOP,
+} from "./constants";
 import {
   commitAxis,
   resolvePull,
   resolveSwipe,
   rubberBand,
+  sqrtRubberBand,
 } from "./recognizers";
 import { useClickSuppression } from "./useClickSuppression";
-import { DEFAULT_HOLD_MS, usePressAndHold } from "./usePressAndHold";
+import { usePointerPressAndHold } from "./usePointerPressAndHold";
+import { usePressAndHold } from "./usePressAndHold";
 import { useRafCoalescer } from "./useRafCoalescer";
 
 const DIST = 56;
@@ -79,6 +99,53 @@ describe("rubberBand", () => {
   });
   it("clamps negatives to zero", () => {
     expect(rubberBand(-10, 96, 0.35)).toBe(0);
+  });
+});
+
+describe("sqrtRubberBand", () => {
+  it("damps overshoot as sign(x)·√|x|·scale", () => {
+    expect(sqrtRubberBand(0, 6)).toBe(0);
+    expect(sqrtRubberBand(100, 6)).toBe(60); // √100 · 6
+    expect(sqrtRubberBand(-100, 6)).toBe(-60); // signed both ways
+  });
+  it("stiffens progressively: doubling the overshoot gives less than double the travel", () => {
+    const one = sqrtRubberBand(80, 6);
+    const two = sqrtRubberBand(160, 6);
+    expect(two).toBeGreaterThan(one);
+    expect(two).toBeLessThan(2 * one);
+  });
+});
+
+// Drift gate for the tuned per-surface overrides: each divergence from the
+// shared default is deliberate (see constants.ts for the rationale). A failing
+// row means a behavior-tuning change — make it on purpose, in its own PR.
+describe("tuned constants table", () => {
+  it("pins the shared defaults", () => {
+    expect(TAP_SLOP).toBe(8);
+    expect(AXIS_COMMIT_SLOP).toBe(8);
+    expect(HORIZONTAL_DOMINANCE_RATIO).toBe(0.8);
+    expect(DEFAULT_PULL_VELOCITY).toBe(0.5);
+    expect(DEFAULT_SWIPE_VELOCITY).toBe(0.4);
+    expect(TOUCH_TAP_MOVE_SLOP).toBe(10);
+    expect(OVERSHOOT_RESISTANCE).toBe(0.35);
+    expect(DEFAULT_HOLD_MS).toBe(450);
+    expect(PUSH_TO_TALK_HOLD_MS).toBe(200);
+  });
+  it("pins the per-surface overrides and their direction of divergence", () => {
+    // Pager: commits sooner, demands stronger horizontal dominance, stiffer flick.
+    expect(PAGER_AXIS_COMMIT_SLOP).toBe(6);
+    expect(PAGER_AXIS_COMMIT_SLOP).toBeLessThan(AXIS_COMMIT_SLOP);
+    expect(PAGER_AXIS_DOMINANCE_RATIO).toBe(1.15);
+    expect(PAGER_AXIS_DOMINANCE_RATIO).toBeGreaterThan(1);
+    expect(PAGER_FLICK_VELOCITY).toBe(0.45);
+    // Copy-hold: a touch quicker than the default long-press.
+    expect(COPY_HOLD_MS).toBe(420);
+    expect(COPY_HOLD_MS).toBeLessThan(DEFAULT_HOLD_MS);
+    // Graph pan: pixel-precise engage, far under the tap slop.
+    expect(GRAPH_PAN_ENGAGE_SLOP).toBe(4);
+    expect(GRAPH_PAN_ENGAGE_SLOP).toBeLessThan(TAP_SLOP);
+    // Sheet detent overscroll scale (sqrt damping).
+    expect(SHEET_DETENT_OVERSHOOT_SCALE).toBe(6);
   });
 });
 
@@ -287,5 +354,116 @@ describe("usePressAndHold", () => {
       vi.advanceTimersByTime(20);
     });
     expect(onHold).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("usePointerPressAndHold", () => {
+  afterEach(() => vi.useRealTimers());
+
+  function pointer(x = 0, y = 0) {
+    return {
+      clientX: x,
+      clientY: y,
+    } as unknown as React.PointerEvent<HTMLElement>;
+  }
+
+  it("fires onHold after the duration for a still press", () => {
+    vi.useFakeTimers();
+    const onHold = vi.fn();
+    const { result } = renderHook(() =>
+      usePointerPressAndHold<HTMLElement>({ onHold, durationMs: COPY_HOLD_MS }),
+    );
+    act(() => result.current.onPointerDown(pointer(100, 100)));
+    expect(onHold).not.toHaveBeenCalled();
+    act(() => {
+      vi.advanceTimersByTime(COPY_HOLD_MS + 10);
+    });
+    expect(onHold).toHaveBeenCalledTimes(1);
+  });
+
+  it("tolerates wobble within the slop but cancels past it (per axis)", () => {
+    vi.useFakeTimers();
+    const onHold = vi.fn();
+    const { result } = renderHook(() =>
+      usePointerPressAndHold<HTMLElement>({
+        onHold,
+        durationMs: 100,
+        moveCancelPx: TOUCH_TAP_MOVE_SLOP,
+      }),
+    );
+    // Wobble inside the slop keeps the hold alive.
+    act(() => result.current.onPointerDown(pointer(100, 100)));
+    act(() =>
+      result.current.onPointerMove(pointer(100 + TOUCH_TAP_MOVE_SLOP, 100)),
+    );
+    act(() => {
+      vi.advanceTimersByTime(110);
+    });
+    expect(onHold).toHaveBeenCalledTimes(1);
+    // A single-axis move past the slop cancels (a vertical scroll must win).
+    act(() => result.current.onPointerDown(pointer(100, 100)));
+    act(() =>
+      result.current.onPointerMove(pointer(100, 100 + TOUCH_TAP_MOVE_SLOP + 1)),
+    );
+    act(() => {
+      vi.advanceTimersByTime(110);
+    });
+    expect(onHold).toHaveBeenCalledTimes(1);
+  });
+
+  it("cancels on pointer up/cancel before the duration", () => {
+    for (const ender of ["onPointerUp", "onPointerCancel"] as const) {
+      vi.useFakeTimers();
+      const onHold = vi.fn();
+      const { result } = renderHook(() =>
+        usePointerPressAndHold<HTMLElement>({ onHold, durationMs: 100 }),
+      );
+      act(() => result.current.onPointerDown(pointer()));
+      act(() => result.current[ender]());
+      act(() => {
+        vi.advanceTimersByTime(110);
+      });
+      expect(onHold).not.toHaveBeenCalled();
+      vi.useRealTimers();
+    }
+  });
+
+  it("skips presses rejected by canBegin and is inert when disabled", () => {
+    vi.useFakeTimers();
+    const onHold = vi.fn();
+    const rejected = renderHook(() =>
+      usePointerPressAndHold<HTMLElement>({
+        onHold,
+        durationMs: 100,
+        canBegin: () => false,
+      }),
+    );
+    act(() => rejected.result.current.onPointerDown(pointer()));
+    const disabled = renderHook(() =>
+      usePointerPressAndHold<HTMLElement>({
+        onHold,
+        durationMs: 100,
+        enabled: false,
+      }),
+    );
+    act(() => disabled.result.current.onPointerDown(pointer()));
+    act(() => {
+      vi.advanceTimersByTime(110);
+    });
+    expect(onHold).not.toHaveBeenCalled();
+  });
+
+  it("clears the pending hold on unmount", () => {
+    vi.useFakeTimers();
+    const onHold = vi.fn();
+    const { result, unmount } = renderHook(() =>
+      usePointerPressAndHold<HTMLElement>({ onHold, durationMs: 100 }),
+    );
+    act(() => result.current.onPointerDown(pointer()));
+    unmount();
+    act(() => {
+      vi.advanceTimersByTime(110);
+    });
+    expect(onHold).not.toHaveBeenCalled();
   });
 });

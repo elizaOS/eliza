@@ -1,5 +1,11 @@
 import * as React from "react";
-import { rubberBand, useRafCoalescer } from "../../gestures";
+import {
+  DEFAULT_PULL_VELOCITY as DEFAULT_VELOCITY_THRESHOLD,
+  AXIS_COMMIT_SLOP as ENGAGE_SLOP,
+  OVERSHOOT_RESISTANCE as REVEAL_OVERSHOOT_RESISTANCE,
+  rubberBand,
+  useRafCoalescer,
+} from "../../gestures";
 
 /**
  * iOS-notification-center pull gesture for the home dashboard.
@@ -29,16 +35,14 @@ import { rubberBand, useRafCoalescer } from "../../gestures";
  * OR velocity threshold — a deliberate drag and a quick flick both open.
  */
 
-/** Vertical travel (px) after which a downward-at-top drag becomes a pull. */
-const ENGAGE_SLOP = 8;
+// ENGAGE_SLOP (travel after which a downward-at-top drag becomes a pull),
+// DEFAULT_VELOCITY_THRESHOLD (flick commit speed), and
+// REVEAL_OVERSHOOT_RESISTANCE alias the shared gesture constants above; only
+// the values below are tuned specifically for this surface.
 /** Raw downward travel (px) that commits the pull to opening on release. */
 const DEFAULT_DISTANCE_THRESHOLD = 60;
-/** Raw downward speed (px/ms) that commits the pull as a flick. */
-const DEFAULT_VELOCITY_THRESHOLD = 0.5;
 /** Travel (px) the reveal tracks 1:1 before rubber-banding. */
 const REVEAL_SOFT_MAX = 96;
-/** Resistance applied to travel past {@link REVEAL_SOFT_MAX}. */
-const REVEAL_OVERSHOOT_RESISTANCE = 0.35;
 
 /**
  * Map raw finger travel to the reveal offset: 1:1 up to a soft cap, then a

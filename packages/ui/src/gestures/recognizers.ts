@@ -91,3 +91,13 @@ export function rubberBand(
   if (travel <= softMax) return travel;
   return softMax + (travel - softMax) * resistance;
 }
+
+/**
+ * Square-root rubber-band: maps overshoot to `sign(x)·√|x|·scale`, so the give
+ * stiffens progressively the further past the limit the finger drags (versus
+ * the constant fraction of {@link rubberBand}). Signed — damps overshoot on
+ * either side of a detent. Used by the chat sheet's detent overscroll.
+ */
+export function sqrtRubberBand(overshoot: number, scale: number): number {
+  return Math.sign(overshoot) * Math.sqrt(Math.abs(overshoot)) * scale;
+}

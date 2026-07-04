@@ -5,16 +5,18 @@
  */
 import * as React from "react";
 import {
+  PAGER_AXIS_COMMIT_SLOP as AXIS_COMMIT_SLOP,
+  PAGER_AXIS_DOMINANCE_RATIO as AXIS_DOMINANCE_RATIO,
+  OVERSHOOT_RESISTANCE as EDGE_RESISTANCE,
+  PAGER_FLICK_VELOCITY as FLICK_VELOCITY,
   isRealCaptureLoss,
   useClickSuppression,
   useRafCoalescer,
 } from "../gestures";
 
-// Per-surface tuned overrides (deliberately tighter than the shared pull
-// defaults): the launcher rail commits its axis at a shorter slop and requires
-// stronger horizontal dominance than the vertical-pull surfaces (#12349).
-const AXIS_COMMIT_SLOP = 6;
-const AXIS_DOMINANCE_RATIO = 1.15;
+// The pager's tuned axis/flick/edge values live in the shared gesture constants
+// module as named PAGER_* overrides (see gestures/constants.ts for why each
+// diverges from the shared defaults); the constants below are pager-only feel.
 const MIN_DISTANCE_THRESHOLD = 64;
 // A slow drag commits the page only once the finger has crossed the halfway
 // point of the viewport; short of that it springs back. This is the iOS
@@ -23,9 +25,7 @@ const MIN_DISTANCE_THRESHOLD = 64;
 // so a quick swipe never has to travel the full 50%.
 const DISTANCE_THRESHOLD_RATIO = 0.5;
 const MIN_FLICK_DISTANCE = 48;
-const FLICK_VELOCITY = 0.45;
 const SETTLE_MS = 360;
-const EDGE_RESISTANCE = 0.35;
 const SETTLE_EASING = "cubic-bezier(0.32, 0.72, 0, 1)";
 // Velocity-aware momentum settle (#10717): after a drag release, the settle
 // duration is derived from the release velocity instead of a constant rate — a

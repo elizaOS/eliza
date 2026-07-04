@@ -9,9 +9,7 @@
  */
 
 import * as React from "react";
-
-/** iOS-style long-press threshold. */
-export const DEFAULT_HOLD_MS = 450;
+import { DEFAULT_HOLD_MS } from "./constants";
 
 export interface PressAndHoldOptions<E extends HTMLElement> {
   /** Fired when the finger is held past `durationMs` without lifting/moving. */

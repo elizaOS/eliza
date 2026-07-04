@@ -16,9 +16,7 @@
 
 import type { PointerEvent as ReactPointerEvent } from "react";
 import { useCallback, useEffect, useRef } from "react";
-
-/** Single hold duration before a press promotes to an active capture. */
-export const PUSH_TO_TALK_HOLD_MS = 200;
+import { PUSH_TO_TALK_HOLD_MS } from "../gestures";
 
 type PushToTalkPhase =
   | { kind: "idle" }
