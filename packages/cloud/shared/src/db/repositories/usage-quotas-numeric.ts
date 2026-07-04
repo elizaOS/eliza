@@ -1,16 +1,9 @@
 /**
- * Numeric parsing boundary for usage-quota rows.
+ * Numeric parsing boundary for usage-quota rows that gate metered spend.
  *
- * Quota columns (`current_usage`, `credits_limit`) are Postgres NUMERIC, surfaced by
- * the driver as strings. A present-but-corrupt value (non-numeric, `NaN`, `Infinity`,
- * empty) would otherwise flow through a bare `Number(...)` as `NaN` and silently
- * DISABLE the spend gate: `newUsage > NaN` and `NaN >= NaN` are both `false`, so a
- * corrupt limit reads as "quota not exceeded" and unbounded metered usage is allowed.
- *
- * These readers FAIL CLOSED: a present row whose numeric field cannot be parsed to a
- * finite number throws instead of fabricating a permissive `NaN`. Callers on the
- * spend-gate path (checkQuota / checkQuotaExceeded) then surface the read failure
- * rather than granting quota over a corrupt row.
+ * Postgres NUMERIC fields arrive as strings. Corrupt values must throw instead
+ * of becoming `NaN`, because comparisons against `NaN` fail open on quota
+ * checks.
  */
 
 export function parseUsageQuotaNumber(

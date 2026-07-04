@@ -75,9 +75,6 @@ export class UsageQuotasRepository {
       return false;
     }
 
-    // Fail closed: a corrupt NUMERIC would make Number(...) NaN, and NaN >= NaN is
-    // false, i.e. a corrupt row would read as "quota not exceeded" and silently open
-    // the spend gate. Throw instead so the caller surfaces the read failure.
     const currentUsage = parseUsageQuotaNumber(quota.current_usage, "current_usage");
     const creditsLimit = parseUsageQuotaNumber(quota.credits_limit, "credits_limit");
 

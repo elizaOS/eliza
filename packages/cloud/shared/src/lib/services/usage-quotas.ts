@@ -102,9 +102,6 @@ class UsageQuotasService {
       );
 
       if (modelQuota) {
-        // Fail closed: a corrupt NUMERIC would make Number(...) NaN, and newUsage > NaN
-        // is false, so a corrupt limit would fabricate `allowed: true` and bypass the
-        // spend gate. parseUsageQuotaNumber throws on a present-but-unparseable value.
         const currentUsage = parseUsageQuotaNumber(modelQuota.current_usage, "current_usage");
         const limit = parseUsageQuotaNumber(modelQuota.credits_limit, "credits_limit");
         const newUsage = currentUsage + amount;
@@ -218,9 +215,6 @@ class UsageQuotasService {
 
     for (const quota of quotas) {
       if (quota.quota_type === "global") {
-        // Fail closed on a corrupt row: a bare Number(...) would surface NaN usage/limit
-        // to the reporting DTO (and NaN usedPercent), masking data corruption behind a
-        // plausible-looking zero-ish reading. Throw so the read failure is observable.
         const used = parseUsageQuotaNumber(quota.current_usage, "current_usage");
         const limit = parseUsageQuotaNumber(quota.credits_limit, "credits_limit");
         const derived = deriveQuotaUsage(used, limit);

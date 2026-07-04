@@ -1,12 +1,8 @@
 /**
- * #13416 — usage-quota spend gate must fail closed on a corrupt NUMERIC row.
+ * Service-seam coverage for usage-quota rows that gate metered spend.
  *
- * Before the fix, `checkQuota` read `credits_limit` via a bare `Number(...)`. A
- * present-but-corrupt limit yields `NaN`, and `newUsage > NaN` is `false`, so the
- * gate returned `{ allowed: true }` and permitted unbounded metered usage over a
- * corrupt row. These tests pin the fail-closed behavior at the service seam: a
- * corrupt quota row now throws instead of silently granting quota, while healthy
- * rows still allow/deny correctly.
+ * Corrupt quota values must throw instead of granting quota, while healthy rows
+ * still allow or deny by their configured limits.
  */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";

@@ -1,5 +1,6 @@
-// Exercises the fail-closed numeric boundary for usage-quota rows so a corrupt
-// NUMERIC column cannot silently disable the spend gate.
+/**
+ * Exercises the fail-closed numeric boundary for usage-quota rows.
+ */
 import { describe, expect, test } from "bun:test";
 import { parseUsageQuotaNumber } from "./usage-quotas-numeric";
 
@@ -46,18 +47,12 @@ describe("parseUsageQuotaNumber", () => {
   });
 });
 
-// Regression guard proving the spend-gate CANNOT fabricate an "allowed" / "not
-// exceeded" decision over a corrupt limit the way a bare Number(...) comparison does.
 describe("spend-gate fail-open regression (corrupt limit)", () => {
-  // Mirrors the exact comparison shapes used by checkQuotaExceeded (repo) and
-  // checkQuota (service) — proving they now throw instead of returning permissively.
   test("bare Number(...) comparison would silently fail OPEN on a corrupt limit", () => {
-    const corruptLimit = Number("corrupt"); // NaN
+    const corruptLimit = Number("corrupt");
     const usage = Number("999999");
-    // checkQuotaExceeded: usage >= limit
-    expect(usage >= corruptLimit).toBe(false); // NaN comparison -> "not exceeded"
-    // checkQuota: newUsage > limit
-    expect(usage + 100 > corruptLimit).toBe(false); // NaN comparison -> "allowed"
+    expect(usage >= corruptLimit).toBe(false);
+    expect(usage + 100 > corruptLimit).toBe(false);
   });
 
   test("the fail-closed reader throws on that same corrupt limit", () => {
