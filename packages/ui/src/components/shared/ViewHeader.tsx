@@ -35,10 +35,7 @@ export function navigateBackToLauncher(): void {
 
 /**
  * The shared view back button: an icon, nothing else. Deliberately chromeless —
- * no border, no shadow, and a `bg-bg` fill so it reads as the neutral view
- * surface (white in light mode, dark in dark mode), never the accent/orange
- * chip it used to be. On an opaque view the fill is invisible (looks like a
- * bare icon); on a shared-background view it's a subtle neutral chip.
+ * no border, no fill, no shadow, and never the accent/orange chip it used to be.
  */
 export function ViewBackButton({
   onBack,
@@ -64,7 +61,7 @@ export function ViewBackButton({
       onClick={handleBack}
       aria-label={label}
       className={cn(
-        "inline-flex h-9 w-9 items-center justify-center rounded-full bg-bg text-txt transition-colors hover:bg-bg-hover",
+        "inline-flex h-9 w-9 items-center justify-center rounded-full bg-transparent text-txt transition-colors hover:bg-bg-hover",
         className,
       )}
       {...agentProps}
@@ -77,15 +74,15 @@ export function ViewBackButton({
 /**
  * Standard view header: a chromeless back button and a title on one line.
  *
- * Mobile centers the title with the back button overlaid on the left (the
- * iOS-style nav bar the redesign asks for); ≥sm left-aligns the title after the
- * back button. A sub-view renders its OWN `ViewHeader`, which REPLACES this one
- * rather than stacking beneath it — callers swap the header for the active
- * section, they do not nest two.
+ * The title stays centered with the back button in the left slot (the iOS-style
+ * nav bar the redesign asks for). A sub-view renders its OWN `ViewHeader`,
+ * which REPLACES this one rather than stacking beneath it — callers swap the
+ * header for the active section, they do not nest two.
  */
 export function ViewHeader({
   title,
   onBack,
+  backLabel,
   showBack = true,
   right,
   className,
@@ -93,6 +90,8 @@ export function ViewHeader({
   title: ReactNode;
   /** Override the default (launcher) back target — e.g. a sub-view returning to its hub. */
   onBack?: () => void;
+  /** Accessible label for the back control when `onBack` points somewhere custom. */
+  backLabel?: string;
   /** Hide the back control entirely (a view with no meaningful "back"). */
   showBack?: boolean;
   /** Optional trailing controls (actions, filters). */
@@ -110,12 +109,16 @@ export function ViewHeader({
     <header
       data-testid="view-header"
       className={cn(
-        "grid min-h-14 shrink-0 grid-cols-[2.75rem_minmax(0,1fr)_2.75rem] items-center gap-1 px-3 py-2.5 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:gap-2 sm:px-4",
+        "grid min-h-14 shrink-0 grid-cols-[2.75rem_minmax(0,1fr)_2.75rem] items-center gap-1 px-3 py-2.5 sm:gap-2 sm:px-4",
         className,
       )}
     >
-      {showBack ? <ViewBackButton onBack={onBack} /> : <span aria-hidden />}
-      <h1 className="justify-self-center truncate text-lg font-semibold tracking-tight text-txt-strong sm:justify-self-start">
+      {showBack ? (
+        <ViewBackButton label={backLabel} onBack={onBack} />
+      ) : (
+        <span aria-hidden />
+      )}
+      <h1 className="justify-self-center truncate text-lg font-semibold tracking-tight text-txt-strong">
         {title}
       </h1>
       {right ? (

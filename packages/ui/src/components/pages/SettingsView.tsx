@@ -6,7 +6,6 @@
  * modal form (`inModal`).
  */
 import { isViewVisible } from "@elizaos/core";
-import { ArrowLeft } from "lucide-react";
 import type * as React from "react";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
@@ -189,29 +188,6 @@ function SettingsNavItem({
   );
 }
 
-function SectionBackButton({ onBack }: { onBack: () => void }) {
-  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
-    id: "section-back",
-    role: "button",
-    label: "Back to Settings",
-    description: "Return to the settings hub",
-    onActivate: onBack,
-  });
-  return (
-    <Button
-      ref={ref}
-      variant="ghost"
-      size="sm"
-      onClick={onBack}
-      className="h-9 gap-1.5 rounded-md px-2 text-xs font-medium text-muted transition-colors hover:bg-surface hover:text-accent"
-      {...agentProps}
-    >
-      <ArrowLeft className="h-3.5 w-3.5" aria-hidden />
-      Settings
-    </Button>
-  );
-}
-
 /**
  * Loading placeholder for a lazily-loaded section body (#11351). Deliberately
  * minimal — a single muted, `aria-busy` line so the split is visually quiet and
@@ -226,7 +202,7 @@ function SettingsSectionLoading() {
   );
 }
 
-/** The active section's body: optional back, header (icon + title), content. */
+/** The active section's body: optional Settings header, section title, content. */
 function SettingsSectionContent({
   section,
   t,
@@ -249,9 +225,12 @@ function SettingsSectionContent({
       )}
     >
       {onBack ? (
-        <div className="mb-1.5">
-          <SectionBackButton onBack={onBack} />
-        </div>
+        <ViewHeader
+          title={t("nav.settings", { defaultValue: "Settings" })}
+          onBack={onBack}
+          backLabel="Back to Settings"
+          className="-mx-3 mb-1.5 sm:-mx-4"
+        />
       ) : null}
       <div className="mb-5 flex items-center gap-2.5">
         <Icon className="h-5 w-5 shrink-0 text-muted/80" aria-hidden />

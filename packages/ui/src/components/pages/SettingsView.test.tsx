@@ -12,6 +12,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { Settings } from "lucide-react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -162,10 +163,20 @@ describe("SettingsView", () => {
 
     fireEvent.click(runtimeTile);
 
-    // The section body is now mounted, and a back affordance is present.
+    // The section body is now mounted, and the shared view header owns the
+    // icon-only back affordance back to the settings hub.
     expect(screen.getByTestId("stub-runtime")).toBeTruthy();
     expect(screen.queryByTestId("stub-identity")).toBeNull();
-    expect(screen.getByText("Settings")).toBeTruthy();
+    const header = screen.getByTestId("view-header");
+    expect(
+      within(header).getByRole("heading", { name: "Settings" }),
+    ).toBeTruthy();
+    const back = within(header).getByRole("button", {
+      name: "Back to Settings",
+    });
+    expect(back.textContent).toBe("");
+    expect(back.classList.contains("bg-transparent")).toBe(true);
+    expect(back.classList.contains("bg-bg")).toBe(false);
   });
 
   it("respects an initialSection prop by opening that section directly", () => {
@@ -178,9 +189,8 @@ describe("SettingsView", () => {
   it("back affordance returns to the hub", () => {
     render(<SettingsView initialSection="runtime" />);
 
-    const back = screen.getByText("Settings").closest("button");
-    expect(back).toBeTruthy();
-    fireEvent.click(back as HTMLButtonElement);
+    const back = screen.getByRole("button", { name: "Back to Settings" });
+    fireEvent.click(back);
 
     // Both tiles are visible again and no section body is mounted.
     expect(screen.getByText("Basics")).toBeTruthy();
@@ -200,7 +210,11 @@ describe("SettingsView", () => {
       // per-section fallback renders and the nav back-affordance stays usable.
       expect(screen.getByTestId("settings-section-error")).toBeTruthy();
       expect(screen.queryByTestId("stub-crash")).toBeNull();
-      expect(screen.getByText("Settings")).toBeTruthy();
+      expect(
+        within(screen.getByTestId("view-header")).getByRole("button", {
+          name: "Back to Settings",
+        }),
+      ).toBeTruthy();
     } finally {
       consoleError.mockRestore();
     }
