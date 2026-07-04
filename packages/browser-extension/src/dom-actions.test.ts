@@ -1,3 +1,10 @@
+/**
+ * Unit tests for in-page browser action execution.
+ *
+ * The jsdom harness checks hostile text handling, selector validation, and
+ * DOM event dispatch without loading a real extension context.
+ */
+
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import "./test-dom-setup";
 import { runDomAction } from "./dom-actions";

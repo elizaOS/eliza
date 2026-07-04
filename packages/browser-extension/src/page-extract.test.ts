@@ -1,3 +1,10 @@
+/**
+ * Unit tests for page-context extraction from a live DOM.
+ *
+ * The jsdom harness verifies visible text, headings, links, and form metadata
+ * while guarding against hidden or password-field leakage.
+ */
+
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import "./test-dom-setup";
 import { capturePageContext } from "./page-extract";

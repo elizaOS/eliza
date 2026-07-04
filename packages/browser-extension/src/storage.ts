@@ -1,3 +1,10 @@
+/**
+ * Browser-extension storage and local agent API discovery helpers.
+ *
+ * Persists companion pairing state in extension storage and normalizes
+ * loopback or discovered agent API base URLs before background sync uses them.
+ */
+
 import type { BackgroundState, CompanionConfig } from "./protocol";
 import {
   type ExtensionTab,

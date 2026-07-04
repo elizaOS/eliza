@@ -1,3 +1,7 @@
+/**
+ * Data contracts shared between the browser extension and browser-bridge API.
+ */
+
 export type BrowserBridgeKind = "chrome" | "safari";
 
 export type BrowserBridgeTrackingMode = "off" | "current_tab" | "active_tabs";

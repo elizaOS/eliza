@@ -1,3 +1,7 @@
+/**
+ * Unit tests for safe HTTP URL and origin normalization helpers.
+ */
+
 import { describe, expect, it } from "vitest";
 import { normalizeHttpBaseUrl, normalizeHttpOrigin } from "./url";
 

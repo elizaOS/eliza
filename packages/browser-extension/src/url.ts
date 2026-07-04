@@ -1,3 +1,7 @@
+/**
+ * Safe HTTP URL normalization helpers for extension configuration and discovery.
+ */
+
 export function normalizeHttpBaseUrl(
   value: unknown,
   defaultValue: string | null = null,

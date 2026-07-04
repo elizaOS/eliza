@@ -1,3 +1,10 @@
+/**
+ * Page-context extractor for browser-bridge content scripts.
+ *
+ * Captures visible text, headings, links, and form field labels from the page
+ * while excluding hidden content and sensitive field types.
+ */
+
 import type { PageContextSnapshot } from "./protocol";
 
 function normalizeText(

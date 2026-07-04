@@ -1,4 +1,11 @@
 #!/usr/bin/env bun
+/**
+ * Build script for Chrome and Safari browser-bridge extension bundles.
+ *
+ * Produces IIFE entrypoint bundles, generated manifests, static assets, and
+ * wallet-shim template defines under dist/<chrome|safari>/.
+ */
+
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

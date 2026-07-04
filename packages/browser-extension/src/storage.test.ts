@@ -1,3 +1,7 @@
+/**
+ * Unit tests for companion config normalization and agent API discovery inputs.
+ */
+
 import { describe, expect, it } from "vitest";
 import {
   candidateApiBaseUrlsFromTabs,

@@ -1,3 +1,10 @@
+/**
+ * Browser extension service worker for pairing, sync, session execution, and site blocking.
+ *
+ * This is the long-lived bridge between browser APIs, content scripts, popup
+ * controls, and the elizaOS browser-bridge API.
+ */
+
 import type { LifeOpsBrowserSession } from "@elizaos/shared";
 import { BrowserBridgeRelayClient, RelayApiError } from "../src/api-client";
 import type {

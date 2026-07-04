@@ -1,4 +1,11 @@
 #!/usr/bin/env node
+/**
+ * Chrome smoke test for built Agent Browser Bridge artifacts.
+ *
+ * Builds the Chrome extension, starts a local agent-compatible HTTP fixture,
+ * and uses Playwright to verify the packaged extension can pair and sync.
+ */
+
 import fs from "node:fs";
 import fsp from "node:fs/promises";
 import http from "node:http";

@@ -1,3 +1,10 @@
+/**
+ * Unit tests for the pure popup status model.
+ *
+ * Fake timers make pause and last-sync state deterministic while covering the
+ * connected, pairing, disabled, paused, and error UI classifications.
+ */
+
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { derivePopupStatusModel } from "./popup-model";
 import type { BackgroundState } from "./protocol";

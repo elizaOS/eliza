@@ -1,4 +1,11 @@
 #!/usr/bin/env bun
+/**
+ * Safari packaging script for the browser-bridge extension.
+ *
+ * Builds the Safari Web Extension target, generates an Xcode wrapper project,
+ * patches bundle versions, and archives versioned release artifacts.
+ */
+
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

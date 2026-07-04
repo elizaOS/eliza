@@ -1,3 +1,10 @@
+/**
+ * In-page DOM action executor for browser-bridge content scripts.
+ *
+ * Handles click, type, submit, and history actions against the live page while
+ * rejecting invalid selectors and unsupported targets.
+ */
+
 import type { DomActionRequest } from "./protocol";
 
 function requireElement(selector?: string | null): HTMLElement {

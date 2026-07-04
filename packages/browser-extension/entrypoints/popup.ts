@@ -1,3 +1,10 @@
+/**
+ * Popup UI controller for browser-bridge pairing, status, and manual sync.
+ *
+ * Reads form state, talks to the background service worker, and renders the
+ * pure popup status model into the extension popup DOM.
+ */
+
 import { derivePopupStatusModel } from "../src/popup-model";
 import type {
   BackgroundState,

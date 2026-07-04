@@ -1,4 +1,11 @@
 #!/usr/bin/env bun
+/**
+ * Chrome Web Store packaging script for the browser-bridge extension.
+ *
+ * Rebuilds the Chrome target and writes both stable and versioned zip
+ * artifacts under dist/artifacts/.
+ */
+
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

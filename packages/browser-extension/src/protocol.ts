@@ -1,3 +1,10 @@
+/**
+ * Message and state contracts shared by browser-extension contexts.
+ *
+ * Popup, background, and content scripts import these unions so runtime
+ * messages stay aligned without importing extension entrypoints.
+ */
+
 import type {
   CompleteLifeOpsBrowserSessionRequest,
   LifeOpsBrowserSession,

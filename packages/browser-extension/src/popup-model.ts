@@ -1,3 +1,10 @@
+/**
+ * Pure status model for rendering the browser-bridge popup.
+ *
+ * Converts background sync state and local API discovery into badges,
+ * checklist copy, primary actions, and summary pills.
+ */
+
 import type { BackgroundState } from "./protocol";
 
 export type PopupStatusKind =

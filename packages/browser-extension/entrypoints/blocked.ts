@@ -1,3 +1,10 @@
+/**
+ * Blocked-site page controller for LifeOps website-blocker redirects.
+ *
+ * It renders the blocked host, polls the agent API for required tasks, and
+ * returns the user to the original URL once the block is lifted.
+ */
+
 const POLL_INTERVAL_MS = 30_000;
 
 interface RequiredTask {

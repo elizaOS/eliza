@@ -1,4 +1,11 @@
 #!/usr/bin/env bun
+/**
+ * Store-listing metadata generator for browser-bridge release submissions.
+ *
+ * Writes Chrome and Safari submission JSON that describes permissions,
+ * artifact names, support URLs, and listing copy for the packaged extension.
+ */
+
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

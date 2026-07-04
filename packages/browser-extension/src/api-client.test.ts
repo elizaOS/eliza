@@ -1,3 +1,10 @@
+/**
+ * Unit tests for the browser-bridge relay HTTP client.
+ *
+ * The harness stubs fetch to verify endpoint construction, pairing headers,
+ * and API error normalization without contacting an agent.
+ */
+
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BrowserBridgeRelayClient, type RelayApiError } from "./api-client";
 import type {

@@ -1,3 +1,10 @@
+/**
+ * Tab snapshot merge and filtering logic for browser-bridge sync.
+ *
+ * Keeps a bounded remembered-tab list, applies site-access policy, and selects
+ * the focused tab plus allowed context for the companion heartbeat.
+ */
+
 import type { BrowserBridgeSettings } from "./browser-bridge-contracts";
 import type { CompanionSyncRequest } from "./protocol";
 

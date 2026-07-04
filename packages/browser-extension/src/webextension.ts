@@ -1,3 +1,10 @@
+/**
+ * Promise-based adapter over Chrome and WebExtension browser APIs.
+ *
+ * Centralizes browser API differences so entrypoints avoid direct chrome.*
+ * calls and can share error handling across Chrome and Safari builds.
+ */
+
 type Callback<T> = (value: T) => void;
 
 type RawRuntime = {

@@ -1,3 +1,10 @@
+/**
+ * Typed HTTP client for browser-bridge companion sync and session endpoints.
+ *
+ * All requests carry the pairing token and companion ID expected by the agent
+ * API routes mounted by the browser plugin.
+ */
+
 import type { LifeOpsBrowserCompanionSyncResponse } from "@elizaos/shared";
 import type {
   CompanionConfig,

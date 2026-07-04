@@ -1,4 +1,11 @@
 #!/usr/bin/env node
+/**
+ * Safari Web Extension smoke test for the Agent Browser Bridge package.
+ *
+ * Builds the Safari target, drives Safari developer tooling through local
+ * commands and AppleScript, and verifies the generated extension can load.
+ */
+
 import { spawn } from "node:child_process";
 import http from "node:http";
 import os from "node:os";

@@ -1,4 +1,11 @@
 #!/usr/bin/env bun
+/**
+ * Release packaging orchestrator for browser-bridge store artifacts.
+ *
+ * Runs the Chrome, Safari, and store-metadata packagers, then writes a release
+ * manifest with install URLs and versioned artifact names.
+ */
+
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

@@ -1,3 +1,10 @@
+/**
+ * Document-start wallet shim injector for pages granted browser-bridge access.
+ *
+ * Reads the stored wallet bridge config and bakes it into the wallet shim
+ * template before injecting the script into the page's main world.
+ */
+
 declare const __WALLET_SHIM_TEMPLATE__: string;
 
 interface WalletShimStored {

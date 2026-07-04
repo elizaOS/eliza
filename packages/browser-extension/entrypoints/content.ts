@@ -1,3 +1,10 @@
+/**
+ * Content script message bridge for page capture and DOM actions.
+ *
+ * Runs inside allowlisted pages and keeps all page-reading and in-page action
+ * execution behind typed messages from the background service worker.
+ */
+
 import { runDomAction } from "../src/dom-actions";
 import { capturePageContext } from "../src/page-extract";
 import type {

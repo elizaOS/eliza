@@ -1,4 +1,11 @@
 #!/usr/bin/env node
+/**
+ * Release-version helpers for browser-bridge package and store artifacts.
+ *
+ * Normalizes semver tags, derives Chrome/Safari-compatible version numbers,
+ * and builds versioned artifact names and GitHub release URLs.
+ */
+
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
