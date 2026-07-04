@@ -71,6 +71,19 @@ const enqueueAgentProvision = mock(async () => ({ id: "job-1" }));
 
 class AgentQuotaExceededError extends Error {}
 
+class AgentImageNotAllowedError extends Error {
+  readonly image: string;
+  readonly reason: "not_allowlisted" | "not_digest_pinned";
+  constructor(image: string, reason: "not_allowlisted" | "not_digest_pinned") {
+    super(
+      `Docker image '${image}' is not in the managed-agent image allowlist.`,
+    );
+    this.name = "AgentImageNotAllowedError";
+    this.image = image;
+    this.reason = reason;
+  }
+}
+
 mock.module("@/lib/auth/service-key-hono-worker", () => ({
   requireServiceKey,
   validateServiceKey: requireServiceKey,
@@ -111,6 +124,7 @@ mock.module("@/lib/services/characters/characters", () => ({
 }));
 
 mock.module("@/lib/services/eliza-sandbox", () => ({
+  AgentImageNotAllowedError,
   AgentQuotaExceededError,
   elizaSandboxService: {
     createAgent,
@@ -738,6 +752,51 @@ describe("service agent provisioning route", () => {
     expect(createCharacter).toHaveBeenCalledTimes(1);
     expect(deleteCharacter).toHaveBeenCalledWith("character-1");
     expect(createAgent).not.toHaveBeenCalled();
+    expect(enqueueAgentProvision).not.toHaveBeenCalled();
+  });
+
+  test("rejects a non-allowlisted docker image with 403 (not 500) and cleans up the character", async () => {
+    createAgent.mockRejectedValueOnce(
+      new AgentImageNotAllowedError(
+        "registry.example.test/waifu-agent:latest",
+        "not_allowlisted",
+      ),
+    );
+
+    const response = await app.fetch(
+      new Request("https://api.example.test/", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "X-Service-Key": "svc",
+        },
+        body: JSON.stringify({
+          tokenContractAddress: "0x0000000000000000000000000000000000000009",
+          chain: "bsc",
+          chainId: 56,
+          tokenName: "Waifu Smoke",
+          tokenTicker: "WSMOKE",
+          launchType: "native",
+          character: { name: "Smoke Agent" },
+          account: {
+            primaryWalletAddress: "0x0000000000000000000000000000000000000001",
+            chainType: "evm",
+          },
+          container: {
+            image: "registry.example.test/waifu-agent:latest",
+          },
+        }),
+      }),
+      { WAIFU_SERVICE_KEY: "svc" },
+    );
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({
+      success: false,
+      code: "agent_image_not_allowed",
+    });
+    expect(createAgent).toHaveBeenCalledTimes(1);
+    expect(deleteCharacter).toHaveBeenCalledWith("character-1");
     expect(enqueueAgentProvision).not.toHaveBeenCalled();
   });
 

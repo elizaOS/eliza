@@ -29,6 +29,7 @@ import {
   type NewAgentSandboxBackup,
 } from "../../db/schemas/agent-sandboxes";
 import { jobs } from "../../db/schemas/jobs";
+import { containersEnv } from "../config/containers-env";
 import { getElizaAgentPublicWebUiUrl } from "../eliza-agent-web-ui";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { assertSafeOutboundUrl } from "../security/outbound-url";
@@ -52,6 +53,7 @@ import {
 } from "./ai-billing";
 import { aiBillingRecordsService } from "./ai-billing-records";
 import { apiKeysService } from "./api-keys";
+import { imageRequiresDigestPin, isCodingContainerImageAllowed } from "./coding-containers";
 import type { CreditReconciliationResult, CreditReservation } from "./credits";
 import type { DockerSandboxMetadata } from "./docker-sandbox-provider";
 import {
@@ -148,6 +150,52 @@ export class AgentQuotaExceededError extends Error {
     this.name = "AgentQuotaExceededError";
     this.count = count;
     this.max = max;
+  }
+}
+
+/**
+ * Thrown by createAgent when a caller-supplied `dockerImage` is not permitted by
+ * the managed-agent image allowlist, or (when the digest-pin gate is armed) is
+ * not pinned to a full sha256 digest (H1, #12230). Throwing here — before ANY
+ * DB write or `docker pull` — is what makes the gate fail-closed across every
+ * route that reaches createAgent, not just `POST /api/v1/eliza/agents`.
+ */
+export class AgentImageNotAllowedError extends Error {
+  readonly image: string;
+  readonly reason: "not_allowlisted" | "not_digest_pinned";
+  constructor(image: string, reason: "not_allowlisted" | "not_digest_pinned") {
+    super(
+      reason === "not_digest_pinned"
+        ? `Docker image '${image}' must be pinned to a full sha256 digest (e.g. ghcr.io/org/repo@sha256:<64 hex>).`
+        : `Docker image '${image}' is not in the managed-agent image allowlist.`,
+    );
+    this.name = "AgentImageNotAllowedError";
+    this.image = image;
+    this.reason = reason;
+  }
+}
+
+/**
+ * Fail-closed gate for a caller-supplied managed-agent `dockerImage` (H1,
+ * #12230). No image → the default first-party runtime image is used downstream,
+ * nothing to gate. A supplied image must be on {@link
+ * containersEnv.agentImageAllowlist} and, when the digest-pin gate is armed,
+ * content-addressed. Throws {@link AgentImageNotAllowedError} otherwise.
+ */
+export function assertAgentImageAllowed(dockerImage: string | undefined): void {
+  if (!dockerImage) return;
+  const allowlist = containersEnv.agentImageAllowlist();
+  if (!isCodingContainerImageAllowed(dockerImage, allowlist)) {
+    logger.warn("[agent-sandbox] docker image rejected by allowlist", {
+      image: dockerImage,
+    });
+    throw new AgentImageNotAllowedError(dockerImage, "not_allowlisted");
+  }
+  if (imageRequiresDigestPin(dockerImage, containersEnv.requireDigestPinnedImages())) {
+    logger.warn("[agent-sandbox] docker image rejected: digest pin required", {
+      image: dockerImage,
+    });
+    throw new AgentImageNotAllowedError(dockerImage, "not_digest_pinned");
   }
 }
 
@@ -711,6 +759,13 @@ export class ElizaSandboxService {
     agent: AgentSandbox;
     idempotent: boolean;
   }> {
+    // SECURITY (H1, #12230): gate a caller-supplied image against the managed-
+    // agent allowlist BEFORE any DB write or provisioning. Throws
+    // AgentImageNotAllowedError (→ 4xx at the route) so a non-allowlisted image
+    // provisions nothing. Runs for EVERY createAgent caller — the gate lives in
+    // the shared service path, not per-route.
+    assertAgentImageAllowed(params.dockerImage);
+
     logger.info("[agent-sandbox] Creating agent", {
       orgId: params.organizationId,
       name: params.agentName,

@@ -26,6 +26,7 @@ import { getMaxNonTerminalAgentsForOrg } from "@/lib/constants/agent-sandbox-quo
 import { checkAgentCreditGate } from "@/lib/services/agent-billing-gate";
 import { stripReservedElizaConfigKeys } from "@/lib/services/eliza-agent-config";
 import {
+  AgentImageNotAllowedError,
   AgentQuotaExceededError,
   elizaSandboxService,
 } from "@/lib/services/eliza-sandbox";
@@ -196,6 +197,14 @@ app.post("/", async (c) => {
           max: error.max,
         });
         return c.json(errorEnvelope(error.message), 429);
+      }
+      if (error instanceof AgentImageNotAllowedError) {
+        logger.warn("[compat] Agent creation blocked: image not allowed", {
+          orgId: user.organization_id,
+          image: error.image,
+          reason: error.reason,
+        });
+        return c.json(errorEnvelope(error.message), 403);
       }
       throw error;
     }

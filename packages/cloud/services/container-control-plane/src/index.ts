@@ -1,3 +1,4 @@
+import { timingSafeEqual } from "node:crypto";
 import { agentSandboxesRepository } from "@elizaos/cloud-shared/db/repositories/agent-sandboxes";
 import { userCharactersRepository } from "@elizaos/cloud-shared/db/repositories/characters";
 import { dockerNodesRepository } from "@elizaos/cloud-shared/db/repositories/docker-nodes";
@@ -45,7 +46,7 @@ interface ForwardedAuth {
   organizationId: string;
 }
 
-const app = new Hono();
+export const app = new Hono();
 const client = getHetznerContainersClient();
 
 function errorStatus(error: unknown): number {
@@ -95,19 +96,49 @@ function requireForwardedAuth(c: Context): ForwardedAuth {
   return { userId, organizationId };
 }
 
+/**
+ * Constant-time string equality. Returns false on any length mismatch (that
+ * length leak is unavoidable and non-sensitive) without branching on content,
+ * so a token compare can't be timed byte-by-byte.
+ */
+export function timingSafeStringEqual(a: string, b: string): boolean {
+  const aBuf = Buffer.from(a, "utf8");
+  const bBuf = Buffer.from(b, "utf8");
+  if (aBuf.length !== bBuf.length) return false;
+  return timingSafeEqual(aBuf, bBuf);
+}
+
+/**
+ * SECURITY (H4, #12230): fail CLOSED. The control-plane sidecar performs
+ * privileged, cross-tenant container mutations; when the shared internal token
+ * is unset the correct posture is "refuse everything" (503), NOT "allow
+ * everything" (the previous `if (expectedToken)` skipped auth entirely when the
+ * env was missing). The supplied-vs-expected compare is constant-time so the
+ * token can't be recovered by timing.
+ */
 function requireInternalToken(c: Context): void {
   const expectedToken = process.env.CONTAINER_CONTROL_PLANE_TOKEN?.trim();
-  if (expectedToken) {
-    const supplied = c.req.header("x-container-control-plane-token")?.trim();
-    if (supplied !== expectedToken) {
-      throw new Response(
-        JSON.stringify({ success: false, error: "Unauthorized" }),
-        {
-          status: 401,
-          headers: { "content-type": "application/json" },
-        },
-      );
-    }
+  if (!expectedToken) {
+    logger.error(
+      "[container-control-plane] CONTAINER_CONTROL_PLANE_TOKEN unset — refusing request (fail-closed)",
+    );
+    throw new Response(
+      JSON.stringify({
+        success: false,
+        error: "Control-plane token not configured",
+      }),
+      {
+        status: 503,
+        headers: { "content-type": "application/json" },
+      },
+    );
+  }
+  const supplied = c.req.header("x-container-control-plane-token")?.trim();
+  if (!supplied || !timingSafeStringEqual(supplied, expectedToken)) {
+    throw new Response(JSON.stringify({ success: false, error: "Forbidden" }), {
+      status: 403,
+      headers: { "content-type": "application/json" },
+    });
   }
 }
 
@@ -1226,13 +1257,18 @@ const idleTimeout = Math.min(
     Number(process.env.CONTAINER_CONTROL_PLANE_IDLE_TIMEOUT_SECONDS ?? 255),
   ),
 );
-Bun.serve({
-  fetch: app.fetch,
-  hostname: process.env.HOST ?? "127.0.0.1",
-  idleTimeout,
-  port,
-});
+// Only bind a socket when this module is the process entrypoint. Importing it
+// (e.g. from an integration test that drives `app.fetch` directly) must NOT
+// start a listener.
+if (import.meta.main) {
+  Bun.serve({
+    fetch: app.fetch,
+    hostname: process.env.HOST ?? "127.0.0.1",
+    idleTimeout,
+    port,
+  });
 
-logger.info(
-  `[container-control-plane] listening on ${process.env.HOST ?? "127.0.0.1"}:${port}`,
-);
+  logger.info(
+    `[container-control-plane] listening on ${process.env.HOST ?? "127.0.0.1"}:${port}`,
+  );
+}

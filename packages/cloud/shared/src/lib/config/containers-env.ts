@@ -173,6 +173,41 @@ export const containersEnv = {
   },
 
   /**
+   * Allowlist of image refs/prefixes permitted for the MANAGED-AGENT lane
+   * (`POST /api/v1/eliza/agents` → `elizaSandboxService.createAgent`), enforced
+   * in the shared `createAgent` path so every route inherits it (H1, #12230).
+   *
+   * SECURITY: the managed-agent route accepts a caller-supplied `dockerImage`
+   * validated only by a permissive regex, then `docker pull`/`docker run`s it on
+   * the shared fleet. Without this gate any authenticated org could run an
+   * arbitrary image next to other tenants. This is that gate.
+   *
+   * DELIBERATELY SEPARATE from {@link codingContainerImageAllowlist}: managed
+   * agents ship ONLY the first-party runtime image, so the default is
+   * `ghcr.io/elizaos/*` and nothing else — NOT the coding lane's broader BYO set
+   * (`ghcr.io/dexploarer/*`, `ghcr.io/waifufun/*`). Operators widen via
+   * `AGENT_IMAGE_ALLOWLIST`.
+   *
+   * Format + matching rules are identical to the other allowlists
+   * (comma-separated glob prefixes; trailing `*` = prefix match; no `*` = exact;
+   * a bare `*` opts out). The call site ({@link isCodingContainerImageAllowed})
+   * is fail-closed, so an explicit empty env denies every managed-agent custom
+   * image rather than silently opening the gate.
+   */
+  agentImageAllowlist(): string[] {
+    const env = getCloudAwareEnv();
+    const raw = pick(env.AGENT_IMAGE_ALLOWLIST, env.ELIZA_AGENT_IMAGE_ALLOWLIST);
+    if (raw === undefined) {
+      // First-party elizaOS runtime images only. Operators widen via env.
+      return ["ghcr.io/elizaos/*"];
+    }
+    return raw
+      .split(",")
+      .map((entry) => entry.trim())
+      .filter((entry) => entry.length > 0);
+  },
+
+  /**
    * First-party TEMPLATE image stamped onto a template app (one created WITHOUT a
    * user repo) at create time, so create -> deploy resolves to a prebuilt,
    * allowlisted image instead of failing with "no image to deploy".
