@@ -54,6 +54,14 @@ import { Capacitor } from "@capacitor/core";
 import { setElizaApiBase } from "@elizaos/shared";
 import { isElectrobunRuntime } from "@elizaos/ui/bridge";
 
+declare global {
+  interface Window {
+    __ELIZA_WS_BASE__?: unknown;
+    __ELIZAOS_WS_BASE__?: unknown;
+    [key: `__${string}_WS_BASE__`]: unknown;
+  }
+}
+
 const LOOPBACK_HOSTNAMES = new Set([
   "localhost",
   "127.0.0.1",
@@ -66,10 +74,9 @@ function isLoopbackHostname(hostname: string): boolean {
   return LOOPBACK_HOSTNAMES.has(hostname.toLowerCase());
 }
 
-function setInjectedGlobal(key: string, value: string): void {
+function setInjectedGlobal(key: `__${string}_WS_BASE__`, value: string): void {
   try {
-    const w = window as unknown as Record<string, unknown>;
-    w[key] = value;
+    window[key] = value;
   } catch {
     // best-effort — never block boot
   }
@@ -141,13 +148,9 @@ function injectedWsBaseIsForeignLoopback(value: unknown): boolean {
  */
 export function repairWebSameOriginWsBase(): void {
   if (!isPlainWebSameOriginContext()) return;
-  const w = window as unknown as {
-    __ELIZA_WS_BASE__?: unknown;
-    __ELIZAOS_WS_BASE__?: unknown;
-  };
   const anyForeign =
-    injectedWsBaseIsForeignLoopback(w.__ELIZA_WS_BASE__) ||
-    injectedWsBaseIsForeignLoopback(w.__ELIZAOS_WS_BASE__);
+    injectedWsBaseIsForeignLoopback(window.__ELIZA_WS_BASE__) ||
+    injectedWsBaseIsForeignLoopback(window.__ELIZAOS_WS_BASE__);
   if (!anyForeign) return;
 
   // 1) WS base → same-origin wss://<host>.
@@ -155,13 +158,12 @@ export function repairWebSameOriginWsBase(): void {
   setInjectedGlobal("__ELIZA_WS_BASE__", wsTarget);
   setInjectedGlobal("__ELIZAOS_WS_BASE__", wsTarget);
   try {
-    const wRecord = window as unknown as Record<string, unknown>;
-    for (const key of Object.keys(wRecord)) {
+    for (const key of Object.keys(window)) {
       if (
         /^__[A-Z0-9]+_WS_BASE__$/.test(key) &&
-        injectedWsBaseIsForeignLoopback(wRecord[key])
+        injectedWsBaseIsForeignLoopback(window[key as `__${string}_WS_BASE__`])
       ) {
-        setInjectedGlobal(key, wsTarget);
+        setInjectedGlobal(key as `__${string}_WS_BASE__`, wsTarget);
       }
     }
   } catch {

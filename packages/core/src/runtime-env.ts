@@ -117,7 +117,10 @@ function resolveEnvEntry(
 	const direct = presentEnvValue(env[key]);
 	if (direct !== undefined) return { key, value: direct };
 
-	for (const [brandKey, elizaKey] of getBootConfigEnvAliases() ?? []) {
+	const aliases = getBootConfigEnvAliases();
+	if (!aliases) return null;
+
+	for (const [brandKey, elizaKey] of aliases) {
 		const partner =
 			key === brandKey ? elizaKey : key === elizaKey ? brandKey : null;
 		if (!partner) continue;
