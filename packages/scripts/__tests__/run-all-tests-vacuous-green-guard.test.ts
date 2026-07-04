@@ -118,13 +118,19 @@ describe("run-all-tests --min-tasks vacuous-green guard", () => {
   test(
     "plan mode still succeeds with a valid --min-tasks and reaches the floor",
     () => {
-      // A real full plan easily clears a small floor; plan mode exits before the
-      // guard would run tasks, so this proves the flag parses and does not break
-      // discovery.
-      const result = run(["--plan=json", "--min-tasks=10"]);
+      // Use a stable authored package instead of scanning the entire workspace:
+      // this file also creates/removes a temporary package in another test, and
+      // bun:test may overlap cases enough for an all-workspace plan to observe
+      // that transient fixture. The assertion we need here is narrower: a
+      // valid floor that is met must not make plan mode fail.
+      const result = run([
+        "--plan=json",
+        "--filter=@elizaos/agent",
+        "--min-tasks=1",
+      ]);
       expect(result.status).toBe(0);
       const parsed = JSON.parse(result.stdout);
-      expect(parsed.summary.taskCount).toBeGreaterThan(10);
+      expect(parsed.summary.taskCount).toBeGreaterThanOrEqual(1);
     },
     SPAWN_TIMEOUT_MS,
   );
