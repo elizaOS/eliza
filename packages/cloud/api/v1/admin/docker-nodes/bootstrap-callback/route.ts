@@ -102,14 +102,16 @@ async function __hono_POST(request: Request) {
         hostname !== existing.hostname ||
         sshUser !== existing.ssh_user ||
         sshPort !== existing.ssh_port;
+      const pinned = existing.host_key_fingerprint;
+      const fingerprintMatches =
+        pinned !== null &&
+        hostKeyFingerprint !== undefined &&
+        timingSafeEquals(hostKeyFingerprint, pinned);
+      const fingerprintChanged =
+        hostKeyFingerprint !== undefined &&
+        (pinned === null || !timingSafeEquals(hostKeyFingerprint, pinned));
 
       if (identityChanged) {
-        const pinned = existing.host_key_fingerprint;
-        const fingerprintMatches =
-          pinned !== null &&
-          hostKeyFingerprint !== undefined &&
-          timingSafeEquals(hostKeyFingerprint, pinned);
-
         if (!fingerprintMatches) {
           logger.warn(
             "[admin/docker-nodes/bootstrap-callback] rejected node-identity mutation without matching host key fingerprint",
@@ -125,6 +127,20 @@ async function __hono_POST(request: Request) {
           );
         }
       }
+      if (fingerprintChanged) {
+        logger.warn(
+          "[admin/docker-nodes/bootstrap-callback] rejected host-key fingerprint mutation on existing node",
+          { nodeId },
+        );
+        return Response.json(
+          {
+            success: false,
+            error:
+              "Host key fingerprint cannot be changed through re-bootstrap; rotate it through an authenticated control-plane operation.",
+          },
+          { status: 409 },
+        );
+      }
 
       // Identity fields are only ever taken from the request on a
       // fingerprint-proven re-bootstrap (identityChanged && verified above);
@@ -135,8 +151,7 @@ async function __hono_POST(request: Request) {
         ssh_port: identityChanged ? sshPort : existing.ssh_port,
         ssh_user: identityChanged ? sshUser : existing.ssh_user,
         capacity,
-        host_key_fingerprint:
-          hostKeyFingerprint ?? existing.host_key_fingerprint,
+        host_key_fingerprint: existing.host_key_fingerprint,
         status: "unknown",
         metadata: {
           ...((existing.metadata as Record<string, unknown>) ?? {}),

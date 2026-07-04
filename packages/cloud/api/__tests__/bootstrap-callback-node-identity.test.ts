@@ -199,6 +199,23 @@ describe("bootstrap-callback node-identity guard (#12876)", () => {
     expect(lastUpdateArg?.capacity).toBe(16);
   });
 
+  test("rejects host-key fingerprint mutation even when SSH identity is unchanged", async () => {
+    const res = await post({
+      nodeId: "node-1",
+      hostname: "10.0.0.1",
+      sshUser: "root",
+      sshPort: 22,
+      hostKeyFingerprint: "SHA256:attacker-first-pin",
+    });
+
+    expect(res.status).toBe(409);
+    const json = (await res.json()) as { success: boolean; error: string };
+    expect(json.success).toBe(false);
+    expect(json.error).toContain("Host key fingerprint");
+    expect(mockUpdate).not.toHaveBeenCalled();
+    expect(stored?.host_key_fingerprint).toBe("SHA256:pinned-fingerprint");
+  });
+
   test("first bootstrap of a brand-new node still creates the row", async () => {
     stored = null; // findByNodeId returns null → insert path
 
