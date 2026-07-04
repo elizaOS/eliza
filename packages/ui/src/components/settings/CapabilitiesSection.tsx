@@ -1,3 +1,12 @@
+/**
+ * Settings → Capabilities section (the `capabilities` section id). Toggles the
+ * wallet / browser / computer-use capabilities on the App state, sets the
+ * proactive-interaction chattiness (persisted to `config.env` under
+ * ELIZA_PROACTIVE_INTERACTIONS), manages auto-training config, and hosts the
+ * Capability Router connect form for endpoint- or cloud-hosted capability
+ * providers.
+ */
+
 import {
   AlertTriangle,
   Cloud,

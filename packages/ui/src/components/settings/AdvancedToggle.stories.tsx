@@ -1,3 +1,8 @@
+/**
+ * Storybook stories for the AdvancedToggle switch that gates advanced settings
+ * sections, rendered under a mock App context.
+ */
+
 import type { Meta, StoryObj } from "@storybook/react";
 import { withMockApp } from "../../storybook/mock-providers.helpers";
 import { AdvancedToggle } from "./AdvancedToggle";

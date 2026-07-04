@@ -1,4 +1,9 @@
 // @vitest-environment jsdom
+/**
+ * Renders the presentational VoiceSection with default prefs and asserts its
+ * sub-panels mount and that the removed strategy/privacy controls stay absent.
+ * jsdom, no backend.
+ */
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";

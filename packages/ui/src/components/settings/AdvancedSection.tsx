@@ -1,3 +1,10 @@
+/**
+ * Settings → "Backup & Reset" section body (the `advanced` section registered
+ * in settings-sections.ts). Drives local-agent backup export/import — create,
+ * list, and restore via the typed API client — alongside developer- and
+ * preview-mode toggles and a confirmed reset-to-defaults action.
+ */
+
 import { AlertTriangle, Download, Trash2, Upload } from "lucide-react";
 import { useCallback, useState } from "react";
 import { useAgentElement } from "../../agent-surface";

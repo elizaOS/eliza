@@ -1,4 +1,9 @@
 // @vitest-environment jsdom
+/**
+ * Renders BackgroundSettingsSection against a seeded in-memory App store and
+ * asserts it mounts the unified background controls and forwards a preset pick
+ * to `setBackgroundConfig`. jsdom; the background-image module is mocked.
+ */
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { __setAppValueForTests } from "../../state/app-store";

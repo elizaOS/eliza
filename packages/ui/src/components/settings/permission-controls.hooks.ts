@@ -1,3 +1,11 @@
+/**
+ * Desktop permission state for the Permissions settings. Loads the full
+ * permission snapshot from the API, subscribes to bridge permission events, and
+ * reconciles it with renderer-side probes (camera/microphone/location/
+ * notifications) whose true grant state the OS layer can't see. Exposes
+ * `useDesktopPermissionsState` to the settings UI.
+ */
+
 import { PERMISSION_IDS } from "@elizaos/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {

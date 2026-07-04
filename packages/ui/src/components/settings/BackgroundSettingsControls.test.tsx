@@ -1,4 +1,9 @@
 // @vitest-environment jsdom
+/**
+ * Renders BackgroundSettingsControls against a seeded in-memory App store to
+ * assert undo/redo affordances appear only when history exists and fire the
+ * store callbacks. jsdom, no backend.
+ */
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { __setAppValueForTests } from "../../state/app-store";

@@ -1,3 +1,10 @@
+/**
+ * Selectable provider chip used by ProviderSwitcher — a pill button showing a
+ * provider's icon, label, and status (active/selected/current). Agent-
+ * addressable via `useAgentElement`; selection is fully controlled by the
+ * parent.
+ */
+
 import { CheckCircle2 } from "lucide-react";
 import type { ComponentType } from "react";
 import { useAgentElement } from "../../agent-surface";

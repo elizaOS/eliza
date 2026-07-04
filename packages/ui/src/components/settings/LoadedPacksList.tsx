@@ -1,3 +1,9 @@
+/**
+ * Renders the loaded content packs as toggleable settings rows (in the
+ * Appearance section), marking the active pack and calling back on toggle. Each
+ * row is agent-addressable via `useAgentElement`.
+ */
+
 import type { ResolvedContentPack } from "@elizaos/shared";
 import { Check } from "lucide-react";
 import { useAgentElement } from "../../agent-surface";

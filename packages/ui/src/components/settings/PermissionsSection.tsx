@@ -1,3 +1,11 @@
+/**
+ * Settings → Permissions section (the `permissions` section id). Lists the OS-
+ * level permissions the agent depends on (from SYSTEM_PERMISSIONS/CAPABILITIES),
+ * shows each one's granted/denied status, and requests or reconciles them across
+ * platforms — mobile via the native mobile-signals plugin, desktop via the
+ * bridge. Also hosts the permission-priming card.
+ */
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { PermissionId, PermissionState } from "../../api";
 import {

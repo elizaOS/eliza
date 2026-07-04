@@ -1,3 +1,11 @@
+/**
+ * Provider API-key / credential form for the Models & Providers settings.
+ * Partitions a plugin's parameters into a Credentials group (required or
+ * sensitive keys) and an Advanced disclosure, renders them through
+ * ConfigRenderer, and gates saving behind OWNER role. Server-side validation
+ * warnings/errors flow in as props and surface inline.
+ */
+
 import { useCallback, useMemo, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
 import { client, type PluginParamDef } from "../../api";

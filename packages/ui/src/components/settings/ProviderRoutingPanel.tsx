@@ -1,3 +1,10 @@
+/**
+ * Presentational Eliza Cloud model-routing panel for ProviderSwitcher: a primary
+ * large-tier model dropdown plus an "Model overrides" disclosure that renders
+ * the per-tier ConfigRenderer schema. All state (options, values, save status)
+ * is controlled by the parent via `useCloudModelConfig`.
+ */
+
 import type { ModelOption } from "@elizaos/shared";
 import { CheckCircle2, Loader2 } from "lucide-react";
 import { ConfigRenderer } from "../../components/config-ui/config-renderer";

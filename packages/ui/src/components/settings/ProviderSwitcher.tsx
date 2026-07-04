@@ -1,3 +1,13 @@
+/**
+ * Settings → "Models & Providers" section (the `ai-model` section id). Thin
+ * compositional shell that wires the provider hooks
+ * (useProviderEntries/useProviderSelection/useProviderBootstrap/
+ * useCloudModelConfig) to the presentational pieces: the ProviderCard grid, the
+ * per-provider panels (cloud tier dropdowns, API-key form, local models), and
+ * the routing matrix. `ActiveProviderSummary` renders the single active-provider
+ * row for other surfaces. Section body lazy-loaded via settings-sections.ts.
+ */
+
 import { useCallback, useMemo } from "react";
 import { useDefaultProviderPresets } from "../../hooks/useDefaultProviderPresets";
 import {

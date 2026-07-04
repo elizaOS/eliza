@@ -1,3 +1,12 @@
+/**
+ * Desktop-only workspace section: loads the DesktopWorkspaceSnapshot (displays,
+ * power/idle, clipboard, paths) from the desktop bridge, exposes actions to open
+ * companion surface windows, relaunch the shell / restart the backend, and read
+ * the clipboard, and embeds the chat-overlay hotkey control and the diagnostics
+ * card. Only active under the Electrobun runtime; renders nothing meaningful in
+ * the browser.
+ */
+
 import { Monitor, RefreshCw } from "lucide-react";
 import {
   type ReactNode,

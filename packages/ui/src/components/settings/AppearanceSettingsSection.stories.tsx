@@ -1,3 +1,8 @@
+/**
+ * Storybook stories for the Settings → Appearance section across theme modes
+ * (system/dark/light) and UI language, using a mock App context.
+ */
+
 import type { Meta, StoryObj } from "@storybook/react";
 import { mockApp } from "../../storybook/mock-providers.helpers";
 import { AppearanceSettingsSection } from "./AppearanceSettingsSection";

@@ -1,3 +1,12 @@
+/**
+ * Settings → Runtime section (the `runtime` section id). Shows where the agent
+ * currently runs (local / remote / cloud, from `GET /api/runtime/mode` with a
+ * local heuristic fallback) and lets the user switch targets: connect to a
+ * remote agent URL+token, or migrate the desktop state dir / pick a workspace
+ * folder via the Electrobun bridge. The Local option is hidden on builds that
+ * ship without an on-device runtime (store build, Android cloud build).
+ */
+
 import { Cloud, Laptop, type LucideIcon, RadioTower } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { useAgentElement } from "../../agent-surface";

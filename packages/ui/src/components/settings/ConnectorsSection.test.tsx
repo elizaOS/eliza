@@ -1,4 +1,9 @@
 // @vitest-environment jsdom
+/**
+ * Renders ConnectorsSection with a mocked App context and connector-mode
+ * registry to assert icon fallbacks (no raw emoji glyphs) and the setup-panel
+ * routing. jsdom, no backend.
+ */
 
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

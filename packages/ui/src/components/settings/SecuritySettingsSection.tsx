@@ -1,3 +1,10 @@
+/**
+ * Settings → Security section (the `security` section id), OWNER-only behind a
+ * RoleGate. Surfaces the access mode / bind endpoint (loopback vs all-
+ * interfaces, with private/public host warnings), the remote-access password,
+ * and the active device sessions with per-session revoke.
+ */
+
 import {
   KeyRound,
   Laptop,

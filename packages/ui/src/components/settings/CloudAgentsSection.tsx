@@ -1,3 +1,11 @@
+/**
+ * Cloud-agents management panel for the Cloud settings group. Lists the
+ * signed-in user's Eliza Cloud agents and drives their lifecycle — create,
+ * rename, suspend/resume (with status polling), delete (with job polling), and
+ * "wake then switch to" — through the typed cloud API client. The active cloud
+ * server is tracked in persisted App state so the current agent is highlighted.
+ */
+
 import {
   Bot,
   Check,

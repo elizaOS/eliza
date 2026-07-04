@@ -1,3 +1,11 @@
+/**
+ * Full voice-configuration view: TTS/ASR provider + model selection persisted
+ * to `config.messages` via the API client, an in-panel test-playback, the
+ * wake-word section, and the desktop-only Talk Mode panel (Electrobun bridge).
+ * Barrel-exported from components/index.ts for consumers outside the Settings
+ * section registry.
+ */
+
 import { ASR_PROVIDERS } from "@elizaos/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAgentElement } from "../../agent-surface";

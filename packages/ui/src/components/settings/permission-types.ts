@@ -1,3 +1,10 @@
+/**
+ * Static catalog + presentation constants for the Permissions settings: the
+ * system-permission and capability definitions (labels, icons, platforms), the
+ * per-status badge labels, shared panel class names, refresh delays, and a
+ * translate-with-fallback helper. Pure data; the section components render it.
+ */
+
 import type { PermissionId, PermissionStatus } from "../../api";
 
 /** Permission definition for UI rendering. */
