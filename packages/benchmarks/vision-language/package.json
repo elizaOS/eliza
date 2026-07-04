@@ -21,7 +21,7 @@
     "smoke": "bun run src/runner.ts --smoke",
     "test": "vitest run",
     "test:watch": "vitest",
-    "lint": "bunx @biomejs/biome check .",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
