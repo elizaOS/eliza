@@ -1,3 +1,7 @@
+// Unit tests for the `[FOLLOWUPS]` marker parser: chip body parsing (reply /
+// navigate / prompt kinds, defaulting, MAX_FOLLOWUPS cap) and region detection.
+// Pure functions over string fixtures — no model, no render.
+
 import { describe, expect, it } from "vitest";
 import {
   findFollowupsRegions,

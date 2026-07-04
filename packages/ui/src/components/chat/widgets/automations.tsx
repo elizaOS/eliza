@@ -1,11 +1,12 @@
+/**
+ * Home widget summarizing the automations the agent is actively running. The
+ * unified set (`useUnifiedTasks`) merges automations (GET /api/automations) with
+ * LifeOps scheduled items (GET /api/lifeops/scheduled-tasks) client-side — this
+ * widget is a read-only surface over that merge, never a second scheduler or a
+ * store mutation. Tapping navigates to the full Automations view.
+ */
 import { Workflow } from "lucide-react";
 import { useCallback } from "react";
-// Real wire types (READ, not guessed):
-//   - AutomationItem: packages/ui/src/api/client-types-config.ts
-//   - AutomationStatus = "active" | "paused" | "completed" | "draft" | "system"
-// The unified set merges automations (GET /api/automations) with LifeOps
-// scheduled items (GET /api/lifeops/scheduled-tasks) client-side — see
-// hooks/useUnifiedTasks.ts. No second scheduler, no store touch.
 import type { AutomationItem } from "../../../api/client-types-config";
 import { useUnifiedTasks } from "../../../hooks/useUnifiedTasks";
 import type { WidgetProps } from "../../../widgets/types";

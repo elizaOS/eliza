@@ -1,3 +1,7 @@
+// Unit tests for the connector-send-as helpers (account usability, picker-show
+// gating, send-as metadata build/merge, account-required error detection).
+// Pure functions over fixture records — no model, no network.
+
 import { describe, expect, it } from "vitest";
 import type { ConnectorAccountRecord } from "../../api/client-agent";
 import {

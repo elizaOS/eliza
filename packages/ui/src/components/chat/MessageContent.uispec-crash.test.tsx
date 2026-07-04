@@ -1,14 +1,12 @@
 // @vitest-environment jsdom
 //
-// Regression for the HIGH-severity demo-killer: a model-emitted UiSpec that is
-// malformed in a way the renderer can't fully normalize (element missing
-// `props`/`children`, or an array prop that isn't an array) used to throw out
-// of MessageUiSpecBlock — past every view boundary to the app ROOT error
-// screen. Because the offending message re-hydrates from conversation history,
-// "Try Again" and full restarts re-crashed it, bricking the app until the
-// conversation was cleared. The fix defaults missing props/children in
-// ElementRenderer and wraps the UiRenderer in an ErrorBoundary, so any residual
-// render throw is contained to the single widget with a "View JSON" fallback.
+// Regression guard: a malformed model-emitted UiSpec (element missing
+// `props`/`children`, or an array prop that isn't an array) must NOT throw out
+// of MessageUiSpecBlock and reach the app-root error screen — which would brick
+// the app, since the offending message re-hydrates from conversation history.
+// Asserts that ElementRenderer defaults missing props/children and the
+// UiRenderer's ErrorBoundary contains any residual render throw to the single
+// widget with a "View JSON" fallback. jsdom + Testing Library.
 
 import { cleanup, render, screen } from "@testing-library/react";
 import * as React from "react";

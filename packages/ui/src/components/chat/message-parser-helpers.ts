@@ -1,3 +1,19 @@
+/**
+ * Canonical parser that turns a raw assistant/user message string into the
+ * ordered `Segment[]` the chat surfaces render: prose, fenced/inline code,
+ * `[CONFIG:…]` blocks, UiSpec JSON, JSONL patches, permission cards, hidden
+ * reasoning/tool tags, and any registry-driven inline widget
+ * (`[CHOICE]`/`[FOLLOWUPS]`/`[FORM]`/`[TASK]`/plugin markers). `parseSegments`
+ * is the single entry point both `MessageContent` (ChatView) and
+ * `InlineWidgetText` (ContinuousChatOverlay) delegate to, so the same agent
+ * output renders identically on every surface.
+ *
+ * The message string is UNTRUSTED agent output, so the patch/UiSpec path is the
+ * attack surface: `sanitizePatchValue` / `createSafeRecord` strip
+ * prototype-pollution keys (`__proto__`/`constructor`/`prototype`) and return
+ * null-prototype containers. See `message-parser-helpers.fuzz.test.ts` for the
+ * hardening invariants.
+ */
 import { stripAssistantStageDirections } from "@elizaos/shared";
 import type { ConversationMessage } from "../../api/client-types-chat";
 import type { PluginInfo } from "../../api/client-types-config";

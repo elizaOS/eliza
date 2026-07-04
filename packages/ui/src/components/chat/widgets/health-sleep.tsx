@@ -1,3 +1,10 @@
+/**
+ * Icon-first home Sleep widget: shows last night's sleep duration plus an
+ * "Irregular" status badge when the rhythm is off, and self-hides when the
+ * sleep pattern is healthy or there is no episode yet. Polls the health sleep
+ * feed only while the document is visible and the session is authenticated.
+ * Registered as `HEALTH_HOME_WIDGET`; tapping navigates to the health surface.
+ */
 import { Moon } from "lucide-react";
 import type { ComponentType } from "react";
 import { useCallback, useEffect, useState } from "react";

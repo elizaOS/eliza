@@ -1,3 +1,7 @@
+// Unit tests for the `[CHOICE]` marker parser: option body parsing
+// (value=label, equals-in-label) and region detection. Pure functions over
+// string fixtures — no model, no render.
+
 import { describe, expect, it } from "vitest";
 import { findChoiceRegions, parseChoiceBody } from "./message-choice-parser";
 

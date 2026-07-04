@@ -1,3 +1,7 @@
+// Unit tests for `parseSegments` code handling: lifting fenced code blocks into
+// code segments (with language) and splitting inline `code` spans out of prose.
+// Pure functions over string fixtures — no model, no render.
+
 import { describe, expect, it } from "vitest";
 import {
   conversationTranscriptText,

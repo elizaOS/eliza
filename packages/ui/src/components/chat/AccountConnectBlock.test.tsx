@@ -1,4 +1,9 @@
 // @vitest-environment jsdom
+//
+// Render test for AccountConnectBlock: a provider row + Add-account button per
+// offered connector, the live per-provider account count, and opening the
+// AddAccountDialog on click. jsdom + Testing Library with the API client
+// (listAccounts) hoisted-mocked — no network.
 
 import {
   cleanup,

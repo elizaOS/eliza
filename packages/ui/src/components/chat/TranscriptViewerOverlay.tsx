@@ -1,3 +1,14 @@
+/**
+ * Full-screen overlay that opens a voice-transcript chat attachment: shows the
+ * per-speaker segments (or plain text), plays the recorded audio, and supports
+ * copy / download / share / inline edit / delete of the stored transcript record.
+ *
+ * The stored `transcriptId` is not always carried on the re-served attachment,
+ * so it is also embedded as a leading HTML comment in the transcript markdown
+ * (`TRANSCRIPT_MARKER`) that round-trips through the server's extracted `text`;
+ * the viewer strips it for display and uses it to persist edits. Mounted from a
+ * transcript attachment via `createPortal` at the shell-overlay z-layer.
+ */
 import type { TranscriptSegment } from "@elizaos/shared/transcripts";
 import { transcriptPlainText } from "@elizaos/shared/transcripts";
 import {

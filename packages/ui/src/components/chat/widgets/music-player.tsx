@@ -1,3 +1,11 @@
+/**
+ * Chat-sidebar Music widget: polls `/music-player/status` (only while the
+ * document is visible and the session is authenticated) and renders the
+ * currently-streaming track with play/pause controls backed by a single
+ * `<audio>` element. Renders an empty state when nothing is streaming so the
+ * right rail stays quiet. Registered via `MUSIC_PLAYER_WIDGET` in
+ * `music-player.helpers.ts`.
+ */
 import { Music, Pause, Play, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { fetchWithCsrf } from "../../../api/csrf-client";

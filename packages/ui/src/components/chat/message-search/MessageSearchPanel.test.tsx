@@ -1,4 +1,9 @@
 // @vitest-environment jsdom
+//
+// Render test for MessageSearchPanel: min-query gating, debounced search with
+// ranked snippet results, jump-to-result (closes the panel), empty/error
+// states, and Escape-to-close. jsdom + Testing Library with the search API
+// mocked — no network.
 
 import {
   cleanup,
