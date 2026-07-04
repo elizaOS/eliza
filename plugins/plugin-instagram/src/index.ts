@@ -1,3 +1,11 @@
+/**
+ * Plugin entry for the Instagram connector: assembles the `Plugin` object
+ * (registering `InstagramService` and the workflow credential provider) and
+ * re-exports the package's public surface. The `init()` hook registers the
+ * connector-account provider with the runtime's `ConnectorAccountManager`,
+ * warning rather than throwing when the manager is absent. DMs route through the
+ * `MESSAGE` connector and comments through `POST`; no actions are registered.
+ */
 import { getConnectorAccountManager, logger, type Plugin } from "@elizaos/core";
 import { createInstagramConnectorAccountProvider } from "./connector-account-provider";
 import { INSTAGRAM_SERVICE_NAME } from "./constants";

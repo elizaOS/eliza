@@ -1,3 +1,8 @@
+/**
+ * Unit tests for `MatrixWorkflowCredentialProvider`: asserts it yields Matrix
+ * credentials only when both access token and homeserver are set, against an
+ * in-memory `getSetting` stub.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { MatrixWorkflowCredentialProvider } from "../workflow-credential-provider.js";

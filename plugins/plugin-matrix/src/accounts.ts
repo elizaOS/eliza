@@ -1,3 +1,9 @@
+/**
+ * Resolves per-account Matrix connector settings from top-level env/character
+ * values (the implicit `default` account), a `MATRIX_ACCOUNTS` JSON map, and
+ * `character.settings.matrix`, merging per field. Supplies the Matrix service
+ * the homeserver, access token, and room list for each configured account.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import type { MatrixSettings } from "./types.js";
 

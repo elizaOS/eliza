@@ -1,3 +1,7 @@
+/**
+ * Unit + property tests (fast-check) for Matrix multi-account resolution
+ * (`accounts.ts`) against an in-memory `getSetting` stub — no homeserver.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import fc from "fast-check";
 import { describe, expect, it, vi } from "vitest";

@@ -1,3 +1,11 @@
+/**
+ * Resolves per-account Nostr connector settings from three config sources:
+ * legacy top-level env/character values (the implicit `default` account), a
+ * `NOSTR_ACCOUNTS` JSON map/array, and `character.settings.nostr`, merging per
+ * field so later sources override earlier ones. `NostrService` uses these to
+ * start one relay pool and subscription set per configured account; the
+ * normalized account id also keys connector target resolution.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import { DEFAULT_NOSTR_RELAYS, type NostrDmPolicy, type NostrSettings } from "./types.js";
 

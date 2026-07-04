@@ -1,3 +1,8 @@
+/**
+ * Round-trips the Matrix E2E crypto store snapshot/restore (`snapshotDb` /
+ * `restoreDb`) using `fake-indexeddb` and a temp dir — no real homeserver or
+ * on-disk browser IndexedDB.
+ */
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";

@@ -1,3 +1,7 @@
+/**
+ * Outbound send path for WeChat replies: splits long text into proxy-safe chunks
+ * and sends each chunk (and images) through the `ProxyClient`.
+ */
 import type { ProxyClient } from "./proxy-client";
 
 const DEFAULT_CHUNK_SIZE = 2000;

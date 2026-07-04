@@ -1,3 +1,8 @@
+/**
+ * Pure-function unit tests for LINE message shaping (`messaging.ts`): text
+ * chunking, markdown stripping, link extraction, and chat-type detection. No
+ * runtime or network.
+ */
 import { describe, expect, it } from "vitest";
 import {
   chunkLineText,

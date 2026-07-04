@@ -1,3 +1,10 @@
+/**
+ * Bridges Google Chat credentials to `@elizaos/plugin-workflow` so workflow
+ * nodes can call the Google Chat API authenticated. Registered under the
+ * duck-typed `workflow_credential_provider` serviceType; on request for
+ * `googleChatOAuth2Api` it returns the service-account key, read either inline
+ * from `GOOGLE_CHAT_SERVICE_ACCOUNT` or from a file path.
+ */
 import { promises as fs } from "node:fs";
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
 

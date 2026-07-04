@@ -1,3 +1,10 @@
+/**
+ * Bridges a normalized inbound WeChat message into the elizaOS message pipeline:
+ * `deliverIncomingWechatMessage` ensures the connection, builds the `Memory`,
+ * and dispatches through `elizaOS.sendMessage`, routing the agent's reply back
+ * out via the supplied response callback. Duck-types the runtime (`RuntimeLike`)
+ * so this module stays decoupled from the full runtime type.
+ */
 import { type Content, type Memory, stringToUuid } from "@elizaos/core";
 import type { WechatMessageContext } from "./types";
 

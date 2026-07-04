@@ -1,3 +1,4 @@
+/** Vitest config for the Google Chat connector; aliases provider SDKs to shims and excludes live/e2e suites so unit tests run offline. */
 import { defineConfig } from "vitest/config";
 import {
   providerSdkAliases,

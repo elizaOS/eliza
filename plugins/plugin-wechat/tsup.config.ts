@@ -1,3 +1,4 @@
+/** tsup build config for the WeChat plugin: ESM bundle from src/index.ts to dist/. */
 import { defineConfig } from "tsup";
 
 export default defineConfig({

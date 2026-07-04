@@ -1,3 +1,11 @@
+/**
+ * Plugin entry for the WeChat connector: resolves account config (from
+ * `character.settings.connectors.wechat` or env), starts a `WechatChannel` per
+ * account, and registers a `MessageConnector` (source `"wechat"`) plus a
+ * `ConnectorAccountProvider` with the runtime. The connector resolves contacts,
+ * lists rooms, fetches history, and sends text/images; inbound messages arrive
+ * via the channel's webhook and flow through `deliverIncomingWechatMessage`.
+ */
 import {
   type Content,
   getConnectorAccountManager,

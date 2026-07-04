@@ -1,3 +1,10 @@
+/**
+ * Resolves per-account Twitch connector settings from top-level env/character
+ * values (the implicit `default` account), a `TWITCH_ACCOUNTS` JSON map, and
+ * `character.settings.twitch`, merging per field. Supplies the Twitch service
+ * the channel list, allowed chat roles, and allowed user ids for each
+ * configured account.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import type { TwitchRole, TwitchSettings } from "./types.js";
 

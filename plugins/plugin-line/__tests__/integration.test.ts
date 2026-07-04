@@ -1,3 +1,8 @@
+/**
+ * Exercises the LINE plugin surface and its message-formatting helpers (text
+ * chunking, markdown/code-block/table extraction, user + chat id shaping)
+ * against a mocked runtime — no live LINE Messaging API calls.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { normalizeAccountId } from "../src/accounts";

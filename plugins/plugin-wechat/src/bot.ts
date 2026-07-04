@@ -1,3 +1,9 @@
+/**
+ * Inbound gate for WeChat messages: deduplicates repeat deliveries within a
+ * sliding window and feature-gates group/image messages before handing each
+ * message to the `onMessage` callback. Sits between `callback-server` (which
+ * normalizes proxy payloads) and the channel's dispatch into the runtime.
+ */
 import type { WechatMessageContext } from "./types";
 
 const DEFAULT_DEDUP_WINDOW_MS = 30 * 60 * 1000; // 30 minutes

@@ -1,3 +1,7 @@
+/**
+ * Unit tests for Nostr multi-account resolution (`accounts.ts`) against an
+ * in-memory `getSetting` stub — no relays, fully offline.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { resolveDefaultNostrAccountId, resolveNostrAccountSettings } from "../accounts.js";

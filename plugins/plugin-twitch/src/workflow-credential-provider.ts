@@ -1,3 +1,9 @@
+/**
+ * Bridges Twitch credentials to `@elizaos/plugin-workflow` so workflow nodes can
+ * call the Twitch API authenticated. Registered under the duck-typed
+ * `workflow_credential_provider` serviceType; on request for `httpHeaderAuth` it
+ * returns the configured access token as an `Authorization: Bearer` header.
+ */
 import { type IAgentRuntime, Service } from "@elizaos/core";
 
 // Inlined to avoid adding @elizaos/plugin-workflow as a compile-time dependency.

@@ -1,3 +1,4 @@
+/** Vitest config for the Instagram plugin; aliases provider SDKs to test shims. */
 import { defineConfig } from "vitest/config";
 import {
   providerSdkAliases,

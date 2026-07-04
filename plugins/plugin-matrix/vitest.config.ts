@@ -1,3 +1,4 @@
+/** Vitest config for the Matrix connector; aliases provider SDKs to shims so the suite runs offline. */
 import { defineConfig } from "vitest/config";
 import {
   providerSdkAliases,

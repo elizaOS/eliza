@@ -1,3 +1,10 @@
+/**
+ * Local HTTP webhook server that receives inbound messages POSTed by the WeChat
+ * proxy service, authenticates them (constant-time token compare), and
+ * normalizes the raw proxy payloads into `WechatMessageContext` for the bot.
+ * `WECHAT_TYPE_MAP` translates the proxy's numeric message types into the
+ * plugin's message-type + private/group scope.
+ */
 import { timingSafeEqual } from "node:crypto";
 import {
   createServer,

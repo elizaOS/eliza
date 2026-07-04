@@ -1,3 +1,8 @@
+/**
+ * Hardening tests for `NostrService` configuration and edge cases (e.g. missing
+ * keys raising `NostrConfigurationError`), against a mocked runtime — no relays,
+ * runs offline.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 

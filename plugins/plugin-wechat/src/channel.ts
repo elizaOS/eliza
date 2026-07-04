@@ -1,3 +1,10 @@
+/**
+ * Per-account lifecycle orchestrator for one WeChat connection: drives QR login
+ * (polling the proxy until logged in, printing the login URL to the terminal),
+ * starts the callback webhook server, wires the `Bot` dedup/gate to inbound
+ * dispatch, runs periodic health checks, and owns outbound sends via the
+ * `ReplyDispatcher`. One `WechatChannel` exists per configured account.
+ */
 import { Bot } from "./bot";
 import { startCallbackServer } from "./callback-server";
 import { LoginExpiredError, ProxyClient } from "./proxy-client";

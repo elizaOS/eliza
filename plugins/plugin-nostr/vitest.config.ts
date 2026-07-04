@@ -1,3 +1,4 @@
+/** Vitest config for the Nostr connector; aliases provider SDKs to shims so the suite runs offline. */
 import { defineConfig } from "vitest/config";
 import {
   providerSdkAliases,

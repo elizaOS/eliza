@@ -1,3 +1,8 @@
+/**
+ * Unit tests for Instagram account-config resolution (`accounts.ts`) against a
+ * mocked runtime — legacy default account, named `INSTAGRAM_ACCOUNTS`, and
+ * character-settings sources. No live Instagram API.
+ */
 import type { Content, IAgentRuntime, TargetInfo } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import {
