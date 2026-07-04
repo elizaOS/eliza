@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for chat streaming over the native streaming transport.
+ * Deterministic streams via a stub plugin, no live model.
+ */
 import { describe, expect, it } from "vitest";
 import { ElizaClient } from "./client";
 import {

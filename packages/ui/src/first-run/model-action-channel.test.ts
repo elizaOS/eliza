@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for the first-run model-action channel: value classification and
+ * handler dispatch. Pure functions + injected handler.
+ */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   isModelActionValue,
