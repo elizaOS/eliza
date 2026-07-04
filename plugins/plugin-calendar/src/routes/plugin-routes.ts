@@ -1,5 +1,6 @@
 import type http from "node:http";
 import {
+  ElizaError,
   type IAgentRuntime,
   type LegacyRouteHandler,
   logger,
@@ -117,8 +118,14 @@ async function resolveCalendarService(
   try {
     const loaded = await runtime.getServiceLoadPromise(CALENDAR_SERVICE_TYPE);
     return isCalendarRouteService(loaded) ? loaded : null;
-  } catch {
-    return null;
+  } catch (error) {
+    runtime.reportError?.("CalendarRoutes.serviceLoad", error, {
+      serviceType: CALENDAR_SERVICE_TYPE,
+    });
+    throw new ElizaError("Calendar service failed to load.", {
+      code: "CALENDAR_SERVICE_LOAD_FAILED",
+      cause: error,
+    });
   }
 }
 
