@@ -8,8 +8,9 @@
  * local/remote options), the tap-driven flow to a real completion at
  * provisioning success (no tutorial gate), session injection (a stored steward
  * session skips the sign-in ask — zero interactions to the onboarded home),
- * and the existing-agents one-tap picker. Cloud login + provisioning are
- * mocked at the network boundary, same as the chooser-mode cloud lane.
+ * and existing-agents auto-adoption (the picker never appears in cloud-only).
+ * Cloud login + provisioning are mocked at the network boundary, same as the
+ * chooser-mode cloud lane.
  */
 import { rm } from "node:fs/promises";
 import path from "node:path";
@@ -83,17 +84,15 @@ test.describe("cloud-only onboarding (production default)", () => {
 
     await page.goto("/", { waitUntil: "domcontentloaded" });
 
-    const { surface } = await completeCloudOnlySessionInjectionToHome(
-      page,
-      desktopClick,
-      { state },
-    );
+    const { surface } = await completeCloudOnlySessionInjectionToHome(page, {
+      state,
+    });
     await settleHomeEntrance(page);
     await screenshot(page, "cloud-only-session-injection-home");
     expect(await surface.getAttribute("data-page")).toBe("home");
   });
 
-  test("existing cloud agents surface the one-tap picker before completion", async ({
+  test("existing cloud agents are auto-adopted — no picker, zero interactions", async ({
     page,
   }) => {
     await injectCloudAuthToken(page);
@@ -103,13 +102,11 @@ test.describe("cloud-only onboarding (production default)", () => {
 
     await page.goto("/", { waitUntil: "domcontentloaded" });
 
-    const { surface } = await completeCloudOnlySessionInjectionToHome(
-      page,
-      desktopClick,
-      { state, pickAgent: true },
-    );
+    const { surface } = await completeCloudOnlySessionInjectionToHome(page, {
+      state,
+    });
     await settleHomeEntrance(page);
-    await screenshot(page, "cloud-only-agent-picker-home");
+    await screenshot(page, "cloud-only-auto-adopt-home");
     expect(await surface.getAttribute("data-page")).toBe("home");
   });
 });

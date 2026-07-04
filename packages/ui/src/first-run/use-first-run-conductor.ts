@@ -597,6 +597,14 @@ export function useFirstRunConductor(): void {
   // Armed by a needs-cloud-login outcome; consumed by the auto-resume effect
   // when the cloud connection lands (or cleared by the user's next pick).
   const pendingCloudResumeRef = React.useRef<"cloud" | "hybrid" | null>(null);
+  // Bind tail for a chosen/auto-chosen cloud agent — assigned below (it and
+  // handleOutcome reference each other; the ref breaks the cycle). Its own
+  // in-flight latch exists because the provisioning flow's finally releases
+  // busyRef right after handleOutcome kicks the bind off.
+  const bindCloudAgentByIdRef = React.useRef<((id: string) => void) | null>(
+    null,
+  );
+  const bindInFlightRef = React.useRef(false);
 
   const handleOutcome = React.useCallback(
     (outcome: FirstRunFinishOutcome) => {
@@ -609,11 +617,22 @@ export function useFirstRunConductor(): void {
             else completeCloudOnly();
           }
           return;
-        case "pick-cloud-agent":
+        case "pick-cloud-agent": {
+          // Cloud-only onboarding (#13377): signing in IS onboarding — never
+          // interpose an agent picker. Adopt the first agent; the list arrives
+          // newest-first with running agents prioritized.
+          if (!isRuntimeChooserEnabled()) {
+            const first = outcome.agents[0]?.agent_id;
+            if (first) {
+              bindCloudAgentByIdRef.current?.(first);
+              return;
+            }
+          }
           seedCloudAgentChoice(
             outcome.agents.map((a) => ({ id: a.agent_id, name: a.agent_name })),
           );
           return;
+        }
         case "needs-cloud-login": {
           pendingCloudResumeRef.current =
             draftRef.current.runtime === "cloud" ? "cloud" : "hybrid";
@@ -679,7 +698,13 @@ export function useFirstRunConductor(): void {
   // (the effect fired once before the marker was armed, so it can't self-fire).
   const runCloudResume = React.useCallback(
     (resume: "cloud" | "hybrid") => {
-      if (busyRef.current || provisionedRef.current) return;
+      if (
+        busyRef.current ||
+        bindInFlightRef.current ||
+        provisionedRef.current
+      ) {
+        return;
+      }
       pendingCloudResumeRef.current = null;
       if (resume === "cloud") {
         replaceTurn(
@@ -697,6 +722,39 @@ export function useFirstRunConductor(): void {
     },
     [replaceTurn, startCloudProvisionFlow, startProviderFinish],
   );
+
+  // The one bind tail for a cloud agent, shared by the picker tap (chooser
+  // mode) and the cloud-only auto-adopt of the first agent. Guarded by its own
+  // in-flight latch (see bindCloudAgentByIdRef above) in addition to busyRef.
+  const bindCloudAgentById = React.useCallback(
+    (id: string) => {
+      if (bindInFlightRef.current) return;
+      const authToken = getCloudAuthToken(client) ?? "";
+      if (!authToken) {
+        handleOutcome({ kind: "needs-cloud-login" });
+        return;
+      }
+      cloudPrefsRef.current =
+        id === "new" ? { forceCreate: true } : { preferAgentId: id };
+      bindInFlightRef.current = true;
+      busyRef.current = true;
+      void bindCloudAgent(
+        draftRef.current,
+        authToken,
+        cloudPrefsRef.current,
+        portsRef.current,
+      )
+        .then(handleOutcome)
+        // error-policy:J4 bind failure is surfaced as an onboarding error turn
+        .catch((err: unknown) => seedError(cloudFailureMessage(err)))
+        .finally(() => {
+          bindInFlightRef.current = false;
+          busyRef.current = false;
+        });
+    },
+    [handleOutcome, seedError],
+  );
+  bindCloudAgentByIdRef.current = bindCloudAgentById;
 
   // Auto-resume: when the user connects Eliza Cloud from the retry turn's
   // OAuth block (instead of re-picking a runtime), continue the interrupted
@@ -731,7 +789,7 @@ export function useFirstRunConductor(): void {
       // runtime choice), so a confused user can tap a second option while a
       // finish call is still in flight — consume those as no-ops instead of
       // starting a concurrent flow.
-      if (busyRef.current) return true;
+      if (busyRef.current || bindInFlightRef.current) return true;
       // Once provisioning succeeded only the wrap-up picks (accent + tutorial)
       // are live; taps on leftover runtime/provider/cloud-agent widgets must not
       // re-provision.
@@ -908,26 +966,7 @@ export function useFirstRunConductor(): void {
 
       if (group === "cloud-agent") {
         if (!id) return true;
-        const authToken = getCloudAuthToken(client) ?? "";
-        if (!authToken) {
-          handleOutcome({ kind: "needs-cloud-login" });
-          return true;
-        }
-        cloudPrefsRef.current =
-          id === "new" ? { forceCreate: true } : { preferAgentId: id };
-        busyRef.current = true;
-        void bindCloudAgent(
-          draftRef.current,
-          authToken,
-          cloudPrefsRef.current,
-          portsRef.current,
-        )
-          .then(handleOutcome)
-          // error-policy:J4 bind failure is surfaced as an onboarding error turn
-          .catch((err: unknown) => seedError(cloudFailureMessage(err)))
-          .finally(() => {
-            busyRef.current = false;
-          });
+        bindCloudAgentByIdRef.current?.(id);
         return true;
       }
 
@@ -1019,15 +1058,16 @@ export function useFirstRunConductor(): void {
     (text: string): boolean => {
       const trimmed = text.trim();
       if (!trimmed) return true;
-      const reply = busyRef.current
-        ? FIRST_RUN_TEXT_REPLY.provisioning
-        : provisionedRef.current
-          ? FIRST_RUN_TEXT_REPLY.wrapUp
-          : erroredRef.current
-            ? FIRST_RUN_TEXT_REPLY.error
-            : isRuntimeChooserEnabled()
-              ? FIRST_RUN_TEXT_REPLY.choosing
-              : FIRST_RUN_TEXT_REPLY.signIn;
+      const reply =
+        busyRef.current || bindInFlightRef.current
+          ? FIRST_RUN_TEXT_REPLY.provisioning
+          : provisionedRef.current
+            ? FIRST_RUN_TEXT_REPLY.wrapUp
+            : erroredRef.current
+              ? FIRST_RUN_TEXT_REPLY.error
+              : isRuntimeChooserEnabled()
+                ? FIRST_RUN_TEXT_REPLY.choosing
+                : FIRST_RUN_TEXT_REPLY.signIn;
       textTurnSeqRef.current += 1;
       const seq = textTurnSeqRef.current;
       seedTurn({
@@ -1097,7 +1137,11 @@ export function useFirstRunConductor(): void {
         // (one localStorage read) and upgrade to the welcome-back skip the
         // moment it appears; a pick already in flight always wins.
         tokenPoll = setInterval(() => {
-          if (busyRef.current || provisionedRef.current) {
+          if (
+            busyRef.current ||
+            bindInFlightRef.current ||
+            provisionedRef.current
+          ) {
             if (tokenPoll) clearInterval(tokenPoll);
             return;
           }

@@ -83,6 +83,11 @@ const SYNCED_KEYS = new Set([
   "eliza:ios-onboarding-smoke:result",
   "eliza:ios-attachment-smoke:request",
   "eliza:ios-attachment-smoke:result",
+  // Harness wallet for zero-interaction SIWE e2e (#13377): device harnesses
+  // seed these via native Preferences before first launch; the install itself
+  // is gated off store builds (platform/e2e-wallet.ts).
+  "eliza:e2e-wallet:pk",
+  "eliza:e2e-wallet:autologin",
 ]);
 
 // In-memory cache of values from Preferences (for native)

@@ -1159,6 +1159,40 @@ describe("cloud-only onboarding (runtime chooser off — the production default)
     unmount();
   });
 
+  it("existing cloud agents are auto-adopted — first of the list, no picker turn (#13377)", async () => {
+    mocks.client.getCloudCompatAgents.mockResolvedValue({
+      success: true,
+      data: [
+        {
+          agent_id: "agent-newest-running",
+          agent_name: "Newest",
+          status: "running",
+          created_at: "2026-01-02T00:00:00.000Z",
+        },
+        {
+          agent_id: "agent-older",
+          agent_name: "Older",
+          status: "stopped",
+          created_at: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+    });
+    const spies = seedAppStore({ elizaCloudConnected: true });
+    const { turn, unmount } = renderConductor();
+
+    await waitForTurn(turn, "first-run:cloud-signin");
+    await waitFor(() => {
+      expect(spies.completeFirstRun).toHaveBeenCalledTimes(1);
+    });
+    // No picker was interposed; the bind targeted the first listed agent.
+    expect(turn("first-run:cloud-agent")).toBeUndefined();
+    const provisionArgs = mocks.client.selectOrProvisionCloudAgent.mock
+      .calls[0]?.[0] as { preferAgentId?: string };
+    expect(provisionArgs?.preferAgentId).toBe("agent-newest-running");
+    await waitForTurn(turn, "first-run:cloud-done");
+    unmount();
+  });
+
   it("a token hydrating AFTER mount (native storage restore) auto-continues without a tap", async () => {
     localStorage.removeItem("steward_session_token");
     mocks.client.getCloudStatus.mockResolvedValue({ connected: false });

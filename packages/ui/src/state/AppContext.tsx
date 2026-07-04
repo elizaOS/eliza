@@ -960,6 +960,15 @@ function AppProviderInner({
 
   useNavigationPathSync({ tab, setTabRaw });
 
+  // Harness wallet for zero-interaction SIWE e2e (#13377): installs only when
+  // a test key is seeded (never on store builds) and may auto-complete the
+  // cloud sign-in before onboarding asks. One-shot per app instance.
+  useEffect(() => {
+    void import("../platform/e2e-wallet").then(
+      ({ installE2eWalletIfRequested }) => installE2eWalletIfRequested(),
+    );
+  }, []);
+
   // loadLogs is now in useLogsState (logsHook)
 
   // ── Data loading (via useDataLoaders) ────────────────────

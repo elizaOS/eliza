@@ -1151,14 +1151,13 @@ export async function completeCloudOnlyOnboardingToHome(
 
 /**
  * Session injection: a usable stored session at boot skips the sign-in ask
- * entirely. With zero cloud agents this is zero interactions from fresh boot
- * to the onboarded home; with an existing agent the one-tap picker is the
- * only interaction.
+ * entirely — zero interactions from fresh boot to the onboarded home. With
+ * existing cloud agents the first is auto-adopted (#13377): the agent picker
+ * must never appear in cloud-only onboarding.
  */
 export async function completeCloudOnlySessionInjectionToHome(
   page: Page,
-  click: (locator: Locator) => Promise<void>,
-  opts: { state: OnboardingRouteState; pickAgent?: boolean },
+  opts: { state: OnboardingRouteState },
 ): Promise<{ surface: Locator }> {
   await expect(
     page.getByText("Welcome back — you're already signed in", {
@@ -1168,13 +1167,12 @@ export async function completeCloudOnlySessionInjectionToHome(
   // The sign-in ask never rendered.
   await expect(page.getByTestId(RUNTIME_CHOICE("cloud"))).toHaveCount(0);
 
-  if (opts.pickAgent) {
-    const agentChoice = page.getByTestId(CLOUD_AGENT_CHOICE(CLOUD_AGENT_ID));
-    await expect(agentChoice).toBeVisible({ timeout: 30_000 });
-    await click(agentChoice);
-  }
-
-  return expectCloudOnlyCompletion(page, opts.state);
+  const result = await expectCloudOnlyCompletion(page, opts.state);
+  // The picker never appeared at any point in the flow.
+  await expect(
+    page.getByTestId(CLOUD_AGENT_CHOICE(CLOUD_AGENT_ID)),
+  ).toHaveCount(0);
+  return result;
 }
 
 export async function completeCloudInferenceOnboardingToHome(

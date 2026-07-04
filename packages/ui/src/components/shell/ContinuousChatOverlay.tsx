@@ -3729,8 +3729,11 @@ export function ContinuousChatOverlay({
           See BootStatusIndicator; `showBootBanner` is the grace-gated flag.
           Suppressed once we know no provider is configured: the agent will NEVER
           become ready, so "Waking …" would spin forever — the in-transcript
-          no-provider gate is the honest error surface instead. */}
-      {showBootBanner && !noProviderConfigured ? (
+          no-provider gate is the honest error surface instead. Also suppressed
+          for the whole of onboarding (#13377): the conductor owns every word on
+          that screen, and a floating "Waking …" chip above the sign-in chat
+          read as clutter. */}
+      {showBootBanner && !noProviderConfigured && !firstRunOpen ? (
         <BootStatusIndicator
           agentName={agentName}
           onOpenSettings={openSettings}
