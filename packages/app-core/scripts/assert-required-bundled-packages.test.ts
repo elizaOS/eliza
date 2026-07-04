@@ -12,7 +12,7 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -258,6 +258,27 @@ describe("assertRequiredBundledPackagesLanded", () => {
     expect(
       shouldCopyPackageEntry(packageReadme, "@elizaos/skills", packageRoot),
     ).toBe(false);
+  });
+
+  it("skips Bun package self-symlinks after resolving nested symlink targets", () => {
+    const bunStoreRoot = path.join(tmpDir, ".bun");
+    const packageRoot = path.join(
+      bunStoreRoot,
+      "lucide-react@1.18.0",
+      "node_modules",
+      "lucide-react",
+    );
+    const rootNodeModules = path.join(tmpDir, "node_modules");
+    const rootPackageLink = path.join(rootNodeModules, "lucide-react");
+    const selfLink = path.join(packageRoot, "lucide-react");
+    mkdirSync(packageRoot, { recursive: true });
+    mkdirSync(rootNodeModules, { recursive: true });
+    symlinkSync(packageRoot, rootPackageLink);
+    symlinkSync(rootPackageLink, selfLink);
+
+    expect(shouldCopyPackageEntry(selfLink, "lucide-react", packageRoot)).toBe(
+      false,
+    );
   });
 
   it("keeps documented runtime assets for packages that load them dynamically", () => {
