@@ -1,3 +1,8 @@
+/**
+ * Hover action rail for a chat message (copy / play / edit / delete), rendered
+ * as a `PagePanel.ActionRail` overlay on the bubble. Each control is opt-in via
+ * its `can*` flag; copy shows a transient confirmed state. Wired by ChatMessage.
+ */
 import { Check, Copy, Pencil, Trash2, Volume2 } from "lucide-react";
 
 import { Button } from "../../ui/button";

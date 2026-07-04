@@ -1,3 +1,7 @@
+/**
+ * Animated "agent is typing" indicator shown as an assistant bubble while a
+ * response is pending, with `default` and `game-modal` render paths.
+ */
 import { ChatBubble } from "./chat-bubble";
 import type { ChatVariant } from "./chat-types";
 

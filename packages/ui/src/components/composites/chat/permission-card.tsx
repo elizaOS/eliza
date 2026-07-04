@@ -1,3 +1,12 @@
+/**
+ * In-chat card the agent renders when an action needs an OS permission
+ * (reminders, screen-recording, …): explains why, requests it through the
+ * injected permissions registry, tracks the resulting state, and offers a
+ * fallback or an open-settings path when the permission is denied. When no
+ * registry is supplied it renders a passive not-determined state so it still
+ * shows in stories/tests. Label copy and helpers live in
+ * permission-card.helpers.
+ */
 import {
   type IPermissionsRegistry,
   openPermissionSettings,

@@ -1,4 +1,9 @@
 // @vitest-environment jsdom
+/**
+ * Guards ChatTranscript's row memoization: unchanged historical rows must not
+ * re-render while a streamed update mutates the tail. RTL in jsdom, no live
+ * model — asserts render behavior, not model output.
+ */
 
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";

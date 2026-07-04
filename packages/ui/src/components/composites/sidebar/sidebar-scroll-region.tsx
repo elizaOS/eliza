@@ -1,3 +1,7 @@
+/**
+ * The scrolling region of a sidebar body — the overflow container that holds the
+ * item list with a custom scrollbar and stable gutter, per variant.
+ */
 import { cva } from "class-variance-authority";
 // biome-ignore lint/correctness/noUnusedImports: Required for this package's JSX transform in tests.
 import * as React from "react";

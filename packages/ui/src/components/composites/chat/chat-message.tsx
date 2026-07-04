@@ -1,3 +1,11 @@
+/**
+ * A single chat turn row: avatar/name grouping, the message bubble, source and
+ * voice-speaker badges, inline edit, hover action rail, and the accept/dismiss
+ * controls for proactive suggestion bubbles (#8792). Memoized with a custom
+ * equality check so streamed-token re-renders stay cheap; the mount-time
+ * entrance animation is deliberately excluded from that check (see
+ * `enterOnMount`). Presentation only — actions are delegated to callbacks.
+ */
 import { Sparkles, X } from "lucide-react";
 import type * as React from "react";
 import {

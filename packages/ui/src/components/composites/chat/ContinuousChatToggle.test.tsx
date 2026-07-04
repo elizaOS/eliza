@@ -1,4 +1,9 @@
 // @vitest-environment jsdom
+/**
+ * Renders ContinuousChatToggle in jsdom and asserts the three-segment mode
+ * switch: active-mode marking, onChange emit/suppression, disabled-state
+ * click handling, and the compact variant's click-to-cycle. RTL, no live model.
+ */
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";

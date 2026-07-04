@@ -1,3 +1,11 @@
+/**
+ * The chat message composer: auto-growing textarea plus send / attach / voice
+ * controls, driving the primary text-and-voice input for every chat surface.
+ * Owns the textarea auto-resize measurement, push-to-talk wiring
+ * (`usePushToTalk`), and the send/stop/voice affordance state derived from the
+ * passed voice-session mode. Pure presentation — the parent owns the value and
+ * the actual send/voice actions.
+ */
 import {
   ArrowUp,
   Mic,

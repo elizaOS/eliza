@@ -1,3 +1,11 @@
+/**
+ * The primitive parts a sidebar body is composed from: section labels/headers,
+ * empty/notice states, toolbars, and the row primitives (item, icon, body,
+ * title, description, action) plus the collapsed-rail item variant. Each part
+ * is exported individually and bundled under the `SidebarContent` namespace
+ * object so callers can write `SidebarContent.Item`; higher-level pieces
+ * (skill-sidebar-item, the sidebar root) build on these.
+ */
 import * as React from "react";
 
 import { cn } from "../../../lib/utils";

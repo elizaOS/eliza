@@ -1,3 +1,8 @@
+/**
+ * Labeled form-field wrapper: composes the `Field` primitives (label,
+ * description, control slot, error messages) with a density option, so form
+ * rows across the app share one spacing/label layout.
+ */
 import type * as React from "react";
 import { cn } from "../../../lib/utils";
 import {

@@ -1,3 +1,11 @@
+/**
+ * Top-level `Sidebar` shell: the resizable/collapsible outer frame that hosts a
+ * sidebar body across desktop, mobile, and game-modal variants. Owns the
+ * expand/collapse control, drag-to-resize width persistence, and the
+ * auto-generated collapsed rail (built from the body's items via
+ * sidebar-auto-rail). Body content is composed from the sidebar-content
+ * primitives; layout tokens live in sidebar-types.
+ */
 import { cva } from "class-variance-authority";
 import { PanelLeftClose, PanelLeftOpen, X } from "lucide-react";
 import * as React from "react";

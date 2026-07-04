@@ -1,3 +1,10 @@
+/**
+ * Non-JSX support for the in-chat permission card: display labels per permission
+ * id, default/parse helpers for permission state and feature refs, a client-side
+ * `IPermissionsRegistry` implementation backed by an injected permission client,
+ * and a parser that recovers a structured permission request from agent text.
+ * Consumed by permission-card.tsx.
+ */
 import {
   type IPermissionsRegistry,
   isPermissionId,
