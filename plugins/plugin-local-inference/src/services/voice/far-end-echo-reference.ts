@@ -143,9 +143,16 @@ export class FarEndEchoReference {
 	resetPlayback(): void {
 		this.echoBuffer.reset();
 		this.canceller.reset();
+		this.echoDelaySamples = resolveEchoDelaySamples();
+		this.echoDelayConfidence = 0;
+		this.echoDelayCalibrated = false;
+		this.playbackFramesReceived = 0;
+		this.playbackSamplesReceived = 0;
+		this.lastPlaybackFrameAt = null;
 		this.calNear = [];
 		this.calFar = [];
 		this.calSampleCount = 0;
+		this.asrFramesCancelled = 0;
 		this.lastAsrErleDb = null;
 	}
 

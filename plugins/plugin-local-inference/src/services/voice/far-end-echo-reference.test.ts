@@ -119,4 +119,30 @@ describe("FarEndEchoReference", () => {
 		if (!firstPlaybackFrame) throw new Error("missing playback frame");
 		expect(decodeAudioFramePcm(firstPlaybackFrame).length).toBe(FRAME_SAMPLES);
 	});
+
+	it("clears playback and ASR telemetry on reset", () => {
+		const reference = new FarEndEchoReference();
+		const startedAtMs = 3_000;
+		const far = syntheticSpeech(AUDIO_FRAME_PIPELINE_SAMPLE_RATE);
+		const wav = encodeMonoPcm16Wav(far, AUDIO_FRAME_PIPELINE_SAMPLE_RATE);
+
+		reference.pushPlayback(playbackFrames(far, startedAtMs));
+		const result = reference.cancelAsrWav(wav, {
+			captureStartedAtMs: startedAtMs,
+		});
+		expect(result.framesCancelled).toBeGreaterThan(0);
+
+		reference.resetPlayback();
+
+		expect(reference.status()).toMatchObject({
+			echoReferenceWired: false,
+			playbackFramesReceived: 0,
+			playbackSamplesReceived: 0,
+			lastPlaybackFrameAt: null,
+			echoDelayConfidence: 0,
+			echoDelayCalibrated: false,
+			asrFramesCancelled: 0,
+			lastAsrErleDb: null,
+		});
+	});
 });

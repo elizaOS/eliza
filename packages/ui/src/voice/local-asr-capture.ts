@@ -404,7 +404,7 @@ export async function startLocalAsrRecorder(
   const chunks: Float32Array[] = [];
   let stopped = false;
   let autoStopRequested = false;
-  const captureStartedAtMs = nowMs();
+  let captureStartedAtMs: number | undefined;
   let captureEndedAtMs: number | undefined;
   const autoStopDetector = createLocalAsrAutoStopDetector(options.autoStop);
   const ttsCooldownGate = options.autoStop?.ttsCooldownGate
@@ -441,6 +441,8 @@ export async function startLocalAsrRecorder(
         return { shouldBuffer, shouldStop: false };
       })();
     if (autoStopUpdate.shouldBuffer) {
+      captureStartedAtMs ??=
+        nowMs() - (mono.length / Math.max(1, context.sampleRate)) * 1000;
       chunks.push(mono);
     }
     if (autoStopUpdate.shouldStop && !autoStopRequested && options.onAutoStop) {
@@ -482,7 +484,9 @@ export async function startLocalAsrRecorder(
       return analyser;
     },
     get captureTiming() {
-      const timing: LocalAsrCaptureTiming = { captureStartedAtMs };
+      const timing: LocalAsrCaptureTiming = {
+        captureStartedAtMs: captureStartedAtMs ?? captureEndedAtMs ?? nowMs(),
+      };
       if (captureEndedAtMs !== undefined) {
         timing.captureEndedAtMs = captureEndedAtMs;
       }
