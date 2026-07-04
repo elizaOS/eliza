@@ -18,6 +18,8 @@ export {
 	normalizeContextList,
 } from "./context-normalization";
 
+const EMPTY_CONTEXTS: readonly AgentContext[] = [];
+
 export class ContextRegistryError extends Error {
 	constructor(message: string) {
 		super(message);
@@ -165,13 +167,13 @@ function getEdges(
 		const targets = new Set<AgentContext>();
 		for (const parent of [
 			definition.parent,
-			...(definition.parents ?? []),
+			...(definition.parents ?? EMPTY_CONTEXTS),
 		].filter(Boolean) as AgentContext[]) {
 			const parentTargets = edges.get(parent) ?? [];
 			parentTargets.push(id);
 			edges.set(parent, parentTargets);
 		}
-		for (const subcontext of definition.subcontexts ?? []) {
+		for (const subcontext of definition.subcontexts ?? EMPTY_CONTEXTS) {
 			targets.add(subcontext);
 		}
 		edges.set(id, [...(edges.get(id) ?? []), ...targets]);
@@ -185,8 +187,8 @@ function assertNoUnknownEdges(
 	for (const [id, definition] of definitions) {
 		const referenced = [
 			definition.parent,
-			...(definition.parents ?? []),
-			...(definition.subcontexts ?? []),
+			...(definition.parents ?? EMPTY_CONTEXTS),
+			...(definition.subcontexts ?? EMPTY_CONTEXTS),
 		].filter(Boolean) as AgentContext[];
 		for (const context of referenced) {
 			if (!definitions.has(context)) {

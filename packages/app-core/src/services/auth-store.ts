@@ -11,8 +11,6 @@
 
 import { and, desc, eq, isNull, lte, ne } from "drizzle-orm";
 
-type AuthSqlColumn = Parameters<typeof eq>[0];
-type AuthSqlTable = Record<string, AuthSqlColumn>;
 type AuthSqlRow = Record<string, unknown>;
 
 interface AuthSqlReturningBuilder {
@@ -60,23 +58,31 @@ export interface DrizzleDatabase {
   delete(table: unknown): AuthSqlDeleteBuilder;
 }
 
-interface AuthSqlTables {
-  authAuditEventTable: AuthSqlTable;
-  authBootstrapJtiSeenTable: AuthSqlTable;
-  authIdentityTable: AuthSqlTable;
-  authOwnerBindingTable: AuthSqlTable;
-  authOwnerLoginTokenTable: AuthSqlTable;
-  authSessionTable: AuthSqlTable;
-}
+type AuthSqlTables = Pick<
+  typeof import("@elizaos/plugin-sql"),
+  | "authAuditEventTable"
+  | "authBootstrapJtiSeenTable"
+  | "authIdentityTable"
+  | "authOwnerBindingTable"
+  | "authOwnerLoginTokenTable"
+  | "authSessionTable"
+>;
 
 let authSqlTablesPromise: Promise<AuthSqlTables> | undefined;
 
 async function getAuthSqlTables(): Promise<AuthSqlTables> {
   // Dynamic import of @elizaos/plugin-sql returns the full module; we only
-  // consume the auth table exports. The cast crosses the module→subset boundary.
-  authSqlTablesPromise ??= import(
-    "@elizaos/plugin-sql"
-  ) as unknown as Promise<AuthSqlTables>;
+  // consume the auth table exports, projected into the subset this store uses.
+  if (!authSqlTablesPromise) {
+    authSqlTablesPromise = import("@elizaos/plugin-sql").then((module) => ({
+      authAuditEventTable: module.authAuditEventTable,
+      authBootstrapJtiSeenTable: module.authBootstrapJtiSeenTable,
+      authIdentityTable: module.authIdentityTable,
+      authOwnerBindingTable: module.authOwnerBindingTable,
+      authOwnerLoginTokenTable: module.authOwnerLoginTokenTable,
+      authSessionTable: module.authSessionTable,
+    }));
+  }
   return authSqlTablesPromise;
 }
 

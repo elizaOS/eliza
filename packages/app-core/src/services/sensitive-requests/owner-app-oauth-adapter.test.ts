@@ -264,6 +264,23 @@ describe("ownerAppOAuthSensitiveRequestAdapter", () => {
     expect(calls).toHaveLength(0);
   });
 
+  it("rejects structurally invalid dispatch payloads before delivery", async () => {
+    const { runtime, calls } = makeRuntime();
+
+    const result = await ownerAppOAuthSensitiveRequestAdapter.deliver({
+      request: { id: "req_invalid", kind: "oauth" },
+      channelId: "ch_owner_app",
+      runtime,
+    });
+
+    expect(result).toEqual({
+      delivered: false,
+      target: "owner_app_oauth",
+      error: "invalid sensitive request payload",
+    });
+    expect(calls).toHaveLength(0);
+  });
+
   it("rejects malformed OAuth targets missing provider or authorizationUrl", async () => {
     const { runtime, calls } = makeRuntime();
     const malformed = makeOwnerAppPrivateOAuthRequest({
