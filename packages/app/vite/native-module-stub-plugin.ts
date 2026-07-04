@@ -825,6 +825,24 @@ export function nativeModuleStubPlugin(
             "export default noopObj;",
           ].join("\n");
         }
+        if (capPkg === "@capacitor/filesystem") {
+          // Imported (with @capacitor/share) by src/ios-attachment-smoke.ts,
+          // which main.tsx pulls in statically but only runs behind an isIOS
+          // gate. A silent no-op here would fabricate a successful file write
+          // if a web/desktop path ever called it, so every method throws.
+          return [
+            "const mobileOnly = (prop) => () => { throw new Error('@capacitor/filesystem.' + String(prop) + ' is mobile-only; not available in this build.'); };",
+            "export const Filesystem = new Proxy({}, { get: (_, prop) => mobileOnly(prop) });",
+            "export default Filesystem;",
+          ].join("\n");
+        }
+        if (capPkg === "@capacitor/share") {
+          return [
+            "const mobileOnly = (prop) => () => { throw new Error('@capacitor/share.' + String(prop) + ' is mobile-only; not available in this build.'); };",
+            "export const Share = new Proxy({}, { get: (_, prop) => mobileOnly(prop) });",
+            "export default Share;",
+          ].join("\n");
+        }
         if (capPkg === "@capacitor/background-runner") {
           return [
             "const asyncNoop = async () => {};",

@@ -114,6 +114,11 @@ export * from "./sandbox-policy";
 export * from "./schemas/character";
 export { type BaseTables, buildBaseTables } from "./schemas/index";
 export * from "./search";
+// Log-sink redaction helpers are pure string/structure functions with no Node
+// dependencies. The cloud logger (packages/cloud/shared/src/lib/utils/logger.ts)
+// imports them from the core barrel and is bundled into the browser renderer,
+// so the browser entry must expose them like index.node.ts/index.edge.ts do.
+export { isSensitiveKeyName, redactLogArgs } from "./security/redact";
 export * from "./sensitive-request-policy";
 export * from "./sensitive-requests";
 export * from "./services";
