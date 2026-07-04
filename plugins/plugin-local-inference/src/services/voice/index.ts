@@ -266,6 +266,25 @@ export {
 export { InMemoryAudioSink, PcmRingBuffer } from "./ring-buffer";
 export { type RollbackEvent, RollbackQueue } from "./rollback-queue";
 export {
+	assertRoomFeedTransition,
+	type ClassifyRoomFeedInput,
+	classifyRoomFeed,
+	isRoomFeedTransitionAllowed,
+	type RoomFeedCandidateSpeaker,
+	type RoomFeedCaptureMode,
+	type RoomFeedClassification,
+	type RoomFeedNameEvidence,
+	type RoomFeedNameEvidenceSource,
+	type RoomFeedParticipantKind,
+	type RoomFeedParticipantMetadata,
+	type RoomFeedReasonCode,
+	type RoomFeedSourceKind,
+	type RoomFeedSourceStreamMetadata,
+	type RoomFeedState,
+	type RoomFeedUiHint,
+	type RoomFeedVoiceProfileMatch,
+} from "./room-feed-fst";
+export {
 	type SchedulerDeps,
 	type SchedulerEvents,
 	VoiceScheduler,
