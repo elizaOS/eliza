@@ -36,13 +36,6 @@ import type {
 	ElizaInferenceFfi,
 	NativeVadHandle,
 } from "./ffi-bindings";
-import {
-	type BudgetReservation,
-	ensureSharedVoiceBudget,
-	reserveOrRamPressure,
-	VAD_RESERVE_BYTES,
-	type VoiceBudget,
-} from "./voice-budget";
 import type {
 	EnergyGateEvent,
 	EnergyGateListener,
@@ -50,6 +43,13 @@ import type {
 	VadEvent,
 	VadEventListener,
 } from "./types";
+import {
+	type BudgetReservation,
+	ensureSharedVoiceBudget,
+	reserveOrRamPressure,
+	VAD_RESERVE_BYTES,
+	type VoiceBudget,
+} from "./voice-budget";
 
 /** Thrown when the Silero VAD backend cannot be loaded — the native VAD FFI
  *  is missing or ABI-only, the model file is absent, or the model is corrupt.

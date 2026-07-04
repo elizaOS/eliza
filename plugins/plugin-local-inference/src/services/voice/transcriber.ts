@@ -531,7 +531,9 @@ export class FfiBatchTranscriber extends BaseStreamingTranscriber {
 		const windowSeconds = opts.windowSeconds ?? 6.0;
 		const overlapSeconds = Math.min(opts.overlapSeconds ?? 1.0, windowSeconds);
 		const stepSeconds =
-			opts.stepSeconds ?? readAsrStepSecondsFromEnv() ?? DEFAULT_ASR_STEP_SECONDS;
+			opts.stepSeconds ??
+			readAsrStepSecondsFromEnv() ??
+			DEFAULT_ASR_STEP_SECONDS;
 		this.windowSamples = Math.round(windowSeconds * ASR_SAMPLE_RATE);
 		this.overlapSamples = Math.round(overlapSeconds * ASR_SAMPLE_RATE);
 		this.stepSamples = Math.round(stepSeconds * ASR_SAMPLE_RATE);

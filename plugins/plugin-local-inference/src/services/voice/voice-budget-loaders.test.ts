@@ -9,8 +9,8 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
-import { classifyDeviceTier } from "../device-tier";
 import type { BackendPlan } from "../backend";
+import { classifyDeviceTier } from "../device-tier";
 import {
 	type FfiBackendRuntime,
 	type FfiBackendSession,
@@ -436,7 +436,9 @@ describe("FfiStreamingBackend budget wire-up", () => {
 		const modelPath = writeGguf("huge.gguf", 32 * MB);
 		const budget = testBudget(16 * MB);
 		const backend = new FfiStreamingBackend(fakeRuntime({}), { budget });
-		await expect(backend.load({ modelPath } as unknown as BackendPlan)).rejects.toMatchObject({
+		await expect(
+			backend.load({ modelPath } as unknown as BackendPlan),
+		).rejects.toMatchObject({
 			name: "BudgetExhaustedError",
 		});
 		expect(backend.hasLoadedModel()).toBe(false);

@@ -365,7 +365,8 @@ describe("StreamingAsrFeeder", () => {
 				const hypothesis = [...stable, ...churn].join(" ");
 				const update = gate.transform({ partial: hypothesis, isFinal: false });
 				if (update === null) continue;
-				const next = update.partial.length === 0 ? [] : update.partial.split(" ");
+				const next =
+					update.partial.length === 0 ? [] : update.partial.split(" ");
 				// Monotonic committed prefix: every previously surfaced word is
 				// still present at the same position.
 				expect(next.length).toBeGreaterThanOrEqual(surfaced.length);
@@ -464,7 +465,13 @@ describe("StabilizedStreamingTranscriber", () => {
 
 	it("drops raw-hypothesis token ids from stabilized partials", () => {
 		const gate = new WordAgreementGate();
-		expect(gate.transform({ partial: "hello there", isFinal: false, tokens: [7, 8] })).toBeNull();
+		expect(
+			gate.transform({
+				partial: "hello there",
+				isFinal: false,
+				tokens: [7, 8],
+			}),
+		).toBeNull();
 		const update = gate.transform({
 			partial: "hello there friend",
 			isFinal: false,
@@ -507,14 +514,18 @@ describe("readStreamingAsrEnabledFromEnv", () => {
 		expect(readStreamingAsrEnabledFromEnv({})).toBe(true);
 	});
 
-	it.each(["0", "false", "off", "no", "FALSE", " Off "])(
-		"disables on %j",
-		(raw) => {
-			expect(
-				readStreamingAsrEnabledFromEnv({ ELIZA_VOICE_STREAMING_ASR: raw }),
-			).toBe(false);
-		},
-	);
+	it.each([
+		"0",
+		"false",
+		"off",
+		"no",
+		"FALSE",
+		" Off ",
+	])("disables on %j", (raw) => {
+		expect(
+			readStreamingAsrEnabledFromEnv({ ELIZA_VOICE_STREAMING_ASR: raw }),
+		).toBe(false);
+	});
 
 	it.each(["1", "true", "on", "yes"])("stays enabled on %j", (raw) => {
 		expect(

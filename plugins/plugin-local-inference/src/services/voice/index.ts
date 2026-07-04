@@ -337,12 +337,6 @@ export {
 	voicePresetPath,
 } from "./speaker-preset-cache";
 export {
-	SystemAudioSink,
-	type SystemAudioSinkOptions,
-	WavFileAudioSink,
-	type WavFileAudioSinkOptions,
-} from "./system-audio-sink";
-export {
 	LocalAgreementBuffer,
 	type PickStreamingModeArgs,
 	pickStreamingMode,
@@ -353,6 +347,12 @@ export {
 	type StreamingPipelineMode,
 	WordAgreementGate,
 } from "./streaming-asr/streaming-pipeline-adapter";
+export {
+	SystemAudioSink,
+	type SystemAudioSinkOptions,
+	WavFileAudioSink,
+	type WavFileAudioSinkOptions,
+} from "./system-audio-sink";
 export {
 	ASR_SAMPLE_RATE,
 	type AsrDecodePassStats,

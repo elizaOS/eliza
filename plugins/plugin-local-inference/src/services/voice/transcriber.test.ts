@@ -15,8 +15,10 @@ import {
 	ASR_SAMPLE_RATE,
 	AsrUnavailableError,
 	createStreamingTranscriber,
+	DEFAULT_ASR_STEP_SECONDS,
 	FfiBatchTranscriber,
 	FfiStreamingTranscriber,
+	readAsrStepSecondsFromEnv,
 	resampleLinear,
 } from "./transcriber";
 import type {
@@ -188,6 +190,46 @@ describe("FfiBatchTranscriber — windowed batch ASR (interim)", () => {
 		await t.flush();
 		expect(fed.some((n) => n === 1600)).toBe(true);
 		t.dispose();
+	});
+
+	it("reads the step cadence from ELIZA_ASR_STEP_SECONDS (default 1.2 s) and records per-pass decode timings", async () => {
+		expect(readAsrStepSecondsFromEnv({})).toBeNull();
+		expect(
+			readAsrStepSecondsFromEnv({ ELIZA_ASR_STEP_SECONDS: "0.8" }),
+		).toBeCloseTo(0.8);
+		expect(
+			readAsrStepSecondsFromEnv({ ELIZA_ASR_STEP_SECONDS: "-1" }),
+		).toBeNull();
+		expect(
+			readAsrStepSecondsFromEnv({ ELIZA_ASR_STEP_SECONDS: "nope" }),
+		).toBeNull();
+		expect(DEFAULT_ASR_STEP_SECONDS).toBe(1.2);
+
+		const saved = process.env.ELIZA_ASR_STEP_SECONDS;
+		process.env.ELIZA_ASR_STEP_SECONDS = "0.5";
+		try {
+			const ffi = makeFakeFfi({
+				streamSupported: false,
+				transcribe: () => "x",
+			});
+			const t = new FfiBatchTranscriber({ ffi, getContext: () => 1n });
+			// With a 0.5 s step, a 0.6 s frame triggers an interim decode pass
+			// (the 1.2 s default would not decode until flush).
+			t.feed({
+				pcm: new Float32Array(ASR_SAMPLE_RATE * 0.6).fill(0.05),
+				sampleRate: ASR_SAMPLE_RATE,
+				timestampMs: 0,
+			});
+			await t.flush();
+			const stats = t.decodeStats();
+			expect(stats.passes).toBeGreaterThanOrEqual(2); // interim + final
+			expect(stats.totalMs).toBeGreaterThanOrEqual(0);
+			expect(stats.lastMs).toBeLessThanOrEqual(stats.totalMs + 1e-6);
+			t.dispose();
+		} finally {
+			if (saved === undefined) delete process.env.ELIZA_ASR_STEP_SECONDS;
+			else process.env.ELIZA_ASR_STEP_SECONDS = saved;
+		}
 	});
 });
 
