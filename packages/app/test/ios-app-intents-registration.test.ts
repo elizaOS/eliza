@@ -70,6 +70,13 @@ const androidVoiceInteractionServiceXml = readFileSync(
   ),
   "utf8",
 );
+const androidRecognitionServiceXml = readFileSync(
+  path.join(
+    repoRoot,
+    "packages/app-core/platforms/android/app/src/main/res/xml/eliza_recognition_service.xml",
+  ),
+  "utf8",
+);
 const androidVoiceInteractionService = readFileSync(
   path.join(
     repoRoot,
@@ -213,6 +220,9 @@ describe("native assistant entry contracts", () => {
     );
     expect(androidManifest).toContain("@xml/eliza_voice_interaction_service");
     expect(androidManifest).toContain("android.speech.RecognitionService");
+    expect(androidManifest).toContain("android.intent.category.DEFAULT");
+    expect(androidManifest).toContain('android:name="android.speech"');
+    expect(androidManifest).toContain("@xml/eliza_recognition_service");
 
     // The ACTION_ASSIST fallback activity must coexist with the VIS route.
     expect(androidManifest).toContain("ElizaAssistActivity");
@@ -260,5 +270,6 @@ describe("native assistant entry contracts", () => {
     expect(androidRecognitionService).toContain(
       "source=android-recognition-service",
     );
+    expect(androidRecognitionServiceXml).toContain("recognition-service");
   });
 });

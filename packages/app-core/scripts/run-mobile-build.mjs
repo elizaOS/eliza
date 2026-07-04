@@ -6047,6 +6047,8 @@ function auditAndroidSystemSource(
       "android.service.voice.VoiceInteractionService",
       "@xml/eliza_voice_interaction_service",
       "android.speech.RecognitionService",
+      "android.speech",
+      "@xml/eliza_recognition_service",
       "ElizaAccessibilityService",
       "android.permission.BIND_ACCESSIBILITY_SERVICE",
       "android.accessibilityservice.AccessibilityService",
