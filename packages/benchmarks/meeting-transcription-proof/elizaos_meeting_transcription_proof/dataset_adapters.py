@@ -1,3 +1,10 @@
+"""Dataset adapter contracts for meeting artifact benchmark sources.
+
+The module records the publishable-run metadata required to adapt QMSum and
+MeetingBank without committing raw rows, and validates the contract shape that
+real benchmark runs must satisfy.
+"""
+
 from __future__ import annotations
 
 from copy import deepcopy

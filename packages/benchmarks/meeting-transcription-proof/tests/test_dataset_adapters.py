@@ -1,3 +1,9 @@
+"""Contract tests for meeting dataset adapter metadata.
+
+The tests keep QMSum and MeetingBank adapters eval-only, data-free in git, and
+strict about publishable scoring requirements.
+"""
+
 from __future__ import annotations
 
 from elizaos_meeting_transcription_proof.dataset_adapters import (
