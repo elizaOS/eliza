@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "voice-speaker-validation"
 version = "0.1.0"
 description = "W3-6 multi-speaker audio validation: diarization, speaker ID, entity creation, LRU latency, async search"
-requires-python = ">=3.10"
+requires-python = ">=3.10,<3.13"
 dependencies = [
     "numpy>=1.26",
     "scipy>=1.11",
