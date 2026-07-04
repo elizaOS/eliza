@@ -231,7 +231,10 @@ function parseAutoTopUpThreshold(value: string | number | null | undefined): num
   if (value === null || value === undefined) {
     return 0;
   }
-  const parsed = typeof value === "number" ? value : Number(String(value));
+  if (typeof value === "string" && value.trim() === "") {
+    throw new Error("[CreditsService] Invalid numeric auto_top_up_threshold");
+  }
+  const parsed = typeof value === "number" ? value : Number(value);
   if (!Number.isFinite(parsed)) {
     throw new Error("[CreditsService] Invalid numeric auto_top_up_threshold");
   }
