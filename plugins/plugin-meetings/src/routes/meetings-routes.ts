@@ -35,6 +35,7 @@ export interface CreateMeetingRequest {
   botName?: string;
   language?: string;
   retainAudio?: boolean;
+  maxDurationMs?: number;
   calendarEventId?: string;
 }
 
@@ -43,6 +44,7 @@ const joinErrorStatus: Record<MeetingJoinError["code"], number> = {
   unsupported_platform: 422,
   unsupported_host: 422,
   already_joined: 409,
+  invalid_duration_cap: 400,
 };
 
 const createRoute: Route = {
@@ -81,6 +83,7 @@ const createRoute: Route = {
       botName: body.botName,
       language: body.language,
       retainAudio: body.retainAudio,
+      maxDurationMs: body.maxDurationMs,
       calendarEventId: body.calendarEventId,
     };
     try {

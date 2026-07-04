@@ -3,7 +3,7 @@
  * single-bot-per-meeting enforcement, roster, transcript persistence, and
  * listing. Deterministic: fake runtime plus scripted adapter/pipeline.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { MeetingJoinError, MeetingService } from "./service.js";
 import {
   makeFakeRuntime,
@@ -120,6 +120,22 @@ describe("MeetingService.requestJoin — validation", () => {
     expect(service.listSessions({ active: true })).toHaveLength(1);
     expect(calls).toBe(2);
   });
+
+  it("rejects requested duration caps above the configured maximum before launch", async () => {
+    const adapter = new ScriptedAdapter("google_meet");
+    const { fake, service } = makeService([adapter]);
+    fake.settings.ELIZA_MEETINGS_MAX_DURATION_MS = "1000";
+
+    await expect(
+      service.requestJoin({
+        platform: "google_meet",
+        meetingUrl: MEET_URL,
+        maxDurationMs: 1001,
+      }),
+    ).rejects.toMatchObject({ code: "invalid_duration_cap" });
+    expect(service.listSessions()).toHaveLength(0);
+    expect(adapter.session).toBeNull();
+  });
 });
 
 describe("MeetingService — session state machine", () => {
@@ -232,6 +248,32 @@ describe("MeetingService — session state machine", () => {
     // Unknown / already-terminal sessions return false.
     expect(service.stopSession(dto.id as never)).toBe(false);
     expect(service.stopSession(crypto.randomUUID() as never)).toBe(false);
+  });
+
+  it("stops and finalizes the session when the duration cap is reached", async () => {
+    vi.useFakeTimers();
+    try {
+      const adapter = new ScriptedAdapter("google_meet");
+      const { service, pipelines } = makeService([adapter]);
+      const dto = await service.requestJoin({
+        platform: "google_meet",
+        meetingUrl: MEET_URL,
+        maxDurationMs: 25,
+      });
+      const botSession = await adapter.started;
+      adapter.report("active");
+      expect(botSession.signal.aborted).toBe(false);
+
+      await vi.advanceTimersByTimeAsync(25);
+
+      const session = service.getSession(dto.id as never);
+      expect(botSession.signal.aborted).toBe(true);
+      expect(session?.status).toBe("ended");
+      expect(session?.endReason).toBe("duration_cap_reached");
+      expect(pipelines[0].finalized).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("ignores adapter status reports after a terminal state", async () => {

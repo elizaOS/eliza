@@ -38,6 +38,7 @@ export type MeetingSessionStatus =
 export type MeetingEndReason =
   | "normal_completion"
   | "requested_stop"
+  | "duration_cap_reached"
   | "removed_by_admin"
   | "left_alone_timeout"
   | "startup_alone_timeout"
@@ -62,6 +63,9 @@ export const DEFAULT_MEETING_AUTO_LEAVE: MeetingAutoLeaveConfig = {
   everyoneLeftTimeoutMs: 2 * 60 * 1000,
 };
 
+/** Default upper bound for a browser-bot meeting session: 2 hours. */
+export const DEFAULT_MEETING_MAX_DURATION_MS = 2 * 60 * 60 * 1000;
+
 /** Input contract to start a bot (the request side of POST /api/meetings). */
 export interface MeetingJoinRequest {
   platform: MeetingPlatform;
@@ -73,6 +77,11 @@ export interface MeetingJoinRequest {
   autoLeave?: Partial<MeetingAutoLeaveConfig>;
   /** Retain the meeting audio on the transcript record (default true). */
   retainAudio?: boolean;
+  /**
+   * Optional lower per-session cap in milliseconds. The service rejects values
+   * above its configured maximum before launching the bot.
+   */
+  maxDurationMs?: number;
   /** Calendar event that prompted the join, when auto-joined. */
   calendarEventId?: string;
 }
@@ -110,6 +119,8 @@ export interface MeetingSession {
   transcriptId?: string;
   participants: MeetingParticipant[];
   calendarEventId?: string;
+  /** Maximum duration approved for this session, in milliseconds. */
+  maxDurationMs?: number;
   metadata?: Record<string, unknown>;
 }
 

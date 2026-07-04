@@ -20,6 +20,7 @@ import {
 } from "@elizaos/core";
 import {
   DEFAULT_MEETING_AUTO_LEAVE,
+  DEFAULT_MEETING_MAX_DURATION_MS,
   MEETING_PLATFORM_LABELS,
   type MeetingAutoLeaveConfig,
   type MeetingEndReason,
@@ -59,7 +60,8 @@ export type MeetingJoinErrorCode =
   | "invalid_url"
   | "unsupported_platform"
   | "unsupported_host"
-  | "already_joined";
+  | "already_joined"
+  | "invalid_duration_cap";
 
 /** Validation/conflict failures of `requestJoin` — routes map these to 4xx. */
 export class MeetingJoinError extends Error {
@@ -93,6 +95,7 @@ interface InternalSession {
   transcriptId: UUID;
   participants: MeetingParticipant[];
   calendarEventId?: string;
+  readonly maxDurationMs: number;
   readonly abort: AbortController;
   readonly pipeline: MeetingPipelineInstance;
   readonly writer: MeetingTranscriptWriter;
@@ -220,6 +223,7 @@ export class MeetingService extends Service {
       ...DEFAULT_MEETING_AUTO_LEAVE,
       ...request.autoLeave,
     };
+    const maxDurationMs = this.resolveMaxDurationMs(request.maxDurationMs);
     const retainAudio = request.retainAudio ?? true;
 
     const pipeline = this.deps.createPipeline({
@@ -242,6 +246,7 @@ export class MeetingService extends Service {
       transcriptId: writer.transcriptId,
       participants: [],
       calendarEventId: request.calendarEventId,
+      maxDurationMs,
       abort: new AbortController(),
       pipeline,
       writer,
@@ -375,6 +380,7 @@ export class MeetingService extends Service {
       transcriptId: session.transcriptId,
       participants: session.participants.map((p) => ({ ...p })),
       calendarEventId: session.calendarEventId,
+      maxDurationMs: session.maxDurationMs,
     };
   }
 
@@ -499,8 +505,24 @@ export class MeetingService extends Service {
   ): Promise<void> {
     let endReason: MeetingEndReason;
     let errorMessage: string | undefined;
+    let capTimer: ReturnType<typeof setTimeout> | null = null;
     try {
-      endReason = await adapter.run(botSession);
+      const capReached = new Promise<MeetingEndReason>((resolve) => {
+        capTimer = setTimeout(() => {
+          logger.warn(
+            {
+              sessionId: session.id,
+              maxDurationMs: session.maxDurationMs,
+            },
+            "[MeetingService] duration cap reached; stopping meeting",
+          );
+          this.applyStatus(session, "leaving");
+          session.abort.abort();
+          resolve("duration_cap_reached");
+        }, session.maxDurationMs);
+        capTimer.unref?.();
+      });
+      endReason = await Promise.race([adapter.run(botSession), capReached]);
     } catch (err) {
       endReason = "error";
       errorMessage = err instanceof Error ? err.message : String(err);
@@ -508,6 +530,8 @@ export class MeetingService extends Service {
         { sessionId: session.id, error: errorMessage },
         "[MeetingService] platform adapter failed",
       );
+    } finally {
+      if (capTimer) clearTimeout(capTimer);
     }
     await this.finishSession(session, endReason, errorMessage);
   }
@@ -577,5 +601,35 @@ export class MeetingService extends Service {
   private settingString(key: string): string | null {
     const value = this.runtime.getSetting(key);
     return typeof value === "string" && value.trim() ? value.trim() : null;
+  }
+
+  private resolveMaxDurationMs(requested: number | undefined): number {
+    const configured = this.settingPositiveInteger(
+      "ELIZA_MEETINGS_MAX_DURATION_MS",
+    );
+    const maximum = configured ?? DEFAULT_MEETING_MAX_DURATION_MS;
+    if (
+      requested !== undefined &&
+      (!Number.isSafeInteger(requested) || requested <= 0)
+    ) {
+      throw new MeetingJoinError(
+        "invalid_duration_cap",
+        "maxDurationMs must be a positive integer",
+      );
+    }
+    if (requested !== undefined && requested > maximum) {
+      throw new MeetingJoinError(
+        "invalid_duration_cap",
+        `maxDurationMs exceeds the configured maximum (${maximum}ms)`,
+      );
+    }
+    return requested ?? maximum;
+  }
+
+  private settingPositiveInteger(key: string): number | null {
+    const raw = this.settingString(key);
+    if (!raw) return null;
+    const parsed = Number(raw);
+    return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
   }
 }

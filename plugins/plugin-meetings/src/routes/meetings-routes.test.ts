@@ -85,6 +85,22 @@ describe("/api/meetings routes", () => {
     expect(zoom.status).toBe(422);
   });
 
+  it("POST rejects invalid duration caps before launching", async () => {
+    const { fake, ctx, adapter } = makeHarness();
+    fake.settings.ELIZA_MEETINGS_MAX_DURATION_MS = "1000";
+    const post = route("POST", "/api/meetings");
+
+    const overCap = await post(
+      ctx({ body: { meetingUrl: MEET_URL, maxDurationMs: 1001 } }),
+    );
+
+    expect(overCap.status).toBe(400);
+    expect((overCap.body as { code: string }).code).toBe(
+      "invalid_duration_cap",
+    );
+    expect(adapter.session).toBeNull();
+  });
+
   it("GET lists all and ?active=1 filters; GET/:id and DELETE/:id round-trip", async () => {
     const { ctx, adapter } = makeHarness();
     const post = route("POST", "/api/meetings");
