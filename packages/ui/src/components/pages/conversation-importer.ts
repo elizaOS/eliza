@@ -184,26 +184,38 @@ function parseConversationList(
   return turns;
 }
 
+function parsePlainTextImport(rawText: string): ConversationImportTurn[] {
+  return rawText
+    .split(/\n{2,}/u)
+    .map((text) => text.trim())
+    .filter(Boolean)
+    .map((text, index) => ({
+      conversationTitle: "Plain text import",
+      speaker: index % 2 === 0 ? "user" : "assistant",
+      text,
+    }));
+}
+
 export function parseConversationImport(
   source: ConversationImportSource,
   rawText: string,
 ): ConversationImportPreview {
   const warnings: string[] = [];
   let parsed: unknown;
+  let plainTextTurns: ConversationImportTurn[] | null = null;
   try {
     parsed = JSON.parse(rawText);
   } catch {
-    parsed = rawText.split(/\n{2,}/u).map((text, index) => ({
-      role: index % 2 === 0 ? "user" : "assistant",
-      text,
-    }));
+    plainTextTurns = parsePlainTextImport(rawText);
+    parsed = null;
     warnings.push("Parsed as plain text because the file was not valid JSON.");
   }
 
   const turns =
-    source === "chatgpt"
+    plainTextTurns ??
+    (source === "chatgpt"
       ? parseChatGptExport(parsed)
-      : parseConversationList(parsed, source);
+      : parseConversationList(parsed, source));
   const boundedTurns = turns.slice(0, MAX_TURNS);
   if (turns.length > MAX_TURNS) {
     warnings.push(`Preview limited to the first ${MAX_TURNS} non-empty turns.`);
