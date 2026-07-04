@@ -60,6 +60,18 @@ export interface CancelSignal {
 	cancelled: boolean;
 }
 
+export type BargeInSpeakerProfileMatch = "owner" | "enrolled" | "unknown";
+
+export interface BargeInInterruptEvidence {
+	selfVoiceSimilarity?: number;
+	speakerProfileMatch?: BargeInSpeakerProfileMatch;
+	wakeWordDetected?: boolean;
+}
+
+export type BargeInInterruptGate = (
+	evidence: BargeInInterruptEvidence,
+) => "allow" | "deny";
+
 // --- New: cancel token --------------------------------------------------------
 
 function makeCancelToken(
@@ -100,12 +112,66 @@ export interface BargeInControllerConfig {
 	 * cough doesn't keep the agent muted.
 	 */
 	wordsGraceMs?: number;
+	/**
+	 * Gate only the destructive hard-stop decision. TTS still pauses on any
+	 * speech while the agent is talking; the gate decides whether confirmed ASR
+	 * words are allowed to abort TTS and generation.
+	 */
+	interruptGate?: BargeInInterruptGate;
+	/** Agent-voice centroid threshold; distinct from the human profile bar. */
+	agentSelfVoiceThreshold?: number;
+	/** Whether unenrolled speakers may interrupt. Defaults to true. */
+	allowUnknownBystanders?: boolean;
+}
+
+const DEFAULT_WORDS_GRACE_MS = 600;
+const DEFAULT_AGENT_SELF_VOICE_THRESHOLD = 0.28;
+
+function readWordsGraceMs(): number {
+	const raw = process.env.ELIZA_VOICE_BARGE_IN_GRACE_MS?.trim();
+	if (!raw) return DEFAULT_WORDS_GRACE_MS;
+	const parsed = Number(raw);
+	return Number.isFinite(parsed) && parsed >= 0
+		? parsed
+		: DEFAULT_WORDS_GRACE_MS;
+}
+
+function readAllowUnknownBystanders(): boolean {
+	const raw = process.env.ELIZA_VOICE_BARGE_IN_BYSTANDERS?.trim().toLowerCase();
+	if (!raw) return true;
+	return !["0", "false", "deny", "block", "off"].includes(raw);
+}
+
+export function createDefaultBargeInInterruptGate(
+	options: {
+		agentSelfVoiceThreshold?: number;
+		allowUnknownBystanders?: boolean;
+	} = {},
+): BargeInInterruptGate {
+	const agentSelfVoiceThreshold =
+		options.agentSelfVoiceThreshold ?? DEFAULT_AGENT_SELF_VOICE_THRESHOLD;
+	const allowUnknownBystanders =
+		options.allowUnknownBystanders ?? readAllowUnknownBystanders();
+	return (evidence) => {
+		if (evidence.wakeWordDetected) return "allow";
+		if (
+			typeof evidence.selfVoiceSimilarity === "number" &&
+			evidence.selfVoiceSimilarity >= agentSelfVoiceThreshold
+		) {
+			return "deny";
+		}
+		if (evidence.speakerProfileMatch === "unknown" && !allowUnknownBystanders) {
+			return "deny";
+		}
+		return "allow";
+	};
 }
 
 export class BargeInController implements WordsDetectedSink {
 	private readonly listeners = new Set<BargeInListener>();
 	private readonly signalListeners = new Set<BargeInSignalListener>();
 	private readonly wordsGraceMs: number;
+	private readonly interruptGate: BargeInInterruptGate;
 
 	/** Legacy single-shot cancel flag, reset by `reset()`. */
 	private signal: CancelSignal = { cancelled: false };
@@ -123,7 +189,17 @@ export class BargeInController implements WordsDetectedSink {
 	private vadUnsub: (() => void) | null = null;
 
 	constructor(config: BargeInControllerConfig = {}) {
-		this.wordsGraceMs = config.wordsGraceMs ?? 600;
+		this.wordsGraceMs = config.wordsGraceMs ?? readWordsGraceMs();
+		this.interruptGate =
+			config.interruptGate ??
+			createDefaultBargeInInterruptGate({
+				...(config.agentSelfVoiceThreshold !== undefined
+					? { agentSelfVoiceThreshold: config.agentSelfVoiceThreshold }
+					: {}),
+				...(config.allowUnknownBystanders !== undefined
+					? { allowUnknownBystanders: config.allowUnknownBystanders }
+					: {}),
+			});
 	}
 
 	// --- New subscription API ---------------------------------------------------
@@ -215,6 +291,7 @@ export class BargeInController implements WordsDetectedSink {
 		wordCount: number;
 		partialText: string;
 		timestampMs: number;
+		evidence?: BargeInInterruptEvidence;
 	}): void {
 		if (args.wordCount < 1) return;
 		const withinConfirmWindow =
@@ -224,6 +301,15 @@ export class BargeInController implements WordsDetectedSink {
 			!this.agentSpeaking ||
 			(!this.awaitingWordConfirm && !withinConfirmWindow)
 		) {
+			return;
+		}
+		if (this.interruptGate(args.evidence ?? {}) === "deny") {
+			this.awaitingWordConfirm = false;
+			this.clearWordConfirm();
+			this.emitSignal({
+				type: "resume-tts",
+				timestampMs: args.timestampMs,
+			});
 			return;
 		}
 		// Authoritative: real user speech. Hard-stop.

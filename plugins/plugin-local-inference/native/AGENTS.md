@@ -733,7 +733,7 @@ deprecated and will be removed from the runtime path once all native ports land.
 | ASR (eligible local ASR) | fork FFI `eliza_pick_asr_files()` | DONE (runtime) / GATED (Gemma artifacts) |
 | MTP speculative decoding | fork `llama-server` `--spec-type mtp` | DONE |
 | Text EOT (Eliza1EotClassifier) | fork `node-llama-cpp` P(`<|im_end|>`) | DONE (preferred path when text model loaded) |
-| LiveKit EOT (GGUF) | `eot-classifier-ggml.ts::LiveKitGgmlTurnDetector` | DONE (J1.d) — preferred over ONNX when GGUF on disk |
+| Semantic EOT | fused ABI scorer in `voice/eot-classifier.ts` | DONE — GGUF/ONNX detector path retired |
 | Kokoro TTS | fused FFI `eliza_inference_kokoro_*` + `tts/kokoro/kokoro-82m-v1_0-Q4_K_M.gguf` | DONE (#9588) — GGUF-only runtime discovery |
 | Wav2Small emotion | ONNX removed; scalar C forward in `voice-classifier-cpp/src/voice_emotion.c` | ONNX-FREE — but native read NOT wired: acoustic emotion path is DEAD at runtime (K1, see gap below) |
 | WeSpeaker R34-LM | ONNX removed; scalar C forward in `voice-classifier-cpp/src/voice_speaker.c` | ONNX-FREE (native FFI/GGUF path) |

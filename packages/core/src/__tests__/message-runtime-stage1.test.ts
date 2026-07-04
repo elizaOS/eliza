@@ -3141,7 +3141,7 @@ describe("runV5MessageRuntimeStage1", () => {
 						endOfTurnProbability: 0.08,
 						nextSpeaker: "user",
 						agentShouldSpeak: false,
-						source: "livekit-turn-detector",
+						source: "heuristic",
 					},
 				},
 			},

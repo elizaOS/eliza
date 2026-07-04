@@ -526,6 +526,24 @@ describe("VoiceTurnController", () => {
 		expect(hardStopped).toBe(true);
 	});
 
+	it("passes transcriber barge-in evidence into the hard-stop gate", () => {
+		const h = makeHarness();
+		h.controller.start();
+		h.scheduler.bargeIn.setAgentSpeaking(true);
+		const signals: string[] = [];
+		h.scheduler.bargeIn.onSignal((s) => signals.push(s.type));
+
+		h.vad.emit(vadEvent({ type: "speech-active" }));
+		h.transcriber.emit({
+			kind: "words",
+			words: ["echo"],
+			bargeInEvidence: { selfVoiceSimilarity: 0.9 },
+		});
+
+		expect(signals).toEqual(["pause-tts", "resume-tts"]);
+		expect(h.scheduler.bargeIn.currentCancelToken()).toBeNull();
+	});
+
 	it("surfaces a prewarm rejection via onError without killing the turn", async () => {
 		const h = makeHarness();
 		h.prewarm.mockRejectedValueOnce(new Error("kv prefill failed"));

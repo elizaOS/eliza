@@ -209,8 +209,8 @@ Once each `*_open` returns 0 and the parity tests in this directory
 pass, the corresponding TS service swaps to the new ggml binding:
 
 - `voice-emotion-classifier-ggml.ts` replaces `voice-emotion-classifier.ts`;
-- `eot-classifier-ggml.ts` provides the audio-side EOT detector that
-  pairs with the existing text-side classifiers in `eot-classifier.ts`;
+- EOT now enters through the fused semantic scorer in
+  `plugins/plugin-local-inference/src/services/voice/eot-classifier.ts`;
 - `speaker/encoder-ggml.ts` replaces `speaker/encoder.ts`.
 - `speaker/diarizer-ggml.ts` replaces `speaker/diarizer.ts`.
 

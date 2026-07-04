@@ -125,7 +125,7 @@ real speaker identity, and are not valid.
 | Speaker Encoder (WeSpeaker ResNet34-LM) | `wespeaker-resnet34-lm-fp32.gguf` (0_8b) | ✅ Installed |
 | Speaker Diarizer (Pyannote-segmentation-3.0) | `pyannote-segmentation-3.0-fp32.gguf` (0_8b) | ✅ Installed |
 | Emotion Classifier (Wav2Small) | `wav2small-cls7-int8.onnx` (0_8b) | ✅ Installed |
-| Turn Detector | `livekit-turn-detector` dir | ✅ Installed |
+| Turn Detector | Retired GGUF turn-detector assets | Archived; runtime EOT uses fused ABI scorer |
 
 ### 1.4 Existing Test Infrastructure
 

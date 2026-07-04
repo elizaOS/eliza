@@ -17,13 +17,11 @@ Entry points:
 
 Gates: `packages/training/benchmarks/eot_gates.md` (AUROC, ECE, latency).
 
-Architecture: this pipeline produces a runtime-hot-swappable adapter.
-The runtime path lives in
-`plugins/plugin-local-inference/src/services/voice/eot-classifier-ggml.ts`
-and is documented in that file's "Future: LoRA hot-swap path" section.
+Architecture: this pipeline produces training artifacts for the fused semantic
+EOT scorer and bundle-staging provenance.
 
 This pipeline is the canonical replacement for the
 @huggingface/transformers ONNX turn-detector path that was removed
-during the transformers.js yank. The LiveKit GGUF binding (J1.d) is
-the baseline this LoRA must match or beat per the publish gates.
+during the transformers.js yank. The retired GGUF baseline is still useful for
+offline comparison, but runtime turn-taking now enters through the fused ABI.
 """

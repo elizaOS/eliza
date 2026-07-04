@@ -122,6 +122,111 @@ describe("BargeInController — VAD-driven barge-in", () => {
 		expect(onCancelCalls).toBe(1);
 	});
 
+	it("denies a self-voice word confirmation and resumes TTS", () => {
+		const c = new BargeInController({ agentSelfVoiceThreshold: 0.28 });
+		const vad = new FakeVad();
+		c.bindVad(vad);
+		c.setAgentSpeaking(true);
+		const signals: BargeInSignal[] = [];
+		c.onSignal((s) => signals.push(s));
+
+		vad.emit(speechActive(100));
+		c.onWordsDetected({
+			wordCount: 2,
+			partialText: "agent echo",
+			timestampMs: 180,
+			evidence: { selfVoiceSimilarity: 0.37 },
+		});
+
+		expect(signals.map((s) => s.type)).toEqual(["pause-tts", "resume-tts"]);
+		expect(c.currentCancelToken()).toBeNull();
+		expect(c.cancelSignal().cancelled).toBe(false);
+	});
+
+	it("allows wake-word interruption even when self-voice similarity is high", () => {
+		const c = new BargeInController({ agentSelfVoiceThreshold: 0.28 });
+		const vad = new FakeVad();
+		c.bindVad(vad);
+		c.setAgentSpeaking(true);
+		const signals: BargeInSignal[] = [];
+		c.onSignal((s) => signals.push(s));
+
+		vad.emit(speechActive(100));
+		c.onWordsDetected({
+			wordCount: 2,
+			partialText: "hey eliza stop",
+			timestampMs: 180,
+			evidence: { selfVoiceSimilarity: 0.37, wakeWordDetected: true },
+		});
+
+		expect(signals.map((s) => s.type)).toEqual(["pause-tts", "hard-stop"]);
+		expect(c.currentCancelToken()?.reason).toBe("barge-in-words");
+	});
+
+	it("can deny unknown bystanders without changing the default-open path", () => {
+		const c = new BargeInController({ allowUnknownBystanders: false });
+		const vad = new FakeVad();
+		c.bindVad(vad);
+		c.setAgentSpeaking(true);
+		const signals: BargeInSignal[] = [];
+		c.onSignal((s) => signals.push(s));
+
+		vad.emit(speechActive(100));
+		c.onWordsDetected({
+			wordCount: 2,
+			partialText: "someone else",
+			timestampMs: 180,
+			evidence: { speakerProfileMatch: "unknown" },
+		});
+		c.onWordsDetected({
+			wordCount: 2,
+			partialText: "owner stop",
+			timestampMs: 220,
+			evidence: { speakerProfileMatch: "owner" },
+		});
+
+		expect(signals.map((s) => s.type)).toEqual(["pause-tts", "resume-tts"]);
+		expect(c.currentCancelToken()).toBeNull();
+
+		vad.emit(speechActive(300));
+		c.onWordsDetected({
+			wordCount: 2,
+			partialText: "owner stop",
+			timestampMs: 360,
+			evidence: { speakerProfileMatch: "owner" },
+		});
+		expect(signals.map((s) => s.type)).toEqual([
+			"pause-tts",
+			"resume-tts",
+			"pause-tts",
+			"hard-stop",
+		]);
+	});
+
+	it("reads the grace window from ELIZA_VOICE_BARGE_IN_GRACE_MS", () => {
+		vi.useFakeTimers();
+		const saved = process.env.ELIZA_VOICE_BARGE_IN_GRACE_MS;
+		process.env.ELIZA_VOICE_BARGE_IN_GRACE_MS = "250";
+		try {
+			const c = new BargeInController();
+			const vad = new FakeVad();
+			c.bindVad(vad);
+			c.setAgentSpeaking(true);
+			const signals: BargeInSignal[] = [];
+			c.onSignal((s) => signals.push(s));
+
+			vad.emit(speechActive(100));
+			vi.advanceTimersByTime(249);
+			expect(signals.map((s) => s.type)).toEqual(["pause-tts"]);
+			vi.advanceTimersByTime(1);
+			expect(signals.map((s) => s.type)).toEqual(["pause-tts", "resume-tts"]);
+		} finally {
+			if (saved === undefined) delete process.env.ELIZA_VOICE_BARGE_IN_GRACE_MS;
+			else process.env.ELIZA_VOICE_BARGE_IN_GRACE_MS = saved;
+			vi.useRealTimers();
+		}
+	});
+
 	it("ignores onWordsDetected with zero words", () => {
 		const c = new BargeInController();
 		const vad = new FakeVad();

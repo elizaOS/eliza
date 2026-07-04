@@ -6,11 +6,11 @@
 import { describe, expect, it } from "vitest";
 import {
 	clampProbability,
+	EOT_COMMIT_THRESHOLD,
+	EOT_FUSED_COMMIT_THRESHOLD,
 	EOT_MID_CLAUSE_THRESHOLD,
 	EOT_TENTATIVE_THRESHOLD,
-	LIVEKIT_TURN_DETECTOR_EN_REVISION,
-	LIVEKIT_TURN_DETECTOR_INTL_REVISION,
-	turnDetectorRevisionForTier,
+	eotCommitThresholdForSignal,
 	turnSignalFromProbability,
 } from "./eot-classifier";
 
@@ -80,19 +80,26 @@ describe("turnSignalFromProbability", () => {
 	});
 });
 
-describe("turnDetectorRevisionForTier", () => {
-	it("maps the 2b entry tier to the English variant, others to multilingual", () => {
-		expect(turnDetectorRevisionForTier("2b")).toBe(
-			LIVEKIT_TURN_DETECTOR_EN_REVISION,
-		);
-		expect(turnDetectorRevisionForTier("eliza-1-2b")).toBe(
-			LIVEKIT_TURN_DETECTOR_EN_REVISION,
-		);
-		expect(turnDetectorRevisionForTier("4b")).toBe(
-			LIVEKIT_TURN_DETECTOR_INTL_REVISION,
-		);
-		expect(turnDetectorRevisionForTier("eliza-1-8b")).toBe(
-			LIVEKIT_TURN_DETECTOR_INTL_REVISION,
-		);
+describe("eotCommitThresholdForSignal", () => {
+	it("uses the lower commit threshold only for fused semantic EOT signals", () => {
+		expect(
+			eotCommitThresholdForSignal({
+				endOfTurnProbability: 0.7,
+				nextSpeaker: "agent",
+				agentShouldSpeak: true,
+				source: "eliza-1-drafter",
+				transcript: "done",
+			}),
+		).toBe(EOT_FUSED_COMMIT_THRESHOLD);
+		expect(
+			eotCommitThresholdForSignal({
+				endOfTurnProbability: 0.9,
+				nextSpeaker: "agent",
+				agentShouldSpeak: true,
+				source: "heuristic",
+				transcript: "done",
+			}),
+		).toBe(EOT_COMMIT_THRESHOLD);
+		expect(eotCommitThresholdForSignal(null)).toBe(EOT_COMMIT_THRESHOLD);
 	});
 });

@@ -27,19 +27,26 @@ describe("scoreEndOfTurnHeuristic — canonical heuristic", () => {
     expect(score("i went to the store but")).toBe(0.15);
   });
 
-  it("rule 5: trailing preposition/article → incomplete NP (0.2)", () => {
+  it("rule 5: trailing filler → thinking pause (0.2)", () => {
+    expect(score("um")).toBe(0.2);
+    expect(score("I was thinking uh")).toBe(0.2);
+    expect(score("it might be like")).toBe(0.2);
+    expect(score("and then")).toBe(0.2);
+  });
+
+  it("rule 6: trailing preposition/article → incomplete NP (0.2)", () => {
     expect(score("schedule a meeting with")).toBe(0.2);
     expect(score("put it on the")).toBe(0.2);
     expect(score("i need a")).toBe(0.2);
   });
 
-  it("rule 6: short utterance with no trail-off → complete (0.7)", () => {
+  it("rule 7: short utterance with no trail-off → complete (0.7)", () => {
     expect(score("go home")).toBe(0.7);
     expect(score("yes")).toBe(0.7);
     expect(score("no thanks")).toBe(0.7);
   });
 
-  it("rule 7: no signal → neutral (0.5)", () => {
+  it("rule 8: no signal → neutral (0.5)", () => {
     expect(score("tell me about the weather in london")).toBe(0.5);
     expect(score("buy milk and eggs")).toBe(0.5);
   });

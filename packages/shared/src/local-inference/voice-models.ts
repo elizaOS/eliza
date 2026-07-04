@@ -214,8 +214,8 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     publishedToHfAt: "2026-05-15T11:15:08Z",
     hfRepo: "elizaos/eliza-1",
     hfRevision: "e7ef6204cbede995cc1ff740ed448ce1b6fe93d2",
-    // K7: GGUF path live via LiveKitGgmlTurnDetector (J1.d). ONNX file
-    // stays on HF for one release per HF asset policy.
+    // Retained bundle asset for staging/provenance; runtime EOT now uses the
+    // fused ABI scorer and ONNX stays on HF for one release per HF asset policy.
     preferredBackend: "ggml",
     deprecatedBackends: ["onnx"],
     ggufAssets: [
@@ -246,8 +246,8 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     publishedToHfAt: "2026-05-15T05:17:55Z",
     hfRepo: "elizaos/eliza-1",
     hfRevision: "20b291b5820937e8a1e1ca9f2927f5bc64aefe7e",
-    // K7: GGUF path live via LiveKitGgmlTurnDetector (J1.d). ONNX file
-    // stays on HF for one release per HF asset policy.
+    // Retained bundle asset for staging/provenance; runtime EOT now uses the
+    // fused ABI scorer and ONNX stays on HF for one release per HF asset policy.
     preferredBackend: "ggml",
     deprecatedBackends: ["onnx"],
     ggufAssets: [

@@ -315,6 +315,7 @@ export class VoiceTurnController {
 					wordCount: event.words.length,
 					partialText: event.words.join(" "),
 					timestampMs: Date.now(),
+					...(event.bargeInEvidence ? { evidence: event.bargeInEvidence } : {}),
 				});
 				break;
 		}

@@ -58,12 +58,15 @@ import type {
 import type { ContextPartial } from "./eager-context-builder";
 import {
 	EOT_COMMIT_SILENCE_MS,
-	EOT_COMMIT_THRESHOLD,
 	EOT_HANGOVER_EXTENSION_MS,
+	EOT_MAX_HANGOVER_EXTENSION_MS,
 	EOT_MID_CLAUSE_THRESHOLD,
 	EOT_TENTATIVE_SILENCE_MS,
 	EOT_TENTATIVE_THRESHOLD,
 	type EotClassifier,
+	eotCommitThresholdForSignal,
+	turnSignalFromProbability,
+	type VoiceTurnSignal,
 } from "./eot-classifier";
 import type { OptimisticGenerationPolicy } from "./optimistic-policy";
 import {
@@ -560,16 +563,18 @@ export class VoiceStateMachine {
 	 *
 	 * When an `eotClassifier` is configured, scores the text and applies:
 	 *
-	 *   P ≥ EOT_COMMIT_THRESHOLD  AND silence ≥ EOT_COMMIT_SILENCE_MS
-	 *     → behave as `speech-end` (commit immediately, skip remaining hangover)
+	 *   P ≥ source-aware commit threshold AND silence ≥ EOT_COMMIT_SILENCE_MS
+	 *     → behave as `speech-end`. Fused semantic signals use 0.7; score-only
+	 *       and heuristic signals stay at 0.9.
 	 *
 	 *   P ≥ EOT_TENTATIVE_THRESHOLD AND silence ≥ EOT_TENTATIVE_SILENCE_MS
 	 *     AND state is LISTENING
 	 *     → behave as `speech-pause` (enter PAUSE_TENTATIVE, start drafter)
 	 *
 	 *   P < EOT_MID_CLAUSE_THRESHOLD
-	 *     → accumulate EOT_HANGOVER_EXTENSION_MS into the hangover extension
-	 *       (the VadDetector reads this via `getEotHangoverExtensionMs()`)
+	 *     → accumulate EOT_HANGOVER_EXTENSION_MS into the hangover extension,
+	 *       capped by EOT_MAX_HANGOVER_EXTENSION_MS (the VadDetector reads this
+	 *       via `getEotHangoverExtensionMs()`)
 	 *
 	 * No-ops when `eotClassifier` is not set, or when the machine is not in
 	 * LISTENING or PAUSE_TENTATIVE.
@@ -583,7 +588,8 @@ export class VoiceStateMachine {
 		const validStates: VoiceState[] = ["LISTENING", "PAUSE_TENTATIVE"];
 		if (!validStates.includes(this.currentState())) return;
 
-		const pDone = await this.checkEot(text);
+		const signal = await this.checkEot(text);
+		const pDone = signal.endOfTurnProbability;
 		this.latestEotProb = pDone;
 		this.events.onEotScore?.(this.getTurnId(), text, pDone);
 
@@ -592,7 +598,7 @@ export class VoiceStateMachine {
 		if (!validStates.includes(stateNow)) return;
 
 		if (
-			pDone >= EOT_COMMIT_THRESHOLD &&
+			pDone >= eotCommitThresholdForSignal(signal) &&
 			silenceSinceMs >= EOT_COMMIT_SILENCE_MS
 		) {
 			// Treat as speech-end: commit immediately.
@@ -615,7 +621,10 @@ export class VoiceStateMachine {
 
 		if (pDone < EOT_MID_CLAUSE_THRESHOLD) {
 			// User is mid-clause — accumulate extra patience into the hangover.
-			this.eotHangoverExtensionMs += EOT_HANGOVER_EXTENSION_MS;
+			this.eotHangoverExtensionMs = Math.min(
+				EOT_MAX_HANGOVER_EXTENSION_MS,
+				this.eotHangoverExtensionMs + EOT_HANGOVER_EXTENSION_MS,
+			);
 		}
 	}
 
@@ -623,9 +632,21 @@ export class VoiceStateMachine {
 	 * Score the partial transcript with the Tier-3 EOT classifier.
 	 * Returns 0.5 when no classifier is configured (uncertain — let tiers 1+2 decide).
 	 */
-	private async checkEot(partial: string): Promise<number> {
-		if (!this.eotClassifier) return 0.5;
-		return this.eotClassifier.score(partial);
+	private async checkEot(partial: string): Promise<VoiceTurnSignal> {
+		if (!this.eotClassifier) {
+			return turnSignalFromProbability({
+				probability: 0.5,
+				transcript: partial.trim(),
+				source: "custom",
+			});
+		}
+		if (this.eotClassifier.signal) return this.eotClassifier.signal(partial);
+		return turnSignalFromProbability({
+			probability: await this.eotClassifier.score(partial),
+			transcript: partial.trim(),
+			source: "custom",
+			model: this.eotClassifier.constructor.name,
+		});
 	}
 
 	// --- internal helpers ----------------------------------------------

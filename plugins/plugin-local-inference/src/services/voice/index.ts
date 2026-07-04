@@ -16,8 +16,12 @@ export {
 export {
 	BargeInController,
 	type BargeInControllerConfig,
+	type BargeInInterruptEvidence,
+	type BargeInInterruptGate,
 	type BargeInListener,
+	type BargeInSpeakerProfileMatch,
 	type CancelSignal,
+	createDefaultBargeInInterruptGate,
 } from "./barge-in";
 export {
 	type CoordinatorRuntime,
@@ -116,33 +120,21 @@ export {
 	type Eliza1EotScorerOptions,
 	EOT_COMMIT_SILENCE_MS,
 	EOT_COMMIT_THRESHOLD,
+	EOT_FUSED_COMMIT_THRESHOLD,
 	EOT_HANGOVER_EXTENSION_MS,
+	EOT_MAX_HANGOVER_EXTENSION_MS,
 	EOT_MID_CLAUSE_THRESHOLD,
 	EOT_TENTATIVE_SILENCE_MS,
 	EOT_TENTATIVE_THRESHOLD,
 	type EotClassifier,
+	eotCommitThresholdForSignal,
 	HeuristicEotClassifier,
-	LIVEKIT_TURN_DETECTOR_EN_REVISION,
-	LIVEKIT_TURN_DETECTOR_INTL_REVISION,
 	RemoteEotClassifier,
 	type RemoteEotClassifierOptions,
-	turnDetectorRevisionForTier,
 	turnSignalFromProbability,
 	type VoiceNextSpeaker,
 	type VoiceTurnSignal,
 } from "./eot-classifier";
-export {
-	applyGemmaUserTemplate,
-	createBundledLiveKitGgmlTurnDetector,
-	DEFAULT_LIVEKIT_TURN_DETECTOR_GGML_DIR,
-	DEFAULT_LIVEKIT_TURN_DETECTOR_GGUF_EN,
-	DEFAULT_LIVEKIT_TURN_DETECTOR_GGUF_INTL,
-	EotGgmlUnavailableError,
-	LIVEKIT_END_OF_TURN_TOKEN,
-	LiveKitGgmlTurnDetector,
-	type LiveKitGgmlTurnDetectorOptions,
-	turnDetectorGgufForTier,
-} from "./eot-classifier-ggml";
 export { VoiceStartupError } from "./errors";
 export {
 	cancelEchoInWavUtterance,

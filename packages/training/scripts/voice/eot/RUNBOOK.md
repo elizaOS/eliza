@@ -155,14 +155,11 @@ every N steps (HuggingFace `trainer.save_steps` if you migrate to the
 
 ## Runtime integration (future, deferred)
 
-After publishing the adapter to `elizaos/eliza-1-voice-eot`, the
-runtime wiring at
-`plugins/plugin-local-inference/src/services/voice/eot-classifier-ggml.ts`
-needs an additional code path: when the bundle ships
-`voice/eot-lora/eliza-1-<tier>-eot-lora.bin`, the resolver should
-prefer hot-swapping the LoRA onto the already-loaded chat model
-(via llama.cpp's `--lora` flag) over standing up the separate
-LiveKit GGUF process.
+After publishing the adapter to `elizaos/eliza-1-voice-eot`, runtime wiring
+should enter through the fused semantic EOT scorer: when the bundle ships
+`voice/eot-lora/eliza-1-<tier>-eot-lora.bin`, the fused scorer should prefer
+hot-swapping the LoRA onto the already-loaded chat model over standing up any
+separate detector process.
 
 That integration is a follow-up PR — not in scope for this LoRA
 training pipeline. The pipeline produces the adapter; the runtime

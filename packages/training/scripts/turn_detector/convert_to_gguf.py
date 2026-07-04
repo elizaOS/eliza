@@ -26,9 +26,8 @@ Pipeline:
      story; the EOT classifier is tiny enough that Q6_K is also
      reasonable for the desktop tiers.
 
-Output layout matches what the runtime resolver (``eot-classifier.ts``,
-``turnDetectorRevisionForTier``) and the bundle stager
-(``stage_eliza1_bundle_assets.py``) expect once the GGUF lineage lands::
+Output layout matches what the bundle stager (``stage_eliza1_bundle_assets.py``)
+expects for offline GGUF lineage artifacts::
 
     turn/<repo-basename>-<level>.gguf
 

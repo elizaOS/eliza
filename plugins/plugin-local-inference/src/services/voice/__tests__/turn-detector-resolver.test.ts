@@ -1,12 +1,9 @@
 /**
- * Tests for the Voice Wave 2 turn-detector resolver:
+ * Tests for the voice turn-detector contract:
  *
- *   1. `turnDetectorRevisionForTier` — tier ↔ upstream revision routing.
- *      - 2b (entry tier) → `v1.2.2-en` (English-only GGUF).
- *      - 4b/9b/27b* → `v0.4.1-intl` (multilingual GGUF).
- *   2. Heuristic fallback contract: `HeuristicEotClassifier` satisfies
+ *   1. Heuristic fallback contract: `HeuristicEotClassifier` satisfies
  *      `EotClassifier` and emits well-formed `VoiceTurnSignal`s.
- *   3. Cancellation handshake (R11): turn detector emits a `VoiceTurnSignal`
+ *   2. Cancellation handshake (R11): turn detector emits a `VoiceTurnSignal`
  *      only — it NEVER aborts a turn directly. The controller layer above
  *      consumes the signal and decides whether to suppress (via
  *      `BargeInCancelToken.signal` with reason `"turn-suppressed"`).
@@ -16,52 +13,12 @@ import { describe, expect, it } from "vitest";
 import {
 	type EotClassifier,
 	HeuristicEotClassifier,
-	LIVEKIT_TURN_DETECTOR_EN_REVISION,
-	LIVEKIT_TURN_DETECTOR_INTL_REVISION,
-	turnDetectorRevisionForTier,
 	turnSignalFromProbability,
 	type VoiceTurnSignal,
 } from "../eot-classifier";
 
 // ---------------------------------------------------------------------------
-// 1. Tier-aware revision routing
-// ---------------------------------------------------------------------------
-
-describe("turnDetectorRevisionForTier — tier ↔ revision mapping", () => {
-	it.each([
-		["2b", LIVEKIT_TURN_DETECTOR_EN_REVISION],
-		["eliza-1-2b", LIVEKIT_TURN_DETECTOR_EN_REVISION],
-	])("%s → EN revision (%s)", (tier, expected) => {
-		expect(turnDetectorRevisionForTier(tier)).toBe(expected);
-	});
-
-	it.each([
-		["4b", LIVEKIT_TURN_DETECTOR_INTL_REVISION],
-		["9b", LIVEKIT_TURN_DETECTOR_INTL_REVISION],
-		["27b", LIVEKIT_TURN_DETECTOR_INTL_REVISION],
-		["27b-256k", LIVEKIT_TURN_DETECTOR_INTL_REVISION],
-		["eliza-1-4b", LIVEKIT_TURN_DETECTOR_INTL_REVISION],
-	])("%s → multilingual revision (%s)", (tier, expected) => {
-		expect(turnDetectorRevisionForTier(tier)).toBe(expected);
-	});
-
-	it("unknown tier falls back to the multilingual revision", () => {
-		expect(turnDetectorRevisionForTier("999b")).toBe(
-			LIVEKIT_TURN_DETECTOR_INTL_REVISION,
-		);
-	});
-
-	it("revisions are distinct, non-empty constants", () => {
-		expect(LIVEKIT_TURN_DETECTOR_EN_REVISION).not.toBe(
-			LIVEKIT_TURN_DETECTOR_INTL_REVISION,
-		);
-		expect(LIVEKIT_TURN_DETECTOR_EN_REVISION).toBeTruthy();
-		expect(LIVEKIT_TURN_DETECTOR_INTL_REVISION).toBeTruthy();
-	});
-});
-
-// ---------------------------------------------------------------------------
-// 2. Heuristic-fallback contract (engine wires this when bundle is absent)
+// 1. Heuristic-fallback contract
 // ---------------------------------------------------------------------------
 
 describe("heuristic fallback when bundled model is absent", () => {
@@ -95,7 +52,7 @@ describe("heuristic fallback when bundled model is absent", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 3. Cancellation handshake (R11) — detector never aborts a turn directly
+// 2. Cancellation handshake (R11) — detector never aborts a turn directly
 // ---------------------------------------------------------------------------
 
 describe("cancellation handshake (R11) — detector emits data, never aborts", () => {
@@ -176,10 +133,10 @@ describe("cancellation handshake (R11) — detector emits data, never aborts", (
 
 	it("signal source matches expected taxonomy", () => {
 		// Sources documented in `VoiceTurnSignal['source']` =
-		// "heuristic" | "livekit-turn-detector" | "remote" | "custom" | "eliza-1-drafter".
+		// "heuristic" | "remote" | "custom" | "eliza-1-drafter".
 		const sources: VoiceTurnSignal["source"][] = [
 			"heuristic",
-			"livekit-turn-detector",
+			"eliza-1-drafter",
 			"remote",
 			"custom",
 		];

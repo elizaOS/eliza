@@ -9,9 +9,10 @@
  * ASR, not on audio. It returns P(done) ∈ [0, 1]. The voice state machine
  * uses it to:
  *
- *   P(done) ≥ 0.9 AND silence ≥ 50 ms  → commit immediately, skip hangover
+ *   Fused semantic P(done) ≥ 0.7 AND silence ≥ 50 ms → commit immediately
+ *   Heuristic-only P(done) ≥ 0.9 AND silence ≥ 50 ms → commit immediately
  *   P(done) ≥ 0.6 AND silence ≥ 20 ms  → enter PAUSE_TENTATIVE early (start drafter)
- *   P(done) < 0.4                        → extend hangover by 50 ms (mid-clause)
+ *   P(done) < 0.4                        → extend hangover by 50 ms, capped
  *
  * Three implementations ship:
  *
@@ -24,8 +25,6 @@
  *
  *   `Eliza1EotClassifier` — uses the already-loaded text model to compute
  *     P(`<end_of_turn>` | partial transcript). Zero additional model weights.
- *
- *   The GGUF-backed LiveKit detector lives in `eot-classifier-ggml.ts`.
  *
  * Cancellation contract (handshake with VoiceTurnController / R11): the
  * classifier emits a `VoiceTurnSignal` per partial transcript. It NEVER
@@ -67,12 +66,7 @@ export interface VoiceTurnSignal {
 	/** Whether the agent should begin a response now. */
 	agentShouldSpeak: boolean | null;
 	/** Implementation/source name for telemetry and trace records. */
-	source:
-		| "heuristic"
-		| "livekit-turn-detector"
-		| "eliza-1-drafter"
-		| "remote"
-		| "custom";
+	source: "heuristic" | "eliza-1-drafter" | "remote" | "custom";
 	/** Optional model/version identifier for telemetry. */
 	model?: string;
 	/** Text actually scored after normalization/template truncation. */
@@ -156,35 +150,6 @@ export class HeuristicEotClassifier implements EotClassifier {
 			model: "heuristic-v1",
 		});
 	}
-}
-
-// ---------------------------------------------------------------------------
-// Tier-aware GGUF variant resolver (shared with eot-classifier-ggml.ts)
-// ---------------------------------------------------------------------------
-
-/**
- * Resolve which upstream revision a given Eliza-1 tier should bundle.
- * Mobile/small tiers (`2b`, the entry tier) get the English-only variant;
- * desktop/server tiers (`4b`+) get the multilingual variant.
- *
- * Accepts both bare tier ids (`"4b"`) and prefixed catalog ids
- * (`"eliza-1-4b"`).
- */
-export const LIVEKIT_TURN_DETECTOR_EN_REVISION = "v1.2.2-en";
-export const LIVEKIT_TURN_DETECTOR_INTL_REVISION = "v0.4.1-intl";
-
-export function turnDetectorRevisionForTier(
-	tierId: string,
-):
-	| typeof LIVEKIT_TURN_DETECTOR_EN_REVISION
-	| typeof LIVEKIT_TURN_DETECTOR_INTL_REVISION {
-	const bare = tierId.startsWith("eliza-1-")
-		? tierId.slice("eliza-1-".length)
-		: tierId;
-	if (bare === "2b") {
-		return LIVEKIT_TURN_DETECTOR_EN_REVISION;
-	}
-	return LIVEKIT_TURN_DETECTOR_INTL_REVISION;
 }
 
 // ---------------------------------------------------------------------------
@@ -276,8 +241,11 @@ export class RemoteEotClassifier implements EotClassifier {
 // Thresholds (shared constants so tests and state machine stay in sync)
 // ---------------------------------------------------------------------------
 
-/** P(done) ≥ this AND silence ≥ EOT_COMMIT_SILENCE_MS → commit immediately. */
+/** Heuristic-only P(done) ≥ this AND silence ≥ EOT_COMMIT_SILENCE_MS → commit. */
 export const EOT_COMMIT_THRESHOLD = 0.9;
+
+/** Fused semantic scorer P(done) ≥ this AND silence ≥ EOT_COMMIT_SILENCE_MS → commit. */
+export const EOT_FUSED_COMMIT_THRESHOLD = 0.7;
 
 /** P(done) ≥ this AND silence ≥ EOT_TENTATIVE_SILENCE_MS → enter PAUSE_TENTATIVE early. */
 export const EOT_TENTATIVE_THRESHOLD = 0.6;
@@ -294,6 +262,17 @@ export const EOT_TENTATIVE_SILENCE_MS = 20;
 /** How many ms to add to the pause hangover when P < EOT_MID_CLAUSE_THRESHOLD. */
 export const EOT_HANGOVER_EXTENSION_MS = 50;
 
+/** Maximum patience added for repeated mid-clause or filler-tail signals. */
+export const EOT_MAX_HANGOVER_EXTENSION_MS = 1500;
+
+export function eotCommitThresholdForSignal(
+	signal: VoiceTurnSignal | null | undefined,
+): number {
+	return signal?.source === "eliza-1-drafter"
+		? EOT_FUSED_COMMIT_THRESHOLD
+		: EOT_COMMIT_THRESHOLD;
+}
+
 // ---------------------------------------------------------------------------
 // Eliza-1 drafter EOT classifier
 // ---------------------------------------------------------------------------
@@ -307,8 +286,8 @@ export type { Eliza1EotScoreResult, Eliza1EotScorerOptions };
  * loads a fine-tuned EOT LoRA adapter on top of the base weights — see
  * `packages/training/scripts/turn_detector/` for the training recipe.
  *
- * Unlike the GGUF-backed `LiveKitGgmlTurnDetector`, this classifier ships
- * zero additional model weights — it leans on what's already in RAM.
+ * This classifier ships zero additional model weights — it leans on what's
+ * already in RAM.
  */
 export class Eliza1EotClassifier implements EotClassifier {
 	private readonly scorer: Eliza1EotScorer;

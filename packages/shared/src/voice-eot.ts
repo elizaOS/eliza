@@ -83,6 +83,21 @@ const TRAILING_INCOMPLETE = new Set([
   "via",
 ]);
 
+/** Fillers that usually mean the speaker is thinking, not yielding the turn. */
+const TRAILING_FILLERS = new Set([
+  "um",
+  "uh",
+  "er",
+  "erm",
+  "hmm",
+  "hm",
+  "well",
+  "like",
+  "actually",
+  "basically",
+  "then",
+]);
+
 /**
  * Question-tag suffixes that end an utterance (matched case-insensitively).
  * The union of both prior surfaces: punctuated forms (the UI set) plus the
@@ -113,10 +128,11 @@ const QUESTION_TAGS = [
  *   1  Trailing ellipsis ("…" / "..")                       0.20  (trail-off)
  *   2  Sentence-final punctuation (. ! ?)                   0.95
  *   3  Question-tag suffix ("right?", "yeah", "correct")    0.85
- *   4  Trailing conjunction (and / but / because / …)       0.15  (mid-clause)
- *   5  Trailing preposition / article (to / the / with …)   0.20  (incomplete NP)
- *   6  Short utterance (< 3 words, no trail-off)            0.70  (command/ack)
- *   7  No signal                                            0.50
+ *   4  Trailing filler (um / uh / like / then / …)          0.20  (thinking)
+ *   5  Trailing conjunction (and / but / because / …)       0.15  (mid-clause)
+ *   6  Trailing preposition / article (to / the / with …)   0.20  (incomplete NP)
+ *   7  Short utterance (< 3 words, no trail-off)            0.70  (command/ack)
+ *   8  No signal                                            0.50
  *
  * Note the conjunction/preposition checks precede the short-utterance rule so a
  * 2-word trail-off ("and so", "going to") is NOT misread as a complete short
@@ -144,9 +160,10 @@ export function scoreEndOfTurnHeuristic(transcript: string): number {
   if (words.length === 0) return 0.5;
 
   const lastWord = words[words.length - 1].replace(/[',;:-]+$/, "");
-  // Trailing conjunction / preposition / article → mid-clause, the speaker is
-  // continuing. Checked BEFORE the short-utterance rule so a 2-word trail-off
-  // ("going to", "and so") is NOT misread as a complete short command.
+  // Fillers and trailing conjunction / preposition / article → mid-clause, the
+  // speaker is continuing. Checked BEFORE the short-utterance rule so a 2-word
+  // trail-off ("going to", "and so") is NOT misread as a complete short command.
+  if (TRAILING_FILLERS.has(lastWord)) return 0.2;
   if (TRAILING_CONJUNCTIONS.has(lastWord)) return 0.15;
   if (TRAILING_INCOMPLETE.has(lastWord)) return 0.2;
 

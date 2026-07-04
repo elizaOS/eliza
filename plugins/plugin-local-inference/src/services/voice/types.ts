@@ -312,7 +312,12 @@ export type TranscriberEvent =
 	 * (`onWordsDetected`) so the agent hard-stops TTS + aborts in-flight
 	 * LLM/drafter generation only on real speech, not a blip.
 	 */
-	| { kind: "words"; words: string[] };
+	| {
+			kind: "words";
+			words: string[];
+			/** Optional speaker/echo evidence for speaker-gated hard-stop. */
+			bargeInEvidence?: import("./barge-in").BargeInInterruptEvidence;
+	  };
 
 export type TranscriberEventListener = (event: TranscriberEvent) => void;
 
@@ -544,6 +549,8 @@ export interface WordsDetectedSink {
 		/** Best partial transcript so far (may be empty). */
 		partialText: string;
 		timestampMs: number;
+		/** Optional speaker/echo evidence for speaker-gated hard-stop. */
+		evidence?: import("./barge-in").BargeInInterruptEvidence;
 	}): void;
 }
 

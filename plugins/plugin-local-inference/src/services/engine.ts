@@ -1361,14 +1361,12 @@ export class LocalInferenceEngine {
 			{ VoiceTurnController },
 			{ InMemoryAudioSink },
 			eotMod,
-			eotGgmlMod,
 		] = await Promise.all([
 			import("./voice/mic-source"),
 			import("./voice/vad"),
 			import("./voice/turn-controller"),
 			import("./voice/ring-buffer"),
 			import("./voice/eot-classifier"),
-			import("./voice/eot-classifier-ggml"),
 		]);
 
 		const micSource = opts.micSource ?? new DesktopMicSource();
@@ -1430,18 +1428,6 @@ export class LocalInferenceEngine {
 		// unavailable (the fused build is the sole on-device ASR runtime). Gated
 		// on the VAD so silent frames aren't decoded.
 		const transcriber = bridge.createStreamingTranscriber({ vad });
-		// Voice Wave 2 (2026-05-14): tier-aware turn-detector revision selection.
-		// `2b` (the entry tier) ships the ~66 MB EN-only SmolLM2-135M distill
-		// (`v1.2.2-en`); `4b`+ ship the ~396 MB multilingual pruned
-		// semantic detector (`v0.4.1-intl`). The on-disk layout is per-tier so the
-		// bundle dir already contains the matching ONNX — `revision` here is a
-		// telemetry label (the upstream tag the bundle was staged from). When no
-		// active bundle is resolvable we omit the hint and the resolver falls
-		// back to the upstream-default filename order.
-		const activeTier = this.activeEliza1Bundle?.tierId;
-		const tierRevision = activeTier
-			? eotMod.turnDetectorRevisionForTier(activeTier)
-			: undefined;
 		const eliza1EotSelected = resolveEliza1EotSelection(
 			opts.useEliza1Eot,
 			opts.eliza1EotLoraPath,
@@ -1459,28 +1445,16 @@ export class LocalInferenceEngine {
 				"[voice] useEliza1Eot:true requested but the in-process Eliza-1 EOT scorer is unavailable on the FFI runtime — use the GGUF turn detector by setting useEliza1Eot:false.",
 			);
 		}
-		// Resolver order: prefer the fused composite EOT (v11), then the legacy
-		// in-process Eliza-1 scorer + GGUF turn detector (both null on the FFI
-		// runtime — they needed node-llama controlledEvaluate), then the
-		// heuristic. The ONNX path was removed.
-		const ggmlTurnDetector =
-			opts.turnDetector === false || fusedEot
-				? undefined
-				: await eotGgmlMod
-						.createBundledLiveKitGgmlTurnDetector({
-							...(opts.turnDetectorModelDir
-								? { modelDir: opts.turnDetectorModelDir }
-								: {}),
-							...(tierRevision ? { revision: tierRevision } : {}),
-						})
-						.catch(() => null);
+		// Resolver order: prefer the fused composite EOT (v11), then the
+		// in-process Eliza-1 scorer when explicitly selected, then the heuristic.
+		// The retired GGUF/ONNX detector path is intentionally gone; future
+		// smart-turn work should enter through the fused library surface.
 		const turnDetector =
 			opts.turnDetector === false
 				? undefined
 				: (opts.turnDetector ??
 					fusedEot ??
 					eliza1EotClassifier ??
-					ggmlTurnDetector ??
 					new eotMod.HeuristicEotClassifier());
 		if (turnDetector) {
 			try {

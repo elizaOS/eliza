@@ -92,9 +92,7 @@ class TurnFinetuneConfig:
 def default_revision_for_tier(tier: str) -> str:
     """Return the LiveKit revision a given tier should fine-tune against.
 
-    Matches the runtime resolver in
-    ``plugins/plugin-local-inference/src/services/voice/eot-classifier.ts``
-    (`turnDetectorRevisionForTier`). Accepts both bare (``"4b"``) and
+    Matches the bundle-staging convention. Accepts both bare (``"4b"``) and
     prefixed (``"eliza-1-4b"``) tier ids.
     """
     bare = tier[len("eliza-1-") :] if tier.startswith("eliza-1-") else tier

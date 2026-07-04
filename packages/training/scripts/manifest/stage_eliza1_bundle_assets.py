@@ -80,10 +80,8 @@ GEMMA_ASR_REQUIRED_MESSAGE: Final[str] = (
 
 # Voice Wave 2 (2026-05-14): semantic end-of-turn detector — `livekit/turn-detector`
 # is the default ship target; `latishab/turnsense` is the Apache-2.0 fallback
-# routed via `--turn-license=apache`. Per-tier revision matches the runtime
-# resolver in `plugins/plugin-local-inference/src/services/voice/eot-classifier.ts`
-# (`turnDetectorRevisionForTier`): EN-only SmolLM2 distill on `2b`,
-# multilingual pruned Qwen2.5 elsewhere.
+# routed via `--turn-license=apache`. Per-tier revision is a staging convention:
+# EN-only SmolLM2 distill on `2b`, multilingual pruned Qwen2.5 elsewhere.
 TURN_DETECTOR_LIVEKIT_REPO: Final[str] = "livekit/turn-detector"
 TURN_DETECTOR_LIVEKIT_REVISION_BY_TIER: Final[dict[str, str]] = {
     "2b": "v1.2.2-en",
@@ -1068,11 +1066,9 @@ def stage_assets(args: argparse.Namespace) -> dict[str, Any]:
                 )
             )
     # Voice Wave 2 (2026-05-14): semantic turn detector staging. Per-tier
-    # revision routing matches the runtime resolver in
-    # plugins/plugin-local-inference/src/services/voice/eot-classifier.ts
-    # (`turnDetectorRevisionForTier`). Apache-2.0 fallback via
+    # revision routing is a bundle-staging convention. Apache-2.0 fallback via
     # `--turn-license=apache` ships `latishab/turnsense` at the same on-disk
-    # path so downstream resolution stays license-agnostic.
+    # path so downstream bundle provenance stays license-agnostic.
     turn_detector_report: dict[str, Any] | None = None
     if not args.skip_turn_detector:
         turn_detector_report = stage_turn_detector(
