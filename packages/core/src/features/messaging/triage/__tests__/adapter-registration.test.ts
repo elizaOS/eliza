@@ -6,11 +6,7 @@ import {
 	__resetDefaultTriageServiceForTests,
 	getDefaultTriageService,
 } from "../triage-service.ts";
-import type {
-	ListOptions,
-	MessageRef,
-	MessageSource,
-} from "../types.ts";
+import type { ListOptions, MessageRef, MessageSource } from "../types.ts";
 import { createFakeRuntime } from "./fake-runtime.ts";
 
 /**

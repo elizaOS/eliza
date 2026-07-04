@@ -10,6 +10,14 @@ import { type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
 import { TEEService } from "./services/tee";
 import { getVendor, TeeVendorNames } from "./vendors";
 
+// Confidential-VM (dstack/CoVE) TEE deployment surface. Registers the host
+// boot-gate evidence provider through the `@elizaos/agent` seam. Kept isolated
+// from the Phala vendor surface above; the two TEE providers do not tangle.
+export {
+  createDstackTeeProvider,
+  dstackConfidentialTeePlugin,
+  registerDstackEvidenceProvider,
+} from "./confidential";
 export {
   DeriveKeyProvider,
   PhalaDeriveKeyProvider,
@@ -19,14 +27,6 @@ export {
   RemoteAttestationProvider,
 } from "./providers";
 export { TEEService } from "./services";
-// Confidential-VM (dstack/CoVE) TEE deployment surface. Registers the host
-// boot-gate evidence provider through the `@elizaos/agent` seam. Kept isolated
-// from the Phala vendor surface above; the two TEE providers do not tangle.
-export {
-  createDstackTeeProvider,
-  dstackConfidentialTeePlugin,
-  registerDstackEvidenceProvider,
-} from "./confidential";
 export * from "./types";
 export {
   calculateSHA256,

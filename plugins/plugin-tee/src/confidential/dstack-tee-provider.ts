@@ -8,11 +8,11 @@
 // biome-ignore-all assist/source/organizeImports: preserve current import order in this comments-only header follow-up.
 import { timingSafeEqual } from "node:crypto";
 import { readFile } from "node:fs/promises";
-import { coveQuoteToTeeEvidence, verifyCoveQuote } from "./cove-quote.ts";
 import {
   normalizeTeeEvidence,
   type TeeEvidence,
 } from "@elizaos/agent/services/tee-evidence";
+import { coveQuoteToTeeEvidence, verifyCoveQuote } from "./cove-quote.ts";
 
 const DEFAULT_DSTACK_EVIDENCE_PATHS = [
   "/run/dstack/tee-evidence.json",

@@ -10,6 +10,7 @@ import {
   generateKeyPairSync,
   type KeyObject,
 } from "node:crypto";
+import { evaluateTeeEvidencePolicy } from "@elizaos/agent/services/tee-policy";
 import { describe, expect, it } from "vitest";
 import {
   coveX509ToTeeEvidence,
@@ -19,7 +20,6 @@ import {
   TCG_DICE_TCB_INFO_OID,
   verifyCoveX509Chain,
 } from "./cove-quote-x509.ts";
-import { evaluateTeeEvidencePolicy } from "@elizaos/agent/services/tee-policy";
 
 /**
  * Real Salus CoVE evidence certificate, captured from the COVG

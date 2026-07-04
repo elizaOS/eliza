@@ -12,6 +12,7 @@ import {
   hkdfSync,
   type KeyObject,
 } from "node:crypto";
+import { evaluateTeeEvidencePolicy } from "@elizaos/agent/services/tee-policy";
 import { describe, expect, it } from "vitest";
 import {
   type CoveClaims,
@@ -25,7 +26,6 @@ import {
   expectedReportData,
   verifyCoveQuote,
 } from "./cove-quote.ts";
-import { evaluateTeeEvidencePolicy } from "@elizaos/agent/services/tee-policy";
 
 /**
  * Local DICE key ceremony for tests. This is the reference vector the silicon
