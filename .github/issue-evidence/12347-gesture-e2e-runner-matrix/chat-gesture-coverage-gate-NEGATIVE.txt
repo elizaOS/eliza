@@ -1,0 +1,8 @@
+ ❯ test/chat-gesture-coverage.test.ts (6 tests | 2 failed) 636ms
+     × every discovered gesture-handler site has a matrix row 166ms
+     × covers a stable, non-empty set of gesture-handler sites 25ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+AssertionError: Shell component(s) wire a gesture primitive without a coverage row: __GateNegTest.tsx. To fix: (1) add real interaction coverage — a run-*-e2e.mjs fixture runner (L2) and a gesture-matrix.spec.ts leg (L3) where reachable — then (2) add a CHAT_GESTURE_MATRIX entry here and a row in packages/app/docs/CHAT_GESTURE_COVERAGE.md.: expected [ '__GateNegTest.tsx' ] to deeply equal []
+ FAIL  test/chat-gesture-coverage.test.ts > chat gesture coverage gate > covers a stable, non-empty set of gesture-handler sites
+ Test Files  1 failed (1)
+      Tests  2 failed | 4 passed (6)

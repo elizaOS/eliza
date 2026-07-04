@@ -1,0 +1,25 @@
+
+
+
+    packages/ui/src/first-run/reconcile-mobile-runtime-mode.ts:123:5:
+
+
+✓ chat sheet opens before background pass-through test
+✓ background rail starts on Home
+185 |       endX: 58,
+186 |       endY: 128,
+187 |       steps: 14,
+188 |       slow: true,
+189 |     });
+190 |     await page.waitForFunction(
+                     ^
+TimeoutError: waitForFunction: Timeout 30000ms exceeded.
+  log: [],
+
+      at /Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/wf_f7a1641e-e50-5/packages/ui/src/components/shell/__e2e__/run-conversation-swipe-e2e.mjs:190:16
+      at runBrowserFixtureE2E (/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/wf_f7a1641e-e50-5/packages/ui/src/testing/e2e-runner/browser-harness.ts:203:11)
+      at processTicksAndRejections (native:7:39)
+
+Bun v1.3.14 (macOS arm64)
+error: script "test:conversation-swipe-e2e" exited with code 1
+EXIT=1

@@ -1,0 +1,12 @@
+$ bun run --cwd ../.. packages/ui/src/components/shell/__e2e__/run-chatux-gesture-e2e.mjs
+  📸 01-topic-expanded.png
+✓ TopicGroup starts EXPANDED (quiet divider header, no chevron button)
+✓ Flick UP collapses the group to a pill (● topic — N messages)
+  📸 02-topic-collapsed-after-flick.png
+✓ Flick DOWN on the pill expands the group again
+  📸 03-topic-expanded-after-flick-down.png
+✓ no page errors (saw 0)
+  🎬 chatux-gestures.webm
+
+ALL PASSED
+CX_EXIT=0

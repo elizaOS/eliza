@@ -1,0 +1,25 @@
+
+    packages/ui/src/api/ios-local-agent-transport.ts:380:5:
+
+
+
+    packages/ui/src/first-run/reconcile-mobile-runtime-mode.ts:123:5:
+
+
+✓ chat sheet opens before background pass-through test
+✓ background rail starts on Home
+56256 |       throw new Error("Serialized error must have either an error or a value");
+56257 |     return parseSerializedValue(error.value, void 0);
+56258 |   }
+56259 |   let e;
+56260 |   if (error.error.name === "TimeoutError")
+56261 |     e = new TimeoutError2(error.error.message);
+                    ^
+TimeoutError: waitForFunction: Timeout 30000ms exceeded.
+  log: [],
+
+      at /Users/shawwalters/eliza-workspace/milady/eliza/node_modules/.bun/playwright-core@1.61.1/node_modules/playwright-core/lib/coreBundle.js:56261:13
+
+Bun v1.3.14 (macOS arm64)
+error: script "test:conversation-swipe-e2e" exited with code 1
+DEVELOP_EXIT=1

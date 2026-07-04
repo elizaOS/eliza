@@ -6,19 +6,19 @@ matrix doc + pinned-roster gate.
 
 ## Files
 
-- `run-chat-sheet-e2e.log` — migrated chat-sheet runner, isolated run (189 real
+- `run-chat-sheet-e2e.txt` — migrated chat-sheet runner, isolated run (189 real
   assertions, 56 screenshots, no page errors). Composes the shared lower-level
   helpers (bespoke multi-page/multi-viewport runner).
-- `run-chatux-gesture-e2e.log` — migrated chatux TopicGroup gesture runner
+- `run-chatux-gesture-e2e.txt` — migrated chatux TopicGroup gesture runner
   (video + screenshots via `runBrowserFixtureE2E`).
-- `run-conversation-swipe-e2e.log` — migrated conversation-swipe interleaving
+- `run-conversation-swipe-e2e.txt` — migrated conversation-swipe interleaving
   runner, isolated run (video + screenshots via `runBrowserFixtureE2E`).
-- `chat-gesture-coverage-gate.log` — the boot-free coverage gate, 6/6 passing.
-- `chat-gesture-coverage-gate-NEGATIVE.log` — the gate FAILING when a synthetic
+- `chat-gesture-coverage-gate.txt` — the boot-free coverage gate, 6/6 passing.
+- `chat-gesture-coverage-gate-NEGATIVE.txt` — the gate FAILING when a synthetic
   shell component wires a gesture primitive without a matrix row (the #12188
   phase-1 acceptance criterion: "CI fails when a covered handler site is added
   without a matrix row").
-- `run-conversation-swipe-DEVELOP-baseline-same-flake.log` — develop's UNMODIFIED
+- `run-conversation-swipe-DEVELOP-baseline-same-flake.txt` — develop's UNMODIFIED
   conversation-swipe runner failing at the exact same `waitForFunction` step as
   the migrated runner under machine load. Proves the migration is
   behavior-preserving: the launcher-passthrough `screenDrag` step is a

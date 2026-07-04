@@ -1,0 +1,10 @@
+$ vitest run --config vitest.config.ts test/chat-gesture-coverage.test.ts
+
+ RUN  v4.1.5 /Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/wf_f7a1641e-e50-5/packages/app
+
+
+ Test Files  1 passed (1)
+      Tests  6 passed (6)
+   Start at  21:55:42
+   Duration  19.17s (transform 1.82s, setup 1.83s, import 285ms, tests 150ms, environment 13.27s)
+
