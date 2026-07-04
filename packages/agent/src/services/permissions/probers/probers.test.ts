@@ -1,6 +1,7 @@
 /**
  * Contract coverage for the permission prober set: exactly one prober per
- * PermissionId, PROBERS_BY_ID indexing, the required PermissionState shape, and
+ * centrally-owned PermissionId (plugin-provided ids like website-blocking are
+ * excluded — #12660), PROBERS_BY_ID indexing, the required PermissionState shape, and
  * the native-status mapping tables (AV / notification / EventKit-Contacts
  * codes) plus embedded-provisioning entitlement detection. Also source-scans the
  * AppleScript- and native-dylib-backed probers to enforce that check() stays
@@ -30,10 +31,23 @@ import {
 } from "./_bridge.ts";
 import { ALL_PROBERS, PROBERS_BY_ID } from "./index.ts";
 
-const EXPECTED_IDS = PERMISSION_IDS;
+// Permission ids whose prober is contributed by an opt-in plugin at init
+// (via registry.registerProber), NOT by the central ALL_PROBERS enumeration.
+// `website-blocking` is provided by @elizaos/plugin-personal-assistant; the old
+// central "granted" stub was removed in #12660, so it must be absent here.
+// Future plugin-provided probers extend this list.
+const PLUGIN_PROVIDED_PERMISSION_IDS: readonly PermissionId[] = [
+  "website-blocking",
+];
+
+// The set the central enumeration is responsible for: every canonical id minus
+// the plugin-provided ones.
+const EXPECTED_IDS = PERMISSION_IDS.filter(
+  (id) => !PLUGIN_PROVIDED_PERMISSION_IDS.includes(id),
+);
 
 describe("permission probers", () => {
-  it("registers exactly one prober per PermissionId", () => {
+  it("registers exactly one prober per centrally-owned PermissionId", () => {
     expect(ALL_PROBERS.length).toBe(EXPECTED_IDS.length);
     const ids = new Set(ALL_PROBERS.map((p) => p.id));
     for (const id of EXPECTED_IDS) {
@@ -42,7 +56,19 @@ describe("permission probers", () => {
     expect(ids.size).toBe(EXPECTED_IDS.length);
   });
 
-  it("PROBERS_BY_ID indexes every prober", () => {
+  it("does not centrally enumerate plugin-provided probers", () => {
+    // Proves the old central website-blocking enumeration is gone (#12660):
+    // its prober only appears once the owning plugin registers it at init.
+    const ids = new Set(ALL_PROBERS.map((p) => p.id));
+    for (const id of PLUGIN_PROVIDED_PERMISSION_IDS) {
+      expect(ids.has(id)).toBe(false);
+      expect(PROBERS_BY_ID.has(id)).toBe(false);
+    }
+    expect(ids.has("website-blocking")).toBe(false);
+    expect(PROBERS_BY_ID.get("website-blocking")).toBeUndefined();
+  });
+
+  it("PROBERS_BY_ID indexes every centrally-owned prober", () => {
     for (const id of EXPECTED_IDS) {
       expect(PROBERS_BY_ID.get(id)).toBeDefined();
     }

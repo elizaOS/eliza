@@ -113,18 +113,24 @@ describe("PermissionRegistry", () => {
     expect(stored.status).toBe("denied");
   });
 
-  it("throws for check() / request() when no prober is registered", async () => {
+  // website-blocking is covered alongside calendar because its prober is
+  // supplied only by @elizaos/plugin-personal-assistant (#12660): with the
+  // central stub gone, an unloaded plugin means no prober, and check/request
+  // must throw here rather than silently reporting the old "granted".
+  it.each([
+    "calendar",
+    "website-blocking",
+  ] as const)("throws for check() / request() when no prober is registered (%s)", async (id) => {
     const persistence = new InMemoryPersistence();
     const registry = makeRegistry(persistence);
-    await expect(registry.check("calendar")).rejects.toThrow(
-      /no prober registered for calendar/,
-    );
+    const pattern = new RegExp(`no prober registered for ${id}`);
+    await expect(registry.check(id)).rejects.toThrow(pattern);
     await expect(
-      registry.request("calendar", {
+      registry.request(id, {
         reason: "x",
         feature: { app: "app", action: "act" },
       }),
-    ).rejects.toThrow(/no prober registered for calendar/);
+    ).rejects.toThrow(pattern);
   });
 
   it("updates state and stamps lastRequested + lastBlockedFeature on request()", async () => {

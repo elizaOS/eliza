@@ -22,4 +22,20 @@ describe("registerAllProbers", () => {
       registerProber.mock.calls.map((args) => (args[0] as Prober).id),
     ).toEqual(ALL_PROBERS.map((prober) => prober.id));
   });
+
+  it("does not register a central website-blocking prober", () => {
+    // #12660: the hardwired "granted" stub was removed. website-blocking is
+    // registered only by @elizaos/plugin-personal-assistant at init, so the
+    // central enumeration must never feed one into the registry.
+    const registerProber = vi.fn();
+    const registry = {
+      registerProber,
+    } as unknown as IPermissionsRegistry;
+
+    registerAllProbers(registry);
+
+    expect(
+      registerProber.mock.calls.map((args) => (args[0] as Prober).id),
+    ).not.toContain("website-blocking");
+  });
 });

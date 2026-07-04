@@ -3,7 +3,8 @@
  * and open-settings surface — over a fake runtime whose permissions registry
  * is a mocked `IPermissionsRegistry`. Deterministic and in-memory: asserts
  * canonical-id resolution from persisted state, registry delegation with
- * feature metadata, and rejection of unknown permission ids.
+ * feature metadata, the unavailable-permission fallback when the registry has
+ * no prober for a permission (#12660), and rejection of unknown permission ids.
  */
 import type { AgentRuntime } from "@elizaos/core";
 import type {
@@ -164,6 +165,41 @@ describe("permission routes", () => {
       feature: { app: "settings", action: "request.website-blocking" },
     });
     expect(ctx.captured.data).toEqual(websiteBlocking);
+  });
+
+  it("degrades to an unavailable state when no website-blocking prober is registered", async () => {
+    // #12660 drift regression: with the central stub removed, website-blocking
+    // has a prober only when @elizaos/plugin-personal-assistant is loaded.
+    // Without it the registry throws "no prober registered for
+    // website-blocking"; the route must catch and return the
+    // unavailable-permission shape (not the old hardwired "granted").
+    const websiteBlocking = permissionState("website-blocking");
+    const registry = makeRegistry(websiteBlocking, {
+      request: vi.fn(async () => {
+        throw new Error(
+          "[PermissionRegistry] no prober registered for website-blocking",
+        );
+      }),
+    });
+    const ctx = makeContext("/api/permissions/website-blocking/request", {
+      method: "POST",
+      registry,
+    });
+
+    await expect(handlePermissionRoutes(ctx)).resolves.toBe(true);
+
+    expect(registry.request).toHaveBeenCalledWith("website-blocking", {
+      reason: "Requested from permissions API.",
+      feature: { app: "settings", action: "request.website-blocking" },
+    });
+    // Success response (no error status), carrying the unavailable shape.
+    expect(ctx.captured.status).toBeUndefined();
+    expect(ctx.captured.data).toMatchObject({
+      id: "website-blocking",
+      status: "not-applicable",
+      canRequest: false,
+      reason: "Native permission checks are unavailable in this runtime.",
+    });
   });
 
   it("opens website-blocking settings through the registry hook", async () => {

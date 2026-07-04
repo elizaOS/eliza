@@ -1,5 +1,14 @@
 /**
- * All permission probers, indexed by id and as an array.
+ * The centrally-enumerated native permission probers, indexed by id and as an
+ * array. `registerAllProbers` feeds these into the registry at boot.
+ *
+ * This set covers only OS-backed permissions the agent process probes itself.
+ * Permissions whose implementation lives in an opt-in plugin are NOT listed
+ * here — the plugin self-registers its prober at init via
+ * `registry.registerProber`. `website-blocking` is one such case: its prober is
+ * contributed by `@elizaos/plugin-personal-assistant`, so when that plugin is
+ * not loaded the registry has no prober for it and surfaces an
+ * unavailable/not-determined state rather than a hardwired "granted" (#12660).
  *
  * Importing this module is side-effect free; the bridge dylib and any
  * osascript shellouts are loaded lazily on first `check()`/`request()`.
@@ -22,7 +31,6 @@ import { remindersProber } from "./reminders.js";
 import { screenRecordingProber } from "./screen-recording.js";
 import { screentimeProber } from "./screentime.js";
 import { shellProber } from "./shell.js";
-import { websiteBlockingProber } from "./website-blocking.js";
 
 export const ALL_PROBERS: readonly Prober[] = [
   accessibilityProber,
@@ -41,7 +49,6 @@ export const ALL_PROBERS: readonly Prober[] = [
   screenRecordingProber,
   screentimeProber,
   shellProber,
-  websiteBlockingProber,
 ];
 
 export const PROBERS_BY_ID: ReadonlyMap<PermissionId, Prober> = new Map(
@@ -64,5 +71,4 @@ export {
   screenRecordingProber,
   screentimeProber,
   shellProber,
-  websiteBlockingProber,
 };
