@@ -8,16 +8,20 @@ import crypto from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
   buildCodesignPlan,
+  buildOnlyTestingIdentifier,
   buildPlistXml,
   CONSOLE_SIGTRAP_SIGNATURE,
   classifyConsoleExit,
+  classifyIsolatedReruns,
   deriveSigningEntitlements,
+  evaluateRunnerStaleness,
   extractXctestrunAppPaths,
   findDeviceRecord,
   normalizeProvisioningProfile,
   PlistData,
   parseCliArgs,
   parseCodesigningIdentities,
+  parseFailedTestIdentifiers,
   parsePlist,
   profileMatchesTarget,
   resolveDeviceId,
@@ -647,5 +651,238 @@ describe("classifyConsoleExit (#11515)", () => {
     const verdict = classifyConsoleExit({ code: 0, signal: null, logText: "" });
     expect(verdict.kind).toBe("ok");
     expect(verdict.fatal).toBe(false);
+  });
+});
+
+describe("buildOnlyTestingIdentifier (#13566)", () => {
+  it("strips a trailing () and prefixes the target for a Class/method id", () => {
+    expect(
+      buildOnlyTestingIdentifier("GestureSemanticsUITests/testDetentFlick()", {
+        targetName: "AppUITests",
+      }),
+    ).toBe("AppUITests/GestureSemanticsUITests/testDetentFlick");
+  });
+
+  it("keeps an already-target-prefixed 3-segment id verbatim", () => {
+    expect(
+      buildOnlyTestingIdentifier(
+        "AppUITests/GestureSemanticsUITests/testDetentFlick()",
+        { targetName: "AppUITests" },
+      ),
+    ).toBe("AppUITests/GestureSemanticsUITests/testDetentFlick");
+  });
+
+  it("does not double-prefix a 2-segment id whose head is the target", () => {
+    expect(
+      buildOnlyTestingIdentifier("AppUITests/BootCaptureUITests", {
+        targetName: "AppUITests",
+      }),
+    ).toBe("AppUITests/BootCaptureUITests");
+  });
+
+  it("prefixes a bare class (whole-class failure)", () => {
+    expect(
+      buildOnlyTestingIdentifier("BootCaptureUITests", {
+        targetName: "AppUITests",
+      }),
+    ).toBe("AppUITests/BootCaptureUITests");
+  });
+
+  it("returns null for an empty / non-string id", () => {
+    expect(buildOnlyTestingIdentifier("", { targetName: "AppUITests" })).toBe(
+      null,
+    );
+    expect(
+      buildOnlyTestingIdentifier("   ", { targetName: "AppUITests" }),
+    ).toBe(null);
+    expect(buildOnlyTestingIdentifier(null, { targetName: "AppUITests" })).toBe(
+      null,
+    );
+  });
+});
+
+describe("parseFailedTestIdentifiers (#13566)", () => {
+  it("parses Xcode-16 testFailures rows into -only-testing identifiers", () => {
+    const summary = {
+      failedTests: 2,
+      testFailures: [
+        {
+          testName: "testComposerScroll()",
+          testIdentifierString: "GestureSemanticsUITests/testComposerScroll()",
+          targetName: "AppUITests",
+          failureText: "XCTAssertTrue failed",
+        },
+        {
+          testName: "testDetentFlick()",
+          testIdentifierString: "GestureSemanticsUITests/testDetentFlick()",
+          targetName: "AppUITests",
+        },
+      ],
+    };
+    const failures = parseFailedTestIdentifiers(summary);
+    expect(failures.map((f) => f.identifier)).toEqual([
+      "AppUITests/GestureSemanticsUITests/testComposerScroll",
+      "AppUITests/GestureSemanticsUITests/testDetentFlick",
+    ]);
+    expect(failures[0].targetName).toBe("AppUITests");
+  });
+
+  it("accepts a raw JSON string and falls back to the given target", () => {
+    const raw = JSON.stringify({
+      testFailures: [
+        { testIdentifierString: "BootCaptureUITests/testColdBoot()" },
+      ],
+    });
+    const failures = parseFailedTestIdentifiers(raw, {
+      fallbackTarget: "AppUITests",
+    });
+    expect(failures).toHaveLength(1);
+    expect(failures[0].identifier).toBe(
+      "AppUITests/BootCaptureUITests/testColdBoot",
+    );
+  });
+
+  it("dedupes and reads topInsights-nested failures", () => {
+    const summary = {
+      topInsights: [
+        {
+          category: "flaky",
+          testFailures: [
+            { testIdentifierString: "GestureSemanticsUITests/testFlick()" },
+            { testIdentifierString: "GestureSemanticsUITests/testFlick()" },
+          ],
+        },
+      ],
+    };
+    const failures = parseFailedTestIdentifiers(summary);
+    expect(failures).toHaveLength(1);
+    expect(failures[0].identifier).toBe(
+      "AppUITests/GestureSemanticsUITests/testFlick",
+    );
+  });
+
+  it("returns [] for unparseable / non-object input (fail-closed)", () => {
+    expect(parseFailedTestIdentifiers("not json{")).toEqual([]);
+    expect(parseFailedTestIdentifiers(null)).toEqual([]);
+    expect(parseFailedTestIdentifiers(42)).toEqual([]);
+    expect(parseFailedTestIdentifiers({})).toEqual([]);
+  });
+});
+
+describe("classifyIsolatedReruns (#13566)", () => {
+  const suiteFailures = [
+    {
+      identifier: "AppUITests/GestureSemanticsUITests/testComposer",
+      testName: "composer",
+    },
+    {
+      identifier: "AppUITests/GestureSemanticsUITests/testDetent",
+      testName: "detent",
+    },
+  ];
+
+  it("marks a suite failure that passes isolated as a flake and exits 0", () => {
+    const result = classifyIsolatedReruns(suiteFailures, [
+      {
+        identifier: "AppUITests/GestureSemanticsUITests/testComposer",
+        isolatedPassed: true,
+      },
+      {
+        identifier: "AppUITests/GestureSemanticsUITests/testDetent",
+        isolatedPassed: true,
+      },
+    ]);
+    expect(result.flakes).toHaveLength(2);
+    expect(result.realFailures).toEqual([]);
+    expect(result.exitNonZero).toBe(false);
+    expect(result.verdicts.every((v) => v.verdict === "flake")).toBe(true);
+  });
+
+  it("keeps a test that fails both as a real fail and exits nonzero", () => {
+    const result = classifyIsolatedReruns(suiteFailures, [
+      {
+        identifier: "AppUITests/GestureSemanticsUITests/testComposer",
+        isolatedPassed: true,
+      },
+      {
+        identifier: "AppUITests/GestureSemanticsUITests/testDetent",
+        isolatedPassed: false,
+      },
+    ]);
+    expect(result.flakes).toEqual([
+      "AppUITests/GestureSemanticsUITests/testComposer",
+    ]);
+    expect(result.realFailures).toEqual([
+      "AppUITests/GestureSemanticsUITests/testDetent",
+    ]);
+    expect(result.exitNonZero).toBe(true);
+  });
+
+  it("treats a missing isolated result as still-failing (no green-wash)", () => {
+    const result = classifyIsolatedReruns(suiteFailures, [
+      {
+        identifier: "AppUITests/GestureSemanticsUITests/testComposer",
+        isolatedPassed: true,
+      },
+      // testDetent's isolated rerun crashed / never reported
+    ]);
+    expect(result.realFailures).toEqual([
+      "AppUITests/GestureSemanticsUITests/testDetent",
+    ]);
+    expect(result.exitNonZero).toBe(true);
+  });
+});
+
+describe("evaluateRunnerStaleness (#13566)", () => {
+  const RUNNER = 1_000_000;
+
+  it("flags a runner older than any AppUITests source as stale", () => {
+    const decision = evaluateRunnerStaleness({
+      runnerMtimeMs: RUNNER,
+      sources: [
+        { path: "GestureSemanticsUITests.swift", mtimeMs: RUNNER + 5000 },
+        { path: "BootCaptureUITests.swift", mtimeMs: RUNNER - 5000 },
+      ],
+    });
+    expect(decision.stale).toBe(true);
+    expect(decision.overridden).toBe(false);
+    expect(decision.newestSource.path).toBe("GestureSemanticsUITests.swift");
+    expect(decision.deltaMs).toBe(5000);
+  });
+
+  it("is not stale when the runner is newer than every source", () => {
+    const decision = evaluateRunnerStaleness({
+      runnerMtimeMs: RUNNER,
+      sources: [{ path: "A.swift", mtimeMs: RUNNER - 1000 }],
+    });
+    expect(decision.stale).toBe(false);
+    expect(decision.deltaMs).toBe(0);
+  });
+
+  it("honors --allow-stale-runner as overridden (proceed, not blocked)", () => {
+    const decision = evaluateRunnerStaleness({
+      runnerMtimeMs: RUNNER,
+      sources: [{ path: "A.swift", mtimeMs: RUNNER + 1 }],
+      allowStale: true,
+    });
+    expect(decision.stale).toBe(true);
+    expect(decision.overridden).toBe(true);
+  });
+
+  it("fails closed when the runner mtime is unknown", () => {
+    const decision = evaluateRunnerStaleness({
+      runnerMtimeMs: null,
+      sources: [{ path: "A.swift", mtimeMs: RUNNER }],
+    });
+    expect(decision.stale).toBe(true);
+  });
+
+  it("is not stale when there are no sources to compare against", () => {
+    const decision = evaluateRunnerStaleness({
+      runnerMtimeMs: RUNNER,
+      sources: [],
+    });
+    expect(decision.stale).toBe(false);
+    expect(decision.newestSource).toBe(null);
   });
 });

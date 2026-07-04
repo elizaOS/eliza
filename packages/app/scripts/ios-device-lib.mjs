@@ -675,6 +675,241 @@ export function parseCliArgs(argv, { booleans = [] } = {}) {
   return args;
 }
 
+// ── XCUITest failed-test parsing + retry-in-isolation (#13566) ──────────
+
+/**
+ * Parse the failed-test identifiers out of a captured
+ * `xcrun xcresulttool get test-results summary --format json` payload.
+ *
+ * Xcode 16's summary emits a `testFailures` array whose rows carry a
+ * `testIdentifierString` ("Class/testMethod()" form) plus `testName` and
+ * `targetName`. Older/alternate captures nest the same data under
+ * `topInsights` or a bare `failures` array; we accept any of them and dedupe.
+ * The `-only-testing` argument xcodebuild wants is `Target/Class/method` —
+ * `testIdentifierString` omits the target and keeps the `()` suffix on the
+ * method, so we normalize: drop a trailing `()`, and prefix the target
+ * (from the row's `targetName`, else the caller-supplied `fallbackTarget`).
+ *
+ * Pure — the caller reads the file and passes the parsed object (or the raw
+ * JSON string). A non-object / unparseable input yields an empty list rather
+ * than throwing, so a malformed summary degrades to "no isolable failures"
+ * and the harness keeps its normal nonzero-exit verdict (fail-closed: we
+ * never fabricate a pass, we just can't offer retry-in-isolation).
+ *
+ * @param {unknown} summary parsed summary object OR raw JSON string
+ * @param {{ fallbackTarget?: string }} [options]
+ * @returns {Array<{ identifier: string, testName: string, targetName: string | null }>}
+ */
+export function parseFailedTestIdentifiers(
+  summary,
+  { fallbackTarget = "AppUITests" } = {},
+) {
+  let root = summary;
+  if (typeof summary === "string") {
+    try {
+      root = JSON.parse(summary);
+    } catch {
+      return [];
+    }
+  }
+  if (!root || typeof root !== "object") return [];
+
+  const rows = [];
+  const pushRows = (value) => {
+    if (Array.isArray(value)) {
+      for (const row of value) {
+        if (row && typeof row === "object") rows.push(row);
+      }
+    }
+  };
+  pushRows(root.testFailures);
+  pushRows(root.failures);
+  // topInsights on some captures nests { impact, category, testFailures: [...] }
+  if (Array.isArray(root.topInsights)) {
+    for (const insight of root.topInsights) {
+      if (insight && typeof insight === "object")
+        pushRows(insight.testFailures);
+    }
+  }
+
+  const seen = new Set();
+  const failures = [];
+  for (const row of rows) {
+    const targetName =
+      typeof row.targetName === "string" && row.targetName.trim()
+        ? row.targetName.trim()
+        : null;
+    const rawId =
+      typeof row.testIdentifierString === "string" &&
+      row.testIdentifierString.trim()
+        ? row.testIdentifierString.trim()
+        : typeof row.testIdentifier === "string" && row.testIdentifier.trim()
+          ? row.testIdentifier.trim()
+          : typeof row.testName === "string" && row.testName.trim()
+            ? row.testName.trim()
+            : null;
+    if (!rawId) continue;
+    const identifier = buildOnlyTestingIdentifier(rawId, {
+      targetName: targetName ?? fallbackTarget,
+    });
+    if (!identifier || seen.has(identifier)) continue;
+    seen.add(identifier);
+    failures.push({
+      identifier,
+      testName:
+        typeof row.testName === "string" && row.testName.trim()
+          ? row.testName.trim()
+          : rawId,
+      targetName,
+    });
+  }
+  return failures;
+}
+
+/**
+ * Normalize an xcresult test identifier into the `Target/Class/method` form
+ * that `xcodebuild -only-testing:` accepts. Handles:
+ *   - trailing `()` on the method ("Class/testFoo()" → "Class/testFoo")
+ *   - an already-target-prefixed id (kept as-is once the `()` is stripped)
+ *   - a bare "Class/testFoo" (prefixed with `targetName`)
+ *   - a bare "Class" (a whole-class failure — prefixed, no method)
+ *
+ * @param {string} rawId
+ * @param {{ targetName: string }} options
+ * @returns {string | null}
+ */
+export function buildOnlyTestingIdentifier(rawId, { targetName }) {
+  if (typeof rawId !== "string") return null;
+  const trimmed = rawId.trim().replace(/\(\)$/, "");
+  if (!trimmed) return null;
+  const segments = trimmed.split("/").filter((s) => s.length > 0);
+  if (segments.length === 0) return null;
+  // Already target-prefixed? A 3-segment id, or a 2-segment id whose head
+  // equals the target, is taken verbatim; otherwise prefix the target.
+  if (segments.length >= 3) return segments.join("/");
+  if (segments[0] === targetName) return segments.join("/");
+  return [targetName, ...segments].join("/");
+}
+
+/**
+ * Fold per-test isolated-rerun outcomes into a three-way verdict list and an
+ * overall exit decision, per #13566:
+ *   - a test that FAILED in the full suite but PASSED in isolation → `flake`
+ *   - a test that FAILED both → `fail`
+ * (Tests that passed in the suite never enter this pass.) The run should exit
+ * NONZERO iff at least one real `fail` remains; a run whose only failures were
+ * flakes exits 0 with those tests recorded as `flake` for trend data.
+ *
+ * Pure — the caller runs each isolated `xcodebuild test-without-building` and
+ * passes `{ identifier, isolatedPassed }`. An identifier missing from the
+ * results map is treated conservatively as still-failing (`fail`) so a
+ * skipped/crashed isolated rerun can never green-wash the suite.
+ *
+ * @param {Array<{ identifier: string, testName?: string }>} suiteFailures
+ * @param {Array<{ identifier: string, isolatedPassed: boolean }>} isolatedResults
+ * @returns {{
+ *   verdicts: Array<{ identifier: string, testName: string, verdict: 'flake' | 'fail' }>,
+ *   flakes: string[],
+ *   realFailures: string[],
+ *   exitNonZero: boolean,
+ * }}
+ */
+export function classifyIsolatedReruns(suiteFailures, isolatedResults) {
+  const isolatedById = new Map();
+  for (const result of isolatedResults ?? []) {
+    if (result && typeof result.identifier === "string") {
+      isolatedById.set(result.identifier, result.isolatedPassed === true);
+    }
+  }
+  const verdicts = [];
+  const flakes = [];
+  const realFailures = [];
+  for (const failure of suiteFailures ?? []) {
+    if (!failure || typeof failure.identifier !== "string") continue;
+    const passedIsolated = isolatedById.get(failure.identifier) === true;
+    const verdict = passedIsolated ? "flake" : "fail";
+    verdicts.push({
+      identifier: failure.identifier,
+      testName: failure.testName ?? failure.identifier,
+      verdict,
+    });
+    if (verdict === "flake") flakes.push(failure.identifier);
+    else realFailures.push(failure.identifier);
+  }
+  return {
+    verdicts,
+    flakes,
+    realFailures,
+    exitNonZero: realFailures.length > 0,
+  };
+}
+
+// ── --skip-build stale-runner guard (#13566) ────────────────────────────
+
+/**
+ * Decide whether a reused test runner (--skip-build) is stale relative to the
+ * XCUITest Swift sources it was compiled from. A runner built BEFORE any
+ * AppUITests source was last modified executes day-old tests and can
+ * false-green a change to the very suite under test (#13566).
+ *
+ * Pure — the caller stats the `.xctestrun` and the AppUITests/*.swift sources
+ * and passes their mtimes (ms). Returns a decision the script turns into a
+ * fail-fast (naming the newest stale source + the rebuild command) unless the
+ * operator passes an explicit override.
+ *
+ * Fail-closed: if the runner mtime is unknown (null) we report `stale` — a
+ * skip-build run we cannot date is not trusted to be fresh. An empty source
+ * list (no sources found) is NOT stale (nothing to be stale against), so a
+ * repo layout change can't wedge the guard shut.
+ *
+ * @param {{
+ *   runnerMtimeMs: number | null,
+ *   sources: Array<{ path: string, mtimeMs: number }>,
+ *   allowStale?: boolean,
+ * }} params
+ * @returns {{
+ *   stale: boolean,
+ *   overridden: boolean,
+ *   newestSource: { path: string, mtimeMs: number } | null,
+ *   deltaMs: number,
+ * }}
+ */
+export function evaluateRunnerStaleness({
+  runnerMtimeMs,
+  sources,
+  allowStale = false,
+}) {
+  const validSources = (sources ?? []).filter(
+    (s) => s && typeof s.mtimeMs === "number" && Number.isFinite(s.mtimeMs),
+  );
+  let newestSource = null;
+  for (const source of validSources) {
+    if (!newestSource || source.mtimeMs > newestSource.mtimeMs) {
+      newestSource = source;
+    }
+  }
+  // No datable runner → cannot prove freshness → treat as stale (fail-closed).
+  if (runnerMtimeMs === null || !Number.isFinite(runnerMtimeMs)) {
+    return {
+      stale: true,
+      overridden: allowStale === true,
+      newestSource,
+      deltaMs: 0,
+    };
+  }
+  // No sources to compare against → nothing can be stale.
+  if (!newestSource) {
+    return { stale: false, overridden: false, newestSource: null, deltaMs: 0 };
+  }
+  const stale = newestSource.mtimeMs > runnerMtimeMs;
+  return {
+    stale,
+    overridden: stale && allowStale === true,
+    newestSource,
+    deltaMs: stale ? newestSource.mtimeMs - runnerMtimeMs : 0,
+  };
+}
+
 // ── Console-capture exit classification (#11515) ────────────────────────
 
 /**
