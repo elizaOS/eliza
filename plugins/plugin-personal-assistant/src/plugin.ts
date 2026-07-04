@@ -11,9 +11,12 @@ import {
   messagingTriageActions,
   type Plugin,
   promoteSubactionsToActions,
+  registerCandidateActionBackstopRule,
+  registerDirectMessageHook,
   registerLocalizedExamplesProvider,
   registerSendPolicy,
   type State,
+  unregisterDirectMessageHook,
 } from "@elizaos/core";
 import {
   getSelfControlPermissionState,
@@ -142,6 +145,7 @@ import {
   LIFEOPS_TASK_NAME,
   registerLifeOpsTaskWorker,
 } from "./lifeops/runtime.js";
+import { createScheduledTaskCandidateBackstopRule } from "./lifeops/scheduled-task/candidate-backstop.js";
 import { completeFiredTasksOnOwnerReply } from "./lifeops/scheduled-task/inbound-reply-completion.js";
 import {
   installLifeOpsScheduledTaskEventBridge,
@@ -1079,22 +1083,20 @@ const rawPersonalAssistantPlugin: Plugin = {
         lifeOpsMessageActionHook?: {
           handleMessageAction: typeof handleLifeOpsMessageAction;
         };
-        lifeOpsDirectMessageHook?: {
-          handleMessageRequest: typeof handleLifeOpsDirectMessageRequest;
-        };
       }
     ).lifeOpsMessageActionHook = {
       handleMessageAction: handleLifeOpsMessageAction,
     };
-    (
-      runtime as IAgentRuntime & {
-        lifeOpsDirectMessageHook?: {
-          handleMessageRequest: typeof handleLifeOpsDirectMessageRequest;
-        };
-      }
-    ).lifeOpsDirectMessageHook = {
-      handleMessageRequest: handleLifeOpsDirectMessageRequest,
-    };
+    // Pre-LLM direct-message hook: core invokes this before the planner/model
+    // runs, letting LifeOps handle certain requests (missed-call repair,
+    // document-signature, portal-upload) deterministically.
+    registerDirectMessageHook(runtime, handleLifeOpsDirectMessageRequest);
+    // Candidate-action backstop: protect LifeOps scheduled-task candidates from
+    // the core coding-delegation backstop on genuine scheduled-task turns.
+    registerCandidateActionBackstopRule(
+      runtime,
+      createScheduledTaskCandidateBackstopRule(),
+    );
 
     // First-party adapters backed by LifeOps services. Gmail and X replace the
     // core default adapters so MESSAGE triage operations operate on real
@@ -1223,8 +1225,7 @@ const rawPersonalAssistantPlugin: Plugin = {
   dispose: async (runtime: IAgentRuntime) => {
     delete (runtime as IAgentRuntime & { lifeOpsMessageActionHook?: unknown })
       .lifeOpsMessageActionHook;
-    delete (runtime as IAgentRuntime & { lifeOpsDirectMessageHook?: unknown })
-      .lifeOpsDirectMessageHook;
+    unregisterDirectMessageHook(runtime, handleLifeOpsDirectMessageRequest);
 
     const taskNames: readonly string[] = [
       PROACTIVE_TASK_NAME,

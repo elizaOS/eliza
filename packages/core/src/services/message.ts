@@ -46,6 +46,10 @@ import {
 	applyAddressedTo,
 } from "../runtime/addressed-to";
 import { normalizeTopics } from "../runtime/builtin-field-evaluators";
+import {
+	type CandidateActionBackstopRule,
+	getCandidateActionBackstopRules,
+} from "../runtime/candidate-action-backstop";
 import { filterByContextGate } from "../runtime/context-gates";
 import { computePrefixHashes, hashString } from "../runtime/context-hash";
 import {
@@ -62,6 +66,7 @@ import {
 	getMessageHistoryCompactionHook,
 	type MessageHistoryCompactionTelemetry,
 } from "../runtime/conversation-compaction-hook";
+import { runDirectMessageHooks } from "../runtime/direct-message-hook";
 import {
 	type EvaluatorEffects,
 	type EvaluatorOutput,
@@ -898,7 +903,7 @@ function hasInboundBenchmarkContext(message: Memory): boolean {
  * Returns true when the current turn was issued by a benchmark harness AND the
  * `ELIZA_BENCH_FORCE_TOOL_CALL` env opt-in is set. Used to bias the planner
  * toward emitting structured tool calls instead of routing every turn through
- * `REPLY`, which is what LifeOpsBench and similar harnesses score against.
+ * `REPLY`, which is what tool-calling benchmark harnesses score against.
  *
  * Detection is intentionally narrow: we require BOTH
  *   1. an env-var opt-in (so default behavior is unchanged for normal chat), AND
@@ -2219,7 +2224,7 @@ async function collectV5PlannerCandidateActions(args: {
 	// messageHandler-picked `selectedContexts`. That filter excluded owner
 	// actions, CALENDAR, SCHEDULED_TASKS, etc. whenever the messageHandler routed to
 	// "general" — even when the user clearly asked for a habit/event/etc.
-	// (See `docs/audits/lifeops-2026-05-09/12-real-root-cause.md`.)
+	// (See the 2026-05-09 candidate-surface root-cause audit.)
 	//
 	// Now: the surface starts from every action, then applies only the same
 	// execution gates the planner executor will enforce. That keeps role-policy
@@ -3709,6 +3714,7 @@ export function messageHandlerFromFieldResult(
 	runtimeContext?: {
 		actions: ReadonlyArray<Pick<Action, "name" | "similes" | "tags">>;
 		messageText?: string;
+		candidateBackstopRules?: readonly CandidateActionBackstopRule[];
 	},
 ): MessageHandlerResult {
 	const rawContexts = Array.isArray(result.contexts)
@@ -3724,6 +3730,7 @@ export function messageHandlerFromFieldResult(
 		candidateActions: rawCandidateActions,
 		actions: runtimeContext?.actions ?? [],
 		messageText: currentMessageText,
+		backstopRules: runtimeContext?.candidateBackstopRules ?? [],
 	});
 	const candidateActions = candidateBackstop.candidateActions;
 	const contexts =
@@ -4005,28 +4012,11 @@ export function messageHandlerFromFieldResult(
 	};
 }
 
-const LIFEOPS_SCHEDULED_TASK_ACTIONS = new Set(
-	[
-		"SCHEDULED_TASKS",
-		"SCHEDULED_TASKS_ACKNOWLEDGE",
-		"SCHEDULED_TASKS_CANCEL",
-		"SCHEDULED_TASKS_COMPLETE",
-		"SCHEDULED_TASKS_CREATE",
-		"SCHEDULED_TASKS_DISMISS",
-		"SCHEDULED_TASKS_GET",
-		"SCHEDULED_TASKS_HISTORY",
-		"SCHEDULED_TASKS_LIST",
-		"SCHEDULED_TASKS_REOPEN",
-		"SCHEDULED_TASKS_SKIP",
-		"SCHEDULED_TASKS_SNOOZE",
-		"SCHEDULED_TASKS_UPDATE",
-	].map(normalizeActionIdentifier),
-);
-
 function applyCodingCandidateBackstop(args: {
 	candidateActions: readonly string[];
 	actions: ReadonlyArray<Pick<Action, "name" | "similes" | "tags">>;
 	messageText: string;
+	backstopRules: readonly CandidateActionBackstopRule[];
 }): { candidateActions: string[]; forceCodeContext: boolean } {
 	if (args.candidateActions.length === 0) {
 		return {
@@ -4040,13 +4030,19 @@ function applyCodingCandidateBackstop(args: {
 			forceCodeContext: false,
 		};
 	}
-	const hasLifeOpsScheduledCandidate = args.candidateActions.some((name) =>
-		LIFEOPS_SCHEDULED_TASK_ACTIONS.has(normalizeActionIdentifier(name)),
+	const normalizedCandidates = args.candidateActions.map(
+		normalizeActionIdentifier,
 	);
-	if (
-		hasLifeOpsScheduledCandidate &&
-		looksLikeLifeOpsScheduledTaskRequest(args.messageText)
-	) {
+	// A registered backstop rule protects its candidates when it both owns one
+	// of the candidate actions AND recognizes this message as addressed to it.
+	const protectedByRule = args.backstopRules.some((rule) => {
+		const owned = new Set(rule.actionNames.map(normalizeActionIdentifier));
+		return (
+			normalizedCandidates.some((name) => owned.has(name)) &&
+			rule.matches(args.messageText)
+		);
+	});
+	if (protectedByRule) {
 		return {
 			candidateActions: [...args.candidateActions],
 			forceCodeContext: false,
@@ -4060,9 +4056,13 @@ function applyCodingCandidateBackstop(args: {
 		};
 	}
 
+	const backstopActionNames = new Set(
+		args.backstopRules.flatMap((rule) =>
+			rule.actionNames.map(normalizeActionIdentifier),
+		),
+	);
 	const filtered = args.candidateActions.filter(
-		(name) =>
-			!LIFEOPS_SCHEDULED_TASK_ACTIONS.has(normalizeActionIdentifier(name)),
+		(name) => !backstopActionNames.has(normalizeActionIdentifier(name)),
 	);
 	if (filtered.length === args.candidateActions.length) {
 		return { candidateActions: filtered, forceCodeContext: false };
@@ -6038,6 +6038,7 @@ export async function runV5MessageRuntimeStage1(args: {
 				{
 					actions: args.runtime.actions,
 					messageText: getUserMessageText(args.message),
+					candidateBackstopRules: getCandidateActionBackstopRules(args.runtime),
 				},
 			);
 		}
@@ -7362,24 +7363,6 @@ function looksLikeCodingWorkRequest(text: string): boolean {
 			normalized,
 		);
 	return asksDelegation || asksCodingWork;
-}
-
-function looksLikeLifeOpsScheduledTaskRequest(text: string): boolean {
-	const normalized = text.toLowerCase();
-	if (!normalized.trim()) {
-		return false;
-	}
-	return (
-		/\b(?:remind\s+me|reminder|scheduled\s+task|scheduled\s+item|lifeops|todo|to[- ]?do|snooze|recap|check[- ]?in|follow[- ]?up|watcher|approval)\b/iu.test(
-			normalized,
-		) ||
-		/\b(?:schedule|create|make|add|set\s+up)\b[\s\S]{0,80}\b(?:task|reminder|todo|to[- ]?do|check[- ]?in|follow[- ]?up|watcher|recap|approval)\b/iu.test(
-			normalized,
-		) ||
-		/\b(?:tomorrow|tonight|later|next\s+(?:week|month|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|at\s+\d{1,2}(?::\d{2})?\s*(?:am|pm)?|every\s+(?:day|week|month|morning|evening))\b/iu.test(
-			normalized,
-		)
-	);
 }
 
 function looksLikeExplicitDelegationRequest(text: string): boolean {
@@ -9141,9 +9124,9 @@ export class DefaultMessageService implements IMessageService {
 		// #8791: pre-LLM action shortcut gate runs FIRST — before any direct hook,
 		// planner, or model call. An explicit slash/`!` command (always-on) or a
 		// confident natural-language shortcut resolves to a deterministic action
-		// reply with zero inference. Placed here (ahead of the LifeOps/workflow
-		// direct hooks and the conditional v5 stage) so a slash command can never
-		// be pre-empted by another handler.
+		// reply with zero inference. Placed here (ahead of the pre-LLM
+		// direct-message hooks and the conditional v5 stage) so a slash command can
+		// never be pre-empted by another handler.
 		if (!strategyResult) {
 			const shortcutSenderRole = await resolveStage1SenderRole(
 				runtime,
@@ -9166,38 +9149,24 @@ export class DefaultMessageService implements IMessageService {
 			}
 		}
 
-		const directLifeOpsResult = strategyResult
+		const directHookResult = strategyResult
 			? null
-			: await (
-					runtime as IAgentRuntime & {
-						lifeOpsDirectMessageHook?: {
-							handleMessageRequest?: (args: {
-								runtime: IAgentRuntime;
-								message: Memory;
-								state: State;
-							}) => Promise<ActionResult | null | undefined>;
-						};
-					}
-				).lifeOpsDirectMessageHook?.handleMessageRequest?.({
-					runtime,
-					message,
-					state,
-				});
-		if (directLifeOpsResult) {
+			: await runDirectMessageHooks(runtime, { runtime, message, state });
+		if (directHookResult) {
 			const directText =
-				typeof directLifeOpsResult.text === "string" &&
-				directLifeOpsResult.text.trim().length > 0
-					? directLifeOpsResult.text.trim()
-					: directLifeOpsResult.success
+				typeof directHookResult.text === "string" &&
+				directHookResult.text.trim().length > 0
+					? directHookResult.text.trim()
+					: directHookResult.success
 						? "Done."
-						: "I couldn't complete that LifeOps request.";
+						: "I couldn't complete that request.";
 			strategyResult = createV5ReplyStrategyResult({
 				runtime,
 				message,
 				state,
 				responseId,
 				text: directText,
-				thought: "LifeOps direct workflow hook handled this request.",
+				thought: "A pre-LLM direct-message hook handled this request.",
 				mode: "simple",
 			});
 			_usedV5Runtime = true;

@@ -184,10 +184,25 @@ export {
 } from "./runtime/action-catalog";
 export { warnOnUnmatchedActionRolePolicyKeys } from "./runtime/action-role-policy";
 export * from "./runtime/builtin-field-evaluators";
+export {
+	__resetCandidateActionBackstopRulesForTests,
+	type CandidateActionBackstopRule,
+	getCandidateActionBackstopRules,
+	registerCandidateActionBackstopRule,
+} from "./runtime/candidate-action-backstop";
 export * from "./runtime/cleanup-scope";
 export * from "./runtime/context-gates";
 export * from "./runtime/context-registry";
 export * from "./runtime/conversation-compaction-hook";
+export {
+	__resetDirectMessageHooksForTests,
+	type DirectMessageHook,
+	type DirectMessageHookInput,
+	getDirectMessageHooks,
+	registerDirectMessageHook,
+	runDirectMessageHooks,
+	unregisterDirectMessageHook,
+} from "./runtime/direct-message-hook";
 export * from "./runtime/execute-planned-tool-call";
 export {
 	detectLocaleFromText,

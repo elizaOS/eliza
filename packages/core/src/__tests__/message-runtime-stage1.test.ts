@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../runtime/builtin-field-evaluators";
+import type { CandidateActionBackstopRule } from "../runtime/candidate-action-backstop";
 import type { ResponseHandlerEvaluator } from "../runtime/response-handler-evaluators";
 import type { ResponseHandlerFieldEvaluator } from "../runtime/response-handler-field-evaluator";
 import { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
@@ -19,6 +20,38 @@ import { ModelType } from "../types/model";
 import { ChannelType, type UUID } from "../types/primitives";
 import type { IAgentRuntime } from "../types/runtime";
 import type { State } from "../types/state";
+
+// Mirrors the scheduled-task backstop rule that plugin-personal-assistant
+// registers via `registerCandidateActionBackstopRule`. Core no longer hardcodes
+// these action names / heuristic; the coding-delegation backstop consults
+// whatever rules a plugin registers, threaded in via `candidateBackstopRules`.
+const SCHEDULING_BACKSTOP_RULE: CandidateActionBackstopRule = {
+	actionNames: [
+		"SCHEDULED_TASKS",
+		"SCHEDULED_TASKS_ACKNOWLEDGE",
+		"SCHEDULED_TASKS_CANCEL",
+		"SCHEDULED_TASKS_COMPLETE",
+		"SCHEDULED_TASKS_CREATE",
+		"SCHEDULED_TASKS_DISMISS",
+		"SCHEDULED_TASKS_GET",
+		"SCHEDULED_TASKS_HISTORY",
+		"SCHEDULED_TASKS_LIST",
+		"SCHEDULED_TASKS_REOPEN",
+		"SCHEDULED_TASKS_SKIP",
+		"SCHEDULED_TASKS_SNOOZE",
+		"SCHEDULED_TASKS_UPDATE",
+	],
+	matches: (text: string): boolean =>
+		/\b(?:remind\s+me|reminder|scheduled\s+task|scheduled\s+item|todo|to[- ]?do|snooze|recap|check[- ]?in|follow[- ]?up|watcher|approval)\b/iu.test(
+			text,
+		) ||
+		/\b(?:schedule|create|make|add|set\s+up)\b[\s\S]{0,80}\b(?:task|reminder|todo|to[- ]?do|check[- ]?in|follow[- ]?up|watcher|recap|approval)\b/iu.test(
+			text,
+		) ||
+		/\b(?:tomorrow|tonight|later|next\s+(?:week|month|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|at\s+\d{1,2}(?::\d{2})?\s*(?:am|pm)?|every\s+(?:day|week|month|morning|evening))\b/iu.test(
+			text,
+		),
+};
 
 function useModelCalls(runtime: IAgentRuntime): unknown[][] {
 	return (runtime.useModel as { mock: { calls: unknown[][] } }).mock.calls;
@@ -2204,7 +2237,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(routed.plan.candidateActions).toEqual(["TASKS"]);
 	});
 
-	it("repairs build requests misrouted to LifeOps scheduled tasks", () => {
+	it("repairs build requests misrouted to backstop-protected scheduled tasks", () => {
 		const routed = messageHandlerFromFieldResult(
 			{
 				shouldRespond: "RESPOND",
@@ -2230,6 +2263,7 @@ describe("runV5MessageRuntimeStage1", () => {
 					{ name: "SCHEDULED_TASKS" },
 				],
 				messageText: "update the website, add some fixes",
+				candidateBackstopRules: [SCHEDULING_BACKSTOP_RULE],
 			},
 		);
 
@@ -2239,7 +2273,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(routed.plan.candidateActions).toEqual(["TASKS"]);
 	});
 
-	it("keeps scheduled coding-related reminders on LifeOps scheduled tasks", () => {
+	it("keeps scheduled coding-related reminders on the backstop-protected scheduled tasks", () => {
 		const routed = messageHandlerFromFieldResult(
 			{
 				shouldRespond: "RESPOND",
@@ -2265,6 +2299,7 @@ describe("runV5MessageRuntimeStage1", () => {
 					{ name: "SCHEDULED_TASKS_CREATE" },
 				],
 				messageText: "create a scheduled task to fix the app tomorrow",
+				candidateBackstopRules: [SCHEDULING_BACKSTOP_RULE],
 			},
 		);
 
