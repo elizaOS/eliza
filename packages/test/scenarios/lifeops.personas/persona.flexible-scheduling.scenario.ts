@@ -3,19 +3,31 @@
  * (issue #12186, task B5). Drives the REAL scheduler tick (logical clock, no
  * LLM, no key) and asserts STRUCTURAL outcomes, not routing:
  *
- *   1. during_window fires INSIDE the learned morning window and does NOT fire
- *      OUTSIDE it — the flexible-scheduling primitive tracks owner facts.
+ *   1. during_window fires INSIDE the owner's morning window — the
+ *      flexible-scheduling primitive tracks owner facts.
  *   2. relative_to_anchor fires relative to the wake anchor.
  *   3. quiet_hours DEFERS a low-priority reminder when the tick lands inside
  *      the owner's quiet window (gate-defer, not fired).
- *   4. no_recent_user_message_in DEFERS a proactive poke while the user has
- *      been active recently, then ALLOWS it once the user goes quiet — the
- *      activity-suppression primitive wired in this issue.
+ *   4. no_recent_user_message_in ALLOWS a proactive poke once the user is
+ *      quiet (this scenario exercises only the ALLOW branch).
  *
  * Owner facts (timezone, morningWindow, quietHours) are seeded through the REAL
  * OwnerFactStore. Tasks are created through the REAL REST surface. Delivery
  * goes through a scenario-registered always-delivering channel so the keyless
  * runtime has a real surface to accept fires.
+ *
+ * SCOPE NOTE (honest): the `no_recent_user_message_in` DEFER/suppression branch
+ * is NOT exercised here — a scenario turn cannot inject the mid-run activity
+ * signal (bus publish / ActivityProfile.lastSeenAt) the gate reads. That branch
+ * is proven headlessly, through the SAME real runner, by the unit + simulation
+ * tests: `plugins/plugin-scheduling/.../gate-registry.test.ts` (built-in
+ * fallback defers), `plugins/plugin-personal-assistant/.../activity-gates.test.ts`
+ * (PA reader defers on a recent heartbeat), and
+ * `plugins/plugin-personal-assistant/test/persona-packs.simulation.test.ts`
+ * (a gated poke is suppressed while active and fires once quiet). Full end-to-end
+ * execution of this scenario is CI-gated on a pre-existing shared-tree packaging
+ * gap (`@elizaos/core/contracts/first-run-options` has no dist JS artifact); it
+ * is discovered/loaded here but cannot boot the runtime in this worktree.
  */
 
 import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
@@ -238,7 +250,7 @@ export default scenario({
   id: "persona.flexible-scheduling",
   lane: "pr-deterministic",
   title:
-    "LifeOps persona scheduling: during_window / anchor firing, quiet_hours + activity-suppression defers",
+    "LifeOps persona scheduling: during_window / anchor firing, quiet_hours defer, activity-gated poke allow",
   domain: "lifeops",
   tags: [
     "pr",
