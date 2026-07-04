@@ -1,3 +1,9 @@
+/**
+ * Unit tests for `buildResultsGridRowKey`: composite keys use every primary-key
+ * column, and rows without a complete primary key fall back to the row index.
+ * Pure function; no DOM or backend.
+ */
+
 import { describe, expect, it } from "vitest";
 
 import type { ColumnInfo } from "../../api";

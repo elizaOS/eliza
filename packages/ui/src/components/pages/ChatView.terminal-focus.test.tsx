@@ -1,19 +1,17 @@
 // @vitest-environment jsdom
 
-// Regression coverage for the terminal auto-focus loop: a blocked/errored
-// coding-agent session used to permanently hijack the chat surface. The
-// ChatView effect auto-focused ANY error/blocked session whenever
-// `activeTerminalSessionId` was null, and "blocked" (waiting for input) is a
-// routine long-lived state — so closing the terminal panel or selecting a
-// conversation (both clear `activeTerminalSessionId`) re-triggered the effect
-// and bounced the user straight back to the terminal.
+// Guards ChatView's terminal auto-focus against a re-focus loop. A
+// blocked/errored coding-agent session auto-focuses at most once per transition
+// into a problem state — decided through pickProblemSessionToAutoFocus with a
+// ref-held Set of handled session ids — so clearing `activeTerminalSessionId`
+// (closing the terminal panel or selecting a conversation) never re-triggers
+// the effect, and a user-initiated dismissal sticks. "Blocked" (waiting for
+// input) is a routine long-lived state, which is why once-per-transition rather
+// than while-blocked is the correct rule.
 //
-// ChatView now wires the decision through pickProblemSessionToAutoFocus with a
-// ref-held Set of handled session ids: a session auto-focuses at most once per
-// transition into a problem state, and a user-initiated dismissal sticks. The
-// harness below mirrors ChatView's exact wiring (ref + effect + focus sets the
-// active id) so the once-per-transition semantics are proven under React's
-// real effect scheduling, not just as pure-function calls.
+// The harness mirrors ChatView's exact wiring (ref + effect + focus sets the
+// active id) so the semantics are proven under React's real effect scheduling,
+// not just as pure-function calls.
 
 import {
   act,

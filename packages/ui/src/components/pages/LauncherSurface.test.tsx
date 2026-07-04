@@ -1,4 +1,9 @@
 // @vitest-environment jsdom
+//
+// Renders the real LauncherSurface with mocked view/platform hooks to cover
+// curation: which surfaces show (curated apps yes; shell/sub-view/removed no),
+// collapsing duplicate wallet registrations to one tile, gating native-OS tiles
+// on the AOSP fork and developer tools on Developer Mode, and route navigation.
 import {
   cleanup,
   fireEvent,

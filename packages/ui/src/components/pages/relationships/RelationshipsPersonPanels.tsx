@@ -1,3 +1,11 @@
+/**
+ * Detail panels for a selected person in the Relationships workspace: the
+ * summary header plus the facts, connections, conversations, relevant-memories,
+ * user-preferences, and documents sections. Each panel fetches its slice from
+ * the relationships API scoped to the person's member entity ids. Rendered in
+ * the right pane of RelationshipsWorkspaceView.
+ */
+
 import {
   AtSign,
   BadgeCheck,

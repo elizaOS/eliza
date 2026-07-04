@@ -1,3 +1,10 @@
+/**
+ * Trajectory detail view: loads one recorded agent-run trajectory by id and
+ * renders its pipeline stages, per-stage context diffs, and token deltas as a
+ * stage-navigated inspector. Consumed by the Trajectories list surface when a
+ * run is opened.
+ */
+
 import {
   Brain,
   CheckCircle,

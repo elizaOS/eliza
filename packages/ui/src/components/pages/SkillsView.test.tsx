@@ -1,5 +1,10 @@
 // @vitest-environment jsdom
 
+// Renders the real SkillsView against a mocked state barrel to cover load-on-
+// mount + empty state, rendering installed skills from context, the enable
+// toggle calling handleSkillToggle with the new value, background refresh
+// polling (no manual refresh control), and search filtering to the empty state.
+
 import {
   act,
   cleanup,

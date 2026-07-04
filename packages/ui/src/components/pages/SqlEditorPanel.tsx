@@ -1,3 +1,10 @@
+/**
+ * Presentational SQL editor panel for the Database view: a query textarea
+ * (Cmd/Ctrl+Enter runs) plus the results grid rendered from a QueryResult. All
+ * query state and execution are owned by the parent and passed in as props; this
+ * component holds no data-fetching logic of its own.
+ */
+
 import { SearchX } from "lucide-react";
 import type { QueryResult } from "../../api";
 import { useAppSelector } from "../../state";

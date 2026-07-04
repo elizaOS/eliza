@@ -1,3 +1,10 @@
+/**
+ * The Database nav tab: a segmented control switching between the SQL/table
+ * DatabaseView, the MediaGalleryView, and the heavy vector-browser surface. The
+ * vector browser is a three.js/WebGL view that ships in its own plugin bundle
+ * and loads dynamically, so THREE only downloads when the user opens that tab.
+ */
+
 import type { ReactNode } from "react";
 import { useAgentElement } from "../../agent-surface";
 import { useAppSelector } from "../../state";

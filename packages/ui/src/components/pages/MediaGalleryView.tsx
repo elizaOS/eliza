@@ -1,3 +1,11 @@
+/**
+ * Media gallery view: scans agent database tables for attachment/media rows and
+ * renders them as a filterable, searchable grid with a full-size detail modal
+ * plus download/share affordances. Search is driven by the floating chat via
+ * useRegisterViewChatBinding rather than an in-view input. Mounted as a tab of
+ * the Database page surface.
+ */
+
 import { Download, Share2 } from "lucide-react";
 import type { ReactNode } from "react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";

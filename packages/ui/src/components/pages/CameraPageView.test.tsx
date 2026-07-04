@@ -1,5 +1,10 @@
 // @vitest-environment jsdom
 
+// Renders the real CameraPageView against a mocked @elizaos/capacitor-camera to
+// cover the capture lifecycle: permission request + live preview on mount,
+// photo capture/review/retake, front/back switch, preview teardown on unmount,
+// and the permission-denied state. jsdom; the native camera plugin is stubbed.
+
 import {
   cleanup,
   fireEvent,

@@ -1,3 +1,13 @@
+/**
+ * The interactive tour overlay mounted at the shell root: watches the live tab
+ * and chat transcript, spotlights the target element for the current step,
+ * narrates each frame aloud (TutorialNarrator), and advances when the user
+ * performs the step's action. Completion is tracked by step id (never a
+ * lingering boolean) so one frame's success cannot bleed into the next frame's
+ * auto-navigation during the advance render. Drives navigation and chat via the
+ * shell controller and locks nav while a step is active.
+ */
+
 import * as React from "react";
 import { useBranding } from "../../../config/branding";
 import { dispatchTutorialChatControl } from "../../../events";

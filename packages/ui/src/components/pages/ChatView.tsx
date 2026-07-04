@@ -1,3 +1,17 @@
+/**
+ * The primary chat surface: the transcript, composer, voice/avatar bridge, and
+ * the coding-agent terminal channel. It wires the real send pipeline (message
+ * edit/resend, attachments via clipboard/drag-drop, continuous chat mode) and
+ * the per-conversation voice controller, and hosts the PTY console for coding
+ * sessions (`TerminalChannelPanel`).
+ *
+ * Terminal auto-focus is deliberately once-per-transition: a blocked/errored
+ * coding session is auto-focused at most once (tracked via a ref-held Set of
+ * handled ids) so closing the terminal or switching conversations — both of
+ * which clear `activeTerminalSessionId` — never bounces the user back into the
+ * terminal, and a user-initiated dismissal sticks.
+ */
+
 import { logger } from "@elizaos/logger";
 import { RotateCcw } from "lucide-react";
 import {

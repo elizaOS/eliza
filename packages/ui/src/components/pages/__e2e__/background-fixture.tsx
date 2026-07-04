@@ -5,9 +5,9 @@
 // undo/redo buttons.
 //
 // The set/undo/redo history uses the SAME pure reducer production does
-// (state/background-history: applyBackgroundSet/Undo/Redo) — it no longer
-// hand-mirrors the semantics, so mirror-vs-real drift is impossible (#10694).
-// That reducer is deliberately persistence-free, so this stays a browser-safe
+// (state/background-history: applyBackgroundSet/Undo/Redo) rather than a
+// hand-mirrored copy, so mirror-vs-real drift is impossible (#10694). That
+// reducer is deliberately persistence-free, so this stays a browser-safe
 // import graph esbuild can bundle (no `client`/`persistence`). The real
 // BackgroundView DOM is covered by BackgroundView.test.tsx; the reducer math by
 // state/__tests__/background-history.test.ts; the persisted round-trip by

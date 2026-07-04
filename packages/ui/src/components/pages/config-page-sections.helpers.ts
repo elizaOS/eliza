@@ -1,3 +1,5 @@
+/** Per-chain RPC provider option lists surfaced by the Config page's wallet/RPC section. */
+
 import { WALLET_RPC_PROVIDER_OPTIONS } from "@elizaos/shared";
 
 export const EVM_RPC_OPTIONS = WALLET_RPC_PROVIDER_OPTIONS.evm;

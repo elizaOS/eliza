@@ -1,3 +1,5 @@
+/** Storybook stories for PluginVisual, rendering its icon/artwork across sample PluginInfo shapes. */
+
 import type { Meta, StoryObj } from "@storybook/react";
 import type { PluginInfo } from "../../api";
 import { PluginVisual } from "./PluginVisual";

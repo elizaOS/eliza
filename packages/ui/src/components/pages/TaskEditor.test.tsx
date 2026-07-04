@@ -1,10 +1,9 @@
 // @vitest-environment jsdom
 /**
- * TaskEditor cross-boundary migration (#12177 review fix #2).
- *
- * When an existing simple automation's schedule kind is changed across the
- * trigger <-> workbench boundary, the editor must MIGRATE (create the new type,
- * then delete the stale one) — never leave a duplicate that keeps firing.
+ * Guards TaskEditor's cross-boundary schedule migration (#12177): when an
+ * existing simple automation's schedule kind changes across the trigger ↔
+ * workbench boundary, the editor MIGRATES — creates the new type, then deletes
+ * the stale one — rather than leaving a duplicate that keeps firing.
  */
 import {
   cleanup,

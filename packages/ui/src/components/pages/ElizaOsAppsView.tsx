@@ -1,3 +1,12 @@
+/**
+ * Native-OS app surfaces for the AOSP ElizaOS fork: the Phone (dialer + call
+ * log), Messages (SMS threads), and Contacts pages. Each reads through the
+ * native-plugins bridge and gates every read behind `ensureNativeReadGranted`
+ * so a known permission-denied state never reaches Capacitor as a raw console
+ * error. On web the native plugins report "granted", so these render as inert
+ * placeholders rather than failing.
+ */
+
 import {
   Clock3,
   ContactRound,

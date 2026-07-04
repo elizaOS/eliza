@@ -1,12 +1,13 @@
+/**
+ * Knowledge — a top-level nav view that renders the standalone documents
+ * manager under a chromeless "Knowledge" header, outside the character editor
+ * chrome.
+ */
+
 import { ViewHeader } from "../shared/ViewHeader";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 import { DocumentsView } from "./DocumentsView";
 
-/**
- * Knowledge — a top-level view (promoted out of the old Character hub, where it
- * was a nested sub-page). Renders the standalone documents manager under a
- * chromeless "Knowledge" header, not inside the character editor chrome.
- */
 export function KnowledgeView() {
   return (
     <ShellViewAgentSurface viewId="documents">

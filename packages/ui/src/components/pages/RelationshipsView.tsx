@@ -1,3 +1,10 @@
+/**
+ * Relationships — a top-level nav view: a chromeless "Relationships" header over
+ * the relationship-graph workspace. On mobile the people sidebar opens from a
+ * compact "People" control in the header, never an inline trigger between the
+ * header and the content.
+ */
+
 import type { ReactNode } from "react";
 import { useWorkspaceMobileSidebarHeader } from "../../layouts/workspace-layout/workspace-mobile-sidebar-controls.hooks";
 import { WorkspaceMobileSidebarScope } from "../../layouts/workspace-layout/workspace-mobile-sidebar-scope";
@@ -5,13 +12,6 @@ import { ViewHeader } from "../shared/ViewHeader";
 import { ViewHeaderSidebarTrigger } from "../shared/ViewHeaderSidebarTrigger";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 import { RelationshipsWorkspaceView } from "./relationships/RelationshipsWorkspaceView";
-
-/**
- * Relationships — a top-level view (promoted out of the old Character hub).
- * Chromeless "Relationships" header over the relationship-graph workspace.
- * On mobile the people sidebar opens from a compact "People" control in the
- * header (never an inline trigger between the header and the content).
- */
 export function RelationshipsView({
   contentHeader,
 }: {

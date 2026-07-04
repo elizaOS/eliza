@@ -1,4 +1,10 @@
 // @vitest-environment jsdom
+//
+// Renders the real Launcher over deterministic mock ViewEntry catalogs to prove
+// it is a single scrolling page of tiles (no dock, no page dots) in caller
+// order, that tap emits exactly one launch telemetry event, that the tile set
+// tracks catalog changes on re-render, and that image tiles fall back to a
+// glyph (never probing API heroes) for dedicated cloud agents.
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { client } from "../../api";

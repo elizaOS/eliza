@@ -1,3 +1,11 @@
+/**
+ * Force-laid-out node/edge graph of the relationships snapshot: renders people
+ * as draggable nodes and their relationships as edges (labelled with sentiment
+ * and interaction count), with zoom controls and hover tooltips. Layout
+ * positions are computed from the snapshot; selecting a group filters the
+ * visible subgraph. Mounted inside the Relationships workspace.
+ */
+
 import {
   Crown,
   Fingerprint,

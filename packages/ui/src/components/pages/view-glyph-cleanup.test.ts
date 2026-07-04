@@ -1,3 +1,10 @@
+/**
+ * Source-scanning guard (#8796) over every built-in `*View.tsx` in this folder:
+ * asserts no raw check/cross glyphs appear in the source so status and
+ * close/delete controls stay on Lucide icon components. Reads files from disk;
+ * asserts on string content, not rendered output.
+ */
+
 import { readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";

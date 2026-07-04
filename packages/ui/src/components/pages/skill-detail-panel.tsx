@@ -1,7 +1,7 @@
 /**
- * Skill detail panel — edit modal and companion modal view.
- *
- * Extracted from SkillsView.tsx to keep individual files under ~500 LOC.
+ * Skill detail surfaces for the Skills page: the edit modal
+ * (`EditSkillModal`, backed by the api client) and the read-only companion
+ * modal view (`SkillsModalView`). Sibling to SkillsView, which owns the list.
  */
 
 import { Brain } from "lucide-react";

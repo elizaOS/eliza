@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
 
+// Renders the real SettingsView against mocked state + stub sections to cover
+// hub navigation (tile → full-width section → back), the initialSection prop,
+// per-section error boundaries (isolate a throwing section, recover on retry),
+// and the responsive layout switch (single-column hub vs two-pane rail by
+// width/orientation). jsdom; sections and state barrel are stubbed.
+
 import {
   cleanup,
   fireEvent,

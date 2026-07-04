@@ -1,3 +1,10 @@
+/**
+ * The tour launcher — the view the home "Tutorial" tile opens. Pressing Start
+ * activates the global TutorialOverlay (the interactive tour) and drops the user
+ * back on the home base so the tour can spotlight the real chat. Eliza narrates
+ * each frame aloud; the tour can be muted from its card.
+ */
+
 import { Sparkles } from "lucide-react";
 import * as React from "react";
 
@@ -6,13 +13,6 @@ import { useAppSelector } from "../../../state";
 import { Button } from "../../ui/button";
 import { ShellViewAgentSurface } from "../../views/ShellViewAgentSurface";
 import { startTutorial } from "./tutorial-controller";
-
-/**
- * The tour launcher — the view the home "Tutorial" tile opens. Pressing Start
- * activates the global TutorialOverlay (the interactive tour) and drops the user
- * back on the home base so the tour can spotlight the real chat. Eliza narrates
- * each frame aloud; the tour can be muted from its card.
- */
 
 export function TutorialView(): React.ReactElement {
   return (

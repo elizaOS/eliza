@@ -1,3 +1,11 @@
+/**
+ * Upload limits, accepted extensions, and pure file-classification helpers for
+ * the Documents upload flow: request/bulk byte budgets, the supported-extension
+ * set and its `accept` string, and predicates deciding whether a file is
+ * supported and whether it should be read as text vs binary. Shared by the
+ * upload UI and its tests.
+ */
+
 import type { DocumentScope } from "../../api/client-types-chat";
 
 export const MAX_UPLOAD_REQUEST_BYTES = 32 * 1_048_576;

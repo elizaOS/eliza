@@ -1,5 +1,9 @@
 // @vitest-environment jsdom
 
+// Renders the real DatabaseView against a mocked `../../api` client to cover the
+// connect → load-tables → select-table → render-rows flow plus the unavailable,
+// status-error, and empty-table states. jsdom; in-memory client stub.
+
 import {
   cleanup,
   fireEvent,

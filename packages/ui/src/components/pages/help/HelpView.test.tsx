@@ -3,15 +3,13 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-// Help's deep links must survive the tab switch. The settings-section links
-// ("Open AI Model settings" → the ai-model section) previously wrote the
-// section into `window.location.hash` and then called `setTab("settings")` —
-// but setTab pushes the bare `/settings` path, clearing the fragment BEFORE
-// SettingsView mounts and reads it, so the user always landed on the generic
-// Settings hub instead of the promised section. The fix routes the section
-// through the `eliza:navigate:view` `subview` channel (the same sanctioned path
-// the agent + slash-command flows use; App.tsx maps it to SettingsView's
-// `initialSection`). These tests pin that contract.
+// Pins Help's deep-link contract: settings-section links ("Open AI Model
+// settings" → the ai-model section) must land the user on the target section,
+// not the generic Settings hub. The section is routed through the
+// `eliza:navigate:view` `subview` channel (the same path the agent +
+// slash-command flows use; App.tsx maps it to SettingsView's `initialSection`)
+// rather than `window.location.hash`, since setTab pushes the bare `/settings`
+// path and would clear a fragment before SettingsView mounts to read it.
 
 const appMock = vi.hoisted(() => ({
   value: {} as Record<string, unknown>,

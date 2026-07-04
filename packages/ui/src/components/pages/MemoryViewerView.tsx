@@ -1,3 +1,12 @@
+/**
+ * Memories page: browses the agent's memory store in three modes — a recent
+ * feed, a filtered browse list, and a person-centric view scoped to a
+ * relationship's member entity ids. Pulls stats, people (via the relationships
+ * API), and memory rows from the typed client. On mobile the people/filter
+ * sidebar is opened from a compact control in the view header rather than an
+ * inline trigger.
+ */
+
 import {
   Brain,
   FileText,

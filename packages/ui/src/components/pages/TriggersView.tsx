@@ -1,3 +1,12 @@
+/**
+ * Triggers page: create/list/delete scheduled triggers that fire agent runs
+ * (cron, interval, and one-time schedules). Shared state flows through a
+ * context provider consumed by the list and the detail/edit panel; pure form
+ * and schedule-label helpers live in trigger-form-utils. Warns once per session
+ * when scheduled triggers exist but the host is not long-running (so they may
+ * not fire). `TriggersView` and `TriggersDesktopShell` are the same layout.
+ */
+
 import { CheckCircle2, Plus, X, XCircle } from "lucide-react";
 import {
   createContext,

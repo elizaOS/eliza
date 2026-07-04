@@ -1,3 +1,10 @@
+/**
+ * Document detail viewer for the Documents/Knowledge page: loads one document
+ * by id, shows its metadata and source/scope badges, renders its fragments, and
+ * supports inline text editing with save. Pure formatting helpers live in
+ * documents-detail.helpers; this file owns the fetch/edit/save lifecycle.
+ */
+
 import {
   BadgeCheck,
   Bot,

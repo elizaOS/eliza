@@ -1,8 +1,9 @@
 /**
- * trigger-form-utils.ts — Pure functions, types, and constants for the Triggers feature.
- *
- * Extracted from TriggersView.tsx so tests and sibling components can
- * import them directly instead of duplicating logic.
+ * Pure form model and constants for the Triggers feature: the trigger form
+ * state shape and empty default, duration-unit math (best-fit unit, ms
+ * conversion, labels), the built-in and user-defined template catalog (with
+ * localStorage load/save), and schedule/event-kind label formatting. Imported
+ * by TriggersView and its tests so neither duplicates the logic.
  */
 
 import type {

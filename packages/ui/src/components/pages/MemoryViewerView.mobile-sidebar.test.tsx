@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 //
-// Memories on mobile: the people/filter sidebar opens from a compact "People"
-// control in the view header's right slot — never from the orphan inline
-// trigger PageLayout used to render between the centered header and the
-// content. Guards the `WorkspaceMobileSidebarScope` + `ViewHeaderSidebarTrigger`
-// wiring in MemoryViewerView.
+// Memories on mobile: guards that the people/filter sidebar opens from the
+// compact "People" control in the view header's right slot, not from an inline
+// trigger between the centered header and the content. Covers the
+// `WorkspaceMobileSidebarScope` + `ViewHeaderSidebarTrigger` wiring in
+// MemoryViewerView.
 
 import {
   cleanup,
