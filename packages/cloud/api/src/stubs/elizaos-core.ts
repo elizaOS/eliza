@@ -258,6 +258,251 @@ export function runWithTrajectoryContext<T>(
   return fn();
 }
 
+/**
+ * Worker-safe stand-in for `runWithTrajectoryPurpose` (same rationale as
+ * `runWithTrajectoryContext` above): with no trajectory manager in the Worker
+ * bundle there is no ambient context to preserve or purpose-tag, so just run
+ * the function. (Pulled in transitively via `@elizaos/shared`
+ * email-classification — not invoked on a Worker route.)
+ */
+export function runWithTrajectoryPurpose<T>(
+  _purpose: string,
+  fn: () => T | Promise<T>,
+): T | Promise<T> {
+  return fn();
+}
+
+// ---------------------------------------------------------------------------
+// fetchWithSsrfGuard — Worker-safe port of @elizaos/core/network/fetch-guard.
+//
+// Pulled into the bundle via plugin-elizacloud transcription (`audioUrl`
+// fetch). workerd has no `node:dns`, so the core guard's DNS pinning is not
+// portable; everything else is reproduced: http(s)-only, blocked-hostname +
+// private/loopback/link-local literal-IP rejection, manual redirect following
+// with re-validation on every hop, credential-header stripping on
+// cross-origin hops, spec-correct 301/302/303 GET rewrites, and timeout
+// wiring. Fail-closed: a URL this port cannot positively clear is rejected.
+// ---------------------------------------------------------------------------
+
+/** Mirrors core's `SsrfBlockedError` for callers that match on `name`. */
+export class SsrfBlockedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "SsrfBlockedError";
+  }
+}
+
+export type GuardedFetchOptions = {
+  url: string;
+  fetchImpl?: (
+    input: RequestInfo | URL,
+    init?: RequestInit,
+  ) => Promise<Response>;
+  init?: RequestInit;
+  maxRedirects?: number;
+  timeoutMs?: number;
+  signal?: AbortSignal;
+};
+
+export type GuardedFetchResult = {
+  response: Response;
+  finalUrl: string;
+  release: () => Promise<void>;
+};
+
+const SSRF_BLOCKED_HOSTNAMES = new Set([
+  "localhost",
+  "metadata",
+  "metadata.google.internal",
+  "instance-data",
+]);
+const SSRF_BLOCKED_HOST_SUFFIXES = [
+  ".localhost",
+  ".local",
+  ".internal",
+  ".home.arpa",
+];
+
+function isPrivateIpv4(hostname: string): boolean {
+  const m = hostname.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (!m) return false;
+  const octets = [Number(m[1]), Number(m[2]), Number(m[3]), Number(m[4])];
+  if (octets.some((o) => o > 255)) return true; // malformed literal — reject
+  const [a, b] = octets;
+  return (
+    a === 0 ||
+    a === 10 ||
+    a === 127 ||
+    (a === 100 && b >= 64 && b <= 127) || // CGNAT
+    (a === 169 && b === 254) || // link-local / cloud metadata
+    (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && b === 0) || // 192.0.0.0/24 special + 192.0.2.0/24 doc
+    (a === 192 && b === 168) ||
+    (a === 198 && (b === 18 || b === 19)) ||
+    a >= 224 // multicast + reserved + broadcast
+  );
+}
+
+function isBlockedIpLiteral(hostname: string): boolean {
+  if (isPrivateIpv4(hostname)) return true;
+  const h = hostname.replace(/^\[|\]$/g, "").toLowerCase();
+  if (!h.includes(":")) return false; // not an IPv6 literal
+  if (h === "::" || h === "::1") return true;
+  if (
+    h.startsWith("fe80:") ||
+    h.startsWith("fe9") ||
+    h.startsWith("fea") ||
+    h.startsWith("feb")
+  )
+    return true; // link-local fe80::/10
+  if (h.startsWith("fc") || h.startsWith("fd")) return true; // unique-local fc00::/7
+  if (h.startsWith("ff")) return true; // multicast
+  // v4-mapped: dotted form (::ffff:127.0.0.1) or the canonical hex form the
+  // WHATWG URL parser serializes it to (::ffff:7f00:1).
+  const v4MappedDotted = h.match(
+    /^::ffff:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/,
+  );
+  if (v4MappedDotted?.[1]) return isPrivateIpv4(v4MappedDotted[1]);
+  const v4MappedHex = h.match(/^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/);
+  if (v4MappedHex?.[1] && v4MappedHex[2]) {
+    const hi = Number.parseInt(v4MappedHex[1], 16);
+    const lo = Number.parseInt(v4MappedHex[2], 16);
+    return isPrivateIpv4(`${hi >> 8}.${hi & 0xff}.${lo >> 8}.${lo & 0xff}`);
+  }
+  return false;
+}
+
+function assertSsrfAllowedUrl(url: URL): void {
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new SsrfBlockedError(
+      `Blocked non-http(s) URL scheme: ${url.protocol}`,
+    );
+  }
+  const host = url.hostname.toLowerCase().replace(/\.$/, "");
+  if (host.length === 0) {
+    throw new SsrfBlockedError("Blocked URL with empty hostname");
+  }
+  if (SSRF_BLOCKED_HOSTNAMES.has(host)) {
+    throw new SsrfBlockedError(`Blocked hostname: ${host}`);
+  }
+  if (SSRF_BLOCKED_HOST_SUFFIXES.some((suffix) => host.endsWith(suffix))) {
+    throw new SsrfBlockedError(`Blocked internal hostname: ${host}`);
+  }
+  if (isBlockedIpLiteral(host)) {
+    throw new SsrfBlockedError(`Blocked private/reserved IP literal: ${host}`);
+  }
+}
+
+const SSRF_CROSS_ORIGIN_STRIPPED_HEADERS = [
+  "authorization",
+  "proxy-authorization",
+  "cookie",
+];
+const SSRF_REDIRECT_BODY_STRIPPED_HEADERS = [
+  "content-encoding",
+  "content-language",
+  "content-location",
+  "content-type",
+  "content-length",
+];
+
+function stripHeaders(
+  headers: HeadersInit | undefined,
+  names: string[],
+): Headers {
+  const cleaned = new Headers(headers);
+  for (const name of names) cleaned.delete(name);
+  return cleaned;
+}
+
+function combineAbortSignals(
+  a?: AbortSignal,
+  b?: AbortSignal,
+): AbortSignal | undefined {
+  if (!a) return b;
+  if (!b) return a;
+  const controller = new AbortController();
+  for (const signal of [a, b]) {
+    if (signal.aborted) {
+      controller.abort(signal.reason);
+      break;
+    }
+    signal.addEventListener("abort", () => controller.abort(signal.reason), {
+      once: true,
+    });
+  }
+  return controller.signal;
+}
+
+export async function fetchWithSsrfGuard(
+  options: GuardedFetchOptions,
+): Promise<GuardedFetchResult> {
+  const fetchImpl = options.fetchImpl ?? fetch;
+  const maxRedirects = options.maxRedirects ?? 3;
+  const timeoutSignal =
+    options.timeoutMs !== undefined
+      ? AbortSignal.timeout(options.timeoutMs)
+      : undefined;
+  const signal = combineAbortSignals(options.signal, timeoutSignal);
+
+  let current = new URL(options.url);
+  let method = (options.init?.method ?? "GET").toUpperCase();
+  let body = options.init?.body;
+  let headers = new Headers(options.init?.headers);
+
+  for (let hop = 0; hop <= maxRedirects; hop++) {
+    assertSsrfAllowedUrl(current);
+    const response = await fetchImpl(current.toString(), {
+      ...options.init,
+      method,
+      body,
+      headers,
+      redirect: "manual",
+      signal,
+    });
+
+    const location = response.headers.get("location");
+    if (response.status >= 300 && response.status < 400 && location) {
+      const next = new URL(location, current);
+      try {
+        if (!response.bodyUsed) await response.body?.cancel();
+      } catch {
+        // redirect body already settled — nothing to release
+      }
+      // Spec redirect rewrite: 301/302 POST→GET, 303 anything-but-GET/HEAD→GET.
+      if (
+        ((response.status === 301 || response.status === 302) &&
+          method === "POST") ||
+        (response.status === 303 && method !== "GET" && method !== "HEAD")
+      ) {
+        method = "GET";
+        body = undefined;
+        headers = stripHeaders(headers, SSRF_REDIRECT_BODY_STRIPPED_HEADERS);
+      }
+      if (next.origin !== current.origin) {
+        headers = stripHeaders(headers, SSRF_CROSS_ORIGIN_STRIPPED_HEADERS);
+      }
+      current = next;
+      continue;
+    }
+
+    return {
+      response,
+      finalUrl: current.toString(),
+      release: async () => {
+        try {
+          if (!response.bodyUsed) await response.body?.cancel();
+        } catch {
+          // body already consumed/locked — nothing to release
+        }
+      },
+    };
+  }
+  throw new SsrfBlockedError(
+    `Exceeded ${maxRedirects} redirects fetching ${options.url}`,
+  );
+}
+
 type InferenceTimingMeta = Record<string, string | number | boolean>;
 
 /**
