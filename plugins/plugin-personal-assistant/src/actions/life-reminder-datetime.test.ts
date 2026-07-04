@@ -30,6 +30,8 @@ const serviceState = vi.hoisted(() => ({
     request: { preset?: string; minutes?: number };
   }>,
   createCalls: [] as Array<Record<string, unknown>>,
+  deleteDefinitionCalls: [] as string[],
+  deleteGoalCalls: [] as string[],
 }));
 
 vi.mock("../lifeops/service.js", () => {
@@ -74,10 +76,32 @@ vi.mock("../lifeops/service.js", () => {
       };
     }
     async listDefinitions() {
-      return [];
+      return [
+        {
+          definition: {
+            id: "def-1",
+            title: "workout",
+            domain: "user_lifeops",
+          },
+        },
+      ];
     }
     async listGoals() {
-      return [];
+      return [
+        {
+          goal: {
+            id: "goal-1",
+            title: "marathon",
+            domain: "user_lifeops",
+          },
+        },
+      ];
+    }
+    async deleteDefinition(id: string) {
+      serviceState.deleteDefinitionCalls.push(id);
+    }
+    async deleteGoal(id: string) {
+      serviceState.deleteGoalCalls.push(id);
     }
   }
   return { LifeOpsService, LifeOpsServiceError };
@@ -400,6 +424,8 @@ describe("runLifeOperationHandler snooze durations", () => {
   beforeEach(() => {
     serviceState.snoozeCalls.length = 0;
     serviceState.createCalls.length = 0;
+    serviceState.deleteDefinitionCalls.length = 0;
+    serviceState.deleteGoalCalls.length = 0;
   });
 
   it("threads LLM-extracted snooze minutes through to the service", async () => {
@@ -465,6 +491,33 @@ describe("runLifeOperationHandler snooze durations", () => {
     expect(result.success).toBe(true);
     expect(serviceState.snoozeCalls).toHaveLength(1);
     expect(serviceState.snoozeCalls[0]?.request.minutes).toBe(45);
+  });
+
+  it("blocks broad emotional delete-everything requests before any destructive call", async () => {
+    const runtime = makeRuntime(() => "");
+    const intent =
+      "you know what? just delete everything. all my reminders, all my tasks, all of it. i give up.";
+    const result = await runLifeOperationHandler(
+      runtime,
+      makeMessage(intent),
+      undefined,
+      {
+        parameters: {
+          action: "delete",
+          intent,
+          target: "everything",
+        },
+      } as HandlerOptions,
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.data).toMatchObject({
+      noop: true,
+      blockedReason: "broad_destructive_delete",
+    });
+    expect(serviceState.deleteDefinitionCalls).toHaveLength(0);
+    expect(serviceState.deleteGoalCalls).toHaveLength(0);
+    expect(result.text).toContain("won't delete everything");
   });
 });
 

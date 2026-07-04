@@ -271,11 +271,32 @@ function inferLifeKindFromIntent(intent: string): LifeKind {
 
 const GENERIC_DERIVED_TITLE_RE =
   /^(?:new\s+)?(?:habit|routine|task|goal|life goal|thing|item|something|anything|stuff|plan|reminder|todo|to do|achieve|achieve a|achieve an)$/i;
+const BROAD_LIFE_DELETE_TARGET_RE =
+  /^(?:all|everything|every\s+thing|all\s+(?:of\s+)?(?:it|them|this|that)|all\s+my\s+(?:reminders?|tasks?|todos?|to[- ]?dos?|goals?|habits?|routines?)|my\s+(?:whole|entire)\s+(?:list|schedule|routine|todo\s+list|to[- ]?do\s+list))$/i;
+const BROAD_LIFE_DELETE_INTENT_RE =
+  /\b(?:delete|remove|cancel|wipe|clear|get rid of|stop tracking)\b[\s\S]{0,80}\b(?:everything|all\s+(?:of\s+)?(?:it|them|this|that)|all\s+my\s+(?:reminders?|tasks?|todos?|to[- ]?dos?|goals?|habits?|routines?))\b/i;
+const EMOTIONAL_DESTRUCTIVE_DELETE_RE =
+  /\b(?:i\s+give\s+up|can't\s+do\s+(?:this|any\s+of\s+this)|clearly\s+can't|forget\s+it|i'?m\s+done|rage\s*quit|spiral(?:ing)?)\b/i;
 
 function normalizeLifeTimeZoneToken(
   value: string | null | undefined,
 ): string | null {
   return normalizeExplicitTimeZoneToken(value);
+}
+
+function isBroadLifeDeleteRequest(args: {
+  intent: string;
+  targetName: string | undefined;
+}): boolean {
+  const normalizedTarget = normalizeTitle(args.targetName ?? "");
+  if (normalizedTarget && BROAD_LIFE_DELETE_TARGET_RE.test(normalizedTarget)) {
+    return true;
+  }
+  return (
+    BROAD_LIFE_DELETE_INTENT_RE.test(args.intent) ||
+    (/\bdelete\b|\bremove\b|\bwipe\b|\bclear\b/i.test(args.intent) &&
+      EMOTIONAL_DESTRUCTIVE_DELETE_RE.test(args.intent))
+  );
 }
 
 function isLifeOwnedOperation(
@@ -3590,6 +3611,30 @@ export async function runLifeOperationHandler(
     }
 
     if (internalOp === "delete_definition") {
+      if (isBroadLifeDeleteRequest({ intent, targetName })) {
+        const fallback =
+          "I won't delete everything from a moment like this. I can pause or snooze things while you take a breath, or delete one specific item if you name it.";
+        return {
+          success: true,
+          text: await renderLifeActionReply({
+            runtime,
+            message,
+            state,
+            intent,
+            scenario: "reply_only",
+            fallback,
+            context: {
+              reason: "blocked_broad_destructive_delete",
+              target: targetName ?? null,
+            },
+          }),
+          data: {
+            actionName: ownerSurfaceActionName,
+            noop: true,
+            blockedReason: "broad_destructive_delete",
+          },
+        };
+      }
       const target = await resolveDefinition(service, targetName, domain);
       if (!target)
         return {
@@ -3617,6 +3662,30 @@ export async function runLifeOperationHandler(
     }
 
     if (internalOp === "delete_goal") {
+      if (isBroadLifeDeleteRequest({ intent, targetName })) {
+        const fallback =
+          "I won't delete every goal from a moment like this. I can help pause the pressure or delete one specific goal if you name it.";
+        return {
+          success: true,
+          text: await renderLifeActionReply({
+            runtime,
+            message,
+            state,
+            intent,
+            scenario: "reply_only",
+            fallback,
+            context: {
+              reason: "blocked_broad_destructive_delete",
+              target: targetName ?? null,
+            },
+          }),
+          data: {
+            actionName: ownerSurfaceActionName,
+            noop: true,
+            blockedReason: "broad_destructive_delete",
+          },
+        };
+      }
       const target = await resolveGoal(service, targetName, domain);
       if (!target)
         return {
