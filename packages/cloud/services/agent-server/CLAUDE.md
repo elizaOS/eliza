@@ -43,10 +43,12 @@ Scope with `--cwd packages/cloud/services/agent-server`:
 bun run --cwd packages/cloud/services/agent-server start            # bun run src/index.ts
 bun run --cwd packages/cloud/services/agent-server dev              # bun --watch run src/index.ts
 bun run --cwd packages/cloud/services/agent-server typecheck        # tsgo --noEmit
-bun run --cwd packages/cloud/services/agent-server lint             # biome check .
+bun run --cwd packages/cloud/services/agent-server lint             # biome check --write --unsafe .
+bun run --cwd packages/cloud/services/agent-server lint:check       # biome check .
+bun run --cwd packages/cloud/services/agent-server format           # biome format --write .
+bun run --cwd packages/cloud/services/agent-server format:check     # biome format .
 bun run --cwd packages/cloud/services/agent-server test             # bun test
 bun run --cwd packages/cloud/services/agent-server test:unit        # bun test __tests__/unit/
-bun run --cwd packages/cloud/services/agent-server test:integration # __tests__/integration/ (pass-with-no-tests)
 ```
 
 ## Environment variables

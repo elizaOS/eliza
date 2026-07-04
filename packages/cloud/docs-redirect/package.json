@@ -5,6 +5,11 @@
   "type": "module",
   "description": "Cloudflare Worker that 301-redirects docs.elizacloud.ai/* to docs.elizaos.ai/cloud/*",
   "scripts": {
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
+    "lint:fix": "bunx @biomejs/biome check --write --unsafe .",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format .",
     "test": "vitest run",
     "deploy": "wrangler deploy --env production",
     "dev": "wrangler dev"

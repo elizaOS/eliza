@@ -4,6 +4,14 @@
   "private": true,
   "description": "Temporary build/dry-deploy harness to verify mcp-handler on Cloudflare Workers (workerd + nodejs_compat). NOT production. Delete once MCP_WORKERS_VERIFICATION.md is written.",
   "scripts": {
+    "build": "wrangler deploy --dry-run --outdir=dist",
+    "clean": "rm -rf dist",
+    "typecheck": "tsgo --noEmit -p tsconfig.json",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
+    "lint:fix": "bunx @biomejs/biome check --write --unsafe .",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format .",
     "dry-deploy": "wrangler deploy --dry-run --outdir=dist",
     "dev": "wrangler dev --port 8788"
   },

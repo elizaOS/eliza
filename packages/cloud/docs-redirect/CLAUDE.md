@@ -9,10 +9,10 @@ This is a standalone infrastructure package — not an elizaOS plugin and not im
 ## Layout
 
 ```
-packages/docs-elizacloud-redirect/
+packages/cloud/docs-redirect/
   src/worker.ts        Entry point — the entire Worker (one fetch handler, ~25 lines)
   wrangler.toml        Cloudflare Worker config: route binding for docs.elizacloud.ai/*
-  package.json         Three scripts: test + dev + deploy
+  package.json         Scripts: test, lint/format, dev, deploy
 ```
 
 ## Key logic (`src/worker.ts`)
@@ -29,9 +29,11 @@ packages/docs-elizacloud-redirect/
 ## Commands
 
 ```bash
-bun run --cwd packages/docs-elizacloud-redirect dev     # wrangler local dev server
-bun run --cwd packages/docs-elizacloud-redirect deploy  # deploy to Cloudflare (production env)
-bun run --cwd packages/docs-elizacloud-redirect test    # vitest run
+bun run --cwd packages/cloud/docs-redirect dev     # wrangler local dev server
+bun run --cwd packages/cloud/docs-redirect deploy  # deploy to Cloudflare (production env)
+bun run --cwd packages/cloud/docs-redirect test    # vitest run
+bun run --cwd packages/cloud/docs-redirect lint:check # biome check .
+bun run --cwd packages/cloud/docs-redirect format:check # biome format .
 ```
 
 `deploy` targets `[env.production]` in `wrangler.toml`, which binds the route `docs.elizacloud.ai/*` on the `elizacloud.ai` zone automatically — no Cloudflare dashboard step beyond the one-time DNS record pointing `docs.elizacloud.ai` at the Cloudflare proxy.
@@ -62,7 +64,7 @@ The worker is intentionally trivial. If redirect rules change:
 - `private: true` — never published to npm; deploy-only via Wrangler.
 - No TypeScript compilation step; Wrangler bundles `src/worker.ts` directly via esbuild.
 - `workers_dev = false` means `wrangler deploy` without `--env production` deploys nothing to a `*.workers.dev` URL. Always pass `--env production` (the `deploy` script does this).
-- No tests. The logic is two conditionals; verify correctness by reading `src/worker.ts` or running `bun run dev` and inspecting redirects locally with `curl -I`.
+- Redirect behavior is covered by deterministic Vitest tests in `src/worker.test.ts`; use Wrangler locally for manual redirect checks when changing deployment config.
 
 <!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root PR_EVIDENCE.md) -->
 ## ⛔ NON-NEGOTIABLE — evidence, trajectories & real end-to-end tests

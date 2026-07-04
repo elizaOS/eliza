@@ -5,6 +5,11 @@
   "type": "module",
   "description": "Cloud infrastructure: local-dev values files, Kubernetes manifests, and Terraform for the elizaOS cloud stack.",
   "scripts": {
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
+    "lint:fix": "bunx @biomejs/biome check --write --unsafe .",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format .",
     "test": "bun test tests"
   },
   "devDependencies": {

@@ -41,6 +41,8 @@ bun run --cwd packages/cloud/services/coding-remote-runner start        # boot t
 bun run --cwd packages/cloud/services/coding-remote-runner dev          # boot with --watch
 bun run --cwd packages/cloud/services/coding-remote-runner test         # bun test
 bun run --cwd packages/cloud/services/coding-remote-runner typecheck    # tsgo --noEmit
+bun run --cwd packages/cloud/services/coding-remote-runner lint:check   # biome check .
+bun run --cwd packages/cloud/services/coding-remote-runner format:check # biome format .
 bun run --cwd packages/cloud/services/coding-remote-runner docker:build # build the local image
 ```
 

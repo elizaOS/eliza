@@ -126,6 +126,10 @@ Numbered [Chainsaw](https://kyverno.github.io/chainsaw/) suites (`cloud/tests/0*
 
 ```bash
 bun run --cwd packages/cloud/infra test       # Run YAML/manifest smoke tests (Bun test)
+bun run --cwd packages/cloud/infra lint       # biome check --write --unsafe .
+bun run --cwd packages/cloud/infra lint:check # biome check .
+bun run --cwd packages/cloud/infra format     # biome format --write .
+bun run --cwd packages/cloud/infra format:check # biome format .
 ```
 
 Local cluster scripts (run directly, not via bun):

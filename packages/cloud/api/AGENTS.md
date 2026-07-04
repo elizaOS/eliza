@@ -67,10 +67,11 @@ Path-alias note: `@/lib/*`, `@/db/*`, `@/types/*`, `@/billing/*` resolve into `.
 bun run --cwd packages/cloud/api dev            # wrangler dev (local Worker)
 bun run --cwd packages/cloud/api dev:full       # dev + local control plane
 bun run --cwd packages/cloud/api codegen        # regen src/_router.generated.ts
-bun run --cwd packages/cloud/api build          # tsc --noEmit (type-only)
 bun run --cwd packages/cloud/api typecheck      # tsgo --noEmit
-bun run --cwd packages/cloud/api lint           # biome check .
-bun run --cwd packages/cloud/api lint:fix       # biome check --write .
+bun run --cwd packages/cloud/api lint           # biome check --write --unsafe .
+bun run --cwd packages/cloud/api lint:check     # biome check .
+bun run --cwd packages/cloud/api format         # biome format --write .
+bun run --cwd packages/cloud/api format:check   # biome format .
 bun run --cwd packages/cloud/api test           # bun test __tests__
 bun run --cwd packages/cloud/api test:audit     # route coverage audit
 bun run --cwd packages/cloud/api test:e2e       # batched e2e (test/e2e/)
