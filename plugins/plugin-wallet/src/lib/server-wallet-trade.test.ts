@@ -1,3 +1,10 @@
+/**
+ * Wallet server-trade safety tests for the plugin's local execution guard.
+ * These cases keep the plugin copy aligned with the host guard, especially the
+ * autonomous daily-trade cap that prevents agent-auto mode from trading
+ * without a bounded spend budget.
+ */
+// biome-ignore-all format: preserve current line wrapping in this comments-only header follow-up.
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {

@@ -1,3 +1,10 @@
+/**
+ * CoVE quote verifier tests built from deterministic DICE key ladders and real
+ * Ed25519 signatures. These cases pin the canonical JSON quote path, policy
+ * mapping, report-data binding, and rollback-floor behavior without relying on
+ * silicon-backed hardware.
+ */
+// biome-ignore-all assist/source/organizeImports: preserve current import order in this comments-only header follow-up.
 import {
   createPrivateKey,
   createPublicKey,

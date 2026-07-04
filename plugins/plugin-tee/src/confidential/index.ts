@@ -1,3 +1,9 @@
+/**
+ * Confidential-VM TEE plugin entry point. This module registers the dstack/CoVE
+ * evidence provider through the agent boot-gate seam so deployments can opt in
+ * to CVM evidence while desktop/mobile bundles stay decoupled from the dstack
+ * verifier stack.
+ */
 import { registerTeeEvidenceProviderFactory } from "@elizaos/agent/services/tee-evidence-provider";
 import { logger, type Plugin } from "@elizaos/core";
 import { createDstackTeeProvider } from "./dstack-tee-provider.ts";

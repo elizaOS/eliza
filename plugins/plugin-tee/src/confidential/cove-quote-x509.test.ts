@@ -1,3 +1,9 @@
+/**
+ * X.509 CoVE evidence verifier tests for Salus/rice DICE certificates. The
+ * suite decodes a captured certificate and hand-minted DER chains so the parser
+ * and policy mapper stay compatible with the TSM's real DiceTcbInfo format.
+ */
+// biome-ignore-all assist/source/organizeImports: preserve current import order in this comments-only header follow-up.
 import {
   createHash,
   sign as edSign,

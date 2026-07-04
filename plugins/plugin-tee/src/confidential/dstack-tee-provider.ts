@@ -1,3 +1,11 @@
+/**
+ * dstack/CoVE TEE evidence provider used by confidential-VM deployments. It
+ * collects bounded evidence blobs from the local runtime, enforces the secure
+ * transport and KMS-pin policy for production, and maps verified CoVE quotes
+ * into the host boot-gate `TeeEvidence` contract without importing deployment
+ * code into trunk services.
+ */
+// biome-ignore-all assist/source/organizeImports: preserve current import order in this comments-only header follow-up.
 import { timingSafeEqual } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { coveQuoteToTeeEvidence, verifyCoveQuote } from "./cove-quote.ts";

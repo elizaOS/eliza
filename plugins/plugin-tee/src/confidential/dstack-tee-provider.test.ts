@@ -1,3 +1,8 @@
+/**
+ * Tests the dstack/CoVE evidence provider against real Ed25519-signed CoVE
+ * quotes plus transport, payload-limit, KMS-pin, and replay-binding failure
+ * paths. The harness mocks IO but keeps the quote cryptography real.
+ */
 import {
   createPrivateKey,
   createPublicKey,
