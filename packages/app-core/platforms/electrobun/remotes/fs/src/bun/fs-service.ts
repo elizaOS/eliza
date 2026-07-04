@@ -1,3 +1,4 @@
+import type { Stats } from "node:fs";
 import {
   lstat,
   mkdir,
@@ -15,9 +16,9 @@ import type {
   FileListFailure,
   FileListParams,
   FileListResult,
-  FileRemoteErrorCode,
   FileReadTextParams,
   FileReadTextResult,
+  FileRemoteErrorCode,
   FileRoot,
   FileSearchMatch,
   FileSearchParams,
@@ -294,7 +295,7 @@ export class FileRemoteService {
       return;
     }
 
-    let stats;
+    let stats: Stats;
     try {
       const linkStats = await lstat(guarded.absolutePath);
       if (linkStats.isSymbolicLink()) return;
