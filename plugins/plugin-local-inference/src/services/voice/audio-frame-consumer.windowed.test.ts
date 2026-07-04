@@ -6,21 +6,38 @@
  * to one window. A pipeline without `beginTurn` still takes the one-shot path.
  */
 
-import { describe, expect, it } from "vitest";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
 import {
 	type AttributionPipelineLike,
 	AudioFrameConsumer,
 	type RuntimeEventSink,
 	type VadSegmenter,
 } from "./audio-frame-consumer";
+import {
+	type VoiceImprintMatchHandle,
+	VoiceProfileStore,
+} from "./profile-store";
 import type {
 	IncrementalTurnAttributor,
 	VoiceAttributionOutput,
 } from "./speaker/attribution-pipeline";
+import { VoiceAttributionPipeline } from "./speaker/attribution-pipeline";
+import type { SpeakerEncoder } from "./speaker/encoder";
 import type { PcmFrame, VadEvent } from "./types";
 
 const SR = 16_000;
 const WINDOW_SAMPLES = 5 * SR;
+const MODEL = "wespeaker-resnet34-lm-int8";
+const tempRoots: string[] = [];
+
+afterEach(() => {
+	for (const root of tempRoots.splice(0)) {
+		rmSync(root, { recursive: true, force: true });
+	}
+});
 
 /** VAD the test drives directly — no Silero, no scripted probabilities. */
 class ManualVad implements VadSegmenter {
@@ -150,6 +167,85 @@ function buildConsumer(pipeline: AttributionPipelineLike) {
 	return { vad, consumer, turns };
 }
 
+function withTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
+	return new Promise<T>((resolve, reject) => {
+		const timeout = setTimeout(
+			() => reject(new Error(`${label} did not settle`)),
+			100,
+		);
+		promise.then(
+			(value) => {
+				clearTimeout(timeout);
+				resolve(value);
+			},
+			(error) => {
+				clearTimeout(timeout);
+				reject(error);
+			},
+		);
+	});
+}
+
+async function buildRealAttributionConsumer(): Promise<{
+	vad: ManualVad;
+	consumer: AudioFrameConsumer;
+	encoder: SpeakerEncoder & { calls: number };
+	getSpeculativeHandle: () => VoiceImprintMatchHandle;
+	embedSettled: Promise<void>;
+}> {
+	const dir = mkdtempSync(path.join(tmpdir(), "aframe-cancel-"));
+	tempRoots.push(dir);
+	const store = new VoiceProfileStore({ rootDir: dir });
+	await store.init();
+
+	let handle: VoiceImprintMatchHandle | null = null;
+	let resolveEmbedSettled: () => void = () => {};
+	const embedSettled = new Promise<void>((resolve) => {
+		resolveEmbedSettled = resolve;
+	});
+	const beginMatch = store.beginMatch.bind(store);
+	store.beginMatch = ((args) => {
+		handle = beginMatch({
+			...args,
+			embed: async () => {
+				try {
+					return await args.embed();
+				} finally {
+					resolveEmbedSettled();
+				}
+			},
+		});
+		return handle;
+	}) as VoiceProfileStore["beginMatch"];
+
+	const encoder: SpeakerEncoder & { calls: number } = {
+		embeddingDim: 256,
+		sampleRate: SR,
+		modelId: MODEL,
+		calls: 0,
+		async encode() {
+			this.calls += 1;
+			return new Float32Array(256);
+		},
+		async dispose() {},
+	};
+	const pipeline = new VoiceAttributionPipeline({
+		encoder,
+		profileStore: store,
+	});
+	const { vad, consumer } = buildConsumer(pipeline);
+	return {
+		vad,
+		consumer,
+		encoder,
+		getSpeculativeHandle: () => {
+			if (!handle) throw new Error("speculative handle was not created");
+			return handle;
+		},
+		embedSettled,
+	};
+}
+
 /** Push `seconds` of turn audio as 0.5 s decoded frames from `startMs`. */
 async function pushSpeech(
 	consumer: AudioFrameConsumer,
@@ -235,5 +331,44 @@ describe("AudioFrameConsumer windowed long-turn attribution (#12257)", () => {
 		expect(pipeline.attributeCalls).toBe(1);
 		expect(pipeline.lastPcmLength).toBe(12 * SR);
 		expect(turns).toHaveLength(1);
+	});
+
+	it("close settles an open turn's suspended speculative first-window embed", async () => {
+		const { vad, consumer, encoder, getSpeculativeHandle, embedSettled } =
+			await buildRealAttributionConsumer();
+
+		vad.emit({ type: "speech-start", timestampMs: 0, probability: 0.9 });
+		const speculative = getSpeculativeHandle();
+		await consumer.close();
+
+		await expect(
+			withTimeout(embedSettled, "close speculative embed"),
+		).resolves.toBeUndefined();
+		await expect(
+			withTimeout(speculative.result, "close speculative result"),
+		).resolves.toBeNull();
+		expect(encoder.calls).toBe(0);
+	});
+
+	it("zero-buffer finalize settles the suspended speculative first-window embed", async () => {
+		const { vad, consumer, encoder, getSpeculativeHandle, embedSettled } =
+			await buildRealAttributionConsumer();
+
+		vad.emit({ type: "speech-start", timestampMs: 0, probability: 0.9 });
+		const speculative = getSpeculativeHandle();
+		vad.emit({
+			type: "speech-end",
+			timestampMs: 0,
+			speechDurationMs: 0,
+		});
+		await consumer.flush();
+
+		await expect(
+			withTimeout(embedSettled, "zero-buffer speculative embed"),
+		).resolves.toBeUndefined();
+		await expect(
+			withTimeout(speculative.result, "zero-buffer speculative result"),
+		).resolves.toBeNull();
+		expect(encoder.calls).toBe(0);
 	});
 });

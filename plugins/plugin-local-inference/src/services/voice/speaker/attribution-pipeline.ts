@@ -246,14 +246,16 @@ export class VoiceAttributionPipeline {
 		const firstWindow = new Promise<Float32Array | null>((resolve) => {
 			resolveFirstWindow = resolve;
 		});
+		let removeCancelSignalListener: () => void = () => {};
 		let firstWindowSettled = false;
 		const settleFirstWindow = (pcm: Float32Array | null): void => {
 			if (firstWindowSettled) return;
 			firstWindowSettled = true;
+			removeCancelSignalListener();
 			resolveFirstWindow(pcm);
 		};
 
-		const speculativeMatch = this.deps.profileStore.beginMatch({
+		const storeSpeculativeMatch = this.deps.profileStore.beginMatch({
 			embed: async () => {
 				const pcm = await firstWindow;
 				if (!pcm || pcm.length < WESPEAKER_MIN_SAMPLES) return null;
@@ -265,6 +267,28 @@ export class VoiceAttributionPipeline {
 			},
 			...(init.signal ? { signal: init.signal } : {}),
 		});
+		const cancelSpeculativeMatch = (): void => {
+			settleFirstWindow(null);
+			storeSpeculativeMatch.cancel();
+		};
+		if (init.signal) {
+			if (init.signal.aborted) {
+				cancelSpeculativeMatch();
+			} else {
+				init.signal.addEventListener("abort", cancelSpeculativeMatch, {
+					once: true,
+				});
+				removeCancelSignalListener = () => {
+					init.signal?.removeEventListener("abort", cancelSpeculativeMatch);
+					removeCancelSignalListener = () => {};
+				};
+			}
+		}
+		const speculativeMatch: VoiceImprintMatchHandle = {
+			result: storeSpeculativeMatch.result,
+			current: () => storeSpeculativeMatch.current(),
+			cancel: cancelSpeculativeMatch,
+		};
 
 		const diarizeInto = async (
 			pcm: Float32Array,
