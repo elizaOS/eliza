@@ -112,6 +112,9 @@ let writeChain: Promise<unknown> = Promise.resolve();
 
 function serialise<T>(fn: () => Promise<T>): Promise<T> {
   const next = writeChain.then(fn, fn);
+  // error-policy:J5 the returned `next` is where the caller observes this
+  // rejection; the chain copy is swallowed only so one failed write does not
+  // poison the serialisation of subsequent writes.
   writeChain = next.catch(() => undefined);
   return next;
 }

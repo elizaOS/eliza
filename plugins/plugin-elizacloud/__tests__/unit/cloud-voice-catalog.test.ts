@@ -16,7 +16,8 @@
  * `createElizaCloudClient`. After each test we restore the factory.
  */
 import type { IAgentRuntime } from "@elizaos/core";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { logger } from "@elizaos/core";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   type CloudVoiceClient,
@@ -271,18 +272,24 @@ describe("fetchCloudVoiceCatalog", () => {
     expect(calls.user).toBe(2);
   });
 
-  it("isolates per-endpoint failures — one endpoint erroring still returns the other's voices", async () => {
+  it("isolates per-endpoint failures — one endpoint erroring still returns the other's voices and warns", async () => {
     const { client } = makeFakeClient({
       premade: PREMADE_VOICES_PAYLOAD,
       userError: new Error("user endpoint down"),
     });
     setCloudVoiceClientFactoryForTesting(() => client);
+    const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
 
     const voices = await fetchCloudVoiceCatalog(makeRuntime());
-    // Only premade voices come back; the user endpoint failure is swallowed.
+    // Only premade voices come back; the user endpoint failure degrades to
+    // empty for that endpoint only.
     expect(voices.map((v) => v.id).sort()).toEqual(
       ["21m00Tcm4TlvDq8ikWAM", "EXAVITQu4vr4xnSDxMaL", "minimal-id-voice"].sort()
     );
+    // The failed endpoint must surface observably — not be silently swallowed
+    // as an empty list (error-policy: "not loaded" must never read as "empty").
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("user endpoint down"));
+    warnSpy.mockRestore();
   });
 
   it("returns empty array when both endpoints fail", async () => {

@@ -1532,6 +1532,7 @@ async function resolveSingleShellTargetView({
 		explicit?.toLowerCase() === "current" ||
 		(!explicit && /\bcurrent\b/i.test(requestText))
 	) {
+		// error-policy:J4 current-view read over loopback; unreachable -> null -> resolve to "none"
 		const currentView = await client.getCurrentView().catch(() => null);
 		if (!currentView?.viewId) return { kind: "none" };
 		return {
@@ -2431,6 +2432,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 					return prefetchedViews;
 				};
 				const getCurrentView = async () => {
+					// error-policy:J4 current-view read over loopback; unreachable -> null -> resolver degrades to no current-view context
 					prefetchedCurrentView ??= await client
 						.getCurrentView()
 						.catch(() => null);

@@ -4,6 +4,7 @@
  * Capacitor bridge or real OS scheduler.
  */
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
+import type { IBgTaskScheduler, ScheduleOptions } from '../../src';
 import {
   BACKGROUND_RUNNER_SERVICE_TYPE,
   BgTaskSchedulerService,
@@ -115,6 +116,55 @@ describe('plugin-background-runner: CapacitorBgScheduler', () => {
         onWake: async () => {},
       })
     ).rejects.toThrow(/outside Capacitor/);
+  });
+});
+
+describe('plugin-background-runner: onWake failure surfaces to the agent', () => {
+  // Captures the onWake callback wired at start() so a wake can be driven directly.
+  class CapturingScheduler implements IBgTaskScheduler {
+    readonly kind = 'interval' as const;
+    onWake: (() => Promise<void>) | null = null;
+    async schedule(options: ScheduleOptions): Promise<void> {
+      this.onWake = options.onWake;
+    }
+    async cancel(): Promise<void> {}
+    isScheduled(): boolean {
+      return this.onWake !== null;
+    }
+  }
+
+  class TestService extends BgTaskSchedulerService {
+    readonly capturing = new CapturingScheduler();
+    protected override async buildScheduler(): Promise<IBgTaskScheduler> {
+      return this.capturing;
+    }
+  }
+
+  test('a runDueTasks rejection is reported via runtime.reportError and re-thrown', async () => {
+    const reported: Array<{ scope: string; error: unknown }> = [];
+    const boom = new Error('task dispatch exploded');
+    const runtime = {
+      serverless: false,
+      reportError: (scope: string, error: unknown) => {
+        reported.push({ scope, error });
+      },
+      getService: () => ({
+        runDueTasks: async () => {
+          throw boom;
+        },
+      }),
+    } as unknown as ConstructorParameters<typeof TestService>[0];
+
+    const service = new TestService(runtime);
+    await service.start();
+    const onWake = service.capturing.onWake;
+    expect(onWake).not.toBeNull();
+
+    // The wake must reject (host stays aware) AND the failure must be reported.
+    await expect((onWake as () => Promise<void>)()).rejects.toBe(boom);
+    expect(reported.length).toBe(1);
+    expect(reported[0]?.scope).toBe('BgTaskSchedulerService.onWake');
+    expect(reported[0]?.error).toBe(boom);
   });
 });
 

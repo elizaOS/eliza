@@ -588,6 +588,8 @@ async function startIosBridgeBackend(): Promise<IosBridgeBackend> {
 		dispatchRoute,
 		conversations: new Map(),
 		close: async () => {
+			// error-policy:J6 best-effort teardown — the backend is shutting down; a
+			// failed unload cannot be acted on and must not block close.
 			await unloadNativeLlamaModel().catch(() => undefined);
 		},
 	};
@@ -670,6 +672,10 @@ function ensureIosBridgeBackendStarted(
 			throw error;
 		},
 	);
+	// error-policy:J5 the boot failure is observed via `host.bootError` (set in
+	// the rejection handler above) and rethrown to every `awaitIosBridgeBackend`
+	// caller; this catch only silences the unhandled-rejection warning on the
+	// cached promise handle.
 	host.backendPromise.catch(() => {
 		return undefined;
 	});
@@ -2427,6 +2433,8 @@ async function unloadNativeLlamaModel(): Promise<void> {
 	nativeLlamaState.loadedAt = null;
 	nativeLlamaState.status = "idle";
 	if (contextId != null) {
+		// error-policy:J6 best-effort teardown — the local state is already reset
+		// above; a failed native free must not leave unload half-done.
 		await callIosHost("llama_free", { context_id: contextId }, 30_000).catch(
 			() => undefined,
 		);
@@ -2699,8 +2707,16 @@ function installKeepAwakeBridge(): void {
 	g.__ELIZA_BRIDGE__ = g.__ELIZA_BRIDGE__ ?? {};
 	if (typeof g.__ELIZA_BRIDGE__.keep_awake_set === "function") return;
 	g.__ELIZA_BRIDGE__.keep_awake_set = (enabled: unknown): boolean => {
+		// error-policy:J5 fire-and-forget native hint; the WebView contract returns
+		// synchronously, but a rejected host call is surfaced to stderr (stdout is
+		// the reserved bridge protocol channel) instead of being silently dropped.
 		void callIosHost("keep_awake_set", { enabled: Boolean(enabled) }).catch(
-			() => undefined,
+			(error) => {
+				console.error(
+					"[ios-bridge] keep_awake_set failed:",
+					error instanceof Error ? error.message : String(error),
+				);
+			},
 		);
 		return true;
 	};
@@ -2756,6 +2772,15 @@ async function nativeHardwareInfo(): Promise<Record<string, unknown>> {
 			? (result as Record<string, unknown>)
 			: {};
 	} catch (error) {
+		// error-policy:J4 native hardware-info IPC unavailable → a designed
+		// "unknown hardware" degrade whose `error` field carries the failure.
+		// Surfaced observably to stderr (stdout is the bridge protocol channel) so
+		// the IPC failure is not silent; RAM-gating callers treat the zeroed
+		// reading as "cannot verify" rather than a genuine zero.
+		console.error(
+			"[ios-bridge] hardware info unavailable:",
+			error instanceof Error ? error.message : String(error),
+		);
 		return {
 			backend: "unknown",
 			total_ram_gb: 0,
@@ -3086,6 +3111,9 @@ function startNativeModelDownload(modelId: string): NativeDownloadJob {
 		updatedAt: now,
 	};
 	nativeDownloadState.set(model.id, job);
+	// error-policy:J5 fire-and-forget; runNativeModelDownload records failure on
+	// the job (state:"failed" + error message) which the WebView polls via the
+	// download-status route, so this only suppresses the detached-promise warning.
 	void runNativeModelDownload(model).catch(() => {});
 	return job;
 }
@@ -3770,8 +3798,14 @@ async function handleDirectConversationMessage(
 
 	try {
 		await runtime.createMemory?.(message, "messages");
-	} catch {
-		// Best effort. Some adapters persist inside messageService.
+	} catch (error) {
+		// error-policy:J6 best-effort secondary persistence — some adapters already
+		// persist the message inside messageService; a duplicate/failed write here
+		// must not drop the reply, but the failure is surfaced to stderr.
+		console.error(
+			"[ios-bridge] createMemory(messages) failed:",
+			error instanceof Error ? error.message : String(error),
+		);
 	}
 
 	// Track cumulative streamed text so incremental model chunks accumulate into

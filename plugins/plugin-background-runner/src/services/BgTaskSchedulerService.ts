@@ -84,9 +84,10 @@ export class BgTaskSchedulerService extends Service {
   }
 
   /**
-   * Wake-up handler. Drives core's TaskService once, then returns. Errors
-   * surface — the host (Capacitor runner shim or interval) is responsible for
-   * logging; we re-throw to keep the failure observable.
+   * Wake-up handler. Drives core's TaskService once, then returns. A dispatch
+   * failure is reported to the agent (RECENT_ERRORS / owner escalation) so the
+   * background runner cannot silently stall, then re-thrown so the host
+   * (Capacitor runner shim or interval scheduler) also observes it.
    */
   private async onWake(): Promise<void> {
     const service = this.runtime.getService(ServiceType.TASK);
@@ -100,7 +101,15 @@ export class BgTaskSchedulerService extends Service {
       );
       return;
     }
-    await service.runDueTasks();
+    try {
+      await service.runDueTasks();
+    } catch (error) {
+      // error-policy:J2 add scope + surface the wake failure to the agent, then rethrow to the host
+      this.runtime.reportError('BgTaskSchedulerService.onWake', error, {
+        label: BgTaskSchedulerService.RUNNER_LABEL,
+      });
+      throw error;
+    }
   }
 
   /**

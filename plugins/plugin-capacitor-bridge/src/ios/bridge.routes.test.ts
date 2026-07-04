@@ -9,9 +9,12 @@
  * the exact response shapes the UI consumes.
  */
 
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import type { IAgentRuntime, Memory, UUID } from "@elizaos/core";
 import type { TranscriptSegment } from "@elizaos/shared/transcripts";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	handleDirectCoreRoute,
 	type IosBridgeBackend,
@@ -448,6 +451,105 @@ describe("iOS bridge — browser workspace routes", () => {
 			"/api/browser-workspace/tabs/nope/show",
 		);
 		expect(res.status).toBe(404);
+	});
+});
+
+describe("iOS bridge — conversation message failure surfacing", () => {
+	// A failed `createMemory` write is best-effort secondary persistence
+	// (error-policy:J6): it must not drop the reply, but the failure must surface
+	// observably (stderr) rather than be silently swallowed.
+	function createMessageServiceRuntime(
+		onCreateMemory: () => Promise<UUID>,
+	): IAgentRuntime {
+		return {
+			agentId: AGENT_ID,
+			character: { name: "Eliza" },
+			async ensureConnection(): Promise<void> {},
+			createMemory: onCreateMemory,
+			messageService: {
+				async handleMessage(
+					_runtime: IAgentRuntime,
+					_message: Memory,
+					onResponse: (content: { text?: string }) => Promise<unknown>,
+				): Promise<void> {
+					await onResponse({ text: "hello from the local agent" });
+				},
+			},
+		} as unknown as IAgentRuntime;
+	}
+
+	function seedConversation(backend: IosBridgeBackend, id: string): void {
+		backend.conversations.set(id, {
+			id,
+			title: "Test Chat",
+			roomId: "00000000-0000-0000-0000-0000000000cc" as UUID,
+			createdAt: new Date().toISOString(),
+			updatedAt: new Date().toISOString(),
+		});
+	}
+
+	// Point the local-inference state dir at an empty temp dir so no real
+	// on-disk model registry diverts the reply through the native-llama path;
+	// with zero installed models the deterministic messageService path runs.
+	let prevStateDir: string | undefined;
+	beforeEach(() => {
+		prevStateDir = process.env.ELIZA_STATE_DIR;
+		process.env.ELIZA_STATE_DIR = mkdtempSync(
+			path.join(tmpdir(), "ios-bridge-conv-"),
+		);
+	});
+	afterEach(() => {
+		if (prevStateDir === undefined) delete process.env.ELIZA_STATE_DIR;
+		else process.env.ELIZA_STATE_DIR = prevStateDir;
+		vi.restoreAllMocks();
+	});
+
+	it("surfaces a rejected createMemory to stderr but still returns the reply", async () => {
+		const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+		const runtime = createMessageServiceRuntime(() =>
+			Promise.reject(new Error("db offline")),
+		);
+		const backend = makeBackend(runtime);
+		seedConversation(backend, "conv-fail-1");
+
+		const { status, json } = await call(
+			backend,
+			"POST",
+			"/api/conversations/conv-fail-1/messages",
+			{ text: "hi there" },
+		);
+
+		// The reply is produced despite the persistence failure (J6 continues).
+		expect(status).toBe(200);
+		expect(json.reply).toBe("hello from the local agent");
+		// The failure is observable, not swallowed.
+		expect(errorSpy).toHaveBeenCalledWith(
+			"[ios-bridge] createMemory(messages) failed:",
+			"db offline",
+		);
+	});
+
+	it("does not log when createMemory succeeds", async () => {
+		const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+		const runtime = createMessageServiceRuntime(() =>
+			Promise.resolve(crypto.randomUUID() as UUID),
+		);
+		const backend = makeBackend(runtime);
+		seedConversation(backend, "conv-ok-1");
+
+		const { status, json } = await call(
+			backend,
+			"POST",
+			"/api/conversations/conv-ok-1/messages",
+			{ text: "hi there" },
+		);
+
+		expect(status).toBe(200);
+		expect(json.reply).toBe("hello from the local agent");
+		expect(errorSpy).not.toHaveBeenCalledWith(
+			"[ios-bridge] createMemory(messages) failed:",
+			expect.anything(),
+		);
 	});
 });
 

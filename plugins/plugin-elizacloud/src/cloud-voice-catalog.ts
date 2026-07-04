@@ -202,8 +202,11 @@ async function fetchEndpointVoices(
     }
     return normalized;
   } catch (err) {
+    // error-policy:J4 one endpoint degrades to empty so the other still
+    // populates the catalog (see fetchCloudVoiceCatalog); warn so a sustained
+    // upstream outage is visible rather than buried as a silently-empty list.
     const message = err instanceof Error ? err.message : String(err);
-    logger.debug(
+    logger.warn(
       `[ELIZAOS_CLOUD] voice catalog ${endpoint} fetch failed: ${message}`,
     );
     return [];

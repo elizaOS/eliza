@@ -2085,6 +2085,9 @@ function registerMobileDeviceBridgeModels(
 		!resolveLocalLoadArgs("TEXT_SMALL") &&
 		process.env.ELIZA_DISABLE_MODEL_AUTO_DOWNLOAD?.trim() !== "1"
 	) {
+		// error-policy:J5 fire-and-forget pre-warm; the failure is surfaced via
+		// logger.warn and the real generate() call retries the download on demand
+		// (same idempotency guard), so registration must not block on it.
 		downloadRecommendedModelFor("TEXT_SMALL").catch((err) =>
 			logger.warn(
 				`[mobile-device-bridge] Background chat-model download failed: ${(err as Error).message}`,
@@ -2125,6 +2128,9 @@ function registerMobileDeviceBridgeModels(
 	) {
 		// Kick off the embedding-model download in the background so it's
 		// ready by the time the WebView issues a real embed request.
+		// error-policy:J5 fire-and-forget pre-warm; surfaced via logger.warn and the
+		// first real embed request re-triggers the download, so registration of the
+		// TEXT_EMBEDDING handler must not block on it.
 		downloadRecommendedModelFor("TEXT_EMBEDDING").catch((err) =>
 			logger.warn(
 				`[mobile-device-bridge] Background embedding-model download failed: ${(err as Error).message}`,

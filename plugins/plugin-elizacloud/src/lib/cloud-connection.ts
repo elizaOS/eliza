@@ -340,9 +340,13 @@ async function fetchCloudCreditsByApiKey(
   }
 
   const creditResponse = (await response.json().catch((err: unknown) => {
-    console.warn(
-      "[cloud-connection] Failed to parse credit balance response JSON:",
-      err,
+    // error-policy:J3 untrusted upstream body; unparseable JSON becomes an
+    // empty shape so balance resolves to null and surfaces as "unexpected
+    // response" / the HTTP-status error below — never a fabricated balance.
+    logger.warn(
+      `[cloud-connection] Failed to parse credit balance response JSON: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
     );
     return {};
   })) as {

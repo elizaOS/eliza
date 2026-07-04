@@ -30,6 +30,8 @@ export class IntervalBgScheduler implements IBgTaskScheduler {
     );
     this.currentLabel = options.label;
     this.timer = setInterval(() => {
+      // error-policy:J7 the interval must survive a failed wake; onWake already
+      // reported the failure to the agent via runtime.reportError, we log the host-side copy
       options.onWake().catch((error) => {
         elizaLogger.error(
           { err: error, label: options.label },
