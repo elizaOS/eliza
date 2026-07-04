@@ -1613,44 +1613,22 @@ def test_dry_run_tag_is_printed_not_executed(tmp_path: Path, caplog) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_missing_e2e_loop_ok_blocks_publish_without_opt_in(
-    tmp_path: Path, monkeypatch
-) -> None:
+def test_missing_e2e_loop_ok_blocks_publish(tmp_path: Path, monkeypatch) -> None:
     """The orchestrator refuses to silently alias e2e_loop_ok ← thirty_turn_ok.
 
     AGENTS.md §6 declares the two manifest fields as independent
-    contract gates; without the explicit ``ELIZA_PUBLISH_ALLOW_GATE_ALIAS``
-    opt-in, a missing ``e2e_loop_ok`` is publish-blocking.
+    contract gates; a missing ``e2e_loop_ok`` is publish-blocking even
+    if the retired alias env var is set.
     """
-    blob = _passing_eval_blob()
-    blob["results"].pop("e2e_loop_ok")
-    bundle = _build_fixture_bundle(tmp_path, eval_blob=blob)
-    metal = _metal_report(tmp_path)
-    monkeypatch.delenv("ELIZA_PUBLISH_ALLOW_GATE_ALIAS", raising=False)
-
-    rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
-    assert rc == EXIT_EVAL_GATE_FAIL
-    assert not (bundle / "eliza-1.manifest.json").is_file()
-
-
-def test_alias_opt_in_allows_publish_with_warning(
-    tmp_path: Path, monkeypatch, caplog
-) -> None:
-    """With the opt-in env var, e2e_loop_ok aliases thirty_turn_ok and warns."""
     blob = _passing_eval_blob()
     blob["results"].pop("e2e_loop_ok")
     bundle = _build_fixture_bundle(tmp_path, eval_blob=blob)
     metal = _metal_report(tmp_path)
     monkeypatch.setenv("ELIZA_PUBLISH_ALLOW_GATE_ALIAS", "1")
 
-    with caplog.at_level(logging.WARNING, logger="publish.orchestrator"):
-        rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
-
-    assert rc == EXIT_OK
-    assert "aliasing results.e2e_loop_ok" in caplog.text
-    manifest = json.loads((bundle / "eliza-1.manifest.json").read_text())
-    assert manifest["evals"]["e2eLoopOk"] is True
-    assert manifest["evals"]["thirtyTurnOk"] is True
+    rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
+    assert rc == EXIT_EVAL_GATE_FAIL
+    assert not (bundle / "eliza-1.manifest.json").is_file()
 
 
 def test_cli_help(monkeypatch, capsys) -> None:
