@@ -68,6 +68,7 @@ describe("deriveHomeModelStatus", () => {
     expect(status.kind).toBe("not-required");
     expect(status.blocksSend).toBe(false);
     expect(status.modelName).toBeNull();
+    expect(status.modelId).toBeNull();
   });
 
   it("returns ready and unblocks send when every assigned slot is ready", () => {
@@ -113,6 +114,8 @@ describe("deriveHomeModelStatus", () => {
     expect(status.blocksSend).toBe(true);
     expect(status.percent).toBe(72);
     expect(status.etaMs).toBe(8000);
+    // Cancel/retry target the assigned model id of a downloading slot.
+    expect(status.modelId).toBe("eliza-1");
   });
 
   it("returns missing and blocks send when an assigned model is absent", () => {
@@ -152,6 +155,8 @@ describe("deriveHomeModelStatus", () => {
     expect(status.kind).toBe("error");
     expect(status.blocksSend).toBe(true);
     expect(status.errors).toEqual(["disk full", "user cancelled"]);
+    // Retry re-enqueues the failed slot's model id.
+    expect(status.modelId).toBe("eliza-1");
   });
 
   it("prioritizes error over downloading when slots are mixed", () => {

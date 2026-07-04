@@ -29,6 +29,7 @@ import {
   CLOUD_HANDOFF_PHASE_EVENT,
   type CloudHandoffPhaseDetail,
 } from "../events";
+import { notifyTypedWhileBlocked } from "../first-run/model-action-channel";
 import { getWindowNavigationPath, type Tab } from "../navigation";
 import { clearChatDraft } from "./ChatComposerContext.hooks";
 import { isConversationRecord } from "./chat-conversation-guards";
@@ -1722,6 +1723,12 @@ export function useChatSend(deps: UseChatSendDeps) {
       // background-app pause cannot snapshot the empty-then-restored
       // value back to storage.
       clearChatDraft(activeConversationIdRef.current);
+
+      // When the local text model still blocks send, seed an instant
+      // "still getting ready" acknowledgment so a message typed before the
+      // model loads is never silently lost. The send below still rides the
+      // server hold/503-retry path — this is the visible receipt.
+      notifyTypedWhileBlocked();
 
       await sendChatText(claimedInput, {
         channelType,

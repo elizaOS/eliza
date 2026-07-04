@@ -27,6 +27,11 @@ import {
   persistMobileRuntimeModeForServerTarget,
 } from "../first-run/mobile-runtime-mode";
 import {
+  isModelActionMessage,
+  notifyTypedWhileBlocked,
+  tryHandleModelAction,
+} from "../first-run/model-action-channel";
+import {
   activeServerKindToFirstRunRuntimeTarget,
   type FirstRunRuntimeTarget,
 } from "../first-run/runtime-target";
@@ -1174,6 +1179,14 @@ function AppProviderInner({
   // `sendActionMessage`.
   const sendActionMessage = useCallback(
     (text: string): Promise<void> => {
+      // Model-status controls (`__model__:` prefix) are consumed client-side by
+      // the model-status conductor and MUST NOT reach the server — reserved
+      // unconditionally, exactly like the first-run prefix, so a tap on a
+      // leftover status widget after the model is ready is dropped, not sent.
+      if (isModelActionMessage(text)) {
+        tryHandleModelAction(text);
+        return Promise.resolve();
+      }
       switch (classifyActionMessage(text, firstRunComplete === true)) {
         case "first-run":
           tryHandleFirstRunAction(text);
@@ -1181,6 +1194,10 @@ function AppProviderInner({
         case "dropped":
           return Promise.resolve();
         case "send":
+          // A real send while the local model still blocks: seed an instant
+          // "still getting ready" acknowledgment so the message isn't silently
+          // lost, then let the optimistic send ride the server hold/503-retry.
+          notifyTypedWhileBlocked();
           return rawSendActionMessage(text);
       }
     },

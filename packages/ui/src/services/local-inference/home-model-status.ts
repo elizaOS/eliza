@@ -21,6 +21,12 @@ export interface HomeModelStatus {
   etaMs: number | null;
   /** Display name of the assigned model, when known. */
   modelName: string | null;
+  /**
+   * Assigned text-model id of the gating slot, when known. The cancel/retry
+   * controls on the in-chat status turn target exactly this id
+   * (`cancelLocalInferenceDownload` / `startLocalInferenceDownload`).
+   */
+  modelId: string | null;
   /** Distinct error messages from failed downloads / activation. */
   errors: string[];
 }
@@ -32,6 +38,13 @@ function maxOrNull(values: number[]): number | null {
 function firstModelName(slots: LocalInferenceSlotReadiness[]): string | null {
   for (const slot of slots) {
     if (slot.displayName) return slot.displayName;
+  }
+  return null;
+}
+
+function firstModelId(slots: LocalInferenceSlotReadiness[]): string | null {
+  for (const slot of slots) {
+    if (slot.assignedModelId) return slot.assignedModelId;
   }
   return null;
 }
@@ -51,6 +64,7 @@ export function deriveHomeModelStatus(
     (slot) => slot.assigned,
   );
   const modelName = firstModelName(assigned);
+  const modelId = firstModelId(assigned);
 
   if (assigned.length === 0) {
     return {
@@ -59,6 +73,7 @@ export function deriveHomeModelStatus(
       percent: null,
       etaMs: null,
       modelName: null,
+      modelId: null,
       errors: [],
     };
   }
@@ -70,6 +85,7 @@ export function deriveHomeModelStatus(
       percent: null,
       etaMs: null,
       modelName,
+      modelId,
       errors: [],
     };
   }
@@ -84,6 +100,9 @@ export function deriveHomeModelStatus(
       percent: null,
       etaMs: null,
       modelName,
+      // The failed slot's id is what retry re-enqueues — prefer it over the
+      // generic first-assigned id when a specific slot failed.
+      modelId: firstModelId(failed) ?? modelId,
       errors: [...new Set(failed.flatMap((slot) => slot.errors))],
     };
   }
@@ -102,6 +121,7 @@ export function deriveHomeModelStatus(
       percent: maxOrNull(percents),
       etaMs: maxOrNull(etas),
       modelName,
+      modelId: firstModelId(downloading) ?? modelId,
       errors: [],
     };
   }
@@ -116,6 +136,7 @@ export function deriveHomeModelStatus(
       percent: null,
       etaMs: null,
       modelName,
+      modelId,
       errors: [],
     };
   }
@@ -127,6 +148,7 @@ export function deriveHomeModelStatus(
     percent: 100,
     etaMs: null,
     modelName,
+    modelId,
     errors: [],
   };
 }

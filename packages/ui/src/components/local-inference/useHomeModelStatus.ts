@@ -19,6 +19,7 @@ const NOT_REQUIRED: HomeModelStatus = {
   percent: null,
   etaMs: null,
   modelName: null,
+  modelId: null,
   errors: [],
 };
 

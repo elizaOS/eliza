@@ -86,6 +86,7 @@ import {
 import { adoptRemoteAgentFirstRun } from "./first-run/adopt-remote-first-run";
 import { persistMobileRuntimeModeForServerTarget } from "./first-run/mobile-runtime-mode";
 import { FirstRunConductorMount } from "./first-run/use-first-run-conductor";
+import { ModelStatusConductorMount } from "./first-run/use-model-status-conductor";
 import { BugReportProvider, useBugReportState, useContextMenu } from "./hooks";
 import { useAuthStatus } from "./hooks/useAuthStatus";
 import { useRole } from "./hooks/useRole";
@@ -2300,6 +2301,7 @@ export function App() {
         <ShellControllerProvider>
           <ChatOverlayShell />
           <FirstRunConductorMount />
+          <ModelStatusConductorMount />
         </ShellControllerProvider>
         <BugReportModal />
       </BugReportProvider>
@@ -2495,6 +2497,12 @@ export function App() {
             transcript the overlay renders and routes first-run picks to the
             headless finish use case. Renders null. */}
         <FirstRunConductorMount />
+        {/* In-chat model-status conductor (headless) — while a local text model
+            is missing/downloading/loading/failed it seeds ONE live-updating
+            status turn (progress + cancel/switch-cloud/retry controls) into the
+            same transcript, and acknowledges typed messages sent before the
+            model is ready. Renders null; the home model widget is unchanged. */}
+        <ModelStatusConductorMount />
         {/* Interactive tutorial: a persistent spotlight overlay that survives
             navigation (it sends the user to Settings, back home, …). Renders
             only when the tutorial is active (launched from the home Tutorial

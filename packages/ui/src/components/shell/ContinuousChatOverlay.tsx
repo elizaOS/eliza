@@ -1698,6 +1698,11 @@ export function ContinuousChatOverlay({
   // True once the server has reported no LLM/model provider is configured (a
   // `no_provider` assistant turn). Defaulted for minimal mock controllers.
   const noProviderConfigured = controller.noProviderConfigured ?? false;
+  // True while a local text model is still downloading/loading and gates send.
+  // Send is NOT disabled — the composer stays typeable and the placeholder
+  // invites the user to keep typing (the model-status conductor seeds the live
+  // progress turn + acknowledges typed messages). Defaulted for mock controllers.
+  const modelBlocksSend = controller.modelStatus?.blocksSend ?? false;
   // Defensive default so a minimal mock controller (stories/tests) that predates
   // the swipe-nav surface still renders without crashing.
   const conversationNav = controller.conversationNav ?? EMPTY_CONVERSATION_NAV;
@@ -4999,9 +5004,11 @@ export function ContinuousChatOverlay({
                     ? "Pick an option to continue"
                     : noProviderConfigured
                       ? "Connect a model provider in Settings to chat"
-                      : booting
-                        ? `Ask ${agentName} — waking up…`
-                        : (viewChatBinding?.placeholder ?? `Ask ${agentName}`)
+                      : modelBlocksSend
+                        ? "downloading eliza-1 — you can keep typing"
+                        : booting
+                          ? `Ask ${agentName} — waking up…`
+                          : (viewChatBinding?.placeholder ?? `Ask ${agentName}`)
                 }
                 aria-label="message"
                 data-testid="chat-composer-textarea"
