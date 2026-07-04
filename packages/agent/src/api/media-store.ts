@@ -649,10 +649,16 @@ function parseByteRange(
   if (!match) return null;
   const startRaw = match[1];
   const endRaw = match[2];
-  // `bytes=-N` is a suffix range: the last N bytes.
+  // `bytes=-N` is a suffix range: the last N bytes. A suffix range against a
+  // zero-length representation (size 0) is unsatisfiable → 416; without the
+  // `size <= 0` guard this returned {start:0,end:-1}, which the 206 path then
+  // streams as `createReadStream(end:-1)` (throws ERR_OUT_OF_RANGE after the
+  // head is already sent) or emits as an invalid `Content-Range: bytes 0--1/0`.
   if (!startRaw && endRaw) {
     const suffix = Number.parseInt(endRaw, 10);
-    if (Number.isNaN(suffix) || suffix <= 0) return { unsatisfiable: true };
+    if (Number.isNaN(suffix) || suffix <= 0 || size <= 0) {
+      return { unsatisfiable: true };
+    }
     return { start: Math.max(0, size - suffix), end: size - 1 };
   }
   const start = startRaw ? Number.parseInt(startRaw, 10) : 0;

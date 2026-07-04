@@ -442,6 +442,16 @@ describe("handleMediaRouteRequest (in-process / iOS path)", () => {
     expect(res.headers["Content-Range"]).toBe("bytes */10");
   });
 
+  it("416s a suffix Range (bytes=-N) against a zero-byte file", () => {
+    // Regression (#12351 follow-up): the suffix branch used to skip the
+    // satisfiability guard and return {start:0,end:-1} for a 0-length file,
+    // yielding an invalid 206 (Content-Range: bytes 0--1/0) instead of 416.
+    const { url } = persistMediaBytes(Buffer.alloc(0), "audio/mpeg");
+    const res = handleMediaRouteRequest(url, "GET", "bytes=-5");
+    expect(res.status).toBe(416);
+    expect(res.headers["Content-Range"]).toBe("bytes */0");
+  });
+
   it("ignores a malformed Range and serves the full 200", () => {
     const bytes = Buffer.from("0123456789");
     const { url } = persistMediaBytes(bytes, "audio/mpeg");
@@ -488,6 +498,23 @@ describe("serveMediaFile Range (HTTP path)", () => {
     const out = get();
     expect(out.status).toBe(416);
     expect(out.headers["Content-Range"]).toBe("bytes */10");
+  });
+
+  it("answers a suffix Range against a zero-byte file with 416 (not a mid-stream throw)", () => {
+    // Regression (#12351 follow-up): for a 0-length file the suffix branch
+    // returned {start:0,end:-1}; the HTTP path wrote the 206 head then
+    // createReadStream({end:-1}) threw ERR_OUT_OF_RANGE after the response had
+    // already started. It must return a clean 416 up front instead.
+    const { url } = persistMediaBytes(Buffer.alloc(0), "audio/mpeg");
+    const { res, get } = makeRes();
+    serveMediaFile(
+      { method: "GET", headers: { range: "bytes=-5" } } as never,
+      res,
+      url,
+    );
+    const out = get();
+    expect(out.status).toBe(416);
+    expect(out.headers["Content-Range"]).toBe("bytes */0");
   });
 });
 
