@@ -17,6 +17,7 @@ import pytest
 from benchmarks.orchestrator import adapters as orchestrator_adapters
 from benchmarks.bench_cli_types import ModelSpec
 from benchmarks.orchestrator.adapters import (
+    SMITHERS_BENCHMARKS,
     _score_from_app_eval,
     _score_from_eliza_1,
     _score_from_personality_bench,
@@ -1416,6 +1417,74 @@ def test_standard_public_benchmarks_publish_real_harness_rows() -> None:
         assert _is_harness_compatible(adapter, "hermes") is True
         assert _is_harness_compatible(adapter, "openclaw") is True
         assert _is_harness_compatible(adapter, "smithers") is True
+
+
+def test_smithers_benchmark_compatibility_has_real_routes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        orchestrator_adapters,
+        "_has_swe_bench_docker_backend",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        orchestrator_adapters,
+        "_has_terminal_bench_docker_backend",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        orchestrator_adapters,
+        "_has_osworld_docker_backend",
+        lambda: True,
+    )
+
+    workspace_root = _workspace_root()
+    benchmarks_root = workspace_root / "benchmarks"
+    monkeypatch.setattr(
+        orchestrator_adapters,
+        "_git_visible_dir_names",
+        lambda _root: {p.name for p in benchmarks_root.iterdir() if p.is_dir()},
+    )
+    registry_ids = {item.id for item in get_benchmark_registry(workspace_root)}
+
+    missing_from_registry = sorted(SMITHERS_BENCHMARKS - registry_ids)
+    assert missing_from_registry == []
+
+    report = build_cross_matrix_report(
+        workspace_root.parent,
+        harnesses=("smithers",),
+        provider="cerebras",
+        model="gpt-oss-120b",
+    )
+    cells = {cell.benchmark_id: cell for cell in report.cells}
+    for benchmark_id in sorted(SMITHERS_BENCHMARKS):
+        cell = cells[benchmark_id]
+        assert cell.compatible is True, benchmark_id
+        assert cell.command, benchmark_id
+        assert cell.propagated_env["BENCHMARK_HARNESS"] == "smithers"
+        assert cell.propagated_env["ELIZA_BENCH_HARNESS"] == "smithers"
+        assert "smithers-adapter" in cell.propagated_env["PYTHONPATH"]
+
+
+def test_smithers_adapter_modules_import_for_declared_factories() -> None:
+    adapter_root = _workspace_root().parent / "packages" / "benchmarks" / "smithers-adapter"
+    sys.path.insert(0, str(adapter_root))
+    try:
+        for module_name in (
+            "agentbench",
+            "bfcl",
+            "clawbench",
+            "context_bench",
+            "swe_bench",
+            "tau_bench",
+            "terminal_bench",
+            "woobench",
+        ):
+            module = importlib.import_module(f"smithers_adapter.{module_name}")
+            assert module is not None
+    finally:
+        with contextlib.suppress(ValueError):
+            sys.path.remove(str(adapter_root))
 
 
 def test_framework_publishes_real_harness_rows() -> None:
