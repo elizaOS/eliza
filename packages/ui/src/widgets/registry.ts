@@ -12,6 +12,7 @@
 import type { PluginInfo } from "../api/client-types-config";
 import {
   getWidgetComponent,
+  markWidgetRegistryChanged,
   registerBuiltinWidgets,
   registerWidgetComponent,
 } from "./registry-store";
@@ -23,8 +24,10 @@ type DefaultHomeWidgetSink = NonNullable<
 
 export {
   getWidgetComponent,
+  getWidgetRegistryVersion,
   registerBuiltinWidgets,
   registerWidgetComponent,
+  subscribeWidgetRegistry,
 } from "./registry-store";
 
 // -- Bundled widget component imports ----------------------------------------
@@ -313,6 +316,10 @@ export function registerBuiltinWidgetDeclarations(
       BUILTIN_WIDGET_FALLBACK_PLUGIN_IDS.add(id);
     }
   }
+  // Wake any mounted home/sidebar host so a declaration registered after the
+  // slot was first resolved (plugin modules load on the idle path) re-resolves
+  // instead of being dropped until the next plugin-snapshot change.
+  markWidgetRegistryChanged();
 }
 
 // -- Built-in widget declarations --------------------------------------------

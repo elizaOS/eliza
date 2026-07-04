@@ -20,6 +20,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from "react";
 import { client } from "../api";
 import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";
@@ -38,7 +39,11 @@ import {
   homeWidgetKey,
   rankHomeWidgets,
 } from "./home-priority";
-import { resolveWidgetsForSlot } from "./registry";
+import {
+  getWidgetRegistryVersion,
+  resolveWidgetsForSlot,
+  subscribeWidgetRegistry,
+} from "./registry";
 import type { PluginWidgetDeclaration, WidgetProps, WidgetSlot } from "./types";
 import { WIDGET_UI_ACTION_EVENT } from "./WidgetHost.constants";
 
@@ -200,6 +205,16 @@ export function WidgetHost({
   );
   const currentBaseUrl = useAppSelectorShallow(() => client.getBaseUrl());
   const enabledKinds = useEnabledViewKinds();
+  // Re-resolve when a widget registers after this host mounted. Plugin widget
+  // registration runs on the renderer idle path (after first paint), so a
+  // widget can appear in the registry later than the plugin snapshot; folding
+  // the registry version into the resolution memo keeps the slot current
+  // without an unrelated state change to trigger it.
+  const registryVersion = useSyncExternalStore(
+    subscribeWidgetRegistry,
+    getWidgetRegistryVersion,
+    getWidgetRegistryVersion,
+  );
   // Live importance inputs for the home ranker. Subscribed unconditionally
   // (hooks can't be conditional) but only consumed for the `home` slot below.
   const { notifications } = useNotifications();
@@ -237,7 +252,17 @@ export function WidgetHost({
             entry.defaultWidgetSink !== "activity")),
     );
     return filter ? gated.filter((entry) => filter(entry.declaration)) : gated;
-  }, [slot, plugins, serverDeclarations, filter, enabledKinds, currentBaseUrl]);
+    // `registryVersion` is a resolution input: bumping it re-runs `resolveWidgetsForSlot`
+    // so an idle-registered widget is picked up.
+  }, [
+    slot,
+    plugins,
+    serverDeclarations,
+    filter,
+    enabledKinds,
+    currentBaseUrl,
+    registryVersion,
+  ]);
 
   // Notification → signal inputs, memoized so the `now` tick (which re-runs the
   // component) doesn't rebuild this array each minute — it changes only when the

@@ -50,6 +50,8 @@ vi.mock("../state/useDeveloperMode", () => ({
 
 vi.mock("./registry", () => ({
   resolveWidgetsForSlot: resolveWidgetsForSlotMock,
+  subscribeWidgetRegistry: () => () => {},
+  getWidgetRegistryVersion: () => 0,
 }));
 
 beforeEach(() => {

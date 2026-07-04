@@ -112,6 +112,8 @@ const DECLS = [
 
 vi.mock("./registry", () => ({
   resolveWidgetsForSlot: vi.fn(),
+  subscribeWidgetRegistry: () => () => {},
+  getWidgetRegistryVersion: () => 0,
 }));
 
 function seedRegistry() {

@@ -15,10 +15,12 @@ export {
   BUILTIN_WIDGET_DECLARATIONS,
   DEFAULT_WIDGET_SINK_COMPONENT,
   getWidgetComponent,
+  getWidgetRegistryVersion,
   registerBuiltinWidgetDeclarations,
   registerBuiltinWidgets,
   registerWidgetComponent,
   resolveWidgetsForSlot,
+  subscribeWidgetRegistry,
 } from "./registry";
 export type {
   PluginWidgetDeclaration,

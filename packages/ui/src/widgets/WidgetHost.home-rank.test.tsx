@@ -73,6 +73,8 @@ vi.mock("./registry", () => ({
       Component: null,
     })),
   ),
+  subscribeWidgetRegistry: () => () => {},
+  getWidgetRegistryVersion: () => 0,
 }));
 
 beforeEach(() => {

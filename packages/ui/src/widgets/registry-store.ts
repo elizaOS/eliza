@@ -9,6 +9,56 @@ function getComponentRegistry(): Map<string, ComponentType<WidgetProps>> {
   return COMPONENT_REGISTRY;
 }
 
+// -- Registry change notification --------------------------------------------
+// The widget registry is a plain Map that plugins mutate as they load. Plugin
+// registration modules load on the renderer idle path (after first paint; see
+// `SIDE_EFFECT_APP_MODULE_LOADERS` in the app shell), so a widget can register
+// *after* a home/sidebar host has already resolved its slot. Because slot
+// resolution is a pure function of (registry state + plugin snapshot), the host
+// must re-resolve when the registry changes — otherwise an idle-registered
+// widget (e.g. plugin-wallet-ui's chat-sidebar widget) is silently dropped
+// until an unrelated plugin-snapshot change happens to re-run resolution.
+//
+// This is a `useSyncExternalStore` source: a monotonic version counter plus a
+// listener set. Registration bumps the version and notifies; hosts subscribe
+// and fold the version into their resolution memo.
+let registryVersion = 0;
+const registryListeners = new Set<() => void>();
+
+function notifyRegistryChanged(): void {
+  registryVersion += 1;
+  for (const listener of registryListeners) listener();
+}
+
+/**
+ * Subscribe to widget-registry mutations (component/declaration registration).
+ * Returns an unsubscribe function. `useSyncExternalStore`-compatible.
+ */
+export function subscribeWidgetRegistry(onChange: () => void): () => void {
+  registryListeners.add(onChange);
+  return () => {
+    registryListeners.delete(onChange);
+  };
+}
+
+/**
+ * Current registry version — increments on every registration. Stable between
+ * registrations, so `useSyncExternalStore` re-renders a host only when the set
+ * of registered widgets actually changed.
+ */
+export function getWidgetRegistryVersion(): number {
+  return registryVersion;
+}
+
+/**
+ * Signal that a widget declaration (not a component) was registered. Declaration
+ * registration lives in `registry.ts`, which calls this so declaration-only
+ * plugins trigger the same re-resolution as component registration.
+ */
+export function markWidgetRegistryChanged(): void {
+  notifyRegistryChanged();
+}
+
 /**
  * Register a bundled React component for a widget declaration.
  * Key format: `${pluginId}/${declarationId}`.
@@ -19,6 +69,7 @@ export function registerWidgetComponent(
   Component: ComponentType<WidgetProps>,
 ): void {
   getComponentRegistry().set(`${pluginId}/${declarationId}`, Component);
+  notifyRegistryChanged();
 }
 
 /** Look up a registered component. */

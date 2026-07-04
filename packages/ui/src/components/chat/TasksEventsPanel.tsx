@@ -14,13 +14,17 @@
 
 import { PanelRightClose, PanelRightOpen, Pencil } from "lucide-react";
 import type React from "react";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
 import type { ActivityEvent } from "../../hooks/useActivityEvents";
 import { useAppSelector } from "../../state";
 // Direct sub-path import for WidgetHost to avoid the widgets/index.ts ↔
 // WidgetHost.tsx chunk-level cycle. The barrel still works fine for
 // resolveWidgetsForSlot — only WidgetHost participates in the cycle.
-import { resolveWidgetsForSlot } from "../../widgets";
+import {
+  getWidgetRegistryVersion,
+  resolveWidgetsForSlot,
+  subscribeWidgetRegistry,
+} from "../../widgets";
 import { useChatSidebarVisibility } from "../../widgets/useChatSidebarVisibility";
 import {
   isWidgetVisible,
@@ -58,6 +62,13 @@ export function TasksEventsPanel({
 }: TasksEventsPanelProps) {
   const plugins = useAppSelector((s) => s.plugins);
   const visibility = useChatSidebarVisibility();
+  // Re-resolve the chat-sidebar widget set when a widget registers late (plugin
+  // widget modules load on the idle path after this panel may have mounted).
+  const registryVersion = useSyncExternalStore(
+    subscribeWidgetRegistry,
+    getWidgetRegistryVersion,
+    getWidgetRegistryVersion,
+  );
   const [editOpen, setEditOpen] = useState(false);
 
   const WIDGETS_WIDTH_KEY = "eliza:chat:widgets-bar:width";
@@ -155,7 +166,7 @@ export function TasksEventsPanel({
       }),
     );
     return [appsCandidate, ...widgetCandidates];
-  }, [appsCandidate, plugins]);
+  }, [appsCandidate, plugins, registryVersion]);
 
   const widgetFilter = useCallback(
     (declaration: VisibilityCandidate) =>
