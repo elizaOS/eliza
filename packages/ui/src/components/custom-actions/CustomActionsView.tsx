@@ -9,6 +9,7 @@
 import type { CustomActionDef } from "@elizaos/shared";
 import { useCallback, useEffect, useId, useState } from "react";
 import { client } from "../../api/client";
+import { isApiError } from "../../api/client-types-core";
 import { useAppSelector } from "../../state";
 import {
   alertDesktopMessage,
@@ -43,14 +44,23 @@ export function CustomActionsView() {
     null,
   );
   const [loading, setLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const loadActions = useCallback(async () => {
     try {
       setLoading(true);
       const result = await client.listCustomActions();
       setActions(result);
-    } catch {
-      // load failure: list stays empty
+      setLoadFailed(false);
+    } catch (err) {
+      // error-policy:J4 a 404 means the custom-actions surface isn't hosted
+      // on this runtime — the designed empty state is correct there. Anything
+      // else (5xx, transport, parse) must render the explicit error state
+      // below instead of masquerading as the healthy "create your first
+      // action" empty state.
+      setActions([]);
+      setLoadFailed(!(isApiError(err) && err.status === 404));
     } finally {
       setLoading(false);
     }
@@ -83,6 +93,7 @@ export function CustomActionsView() {
 
   const handleToggleEnabled = useCallback(
     async (id: string, enabled: boolean) => {
+      setActionError(null);
       try {
         await client.updateCustomAction(id, { enabled });
         setActions((prev) =>
@@ -91,10 +102,16 @@ export function CustomActionsView() {
           ),
         );
       } catch {
-        // A failed toggle leaves the displayed state to be reconciled by the next load.
+        // The switch is not flipped optimistically, so the displayed state is
+        // still the server's; surface the failure instead of staying silent.
+        setActionError(
+          t("customactionspanel.UpdateFailed", {
+            defaultValue: "Couldn't update this action. Try again.",
+          }),
+        );
       }
     },
-    [],
+    [t],
   );
 
   const handleDelete = useCallback(
@@ -110,11 +127,18 @@ export function CustomActionsView() {
         return;
       }
 
+      setActionError(null);
       try {
         await client.deleteCustomAction(id);
         setActions((prev) => prev.filter((action) => action.id !== id));
       } catch {
-        // A failed delete keeps the item visible for retry.
+        // The item stays visible for retry; tell the user why it's still
+        // there rather than failing silently.
+        setActionError(
+          t("customactionspanel.DeleteFailed", {
+            defaultValue: "Couldn't delete this action. Try again.",
+          }),
+        );
       }
     },
     [t],
@@ -187,6 +211,36 @@ export function CustomActionsView() {
     );
   }
 
+  // Load failure (non-404): an explicit error state with a retry path — never
+  // the designed "create your first action" empty state below.
+  if (loadFailed) {
+    return (
+      <div
+        data-testid="custom-actions-load-error"
+        className={CUSTOM_ACTIONS_SHELL_CLASS}
+      >
+        <div
+          role="alert"
+          className={`${CUSTOM_ACTIONS_PANEL_CLASS} flex flex-1 flex-col items-center justify-center gap-3 px-6 py-16 text-center`}
+        >
+          <p className="text-sm text-danger">
+            {t("customactionspanel.LoadFailed", {
+              defaultValue: "Couldn't load custom actions. Try again.",
+            })}
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void loadActions()}
+            className={`${CUSTOM_ACTIONS_TOOLBAR_BUTTON_CLASS} bg-bg/35 text-muted hover:bg-bg/55`}
+          >
+            {t("common.retry", { defaultValue: "Retry" })}
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   const emptyState = (
     <div
       className={`${CUSTOM_ACTIONS_PANEL_CLASS} flex flex-1 flex-col items-center justify-center px-6 py-14 text-center`}
@@ -251,6 +305,16 @@ export function CustomActionsView() {
           </span>
         </div>
       </div>
+
+      {actionError && (
+        <div
+          data-testid="custom-actions-action-error"
+          role="alert"
+          className="rounded-sm border border-danger/35 bg-danger/10 px-3 py-2 text-sm text-danger"
+        >
+          {actionError}
+        </div>
+      )}
 
       <div className={`${CUSTOM_ACTIONS_PANEL_CLASS} p-3 sm:p-4`}>
         <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
