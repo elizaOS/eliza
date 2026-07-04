@@ -3,6 +3,7 @@
  */
 
 import { usageQuotasRepository } from "../../db/repositories";
+import { parseUsageQuotaNumber } from "../../db/repositories/usage-quotas-numeric";
 import type { NewUsageQuota, UsageQuota } from "../../db/schemas/usage-quotas";
 import { logger } from "../utils/logger";
 import { deriveQuotaUsage } from "./analytics-derived";
@@ -101,8 +102,11 @@ class UsageQuotasService {
       );
 
       if (modelQuota) {
-        const currentUsage = Number(modelQuota.current_usage);
-        const limit = Number(modelQuota.credits_limit);
+        // Fail closed: a corrupt NUMERIC would make Number(...) NaN, and newUsage > NaN
+        // is false, so a corrupt limit would fabricate `allowed: true` and bypass the
+        // spend gate. parseUsageQuotaNumber throws on a present-but-unparseable value.
+        const currentUsage = parseUsageQuotaNumber(modelQuota.current_usage, "current_usage");
+        const limit = parseUsageQuotaNumber(modelQuota.credits_limit, "credits_limit");
         const newUsage = currentUsage + amount;
 
         if (newUsage > limit) {
@@ -124,8 +128,8 @@ class UsageQuotasService {
     );
 
     if (globalQuota) {
-      const currentUsage = Number(globalQuota.current_usage);
-      const limit = Number(globalQuota.credits_limit);
+      const currentUsage = parseUsageQuotaNumber(globalQuota.current_usage, "current_usage");
+      const limit = parseUsageQuotaNumber(globalQuota.credits_limit, "credits_limit");
       const newUsage = currentUsage + amount;
 
       if (newUsage > limit) {
@@ -214,8 +218,11 @@ class UsageQuotasService {
 
     for (const quota of quotas) {
       if (quota.quota_type === "global") {
-        const used = Number(quota.current_usage);
-        const limit = Number(quota.credits_limit);
+        // Fail closed on a corrupt row: a bare Number(...) would surface NaN usage/limit
+        // to the reporting DTO (and NaN usedPercent), masking data corruption behind a
+        // plausible-looking zero-ish reading. Throw so the read failure is observable.
+        const used = parseUsageQuotaNumber(quota.current_usage, "current_usage");
+        const limit = parseUsageQuotaNumber(quota.credits_limit, "credits_limit");
         const derived = deriveQuotaUsage(used, limit);
         result.global.used = used;
         result.global.limit = limit;
@@ -223,8 +230,8 @@ class UsageQuotasService {
         result.global.usedPercent = derived.usedPercent;
         result.global.usedPercentClamped = derived.usedPercentClamped;
       } else if (quota.quota_type === "model_specific" && quota.model_name) {
-        const used = Number(quota.current_usage);
-        const limit = Number(quota.credits_limit);
+        const used = parseUsageQuotaNumber(quota.current_usage, "current_usage");
+        const limit = parseUsageQuotaNumber(quota.credits_limit, "credits_limit");
         const derived = deriveQuotaUsage(used, limit);
         result.modelSpecific[quota.model_name] = {
           used,
