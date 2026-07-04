@@ -32,7 +32,7 @@
  * Exit code: non-zero when the harness fails (including "boot never reached
  * home or the error card") — attachments are still exported first.
  */
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -65,6 +65,61 @@ function runInherit(command, args, options = {}) {
       `${command} ${args.slice(0, 4).join(" ")} … exited with ${result.status}`,
     );
   }
+}
+
+/**
+ * Record the simulator screen to an .mp4 for the whole test run via
+ * `xcrun simctl io recordVideo`. Returns a stop() that SIGINTs the recorder
+ * (the only clean way to finalize the container) and resolves the path. Video
+ * is the walkthrough evidence for gesture-loop lanes — per-step XCTAttachment
+ * screenshots alone cannot show a stuck/janky transition mid-swipe. Simulator
+ * only; a physical device has no simctl io surface (returns a no-op stop()).
+ */
+function startSimVideo({
+  udid,
+  outputDir,
+  filename = "ios-sim-recording.mp4",
+}) {
+  if (!udid) return { stop: async () => null };
+  const target = path.join(outputDir, filename);
+  fs.rmSync(target, { force: true });
+  const recorder = spawnSync(
+    "xcrun",
+    ["simctl", "io", udid, "recordVideo", "--help"],
+    {
+      stdio: "ignore",
+    },
+  );
+  if (recorder.status !== 0 && recorder.status !== null) {
+    log(
+      "simctl io recordVideo unavailable on this toolchain — skipping video.",
+    );
+    return { stop: async () => null };
+  }
+  const child = spawn(
+    "xcrun",
+    ["simctl", "io", udid, "recordVideo", "--codec", "h264", "-f", target],
+    { stdio: "ignore" },
+  );
+  child.on("error", () => {});
+  log(`recording simulator video → ${target}`);
+  return {
+    async stop() {
+      child.kill("SIGINT");
+      await new Promise((resolve) => {
+        const timer = setTimeout(resolve, 5000);
+        child.once("close", () => {
+          clearTimeout(timer);
+          resolve();
+        });
+      });
+      try {
+        return fs.statSync(target).size > 0 ? target : null;
+      } catch {
+        return null;
+      }
+    },
+  };
 }
 
 function bootedSimulatorUdid() {
@@ -246,8 +301,10 @@ async function main() {
 
   // 4. Destination for the run.
   let destination;
+  let simUdid = null;
   if (platform === "sim") {
     const udid = args.device || bootedSimulatorUdid();
+    simUdid = udid;
     if (!udid) {
       fail(
         "no booted simulator found and no --device given.\n" +
@@ -285,49 +342,68 @@ async function main() {
   //    boot-capture suite AND the WKWebView gesture-semantics suite (#11353);
   //    narrow with --only-testing AppUITests/<Class>[/<test>].
   const onlyTesting = args["only-testing"] || "AppUITests";
-  const testResult = spawnSync(
-    "xcodebuild",
-    [
-      "test-without-building",
-      "-xctestrun",
-      xctestrunPath,
-      "-destination",
-      destination,
-      "-resultBundlePath",
-      resultBundle,
-      "-only-testing",
-      onlyTesting,
-    ],
-    {
-      cwd: iosProjectDir,
-      stdio: "inherit",
-      env: {
-        ...process.env,
-        TEST_RUNNER_ELIZA_BOOT_TIMEOUT_SECONDS:
-          args["boot-timeout"] ??
-          process.env.ELIZA_BOOT_TIMEOUT_SECONDS ??
-          "180",
-        TEST_RUNNER_ELIZA_BOOT_SCREENSHOT_INTERVAL_SECONDS:
-          args.interval ??
-          process.env.ELIZA_BOOT_SCREENSHOT_INTERVAL_SECONDS ??
-          "15",
-        // How long the gesture suite waits for the local model to come online
-        // before sending chat turns (0 = don't wait; the suite then exercises
-        // its warm-up/evicted-thread semantics instead).
-        TEST_RUNNER_ELIZA_AGENT_READY_TIMEOUT_SECONDS:
-          args["agent-ready-timeout"] ??
-          process.env.ELIZA_AGENT_READY_TIMEOUT_SECONDS ??
-          "240",
-        // Local onboarding only: how long to hold the app foregrounded after
-        // finish so the fire-and-forget recommended-model download completes
-        // (0 = skip, the default — a multi-GB pull should not slow normal runs).
-        TEST_RUNNER_ELIZA_LOCAL_MODEL_DOWNLOAD_WAIT_SECONDS:
-          args["local-download-wait"] ??
-          process.env.ELIZA_LOCAL_MODEL_DOWNLOAD_WAIT_SECONDS ??
-          "0",
+  // Record the whole run on the simulator (walkthrough evidence for the
+  // gesture-loop lane; no-op on a physical device). Started just before the
+  // harness so it captures every gesture, stopped in `finally` so a failing run
+  // still yields its video.
+  const simVideo = startSimVideo({ udid: simUdid, outputDir });
+  let testResult;
+  try {
+    testResult = spawnSync(
+      "xcodebuild",
+      [
+        "test-without-building",
+        "-xctestrun",
+        xctestrunPath,
+        "-destination",
+        destination,
+        "-resultBundlePath",
+        resultBundle,
+        "-only-testing",
+        onlyTesting,
+      ],
+      {
+        cwd: iosProjectDir,
+        stdio: "inherit",
+        env: {
+          ...process.env,
+          TEST_RUNNER_ELIZA_BOOT_TIMEOUT_SECONDS:
+            args["boot-timeout"] ??
+            process.env.ELIZA_BOOT_TIMEOUT_SECONDS ??
+            "180",
+          TEST_RUNNER_ELIZA_BOOT_SCREENSHOT_INTERVAL_SECONDS:
+            args.interval ??
+            process.env.ELIZA_BOOT_SCREENSHOT_INTERVAL_SECONDS ??
+            "15",
+          // How long the gesture suite waits for the local model to come online
+          // before sending chat turns (0 = don't wait; the suite then exercises
+          // its warm-up/evicted-thread semantics instead).
+          TEST_RUNNER_ELIZA_AGENT_READY_TIMEOUT_SECONDS:
+            args["agent-ready-timeout"] ??
+            process.env.ELIZA_AGENT_READY_TIMEOUT_SECONDS ??
+            "240",
+          // Local onboarding only: how long to hold the app foregrounded after
+          // finish so the fire-and-forget recommended-model download completes
+          // (0 = skip, the default — a multi-GB pull should not slow normal runs).
+          TEST_RUNNER_ELIZA_LOCAL_MODEL_DOWNLOAD_WAIT_SECONDS:
+            args["local-download-wait"] ??
+            process.env.ELIZA_LOCAL_MODEL_DOWNLOAD_WAIT_SECONDS ??
+            "0",
+          // Seeded launcher gesture-loop (LauncherGestureLoopUITests): forward
+          // the reproduction seed + action count so a run replays exactly.
+          ...(process.env.ELIZA_LOOP_SEED
+            ? { TEST_RUNNER_ELIZA_LOOP_SEED: process.env.ELIZA_LOOP_SEED }
+            : {}),
+          ...(process.env.ELIZA_LOOP_ACTIONS
+            ? { TEST_RUNNER_ELIZA_LOOP_ACTIONS: process.env.ELIZA_LOOP_ACTIONS }
+            : {}),
+        },
       },
-    },
-  );
+    );
+  } finally {
+    const videoPath = await simVideo.stop();
+    if (videoPath) log(`simulator video: ${videoPath}`);
+  }
 
   // 6. Export attachments regardless of the verdict — a failed boot's
   //    screenshots are exactly the evidence we want. Clear any prior export
