@@ -10,9 +10,8 @@
  * desktop stdio bridge can all construct one from the same code instead of each
  * re-implementing the buffering + framing.
  *
- * This slice is BUFFERED ONLY. `requestStream` is accepted so callers can wire
- * it once the device-side streaming contract exists, but no streaming frame
- * protocol is implemented here yet — the default throws a clear error.
+ * Buffered request/response only; streaming (`http_request_stream`) is added
+ * with its consumer in item 5/6.
  *
  * The kernel deliberately owns NO transport trust, runtime boot, host-call
  * re-entrancy, or stdout reservation — those stay platform-specific. It is a
@@ -43,19 +42,9 @@ export type StdioBridgeRequestHandler = (
   request: StdioBridgeRequestFrame,
 ) => Promise<unknown>;
 
-/**
- * Streaming request handler. Not implemented in this slice (buffered only); the
- * device-side streaming contract (#12180 item 5/6) will supply a real one.
- */
-export type StdioBridgeStreamHandler = (
-  request: StdioBridgeRequestFrame,
-) => Promise<void>;
-
 export interface CreateStdioBridgeOptions {
   /** Buffered request/response handler. Required. */
   request: StdioBridgeRequestHandler;
-  /** Streaming handler. Optional; defaults to a clear not-implemented throw. */
-  requestStream?: StdioBridgeStreamHandler;
   /**
    * Writes one outbound frame to the peer. The caller owns the actual transport
    * (which stdout FD, whether stdout is reserved for the protocol, etc.).
@@ -83,16 +72,7 @@ export interface StdioBridge {
    * teardown so no response is dropped.
    */
   drain: () => Promise<void>;
-  requestStream: StdioBridgeStreamHandler;
 }
-
-const defaultRequestStream: StdioBridgeStreamHandler = () => {
-  return Promise.reject(
-    new Error(
-      "stdio bridge streaming (http_request_stream) is not implemented in this build; use buffered request",
-    ),
-  );
-};
 
 /**
  * Construct a buffered NDJSON stdio bridge around a request handler. The caller
@@ -104,7 +84,6 @@ export function createStdioBridge(
   options: CreateStdioBridgeOptions,
 ): StdioBridge {
   const { request, writeFrame, interceptLine } = options;
-  const requestStream = options.requestStream ?? defaultRequestStream;
 
   const writeError = (id: unknown, err: unknown): void => {
     writeFrame({
@@ -152,6 +131,5 @@ export function createStdioBridge(
   return {
     handleLine,
     drain: () => pending.catch(() => undefined),
-    requestStream,
   };
 }

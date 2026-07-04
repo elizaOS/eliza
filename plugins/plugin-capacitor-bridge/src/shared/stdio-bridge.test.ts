@@ -126,25 +126,3 @@ describe("createStdioBridge — buffered NDJSON round-trip", () => {
     expect(frames.map((f) => f.id)).toEqual([1]);
   });
 });
-
-describe("createStdioBridge — streaming placeholder (buffered-only slice)", () => {
-  it("rejects requestStream with a clear not-implemented error by default", async () => {
-    const { bridge } = harness(async () => ({ status: 200 }));
-    await expect(
-      bridge.requestStream({ method: "http_request_stream" }),
-    ).rejects.toThrow(/not implemented/i);
-  });
-
-  it("uses a caller-provided requestStream when supplied", async () => {
-    let called = false;
-    const bridge = createStdioBridge({
-      request: async () => ({}),
-      requestStream: async () => {
-        called = true;
-      },
-      writeFrame: () => {},
-    });
-    await bridge.requestStream({ method: "http_request_stream" });
-    expect(called).toBe(true);
-  });
-});
