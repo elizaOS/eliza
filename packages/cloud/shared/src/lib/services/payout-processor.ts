@@ -1219,10 +1219,25 @@ export class PayoutProcessorService {
         .limit(1);
       if (existingRefund) return;
 
+      let refundAmount: number;
+      try {
+        refundAmount = parseRedemptionAmount("usd_value", row.usdValue);
+      } catch (error) {
+        logger.error(
+          "[PayoutProcessor] Corrupt usd_value on failed redemption; skipping automatic refund",
+          {
+            redemptionId,
+            rawUsdValue: row.usdValue,
+            reason: error instanceof Error ? error.message : String(error),
+          },
+        );
+        return;
+      }
+
       await redeemableEarningsService.refundRedemption({
         userId: row.userId,
         redemptionId,
-        amount: Number(row.usdValue),
+        amount: refundAmount,
         reason,
       });
 

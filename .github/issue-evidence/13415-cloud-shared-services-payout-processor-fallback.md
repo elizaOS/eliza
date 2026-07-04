@@ -45,6 +45,10 @@ to manual review (non-retryable, because a corrupt row is not transient):
   same parser (defense-in-depth: a direct call can never build a zero-token
   transfer either).
 - `markCompleted` `usdNumber` uses the parser (already proven finite pre-broadcast).
+- `refundStrandedRedemption` also parses `usd_value` before issuing the automatic
+  failed-redemption refund. If the refund amount itself is corrupt, the row stays
+  `failed`/`requires_review` and the refund is skipped instead of sending
+  `NaN`/empty coercion into refund accounting.
 
 Distinct/not-found/unavailable stays distinct from corruption: "not configured"
 wallet, expired quote, and a genuinely-valid row are all unaffected (positive
@@ -80,7 +84,7 @@ Coverage:
 
 ## Gates
 
-- `bun test --isolate <test>` → **14/14 pass**.
+- `bun --conditions=eliza-source test --isolate <test>` → **14/14 pass**.
 - `bunx @biomejs/biome check <payout-processor.ts + test>` → **clean** (2 files fixed then clean).
 - `bun run audit:error-policy-ratchet` → **`no new fallback-slop in touched files`** (EXIT 0).
 - `bun run --cwd packages/cloud/shared typecheck` → **17 pre-existing baseline errors**
