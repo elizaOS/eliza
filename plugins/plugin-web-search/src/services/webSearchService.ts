@@ -1,3 +1,14 @@
+/**
+ * Tavily-backed `WebSearchService` — the `ServiceType.WEB_SEARCH` implementation.
+ *
+ * Wraps `@tavily/core` to fulfil the `IWebSearchService` contract (search /
+ * news / images / videos / suggestions / trending / page-info), normalizing
+ * Tavily's responses to core's shared shape. Degrades gracefully: without
+ * `TAVILY_API_KEY` it boots inert and throws a descriptive error on first use
+ * rather than crashing boot. `getPageInfo` is a raw fetch + regex scrape (not
+ * Tavily-backed); videos reuse web search since Tavily has no video endpoint.
+ */
+
 import { type IAgentRuntime, IWebSearchService, logger, ServiceType } from "@elizaos/core";
 import { tavily } from "@tavily/core";
 

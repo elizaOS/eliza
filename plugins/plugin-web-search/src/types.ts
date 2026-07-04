@@ -1,3 +1,10 @@
+/**
+ * Local search option/result types for the web-search plugin, extending
+ * `@elizaos/core`'s shared search types (`SearchOptions`/`SearchResponse`) and
+ * re-exporting the image/news/video option types the service accepts. Keeps the
+ * plugin's Tavily-facing shapes aligned with core's search contract.
+ */
+
 import type {
     SearchOptions as CoreSearchOptions,
     SearchResponse as CoreSearchResponse,
