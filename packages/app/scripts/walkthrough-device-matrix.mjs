@@ -20,30 +20,53 @@
  * This runner detects what is available on the host, invokes the REAL per-platform
  * driven-journey/capture scripts when a device/emulator/sim is reachable, and
  * writes an honest per-platform status record (run | n/a + concrete reason) into
- * `reports/walkthrough/<runId>/device-matrix.json`. Unavailable lanes never fail
- * the run — they record the precise reason, per PR_EVIDENCE.md.
+ * `reports/walkthrough/<runId>/device-matrix.json`. Unavailable lanes are
+ * recorded by default; pass `--require android` (or WALKTHROUGH_REQUIRE=android)
+ * when an unavailable native lane must fail the run.
  *
  * Usage:
  *   node scripts/walkthrough-device-matrix.mjs --platform ios|android|device|all
- *     [--serial <android-serial>] [--ios-device <name>] [--duration 30]
+ *     [--serial <android-serial>] [--avd <name>] [--ios-device <name>]
+ *     [--duration 30] [--require android|ios|device] [--skip-android-drive]
  */
 
 import { spawnSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import {
+  ensureEmulatorBooted,
+  listDevices,
+  resolveAdb,
+} from "./lib/android-device.mjs";
 
-const APP_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const SCRIPT_PATH = fileURLToPath(import.meta.url);
+const APP_DIR = resolve(dirname(SCRIPT_PATH), "..");
 const REPO_ROOT = resolve(APP_DIR, "../..");
 
-function parseArgs(argv) {
-  const a = { platform: "all", serial: null, iosDevice: null, duration: 30 };
+export function parseArgs(argv, env = process.env) {
+  const a = {
+    platform: "all",
+    serial: env.ANDROID_SERIAL || null,
+    avd: null,
+    iosDevice: null,
+    duration: 30,
+    require: parseRequiredPlatforms(env.WALKTHROUGH_REQUIRE),
+    driveAndroid: env.WALKTHROUGH_ANDROID_DRIVE !== "0",
+  };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === "--platform") a.platform = argv[++i];
     else if (arg === "--serial") a.serial = argv[++i];
+    else if (arg === "--avd") a.avd = argv[++i];
     else if (arg === "--ios-device") a.iosDevice = argv[++i];
     else if (arg === "--duration") a.duration = Number(argv[++i]);
+    else if (arg === "--require") {
+      for (const platform of parseRequiredPlatforms(argv[++i])) {
+        a.require.add(platform);
+      }
+    } else if (arg === "--drive-android") a.driveAndroid = true;
+    else if (arg === "--skip-android-drive") a.driveAndroid = false;
   }
   return a;
 }
@@ -52,9 +75,33 @@ function sh(cmd, args, opts = {}) {
   return spawnSync(cmd, args, { encoding: "utf8", ...opts });
 }
 
-function which(bin) {
-  const r = sh("which", [bin]);
-  return r.status === 0 ? r.stdout.trim() : null;
+function parseRequiredPlatforms(value) {
+  return new Set(
+    String(value ?? "")
+      .split(/[,\s]+/)
+      .map((entry) => entry.trim().toLowerCase())
+      .filter(Boolean),
+  );
+}
+
+export function isLaneRequired(laneName, required) {
+  if (!required?.size) return false;
+  if (required.has("all")) return true;
+  if (required.has(laneName)) return true;
+  if (laneName.startsWith("android-") && required.has("android")) return true;
+  if (laneName.startsWith("ios-") && required.has("ios")) return true;
+  if (laneName.endsWith("-device") && required.has("device")) return true;
+  if (laneName.endsWith("-simulator") && required.has("simulator")) return true;
+  if (laneName.endsWith("-emulator") && required.has("emulator")) return true;
+  return false;
+}
+
+export function requiredLaneFailures(matrix, required) {
+  return Object.entries(matrix).filter(
+    ([name, result]) =>
+      isLaneRequired(name, required) &&
+      (result.status === "n/a" || result.status === "error"),
+  );
 }
 
 function bootedIosSim() {
@@ -71,18 +118,6 @@ function iosSimAppBuilt() {
     "ls -d ~/Library/Developer/Xcode/DerivedData/App-*/Build/Products/Debug-iphonesimulator/App.app 2>/dev/null | head -1",
   ]);
   return r.status === 0 && r.stdout.trim() ? r.stdout.trim() : null;
-}
-
-function androidDevices() {
-  if (!which("adb")) return [];
-  const r = sh("adb", ["devices"]);
-  if (r.status !== 0) return [];
-  return r.stdout
-    .split("\n")
-    .slice(1)
-    .map((l) => l.trim())
-    .filter((l) => l?.endsWith("device"))
-    .map((l) => l.split(/\s+/)[0]);
 }
 
 function runScript(rel, args, env = {}) {
@@ -131,24 +166,85 @@ function captureIos({ duration }) {
   });
 }
 
-function captureAndroid({ serial, duration, requirePhysical }) {
-  const devices = androidDevices();
-  if (!which("adb"))
+async function captureAndroid({
+  serial,
+  avd,
+  duration,
+  requirePhysical,
+  drive,
+}) {
+  let adb;
+  try {
+    adb = resolveAdb();
+  } catch {
     return lane(
       "n/a",
       "adb not found on PATH (install Android platform-tools)",
     );
-  if (!devices.length)
+  }
+
+  let devices = listDevices(adb);
+  if (serial && !devices.includes(serial)) {
     return lane(
       "n/a",
-      "no Android device or emulator attached (`adb devices` is empty). Boot one via `bun run --cwd packages/app test:e2e:android` (auto-boots an AVD) or attach a device.",
+      `requested Android serial ${serial} is not attached in adb \`device\` state`,
     );
-  const chosen = serial ?? devices[0];
+  }
+
+  let chosen =
+    serial ?? devices.find((s) => s.startsWith("emulator-")) ?? devices[0];
+  if (!chosen) {
+    try {
+      chosen = await ensureEmulatorBooted({
+        adb,
+        avd,
+        log: (message) => console.log(`[walkthrough:android] ${message}`),
+      });
+      devices = listDevices(adb);
+    } catch (error) {
+      return lane(
+        "n/a",
+        `unable to auto-boot Android emulator: ${error.message}`,
+      );
+    }
+  }
+
+  if (!devices.includes(chosen)) {
+    return lane(
+      "n/a",
+      `Android serial ${chosen} is not attached in adb \`device\` state after emulator setup`,
+    );
+  }
+
   if (requirePhysical && /emulator-/.test(chosen))
     return lane(
       "n/a",
       `--platform device requires a physical Android device; only emulator (${chosen}) is attached`,
     );
+
+  if (drive) {
+    const driveArgs = [
+      "--skip-local-chat",
+      "--no-emulator-boot",
+      "--serial",
+      chosen,
+    ];
+    const driveCode = runScript("android-e2e.mjs", driveArgs, {
+      ANDROID_SERIAL: chosen,
+    });
+    if (driveCode !== 0) {
+      return lane(
+        "error",
+        "android-e2e.mjs --skip-local-chat failed before capture",
+        {
+          serial: chosen,
+          phase: "drive",
+          exitCode: driveCode,
+        },
+      );
+    }
+  }
+
   const code = runScript(
     "capture-android-emu.mjs",
     [
@@ -165,12 +261,15 @@ function captureAndroid({ serial, duration, requirePhysical }) {
   );
   return lane(code === 0 ? "captured" : "error", null, {
     outputDir: ".github/issue-evidence/ (10198-walkthrough-android-*.png/.mp4)",
-    note: "Android WebView is CDP-drivable: the full driven journey + route coverage run via `android-e2e.mjs` (playwright.android.config.ts). This leg captures the screen; run `bun run --cwd packages/app test:e2e:android` for the driven WebView journey.",
+    note: drive
+      ? "Android WebView is CDP-drivable: this leg first runs `android-e2e.mjs --skip-local-chat`, then captures the driven app state from the same device."
+      : "Passive Android screen capture only; rerun without `--skip-android-drive` to drive `android-e2e.mjs --skip-local-chat` before capture.",
     serial: chosen,
+    drivenBeforeCapture: drive,
   });
 }
 
-function main() {
+async function main() {
   const args = parseArgs(process.argv.slice(2));
   const runId = new Date()
     .toISOString()
@@ -192,16 +291,20 @@ function main() {
       "iOS physical-device capture requires a tethered, provisioned device + `bun run --cwd packages/app install:ios:sideload`; none detected on this host",
     );
   if (want("android") || args.platform === "all")
-    matrix["android-emulator"] = captureAndroid({
+    matrix["android-emulator"] = await captureAndroid({
       serial: args.serial,
+      avd: args.avd,
       duration: args.duration,
       requirePhysical: false,
+      drive: args.driveAndroid,
     });
   if (args.platform === "device")
-    matrix["android-device"] = captureAndroid({
+    matrix["android-device"] = await captureAndroid({
       serial: args.serial,
+      avd: args.avd,
       duration: args.duration,
       requirePhysical: true,
+      drive: args.driveAndroid,
     });
 
   const summary = {
@@ -222,8 +325,20 @@ function main() {
     );
   }
   console.log(`\n  summary → ${join(runDir, "device-matrix.json")}\n`);
-  // Unavailable lanes are recorded, not fatal.
-  process.exit(0);
+  const failures = requiredLaneFailures(matrix, args.require);
+  if (failures.length) {
+    console.error(
+      `[walkthrough] required lane unavailable/failed: ${failures
+        .map(([name]) => name)
+        .join(", ")}`,
+    );
+  }
+  process.exit(failures.length ? 1 : 0);
 }
 
-main();
+if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((error) => {
+    console.error(`[walkthrough] device matrix failed: ${error.message}`);
+    process.exit(1);
+  });
+}
