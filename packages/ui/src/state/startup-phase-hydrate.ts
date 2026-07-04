@@ -50,7 +50,6 @@ import {
   parseProactiveMessageEvent,
   parseStreamEventEnvelopeEvent,
 } from "./internal";
-import { shouldStartAtCharacterSelectOnLaunch } from "./shell-routing";
 import type { StartupEvent } from "./startup-coordinator";
 import { switchRuntimeNonDestructive } from "./switch-runtime";
 
@@ -259,7 +258,13 @@ export async function runHydrating(
     })();
   };
 
-  // Tab routing
+  // Tab routing. A root open lands on the default tab; a URL that names a
+  // specific view is an explicit deep link and wins via the `setTabRaw(urlTab)`
+  // pass below. The character-select landing keys on the SESSION-scoped
+  // just-committed ref (#13396), never the durable completion ref — the
+  // durable ref is seeded from the persisted flag on every process start
+  // (#11506), and branching on it routed every post-onboarding cold boot to
+  // /character/select instead of home (#13371).
   const navPath = getWindowNavigationPath();
   const urlTab = tabFromPath(navPath);
   const isRoot = isRouteRootPath(navPath);

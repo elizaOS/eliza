@@ -21,10 +21,16 @@ const mocks = vi.hoisted(() => ({
     restoreLocalAgentBackup: vi.fn(async () => undefined),
     getAuthStatus: vi.fn(async () => ({ required: false })),
     getCloudStatus: vi.fn(async () => ({ connected: true })),
-    getCloudCompatAgents: vi.fn(async () => ({
-      success: true as const,
-      data: [] as unknown[],
-    })),
+    getCloudCompatAgents: vi.fn(
+      async (): Promise<{
+        success: boolean;
+        data: unknown[];
+        error?: string;
+      }> => ({
+        success: true,
+        data: [],
+      }),
+    ),
     // Takes the provisioning options so `.mock.calls[0][0]` is inspectable.
     selectOrProvisionCloudAgent: vi.fn(
       async (_options: Record<string, unknown>) => ({

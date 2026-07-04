@@ -1043,12 +1043,14 @@ async function expectCloudOnlyCompletion(
   page: Page,
   state: OnboardingRouteState,
 ): Promise<{ surface: Locator }> {
-  await expect(
-    page.getByText("You're all set", { exact: false }),
-  ).toBeVisible({ timeout: 60_000 });
+  // Completion fires at provisioning success and collapses the sheet in the
+  // same commit — the wrap-up transcript turn is immediately hidden (and may
+  // unmount), so the completion contract is asserted on the durable surfaces:
+  // the collapse itself, the onboarded home, the absent tutorial gate, and the
+  // exactly-once POST. The wrap-up copy is covered by the conductor unit suite.
+  await expectOnboardingAutoCollapse(page);
   await expect(page.getByTestId(TUTORIAL_CHOICE("start"))).toHaveCount(0);
   await expect(page.getByTestId(TUTORIAL_CHOICE("skip"))).toHaveCount(0);
-  await expectOnboardingAutoCollapse(page);
   const surface = await expectPopulatedHome(page);
   expect(
     state.firstRunPosts.length,
