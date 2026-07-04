@@ -22,7 +22,9 @@ test("packaged Windows app bootstraps the renderer against the external API over
   const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "eliza-win-e2e-"));
   const extractDir = path.join(tempRoot, "extract");
   const launcherPath = await resolvePackagedLauncher(extractDir);
-  test.skip(!launcherPath, "Windows packaged launcher is required");
+  if (!launcherPath) {
+    throw new Error("Windows packaged launcher is required.");
+  }
 
   let api: MockApiServer | null = null;
   let harness: PackagedDesktopHarness | null = null;
