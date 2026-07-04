@@ -1,0 +1,28 @@
+Bun arm64 FFI bool-drop bug in getWindowStyle (root cause of NonactivatingPanel
+never working) and the packed-u32 fix, both reproduced via bun:ffi against the
+built libNativeWrapper.dylib.
+
+=== BEFORE (12 separate FFIType.bool args) ===
+panel+hidden merged  = 0x800e (expect 0x808e)   <- NonactivatingPanel bit 0x80 DROPPED
+nonactivating-only   = 0x0    (expect 0x80)     <- arg 11 dropped
+utility-only (arg9)  = 0x10   (expect 0x10)     <- ok
+docmodal-only (arg10)= 0x0    (expect 0x40)     <- arg 10 dropped
+hud-only (arg12)     = 0x0    (expect 0x2000)   <- arg 12 dropped
+
+The same libNativeWrapper.dylib called from C with correct bool ABI returns
+0x808e / 0x80 correctly, so the drop is in Bun's FFI marshaling of bool
+arguments past the arm64 register slots (positions 9-12), not in native code.
+
+=== AFTER (single packed FFIType.u32 arg) ===
+panel+hidden = 0x808e (expect 0x808e)
+nonactivating-only = 0x80 (expect 0x80)
+docmodal-only = 0x40 (expect 0x40)
+hud-only = 0x2000 (expect 0x2000)
+
+=== END-TO-END in the real kitchen app (native panel diagnostic) ===
+[Create] styleMask=0x808e nonactivatingBit=0x80 wantsPanel=1
+[Panel] created ElectrobunPanel: isPanel=1 nonactivatingMask=1 level=3
+[Panel] show(activate): isKeyWindow=0 isVisible=1 appActive=0 level=3
+  -> before the fix styleMask was 0x800e / wantsPanel=0 (normal window);
+     after the fix the window is an ElectrobunPanel that shows without
+     activating the app (appActive=0).

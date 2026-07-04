@@ -113,6 +113,11 @@ What the fork adds:
   NSPanel` — floating level, joins all Spaces, shows over full-screen apps,
   takes key status for typing **without activating the app** (the
   previously-active app keeps menu-bar ownership; the Wispr/Raycast behavior).
+- **`getWindowStyle` FFI fix (prerequisite for G1):** the style flags now cross
+  the FFI as a single packed `u32` instead of 12 separate `bool` args. Bun's
+  arm64 FFI drops bool arguments past the register slots (positions 9-12), which
+  had silently forced `NonactivatingPanel`/`DocModalWindow`/`HUDWindow` to
+  `false` — so the panel mask never reached native until this fix.
 - **macOS global hotkeys via Carbon `RegisterEventHotKey` (G2):** registration
   no longer needs Accessibility permission, and a registered chord is
   **consumed** system-wide instead of also reaching the focused app. The
