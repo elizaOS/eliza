@@ -1,0 +1,587 @@
+{
+  "runId": "07aa3751-0342-48a7-bb57-1103e69bddc7",
+  "startedAtIso": "2026-07-04T05:52:59.036Z",
+  "completedAtIso": "2026-07-04T05:53:08.318Z",
+  "providerName": "openai",
+  "scenarios": [
+    {
+      "id": "adhd-wait-no-correction-supersedes",
+      "title": "ADHD: a mid-message self-correction supersedes the first task",
+      "domain": "lifeops.reminders",
+      "tags": [
+        "lifeops",
+        "adhd",
+        "personas",
+        "12283"
+      ],
+      "status": "passed",
+      "durationMs": 6562,
+      "turns": [
+        {
+          "name": "casey self-corrects mid-message",
+          "kind": "message",
+          "text": "remind me to email Sarah about the venue deposit tomorrow — wait no, not Sarah, it's Tom who handles the venue. remind me to email Tom about the venue deposit tomorrow.",
+          "responseText": "I’ve saved a reminder to email Tom about the venue deposit tomorrow. Let me know if you’d like to adjust the time or add any details.",
+          "actionsCalled": [
+            {
+              "actionName": "OWNER_REMINDERS",
+              "parameters": {
+                "parameters": {
+                  "action": "create",
+                  "kind": "definition",
+                  "intent": "remind me to email Tom about the venue deposit tomorrow",
+                  "title": "Email Tom about venue deposit"
+                },
+                "actionContext": {
+                  "previousResults": []
+                }
+              },
+              "result": {
+                "success": true,
+                "data": {
+                  "definition": {
+                    "agentId": "546ac3ab-0468-01a2-9d5b-52dfa34bf9cc",
+                    "domain": "user_lifeops",
+                    "subjectType": "owner",
+                    "subjectId": "71da199c-ba36-0996-a5eb-0236efbcbf0b",
+                    "visibilityScope": "owner_only",
+                    "contextPolicy": "explicit_only",
+                    "kind": "habit",
+                    "title": "Email Tom about venue deposit",
+                    "description": "Email Tom about the venue deposit",
+                    "originalIntent": "remind me to email Tom about the venue deposit tomorrow",
+                    "timezone": "America/New_York",
+                    "status": "active",
+                    "priority": 3,
+                    "cadence": {
+                      "kind": "once",
+                      "dueAt": "2026-07-05T13:00:00.000Z"
+                    },
+                    "windowPolicy": {
+                      "timezone": "America/New_York",
+                      "windows": [
+                        {
+                          "name": "morning",
+                          "label": "Morning",
+                          "startMinute": 300,
+                          "endMinute": 720
+                        },
+                        {
+                          "name": "afternoon",
+                          "label": "Afternoon",
+                          "startMinute": 720,
+                          "endMinute": 1020
+                        },
+                        {
+                          "name": "evening",
+                          "label": "Evening",
+                          "startMinute": 1020,
+                          "endMinute": 1320
+                        },
+                        {
+                          "name": "night",
+                          "label": "Night",
+                          "startMinute": 1320,
+                          "endMinute": 1680
+                        }
+                      ]
+                    },
+                    "progressionRule": {
+                      "kind": "none"
+                    },
+                    "websiteAccess": null,
+                    "reminderPlanId": "31e694cf-08be-46a1-b5fa-e7111bb54927",
+                    "goalId": null,
+                    "source": "chat",
+                    "metadata": {
+                      "nativeAppleReminder": {
+                        "kind": "reminder",
+                        "provider": "apple_reminders",
+                        "reminderId": "4599D0D8-15F3-4FB4-8787-9DE0EDF1E598",
+                        "source": "llm"
+                      },
+                      "privacyClass": "private",
+                      "publicContextBlocked": true
+                    },
+                    "id": "6c9db581-fc0a-4e98-93eb-753e0641093d",
+                    "createdAt": "2026-07-04T05:53:05.242Z",
+                    "updatedAt": "2026-07-04T05:53:05.575Z"
+                  },
+                  "reminderPlan": {
+                    "agentId": "546ac3ab-0468-01a2-9d5b-52dfa34bf9cc",
+                    "ownerType": "definition",
+                    "ownerId": "6c9db581-fc0a-4e98-93eb-753e0641093d",
+                    "steps": [
+                      {
+                        "channel": "in_app",
+                        "offsetMinutes": 0,
+                        "label": "Email Tom about venue deposit reminder"
+                      }
+                    ],
+                    "mutePolicy": {},
+                    "quietHours": {},
+                    "id": "31e694cf-08be-46a1-b5fa-e7111bb54927",
+                    "createdAt": "2026-07-04T05:53:05.267Z",
+                    "updatedAt": "2026-07-04T05:53:05.267Z"
+                  },
+                  "performance": {
+                    "lastCompletedAt": null,
+                    "lastSkippedAt": null,
+                    "lastActivityAt": null,
+                    "totalScheduledCount": 0,
+                    "totalCompletedCount": 0,
+                    "totalSkippedCount": 0,
+                    "totalPendingCount": 0,
+                    "currentOccurrenceStreak": 0,
+                    "bestOccurrenceStreak": 0,
+                    "currentPerfectDayStreak": 0,
+                    "bestPerfectDayStreak": 0,
+                    "last7Days": {
+                      "scheduledCount": 0,
+                      "completedCount": 0,
+                      "skippedCount": 0,
+                      "pendingCount": 0,
+                      "completionRate": 0,
+                      "perfectDayCount": 0
+                    },
+                    "last30Days": {
+                      "scheduledCount": 0,
+                      "completedCount": 0,
+                      "skippedCount": 0,
+                      "pendingCount": 0,
+                      "completionRate": 0,
+                      "perfectDayCount": 0
+                    }
+                  }
+                },
+                "text": "I’ve saved a reminder to email Tom about the venue deposit tomorrow. Let me know if you’d like to adjust the time or add any details.",
+                "raw": {
+                  "success": true,
+                  "text": "I’ve saved a reminder to email Tom about the venue deposit tomorrow. Let me know if you’d like to adjust the time or add any details.",
+                  "data": {
+                    "definition": {
+                      "agentId": "546ac3ab-0468-01a2-9d5b-52dfa34bf9cc",
+                      "domain": "user_lifeops",
+                      "subjectType": "owner",
+                      "subjectId": "71da199c-ba36-0996-a5eb-0236efbcbf0b",
+                      "visibilityScope": "owner_only",
+                      "contextPolicy": "explicit_only",
+                      "kind": "habit",
+                      "title": "Email Tom about venue deposit",
+                      "description": "Email Tom about the venue deposit",
+                      "originalIntent": "remind me to email Tom about the venue deposit tomorrow",
+                      "timezone": "America/New_York",
+                      "status": "active",
+                      "priority": 3,
+                      "cadence": {
+                        "kind": "once",
+                        "dueAt": "2026-07-05T13:00:00.000Z"
+                      },
+                      "windowPolicy": {
+                        "timezone": "America/New_York",
+                        "windows": [
+                          {
+                            "name": "morning",
+                            "label": "Morning",
+                            "startMinute": 300,
+                            "endMinute": 720
+                          },
+                          {
+                            "name": "afternoon",
+                            "label": "Afternoon",
+                            "startMinute": 720,
+                            "endMinute": 1020
+                          },
+                          {
+                            "name": "evening",
+                            "label": "Evening",
+                            "startMinute": 1020,
+                            "endMinute": 1320
+                          },
+                          {
+                            "name": "night",
+                            "label": "Night",
+                            "startMinute": 1320,
+                            "endMinute": 1680
+                          }
+                        ]
+                      },
+                      "progressionRule": {
+                        "kind": "none"
+                      },
+                      "websiteAccess": null,
+                      "reminderPlanId": "31e694cf-08be-46a1-b5fa-e7111bb54927",
+                      "goalId": null,
+                      "source": "chat",
+                      "metadata": {
+                        "nativeAppleReminder": {
+                          "kind": "reminder",
+                          "provider": "apple_reminders",
+                          "reminderId": "4599D0D8-15F3-4FB4-8787-9DE0EDF1E598",
+                          "source": "llm"
+                        },
+                        "privacyClass": "private",
+                        "publicContextBlocked": true
+                      },
+                      "id": "6c9db581-fc0a-4e98-93eb-753e0641093d",
+                      "createdAt": "2026-07-04T05:53:05.242Z",
+                      "updatedAt": "2026-07-04T05:53:05.575Z"
+                    },
+                    "reminderPlan": {
+                      "agentId": "546ac3ab-0468-01a2-9d5b-52dfa34bf9cc",
+                      "ownerType": "definition",
+                      "ownerId": "6c9db581-fc0a-4e98-93eb-753e0641093d",
+                      "steps": [
+                        {
+                          "channel": "in_app",
+                          "offsetMinutes": 0,
+                          "label": "Email Tom about venue deposit reminder"
+                        }
+                      ],
+                      "mutePolicy": {},
+                      "quietHours": {},
+                      "id": "31e694cf-08be-46a1-b5fa-e7111bb54927",
+                      "createdAt": "2026-07-04T05:53:05.267Z",
+                      "updatedAt": "2026-07-04T05:53:05.267Z"
+                    },
+                    "performance": {
+                      "lastCompletedAt": null,
+                      "lastSkippedAt": null,
+                      "lastActivityAt": null,
+                      "totalScheduledCount": 0,
+                      "totalCompletedCount": 0,
+                      "totalSkippedCount": 0,
+                      "totalPendingCount": 0,
+                      "currentOccurrenceStreak": 0,
+                      "bestOccurrenceStreak": 0,
+                      "currentPerfectDayStreak": 0,
+                      "bestPerfectDayStreak": 0,
+                      "last7Days": {
+                        "scheduledCount": 0,
+                        "completedCount": 0,
+                        "skippedCount": 0,
+                        "pendingCount": 0,
+                        "completionRate": 0,
+                        "perfectDayCount": 0
+                      },
+                      "last30Days": {
+                        "scheduledCount": 0,
+                        "completedCount": 0,
+                        "skippedCount": 0,
+                        "pendingCount": 0,
+                        "completionRate": 0,
+                        "perfectDayCount": 0
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "durationMs": 6362,
+          "failedAssertions": []
+        }
+      ],
+      "finalChecks": [
+        {
+          "label": "definitionCountDelta",
+          "type": "definitionCountDelta",
+          "status": "passed",
+          "detail": "1 matching definition(s) for \"email Tom\""
+        },
+        {
+          "label": "definitionCountDelta",
+          "type": "definitionCountDelta",
+          "status": "passed",
+          "detail": "no matching definition for \"email Sarah\""
+        },
+        {
+          "label": "correction-supersedes-first-task",
+          "type": "judgeRubric",
+          "status": "passed",
+          "detail": "score 1.00 ≥ 0.6",
+          "score": 1
+        }
+      ],
+      "actionsCalled": [
+        {
+          "actionName": "OWNER_REMINDERS",
+          "parameters": {
+            "parameters": {
+              "action": "create",
+              "kind": "definition",
+              "intent": "remind me to email Tom about the venue deposit tomorrow",
+              "title": "Email Tom about venue deposit"
+            },
+            "actionContext": {
+              "previousResults": []
+            }
+          },
+          "result": {
+            "success": true,
+            "data": {
+              "definition": {
+                "agentId": "546ac3ab-0468-01a2-9d5b-52dfa34bf9cc",
+                "domain": "user_lifeops",
+                "subjectType": "owner",
+                "subjectId": "71da199c-ba36-0996-a5eb-0236efbcbf0b",
+                "visibilityScope": "owner_only",
+                "contextPolicy": "explicit_only",
+                "kind": "habit",
+                "title": "Email Tom about venue deposit",
+                "description": "Email Tom about the venue deposit",
+                "originalIntent": "remind me to email Tom about the venue deposit tomorrow",
+                "timezone": "America/New_York",
+                "status": "active",
+                "priority": 3,
+                "cadence": {
+                  "kind": "once",
+                  "dueAt": "2026-07-05T13:00:00.000Z"
+                },
+                "windowPolicy": {
+                  "timezone": "America/New_York",
+                  "windows": [
+                    {
+                      "name": "morning",
+                      "label": "Morning",
+                      "startMinute": 300,
+                      "endMinute": 720
+                    },
+                    {
+                      "name": "afternoon",
+                      "label": "Afternoon",
+                      "startMinute": 720,
+                      "endMinute": 1020
+                    },
+                    {
+                      "name": "evening",
+                      "label": "Evening",
+                      "startMinute": 1020,
+                      "endMinute": 1320
+                    },
+                    {
+                      "name": "night",
+                      "label": "Night",
+                      "startMinute": 1320,
+                      "endMinute": 1680
+                    }
+                  ]
+                },
+                "progressionRule": {
+                  "kind": "none"
+                },
+                "websiteAccess": null,
+                "reminderPlanId": "31e694cf-08be-46a1-b5fa-e7111bb54927",
+                "goalId": null,
+                "source": "chat",
+                "metadata": {
+                  "nativeAppleReminder": {
+                    "kind": "reminder",
+                    "provider": "apple_reminders",
+                    "reminderId": "4599D0D8-15F3-4FB4-8787-9DE0EDF1E598",
+                    "source": "llm"
+                  },
+                  "privacyClass": "private",
+                  "publicContextBlocked": true
+                },
+                "id": "6c9db581-fc0a-4e98-93eb-753e0641093d",
+                "createdAt": "2026-07-04T05:53:05.242Z",
+                "updatedAt": "2026-07-04T05:53:05.575Z"
+              },
+              "reminderPlan": {
+                "agentId": "546ac3ab-0468-01a2-9d5b-52dfa34bf9cc",
+                "ownerType": "definition",
+                "ownerId": "6c9db581-fc0a-4e98-93eb-753e0641093d",
+                "steps": [
+                  {
+                    "channel": "in_app",
+                    "offsetMinutes": 0,
+                    "label": "Email Tom about venue deposit reminder"
+                  }
+                ],
+                "mutePolicy": {},
+                "quietHours": {},
+                "id": "31e694cf-08be-46a1-b5fa-e7111bb54927",
+                "createdAt": "2026-07-04T05:53:05.267Z",
+                "updatedAt": "2026-07-04T05:53:05.267Z"
+              },
+              "performance": {
+                "lastCompletedAt": null,
+                "lastSkippedAt": null,
+                "lastActivityAt": null,
+                "totalScheduledCount": 0,
+                "totalCompletedCount": 0,
+                "totalSkippedCount": 0,
+                "totalPendingCount": 0,
+                "currentOccurrenceStreak": 0,
+                "bestOccurrenceStreak": 0,
+                "currentPerfectDayStreak": 0,
+                "bestPerfectDayStreak": 0,
+                "last7Days": {
+                  "scheduledCount": 0,
+                  "completedCount": 0,
+                  "skippedCount": 0,
+                  "pendingCount": 0,
+                  "completionRate": 0,
+                  "perfectDayCount": 0
+                },
+                "last30Days": {
+                  "scheduledCount": 0,
+                  "completedCount": 0,
+                  "skippedCount": 0,
+                  "pendingCount": 0,
+                  "completionRate": 0,
+                  "perfectDayCount": 0
+                }
+              }
+            },
+            "text": "I’ve saved a reminder to email Tom about the venue deposit tomorrow. Let me know if you’d like to adjust the time or add any details.",
+            "raw": {
+              "success": true,
+              "text": "I’ve saved a reminder to email Tom about the venue deposit tomorrow. Let me know if you’d like to adjust the time or add any details.",
+              "data": {
+                "definition": {
+                  "agentId": "546ac3ab-0468-01a2-9d5b-52dfa34bf9cc",
+                  "domain": "user_lifeops",
+                  "subjectType": "owner",
+                  "subjectId": "71da199c-ba36-0996-a5eb-0236efbcbf0b",
+                  "visibilityScope": "owner_only",
+                  "contextPolicy": "explicit_only",
+                  "kind": "habit",
+                  "title": "Email Tom about venue deposit",
+                  "description": "Email Tom about the venue deposit",
+                  "originalIntent": "remind me to email Tom about the venue deposit tomorrow",
+                  "timezone": "America/New_York",
+                  "status": "active",
+                  "priority": 3,
+                  "cadence": {
+                    "kind": "once",
+                    "dueAt": "2026-07-05T13:00:00.000Z"
+                  },
+                  "windowPolicy": {
+                    "timezone": "America/New_York",
+                    "windows": [
+                      {
+                        "name": "morning",
+                        "label": "Morning",
+                        "startMinute": 300,
+                        "endMinute": 720
+                      },
+                      {
+                        "name": "afternoon",
+                        "label": "Afternoon",
+                        "startMinute": 720,
+                        "endMinute": 1020
+                      },
+                      {
+                        "name": "evening",
+                        "label": "Evening",
+                        "startMinute": 1020,
+                        "endMinute": 1320
+                      },
+                      {
+                        "name": "night",
+                        "label": "Night",
+                        "startMinute": 1320,
+                        "endMinute": 1680
+                      }
+                    ]
+                  },
+                  "progressionRule": {
+                    "kind": "none"
+                  },
+                  "websiteAccess": null,
+                  "reminderPlanId": "31e694cf-08be-46a1-b5fa-e7111bb54927",
+                  "goalId": null,
+                  "source": "chat",
+                  "metadata": {
+                    "nativeAppleReminder": {
+                      "kind": "reminder",
+                      "provider": "apple_reminders",
+                      "reminderId": "4599D0D8-15F3-4FB4-8787-9DE0EDF1E598",
+                      "source": "llm"
+                    },
+                    "privacyClass": "private",
+                    "publicContextBlocked": true
+                  },
+                  "id": "6c9db581-fc0a-4e98-93eb-753e0641093d",
+                  "createdAt": "2026-07-04T05:53:05.242Z",
+                  "updatedAt": "2026-07-04T05:53:05.575Z"
+                },
+                "reminderPlan": {
+                  "agentId": "546ac3ab-0468-01a2-9d5b-52dfa34bf9cc",
+                  "ownerType": "definition",
+                  "ownerId": "6c9db581-fc0a-4e98-93eb-753e0641093d",
+                  "steps": [
+                    {
+                      "channel": "in_app",
+                      "offsetMinutes": 0,
+                      "label": "Email Tom about venue deposit reminder"
+                    }
+                  ],
+                  "mutePolicy": {},
+                  "quietHours": {},
+                  "id": "31e694cf-08be-46a1-b5fa-e7111bb54927",
+                  "createdAt": "2026-07-04T05:53:05.267Z",
+                  "updatedAt": "2026-07-04T05:53:05.267Z"
+                },
+                "performance": {
+                  "lastCompletedAt": null,
+                  "lastSkippedAt": null,
+                  "lastActivityAt": null,
+                  "totalScheduledCount": 0,
+                  "totalCompletedCount": 0,
+                  "totalSkippedCount": 0,
+                  "totalPendingCount": 0,
+                  "currentOccurrenceStreak": 0,
+                  "bestOccurrenceStreak": 0,
+                  "currentPerfectDayStreak": 0,
+                  "bestPerfectDayStreak": 0,
+                  "last7Days": {
+                    "scheduledCount": 0,
+                    "completedCount": 0,
+                    "skippedCount": 0,
+                    "pendingCount": 0,
+                    "completionRate": 0,
+                    "perfectDayCount": 0
+                  },
+                  "last30Days": {
+                    "scheduledCount": 0,
+                    "completedCount": 0,
+                    "skippedCount": 0,
+                    "pendingCount": 0,
+                    "completionRate": 0,
+                    "perfectDayCount": 0
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "failedAssertions": [],
+      "providerName": "openai",
+      "judgeScore": 1
+    }
+  ],
+  "totals": {
+    "passed": 1,
+    "failed": 0,
+    "skipped": 0,
+    "flakyPassed": 0,
+    "costUsd": 0,
+    "finalChecksSkipped": 0
+  },
+  "totalCount": 1,
+  "passedCount": 1,
+  "failedCount": 0,
+  "skippedCount": 0,
+  "flakyPassedCount": 0,
+  "totalCostUsd": 0,
+  "artifactPaths": {
+    "runDir": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/vigilant-moser-707cf0/reports/scenarios/live-12283-adhd-wait-no-correction-supersedes",
+    "matrixJson": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/vigilant-moser-707cf0/reports/scenarios/live-12283-adhd-wait-no-correction-supersedes/matrix.json",
+    "viewerIndex": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/vigilant-moser-707cf0/reports/scenarios/live-12283-adhd-wait-no-correction-supersedes/viewer/index.html",
+    "viewerData": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/vigilant-moser-707cf0/reports/scenarios/live-12283-adhd-wait-no-correction-supersedes/viewer/data.js"
+  }
+}

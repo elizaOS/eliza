@@ -20,6 +20,22 @@
       "surface": "scenario-runner",
       "status": "verified",
       "notes": "Live Cerebras gpt-oss-120b run passed (judge 1.00): extracted the one buried pharmacy-callback commitment (before 5pm) from a rambling multi-topic message, ignored the tangents."
+    },
+    {
+      "id": "adhd-medication-refill-fuzzy-date-capture",
+      "pack": "A1",
+      "tier": "T1",
+      "surface": "scenario-runner",
+      "status": "verified",
+      "notes": "Live Cerebras gpt-oss-120b passed (judge 1.00): fuzzy 'early next week' resolved to a concrete dated refill reminder (Wednesday morning)."
+    },
+    {
+      "id": "adhd-wait-no-correction-supersedes",
+      "pack": "A1",
+      "tier": "T1",
+      "surface": "scenario-runner",
+      "status": "verified",
+      "notes": "Live Cerebras gpt-oss-120b passed (judge 1.00): captured the corrected task (email Tom), created NO reminder for the superseded Sarah task (email-Sarah delta:0)."
     }
   ]
 }
