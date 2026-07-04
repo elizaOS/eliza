@@ -331,6 +331,7 @@ async function runAecLoop(
         statusBefore = await getJson("/api/voice/audio-frames/status");
         break;
       } catch (err) {
+        // error-policy:J4 boot poll — retry until the deadline, then rethrow
         if (Date.now() > bootDeadline) throw err;
         log("agent not ready; retrying");
         await new Promise((r) => setTimeout(r, 3000));
@@ -446,6 +447,8 @@ async function runAecLoop(
           micPosts += 1;
         }
       } catch (err) {
+        // error-policy:J7 frame-ship failure is recorded as shipError in the
+        // run result; the loop keeps capturing the remaining evidence
         shipError = String(err);
       }
     };
@@ -523,12 +526,16 @@ async function runAecLoop(
         const wrote = await writeResultToDocuments(JSON.stringify(result));
         log(wrote ? "result written to Documents" : "no native file sink");
       } catch (err) {
+        // error-policy:J6 best-effort Documents sink — the result already
+        // lives in lastResult; the failure is logged in the run log
         log(`file sink failed: ${String(err)}`);
       }
     }
     log("done");
     return result;
   } catch (err) {
+    // error-policy:J1 harness boundary — record state/lastError for the
+    // status API and the Documents sink, then rethrow to the caller
     lastError = err instanceof Error ? (err.stack ?? err.message) : String(err);
     state = "error";
     log(`ERROR ${lastError}`);
@@ -538,7 +545,8 @@ async function runAecLoop(
           JSON.stringify({ tag, error: lastError, log: runLog }),
         );
       } catch {
-        // The error is already surfaced via state/lastError.
+        // error-policy:J6 best-effort error sink — the error is already
+        // surfaced via state/lastError
       }
     }
     throw err;
@@ -548,7 +556,7 @@ async function runAecLoop(
       try {
         await ctx.close();
       } catch {
-        // Context may already be closed by the platform.
+        // error-policy:J6 teardown — context may already be closed
       }
     }
   }
@@ -610,7 +618,8 @@ export function installAecLoopHarness(): AecLoopControl {
     const options = parseAecLoopHash(window.location.hash);
     if (!options || state === "running") return;
     void runAecLoop(options).catch(() => {
-      // Surfaced via state()/lastError() and the Documents sink.
+      // error-policy:J5 rejection observed via state()/lastError() and the
+      // Documents sink written inside runAecLoop
     });
   };
   window.addEventListener("hashchange", maybeRun);

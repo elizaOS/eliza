@@ -552,6 +552,8 @@ export class JniVoicePipeline {
         signal,
       }),
     ).catch((error) => {
+      // error-policy:J7 a turn-listener failure must not kill the voice
+      // pipeline loop; it is logged with the turn id
       logger.warn(
         { error, turnId: raw.turnId },
         "[JniVoicePipeline] completed PCM turn listener failed",

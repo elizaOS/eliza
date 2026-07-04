@@ -190,7 +190,8 @@ export function useWakeController(
         if (cancelled) void h.remove();
         else handle = h;
       } catch {
-        // Plugin unavailable — wake never fires, no-op.
+        // error-policy:J4 wake-word plugin unavailable on this platform — the
+        // opt-in feature degrades to "wake never fires"
       }
     })();
     return () => {

@@ -48,8 +48,9 @@ export function useVoiceConfig(uiLanguage: string): UseVoiceConfigResult {
       if (!isMountedRef.current) return;
       setVoiceConfig(resolved.voiceConfig);
       if (resolved.shouldPersist && resolved.voiceConfig) {
-        // A lost persist means the resolved voice silently diverges from the
-        // server copy across restarts — log it instead of swallowing.
+        // error-policy:J6 best-effort background persist — a lost persist
+        // means the resolved voice diverges from the server copy across
+        // restarts, so the failure is logged, never swallowed
         void client
           .updateConfig({ messages: { tts: resolved.voiceConfig } })
           .catch((err: unknown) => {

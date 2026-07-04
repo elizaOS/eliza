@@ -31,9 +31,9 @@ describe("tts-playback-activity", () => {
     markTtsPlaybackStarted();
     markTtsPlaybackEnded(5000);
     expect(isTtsEchoGateActive(5000 + DEFAULT_POST_TTS_COOLDOWN_MS)).toBe(true);
-    expect(
-      isTtsEchoGateActive(5000 + DEFAULT_POST_TTS_COOLDOWN_MS + 1),
-    ).toBe(false);
+    expect(isTtsEchoGateActive(5000 + DEFAULT_POST_TTS_COOLDOWN_MS + 1)).toBe(
+      false,
+    );
   });
 
   it("honors a custom cooldown", () => {

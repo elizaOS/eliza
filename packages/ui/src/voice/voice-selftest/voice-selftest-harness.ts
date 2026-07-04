@@ -153,6 +153,8 @@ async function playThroughDestination(
 ): Promise<{ started: boolean; outputObserved: boolean }> {
   try {
     if (ctx.state === "suspended") {
+      // error-policy:J4 a stuck-suspended context surfaces as started:false /
+      // outputObserved:false in the returned playback result
       await ctx.resume().catch(() => {});
     }
     const source = ctx.createBufferSource();
@@ -180,12 +182,14 @@ async function playThroughDestination(
     try {
       source.stop();
     } catch {
-      // already stopped
+      // error-policy:J6 teardown — already stopped
     }
     source.disconnect();
     analyser.disconnect();
     return { started: true, outputObserved };
   } catch {
+    // error-policy:J1 playback-stage boundary — the failure is the explicit
+    // started:false result the report renders
     return { started: false, outputObserved: false };
   }
 }
@@ -252,6 +256,7 @@ export async function runVoiceSelfTest(
         });
       }
     } catch (error) {
+      // error-policy:J1 stage boundary — failure becomes a fail stage row
       stages.push({
         stage: "asr",
         status: "fail",
@@ -325,6 +330,7 @@ export async function runVoiceSelfTest(
               : "agent produced no reply / did not complete",
       });
     } catch (error) {
+      // error-policy:J1 stage boundary — failure becomes a fail stage row
       stages.push({
         stage: "send",
         status: "fail",
@@ -393,6 +399,7 @@ export async function runVoiceSelfTest(
               : "decoded audio has zero duration",
       });
     } catch (error) {
+      // error-policy:J1 stage boundary — failure becomes a fail stage row
       stages.push({
         stage: "tts",
         status: "fail",

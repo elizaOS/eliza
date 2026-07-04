@@ -122,6 +122,7 @@ async function forwardCompletedPcmTurnToLocalAgent(
     }),
   });
   if (!res.ok) {
+    // error-policy:J6 best-effort error detail — the throw carries the status
     const detail = await res.text().catch(() => "");
     throw new Error(
       `[JniVoiceHarness] native PCM turn handoff failed (${res.status}): ${detail}`,
@@ -176,6 +177,8 @@ export function installJniVoiceHarness(
       try {
         abi = await getElizaVoicePlugin().voiceAbiVersion();
       } catch (err) {
+        // error-policy:J1 status boundary — the failure is returned as the
+        // structured status' error field
         return {
           running: pipeline?.isRunning ?? false,
           framesSent: pipeline?.framesSent ?? 0,

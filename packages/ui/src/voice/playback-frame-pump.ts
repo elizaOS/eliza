@@ -364,6 +364,8 @@ class PlaybackFrameSession implements PlaybackFrameTap {
       });
       if (!res.ok) this.failed = true;
     } catch {
+      // error-policy:J4 ship failure sets the `failed` flag the pump exposes;
+      // the AEC consumer observes it instead of an exploded audio graph
       this.failed = true;
     }
   }
@@ -394,6 +396,8 @@ export class PlaybackFramePump {
     source: AudioNode,
     fallbackBuffer: AudioBuffer,
   ): Promise<PlaybackFrameTap | null> {
+    // error-policy:J4 AudioWorklet unsupported/failed — fall back to the
+    // scheduled-buffer session, which taps the same frames less precisely
     const workletSession = await this.createWorkletSession(ctx, source).catch(
       () => null,
     );
@@ -433,17 +437,17 @@ export class PlaybackFramePump {
         try {
           source.disconnect(node);
         } catch {
-          /* ok */
+          // error-policy:J6 teardown — node may already be disconnected
         }
         try {
           node.disconnect();
         } catch {
-          /* ok */
+          // error-policy:J6 teardown
         }
         try {
           silentGain.disconnect();
         } catch {
-          /* ok */
+          // error-policy:J6 teardown
         }
       },
     });

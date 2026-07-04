@@ -260,7 +260,8 @@ async function runTurn(
   try {
     wav = await opts.resolveTurnWav(turn, index);
   } catch (error) {
-    // No corpus clip for this turn on this host — skip, never pass.
+    // error-policy:J4 no corpus clip for this turn on this host — an
+    // explicit "skipped" row, never a fabricated pass
     return {
       index,
       speaker: turn.speaker,
@@ -287,6 +288,7 @@ async function runTurn(
       speakerAttributionRan = predictedSpeakerLabel !== null;
     }
   } catch (error) {
+    // error-policy:J1 turn boundary — failure becomes an explicit fail row
     return {
       index,
       speaker: turn.speaker,
@@ -313,6 +315,7 @@ async function runTurn(
     });
     transcript = result.text;
   } catch (error) {
+    // error-policy:J1 turn boundary — failure becomes an explicit fail row
     return {
       index,
       speaker: turn.speaker,
@@ -354,6 +357,7 @@ async function runTurn(
     agentName = send.agentName;
     noResponseReason = send.noResponseReason;
   } catch (error) {
+    // error-policy:J1 turn boundary — failure becomes an explicit fail row
     return {
       index,
       speaker: turn.speaker,
@@ -386,6 +390,7 @@ async function runTurn(
       ttsOk = tts.ok;
       ttsError = tts.error;
     } catch (error) {
+      // error-policy:J1 stage boundary — failure is recorded on the turn row
       ttsOk = false;
       ttsError = error instanceof Error ? error.message : String(error);
     }

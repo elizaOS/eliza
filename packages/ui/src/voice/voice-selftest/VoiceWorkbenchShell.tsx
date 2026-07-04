@@ -100,6 +100,8 @@ export function VoiceWorkbenchShell() {
         clientRef.current ??= new ElizaClient();
         audioRef.current ??= getAudioCtx();
         if (audioRef.current.state === "suspended") {
+          // error-policy:J5 a dead AudioContext is observed in the report's
+          // playback/TTS rows; the run itself must not abort here
           await audioRef.current.resume().catch(() => {});
         }
         const result = await runVoiceWorkbench({

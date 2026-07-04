@@ -73,6 +73,7 @@ export async function isLocalInferenceAsrReady(
       },
     );
     if (!res.ok) return false;
+    // error-policy:J3 non-JSON body reads as "not ready"
     const parsed = (await res.json().catch(() => null)) as {
       ready?: unknown;
     } | null;
@@ -112,9 +113,12 @@ export async function transcribeLocalInferenceWav(
     signal: options?.signal,
   });
   if (!res.ok) {
+    // error-policy:J6 best-effort error detail — the throw carries the status
     const body = await res.text().catch(() => "");
     throw new Error(`Local inference ASR ${res.status}: ${body.slice(0, 200)}`);
   }
+  // error-policy:J3 unparseable body falls through to the explicit
+  // empty-transcript throw below
   const parsed = (await res.json().catch(() => null)) as {
     text?: unknown;
     words?: unknown;
