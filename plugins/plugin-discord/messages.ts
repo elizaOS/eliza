@@ -243,6 +243,41 @@ export function shouldSuppressTimeoutForInFlightDispatchForTests({
 	return generationTimedOut && responseDispatchInFlight;
 }
 
+export async function createDiscordMessageMemoryOnce(
+	runtime: Pick<
+		IAgentRuntime,
+		"agentId" | "createMemory" | "getMemoryById" | "logger"
+	>,
+	memory: Memory,
+	context: {
+		operation: string;
+		platformMessageId?: string;
+	} = { operation: "discord-message-persist" },
+): Promise<Memory | null> {
+	if (!memory.id) {
+		const id = await runtime.createMemory(memory, "messages");
+		return { ...memory, id };
+	}
+
+	const existing = await runtime.getMemoryById(memory.id);
+	if (existing) {
+		runtime.logger.debug(
+			{
+				src: "plugin:discord",
+				agentId: runtime.agentId,
+				memoryId: memory.id,
+				messageId: context.platformMessageId,
+				operation: context.operation,
+			},
+			"Skipping duplicate Discord message memory",
+		);
+		return existing;
+	}
+
+	await runtime.createMemory(memory, "messages");
+	return memory;
+}
+
 /**
  * Class representing a Message Manager for handling Discord messages.
  */
@@ -422,12 +457,9 @@ export class MessageManager {
 			return;
 		}
 
-		const existing = await this.runtime.getMemoryById(memory.id);
-		if (existing) {
-			return;
-		}
-
-		await this.runtime.createMemory(memory, "messages");
+		await createDiscordMessageMemoryOnce(this.runtime, memory, {
+			operation: "discord-inbound",
+		});
 	}
 
 	private markMessageAsProcessing(messageId: string): boolean {
@@ -1179,6 +1211,7 @@ export class MessageManager {
 							metadata: {
 								type: MemoryType.MESSAGE,
 								accountId: this.accountId,
+								platformMessageId: m.id,
 							},
 							createdAt: m.createdTimestamp,
 						};
@@ -1186,7 +1219,13 @@ export class MessageManager {
 					}
 
 					for (const m of memories) {
-						await this.runtime.createMemory(m, "messages");
+						await createDiscordMessageMemoryOnce(this.runtime, m, {
+							operation: "discord-response-callback",
+							platformMessageId:
+								typeof m.metadata?.platformMessageId === "string"
+									? m.metadata.platformMessageId
+									: undefined,
+						});
 					}
 
 					if (memories.length > 0) {

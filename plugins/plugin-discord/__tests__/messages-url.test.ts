@@ -12,6 +12,7 @@ import {
 import type { Message as DiscordMessage } from "discord.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+	createDiscordMessageMemoryOnce,
 	hasActiveTaskAgentWorkForMessage,
 	MessageManager,
 	shouldSuppressTimeoutForInFlightDispatchForTests,
@@ -231,5 +232,69 @@ describe("shouldSuppressTimeoutForInFlightDispatchForTests", () => {
 				responseDispatchInFlight: false,
 			}),
 		).toBe(false);
+	});
+});
+
+describe("createDiscordMessageMemoryOnce", () => {
+	const message = {
+		id: "22222222-2222-4222-8222-222222222222",
+		entityId: "11111111-1111-1111-1111-111111111111",
+		agentId: "11111111-1111-1111-1111-111111111111",
+		roomId: "33333333-3333-4333-8333-333333333333",
+		content: { text: "already sent", source: "discord" },
+	} as Memory;
+
+	it("skips connector-side persistence when the deterministic memory id already exists", async () => {
+		const existing = { ...message, content: { text: "persisted" } };
+		const createMemory = vi.fn();
+		const testRuntime = {
+			agentId: message.agentId,
+			createMemory,
+			getMemoryById: vi.fn(async () => existing),
+			logger: {
+				debug: vi.fn(),
+				error: vi.fn(),
+				info: vi.fn(),
+				warn: vi.fn(),
+			},
+		} as unknown as IAgentRuntime;
+
+		const result = await createDiscordMessageMemoryOnce(testRuntime, message, {
+			operation: "test",
+			platformMessageId: "discord-message-1",
+		});
+
+		expect(result).toBe(existing);
+		expect(createMemory).not.toHaveBeenCalled();
+		expect(testRuntime.logger.debug).toHaveBeenCalledWith(
+			expect.objectContaining({
+				messageId: "discord-message-1",
+				memoryId: message.id,
+				operation: "test",
+			}),
+			"Skipping duplicate Discord message memory",
+		);
+	});
+
+	it("creates the message memory when no existing id is found", async () => {
+		const createMemory = vi.fn(async () => message.id);
+		const testRuntime = {
+			agentId: message.agentId,
+			createMemory,
+			getMemoryById: vi.fn(async () => null),
+			logger: {
+				debug: vi.fn(),
+				error: vi.fn(),
+				info: vi.fn(),
+				warn: vi.fn(),
+			},
+		} as unknown as IAgentRuntime;
+
+		const result = await createDiscordMessageMemoryOnce(testRuntime, message, {
+			operation: "test",
+		});
+
+		expect(result).toBe(message);
+		expect(createMemory).toHaveBeenCalledWith(message, "messages");
 	});
 });

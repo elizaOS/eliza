@@ -141,7 +141,7 @@ import {
 	resolveDiscordRuntimeEntityId,
 	resolveElizaOwnerEntityId,
 } from "./identity";
-import { MessageManager } from "./messages";
+import { createDiscordMessageMemoryOnce, MessageManager } from "./messages";
 import type {
 	BuildMemoryFromMessageOptions,
 	ChannelHistoryOptions,
@@ -1815,7 +1815,10 @@ export class DiscordService extends Service implements IDiscordService {
 								createdAt: sentMsg.createdTimestamp || Date.now(),
 							};
 
-							await runtime.createMemory(memory, "messages");
+							await createDiscordMessageMemoryOnce(runtime, memory, {
+								operation: "discord-connector-send",
+								platformMessageId: sentMsg.id,
+							});
 							lastPersistedMemory = memory;
 							runtime.logger.debug(
 								{
