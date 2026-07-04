@@ -339,8 +339,6 @@
       "dependsOn": [
         "@elizaos/core#build",
         "@elizaos/shared#build",
-        "@elizaos/plugin-agent-skills#build",
-        "@elizaos/plugin-app-manager#build",
         "@elizaos/agent#build",
         "^build"
       ],
@@ -350,13 +348,11 @@
       "dependsOn": [
         "@elizaos/plugin-browser#build",
         "@elizaos/plugin-personal-assistant#build",
-        "@elizaos/plugin-registry#build",
         "@elizaos/ui#build"
       ],
       "outputs": []
     },
     "@elizaos/cloud-api#typecheck": {
-      "dependsOn": ["@elizaos/plugin-cloud-apps#build"],
       "outputs": []
     },
     "@elizaos/cloud-shared#typecheck": {
@@ -364,7 +360,7 @@
       "outputs": []
     },
     "@elizaos/plugin-discord#typecheck": {
-      "dependsOn": ["@elizaos/plugin-sql#build", "^build"],
+      "dependsOn": ["^build"],
       "outputs": []
     },
     "@elizaos/plugin-tailscale#typecheck": {
@@ -372,15 +368,6 @@
       "outputs": []
     },
     "@elizaos/plugin-calendar#typecheck": {
-      "dependsOn": [
-        "@elizaos/plugin-app-manager#build",
-        "@elizaos/plugin-browser#build",
-        "@elizaos/plugin-capacitor-bridge#build",
-        "@elizaos/plugin-coding-tools#build",
-        "@elizaos/plugin-registry#build",
-        "@elizaos/plugin-remote-manifest#build",
-        "@elizaos/plugin-task-coordinator#build"
-      ],
       "outputs": []
     },
     "@elizaos/plugin-personal-assistant#typecheck": {
@@ -408,9 +395,6 @@
         "@elizaos/core#build",
         "@elizaos/shared#build",
         "@elizaos/ui#build",
-        "@elizaos/plugin-agent-skills#build",
-        "@elizaos/plugin-app-manager#build",
-        "@elizaos/plugin-task-coordinator#build",
         "^build"
       ],
       "outputs": []
@@ -419,19 +403,12 @@
       "dependsOn": [
         "@elizaos/core#build",
         "@elizaos/shared#build",
-        "@elizaos/plugin-agent-skills#build",
-        "@elizaos/plugin-app-manager#build",
-        "@elizaos/ui#build",
         "^build"
       ],
       "outputs": []
     },
     "@elizaos/example-autonomous#typecheck": {
-      "dependsOn": [
-        "@elizaos/app-core#build",
-        "@elizaos/agent#build",
-        "^build"
-      ],
+      "dependsOn": ["^build"],
       "outputs": []
     },
     "@elizaos/example-telegram#typecheck": {
@@ -515,19 +492,11 @@
       "outputs": []
     },
     "@elizaos/plugin-sub-agent-claude-code#typecheck": {
-      "dependsOn": [
-        "@elizaos/plugin-remote-manifest#build",
-        "@elizaos/plugin-worker-runtime#build",
-        "^build"
-      ],
+      "dependsOn": ["@elizaos/plugin-remote-manifest#build", "^build"],
       "outputs": []
     },
     "@elizaos/plugin-local-inference#typecheck": {
-      "dependsOn": [
-        "@elizaos/agent#build",
-        "@elizaos/plugin-task-coordinator#build",
-        "^build"
-      ],
+      "dependsOn": ["@elizaos/agent#build", "^build"],
       "outputs": []
     },
     "@elizaos/example-farcaster#build": {

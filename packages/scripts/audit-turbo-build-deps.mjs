@@ -30,9 +30,8 @@ import { fileURLToPath } from "node:url";
 import { listPackages } from "./lib/workspaces.mjs";
 
 const repoRoot = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "..",
-  "..",
+  process.env.AUDIT_TURBO_REPO_ROOT ??
+    path.join(path.dirname(fileURLToPath(import.meta.url)), "..", ".."),
 );
 
 function readJson(p) {
@@ -163,14 +162,39 @@ const ALLOW_OWNERS = new Set([
 const turbo = readJson(path.join(repoRoot, "turbo.json"));
 const tasks = turbo.tasks ?? {};
 
+const phantomTaskOverrides = [];
 const phantoms = [];
 const undeclared = [];
 const redundant = [];
 
 for (const [taskName, def] of Object.entries(tasks)) {
-  if (!taskName.endsWith("#build")) continue;
-  if (taskName === "build") continue; // the generic task, not an override
-  const owner = taskName.slice(0, -"#build".length);
+  const separator = taskName.lastIndexOf("#");
+  if (separator !== -1) {
+    const owner = taskName.slice(0, separator);
+    const scriptName = taskName.slice(separator + 1);
+    const ownerDir = resolvePackageDir(owner);
+    if (!ownerDir) {
+      phantomTaskOverrides.push(
+        `${taskName} — owner package is not a workspace member`,
+      );
+    } else {
+      try {
+        const pkg = readJson(path.join(ownerDir, "package.json"));
+        if (!Object.hasOwn(pkg.scripts ?? {}, scriptName)) {
+          phantomTaskOverrides.push(
+            `${taskName} — owner package does not define script "${scriptName}"`,
+          );
+        }
+      } catch {
+        phantomTaskOverrides.push(
+          `${taskName} — owner package.json could not be read`,
+        );
+      }
+    }
+  }
+
+  if (separator === -1) continue;
+  const owner = taskName.slice(0, separator);
   const deps = def.dependsOn ?? [];
   const named = deps.filter((d) => d.endsWith("#build") && !d.startsWith("^"));
   if (named.length === 0) continue;
@@ -240,4 +264,15 @@ if (phantoms.length) {
   );
   process.exit(1);
 }
+if (phantomTaskOverrides.length) {
+  console.error(
+    `[audit-turbo-build-deps] ${phantomTaskOverrides.length} phantom pkg#task override(s):\n`,
+  );
+  for (const p of phantomTaskOverrides) console.error(`  ✗ ${p}`);
+  console.error(
+    "\nA phantom override names a package task whose owner package does not provide that script.\nRemove the dead turbo.json override or restore the package script.",
+  );
+  process.exit(1);
+}
 console.log("[audit-turbo-build-deps] ✓ no phantom #build dependency edges");
+console.log("[audit-turbo-build-deps] ✓ no phantom pkg#task overrides");
