@@ -100,6 +100,23 @@ def test_partial_entity_recovery_keeps_task_success_false() -> None:
     assert report["rows"][0]["tsr"] == 0.0
 
 
+def test_embedded_structured_tokens_do_not_count_as_exact_recovery() -> None:
+    row = _row()
+    report = gate.score_voice_code_bench_rows(
+        [row],
+        {
+            row.audio_id: (
+                "GitHub Support should call 415 201 9000 but use code "
+                "XBH7421Y instead."
+            )
+        },
+    )
+
+    assert report["metrics"]["ctem"] == 2 / 3
+    assert report["metrics"]["tsr"] == 0.0
+    assert report["rows"][0]["entities"][2]["matched"] is False
+
+
 def test_error_rates_normalize_punctuation_without_hiding_entity_errors() -> None:
     assert gate.word_error_rate("Hello, world!", "hello world") == 0.0
     assert gate.character_error_rate("BH-7421", "BH7421") == 0.0

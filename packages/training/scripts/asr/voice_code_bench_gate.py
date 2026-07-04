@@ -96,6 +96,22 @@ def normalize_entity(text: str) -> str:
     return _NON_ALNUM_RE.sub("", text.lower())
 
 
+def entity_matches_hypothesis(entity: str, hypothesis: str) -> bool:
+    entity_normalized = normalize_entity(entity)
+    if not entity_normalized:
+        return False
+    hypothesis_tokens = _TOKEN_RE.findall(hypothesis.lower())
+    for start in range(len(hypothesis_tokens)):
+        joined = ""
+        for token in hypothesis_tokens[start:]:
+            joined += token
+            if joined == entity_normalized:
+                return True
+            if len(joined) >= len(entity_normalized):
+                break
+    return False
+
+
 def word_error_rate(reference: str, hypothesis: str) -> float:
     return _edit_rate(
         normalize_for_error_rate(reference).split(),
@@ -125,12 +141,11 @@ def score_voice_code_bench_rows(
     for row in rows:
         row_count += 1
         hypothesis = hypotheses.get(row.audio_id, "")
-        hyp_normalized = normalize_entity(hypothesis)
         entity_results: list[dict[str, Any]] = []
         row_matched = 0
         for entity in row.entities:
             total_entities += 1
-            entity_match = normalize_entity(entity.canonical) in hyp_normalized
+            entity_match = entity_matches_hypothesis(entity.canonical, hypothesis)
             if entity_match:
                 matched_entities += 1
                 row_matched += 1
