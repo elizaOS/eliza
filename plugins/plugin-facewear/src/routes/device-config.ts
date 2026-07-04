@@ -1,3 +1,7 @@
+/**
+ * Facewear device routes expose supported device profiles and active connection
+ * status to the settings UI.
+ */
 import type { Route } from "@elizaos/core";
 import {
   getAllDeviceProfiles,

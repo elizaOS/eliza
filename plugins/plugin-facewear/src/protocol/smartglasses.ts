@@ -1,3 +1,7 @@
+/**
+ * Even Realities G1 protocol definitions encode BLE commands, display payloads,
+ * notifications, and audio events exchanged with smartglasses.
+ */
 export type GlassSide = "left" | "right";
 export type G1ConnectionReadyMode = "lens-specific" | "official" | "android-f4";
 export type SmartglassesAudioEncoding = "pcm16" | "lc3" | "unknown";

@@ -1,11 +1,6 @@
-// Vite view-bundle entry. Re-exports the view components the facewear plugin
-// manifest declares (see the `views` array in src/index.ts) so the built bundle
-// (dist/views/bundle.js) exposes the named exports the view loader reads.
-//
-// The two own views collapse to one tri-modal declaration each:
-//   - `FacewearView`         → the gui/xr/tui Facewear data wrapper
-//   - `SmartglassesPanelView` → the gui/xr/tui Smartglasses operator panel
-// Both render the single spatial source (FacewearSpatialView /
-// SmartglassesSpatialView).
+/**
+ * Facewear view-bundle entry re-exports the GUI, XR, and TUI view components
+ * declared by the plugin manifest for the app view loader.
+ */
 export { FacewearView } from "../components/FacewearView.tsx";
 export { SmartglassesPanelView } from "../components/SmartglassesPanelView.tsx";

@@ -1,3 +1,7 @@
+/**
+ * Smartglasses status action formats Even Realities connection, lens,
+ * microphone, Wi-Fi, and audio state for chat responses.
+ */
 import type { Action, ActionResult, IAgentRuntime } from "@elizaos/core";
 import { getSmartglassesService } from "../services/smartglasses-service.ts";
 import {

@@ -1,3 +1,7 @@
+/**
+ * Even bridge transport adapts native Android, desktop, or Mentra bridge calls
+ * to the shared smartglasses transport interface.
+ */
 import {
   encodeMicCommand,
   G1Command,

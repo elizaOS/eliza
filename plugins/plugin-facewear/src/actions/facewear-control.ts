@@ -1,3 +1,7 @@
+/**
+ * Smartglasses control action dispatches Even Realities G1 operations from chat
+ * into the smartglasses service.
+ */
 import {
   type Action,
   type ActionResult,

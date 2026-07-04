@@ -1,13 +1,13 @@
-// Binary frame layout:
-//   bytes 0–3  : big-endian uint32 — JSON header length
-//   bytes 4–N  : UTF-8 JSON header
-//   bytes N+1… : raw binary payload (audio PCM/Opus, JPEG, etc.)
-//
-// Text frames are JSON control messages (no binary payload).
+/**
+ * XR protocol definitions frame headset control messages, audio, camera images,
+ * pose metadata, and in-headset view state.
+ *
+ * Binary frames start with a big-endian uint32 JSON-header length, then UTF-8
+ * JSON header bytes, then the raw payload. Text frames are JSON control
+ * messages without a binary payload.
+ */
 
 export type XRDeviceType = "quest3" | "xreal" | "even-realities" | "simulator";
-
-// ── Client → Server (text frames) ──────────────────────────────────────────
 
 /** View panel state reported back from the XR device */
 export interface XRViewPanelState {

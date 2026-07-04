@@ -1,3 +1,7 @@
+/**
+ * XR vision pipeline stores recent headset camera frames and sends fresh images
+ * to the runtime vision model for scene descriptions.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
 import type { XRFrameHeader } from "../protocol/xr.ts";
@@ -8,7 +12,7 @@ export interface LatestFrame {
   receivedAt: number;
 }
 
-// A frame older than this is considered stale and won't be described
+// Avoid describing a view that is no longer representative of the wearer.
 const FRAME_MAX_AGE_MS = 10_000;
 
 export class VisionPipeline {

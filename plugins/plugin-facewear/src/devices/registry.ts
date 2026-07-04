@@ -1,3 +1,7 @@
+/**
+ * Facewear device registry lists supported XR headsets, smartglasses, native
+ * app targets, and setup metadata.
+ */
 export type FacewearDeviceType =
   | "meta-quest"
   | "xreal"

@@ -1,3 +1,7 @@
+/**
+ * Facewear service coordinates active XR headset and smartglasses services for
+ * device discovery and shared capability reporting.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import { Service } from "@elizaos/core";
 import type { SmartglassesService } from "./smartglasses-service.ts";

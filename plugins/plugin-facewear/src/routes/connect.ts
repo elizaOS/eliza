@@ -1,3 +1,7 @@
+/**
+ * XR connect route serves the headset pairing page with the app URL encoded for
+ * local network or tunnel access.
+ */
 import { networkInterfaces } from "node:os";
 import type { Route } from "@elizaos/core";
 
@@ -12,7 +16,7 @@ function getLocalIp(): string {
 }
 
 function getAppUrl(): string {
-  // Set by the connect script when a tunnel is active
+  // Connect scripts set this when a tunnel is active.
   if (process.env.XR_APP_URL) return process.env.XR_APP_URL;
   const port = process.env.VITE_PORT ?? "5173";
   return `http://${getLocalIp()}:${port}`;

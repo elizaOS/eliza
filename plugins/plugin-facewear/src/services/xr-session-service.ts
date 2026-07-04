@@ -1,3 +1,7 @@
+/**
+ * XR session service hosts the headset WebSocket server and bridges control,
+ * audio, camera, view, and smartglasses frames into the agent runtime.
+ */
 import type {
   Content,
   HandlerCallback,

@@ -1,3 +1,7 @@
+/**
+ * XR status route reports active headset sessions and recent camera-frame
+ * availability.
+ */
 import type { Route } from "@elizaos/core";
 import {
   XR_SERVICE_TYPE,

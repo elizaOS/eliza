@@ -1,3 +1,7 @@
+/**
+ * Web Bluetooth transport pairs Even Realities G1 lenses from browser hosts and
+ * maps GATT notifications to smartglasses events.
+ */
 import {
   EVEN_G1_UART,
   encodeMicCommand,

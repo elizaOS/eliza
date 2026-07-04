@@ -1,3 +1,7 @@
+/**
+ * Facewear connection action returns device-specific setup instructions for XR
+ * headsets and smartglasses.
+ */
 import type {
   Action,
   HandlerCallback,

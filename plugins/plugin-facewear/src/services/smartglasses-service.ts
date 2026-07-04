@@ -1,3 +1,7 @@
+/**
+ * Smartglasses service manages Even Realities G1 transport selection, display
+ * packets, dashboard updates, microphone control, and status reporting.
+ */
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
 import {
   type DisplayPage,

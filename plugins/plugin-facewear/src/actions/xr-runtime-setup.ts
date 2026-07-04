@@ -1,3 +1,7 @@
+/**
+ * OpenXR runtime setup action reports desktop runtime detection and install
+ * planning for XR headset support.
+ */
 import type {
   Action,
   HandlerCallback,
@@ -12,13 +16,6 @@ import {
   planOpenXrInstall,
 } from "../runtime/openxr-runtime.ts";
 
-/**
- * SETUP_XR_RUNTIME — report the desktop OpenXR runtime state and, when none is
- * active, the exact steps to install one (Monado / SteamVR on Linux, SteamVR /
- * WMR on Windows). This is the "is my VR/AR set up?" answer for the agent; the
- * actual install commands are surfaced for the user to run (privileged steps are
- * never executed silently).
- */
 export const facewearSetupRuntimeAction: Action = {
   name: "SETUP_XR_RUNTIME",
   description:

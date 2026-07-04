@@ -1,26 +1,12 @@
-import type { Route } from "@elizaos/core";
-
 /**
- * GET /api/xr/view-host/:id
+ * XR view-host route serves a self-contained HTML shell that mounts registered
+ * app view bundles inside headset panels.
  *
- * Serves a self-contained HTML page that loads and renders a registered
- * elizaOS view bundle inside an XR-optimised shell. App-xr opens this URL
- * in an iframe that is overlaid on the WebXR scene.
- *
- * The host page:
- *  1. Loads React + ReactDOM from the CDN (same versions as the view bundles).
- *  2. Dynamically imports the view bundle from the agent's /api/views/:id/bundle.js.
- *  3. Mounts the view component inside an XR-friendly dark-theme container.
- *  4. Provides a minimal elizaOS context (agentBaseUrl, viewId, postMessage bridge).
- *  5. Routes voice transcript text to the focused form input.
- *
- * Inter-frame communication (postMessage):
- *  Parent → host:  { type:"xr:transcript", text:"..." }  — fill focused input
- *                  { type:"xr:focus-next" }              — tab to next field
- *  Host → parent:  { type:"xr:view-ready", viewId:"..." }
- *                  { type:"xr:navigate", viewId:"..." }
- *                  { type:"xr:close" }
+ * The host page loads React and ReactDOM, imports `/api/views/:id/bundle.js`,
+ * mounts the component with minimal elizaOS context, and bridges transcript,
+ * navigation, readiness, and close events with the WebXR parent frame.
  */
+import type { Route } from "@elizaos/core";
 export const viewHostRoute: Route = {
   type: "GET",
   path: "/xr/view-host/:id",

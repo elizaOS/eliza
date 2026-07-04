@@ -1,3 +1,7 @@
+/**
+ * Mock smartglasses transport provides deterministic G1 writes, events, audio,
+ * transcripts, and Wi-Fi responses for tests and local simulation.
+ */
 import {
   encodeMicCommand,
   type G1Event,

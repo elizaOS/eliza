@@ -1,3 +1,7 @@
+/**
+ * XR vision query action describes the latest camera frame captured from a
+ * connected headset session.
+ */
 import type {
   Action,
   ActionResult,
@@ -19,7 +23,7 @@ export const xrQueryVisionAction: Action = {
   validate: async (runtime: IAgentRuntime): Promise<boolean> => {
     const svc = runtime.getService<XRSessionService>(XR_SERVICE_TYPE);
     if (!svc?.hasActiveConnections()) return false;
-    // At least one connection must have a recent frame
+    // Vision queries need a non-stale frame from at least one headset.
     return svc
       .getConnections()
       .some((c) => svc.getVisionPipeline().hasRecentFrame(c.id));

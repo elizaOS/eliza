@@ -1,3 +1,7 @@
+/**
+ * Smartglasses dashboard view manages Even Realities pairing, display commands,
+ * microphone controls, Wi-Fi bridge operations, and hardware diagnostics.
+ */
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { Button } from "@elizaos/ui/components/ui/button";
 import { Input } from "@elizaos/ui/components/ui/input";

@@ -1,3 +1,7 @@
+/**
+ * Smartglasses display action parses text requests and sends paginated content
+ * to Even Realities G1 lenses.
+ */
 import {
   type Action,
   type ActionResult,

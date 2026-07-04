@@ -1,3 +1,7 @@
+/**
+ * Smartglasses microphone action toggles the G1 microphone through parsed chat
+ * intent or explicit JSON parameters.
+ */
 import {
   type Action,
   type ActionResult,

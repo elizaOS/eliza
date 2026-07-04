@@ -1,3 +1,7 @@
+/**
+ * Wearables settings section hosts the facewear and smartglasses management
+ * panels under the app settings surface.
+ */
 import {
   Tabs,
   TabsContent,
@@ -8,9 +12,7 @@ import { lazy, Suspense, useEffect, useState } from "react";
 
 type WearablesTab = "facewear" | "smartglasses";
 
-// Lazy so the heavy XR/BLE view code stays code-split out of the host shell
-// bundle until the user actually opens Settings → Wearables. These are the same
-// component modules the native app-shell pages used to load.
+// Keep XR and BLE view code out of the host shell until Settings opens.
 const FacewearView = lazy(() =>
   import("./FacewearView").then((m) => ({ default: m.FacewearView })),
 );

@@ -1,3 +1,7 @@
+/**
+ * Facewear plugin registration wires XR headset streaming, Even Realities
+ * smartglasses control, views, routes, providers, and services into elizaOS.
+ */
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
 import { displayFacewearTextAction } from "./actions/display-text.ts";
 import { facewearConnectAction } from "./actions/facewear-connect.ts";

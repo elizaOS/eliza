@@ -1,8 +1,12 @@
+/**
+ * XR audio pipeline buffers headset microphone chunks, converts PCM to WAV when
+ * needed, and routes speech through the runtime transcription model.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
 import type { XRAudioHeader } from "../protocol/xr.ts";
 
-// Prepend a RIFF/WAV header so Whisper can decode raw Float32 PCM.
+// Whisper expects raw Float32 PCM to arrive in a WAV container.
 function pcmF32ToWav(pcmData: Buffer, sampleRate: number): Buffer {
   const channels = 1; // ScriptProcessorNode fallback is always mono
   const dataSize = pcmData.length;
@@ -23,8 +27,7 @@ function pcmF32ToWav(pcmData: Buffer, sampleRate: number): Buffer {
   return Buffer.concat([header, pcmData]);
 }
 
-// Accumulate up to FLUSH_AFTER_MS of audio then transcribe.
-// Also flush if no chunk arrives within SILENCE_GAP_MS (end-of-utterance).
+// These windows balance latency against utterance completeness for headset mics.
 const FLUSH_AFTER_MS = 2000;
 const SILENCE_GAP_MS = 1500;
 

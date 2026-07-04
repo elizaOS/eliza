@@ -1,3 +1,7 @@
+/**
+ * Facewear context provider injects connected XR headset and smartglasses state
+ * into the agent prompt.
+ */
 import type {
   IAgentRuntime,
   Memory,

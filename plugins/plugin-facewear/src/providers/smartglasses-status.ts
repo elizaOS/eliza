@@ -1,3 +1,7 @@
+/**
+ * Smartglasses status provider injects Even Realities connection, lens,
+ * microphone, event, and audio state into the agent prompt.
+ */
 import type { Provider } from "@elizaos/core";
 import { getSmartglassesService } from "../services/smartglasses-service.ts";
 import {

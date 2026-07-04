@@ -1,7 +1,7 @@
-// Pure smartglasses report/diagnostics helpers split out of SmartglassesView.tsx
-// so that file exports only the React component and stays Fast-Refresh-compatible
-// (Vite full-reloads a component file that also exports plain functions/types).
-// SmartglassesView.tsx and the report test both import from here.
+/**
+ * Smartglasses view helpers derive diagnostics reports, Wi-Fi bridge output,
+ * display packets, and setup guidance outside the React component module.
+ */
 
 import {
   type DisplayPage,

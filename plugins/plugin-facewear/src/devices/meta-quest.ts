@@ -1,3 +1,7 @@
+/**
+ * Meta Quest device constants describe supported headset identifiers and WebXR
+ * feature requirements.
+ */
 export { DEVICE_REGISTRY } from "./registry.ts";
 export const META_QUEST_WEBXR_FEATURES = [
   "hand-tracking",

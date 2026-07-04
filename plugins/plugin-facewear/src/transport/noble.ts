@@ -1,3 +1,7 @@
+/**
+ * Noble transport connects to Even Realities G1 lenses over Node BLE and maps
+ * characteristics to smartglasses events.
+ */
 import type { EventEmitter } from "node:events";
 import {
   EVEN_G1_UART,

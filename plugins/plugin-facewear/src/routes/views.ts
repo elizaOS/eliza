@@ -1,3 +1,7 @@
+/**
+ * XR views route lists registered XR-capable plugin views for the headset view
+ * launcher and pushes the catalog to active sessions.
+ */
 import { listViews } from "@elizaos/agent/api/views-registry";
 import type { Route } from "@elizaos/core";
 import {
@@ -5,11 +9,6 @@ import {
   type XRSessionService,
 } from "../services/xr-session-service.ts";
 
-/**
- * GET /api/xr/views
- * Returns all XR-typed views from registered plugins.
- * Used by app-xr to populate the view launcher.
- */
 export const viewsRoute: Route = {
   type: "GET",
   path: "/xr/views",

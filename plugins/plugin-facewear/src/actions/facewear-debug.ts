@@ -1,3 +1,7 @@
+/**
+ * Facewear debug action reports XR, smartglasses, and coordinator service
+ * diagnostics for connected wearable devices.
+ */
 import type {
   Action,
   HandlerCallback,

@@ -1,3 +1,7 @@
+/**
+ * XR view actions open, close, switch, list, and resize app views inside
+ * connected headset sessions.
+ */
 import { listViews } from "@elizaos/agent/api/views-registry";
 import type {
   Action,
@@ -11,8 +15,6 @@ import {
   type XRSessionService,
 } from "../services/xr-session-service.ts";
 
-// ── Helpers ────────────────────────────────────────────────────────────────
-
 function getService(runtime: IAgentRuntime): XRSessionService | null {
   return runtime.getService<XRSessionService>(XR_SERVICE_TYPE) ?? null;
 }
@@ -22,8 +24,7 @@ function firstConnectionId(svc: XRSessionService): string | null {
 }
 
 function agentBaseUrl(): string {
-  // The API port is orchestrator-assigned (never hardcoded) — read it from the
-  // environment, not a non-existent `runtime.port` field. Falls back to 31337.
+  // The API port is orchestrator-assigned, so view URLs read it from env.
   const port =
     process.env.ELIZA_API_PORT?.trim() ||
     process.env.ELIZA_PORT?.trim() ||

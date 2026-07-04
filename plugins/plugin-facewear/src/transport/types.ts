@@ -1,3 +1,7 @@
+/**
+ * Smartglasses transport contracts define the BLE, native bridge, browser, and
+ * mock surfaces consumed by the service.
+ */
 import type {
   G1Event,
   GlassSide,

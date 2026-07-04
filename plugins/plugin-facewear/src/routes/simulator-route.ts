@@ -1,3 +1,7 @@
+/**
+ * XR simulator route serves the built browser emulator bundle for Playwright
+ * and local headset simulation harnesses.
+ */
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -7,11 +11,6 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const pluginRoot = resolve(__dirname, "../../");
 const EMULATOR_BUNDLE = resolve(pluginRoot, "../../emulator/dist/emulator.js");
 
-/**
- * Serves the built WebXR emulator bundle at GET /api/xr/simulator.js
- * Only active when the bundle exists (i.e., after `bun run emulator:build`).
- * Used by Playwright tests that prefer HTTP-served scripts over filesystem paths.
- */
 export const simulatorRoute: Route = {
   type: "GET",
   path: "/xr/simulator.js",

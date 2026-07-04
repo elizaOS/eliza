@@ -1,3 +1,7 @@
+/**
+ * Smartglasses status formatting derives operator-facing setup summaries,
+ * blocker reasons, and lens labels from service status.
+ */
 import type { SmartglassesStatus } from "./services/smartglasses-service.ts";
 import type { SmartglassesConnectedLenses } from "./transport/types.ts";
 
