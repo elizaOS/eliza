@@ -79,6 +79,8 @@ export async function exitWorktreeHandler(
       });
       cleaned = true;
     } catch (err) {
+      // error-policy:J1 action boundary; a failed `git worktree remove` becomes
+      // a success:false ActionResult carrying the stderr/message for the model.
       const stderr =
         err && typeof err === "object" && "stderr" in err
           ? String((err as { stderr: unknown }).stderr ?? "")

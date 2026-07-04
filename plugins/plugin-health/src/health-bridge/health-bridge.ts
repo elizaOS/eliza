@@ -279,6 +279,8 @@ function isExecutable(path: string): boolean {
     accessSync(path, fsConstants.X_OK);
     return true;
   } catch {
+    // error-policy:J3 existence/permission probe; an access failure means the
+    // HealthKit CLI is absent or not executable — false is the expected miss.
     return false;
   }
 }
@@ -660,6 +662,11 @@ async function googleFitDailySummary(
       summary.sleepHours = sleepMs / (1000 * 60 * 60);
     }
   } catch (error) {
+    // error-policy:J4 optional secondary dataset degrade; the primary activity
+    // summary already succeeded, so a failed sleep sub-fetch flags the day
+    // sleep-unavailable (distinguishable from a real 0) and warns — never a
+    // fabricated zero-sleep reading.
+    //
     // Sleep is a separate best-effort sub-fetch: steps/active-minutes above
     // already succeeded, so we return the summary instead of throwing. But we
     // must NOT let the swallowed failure masquerade as `sleepHours: 0` — that

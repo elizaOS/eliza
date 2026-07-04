@@ -823,6 +823,8 @@ function extractJsonPayload(text: string): unknown {
   try {
     return JSON.parse(trimmed);
   } catch {
+    // error-policy:J3 untrusted command output; unparseable JSON yields the
+    // explicit "no payload" signal rather than a fabricated object.
     return undefined;
   }
 }
@@ -1258,6 +1260,10 @@ export const shellAction: Action = {
           });
         }
       } catch (err) {
+        // error-policy:J3 cwd existence probe distinguished from breakage; a
+        // genuine stat failure (EACCES, etc.) becomes a success:false
+        // ActionResult, while the expected-miss (ENOENT) degrades to the
+        // session cwd with a warning rather than masking a real error.
         if (!isMissingPathError(err)) {
           return failureToActionResult({
             reason: "io_error",
@@ -1395,6 +1401,9 @@ export const shellAction: Action = {
     try {
       result = await runShell(runtime, { command, cwd, timeoutMs: timeout });
     } catch (err) {
+      // error-policy:J1 SHELL action boundary; a dispatch failure is logged and
+      // returned as a success:false ActionResult carrying the real message, so
+      // the planner loop shows the failure to the model.
       const message = (err as Error).message;
       coreLogger.error(
         `${CODING_TOOLS_LOG_PREFIX} SHELL dispatch failed: ${message}`,

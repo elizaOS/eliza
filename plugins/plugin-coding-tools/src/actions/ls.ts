@@ -102,6 +102,9 @@ async function listWithCapabilityRouter(params: {
     });
     return { ok: true, payload: result };
   } catch (error) {
+    // error-policy:J1 capability-router boundary; the routed listing is
+    // translated into a typed failure DTO — CAPABILITY_UNAVAILABLE degrades to
+    // "unavailable", any other error to "failed" — never a fabricated payload.
     if (
       error instanceof CapabilityError &&
       error.code === "CAPABILITY_UNAVAILABLE"
@@ -234,6 +237,8 @@ export async function lsHandler(
   try {
     names = await fs.readdir(dir);
   } catch (err) {
+    // error-policy:J1 action boundary; a readdir failure becomes a success:false
+    // ActionResult carrying the real message, surfaced to the model.
     const msg = err instanceof Error ? err.message : String(err);
     return failureToActionResult({
       reason: "io_error",

@@ -274,6 +274,9 @@ function drainLane(lane: string) {
           pump();
           entry.resolve(result);
         } catch (err) {
+          // error-policy:J1 queue-worker boundary; the task failure is
+          // propagated to the awaiting caller via entry.reject (never
+          // swallowed), and the active count is decremented so the pump drains.
           state.active -= 1;
           pump();
           entry.reject(err);
@@ -430,14 +433,16 @@ export function attachChildProcessBridge(
       try {
         child.kill(signal);
       } catch {
-        // ignore - child may have already exited
+        // error-policy:J6 best-effort signal forwarding; the child may have
+        // already exited, so a failed kill is a no-op.
       }
     };
     try {
       process.on(signal, listener);
       listeners.set(signal, listener);
     } catch {
-      // Unsupported signal on this platform
+      // error-policy:J6 the signal is unsupported on this platform (e.g. SIGHUP
+      // on Windows); skipping its listener is the designed degrade.
     }
   }
 

@@ -191,6 +191,8 @@ export async function grepHandler(
       truncated,
     });
   } catch (error) {
+    // error-policy:J1 action boundary; any grep failure becomes a success:false
+    // ActionResult carrying the real message, surfaced to the model.
     const messageText = error instanceof Error ? error.message : String(error);
     return failureToActionResult({
       reason: "internal",

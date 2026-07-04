@@ -137,6 +137,9 @@ export function createHealthSleepRouteHandler<
       await fn(service);
       return true;
     } catch (error) {
+      // error-policy:J1 HTTP route boundary; an expected client-error shape is
+      // translated into a status response, while an unexpected failure is
+      // logged at error and rethrown to the host (never a fabricated 200).
       const status = routeErrorStatus(error);
       if (status !== null) {
         logger.warn(

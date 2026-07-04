@@ -79,8 +79,10 @@ export class FileStateService extends Service {
     try {
       stat = await fs.stat(absPath);
     } catch {
-      // File doesn't exist — Write is allowed (creating new file). Edit must
-      // separately verify existence.
+      // error-policy:J3 existence probe — any stat failure routes to the
+      // create-new-file path (Write is allowed; Edit re-verifies existence
+      // separately). A genuine permission error is not masked: the subsequent
+      // fs.writeFile surfaces it to the caller as an `io_error` failure.
       return { ok: true };
     }
     const meta = this.get(conversationId, absPath);

@@ -94,6 +94,8 @@ async function walkFallback(root: string, pattern: string): Promise<string[]> {
     try {
       names = await fs.readdir(dir);
     } catch {
+      // error-policy:J6 best-effort walk; a directory that became unreadable
+      // (permissions, race) is skipped so the remaining tree is still globbed.
       return;
     }
     for (const name of names) {
@@ -110,7 +112,8 @@ async function walkFallback(root: string, pattern: string): Promise<string[]> {
           }
         }
       } catch {
-        // Ignore unreadable entries.
+        // error-policy:J6 best-effort per-entry lstat; an entry that vanished
+        // or is unreadable is skipped rather than aborting the whole walk.
       }
     }
   }
@@ -195,6 +198,9 @@ export async function globHandler(
     try {
       candidates = await nodeGlob(builtinGlob, root, pattern);
     } catch (err) {
+      // error-policy:J4 designed degrade; the native `node:fs.glob` and the
+      // manual walker compute the same match set, so a native-glob failure
+      // falls back to the walker with a warning rather than failing the action.
       const msg = err instanceof Error ? err.message : String(err);
       coreLogger.warn(
         `${CODING_TOOLS_LOG_PREFIX} GLOB node:fs.glob failed (${msg}); falling back to walker`,
@@ -212,6 +218,8 @@ export async function globHandler(
         if (!stat.isFile()) return undefined;
         return { filePath, mtimeMs: stat.mtimeMs };
       } catch {
+        // error-policy:J6 best-effort mtime enrichment; a candidate that
+        // vanished between glob and stat drops out of the sorted result.
         return undefined;
       }
     }),

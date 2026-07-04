@@ -142,7 +142,8 @@ function killHostProcess(
     }
     proc.kill(signal);
   } catch {
-    // The process may have exited between the timeout firing and kill delivery.
+    // error-policy:J6 best-effort teardown; the process may have exited between
+    // the timeout firing and kill delivery, so a failed signal is a no-op.
   }
 }
 
@@ -298,6 +299,10 @@ async function runThroughCapabilityRouter(
       sandbox: "capability-router",
     };
   } catch (error) {
+    // error-policy:J4 only the expected "no PTY capability" shape
+    // (CAPABILITY_UNAVAILABLE) degrades to null below (advancing to the
+    // host-shell fallback); any other router error rethrows so a genuine
+    // execution failure reaches the SHELL action.
     if (
       error instanceof CapabilityError &&
       error.code === "CAPABILITY_UNAVAILABLE"

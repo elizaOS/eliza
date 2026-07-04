@@ -88,6 +88,8 @@ function executableExists(candidate: string): boolean {
     fs.accessSync(candidate, fs.constants.X_OK);
     return true;
   } catch {
+    // error-policy:J3 existence/permission probe; access failure means the
+    // candidate is absent or not executable — false is the expected miss.
     return false;
   }
 }

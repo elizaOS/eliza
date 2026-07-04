@@ -521,6 +521,14 @@ export function createHealthActionRunner(
         days: plannedDays ?? params.days ?? 7,
       });
     } catch (error) {
+      // error-policy:J4 the connector summary is one input to the health
+      // response; a load failure must not read as "no providers connected", so
+      // reportError surfaces it (via RECENT_ERRORS the agent can retry/reconnect)
+      // while the response still renders from the separate connectorStatus.
+      runtime.reportError("Health.connectorSummary", error, {
+        subaction,
+        days: plannedDays ?? params.days ?? 7,
+      });
       runtime.logger.warn(
         {
           src: "action:health",

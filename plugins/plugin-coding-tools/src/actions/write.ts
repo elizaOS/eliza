@@ -51,6 +51,9 @@ async function writeWithCapabilityRouter(params: {
     });
     return { ok: true, bytesWritten: result.bytesWritten };
   } catch (error) {
+    // error-policy:J1 capability-router boundary; the routed write is translated
+    // into a typed failure DTO — CAPABILITY_UNAVAILABLE degrades to
+    // "unavailable", any other error to "failed" — never a fabricated success.
     if (
       error instanceof CapabilityError &&
       error.code === "CAPABILITY_UNAVAILABLE"
@@ -150,6 +153,8 @@ export async function writeFileHandler(
       await fs.mkdir(path.dirname(resolved), { recursive: true });
       await fs.writeFile(resolved, content, "utf8");
     } catch (err) {
+      // error-policy:J1 action boundary; the direct-write failure becomes a
+      // success:false ActionResult carrying the real message for the model.
       const msg = err instanceof Error ? err.message : String(err);
       return failureToActionResult({
         reason: "io_error",

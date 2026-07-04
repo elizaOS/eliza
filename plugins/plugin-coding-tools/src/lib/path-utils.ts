@@ -37,6 +37,9 @@ export async function resolveRealPath(p: string): Promise<string> {
   try {
     return await fs.realpath(p);
   } catch {
+    // error-policy:J3 realpath requires the path to exist on disk; for a
+    // not-yet-created target the lexical resolve is the designed fallback the
+    // sandbox root check relies on (symlinks simply resolve to themselves).
     return path.resolve(p);
   }
 }

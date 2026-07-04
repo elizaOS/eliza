@@ -91,6 +91,10 @@ async function rewriteCodingActionText(args: {
       ? parsed.response.trim()
       : fallback();
   } catch {
+    // error-policy:J4 the model call only prettifies already-computed output
+    // into the character voice; on failure the deterministic fallback preserves
+    // that the action ran (its authoritative success/error is carried by the
+    // TaskResult, not by this cosmetic rewrite).
     return fallback();
   }
 }
@@ -234,6 +238,8 @@ export class CodingTaskExecutor implements TaskExecutor {
         durationMs: Date.now() - startTime,
       };
     } catch (error) {
+      // error-policy:J1 task-executor boundary; an execution failure becomes a
+      // structured TaskResult with success:false and the real error message.
       return {
         taskId: spec.id,
         success: false,

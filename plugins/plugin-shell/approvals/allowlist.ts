@@ -195,6 +195,9 @@ export function readApprovalsSnapshot(): ExecApprovalsSnapshot {
   try {
     parsed = JSON.parse(raw) as ExecApprovalsFile;
   } catch (parseError) {
+    // error-policy:J3 untrusted on-disk config; a corrupt snapshot yields the
+    // explicit null so the caller falls back to the deny-all default below,
+    // never a fake-valid parse.
     logger.warn(
       { src: "exec-approval", parseError, filePath },
       "Failed to parse approval config snapshot - file may be corrupted"
@@ -244,6 +247,9 @@ export function loadApprovals(): ExecApprovalsFile {
     try {
       parsed = JSON.parse(raw) as ExecApprovalsFile;
     } catch (parseError) {
+      // error-policy:J3 untrusted on-disk config; a corrupt file resolves to
+      // the fail-closed deny-all default (empty agents), never a permissive
+      // fabricated config.
       logger.error(
         { src: "exec-approval", parseError, filePath },
         "Failed to parse approval config JSON - file may be corrupted. Using defaults."
@@ -261,6 +267,9 @@ export function loadApprovals(): ExecApprovalsFile {
 
     return normalizeApprovals(parsed);
   } catch (error) {
+    // error-policy:J4 read failure (e.g. EACCES) degrades to the fail-closed
+    // deny-all default so the gate never opens on a load error; logged at error
+    // so the permissions problem is visible to the operator.
     logger.error(
       { src: "exec-approval", error, filePath },
       "Failed to load approval config - using defaults. This may indicate a permissions issue."
@@ -284,14 +293,20 @@ export function saveApprovals(file: ExecApprovalsFile): void {
     try {
       fs.chmodSync(filePath, 0o600);
     } catch {
-      // Best-effort on platforms without chmod (e.g., Windows)
+      // error-policy:J6 best-effort hardening; platforms without POSIX chmod
+      // (e.g. Windows) skip the mode tightening — the file is already written.
     }
   } catch (error) {
+    // error-policy:J2 boundary rethrow with `cause`; the write failure is
+    // re-raised (approvals must not silently fail to persist) with the original
+    // error preserved for diagnosis.
     logger.error(
       { src: "exec-approval", error, filePath },
       "Failed to save approval configuration"
     );
-    throw new Error(`Failed to save approval configuration to ${filePath}: ${error}`);
+    throw new Error(`Failed to save approval configuration to ${filePath}`, {
+      cause: error,
+    });
   }
 }
 
@@ -319,12 +334,14 @@ export function ensureApprovals(): ExecApprovalsFile {
   try {
     saveApprovals(updated);
   } catch (error) {
+    // error-policy:J2 warn for operator visibility, then rethrow the original
+    // error unchanged so the caller (resolveApprovals) owns the degrade
+    // decision rather than this helper silently returning a non-persisted config.
     logger.warn(
       { src: "exec-approval", error },
       "Failed to save approval config during ensureApprovals - " +
         "returning in-memory config. Changes will not persist."
     );
-    // Re-throw so caller knows something went wrong
     throw error;
   }
 
@@ -365,7 +382,9 @@ export function resolveApprovals(
   try {
     file = ensureApprovals();
   } catch (error) {
-    // ensureApprovals failed (likely can't write) - use loadApprovals which is read-only
+    // error-policy:J4 write path unavailable (read-only FS / EACCES) → degrade
+    // to the read-only loaded config so the gate still resolves; logged so the
+    // non-persistent state is visible. loadApprovals itself fails closed.
     logger.warn(
       { src: "exec-approval", error },
       "Could not ensure approval config exists - using read-only config"
@@ -518,6 +537,8 @@ function tryRealpath(value: string): string | null {
   try {
     return fs.realpathSync(value);
   } catch {
+    // error-policy:J3 realpath probe; an unresolvable path (absent, broken
+    // symlink) yields null so the caller keeps the original value.
     return null;
   }
 }
@@ -593,6 +614,9 @@ export function recordAllowlistUse(
     saveApprovals(approvals);
     return true;
   } catch (error) {
+    // error-policy:J6 best-effort usage bookkeeping (lastUsedAt); failing to
+    // persist a usage timestamp must not block the already-granted command, so
+    // it returns false (not-recorded) after a warn.
     logger.warn(
       { src: "exec-approval", error, pattern: entry.pattern },
       "Failed to record allowlist usage - continuing without update"
@@ -643,6 +667,9 @@ export function addAllowlistEntry(
     );
     return true;
   } catch (error) {
+    // error-policy:J1 boundary — the save failure is reported to the caller as
+    // `false` (entry not persisted) and logged at error; callers must treat
+    // false as "not added", never as success.
     logger.error(
       { src: "exec-approval", error, pattern: trimmed },
       "Failed to save allowlist after adding entry"

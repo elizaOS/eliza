@@ -147,6 +147,8 @@ export async function enterWorktreeHandler(
       timeoutMs,
     });
   } catch (err) {
+    // error-policy:J1 action boundary; a failed `git worktree add` becomes a
+    // success:false ActionResult carrying the git error, surfaced to the model.
     return failureToActionResult({
       reason: "io_error",
       message: `git worktree add failed: ${gitErrorMessage(err)}`,

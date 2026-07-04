@@ -147,6 +147,10 @@ ${addHeader("# Shell History (Last 10)", historyText)}${fileOpsText}`;
         },
       };
     } catch (error) {
+      // error-policy:J4 designed unavailable render; the provider emits a
+      // distinguishable "Shell history is unavailable: <msg>" status AND reports
+      // the failure via reportError — never a healthy-looking empty history.
+      //
       // Surface the failure through the runtime diagnostic boundary AND as a
       // model-visible status line. A bare `catch {}` that returned an empty
       // string here hid real ShellService failures from both the operator logs

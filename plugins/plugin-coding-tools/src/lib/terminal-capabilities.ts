@@ -103,6 +103,8 @@ function canExecute(filePath: string): boolean {
     accessSync(filePath, constants.X_OK);
     return true;
   } catch {
+    // error-policy:J3 existence/permission probe; an access failure means the
+    // path is absent or not executable — false is the expected-miss signal.
     return false;
   }
 }

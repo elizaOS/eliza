@@ -122,6 +122,9 @@ async function readWithCapabilityRouter(params: {
       },
     };
   } catch (error) {
+    // error-policy:J1 capability-router boundary; the routed read is translated
+    // into a typed failure DTO — CAPABILITY_UNAVAILABLE degrades to
+    // "unavailable", any other error to "failed" — never a fabricated payload.
     if (
       error instanceof CapabilityError &&
       error.code === "CAPABILITY_UNAVAILABLE"
@@ -214,6 +217,8 @@ export async function readFileHandler(
   try {
     stat = await fs.stat(resolved);
   } catch (err) {
+    // error-policy:J1 action boundary; a stat failure becomes a success:false
+    // ActionResult carrying the real message, surfaced to the model.
     const msg = err instanceof Error ? err.message : String(err);
     return failureToActionResult({
       reason: "io_error",
@@ -239,6 +244,8 @@ export async function readFileHandler(
   try {
     buffer = await fs.readFile(resolved);
   } catch (err) {
+    // error-policy:J1 action boundary; a read failure becomes a success:false
+    // ActionResult carrying the real message, surfaced to the model.
     const msg = err instanceof Error ? err.message : String(err);
     return failureToActionResult({
       reason: "io_error",

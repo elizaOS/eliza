@@ -117,6 +117,8 @@ export class ShellService extends Service {
         killSession(session);
         logger.debug(`Killed shell session: ${session.id}`);
       } catch (err) {
+        // error-policy:J6 best-effort teardown on service stop; a session that
+        // refuses to die is warned and the remaining sessions are still killed.
         logger.warn(`Failed to kill shell session ${session.id}: ${err}`);
       }
     }
@@ -294,6 +296,9 @@ export class ShellService extends Service {
           executedIn: this.currentDirectory,
         };
       } catch (err) {
+        // error-policy:J1 execution boundary; a sandbox exec failure is
+        // translated into a structured `success:false` ExecResult carrying the
+        // real message, which the SHELL action forwards to the model.
         const errMsg = err instanceof Error ? err.message : String(err);
         logger.error(`[shell:sandbox] exec failed: ${errMsg}`);
         return {
@@ -1348,6 +1353,9 @@ export class ShellService extends Service {
               pty?.write(data);
               cb?.(null);
             } catch (err) {
+              // error-policy:J1 stream-write boundary; a PTY write failure is
+              // forwarded to the Node stream callback as cb(err) (the stream
+              // error channel), never swallowed.
               cb?.(err as Error);
             }
           },
@@ -1356,16 +1364,19 @@ export class ShellService extends Service {
               const eof = process.platform === "win32" ? "\x1a" : "\x04";
               pty?.write(eof);
             } catch {
-              // ignore EOF errors
+              // error-policy:J6 best-effort EOF on stream teardown; a PTY that
+              // already closed cannot accept the EOF byte and needs no action.
             }
           },
         };
       } catch (err) {
+        // error-policy:J4 optional native PTY (`@lydell/node-pty`) unavailable
+        // → designed degrade to plain cross-spawn; the failure is surfaced to
+        // the caller as a warning appended to `opts.warnings`, not swallowed.
         const errText = String(err);
         const warning = `Warning: PTY spawn failed (${errText}); retrying without PTY.`;
         logger.warn(`exec: PTY spawn failed (${errText}); retrying without PTY.`);
         opts.warnings.push(warning);
-        // Fall through to non-PTY execution
       }
     }
 

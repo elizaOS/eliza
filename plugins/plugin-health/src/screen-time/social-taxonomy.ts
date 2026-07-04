@@ -207,6 +207,8 @@ function hostnameFromValue(value: string): string | null {
     }
     return parsed.hostname.replace(/\.+$/, "") || null;
   } catch {
+    // error-policy:J3 untrusted value; an unparseable URL yields null (invalid)
+    // so the caller skips it, never a fabricated hostname.
     return null;
   }
 }

@@ -93,12 +93,17 @@ export function loadShellConfig(): ShellConfig {
         `background: ${allowBackground}, timeout: ${timeout}ms`
     );
   } catch (error) {
+    // error-policy:J1 config boundary; translate the expected ENOENT into a
+    // clear "does not exist" message (preserving the original via `cause`) and
+    // rethrow every other stat failure unchanged so it is not masked.
     if (
       error instanceof Error &&
       "code" in error &&
       (error as NodeJS.ErrnoException).code === "ENOENT"
     ) {
-      throw new Error(`SHELL_ALLOWED_DIRECTORY does not exist: ${allowedDirectory}`);
+      throw new Error(`SHELL_ALLOWED_DIRECTORY does not exist: ${allowedDirectory}`, {
+        cause: error,
+      });
     }
     throw error;
   }

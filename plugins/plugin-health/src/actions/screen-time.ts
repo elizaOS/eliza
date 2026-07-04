@@ -301,6 +301,8 @@ function normalizeDomain(value: string): string {
   try {
     return new URL(trimmed).hostname.toLowerCase();
   } catch {
+    // error-policy:J3 untrusted domain input; an unparseable URL yields the
+    // empty invalid signal rather than a fabricated hostname.
     return "";
   }
 }

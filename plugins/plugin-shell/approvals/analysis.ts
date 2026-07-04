@@ -64,6 +64,8 @@ function isExecutableFile(filePath: string): boolean {
     }
     return true;
   } catch {
+    // error-policy:J3 existence/executable probe; stat/access failure means the
+    // file is absent or not executable — false is the expected-miss signal.
     return false;
   }
 }
@@ -697,6 +699,8 @@ function defaultFileExists(filePath: string): boolean {
   try {
     return fs.existsSync(filePath);
   } catch {
+    // error-policy:J3 existence probe; an existsSync throw (e.g. EACCES on a
+    // path segment) is treated as "not present" — false is the miss signal.
     return false;
   }
 }

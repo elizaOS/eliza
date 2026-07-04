@@ -112,6 +112,13 @@ export class ExecApprovalService extends Service {
     try {
       service.approvalConfig = resolveApprovals(runtime.agentId);
     } catch (error) {
+      // error-policy:J4 config load failed at startup → degrade to a fail-closed
+      // (deny-all) in-memory config so the gate never fails open. reportError
+      // surfaces the failure to the agent/owner (approvals won't persist) rather
+      // than leaving a silently non-persistent gate.
+      runtime.reportError("ExecApprovalService.startup", error, {
+        agentId: runtime.agentId,
+      });
       logger.error(
         { src: "service:exec_approval", error, agentId: runtime.agentId },
         "Failed to load approval config during startup - using in-memory defaults. " +
@@ -538,6 +545,12 @@ export class ExecApprovalService extends Service {
           };
         });
     } catch (error) {
+      // error-policy:J4 a failed task query must not read as "no pending
+      // approvals" (that would silently drop an approval prompt); reportError
+      // surfaces the breakage to the agent/owner while the UI degrades to empty.
+      this.runtime.reportError("ExecApprovalService.getPendingApprovals", error, {
+        roomId,
+      });
       logger.error(
         { src: "service:exec_approval", error, roomId },
         "Failed to get pending approvals"

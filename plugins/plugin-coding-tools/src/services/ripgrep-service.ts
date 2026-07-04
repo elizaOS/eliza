@@ -70,7 +70,10 @@ export class RipgrepService extends Service {
         return;
       }
     } catch {
-      // fall through to system rg
+      // error-policy:J4 the bundled `@vscode/ripgrep` import is optional; when
+      // it is absent we degrade to a system `rg` on PATH (the resolved binary
+      // is logged at service start). `search()` surfaces a missing `rg` as a
+      // spawn error, so this fallback cannot silently hide an unusable binary.
     }
     this.rgPath = "rg";
   }
@@ -127,6 +130,9 @@ function resolveExecutionPath(targetPath: string): {
       searchPath: path.basename(targetPath),
     };
   } catch {
+    // error-policy:J3 existence probe on the search target; when stat fails the
+    // literal path is handed to ripgrep as the search argument so ripgrep
+    // itself reports the miss, rather than fabricating a cwd/searchPath split.
     return { searchPath: targetPath };
   }
 }

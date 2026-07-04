@@ -105,7 +105,8 @@ export function killProcessTree(pid: number): void {
         detached: true,
       });
     } catch {
-      // ignore errors if taskkill fails
+      // error-policy:J6 best-effort teardown; a failed taskkill spawn leaves
+      // the tree for the OS to reap and must not throw out of cleanup.
     }
     return;
   }
@@ -113,10 +114,12 @@ export function killProcessTree(pid: number): void {
   try {
     process.kill(-pid, "SIGKILL");
   } catch {
+    // error-policy:J6 process-group kill failed (no group / already gone) →
+    // fall back to a single-pid kill during teardown.
     try {
       process.kill(pid, "SIGKILL");
     } catch {
-      // process already dead
+      // error-policy:J6 best-effort teardown; the process is already dead.
     }
   }
 }
@@ -164,7 +167,9 @@ export function resolveWorkdir(workdir: string, warnings: string[]): string {
       return workdir;
     }
   } catch {
-    // ignore, fallback below
+    // error-policy:J4 designed degrade; an unavailable workdir falls back to the
+    // process cwd/home and the substitution is surfaced to the caller via the
+    // `warnings` array below (never silently swapped).
   }
   warnings.push(`Warning: workdir "${workdir}" is unavailable; using "${fallback}".`);
   return fallback;
@@ -175,6 +180,8 @@ function safeCwd(): string | null {
     const cwd = process.cwd();
     return existsSync(cwd) ? cwd : null;
   } catch {
+    // error-policy:J3 cwd probe; process.cwd() throws when the working
+    // directory was deleted out from under the process — null is the miss.
     return null;
   }
 }
@@ -460,6 +467,10 @@ export async function spawnWithFallback(
         fallbackLabel: attempt.label,
       };
     } catch (err) {
+      // error-policy:J4 designed spawn-fallback retry; a retryable spawn error
+      // advances to the next fallback shell, but a non-retryable error (or the
+      // exhausted fallback list) rethrows immediately — the failure is surfaced,
+      // not masked by silently trying alternatives forever.
       lastError = err;
       const nextFallback = fallbacks[index];
       if (!nextFallback || !shouldRetry(err, retryCodes)) {

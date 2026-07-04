@@ -134,6 +134,9 @@ export function createHealthProvider(
         const summary = await options.getSummary(runtime, { days: 3 });
         return buildHealthProviderResult(summary);
       } catch (error) {
+        // error-policy:J4 designed unavailable render; the failure is built into
+        // a distinguishable "health unavailable" provider result carrying the
+        // error text, never a healthy-looking empty summary.
         return buildUnavailableHealthProviderResult(error);
       }
     },

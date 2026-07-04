@@ -123,6 +123,8 @@ export async function editFileHandler(
   try {
     original = await fs.readFile(resolved, "utf8");
   } catch (err) {
+    // error-policy:J1 action boundary; a read failure becomes a success:false
+    // ActionResult carrying the real message, surfaced to the model.
     const msg = err instanceof Error ? err.message : String(err);
     return failureToActionResult({
       reason: "io_error",
@@ -166,6 +168,8 @@ export async function editFileHandler(
   try {
     await fs.writeFile(resolved, updated, "utf8");
   } catch (err) {
+    // error-policy:J1 action boundary; a write failure becomes a success:false
+    // ActionResult carrying the real message, surfaced to the model.
     const msg = err instanceof Error ? err.message : String(err);
     return failureToActionResult({
       reason: "io_error",

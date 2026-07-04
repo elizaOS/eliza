@@ -52,6 +52,10 @@ export async function runGitCommand(
       });
       return routedResult(result.operation);
     } catch (error) {
+      // error-policy:J4 only the expected "no git capability" shape
+      // (CAPABILITY_UNAVAILABLE) degrades to the local-git fallback below; any
+      // other router error rethrows so a real git failure surfaces instead of
+      // being masked by the local path.
       if (
         error instanceof CapabilityError &&
         error.code === "CAPABILITY_UNAVAILABLE"
