@@ -29,6 +29,7 @@ import type { ConnectorMode } from "../connectors/ConnectorModeSelector.helpers"
 import { useConnectorMode } from "../connectors/ConnectorModeSelector.hooks";
 import { ConnectorSetupPanel } from "../connectors/ConnectorSetupPanel";
 import { hasConnectorSetupPanel } from "../connectors/ConnectorSetupPanel.helpers";
+import { getConnectorModeConfigFormHint } from "../connectors/connector-mode-registry";
 import { getBrandIcon } from "../conversations/brand-icons";
 import { PluginConfigForm } from "../pages/PluginConfigForm";
 import {
@@ -138,6 +139,13 @@ function ConnectorBody({ plugin }: { plugin: PluginInfo }) {
   const selectedMode = connectorMode.modes.find(
     (mode) => mode.id === connectorMode.selectedMode,
   );
+  // Owner-declared config-form footnote for the selected mode (e.g. Discord's
+  // "Application ID is optional" hint), resolved from connector-mode metadata
+  // instead of matching plugin.id (#12090 item 28).
+  const configFormHint = getConnectorModeConfigFormHint(
+    plugin.id,
+    connectorMode.selectedMode,
+  );
   const showPluginConfig = shouldRenderConnectorConfigForm({
     managementMode: selectedMode?.managementMode,
     hasParameters: plugin.parameters.length > 0,
@@ -218,12 +226,13 @@ function ConnectorBody({ plugin }: { plugin: PluginInfo }) {
                       defaultValue: "Save settings",
                     })}
             </Button>
-            {plugin.id === "discord" ? (
+            {configFormHint ? (
               <span className="text-xs-tight text-muted">
-                {t("settings.sections.connectors.discordAppIdHint", {
-                  defaultValue:
-                    "Application ID is optional; it is auto-resolved from the bot token when possible.",
-                })}
+                {configFormHint.key
+                  ? t(configFormHint.key, {
+                      defaultValue: configFormHint.fallback,
+                    })
+                  : configFormHint.fallback}
               </span>
             ) : null}
           </div>

@@ -20,6 +20,22 @@ import {
  * connector plugin declares (in its registry entry / manifest) so the setup UI
  * can render its mode selector without hardcoding the connector.
  */
+/**
+ * The kind of cloud-gateway setup affordance a connector mode declares. Read by
+ * the connector page to render the correct gateway surface without hardcoding
+ * connector ids. See {@link ConnectorModeDeclaration.cloudGatewaySetup}.
+ */
+export type ConnectorCloudGatewaySetup =
+  | "managed-agent-picker"
+  | "webhook-notice";
+
+/**
+ * The hosted-gateway provisioning flow backing a `"managed-agent-picker"` mode.
+ * Each value maps to a bespoke provisioning handler + copy in the connector
+ * page. Currently only the managed-Discord flow exists.
+ */
+export type ConnectorManagedGatewayProvider = "eliza-cloud-discord";
+
 export interface ConnectorModeDeclaration {
   /** Mode id, unique within a connector. */
   id: string;
@@ -35,6 +51,42 @@ export interface ConnectorModeDeclaration {
   setupPluginId: string;
   /** Mode is only offered when Eliza Cloud is connected. */
   cloudOnly?: boolean;
+  /**
+   * UI affordance a cloud-managed gateway mode declares so the connector page
+   * renders the right gateway setup surface generically, instead of matching
+   * `plugin.id` + mode id string literals (#12090 item 28).
+   *
+   * - `"managed-agent-picker"`: this mode is backed by a hosted Eliza Cloud
+   *   gateway the user provisions/picks an agent for (e.g. managed Discord).
+   *   Treated as cloud-backed for the connector's Ready state.
+   * - `"webhook-notice"`: this mode still needs local credentials but Eliza
+   *   Cloud can host its inbound webhook, so the page shows a gateway hint
+   *   (e.g. Telegram cloud gateway) without picking a hosted agent.
+   *
+   * Omitted for modes that need no cloud-gateway affordance. The picker/notice
+   * bodies themselves stay owned by the connector (their copy + handlers), but
+   * *which* affordance to show is resolved from this declared capability.
+   */
+  cloudGatewaySetup?: ConnectorCloudGatewaySetup;
+  /**
+   * For a `"managed-agent-picker"` mode, the id of the hosted-gateway
+   * provisioning flow that backs it. The connector page renders the matching
+   * provider-specific picker (its bespoke provisioning handler + copy) keyed on
+   * this declared value instead of the connector's plugin id (#12090 item 28).
+   * Only `"eliza-cloud-discord"` exists today (managed Discord); a connector
+   * declaring `managed-agent-picker` with an unknown/undeclared provider gets
+   * no picker rather than being misrouted through the Discord flow.
+   */
+  cloudGatewayProvider?: ConnectorManagedGatewayProvider;
+  /**
+   * Optional owner-declared footnote rendered beneath this mode's env-config
+   * form (e.g. Discord's "Application ID is optional, auto-resolved from the
+   * bot token" hint). Declared here so the settings config form does not match
+   * `plugin.id === "discord"` to decide whether to show it (#12090 item 28).
+   * `configFormHintKey` is the i18n key; `configFormHint` is the default copy.
+   */
+  configFormHintKey?: string;
+  configFormHint?: string;
   /**
    * Preference rank when picking the default selected mode (lower wins). Ties
    * are broken by declaration order. Modes without a rank are never chosen as
@@ -70,6 +122,95 @@ export function getDeclaredConnectorModes(
   return registry.get(normalizeConnectorCatalogId(connectorId)) ?? [];
 }
 
+/**
+ * Resolves the cloud-gateway setup affordance a connector's *selected* mode
+ * declares, or `null` when the mode declares none (or is unknown). Lets the
+ * connector page decide which gateway surface to render from owner-declared
+ * metadata instead of matching `plugin.id` + mode id string literals
+ * (#12090 item 28).
+ */
+export function getConnectorModeCloudGatewaySetup(
+  connectorId: string,
+  modeId: string | null | undefined,
+): ConnectorCloudGatewaySetup | null {
+  if (!modeId) return null;
+  return (
+    getDeclaredConnectorModes(connectorId).find((mode) => mode.id === modeId)
+      ?.cloudGatewaySetup ?? null
+  );
+}
+
+/**
+ * Whether a connector declares *any* mode with the given cloud-gateway setup
+ * affordance, regardless of which mode is currently selected. Lets the
+ * connector page show a gateway hint (e.g. "connect Eliza Cloud for webhook
+ * hosting") for connectors that support that gateway kind, without hardcoding
+ * the connector id (#12090 item 28).
+ */
+export function connectorDeclaresCloudGatewaySetup(
+  connectorId: string,
+  setup: ConnectorCloudGatewaySetup,
+): boolean {
+  return getDeclaredConnectorModes(connectorId).some(
+    (mode) => mode.cloudGatewaySetup === setup,
+  );
+}
+
+/**
+ * The managed-gateway provisioning provider a connector declares for its
+ * `"managed-agent-picker"` mode, or `null` when the connector declares no such
+ * mode or leaves the provider undeclared. The connector page renders the
+ * matching provider-specific picker keyed on this value, so a connector cannot
+ * be misrouted through a provider flow it did not declare (#12090 item 28).
+ */
+export function getConnectorManagedGatewayProvider(
+  connectorId: string,
+): ConnectorManagedGatewayProvider | null {
+  return (
+    getDeclaredConnectorModes(connectorId).find(
+      (mode) => mode.cloudGatewaySetup === "managed-agent-picker",
+    )?.cloudGatewayProvider ?? null
+  );
+}
+
+/**
+ * A connector-declared config-form footnote: its default copy plus an optional
+ * i18n key. `key` is omitted when the declaration provides no translation key,
+ * so the consumer renders `fallback` directly instead of calling `t("")`.
+ */
+export interface ConnectorConfigFormHint {
+  key?: string;
+  fallback: string;
+}
+
+/**
+ * Resolves the config-form footnote a connector's *selected* mode declares, or
+ * `null` when that mode declares none. Lets the settings config form render the
+ * hint generically instead of matching `plugin.id` (#12090 item 28).
+ *
+ * When `modeId` is null/undefined (single-mode connectors have no mode
+ * selector) the connector's first hint-bearing mode is used. When `modeId` is
+ * given but that specific mode declares no hint, `null` is returned — the hint
+ * is scoped to the modes that declare it, so it does not leak onto an unrelated
+ * selected mode.
+ */
+export function getConnectorModeConfigFormHint(
+  connectorId: string,
+  modeId: string | null | undefined,
+): ConnectorConfigFormHint | null {
+  const modes = getDeclaredConnectorModes(connectorId);
+  const declaration = modeId
+    ? modes.find((mode) => mode.id === modeId)
+    : modes.find((mode) => mode.configFormHint !== undefined);
+  if (!declaration?.configFormHint) return null;
+  return declaration.configFormHintKey
+    ? {
+        key: declaration.configFormHintKey,
+        fallback: declaration.configFormHint,
+      }
+    : { fallback: declaration.configFormHint };
+}
+
 // ---------------------------------------------------------------------------
 // Built-in connector mode declarations.
 //
@@ -91,6 +232,8 @@ registerConnectorModes("discord", [
     managementMode: "cloud-managed",
     setupPluginId: "discord",
     cloudOnly: true,
+    cloudGatewaySetup: "managed-agent-picker",
+    cloudGatewayProvider: "eliza-cloud-discord",
   },
   {
     id: "local",
@@ -111,6 +254,9 @@ registerConnectorModes("discord", [
     managementMode: "local-config",
     setupPluginId: "discord",
     defaultPriority: 1,
+    configFormHintKey: "settings.sections.connectors.discordAppIdHint",
+    configFormHint:
+      "Application ID is optional; it is auto-resolved from the bot token when possible.",
   },
 ]);
 
@@ -125,6 +271,7 @@ registerConnectorModes("telegram", [
     managementMode: "cloud-managed",
     setupPluginId: "telegram",
     cloudOnly: true,
+    cloudGatewaySetup: "webhook-notice",
   },
   {
     id: "bot",

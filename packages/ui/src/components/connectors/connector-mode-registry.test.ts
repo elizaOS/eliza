@@ -4,6 +4,8 @@
  * fully working mode selector. In-memory registry, no runtime.
  */
 
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import type { ComponentType } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 import { getBootConfig, setBootConfig } from "../../config/boot-config";
@@ -15,6 +17,10 @@ import {
 import { hasConnectorSetupPanel } from "./ConnectorSetupPanel.helpers";
 import {
   type ConnectorModeDeclaration,
+  connectorDeclaresCloudGatewaySetup,
+  getConnectorManagedGatewayProvider,
+  getConnectorModeCloudGatewaySetup,
+  getConnectorModeConfigFormHint,
   registerConnectorModes,
 } from "./connector-mode-registry";
 import { resolveConnectorSetupPanelToken } from "./connector-setup-panel-registry";
@@ -145,5 +151,158 @@ describe("browser-bridge panel availability gating", () => {
     );
     expect(hasConnectorSetupPanel("lifeopsbrowser")).toBe(true);
     expect(hasConnectorSetupPanel("@elizaos/plugin-browser-bridge")).toBe(true);
+  });
+});
+
+/**
+ * Seam tests for the connector-mode UI-affordance metadata (#12090 item 28).
+ * The connector page and settings config form used to decide which gateway
+ * surface / config hint to render by matching `plugin.id` + mode id string
+ * literals (`plugin.id === "discord" && selectedMode === "managed"`, etc.).
+ * That branching now reads owner-declared metadata, so a connector plugin
+ * absent from ui source gets the right affordance purely from its declaration.
+ */
+describe("connector-mode UI-affordance metadata (#12090 item 28)", () => {
+  it("resolves the cloud-gateway setup affordance from the selected mode's declaration", () => {
+    // Built-in connectors declare their gateway affordance, not a hardcoded id.
+    expect(getConnectorModeCloudGatewaySetup("discord", "managed")).toBe(
+      "managed-agent-picker",
+    );
+    expect(getConnectorModeCloudGatewaySetup("telegram", "cloud-bot")).toBe(
+      "webhook-notice",
+    );
+    // Non-gateway modes and unknown modes declare nothing.
+    expect(getConnectorModeCloudGatewaySetup("discord", "bot")).toBeNull();
+    expect(getConnectorModeCloudGatewaySetup("discord", "nope")).toBeNull();
+    expect(getConnectorModeCloudGatewaySetup("discord", null)).toBeNull();
+  });
+
+  it("resolves the managed-gateway provisioning provider a connector declares", () => {
+    // The Discord managed picker is keyed on the declared provider, not the
+    // plugin id, so the connector page renders the Discord-specific
+    // provisioning flow only for the connector that declared it.
+    expect(getConnectorManagedGatewayProvider("discord")).toBe(
+      "eliza-cloud-discord",
+    );
+    // Telegram's gateway is a webhook-notice, not a managed-agent picker, so it
+    // declares no provisioning provider.
+    expect(getConnectorManagedGatewayProvider("telegram")).toBeNull();
+    expect(getConnectorManagedGatewayProvider("x")).toBeNull();
+  });
+
+  it("reports whether a connector declares any mode of a gateway-setup kind", () => {
+    expect(
+      connectorDeclaresCloudGatewaySetup("telegram", "webhook-notice"),
+    ).toBe(true);
+    expect(
+      connectorDeclaresCloudGatewaySetup("discord", "managed-agent-picker"),
+    ).toBe(true);
+    // Discord has no webhook-notice mode; telegram has no managed-agent picker.
+    expect(
+      connectorDeclaresCloudGatewaySetup("discord", "webhook-notice"),
+    ).toBe(false);
+    expect(
+      connectorDeclaresCloudGatewaySetup("telegram", "managed-agent-picker"),
+    ).toBe(false);
+  });
+
+  it("resolves the owner-declared config-form hint for a connector mode", () => {
+    const hint = getConnectorModeConfigFormHint("discord", "bot");
+    expect(hint?.key).toBe("settings.sections.connectors.discordAppIdHint");
+    expect(hint?.fallback).toContain("Application ID is optional");
+    // Falls back to the connector's declared hint when no mode id is given
+    // (single-mode connectors have no selector), and is null for connectors
+    // that declare none.
+    expect(getConnectorModeConfigFormHint("discord", null)?.fallback).toContain(
+      "Application ID is optional",
+    );
+    expect(getConnectorModeConfigFormHint("telegram", "bot")).toBeNull();
+  });
+
+  it("drives the affordance for a connector absent from ui source (no hardcoded id)", () => {
+    // A fictional connector whose id appears in no switch/branch in the ui
+    // package. It only exists via registration, yet resolves affordances.
+    registerConnectorModes("acmegateway", [
+      {
+        id: "hosted",
+        label: "Acme Hosted",
+        description: "Route Acme through the Acme Cloud gateway agent.",
+        managementMode: "cloud-managed",
+        setupPluginId: "acmegateway",
+        cloudOnly: true,
+        cloudGatewaySetup: "managed-agent-picker",
+      },
+      {
+        id: "webhook",
+        label: "Acme Webhook",
+        description: "Acme still needs a token; the cloud hosts its webhook.",
+        managementMode: "cloud-managed",
+        setupPluginId: "acmegateway",
+        cloudOnly: true,
+        cloudGatewaySetup: "webhook-notice",
+      },
+      {
+        id: "token",
+        label: "Acme Token",
+        description: "Use an Acme API token.",
+        managementMode: "local-config",
+        setupPluginId: "acmegateway",
+        configFormHintKey: "connectors.acme.tokenHint",
+        configFormHint: "Acme token is scoped per workspace.",
+      },
+    ]);
+
+    expect(getConnectorModeCloudGatewaySetup("acmegateway", "hosted")).toBe(
+      "managed-agent-picker",
+    );
+    expect(getConnectorModeCloudGatewaySetup("acmegateway", "webhook")).toBe(
+      "webhook-notice",
+    );
+    expect(
+      connectorDeclaresCloudGatewaySetup("acmegateway", "webhook-notice"),
+    ).toBe(true);
+    // Acme declares a managed-agent picker but no provisioning provider, so it
+    // is NOT routed through the Discord provisioning flow — the connector page
+    // renders the Discord picker only for the declared eliza-cloud-discord
+    // provider (regression guard for the generic-vs-Discord-provisioning gap).
+    expect(getConnectorManagedGatewayProvider("acmegateway")).toBeNull();
+    expect(
+      getConnectorModeConfigFormHint("acmegateway", "token")?.fallback,
+    ).toBe("Acme token is scoped per workspace.");
+  });
+});
+
+/**
+ * Grep guard (#12090 item 28): the connector page and settings config form must
+ * not reintroduce hardcoded connector-id branching for the gateway/notice/hint
+ * affordances that are now declared in the connector-mode registry.
+ */
+describe("connector UI branching drift guard (#12090 item 28)", () => {
+  const readSource = (relPath: string): string => {
+    // Resolve against this test file so it works from any cwd/worktree.
+    const url = new URL(relPath, import.meta.url);
+    return readFileSync(fileURLToPath(url), "utf8");
+  };
+
+  it("plugin-view-connectors.tsx has no plugin-id/mode-literal gateway branches", () => {
+    const src = readSource("../pages/plugin-view-connectors.tsx");
+    // The old duck-typed capability branches must be gone from executable code.
+    expect(src).not.toMatch(/plugin\.id\s*===\s*"discord"/);
+    expect(src).not.toMatch(/plugin\.id\s*===\s*"telegram"/);
+    expect(src).not.toMatch(/selectedMode\s*===\s*"managed"/);
+    expect(src).not.toMatch(/selectedMode\s*===\s*"cloud-bot"/);
+    // The twitter OAuth-initiation dispatch is registry-driven now.
+    expect(src).not.toMatch(/\.platform\s*===\s*"twitter"/);
+    // It reads the declared affordance helpers instead — including keying the
+    // managed picker on the declared provisioning provider, not the plugin id.
+    expect(src).toContain("getConnectorModeCloudGatewaySetup");
+    expect(src).toContain("connectorDeclaresCloudGatewaySetup");
+    expect(src).toContain("getConnectorManagedGatewayProvider");
+  });
+
+  it("ConnectorsSection.tsx resolves the config-form hint from the registry", () => {
+    const src = readSource("../settings/ConnectorsSection.tsx");
+    expect(src).not.toMatch(/plugin\.id\s*===\s*"discord"/);
+    expect(src).toContain("getConnectorModeConfigFormHint");
   });
 });

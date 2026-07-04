@@ -29,6 +29,11 @@ import { ConnectorModeSelector } from "../connectors/ConnectorModeSelector";
 import { useConnectorMode } from "../connectors/ConnectorModeSelector.hooks";
 import { ConnectorSetupPanel } from "../connectors/ConnectorSetupPanel";
 import { hasConnectorSetupPanel } from "../connectors/ConnectorSetupPanel.helpers";
+import {
+  connectorDeclaresCloudGatewaySetup,
+  getConnectorManagedGatewayProvider,
+  getConnectorModeCloudGatewaySetup,
+} from "../connectors/connector-mode-registry";
 import { getBrandIcon } from "../conversations/brand-icons";
 import { Button } from "../ui/button";
 import {
@@ -121,13 +126,13 @@ interface ConnectorPluginCardProps
 export function shouldRenderConnectorPluginConfig({
   hasParams,
   isCloudOAuthMode,
-  isDiscordManagedMode,
+  isManagedAgentGatewayMode,
 }: {
   hasParams: boolean;
   isCloudOAuthMode: boolean;
-  isDiscordManagedMode: boolean;
+  isManagedAgentGatewayMode: boolean;
 }): boolean {
-  return hasParams && !isDiscordManagedMode && !isCloudOAuthMode;
+  return hasParams && !isManagedAgentGatewayMode && !isCloudOAuthMode;
 }
 
 type CloudOAuthConnectorCopy = {
@@ -145,6 +150,14 @@ type CloudOAuthConnectorCopy = {
   connectedHint: string;
   disconnectedHint: string;
   successNotice: string;
+  /**
+   * Which cloud OAuth-initiation client method this connector uses, declared on
+   * the connector copy instead of matching `platform === "twitter"` at the call
+   * site (#12090 item 28):
+   * - `"twitter-endpoint"`: the dedicated `initiateCloudTwitterOauth` method.
+   * - `"generic"` (default): `initiateCloudOauth(platform, ...)`.
+   */
+  oauthInitiation?: "twitter-endpoint" | "generic";
 };
 
 const ROLE_BUTTON_SUFFIX: Record<CloudOAuthConnectionRole, string> = {
@@ -190,6 +203,7 @@ const CLOUD_OAUTH_CONNECTORS: Record<string, CloudOAuthConnectorCopy> = {
     disconnectedHint:
       "Connect Eliza Cloud first to use X/Twitter OAuth instead of local developer tokens.",
     successNotice: "Finish X/Twitter OAuth in your browser, then return here.",
+    oauthInitiation: "twitter-endpoint",
   },
   google: {
     platform: "google",
@@ -424,15 +438,34 @@ function ConnectorPluginCard({
     selectedCloudOAuthConnector ??
     (!elizaCloudConnected ? (CLOUD_OAUTH_CONNECTORS[plugin.id] ?? null) : null);
   const isCloudOAuthMode = Boolean(selectedCloudOAuthConnector);
-  const isDiscordManagedMode =
-    plugin.id === "discord" && connectorMode.selectedMode === "managed";
-  const isTelegramCloudGatewayMode =
-    plugin.id === "telegram" && connectorMode.selectedMode === "cloud-bot";
-  const showTelegramCloudGatewayNotice =
-    isTelegramCloudGatewayMode ||
-    (!elizaCloudConnected && plugin.id === "telegram");
+  // Which cloud-gateway setup affordance the *selected* mode declares, resolved
+  // from owner-declared connector-mode metadata instead of matching plugin id +
+  // mode id string literals (#12090 item 28). Connectors declare
+  // `cloudGatewaySetup` on their mode in connector-mode-registry.ts.
+  const selectedModeCloudGatewaySetup = getConnectorModeCloudGatewaySetup(
+    plugin.id,
+    connectorMode.selectedMode,
+  );
+  // A hosted managed-agent gateway (e.g. managed Discord) — treated as
+  // cloud-backed for the connector Ready state and rendered with the managed
+  // agent picker below.
+  const isManagedAgentGatewayMode =
+    selectedModeCloudGatewaySetup === "managed-agent-picker";
+  // A local-credential mode whose inbound webhook Eliza Cloud can host (e.g.
+  // Telegram cloud gateway) — shown as an informational gateway notice.
+  const isWebhookGatewayMode =
+    selectedModeCloudGatewaySetup === "webhook-notice";
+  // Any connector that declares a webhook-notice mode should also surface the
+  // "connect Eliza Cloud for webhook hosting" hint before cloud is connected,
+  // even if that mode is not the currently selected one — matching the prior
+  // behavior that showed the Telegram gateway notice whenever cloud was not
+  // connected.
+  const showCloudGatewayNotice =
+    isWebhookGatewayMode ||
+    (!elizaCloudConnected &&
+      connectorDeclaresCloudGatewaySetup(plugin.id, "webhook-notice"));
   const cloudBackedConnectorMode =
-    elizaCloudConnected && (isCloudOAuthMode || isDiscordManagedMode);
+    elizaCloudConnected && (isCloudOAuthMode || isManagedAgentGatewayMode);
   const hasParams =
     (plugin.parameters?.length ?? 0) > 0 && plugin.id !== "__ui-showcase__";
   const isExpanded = connectorExpandedIds.has(plugin.id);
@@ -771,7 +804,7 @@ function ConnectorPluginCard({
       const redirectUrl =
         typeof window !== "undefined" ? window.location.href : undefined;
       const oauthResponse =
-        cloudOAuthConnector.platform === "twitter"
+        cloudOAuthConnector.oauthInitiation === "twitter-endpoint"
           ? await client.initiateCloudTwitterOauth({
               redirectUrl,
               connectionRole,
@@ -926,7 +959,7 @@ function ConnectorPluginCard({
   const showPluginConfig = shouldRenderConnectorPluginConfig({
     hasParams,
     isCloudOAuthMode,
-    isDiscordManagedMode,
+    isManagedAgentGatewayMode,
   });
 
   return (
@@ -955,9 +988,9 @@ function ConnectorPluginCard({
           />
         )}
 
-        {plugin.id === "discord" &&
-          (!elizaCloudConnected ||
-            connectorMode.selectedMode === "managed") && (
+        {getConnectorManagedGatewayProvider(plugin.id) ===
+          "eliza-cloud-discord" &&
+          (!elizaCloudConnected || isManagedAgentGatewayMode) && (
             <PagePanel.Notice
               tone="default"
               className="mb-4"
@@ -1102,7 +1135,7 @@ function ConnectorPluginCard({
           </PagePanel.Notice>
         ) : null}
 
-        {showTelegramCloudGatewayNotice ? (
+        {showCloudGatewayNotice ? (
           <PagePanel.Notice
             tone="default"
             className="mb-4"

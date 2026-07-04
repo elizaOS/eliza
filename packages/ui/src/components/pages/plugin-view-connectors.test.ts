@@ -12,7 +12,7 @@ describe("shouldRenderConnectorPluginConfig", () => {
       shouldRenderConnectorPluginConfig({
         hasParams: true,
         isCloudOAuthMode: false,
-        isDiscordManagedMode: false,
+        isManagedAgentGatewayMode: false,
       }),
     ).toBe(true);
   });
@@ -22,17 +22,17 @@ describe("shouldRenderConnectorPluginConfig", () => {
       shouldRenderConnectorPluginConfig({
         hasParams: true,
         isCloudOAuthMode: true,
-        isDiscordManagedMode: false,
+        isManagedAgentGatewayMode: false,
       }),
     ).toBe(false);
   });
 
-  it("hides local params for managed Discord mode", () => {
+  it("hides local params for managed agent gateway mode", () => {
     expect(
       shouldRenderConnectorPluginConfig({
         hasParams: true,
         isCloudOAuthMode: false,
-        isDiscordManagedMode: true,
+        isManagedAgentGatewayMode: true,
       }),
     ).toBe(false);
   });
@@ -42,19 +42,19 @@ describe("shouldRenderConnectorPluginConfig", () => {
       shouldRenderConnectorPluginConfig({
         hasParams: true,
         isCloudOAuthMode: true,
-        isDiscordManagedMode: true,
+        isManagedAgentGatewayMode: true,
       }),
     ).toBe(false);
   });
 
   it("renders nothing when the plugin exposes no params, regardless of mode", () => {
     for (const isCloudOAuthMode of [false, true]) {
-      for (const isDiscordManagedMode of [false, true]) {
+      for (const isManagedAgentGatewayMode of [false, true]) {
         expect(
           shouldRenderConnectorPluginConfig({
             hasParams: false,
             isCloudOAuthMode,
-            isDiscordManagedMode,
+            isManagedAgentGatewayMode,
           }),
         ).toBe(false);
       }
