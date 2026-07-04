@@ -153,10 +153,19 @@ function getConnectorFromBridgeMetadata(message: Memory): string | null {
   return null;
 }
 
+// Fail-closed sentinel: distinct from `null`. A `null` connector means "genuine
+// client-chat, no connector policy" and requireTaskAgentAccess treats it as the
+// permissive GUEST default. An infra failure resolving the source must NOT read
+// as that default, so it returns this symbol instead and the caller denies on it.
+const SOURCE_RESOLUTION_FAILED: unique symbol = Symbol(
+  "task-policy.source-resolution-failed",
+);
+type ConnectorSource = string | null | typeof SOURCE_RESOLUTION_FAILED;
+
 async function resolveConnectorSource(
   runtime: IAgentRuntime,
   message: Memory,
-): Promise<string | null> {
+): Promise<ConnectorSource> {
   const content = message.content as Record<string, unknown> | undefined;
   const directSource =
     typeof content?.source === "string" &&
@@ -173,8 +182,17 @@ async function resolveConnectorSource(
     if (typeof room?.source === "string" && room.source.trim().length > 0) {
       return room.source;
     }
-  } catch {
-    // Ignore room lookup failures and fall through to null.
+  } catch (error) {
+    // error-policy:J1 room-source lookup failed at an infra boundary. Returning
+    // null here would read as "genuine client-chat" → the permissive GUEST
+    // default in requireTaskAgentAccess, silently opening task-agent
+    // create/interact to any caller on a transient DB/room error. Surface the
+    // failure (reportError → RECENT_ERRORS + ERROR_REPORTED) and fail closed via
+    // the sentinel, which the caller translates to access-denied.
+    runtime.reportError("task-policy.resolveConnectorSource", error, {
+      roomId: message.roomId,
+    });
+    return SOURCE_RESOLUTION_FAILED;
   }
 
   return null;
@@ -263,7 +281,20 @@ export async function requireTaskAgentAccess(
     };
   }
 
-  const connector = await resolveConnectorSource(runtime, message);
+  const resolvedSource = await resolveConnectorSource(runtime, message);
+  if (resolvedSource === SOURCE_RESOLUTION_FAILED) {
+    // Infra failure resolving the request source: deny rather than fall through
+    // to the permissive GUEST default. reportError already surfaced the cause.
+    return {
+      allowed: false,
+      connector: null,
+      requiredRole: "OWNER",
+      actualRole: "GUEST",
+      reason:
+        "Task-agent access denied: unable to resolve the request source (infrastructure error).",
+    };
+  }
+  const connector: string | null = resolvedSource;
   const policy = parseTaskAgentPolicy(runtime);
   const connectorPolicy = connector
     ? normalizeConnectorPolicy(policy.connectors?.[connector])

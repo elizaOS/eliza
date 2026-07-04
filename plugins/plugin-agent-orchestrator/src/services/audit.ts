@@ -50,8 +50,16 @@ export async function emitTaskAudit(
   };
   try {
     await runtime.emitEvent(TASK_AUDIT_EVENT, envelope);
-  } catch {
-    // best-effort: audit emission must never break the action it audits
+  } catch (error) {
+    // error-policy:J7 audit emission is best-effort — it must never break the
+    // action it audits — but a dropped TASK_AUDIT event is a security-relevant
+    // gap, so surface it observably (log + ERROR_REPORTED + RECENT_ERRORS)
+    // rather than swallowing it silently.
+    runtime.reportError("[emitTaskAudit]", error, {
+      action: payload.action,
+      outcome: payload.outcome,
+      source: payload.source,
+    });
   }
 }
 

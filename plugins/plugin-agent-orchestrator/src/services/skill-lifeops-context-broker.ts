@@ -28,9 +28,9 @@ async function rewriteBrokerActionText(args: {
 }): Promise<string> {
   const text = args.text.trim();
   if (!text) return args.text;
-  const fallback = () =>
-    `I ran ${args.actionName} and got a LifeOps action result, but I couldn't format the details cleanly here.`;
-  if (typeof args.runtime.useModel !== "function") return fallback();
+  // Degrade to the raw LifeOps payload, never a canned string: `text` is the
+  // real data the sub-agent requested and must survive a formatting failure.
+  if (typeof args.runtime.useModel !== "function") return text;
   try {
     const raw = await args.runtime.useModel(ModelType.TEXT_SMALL, {
       prompt: [
@@ -58,9 +58,18 @@ async function rewriteBrokerActionText(args: {
     const parsed = JSON.parse(String(raw).trim()) as { response?: unknown };
     return typeof parsed.response === "string" && parsed.response.trim()
       ? parsed.response.trim()
-      : fallback();
-  } catch {
-    return fallback();
+      : text;
+  } catch (error) {
+    // error-policy:J4 degrade to raw text, observable — a rewrite-model or
+    // JSON.parse fault returns the untouched LifeOps payload (never a canned
+    // string that silently drops the sub-agent's data) and reports the failure
+    // so the agent (RECENT_ERRORS) and owner see the formatter is down.
+    args.runtime.reportError?.(
+      "AgentOrchestrator.LifeOpsContextBroker",
+      error,
+      { actionName: args.actionName, reason: "broker_text_rewrite_failed" },
+    );
+    return text;
   }
 }
 

@@ -1844,9 +1844,21 @@ Do not report done until every referenced URL in the final page resolves without
       (this.runtime.getService("ACP_SUBPROCESS_SERVICE") as AcpService | null);
     if (!service?.listSessions) return false;
     const currentCreatedAt = sessionTimeMs(session.createdAt);
-    const sessions = await service
-      .listSessions()
-      .catch(() => [] as SessionInfo[]);
+    let sessions: SessionInfo[];
+    try {
+      sessions = await service.listSessions();
+    } catch (err) {
+      // error-policy:J1 The sole caller uses this predicate to decide whether to
+      // SUPPRESS a stale verification-failure post (a would-be duplicate). A
+      // failed session read must not read as "no newer continuation" (false),
+      // which would let the duplicate through; surface it observably via
+      // reportError and fail safe toward NOT double-posting by treating the
+      // uncertainty as "a newer continuation exists" (true).
+      this.runtime.reportError("sub-agent-router.hasNewerContinuation", err, {
+        sessionId: session.id,
+      });
+      return true;
+    }
     return sessions.some((candidate) =>
       isNewerContinuationSession(candidate, session, origin, currentCreatedAt),
     );

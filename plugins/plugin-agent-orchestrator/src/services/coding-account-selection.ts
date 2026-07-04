@@ -16,6 +16,7 @@ import {
   type CodingAgentSelectorBridge,
   type CodingProviderAvailability,
   getCodingAgentSelectorBridge,
+  logger,
 } from "@elizaos/core";
 
 // The bridge symbol + contract are single-sourced in `@elizaos/core`; re-export
@@ -284,9 +285,24 @@ export async function reportCodingAccountFailure(
     } else {
       await bridge.markNeedsReauth(meta.providerId, meta.accountId, detail);
     }
-  } catch {
-    // Pool feedback is best-effort — a failure to record must not break the
-    // error path that is already surfacing the underlying problem.
+  } catch (err) {
+    // error-policy:J7 diagnostics-must-not-kill-the-loop — pool feedback is
+    // best-effort so a failed mark must not break the error path already
+    // surfacing the underlying problem, but a silently-lost mark means the
+    // selector keeps handing out the dud account. This module has no runtime
+    // handle to call runtime.reportError; the caller (sub-agent-router) does
+    // and observes the failover itself, so warn via the structured logger to
+    // make the lost mark observable instead of swallowing it.
+    logger.warn(
+      {
+        src: "acpx:coding-account-selection",
+        providerId: meta.providerId,
+        accountId: meta.accountId,
+        kind,
+        error: err instanceof Error ? err.message : String(err),
+      },
+      "[CodingAccountSelection] failed to record account failure",
+    );
   }
 }
 

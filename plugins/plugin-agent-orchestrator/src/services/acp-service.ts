@@ -399,7 +399,19 @@ export class AcpService extends Service {
   }
 
   private async reconcileOrphanedSessions(): Promise<void> {
-    const all = await this.store.list().catch(() => [] as SessionInfo[]);
+    let all: SessionInfo[];
+    try {
+      all = await this.store.list();
+    } catch (err) {
+      // error-policy:J7 store read failed; a fabricated empty set would make
+      // this reconcile pass a no-op and silently strand orphaned sessions.
+      // Surface it and skip this cycle — the next health-check tick retries.
+      this.runtime.reportError("AcpService.reconcileOrphanedSessions", err, {
+        phase: "store.list",
+      });
+      this.log("warn", "reconcile: store read failed, skipping cycle", { err });
+      return;
+    }
     const orphaned = all.filter(
       (s) => !TERMINAL_SESSION_STATUSES.has(s.status),
     );
@@ -511,7 +523,26 @@ export class AcpService extends Service {
   // but orchestrator never persisted — crash between spawn and store.create).
   private async cleanReverseOrphanedAcpxFiles(): Promise<void> {
     const sessionsDir = join(this.acpxStateRoot(), "sessions");
-    const sessions = await this.store.list().catch(() => [] as SessionInfo[]);
+    let sessions: SessionInfo[];
+    try {
+      sessions = await this.store.list();
+    } catch (err) {
+      // error-policy:J7 store read failed; DATA-LOSS GUARD. A fabricated empty
+      // tracked set makes every stream file look orphaned, so the scan below
+      // would delete live sessions' stream files. Surface and return without
+      // scanning or deleting anything — the next tick retries with real data.
+      this.runtime.reportError(
+        "AcpService.cleanReverseOrphanedAcpxFiles",
+        err,
+        { phase: "store.list" },
+      );
+      this.log(
+        "warn",
+        "reverse-orphan scan: store read failed, skipping delete pass",
+        { err },
+      );
+      return;
+    }
     const trackedAcpxIds = new Set(
       sessions.map((s) => s.acpxSessionId).filter(Boolean) as string[],
     );
@@ -535,7 +566,21 @@ export class AcpService extends Service {
 
   private async runHealthCheck(): Promise<void> {
     if (!this.started) return;
-    const sessions = await this.store.list().catch(() => [] as SessionInfo[]);
+    let sessions: SessionInfo[];
+    try {
+      sessions = await this.store.list();
+    } catch (err) {
+      // error-policy:J7 store read failed; a fabricated empty set would skip
+      // the heal pass silently and drop the sweep below. Surface it and skip
+      // this tick — the next health-check interval retries.
+      this.runtime.reportError("AcpService.runHealthCheck", err, {
+        phase: "store.list",
+      });
+      this.log("warn", "health-check: store read failed, skipping heal pass", {
+        err,
+      });
+      return;
+    }
     const liveCutoffMs = Date.now() - RECONCILE_LIVE_WINDOW_MS;
     let healed = 0;
     for (const s of sessions) {
@@ -593,9 +638,21 @@ export class AcpService extends Service {
     // and the per-session maps don't grow without bound. sweepStale removes only
     // stopped/errored sessions older than the window; clear their satellite map
     // entries (output buffers, changed paths, native clients) in lockstep.
-    const swept = await this.store
-      .sweepStale(ACP_SESSION_RETENTION_MS)
-      .catch(() => [] as string[]);
+    let swept: string[];
+    try {
+      swept = await this.store.sweepStale(ACP_SESSION_RETENTION_MS);
+    } catch (err) {
+      // error-policy:J7 retention sweep failed; this must not abort the health
+      // loop. Report it (so the missed satellite-map reclaim is observable) and
+      // treat this tick's reclaim set as empty — the next tick retries.
+      this.runtime.reportError("AcpService.runHealthCheck", err, {
+        phase: "store.sweepStale",
+      });
+      this.log("warn", "health-check: sweepStale failed, skipping reclaim", {
+        err,
+      });
+      swept = [];
+    }
     for (const id of swept) {
       this.outputBuffers.delete(id);
       this.changedPathsBySession.delete(id);
@@ -1129,7 +1186,22 @@ export class AcpService extends Service {
     if (typeof this.sendPrompt !== "function") {
       return { resumed: 0, skipped: 0 };
     }
-    const sessions = await this.store.list().catch(() => [] as SessionInfo[]);
+    let sessions: SessionInfo[];
+    try {
+      sessions = await this.store.list();
+    } catch (err) {
+      // error-policy:J1 boundary; this is the public resume entry point. A
+      // fabricated empty list would report {resumed:0} as if there were nothing
+      // to recover. Surface the read failure and return the same zero shape so
+      // the caller sees "resumed nothing" without the false all-clear.
+      this.runtime.reportError("AcpService.resumeOrphanedBusySessions", err, {
+        phase: "store.list",
+      });
+      this.log("warn", "orphan resume: store read failed, skipping scan", {
+        err,
+      });
+      return { resumed: 0, skipped: 0 };
+    }
     let resumed = 0;
     let skipped = 0;
     for (const session of sessions) {

@@ -1379,8 +1379,21 @@ export class OrchestratorTaskService extends Service {
           detail,
         );
       }
-    } catch {
-      // best-effort — account health is advisory for selection
+    } catch (err) {
+      // error-policy:J7 account-health marking is advisory for session
+      // selection and must not fail the caller, but a swallowed failure leaves
+      // a rate-limited/needs-reauth account looking healthy and eligible for
+      // reuse — report it so the agent sees it and the mutation isn't lost.
+      this.runtime.reportError(
+        "OrchestratorTask.markSessionAccountUnhealthy",
+        err,
+        { sessionId, reason },
+      );
+      this.log("warn", "failed to mark session account unhealthy", {
+        sessionId,
+        reason,
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
   }
 

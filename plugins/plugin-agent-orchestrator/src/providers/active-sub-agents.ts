@@ -118,9 +118,18 @@ export const activeSubAgentsProvider: Provider = {
     if (!service || typeof service.listSessions !== "function") {
       return emptyResult();
     }
-    const all = await Promise.resolve(service.listSessions()).catch(
-      () => [] as SessionInfo[],
-    );
+    let all: SessionInfo[] | undefined;
+    try {
+      all = await Promise.resolve(service.listSessions());
+    } catch (error) {
+      // error-policy:J4 the session list is the ground truth the planner reads
+      // to decide spawn-vs-reuse-vs-wait; a failed load must NOT read as "no
+      // sub-agents" (that would let the planner spawn a duplicate over a
+      // still-running worker). Surface it observably via reportError and
+      // degrade to an explicit "temporarily unavailable" note.
+      runtime.reportError(PROVIDER_NAME, error, { operation: "listSessions" });
+      return unavailableResult();
+    }
     // Provider surfaces ONLY active sessions — the sub-agent currently
     // running is the ground truth. Past sessions (any terminal status,
     // including errored) are intentionally excluded: surfacing them mixes
@@ -206,6 +215,20 @@ function emptyResult() {
     text: "",
     values: { activeSubAgents: "" },
     data: { sessions: [] },
+  };
+}
+
+// Distinct from emptyResult: the load failed, so the planner must NOT treat the
+// absence of listed sessions as "no active sub-agents". The note keeps the
+// failure visible in-context (the reportError call already surfaced it via
+// RECENT_ERRORS) so a duplicate spawn over a live worker is avoided.
+function unavailableResult() {
+  const text =
+    "## Active sub-agent sessions\nSub-agent session state is temporarily unavailable (failed to load). Do not assume there are no active sub-agents — retry before spawning a new one.";
+  return {
+    text,
+    values: { activeSubAgents: text },
+    data: { sessions: [], unavailable: true },
   };
 }
 
