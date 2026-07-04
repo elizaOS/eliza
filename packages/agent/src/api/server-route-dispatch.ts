@@ -8,12 +8,6 @@ import { handleInboxRoute } from "./inbox-routes.ts";
 import { handleNotificationRoute } from "./notification-routes.ts";
 import { handlePushTokenRoute } from "./push-token-routes.ts";
 import { tryHandleRuntimePluginRoute } from "./runtime-plugin-routes.ts";
-import type {
-  AgentCloudBillingRouteHandler,
-  AgentCloudCompatRouteHandler,
-  AgentCloudRelayRouteHandler,
-  AgentCloudRouteHandler,
-} from "./cloud-route-contracts.ts";
 import type { ServerState } from "./server-types.ts";
 
 // Lazy memoized loaders — previously these were module-scope `await import`,
@@ -22,12 +16,6 @@ import type { ServerState } from "./server-types.ts";
 // agent boot). Now each plugin only loads when its route group is first hit.
 type ComputeUsePluginModule = {
   handleSandboxRoute: (...args: unknown[]) => Promise<boolean>;
-};
-type CloudPluginRoutesModule = {
-  handleCloudBillingRoute: AgentCloudBillingRouteHandler;
-  handleCloudCompatRoute: AgentCloudCompatRouteHandler;
-  handleCloudRelayRoute: AgentCloudRelayRouteHandler;
-  handleCloudRoute: AgentCloudRouteHandler;
 };
 
 let computeUsePromise: Promise<ComputeUsePluginModule> | null = null;
@@ -38,11 +26,16 @@ function getComputeUsePlugin(): Promise<ComputeUsePluginModule> {
   return computeUsePromise;
 }
 
-let cloudRoutesPromise: Promise<CloudPluginRoutesModule> | null = null;
-function getCloudRoutesPlugin(): Promise<CloudPluginRoutesModule> {
-  cloudRoutesPromise ??= import(
-    "@elizaos/plugin-elizacloud"
-  ) as Promise<unknown> as Promise<CloudPluginRoutesModule>;
+// plugin-elizacloud owns these host-side cloud routes and exports them as a
+// typed contract (`@elizaos/plugin-elizacloud/host-routes`). Typing the lazy
+// import against the real exports means a handler signature change here is a
+// compile error, not a silent runtime break.
+type CloudHostRoutesModule =
+  typeof import("@elizaos/plugin-elizacloud/host-routes");
+
+let cloudRoutesPromise: Promise<CloudHostRoutesModule> | null = null;
+function getCloudRoutesPlugin(): Promise<CloudHostRoutesModule> {
+  cloudRoutesPromise ??= import("@elizaos/plugin-elizacloud/host-routes");
   return cloudRoutesPromise;
 }
 
