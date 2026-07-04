@@ -17,11 +17,11 @@ fixture and the source license is rechecked in the adapter PR.
 | --- | --- | --- |
 | `packages/scenario-runner` | Real `AgentRuntime` scenarios, deterministic/live lanes, JSON reports, native JSONL export. | Meeting transcript and voice task adapters that produce scenario definitions or scenario metadata from external datasets. |
 | `packages/benchmarks/lifeops-bench` | Multi-turn tool-use benchmark with deterministic world-state scoring across Eliza/Hermes/OpenClaw/Cerebras adapters. | Knowledge-grounded and voice-interruption domains inspired by Sierra tau-Knowledge/tau-Voice without copying restricted data. |
-| `packages/benchmarks/meeting-transcription-proof` | Product-proof harness for transcript, diarization, speaker identity, consent, retention, and meeting note metrics. | Dataset adapters for QMSum, MeetingBank, ELITR-Bench, TCR, and controlled public meeting slices. |
+| `packages/benchmarks/meeting-transcription-proof` | Planned adapter-contract scaffold from #13378 / #13359 for transcript, diarization, speaker identity, consent, retention, and meeting note metrics; not pre-existing `develop` coverage at the time of the matrix. | Dataset adapters for QMSum, MeetingBank, ELITR-Bench, TCR, and controlled public meeting slices. |
 | `packages/benchmarks/voice-speaker-validation` | Speaker profile lifecycle, diarization, single-stream, and async identity checks. | Public speaker-count/diarization stress slices and trait-aware regression fixtures. |
 | `packages/benchmarks/registry` | Integrated `voicebench`, `voicebench_quality`, `mmau`, and scoring gates that reject mock results for publishable runs. | New registry entries for VoiceCodeBench, QMSum/MeetingBank smoke slices, and tau-style knowledge/voice methodology. |
 | `packages/training` | Eliza-1 benchmark matrix and voice gates for ASR/TTS/runtime metrics. | Exact structured-token recovery, long-form ASR, dropped-frame/interruption robustness, and voice task pass-at-1 gates. |
-| `plugins/plugin-google` | Google Meet artifact import path and `elizaos.meeting_artifact.v1` shape. | Reference-based artifact grading: summary, quote grounding, action items, topic relevance, and privacy/retention checks. |
+| `plugins/plugin-google` | Google Meet artifact import path with the current `GoogleMeetReport` export; canonical `elizaos.meeting_artifact.v1` is planned adapter/schema work rather than an existing plugin-google export. | Reference-based artifact grading: summary, quote grounding, action items, topic relevance, and privacy/retention checks. |
 
 ## Benchmark Matrix
 
@@ -39,7 +39,7 @@ Allowed-use values:
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | MeetBench / MeetAll / MeetMaster: https://github.com/huyuelin/MeetBench-MeetAll.github.io | Meeting-agent QA, meeting summaries, factuality and structure judging; multilingual/multimodal meetings. | New; only indirectly overlaps with meeting-proof and scenario-runner. | Project notes describe MeetAll data as CC BY-NC 4.0 / non-commercial research only. | `needs-legal`, likely `eval-only`/`do-not-use` for commercial repo fixtures. | Scenario-runner live-only meeting-agent scenarios; no raw data in repo. | P2 | Metadata-only adapter proof plus one synthetic eliza-owned fixture that mirrors task shape. |
 | QMSum: https://github.com/Yale-LILY/QMSum | Query-focused meeting summarization over academic/product/committee meetings. | New; maps cleanly to meeting artifact QA. | GitHub repo is MIT; underlying source meeting corpora still need citation/license review per corpus. | `downloaded-eval`; small query/summary fixture only after corpus-level review. | `meeting-transcription-proof` and scenario-runner transcript QA scenarios. | P0 | 10 query-summary pairs with transcript excerpts, exact reference spans, and judge fallback. |
-| MeetingBank / MeetingBank-utils: https://meetingbank.github.io/ and https://github.com/YebowenHu/MeetingBank-utils | City council meeting summarization with transcripts, videos, agendas, and minutes. | New; closest existing surface is meeting-transcription-proof. | Public meeting data; site and Zenodo publish dataset, but city/source terms and video reuse need review. | `downloaded-eval`; repo fixture should be minimal metadata/excerpt only. | Meeting artifact generation and long-context summarization benchmark. | P0 | 5 public meeting sections with transcript excerpt, agenda, reference minutes, and action-item extraction. |
+| MeetingBank / MeetingBank-utils: https://meetingbank.github.io/ and https://github.com/YebowenHu/MeetingBank-utils | City council meeting summarization with transcripts, videos, agendas, and minutes. | New; target adapter scaffold is #13378 / #13359, not existing dataset coverage on `develop`. | Public meeting data; site and Zenodo publish dataset, but city/source terms and video reuse need review. | `downloaded-eval`; repo fixture should be minimal metadata/excerpt only. | Meeting artifact generation and long-context summarization benchmark. | P0 | 5 public meeting sections with transcript excerpt, agenda, reference minutes, and action-item extraction. |
 | ELITR-Bench: https://github.com/utter-project/ELITR-Bench | Long-context meeting transcript QA with ground-truth answers and metadata. | New. | GitHub lists CC BY 4.0; verify upstream ELITR meeting-data terms before raw fixture use. | `downloaded-eval`; `repo-fixture` only for tiny CC-compatible examples. | Scenario-runner long-context QA and retrieval/quote-grounding checks. | P1 | 20 QA rows with answer/reference metadata and no audio. |
 | Topic-Conversation Relevance (TCR): https://github.com/microsoft/topic_conversation | Topic relevance over 1,500 meetings and 15k+ topics. | New. | Paper/repo indicate CC BY 4.0 data, but source-meeting provenance needs review. | `downloaded-eval`; possible small `repo-fixture` after provenance check. | Scenario-runner topic tracking and meeting artifact topic relevance. | P1 | 50 topic/transcript-window pairs with exact-match relevance metrics. |
 | AMI Meeting Corpus: https://groups.inf.ed.ac.uk/ami/corpus/ | Meeting audio/video/transcripts, diarization, summaries. | Partially covered by generic meeting proof metrics, not dataset-specific. | Research corpus with separate license/access terms. | `needs-legal`, likely `private-eval` or `downloaded-eval`. | Meeting transcription, diarization, speaker attribution, summarization. | P1 | License-gated manifest adapter; no committed media. |
@@ -121,9 +121,11 @@ Allowed-use values:
   code/data/license status is reviewed.
 - Local repo inspection found existing benchmark registry coverage for
   `voicebench`, `voicebench_quality`, `mmau`, and `tau_bench`, plus
-  meeting-transcription-proof, voice-speaker-validation, LifeOpsBench, and
-  Eliza-1 training/eval surfaces. No direct QMSum, MeetingBank, VoiceCodeBench,
-  ELITR-Bench, or TCR adapter exists today.
+  voice-speaker-validation, LifeOpsBench, plugin-google Meet report imports, and
+  Eliza-1 training/eval surfaces. #13378 is the proposed
+  meeting-transcription-proof adapter-contract scaffold; no direct QMSum,
+  MeetingBank, VoiceCodeBench, ELITR-Bench, or TCR adapter exists on `develop`
+  today.
 
 ## Follow-Up Triage
 
