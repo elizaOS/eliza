@@ -129,9 +129,7 @@ describe("fact write-time dedupe (runtime.createMemory)", () => {
 describe("facts_and_relationships stage — no duplicate durable echo", () => {
 	const GUITAR_OUTPUT = JSON.stringify({
 		facts: ["nubs plays guitar"],
-		relationships: [
-			{ subject: "nubs", predicate: "plays", object: "guitar" },
-		],
+		relationships: [{ subject: "nubs", predicate: "plays", object: "guitar" }],
 		thought: "new fact",
 	});
 
