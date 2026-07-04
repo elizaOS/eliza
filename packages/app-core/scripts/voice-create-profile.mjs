@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
 /**
- * `bun run voice:create-profile` — build-time / fine-tune-time voice
+ * `bun run --cwd packages/app-core voice:create-profile` — build-time / fine-tune-time voice
  * profile creation.
  *
  * This is NOT a runtime UI. Profile creation happens at build time:

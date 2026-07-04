@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 /**
- * Two-agents-talking-endlessly voice harness for Eliza-1 (`bun run voice:duet`).
+ * Two-agents-talking-endlessly voice harness for Eliza-1
+ * (`bun run --cwd packages/app-core voice:duet`).
  *
  * Agent A and agent B are two `LocalInferenceEngine` instances on the **same
  * tier bundle** (`eliza-1-2b` by default — the smallest/entry tier) but with
@@ -29,13 +30,13 @@
  * never runs a silent stub-TTS duet and never pretends a model loaded.
  *
  * Run:
- *   bun run voice:duet                                  # 0.6b, endless, in-process
- *   bun run voice:duet -- --turns 20 --report out.json  # 20 round-trips → bench JSON
- *   bun run voice:duet -- --model eliza-1-2b --two-process
- *   bun run voice:duet -- --list-active                 # prereq report, then exit
- *   bun run voice:duet -- --platform-report             # cross-platform matrix, then exit
- *   bun run voice:duet -- --character-a a.json --character-b b.json --seed-text "hey there"
- *   bun run voice:duet -- --parallel 2 --draft-max 16 --ring-ms 240 --prewarm-lead-ms 0
+ *   bun run --cwd packages/app-core voice:duet                                  # 0.6b, endless, in-process
+ *   bun run --cwd packages/app-core voice:duet -- --turns 20 --report out.json  # 20 round-trips -> bench JSON
+ *   bun run --cwd packages/app-core voice:duet -- --model eliza-1-2b --two-process
+ *   bun run --cwd packages/app-core voice:duet -- --list-active                 # prereq report, then exit
+ *   bun run --cwd packages/app-core voice:duet -- --platform-report             # cross-platform matrix, then exit
+ *   bun run --cwd packages/app-core voice:duet -- --character-a a.json --character-b b.json --seed-text "hey there"
+ *   bun run --cwd packages/app-core voice:duet -- --parallel 2 --draft-max 16 --ring-ms 240 --prewarm-lead-ms 0
  *
  * Latency the report records (p50/p90/p99 over the round-trips):
  *   ttftFromUtteranceEndMs           — peer stops speaking → responder's first
@@ -124,7 +125,7 @@ function intArg(s) {
   return Number.isFinite(n) ? Math.floor(n) : null;
 }
 
-const USAGE = `Usage: bun run voice:duet [-- <options>]
+const USAGE = `Usage: bun run --cwd packages/app-core voice:duet [-- <options>]
 
   --model <id>            tier bundle (default eliza-1-2b; also eliza-1-4b)
   --turns <N>             stop after N round-trips (default: endless)

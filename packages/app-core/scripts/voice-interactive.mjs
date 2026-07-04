@@ -23,13 +23,13 @@
  * and never pretends a model loaded.
  *
  * Run:
- *   bun run voice:interactive                       # real mic interactive
- *   bun run voice:interactive -- --list-active      # print active optimizations + exit
- *   bun run voice:interactive -- --say "hi there"   # skip ASR, inject text (LLM→TTS half)
- *   bun run voice:interactive -- --wav speech.wav   # feed a WAV through the path once
- *   bun run voice:interactive -- --no-audio         # write out-<ts>.wav instead of playing
- *   bun run voice:interactive -- --no-mtp        # disable MTP (loud warning per AGENTS.md)
- *   bun run voice:interactive -- --room my-room     # set the conversation id
+ *   bun run --cwd packages/app-core voice:interactive                       # real mic interactive
+ *   bun run --cwd packages/app-core voice:interactive -- --list-active      # print active optimizations + exit
+ *   bun run --cwd packages/app-core voice:interactive -- --say "hi there"   # skip ASR, inject text (LLM -> TTS half)
+ *   bun run --cwd packages/app-core voice:interactive -- --wav speech.wav   # feed a WAV through the path once
+ *   bun run --cwd packages/app-core voice:interactive -- --no-audio         # write out-<ts>.wav instead of playing
+ *   bun run --cwd packages/app-core voice:interactive -- --no-mtp           # disable MTP (loud warning per AGENTS.md)
+ *   bun run --cwd packages/app-core voice:interactive -- --room my-room     # set the conversation id
  *
  * Keyboard controls (interactive modes, raw mode):
  *   s        force-stop the in-flight LLM/drafter + TTS for the current turn (barge-in hard-stop)
@@ -86,7 +86,7 @@ function parseArgs(argv) {
   return out;
 }
 
-const USAGE = `Usage: bun run voice:interactive [-- <options>]
+const USAGE = `Usage: bun run --cwd packages/app-core voice:interactive [-- <options>]
 
   --list-active        print which optimizations are active, then exit
   --platform-report    print the cross-platform voice support matrix, then exit

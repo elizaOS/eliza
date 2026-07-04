@@ -15,7 +15,7 @@
  * reads this to pick which preset to load as the default.
  *
  * No runtime recording interface is exposed. Profile creation happens at
- * build time via `bun run voice:create-profile`.
+ * build time via `bun run --cwd packages/app-core voice:create-profile`.
  */
 
 import fs from "node:fs";
@@ -402,7 +402,7 @@ export async function resolveDefaultProfileId(
 /**
  * Persist a newly created profile into the voice catalog.
  *
- * Called by `bun run voice:create-profile` after the freeze pipeline
+ * Called by `bun run --cwd packages/app-core voice:create-profile` after the freeze pipeline
  * writes the preset binary. Appends an entry to `catalog.json` if the
  * profile id is not already there; updates instruct + displayName if it is.
  */
