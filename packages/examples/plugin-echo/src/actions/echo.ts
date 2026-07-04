@@ -1,3 +1,6 @@
+/**
+ * Echo action implementation for the reference plugin example.
+ */
 import type {
   Action,
   ActionResult,

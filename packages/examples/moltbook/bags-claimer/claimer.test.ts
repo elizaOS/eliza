@@ -1,3 +1,6 @@
+/**
+ * Deterministic coverage for nested Bags fee formatting helpers.
+ */
 import { describe, expect, test } from "bun:test";
 import { formatSol } from "./claimer";
 

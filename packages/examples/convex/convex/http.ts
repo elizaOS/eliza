@@ -1,3 +1,7 @@
+/**
+ * HTTP routes for the Convex chat example, exposing CORS-aware chat and
+ * health endpoints backed by the internal agent action.
+ */
 import { httpRouter } from "convex/server";
 import { api, internal } from "./_generated/api";
 import { httpAction } from "./_generated/server";

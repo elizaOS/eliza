@@ -1,3 +1,6 @@
+/**
+ * Reference echo plugin export used by the plugin example and registry docs.
+ */
 import type { Plugin } from "@elizaos/core";
 import { echoAction } from "./actions/echo.ts";
 

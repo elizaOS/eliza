@@ -1,3 +1,6 @@
+/**
+ * Vitest configuration for the echo plugin example unit tests.
+ */
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({

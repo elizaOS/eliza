@@ -1,3 +1,6 @@
+/**
+ * Convex message and conversation mutations/queries for the chat example.
+ */
 import { v } from "convex/values";
 import { internalMutation, mutation, query } from "./_generated/server";
 

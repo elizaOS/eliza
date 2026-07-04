@@ -1,3 +1,6 @@
+/**
+ * Unit coverage for the echo example action validator and callback result.
+ */
 import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { echoAction } from "./echo.ts";

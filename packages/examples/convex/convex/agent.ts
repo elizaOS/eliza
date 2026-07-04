@@ -1,5 +1,9 @@
 "use node";
 
+/**
+ * Convex action host for the chat example, caching an Eliza runtime and
+ * routing messages through the first configured live model provider.
+ */
 import {
   AgentRuntime,
   ChannelType,

@@ -1,3 +1,6 @@
+/**
+ * Deterministic coverage for Moltbook autonomous-agent configuration parsing.
+ */
 import { afterEach, describe, expect, test } from "bun:test";
 import { type Config, getConfig, validateConfig } from "./autonomous";
 

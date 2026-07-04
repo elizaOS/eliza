@@ -1,3 +1,7 @@
+/**
+ * Autonomous Moltbook example agent with a themed character, environment
+ * validation, and bounded posting loop configuration.
+ */
 import "dotenv/config";
 import process from "node:process";
 
