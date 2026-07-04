@@ -1,0 +1,7 @@
+    func testChatSheetDetentFlickCycle() throws {
+    func testLauncherPagerFiftyPercentSwipeThreshold() throws {
+    func testMessageEditAffordanceRevealsViaTouch() throws {
+    func testLongPressSystemCalloutSuppression() throws {
+    func testPushToTalkHoldEngagesAndReleaseDisengages() throws {
+    func testComposerKeyboardAvoidanceLift() throws {
+    func testMediaAttachmentPickerOpensViaTouch() throws {

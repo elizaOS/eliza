@@ -1,0 +1,5 @@
+# swiftc -parse (syntax-only) — GestureSemanticsUITests.swift
+# Module-resolution errors (XCTest/XCUI) are expected off the Xcode build path;
+# the -parse phase validates SYNTAX only. Empty error output below = clean parse.
+---
+(no syntax errors)

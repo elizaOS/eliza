@@ -233,14 +233,23 @@ export function startAndroidChunkedScreenRecord({
       );
       const concat = spawnSync(
         "ffmpeg",
-        ["-y", "-f", "concat", "-safe", "0", "-i", listPath, "-c", "copy", localPath],
+        [
+          "-y",
+          "-f",
+          "concat",
+          "-safe",
+          "0",
+          "-i",
+          listPath,
+          "-c",
+          "copy",
+          localPath,
+        ],
         { stdio: "ignore" },
       );
       fs.rmSync(listPath, { force: true });
       if (concat.status === 0 && isNonEmptyFile(localPath)) {
-        log(
-          `concatenated ${chunkPaths.length} chunks → ${localPath}`,
-        );
+        log(`concatenated ${chunkPaths.length} chunks → ${localPath}`);
         return localPath;
       }
       log("ffmpeg concat failed — returning raw chunk paths");

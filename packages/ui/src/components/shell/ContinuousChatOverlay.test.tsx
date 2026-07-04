@@ -1892,9 +1892,9 @@ describe("ContinuousChatOverlay", () => {
       act(() => {
         vi.advanceTimersByTime(220);
       });
-      expect(
-        screen.getByTestId("chat-composer-probe").textContent,
-      ).toContain("voice:ptt-holding");
+      expect(screen.getByTestId("chat-composer-probe").textContent).toContain(
+        "voice:ptt-holding",
+      );
 
       fireEvent.pointerUp(mic, { button: 0, pointerId: 1 });
     } finally {
@@ -1904,29 +1904,31 @@ describe("ContinuousChatOverlay", () => {
 
   it("mirrors recording / hands-free voice phases into the composer AX probe", () => {
     const { rerender } = render(
-      <ContinuousChatOverlay controller={makeController({ recording: true })} />,
+      <ContinuousChatOverlay
+        controller={makeController({ recording: true })}
+      />,
     );
-    expect(
-      screen.getByTestId("chat-composer-probe").textContent,
-    ).toContain("voice:recording");
+    expect(screen.getByTestId("chat-composer-probe").textContent).toContain(
+      "voice:recording",
+    );
 
     rerender(
       <ContinuousChatOverlay
         controller={makeController({ handsFree: true })}
       />,
     );
-    expect(
-      screen.getByTestId("chat-composer-probe").textContent,
-    ).toContain("voice:handsfree");
+    expect(screen.getByTestId("chat-composer-probe").textContent).toContain(
+      "voice:handsfree",
+    );
 
     rerender(
       <ContinuousChatOverlay
         controller={makeController({ transcriptionMode: true })}
       />,
     );
-    expect(
-      screen.getByTestId("chat-composer-probe").textContent,
-    ).toContain("voice:transcribing");
+    expect(screen.getByTestId("chat-composer-probe").textContent).toContain(
+      "voice:transcribing",
+    );
   });
 
   it("drops the finished transcript into the composer as an attachment, not an auto-sent message", () => {

@@ -318,13 +318,9 @@ async function readComposerField(
   field: "voice" | "keyboard" | "attachments",
 ) {
   return page.evaluate((key) => {
-    const probe = document.querySelector(
-      '[data-testid="chat-composer-probe"]',
-    );
+    const probe = document.querySelector('[data-testid="chat-composer-probe"]');
     const text = probe?.textContent ?? "";
-    const token = text
-      .split(/\s+/)
-      .find((part) => part.startsWith(`${key}:`));
+    const token = text.split(/\s+/).find((part) => part.startsWith(`${key}:`));
     return token ? token.slice(key.length + 1) : null;
   }, field);
 }
@@ -714,7 +710,9 @@ test.describe
       try {
         await prepareComposer(page, adb, serial);
         const micSelector = '[data-testid="chat-composer-mic"]';
-        await expect(page.locator(micSelector)).toBeVisible({ timeout: 30_000 });
+        await expect(page.locator(micSelector)).toBeVisible({
+          timeout: 30_000,
+        });
         expect(await readComposerField(page, "voice")).toBe("idle");
 
         await waitForResponsiveMainThread(page);
@@ -878,9 +876,7 @@ test.describe
           const input = document.querySelector(
             'input[type="file"]',
           ) as HTMLInputElement | null;
-          (
-            window as Window & { __attachClicks?: number }
-          ).__attachClicks = 0;
+          (window as Window & { __attachClicks?: number }).__attachClicks = 0;
           input?.addEventListener("click", () => {
             (window as Window & { __attachClicks?: number }).__attachClicks =
               ((window as Window & { __attachClicks?: number })
