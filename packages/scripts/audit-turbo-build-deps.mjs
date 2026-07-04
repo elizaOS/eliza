@@ -154,6 +154,29 @@ const phantomTaskOverrides = [];
 const phantoms = [];
 const undeclared = [];
 const redundant = [];
+const directWorkspaceCycles = [];
+
+const workspaceDepsByPackage = new Map();
+for (const [name, dir] of WORKSPACE_DIRS.entries()) {
+  let pkg;
+  try {
+    pkg = readJson(path.join(dir, "package.json"));
+  } catch {
+    continue;
+  }
+  workspaceDepsByPackage.set(
+    name,
+    new Set([...declaredDeps(pkg)].filter((dep) => WORKSPACE_DIRS.has(dep))),
+  );
+}
+for (const [name, deps] of workspaceDepsByPackage.entries()) {
+  for (const dep of deps) {
+    if (name >= dep) continue;
+    if (workspaceDepsByPackage.get(dep)?.has(name)) {
+      directWorkspaceCycles.push(`${name} <-> ${dep}`);
+    }
+  }
+}
 
 for (const [taskName, def] of Object.entries(tasks)) {
   const separator = taskName.lastIndexOf("#");
@@ -252,6 +275,16 @@ if (phantoms.length) {
   );
   process.exit(1);
 }
+if (directWorkspaceCycles.length) {
+  console.error(
+    `[audit-turbo-build-deps] ${directWorkspaceCycles.length} direct workspace package cycle(s):\n`,
+  );
+  for (const cycle of directWorkspaceCycles) console.error(`  ✗ ${cycle}`);
+  console.error(
+    "\nA direct package.json cycle makes Turbo build-order inference unstable.\nMove one edge behind a runtime dynamic import or remove it if production source does not import it.",
+  );
+  process.exit(1);
+}
 if (phantomTaskOverrides.length) {
   console.error(
     `[audit-turbo-build-deps] ${phantomTaskOverrides.length} phantom pkg#task override(s):\n`,
@@ -264,3 +297,4 @@ if (phantomTaskOverrides.length) {
 }
 console.log("[audit-turbo-build-deps] ✓ no phantom #build dependency edges");
 console.log("[audit-turbo-build-deps] ✓ no phantom pkg#task overrides");
+console.log("[audit-turbo-build-deps] ✓ no direct workspace package cycles");

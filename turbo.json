@@ -499,7 +499,7 @@
       "outputs": []
     },
     "@elizaos/plugin-local-inference#typecheck": {
-      "dependsOn": ["@elizaos/agent#build", "^build"],
+      "dependsOn": ["^build"],
       "outputs": []
     },
     "@elizaos/example-farcaster#build": {
