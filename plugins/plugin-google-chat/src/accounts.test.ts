@@ -3,7 +3,7 @@
  * provider, and the workflow credential provider, against an in-memory
  * `getSetting` stub — no Google API calls.
  */
-import type { IAgentRuntime } from "@elizaos/core";
+import { ElizaError, type IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import {
   listGoogleChatAccountIds,
@@ -25,13 +25,22 @@ function runtime(
 }
 
 describe("Google Chat account config", () => {
-  it("ignores malformed GOOGLE_CHAT_ACCOUNTS and falls back to default discovery", () => {
+  it("fails closed for malformed GOOGLE_CHAT_ACCOUNTS", () => {
     const rt = runtime({
       GOOGLE_CHAT_ACCOUNTS: "{not json",
     });
 
-    expect(listGoogleChatAccountIds(rt)).toEqual(["default"]);
-    expect(resolveDefaultGoogleChatAccountId(rt)).toBe("default");
+    expect(() => listGoogleChatAccountIds(rt)).toThrow(ElizaError);
+    try {
+      resolveDefaultGoogleChatAccountId(rt);
+      throw new Error("expected malformed GOOGLE_CHAT_ACCOUNTS to throw");
+    } catch (error) {
+      expect(error).toBeInstanceOf(ElizaError);
+      expect((error as ElizaError).code).toBe("GOOGLE_CHAT_CONFIG_INVALID");
+      expect((error as ElizaError).context).toEqual({ setting: "GOOGLE_CHAT_ACCOUNTS" });
+      expect((error as ElizaError).severity).toBe("fatal");
+      expect((error as Error).cause).toBeInstanceOf(SyntaxError);
+    }
   });
 
   it("does not leak default env credentials into explicitly requested named accounts", () => {

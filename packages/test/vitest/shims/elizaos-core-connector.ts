@@ -23,7 +23,10 @@ export { readRequestedConnectorRole } from "../../../core/src/connectors/oauth-r
 // assertions in error-path tests exercise the real type, not a stub.
 export {
   ElizaError,
+  type ElizaErrorOptions,
+  type ElizaErrorSeverity,
   isElizaError,
+  type ReportedError,
   toElizaError,
 } from "../../../core/src/errors.ts";
 export {

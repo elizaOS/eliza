@@ -5,7 +5,7 @@
  * `google-chat` alias), merging per field. Supplies the service the space list
  * and service-account credentials for each configured account.
  */
-import type { IAgentRuntime } from "@elizaos/core";
+import { ElizaError, type IAgentRuntime } from "@elizaos/core";
 import type { GoogleChatAudienceType, GoogleChatSettings } from "./types.js";
 
 export const DEFAULT_GOOGLE_CHAT_ACCOUNT_ID = "default";
@@ -55,8 +55,13 @@ function parseAccountsJson(runtime: IAgentRuntime): Record<string, GoogleChatAcc
     return parsed && typeof parsed === "object"
       ? (parsed as Record<string, GoogleChatAccountConfig>)
       : {};
-  } catch {
-    return {};
+  } catch (error) {
+    throw new ElizaError("Google Chat accounts config is not valid JSON.", {
+      code: "GOOGLE_CHAT_CONFIG_INVALID",
+      cause: error,
+      context: { setting: "GOOGLE_CHAT_ACCOUNTS" },
+      severity: "fatal",
+    });
   }
 }
 
