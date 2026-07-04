@@ -4709,7 +4709,10 @@ export async function startApiServer(opts?: {
       );
       try {
         socket.destroy();
-      } catch {}
+      } catch {
+        // error-policy:J6 best-effort teardown — the socket may already be
+        // destroyed after the failed upgrade; nothing more to do.
+      }
     });
     try {
       const wsUrl = new URL(

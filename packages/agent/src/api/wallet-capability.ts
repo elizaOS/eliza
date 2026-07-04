@@ -74,7 +74,10 @@ function hasRuntimeEvmService(runtime: AgentRuntime | null): boolean {
           ) {
             return true;
           }
-        } catch {}
+        } catch {
+          // error-policy:J3 service-registry probe — a lookup that throws means
+          // this provider isn't usable here; treated as absent, try the next.
+        }
       }
     }
     return false;
@@ -88,7 +91,10 @@ function hasRuntimeEvmService(runtime: AgentRuntime | null): boolean {
         if (getService(serviceName)) {
           return true;
         }
-      } catch {}
+      } catch {
+        // error-policy:J3 service-registry probe — a lookup that throws means
+        // this provider isn't usable here; treated as absent, try the next.
+      }
     }
     return false;
   } catch {
