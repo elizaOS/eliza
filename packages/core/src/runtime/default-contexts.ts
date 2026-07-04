@@ -7,6 +7,9 @@
  * - id: stable lowercase context id (matches FirstPartyAgentContext)
  * - label: human-readable label shown in prompts and UI
  * - description: short purpose statement included in the Stage 1 prompt
+ * - descriptionCompressed: optional one-clause routing hint rendered in the
+ *   compact Stage-1 catalogs (DM / unaddressed group-triage tiers) for ids
+ *   whose bare name is ambiguous
  * - sensitivity: data sensitivity tier (public/personal/private/system)
  * - cacheScope: how long context-derived providers may be cached
  * - roleGate: minimum sender role required (PLAN §4.3 column "Gate")
@@ -25,6 +28,8 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
 			label: "Simple",
 			description:
 				"Direct reply with no tools, no external data, and no other contexts. Pick this as the only context when the agent can answer from general context.",
+			descriptionCompressed:
+				"Direct reply, no tools/external data; sole context",
 			sensitivity: "public",
 			cacheStable: true,
 			cacheScope: "global",
@@ -54,6 +59,8 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
 			label: "Documents",
 			description:
 				"Read, write, edit, search, and list stored documents. Use whenever the user asks to save findings, notes, summaries, files, or any persisted text artifact, or to search and recall prior documents and uploaded files.",
+			descriptionCompressed:
+				"Stored documents/notes/uploads: save, search, recall",
 			sensitivity: "personal",
 			cacheScope: "agent",
 			subcontexts: ["knowledge", "research"],
@@ -64,6 +71,7 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
 			label: "Knowledge",
 			description:
 				"Stored knowledge, notes, facts, semantic recall, RAG, and memory-backed answers. Use for retrieve/answer-from-knowledge requests, not live web lookup.",
+			descriptionCompressed: "Answer from stored knowledge/RAG, not live web",
 			parent: "documents",
 			sensitivity: "personal",
 			cacheScope: "agent",
@@ -84,6 +92,8 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
 			label: "Web",
 			description:
 				"Live/current public internet lookup: search, open pages, read URLs, verify facts, prices, laws, news, docs, schedules, or anything likely to change.",
+			descriptionCompressed:
+				"Live web lookup: search, URLs, current facts/prices/news",
 			sensitivity: "public",
 			cacheScope: "turn",
 			subcontexts: ["browser"],
@@ -114,6 +124,8 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
 			label: "Files",
 			description:
 				"Admin-only local filesystem operations: read, write, list, attach raw files on disk. NOT for saving documents/notes/research — use the 'documents' context for that.",
+			descriptionCompressed:
+				"Raw local filesystem ops; use documents for notes/research",
 			parent: "code",
 			sensitivity: "private",
 			cacheScope: "turn",
@@ -160,6 +172,8 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
 			label: "Tasks",
 			description:
 				"Personal-assistant action requests of any kind: any imperative ('remind me to…', 'set up a habit…', 'create a routine…', 'block apps when I work', 'every morning do X', 'twice a week', 'cancel that habit'), any habit/routine/reminder/alarm/goal/todo/recurring-task setup or change, any time-bound or recurring schedule the user owns, any 'every day / every week / on weekdays / at 9am / before bed / after lunch' framing, hygiene/health/exercise/medication/hydration routines, screen-time / app-block / focus rules, calendar event creation/move/cancel that the user explicitly asks for, follow-ups they want surfaced later, check-in cadence, status of their own todos and habits. Pick this whenever the user is asking the assistant to *do* something on their behalf (set, schedule, remind, cancel, complete, snooze, track) rather than chat or look up an external fact.",
+			descriptionCompressed:
+				"Reminders/habits/routines/todos/schedules — user asks assistant to do/schedule/track something",
 			sensitivity: "personal",
 			cacheScope: "agent",
 			subcontexts: ["todos", "productivity"],
@@ -197,6 +211,7 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
 			id: "screen_time",
 			label: "Screen Time",
 			description: "Device, app, and screen-time controls and reporting.",
+			descriptionCompressed: "App/site blocking, focus rules, usage reports",
 			sensitivity: "private",
 			cacheScope: "turn",
 			aliases: ["screen-time", "screentime"],
@@ -279,6 +294,8 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
 			label: "Social Posting",
 			description:
 				"Public social posts, feeds, replies, searches, timelines, and posting actions on platforms like X. Use messaging for DMs.",
+			descriptionCompressed:
+				"Public posts/feeds/timelines; DMs go to messaging",
 			sensitivity: "private",
 			cacheScope: "turn",
 			aliases: ["social-posting", "posting"],
@@ -309,6 +326,8 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
 			label: "Automation",
 			description:
 				"Automations, workflows, triggers, cron/heartbeat jobs, recurring runs, monitors, reminders that execute later, and proactive follow-up tasks.",
+			descriptionCompressed:
+				"Workflows/triggers/cron jobs/monitors that execute later",
 			sensitivity: "personal",
 			cacheScope: "agent",
 			roleGate: { minRole: "ADMIN" },
@@ -376,6 +395,7 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
 			label: "State",
 			description:
 				"Current runtime, room, device, app, workflow, or game state inspection/mutation when the request is about state rather than user content.",
+			descriptionCompressed: "Inspect/mutate runtime/room/device/app state",
 			parent: "system",
 			sensitivity: "system",
 			cacheScope: "turn",
@@ -397,6 +417,7 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
 			label: "Game",
 			description:
 				"Game/session commands and game-state tools. Use only when there is an active game/simulation/world interaction or the user is controlling gameplay.",
+			descriptionCompressed: "Active game/simulation control only",
 			parent: "world",
 			sensitivity: "personal",
 			cacheScope: "turn",

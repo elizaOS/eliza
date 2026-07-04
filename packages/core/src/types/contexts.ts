@@ -109,6 +109,13 @@ export interface ContextDefinition {
 	id: AgentContext;
 	label?: string;
 	description?: string;
+	/**
+	 * Optional short routing hint rendered in compact Stage-1 catalogs
+	 * (DM and unaddressed group-triage tiers), where the full `description`
+	 * is not rendered. One clause, ~80 chars max. Mirrors the
+	 * `descriptionCompressed` convention actions and providers already use.
+	 */
+	descriptionCompressed?: string;
 	parent?: AgentContext;
 	parents?: AgentContext[];
 	subcontexts?: AgentContext[];

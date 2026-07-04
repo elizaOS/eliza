@@ -294,6 +294,48 @@ describe("ResponseHandlerFieldRegistry", () => {
 			expect(result.skippedFieldNames).toEqual(["asyncOff"]);
 		});
 
+		it("renders descriptionCompressed on compact and description otherwise", async () => {
+			const reg = new ResponseHandlerFieldRegistry();
+			reg.register(
+				makeEvaluator({
+					name: "withCompressed",
+					description: "long-form field docs",
+					descriptionCompressed: "short docs",
+				}),
+			);
+			reg.register(
+				makeEvaluator({
+					name: "withoutCompressed",
+					description: "full-only docs",
+				}),
+			);
+
+			const compact = await reg.composePromptSlices(ctx, { compact: true });
+			expect(compact.rendered).toContain("short docs");
+			expect(compact.rendered).not.toContain("long-form field docs");
+			// No compressed form registered — falls back to the full description.
+			expect(compact.rendered).toContain("full-only docs");
+
+			const full = await reg.composePromptSlices(ctx);
+			expect(full.rendered).toContain("long-form field docs");
+			expect(full.rendered).not.toContain("short docs");
+		});
+
+		it("compact does not change the composed schema or its signature", async () => {
+			const reg = new ResponseHandlerFieldRegistry();
+			reg.register(
+				makeEvaluator({
+					name: "field",
+					description: "docs",
+					descriptionCompressed: "short",
+				}),
+			);
+			expect(reg.composeSchema({ compact: true })).toEqual(reg.composeSchema());
+			expect(reg.composeSchemaSignature({ compact: true })).toBe(
+				reg.composeSchemaSignature(),
+			);
+		});
+
 		it("renders only a selected field subset", async () => {
 			const reg = new ResponseHandlerFieldRegistry();
 			reg.register(makeEvaluator({ name: "alpha", description: "alpha-desc" }));

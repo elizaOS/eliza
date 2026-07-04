@@ -265,6 +265,11 @@ import {
 	getV5ModelText,
 } from "./message/generate-text-result";
 import { resolveEffectiveMuteState } from "./message/mute-state";
+import {
+	GROUP_TRIAGE_MESSAGE_HANDLER_TEMPLATE,
+	isStage1GroupTriageTierEnabled,
+	isUnaddressedTextGroupTurn,
+} from "./message/stage1-prompt-tier";
 import type { OptimizedPromptTask } from "./optimized-prompt";
 import {
 	type OptimizedPromptRuntimeLike,
@@ -382,6 +387,27 @@ function textContainsUserTag(text: string | undefined): boolean {
 
 	const safeText = text.length > 10_000 ? text.slice(0, 10_000) : text;
 	return /<@!?[^>]+>|@\w+/u.test(safeText);
+}
+
+/**
+ * Structural "this message addresses the agent" signal: platform mention,
+ * platform reply-to-agent, or the agent's name/username appearing in the
+ * text. Shared by the reply gate, the bot-noise TEXT_SMALL triage, and the
+ * Stage-1 prompt tier so all three branch on the same ground truth.
+ */
+function messageExplicitlyAddressesAgent(
+	runtime: IAgentRuntime,
+	message: Memory,
+): boolean {
+	const mentionContext = message.content?.mentionContext;
+	return (
+		mentionContext?.isMention === true ||
+		mentionContext?.isReply === true ||
+		textContainsAgentName(message.content?.text, [
+			runtime.character?.name,
+			runtime.character?.username,
+		])
+	);
 }
 
 function getPlannerActionObjectName(action: Record<string, unknown>): string {
@@ -3312,7 +3338,13 @@ export function formatAvailableContextsForPrompt(
 			].filter(Boolean);
 			const suffix = metadata.length > 0 ? ` [${metadata.join("; ")}]` : "";
 			if (options?.compact) {
-				return `- ${definition.id}${suffix}`;
+				// Compact catalog lines carry only the short routing hint (when the
+				// definition ships one) — never the full description, which is what
+				// the compact tiers exist to avoid.
+				const compressed = definition.descriptionCompressed?.trim();
+				return compressed
+					? `- ${definition.id}${suffix}: ${compressed}`
+					: `- ${definition.id}${suffix}`;
 			}
 			return description
 				? `- ${definition.id}${suffix}: ${description}`
@@ -3363,11 +3395,23 @@ function selectMessageHandlerTask(
 function renderMessageHandlerInstructions(
 	runtime: OptimizedPromptRuntimeLike,
 	availableContexts: readonly ContextDefinition[],
-	options?: { directMessage?: boolean; responseHandlerFields?: string },
+	options?: {
+		directMessage?: boolean;
+		groupTriage?: boolean;
+		responseHandlerFields?: string;
+	},
 ): string {
+	// Three tiers: DM/private (compact, no shouldRespond), unaddressed
+	// group-triage (compact + shouldRespond — most such turns end in IGNORE,
+	// so they must not pay the full ~16KB rule block), and the full template
+	// for addressed/respond-likely turns.
+	const compactTier =
+		options?.directMessage === true || options?.groupTriage === true;
 	const baselineTemplate = options?.directMessage
 		? DIRECT_MESSAGE_HANDLER_TEMPLATE
-		: messageHandlerTemplate;
+		: options?.groupTriage
+			? GROUP_TRIAGE_MESSAGE_HANDLER_TEMPLATE
+			: messageHandlerTemplate;
 	const baseline = resolveOptimizedPromptForRuntime(
 		runtime,
 		selectMessageHandlerTask(availableContexts),
@@ -3377,13 +3421,13 @@ function renderMessageHandlerInstructions(
 		state: {
 			directMessage: options?.directMessage ? "true" : "",
 			availableContexts: formatAvailableContextsForPrompt(availableContexts, {
-				compact: options?.directMessage === true,
+				compact: compactTier,
 			}),
 			handleResponseToolName: HANDLE_RESPONSE_TOOL_NAME,
 		},
 		template: baseline,
 	}).trim();
-	const renderedWithSharedRules = options?.directMessage
+	const renderedWithSharedRules = compactTier
 		? [rendered, "", `- ${COMPACT_CODE_SNIPPET_VALIDITY_INSTRUCTION}`].join(
 				"\n",
 			)
@@ -3409,7 +3453,11 @@ function renderMessageHandlerModelInput(
 	runtime: OptimizedPromptRuntimeLike,
 	context: ContextObject,
 	availableContexts: readonly ContextDefinition[] = [],
-	options?: { directMessage?: boolean; responseHandlerFields?: string },
+	options?: {
+		directMessage?: boolean;
+		groupTriage?: boolean;
+		responseHandlerFields?: string;
+	},
 ): {
 	messages: ChatMessage[];
 	promptSegments: PromptSegment[];
@@ -5849,6 +5897,18 @@ export async function runV5MessageRuntimeStage1(args: {
 			args.message.content?.channelType === ChannelType.DM ||
 			args.message.content?.channelType === ChannelType.API ||
 			args.message.content?.channelType === ChannelType.SELF;
+		// Compact-triage tier: an unaddressed text-group turn usually ends in
+		// IGNORE, so it gets the compact template + compact context catalog +
+		// compressed field docs instead of the full ~27KB static rule block.
+		// Structural signals only; anything uncertain fails open to the full
+		// tier (see stage1-prompt-tier.ts).
+		const groupTriageTurn =
+			!directMessageChannel &&
+			isUnaddressedTextGroupTurn(
+				args.message,
+				messageExplicitlyAddressesAgent(args.runtime, args.message),
+			) &&
+			isStage1GroupTriageTierEnabled(args.runtime);
 		const stage1TurnSignal =
 			getStreamingContext()?.abortSignal ?? new AbortController().signal;
 
@@ -5861,9 +5921,14 @@ export async function runV5MessageRuntimeStage1(args: {
 		};
 		const responseHandlerFields =
 			args.runtime.responseHandlerFieldRegistry.list();
+		// Group-triage turns keep the full field set (shouldRespond is the whole
+		// point) but render the compressed prompt slices; the schema is
+		// unaffected by `compact` so the HANDLE_RESPONSE contract is identical.
 		const responseHandlerFieldSelection = directMessageChannel
 			? buildDirectChannelResponseFieldSelection(responseHandlerFields)
-			: undefined;
+			: groupTriageTurn
+				? { compact: true }
+				: undefined;
 		const selectedResponseHandlerFields =
 			args.runtime.responseHandlerFieldRegistry.list(
 				responseHandlerFieldSelection,
@@ -5883,6 +5948,7 @@ export async function runV5MessageRuntimeStage1(args: {
 			availableContexts,
 			{
 				directMessage: directMessageChannel,
+				groupTriage: groupTriageTurn,
 				responseHandlerFields: responseHandlerFieldPrompt.rendered,
 			},
 		);
@@ -8876,13 +8942,10 @@ export class DefaultMessageService implements IMessageService {
 		// is done from another room (or DM) via the ROOM action's cross-room
 		// targeting.
 		const mentionContext = message.content.mentionContext;
-		const explicitlyAddressesAgent =
-			mentionContext?.isMention === true ||
-			mentionContext?.isReply === true ||
-			textContainsAgentName(message.content.text, [
-				runtime.character.name,
-				runtime.character.username,
-			]);
+		const explicitlyAddressesAgent = messageExplicitlyAddressesAgent(
+			runtime,
+			message,
+		);
 		const muteState = await resolveEffectiveMuteState(runtime, {
 			roomIds: [message.roomId],
 			primaryParticipantState: agentUserState,

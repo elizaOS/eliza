@@ -24,37 +24,14 @@
 
 import type { Memory } from "../../types/memory";
 import {
-	MESSAGE_SOURCE_CLIENT_CHAT,
-	MESSAGE_SOURCE_SUB_AGENT,
-} from "../../types/message-source";
-import {
 	type GenerateTextParams,
 	type GenerateTextResult,
 	ModelType,
 } from "../../types/model";
-import { ChannelType } from "../../types/primitives";
 import type { IAgentRuntime } from "../../types/runtime";
 import { stripReasoningBlocks } from "./fallback-reply";
 import { getV5ModelText } from "./generate-text-result";
-
-/**
- * Text group-ish channel types the gate applies to. Private channels
- * (DM/VOICE_DM/SELF/API) always respond and never reach the gate; voice group
- * rooms have their own turn-taking pipeline and are deliberately excluded.
- */
-const TRIAGE_CHANNEL_TYPES: ReadonlySet<string> = new Set([
-	String(ChannelType.GROUP),
-	String(ChannelType.THREAD),
-	String(ChannelType.WORLD),
-	String(ChannelType.FORUM),
-	String(ChannelType.FEED),
-]);
-
-/** Sub-agent completion relays are routed by their own evaluator — never gate. */
-const SUB_AGENT_SOURCE = MESSAGE_SOURCE_SUB_AGENT;
-
-/** Sources that bypass should-respond entirely (mirrors the deterministic gate). */
-const ALWAYS_RESPOND_SOURCES: readonly string[] = [MESSAGE_SOURCE_CLIENT_CHAT];
+import { isUnaddressedTextGroupTurn } from "./stage1-prompt-tier";
 
 const MAX_HISTORY_MESSAGES = 8;
 const MAX_HISTORY_LINE_CHARS = 160;
@@ -98,8 +75,6 @@ export function isTriagableBotNoiseMessage(
 	message: Memory,
 	explicitlyAddressesAgent: boolean,
 ): boolean {
-	if (explicitlyAddressesAgent) return false;
-
 	const contentMetadata = metadataRecord(message.content?.metadata);
 	const topLevelMetadata = metadataRecord(message.metadata);
 
@@ -118,36 +93,10 @@ export function isTriagableBotNoiseMessage(
 		contentMetadata?.fromBot === true || topLevelMetadata?.fromBot === true;
 	if (!fromBot) return false;
 
-	// Autonomous self-turns are not inbound noise.
-	if (
-		contentMetadata?.isAutonomous === true ||
-		topLevelMetadata?.isAutonomous === true
-	) {
-		return false;
-	}
-
-	// Sub-agent completion relays carry their own routing evaluator.
-	const source =
-		typeof message.content?.source === "string"
-			? message.content.source.trim().toLowerCase()
-			: "";
-	if (source === SUB_AGENT_SOURCE) return false;
-	if (
-		contentMetadata?.subAgent === true ||
-		topLevelMetadata?.subAgent === true
-	) {
-		return false;
-	}
-	if (ALWAYS_RESPOND_SOURCES.some((pattern) => source.includes(pattern))) {
-		return false;
-	}
-
-	// Only known text group-ish channels; unknown/missing channel type fails open.
-	const channelType =
-		typeof message.content?.channelType === "string"
-			? message.content.channelType.trim().toUpperCase()
-			: "";
-	return TRIAGE_CHANNEL_TYPES.has(channelType);
+	// The remaining preconditions (unaddressed + not autonomous + not a
+	// sub-agent/client-chat source + known text-group channel) are the shared
+	// structural classifier the Stage-1 prompt tier also uses.
+	return isUnaddressedTextGroupTurn(message, explicitlyAddressesAgent);
 }
 
 function senderNameOf(message: Memory): string {

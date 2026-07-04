@@ -164,6 +164,30 @@ describe("formatAvailableContextsForPrompt", () => {
 			"(no contexts registered)",
 		);
 	});
+
+	it("compact mode renders descriptionCompressed and never the full description", () => {
+		const contexts: readonly ContextDefinition[] = [
+			{
+				id: "general",
+				label: "General",
+				description: "Normal conversation.",
+			},
+			{
+				id: "tasks",
+				label: "Tasks",
+				description: "A very long routing description that must not render.",
+				descriptionCompressed: "reminders/habits/todos",
+			},
+		];
+		const block = formatAvailableContextsForPrompt(contexts, {
+			compact: true,
+		});
+		// Compressed hint when present; bare id line when absent.
+		expect(block).toContain("- tasks [label=Tasks]: reminders/habits/todos");
+		expect(block).toContain("- general [label=General]");
+		expect(block).not.toContain("Normal conversation.");
+		expect(block).not.toContain("must not render");
+	});
 });
 
 describe("Stage 1 prompt — available contexts catalog", () => {

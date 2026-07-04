@@ -70,6 +70,8 @@ export const shouldRespondFieldEvaluator: ResponseHandlerFieldEvaluator<
 	name: "shouldRespond",
 	description:
 		"RESPOND if addressed to you, helpful question, or active conversation. IGNORE if others talking, unaddressed small-talk, not yours. STOP only explicit stop/terminate/no more work. DM usually RESPOND unless explicit stop.",
+	descriptionCompressed:
+		"RESPOND if asked/active conversation; IGNORE if not yours; STOP only explicit stop.",
 	priority: 5,
 	schema: {
 		type: "string",
@@ -101,6 +103,8 @@ export const contextsFieldEvaluator: ResponseHandlerFieldEvaluator<string[]> = {
 	name: "contexts",
 	description:
 		'Routing tags. Pick from available_contexts. Use ["simple"] only for trivial direct replies needing no action/tool/provider/sub-agent; replyText is answer. Otherwise choose relevant context ids; planner engages providers/actions. Empty invalid when shouldRespond=RESPOND.',
+	descriptionCompressed:
+		'Ids from available_contexts. ["simple"]=direct reply, no tools; else relevant ids for the planner. Non-empty when RESPOND.',
 	priority: 10,
 	schema: {
 		type: "array",
@@ -132,6 +136,8 @@ export const intentsFieldEvaluator: ResponseHandlerFieldEvaluator<string[]> = {
 	name: "intents",
 	description:
 		'Short verb phrases for this turn: ["schedule meeting", "draft email", "research X"]. Use 1-4. Helps action retrieval/routing. Empty for no actionable intent.',
+	descriptionCompressed:
+		"1-4 short verb phrases for this turn; empty when no actionable intent.",
 	priority: 15,
 	schema: {
 		type: "array",
@@ -168,6 +174,8 @@ export const candidateActionNamesFieldEvaluator: ResponseHandlerFieldEvaluator<
 	name: "candidateActionNames",
 	description:
 		"Likely action names for this turn. Prefer available_actions; confident unlisted names ok (planner resolves similes). Use UPPER_SNAKE_CASE canonical names. Empty when no action likely.",
+	descriptionCompressed:
+		"Likely UPPER_SNAKE_CASE action names; empty when no action likely.",
 	priority: 50,
 	schema: {
 		type: "array",
@@ -201,6 +209,8 @@ export const replyTextFieldEvaluator: ResponseHandlerFieldEvaluator<string> = {
 	name: "replyText",
 	description:
 		'User-facing reply. Populate when shouldRespond=RESPOND. contexts includes "simple" => whole answer. Planning/tool path => brief ack only ("On it.", "Spawning the sub-agent now.", "Looking into it."); planner sends grounded follow-up. IGNORE => empty. No thinking/reasoning.\n\nNEVER refuse in replyText on planning path. If `contexts` or `candidateActionNames` != "simple", planner handles work; ack only, no capability gatekeeping. Ban refusal openings: "I cannot...", "I am unable to...", "I don\'t have the ability to...", "Sorry, I can\'t...". Tools exist (FILE, BASH, TASKS_SPAWN_AGENT, etc.). If no tool can attempt, use shouldRespond=RESPOND, `contexts: ["simple"]`, explain.',
+	descriptionCompressed:
+		'User-facing reply. simple=whole answer; tool/planning path=brief ack ("On it."), never a refusal; IGNORE=empty string.',
 	priority: 20,
 	schema: {
 		type: "string",
@@ -221,6 +231,8 @@ export const factsFieldEvaluator: ResponseHandlerFieldEvaluator<string[]> = {
 	name: "facts",
 	description:
 		'Durable facts explicitly stated in this message about user/world/entities, worth remembering. Examples: "user lives in Brooklyn", "user prefers email over phone", "Bob is Alice\'s coworker at Acme". Skip transient state/current mood. Empty if none.',
+	descriptionCompressed:
+		"Durable facts stated in this message; skip transient state. Empty if none.",
 	priority: 80,
 	schema: {
 		type: "array",
@@ -284,6 +296,8 @@ export const relationshipsFieldEvaluator: ResponseHandlerFieldEvaluator<
 	name: "relationships",
 	description:
 		'Subject-predicate-object triples user stated. Example {"subject":"alice","predicate":"works_with","object":"bob"}. Drives relationship graph. Empty if none.',
+	descriptionCompressed:
+		"Stated subject-predicate-object triples; empty if none.",
 	priority: 85,
 	schema: relationshipsSchema,
 	parse(value) {
@@ -346,6 +360,8 @@ export const topicsFieldEvaluator: ResponseHandlerFieldEvaluator<string[]> = {
 	name: "topics",
 	description:
 		'1-5 SHORT topic labels for this message (lowercase nouns/noun-phrases): ["billing", "auth bug", "vacation plans"]. NOT verbs/sentences. Tracks what this channel is about over time. Empty when no salient topic.',
+	descriptionCompressed:
+		"1-5 short lowercase topic labels; empty when no salient topic.",
 	priority: 88,
 	schema: {
 		type: "array",
@@ -368,6 +384,8 @@ export const addressedToFieldEvaluator: ResponseHandlerFieldEvaluator<
 	name: "addressedTo",
 	description:
 		"Entity UUIDs or participant names addressed by this message. Drives addressed-to graph. Empty when broadcast/unsure.",
+	descriptionCompressed:
+		"Entity UUIDs/names this message addresses; empty when broadcast/unsure.",
 	priority: 90,
 	schema: {
 		type: "array",
@@ -408,6 +426,8 @@ export const emotionFieldEvaluator: ResponseHandlerFieldEvaluator<ExpressiveEmot
 		name: "emotion",
 		description:
 			"User expressed emotion this turn. Single tag: none/happy/sad/angry/nervous/calm/excited/whisper. Default none; use none when ambiguous/no strong cue. Read text + transcript metadata only; do NOT use prior turns. User-side read; assistant emotion uses inline [happy]/[sad]/[excited] tags in replyText when TTS supports.",
+		descriptionCompressed:
+			"User emotion tag this turn; none when ambiguous/no strong cue.",
 		priority: 95,
 		schema: {
 			type: "string",

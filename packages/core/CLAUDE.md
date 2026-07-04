@@ -108,6 +108,7 @@ Read by the runtime (see README for the full WHY of each):
 - `ALLOW_NO_DATABASE` — fall back to `InMemoryDatabaseAdapter` on `initialize()` when no adapter is provided (`runtime.ts`).
 - `SHOULD_RESPOND_MODEL` (`small`/`large`, `services/message.ts`), `BASIC_CAPABILITIES_KEEP_RESP` (`services/message.ts`) — message/basic-capabilities behavior.
 - `ELIZA_BOT_NOISE_TRIAGE` (`services/message/bot-noise-triage.ts`) — set `0` to disable the TEXT_SMALL pre-gate that triages unaddressed bot/webhook group messages before the Stage 1 RESPONSE_HANDLER call (default on).
+- `ELIZA_STAGE1_GROUP_TRIAGE` (`services/message/stage1-prompt-tier.ts`) — set `0` to disable the compact Stage 1 instruction tier for unaddressed group messages and always render the full rule block (default on).
 - Prompt-batcher knobs (all `PROMPT_BATCHER_*`, read in `runtime.ts`): `PROMPT_BATCHER_BATCH_SIZE`, `PROMPT_BATCHER_MAX_DRAIN_INTERVAL_MS`, `PROMPT_BATCHER_MAX_SECTIONS_PER_CALL`, `PROMPT_BATCHER_PACKING_DENSITY`, `PROMPT_BATCHER_MAX_TOKENS_PER_CALL`, `PROMPT_BATCHER_MAX_PARALLEL_CALLS`, `PROMPT_BATCHER_MODEL_SEPARATION`.
 - `ELIZA_STATE_DIR` — state-dir resolution (`utils/state-dir.ts`); `ELIZA_WORKSPACE_DIR` — workspace folder (`utils/workspace-folder-config.ts`).
 
