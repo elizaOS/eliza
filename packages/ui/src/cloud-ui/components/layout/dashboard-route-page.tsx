@@ -3,10 +3,10 @@
 /**
  * A dashboard route page that wires its header into the page-header context.
  */
-import {
-  type ComponentPropsWithoutRef,
-  type DependencyList,
-  type ReactNode,
+import type {
+  ComponentPropsWithoutRef,
+  DependencyList,
+  ReactNode,
 } from "react";
 import { cn } from "../../lib/utils";
 import { DashboardPageContainer, DashboardPageStack } from "./dashboard-page";

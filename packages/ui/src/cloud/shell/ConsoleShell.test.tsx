@@ -109,9 +109,7 @@ describe("ConsoleShell", () => {
     // The page's own EnsurePageHeaderProvider defers to the shell provider, so
     // useSetPageHeader writes to the context the top bar reads. Exactly one
     // page-level heading with the title — no shadowed/dead inner provider.
-    expect(
-      screen.getByRole("heading", { name: "Standalone QA" }),
-    ).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Standalone QA" })).toBeTruthy();
   });
 
   it("names the account-plumbing section 'Workspace', not 'Account' (no section title duplicating an item label)", () => {
