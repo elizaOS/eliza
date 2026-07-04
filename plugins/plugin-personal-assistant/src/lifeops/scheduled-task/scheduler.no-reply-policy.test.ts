@@ -7,6 +7,7 @@ import {
   createLifeOpsTestRuntime,
   type RealTestRuntimeResult,
 } from "../../../test/helpers/runtime.ts";
+import { resolveOwnerFactStore } from "../owner/fact-store.ts";
 import { LifeOpsRepository } from "../repository.ts";
 import type { ScheduledTask } from "./index.ts";
 import { processDueScheduledTasks } from "./scheduler.ts";
@@ -346,5 +347,145 @@ describe("processDueScheduledTasks — no-reply policy (#11793)", () => {
     const skipped = await repo.getScheduledTask(runtime.agentId, task.taskId);
     expect(skipped?.state.status).toBe("skipped");
     expect(skipped?.metadata?.noReplyPolicy).toBeUndefined();
+  });
+});
+
+describe("processDueScheduledTasks — reminder intensity modulates the no-reply loop (#12284)", () => {
+  const provenance = {
+    source: "policy_action" as const,
+    recordedAt: "2026-05-09T10:00:00.000Z",
+  };
+
+  async function seedFiredReminder(
+    runtime: RealTestRuntimeResult["runtime"],
+    priority: ScheduledTask["priority"],
+  ): Promise<ScheduledTask> {
+    return seedScheduledTask(runtime, {
+      taskId: `st_intensity_${Math.random().toString(36).slice(2, 8)}`,
+      kind: "reminder",
+      promptInstructions: "Take medication.",
+      trigger: { kind: "once", atIso: "2026-05-09T11:00:00.000Z" },
+      priority,
+      respectsGlobalPause: false,
+      source: "user_chat",
+      ownerVisible: true,
+      completionCheck: { kind: "user_acknowledged", followupAfterMinutes: 30 },
+      state: {
+        status: "fired",
+        followupCount: 0,
+        firedAt: "2026-05-09T11:00:00.000Z",
+      },
+    });
+  }
+
+  const timeoutTick = (runtime: RealTestRuntimeResult["runtime"]) =>
+    processDueScheduledTasks({
+      runtime,
+      agentId: runtime.agentId,
+      now: new Date("2026-05-09T11:31:00.000Z"),
+      limit: 5,
+    });
+
+  it("minimal: a fired reminder times out straight to terminal skip, no retry", async () => {
+    runtimeResult = await createLifeOpsTestRuntime();
+    const { runtime } = runtimeResult;
+    const repo = new LifeOpsRepository(runtime);
+    await resolveOwnerFactStore(runtime).setReminderIntensity(
+      { intensity: "minimal" },
+      provenance,
+    );
+    const reminder = await seedFiredReminder(runtime, "high");
+
+    const result = await timeoutTick(runtime);
+
+    expect(result.errors).toEqual([]);
+    // No retry ("no_reply_retry_1"): the first timeout is terminal.
+    expect(result.completionTimeouts).toHaveLength(1);
+    expect(result.completionTimeouts[0]).toMatchObject({
+      taskId: reminder.taskId,
+      status: "skipped",
+    });
+    const skipped = await repo.getScheduledTask(
+      runtime.agentId,
+      reminder.taskId,
+    );
+    expect(skipped?.state.status).toBe("skipped");
+    expect(skipped?.metadata?.noReplyPolicy).toMatchObject({
+      maxRetries: 0,
+      retryCadenceMinutes: [],
+    });
+  });
+
+  it("persistent: a fired reminder earns an extra nudge before terminal (maxRetries 2)", async () => {
+    runtimeResult = await createLifeOpsTestRuntime();
+    const { runtime } = runtimeResult;
+    const repo = new LifeOpsRepository(runtime);
+    await resolveOwnerFactStore(runtime).setReminderIntensity(
+      { intensity: "persistent" },
+      provenance,
+    );
+    const reminder = await seedFiredReminder(runtime, "high");
+
+    const result = await timeoutTick(runtime);
+
+    expect(result.errors).toEqual([]);
+    // Still retries (not terminal), but the policy now carries an extra step.
+    expect(result.completionTimeouts).toHaveLength(1);
+    expect(result.completionTimeouts[0]).toMatchObject({
+      taskId: reminder.taskId,
+      status: "scheduled",
+      reason: "no_reply_retry_1",
+    });
+    const retried = await repo.getScheduledTask(
+      runtime.agentId,
+      reminder.taskId,
+    );
+    expect(retried?.metadata?.noReplyPolicy).toMatchObject({
+      maxRetries: 2,
+      retryCadenceMinutes: [60, 60],
+    });
+  });
+
+  it("high_priority_only: a medium-priority reminder is suppressed to fire-once", async () => {
+    runtimeResult = await createLifeOpsTestRuntime();
+    const { runtime } = runtimeResult;
+    const repo = new LifeOpsRepository(runtime);
+    await resolveOwnerFactStore(runtime).setReminderIntensity(
+      { intensity: "high_priority_only" },
+      provenance,
+    );
+    const reminder = await seedFiredReminder(runtime, "medium");
+
+    const result = await timeoutTick(runtime);
+
+    expect(result.errors).toEqual([]);
+    expect(result.completionTimeouts[0]?.status).toBe("skipped");
+    const skipped = await repo.getScheduledTask(
+      runtime.agentId,
+      reminder.taskId,
+    );
+    expect(skipped?.state.status).toBe("skipped");
+    expect(skipped?.metadata?.noReplyPolicy).toMatchObject({ maxRetries: 0 });
+  });
+
+  it("high_priority_only: a high-priority reminder keeps its default nudge", async () => {
+    runtimeResult = await createLifeOpsTestRuntime();
+    const { runtime } = runtimeResult;
+    const repo = new LifeOpsRepository(runtime);
+    await resolveOwnerFactStore(runtime).setReminderIntensity(
+      { intensity: "high_priority_only" },
+      provenance,
+    );
+    const reminder = await seedFiredReminder(runtime, "high");
+
+    const result = await timeoutTick(runtime);
+
+    expect(result.errors).toEqual([]);
+    expect(result.completionTimeouts[0]?.status).toBe("scheduled");
+    const retried = await repo.getScheduledTask(
+      runtime.agentId,
+      reminder.taskId,
+    );
+    expect(retried?.metadata?.noReplyPolicy).toMatchObject({ maxRetries: 1 });
   });
 });

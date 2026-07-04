@@ -28,6 +28,7 @@ import {
 } from "@elizaos/plugin-scheduling";
 import {
   ownerFactsToView,
+  type ReminderIntensity,
   resolveOwnerFactStore,
 } from "../owner/fact-store.js";
 import {
@@ -35,6 +36,7 @@ import {
   resolvePendingPromptsStore,
 } from "../pending-prompts/store.js";
 import { LifeOpsRepository } from "../repository.js";
+import { applyReminderIntensityToNoReplyPolicy } from "./no-reply-intensity.js";
 import { getScheduledTaskRunner } from "./service.js";
 
 type NoReplyTerminalStatus = "skipped" | "expired" | "failed";
@@ -244,8 +246,16 @@ function defaultNoReplyPolicyFor(task: ScheduledTask): NoReplyPolicy | null {
   }
 }
 
-function resolveNoReplyPolicy(task: ScheduledTask): NoReplyPolicy | null {
-  const base = defaultNoReplyPolicyFor(task);
+function resolveNoReplyPolicy(
+  task: ScheduledTask,
+  intensity?: ReminderIntensity,
+): NoReplyPolicy | null {
+  const defaultPolicy = defaultNoReplyPolicyFor(task);
+  // Owner intensity shapes the DEFAULT ladder; an explicit per-task
+  // `metadata.noReplyPolicy` override (merged below) still wins field-by-field.
+  const base = defaultPolicy
+    ? applyReminderIntensityToNoReplyPolicy(defaultPolicy, intensity, task.priority)
+    : null;
   const raw = readRecord(
     task.metadata?.noReplyPolicy,
   ) as StoredNoReplyPolicy | null;
@@ -340,9 +350,11 @@ export async function processDueScheduledTasks(
     agentId: request.agentId,
     now: () => request.now,
   });
-  const ownerFacts = ownerFactsToView(
-    await resolveOwnerFactStore(request.runtime).read(),
-  );
+  const ownerFactsRaw = await resolveOwnerFactStore(request.runtime).read();
+  const ownerFacts = ownerFactsToView(ownerFactsRaw);
+  // Owner-wide reminder intensity shapes how persistently the no-reply loop
+  // re-nudges (see `applyReminderIntensityToNoReplyPolicy`).
+  const reminderIntensity = ownerFactsRaw.reminderIntensity?.value;
   const dueContext = {
     now: request.now,
     ownerFacts,
@@ -433,6 +445,7 @@ export async function processDueScheduledTasks(
           runner,
           agentId: request.agentId,
           task,
+          reminderIntensity,
           now: request.now,
           reason: timeout.reason,
         });
@@ -497,8 +510,9 @@ async function handleCompletionTimeout(args: {
   task: ScheduledTask;
   now: Date;
   reason: string;
+  reminderIntensity?: ReminderIntensity;
 }): Promise<{ task: ScheduledTask; reason: string }> {
-  const policy = resolveNoReplyPolicy(args.task);
+  const policy = resolveNoReplyPolicy(args.task, args.reminderIntensity);
   if (!policy) {
     const skipped = await args.runner.apply(args.task.taskId, "skip", {
       reason: args.reason,
