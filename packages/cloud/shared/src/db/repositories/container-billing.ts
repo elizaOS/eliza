@@ -5,6 +5,7 @@ import { containerBillingRecords, containers } from "../schemas/containers";
 import { creditTransactions } from "../schemas/credit-transactions";
 import { organizationBilling } from "../schemas/organization-billing";
 import { organizations } from "../schemas/organizations";
+import { parseContainerBillingNumber } from "./container-billing-numeric";
 
 export type ContainerBillingStatus = "active" | "warning" | "suspended" | "shutdown_pending";
 
@@ -187,7 +188,12 @@ export class ContainerBillingRepository {
           .from(organizations)
           .where(eq(organizations.id, input.organizationId));
         return {
-          newBalance: org ? Number(org.credit_balance) : input.newBalance,
+          // Row present but the NUMERIC read is corrupt → fail closed with a
+          // field-named error instead of returning a NaN balance. Row absent
+          // (org concurrently deleted) keeps the caller-computed fallback.
+          newBalance: org
+            ? parseContainerBillingNumber(org.credit_balance, "credit_balance")
+            : input.newBalance,
           transactionId: null,
           alreadyBilled: true,
         };
@@ -246,7 +252,12 @@ export class ContainerBillingRepository {
           billing_status: "active" as ContainerBillingStatus,
           shutdown_warning_sent_at: null,
           scheduled_shutdown_at: null,
-          total_billed: String(Number(input.currentTotalBilled) + input.dailyCost),
+          // Fail closed on a corrupt running total instead of writing "NaN"
+          // back into the NUMERIC column (which would poison every future
+          // billing run for this container via a rolled-back cast error).
+          total_billed: String(
+            parseContainerBillingNumber(input.currentTotalBilled, "total_billed") + input.dailyCost,
+          ),
           updated_at: input.now,
         })
         .where(eq(containers.id, input.containerId));
@@ -263,7 +274,12 @@ export class ContainerBillingRepository {
       });
 
       return {
-        newBalance: updatedOrg ? Number(updatedOrg.credit_balance) : input.newBalance,
+        // Fail closed on a corrupt post-decrement balance read rather than
+        // returning NaN (which the low-balance email would render as `$NaN`).
+        // Row absent keeps the caller-computed fallback.
+        newBalance: updatedOrg
+          ? parseContainerBillingNumber(updatedOrg.credit_balance, "credit_balance")
+          : input.newBalance,
         transactionId: creditTx.id,
         alreadyBilled: false,
       };
