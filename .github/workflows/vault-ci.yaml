@@ -8,8 +8,8 @@ name: vault-ci
 # wiring that consumes it.
 
 concurrency:
-  group: vault-ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  group: vault-ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 on:
   push:

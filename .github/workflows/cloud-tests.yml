@@ -37,8 +37,8 @@ on:
       - ".github/actions/cloud-setup-test-env/**"
 
 concurrency:
-  group: cloud-tests-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  group: cloud-tests-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   DATABASE_URL: postgresql://postgres@127.0.0.1:5432/postgres

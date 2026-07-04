@@ -1,8 +1,8 @@
 name: Benchmark Bridge Tests
 
 concurrency:
-  group: benchmark-tests-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  group: benchmark-tests-${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 on:
   push:

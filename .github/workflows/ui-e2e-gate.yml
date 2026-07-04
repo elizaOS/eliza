@@ -37,8 +37,8 @@ on:
       - "packages/agent/src/api/server-helpers-swarm.ts"
 
 concurrency:
-  group: ui-e2e-gate-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  group: ui-e2e-gate-${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read

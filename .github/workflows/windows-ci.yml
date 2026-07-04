@@ -10,8 +10,8 @@ name: Windows CI
 # paths run on their existing dedicated workflows.
 
 concurrency:
-  group: windows-ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  group: windows-ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 on:
   push:

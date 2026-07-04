@@ -29,7 +29,7 @@ on:
 # capacity. only cancels pull_request runs; push runs on protected branches
 # (main/develop) are never cancelled mid-flight.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:

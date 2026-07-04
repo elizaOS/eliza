@@ -12,8 +12,8 @@ on:
       - ".github/workflows/e1-chip.yml"
 
 concurrency:
-  group: e1-chip-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  group: e1-chip-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # Default to least privilege. Override per-job where needed.
 permissions:
