@@ -1,0 +1,41 @@
+name: Markdown Links
+
+on:
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - "**/*.md"
+      - "scripts/check-markdown-links.mjs"
+      - ".github/workflows/markdown-links.yml"
+  push:
+    branches: [main, develop]
+    paths:
+      - "**/*.md"
+      - "scripts/check-markdown-links.mjs"
+      - ".github/workflows/markdown-links.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: markdown-links-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  relative-links:
+    name: Relative Markdown Links
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          submodules: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: "24.15.0"
+
+      - name: Check relative Markdown links
+        run: node scripts/check-markdown-links.mjs

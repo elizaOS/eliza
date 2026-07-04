@@ -4,7 +4,7 @@
 
 <!-- LINK TO ISSUE OR TICKET -->
 
-Definition of Done: full standard in [`PR_EVIDENCE.md`](PR_EVIDENCE.md).
+Definition of Done: full standard in [`PR_EVIDENCE.md`](../PR_EVIDENCE.md).
 
 - [ ] This PR targets `develop` and is rebased onto the latest `origin/develop`
       with zero conflicts (`git fetch origin && git rebase origin/develop`).

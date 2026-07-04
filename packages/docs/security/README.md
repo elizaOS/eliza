@@ -16,5 +16,5 @@ response for the runtime, Cloud, and agent surfaces in this repo.
 
 ## Package-specific security docs
 
-- KMS / secrets package: [`../../packages/security/docs/`](../../packages/security/docs/)
+- KMS / secrets package: [`../../security/docs/`](../../security/docs/)
 - Repo-wide security policy: [`../../../SECURITY.md`](../../../SECURITY.md)

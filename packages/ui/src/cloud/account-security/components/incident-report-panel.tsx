@@ -14,7 +14,7 @@ import {
 import { ApiError, apiFetch } from "../../lib/api-client";
 import { useCloudT } from "../../shell/CloudI18nProvider";
 
-const SECURITY_EMAIL = "security@elizalabs.ai";
+const SECURITY_EMAIL = "security@elizaos.ai";
 
 export function IncidentReportPanel() {
   const t = useCloudT();
