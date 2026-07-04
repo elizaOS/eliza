@@ -3,13 +3,14 @@
  *   GET    /api/v1/sessions
  *   DELETE /api/v1/sessions/:id
  *
- * Keeps the 404-graceful "not available on this server yet" pattern.
+ * Renders the backend's explicit unavailable state until revocable session
+ * inventory exists.
  */
 
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { BrandButton, BrandCard, CornerBrackets } from "../../../cloud-ui";
-import { ApiError, api, apiFetch } from "../../lib/api-client";
+import { api, apiFetch } from "../../lib/api-client";
 import { useCloudT } from "../../shell/CloudI18nProvider";
 import { emitAuditEvent } from "../data/audit-client";
 
@@ -23,6 +24,8 @@ interface SessionRow {
 }
 
 interface SessionsResponse {
+  available?: boolean;
+  reason?: string;
   sessions: SessionRow[];
 }
 
@@ -41,12 +44,15 @@ export function ActiveSessionsPanel() {
     setState({ kind: "loading" });
     try {
       const data = await api<SessionsResponse>("/api/v1/sessions");
-      setState({ kind: "ready", sessions: data.sessions ?? [] });
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 404) {
+      if (data.available === false) {
         setState({ kind: "missing" });
         return;
       }
+      if (!Array.isArray(data.sessions)) {
+        throw new Error("Malformed sessions response");
+      }
+      setState({ kind: "ready", sessions: data.sessions });
+    } catch (err) {
       setState({
         kind: "error",
         message: err instanceof Error ? err.message : String(err),

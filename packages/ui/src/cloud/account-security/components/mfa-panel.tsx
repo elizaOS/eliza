@@ -1,6 +1,6 @@
 /**
- * Two-factor authentication status panel. Reads GET /api/v1/me/mfa and keeps the
- * 404-graceful "not available on this server yet" copy.
+ * Two-factor authentication status panel. Reads GET /api/v1/me/mfa and renders
+ * the backend's explicit unavailable state until enrollment support exists.
  *
  * NOTE: the "Enroll a second factor" button is not wired — there is no MFA
  * enrollment endpoint yet (only the read route). The CTA renders so the surface
@@ -10,12 +10,14 @@
 import { Lock } from "lucide-react";
 import { useEffect, useState } from "react";
 import { BrandButton, BrandCard, CornerBrackets } from "../../../cloud-ui";
-import { ApiError, api } from "../../lib/api-client";
+import { api } from "../../lib/api-client";
 import { useCloudT } from "../../shell/CloudI18nProvider";
 
 interface MfaStatusResponse {
+  available?: boolean;
   enrolled: boolean;
   method?: "totp" | "webauthn" | null;
+  reason?: string;
 }
 
 type MfaState =
@@ -34,17 +36,20 @@ export function MfaPanel() {
       try {
         const data = await api<MfaStatusResponse>("/api/v1/me/mfa");
         if (cancelled) return;
+        if (data.available === false) {
+          setState({ kind: "missing" });
+          return;
+        }
+        if (typeof data.enrolled !== "boolean") {
+          throw new Error("Malformed MFA status response");
+        }
         setState({
           kind: "ready",
-          enrolled: !!data.enrolled,
+          enrolled: data.enrolled,
           method: data.method ?? null,
         });
       } catch (err) {
         if (cancelled) return;
-        if (err instanceof ApiError && err.status === 404) {
-          setState({ kind: "missing" });
-          return;
-        }
         setState({
           kind: "error",
           message: err instanceof Error ? err.message : String(err),
