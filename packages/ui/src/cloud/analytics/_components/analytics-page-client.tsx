@@ -202,21 +202,21 @@ export function AnalyticsPageClient({
   ];
 
   return (
-    <DashboardPageContainer className="space-y-10 lg:space-y-14">
-      <section className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between lg:gap-10 pb-2">
-        <div className="space-y-5 lg:max-w-3xl">
+    <DashboardPageContainer className="min-w-0 space-y-10 overflow-hidden lg:space-y-14">
+      <section className="flex min-w-0 flex-col gap-6 pb-2 lg:flex-row lg:items-start lg:justify-between lg:gap-10">
+        <div className="min-w-0 space-y-5 lg:max-w-3xl">
           <div className="flex flex-wrap items-center gap-2 gap-y-3 text-xs font-medium text-white/60">
-            <span className="flex items-center gap-1 rounded-sm border border-white/20 bg-white/10 px-3 py-1">
-              <CalendarRange className="h-3.5 w-3.5 text-[var(--accent)]" />
-              {rangeLabel}
+            <span className="flex min-w-0 max-w-full items-center gap-1 rounded-sm border border-white/20 bg-white/10 px-3 py-1">
+              <CalendarRange className="h-3.5 w-3.5 shrink-0 text-[var(--accent)]" />
+              <span className="min-w-0 break-words">{rangeLabel}</span>
             </span>
-            <span className="rounded-sm border border-white/20 bg-white/10 px-3 py-1">
+            <span className="max-w-full break-words rounded-sm border border-white/20 bg-white/10 px-3 py-1">
               {t("cloud.analytics.granularityLabel", {
                 defaultValue: "Granularity",
               })}
               : {granularityLabel}
             </span>
-            <span className="rounded-sm border border-white/20 bg-white/10 px-3 py-1">
+            <span className="max-w-full break-words rounded-sm border border-white/20 bg-white/10 px-3 py-1">
               {t("cloud.analytics.dataPointsCount", {
                 defaultValue: "{{n}} data points",
                 n: data.timeSeriesData.length.toLocaleString(),
@@ -246,8 +246,8 @@ export function AnalyticsPageClient({
           <KeyMetricsGrid metrics={metrics} />
         </section>
 
-        <section className="grid gap-8 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] lg:gap-10">
-          <BrandCard className="relative">
+        <section className="grid min-w-0 gap-8 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] lg:gap-10">
+          <BrandCard className="relative min-w-0 overflow-hidden">
             <CornerBrackets size="sm" className="opacity-50" />
             <div className="relative z-10 space-y-4">
               <h3 className="text-base font-semibold text-white">
@@ -277,7 +277,7 @@ export function AnalyticsPageClient({
               value="breakdown"
               className="space-y-8 lg:space-y-10 mb-4"
             >
-              <div className="grid gap-8 lg:grid-cols-2 lg:gap-10">
+              <div className="grid min-w-0 gap-8 lg:grid-cols-2 lg:gap-10">
                 <ProviderBreakdown providers={data.providerBreakdown} />
                 <ModelBreakdown models={data.modelBreakdown} />
               </div>

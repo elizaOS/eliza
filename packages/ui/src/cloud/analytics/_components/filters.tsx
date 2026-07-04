@@ -103,9 +103,9 @@ export function AnalyticsFilters() {
   };
 
   return (
-    <div className="flex flex-col gap-5 md:gap-6 lg:flex-row lg:items-center lg:justify-between">
-      <div className="flex flex-wrap items-center gap-4 md:gap-5">
-        <div className="space-y-2">
+    <div className="flex min-w-0 flex-col gap-5 md:gap-6 lg:flex-row lg:items-center lg:justify-between">
+      <div className="flex min-w-0 flex-wrap items-center gap-4 md:gap-5">
+        <div className="min-w-0 space-y-2">
           <p className="text-xs uppercase tracking-wide text-white/50">
             {t("cloud.analytics.filters.aggregation", {
               defaultValue: "Aggregation",
@@ -115,7 +115,7 @@ export function AnalyticsFilters() {
             value={timeRange}
             onValueChange={(value) => updateFilters({ timeRange: value })}
           >
-            <SelectTrigger className="w-[160px] rounded-sm border-white/10 bg-black/40 text-white  ">
+            <SelectTrigger className="w-full min-w-0 max-w-[160px] rounded-sm border-white/10 bg-black/40 text-white sm:w-[160px]">
               <SelectValue>{rangeLabels[timeRange]}</SelectValue>
             </SelectTrigger>
             <SelectContent className="rounded-sm border-white/10 bg-black/90">
@@ -133,16 +133,18 @@ export function AnalyticsFilters() {
         </div>
 
         {activeRange === "custom" ? (
-          <span className="flex items-center gap-1 rounded-sm border border-white/20 bg-white/10 px-3 py-1 text-xs">
-            <Sparkles className="h-3.5 w-3.5 text-[var(--accent)]" />
-            {t("cloud.analytics.filters.customRange", {
-              defaultValue: "Custom range detected",
-            })}
+          <span className="flex min-w-0 max-w-full items-center gap-1 rounded-sm border border-white/20 bg-white/10 px-3 py-1 text-xs">
+            <Sparkles className="h-3.5 w-3.5 shrink-0 text-[var(--accent)]" />
+            <span className="min-w-0 break-words">
+              {t("cloud.analytics.filters.customRange", {
+                defaultValue: "Custom range detected",
+              })}
+            </span>
           </span>
         ) : null}
       </div>
 
-      <div className="flex flex-wrap gap-3 md:gap-4">
+      <div className="flex min-w-0 flex-wrap gap-3 md:gap-4">
         {presets.map((preset) => {
           const isActive = activeRange === preset.value;
 
