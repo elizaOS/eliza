@@ -219,3 +219,83 @@ describe("FfiStreamingRunner per-step granularity (#9174)", () => {
 		});
 	});
 });
+
+describe("FfiStreamingRunner generateStream slot single-flight", () => {
+	/** Binding with per-stream step state + an open/close event log. */
+	function makeSerializingProbeBinding(): {
+		binding: LlmStreamingBinding;
+		events: string[];
+	} {
+		const events: string[] = [];
+		let streamCounter = 0n;
+		const stepByStream = new Map<bigint, number>();
+		const binding: LlmStreamingBinding = {
+			llmStreamSupported: () => true,
+			llmStreamOpen: vi.fn((): LlmStreamHandle => {
+				streamCounter += 1n;
+				stepByStream.set(streamCounter, 0);
+				events.push("open");
+				return streamCounter as LlmStreamHandle;
+			}),
+			llmStreamPrefill: vi.fn(),
+			llmStreamNext: vi.fn(
+				(args: { stream: LlmStreamHandle }): LlmStreamStep => {
+					const i = stepByStream.get(args.stream as bigint) ?? 0;
+					stepByStream.set(args.stream as bigint, i + 1);
+					return {
+						tokens: [i],
+						text: i === 0 ? "a" : "b",
+						done: i >= 1,
+						drafterDrafted: 0,
+						drafterAccepted: 0,
+					};
+				},
+			),
+			llmStreamCancel: vi.fn(),
+			llmStreamClose: vi.fn(() => {
+				events.push("close");
+			}),
+		};
+		return { binding, events };
+	}
+
+	it("serializes generateStream against generateWithUsage on the same pinned slot", async () => {
+		const { binding, events } = makeSerializingProbeBinding();
+		const runner = new FfiStreamingRunner(binding, 1n as LlmCtxHandle);
+
+		let releaseFirstChunk!: () => void;
+		const firstChunkGate = new Promise<void>((resolve) => {
+			releaseFirstChunk = resolve;
+		});
+		const streamIter = runner
+			.generateStream({
+				...BASE_ARGS,
+				promptTokens: new Int32Array([1]),
+				onTextChunk: () => firstChunkGate,
+			})
+			[Symbol.asyncIterator]();
+
+		// Pull the first step: stream A is open and parked awaiting its chunk gate.
+		const first = await streamIter.next();
+		expect(first.value?.text).toBe("a");
+		expect(events).toEqual(["open"]);
+
+		// A second generation on the SAME pinned slot must not open a session
+		// while A is still in flight — interleaving would corrupt the slot's KV.
+		const second = runner.generateWithUsage({
+			...BASE_ARGS,
+			promptTokens: new Int32Array([1]),
+		});
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		expect(events).toEqual(["open"]);
+
+		releaseFirstChunk();
+		// Drain A, then let B finish.
+		while (!(await streamIter.next()).done) {
+			// draining
+		}
+		const result = await second;
+		expect(result.text).toBe("ab");
+		expect(events).toEqual(["open", "close", "open", "close"]);
+	});
+});

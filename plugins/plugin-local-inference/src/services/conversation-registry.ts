@@ -237,14 +237,20 @@ export class ConversationRegistry {
 		if (parallel <= 1) return 0;
 		let bestSlot = 0;
 		let bestLoad = Number.POSITIVE_INFINITY;
+		let worstLoad = 0;
 		for (let slot = 0; slot < parallel; slot += 1) {
 			const load = this.slotLoad.get(slot) ?? 0;
 			if (load < bestLoad) {
 				bestLoad = load;
 				bestSlot = slot;
 			}
+			if (load > worstLoad) {
+				worstLoad = load;
+			}
 		}
-		if (bestLoad === 0) return bestSlot;
+		// A strictly lower-loaded slot always wins — hashing here could pin the
+		// conversation onto the hottest slot and thrash its KV cache.
+		if (bestLoad < worstLoad || bestLoad === 0) return bestSlot;
 		// All slots are loaded equally — use the conversation hash for a
 		// deterministic tie-break. Same conversation, same slot when reopened.
 		const digest = createHash("sha256").update(conversationId).digest();

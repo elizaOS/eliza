@@ -234,3 +234,24 @@ describe("ConversationRegistry.__resetForTests", () => {
 		expect(conversationRegistry.size()).toBe(0);
 	});
 });
+
+describe("ConversationRegistry slot pinning under uneven load", () => {
+	// Hash parities used below (sha256(id) first-u32 % 2):
+	//   conv-a → 1, conv-b → 0, conv-c → 1, conv-e → 1.
+	it("prefers the strictly lowest-loaded slot over the hash tie-break", () => {
+		const registry = new ConversationRegistry();
+		const open = (id: string): number =>
+			registry.open({ conversationId: id, modelId: "m", parallel: 2 }).slotId;
+		const a = open("conv-a"); // empty pool → first free slot
+		const b = open("conv-b"); // other slot (load 0)
+		expect(new Set([a, b]).size).toBe(2);
+		// True tie (1/1) → deterministic hash tie-break; conv-c hashes to slot 1.
+		const c = open("conv-c");
+		expect(c).toBe(1);
+		// Loads are now uneven (slot 1 holds 2, slot 0 holds 1). conv-e also
+		// hashes to slot 1 — the registry must still pin it to the lighter slot 0
+		// instead of stacking a third conversation onto the hottest KV slot.
+		const e = open("conv-e");
+		expect(e).toBe(0);
+	});
+});

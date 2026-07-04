@@ -265,3 +265,26 @@ describe("EndToEndLatencyTracer", () => {
 		expect(tracer.histogramSummaries().ttftMs.count).toBe(0);
 	});
 });
+
+describe("LATENCY_DERIVED_KEYS histogram accounting", () => {
+	it("contains each derived-metric key exactly once", () => {
+		expect(new Set(LATENCY_DERIVED_KEYS).size).toBe(
+			LATENCY_DERIVED_KEYS.length,
+		);
+	});
+
+	it("folds one duet turn into each duet histogram exactly once", () => {
+		const tracer = new EndToEndLatencyTracer();
+		const turnId = tracer.beginTurn({});
+		tracer.mark(turnId, "peer-utterance-end", 1_000);
+		tracer.mark(turnId, "llm-first-token", 1_100);
+		tracer.mark(turnId, "replyText-first-emotion-tag", 1_150);
+		tracer.mark(turnId, "audio-first-into-peer-ring", 1_500);
+		tracer.endTurn(turnId);
+		const h = tracer.histogramSummaries();
+		expect(h.ttftFromUtteranceEndMs.count).toBe(1);
+		expect(h.ttftFromUtteranceEndMs.p50).toBe(100);
+		expect(h.firstAudioIntoPeerRingFromUtteranceEndMs.count).toBe(1);
+		expect(h.emotionTagOverheadMs.count).toBe(1);
+	});
+});

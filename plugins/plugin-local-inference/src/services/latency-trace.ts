@@ -171,7 +171,11 @@ export interface LatencyDerived {
 	emotionTagOverheadMs: number | null;
 }
 
-/** The derived-metric keys, in display order. */
+/**
+ * The derived-metric keys, in display order (duet headline numbers first).
+ * Every `LatencyDerived` key must appear exactly once: `endTurn` folds one
+ * histogram sample per entry, so a duplicate would double-count that metric.
+ */
 export const LATENCY_DERIVED_KEYS = [
 	"ttftFromUtteranceEndMs",
 	"firstAudioIntoPeerRingFromUtteranceEndMs",
@@ -187,11 +191,8 @@ export const LATENCY_DERIVED_KEYS = [
 	"replyTextToPhrase1Ms",
 	"ttsFirstChunkMs",
 	"audioSinkLatencyMs",
-	"ttftFromUtteranceEndMs",
 	"replyTextFirstCharFromUtteranceEndMs",
 	"firstTtsPcmFromUtteranceEndMs",
-	"firstAudioIntoPeerRingFromUtteranceEndMs",
-	"emotionTagOverheadMs",
 ] as const satisfies ReadonlyArray<keyof LatencyDerived>;
 
 export type LatencyDerivedKey = (typeof LATENCY_DERIVED_KEYS)[number];
