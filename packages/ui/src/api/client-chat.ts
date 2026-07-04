@@ -385,6 +385,8 @@ declare module "./client-base" {
          * because not every connector tags rooms.
          */
         roomType?: string;
+        muted?: boolean;
+        mutedScope?: "room" | "server";
         title: string;
         avatarUrl?: string;
         lastMessageText: string;
@@ -392,6 +394,19 @@ declare module "./client-base" {
         messageCount: number;
       }>;
       count: number;
+    }>;
+    setInboxChatMute(data: {
+      action: "mute" | "unmute";
+      durationMinutes?: number;
+      roomId: string;
+      scope?: "room" | "server";
+    }): Promise<{
+      ok: boolean;
+      roomId: string;
+      action: "mute" | "unmute";
+      scope: "room" | "server";
+      muted?: boolean;
+      mutedScope?: "room" | "server";
     }>;
     sendInboxMessage(data: {
       accountId?: string;
@@ -1071,6 +1086,9 @@ ElizaClient.prototype.getInboxChats = async function (
         transportSource?: string;
         worldId?: string;
         worldLabel: string;
+        roomType?: string;
+        muted?: boolean;
+        mutedScope?: "room" | "server";
         title: string;
         avatarUrl?: string;
         lastMessageText: string;
@@ -1097,6 +1115,8 @@ ElizaClient.prototype.getInboxChats = async function (
       worldId?: string;
       /** User-facing server/world label for selectors and section headers. */
       worldLabel: string;
+      muted?: boolean;
+      mutedScope?: "room" | "server";
       title: string;
       avatarUrl?: string;
       lastMessageText: string;
@@ -1105,6 +1125,23 @@ ElizaClient.prototype.getInboxChats = async function (
     }>;
     count: number;
   }>(path);
+};
+
+ElizaClient.prototype.setInboxChatMute = async function (
+  this: ElizaClient,
+  data,
+) {
+  return this.fetch<{
+    ok: boolean;
+    roomId: string;
+    action: "mute" | "unmute";
+    scope: "room" | "server";
+    muted?: boolean;
+    mutedScope?: "room" | "server";
+  }>("/api/inbox/chats/mute", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
 };
 
 ElizaClient.prototype.sendInboxMessage = async function (

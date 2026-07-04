@@ -204,4 +204,30 @@ describe("buildConversationsSidebarModel — connector scope", () => {
     const dmRow = model.rows.find((r) => r.id === "dm1");
     expect(dmRow?.worldLabel).toBe("DMs");
   });
+
+  it("preserves connector mute state on sidebar rows", () => {
+    const model = buildConversationsSidebarModel({
+      conversations: [],
+      inboxChats: [
+        inbox({
+          id: "muted-channel",
+          source: "discord",
+          muted: true,
+          mutedScope: "server",
+          worldId: "guild-1",
+          worldLabel: "Acme Guild",
+        }),
+      ],
+      searchQuery: "",
+      sourceScope: ALL_CONNECTORS_SOURCE_SCOPE,
+      t,
+      worldScope: ALL_WORLDS_SCOPE,
+    });
+
+    expect(model.rows[0]).toMatchObject({
+      id: "muted-channel",
+      muted: true,
+      mutedScope: "server",
+    });
+  });
 });

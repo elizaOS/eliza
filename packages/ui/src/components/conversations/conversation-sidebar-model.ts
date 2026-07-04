@@ -41,6 +41,8 @@ export interface InboxChatSidebarRow {
   id: string;
   lastMessageAt: number;
   roomType?: string;
+  muted?: boolean;
+  mutedScope?: "room" | "server";
   source: string;
   transportSource?: string;
   title: string;
@@ -57,6 +59,8 @@ export interface ConversationsSidebarRow {
   source?: string;
   sourceKey: string;
   transportSource?: string;
+  muted?: boolean;
+  mutedScope?: "room" | "server";
   title: string;
   updatedAtLabel: string;
   worldId?: string;
@@ -177,6 +181,8 @@ function buildInboxRows(
         source: normalizedSource,
         sourceKey: normalizedSource,
         transportSource: chat.transportSource ?? chat.source,
+        muted: chat.muted === true,
+        mutedScope: chat.mutedScope,
         title: chat.title,
         updatedAtLabel: formatRelativeTime(isoDate, t),
         ...(chat.worldId ? { worldId: chat.worldId } : {}),

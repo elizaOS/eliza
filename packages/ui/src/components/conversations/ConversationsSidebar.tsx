@@ -15,6 +15,8 @@
  */
 
 import {
+  Bell,
+  BellOff,
   MessagesSquare,
   Plus,
   Search,
@@ -84,6 +86,8 @@ interface InboxChatRow {
   canSend?: boolean;
   id: string;
   lastMessageAt: number;
+  muted?: boolean;
+  mutedScope?: "room" | "server";
   roomType?: string;
   source: string;
   transportSource?: string;
@@ -190,6 +194,7 @@ export function ConversationsSidebar({
     title: string;
   } | null>(null);
   const [menuPosition, setMenuPosition] = useState({ x: 0, y: 0 });
+  const [muteBusyIds, setMuteBusyIds] = useState<Set<string>>(() => new Set());
   const menuAnchorRef = useRef<HTMLDivElement>(null);
   // Each section (messages, terminal, per-connector) is independently
   // collapsible. Sections default to expanded — users only care that
@@ -253,6 +258,8 @@ export function ConversationsSidebar({
           canSend: chat.canSend,
           id: chat.id,
           lastMessageAt: chat.lastMessageAt,
+          muted: chat.muted,
+          mutedScope: chat.mutedScope,
           roomType: chat.roomType,
           source: chat.source,
           transportSource: chat.transportSource,
@@ -584,6 +591,64 @@ export function ConversationsSidebar({
     onClose?.();
   };
 
+  const updateInboxChatMute = useCallback(
+    async (
+      row: ConversationsSidebarRow,
+      action: "mute" | "unmute",
+      options?: { durationMinutes?: number; scope?: "room" | "server" },
+    ) => {
+      if (row.kind !== "inbox" || muteBusyIds.has(row.id)) return;
+      setMuteBusyIds((prev) => new Set(prev).add(row.id));
+      try {
+        const result = await client.setInboxChatMute({
+          action,
+          roomId: row.id,
+          scope: options?.scope ?? "room",
+          ...(options?.durationMinutes
+            ? { durationMinutes: options.durationMinutes }
+            : {}),
+        });
+        setInboxChats((prev) =>
+          prev.map((chat) => {
+            if (options?.scope === "server" && chat.worldId === row.worldId) {
+              if (result.mutedScope === "server") {
+                return { ...chat, muted: true, mutedScope: "server" };
+              }
+              if (chat.mutedScope !== "server") {
+                return chat;
+              }
+              const { mutedScope: _mutedScope, ...rest } = chat;
+              return { ...rest, muted: false };
+            }
+            return chat.id === row.id
+              ? {
+                  ...chat,
+                  muted: result.muted,
+                  mutedScope: result.mutedScope,
+                }
+              : chat;
+          }),
+        );
+      } catch (err) {
+        setActionNotice(
+          t("conversations.muteFailed", {
+            defaultValue: "Failed to update mute state: {{message}}",
+            message: errorMessage(err),
+          }),
+          "error",
+          4800,
+        );
+      } finally {
+        setMuteBusyIds((prev) => {
+          const next = new Set(prev);
+          next.delete(row.id);
+          return next;
+        });
+      }
+    },
+    [muteBusyIds, setActionNotice, t],
+  );
+
   const isGameModal = variant === "game-modal";
 
   // Plugins supply the scope-chip icons, so load them eagerly so the
@@ -713,6 +778,10 @@ export function ConversationsSidebar({
           rows: [...group.rows].sort(
             (left, right) => right.sortKey - left.sortKey,
           ),
+          serverMuted: group.rows.some(
+            (row) => row.muted && row.mutedScope === "server",
+          ),
+          serverMutable: group.rows.some((row) => Boolean(row.worldId)),
         };
       })
       .sort((left, right) => {
@@ -997,6 +1066,21 @@ export function ConversationsSidebar({
                   emptyLabel={t("conversations.none", {
                     defaultValue: "No chats in this view",
                   })}
+                  serverMuted={section.serverMuted}
+                  onToggleSectionMute={
+                    section.serverMutable
+                      ? (action, durationMinutes) => {
+                          const row = section.rows.find(
+                            (candidate) => candidate.worldId,
+                          );
+                          if (!row) return;
+                          void updateInboxChatMute(row, action, {
+                            durationMinutes,
+                            scope: "server",
+                          });
+                        }
+                      : undefined
+                  }
                   activeListId={activeListId}
                   rowListId={rowListId}
                   isTerminalRow={isTerminalRow}
@@ -1018,6 +1102,7 @@ export function ConversationsSidebar({
                     openRenameDialog({ id: row.id, title: row.title })
                   }
                   onSelectRow={handleRowSelect}
+                  onToggleInboxMute={updateInboxChatMute}
                 />
               ))}
             </div>
@@ -1042,6 +1127,11 @@ interface CollapsibleChannelSectionProps {
   onAdd?: () => void;
   addLabel?: string;
   emptyLabel?: string;
+  serverMuted?: boolean;
+  onToggleSectionMute?: (
+    action: "mute" | "unmute",
+    durationMinutes?: number,
+  ) => void;
   activeListId: string | null;
   rowListId: (row: ConversationsSidebarRow) => string;
   isTerminalRow: (row: ConversationsSidebarRow) => boolean;
@@ -1060,6 +1150,11 @@ interface CollapsibleChannelSectionProps {
   onRequestDeleteConfirm: (row: ConversationsSidebarRow) => void;
   onRequestRename: (row: ConversationsSidebarRow) => void;
   onSelectRow: (row: ConversationsSidebarRow) => void;
+  onToggleInboxMute?: (
+    row: ConversationsSidebarRow,
+    action: "mute" | "unmute",
+    options?: { durationMinutes?: number; scope?: "room" | "server" },
+  ) => void | Promise<void>;
 }
 
 function CollapsibleChannelSection({
@@ -1073,6 +1168,8 @@ function CollapsibleChannelSection({
   onAdd,
   addLabel,
   emptyLabel,
+  serverMuted = false,
+  onToggleSectionMute,
   activeListId,
   rowListId,
   isTerminalRow,
@@ -1088,7 +1185,11 @@ function CollapsibleChannelSection({
   onRequestDeleteConfirm,
   onRequestRename,
   onSelectRow,
+  onToggleInboxMute,
 }: CollapsibleChannelSectionProps) {
+  const sectionMuteLabel = serverMuted
+    ? t("conversations.unmuteServer", { defaultValue: "Unmute server" })
+    : t("conversations.muteServer", { defaultValue: "Mute server" });
   return (
     <CollapsibleSidebarSection
       sectionKey={sectionKey}
@@ -1105,64 +1206,210 @@ function CollapsibleChannelSection({
       hoverActionsOnDesktop={!mobile}
       testIdPrefix="channel-section"
     >
+      {onToggleSectionMute ? (
+        <div className="mb-1 flex items-center gap-1 pl-1 pr-2">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-6 min-w-0 flex-1 justify-start gap-1.5 rounded-sm px-2 text-2xs text-muted hover:text-txt"
+            onClick={() => onToggleSectionMute(serverMuted ? "unmute" : "mute")}
+            title={sectionMuteLabel}
+            aria-label={sectionMuteLabel}
+          >
+            {serverMuted ? (
+              <BellOff className="h-3.5 w-3.5 shrink-0" aria-hidden />
+            ) : (
+              <Bell className="h-3.5 w-3.5 shrink-0" aria-hidden />
+            )}
+            <span className="truncate">{sectionMuteLabel}</span>
+          </Button>
+          {!serverMuted ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  className="h-6 w-6 shrink-0 rounded-sm text-muted hover:text-txt"
+                  aria-label={t("conversations.muteServerDuration", {
+                    defaultValue: "Mute server duration",
+                  })}
+                  title={t("conversations.muteServerDuration", {
+                    defaultValue: "Mute server duration",
+                  })}
+                >
+                  <BellOff className="h-3.5 w-3.5" aria-hidden />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-36">
+                <DropdownMenuItem
+                  onClick={() => onToggleSectionMute("mute", 60)}
+                >
+                  {t("conversations.muteForHour", {
+                    defaultValue: "Mute 1 hour",
+                  })}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => onToggleSectionMute("mute", 60 * 8)}
+                >
+                  {t("conversations.muteForDay", {
+                    defaultValue: "Mute 8 hours",
+                  })}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : null}
+        </div>
+      ) : null}
       {rows.map((row) => {
         const conversationId = rowListId(row);
         return (
-          <ChatConversationItem
-            key={conversationId}
-            conversation={{
-              id: conversationId,
-              ...(row.source ? { source: row.source } : {}),
-              title: row.title,
-              updatedAtLabel: row.updatedAtLabel,
-            }}
-            deleting={deletingId === row.id}
-            isActive={conversationId === activeListId}
-            isConfirmingDelete={
-              row.kind === "conversation" &&
-              !isTerminalRow(row) &&
-              confirmDeleteId === row.id
-            }
-            isUnread={
-              row.kind === "conversation" &&
-              !isTerminalRow(row) &&
-              unreadConversations.has(row.id)
-            }
-            labels={{
-              actions: t("conversations.actions", {
-                defaultValue: "More actions",
-              }),
-              delete: t("conversations.delete"),
-              deleteConfirm: t("conversations.deleteConfirm"),
-              deleteNo: t("common.no"),
-              deleteYes: t("common.yes"),
-              rename: t("conversations.rename"),
-            }}
-            mobile={mobile}
-            onCancelDelete={onCancelDelete}
-            onConfirmDelete={() => {
-              if (row.kind === "inbox" || isTerminalRow(row)) return;
-              void onConfirmDelete(row.id);
-            }}
-            onOpenActions={(event) => {
-              if (row.kind === "inbox" || isTerminalRow(row)) {
-                event.preventDefault();
-                event.stopPropagation();
-                return;
-              }
-              onOpenActions(event, { id: row.id, title: row.title });
-            }}
-            onRequestDeleteConfirm={() => {
-              if (row.kind === "inbox" || isTerminalRow(row)) return;
-              onRequestDeleteConfirm(row);
-            }}
-            onRequestRename={() => {
-              if (row.kind === "inbox" || isTerminalRow(row)) return;
-              onRequestRename(row);
-            }}
-            onSelect={() => onSelectRow(row)}
-            variant={variant}
-          />
+          <div key={conversationId} className="flex min-w-0 items-center gap-1">
+            <div className="min-w-0 flex-1">
+              <ChatConversationItem
+                conversation={{
+                  id: conversationId,
+                  ...(row.source ? { source: row.source } : {}),
+                  title: row.title,
+                  updatedAtLabel: row.muted
+                    ? row.mutedScope === "server"
+                      ? t("conversations.serverMuted", {
+                          defaultValue: "Server muted",
+                        })
+                      : t("conversations.channelMuted", {
+                          defaultValue: "Channel muted",
+                        })
+                    : row.updatedAtLabel,
+                }}
+                deleting={deletingId === row.id}
+                isActive={conversationId === activeListId}
+                isConfirmingDelete={
+                  row.kind === "conversation" &&
+                  !isTerminalRow(row) &&
+                  confirmDeleteId === row.id
+                }
+                isUnread={
+                  row.kind === "conversation" &&
+                  !isTerminalRow(row) &&
+                  unreadConversations.has(row.id)
+                }
+                labels={{
+                  actions: t("conversations.actions", {
+                    defaultValue: "More actions",
+                  }),
+                  delete: t("conversations.delete"),
+                  deleteConfirm: t("conversations.deleteConfirm"),
+                  deleteNo: t("common.no"),
+                  deleteYes: t("common.yes"),
+                  rename: t("conversations.rename"),
+                }}
+                mobile={mobile}
+                onCancelDelete={onCancelDelete}
+                onConfirmDelete={() => {
+                  if (row.kind === "inbox" || isTerminalRow(row)) return;
+                  void onConfirmDelete(row.id);
+                }}
+                onOpenActions={(event) => {
+                  if (row.kind === "inbox" || isTerminalRow(row)) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    return;
+                  }
+                  onOpenActions(event, { id: row.id, title: row.title });
+                }}
+                onRequestDeleteConfirm={() => {
+                  if (row.kind === "inbox" || isTerminalRow(row)) return;
+                  onRequestDeleteConfirm(row);
+                }}
+                onRequestRename={() => {
+                  if (row.kind === "inbox" || isTerminalRow(row)) return;
+                  onRequestRename(row);
+                }}
+                onSelect={() => onSelectRow(row)}
+                variant={variant}
+              />
+            </div>
+            {row.kind === "inbox" && onToggleInboxMute ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    className="h-7 w-7 shrink-0 rounded-sm text-muted hover:text-txt"
+                    aria-label={
+                      row.muted
+                        ? t("conversations.unmuteChannel", {
+                            defaultValue: "Unmute channel",
+                          })
+                        : t("conversations.muteChannel", {
+                            defaultValue: "Mute channel",
+                          })
+                    }
+                    title={
+                      row.muted
+                        ? t("conversations.unmuteChannel", {
+                            defaultValue: "Unmute channel",
+                          })
+                        : t("conversations.muteChannel", {
+                            defaultValue: "Mute channel",
+                          })
+                    }
+                  >
+                    {row.muted ? (
+                      <BellOff className="h-3.5 w-3.5" aria-hidden />
+                    ) : (
+                      <Bell className="h-3.5 w-3.5" aria-hidden />
+                    )}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-40">
+                  {row.muted ? (
+                    <DropdownMenuItem
+                      onClick={() => void onToggleInboxMute(row, "unmute")}
+                    >
+                      {t("conversations.unmuteChannel", {
+                        defaultValue: "Unmute channel",
+                      })}
+                    </DropdownMenuItem>
+                  ) : (
+                    <>
+                      <DropdownMenuItem
+                        onClick={() => void onToggleInboxMute(row, "mute")}
+                      >
+                        {t("conversations.muteChannel", {
+                          defaultValue: "Mute channel",
+                        })}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() =>
+                          void onToggleInboxMute(row, "mute", {
+                            durationMinutes: 60,
+                          })
+                        }
+                      >
+                        {t("conversations.muteForHour", {
+                          defaultValue: "Mute 1 hour",
+                        })}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() =>
+                          void onToggleInboxMute(row, "mute", {
+                            durationMinutes: 60 * 8,
+                          })
+                        }
+                      >
+                        {t("conversations.muteForDay", {
+                          defaultValue: "Mute 8 hours",
+                        })}
+                      </DropdownMenuItem>
+                    </>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : null}
+          </div>
         );
       })}
     </CollapsibleSidebarSection>

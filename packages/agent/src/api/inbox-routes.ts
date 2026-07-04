@@ -50,6 +50,12 @@ import {
   normalizeConnectorSource,
   PostInboxMessageRequestSchema,
 } from "@elizaos/shared";
+import { z } from "zod";
+import {
+  resolveEffectiveMuteState,
+  setRoomMuteUntil,
+  setWorldMuteState,
+} from "../../../core/src/services/message/mute-state.ts";
 
 let discordModulePromise: Promise<{
   cacheDiscordAvatarUrl: (
@@ -420,6 +426,30 @@ function readRoomChannelId(room: Room | undefined): string | undefined {
     readLooseStringValue(asLooseRecord(room), ["channelId", "channel_id"]) ??
     undefined
   );
+}
+
+function muteUntilIsoFromDuration(
+  durationMinutes: number | undefined,
+): string | undefined {
+  return durationMinutes && durationMinutes > 0
+    ? new Date(Date.now() + durationMinutes * 60_000).toISOString()
+    : undefined;
+}
+
+async function resolveInboxRoomMuteState(
+  runtime: AgentRuntime,
+  room: Room | undefined,
+  roomId: UUID,
+): Promise<Pick<InboxChat, "muted" | "mutedScope">> {
+  const worldId = readRoomWorldId(room);
+  const effective = await resolveEffectiveMuteState(runtime, {
+    roomIds: [roomId],
+    ...(worldId ? { worldId: worldId as UUID } : {}),
+  });
+  if (!effective.muted) {
+    return { muted: false };
+  }
+  return { muted: true, mutedScope: effective.scope };
 }
 
 function readRoomCreatedAt(room: Room | undefined): number | undefined {
@@ -1697,6 +1727,10 @@ interface InboxChat {
    * connector tags rooms.
    */
   roomType?: string;
+  /** Whether the agent is muted in this room, including inherited server mute. */
+  muted: boolean;
+  /** Source of the effective mute when muted. */
+  mutedScope?: "room" | "server";
   /** Display title — contact name for 1:1 chats, group name otherwise. */
   title: string;
   /** Best-effort avatar URL for direct chats when the connector exposes one. */
@@ -1711,6 +1745,18 @@ interface InboxChat {
 
 /** Cap on how many characters of last-message text we return per chat. */
 const INBOX_CHAT_PREVIEW_LENGTH = 140;
+
+const PostInboxChatMuteRequestSchema = z.object({
+  roomId: z.string().trim().min(1),
+  action: z.enum(["mute", "unmute"]),
+  scope: z.enum(["room", "server"]).optional().default("room"),
+  durationMinutes: z
+    .number()
+    .int()
+    .positive()
+    .max(60 * 24 * 30)
+    .optional(),
+});
 
 type DiscordRoomProfile = {
   avatarUrl?: string;
@@ -1859,6 +1905,11 @@ async function loadInboxChats(
     const room = roomById.get(roomIdKey as UUID);
     const worldId = readRoomWorldId(room);
     const world = worldId ? worldsById.get(worldId as UUID) : undefined;
+    const muteState = await resolveInboxRoomMuteState(
+      runtime,
+      room,
+      roomIdKey as UUID,
+    );
     const liveDiscordProfile = isDiscordConnectorSource(entry.source)
       ? await resolveDiscordRoomProfile(
           runtime,
@@ -1965,6 +2016,7 @@ async function loadInboxChats(
       ...(worldId ? { worldId } : {}),
       worldLabel: resolveInboxWorldLabel(room, world),
       ...(roomType ? { roomType } : {}),
+      ...muteState,
       title,
       avatarUrl: isDiscordConnectorSource(entry.source)
         ? await cacheInboxDiscordAvatar(
@@ -2145,6 +2197,98 @@ export async function handleInboxRoute(
       helpers.error(
         res,
         `failed to send inbox reply: ${err instanceof Error ? err.message : String(err)}`,
+        500,
+      );
+    }
+    return true;
+  }
+
+  // ── POST /api/inbox/chats/mute ───────────────────────────────────
+  // Direct UI affordance for the same room/server mute state the ROOM
+  // action writes. Keeps the sidebar toggle deterministic instead of
+  // sending synthetic chat prompts through the planner.
+  if (method === "POST" && pathname === "/api/inbox/chats/mute") {
+    const runtime = state.runtime;
+    if (!runtime) {
+      helpers.error(res, "runtime not ready", 503);
+      return true;
+    }
+
+    const rawBody = await helpers.readJsonBody<Record<string, unknown>>(
+      req,
+      res,
+      { maxBytes: 16 * 1024 },
+    );
+    if (rawBody === null) {
+      return true;
+    }
+    const parsed = PostInboxChatMuteRequestSchema.safeParse(rawBody);
+    if (!parsed.success) {
+      const issue = parsed.error.issues[0];
+      const issuePath = issue?.path.join(".");
+      helpers.error(
+        res,
+        `Invalid request body at ${issuePath}: ${issue?.message}`,
+        400,
+      );
+      return true;
+    }
+
+    const { action, durationMinutes, roomId, scope } = parsed.data;
+    const targetRoomId = roomId as UUID;
+    const room = await runtime.getRoom(targetRoomId);
+    if (!room) {
+      helpers.error(res, "inbox room not found", 404);
+      return true;
+    }
+
+    try {
+      if (scope === "server") {
+        const worldId = readRoomWorldId(room);
+        if (!worldId) {
+          helpers.error(res, "inbox room has no server/world", 400);
+          return true;
+        }
+        const untilIso = muteUntilIsoFromDuration(durationMinutes);
+        await setWorldMuteState(
+          runtime,
+          worldId as UUID,
+          action === "mute" ? { ...(untilIso ? { untilIso } : {}) } : null,
+        );
+      } else {
+        await runtime.updateParticipantUserState(
+          targetRoomId,
+          runtime.agentId,
+          action === "mute" ? "MUTED" : null,
+        );
+        await setRoomMuteUntil(
+          runtime,
+          targetRoomId,
+          action === "mute"
+            ? (muteUntilIsoFromDuration(durationMinutes) ?? null)
+            : null,
+        );
+      }
+
+      const latestRoom = (await runtime.getRoom(targetRoomId)) ?? room;
+      const muteState = await resolveInboxRoomMuteState(
+        runtime,
+        latestRoom,
+        targetRoomId,
+      );
+      helpers.json(res, {
+        ok: true,
+        roomId: targetRoomId,
+        scope,
+        action,
+        ...muteState,
+      });
+    } catch (err) {
+      helpers.error(
+        res,
+        `failed to update inbox mute state: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
         500,
       );
     }
