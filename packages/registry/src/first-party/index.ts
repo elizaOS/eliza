@@ -127,8 +127,11 @@ var cacheSlot: { value: LoadedRegistry | null } = { value: null };
 function readEntriesFromDisk(): RegistryEntry[] {
   const generatedPath = resolveGeneratedPath();
   if (!existsSync(generatedPath)) {
-    // In packaged builds the aggregated registry may not be bundled. Log and
-    // continue rather than crashing the agent subprocess.
+    // error-policy:J4 explicit designed degrade — in packaged builds the
+    // aggregated registry is legitimately not bundled, so an empty first-party
+    // set is a valid state (not a load failure). Warn and continue rather than
+    // crashing the agent subprocess. `console` is intentional: this low-level
+    // package has no `@elizaos/logger` dependency and must stay dependency-free.
     console.warn(`[registry] generated.json missing: ${generatedPath}`);
     return [];
   }
