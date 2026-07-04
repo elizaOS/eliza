@@ -1,3 +1,6 @@
+/**
+ * Public homepage download and launch surface for elizaOS apps.
+ */
 import { BRAND_PATHS, EXTERNAL_URLS, LOGO_FILES } from "@elizaos/shared/brand";
 import {
   ArrowRight,

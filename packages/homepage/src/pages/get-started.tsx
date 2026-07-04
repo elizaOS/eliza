@@ -1,3 +1,7 @@
+/**
+ * Homepage onboarding page for connecting messaging platforms and starting an
+ * Eliza Cloud session.
+ */
 import { BRAND_COLORS } from "@elizaos/shared/brand";
 import { Button } from "@elizaos/ui/button";
 import {

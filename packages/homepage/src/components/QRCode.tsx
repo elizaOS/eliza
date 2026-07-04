@@ -1,3 +1,6 @@
+/**
+ * Inline SVG QR code used by the homepage phone handoff CTA.
+ */
 import { useT } from "@/providers/I18nProvider";
 
 export default function QRCode({ className }: { className?: string }) {

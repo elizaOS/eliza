@@ -1,3 +1,6 @@
+/**
+ * Animated homepage call-to-action button with an expanding QR panel.
+ */
 import { animated, useSpring } from "@react-spring/web";
 import type { ComponentType, HTMLAttributes } from "react";
 import { type ReactNode, useEffect, useRef, useState } from "react";

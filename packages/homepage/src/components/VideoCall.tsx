@@ -1,3 +1,6 @@
+/**
+ * Animated webcam preview overlay for the homepage phone demo.
+ */
 import { animated, useSpring } from "@react-spring/web";
 import { X } from "lucide-react";
 import type { ComponentType, HTMLAttributes } from "react";

@@ -1,3 +1,7 @@
+/**
+ * Authenticated homepage dashboard for linked messaging platforms and account
+ * handoff actions.
+ */
 import { Button } from "@elizaos/ui/button";
 import {
   AppleMessagesIcon,

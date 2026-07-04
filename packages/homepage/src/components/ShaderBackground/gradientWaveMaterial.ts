@@ -1,3 +1,6 @@
+/**
+ * Custom react-three/fiber material for the homepage gradient wave shader.
+ */
 import { shaderMaterial } from "@react-three/drei";
 import { extend, type ThreeElement } from "@react-three/fiber";
 import * as THREE from "three";

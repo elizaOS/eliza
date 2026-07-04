@@ -1,12 +1,12 @@
+/**
+ * Metadata synchronizer for homepage title and social preview tags.
+ *
+ * Static markup in `index.html` provides pre-React fallback values; once React
+ * mounts, this component replaces them with active-language strings.
+ */
 import { useEffect } from "react";
 import { useT } from "@/providers/I18nProvider";
 
-/**
- * Keeps `<title>` and the Open Graph / Twitter meta tags in sync with the
- * active i18n language. The static markup in `index.html` provides the
- * pre-React fallback values; once React mounts this component swaps them in
- * for the translated strings on every language change.
- */
 export function DocumentMetaManager(): null {
   const t = useT();
 

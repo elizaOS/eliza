@@ -1,3 +1,6 @@
+/**
+ * Country-aware phone number input for homepage sign-in and linking forms.
+ */
 import { BRAND_COLORS } from "@elizaos/shared/brand";
 import { Input } from "@elizaos/ui/input";
 import { getCountries, getCountryCallingCode } from "libphonenumber-js";

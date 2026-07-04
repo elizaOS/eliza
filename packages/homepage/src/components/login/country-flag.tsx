@@ -1,3 +1,6 @@
+/**
+ * Country flag renderer for the homepage phone-number picker.
+ */
 import { hasFlag } from "country-flag-icons";
 import * as FlagComponents from "country-flag-icons/react/3x2";
 import type * as React from "react";

@@ -1,3 +1,9 @@
+/**
+ * Three.js phone model scene for the homepage onboarding demo.
+ *
+ * The component maps the canvas-rendered chat UI onto the model screen and
+ * exposes imperative controls used by the surrounding onboarding flow.
+ */
 import { animated, useSpring } from "@react-spring/three";
 import { Environment, useGLTF } from "@react-three/drei";
 import { Canvas, useFrame } from "@react-three/fiber";

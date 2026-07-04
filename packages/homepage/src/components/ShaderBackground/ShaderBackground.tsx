@@ -1,3 +1,6 @@
+/**
+ * Full-viewport WebGL shader background for the homepage onboarding flow.
+ */
 import { Canvas, useFrame } from "@react-three/fiber";
 import { useEffect, useRef } from "react";
 import * as THREE from "three";

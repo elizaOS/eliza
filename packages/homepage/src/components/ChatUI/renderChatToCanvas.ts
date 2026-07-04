@@ -1,3 +1,9 @@
+/**
+ * Canvas renderer for the chat transcript shown on the homepage device model.
+ *
+ * It measures and paints the iMessage and Telegram mock conversations at a
+ * fixed high-resolution scale so the texture stays crisp on the 3D surface.
+ */
 import { BRAND_COLORS } from "@elizaos/shared/brand";
 
 type Msg = { from: "bot" | "user"; text: string };

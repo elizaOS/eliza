@@ -1,3 +1,7 @@
+/**
+ * Compatibility login route that redirects visitors to the correct homepage
+ * onboarding or connected state.
+ */
 import { BRAND_PATHS, LOGO_FILES } from "@elizaos/shared/brand";
 import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
