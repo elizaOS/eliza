@@ -54,15 +54,22 @@ plugins/plugin-native-talkmode/
 
 ## Commands
 
-Only scripts defined in this package's `package.json`:
+Scripts are defined in `package.json`; run them from the repo root with `bun run --cwd`:
 
 ```bash
-bun run --cwd plugins/plugin-native-talkmode build         # clean + tsc + rollup (ESM + CJS + IIFE)
-bun run --cwd plugins/plugin-native-talkmode build:docs    # clean + docgen + tsc + rollup
-bun run --cwd plugins/plugin-native-talkmode clean         # remove dist/
+bun run --cwd plugins/plugin-native-talkmode clean           # remove build output
+bun run --cwd plugins/plugin-native-talkmode build           # build package artifacts
+bun run --cwd plugins/plugin-native-talkmode build:docs      # generate docs and build artifacts
+bun run --cwd plugins/plugin-native-talkmode typecheck       # TypeScript typecheck
+bun run --cwd plugins/plugin-native-talkmode lint            # mutating Biome check
+bun run --cwd plugins/plugin-native-talkmode lint:check      # read-only Biome check
+bun run --cwd plugins/plugin-native-talkmode format          # write formatting
+bun run --cwd plugins/plugin-native-talkmode format:check    # read-only formatting check
+bun run --cwd plugins/plugin-native-talkmode test            # run package tests
+bun run --cwd plugins/plugin-native-talkmode prepublishOnly  # publish-time build hook
+bun run --cwd plugins/plugin-native-talkmode build:unlocked  # bun run clean && tsc && bunx rollup -c rollup.config.mjs
+bun run --cwd plugins/plugin-native-talkmode docgen          # docgen --api TalkModePlugin --output-readme README.md --output-json dist/docs.json
 ```
-
-API reference generation (`build:docs`) uses `@capacitor/docgen` targeting `TalkModePlugin` and writes to `README.md` and `dist/docs.json`.
 
 ## Config / env vars
 

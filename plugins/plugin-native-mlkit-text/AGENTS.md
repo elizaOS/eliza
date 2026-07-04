@@ -32,18 +32,20 @@ android/
 
 ## Commands
 
-Run from repo root:
+Scripts are defined in `package.json`; run them from the repo root with `bun run --cwd`:
 
 ```bash
-bun run --cwd plugins/plugin-native-mlkit-text build
-bun run --cwd plugins/plugin-native-mlkit-text test
-```
-
-On-device instrumented test (from `packages/app-core/platforms/android`, with a
-device/emulator attached — pin one with `ANDROID_SERIAL=<serial>`):
-
-```bash
-./gradlew :elizaos-capacitor-mlkit-text:connectedDebugAndroidTest
+bun run --cwd plugins/plugin-native-mlkit-text clean           # remove build output
+bun run --cwd plugins/plugin-native-mlkit-text build           # build package artifacts
+bun run --cwd plugins/plugin-native-mlkit-text typecheck       # TypeScript typecheck
+bun run --cwd plugins/plugin-native-mlkit-text lint            # mutating Biome check
+bun run --cwd plugins/plugin-native-mlkit-text lint:check      # read-only Biome check
+bun run --cwd plugins/plugin-native-mlkit-text format          # write formatting
+bun run --cwd plugins/plugin-native-mlkit-text format:check    # read-only formatting check
+bun run --cwd plugins/plugin-native-mlkit-text test            # run package tests
+bun run --cwd plugins/plugin-native-mlkit-text prepublishOnly  # publish-time build hook
+bun run --cwd plugins/plugin-native-mlkit-text watch           # watch TypeScript sources
+bun run --cwd plugins/plugin-native-mlkit-text build:unlocked  # bun run clean && tsc && bunx rollup -c rollup.config.mjs
 ```
 
 ## Gotchas

@@ -35,7 +35,16 @@ plugins/plugin-native-shared-types/
 
 ## Commands
 
-This package has no build, test, or lint scripts. There is nothing to run.
+Scripts are defined in `package.json`; run them from the repo root with `bun run --cwd`:
+
+```bash
+bun run --cwd plugins/plugin-native-shared-types typecheck     # TypeScript typecheck
+bun run --cwd plugins/plugin-native-shared-types lint          # mutating Biome check
+bun run --cwd plugins/plugin-native-shared-types lint:check    # read-only Biome check
+bun run --cwd plugins/plugin-native-shared-types format        # write formatting
+bun run --cwd plugins/plugin-native-shared-types format:check  # read-only formatting check
+bun run --cwd plugins/plugin-native-shared-types test          # run package tests
+```
 
 ## Config / env vars
 

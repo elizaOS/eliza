@@ -81,10 +81,20 @@ plugins/plugin-native-canvas/
 
 ## Commands
 
+Scripts are defined in `package.json`; run them from the repo root with `bun run --cwd`:
+
 ```bash
-bun run --cwd plugins/plugin-native-canvas build   # clean + tsc + rollup
-bun run --cwd plugins/plugin-native-canvas watch   # tsc --watch (no rollup)
-bun run --cwd plugins/plugin-native-canvas clean   # remove dist/
+bun run --cwd plugins/plugin-native-canvas clean           # remove build output
+bun run --cwd plugins/plugin-native-canvas build           # build package artifacts
+bun run --cwd plugins/plugin-native-canvas typecheck       # TypeScript typecheck
+bun run --cwd plugins/plugin-native-canvas lint            # mutating Biome check
+bun run --cwd plugins/plugin-native-canvas lint:check      # read-only Biome check
+bun run --cwd plugins/plugin-native-canvas format          # write formatting
+bun run --cwd plugins/plugin-native-canvas format:check    # read-only formatting check
+bun run --cwd plugins/plugin-native-canvas test            # run package tests
+bun run --cwd plugins/plugin-native-canvas prepublishOnly  # publish-time build hook
+bun run --cwd plugins/plugin-native-canvas watch           # watch TypeScript sources
+bun run --cwd plugins/plugin-native-canvas build:unlocked  # bun run clean && tsc && bunx rollup -c rollup.config.mjs
 ```
 
 ## Config / env vars

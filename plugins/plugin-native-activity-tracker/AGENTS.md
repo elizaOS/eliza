@@ -40,15 +40,17 @@ plugins/plugin-native-activity-tracker/
 
 ## Commands
 
+Scripts are defined in `package.json`; run them from the repo root with `bun run --cwd`:
+
 ```bash
-# Compile TypeScript (produces dist/)
-bun run --cwd plugins/plugin-native-activity-tracker build
-
-# Compile the Swift helper binary (Darwin only, requires Xcode command-line tools)
-bun run --cwd plugins/plugin-native-activity-tracker build:swift
-
-# Run unit tests
-bun run --cwd plugins/plugin-native-activity-tracker test
+bun run --cwd plugins/plugin-native-activity-tracker build         # build package artifacts
+bun run --cwd plugins/plugin-native-activity-tracker build:swift   # build Swift helper (Darwin only)
+bun run --cwd plugins/plugin-native-activity-tracker typecheck     # TypeScript typecheck
+bun run --cwd plugins/plugin-native-activity-tracker lint          # mutating Biome check
+bun run --cwd plugins/plugin-native-activity-tracker lint:check    # read-only Biome check
+bun run --cwd plugins/plugin-native-activity-tracker format        # write formatting
+bun run --cwd plugins/plugin-native-activity-tracker format:check  # read-only formatting check
+bun run --cwd plugins/plugin-native-activity-tracker test          # run package tests
 ```
 
 ## Config / env vars

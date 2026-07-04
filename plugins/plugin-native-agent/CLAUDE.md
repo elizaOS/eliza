@@ -41,12 +41,20 @@ plugins/plugin-native-agent/
 
 ## Commands
 
-Only these scripts exist in `package.json`:
+Scripts are defined in `package.json`; run them from the repo root with `bun run --cwd`:
 
 ```bash
-bun run --cwd plugins/plugin-native-agent build   # clean → tsc → rollup → dist/
-bun run --cwd plugins/plugin-native-agent clean   # remove dist/
-bun run --cwd plugins/plugin-native-agent watch   # tsc --watch
+bun run --cwd plugins/plugin-native-agent clean           # remove build output
+bun run --cwd plugins/plugin-native-agent build           # build package artifacts
+bun run --cwd plugins/plugin-native-agent typecheck       # TypeScript typecheck
+bun run --cwd plugins/plugin-native-agent lint            # mutating Biome check
+bun run --cwd plugins/plugin-native-agent lint:check      # read-only Biome check
+bun run --cwd plugins/plugin-native-agent format          # write formatting
+bun run --cwd plugins/plugin-native-agent format:check    # read-only formatting check
+bun run --cwd plugins/plugin-native-agent test            # run package tests
+bun run --cwd plugins/plugin-native-agent prepublishOnly  # publish-time build hook
+bun run --cwd plugins/plugin-native-agent watch           # watch TypeScript sources
+bun run --cwd plugins/plugin-native-agent build:unlocked  # bun run clean && tsc && bunx rollup -c rollup.config.mjs
 ```
 
 ## Config / env vars

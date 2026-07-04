@@ -65,15 +65,21 @@ plugins/plugin-native-swabble/
 
 ## Commands
 
-Scripts that exist in `package.json`:
+Scripts are defined in `package.json`; run them from the repo root with `bun run --cwd`:
 
 ```bash
-bun run --cwd plugins/plugin-native-swabble build    # tsc → dist/esm, then rollup → dist/plugin.js + dist/plugin.cjs.js
-bun run --cwd plugins/plugin-native-swabble clean    # remove dist/
-bun run --cwd plugins/plugin-native-swabble watch    # tsc --watch (no rollup)
+bun run --cwd plugins/plugin-native-swabble clean           # remove build output
+bun run --cwd plugins/plugin-native-swabble build           # build package artifacts
+bun run --cwd plugins/plugin-native-swabble typecheck       # TypeScript typecheck
+bun run --cwd plugins/plugin-native-swabble lint            # mutating Biome check
+bun run --cwd plugins/plugin-native-swabble lint:check      # read-only Biome check
+bun run --cwd plugins/plugin-native-swabble format          # write formatting
+bun run --cwd plugins/plugin-native-swabble format:check    # read-only formatting check
+bun run --cwd plugins/plugin-native-swabble test            # run package tests
+bun run --cwd plugins/plugin-native-swabble prepublishOnly  # publish-time build hook
+bun run --cwd plugins/plugin-native-swabble watch           # watch TypeScript sources
+bun run --cwd plugins/plugin-native-swabble build:unlocked  # bun run clean && tsc && bunx rollup -c rollup.config.mjs
 ```
-
-`build` requires `tsc` to complete before rollup reads `dist/esm/index.js`. Do not run rollup standalone.
 
 ## Config / env vars
 

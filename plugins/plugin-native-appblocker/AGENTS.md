@@ -53,15 +53,20 @@ plugins/plugin-native-appblocker/
 
 ## Commands
 
-Only scripts that exist in `package.json`:
+Scripts are defined in `package.json`; run them from the repo root with `bun run --cwd`:
 
 ```bash
-bun run --cwd plugins/plugin-native-appblocker build         # tsc + rollup → dist/
-bun run --cwd plugins/plugin-native-appblocker test          # vitest web fallback contract
-bun run --cwd plugins/plugin-native-appblocker clean         # rm dist/
+bun run --cwd plugins/plugin-native-appblocker clean           # remove build output
+bun run --cwd plugins/plugin-native-appblocker build           # build package artifacts
+bun run --cwd plugins/plugin-native-appblocker typecheck       # TypeScript typecheck
+bun run --cwd plugins/plugin-native-appblocker lint            # mutating Biome check
+bun run --cwd plugins/plugin-native-appblocker lint:check      # read-only Biome check
+bun run --cwd plugins/plugin-native-appblocker format          # write formatting
+bun run --cwd plugins/plugin-native-appblocker format:check    # read-only formatting check
+bun run --cwd plugins/plugin-native-appblocker test            # run package tests
+bun run --cwd plugins/plugin-native-appblocker prepublishOnly  # publish-time build hook
+bun run --cwd plugins/plugin-native-appblocker build:unlocked  # bun run clean && tsc && bunx rollup -c rollup.config.mjs
 ```
-
-There is no lint script in this package.
 
 ## Config / env vars
 

@@ -74,13 +74,20 @@ plugins/plugin-native-screencapture/
 
 ## Commands
 
-All scripts come from `package.json`. Run from repo root with `--cwd`:
+Scripts are defined in `package.json`; run them from the repo root with `bun run --cwd`:
 
 ```bash
-bun run --cwd plugins/plugin-native-screencapture build    # clean + tsc + rollup
-bun run --cwd plugins/plugin-native-screencapture clean    # remove dist/
-bun run --cwd plugins/plugin-native-screencapture watch    # tsc --watch (no rollup)
-bun run --cwd plugins/plugin-native-screencapture test     # vitest run (src/web.test.ts)
+bun run --cwd plugins/plugin-native-screencapture clean           # remove build output
+bun run --cwd plugins/plugin-native-screencapture build           # build package artifacts
+bun run --cwd plugins/plugin-native-screencapture typecheck       # TypeScript typecheck
+bun run --cwd plugins/plugin-native-screencapture lint            # mutating Biome check
+bun run --cwd plugins/plugin-native-screencapture lint:check      # read-only Biome check
+bun run --cwd plugins/plugin-native-screencapture format          # write formatting
+bun run --cwd plugins/plugin-native-screencapture format:check    # read-only formatting check
+bun run --cwd plugins/plugin-native-screencapture test            # run package tests
+bun run --cwd plugins/plugin-native-screencapture prepublishOnly  # publish-time build hook
+bun run --cwd plugins/plugin-native-screencapture watch           # watch TypeScript sources
+bun run --cwd plugins/plugin-native-screencapture build:unlocked  # bun run clean && tsc && bunx rollup -c rollup.config.mjs
 ```
 
 ## Config / Env Vars

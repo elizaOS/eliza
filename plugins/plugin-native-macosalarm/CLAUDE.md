@@ -37,13 +37,20 @@ plugins/plugin-native-macosalarm/
 
 ## Commands
 
+Scripts are defined in `package.json`; run them from the repo root with `bun run --cwd`:
+
 ```bash
-bun run --cwd plugins/plugin-native-macosalarm build          # tsc + swiftc
-bun run --cwd plugins/plugin-native-macosalarm build:ts       # TypeScript only
-bun run --cwd plugins/plugin-native-macosalarm build:helper   # Swift binary only
-bun run --cwd plugins/plugin-native-macosalarm typecheck      # tsgo --noEmit
-bun run --cwd plugins/plugin-native-macosalarm test           # vitest run
-bun run --cwd plugins/plugin-native-macosalarm clean          # rm -rf dist bin
+bun run --cwd plugins/plugin-native-macosalarm clean           # remove build output
+bun run --cwd plugins/plugin-native-macosalarm build           # build package artifacts
+bun run --cwd plugins/plugin-native-macosalarm typecheck       # TypeScript typecheck
+bun run --cwd plugins/plugin-native-macosalarm lint            # mutating Biome check
+bun run --cwd plugins/plugin-native-macosalarm lint:check      # read-only Biome check
+bun run --cwd plugins/plugin-native-macosalarm format          # write formatting
+bun run --cwd plugins/plugin-native-macosalarm format:check    # read-only formatting check
+bun run --cwd plugins/plugin-native-macosalarm test            # run package tests
+bun run --cwd plugins/plugin-native-macosalarm prepublishOnly  # publish-time build hook
+bun run --cwd plugins/plugin-native-macosalarm build:helper    # node scripts/build-helper.mjs
+bun run --cwd plugins/plugin-native-macosalarm build:ts        # tsc --noCheck -p tsconfig.json
 ```
 
 ## Config / env vars

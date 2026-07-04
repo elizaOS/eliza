@@ -50,15 +50,20 @@ plugins/plugin-native-desktop/
 
 ## Commands
 
-Scripts in package.json:
+Scripts are defined in `package.json`; run them from the repo root with `bun run --cwd`:
 
 ```bash
-bun run --cwd plugins/plugin-native-desktop build          # delegates to build:unlocked via with-package-build-lock.mjs
-bun run --cwd plugins/plugin-native-desktop build:unlocked # clean + tsc + rollup (actual build steps)
-bun run --cwd plugins/plugin-native-desktop clean          # delete dist/
-bun run --cwd plugins/plugin-native-desktop watch          # tsc --watch (no rollup)
-bun run --cwd plugins/plugin-native-desktop test           # vitest run
-# prepublishOnly runs build automatically before npm publish
+bun run --cwd plugins/plugin-native-desktop clean           # remove build output
+bun run --cwd plugins/plugin-native-desktop build           # build package artifacts
+bun run --cwd plugins/plugin-native-desktop typecheck       # TypeScript typecheck
+bun run --cwd plugins/plugin-native-desktop lint            # mutating Biome check
+bun run --cwd plugins/plugin-native-desktop lint:check      # read-only Biome check
+bun run --cwd plugins/plugin-native-desktop format          # write formatting
+bun run --cwd plugins/plugin-native-desktop format:check    # read-only formatting check
+bun run --cwd plugins/plugin-native-desktop test            # run package tests
+bun run --cwd plugins/plugin-native-desktop prepublishOnly  # publish-time build hook
+bun run --cwd plugins/plugin-native-desktop watch           # watch TypeScript sources
+bun run --cwd plugins/plugin-native-desktop build:unlocked  # bun run clean && tsc && bunx rollup -c rollup.config.mjs
 ```
 
 ## Config / env vars

@@ -45,17 +45,21 @@ rollup.config.mjs                           Bundles CJS + ESM outputs.
 
 ## Commands
 
-Only scripts defined in `package.json`:
+Scripts are defined in `package.json`; run them from the repo root with `bun run --cwd`:
 
 ```bash
-bun run --cwd plugins/plugin-native-mobile-agent-bridge build         # clean + tsc + rollup
-bun run --cwd plugins/plugin-native-mobile-agent-bridge clean         # remove dist/
-bun run --cwd plugins/plugin-native-mobile-agent-bridge watch         # tsc --watch
-bun run --cwd plugins/plugin-native-mobile-agent-bridge test          # vitest run
-bun run --cwd plugins/plugin-native-mobile-agent-bridge lint          # biome check
-bun run --cwd plugins/plugin-native-mobile-agent-bridge fmt           # biome check --write --unsafe
-bun run --cwd plugins/plugin-native-mobile-agent-bridge format        # biome format --write
-bun run --cwd plugins/plugin-native-mobile-agent-bridge format:check  # biome format (dry-run)
+bun run --cwd plugins/plugin-native-mobile-agent-bridge clean           # remove build output
+bun run --cwd plugins/plugin-native-mobile-agent-bridge build           # build package artifacts
+bun run --cwd plugins/plugin-native-mobile-agent-bridge typecheck       # TypeScript typecheck
+bun run --cwd plugins/plugin-native-mobile-agent-bridge lint            # mutating Biome check
+bun run --cwd plugins/plugin-native-mobile-agent-bridge lint:check      # read-only Biome check
+bun run --cwd plugins/plugin-native-mobile-agent-bridge format          # write formatting
+bun run --cwd plugins/plugin-native-mobile-agent-bridge format:check    # read-only formatting check
+bun run --cwd plugins/plugin-native-mobile-agent-bridge test            # run package tests
+bun run --cwd plugins/plugin-native-mobile-agent-bridge prepublishOnly  # publish-time build hook
+bun run --cwd plugins/plugin-native-mobile-agent-bridge watch           # watch TypeScript sources
+bun run --cwd plugins/plugin-native-mobile-agent-bridge build:unlocked  # bun run clean && tsc && bunx rollup -c rollup.config.mjs
+bun run --cwd plugins/plugin-native-mobile-agent-bridge fmt             # bunx @biomejs/biome check --write --unsafe .
 ```
 
 ## Config / env vars

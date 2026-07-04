@@ -33,10 +33,18 @@ plugins/plugin-native-reminders/
 
 ## Commands
 
+Scripts are defined in `package.json`; run them from the repo root with `bun run --cwd`:
+
 ```bash
-bun run --cwd plugins/plugin-native-reminders test
-bun run --cwd plugins/plugin-native-reminders build
-bun run --cwd plugins/plugin-native-reminders clean
+bun run --cwd plugins/plugin-native-reminders clean           # remove build output
+bun run --cwd plugins/plugin-native-reminders build           # build package artifacts
+bun run --cwd plugins/plugin-native-reminders typecheck       # TypeScript typecheck
+bun run --cwd plugins/plugin-native-reminders lint            # mutating Biome check
+bun run --cwd plugins/plugin-native-reminders lint:check      # read-only Biome check
+bun run --cwd plugins/plugin-native-reminders format          # write formatting
+bun run --cwd plugins/plugin-native-reminders format:check    # read-only formatting check
+bun run --cwd plugins/plugin-native-reminders test            # run package tests
+bun run --cwd plugins/plugin-native-reminders prepublishOnly  # publish-time build hook
 ```
 
 ## Config / env vars

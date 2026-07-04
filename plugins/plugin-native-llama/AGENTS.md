@@ -45,11 +45,20 @@ rollup.config.mjs           Rollup bundle config (IIFE + CJS outputs; ESM comes 
 
 ## Commands
 
+Scripts are defined in `package.json`; run them from the repo root with `bun run --cwd`:
+
 ```bash
-bun run --cwd plugins/plugin-native-llama build    # clean + tsc + rollup
-bun run --cwd plugins/plugin-native-llama clean    # rm dist/
-bun run --cwd plugins/plugin-native-llama test     # vitest run
-bun run --cwd plugins/plugin-native-llama watch    # tsc --watch
+bun run --cwd plugins/plugin-native-llama clean           # remove build output
+bun run --cwd plugins/plugin-native-llama build           # build package artifacts
+bun run --cwd plugins/plugin-native-llama typecheck       # TypeScript typecheck
+bun run --cwd plugins/plugin-native-llama lint            # mutating Biome check
+bun run --cwd plugins/plugin-native-llama lint:check      # read-only Biome check
+bun run --cwd plugins/plugin-native-llama format          # write formatting
+bun run --cwd plugins/plugin-native-llama format:check    # read-only formatting check
+bun run --cwd plugins/plugin-native-llama test            # run package tests
+bun run --cwd plugins/plugin-native-llama prepublishOnly  # publish-time build hook
+bun run --cwd plugins/plugin-native-llama watch           # watch TypeScript sources
+bun run --cwd plugins/plugin-native-llama build:unlocked  # bun run clean && tsc && bunx rollup -c rollup.config.mjs
 ```
 
 ## Config / env vars

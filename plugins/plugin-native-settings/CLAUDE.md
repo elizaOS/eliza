@@ -37,14 +37,19 @@ src/
 
 ## Commands
 
-Scripts defined in this package's `package.json`:
+Scripts are defined in `package.json`; run them from the repo root with `bun run --cwd`:
 
 ```bash
-bun run --cwd plugins/plugin-native-settings build       # tsup JS + tsc types
-bun run --cwd plugins/plugin-native-settings typecheck   # tsgo --noEmit
-bun run --cwd plugins/plugin-native-settings lint        # biome check src
-bun run --cwd plugins/plugin-native-settings test        # vitest run
-bun run --cwd plugins/plugin-native-settings clean       # rm -rf dist
+bun run --cwd plugins/plugin-native-settings clean         # remove build output
+bun run --cwd plugins/plugin-native-settings build         # build package artifacts
+bun run --cwd plugins/plugin-native-settings typecheck     # TypeScript typecheck
+bun run --cwd plugins/plugin-native-settings lint          # mutating Biome check
+bun run --cwd plugins/plugin-native-settings lint:check    # read-only Biome check
+bun run --cwd plugins/plugin-native-settings format        # write formatting
+bun run --cwd plugins/plugin-native-settings format:check  # read-only formatting check
+bun run --cwd plugins/plugin-native-settings test          # run package tests
+bun run --cwd plugins/plugin-native-settings build:js      # tsup --config ../tsup.plugin-packages.shared.ts
+bun run --cwd plugins/plugin-native-settings build:types   # tsc --noCheck -p tsconfig.build.json
 ```
 
 ## Config / env vars

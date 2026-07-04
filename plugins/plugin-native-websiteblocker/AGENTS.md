@@ -64,14 +64,21 @@ tsconfig.json                           TS build config
 
 ## Commands
 
-```bash
-bun run --cwd plugins/plugin-native-websiteblocker build        # tsc + rollup (outputs dist/)
-bun run --cwd plugins/plugin-native-websiteblocker clean        # remove dist/
-bun run --cwd plugins/plugin-native-websiteblocker test:android:manual  # Gradle unit tests
-packages/app-core/platforms/android/gradlew -p packages/app-core/platforms/android :elizaos-capacitor-websiteblocker:connectedDebugAndroidTest  # Android instrumented tests
-```
+Scripts are defined in `package.json`; run them from the repo root with `bun run --cwd`:
 
-`prepublishOnly` runs `build` automatically on `npm publish`.
+```bash
+bun run --cwd plugins/plugin-native-websiteblocker clean                # remove build output
+bun run --cwd plugins/plugin-native-websiteblocker build                # build package artifacts
+bun run --cwd plugins/plugin-native-websiteblocker typecheck            # TypeScript typecheck
+bun run --cwd plugins/plugin-native-websiteblocker lint                 # mutating Biome check
+bun run --cwd plugins/plugin-native-websiteblocker lint:check           # read-only Biome check
+bun run --cwd plugins/plugin-native-websiteblocker format               # write formatting
+bun run --cwd plugins/plugin-native-websiteblocker format:check         # read-only formatting check
+bun run --cwd plugins/plugin-native-websiteblocker test                 # run package tests
+bun run --cwd plugins/plugin-native-websiteblocker test:android:manual  # manual Android/Gradle test lane
+bun run --cwd plugins/plugin-native-websiteblocker prepublishOnly       # publish-time build hook
+bun run --cwd plugins/plugin-native-websiteblocker build:unlocked       # bun run clean && tsc && bunx rollup -c rollup.config.mjs
+```
 
 ## Config / env vars
 

@@ -49,23 +49,28 @@ plugins/plugin-native-gateway/
 
 ## Commands
 
-Scripts defined in `package.json`:
+Scripts are defined in `package.json`; run them from the repo root with `bun run --cwd`:
 
 ```bash
-bun run --cwd plugins/plugin-native-gateway build           # tsc + rollup → dist/
-bun run --cwd plugins/plugin-native-gateway build:docs      # docgen → README.md, then build
-bun run --cwd plugins/plugin-native-gateway watch           # tsc --watch
-bun run --cwd plugins/plugin-native-gateway lint            # biome check (+ swiftlint if installed)
-bun run --cwd plugins/plugin-native-gateway lint:check      # biome check (read-only)
-bun run --cwd plugins/plugin-native-gateway fmt             # biome check --write --unsafe
-bun run --cwd plugins/plugin-native-gateway format          # biome format --write
-bun run --cwd plugins/plugin-native-gateway format:check    # biome format (dry-run)
-bun run --cwd plugins/plugin-native-gateway verify          # verify:ios + verify:android + verify:web
-bun run --cwd plugins/plugin-native-gateway verify:web      # bun run build only
-bun run --cwd plugins/plugin-native-gateway verify:ios      # pod install + xcodebuild
-bun run --cwd plugins/plugin-native-gateway verify:android  # ./gradlew clean build test
-bun run --cwd plugins/plugin-native-gateway docgen          # @capacitor/docgen → README.md + dist/docs.json
-bun run --cwd plugins/plugin-native-gateway clean           # delete dist/
+bun run --cwd plugins/plugin-native-gateway clean           # remove build output
+bun run --cwd plugins/plugin-native-gateway build           # build package artifacts
+bun run --cwd plugins/plugin-native-gateway build:docs      # generate docs and build artifacts
+bun run --cwd plugins/plugin-native-gateway typecheck       # TypeScript typecheck
+bun run --cwd plugins/plugin-native-gateway lint            # mutating Biome check plus native lint tail
+bun run --cwd plugins/plugin-native-gateway lint:check      # read-only Biome check plus native lint tail
+bun run --cwd plugins/plugin-native-gateway format          # write formatting
+bun run --cwd plugins/plugin-native-gateway format:check    # read-only formatting check
+bun run --cwd plugins/plugin-native-gateway test            # run package tests
+bun run --cwd plugins/plugin-native-gateway prepublishOnly  # publish-time build hook
+bun run --cwd plugins/plugin-native-gateway watch           # watch TypeScript sources
+bun run --cwd plugins/plugin-native-gateway build:unlocked  # bun run clean && tsc && bunx rollup -c rollup.config.mjs
+bun run --cwd plugins/plugin-native-gateway docgen          # docgen --api GatewayPlugin --output-readme README.md --output-json dist/docs.json
+bun run --cwd plugins/plugin-native-gateway fmt             # bunx @biomejs/biome check --write --unsafe . && bash -c 'if command -v swiftlint >/dev/null 2>&1; then bun run swiftlint -- lint --fix; fi'
+bun run --cwd plugins/plugin-native-gateway swiftlint       # node-swiftlint
+bun run --cwd plugins/plugin-native-gateway verify          # bun run verify:ios && bun run verify:android && bun run verify:web
+bun run --cwd plugins/plugin-native-gateway verify:android  # cd android && ./gradlew clean build test && cd ..
+bun run --cwd plugins/plugin-native-gateway verify:ios      # cd ios && pod install && xcodebuild -workspace Plugin.xcworkspace -scheme Plugin -destination generic/platform=iOS && cd ..
+bun run --cwd plugins/plugin-native-gateway verify:web      # bun run build
 ```
 
 ## Config / env vars

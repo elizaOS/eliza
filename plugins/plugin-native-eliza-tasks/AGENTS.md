@@ -45,11 +45,20 @@ plugins/plugin-native-eliza-tasks/
 
 ## Commands
 
+Scripts are defined in `package.json`; run them from the repo root with `bun run --cwd`:
+
 ```bash
-bun run --cwd plugins/plugin-native-eliza-tasks build   # tsc + rollup
-bun run --cwd plugins/plugin-native-eliza-tasks clean   # rm dist/
-bun run --cwd plugins/plugin-native-eliza-tasks watch   # tsc --watch
-bun run --cwd plugins/plugin-native-eliza-tasks test    # vitest run --passWithNoTests
+bun run --cwd plugins/plugin-native-eliza-tasks clean           # remove build output
+bun run --cwd plugins/plugin-native-eliza-tasks build           # build package artifacts
+bun run --cwd plugins/plugin-native-eliza-tasks typecheck       # TypeScript typecheck
+bun run --cwd plugins/plugin-native-eliza-tasks lint            # mutating Biome check
+bun run --cwd plugins/plugin-native-eliza-tasks lint:check      # read-only Biome check
+bun run --cwd plugins/plugin-native-eliza-tasks format          # write formatting
+bun run --cwd plugins/plugin-native-eliza-tasks format:check    # read-only formatting check
+bun run --cwd plugins/plugin-native-eliza-tasks test            # run package tests
+bun run --cwd plugins/plugin-native-eliza-tasks prepublishOnly  # publish-time build hook
+bun run --cwd plugins/plugin-native-eliza-tasks watch           # watch TypeScript sources
+bun run --cwd plugins/plugin-native-eliza-tasks build:unlocked  # bun run clean && bunx tsc -p tsconfig.json && bunx rollup -c rollup.config.mjs
 ```
 
 ## Config / env vars

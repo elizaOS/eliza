@@ -53,12 +53,20 @@ plugins/plugin-native-contacts/
 
 ## Commands
 
-```bash
-bun run --cwd plugins/plugin-native-contacts build    # clean + tsc + rollup
-bun run --cwd plugins/plugin-native-contacts clean    # rm dist/
-```
+Scripts are defined in `package.json`; run them from the repo root with `bun run --cwd`:
 
-`prepublishOnly` runs `build` automatically on `bun publish`.
+```bash
+bun run --cwd plugins/plugin-native-contacts clean           # remove build output
+bun run --cwd plugins/plugin-native-contacts build           # build package artifacts
+bun run --cwd plugins/plugin-native-contacts typecheck       # TypeScript typecheck
+bun run --cwd plugins/plugin-native-contacts lint            # mutating Biome check
+bun run --cwd plugins/plugin-native-contacts lint:check      # read-only Biome check
+bun run --cwd plugins/plugin-native-contacts format          # write formatting
+bun run --cwd plugins/plugin-native-contacts format:check    # read-only formatting check
+bun run --cwd plugins/plugin-native-contacts test            # run package tests
+bun run --cwd plugins/plugin-native-contacts prepublishOnly  # publish-time build hook
+bun run --cwd plugins/plugin-native-contacts build:unlocked  # bun run clean && tsc && bunx rollup -c rollup.config.mjs
+```
 
 ## Config / env vars
 

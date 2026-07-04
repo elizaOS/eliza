@@ -49,26 +49,21 @@ plugins/plugin-native-location/
 
 ## Commands
 
-Only scripts that exist in this package's `package.json`:
+Scripts are defined in `package.json`; run them from the repo root with `bun run --cwd`:
 
 ```bash
-# Build TypeScript + rollup bundles
-bun run --cwd plugins/plugin-native-location build
-
-# Cleans dist/, then runs docgen → tsc → rollup bundles
-bun run --cwd plugins/plugin-native-location build:docs
-
-# Delete dist/
-bun run --cwd plugins/plugin-native-location clean
-
-# Generate README.md from JSDoc (requires @capacitor/docgen)
-bun run --cwd plugins/plugin-native-location docgen
-
-# Run unit tests (vitest)
-bun run --cwd plugins/plugin-native-location test
-
-# Android instrumented test for the native reader (from packages/app-core/platforms/android)
-./gradlew :elizaos-capacitor-location:connectedDebugAndroidTest
+bun run --cwd plugins/plugin-native-location clean           # remove build output
+bun run --cwd plugins/plugin-native-location build           # build package artifacts
+bun run --cwd plugins/plugin-native-location build:docs      # generate docs and build artifacts
+bun run --cwd plugins/plugin-native-location typecheck       # TypeScript typecheck
+bun run --cwd plugins/plugin-native-location lint            # mutating Biome check
+bun run --cwd plugins/plugin-native-location lint:check      # read-only Biome check
+bun run --cwd plugins/plugin-native-location format          # write formatting
+bun run --cwd plugins/plugin-native-location format:check    # read-only formatting check
+bun run --cwd plugins/plugin-native-location test            # run package tests
+bun run --cwd plugins/plugin-native-location prepublishOnly  # publish-time build hook
+bun run --cwd plugins/plugin-native-location build:unlocked  # bun run clean && tsc && bunx rollup -c rollup.config.mjs
+bun run --cwd plugins/plugin-native-location docgen          # docgen --api LocationPlugin --output-readme README.md --output-json dist/docs.json
 ```
 
 ## Config / env vars

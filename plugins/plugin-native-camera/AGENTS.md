@@ -68,16 +68,21 @@ plugins/plugin-native-camera/
 
 ## Commands
 
-Only scripts defined in `package.json`:
+Scripts are defined in `package.json`; run them from the repo root with `bun run --cwd`:
 
 ```bash
-bun run --cwd plugins/plugin-native-camera build   # clean + tsc + rollup bundle
-bun run --cwd plugins/plugin-native-camera clean   # remove dist/
-bun run --cwd plugins/plugin-native-camera watch   # tsc --watch
-bun run --cwd plugins/plugin-native-camera test    # run vitest unit tests
+bun run --cwd plugins/plugin-native-camera clean           # remove build output
+bun run --cwd plugins/plugin-native-camera build           # build package artifacts
+bun run --cwd plugins/plugin-native-camera typecheck       # TypeScript typecheck
+bun run --cwd plugins/plugin-native-camera lint            # mutating Biome check
+bun run --cwd plugins/plugin-native-camera lint:check      # read-only Biome check
+bun run --cwd plugins/plugin-native-camera format          # write formatting
+bun run --cwd plugins/plugin-native-camera format:check    # read-only formatting check
+bun run --cwd plugins/plugin-native-camera test            # run package tests
+bun run --cwd plugins/plugin-native-camera prepublishOnly  # publish-time build hook
+bun run --cwd plugins/plugin-native-camera watch           # watch TypeScript sources
+bun run --cwd plugins/plugin-native-camera build:unlocked  # bun run clean && tsc && bunx rollup -c rollup.config.mjs
 ```
-
-`prepublishOnly` runs `build` automatically before `npm publish`.
 
 ## Config / env vars
 

@@ -50,10 +50,19 @@ plugins/plugin-native-calendar/
 
 ## Commands
 
+Scripts are defined in `package.json`; run them from the repo root with `bun run --cwd`:
+
 ```bash
-bun run --cwd plugins/plugin-native-calendar build          # tsc + rollup → dist/
-bun run --cwd plugins/plugin-native-calendar clean          # remove dist/
-bun run --cwd plugins/plugin-native-calendar prepublishOnly # build before npm publish
+bun run --cwd plugins/plugin-native-calendar clean           # remove build output
+bun run --cwd plugins/plugin-native-calendar build           # build package artifacts
+bun run --cwd plugins/plugin-native-calendar typecheck       # TypeScript typecheck
+bun run --cwd plugins/plugin-native-calendar lint            # mutating Biome check
+bun run --cwd plugins/plugin-native-calendar lint:check      # read-only Biome check
+bun run --cwd plugins/plugin-native-calendar format          # write formatting
+bun run --cwd plugins/plugin-native-calendar format:check    # read-only formatting check
+bun run --cwd plugins/plugin-native-calendar test            # run package tests
+bun run --cwd plugins/plugin-native-calendar prepublishOnly  # publish-time build hook
+bun run --cwd plugins/plugin-native-calendar build:unlocked  # bun run clean && tsc && bunx rollup -c rollup.config.mjs
 ```
 
 ## Config / Env Vars

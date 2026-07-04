@@ -49,13 +49,19 @@ plugins/plugin-native-wifi/
 
 ## Commands
 
-Only scripts defined in this package's `package.json`:
+Scripts are defined in `package.json`; run them from the repo root with `bun run --cwd`:
 
 ```bash
-bun run --cwd plugins/plugin-native-wifi build          # tsc + rollup → dist/
-bun run --cwd plugins/plugin-native-wifi clean          # delete dist/
-bun run --cwd plugins/plugin-native-wifi test           # vitest run
-bun run --cwd plugins/plugin-native-wifi prepublishOnly # clean + build (runs automatically before npm publish)
+bun run --cwd plugins/plugin-native-wifi clean           # remove build output
+bun run --cwd plugins/plugin-native-wifi build           # build package artifacts
+bun run --cwd plugins/plugin-native-wifi typecheck       # TypeScript typecheck
+bun run --cwd plugins/plugin-native-wifi lint            # mutating Biome check
+bun run --cwd plugins/plugin-native-wifi lint:check      # read-only Biome check
+bun run --cwd plugins/plugin-native-wifi format          # write formatting
+bun run --cwd plugins/plugin-native-wifi format:check    # read-only formatting check
+bun run --cwd plugins/plugin-native-wifi test            # run package tests
+bun run --cwd plugins/plugin-native-wifi prepublishOnly  # publish-time build hook
+bun run --cwd plugins/plugin-native-wifi build:unlocked  # bun run clean && tsc && bunx rollup -c rollup.config.mjs
 ```
 
 ## Config / env vars

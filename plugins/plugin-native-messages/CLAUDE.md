@@ -39,14 +39,19 @@ plugins/plugin-native-messages/
 
 ## Commands
 
-Scripts defined in this package.json:
+Scripts are defined in `package.json`; run them from the repo root with `bun run --cwd`:
 
 ```bash
-bun run --cwd plugins/plugin-native-messages build           # lock-wrapped build; delegates to build:unlocked
-bun run --cwd plugins/plugin-native-messages build:unlocked  # clean + tsc + rollup
-bun run --cwd plugins/plugin-native-messages clean           # node ../../packages/scripts/rm-path-recursive.mjs dist
-bun run --cwd plugins/plugin-native-messages test            # vitest run
-bun run --cwd plugins/plugin-native-messages prepublishOnly  # same as build
+bun run --cwd plugins/plugin-native-messages clean           # remove build output
+bun run --cwd plugins/plugin-native-messages build           # build package artifacts
+bun run --cwd plugins/plugin-native-messages typecheck       # TypeScript typecheck
+bun run --cwd plugins/plugin-native-messages lint            # mutating Biome check
+bun run --cwd plugins/plugin-native-messages lint:check      # read-only Biome check
+bun run --cwd plugins/plugin-native-messages format          # write formatting
+bun run --cwd plugins/plugin-native-messages format:check    # read-only formatting check
+bun run --cwd plugins/plugin-native-messages test            # run package tests
+bun run --cwd plugins/plugin-native-messages prepublishOnly  # publish-time build hook
+bun run --cwd plugins/plugin-native-messages build:unlocked  # bun run clean && tsc && bunx rollup -c rollup.config.mjs
 ```
 
 ## Config / env vars
