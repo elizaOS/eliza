@@ -1,3 +1,7 @@
+/**
+ * Route result contracts shared by cloud-routing consumers.
+ */
+
 import type { FeaturePolicy } from "./features.js";
 
 export type CloudRouteSource = "local-key" | "cloud-proxy" | "disabled";

@@ -1,3 +1,10 @@
+/**
+ * Cloud route resolver for local-key, cloud-proxy, and disabled service access.
+ *
+ * The resolver reads settings at call time, validates caller-provided service
+ * names and base URLs, and never performs network I/O.
+ */
+
 import {
   DEFAULT_FEATURE_POLICY,
   FEATURE_IDS,

@@ -1,3 +1,7 @@
+/**
+ * Public surface for cloud-routing feature metadata and route resolution.
+ */
+
 export {
   DEFAULT_FEATURE_POLICY,
   FEATURE_IDS,
