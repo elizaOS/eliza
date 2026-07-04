@@ -1,0 +1,74 @@
+{
+  "jill_scenario": {
+    "scenario": "jill",
+    "entities": [
+      {
+        "entity_id": "owner-entity-id",
+        "preferred_name": "Shaw",
+        "identities": [
+          {
+            "platform": "voice",
+            "handle": "owner-cluster",
+            "confidence": 1.0,
+            "evidence": [],
+            "verified": true,
+            "added_via": "platform_observation",
+            "added_at": "2026-07-04T14:07:56Z"
+          }
+        ],
+        "entity_type": "person"
+      },
+      {
+        "entity_id": "6dece31a-336a-4546-af9d-ab8468e1d4e0",
+        "preferred_name": "cluster-jill",
+        "identities": [
+          {
+            "platform": "voice",
+            "handle": "cluster-jill",
+            "display_name": null,
+            "confidence": 0.95,
+            "evidence": [
+              "turn-jill",
+              "self-name:turn-jill"
+            ],
+            "verified": false,
+            "added_via": "platform_observation",
+            "added_at": "2026-07-04T14:07:56Z"
+          }
+        ],
+        "entity_type": "person"
+      }
+    ],
+    "relationships": [
+      {
+        "rel_id": "c8f28e4f-a843-49cb-93b7-0b5c63a74c2f",
+        "source": "owner-entity-id",
+        "target": "6dece31a-336a-4546-af9d-ab8468e1d4e0",
+        "type": "partner_of",
+        "metadata": {
+          "label": "wife"
+        }
+      }
+    ],
+    "ingest_summary": [
+      {
+        "entity_id": "owner-entity-id",
+        "profile_id": "vp_839091864c7b9d23",
+        "imprint_cluster_id": "e33698e1-77a2-4c2e-b82e-830eb5025afa",
+        "self_name": "Jill",
+        "relationship_ids": [],
+        "queued_partner_claims": 1
+      },
+      {
+        "entity_id": "6dece31a-336a-4546-af9d-ab8468e1d4e0",
+        "profile_id": "vp_6c5447502957d0a7",
+        "imprint_cluster_id": "b59a716a-be4d-4361-91f2-995ff4ec0423",
+        "self_name": "Jill",
+        "relationship_ids": [
+          "c8f28e4f-a843-49cb-93b7-0b5c63a74c2f"
+        ],
+        "queued_partner_claims": 0
+      }
+    ]
+  }
+}

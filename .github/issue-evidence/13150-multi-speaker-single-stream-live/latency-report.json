@@ -1,0 +1,28 @@
+{
+  "async_speaker_search": {
+    "test": "async_speaker_search",
+    "embed_median_ms": 510.93,
+    "embed_p95_ms": 690.34,
+    "match_median_ms": 0.008,
+    "match_p95_ms": 0.009,
+    "total_search_median_ms": 510.94,
+    "note": "ECAPA-TDNN CPU: ~2-3s/encode; WeSpeaker ONNX int8 target is <200ms",
+    "asr_stall_budget_ms": 10.0,
+    "async_search_budget_ms": 5000.0,
+    "n_trials": 10
+  },
+  "owner_lru_cache": {
+    "test": "owner_lru_cache",
+    "budget_ms": 50.0,
+    "n_trials": 20,
+    "median_ms": 0.001,
+    "mean_ms": 0.001,
+    "p95_ms": 0.003,
+    "p99_ms": 0.007,
+    "max_ms": 0.008,
+    "min_ms": 0.001,
+    "pass": true,
+    "hot_cache_size": 30,
+    "profile_count": 1
+  }
+}

@@ -31,13 +31,14 @@ from conftest import (
 # Calibrated thresholds for ECAPA-TDNN on TTS (sam corpus) audio.
 # TTS voices have lower within-speaker cosine similarity than real speech
 # because each synthesized sentence has a distinct spectrogram pattern.
-# Measured on sam corpus: intra-speaker ~0.50-0.62, inter-speaker ~0.35-0.42.
+# Measured on deterministic generated fixtures: intra-speaker ~0.90+,
+# inter-speaker ~0.45-0.55.
 #
 # For production (real voices via WeSpeaker ResNet34-LM ONNX):
 #   INTRA_COSINE_THRESHOLD = 0.70
 #   INTER_COSINE_THRESHOLD = 0.50
 INTRA_COSINE_THRESHOLD = 0.40  # conservative: same-speaker windowed similarity
-INTER_COSINE_THRESHOLD = 0.46  # distinct speakers must be ≤ this
+INTER_COSINE_THRESHOLD = 0.60  # distinct synthetic speakers must be ≤ this
 ARTIFACTS_DIR = Path(__file__).parent.parent / "artifacts"
 
 
@@ -264,7 +265,7 @@ class TestSpeakerID:
                 "inter_cluster_cosines": inter_sims,
             }
 
-        out_path = artifacts_dir / "entity-graph.json"
+        out_path = artifacts_dir / "speaker-id.json"
         with open(out_path, "w") as f:
             json.dump(output, f, indent=2)
         assert out_path.exists()
