@@ -189,6 +189,55 @@ describe("orchestrator routes — dispatch", () => {
     expect(result.json.apps).toEqual(cache.get(BUILT_APPS_CACHE_KEY));
   });
 
+  it("deletes built apps from the registry before the task service gate", async () => {
+    const launchpad = {
+      slug: "launchpad",
+      name: "Launchpad",
+      url: "https://apps.example.test/apps/launchpad/",
+      target: "custom",
+      sessionId: "session-1",
+      registeredAt: "2026-07-04T00:00:00.000Z",
+    };
+    const cloudApp = {
+      slug: "cloud-app",
+      name: "Cloud App",
+      url: "https://cloud-app.example.test/",
+      target: "eliza-cloud",
+      sessionId: "session-2",
+      registeredAt: "2026-07-04T01:00:00.000Z",
+    };
+    const cache = new Map<string, unknown>([
+      [BUILT_APPS_CACHE_KEY, [launchpad, cloudApp]],
+    ]);
+    const result = await call(
+      null,
+      "DELETE",
+      "/api/orchestrator/built-apps/custom/launchpad",
+      undefined,
+      cache,
+    );
+
+    expect(result.matched).toBe(true);
+    expect(result.status).toBe(200);
+    expect(result.json.deleted).toBe(true);
+    expect(cache.get(BUILT_APPS_CACHE_KEY)).toEqual([cloudApp]);
+  });
+
+  it("404s a missing built app without requiring the task service", async () => {
+    const cache = new Map<string, unknown>([[BUILT_APPS_CACHE_KEY, []]]);
+    const result = await call(
+      null,
+      "DELETE",
+      "/api/orchestrator/built-apps/custom/missing",
+      undefined,
+      cache,
+    );
+
+    expect(result.matched).toBe(true);
+    expect(result.status).toBe(404);
+    expect(result.json.error).toBe("Built app not found");
+  });
+
   it("pauses and resumes all", async () => {
     const service = makeService();
     expect(
