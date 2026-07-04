@@ -584,7 +584,10 @@ export class CoreManagerService extends Service {
 				if ((await fs.readdir(this.coreBaseDir())).length === 0) {
 					await fs.rmdir(this.coreBaseDir());
 				}
-			} catch {}
+			} catch (err) {
+				// error-policy:J6 best-effort teardown of an empty core dir
+				logger.debug("[CoreManager] best-effort empty coreBaseDir cleanup failed", err);
+			}
 
 			await this.writeTsconfigCorePaths(null);
 

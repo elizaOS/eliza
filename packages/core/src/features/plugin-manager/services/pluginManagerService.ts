@@ -980,7 +980,12 @@ export class PluginManagerService extends Service implements PluginRegistry {
 
 		try {
 			await execAsync(`${pm} run build`, { cwd: targetDir });
-		} catch {} // Build might fail or not exist, continue
+		} catch (err) {
+			// A plugin may legitimately have no build script; surface a real build
+			// failure observably instead of silently masking it as a healthy install.
+			logger.warn(`[PluginManager] build step did not complete for ${targetDir}`, err);
+			this.runtime.reportError("PluginManager", err, { targetDir, step: "build" });
+		}
 	}
 
 	/**
@@ -1157,7 +1162,11 @@ export class PluginManagerService extends Service implements PluginRegistry {
 				await execAsync(`${pm} install`, { cwd: targetDir });
 				try {
 					await execAsync(`${pm} run build`, { cwd: targetDir });
-				} catch {}
+				} catch (err) {
+					// Surface a real build failure observably instead of masking it (see above).
+					logger.warn(`[PluginManager] build step did not complete for ${targetDir}`, err);
+					this.runtime.reportError("PluginManager", err, { targetDir, step: "build" });
+				}
 
 				const commitHash = (
 					await execAsync("git rev-parse HEAD", { cwd: targetDir })

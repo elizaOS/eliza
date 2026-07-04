@@ -610,7 +610,9 @@ function containsToolAttemptObject(text: string): boolean {
 		try {
 			const parsed = JSON.parse(objectText);
 			if (isToolAttemptObject(parsed)) return true;
-		} catch {}
+		} catch {
+			// error-policy:J3 unparseable/mismatched text is simply not a tool-attempt object
+		}
 	}
 	return false;
 }
