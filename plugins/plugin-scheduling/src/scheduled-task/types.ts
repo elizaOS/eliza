@@ -321,6 +321,15 @@ export interface OwnerFactsView {
     sampleCount?: number;
     windowDays?: number;
   };
+  /**
+   * Learned day-to-day schedule shape, derived from observed sleep regularity
+   * (`rotating` = a two-band shift-work pattern, distinct from merely noisy
+   * `irregular`). Structural owner fact the spine can gate/route on. Absent
+   * until enough evidence accrues.
+   */
+  scheduleStyle?: "regular" | "irregular" | "rotating";
+  /** Learned chronotype from the owner's mid-sleep point (MCTQ-style terciles). */
+  chronotype?: "early" | "intermediate" | "late";
 }
 
 /**

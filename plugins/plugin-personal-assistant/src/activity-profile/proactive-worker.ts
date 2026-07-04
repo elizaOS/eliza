@@ -206,6 +206,11 @@ export async function executeProactiveTask(
       {
         typicalWakeHour: profile.typicalWakeHour,
         typicalSleepHour: profile.typicalSleepHour,
+        // Feed the observed distributions so the morning/evening band width is
+        // learned (IQR-clamped) rather than fixed; sparse samples fall back to
+        // the historical fixed spans inside deriveWindowsFromRhythm.
+        wakeHours: profile.wakeHours,
+        sleepHours: profile.sleepHours,
       },
       now,
     );

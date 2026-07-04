@@ -741,6 +741,10 @@ export function analyzeMessages(
     typicalLastActiveHour,
     typicalWakeHour,
     typicalSleepHour,
+    // Surface the observed distributions (ascending) so the window learner can
+    // derive the active-band width from their spread rather than a fixed span.
+    wakeHours,
+    sleepHours,
     hasSleepData,
     isCurrentlySleeping,
     lastSleepSignalAt,

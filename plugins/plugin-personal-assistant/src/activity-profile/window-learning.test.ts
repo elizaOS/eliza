@@ -129,6 +129,108 @@ describe("deriveWindowsFromRhythm (pure mapping)", () => {
   });
 });
 
+describe("deriveWindowsFromRhythm (adaptive span from observed distribution)", () => {
+  /** Width, in whole hours, of a same-day HH:00 window (end - start). */
+  function widthHours(w?: { startLocal: string; endLocal: string }): number {
+    if (!w) return Number.NaN;
+    const [sh] = w.startLocal.split(":").map(Number);
+    const [eh] = w.endLocal.split(":").map(Number);
+    return (eh as number) - (sh as number);
+  }
+
+  // A TIGHT owner: wakes ~7 every day, winds down ~22 every day.
+  const tight = {
+    typicalWakeHour: 7,
+    typicalSleepHour: 22,
+    wakeHours: [7, 7, 7, 8, 7, 7],
+    sleepHours: [22, 22, 21, 22, 22, 22],
+  };
+  // A WIDE owner: wake scattered 6..12, wind-down scattered 20..26(=02).
+  const wide = {
+    typicalWakeHour: 9,
+    typicalSleepHour: 23,
+    wakeHours: [6, 7, 9, 10, 12],
+    sleepHours: [20, 22, 23, 24, 26],
+  };
+
+  it("narrows the morning span for a tight distribution vs a wide one", () => {
+    const t = deriveWindowsFromRhythm(tight);
+    const w = deriveWindowsFromRhythm(wide);
+    expect(widthHours(t.morningWindow)).toBeLessThan(
+      widthHours(w.morningWindow),
+    );
+    // Tight IQR≈0 clamps to the 1h floor; explicit 07:00–08:00.
+    expect(t.morningWindow).toEqual({ startLocal: "07:00", endLocal: "08:00" });
+    // Wide IQR = 3 → 09:00–12:00.
+    expect(w.morningWindow).toEqual({ startLocal: "09:00", endLocal: "12:00" });
+  });
+
+  it("narrows the evening span for a tight distribution vs a wide one", () => {
+    const t = deriveWindowsFromRhythm(tight);
+    const w = deriveWindowsFromRhythm(wide);
+    expect(widthHours(t.eveningWindow)).toBeLessThan(
+      widthHours(w.eveningWindow),
+    );
+    expect(t.eveningWindow).toEqual({ startLocal: "21:00", endLocal: "22:00" });
+    expect(w.eveningWindow).toEqual({ startLocal: "21:00", endLocal: "23:00" });
+  });
+
+  it("keeps every learned span inside [1,6] and every window non-inverted", () => {
+    for (const sample of [tight, wide]) {
+      const windows = deriveWindowsFromRhythm(sample);
+      for (const win of [windows.morningWindow, windows.eveningWindow]) {
+        const width = widthHours(win);
+        expect(width).toBeGreaterThanOrEqual(1);
+        expect(width).toBeLessThanOrEqual(6);
+        // Non-inverted: end strictly after start (positive width).
+        expect(width).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it("a tight learned morning span is strictly narrower than the fixed 3h fallback", () => {
+    const t = deriveWindowsFromRhythm(tight);
+    expect(widthHours(t.morningWindow)).toBe(1);
+    expect(widthHours(t.morningWindow)).toBeLessThan(3);
+  });
+
+  it("still refuses a wrapping window even with a distribution present", () => {
+    // wake 23:00, span clamps to ≥1h → band [23:00, 24:00) inverts to
+    // start(23) >= end(00): unsatisfiable, must be declined.
+    const windows = deriveWindowsFromRhythm({
+      typicalWakeHour: 23,
+      typicalSleepHour: null,
+      wakeHours: [22, 23, 23, 24],
+    });
+    expect(windows.morningWindow).toBeUndefined();
+  });
+
+  it("falls back to the fixed 3h/2h spans when there are <2 samples", () => {
+    // Single-sample distribution → no spread → fixed fallback (matches the
+    // legacy no-array path exactly).
+    const oneSample = deriveWindowsFromRhythm({
+      typicalWakeHour: 7,
+      typicalSleepHour: 23,
+      wakeHours: [7],
+      sleepHours: [23],
+    });
+    expect(oneSample.morningWindow).toEqual({
+      startLocal: "07:00",
+      endLocal: "10:00",
+    });
+    expect(oneSample.eveningWindow).toEqual({
+      startLocal: "21:00",
+      endLocal: "23:00",
+    });
+    // No arrays at all → identical fixed fallback.
+    const noArrays = deriveWindowsFromRhythm({
+      typicalWakeHour: 7,
+      typicalSleepHour: 23,
+    });
+    expect(noArrays).toEqual(oneSample);
+  });
+});
+
 describe("resolveWindowPatch (override + idempotency policy)", () => {
   it("writes both windows when facts are empty (default → learned)", () => {
     const patch = resolveWindowPatch(

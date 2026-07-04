@@ -38,6 +38,19 @@ export interface LearnedWindows {
 export interface RhythmSample {
   typicalWakeHour: number | null;
   typicalSleepHour: number | null;
+  /**
+   * Observed wake-boundary hours (session start hours + health wake hours),
+   * surfaced additively by the analyzer. When ≥2 samples are present the
+   * morning span is LEARNED from their spread (IQR) instead of a fixed
+   * default; absent/sparse falls back to {@link FALLBACK_MORNING_SPAN_HOURS}.
+   */
+  wakeHours?: number[];
+  /**
+   * Observed sleep-boundary hours (session end + health sleep hours). Drives
+   * the learned evening span the same way; falls back to
+   * {@link FALLBACK_EVENING_SPAN_HOURS} when sparse.
+   */
+  sleepHours?: number[];
 }
 
 /**
@@ -47,18 +60,63 @@ export interface RhythmSample {
 const USER_OWNED_SOURCES = new Set(["first_run", "profile_save"]);
 
 /**
- * Morning window duration: from wake hour to `wake + MORNING_SPAN_HOURS`. The
- * span is the flexible band inside which a `during_window: "morning"` task may
- * fire, not a fixed instant.
+ * Clamp band for a LEARNED span. The span is the flexible band inside which a
+ * `during_window` task may fire. A very-regular owner (IQR≈0) yields a tight
+ * window (never 0 — that would invert); a scattered owner yields a wider, more
+ * forgiving band, capped so it never swallows the whole day.
  */
-const MORNING_SPAN_HOURS = 3;
+const MIN_SPAN_HOURS = 1;
+const MAX_SPAN_HOURS = 6;
 
 /**
- * Evening window: `[sleep - EVENING_LEAD_HOURS, sleep)`. The band closes at the
- * observed sleep hour so a `during_window: "evening"` task lands before the
- * user winds down, and starts a couple hours earlier so it stays flexible.
+ * Morning-window fallback span, used ONLY when there is no observed
+ * distribution to learn from (<2 samples). Preserves the historical
+ * `wake → wake + 3h` behaviour for back-compat.
  */
-const EVENING_LEAD_HOURS = 2;
+const FALLBACK_MORNING_SPAN_HOURS = 3;
+
+/**
+ * Evening-window fallback span: `[sleep - 2h, sleep)`. The band closes at the
+ * observed sleep hour so a `during_window: "evening"` task lands before the
+ * user winds down. Used only when there is no distribution to learn from.
+ */
+const FALLBACK_EVENING_SPAN_HOURS = 2;
+
+/**
+ * Linear-interpolated percentile of an ascending numeric sample (`p` in
+ * `[0,1]`). Matches the robust-spread definition proven in the D1 prototype.
+ */
+function percentile(sortedAsc: number[], p: number): number {
+  if (sortedAsc.length === 0) return Number.NaN;
+  if (sortedAsc.length === 1) return sortedAsc[0] as number;
+  const idx = p * (sortedAsc.length - 1);
+  const lo = Math.floor(idx);
+  const hi = Math.ceil(idx);
+  const frac = idx - lo;
+  return (
+    (sortedAsc[lo] as number) +
+    ((sortedAsc[hi] as number) - (sortedAsc[lo] as number)) * frac
+  );
+}
+
+/**
+ * Learn a span from the observed active-band width. Uses the inter-quartile
+ * range (p75 − p25) as a robust "width of the band", clamped to
+ * `[MIN_SPAN_HOURS, MAX_SPAN_HOURS]`. Needs ≥2 finite samples to have a spread;
+ * otherwise returns the supplied fallback (back-compat with the fixed spans).
+ */
+function deriveSpanHours(
+  hours: number[] | undefined,
+  fallbackSpan: number,
+): number {
+  const clean = (hours ?? [])
+    .filter((h) => Number.isFinite(h))
+    .sort((a, b) => a - b);
+  if (clean.length < 2) return fallbackSpan;
+  const iqr = percentile(clean, 0.75) - percentile(clean, 0.25);
+  if (!Number.isFinite(iqr)) return fallbackSpan;
+  return Math.min(MAX_SPAN_HOURS, Math.max(MIN_SPAN_HOURS, iqr));
+}
 
 function clampHour(hour: number): number {
   // Wrap into [0, 24). Sessions that end after midnight produce a
@@ -93,10 +151,14 @@ function validSameDayWindow(
 
 /**
  * Map observed wake/sleep hours into flexible morning/evening windows. Pure:
- * no store access, no clock. Returns only the windows the sample can support
- * AND that resolve to a valid (non-inverted) `during_window` band — an edge
- * chronotype whose derived band would wrap past midnight is skipped, never
- * written as an unsatisfiable window.
+ * no store access, no clock. The band WIDTH is learned from the observed
+ * activity distribution (IQR of the wake/sleep samples, clamped to
+ * `[MIN_SPAN_HOURS, MAX_SPAN_HOURS]`) when ≥2 samples exist, and falls back to
+ * the historical fixed spans otherwise. Returns only the windows the sample can
+ * support AND that resolve to a valid (non-inverted) `during_window` band — an
+ * edge chronotype whose derived band would wrap past midnight is skipped, never
+ * written as an unsatisfiable window (the resolver has no wraparound; the
+ * clamped span keeps this guard intact for every chronotype).
  */
 export function deriveWindowsFromRhythm(sample: RhythmSample): LearnedWindows {
   const result: LearnedWindows = {};
@@ -105,9 +167,10 @@ export function deriveWindowsFromRhythm(sample: RhythmSample): LearnedWindows {
     typeof sample.typicalWakeHour === "number" &&
     Number.isFinite(sample.typicalWakeHour)
   ) {
+    const span = deriveSpanHours(sample.wakeHours, FALLBACK_MORNING_SPAN_HOURS);
     const morning = validSameDayWindow(
       sample.typicalWakeHour,
-      sample.typicalWakeHour + MORNING_SPAN_HOURS,
+      sample.typicalWakeHour + span,
     );
     if (morning) result.morningWindow = morning;
   }
@@ -116,8 +179,12 @@ export function deriveWindowsFromRhythm(sample: RhythmSample): LearnedWindows {
     typeof sample.typicalSleepHour === "number" &&
     Number.isFinite(sample.typicalSleepHour)
   ) {
+    const span = deriveSpanHours(
+      sample.sleepHours,
+      FALLBACK_EVENING_SPAN_HOURS,
+    );
     const evening = validSameDayWindow(
-      sample.typicalSleepHour - EVENING_LEAD_HOURS,
+      sample.typicalSleepHour - span,
       sample.typicalSleepHour,
     );
     if (evening) result.eveningWindow = evening;

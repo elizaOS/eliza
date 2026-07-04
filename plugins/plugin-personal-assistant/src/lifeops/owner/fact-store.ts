@@ -984,5 +984,12 @@ export function ownerFactsToView(
       tz: facts.quietHours.value.timezone,
     };
   }
+  // Learned schedule-shape facts (#12778): surface the queryable structural
+  // classifications onto the spine view so gates/routing (via
+  // `defaultOwnerFactsProvider`) can read them. Provenance is dropped — readers
+  // want the value — but the store guarantees these are `agent_inferred` and
+  // never clobber a user-set fact.
+  if (facts.scheduleStyle) view.scheduleStyle = facts.scheduleStyle.value;
+  if (facts.chronotype) view.chronotype = facts.chronotype.value;
   return view;
 }

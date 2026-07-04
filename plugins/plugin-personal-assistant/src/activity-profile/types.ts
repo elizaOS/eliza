@@ -100,6 +100,15 @@ export interface ActivityProfile {
   typicalLastActiveHour: number | null;
   typicalWakeHour: number | null;
   typicalSleepHour: number | null;
+  /**
+   * Observed wake-boundary hours (session start hours + health wake hours),
+   * ascending. Surfaced additively so the window learner can derive the
+   * active-band WIDTH (IQR) instead of assuming a fixed span. Optional for
+   * back-compat with profiles/records built before this field landed.
+   */
+  wakeHours?: number[];
+  /** Observed sleep-boundary hours (session end + health sleep hours), ascending. */
+  sleepHours?: number[];
   hasSleepData: boolean;
   isCurrentlySleeping: boolean;
   lastSleepSignalAt: number | null;
