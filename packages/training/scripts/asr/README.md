@@ -17,6 +17,7 @@ retired ASR model.
 | --- | --- |
 | `finetune_asr.py` | End-to-end fine-tune pipeline (real + synthetic-smoke). |
 | `eval_asr.py` | WER + RTF evaluation + baseline comparison + HF-push gating. |
+| `voice_code_bench_gate.py` | VoiceCodeBench runtime-download contract plus exact structured-token metrics (`ctem`, `tsr`, WER, CER). |
 | `configs/base.yaml` | Base hyperparameter config for all ASR fine-tunes. |
 | `configs/asr_same.yaml` | Same-corpus-specific overrides. |
 | `__tests__/test_asr_pipeline.py` | CI tests (synthetic-smoke + config + gate logic). |
@@ -84,6 +85,26 @@ is also blocked on a verified Gemma-compatible ASR checkpoint/projector pair.
 | --- | --- | --- |
 | WER | ≤ 15% | jiwer WER vs gold transcripts on val clips. |
 | RTF | ≥ 2.0× | Inference must be ≥ 2× faster than realtime. |
+
+### VoiceCodeBench exact-token gate
+
+`voice_code_bench_gate.py` defines the non-blocking VoiceCodeBench gate for
+exact structured-token ASR recovery. It records the public dataset source
+(`besimple-ai/voice-code-bench`), MIT license, 300-row test split, required
+source/audio/reference/entity hashes, provider metadata, and eval-only training
+separation. Raw audio must be downloaded or cached outside git.
+
+The gate reports:
+
+- `ctem`: canonical token/entity match rate across structured entities,
+- `tsr`: task success rate, where every entity in a row must be recovered,
+- `wer`: normalized word error rate,
+- `cer`: normalized character error rate.
+
+Synthetic/unit results are never publishable. A publishable report must mark
+`publishable: true` and include a real ASR provider/model, artifact revision,
+sample rate, dataset/hash metadata, score JSON, logs, and manually reviewed
+failures.
 
 Sam-specific config relaxes WER to ≤ 20% (5-clip val set is noisy).
 
