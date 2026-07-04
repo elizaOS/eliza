@@ -1,3 +1,5 @@
+/** Unit tests for the gateway markup, USD rounding, and Twilio SMS billing helpers; pure functions, no I/O. */
+
 import { describe, expect, test } from "vitest";
 import {
   applyMarkup,

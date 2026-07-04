@@ -1,3 +1,5 @@
+/** Unit tests for the credit-markup arithmetic; pure functions, no I/O or mocks. */
+
 import { describe, expect, test } from "vitest";
 import {
   calculateCreditMarkup,

@@ -1,3 +1,10 @@
+/**
+ * drizzle-kit configuration for the cloud database. Points introspection,
+ * studio, and migration generation at the schemas in `src/db/schemas` and
+ * emits SQL to `src/db/migrations`. `NODE_ENV` selects which `.env` file loads
+ * the target connection (local PGlite / staging / production Neon).
+ */
+
 import { config } from "dotenv";
 import { defineConfig } from "drizzle-kit";
 

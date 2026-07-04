@@ -1,3 +1,5 @@
+/** Binds JS values as explicit JSONB query parameters, sidestepping driver-specific object binding. */
+
 import { type SQL, sql } from "drizzle-orm";
 
 function safeJsonStringify(value: unknown): string {

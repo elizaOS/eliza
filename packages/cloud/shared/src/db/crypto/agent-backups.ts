@@ -1,3 +1,12 @@
+/**
+ * Field-level encryption for `agent_sandbox_backups.state_data`.
+ *
+ * Wraps the shared field-crypto primitives to encrypt/decrypt agent backup
+ * state under the org DEK. Both directions are idempotent — already-encrypted
+ * input passes through encrypt untouched, and plaintext passes through decrypt
+ * untouched — via the `kms-aes-256-gcm` envelope type guard.
+ */
+
 import type {
   AgentBackupPlainStateData,
   AgentBackupStoredStateData,
