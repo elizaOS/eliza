@@ -1,5 +1,13 @@
 import * as React from "react";
+import {
+  isRealCaptureLoss,
+  useClickSuppression,
+  useRafCoalescer,
+} from "../gestures";
 
+// Per-surface tuned overrides (deliberately tighter than the shared pull
+// defaults): the launcher rail commits its axis at a shorter slop and requires
+// stronger horizontal dominance than the vertical-pull surfaces (#12349).
 const AXIS_COMMIT_SLOP = 6;
 const AXIS_DOMINANCE_RATIO = 1.15;
 const MIN_DISTANCE_THRESHOLD = 64;
@@ -228,12 +236,9 @@ export function useHorizontalPager<
   const viewportRef = React.useRef<TViewport | null>(null);
   const railRef = React.useRef<HTMLDivElement | null>(null);
   const dragRef = React.useRef<DragState | null>(null);
-  const rafRef = React.useRef(0);
-  const pendingOffsetRef = React.useRef<number | null>(null);
-  // Set true for one tick when a gesture commits, so the click the browser
-  // synthesizes from the same press is swallowed (onClickCapture below) instead
-  // of tap-launching the element under the finger.
-  const suppressClickRef = React.useRef(false);
+  // Swallow the click the browser synthesizes from a committed swipe/flick so it
+  // can't also tap-launch the element under the release point.
+  const clickSuppression = useClickSuppression();
   // A committed swipe advances the page via onPageChange, which re-runs the
   // layout effect below — so the velocity-derived settle duration is handed to
   // that effect here (instead of the fixed SETTLE_MS) so the momentum survives
@@ -275,41 +280,13 @@ export function useHorizontalPager<
     [],
   );
 
-  const flushOffset = React.useCallback(() => {
-    rafRef.current = 0;
-    const offset = pendingOffsetRef.current;
-    pendingOffsetRef.current = null;
-    if (offset == null) return;
-    writeOffset(offset, null);
-  }, [writeOffset]);
-
-  const scheduleOffset = React.useCallback(
-    (offset: number) => {
-      pendingOffsetRef.current = offset;
-      if (rafRef.current !== 0) return;
-      if (typeof requestAnimationFrame === "function") {
-        // Mark the frame pending BEFORE scheduling: a synchronous rAF (test
-        // environments run the callback inline) clears rafRef inside
-        // flushOffset, and assigning the returned handle afterwards would
-        // re-mark the frame as pending forever — swallowing every later
-        // offset of the gesture.
-        rafRef.current = -1;
-        const handle = requestAnimationFrame(flushOffset);
-        if (rafRef.current === -1) rafRef.current = handle;
-        return;
-      }
-      flushOffset();
-    },
-    [flushOffset],
+  // Live pointer movement writes directly to the rail transform (no transition),
+  // paced by rAF so a drag never waits on React render scheduling.
+  const railWrite = useRafCoalescer<number>((offset) =>
+    writeOffset(offset, null),
   );
-
-  const cancelScheduledOffset = React.useCallback(() => {
-    if (rafRef.current !== 0 && typeof cancelAnimationFrame === "function") {
-      cancelAnimationFrame(rafRef.current);
-    }
-    rafRef.current = 0;
-    pendingOffsetRef.current = null;
-  }, []);
+  const scheduleOffset = railWrite.schedule;
+  const cancelScheduledOffset = railWrite.cancel;
 
   const canMove = React.useCallback((state: DragState, dx: number) => {
     if (dx < 0) return state.page < pageCountRef.current - 1;
@@ -388,7 +365,7 @@ export function useHorizontalPager<
     return () => observer.disconnect();
   }, [measureWidth, writeOffset]);
 
-  React.useEffect(() => cancelScheduledOffset, [cancelScheduledOffset]);
+  // (useRafCoalescer cancels its own in-flight frame on unmount.)
 
   const finish = React.useCallback(
     (event: React.PointerEvent<HTMLDivElement>, cancelled = false) => {
@@ -476,10 +453,7 @@ export function useHorizontalPager<
         };
         // A committed page change is a gesture commit — swallow the synthesized
         // click so the flick doesn't also tap-launch the element under it.
-        suppressClickRef.current = true;
-        setTimeout(() => {
-          suppressClickRef.current = false;
-        }, 0);
+        clickSuppression.arm();
         onPageChangeRef.current(targetPage);
       } else {
         // Already at the clamped edge — settle directly (no page change fires).
@@ -489,6 +463,7 @@ export function useHorizontalPager<
     [
       canMove,
       cancelScheduledOffset,
+      clickSuppression,
       measureWidth,
       releaseCapture,
       visualDragOffset,
@@ -634,23 +609,10 @@ export function useHorizontalPager<
   // for mouse/pen only, so a genuine loss still has target === currentTarget.
   const onLostPointerCapture = React.useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
-      if (event.target !== event.currentTarget) return;
+      if (!isRealCaptureLoss(event)) return;
       finish(event, true);
     },
     [finish],
-  );
-
-  // Swallow the click a committed swipe/flick synthesizes (armed in finish() on
-  // page-change commits) so it can't tap-launch the element under the release
-  // point. One mechanism for every consumer.
-  const onClickCapture = React.useCallback(
-    (event: React.MouseEvent<HTMLDivElement>) => {
-      if (!suppressClickRef.current) return;
-      suppressClickRef.current = false;
-      event.preventDefault();
-      event.stopPropagation();
-    },
-    [],
   );
 
   const clampedPage = clampPage(page, pageCount);
@@ -664,7 +626,7 @@ export function useHorizontalPager<
       onPointerUp,
       onPointerCancel,
       onLostPointerCapture,
-      onClickCapture,
+      onClickCapture: clickSuppression.onClickCapture,
     },
     canPrev: clampedPage > 0,
     canNext: clampedPage < pageCount - 1,

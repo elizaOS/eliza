@@ -1,4 +1,5 @@
-import * as React from "react";
+import type * as React from "react";
+import { useClickSuppression } from "../../gestures";
 import { cn } from "../../lib/utils";
 import { Button } from "../ui/button";
 import { usePullGesture } from "./use-pull-gesture";
@@ -63,23 +64,11 @@ function TitledTopicGroup({
   // straight back — a real tap/click on the header was a visible no-op
   // (collapse + instant re-expand). The buttons keep their onClick for keyboard
   // activation (Enter/Space), which arrives without a preceding pointer gesture.
-  const suppressClickRef = React.useRef(false);
+  const clickSuppression = useClickSuppression();
   const toggleFromGesture = (next: boolean) => {
-    suppressClickRef.current = true;
-    window.setTimeout(() => {
-      suppressClickRef.current = false;
-    }, 0);
+    clickSuppression.arm();
     onCollapsedChange(next);
   };
-  const suppressGestureClick = React.useCallback(
-    (event: React.MouseEvent<HTMLDivElement>) => {
-      if (!suppressClickRef.current) return;
-      suppressClickRef.current = false;
-      event.preventDefault();
-      event.stopPropagation();
-    },
-    [],
-  );
   const gesture = usePullGesture({
     onTap: () => toggleFromGesture(!collapsed),
     onPullUp: () => toggleFromGesture(true),
@@ -91,7 +80,7 @@ function TitledTopicGroup({
       data-testid="topic-group"
       data-topic={topic}
       data-collapsed={collapsed}
-      onClickCapture={suppressGestureClick}
+      onClickCapture={clickSuppression.onClickCapture}
     >
       {collapsed ? (
         <Button

@@ -459,6 +459,7 @@ export {
   shouldReportFrameBudget,
   summarizeFrameSamples,
 } from "./hooks/frame-budget";
+export * from "./gestures";
 export * from "./hooks/index";
 export type { ActivityEvent } from "./hooks/useActivityEvents";
 export { useActivityEvents } from "./hooks/useActivityEvents";

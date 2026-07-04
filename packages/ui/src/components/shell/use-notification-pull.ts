@@ -1,4 +1,5 @@
 import * as React from "react";
+import { rubberBand, useRafCoalescer } from "../../gestures";
 
 /**
  * iOS-notification-center pull gesture for the home dashboard.
@@ -42,14 +43,11 @@ const REVEAL_OVERSHOOT_RESISTANCE = 0.35;
 /**
  * Map raw finger travel to the reveal offset: 1:1 up to a soft cap, then a
  * damped rubber-band so a long over-pull keeps giving a little without the
- * affordance sliding arbitrarily far down the screen.
+ * affordance sliding arbitrarily far down the screen. Delegates to the shared
+ * {@link rubberBand} recognizer with this surface's tuned soft-cap/resistance.
  */
 export function revealOffsetForTravel(rawDown: number): number {
-  if (rawDown <= 0) return 0;
-  if (rawDown <= REVEAL_SOFT_MAX) return rawDown;
-  return (
-    REVEAL_SOFT_MAX + (rawDown - REVEAL_SOFT_MAX) * REVEAL_OVERSHOOT_RESISTANCE
-  );
+  return rubberBand(rawDown, REVEAL_SOFT_MAX, REVEAL_OVERSHOOT_RESISTANCE);
 }
 
 export interface NotificationPullOptions {
@@ -110,32 +108,11 @@ export function useNotificationPull(options: NotificationPullOptions): {
   const rejected = React.useRef(false);
 
   // Coalesce the high-frequency reveal updates to one per frame.
-  const pending = React.useRef<number | null>(null);
-  const raf = React.useRef(0);
-  const flush = React.useCallback(() => {
-    raf.current = 0;
-    const next = pending.current;
-    pending.current = null;
-    if (next != null) optsRef.current.onReveal(next);
-  }, []);
-  const schedule = React.useCallback(
-    (offset: number) => {
-      pending.current = offset;
-      if (raf.current === 0 && typeof requestAnimationFrame === "function") {
-        raf.current = requestAnimationFrame(flush);
-      } else if (typeof requestAnimationFrame !== "function") {
-        flush();
-      }
-    },
-    [flush],
+  const reveal = useRafCoalescer<number>((offset) =>
+    optsRef.current.onReveal(offset),
   );
-  const cancelScheduled = React.useCallback(() => {
-    if (raf.current !== 0 && typeof cancelAnimationFrame === "function") {
-      cancelAnimationFrame(raf.current);
-    }
-    raf.current = 0;
-    pending.current = null;
-  }, []);
+  const schedule = reveal.schedule;
+  const cancelScheduled = reveal.cancel;
 
   const resetGesture = React.useCallback(() => {
     start.current = null;
@@ -259,7 +236,7 @@ export function useNotificationPull(options: NotificationPullOptions): {
     [onTouchStart, onTouchMove, onTouchEnd, onTouchCancel],
   );
 
-  React.useEffect(() => cancelScheduled, [cancelScheduled]);
+  // (useRafCoalescer cancels its own in-flight frame on unmount.)
 
   return { ref: setRef };
 }
