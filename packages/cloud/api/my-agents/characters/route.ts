@@ -53,8 +53,14 @@ app.get("/", async (c) => {
           char.name.toLowerCase().includes(query) ||
           (typeof char.bio === "string" &&
             char.bio.toLowerCase().includes(query)) ||
+          // bio is caller-supplied jsonb (the POST below stores the body
+          // verbatim), so array entries are not guaranteed to be strings —
+          // one non-string entry must not 500 every search for the user.
+          // Non-string entries simply can't match a text query.
           (Array.isArray(char.bio) &&
-            char.bio.some((b) => b.toLowerCase().includes(query))),
+            char.bio.some(
+              (b) => typeof b === "string" && b.toLowerCase().includes(query),
+            )),
       );
     }
     if (category) {
