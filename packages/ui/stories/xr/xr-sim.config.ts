@@ -1,11 +1,10 @@
 /**
- * Playwright config for the XR simulation harness (see block below).
+ * Playwright config for the XR simulation harness. Boots the ui stories dev
+ * server (which serves /xr-sim.html) and runs the spec against it.
  */
 import { resolve } from "node:path";
 import { defineConfig, devices } from "@playwright/test";
 
-/** Playwright config for the XR simulation harness. Boots the ui stories dev
- *  server (which serves /xr-sim.html) and runs the spec against it. */
 export default defineConfig({
   testDir: ".",
   testMatch: /xr-sim\.spec\.ts/,

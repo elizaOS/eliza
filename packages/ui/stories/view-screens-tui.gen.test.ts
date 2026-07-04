@@ -3,11 +3,11 @@
  *
  * Drives the SAME registration path the parity gate uses — an `import.meta.glob`
  * of every `register-terminal-view.tsx`, run through vite's transform — so it
- * covers ALL registered ids (the raw-bun `review-plugins.mjs` silently dropped
- * the files whose `as`-cast syntax Bun's loader can't parse; this fixes that by
- * never doing a raw import). For each id it renders the authored view to
- * terminal lines at two widths and writes a plain-text "screenshot" to
- * `stories/__screens__/tui/<id>.txt` for human review.
+ * covers ALL registered ids. Going through vite (never a raw Bun import) is
+ * deliberate: Bun's loader can't parse the `as`-cast syntax some of these files
+ * use, so a raw import would silently drop them. For each id it renders the
+ * authored view to terminal lines at two widths and writes a plain-text
+ * "screenshot" to `stories/__screens__/tui/<id>.txt` for human review.
  *
  * Not part of the default suite (it lives outside the `src`/`__tests__` include
  * globs). Run it explicitly via `bun run test:view-screens` /

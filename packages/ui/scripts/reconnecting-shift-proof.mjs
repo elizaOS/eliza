@@ -1,17 +1,18 @@
 #!/usr/bin/env node
 
 /**
- * Real-browser proof that the reconnecting indicator no longer shifts content.
+ * Real-browser proof that the reconnecting indicator does not shift page content.
  *
  * Reproduces the shell's content column (App.tsx:2479 — a `position: relative`
  * flex-column with the banner as the first child, then the header + page) and
- * measures the header's viewport Y in three states:
- *   1. no banner              (baseline)
- *   2. OLD in-flow bar shown  (the bug: `shrink-0` flex item pushes content)
- *   3. NEW overlay pill shown (the fix: absolutely-positioned, out of flow)
+ * measures the header's viewport Y across three banner treatments:
+ *   1. no banner            (baseline)
+ *   2. in-flow bar shown    (`shrink-0` flex item that pushes content down)
+ *   3. overlay pill shown   (absolutely-positioned, out of flow)
  *
- * A shift of 0px in state 3 vs. baseline proves the fix; the non-zero shift in
- * state 2 documents the bug it replaces. Screenshots are written for review.
+ * A 0px shift in state 3 vs. baseline proves the overlay pill is layout-neutral;
+ * the non-zero shift in state 2 shows the in-flow variant it avoids. Screenshots
+ * are written for review.
  *
  * Usage: node packages/ui/scripts/reconnecting-shift-proof.mjs [--out <dir>]
  */
