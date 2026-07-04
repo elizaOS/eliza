@@ -332,6 +332,17 @@ export function resolveApiToken(
   return resolveApiSecurityConfig(env).token;
 }
 
+export function isDevApiWatchEnabled(
+  env: RuntimeEnvRecord = process.env,
+  execArgv: readonly string[] = process.execArgv,
+): boolean {
+  return (
+    execArgv.includes("--watch") ||
+    env.ELIZA_DESKTOP_API_WATCH === "1" ||
+    env.ELIZA_DEV_SOURCE_WATCH === "1"
+  );
+}
+
 export function resolveConfiguredApiToken(
   env: RuntimeEnvRecord = process.env,
 ): string | undefined {

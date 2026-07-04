@@ -64,6 +64,7 @@
     "dev:ui": "ELIZA_DEV_SOURCE=1 bun --conditions=eliza-source packages/app-core/scripts/dev-ui.mjs --name=eliza --app=app --ui-only",
     "dev:desktop": "ELIZA_DEV_SOURCE=1 ELIZA_NAMESPACE=eliza bun --conditions=eliza-source packages/app-core/scripts/dev-platform.mjs",
     "dev:desktop:watch": "ELIZA_DEV_SOURCE=1 ELIZA_NAMESPACE=eliza ELIZA_DESKTOP_VITE_WATCH=1 bun --conditions=eliza-source packages/app-core/scripts/dev-platform.mjs",
+    "desktop:stack-status": "bun --conditions=eliza-source packages/app-core/scripts/desktop-stack-status.mjs",
     "dev:harness": "bun packages/scripts/dev-harness.mjs",
     "dev:all": "node packages/scripts/dev-all.mjs",
     "voice:matrix": "node packages/scripts/voice-matrix.mjs",

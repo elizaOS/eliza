@@ -110,6 +110,11 @@
     },
     "./runtime-env": {
       "types": "./dist/runtime-env.d.ts",
+      "eliza-source": {
+        "types": "./src/runtime-env.ts",
+        "import": "./src/runtime-env.ts",
+        "default": "./src/runtime-env.ts"
+      },
       "import": "./dist/runtime-env.js",
       "default": "./dist/runtime-env.js"
     },

@@ -19,6 +19,7 @@ import {
   getLastFailedPluginDetails,
 } from "@elizaos/agent";
 import { resolveStateDir } from "@elizaos/core";
+import { isDevApiWatchEnabled } from "@elizaos/shared/runtime-env";
 
 export const ELIZA_DEV_BOOT_HISTORY_SCHEMA = "elizaos.dev.boot-history/v1";
 
@@ -27,7 +28,7 @@ export interface BootHistoryPayload {
   generatedAtEpochMs: number;
   /** Spawn timestamp of the current API child — restart-correlation key. */
   currentSpawnAtMs: number | null;
-  /** True when the API runs under `node --watch` (ELIZA_DEV_NO_WATCH=0). */
+  /** True when the API is running under an active dev watcher. */
   watch: boolean;
   /** Latest completed boot record, or null if no boot has completed. */
   latestBoot: unknown;
@@ -74,14 +75,14 @@ export async function buildBootHistoryPayload(
     schema: ELIZA_DEV_BOOT_HISTORY_SCHEMA,
     generatedAtEpochMs: Date.now(),
     currentSpawnAtMs: Number.isFinite(spawnAt) && spawnAt > 0 ? spawnAt : null,
-    watch: env.ELIZA_DEV_NO_WATCH === "0",
+    watch: isDevApiWatchEnabled(env),
     latestBoot,
     memory,
     restarts,
     failedPlugins: getLastFailedPluginDetails(),
     hints: [
       "latestBoot===null means the runtime has not completed a boot since this process started (restart storm or hard crash) — check restarts and /api/dev/console-log.",
-      "watch===true means the API runs under node --watch; a concurrent workspace build (tsc/vite) can rewrite watched files and trigger a restart loop.",
+      "watch===true means the API is running under an active dev watcher (ELIZA_DESKTOP_API_WATCH, ELIZA_DEV_SOURCE_WATCH, or --watch); inspect restarts if source edits are bouncing the API.",
     ],
   };
 }

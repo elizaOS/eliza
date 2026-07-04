@@ -873,6 +873,7 @@ async function launch() {
   }
   console.log("");
 
+  const apiWatchEnabled = envFlagEnabled("ELIZA_DESKTOP_API_WATCH");
   const apiEnv = {
     NODE_ENV: "development",
     ELIZA_API_PORT: apiPort,
@@ -888,13 +889,13 @@ async function launch() {
     ELIZA_NAMESPACE: process.env.ELIZA_NAMESPACE ?? defaultElizaNamespace,
     ...(rendererUrlForShell ? { ELIZA_RENDERER_URL: rendererUrlForShell } : {}),
     ELIZA_DESKTOP_API_BASE: `http://127.0.0.1:${apiPort}`,
+    ELIZA_DESKTOP_API_WATCH: apiWatchEnabled ? "1" : "0",
     ...screenshotEnvApi,
     ...(desktopDevLogPath
       ? { ELIZA_DESKTOP_DEV_LOG_PATH: desktopDevLogPath }
       : {}),
     ...apiEmbeddingWarmupPolicy.env,
   };
-  const apiWatchEnabled = envFlagEnabled("ELIZA_DESKTOP_API_WATCH");
   // Runtime startup must never mutate dependencies. Optional plugin imports
   // should fail fast when a package is absent instead of letting Bun auto-install
   // transitive native packages inside the desktop app process.

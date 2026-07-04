@@ -13,6 +13,7 @@
  */
 
 import { resolveDesktopApiPort, resolveDesktopUiPort } from "@elizaos/shared";
+import { isAllowedDevConsoleLogPath } from "./dev-console-log";
 
 export const ELIZA_DEV_STACK_SCHEMA = "elizaos.dev.stack/v1" as const;
 
@@ -63,7 +64,10 @@ export function resolveDevStackFromEnv(
   const desktopApiBase = env.ELIZA_DESKTOP_API_BASE?.trim() || null;
   const screenshotUpstream =
     env.ELIZA_ELECTROBUN_SCREENSHOT_URL?.trim() || null;
-  const devLogPath = env.ELIZA_DESKTOP_DEV_LOG_PATH?.trim() || null;
+  const configuredDevLogPath = env.ELIZA_DESKTOP_DEV_LOG_PATH?.trim() || null;
+  const devLogPathAllowed =
+    configuredDevLogPath !== null &&
+    isAllowedDevConsoleLogPath(configuredDevLogPath);
 
   return {
     schema: ELIZA_DEV_STACK_SCHEMA,
@@ -81,8 +85,8 @@ export function resolveDevStackFromEnv(
       path: screenshotUpstream ? "/api/dev/cursor-screenshot" : null,
     },
     desktopDevLog: {
-      filePath: devLogPath,
-      apiTailPath: devLogPath ? "/api/dev/console-log" : null,
+      filePath: configuredDevLogPath,
+      apiTailPath: devLogPathAllowed ? "/api/dev/console-log" : null,
     },
     hints: [
       'Electrobun also binds an ephemeral localhost port for its own RPC (see launcher logs: "Server started at http://localhost:…"). That channel is not this API.',
@@ -90,7 +94,7 @@ export function resolveDevStackFromEnv(
       "Full-screen PNG for agents: with desktop dev (screenshot server on by default), GET /api/dev/cursor-screenshot on the API (loopback). Capture uses OS screen APIs, not webview-only pixels.",
       "Aggregated vite/api/electrobun lines: GET /api/dev/console-log?maxLines=400&maxBytes=256000 (loopback) or read desktopDevLog.filePath.",
       "Voice-loop latency traces + per-stage p50/p90/p99 histograms: GET /api/dev/voice-latency?limit=50 (loopback), or `bun run --cwd packages/app-core voice:latency-report` for a printed table.",
-      "Boot phase timings, memory growth, and the exact error for any plugin that failed to load: GET /api/dev/boot-history (alias /api/dev/health, loopback). latestBoot:null = boot has not completed since process start (restart storm/crash); watch:true = API under node --watch.",
+      "Boot phase timings, memory growth, and the exact error for any plugin that failed to load: GET /api/dev/boot-history (alias /api/dev/health, loopback). latestBoot:null = boot has not completed since process start (restart storm/crash); watch:true = API is running under an active dev watcher.",
     ],
   };
 }
