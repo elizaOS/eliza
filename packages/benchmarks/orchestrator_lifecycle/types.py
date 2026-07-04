@@ -57,6 +57,7 @@ class TurnRecord:
 class ScenarioResult:
     scenario_id: str
     title: str
+    category: str
     passed: bool
     score: float
     checks_passed: int
