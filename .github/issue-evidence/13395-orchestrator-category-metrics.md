@@ -18,7 +18,7 @@ Date: 2026-07-04
   - 27 tests passed.
 - `python3 -m compileall -q packages/benchmarks/orchestrator_lifecycle`
   - Passed.
-- `PYTHONPATH=. python3 -m benchmarks.orchestrator_lifecycle.cli --mode simulate --max-scenarios 3 --output /tmp/olc-13395-smoke`
+- `PYTHONPATH=packages python3 -m benchmarks.orchestrator_lifecycle.cli --mode simulate --max-scenarios 3 --output /tmp/olc-13395-smoke`
   - Passed as smoke-only harness validation.
 
 ## Smoke Report Inspection
