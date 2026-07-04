@@ -9,6 +9,7 @@ import {
 import { creditTransactions } from "../schemas/credit-transactions";
 import { organizationBilling } from "../schemas/organization-billing";
 import { organizations } from "../schemas/organizations";
+import { parseOrgCreditBalance } from "./agent-billing-numeric";
 
 export interface AgentBillingSandbox {
   id: string;
@@ -58,7 +59,12 @@ export class AgentBillingRepository {
       .from(organizations)
       .where(eq(organizations.id, organizationId));
 
-    return org ? Number(org.credit_balance) : null;
+    // Fail closed on a corrupt NUMERIC read: returning `Number(...) = NaN` here
+    // would masquerade as a real balance and flow into the cron billing gate
+    // (`liveBalance >= hourlyCost`, where `NaN` is not caught by `?? fallback`)
+    // and into user-facing warning emails/webhooks as `$NaN`. A genuinely
+    // missing org still returns `null` (caller treats it as unknown).
+    return org ? parseOrgCreditBalance(org.credit_balance) : null;
   }
 
   async listBillableSandboxes(
@@ -228,7 +234,12 @@ export class AgentBillingRepository {
         return { status: "insufficient_credits" as const };
       }
 
-      const newBalance = Number(updatedOrg.credit_balance);
+      // Fail closed on a corrupt post-debit balance: a `NaN` here would make
+      // `newBalance < lowCreditWarningAmount` always false and silently suppress
+      // the low-credit "warning" status, letting the org keep billing as
+      // "active" past its threshold. The debit already committed, so surfacing
+      // the corruption is the safe outcome (the transaction rolls back on throw).
+      const newBalance = parseOrgCreditBalance(updatedOrg.credit_balance);
       const [creditTx] = await tx
         .insert(creditTransactions)
         .values({
