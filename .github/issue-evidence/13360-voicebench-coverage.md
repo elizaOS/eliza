@@ -19,15 +19,25 @@ reasons, evaluator families, and P0 adapter actions.
 
 ## Repo Inspection
 
-`develop` did not currently expose a checked-in adapter or registry entry by
+`develop` already exposes checked-in VoiceBench packages and registry entries by
 direct name search:
 
 ```bash
 rg -n "voicebench|voicebench_quality|VoiceBench" packages/benchmarks packages/training packages/scenario-runner -g '!node_modules' -g '!dist'
 ```
 
-The coverage document records that mismatch explicitly so the adapter PR can
-pin the final registry IDs when they land.
+Relevant local anchors:
+
+- `packages/benchmarks/registry/commands.py` registers `voicebench` and
+  `voicebench_quality`.
+- `packages/benchmarks/voicebench/` is the TypeScript latency benchmark.
+- `packages/benchmarks/voicebench-quality/` is the Python VoiceBench-quality
+  harness for the eight current suite IDs.
+- `packages/benchmarks/registry/scores.py` rejects mock/fixture VoiceBench
+  results as non-publishable.
+
+The coverage document maps the existing support separately from the remaining
+public subsets and missing non-mock evidence.
 
 ## Validation
 
