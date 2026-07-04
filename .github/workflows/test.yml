@@ -1325,3 +1325,21 @@ jobs:
             exit 1
           fi
           echo "All required test jobs passed. Required develop ruleset check: ci-ok."
+
+  all-tests-passed:
+    name: All Tests Passed
+    if: ${{ !cancelled() && always() }}
+    needs:
+      - ci-ok
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check aggregate test result
+        shell: bash
+        run: |
+          set -u
+          echo "ci-ok: ${{ needs.ci-ok.result }}"
+          if [ "${{ needs.ci-ok.result }}" != "success" ]; then
+            echo "::error title=All Tests Passed::ci-ok finished with '${{ needs.ci-ok.result }}' (expected success)"
+            exit 1
+          fi
+          echo "All required test jobs passed."

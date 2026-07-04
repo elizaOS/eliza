@@ -83,10 +83,16 @@ assertDeepEqual(
   ["develop"],
   "test.yml merge queue branches",
 );
+assertIncludes(tests, "name: ci-ok", "test.yml required aggregate status");
 assertIncludes(
   tests,
-  "name: ci-ok",
-  "test.yml required aggregate status",
+  "name: All Tests Passed",
+  "test.yml branch-protection aggregate status",
+);
+assertIncludes(
+  tests,
+  "needs:\n      - ci-ok",
+  "test.yml All Tests Passed depends on ci-ok",
 );
 assertIncludes(
   tests,

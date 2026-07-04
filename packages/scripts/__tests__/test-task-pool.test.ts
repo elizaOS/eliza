@@ -316,6 +316,9 @@ describe("CI plugin sharding contract", () => {
     expect(testWorkflow).toMatch(
       /ci-ok:[\s\S]*?needs:[\s\S]*?-\s+plugin-tests-status/,
     );
+    expect(testWorkflow).toMatch(
+      /all-tests-passed:\s+name:\s+All Tests Passed[\s\S]*?needs:[\s\S]*?-\s+ci-ok/,
+    );
   });
 
   test("Quality workflow gates develop PRs with static scans and lint", () => {
