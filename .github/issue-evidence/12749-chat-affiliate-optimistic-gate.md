@@ -10,10 +10,16 @@
   - KV pending-charge path bypassed when `X-Affiliate-Code` is present.
   - DB ledger path bypassed when `X-Affiliate-Code` is present, with a no-header
     positive control proving the DB optimistic branch still admits normal calls.
+- Added `chat-completions-affiliate-reserve.test.ts` to pin the synchronous
+  fallback money invariant: a 1000% affiliate markup is included in the upfront
+  hold, and a caller who can afford base but not base+markup receives 402 before
+  model call, settle, or redeemable-earnings mint.
 
 ## Local Verification
 
 - PASS: `bunx @biomejs/biome check packages/cloud/api/v1/chat/completions/route.ts packages/cloud/api/__tests__/chat-completions-optimistic-billing.test.ts`
+- PASS: `git diff --check origin/develop...HEAD`
+- PASS: `bunx biome check packages/cloud/api/__tests__/chat-completions-affiliate-reserve.test.ts`
 
 ## Attempted / Blocked
 
@@ -25,6 +31,9 @@
 - `bun run --cwd packages/cloud/api typecheck`
   - blocked by existing workspace dependency declaration resolution for
     `@elizaos/auth/*` imports from `packages/app-core/src/services/*`.
+- `node test/run-unit-isolated.mjs chat-completions` from `packages/cloud/api`
+  - blocked before assertions by missing packages in this checkout:
+    `drizzle-orm`, `@ai-sdk/anthropic`, and `@upstash/redis`.
 
 ## Evidence N/A
 
