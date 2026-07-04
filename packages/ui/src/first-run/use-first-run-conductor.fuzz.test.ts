@@ -1,25 +1,27 @@
 // @vitest-environment jsdom
 
-// Confused-user fuzz for the in-chat first-run conductor: seeded random storms
-// of valid, duplicated, out-of-order, and malformed picks — exactly what a
-// user who doesn't understand the flow (or a flaky trackpad) produces. The
-// REAL conductor + REAL finish use case run underneath; mocks sit only at the
-// network boundary. Deterministic: every storm derives from a fixed seed, so a
-// failure reproduces exactly.
-//
-// The storm also interleaves free-text sends (#12178 composer unlock): typed
-// text is answered by the conductor's local echo persona and must NEVER reach
-// the server, so the pick invariants below hold under mixed pick+text storms.
-//
-// Invariants (the "rock solid" contract):
-//   I1  POST /api/first-run fires at most once per onboarding session.
-//   I2  At most one cloud provisioning call per session.
-//   I3  completeFirstRun (the real gate flip) fires at most once.
-//   I4  Every reserved-prefix value is consumed (never falls through to chat).
-//   I5  Pick spam adds no turns beyond the bounded set; each free text adds
-//       exactly one user + one reply (both acknowledged, never deduped away).
-//   I6  No unhandled rejection escapes (vitest fails the file if one does).
-//   I7  Typed free text never triggers a server send (folded into I1/I2).
+/**
+ * Confused-user fuzz for the in-chat first-run conductor: seeded random storms
+ * of valid, duplicated, out-of-order, and malformed picks — exactly what a
+ * user who doesn't understand the flow (or a flaky trackpad) produces. The
+ * REAL conductor + REAL finish use case run underneath; mocks sit only at the
+ * network boundary. Deterministic: every storm derives from a fixed seed, so a
+ * failure reproduces exactly.
+ *
+ * The storm also interleaves free-text sends (#12178 composer unlock): typed
+ * text is answered by the conductor's local echo persona and must NEVER reach
+ * the server, so the pick invariants below hold under mixed pick+text storms.
+ *
+ * Invariants (the "rock solid" contract):
+ *   I1  POST /api/first-run fires at most once per onboarding session.
+ *   I2  At most one cloud provisioning call per session.
+ *   I3  completeFirstRun (the real gate flip) fires at most once.
+ *   I4  Every reserved-prefix value is consumed (never falls through to chat).
+ *   I5  Pick spam adds no turns beyond the bounded set; each free text adds
+ *       exactly one user + one reply (both acknowledged, never deduped away).
+ *   I6  No unhandled rejection escapes (vitest fails the file if one does).
+ *   I7  Typed free text never triggers a server send (folded into I1/I2).
+ */
 
 import { renderHook, waitFor } from "@testing-library/react";
 import * as React from "react";

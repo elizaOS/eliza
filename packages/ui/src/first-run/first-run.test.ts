@@ -1,7 +1,10 @@
 // @vitest-environment jsdom
 
-// Deterministic first-run helpers: draft normalization, runtime-target
-// mapping, submit validation, and the /api/first-run payload builder.
+/**
+ * Unit coverage for the deterministic first-run helpers: draft normalization,
+ * runtime-target mapping, submit validation, and the /api/first-run payload
+ * builder. Pure functions, no runtime.
+ */
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {

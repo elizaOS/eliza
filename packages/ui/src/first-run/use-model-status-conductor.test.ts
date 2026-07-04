@@ -1,10 +1,12 @@
 // @vitest-environment jsdom
 
-// The in-chat model-status conductor, driven through its real seams: the hook
-// is mounted with a HomeModelStatus, seeds/refreshes ONE `model:download-status`
-// turn into the transcript, and its `__model__:` controls arrive via
-// `tryHandleModelAction` exactly as the chat send funnel delivers them. Mocks
-// sit only at the network boundary (the shared `client` singleton).
+/**
+ * The in-chat model-status conductor, driven through its real seams: the hook
+ * is mounted with a HomeModelStatus, seeds/refreshes ONE `model:download-status`
+ * turn into the transcript, and its `__model__:` controls arrive via
+ * `tryHandleModelAction` exactly as the chat send funnel delivers them. Mocks
+ * sit only at the network boundary (the shared `client` singleton).
+ */
 
 import { renderHook, waitFor } from "@testing-library/react";
 import * as React from "react";

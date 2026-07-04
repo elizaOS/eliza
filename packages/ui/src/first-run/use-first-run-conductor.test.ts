@@ -1,11 +1,13 @@
 // @vitest-environment jsdom
 
-// The in-chat first-run conductor, driven through its REAL public seams: the
-// hook is mounted (registering its handler on the first-run action channel),
-// picks arrive via `tryHandleFirstRunAction` exactly as the chat send funnel
-// delivers them, and the REAL finish use case (`first-run-finish.ts`) runs
-// underneath. Mocks sit only at the network boundary (the shared `client`
-// singleton + the background model download).
+/**
+ * The in-chat first-run conductor, driven through its REAL public seams: the
+ * hook is mounted (registering its handler on the first-run action channel),
+ * picks arrive via `tryHandleFirstRunAction` exactly as the chat send funnel
+ * delivers them, and the REAL finish use case (`first-run-finish.ts`) runs
+ * underneath. Mocks sit only at the network boundary (the shared `client`
+ * singleton + the background model download).
+ */
 
 import { renderHook, waitFor } from "@testing-library/react";
 import * as React from "react";

@@ -1,25 +1,28 @@
 // @vitest-environment jsdom
-// Mock-cloud connect e2e (#8621 / #8387): the REAL client connect path —
-// selectOrProvisionCloudAgent → cold-boot wait → base resolution → chat REST
-// round-trip — driven against a REAL HTTP server that implements the cloud
-// control plane + dedicated-agent-proxy semantics (202/Retry-After) + the
-// shared-runtime REST adapter. Nothing on the client side is stubbed except
-// @capacitor/core platform detection (this lane is the non-native web path;
-// CapacitorHttp is never used on it).
-//
-// Covered:
-//  - G1: a reused DEDICATED agent that is not `running` triggers a resume kick
-//    and a control-plane poll (progress streamed via onProgress) before the
-//    dedicated base is bound; the post-wake record's fresh URL wins.
-//  - error path: a terminal `error` status fails fast with the agent's
-//    error_message; timeout path: a never-booting agent fails with an
-//    actionable message instead of hanging.
-//  - composition with the 202 honor in client-base: the dedicated proxy
-//    answering 202 + Retry-After on the first authed call after wake is
-//    retried transparently.
-//  - G2 (#8387): a SHARED agent with no URLs in the list DTO derives the
-//    REST-adapter base and completes a real conversation round-trip
-//    (health → create → send → list messages) with the cloud bearer token.
+
+/**
+ * Mock-cloud connect e2e (#8621 / #8387): the REAL client connect path —
+ * selectOrProvisionCloudAgent → cold-boot wait → base resolution → chat REST
+ * round-trip — driven against a REAL HTTP server that implements the cloud
+ * control plane + dedicated-agent-proxy semantics (202/Retry-After) + the
+ * shared-runtime REST adapter. Nothing on the client side is stubbed except
+ * @capacitor/core platform detection (this lane is the non-native web path;
+ * CapacitorHttp is never used on it).
+ *
+ * Covered:
+ *  - G1: a reused DEDICATED agent that is not `running` triggers a resume kick
+ *    and a control-plane poll (progress streamed via onProgress) before the
+ *    dedicated base is bound; the post-wake record's fresh URL wins.
+ *  - error path: a terminal `error` status fails fast with the agent's
+ *    error_message; timeout path: a never-booting agent fails with an
+ *    actionable message instead of hanging.
+ *  - composition with the 202 honor in client-base: the dedicated proxy
+ *    answering 202 + Retry-After on the first authed call after wake is
+ *    retried transparently.
+ *  - G2 (#8387): a SHARED agent with no URLs in the list DTO derives the
+ *    REST-adapter base and completes a real conversation round-trip
+ *    (health → create → send → list messages) with the cloud bearer token.
+ */
 
 import { createServer, type Server } from "node:http";
 import {
