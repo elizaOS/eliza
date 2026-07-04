@@ -1,15 +1,9 @@
-/**
- * Replace un-substituted `{{name}}` / `{{agentName}}` tokens with the
- * actual character name. Handles legacy persisted templates from first-run setup.
- */
-export function replaceNameTokens(text: string, name: string): string {
-  // Use a replacer function so `$`-sequences in the name (e.g. "Cash$$",
-  // "$&") are inserted literally instead of being interpreted as
-  // String.replace substitution patterns.
-  return text
-    .replace(/\{\{name\}\}/g, () => name)
-    .replace(/\{\{agentName\}\}/g, () => name);
-}
+// `replaceNameTokens` is owned by `@elizaos/core` (canonical `{{name}}` /
+// `{{agentName}}` substitution — whitespace-tolerant, `$`-sequence safe) and
+// re-exported here so existing `@elizaos/shared` / `@elizaos/ui` consumers keep
+// their import path. The core symbol is exported from both the node and browser
+// barrels, so this re-export resolves in browser bundles too.
+export { replaceNameTokens } from "@elizaos/core";
 
 /**
  * Reverse of `replaceNameTokens` — rewrite whole-word occurrences of the

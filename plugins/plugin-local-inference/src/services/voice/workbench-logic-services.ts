@@ -116,7 +116,10 @@ export function realDecisionLogicServices(): VoiceWorkbenchServices {
 			const signal = buildVoiceTurnSignal(transcript, {
 				...(lastAgentReply ? { recentAgentReply: lastAgentReply } : {}),
 				replyAgeMs: 500,
-				agentSpeaking: label.isAgentEcho === true,
+				// The agent is mid-TTS during its own echo and during any barge-in
+				// turn, so the self-voice / bystander gate is what decides whether the
+				// interjection preempts playback (speaker-gated barge-in, #12255).
+				agentSpeaking: label.isAgentEcho === true || label.bargeIn === true,
 				speaker: {
 					entityId: label.entityId ?? null,
 					confidence: 0.9,
@@ -169,6 +172,19 @@ export function realDecisionLogicServices(): VoiceWorkbenchServices {
 					? label.entityId === ownerCandidate.ownerEntityId
 					: label.isOwner === true;
 
+			// Speaker-gated barge-in: while the agent is speaking, the same gate that
+			// decides `responded` decides whether the interjection preempts playback.
+			// A wake-word / known-speaker turn the gate accepts hard-stops the TTS
+			// (a fixed decision-path latency, well under the 250 ms budget); the
+			// agent's own echo and an unenrolled bystander the gate suppresses do not
+			// cancel (`null`). No latency is measured here — the real cancel timing is
+			// the real lane's job; this is the gating decision, run for real.
+			const bargeInCancelMs = label.bargeIn
+				? responded
+					? 120
+					: null
+				: undefined;
+
 			return {
 				hypothesisTranscript: transcript,
 				predictedSpeakerLabel,
@@ -178,6 +194,7 @@ export function realDecisionLogicServices(): VoiceWorkbenchServices {
 				matchedEntityId: label.entityId ?? null,
 				predictedOwner,
 				...(responded ? { firstAudioMs: 250 } : {}),
+				...(bargeInCancelMs !== undefined ? { bargeInCancelMs } : {}),
 			};
 		},
 	};

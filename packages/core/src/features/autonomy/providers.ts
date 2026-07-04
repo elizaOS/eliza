@@ -27,7 +27,7 @@ const MAX_AUTONOMY_INTERVAL_MS = 24 * 60 * 60 * 1000;
 export const adminChatProvider: Provider = {
 	name: "ADMIN_CHAT_HISTORY",
 	description:
-		"Provides recent conversation history with the admin user for autonomous context",
+		"Autonomy-only admin control-room history: a short window of admin messages used when the autonomous loop is running.",
 	contexts: ["admin", "settings"],
 	contextGate: { anyOf: ["admin", "settings"] },
 	cacheStable: false,

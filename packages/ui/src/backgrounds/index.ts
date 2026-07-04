@@ -31,5 +31,6 @@ export { SKY_BACKGROUND_COLOR, SOLID_BACKGROUND_CSS } from "./types";
 export {
   BACKGROUND_APPLY_EVENT,
   type BackgroundApplyOp,
+  type BackgroundApplyPayload,
   useBackgroundApplyChannel,
 } from "./useBackgroundApplyChannel";

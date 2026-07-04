@@ -1,19 +1,22 @@
 /**
- * Unit tests for the agent-side SandboxRegistry (Path A fix #1). The Upstash
- * REST API is exercised through a mocked global `fetch` so we record the exact
- * commands that would be sent. Everything else runs the real production code.
+ * Unit tests for the single-source SandboxRegistry. The registry speaks two
+ * transports selected by URL scheme: Upstash REST (`https://`, exercised via a
+ * mocked global `fetch`) and native RESP/TCP (`redis://`, exercised against an
+ * in-process fake Redis over a real `node:net` socket). Everything else runs
+ * the real production code path.
  */
 
 import net from "node:net";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("@elizaos/core", () => ({
+  logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+}));
+
 import {
   buildSandboxRegistryFromEnv,
   SandboxRegistry,
-} from "../sandbox-registry.ts";
-
-vi.mock("@elizaos/core", () => ({
-  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
-}));
+} from "./sandbox-registry.ts";
 
 interface Recorded {
   url: string;
@@ -22,17 +25,22 @@ interface Recorded {
 
 const recorded: Recorded[] = [];
 const store = new Map<string, string>();
+let failNextFetch = false;
 
 function installFetch(): void {
   recorded.length = 0;
   store.clear();
+  failNextFetch = false;
   global.fetch = vi.fn(async (input: unknown, init?: RequestInit) => {
+    if (failNextFetch) {
+      failNextFetch = false;
+      throw new Error("simulated upstash failure");
+    }
     const url = String(input);
     const body = init?.body ? JSON.parse(String(init.body)) : undefined;
     recorded.push({ url, body });
 
     if (url.endsWith("/pipeline")) {
-      // body is array of command arrays
       for (const cmd of body as string[][]) {
         if (cmd[0] === "SET") store.set(cmd[1], cmd[2]);
       }
@@ -41,7 +49,6 @@ function installFetch(): void {
         json: async () => (body as unknown[]).map(() => ({ result: "OK" })),
       } as unknown as Response;
     }
-    // single command
     const cmd = body as string[];
     if (cmd[0] === "GET") {
       return {
@@ -69,9 +76,12 @@ const baseConfig = {
   ttlSeconds: 90,
 };
 
-describe("SandboxRegistry (agent runtime)", () => {
+describe("SandboxRegistry (Upstash REST transport)", () => {
   beforeEach(() => installFetch());
-  afterEach(() => vi.restoreAllMocks());
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
 
   it("register() writes both keys with TTL via the pipeline endpoint", async () => {
     const reg = new SandboxRegistry(baseConfig);
@@ -113,6 +123,37 @@ describe("SandboxRegistry (agent runtime)", () => {
     await reg.unregister();
     expect(store.get("agent:char-123:server")).toBe("sandbox-other");
     expect(store.get("server:sandbox-abc:url")).toBe("http://9.9.9.9:1/api");
+  });
+
+  it("startHeartbeat() refreshes on the interval; errors do not kill the timer", async () => {
+    vi.useFakeTimers();
+    const reg = new SandboxRegistry(baseConfig);
+    await reg.register();
+    recorded.length = 0;
+
+    reg.startHeartbeat(30_000);
+
+    failNextFetch = true;
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(recorded.filter((r) => r.url.endsWith("/pipeline"))).toHaveLength(0);
+
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(recorded.filter((r) => r.url.endsWith("/pipeline"))).toHaveLength(1);
+
+    reg.stopHeartbeat();
+  });
+
+  it("stopHeartbeat() halts the timer", async () => {
+    vi.useFakeTimers();
+    const reg = new SandboxRegistry(baseConfig);
+    await reg.register();
+    recorded.length = 0;
+
+    reg.startHeartbeat(30_000);
+    reg.stopHeartbeat();
+
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(recorded).toHaveLength(0);
   });
 });
 
@@ -179,6 +220,18 @@ describe("buildSandboxRegistryFromEnv", () => {
         SANDBOX_AGENT_ID: "sandbox-id",
         SANDBOX_SERVER_NAME: "sandbox-name",
         SANDBOX_PUBLIC_URL: "http://1.2.3.4:1999/api",
+      }),
+    ).toBeNull();
+  });
+
+  it("trims whitespace and rejects whitespace-only values", () => {
+    expect(
+      buildSandboxRegistryFromEnv({
+        SANDBOX_REGISTRY_REDIS_URL: "https://example.upstash.io",
+        SANDBOX_REGISTRY_REDIS_TOKEN: "tok",
+        SANDBOX_AGENT_ID: "a",
+        SANDBOX_SERVER_NAME: "s",
+        SANDBOX_PUBLIC_URL: "   ",
       }),
     ).toBeNull();
   });

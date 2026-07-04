@@ -829,9 +829,151 @@ export function scoreOwnerSecurity(
 	};
 }
 
+// ── Speaker-gated barge-in: right turns cancel TTS fast, wrong ones never do ──
+
+export interface BargeInGatingSample {
+	/** Ground truth: this barge-in SHOULD hard-stop the agent's TTS. */
+	expectCancel: boolean;
+	/** Measured cancel latency (ms), or null when the agent did NOT cancel. */
+	cancelMs: number | null;
+}
+
+export interface BargeInGatingResult {
+	kind: "barge-in-gating";
+	total: number;
+	/** Fraction of barge-ins gated correctly (right ones cancelled in-budget, wrong ones held). */
+	gatingAccuracy: number;
+	/** Cancelled when it should have held (echo / bystander hard-stopped the agent). */
+	wrongCancels: number;
+	/** Should have cancelled but held, or cancelled past the budget. */
+	missedCancels: number;
+	/** Slowest legitimate cancel (ms), or null when none cancelled. */
+	worstCancelMs: number | null;
+	maxCancelMs: number;
+	passed: boolean;
+}
+
+/**
+ * Score speaker-gated barge-in over the barge-in turns. A turn is gated correctly
+ * when it either (a) SHOULD cancel and did so within `maxCancelMs`, or (b) should
+ * NOT cancel and did not. Passing requires EVERY barge-in gated correctly: letting
+ * the agent's own echo or a bystander hard-stop it, or failing to yield to a
+ * wake-word interjection, is a hard failure — not a rate to average away.
+ */
+export function scoreBargeInGating(
+	samples: ReadonlyArray<BargeInGatingSample>,
+	opts: { maxCancelMs?: number } = {},
+): BargeInGatingResult {
+	const maxCancelMs = opts.maxCancelMs ?? 250;
+	const total = samples.length;
+	let correct = 0;
+	let wrongCancels = 0;
+	let missedCancels = 0;
+	const legitCancelMs: number[] = [];
+	for (const s of samples) {
+		const cancelled = s.cancelMs !== null;
+		if (s.expectCancel) {
+			if (cancelled && (s.cancelMs as number) <= maxCancelMs) correct += 1;
+			else missedCancels += 1;
+			if (cancelled) legitCancelMs.push(s.cancelMs as number);
+		} else {
+			if (!cancelled) correct += 1;
+			else wrongCancels += 1;
+		}
+	}
+	return {
+		kind: "barge-in-gating",
+		total,
+		gatingAccuracy: round4(total > 0 ? correct / total : 0),
+		wrongCancels,
+		missedCancels,
+		worstCancelMs:
+			legitCancelMs.length > 0 ? round1(Math.max(...legitCancelMs)) : null,
+		maxCancelMs,
+		passed: total > 0 && correct === total,
+	};
+}
+
+// ── ERLE: echo-return-loss-enhancement floor on AEC scenarios ────────────────
+
+export interface ErleResult {
+	kind: "erle";
+	/** Number of AEC echo turns with an ERLE measurement. */
+	total: number;
+	/** Worst (minimum) ERLE across the turns — the gate compares this to the floor. */
+	worstErleDb: number;
+	meanErleDb: number;
+	minErleDb: number;
+	passed: boolean;
+}
+
+/**
+ * Score echo-return-loss-enhancement against a floor (dB). Passing requires the
+ * WORST turn to clear the floor: a single un-cancelled echo burst is a failure.
+ * Infinite ERLE (a perfectly silent residual) counts as clearing the floor but is
+ * excluded from the mean so one silent turn cannot mask a weak one.
+ */
+export function scoreErle(
+	samples: ReadonlyArray<{ erleDb: number }>,
+	opts: { minErleDb?: number } = {},
+): ErleResult {
+	const minErleDb = opts.minErleDb ?? 18;
+	const values = samples.map((s) => s.erleDb);
+	const worst = values.length > 0 ? Math.min(...values) : 0;
+	const finite = values.filter((v) => Number.isFinite(v));
+	const mean =
+		finite.length > 0 ? finite.reduce((a, b) => a + b, 0) / finite.length : 0;
+	return {
+		kind: "erle",
+		total: values.length,
+		worstErleDb: Number.isFinite(worst) ? round1(worst) : worst,
+		meanErleDb: round1(mean),
+		minErleDb,
+		passed: values.length > 0 && worst >= minErleDb,
+	};
+}
+
+// ── Streaming-ASR partial monotonicity: the committed prefix never retracts ───
+
+export interface PartialMonotonicityResult {
+	kind: "partial-monotonicity";
+	/** Number of partial→partial transitions checked (partials.length - 1). */
+	total: number;
+	/** Transitions where the next partial did not extend the previous committed prefix. */
+	retractions: number;
+	passed: boolean;
+}
+
+/**
+ * Score partial-transcript monotonicity over an ordered sequence of committed
+ * prefixes emitted by streaming ASR. Each partial must be a prefix-extension of
+ * the one before it (the stabilizer commits forward and never rewrites what it
+ * already emitted). Any retraction fails the gate. A single-element (or empty)
+ * sequence has nothing to retract and does not pass on its own — the caller only
+ * scores turns that actually produced a partial stream.
+ */
+export function scorePartialMonotonicity(
+	partials: ReadonlyArray<string>,
+): PartialMonotonicityResult {
+	let retractions = 0;
+	for (let i = 1; i < partials.length; i++) {
+		const prev = partials[i - 1].trim();
+		const next = partials[i].trim();
+		if (prev.length > 0 && !next.startsWith(prev)) retractions += 1;
+	}
+	const total = Math.max(0, partials.length - 1);
+	return {
+		kind: "partial-monotonicity",
+		total,
+		retractions,
+		passed: total > 0 && retractions === 0,
+	};
+}
+
 export type VoiceE2eCaseResult =
 	| TtsAsrRoundTripResult
 	| BargeInInterruptionResult
+	| BargeInGatingResult
 	| PauseContinuationResult
 	| OptimisticRollbackRestartResult
 	| FirstResponseLatencyResult
@@ -841,7 +983,9 @@ export type VoiceE2eCaseResult =
 	| EntityExtractionResult
 	| VoiceEntityMatchResult
 	| EchoRejectionResult
-	| OwnerSecurityResult;
+	| OwnerSecurityResult
+	| ErleResult
+	| PartialMonotonicityResult;
 
 export interface VoiceE2eSummary {
 	passed: boolean;

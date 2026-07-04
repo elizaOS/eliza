@@ -51,7 +51,6 @@ const idleVoice: ChatComposerVoiceState = {
   startListening: () => {},
   stopListening: () => {},
   supported: true,
-  toggleListening: () => {},
 };
 
 const translate = (key: string): string => {

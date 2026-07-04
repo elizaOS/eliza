@@ -68,6 +68,7 @@ function cmd(
     requiresElevated: false,
     target: { kind: "agent" },
     ...partial,
+    source: partial.source ?? "builtin",
   };
 }
 

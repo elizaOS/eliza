@@ -27,12 +27,15 @@ import type {
 } from "./corpus-generator";
 import {
 	type DiarizationTurnSample,
+	scoreBargeInGating,
 	scoreDiarizationTimeline,
 	scoreEchoRejection,
 	scoreEntityExtraction,
 	scoreEotDecision,
+	scoreErle,
 	scoreFirstResponseLatency,
 	scoreOwnerSecurity,
+	scorePartialMonotonicity,
 	scoreRespondDecision,
 	scoreTtsAsrRoundTrip,
 	scoreVoiceEntityMatch,
@@ -65,6 +68,22 @@ export interface VoiceTurnObservation {
 	firstAudioMs?: number;
 	/** The system judged this turn to be the device owner (owner-security). */
 	predictedOwner?: boolean;
+	/**
+	 * For a barge-in turn: the measured cancel latency (ms) of the agent's TTS, or
+	 * null when the agent (correctly or not) did NOT cancel. Absent ⇒ the lane has
+	 * no barge-in signal for this turn and it is not scored.
+	 */
+	bargeInCancelMs?: number | null;
+	/**
+	 * Echo-return-loss-enhancement (dB) measured by the AEC on an echo turn. Absent
+	 * ⇒ the lane has no AEC feed (honestly unscored — never a fabricated pass).
+	 */
+	erleDb?: number;
+	/**
+	 * Ordered streaming-ASR partial hypotheses for this turn. Absent ⇒ the lane has
+	 * no streaming ASR (batch transcription only) and monotonicity is not scored.
+	 */
+	partialTranscripts?: string[];
 }
 
 export interface VoiceWorkbenchServices {
@@ -206,6 +225,12 @@ export async function runVoiceScenarioHeadless(
 		predictedOwner: boolean;
 		expectedOwner: boolean;
 	}> = [];
+	const bargeInSamples: Array<{
+		expectCancel: boolean;
+		cancelMs: number | null;
+	}> = [];
+	const erleSamples: Array<{ erleDb: number }> = [];
+	const partialCases: VoiceE2eCaseResult[] = [];
 	const wantsOwnerScoring = scenario.classes.includes("owner-security");
 
 	for (const label of corpus.groundTruth.turns) {
@@ -299,6 +324,25 @@ export async function runVoiceScenarioHeadless(
 				}),
 			);
 		}
+
+		// Speaker-gated barge-in: only barge-in turns with a measured decision
+		// (cancelled or explicitly held via `null`). Absent ⇒ the lane has no
+		// barge-in signal and the turn is not scored.
+		if (label.bargeIn && obs.bargeInCancelMs !== undefined) {
+			bargeInSamples.push({
+				expectCancel: label.expectBargeInCancel === true,
+				cancelMs: obs.bargeInCancelMs,
+			});
+		}
+		// ERLE only when the lane produced an AEC measurement for this turn.
+		if (typeof obs.erleDb === "number") {
+			erleSamples.push({ erleDb: obs.erleDb });
+		}
+		// Partial-transcript monotonicity only when the lane produced a partial
+		// stream (streaming ASR); batch-only lanes skip it honestly.
+		if (obs.partialTranscripts && obs.partialTranscripts.length > 0) {
+			partialCases.push(scorePartialMonotonicity(obs.partialTranscripts));
+		}
 	}
 
 	cases.push(
@@ -367,6 +411,25 @@ export async function runVoiceScenarioHeadless(
 			}),
 		);
 	}
+	if (bargeInSamples.length > 0) {
+		cases.push(
+			scoreBargeInGating(bargeInSamples, {
+				...(assertions.maxBargeInCancelMs !== undefined
+					? { maxCancelMs: assertions.maxBargeInCancelMs }
+					: {}),
+			}),
+		);
+	}
+	if (erleSamples.length > 0) {
+		cases.push(
+			scoreErle(erleSamples, {
+				...(assertions.minErleDb !== undefined
+					? { minErleDb: assertions.minErleDb }
+					: {}),
+			}),
+		);
+	}
+	cases.push(...partialCases);
 
 	return {
 		scenarioId: scenario.id,

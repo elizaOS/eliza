@@ -1,70 +1,33 @@
 /**
  * Transport types for the universal slash-command catalog served by
- * `GET /api/commands` (mirrors the connector-neutral catalog in
- * @elizaos/plugin-commands). Kept in the api layer so both the client method
- * and the chat menu share one contract without the api depending on UI code.
+ * `GET /api/commands`. The wire contract is declared once in `@elizaos/shared`
+ * (`SerializedCommand*`); the `SlashCommand*` names below are the UI-local
+ * aliases the chat menu and client method use. Aliasing (not re-declaring) is
+ * what keeps this surface from drifting off the shared contract (#12411).
  */
 
-export type CommandSurface = "gui" | "tui" | "discord" | "telegram";
+import type {
+  SerializedCommand,
+  SerializedCommandArg,
+  SerializedCommandSource,
+} from "@elizaos/shared";
 
-export type CommandArgSource =
-  | "models"
-  | "views"
-  | "settings-sections"
-  | "skills"
-  | "providers";
+export type {
+  ClientCommandAction,
+  CommandArgSource,
+  CommandSurface,
+  CommandsCatalogResponse,
+  CommandTarget as SlashCommandTarget,
+  SerializedCommand,
+  SerializedCommandArg,
+  SerializedCommandSource,
+} from "@elizaos/shared";
 
-export type ClientCommandAction =
-  | "clear-chat"
-  | "new-conversation"
-  | "toggle-fullscreen"
-  | "open-command-palette"
-  | "show-commands"
-  | "toggle-transcription";
+/** UI-local alias for the wire argument shape. */
+export type SlashCommandArg = SerializedCommandArg;
 
-export interface SlashCommandArg {
-  name: string;
-  description: string;
-  required?: boolean;
-  choices?: string[];
-  dynamicChoices?: CommandArgSource;
-  captureRemaining?: boolean;
-}
+/** UI-local alias for a catalog item's provenance. */
+export type SlashCommandSource = SerializedCommandSource;
 
-export type SlashCommandTarget =
-  | { kind: "agent"; action?: string }
-  | {
-      kind: "navigate";
-      tab?: string;
-      viewId?: string;
-      path?: string;
-      section?: string;
-    }
-  | { kind: "client"; clientAction: ClientCommandAction };
-
-/** Where a catalog item came from — drives grouping + labels in the menu. */
-export type SlashCommandSource = "builtin" | "custom-action" | "saved";
-
-export interface SlashCommandCatalogItem {
-  key: string;
-  nativeName: string;
-  description: string;
-  textAliases: string[];
-  scope: "text" | "native" | "both";
-  category?: string;
-  acceptsArgs: boolean;
-  args: SlashCommandArg[];
-  requiresAuth: boolean;
-  requiresElevated: boolean;
-  surfaces?: CommandSurface[];
-  target: SlashCommandTarget;
-  icon?: string;
-  source?: SlashCommandSource;
-}
-
-export interface CommandsCatalogResponse {
-  commands: SlashCommandCatalogItem[];
-  surface: string | null;
-  agentId: string | null;
-  generatedAt: string;
-}
+/** UI-local alias for a wire catalog item. */
+export type SlashCommandCatalogItem = SerializedCommand;

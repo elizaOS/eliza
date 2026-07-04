@@ -13,13 +13,14 @@ import * as React from "react";
 import {
   type ClipboardEvent,
   type KeyboardEvent,
-  type PointerEvent,
   type RefObject,
+  useCallback,
   useEffect,
   useLayoutEffect,
   useRef,
   useState,
 } from "react";
+import { usePushToTalk } from "../../../hooks/usePushToTalk";
 import type { VoiceSessionMode } from "../../../voice/voice-chat-types";
 import { Button } from "../../ui/button";
 import { Textarea } from "../../ui/textarea";
@@ -98,7 +99,6 @@ export interface ChatComposerVoiceState {
   ) => void | Promise<void>;
   stopListening: (options?: { submit?: boolean }) => void | Promise<void>;
   supported: boolean;
-  toggleListening: () => void;
 }
 
 export interface ChatComposerProps {
@@ -166,9 +166,6 @@ export function ChatComposer({
   const isGameModal = variant === "game-modal";
   const isInline = layout === "inline";
   const showVoiceButton = isGameModal || voice.supported;
-  const holdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pushToTalkActiveRef = useRef(false);
-  const suppressClickRef = useRef(false);
   const hasDraft = chatInput.trim().length > 0 || chatPendingImagesCount > 0;
   const shouldShowStopButton = chatSending && !hasDraft;
   const actionButtonTitle = shouldShowStopButton
@@ -198,15 +195,6 @@ export function ChatComposer({
           ? t("chat.listening")
           : inputPlaceholder
       : inputPlaceholder;
-
-  useEffect(() => {
-    return () => {
-      if (holdTimerRef.current) {
-        clearTimeout(holdTimerRef.current);
-        holdTimerRef.current = null;
-      }
-    };
-  }, []);
 
   useEffect(() => {
     if (!isInline) return;
@@ -289,60 +277,26 @@ export function ChatComposer({
     textareaRef,
   ]);
 
-  const startPushToTalk = () => {
-    if (isComposerLocked || voice.isListening) return;
-    pushToTalkActiveRef.current = true;
-    suppressClickRef.current = true;
-    void voice.startListening("push-to-talk");
-  };
+  const { handlers: micHoldHandlers, shouldSuppressClick } = usePushToTalk({
+    canBegin: () => !isComposerLocked && !voice.isListening,
+    onHoldStart: () => {
+      void voice.startListening("push-to-talk");
+    },
+    onHoldEnd: (cancelled) => {
+      // Clean release submits the dictated turn; a slide-off/cancel discards it.
+      void voice.stopListening(cancelled ? undefined : { submit: true });
+    },
+  });
 
-  const clearHoldTimer = () => {
-    if (holdTimerRef.current) {
-      clearTimeout(holdTimerRef.current);
-      holdTimerRef.current = null;
-    }
-  };
-
-  const handleMicPointerDown = (_event: PointerEvent<HTMLButtonElement>) => {
-    if (isComposerLocked || voice.isListening) return;
-    clearHoldTimer();
-    holdTimerRef.current = setTimeout(() => {
-      holdTimerRef.current = null;
-      startPushToTalk();
-    }, 180);
-  };
-
-  const handleMicPointerUp = () => {
-    clearHoldTimer();
-    if (!pushToTalkActiveRef.current) return;
-    pushToTalkActiveRef.current = false;
-    void voice.stopListening({ submit: true });
-    window.setTimeout(() => {
-      suppressClickRef.current = false;
-    }, 0);
-  };
-
-  const handleMicPointerCancel = () => {
-    clearHoldTimer();
-    if (!pushToTalkActiveRef.current) return;
-    pushToTalkActiveRef.current = false;
-    void voice.stopListening();
-    window.setTimeout(() => {
-      suppressClickRef.current = false;
-    }, 0);
-  };
-
-  const handleMicClick = () => {
+  const handleMicClick = useCallback(() => {
+    // A held push-to-talk turn that is still live when clicked (no pointerup
+    // reached us) is stopped-and-submitted here as the fallback.
     if (voice.isListening && voice.captureMode === "push-to-talk") {
-      pushToTalkActiveRef.current = false;
-      suppressClickRef.current = false;
       void voice.stopListening({ submit: true });
       return;
     }
-    if (suppressClickRef.current) {
-      suppressClickRef.current = false;
-      return;
-    }
+    // Swallow the trailing click of a completed hold so it doesn't also toggle.
+    if (shouldSuppressClick()) return;
     if (isComposerLocked) return;
     if (voice.isListening && voice.captureMode === "compose") {
       void voice.stopListening();
@@ -350,7 +304,7 @@ export function ChatComposer({
     }
     if (voice.isListening) return;
     void voice.startListening("compose");
-  };
+  }, [isComposerLocked, shouldSuppressClick, voice]);
 
   if (isInline) {
     const inlineAttachButton =
@@ -417,10 +371,7 @@ export function ChatComposer({
         }`}
         data-testid="chat-composer-mic"
         onClick={handleMicClick}
-        onPointerDown={handleMicPointerDown}
-        onPointerUp={handleMicPointerUp}
-        onPointerCancel={handleMicPointerCancel}
-        onPointerLeave={handleMicPointerCancel}
+        {...micHoldHandlers}
         disabled={isComposerLocked || !voice.supported}
         title={voiceButtonTitle}
         aria-label={voiceButtonTitle}
@@ -592,10 +543,7 @@ export function ChatComposer({
           }
           data-testid="chat-composer-mic"
           onClick={handleMicClick}
-          onPointerDown={handleMicPointerDown}
-          onPointerUp={handleMicPointerUp}
-          onPointerCancel={handleMicPointerCancel}
-          onPointerLeave={handleMicPointerCancel}
+          {...micHoldHandlers}
           aria-label={
             isAgentStarting
               ? t("chat.agentStarting")
@@ -736,10 +684,7 @@ export function ChatComposer({
           }`}
           data-testid="chat-composer-mic"
           onClick={handleMicClick}
-          onPointerDown={handleMicPointerDown}
-          onPointerUp={handleMicPointerUp}
-          onPointerCancel={handleMicPointerCancel}
-          onPointerLeave={handleMicPointerCancel}
+          {...micHoldHandlers}
           disabled={isComposerLocked || !voice.supported}
           title={voiceButtonTitle}
           aria-label={voiceButtonTitle}

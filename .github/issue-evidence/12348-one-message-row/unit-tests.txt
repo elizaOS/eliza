@@ -1,0 +1,10 @@
+ DEPRECATED  `test.poolOptions` was removed in Vitest 4. All previous `poolOptions` are now top-level options. Please, refer to the migration guide: https://vitest.dev/guide/migration#pool-rework
+
+ RUN  v4.1.5 /Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/wf_f7a1641e-e50-6/packages/ui
+
+
+ Test Files  3 passed (3)
+      Tests  26 passed (26)
+   Start at  21:45:31
+   Duration  53.35s (transform 37.48s, setup 3.42s, import 47.75s, tests 14.00s, environment 49.99s)
+

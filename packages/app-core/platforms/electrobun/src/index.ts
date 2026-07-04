@@ -105,6 +105,7 @@ import {
   createRendererApiProxyRequestInit,
   isRendererApiProxyPath,
   resolveRendererProxyIdleTimeoutSeconds,
+  shouldProxyToApiBase,
 } from "./renderer-api-proxy";
 import {
   getRendererAssetContentType,
@@ -844,7 +845,7 @@ async function startRendererServer(): Promise<string> {
       // or this static server (non-watch dev:desktop). Without this, every
       // /api/* call returned SPA HTML and Settings sat on "Loading…" forever.
       const apiBase = apiBaseOwner.getCurrent().base ?? initialApiBase;
-      if (apiBase && isRendererApiProxyPath(pathname)) {
+      if (shouldProxyToApiBase(apiBase) && isRendererApiProxyPath(pathname)) {
         const target = new URL(pathname + url.search, apiBase);
         try {
           const upstreamRequest = createRendererApiProxyRequestInit(

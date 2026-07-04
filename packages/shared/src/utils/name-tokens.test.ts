@@ -23,6 +23,18 @@ describe("replaceNameTokens", () => {
     expect(replaceNameTokens("hello {{name}}", "M$&M")).toBe("hello M$&M");
     expect(replaceNameTokens("yo {{agentName}}", "A$AP")).toBe("yo A$AP");
   });
+
+  it("tolerates whitespace inside the braces (reconciled canonical behavior)", () => {
+    // The pre-consolidation shared copy required tight `{{name}}`; the core
+    // copy allowed `{{ name }}`. The single canonical impl is whitespace-
+    // tolerant so both spellings resolve the same everywhere.
+    expect(replaceNameTokens("Hi {{ name }}!", "Momo")).toBe("Hi Momo!");
+    expect(replaceNameTokens("Hi {{  agentName  }}!", "Momo")).toBe("Hi Momo!");
+  });
+
+  it("returns empty/falsey input unchanged", () => {
+    expect(replaceNameTokens("", "Momo")).toBe("");
+  });
 });
 
 describe("tokenizeNameOccurrences", () => {

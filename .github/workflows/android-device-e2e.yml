@@ -128,6 +128,14 @@ jobs:
             # fail on stock x86 emulator — see coverage note above).
             bun run --cwd packages/app test:sim:local-chat:android:live || true
 
+            # Seeded launcher gesture loop (#12377): ≥200 real device swipes/taps
+            # with per-action rail invariants (data-page + AX probe + inertness +
+            # focus), chunked screenrecord + logcat. Signal-only on the x86
+            # emulator until proven emulator-green; the seed prints for replay.
+            ELIZA_ANDROID_BACKEND=host \
+            ELIZA_ANDROID_REQUIRE_AGENT=1 \
+              bun run --cwd packages/app test:e2e:android:launcher-loop || true
+
       - name: Cloud provisioning probe
         if: ${{ env.ELIZA_CLOUD_AUTH_TOKEN != '' }}
         run: bun run --cwd packages/app test:e2e:android:cloud

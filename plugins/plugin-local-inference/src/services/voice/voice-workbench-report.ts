@@ -91,6 +91,14 @@ export interface VoiceWorkbenchMetrics {
 	ownerAccuracy: MetricRollup;
 	/** Impostor-accept rate (`worst` = max) — non-owner accepted as owner. */
 	impostorAcceptRate: MetricRollup;
+	/** Speaker-gated barge-in accuracy (`worst` = min) — right turns cancel, wrong ones hold. */
+	bargeInGatingAccuracy: MetricRollup;
+	/** Legitimate barge-in cancel latency ms (`worst` = max). */
+	bargeInCancelMs: MetricRollup;
+	/** Echo-return-loss-enhancement dB (`worst` = min) — AEC scenarios only. */
+	erleDb: MetricRollup;
+	/** Streaming-partial retractions (`worst` = max) — committed prefix rewrites. */
+	partialRetractions: MetricRollup;
 }
 
 export interface VoiceWorkbenchReport {
@@ -167,6 +175,10 @@ export function buildVoiceWorkbenchReport(
 	const echoRejectionRate: number[] = [];
 	const ownerAccuracy: number[] = [];
 	const impostorAcceptRate: number[] = [];
+	const bargeInGatingAccuracy: number[] = [];
+	const bargeInCancelMs: number[] = [];
+	const erleDb: number[] = [];
+	const partialRetractions: number[] = [];
 
 	for (const c of allCases) {
 		switch (c.kind) {
@@ -199,6 +211,17 @@ export function buildVoiceWorkbenchReport(
 			case "owner-security":
 				ownerAccuracy.push(c.accuracy);
 				impostorAcceptRate.push(c.impostorAcceptRate);
+				break;
+			case "barge-in-gating":
+				bargeInGatingAccuracy.push(c.gatingAccuracy);
+				if (c.worstCancelMs !== null) bargeInCancelMs.push(c.worstCancelMs);
+				break;
+			case "erle":
+				// A perfectly-silent residual scores +Infinity; keep the rollup finite.
+				if (Number.isFinite(c.worstErleDb)) erleDb.push(c.worstErleDb);
+				break;
+			case "partial-monotonicity":
+				partialRetractions.push(c.retractions);
 				break;
 			default:
 				break;
@@ -234,6 +257,10 @@ export function buildVoiceWorkbenchReport(
 			echoRejectionRate: rollupMin(echoRejectionRate),
 			ownerAccuracy: rollupMin(ownerAccuracy),
 			impostorAcceptRate: rollupMax(impostorAcceptRate),
+			bargeInGatingAccuracy: rollupMin(bargeInGatingAccuracy),
+			bargeInCancelMs: rollupMax(bargeInCancelMs),
+			erleDb: rollupMin(erleDb),
+			partialRetractions: rollupMax(partialRetractions),
 		},
 	};
 }
@@ -268,6 +295,10 @@ export function formatVoiceWorkbenchMarkdown(
 		`| Echo rejection rate | ${fmt(m.echoRejectionRate.mean)} | ${fmt(m.echoRejectionRate.worst)} | ${m.echoRejectionRate.count} |`,
 		`| Owner accuracy | ${fmt(m.ownerAccuracy.mean)} | ${fmt(m.ownerAccuracy.worst)} | ${m.ownerAccuracy.count} |`,
 		`| Impostor-accept rate | ${fmt(m.impostorAcceptRate.mean)} | ${fmt(m.impostorAcceptRate.worst)} | ${m.impostorAcceptRate.count} |`,
+		`| Barge-in gating accuracy | ${fmt(m.bargeInGatingAccuracy.mean)} | ${fmt(m.bargeInGatingAccuracy.worst)} | ${m.bargeInGatingAccuracy.count} |`,
+		`| Barge-in cancel (ms) | ${fmt(m.bargeInCancelMs.mean)} | ${fmt(m.bargeInCancelMs.worst)} | ${m.bargeInCancelMs.count} |`,
+		`| ERLE (dB) | ${fmt(m.erleDb.mean)} | ${fmt(m.erleDb.worst)} | ${m.erleDb.count} |`,
+		`| Partial retractions | ${fmt(m.partialRetractions.mean)} | ${fmt(m.partialRetractions.worst)} | ${m.partialRetractions.count} |`,
 		"",
 		"## Scenarios",
 		"",
@@ -326,6 +357,16 @@ export function regressionsAgainstBaseline(
 			current.metrics.impostorAcceptRate.mean,
 			baseline.metrics.impostorAcceptRate.mean,
 		],
+		[
+			"bargeInCancelMs",
+			current.metrics.bargeInCancelMs.mean,
+			baseline.metrics.bargeInCancelMs.mean,
+		],
+		[
+			"partialRetractions",
+			current.metrics.partialRetractions.mean,
+			baseline.metrics.partialRetractions.mean,
+		],
 	];
 	const higherBetter: Array<[string, number | null, number | null]> = [
 		[
@@ -349,6 +390,12 @@ export function regressionsAgainstBaseline(
 			current.metrics.ownerAccuracy.mean,
 			baseline.metrics.ownerAccuracy.mean,
 		],
+		[
+			"bargeInGatingAccuracy",
+			current.metrics.bargeInGatingAccuracy.mean,
+			baseline.metrics.bargeInGatingAccuracy.mean,
+		],
+		["erleDb", current.metrics.erleDb.mean, baseline.metrics.erleDb.mean],
 	];
 	const out: MetricRegression[] = [];
 	for (const [metric, cur, base] of lowerBetter) {

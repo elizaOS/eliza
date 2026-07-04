@@ -57,6 +57,7 @@ import {
   LAYOUT_SHIFT_INTENT_ATTR,
   LAYOUT_SHIFT_INTENT_TRANSIENT,
 } from "../../hooks/useLayoutShiftMonitor";
+import { usePushToTalk } from "../../hooks/usePushToTalk";
 import { Z_SHELL_OVERLAY } from "../../lib/floating-layers";
 import { cn } from "../../lib/utils";
 import { claimAssistantLaunchPayloadFromHash } from "../../platform/assistant-launch-payload";
@@ -192,13 +193,6 @@ export type ChatState =
  */
 export type ChatMode = "pill" | "input" | "half" | "full";
 
-/** Push-to-talk lifecycle. idle → pending (timer armed) → holding (dictating) →
- *  idle. A release while still `pending` is a quick tap (no capture started). */
-type PttPhase =
-  | { kind: "idle" }
-  | { kind: "pending"; pointerId: number; timer: number }
-  | { kind: "holding"; pointerId: number };
-
 type MotionControls = { stop: () => void };
 
 const SHEET_HALF_VH = 0.46; // fraction of viewport height at the HALF detent
@@ -312,6 +306,7 @@ function SoftButton({
   onPointerDown,
   onPointerUp,
   onPointerCancel,
+  onPointerLeave,
   disabled,
   active,
   testId,
@@ -324,6 +319,7 @@ function SoftButton({
   onPointerDown?: React.PointerEventHandler<HTMLButtonElement>;
   onPointerUp?: React.PointerEventHandler<HTMLButtonElement>;
   onPointerCancel?: React.PointerEventHandler<HTMLButtonElement>;
+  onPointerLeave?: React.PointerEventHandler<HTMLButtonElement>;
   disabled?: boolean;
   active?: boolean;
   testId?: string;
@@ -342,6 +338,7 @@ function SoftButton({
       onPointerDown={disabled ? undefined : onPointerDown}
       onPointerUp={disabled ? undefined : onPointerUp}
       onPointerCancel={disabled ? undefined : onPointerCancel}
+      onPointerLeave={disabled ? undefined : onPointerLeave}
       className={cn(
         // Icon-only control: transparent, borderless, no capsule — just the
         // glyph, sized up to carry weight without the removed background. The
@@ -1702,6 +1699,11 @@ export function ContinuousChatOverlay({
   // True once the server has reported no LLM/model provider is configured (a
   // `no_provider` assistant turn). Defaulted for minimal mock controllers.
   const noProviderConfigured = controller.noProviderConfigured ?? false;
+  // Local text-model readiness (#12178 WI-4). While it `blocksSend`, the
+  // composer stays usable and the in-chat model-status card carries progress +
+  // cancel/switch controls; the placeholder tells the user they can keep typing.
+  const modelStatus = controller.modelStatus;
+  const modelBlocksSend = modelStatus?.blocksSend ?? false;
   // The shared action funnel — the SAME seam the transcript's CHOICE widgets
   // use. During onboarding the unlocked composer routes free text through it so
   // it reaches the in-chat conductor (and never the server); post-onboarding it
@@ -2082,11 +2084,8 @@ export function ContinuousChatOverlay({
     dragPreviewVisibleRef.current = visible;
     setDragPreviewVisible(visible);
   }, []);
-  // Push-to-talk phase (single source of truth) + a label-only mirror.
-  const pttRef = React.useRef<PttPhase>({ kind: "idle" });
+  // Push-to-talk is a label-only mirror of the shared hold hook's holding phase.
   const [pttHolding, setPttHolding] = React.useState(false);
-  // Swallow exactly the one click that follows a held PTT release.
-  const suppressNextClickRef = React.useRef(false);
   const [pendingImages, setPendingImages] = React.useState<ImageAttachment[]>(
     [],
   );
@@ -2325,20 +2324,6 @@ export function ContinuousChatOverlay({
     enabled: suggestionsVisible,
   });
 
-  // Defensive unmount: clear a pending timer and stop a stuck dictation capture
-  // if the overlay unmounts mid-press (the controller outlives the overlay).
-  // biome-ignore lint/correctness/useExhaustiveDependencies: stopRecording is stable; this runs once on unmount
-  React.useEffect(
-    () => () => {
-      const phase = pttRef.current;
-      if (phase.kind === "pending") window.clearTimeout(phase.timer);
-      if (phase.kind === "holding") stopRecording();
-      pttRef.current = { kind: "idle" };
-      suppressNextClickRef.current = false;
-    },
-    [],
-  );
-
   // Keep the transcript pinned to the latest line. On first open jump INSTANTLY
   // to the bottom — a layout effect runs before paint, so the thread never
   // flashes at the top. A NEW line (the user's own send, or a fresh reply)
@@ -2542,80 +2527,32 @@ export function ContinuousChatOverlay({
     setPendingImages((prev) => prev.filter((_, i) => i !== index));
   }, []);
 
-  // ── Push-to-talk state machine ──────────────────────────────────────────────
-  // ONE phase ref is the source of truth: idle → (press) pending → (200ms hold)
-  // holding → (release) idle. `pttHolding` mirrors only what the label needs.
-  // A quick tap releases while still "pending" (never started a capture) and
-  // falls through to handleMicClick → toggleHandsFree. A held release stops the
-  // dictation and suppresses the trailing click so it doesn't ALSO toggle.
-  const beginPushToTalkPress = React.useCallback(
-    (event: React.PointerEvent<HTMLButtonElement>) => {
-      // Only arm from idle, primary button, no draft, and no capture already
-      // live (a tap while hands-free toggles it off — handleMicClick). No
-      // `booting` guard: voice capture is independent of agent-respond readiness.
-      if (
-        pttRef.current.kind !== "idle" ||
-        event.button !== 0 ||
-        hasDraft ||
-        recording ||
-        transcriptionMode ||
-        // Voice input is gated while a reply is in flight; type + send to queue
-        // another turn instead. Re-enabled the instant the reply finishes.
-        responding
-      )
-        return;
-      const { pointerId } = event;
-      try {
-        event.currentTarget.setPointerCapture(pointerId);
-      } catch {
-        // Synthetic/detached pointer — capture is best-effort.
-      }
-      const timer = window.setTimeout(() => {
-        // Promote to holding only if still pending for THIS pointer.
-        const phase = pttRef.current;
-        if (phase.kind !== "pending" || phase.pointerId !== pointerId) return;
-        pttRef.current = { kind: "holding", pointerId };
-        setPttHolding(true);
-        // Press-and-hold = dictation: fills the composer draft (no send).
-        startRecording("dictate");
-      }, 200);
-      pttRef.current = { kind: "pending", pointerId, timer };
+  // ── Push-to-talk ────────────────────────────────────────────────────────────
+  // Press-and-hold on the mic dictates into the composer draft (no send); a
+  // quick tap falls through to handleMicClick → toggleHandsFree. The hold/tap/
+  // slide-off/click-suppression machine is the shared usePushToTalk hook — the
+  // overlay only supplies its can-begin guard and the dictation start/stop.
+  const { handlers: micHoldHandlers, shouldSuppressClick } = usePushToTalk({
+    // Arm only when idle with no draft and no capture already live (a tap while
+    // hands-free toggles it off — handleMicClick). Voice input is gated while a
+    // reply is in flight; type + send to queue another turn instead.
+    canBegin: () =>
+      !hasDraft && !recording && !transcriptionMode && !responding,
+    onHoldStart: () => {
+      setPttHolding(true);
+      startRecording("dictate");
     },
-    [hasDraft, recording, responding, startRecording, transcriptionMode],
-  );
-
-  // One funnel for BOTH pointerup (cancelled=false) and pointercancel
-  // (cancelled=true). Always clears the pending timer + releases pointer capture
-  // FIRST — before any early return — so a quick tap can never leak a stuck timer
-  // or a captured pointer (the bug that mis-routed later events).
-  const finishPushToTalkPress = React.useCallback(
-    (event: React.PointerEvent<HTMLButtonElement>, cancelled: boolean) => {
-      const phase = pttRef.current;
-      if (phase.kind === "pending") window.clearTimeout(phase.timer);
-      if (
-        typeof event.currentTarget.hasPointerCapture === "function" &&
-        event.currentTarget.hasPointerCapture(event.pointerId)
-      ) {
-        event.currentTarget.releasePointerCapture(event.pointerId);
-      }
-      pttRef.current = { kind: "idle" };
-      if (phase.kind === "holding") {
-        stopRecording();
-        setPttHolding(false);
-        // A real click follows a pointer-UP (never a cancel); suppress it so the
-        // dictation release doesn't also toggle hands-free. Setting it ONLY here
-        // means it can never leak true into the next legitimate tap.
-        if (!cancelled) suppressNextClickRef.current = true;
-      }
+    onHoldEnd: () => {
+      // Dictation always inserts into the draft; there is no submit-on-release,
+      // so a clean release and a slide-off both just stop the capture.
+      stopRecording();
+      setPttHolding(false);
     },
-    [stopRecording],
-  );
+  });
 
   const handleMicClick = React.useCallback(() => {
-    if (suppressNextClickRef.current) {
-      suppressNextClickRef.current = false;
-      return;
-    }
+    // Swallow exactly the one click that follows a held PTT release.
+    if (shouldSuppressClick()) return;
     // While transcribing, the mic is the master voice control: a tap turns the
     // mic OFF, which also ends transcription (mic = parent — turning off the mic
     // turns off transcript). This is distinct from the transcript button, which
@@ -2641,6 +2578,7 @@ export function ContinuousChatOverlay({
     toggleHandsFree,
     transcriptionMode,
     stopTranscriptionAndMic,
+    shouldSuppressClick,
   ]);
 
   const hasThread = visibleMessages.length > 0;
@@ -5080,9 +5018,13 @@ export function ContinuousChatOverlay({
                     ? "Ask me anything — or pick an option"
                     : noProviderConfigured
                       ? "Connect a model provider in Settings to chat"
-                      : booting
-                        ? `Ask ${agentName} — waking up…`
-                        : (viewChatBinding?.placeholder ?? `Ask ${agentName}`)
+                      : modelBlocksSend
+                        ? modelStatus?.kind === "downloading"
+                          ? `Downloading ${modelStatus.modelName ?? "your model"} — you can keep typing`
+                          : `Getting ${modelStatus?.modelName ?? "your model"} ready — you can keep typing`
+                        : booting
+                          ? `Ask ${agentName} — waking up…`
+                          : (viewChatBinding?.placeholder ?? `Ask ${agentName}`)
                 }
                 aria-label="message"
                 data-testid="chat-composer-textarea"
@@ -5184,8 +5126,8 @@ export function ContinuousChatOverlay({
                         pttHolding
                           ? // Press-and-hold dictates into the composer draft; a
                             // release drops the transcript into the text box and
-                            // does NOT send (see beginPushToTalkPress /
-                            // setDictationSink). Label the real behavior.
+                            // does NOT send (usePushToTalk onHoldEnd). Label the
+                            // real behavior.
                             "release to insert"
                           : transcriptionMode
                             ? "stop transcription"
@@ -5200,9 +5142,10 @@ export function ContinuousChatOverlay({
                       disabled={firstRunOpen}
                       active={recording || handsFree || transcriptionMode}
                       onClick={handleMicClick}
-                      onPointerDown={beginPushToTalkPress}
-                      onPointerUp={(e) => finishPushToTalkPress(e, false)}
-                      onPointerCancel={(e) => finishPushToTalkPress(e, true)}
+                      onPointerDown={micHoldHandlers.onPointerDown}
+                      onPointerUp={micHoldHandlers.onPointerUp}
+                      onPointerCancel={micHoldHandlers.onPointerCancel}
+                      onPointerLeave={micHoldHandlers.onPointerLeave}
                       testId="chat-composer-mic"
                     />
                   )}

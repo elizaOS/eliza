@@ -18,6 +18,7 @@
 import * as React from "react";
 import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { BACKGROUND_APPLY_EVENT } from "@elizaos/shared/events";
 import { AppBackground } from "../../../backgrounds/AppBackground";
 import {
   applyBackgroundRedo,
@@ -128,7 +129,7 @@ function Harness(): React.JSX.Element {
 
   useLayoutEffect(() => {
     (window as Win).__emitBgApply = (payload) =>
-      emitViewEvent("background:apply", payload, "agent");
+      emitViewEvent(BACKGROUND_APPLY_EVENT, payload, "agent");
   }, []);
 
   const onFile = useCallback(

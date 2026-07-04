@@ -33,7 +33,6 @@ const idleVoice: ChatComposerVoiceState = {
   startListening: () => {},
   stopListening: () => {},
   supported: true,
-  toggleListening: () => {},
 };
 
 function ComposerHarness(props: React.ComponentProps<typeof ChatComposer>) {

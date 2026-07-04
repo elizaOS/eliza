@@ -53,7 +53,47 @@ via the `[renderer-build … target=ios]` console line).
 - `10936-fresh-build-firstrun.png` / `10936-onboarding-provider.png` — prior
   fresh-build first-run + provider-choice captures.
 
-## What is N/A this session — iOS on-device live-agent chat round-trip: BLOCKED
+### 4. Byte-exact binary round-trip + native Filesystem/Share on the iOS Simulator (2026-07-04)
+
+The iOS leg that earlier sessions filed N/A (below) is now **proven on a real
+booted iOS Simulator** (iPhone 16 Pro, iOS 26.4, udid `F165C3A3-…`). Produced by
+the `ios-attachment-smoke` lane (PR #12065, cherry-picked onto current
+`develop`), run locally on a macOS host with Xcode. The renderer bundle was
+freshly rebuilt from this branch (`build:ios`, `** BUILD SUCCEEDED **`,
+`CapacitorFilesystem 8.1.2` + `CapacitorShare 8.0.1` pods installed) and
+reinstalled on the simulator before capture.
+
+`10936-ios-sim-attachment-result.json` — the in-app verifier's structured
+result (`ok: true`, `phase: "complete"`):
+
+- **Binary round-trip:** `expectedSha256 == servedSha256 == readBackSha256 ==
+  4b5c5c92…0b844`, `byteLength: 68`. The content-addressed URL **is** the
+  sha256 (`/api/media/4b5c5c92…0b844.png`) — the #8876 dedup store, exercised
+  from inside the real WKWebView against the host agent on `:31338`.
+- **Native Capacitor Filesystem:** `Filesystem.writeFile(CACHE)` →
+  `Filesystem.readFile` byte-exact read-back (`readBackSha256` matches) →
+  `getUri` returned a real `file://…/Library/Caches/…png` URI.
+  `plugins.filesystem: true`, `filesystemReadFile: true`.
+- **Native Capacitor Share:** `Share.share({files:[uri]})` opened the real iOS
+  share sheet (`share.attempted: true`, `timedOutWithSheetLikelyOpen: true` —
+  the sheet stayed open past the bounded timeout). `plugins.share: true`.
+
+Captures:
+- `10936-ios-sim-share-sheet.png` — the native iOS share sheet open over the
+  running Eliza app (Save Images / Print / Add to Shared Album / Copy /
+  Reminders), the exact `download-share.ts` path firing on iOS.
+- `10936-ios-sim-fresh-launch.png` — the freshly-installed app on cold
+  first-run (chat-first onboarding: Eliza Cloud / On this device / Connect to a
+  remote agent), confirming a current renderer build.
+- `10936-ios-sim-native-share.mp4` — screen recording of the full run.
+- `10936-ios-sim-host-agent.txt` — host-agent structured log showing the media
+  store re-hosting the upload to the content-addressed `/api/media/<sha>.png`.
+
+This supersedes the N/A blocker below: the #11030-family boot defects that
+blocked the earlier iOS live leg are fixed on `develop`, and this run reached
+`phase: "complete"` with no engine crash or boot hang.
+
+## What was N/A in earlier sessions — iOS on-device live-agent chat round-trip: BLOCKED (now superseded by section 4)
 
 I attempted a full live iOS-sim attachment chat round-trip (stage the
 `eliza-1-2b` GGUF into the app-support container, arm the in-app full-Bun smoke,

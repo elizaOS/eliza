@@ -15,7 +15,12 @@ export function TypingIndicator({
 }: TypingIndicatorProps) {
   if (variant === "game-modal") {
     return (
-      <div className={className ?? "flex w-full justify-start"}>
+      <div
+        className={className ?? "flex w-full justify-start"}
+        role="status"
+        aria-live="polite"
+        aria-label={`${agentName} is typing`}
+      >
         <ChatBubble
           tone="assistant"
           className="flex max-w-[min(85%,24rem)] items-center gap-1 rounded-sm px-4 py-3"

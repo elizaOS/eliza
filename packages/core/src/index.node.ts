@@ -163,6 +163,7 @@ export * from "./memory";
 export * from "./messaging/interactions";
 export * from "./mobile-device-bridge-service";
 export * from "./model-gateway";
+export * from "./name-tokens";
 // Export network utilities (SSRF protection, secure fetch)
 export * from "./network";
 export { getOptimizationRootDir } from "./optimization-root-dir";
@@ -177,6 +178,7 @@ export * from "./providers/setup-progress";
 export * from "./providers/skill-eligibility";
 // Provisioning (migrations, agent/entity/room, embedding dimension) - node only
 export * from "./provisioning";
+export * from "./recent-messages-state";
 export * from "./roles";
 export * from "./runtime";
 export {

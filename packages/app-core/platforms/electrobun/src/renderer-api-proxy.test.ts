@@ -3,6 +3,7 @@ import {
   createRendererApiProxyRequestInit,
   isRendererApiProxyPath,
   resolveRendererProxyIdleTimeoutSeconds,
+  shouldProxyToApiBase,
 } from "./renderer-api-proxy";
 
 describe("renderer API proxy", () => {
@@ -50,6 +51,20 @@ describe("renderer API proxy", () => {
     expect(init.body).toBe(req.body);
     expect(init.duplex).toBe("half");
     expect((init.headers as Headers).get("host")).toBeNull();
+  });
+
+  it("proxies only to a reachable HTTP(S) api base, never the IPC scheme", () => {
+    // Local mode with the port exposed (ELIZA_API_EXPOSE_PORT=1) / external /
+    // cloud modes keep an HTTP listener the static server can forward to.
+    expect(shouldProxyToApiBase("http://127.0.0.1:31337")).toBe(true);
+    expect(shouldProxyToApiBase("https://agent.example.com")).toBe(true);
+
+    // Default local-agent IPC mode: no listener, no forwarding target. The
+    // proxy must stay dead so it never fetches a non-HTTP scheme.
+    expect(shouldProxyToApiBase("eliza-local-agent://ipc")).toBe(false);
+    expect(shouldProxyToApiBase(undefined)).toBe(false);
+    expect(shouldProxyToApiBase("")).toBe(false);
+    expect(shouldProxyToApiBase("not a url")).toBe(false);
   });
 
   it("keeps the renderer proxy idle timeout within Bun.serve limits", () => {

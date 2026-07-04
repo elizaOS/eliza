@@ -1,7 +1,11 @@
+import { ArrowDown } from "lucide-react";
 import * as React from "react";
 
+import { useThreadAutoScroll } from "../../hooks/useThreadAutoScroll";
 import { cn } from "../../lib/utils";
 import { useTranslation } from "../../state/TranslationContext.hooks";
+import { ChatBubble } from "../composites/chat/chat-bubble";
+import { TypingIndicator } from "../composites/chat/chat-typing-indicator";
 import { Input } from "../ui/input";
 import { GlassIconButton } from "./glass-composer";
 import { GLASS_COMPOSER_CLASS } from "./glass-composer.helpers";
@@ -33,10 +37,16 @@ export function ChatSurface({
 }: ChatSurfaceProps): React.JSX.Element {
   const { t } = useTranslation();
   const [draft, setDraft] = React.useState("");
-  const scrollRef = React.useRef<HTMLDivElement | null>(null);
   const messageCount = messages.length;
   const trimmed = draft.trim();
   const canSendNow = canSend && trimmed.length > 0;
+  // Follow the tail while at the bottom, leave a reader who scrolled up alone,
+  // and expose a jump-to-latest control — the one shared thread-scroll engine.
+  const lastMessage = messages.at(-1);
+  const { scrollRef, atBottom, jumpToLatest } =
+    useThreadAutoScroll<HTMLDivElement>({
+      growthKey: `${messageCount}:${lastMessage?.id ?? ""}:${lastMessage?.content.length ?? 0}`,
+    });
 
   const handleSend = React.useCallback(() => {
     if (!canSendNow) return;
@@ -44,70 +54,75 @@ export function ChatSurface({
     setDraft("");
   }, [canSendNow, onSend, trimmed]);
 
-  React.useEffect(() => {
-    void messageCount;
-    const node = scrollRef.current;
-    if (!node) return;
-    // Defer the bottom-follow write to the next frame so appending a message
-    // (every streamed turn) doesn't force a synchronous layout/reflow.
-    const frameId = requestAnimationFrame(() => {
-      node.scrollTop = node.scrollHeight;
-    });
-    return () => cancelAnimationFrame(frameId);
-  }, [messageCount]);
-
   return (
     <div className="flex h-full flex-col" data-testid="shell-chat-surface">
-      <div ref={scrollRef} className="flex-1 overflow-y-auto py-2">
-        {messages.length === 0 ? (
-          <p className="text-sm text-muted">
-            {greeting ??
-              t("chatsurface.greeting", {
-                defaultValue: "Ask {{appName}} anything.",
+      <div className="relative flex-1 overflow-hidden">
+        <div ref={scrollRef} className="h-full overflow-y-auto py-2">
+          {messages.length === 0 ? (
+            <p className="text-sm text-muted">
+              {greeting ??
+                t("chatsurface.greeting", {
+                  defaultValue: "Ask {{appName}} anything.",
+                })}
+            </p>
+          ) : (
+            <ul
+              aria-live="polite"
+              aria-atomic="false"
+              aria-label={t("chatsurface.conversation", {
+                defaultValue: "Conversation",
               })}
-          </p>
-        ) : (
-          <ul
-            aria-live="polite"
-            aria-atomic="false"
-            aria-label={t("chatsurface.conversation", {
-              defaultValue: "Conversation",
+              className="flex flex-col gap-2"
+            >
+              {messages.map((message) => {
+                const isUser = message.role === "user";
+                const isEmptyAssistant =
+                  message.role === "assistant" && message.content === "";
+                return (
+                  <li
+                    key={message.id}
+                    className={cn(
+                      "flex max-w-[80%]",
+                      isUser ? "self-end justify-end" : "self-start",
+                    )}
+                  >
+                    {isEmptyAssistant ? (
+                      <TypingIndicator
+                        variant="game-modal"
+                        agentName={t("chatsurface.assistant", {
+                          defaultValue: "{{appName}}",
+                        })}
+                      />
+                    ) : (
+                      <ChatBubble
+                        tone={isUser ? "user" : "assistant"}
+                        className="text-sm"
+                      >
+                        {message.content}
+                      </ChatBubble>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+        {/* Jump-to-latest: shown only when the reader has scrolled up from the
+            newest line, so new content is never silently missed. */}
+        {!atBottom && messageCount > 0 ? (
+          <button
+            type="button"
+            onClick={jumpToLatest}
+            aria-label={t("chatsurface.jumpToLatest", {
+              defaultValue: "Jump to latest",
             })}
-            className="flex flex-col gap-2"
+            className="absolute bottom-2 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-full border border-white/10 bg-card/80 px-3 py-1.5 text-xs text-txt shadow-md backdrop-blur-sm transition-colors hover:bg-card"
+            data-testid="chat-surface-jump-to-latest"
           >
-            {messages.map((message) => {
-              const isEmptyAssistant =
-                message.role === "assistant" && message.content === "";
-              return (
-                <li
-                  key={message.id}
-                  className={cn(
-                    "max-w-[80%] rounded-xs px-3 py-2 text-sm",
-                    message.role === "user"
-                      ? "self-end bg-accent/20 text-txt"
-                      : "self-start bg-card/60 text-txt",
-                  )}
-                >
-                  {isEmptyAssistant ? (
-                    <span
-                      role="status"
-                      aria-label={t("chatsurface.typing", {
-                        defaultValue: "{{appName}} is typing",
-                      })}
-                      className="inline-flex gap-0.5"
-                    >
-                      <span className="inline-block h-1 w-1 animate-pulse rounded-full bg-muted" />
-                      <span className="inline-block h-1 w-1 animate-pulse rounded-full bg-muted [animation-delay:120ms]" />
-                      <span className="inline-block h-1 w-1 animate-pulse rounded-full bg-muted [animation-delay:240ms]" />
-                    </span>
-                  ) : (
-                    message.content
-                  )}
-                </li>
-              );
-            })}
-          </ul>
-        )}
+            <ArrowDown className="h-3.5 w-3.5" aria-hidden="true" />
+            {t("chatsurface.jumpToLatest", { defaultValue: "Jump to latest" })}
+          </button>
+        ) : null}
       </div>
       {/* Refractive-glass composer: a well-defined glass bar (no plain top
           border) holding the input and the matching mic + send buttons. */}

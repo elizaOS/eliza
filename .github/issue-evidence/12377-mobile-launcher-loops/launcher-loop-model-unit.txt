@@ -1,0 +1,9 @@
+
+ RUN  v4.1.5 /Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/wf_f7a1641e-e50-14/packages/app
+
+
+ Test Files  1 passed (1)
+      Tests  16 passed (16)
+   Start at  21:41:45
+   Duration  16.47s (transform 1.53s, setup 1.88s, import 52ms, tests 648ms, environment 10.81s)
+

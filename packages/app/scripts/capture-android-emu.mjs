@@ -8,9 +8,12 @@
 // Flags:
 //   --issue <n> --slug <s>   name artifacts `<n>-<s>-android-emu.{png,mp4,log}`
 //   --serial <serial>        target a specific device (default: ANDROID_SERIAL → emulator → first)
-//   --duration <seconds>     recording length (default 6, max 180 per screenrecord)
+//   --duration <seconds>     recording length (default 6); over 180s it records
+//                            back-to-back capped segments and concats them with
+//                            ffmpeg, so a long gesture walkthrough is one file
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, statSync, writeFileSync } from "node:fs";
+import { startChunkedAndroidScreenRecord } from "./lib/android-capture.mjs";
 import { resolveAdb, resolveSerial } from "./lib/android-device.mjs";
 import {
   captureBackendLog,
@@ -111,7 +114,23 @@ async function recordVideoToRemote(adb, serial, outPath, durationSec, remote) {
   return pulled;
 }
 
+async function recordVideoChunked(adb, serial, outPath, durationSec) {
+  const path = await import("node:path");
+  const recording = await startChunkedAndroidScreenRecord({
+    adb,
+    serial,
+    artifactDir: path.dirname(outPath),
+    filename: path.basename(outPath),
+    log,
+  });
+  await delay(durationSec * 1000);
+  return recording.stop();
+}
+
 async function recordVideo(adb, serial, outPath, durationSec) {
+  if (durationSec > 180) {
+    return recordVideoChunked(adb, serial, outPath, durationSec);
+  }
   for (const dir of REMOTE_DIRS) {
     if (
       await recordVideoToRemote(

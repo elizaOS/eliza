@@ -13,6 +13,7 @@
 //   5. (optional) Cloud route: real Hetzner provisioning probe.
 //
 // Flags: --serial <s>  --skip-local-chat  --skip-route-coverage  --cloud
+//        --launcher-loop (≥200-action seeded launcher gesture loop; opt-in)
 //        --build (build the APK first)  --no-emulator-boot
 import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
@@ -244,6 +245,29 @@ async function main() {
       "--config",
       "playwright.android.config.ts",
     ]);
+  }
+
+  if (has("--launcher-loop")) {
+    // Long seeded launcher gesture loop (≥200 real device actions). Opt-in: it
+    // adds several minutes, so it does not run in the default sweep. The seed is
+    // printed by the spec and honored via ELIZA_LOOP_SEED for reproduction.
+    log("launcher loop: ≥200 real device gestures with per-action invariants…");
+    run(
+      "bunx",
+      [
+        "playwright",
+        "test",
+        "--config",
+        "playwright.android.config.ts",
+        "test/android/launcher-gesture-loop.android.spec.ts",
+      ],
+      {
+        ELIZA_ANDROID_BACKEND: process.env.ELIZA_ANDROID_BACKEND ?? "host",
+        ELIZA_ANDROID_REQUIRE_AGENT:
+          process.env.ELIZA_ANDROID_REQUIRE_AGENT ?? "1",
+        ANDROID_SERIAL: serial,
+      },
+    );
   }
 
   if (has("--cloud")) {
