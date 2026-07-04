@@ -13,14 +13,14 @@ in the remainder section below, not attempted.
 
 | Fix | Summary | Files |
 |-----|---------|-------|
-| **C5 (P0)** | Scope the cloud hf-proxy route to the curated `elizaos/` org; 403 for any other repo — closes the "any authed cloud user proxy-downloads ANY HF repo with the cloud's HF_TOKEN" vector. | `packages/cloud/api/v1/hf-proxy/[...path]/route.ts`, `packages/cloud/api/__tests__/hf-proxy-route.test.ts` |
+| **C5 (P0)** | Scope the cloud hf-proxy route to the curated `elizaos/` org; 403 for any other repo — closes the "any authed cloud user proxy-downloads ANY HF repo with the cloud's HF_TOKEN" vector. `ALLOWED_REPO_PREFIX` pinned to the org segment of `ELIZA_1_HF_REPO` via an agreement test (so a shared-repo rename can't silently un-scope it). | `packages/cloud/api/v1/hf-proxy/[...path]/route.ts`, `packages/cloud/api/__tests__/hf-proxy-route.test.ts` |
 | **C6 (P1)** | Log proxied repo/path/status/bytes with redacted orgId/userId after the upstream fetch — cost observability on a previously-unmetered multi-GB transfer. | same route + test |
 | **C8 (P1)** | 429/5xx transient-retry with bounded backoff in the downloader's single `loadHttpClient().request` chokepoint (both fetch sites), ported from `lifecycle-remote-checks.ts`. 429 no longer treated as a hard 404. | `plugins/plugin-local-inference/src/services/downloader.ts`, `downloader.test.ts` |
-| **C9 (P1)** | 401/403 → typed `GatedRepoError` (`code: "HF_GATED_REPO"`, carries `httpStatus`) at both `>= 400` sites, distinct from generic HTTP failures. | same downloader + test |
+| **C9 (P1)** | 401/403 → typed `GatedRepoError` (`code: "HF_GATED_REPO"`, carries `httpStatus`) at both `>= 400` sites, **propagated to the consumer**: `errorCode`/`errorHttpStatus` added to `DownloadJob` + `LocalInferenceDownloadStatus`, set in the failure catch, and carried through `statusFromJobs` into the status DTO. Consumer-boundary tests (failed-event, persistence round-trip, `buildTextGenerationReadiness` DTO). | downloader.ts + test, `readiness.ts` + test, `packages/shared/src/local-inference/types.ts` |
 | **C12 (P2)** | `logResolvedKernelSet()` `console.info` → structured `logger.info` (keeps `[LocalInferenceEngine]` prefix). | `plugins/plugin-local-inference/src/services/active-model.ts` |
 | **C13 (P2)** | Two `required-kernels-gate.test.ts` cases pinning the AGENTS.md §3 Gemma exception: a Gemma manifest with only `turboquant_q4` (no QJL/Polar/TCQ) does NOT throw; missing `turboquant_q4` still hard-fails. | `required-kernels-gate.test.ts` |
 | **C11 (P2, detection only)** | Static-analysis test pinning the memory-arbiter voice/ASR/TTS bypass: only `vision-describe`/`image-gen` register through the arbiter; `voice/` loads GGUFs via direct `bun:ffi`/`dlopen`. Detects drift in either direction. Full re-wire is a flagged follow-up. | `plugins/plugin-local-inference/src/services/arbiter-bypass-detection.test.ts` |
-| **C15 (P2)** | Reconcile native/AGENTS.md §11 ONNX table (Wav2Small/WeSpeaker/pyannote-3 → ONNX-free; zero onnxruntime imports exist) + mirror to CLAUDE.md. **Fail-loud** `classifyVoiceEmotion()` throwing `VOICE_EMOTION_CLASSIFIER_UNAVAILABLE` instead of the silent no-op left by the deleted `VoiceEmotionClassifier.classify()`. Grep test banning `onnxruntime-*` imports. | `voice-emotion-classifier.ts` (+ test), `emotion-attribution.ts`, `manifest/schema.ts`, `native/AGENTS.md`, `native/CLAUDE.md`, `onnx-import-ban.test.ts` |
+| **C15 (P2)** | Reconcile native/AGENTS.md §11 ONNX table (Wav2Small/WeSpeaker/pyannote-3 → ONNX-free; zero onnxruntime imports exist) + mirror to CLAUDE.md. Grep test banning `onnxruntime-*` imports. The dead acoustic-emotion path is documented honestly as a tracked K1 follow-up (see below) — an earlier fail-loud `classifyVoiceEmotion()` stub was **removed** after review found it unreachable (zero call sites → not enforced behavior). | `voice-emotion-classifier.ts` (+ test), `emotion-attribution.ts`, `manifest/schema.ts`, `native/AGENTS.md`, `native/CLAUDE.md`, `onnx-import-ban.test.ts` |
 | **C16 (P2)** | Delete dead `packages/app-core/scripts/omnivoice-fuse/prepare.mjs` (zero live importers; active path is `build-helpers/omnivoice-merged.mjs`) + regression test blocking regrowth. | `packages/app-core/scripts/omnivoice-fuse-removed.test.ts` (+ deletion) |
 | **C18 (P3)** | Honest `android-arm64-litertlm` `authored-pending-hardware` row in PLATFORM_MATRIX.md — LiteRT-LM is live dispatcher code with zero prior matrix rows. | `plugins/plugin-local-inference/native/verify/PLATFORM_MATRIX.md` |
 
@@ -47,15 +47,20 @@ No default flip. No new proxy dependency for the common (public) case.
 
 ## Flagged follow-ups (NOT silently fixed)
 
-### Voice-emotion acoustic read — fail-loud, native binding still owed (C15)
+### Voice-emotion acoustic read — dead path, native binding owed (C15)
 The ONNX Wav2Small runtime was deleted before the native GGUF read was wired.
-In production nothing constructs a `VoiceEmotionClassifierOutput`, so
-`attributeVoiceEmotion()` runs text/prosody-only and the acoustic-fusion branch
-is dead. Per the no-silent-fallback rule this is now surfaced loudly:
-`classifyVoiceEmotion()` throws `VOICE_EMOTION_CLASSIFIER_UNAVAILABLE`, and a
-manifest shipping an `emotion` artifact fails rather than silently degrading.
-**Follow-up (out of headless scope):** bind the `voice_emotion.c` GGUF forward
-into `libelizainference` through the memory arbiter (K1) + a parity gate.
+Confirmed the acoustic path is fully DEAD at runtime: **no** code loads a
+`files.emotion` GGUF, and **no** production caller of `attributeVoiceEmotion()`
+supplies a `model` (acoustic read), so the fusion runs text/prosody-only.
+(An earlier attempt added a fail-loud `classifyVoiceEmotion()` stub; adversarial
+review correctly flagged it as unreachable — zero call sites means it enforced
+nothing — so it was removed rather than left pretending to be enforced behavior.
+The honest doc reconciliation + the onnx-import-ban test remain.)
+**Follow-up (out of headless scope — a real feature):** bind the
+`voice_emotion.c` GGUF forward into `libelizainference` through the memory
+arbiter (K1) + add a runtime activation gate that rejects a shipped-but-
+unrunnable `files.emotion` artifact + a parity gate. Until then, no production
+bundle ships a `files.emotion` artifact.
 
 ### Memory-arbiter voice/ASR/TTS bypass — detected, re-wire owed (C11)
 Only `vision-describe`/`image-gen` register through the arbiter. `text`,
@@ -91,26 +96,27 @@ needed: `node ../shared/scripts/generate-keywords.mjs --target ts` in
 (otherwise `@elizaos/core` import fails); generated file is untracked, not
 committed.
 
-### plugin-local-inference — touched test files
+### plugin-local-inference — touched test files (post-review)
 ```
 $ bunx vitest run \
     src/services/downloader.test.ts \
+    src/services/readiness.test.ts \
     src/services/required-kernels-gate.test.ts \
     src/services/voice/voice-emotion-classifier.test.ts \
     src/services/voice/onnx-import-ban.test.ts \
     src/services/voice/emotion-attribution.test.ts \
     src/services/arbiter-bypass-detection.test.ts
 
- Test Files  6 passed (6)
-      Tests  54 passed (54)
+ Test Files  7 passed (7)
+      Tests  56 passed (56)
 ```
 
-### cloud — hf-proxy route
+### cloud — hf-proxy route (post-review: + 403-consumer-code + allowlist-agreement)
 ```
 $ bun test api/__tests__/hf-proxy-route.test.ts
- 5 pass
+ 6 pass
  0 fail
- 20 expect() calls
+ 22 expect() calls
 ```
 
 ### app-core — omnivoice-fuse-removed
@@ -125,24 +131,51 @@ $ bunx vitest run scripts/omnivoice-fuse-removed.test.ts
 $ (plugins/plugin-local-inference) bunx tsgo --noEmit
 plugin typecheck exit: 0   (0 errors)
 ```
-`packages/cloud/api` `tsgo --noEmit` exits 1 with 13 errors, but ALL are in
-files this branch did NOT touch (`fal/proxy/route.ts` — a `hono@4.12.18` vs
-`4.12.27` duplicate-package version skew in the shared worktree node_modules;
-`../shared/src/lib/services/market-preview.ts`;
-`__tests__/stripe-connect-webhook-route.test.ts`). Zero hf-proxy errors. This is
-the known shared-parent-node_modules worktree gotcha — relies on CI's clean
-install for the cloud lane.
+`packages/cloud/api` `tsgo --noEmit` and `packages/shared` `tsgo --noEmit` exit
+non-zero, but EVERY error is in a file this branch did NOT touch or is a
+worktree-resolution artifact of the shared parent `node_modules`:
+- cloud/api: `fal/proxy/route.ts` (`hono@4.12.18` vs `4.12.27` duplicate-package
+  skew), `../shared/src/lib/services/market-preview.ts`,
+  `__tests__/stripe-connect-webhook-route.test.ts` — **zero** hf-proxy errors.
+- shared: 2 × `TS2688 Cannot find type definition file for 'bun-types'/'node'`
+  (typeRoots resolution, not my `types.ts` change; the plugin — which imports
+  the new `DownloadJob.errorCode`/`errorHttpStatus` fields — typechecks clean at
+  exit 0, transitively validating the shape).
+
+This is the known shared-parent-node_modules worktree gotcha — relies on CI's
+clean install for the cloud/shared lanes.
 
 ### Lint
 ```
-$ bunx @biomejs/biome check <13 touched files>
-Checked 13 files in 71ms. No fixes applied.   (0 errors, 0 warnings)
+$ bunx @biomejs/biome check <11 touched files>
+Checked 11 files in 83ms. No fixes applied.   (0 errors, 0 warnings)
 ```
 
 ---
 
+## Adversarial-review fixes (post-first-report)
+
+Three confirmed issues from the coordinator's review, all addressed:
+
+1. **C9 didn't reach a consumer** — the typed `GatedRepoError` code was
+   stringified into `DownloadJob.error`. Fixed: `errorCode`/`errorHttpStatus`
+   now on `DownloadJob` + `LocalInferenceDownloadStatus`, set in the failure
+   catch, carried through `statusFromJobs`. Tests assert at the consumer
+   boundary (failed event, persistence round-trip, readiness DTO).
+2. **Unreachable fail-loud stub** — `classifyVoiceEmotion()` had zero call
+   sites. Confirmed the acoustic path is fully dead (no `files.emotion` loader,
+   no caller passes `model`). Removed the stub; kept the honest doc
+   reconciliation + onnx-import-ban; flagged the native binding as a K1
+   follow-up.
+3. **Hardcoded allowlist literal** — `ALLOWED_REPO_PREFIX` now pinned to the org
+   segment of `ELIZA_1_HF_REPO` (from `@elizaos/shared`) via an agreement test.
+
 ## Commits
 ```
+3d6cbe376a6 fix(#12216): biome format on downloader.test.ts (C9 round-trip assertion)
+92d3b0de7f8 fix(#12216): C5 pin hf-proxy allowlist to ELIZA_1_HF_REPO via agreement test
+332ef59f526 fix(#12216): C15 drop unreachable classifyVoiceEmotion stub; flag dead path
+575f1ea3dae fix(#12216): C9 propagate GatedRepoError code to the consumer boundary
 0208f7fa888 fix(#12216): biome format + lint cleanup on touched files
 fc1d2aa0033 fix(#12216): C18 add honest LiteRT-LM row to PLATFORM_MATRIX
 787b4d3cd25 fix(#12216): C11 detect memory-arbiter voice/ASR/TTS bypass (detection only)
@@ -156,4 +189,3 @@ cd01325db26 fix(#12216): C8+C9 downloader 429 backoff retry + typed GatedRepoErr
 (The base commit `80f9c055ed0 fix(core): let providers opt out of default
 registration (#12270)` was already the worktree HEAD before this work began — it
 is NOT part of this task.)
-```
