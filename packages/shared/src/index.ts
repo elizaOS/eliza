@@ -252,6 +252,9 @@ export * from "./env-utils.js";
 export * from "./error-classification.js";
 export * from "./events/index.js";
 export * from "./format-error.js";
+// Canonical UI language codes + BCP-47 normalization (React-free) so Node
+// route handlers can normalize `Accept-Language` without the renderer.
+export * from "./i18n/language.js";
 // Knowledge-graph primitives — canonical Entity/Relationship types + the
 // identity-merge engine. Dependency-free; the DB-backed stores stay in
 // @elizaos/plugin-personal-assistant.
@@ -272,6 +275,7 @@ export * from "./local-inference/index.js";
 export * from "./loopback-trust.js";
 export * from "./meetings.js";
 export * from "./platform/aosp-user-agent.js";
+export * from "./platform/eliza-os.js";
 export * from "./platform/is-native-server.js";
 export * from "./process-guards.js";
 export * from "./recent-messages-state.js";

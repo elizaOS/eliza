@@ -1,19 +1,14 @@
+import {
+  DEFAULT_UI_LANGUAGE,
+  UI_LANGUAGES,
+  type UiLanguage,
+} from "@elizaos/shared";
 import en from "./locales/en.json" with { type: "json" };
 
-export const UI_LANGUAGES = [
-  "en",
-  "zh-CN",
-  "ko",
-  "es",
-  "pt",
-  "vi",
-  "tl",
-  "ja",
-] as const;
-
-export type UiLanguage = (typeof UI_LANGUAGES)[number];
-
-export const DEFAULT_UI_LANGUAGE: UiLanguage = "en";
+// Canonical language codes live in @elizaos/shared (React-free, Node-safe).
+// Re-exported here so renderer consumers keep importing them from
+// `@elizaos/ui/i18n` alongside the message dictionaries below.
+export { DEFAULT_UI_LANGUAGE, UI_LANGUAGES, type UiLanguage };
 
 export type MessageDict = Record<string, string>;
 

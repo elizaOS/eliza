@@ -7,6 +7,7 @@ export * from "./apps-lifecycle-routes.js";
 export * from "./apps-loading-routes.js";
 export * from "./apps-runs-routes.js";
 export * from "./auth-routes.js";
+export * from "./automation-nodes.js";
 export * from "./awareness.js";
 export * from "./character-routes.js";
 export * from "./chat.js";

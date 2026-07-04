@@ -85,7 +85,7 @@ import { createTranslator } from "@elizaos/ui/i18n";
 import {
   getWindowNavigationPath,
   isAppWindowRoute,
-} from "@elizaos/ui/navigation/index";
+} from "@elizaos/ui/navigation";
 import type { ShareTargetPayload } from "@elizaos/ui/platform";
 import {
   applyLaunchConnection,

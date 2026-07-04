@@ -1,6 +1,6 @@
 import type { loadElizaConfig } from "@elizaos/agent";
 import type { AgentRuntime, UUID } from "@elizaos/core";
-import type { AutomationNodeDescriptor } from "@elizaos/ui";
+import type { AutomationNodeDescriptor } from "@elizaos/shared";
 
 export interface AutomationNodeContributorContext {
   runtime: AgentRuntime;

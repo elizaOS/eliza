@@ -9,7 +9,7 @@ import {
   type RuntimeCapabilityNodeSpec,
   registerAutomationNodeContributor,
 } from "@elizaos/app-core/api/automation-node-contributors";
-import type { AutomationNodeDescriptor } from "@elizaos/ui";
+import type { AutomationNodeDescriptor } from "@elizaos/shared";
 
 /**
  * Automation catalog nodes owned by the Hyperliquid plugin: the Hyperliquid

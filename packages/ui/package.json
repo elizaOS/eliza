@@ -301,6 +301,36 @@
       "import": "./dist/utils/index.js",
       "default": "./dist/utils/index.js"
     },
+    "./utils/*": {
+      "types": "./dist/utils/*.d.ts",
+      "import": "./dist/utils/*.js",
+      "default": "./dist/utils/*.js"
+    },
+    "./services/*": {
+      "types": "./dist/services/*.d.ts",
+      "import": "./dist/services/*.js",
+      "default": "./dist/services/*.js"
+    },
+    "./themes": {
+      "types": "./dist/themes/index.d.ts",
+      "import": "./dist/themes/index.js",
+      "default": "./dist/themes/index.js"
+    },
+    "./App": {
+      "types": "./dist/App.d.ts",
+      "import": "./dist/App.js",
+      "default": "./dist/App.js"
+    },
+    "./browser": {
+      "types": "./dist/browser.d.ts",
+      "import": "./dist/browser.js",
+      "default": "./dist/browser.js"
+    },
+    "./build-variant": {
+      "types": "./dist/build-variant.d.ts",
+      "import": "./dist/build-variant.js",
+      "default": "./dist/build-variant.js"
+    },
     "./voice": {
       "types": "./dist/voice/index.d.ts",
       "import": "./dist/voice/index.js",
@@ -312,12 +342,7 @@
       "default": "./dist/widgets/index.js"
     },
     "./dist/styles/*.css": "./dist/styles/*.css",
-    "./*.css": "./dist/*.css",
-    "./*": {
-      "types": "./dist/*.d.ts",
-      "import": "./dist/*.js",
-      "default": "./dist/*.js"
-    }
+    "./*.css": "./dist/*.css"
   },
   "peerDependencies": {
     "@capacitor/app": "^8.0.0",

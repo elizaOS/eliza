@@ -490,8 +490,10 @@ export {
 } from "./hooks/useRenderGuard";
 export { useTimeout } from "./hooks/useTimeout";
 export type { UiLanguage } from "./i18n/index";
+// `./i18n/index` already re-exports the full `./i18n/messages` surface
+// (language codes, MESSAGES, ensureLanguageLoaded); re-exporting messages again
+// here would double-surface those names and make the barrel ambiguous.
 export * from "./i18n/index";
-export * from "./i18n/messages";
 export { ContentLayout } from "./layouts/content-layout/content-layout";
 export * from "./layouts/index";
 export { PageLayout } from "./layouts/page-layout/page-layout";

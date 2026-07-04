@@ -19,9 +19,9 @@ import { type AgentRuntime, stringToUuid, type UUID } from "@elizaos/core";
 import type {
   AutomationNodeCatalogResponse,
   AutomationNodeDescriptor,
-} from "@elizaos/ui";
-import { classifyRuntimeActionNode } from "./automation-action-classifier.ts";
+} from "@elizaos/shared";
 import { ensureRouteAuthorized } from "./auth.ts";
+import { classifyRuntimeActionNode } from "./automation-action-classifier.ts";
 import {
   buildRuntimeCapabilityNodes,
   listAutomationNodeContributors,
