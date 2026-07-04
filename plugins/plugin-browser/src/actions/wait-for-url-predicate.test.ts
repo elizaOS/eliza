@@ -1,3 +1,7 @@
+/**
+ * Predicate tests for BROWSER wait_for_url substring and regex matching.
+ */
+
 import { describe, expect, it } from "vitest";
 import { buildWaitForUrlPredicate } from "./wait-for-url-predicate.js";
 

@@ -1,3 +1,7 @@
+/**
+ * Desktop browser workspace client for forwarding commands to the embedded BrowserView.
+ */
+
 import { createBrowserWorkspaceError } from "./browser-workspace-errors.js";
 import {
   assertBrowserWorkspaceConnectorSecretsNotExported,

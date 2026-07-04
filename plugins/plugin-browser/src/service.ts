@@ -1,3 +1,7 @@
+/**
+ * Browser bridge route service interface implemented by host plugins.
+ */
+
 import type { Service, UUID } from "@elizaos/core";
 import type {
   BrowserBridgeCompanionAutoPairResponse,

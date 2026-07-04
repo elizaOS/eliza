@@ -1,3 +1,7 @@
+/**
+ * Command-normalization tests for browser workspace aliases and defaults.
+ */
+
 import { describe, expect, it } from "vitest";
 import type { BrowserWorkspaceCommand } from "../actions/browser.ts";
 import { normalizeBrowserWorkspaceCommand } from "./browser-workspace-helpers.ts";

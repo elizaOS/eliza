@@ -1,3 +1,7 @@
+/**
+ * Browser bridge route tests for companion revoke authorization and state changes.
+ */
+
 import type http from "node:http";
 import type { AgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";

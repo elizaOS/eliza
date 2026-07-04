@@ -1,3 +1,7 @@
+/**
+ * Global browser capture hook registry shared by runtime and capture surfaces.
+ */
+
 import type { BrowserCaptureConfig } from "./workspace/browser-capture.js";
 
 export interface BrowserCaptureHooks {

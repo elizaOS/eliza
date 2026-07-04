@@ -1,3 +1,7 @@
+/**
+ * Browser bridge readiness tests for companion recency, permissions, and pause state.
+ */
+
 import { describe, expect, it } from "vitest";
 import {
   browserBridgeCompanionIsRecent,

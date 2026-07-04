@@ -1,3 +1,7 @@
+/**
+ * Global browser workspace hook registry for desktop and web command execution.
+ */
+
 import type {
   BrowserWorkspaceTab,
   EvaluateBrowserWorkspaceTabRequest,

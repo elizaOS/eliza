@@ -1,3 +1,7 @@
+/**
+ * BROWSER action tests for command normalization and target dispatch.
+ */
+
 import type { HandlerCallback } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { BROWSER_SERVICE_TYPE } from "../browser-service.js";

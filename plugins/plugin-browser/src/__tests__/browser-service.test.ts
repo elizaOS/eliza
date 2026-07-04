@@ -1,3 +1,7 @@
+/**
+ * BrowserService tests for target registration, resolution, and dispatch behavior.
+ */
+
 import { ElizaError } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BrowserService, type BrowserTarget } from "../browser-service.js";

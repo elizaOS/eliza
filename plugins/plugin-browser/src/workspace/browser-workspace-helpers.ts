@@ -1,3 +1,7 @@
+/**
+ * Shared browser workspace utilities for command normalization, tabs, and URLs.
+ */
+
 import * as fsp from "node:fs/promises";
 import * as path from "node:path";
 import { createBrowserWorkspaceError } from "./browser-workspace-errors.js";

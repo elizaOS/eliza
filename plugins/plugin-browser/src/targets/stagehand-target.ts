@@ -1,3 +1,7 @@
+/**
+ * Stagehand BrowserTarget implementation for remote Playwright command servers.
+ */
+
 import { execFileSync, execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";

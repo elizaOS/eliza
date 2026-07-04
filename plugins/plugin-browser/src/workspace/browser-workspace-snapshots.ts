@@ -1,3 +1,7 @@
+/**
+ * Snapshot, diff, screenshot, and PDF helpers for browser workspace documents.
+ */
+
 import { normalizeBrowserWorkspaceText } from "./browser-workspace-helpers.js";
 import type { BrowserWorkspaceSnapshotRecord } from "./browser-workspace-types.js";
 

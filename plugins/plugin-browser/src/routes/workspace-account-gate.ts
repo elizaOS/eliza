@@ -1,3 +1,7 @@
+/**
+ * Account gate middleware for browser workspace HTTP routes.
+ */
+
 import {
   type ConnectorAccount,
   type ConnectorAccountAccessGate,

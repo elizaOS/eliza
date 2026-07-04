@@ -1,3 +1,7 @@
+/**
+ * Browser workspace error-contract tests for typed classification and tagging.
+ */
+
 import { describe, expect, it } from "vitest";
 import {
   type BrowserWorkspaceErrorCode,

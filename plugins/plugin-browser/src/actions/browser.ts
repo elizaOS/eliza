@@ -1,3 +1,7 @@
+/**
+ * BROWSER action dispatcher for workspace, bridge, and external browser targets.
+ */
+
 import type {
   Action,
   ActionExample,

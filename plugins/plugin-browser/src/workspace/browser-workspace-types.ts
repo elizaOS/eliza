@@ -1,3 +1,7 @@
+/**
+ * Shared command, tab, session, and result types for browser workspace.
+ */
+
 import type { JSDOM } from "jsdom";
 
 // "chromium" is emitted only by the real-Chromium benchmark executor

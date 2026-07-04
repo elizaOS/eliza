@@ -1,3 +1,7 @@
+/**
+ * Browser workspace helper tests for URL, tab, and command utility behavior.
+ */
+
 import { describe, expect, it } from "vitest";
 import {
   normalizeBrowserWorkspaceText,

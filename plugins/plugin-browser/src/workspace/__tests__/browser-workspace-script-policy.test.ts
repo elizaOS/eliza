@@ -1,3 +1,7 @@
+/**
+ * Browser workspace script policy tests for allowed and blocked execution paths.
+ */
+
 import { describe, expect, it } from "vitest";
 import { createDesktopBrowserWorkspaceCommandScript } from "../browser-workspace-desktop.js";
 import {

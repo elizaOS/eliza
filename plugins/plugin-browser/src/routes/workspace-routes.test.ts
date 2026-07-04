@@ -1,3 +1,7 @@
+/**
+ * Browser workspace route tests for command dispatch and HTTP response mapping.
+ */
+
 import * as fsp from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";

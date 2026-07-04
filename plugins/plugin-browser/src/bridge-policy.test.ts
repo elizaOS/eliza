@@ -1,3 +1,7 @@
+/**
+ * Browser bridge policy tests for token expiry and URL focus helpers.
+ */
+
 import { describe, expect, it } from "vitest";
 import {
   browserBridgeDomainFromUrl,

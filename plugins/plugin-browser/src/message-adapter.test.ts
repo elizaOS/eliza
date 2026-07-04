@@ -1,3 +1,7 @@
+/**
+ * Message adapter tests for reading browser bridge page contexts as messages.
+ */
+
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { BrowserBridgeAdapter } from "./message-adapter.js";

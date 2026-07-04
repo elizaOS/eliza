@@ -1,3 +1,7 @@
+/**
+ * Web-mode browser workspace command executor backed by JSDOM documents.
+ */
+
 import * as fsp from "node:fs/promises";
 import * as path from "node:path";
 import {

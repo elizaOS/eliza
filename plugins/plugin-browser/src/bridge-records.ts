@@ -1,3 +1,7 @@
+/**
+ * Constructors for normalized browser bridge companion, tab, and page-context records.
+ */
+
 import crypto from "node:crypto";
 import type {
   BrowserBridgeCompanionStatus,

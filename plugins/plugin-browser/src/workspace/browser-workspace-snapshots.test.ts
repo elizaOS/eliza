@@ -1,3 +1,7 @@
+/**
+ * Browser workspace snapshot tests for HTML, text, and screenshot outputs.
+ */
+
 import { describe, expect, it } from "vitest";
 import {
   diffBrowserWorkspaceSnapshots,

@@ -1,9 +1,9 @@
-// Auto-enable check for @elizaos/plugin-browser.
-//
-// Plugin manifest entry-point — referenced by package.json's
-// `elizaos.plugin.autoEnableModule`. Keep this module light: env reads only,
-// no service init, no transitive imports of the full plugin runtime. The
-// auto-enable engine loads dozens of these per boot.
+/**
+ * Import-free auto-enable predicate for the browser automation plugin.
+ *
+ * The plugin manifest references this module directly, so it only reads config
+ * and avoids transitive imports of the full browser runtime.
+ */
 import type { PluginAutoEnableContext } from "@elizaos/core";
 
 function isFeatureEnabled(

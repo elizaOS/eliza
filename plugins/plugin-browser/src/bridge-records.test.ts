@@ -1,3 +1,7 @@
+/**
+ * Browser bridge record constructor tests for companion, tab, and page-context defaults.
+ */
+
 import { describe, expect, it } from "vitest";
 import {
   createBrowserBridgeCompanionStatus,

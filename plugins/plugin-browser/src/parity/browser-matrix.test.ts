@@ -1,3 +1,7 @@
+/**
+ * Browser parity matrix tests against the live BROWSER action schema.
+ */
+
 import { listSubactionsFromParameters } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { browserAction } from "../actions/browser.js";

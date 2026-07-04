@@ -1,3 +1,7 @@
+/**
+ * Browser bridge companion authentication types and bearer-token validators.
+ */
+
 export type BrowserBridgeCompanionCredentialLike = {
   companion: {
     pairingTokenExpiresAt?: string | null;

@@ -1,3 +1,7 @@
+/**
+ * Form interaction helpers for browser workspace click, fill, type, and key commands.
+ */
+
 import type { JSDOM } from "jsdom";
 import {
   buildBrowserWorkspaceElementSelector,

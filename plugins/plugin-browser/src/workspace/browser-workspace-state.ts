@@ -1,3 +1,7 @@
+/**
+ * Mutable tab and session state for browser workspace command execution.
+ */
+
 import type { JSDOM } from "jsdom";
 import type {
   BrowserWorkspaceDomElementSummary,

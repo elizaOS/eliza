@@ -1,3 +1,7 @@
+/**
+ * Password manager bridge tests for backend selection and secret-safe clipboard injection.
+ */
+
 import { afterEach, describe, expect, it } from "vitest";
 import {
   clearPasswordManagerBackendCache,

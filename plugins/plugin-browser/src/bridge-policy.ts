@@ -1,3 +1,7 @@
+/**
+ * Browser bridge token, expiry, focus-window, and domain policy helpers.
+ */
+
 export const MAX_BROWSER_FOCUS_WINDOW_MS = 2 * 60 * 1000;
 export const DEFAULT_BROWSER_COMPANION_PAIRING_TOKEN_TTL_MS =
   30 * 24 * 60 * 60 * 1000;

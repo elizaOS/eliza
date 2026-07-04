@@ -1,3 +1,7 @@
+/**
+ * Vitest configuration for browser plugin real-Chromium lanes.
+ */
+
 import { defineConfig } from "vitest/config";
 import baseConfig from "../../vitest.config.ts";
 

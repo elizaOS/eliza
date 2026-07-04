@@ -1,3 +1,7 @@
+/**
+ * Deterministic tests for the BROWSER wait_for_url polling loop.
+ */
+
 import { describe, expect, it, vi } from "vitest";
 import { waitForUrl } from "./wait-for-url.js";
 

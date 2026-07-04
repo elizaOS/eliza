@@ -1,3 +1,7 @@
+/**
+ * Readiness policy for summarizing browser bridge setup and companion health.
+ */
+
 import type {
   BrowserBridgeCompanionStatus,
   BrowserBridgePermissionState,

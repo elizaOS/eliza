@@ -1,3 +1,7 @@
+/**
+ * Workspace account-gate route tests for authentication and authorization decisions.
+ */
+
 import {
   getConnectorAccountManager,
   type IAgentRuntime,

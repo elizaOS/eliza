@@ -1,3 +1,7 @@
+/**
+ * JSDOM browser workspace backend for web and mobile fallback command execution.
+ */
+
 import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import * as path from "node:path";

@@ -1,3 +1,7 @@
+/**
+ * Companion browser-extension packaging helpers for build, reveal, and download flows.
+ */
+
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";

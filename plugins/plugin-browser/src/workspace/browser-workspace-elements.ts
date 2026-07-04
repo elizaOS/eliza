@@ -1,3 +1,7 @@
+/**
+ * Element lookup, selector parsing, and DOM inspection helpers for browser workspace.
+ */
+
 import type { JSDOM } from "jsdom";
 import {
   buildBrowserWorkspaceCssStringLiteral,

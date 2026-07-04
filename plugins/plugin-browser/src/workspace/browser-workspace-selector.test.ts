@@ -1,3 +1,7 @@
+/**
+ * Selector parsing tests for browser workspace element targeting.
+ */
+
 import { describe, expect, it } from "vitest";
 import {
   normalizeBrowserWorkspaceSelectorSyntax,

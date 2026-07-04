@@ -1,3 +1,7 @@
+/**
+ * Companion authentication tests for browser bridge token validation.
+ */
+
 import { describe, expect, it } from "vitest";
 import { authenticateBrowserBridgeCompanionCredential } from "./companion-auth.js";
 

@@ -1,3 +1,7 @@
+/**
+ * Browser workspace connector-auth tests for blocking secret export paths.
+ */
+
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   __resetBrowserWorkspaceStateForTests,

@@ -1,3 +1,7 @@
+/**
+ * Real-code web workspace tests for command execution against JSDOM pages.
+ */
+
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   __resetBrowserWorkspaceStateForTests,

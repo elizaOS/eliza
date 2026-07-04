@@ -1,3 +1,7 @@
+/**
+ * Web workspace security tests for script, connector, and network restrictions.
+ */
+
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   __resetBrowserWorkspaceStateForTests,

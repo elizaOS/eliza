@@ -1,3 +1,7 @@
+/**
+ * Network interception and HAR helpers for browser workspace page loading.
+ */
+
 import {
   browserWorkspacePageFetch,
   DEFAULT_TIMEOUT_MS,

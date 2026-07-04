@@ -1,3 +1,7 @@
+/**
+ * LifeOps browser-session contracts shared by the browser bridge route surface.
+ */
+
 import type { BrowserBridgeAction, BrowserBridgeKind } from "./contracts.js";
 
 export type LifeOpsBrowserSessionStatus =

@@ -1,3 +1,7 @@
+/**
+ * Stagehand browser target tests for environment detection and command forwarding.
+ */
+
 import { describe, expect, it } from "vitest";
 import { maybeCreateStagehandTarget } from "./stagehand-target.js";
 

@@ -1,3 +1,7 @@
+/**
+ * MessageAdapter implementation backed by browser bridge page-context records.
+ */
+
 import {
   BaseMessageAdapter,
   type IAgentRuntime,
