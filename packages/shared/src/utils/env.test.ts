@@ -243,16 +243,14 @@ describe("syncElizaEnvAliases", () => {
     );
 
     try {
-      for (const key of tracked) {
-        delete process.env[key];
-      }
-      for (const [from] of aliases) {
-        process.env[from] = `${from}-value`;
-      }
-
-      syncElizaEnvAliases({ brandedPrefix: "BRAND" });
-
       for (const [from, to] of aliases) {
+        for (const key of tracked) {
+          delete process.env[key];
+        }
+        process.env[from] = `${from}-value`;
+
+        syncElizaEnvAliases({ brandedPrefix: "BRAND" });
+
         expect(process.env[to]).toBe(`${from}-value`);
       }
     } finally {
@@ -286,6 +284,34 @@ describe("syncElizaEnvAliases", () => {
       syncElizaEnvAliases({ brandedPrefix: "BRAND" });
 
       expect(process.env.ELIZA_UI_PORT).toBe("4100");
+      expect(process.env.ELIZA_PORT).toBeUndefined();
+    } finally {
+      for (const [key, value] of previous) {
+        if (value === undefined) {
+          delete process.env[key];
+        } else {
+          process.env[key] = value;
+        }
+      }
+    }
+  });
+
+  it("prefers explicit BRAND_UI_PORT over the legacy BRAND_PORT sync fallback", () => {
+    const keys = ["BRAND_PORT", "BRAND_UI_PORT", "ELIZA_PORT", "ELIZA_UI_PORT"];
+    const previous = new Map(
+      keys.map((key) => [key, process.env[key]] as const),
+    );
+
+    try {
+      for (const key of keys) {
+        delete process.env[key];
+      }
+      process.env.BRAND_PORT = "4100";
+      process.env.BRAND_UI_PORT = "4101";
+
+      syncElizaEnvAliases({ brandedPrefix: "BRAND" });
+
+      expect(process.env.ELIZA_UI_PORT).toBe("4101");
       expect(process.env.ELIZA_PORT).toBeUndefined();
     } finally {
       for (const [key, value] of previous) {
