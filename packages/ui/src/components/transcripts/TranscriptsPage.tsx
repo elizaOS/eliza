@@ -68,6 +68,21 @@ export function TranscriptsPage(): React.JSX.Element {
     }
     if (meetingsResult.status === "fulfilled") {
       setActiveMeetings(meetingsResult.value.sessions);
+      // Recovered: clear a prior meetings-fetch failure banner.
+      setMeetingError(null);
+    } else {
+      // The active-meetings fetch failed. Swallowing it silently would render
+      // the join bar as a healthy "no active meetings" state even while a bot
+      // is live in a broken/unreachable backend (#12784: transport/5xx failure
+      // must not collapse into a designed-empty state). Surface it in the join
+      // bar's error slot; keep the last-known active sessions on screen rather
+      // than blanking them, so a transient poll error can't make a live meeting
+      // vanish. A successful refresh (above) clears this.
+      setMeetingError(
+        meetingsResult.reason instanceof Error
+          ? meetingsResult.reason.message
+          : "Failed to load active meetings",
+      );
     }
     if (listResult.status === "rejected") {
       throw listResult.reason;
