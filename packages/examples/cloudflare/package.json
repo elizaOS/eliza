@@ -14,8 +14,9 @@
     "secret": "wrangler secret put OPENAI_API_KEY",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
-    "typecheck": "tsgo --noEmit -p tsconfig.json",
-    "build": "bun run typecheck"
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format .",
+    "typecheck": "tsgo --noEmit -p tsconfig.json"
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
