@@ -262,7 +262,7 @@ export function useWalletState({
       source: WalletSource,
     ) =>
       (config?.wallets ?? []).some(
-        (wallet) =>
+        (wallet: WalletEntry) =>
           wallet.chain === chain &&
           wallet.source === source &&
           typeof wallet.address === "string" &&

@@ -5,6 +5,7 @@
 import type { AgentListItemDto } from "@elizaos/cloud-shared/lib/types/cloud-api";
 import {
   ContainersSkeleton,
+  DashboardErrorState,
   DashboardLoadingState,
   DashboardPageContainer,
   ElizaAgentsPageWrapper,
@@ -70,6 +71,7 @@ export default function AgentsPage() {
   const creditBalance =
     typeof credits.data?.balance === "number" ? credits.data.balance : null;
   const showSkeleton = enabled && agentsQuery.isLoading;
+  const showAgentsError = enabled && agentsQuery.isError;
 
   return (
     <ElizaAgentsPageWrapper>
@@ -78,16 +80,27 @@ export default function AgentsPage() {
             ElizaAgentsPageWrapper (DashboardRoutePage title="Instances" →
             useSetPageHeader). No inline page-level heading here — a second
             "Instances" title under the top bar read as a double title. */}
-        <ElizaAgentPricingBanner
-          runningCount={runningCount}
-          idleCount={idleCount}
-          creditBalance={creditBalance}
-        />
-
         {showSkeleton ? (
           <ContainersSkeleton />
+        ) : showAgentsError ? (
+          <DashboardErrorState
+            message={
+              agentsQuery.error instanceof Error
+                ? agentsQuery.error.message
+                : t("cloud.agents.loadFailed", {
+                    defaultValue: "Failed to load instances",
+                  })
+            }
+          />
         ) : (
-          <ElizaAgentsTable sandboxes={sandboxes} />
+          <>
+            <ElizaAgentPricingBanner
+              runningCount={runningCount}
+              idleCount={idleCount}
+              creditBalance={creditBalance}
+            />
+            <ElizaAgentsTable sandboxes={sandboxes} />
+          </>
         )}
       </DashboardPageContainer>
     </ElizaAgentsPageWrapper>
