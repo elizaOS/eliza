@@ -12,15 +12,41 @@ pass.
 from __future__ import annotations
 
 from benchmarks.orchestrator_lifecycle.evaluator import LifecycleEvaluator
-from benchmarks.orchestrator_lifecycle.types import Scenario, ScenarioTurn, TurnRecord
+from benchmarks.orchestrator_lifecycle.types import (
+    Scenario,
+    ScenarioResult,
+    ScenarioTurn,
+    TurnRecord,
+)
 
 
-def _scenario(turns: list[ScenarioTurn], scenario_id: str = "case") -> Scenario:
+def _scenario(
+    turns: list[ScenarioTurn],
+    scenario_id: str = "case",
+    category: str = "test",
+) -> Scenario:
     return Scenario(
         scenario_id=scenario_id,
         title=scenario_id,
-        category="test",
+        category=category,
         turns=turns,
+    )
+
+
+def _result(
+    scenario_id: str,
+    category: str,
+    score: float,
+    passed: bool = True,
+) -> ScenarioResult:
+    return ScenarioResult(
+        scenario_id=scenario_id,
+        title=scenario_id,
+        category=category,
+        passed=passed,
+        score=score,
+        checks_passed=1 if passed else 0,
+        checks_total=1,
     )
 
 
@@ -47,6 +73,54 @@ def test_typed_cancel_event_passes_cancel_checks() -> None:
     )
     assert result.passed
     assert result.score == 1.0
+
+
+def test_scenario_result_carries_category() -> None:
+    evaluator = LifecycleEvaluator()
+    scenario = _scenario(
+        [
+            ScenarioTurn(
+                actor="user",
+                message="How is it going?",
+                expected_behaviors=["report_active_subagent_status"],
+            )
+        ],
+        scenario_id="check_in_while_running",
+        category="status",
+    )
+    result = evaluator.evaluate_scenario(
+        scenario,
+        [TurnRecord(reply_text="Still working.", events=["status_query"])],
+    )
+    assert result.category == "status"
+
+
+def test_category_metrics_do_not_depend_on_scenario_id_spelling() -> None:
+    evaluator = LifecycleEvaluator()
+    results = [
+        _result("ambiguous_first_turn", "clarification", 0.25),
+        _result("check_in_while_running", "status", 0.5),
+        _result("cancel_task", "interrupt", 0.75),
+        _result("final_stakeholder_summary", "completion_summary", 1.0),
+    ]
+    metrics = evaluator.compute_metrics(results)
+    assert metrics.clarification_success_rate == 0.25
+    assert metrics.status_accuracy_rate == 0.5
+    assert metrics.interruption_handling_rate == 0.75
+    assert metrics.completion_summary_quality == 1.0
+
+
+def test_category_metrics_ignore_misleading_id_substrings() -> None:
+    evaluator = LifecycleEvaluator()
+    results = [
+        _result("status_in_name_but_summary_category", "completion_summary", 0.2),
+        _result("summary_in_name_but_status_category", "status", 0.8),
+        _result("pause_in_name_but_scope_category", "scope", 1.0),
+    ]
+    metrics = evaluator.compute_metrics(results)
+    assert metrics.status_accuracy_rate == 0.8
+    assert metrics.completion_summary_quality == 0.2
+    assert metrics.interruption_handling_rate == 0.0
 
 
 def test_coached_keyword_reply_without_events_fails() -> None:
@@ -288,6 +362,7 @@ def test_summary_metric_reports_real_rate_never_overall_fallback() -> None:
             )
         ],
         scenario_id="final_stakeholder_summary",
+        category="completion_summary",
     )
     cancel_pass = evaluator.evaluate_scenario(
         cancel_scenario, [TurnRecord(reply_text="Shut down.", events=["cancel"])]
