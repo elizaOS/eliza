@@ -492,5 +492,13 @@
     "access": "public",
     "directory": "dist"
   },
-  "types": "./dist/index.d.ts"
+  "types": "./dist/index.d.ts",
+  "elizaos": {
+    "scripts": {
+      "coreBuild": true,
+      "testLanes": [
+        "client"
+      ]
+    }
+  }
 }

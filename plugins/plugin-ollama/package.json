@@ -49,6 +49,15 @@
         "text-small",
         "embedding"
       ]
+    },
+    "scripts": {
+      "coreBuild": true,
+      "publish": {
+        "registryFallbackTag": "beta"
+      },
+      "devStack": {
+        "harnessBuild": true
+      }
     }
   },
   "sideEffects": false,

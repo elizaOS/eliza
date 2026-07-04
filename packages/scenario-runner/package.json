@@ -110,5 +110,13 @@
     "@elizaos/test-harness": "workspace:*",
     "typescript": "^6.0.3",
     "vitest": "^4.0.0"
+  },
+  "elizaos": {
+    "scripts": {
+      "testLanes": [
+        "server"
+      ],
+      "turboNonImportedBuildDeps": true
+    }
   }
 }

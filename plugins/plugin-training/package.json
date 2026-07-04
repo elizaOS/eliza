@@ -91,6 +91,12 @@
       },
       "developerOnly": true,
       "visibleInAppStore": true
+    },
+    "scripts": {
+      "coreBuild": true,
+      "testLanes": [
+        "client"
+      ]
     }
   },
   "publishConfig": {

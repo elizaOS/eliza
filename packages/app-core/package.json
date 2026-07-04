@@ -307,5 +307,13 @@
     "yaml": "^2.8.4"
   },
   "module": "./dist/index.js",
-  "types": "./dist/index.d.ts"
+  "types": "./dist/index.d.ts",
+  "elizaos": {
+    "scripts": {
+      "coreBuild": true,
+      "testLanes": [
+        "server"
+      ]
+    }
+  }
 }

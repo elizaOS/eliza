@@ -40,5 +40,10 @@
       "default": "./dist/index.js"
     },
     "./package.json": "./package.json"
+  },
+  "elizaos": {
+    "scripts": {
+      "coreBuild": true
+    }
   }
 }

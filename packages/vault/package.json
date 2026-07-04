@@ -73,5 +73,13 @@
   "publishConfig": {
     "access": "public",
     "directory": "dist"
+  },
+  "elizaos": {
+    "scripts": {
+      "coreBuild": true,
+      "testLanes": [
+        "server"
+      ]
+    }
   }
 }

@@ -51,6 +51,12 @@
         "evm",
         "solana"
       ]
+    },
+    "scripts": {
+      "coreBuild": true,
+      "devStack": {
+        "skipInDevAll": true
+      }
     }
   },
   "scripts": {

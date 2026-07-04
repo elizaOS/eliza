@@ -160,5 +160,13 @@
       "import": "./dist/sub-agent-claude-code/session-recorder.js",
       "default": "./dist/sub-agent-claude-code/session-recorder.js"
     }
+  },
+  "elizaos": {
+    "scripts": {
+      "buildOnInstall": {
+        "sentinel": "dist/index.js",
+        "order": 3
+      }
+    }
   }
 }

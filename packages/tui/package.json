@@ -68,5 +68,12 @@
     "@xterm/xterm": "^5.5.0",
     "vitest": "^4.0.17"
   },
-  "gitHead": "86dadd9916e7db917e2ba0aa84fdecdbdf2d7598"
+  "gitHead": "86dadd9916e7db917e2ba0aa84fdecdbdf2d7598",
+  "elizaos": {
+    "scripts": {
+      "testLanes": [
+        "server"
+      ]
+    }
+  }
 }

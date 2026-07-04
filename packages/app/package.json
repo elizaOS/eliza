@@ -201,5 +201,12 @@
     "ws": "^8.18.3",
     "yaml": "^2.9.0"
   },
-  "private": true
+  "private": true,
+  "elizaos": {
+    "scripts": {
+      "testLanes": [
+        "client"
+      ]
+    }
+  }
 }

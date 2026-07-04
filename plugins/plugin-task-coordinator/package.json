@@ -42,6 +42,9 @@
   "elizaos": {
     "app": {
       "heroImage": "assets/hero.png"
+    },
+    "scripts": {
+      "coreBuild": true
     }
   },
   "publishConfig": {

@@ -24,5 +24,12 @@
   "devDependencies": {
     "discord.js": "^14.26.4",
     "vitest": "*"
+  },
+  "elizaos": {
+    "scripts": {
+      "testLanes": [
+        "server"
+      ]
+    }
   }
 }

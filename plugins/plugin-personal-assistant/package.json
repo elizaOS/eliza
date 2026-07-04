@@ -131,6 +131,18 @@
         "calendar",
         "notes"
       ]
+    },
+    "scripts": {
+      "testSerial": true,
+      "testLanes": [
+        "client"
+      ],
+      "buildModel": {
+        "tscTypecheck": true
+      },
+      "devStack": {
+        "skipInDevAll": true
+      }
     }
   },
   "publishConfig": {

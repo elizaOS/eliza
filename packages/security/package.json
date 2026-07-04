@@ -128,5 +128,13 @@
   "publishConfig": {
     "access": "public",
     "directory": "dist"
+  },
+  "elizaos": {
+    "scripts": {
+      "buildOnInstall": {
+        "sentinel": "dist/index.js",
+        "order": 2
+      }
+    }
   }
 }

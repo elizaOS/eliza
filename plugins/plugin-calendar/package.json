@@ -114,6 +114,9 @@
       "permissions": [
         "calendar"
       ]
+    },
+    "scripts": {
+      "coreBuild": true
     }
   },
   "publishConfig": {

@@ -113,5 +113,10 @@
     "ioredis-mock": "^8.13.1",
     "typescript": "^6.0.3",
     "vitest": "^4.1.4"
+  },
+  "elizaos": {
+    "scripts": {
+      "coreBuild": true
+    }
   }
 }

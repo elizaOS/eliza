@@ -50,6 +50,9 @@
         "text-small",
         "tool-use"
       ]
+    },
+    "scripts": {
+      "coreBuild": true
     }
   },
   "sideEffects": false,

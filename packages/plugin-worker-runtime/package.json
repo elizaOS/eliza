@@ -49,5 +49,14 @@
       "import": "./dist/runtime-proxy.js",
       "default": "./dist/runtime-proxy.js"
     }
+  },
+  "elizaos": {
+    "scripts": {
+      "coreBuild": true,
+      "buildOnInstall": {
+        "sentinel": "dist/error.js",
+        "order": 4
+      }
+    }
   }
 }

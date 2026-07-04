@@ -56,5 +56,10 @@
       "default": "./dist/cloud-setup-session/*.js"
     },
     "./package.json": "./package.json"
+  },
+  "elizaos": {
+    "scripts": {
+      "coreBuild": true
+    }
   }
 }

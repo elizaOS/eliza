@@ -56,5 +56,13 @@
   "devDependencies": {
     "@types/fast-redact": "^3.0.4",
     "@types/node": "^24.0.0"
+  },
+  "elizaos": {
+    "scripts": {
+      "buildOnInstall": {
+        "sentinel": "dist/index.js",
+        "order": 1
+      }
+    }
   }
 }

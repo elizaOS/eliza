@@ -62,6 +62,9 @@
         "text-to-speech",
         "image-description"
       ]
+    },
+    "scripts": {
+      "coreBuild": true
     }
   },
   "dependencies": {

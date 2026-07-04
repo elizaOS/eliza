@@ -47,6 +47,9 @@
         "payments",
         "x402"
       ]
+    },
+    "scripts": {
+      "coreBuild": true
     }
   },
   "keywords": [

@@ -38,6 +38,9 @@
       "capabilities": [
         "shell-access"
       ]
+    },
+    "scripts": {
+      "coreBuild": true
     }
   },
   "keywords": [

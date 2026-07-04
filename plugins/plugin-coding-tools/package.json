@@ -46,6 +46,9 @@
       "capabilities": [
         "coding-tools"
       ]
+    },
+    "scripts": {
+      "coreBuild": true
     }
   },
   "keywords": [

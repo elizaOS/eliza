@@ -113,5 +113,12 @@
         "required": false
       }
     }
+  },
+  "elizaos": {
+    "scripts": {
+      "buildModel": {
+        "doubleCheck": true
+      }
+    }
   }
 }

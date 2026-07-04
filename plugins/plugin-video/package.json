@@ -62,5 +62,10 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "elizaos": {
+    "scripts": {
+      "coreBuild": true
+    }
   }
 }

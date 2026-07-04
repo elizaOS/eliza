@@ -323,5 +323,13 @@
     "vite": "^8.0.0",
     "vitest": "^4.0.17"
   },
-  "types": "./dist/index.d.ts"
+  "types": "./dist/index.d.ts",
+  "elizaos": {
+    "scripts": {
+      "coreBuild": true,
+      "testLanes": [
+        "server"
+      ]
+    }
+  }
 }

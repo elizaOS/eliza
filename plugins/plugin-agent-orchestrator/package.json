@@ -280,5 +280,11 @@
     "platformDetails": {
       "node": "Node.js subprocess integration available via exports.node; browser export is a compatibility shim for package resolution."
     }
+  },
+  "elizaos": {
+    "scripts": {
+      "coreBuild": true,
+      "testSerial": true
+    }
   }
 }

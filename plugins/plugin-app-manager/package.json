@@ -64,5 +64,10 @@
   },
   "agentConfig": {
     "pluginType": "elizaos:plugin:1.0.0"
+  },
+  "elizaos": {
+    "scripts": {
+      "coreBuild": true
+    }
   }
 }
