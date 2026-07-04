@@ -1,3 +1,9 @@
+/**
+ * Playwright configuration for the standalone Feed DAG visualizer.
+ *
+ * Recording mode redirects traces, screenshots, and videos into the shared
+ * evidence directory while normal local runs keep artifacts beside the tool.
+ */
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig, devices } from "@playwright/test";

@@ -1,3 +1,9 @@
+/**
+ * Wallet-auth compatibility helpers for Feed Chroma tests.
+ *
+ * Synpress-facing tests receive deterministic local wallet credentials while
+ * browser auth is installed through the Feed dev-auth session bridge.
+ */
 import type { Page } from "@playwright/test";
 import { installSynpressDevAuth } from "./dev-auth";
 

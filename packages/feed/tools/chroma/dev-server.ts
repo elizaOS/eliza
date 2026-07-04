@@ -1,4 +1,10 @@
 #!/usr/bin/env bun
+/**
+ * Local Chroma e2e server bootstrap for Feed's web app and chain simulator.
+ *
+ * The runner prepares local services, deploys contracts once, and starts Next
+ * with the webpack dev pipeline that this workspace configures explicitly.
+ */
 
 import { type ChildProcess, spawn } from "node:child_process";
 import path from "node:path";

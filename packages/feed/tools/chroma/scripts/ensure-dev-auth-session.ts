@@ -1,3 +1,9 @@
+/**
+ * Dev-auth session seeder for Chroma browser tests.
+ *
+ * The script creates or updates the local Synpress trader account and prints
+ * the cookies and tokens that browser helpers install before navigation.
+ */
 import { createHash } from "node:crypto";
 import { db, eq, users } from "@feed/db";
 import { generateSnowflakeId } from "@feed/shared";
