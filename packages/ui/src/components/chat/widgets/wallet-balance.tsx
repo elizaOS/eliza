@@ -72,7 +72,9 @@ export function WalletBalanceWidget(
         if (cancelled) return;
         setHoldings(selectPricedHoldings(balances, overview?.prices));
       } catch {
-        // Wallet endpoint unreachable/errored: nothing to surface → empty state.
+        // error-policy:J4 home-grid tiles self-hide rather than surface error
+        // chrome (designed home-surface degrade); the wallet page itself owns
+        // the visible error state for a broken balances endpoint.
         if (!cancelled) setHoldings(null);
       } finally {
         if (!cancelled) setLoading(false);

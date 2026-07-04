@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { type FormEvent, useCallback, useEffect, useState } from "react";
 import { client } from "../../api/client";
+import { isApiError } from "../../api/client-types-core";
 import { useAppSelector, useAppSelectorShallow } from "../../state";
 import { AdvancedToggle } from "./AdvancedToggle";
 import { useAdvancedSettingsEnabled } from "./AdvancedToggle.hooks";
@@ -131,6 +132,11 @@ export function CapabilitiesSection() {
   >(null);
   const [autoTrainingLoading, setAutoTrainingLoading] = useState(true);
   const [autoTrainingSaving, setAutoTrainingSaving] = useState(false);
+  // Distinguishes a broken auto-training endpoint (5xx/transport/parse →
+  // error icon) from the designed "service not hosted here" degrade
+  // (404/service-unregistered → unavailable icon). Three-state rule: a broken
+  // endpoint must not masquerade as the designed unavailable state.
+  const [autoTrainingError, setAutoTrainingError] = useState(false);
   const [capabilityConnectMode, setCapabilityConnectMode] =
     useState<CapabilityConnectMode>("endpoint");
   const [capabilityEndpointProvider, setCapabilityEndpointProvider] = useState<
@@ -161,9 +167,15 @@ export function CapabilitiesSection() {
       ]);
       setAutoTrainingConfig(configResponse.config);
       setAutoTrainingAvailable(statusResponse.serviceRegistered !== false);
-    } catch {
+      setAutoTrainingError(false);
+    } catch (err) {
+      // error-policy:J4 404 = training plugin not hosted on this runtime — the
+      // designed "unavailable" degrade. Any other failure (5xx, transport,
+      // parse) renders the explicit error icon instead of silently disabling
+      // the control as if unavailability were by design.
       setAutoTrainingConfig(null);
       setAutoTrainingAvailable(false);
+      setAutoTrainingError(!(isApiError(err) && err.status === 404));
     } finally {
       setAutoTrainingLoading(false);
     }
@@ -228,8 +240,13 @@ export function CapabilitiesSection() {
         );
         setAutoTrainingConfig(response.config);
         setAutoTrainingAvailable(true);
+        setAutoTrainingError(false);
       } catch {
+        // error-policy:J4 revert the optimistic toggle AND flag the failed
+        // save — a silent revert previously made the click look like it never
+        // happened, hiding a broken save endpoint behind healthy UI.
         setAutoTrainingConfig(autoTrainingConfig);
+        setAutoTrainingError(true);
       } finally {
         setAutoTrainingSaving(false);
       }
@@ -245,9 +262,11 @@ export function CapabilitiesSection() {
   const autoTrainingStatus =
     autoTrainingLoading || autoTrainingSaving
       ? "loading"
-      : autoTrainingAvailable === false
-        ? "unavailable"
-        : null;
+      : autoTrainingError
+        ? "error"
+        : autoTrainingAvailable === false
+          ? "unavailable"
+          : null;
 
   const handleCapabilityConnect = useCallback(
     async (event: FormEvent<HTMLFormElement>) => {
@@ -782,7 +801,7 @@ export function CapabilitiesSection() {
 function CapabilityStatusIcon({
   status,
 }: {
-  status?: "loading" | "unavailable" | null;
+  status?: "loading" | "unavailable" | "error" | null;
 }) {
   const t = useAppSelector((s) => s.t);
   if (status === "loading") {
@@ -811,6 +830,22 @@ function CapabilityStatusIcon({
         title={unavailableLabel}
         role="img"
         aria-label={unavailableLabel}
+      >
+        <AlertTriangle className="h-3.5 w-3.5" aria-hidden />
+      </span>
+    );
+  }
+
+  if (status === "error") {
+    const errorLabel = t("capabilities.status.error", {
+      defaultValue: "Error",
+    });
+    return (
+      <span
+        className="inline-flex text-danger"
+        title={errorLabel}
+        role="img"
+        aria-label={errorLabel}
       >
         <AlertTriangle className="h-3.5 w-3.5" aria-hidden />
       </span>

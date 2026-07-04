@@ -109,7 +109,9 @@ export function AgentProvisioningWidget(
         if (response.success)
           setStatusText(statusTextFor(response.data.status));
       } catch {
-        // Bounded poll hung or errored: keep the generic "Setting up…" copy.
+        // error-policy:J4 bounded status poll is an enhancement over the
+        // generic "Setting up…" copy; a hung/errored poll degrades to that
+        // designed copy rather than blocking the provisioning tile.
         if (!cancelled) setStatusText(null);
       }
     })();

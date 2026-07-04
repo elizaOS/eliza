@@ -32,6 +32,7 @@ import type {
   MemoryFeedResponse,
   MemoryStatsResponse,
 } from "../../api/client-types-chat";
+import { isApiError } from "../../api/client-types-core";
 import type { RelationshipsPersonSummary } from "../../api/client-types-relationships";
 import { getCached, setCached } from "../../hooks/resource-cache";
 import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
@@ -669,9 +670,12 @@ export function MemoryViewerView({
   const [stats, setStats] = useState<MemoryStatsResponse | null>(null);
   const [statsError, setStatsError] = useState(false);
 
-  // People list for person-centric view
+  // People list for person-centric view. `peopleError` keeps a failed load
+  // visually distinct from the designed "No people yet." empty state — a
+  // 5xx/transport failure must never render as healthy-empty (three-state rule).
   const [people, setPeople] = useState<RelationshipsPersonSummary[]>([]);
   const [peopleLoading, setPeopleLoading] = useState(true);
+  const [peopleError, setPeopleError] = useState(false);
   const [selectedPersonId, setSelectedPersonId] = useState<string | null>(null);
 
   // Load stats
@@ -688,10 +692,21 @@ export function MemoryViewerView({
   // Load people from relationships
   useEffect(() => {
     setPeopleLoading(true);
+    setPeopleError(false);
     void client
       .getRelationshipsPeople({ limit: 200 })
-      .then((result) => setPeople(result.people))
-      .catch(() => setPeople([]))
+      .then((result) => {
+        setPeople(result.people);
+        setPeopleError(false);
+      })
+      .catch((err: unknown) => {
+        // error-policy:J4 a 404 means the relationships surface isn't hosted
+        // here — the designed empty state is correct. Anything else (5xx,
+        // transport, parse) flips the sidebar into an explicit error render
+        // instead of masquerading as "No people yet."
+        setPeople([]);
+        setPeopleError(!(isApiError(err) && err.status === 404));
+      })
       .finally(() => setPeopleLoading(false));
   }, []);
 
@@ -850,6 +865,15 @@ export function MemoryViewerView({
             {peopleLoading ? (
               <div className="px-2 text-xs text-muted">
                 {t("memoryviewer.loading", { defaultValue: "Loading…" })}
+              </div>
+            ) : peopleError ? (
+              <div
+                data-testid="memory-people-error"
+                className="px-2 text-xs text-danger"
+              >
+                {t("memoryviewer.peopleError", {
+                  defaultValue: "Could not load people.",
+                })}
               </div>
             ) : people.length === 0 ? (
               <div className="px-2 text-xs text-muted">

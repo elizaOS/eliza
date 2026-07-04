@@ -292,12 +292,18 @@ function mobileSetupActionBadge(action: MobileSignalsSetupAction) {
   return { label: "Needs action", className: "border-warn/30 text-warn" };
 }
 
-function MobileSignalsPermissionsPanel() {
+// Exported for tests: the error-vs-designed-hidden distinction below is a
+// three-state-rule guard (#12784) and needs direct render coverage.
+export function MobileSignalsPermissionsPanel() {
   const t = useAppSelector((s) => s.t);
   const [status, setStatus] = useState<MobileSignalsPermissionStatus | null>(
     null,
   );
   const [loading, setLoading] = useState(true);
+  // A thrown checkPermissions (plugin present but broken) must render as an
+  // error, not vanish like the designed "plugin not on this platform" degrade
+  // (three-state rule: error vs designed-hidden must be distinguishable).
+  const [error, setError] = useState(false);
   const [busyAction, setBusyAction] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
@@ -306,7 +312,15 @@ function MobileSignalsPermissionsPanel() {
       setStatus(null);
       return;
     }
-    setStatus(await plugin.checkPermissions());
+    try {
+      setStatus(await plugin.checkPermissions());
+      setError(false);
+    } catch {
+      // error-policy:J4 bridge call failed — surface the explicit error row
+      // below instead of silently hiding the whole panel.
+      setStatus(null);
+      setError(true);
+    }
   }, []);
 
   useEffect(() => {
@@ -316,13 +330,23 @@ function MobileSignalsPermissionsPanel() {
       try {
         const plugin = getMobileSignalsPlugin();
         if (typeof plugin.checkPermissions !== "function") {
+          // Designed degrade: the mobile-signals plugin isn't part of this
+          // build (web/desktop), so the panel intentionally renders nothing.
           if (!cancelled) setStatus(null);
           return;
         }
         const next = await plugin.checkPermissions();
-        if (!cancelled) setStatus(next);
+        if (!cancelled) {
+          setStatus(next);
+          setError(false);
+        }
       } catch {
-        if (!cancelled) setStatus(null);
+        // error-policy:J4 plugin exists but the permissions probe failed —
+        // render the explicit error row, not the designed-hidden state.
+        if (!cancelled) {
+          setStatus(null);
+          setError(true);
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -374,6 +398,18 @@ function MobileSignalsPermissionsPanel() {
   }
 
   if (!status) {
+    if (error) {
+      return (
+        <p
+          data-testid="mobile-signals-permissions-error"
+          className="py-4 text-center text-xs text-danger"
+        >
+          {t("permissionssection.PermissionsError", {
+            defaultValue: "Could not read device permissions.",
+          })}
+        </p>
+      );
+    }
     return null;
   }
 
