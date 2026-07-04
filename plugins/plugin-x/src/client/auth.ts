@@ -6,6 +6,7 @@
  * Caches the authenticated `me()` profile and is the object `Client.getV2Client()`
  * hands the raw v2 client from.
  */
+import { ElizaError, logger } from "@elizaos/core";
 import { TwitterApi } from "twitter-api-v2";
 import type {
   TwitterAuthProvider,
@@ -77,6 +78,9 @@ export class TwitterAuth {
    * Check if authenticated
    */
   async isLoggedIn(): Promise<boolean> {
+    // error-policy:J4 availability probe — this method's contract is a boolean
+    // "are we authenticated" answer, so any init/verify failure is the designed
+    // false, not a masked read. Callers that need the failure call me() instead.
     try {
       await this.ensureClientInitialized();
     } catch {
@@ -91,7 +95,12 @@ export class TwitterAuth {
       const me = await this.v2Client.v2.me();
       return !!me.data;
     } catch (error) {
-      console.error("Failed to verify authentication:", error);
+      // error-policy:J4 availability probe — a failed verify means "not logged
+      // in" for this boolean; log for diagnostics and report the designed false.
+      logger.debug(
+        { error: error instanceof Error ? error.message : String(error) },
+        "[X.TwitterAuth] credential verification failed; reporting not-logged-in",
+      );
       return false;
     }
   }
@@ -139,8 +148,10 @@ export class TwitterAuth {
 
       return this.profile;
     } catch (error) {
-      console.error("Failed to get user profile:", error);
-      return undefined;
+      throw new ElizaError("Failed to fetch authenticated user profile", {
+        code: "X_ME_FETCH_FAILED",
+        cause: error,
+      });
     }
   }
 

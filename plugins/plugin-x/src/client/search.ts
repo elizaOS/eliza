@@ -1,3 +1,4 @@
+import { ElizaError } from "@elizaos/core";
 import type { TweetV2 } from "twitter-api-v2";
 import type { TwitterAuth } from "./auth";
 import type { Profile } from "./profile";
@@ -155,8 +156,12 @@ export async function* searchTweets(
       count++;
     }
   } catch (error) {
-    console.error("Search error:", error);
-    throw error;
+    // error-policy:J2 context-adding rethrow — attach the query that faulted.
+    throw new ElizaError("Tweet search failed", {
+      code: "X_SEARCH_FAILED",
+      cause: error,
+      context: { query, searchMode },
+    });
   }
 }
 
@@ -233,8 +238,12 @@ export async function* searchProfiles(
       yield profile;
     }
   } catch (error) {
-    console.error("Profile search error:", error);
-    throw error;
+    // error-policy:J2 context-adding rethrow — attach the query that faulted.
+    throw new ElizaError("Profile search failed", {
+      code: "X_PROFILE_SEARCH_FAILED",
+      cause: error,
+      context: { query },
+    });
   }
 }
 

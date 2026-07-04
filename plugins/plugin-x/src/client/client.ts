@@ -8,6 +8,8 @@
  * and unwraps the `RequestApiResult` via `handleResponse`. `ClientBase` wraps this
  * with caching and runtime-memory bookkeeping.
  */
+
+import { logger } from "@elizaos/core";
 import type {
   TTweetv2Expansion,
   TTweetv2MediaField,
@@ -338,40 +340,35 @@ export class Client {
   ): Promise<Tweet[]> {
     const client = await this.requireAuth().getV2Client();
 
-    try {
-      const timeline = await client.v2.homeTimeline({
-        max_results: Math.min(count, 100),
-        "tweet.fields": [
-          "id",
-          "text",
-          "created_at",
-          "author_id",
-          "referenced_tweets",
-          "entities",
-          "public_metrics",
-          "attachments",
-          "conversation_id",
-        ],
-        "user.fields": ["id", "name", "username", "profile_image_url"],
-        "media.fields": ["url", "preview_image_url", "type"],
-        expansions: [
-          "author_id",
-          "attachments.media_keys",
-          "referenced_tweets.id",
-        ],
-      });
+    const timeline = await client.v2.homeTimeline({
+      max_results: Math.min(count, 100),
+      "tweet.fields": [
+        "id",
+        "text",
+        "created_at",
+        "author_id",
+        "referenced_tweets",
+        "entities",
+        "public_metrics",
+        "attachments",
+        "conversation_id",
+      ],
+      "user.fields": ["id", "name", "username", "profile_image_url"],
+      "media.fields": ["url", "preview_image_url", "type"],
+      expansions: [
+        "author_id",
+        "attachments.media_keys",
+        "referenced_tweets.id",
+      ],
+    });
 
-      const tweets: Tweet[] = [];
-      for await (const tweet of timeline) {
-        tweets.push(parseTweetV2ToV1(tweet, timeline.includes));
-        if (tweets.length >= count) break;
-      }
-
-      return tweets;
-    } catch (error) {
-      console.error("Failed to fetch home timeline:", error);
-      throw error;
+    const tweets: Tweet[] = [];
+    for await (const tweet of timeline) {
+      tweets.push(parseTweetV2ToV1(tweet, timeline.includes));
+      if (tweets.length >= count) break;
     }
+
+    return tweets;
   }
 
   /**
@@ -397,44 +394,39 @@ export class Client {
   ): Promise<{ tweets: Tweet[]; next?: string }> {
     const client = await this.requireAuth().getV2Client();
 
-    try {
-      const response = await client.v2.userTimeline(userId, {
-        max_results: Math.min(maxTweets, 100),
-        "tweet.fields": [
-          "id",
-          "text",
-          "created_at",
-          "author_id",
-          "referenced_tweets",
-          "entities",
-          "public_metrics",
-          "attachments",
-          "conversation_id",
-        ],
-        "user.fields": ["id", "name", "username", "profile_image_url"],
-        "media.fields": ["url", "preview_image_url", "type"],
-        expansions: [
-          "author_id",
-          "attachments.media_keys",
-          "referenced_tweets.id",
-        ],
-        pagination_token: cursor,
-      });
+    const response = await client.v2.userTimeline(userId, {
+      max_results: Math.min(maxTweets, 100),
+      "tweet.fields": [
+        "id",
+        "text",
+        "created_at",
+        "author_id",
+        "referenced_tweets",
+        "entities",
+        "public_metrics",
+        "attachments",
+        "conversation_id",
+      ],
+      "user.fields": ["id", "name", "username", "profile_image_url"],
+      "media.fields": ["url", "preview_image_url", "type"],
+      expansions: [
+        "author_id",
+        "attachments.media_keys",
+        "referenced_tweets.id",
+      ],
+      pagination_token: cursor,
+    });
 
-      const tweets: Tweet[] = [];
-      for await (const tweet of response) {
-        tweets.push(parseTweetV2ToV1(tweet, response.includes));
-        if (tweets.length >= maxTweets) break;
-      }
-
-      return {
-        tweets,
-        next: response.meta?.next_token,
-      };
-    } catch (error) {
-      console.error("Failed to fetch user tweets:", error);
-      throw error;
+    const tweets: Tweet[] = [];
+    for await (const tweet of response) {
+      tweets.push(parseTweetV2ToV1(tweet, response.includes));
+      if (tweets.length >= maxTweets) break;
     }
+
+    return {
+      tweets,
+      next: response.meta?.next_token,
+    };
   }
 
   async *getUserTweetsIterator(
@@ -472,8 +464,9 @@ export class Client {
    * @returns The current list of trends.
    */
   public getTrends(): Promise<string[]> {
-    // Trends API not available in Twitter API v2 with current implementation
-    console.warn("Trends API not available in Twitter API v2");
+    // error-policy:J4 capability notice — the v2 API has no trends endpoint, so
+    // an empty list is the designed answer, not a masked fetch failure.
+    logger.warn("[X.Client] Trends API not available in Twitter API v2");
     return Promise.resolve([]);
   }
 
@@ -768,10 +761,10 @@ export class Client {
 
   public async authenticate(provider: TwitterAuthProvider): Promise<void> {
     this.auth = new TwitterAuth(provider);
-    // Force initialization early to surface misconfiguration quickly
-    await this.requireAuth()
-      .isLoggedIn()
-      .catch(() => false);
+    // Force initialization early to surface misconfiguration quickly.
+    // isLoggedIn is itself an availability probe (returns false, never rejects),
+    // so no swallowing wrapper is needed here.
+    await this.requireAuth().isLoggedIn();
   }
 
   /**
@@ -854,9 +847,9 @@ export class Client {
    * Note: With API v2, logout is not applicable as we use API credentials.
    */
   public async logout(): Promise<void> {
-    // With API v2 credentials, there's no logout process
-    console.warn(
-      "Logout is not applicable when using Twitter API v2 credentials",
+    // With API v2 credentials, there's no logout process.
+    logger.warn(
+      "[X.Client] Logout is not applicable when using Twitter API v2 credentials",
     );
   }
 
@@ -1014,38 +1007,29 @@ export class Client {
   ): Promise<Tweet[]> {
     const allQuotes: Tweet[] = [];
 
-    try {
-      let cursor: string | undefined;
-      let totalFetched = 0;
+    let cursor: string | undefined;
+    let totalFetched = 0;
 
-      while (totalFetched < maxQuotes) {
-        const batchSize = Math.min(40, maxQuotes - totalFetched);
-        const page = await this.fetchQuotedTweetsPage(
-          tweetId,
-          batchSize,
-          cursor,
-        );
+    while (totalFetched < maxQuotes) {
+      const batchSize = Math.min(40, maxQuotes - totalFetched);
+      const page = await this.fetchQuotedTweetsPage(tweetId, batchSize, cursor);
 
-        if (page.tweets.length === 0) {
-          break;
-        }
-
-        allQuotes.push(...page.tweets);
-        totalFetched += page.tweets.length;
-
-        // Check if there's a next page
-        if (!page.next) {
-          break;
-        }
-
-        cursor = page.next;
+      if (page.tweets.length === 0) {
+        break;
       }
 
-      return allQuotes.slice(0, maxQuotes);
-    } catch (error) {
-      console.error("Error fetching quoted tweets:", error);
-      throw error;
+      allQuotes.push(...page.tweets);
+      totalFetched += page.tweets.length;
+
+      // Check if there's a next page
+      if (!page.next) {
+        break;
+      }
+
+      cursor = page.next;
     }
+
+    return allQuotes.slice(0, maxQuotes);
   }
 
   /**

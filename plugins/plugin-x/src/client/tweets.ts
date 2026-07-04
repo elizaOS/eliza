@@ -5,6 +5,8 @@
  * timeline fetches, retweeter/quote enumeration, and tweet-send param assembly;
  * called by `Client` in `client.ts`.
  */
+
+import { ElizaError } from "@elizaos/core";
 import type {
   ApiV2Includes,
   MediaObjectV2,
@@ -969,14 +971,19 @@ export async function getTweet(
       ],
     });
 
+    // No tweet with this id (deleted / private / never existed) is a real
+    // empty result — distinct from the throw below on a transport/API fault.
     if (!tweet.data) {
       return null;
     }
 
     return parseTweetV2ToV1(tweet.data, tweet.includes);
   } catch (error) {
-    console.error(`Failed to get tweet: ${errorMessage(error)}`);
-    return null;
+    throw new ElizaError(`Failed to get tweet ${id}`, {
+      code: "X_TWEET_FETCH_FAILED",
+      cause: error,
+      context: { tweetId: id },
+    });
   }
 }
 
@@ -1007,8 +1014,9 @@ export async function getTweetV2(
       "place.fields": options?.placeFields,
     });
 
+    // Missing data for a valid request is a real "not found" empty result,
+    // distinct from the throw below on a transport/API fault.
     if (!tweetData?.data) {
-      console.warn(`Tweet data not found for ID: ${id}`);
       return null;
     }
 
@@ -1017,8 +1025,11 @@ export async function getTweetV2(
 
     return parsedTweet;
   } catch (error) {
-    console.error(`Error fetching tweet ${id}:`, error);
-    return null;
+    throw new ElizaError(`Failed to fetch tweet ${id}`, {
+      code: "X_TWEET_FETCH_FAILED",
+      cause: error,
+      context: { tweetId: id },
+    });
   }
 }
 
@@ -1036,7 +1047,7 @@ export async function getTweetsV2(
 ): Promise<Tweet[]> {
   const v2client = await auth.getV2Client();
   if (!v2client) {
-    return [];
+    throw new Error("V2 client is not initialized");
   }
 
   try {
@@ -1049,8 +1060,8 @@ export async function getTweetsV2(
       "place.fields": options?.placeFields,
     });
     const tweetsV2 = tweetData.data;
+    // No matching tweets is a real empty result, distinct from the throw below.
     if (tweetsV2.length === 0) {
-      console.warn(`No tweet data found for IDs: ${ids.join(", ")}`);
       return [];
     }
     return (
@@ -1061,8 +1072,11 @@ export async function getTweetsV2(
       )
     ).filter((tweet): tweet is Tweet => tweet !== null);
   } catch (error) {
-    console.error(`Error fetching tweets for IDs: ${ids.join(", ")}`, error);
-    return [];
+    throw new ElizaError("Failed to fetch tweets by id", {
+      code: "X_TWEET_FETCH_FAILED",
+      cause: error,
+      context: { tweetIds: ids },
+    });
   }
 }
 

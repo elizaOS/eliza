@@ -1,3 +1,4 @@
+import { ElizaError } from "@elizaos/core";
 import { Headers } from "headers-polyfill";
 import type { UserV2 } from "twitter-api-v2";
 import type { QueryProfilesResponse } from "./api-types";
@@ -88,8 +89,12 @@ export async function* getFollowing(
       if (!paginationToken) break;
     }
   } catch (error) {
-    console.error("Error fetching following:", error);
-    throw error;
+    // error-policy:J2 context-adding rethrow — attach the user being paged.
+    throw new ElizaError("Failed to fetch following", {
+      code: "X_FOLLOWING_FETCH_FAILED",
+      cause: error,
+      context: { userId },
+    });
   }
 }
 
@@ -150,8 +155,12 @@ export async function* getFollowers(
       if (!paginationToken) break;
     }
   } catch (error) {
-    console.error("Error fetching followers:", error);
-    throw error;
+    // error-policy:J2 context-adding rethrow — attach the user being paged.
+    throw new ElizaError("Failed to fetch followers", {
+      code: "X_FOLLOWERS_FETCH_FAILED",
+      cause: error,
+      context: { userId },
+    });
   }
 }
 
@@ -204,8 +213,12 @@ export async function fetchProfileFollowing(
       next: response.meta?.next_token,
     };
   } catch (error) {
-    console.error("Error fetching following profiles:", error);
-    throw error;
+    // error-policy:J2 context-adding rethrow — attach the user being paged.
+    throw new ElizaError("Failed to fetch following profiles", {
+      code: "X_FOLLOWING_FETCH_FAILED",
+      cause: error,
+      context: { userId },
+    });
   }
 }
 
@@ -259,8 +272,12 @@ export async function fetchProfileFollowers(
       next: response.meta?.next_token,
     };
   } catch (error) {
-    console.error("Error fetching follower profiles:", error);
-    throw error;
+    // error-policy:J2 context-adding rethrow — attach the user being paged.
+    throw new ElizaError("Failed to fetch follower profiles", {
+      code: "X_FOLLOWERS_FETCH_FAILED",
+      cause: error,
+      context: { userId },
+    });
   }
 }
 
@@ -308,7 +325,11 @@ export async function followUser(
       }),
     });
   } catch (error) {
-    console.error("Error following user:", error);
-    throw error;
+    // error-policy:J2 context-adding rethrow — attach the target username.
+    throw new ElizaError("Failed to follow user", {
+      code: "X_FOLLOW_FAILED",
+      cause: error,
+      context: { username },
+    });
   }
 }

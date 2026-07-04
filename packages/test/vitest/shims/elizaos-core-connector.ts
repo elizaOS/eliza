@@ -18,6 +18,14 @@ export {
   resetConnectorAccountManagerForTests,
 } from "../../../core/src/connectors/account-manager.ts";
 export { readRequestedConnectorRole } from "../../../core/src/connectors/oauth-role.ts";
+// Real (unstubbed) structured-error foundation. Plugins' fail-fast throw sites
+// (#12182 family) construct these; keep the genuine class so instanceof / code
+// assertions in error-path tests exercise the real type, not a stub.
+export {
+  ElizaError,
+  isElizaError,
+  toElizaError,
+} from "../../../core/src/errors.ts";
 export {
   type RuntimeRouteHostContext,
   setRuntimeRouteHostContext,
