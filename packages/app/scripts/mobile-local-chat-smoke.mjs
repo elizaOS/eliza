@@ -11,6 +11,10 @@ import path from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
+import {
+  ANDROID_FULL_TURN_FAILURE_RE,
+  IOS_FULL_BUN_SMOKE_FAILURE_RE,
+} from "./lib/chat-failure-strings.mjs";
 import { assertInstalledIosAppRendererFresh } from "./lib/ios-renderer-stamp.mjs";
 import { clearIosSmokeDefaults } from "./lib/ios-sim-defaults-hygiene.mjs";
 import { evaluateLocalInferenceReadiness } from "./lib/local-inference-readiness.mjs";
@@ -60,8 +64,11 @@ const IOS_FULL_BUN_SMOKE_CONTEXT_SIZE = Number.parseInt(
 const IOS_FULL_BUN_SMOKE_ATTEMPTS = 180;
 const IOS_FULL_BUN_SMOKE_DELAY_MS = 2000;
 const IOS_FULL_BUN_SMOKE_EXPECTED_REPLY = "ios smoke model works";
-const IOS_FULL_BUN_SMOKE_FAILURE_RE =
-  /something went wrong|backend is not running|local backend is not running|no local backend|no local model|no model registered|no provider|connect a provider|waiting for the model download|timed out|<think\b|<\/think>|\/?\bno_think\b/i;
+// IOS_FULL_BUN_SMOKE_FAILURE_RE / ANDROID_FULL_TURN_FAILURE_RE are derived from
+// the single checked-in failure-string source of truth
+// (./lib/chat-failure-strings.mjs), which also generates the Swift artifact the
+// on-device XCUITest reply verifier consumes (issue #13687). A parity test keeps
+// the two sides in lockstep.
 const ANDROID_HEALTH_ATTEMPTS = 240;
 const ANDROID_FULL_TURN_TIMEOUT_MS = Number.parseInt(
   process.env.ANDROID_FULL_TURN_TIMEOUT_MS?.trim() || String(10 * 60_000),
@@ -111,8 +118,6 @@ const ANDROID_LOCAL_INFERENCE_READY_DELAY_MS = Number.parseInt(
 const ANDROID_FULL_TURN_PROMPT =
   "Reply with exactly these four words: android smoke model works.";
 const ANDROID_FULL_TURN_EXPECTED_REPLY = "android smoke model works";
-const ANDROID_FULL_TURN_FAILURE_RE =
-  /something went wrong|no local gguf|no local model|no model registered|no provider|connect a provider|device_disconnected|device_timeout|timed out|chat generation failed|waiting for the model download|set chat routing|progress:\s*0%/i;
 const ANDROID_SMOKE_MODEL_CONTEXT_SIZE = Number.parseInt(
   process.env.ANDROID_SMOKE_MODEL_CONTEXT_SIZE?.trim() || "4096",
   10,

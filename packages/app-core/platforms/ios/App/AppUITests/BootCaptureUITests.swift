@@ -483,6 +483,28 @@ final class BootCaptureUITests: XCTestCase {
                 || l.contains("retry in a moment") || l.contains("still warming")
                 || l.contains("try again in")
         }
+        // Consult the SHARED failure-string vocabulary (issue #13687). A reply
+        // that matches one of these is an error render / broken pipeline
+        // (e.g. the ErrorBoundary "Something went wrong" heading), NOT a genuine
+        // model reply — historically the loop went green on it. The list is
+        // generated from packages/app/scripts/lib/chat-failure-strings.mjs into
+        // ChatFailureStrings.generated.swift and parity-tested, so this verifier
+        // and the mobile-local-chat-smoke share exactly one source of truth.
+        // Returns the matched fragment so the assertion can quote it.
+        func matchedChatFailureString(_ s: String) -> String? {
+            let range = NSRange(s.startIndex..<s.endIndex, in: s)
+            for fragment in ChatFailureStrings.ios {
+                guard
+                    let regex = try? NSRegularExpression(
+                        pattern: fragment, options: [.caseInsensitive])
+                else { continue }
+                if regex.firstMatch(in: s, options: [], range: range) != nil {
+                    return fragment
+                }
+            }
+            return nil
+        }
+        var failureObservation: String?
 
         // On-device warm-up can leave the first sends returning the "message
         // didn't reach the agent — still starting up. Retry" fallback. Re-send
@@ -532,6 +554,13 @@ final class BootCaptureUITests: XCTestCase {
                 Thread.sleep(forTimeInterval: 3.0)
             }
             attachScreenshot(named: "\(tag)-070-reply-attempt-\(attempt)")
+            if let c = candidate, let failure = matchedChatFailureString(c) {
+                // An error render was surfaced. Record it (quoted) and stop —
+                // this must FAIL the verifier, never silently retry into a
+                // "no reply after N attempts" that hides WHAT went wrong (#13687).
+                failureObservation = "\(c) [matched failure-string: \(failure)]"
+                break
+            }
             if let c = candidate, !looksNotReady(c) {
                 reply = c  // genuine model reply
                 break
@@ -546,9 +575,22 @@ final class BootCaptureUITests: XCTestCase {
             att.lifetime = .keepAlways
             add(att)
         }
+        if let failureObservation {
+            let att = XCTAttachment(string: failureObservation)
+            att.name = "\(tag)-reply-failure-string"
+            att.lifetime = .keepAlways
+            add(att)
+        }
         XCTAssertNotEqual(
             app.state, .notRunning,
             "[\(tag)] the app died while waiting for the chat reply.")
+        // An error render (matched against the shared failure vocabulary) must
+        // fail LOUD with the observed text quoted — never count as a reply,
+        // never be swallowed as a bland "no reply" (#13687).
+        XCTAssertNil(
+            failureObservation,
+            "[\(tag)] the agent surfaced an error render instead of a genuine "
+                + "model reply: \(failureObservation ?? "").")
         XCTAssertNotNil(
             reply,
             "[\(tag)] no genuine model reply after \(sendAttempts) attempts — "
