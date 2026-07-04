@@ -10,6 +10,11 @@ export * from "./api/http-helpers.js";
 export * from "./api/route-helpers.js";
 // Leaf modules (no internal collisions)
 export * from "./app-hero-art.js";
+// Email-classification primitives — canonical two-stage classifier + the
+// untrusted-content fence. Dependency-free beyond @elizaos/core; consumed by
+// inbox-curation and finance bill-extraction in
+// @elizaos/plugin-personal-assistant.
+export * from "./apps/index.js";
 // Awareness + themes barrels
 export * from "./awareness/index.js";
 export * from "./character-presets.characters.js";
@@ -242,10 +247,6 @@ export * from "./dev-settings-table.js";
 // elizacloud helpers — pure utilities + config-driven server helpers used by
 // app-core and the agent so they don't reverse-import from plugin-elizacloud.
 export * from "./elizacloud/index.js";
-// Email-classification primitives — canonical two-stage classifier + the
-// untrusted-content fence. Dependency-free beyond @elizaos/core; consumed by
-// inbox-curation and finance bill-extraction in
-// @elizaos/plugin-personal-assistant.
 export * from "./email-classification/index.js";
 export * from "./env-utils.js";
 export * from "./error-classification.js";
@@ -270,9 +271,11 @@ export * from "./lifeops-normalize/index.js";
 export * from "./local-inference/index.js";
 export * from "./loopback-trust.js";
 export * from "./meetings.js";
+export * from "./platform/aosp-user-agent.js";
 export * from "./platform/is-native-server.js";
 export * from "./process-guards.js";
 export * from "./recent-messages-state.js";
+export * from "./registry-host.js";
 export * from "./restart.js";
 export * from "./runtime-env.js";
 export * from "./self-edit.js";
