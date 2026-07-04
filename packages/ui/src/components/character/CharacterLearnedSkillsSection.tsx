@@ -1,3 +1,11 @@
+/**
+ * Lists and curates the skills the agent has learned or refined from its own
+ * trajectories — the agent-authored curated skills (source !== "human") read
+ * from `/api/skills/curated` and grouped by status (proposed / active /
+ * disabled). Backs the promoted top-level Skills view and the skills section of
+ * the character hub; distinct from the installable developer skill catalog.
+ * Pass `showTitle={false}` when a host ViewHeader already renders the title.
+ */
 import { useCallback, useMemo, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
 import { client } from "../../api/client";

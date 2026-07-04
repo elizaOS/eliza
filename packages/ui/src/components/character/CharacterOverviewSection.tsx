@@ -1,3 +1,9 @@
+/**
+ * The overview grid of the character hub: a card per hub section (personality,
+ * documents, skills, experience, relationships) showing a preview body or an
+ * empty state, each opening its section. Pure presentation — the caller passes
+ * the widgets and the open handler.
+ */
 import {
   BookOpen,
   Brain,

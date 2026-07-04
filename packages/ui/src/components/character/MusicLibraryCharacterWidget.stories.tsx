@@ -1,3 +1,4 @@
+/** Storybook stories for the music-library chat-sidebar widget. */
 import type { Meta, StoryObj } from "@storybook/react";
 import type { PluginInfo } from "../../api/client-types-config";
 import { MusicLibraryCharacterWidget } from "./MusicLibraryCharacterWidget";

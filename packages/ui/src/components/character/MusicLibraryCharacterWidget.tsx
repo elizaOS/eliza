@@ -1,3 +1,9 @@
+/**
+ * Chat-sidebar widget for the music-library plugin (registered in
+ * widgets/registry as `music-library.playlists`): a compact panel of quick
+ * commands that seed the chat composer with prompts like "show my playlists".
+ * It only issues prompts — it holds no music state of its own.
+ */
 import { ListMusic, Music, Plus, Search } from "lucide-react";
 import type { WidgetProps } from "../../widgets/types";
 

@@ -1,3 +1,11 @@
+/**
+ * Master/detail editor for the agent's learned experiences, driving both the
+ * promoted top-level Experience view and the experience section of the
+ * character hub. Renders the review-status filter, the experience list, and the
+ * editable draft pane; it is fully controlled — the parent owns the records and
+ * the save/delete/select callbacks (and the save/delete-in-flight ids). Pass
+ * `showTitle={false}` when the host view already supplies a ViewHeader.
+ */
 import { memo, useEffect, useMemo, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
 import { useTranslation } from "../../state/TranslationContext.hooks";

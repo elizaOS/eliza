@@ -1,3 +1,4 @@
+/** Storybook stories for the character roster preset picker. */
 import type { Meta, StoryObj } from "@storybook/react";
 import { useState } from "react";
 import type { AppContextValue } from "../../state/types";

@@ -1,3 +1,12 @@
+/**
+ * The top-level "Character" view: the identity/style/examples editor plus the
+ * overview grid, wired to the five hub reads via useCharacterHubData and routed
+ * by URL path to its sections. Knowledge, Relationships, Skills, and Experience
+ * are now separate top-level views (promoted out of the old multi-tab hub), so
+ * this view keeps only the personality/editor surface plus the overview that
+ * links out to them. Deep-links resolve through the navigation helpers; a
+ * ViewHeader supplies the in-context back affordance for the shell.
+ */
 import type { MessageExampleGroup } from "@elizaos/core";
 import {
   type ReactNode,

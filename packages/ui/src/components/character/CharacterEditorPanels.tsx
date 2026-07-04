@@ -1,3 +1,9 @@
+/**
+ * The three editable panels of the character editor — identity, style, and
+ * message examples — split out from CharacterEditor/CharacterHubView so each is
+ * independently composable and story-testable. Each is a controlled component:
+ * it renders the given draft and reports edits upward; it owns no fetches.
+ */
 import type { MessageExampleGroup } from "@elizaos/core";
 import {
   type ChangeEvent,

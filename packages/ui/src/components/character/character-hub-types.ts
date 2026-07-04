@@ -1,3 +1,8 @@
+/**
+ * View-model types shared across the character hub components — activity items,
+ * personality-history entries, and the experience record/draft shapes — kept
+ * separate from the API transport types so the hub renders a stable UI shape.
+ */
 export type CharacterHubActivityKind =
   | "personality"
   | "documents"

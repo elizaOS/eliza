@@ -1,4 +1,8 @@
 // @vitest-environment jsdom
+//
+// Interaction tests for CockpitNewSessionForm: submit stays disabled until a
+// goal is entered, and submitting hands the parent a lowered create-task input.
+// Deterministic RTL/jsdom, no network.
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";

@@ -1,3 +1,4 @@
+/** Storybook stories for the character personality-history timeline. */
 import type { Meta, StoryObj } from "@storybook/react";
 import { CharacterPersonalityTimeline } from "./CharacterPersonalityTimeline";
 import type { CharacterPersonalityHistoryItem } from "./character-hub-types";

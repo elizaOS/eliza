@@ -1,3 +1,11 @@
+/**
+ * The character/persona editor mounted as the top-level "Character" view in the
+ * dashboard shell (App.tsx). Renders the roster picker plus the identity, style,
+ * examples, and voice panels, and writes edits back through the API client;
+ * greeting animation and voice config are resolved from the selected roster
+ * entry. Kept statically imported in App.tsx (not lazy) so first-run onboarding
+ * can land here without a chunk fetch.
+ */
 import { getStylePresets } from "@elizaos/shared";
 import { useAgentElement } from "../../agent-surface";
 import type { CharacterData } from "../../api/client";

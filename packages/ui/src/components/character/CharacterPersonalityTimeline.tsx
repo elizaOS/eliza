@@ -1,3 +1,8 @@
+/**
+ * Renders the character's personality-change history as an expandable timeline:
+ * each entry shows the edited field, scope, actor, and a before/after diff of
+ * the change. Pure presentation over the items the hub passes in.
+ */
 import { useState } from "react";
 import { Button } from "../ui/button";
 import type { CharacterPersonalityHistoryItem } from "./character-hub-types";

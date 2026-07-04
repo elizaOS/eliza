@@ -1,4 +1,8 @@
 // @vitest-environment jsdom
+//
+// Interaction tests for CockpitModePicker: selecting a mode emits the right
+// config, the Fast/Smart tier toggle only shows for Eliza Cloud, and the
+// experimental modes stay hidden unless armed. Deterministic RTL/jsdom, no network.
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
