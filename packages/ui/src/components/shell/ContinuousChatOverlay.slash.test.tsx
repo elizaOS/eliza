@@ -113,6 +113,7 @@ function makeSlash(
   return {
     commands: COMMANDS,
     loading: false,
+    error: false,
     naturalShortcutsEnabled: false,
     isAuthorized: true,
     isElevated: true,

@@ -233,6 +233,7 @@ const SLASH_COMMANDS: SlashCommandCatalogItem[] = [
 const SLASH_CONTROLLER: SlashCommandController = {
   commands: SLASH_COMMANDS,
   loading: false,
+  error: false,
   naturalShortcutsEnabled: false,
   isAuthorized: true,
   isElevated: true,

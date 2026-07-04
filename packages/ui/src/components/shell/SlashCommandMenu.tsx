@@ -217,11 +217,18 @@ export function SlashCommandMenu({
   state,
   onPick,
   loading,
+  error,
 }: {
   state: SlashMenuState;
   /** Execute the item at index (Enter/click). */
   onPick: (index: number) => void;
   loading?: boolean;
+  /**
+   * True when the command catalog failed to load (transport/parse). Renders a
+   * distinguishable error state instead of a silent empty menu so a failed
+   * load is not mistaken for "no commands" (#12784 three-state degrade).
+   */
+  error?: boolean;
 }): React.JSX.Element | null {
   const listboxId = "slash-command-listbox";
   if (!state.open) {
@@ -236,6 +243,22 @@ export function SlashCommandMenu({
           data-testid="slash-menu-loading"
         >
           loading commands…
+        </div>
+      );
+    }
+    // Loading takes precedence; once settled, a failed load surfaces here as a
+    // distinct error state rather than an empty/absent menu.
+    if (error) {
+      return (
+        <div
+          className={cn(
+            "absolute bottom-full left-0 right-0 z-10 mb-2 rounded-2xl border border-amber-400/25 bg-black/85 px-4 py-3 text-xs text-amber-200/80",
+            FLOAT_SHADOW,
+          )}
+          role="status"
+          data-testid="slash-menu-error"
+        >
+          couldn't load commands
         </div>
       );
     }
@@ -264,6 +287,22 @@ export function SlashCommandMenu({
       >
         {state.headerLabel}
       </div>
+      {/* #12784 three-state: when the catalog load partially failed but some
+          commands (server/saved) still resolved, the open menu would otherwise
+          look like a complete, healthy list. Surface a degraded affordance so
+          `error === true` is distinguishable even with non-empty `commands`. */}
+      {error ? (
+        <div
+          className={cn(
+            "mx-2 mb-1 rounded-lg border border-amber-400/25 bg-amber-400/5 px-2.5 py-1 text-[10px] text-amber-200/80",
+            FLOAT_SHADOW,
+          )}
+          role="status"
+          data-testid="slash-menu-partial-error"
+        >
+          some commands couldn't load
+        </div>
+      ) : null}
       {state.items.map((item, index) => (
         <Button
           key={item.id}

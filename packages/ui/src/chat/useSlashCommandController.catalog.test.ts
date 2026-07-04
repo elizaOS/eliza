@@ -149,6 +149,7 @@ describe("useSlashCommandController — catalog load (#11112)", () => {
 
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.commands).toEqual([]);
+    expect(result.current.error).toBe(false);
     expect(consoleError).not.toHaveBeenCalled();
     consoleError.mockRestore();
   });
@@ -164,6 +165,9 @@ describe("useSlashCommandController — catalog load (#11112)", () => {
 
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.commands).toEqual([]);
+    // #12784 three-state: a failed load must be distinguishable from a genuine
+    // empty catalog — `error` is true, not a silent healthy-empty.
+    expect(result.current.error).toBe(true);
     expect(consoleError).toHaveBeenCalledWith(
       expect.stringContaining("[useSlashCommandController]"),
       failure,
@@ -183,10 +187,41 @@ describe("useSlashCommandController — catalog load (#11112)", () => {
 
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.commands.map((c) => c.key)).toEqual(["settings"]);
+    // Partial/degraded load: server catalog rendered, but the failed
+    // custom-actions fetch still raises the error flag (#12784) so the surface
+    // does not imply a complete catalog.
+    expect(result.current.error).toBe(true);
     expect(consoleError).toHaveBeenCalledWith(
       expect.stringContaining("[useSlashCommandController]"),
       failure,
     );
+    consoleError.mockRestore();
+  });
+
+  it("a fully successful load leaves error false even when the catalog is non-empty", async () => {
+    listCommands.mockResolvedValue([cmd({ key: "settings" })]);
+    listCustomActions.mockResolvedValue([]);
+
+    const { result } = renderHook(() => useSlashCommandController());
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.commands.map((c) => c.key)).toEqual(["settings"]);
+    // Healthy load must NEVER set the error flag (no false-positive degrade).
+    expect(result.current.error).toBe(false);
+  });
+
+  it("both fetches failing surfaces the error with an empty catalog (not a false healthy-empty)", async () => {
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    listCommands.mockRejectedValue(new Error("catalog down"));
+    listCustomActions.mockRejectedValue(new Error("custom down"));
+
+    const { result } = renderHook(() => useSlashCommandController());
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.commands).toEqual([]);
+    expect(result.current.error).toBe(true);
     consoleError.mockRestore();
   });
 });

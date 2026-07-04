@@ -114,6 +114,7 @@ import type { ConversationNav, ShellController } from "./useShellController";
 const EMPTY_SLASH_CONTROLLER: SlashCommandController = {
   commands: [],
   loading: false,
+  error: false,
   naturalShortcutsEnabled: false,
   isAuthorized: false,
   isElevated: false,
@@ -4174,6 +4175,7 @@ export function ContinuousChatOverlay({
                 <SlashCommandMenu
                   state={slashMenu}
                   loading={isSlashDraft && slash.loading}
+                  error={isSlashDraft && slash.error}
                   onPick={pickSlashItem}
                 />
               ) : null}

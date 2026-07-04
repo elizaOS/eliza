@@ -113,6 +113,16 @@ export interface SlashCommandController {
   /** The merged catalog (server commands + custom actions + saved commands). */
   commands: SlashCommandCatalogItem[];
   loading: boolean;
+  /**
+   * True when the last catalog load failed at the transport/parse layer (the
+   * server command fetch OR the custom-actions fetch threw). Lets the surface
+   * render a distinguishable error state instead of a healthy-empty menu
+   * (#12784 three-state degrade): a network/5xx/parse failure must not
+   * masquerade as a genuinely empty catalog. Locally-derived commands
+   * (saved/custom) still render when only one source failed, so `commands`
+   * may be non-empty while `error` is true (partial/degraded load).
+   */
+  error: boolean;
   /** Whether natural-language navigate/client shortcuts may short-circuit send. */
   naturalShortcutsEnabled: boolean;
   /** Resolve dynamic argument completions for a named source. */
@@ -223,19 +233,26 @@ export function useSlashCommandController(
     SlashCommandCatalogItem[]
   >([]);
   const [loading, setLoading] = React.useState(true);
+  const [loadError, setLoadError] = React.useState(false);
 
   React.useEffect(() => {
     let cancelled = false;
     setLoading(true);
+    setLoadError(false);
     void (async () => {
       // Degrade to an empty catalog so the composer keeps working, but SURFACE
       // the failure: a silently-swallowed fetch error is indistinguishable
       // from a genuinely empty catalog (the menu just never mounts), which
-      // made #11112 needlessly hard to diagnose.
+      // made #11112 needlessly hard to diagnose. Beyond the console log we also
+      // raise a user-facing `error` flag (#12784 three-state) so the menu can
+      // show a distinguishable degraded state, not a false healthy-empty.
+      let loadFailed = false;
       const catalog: SlashCommandCatalogItem[] = await client
         .listCommands("gui")
         // error-policy:J4 degrade to an empty catalog with the failure logged
+        // + flagged (not fabricated as a healthy-empty catalog).
         .catch((error: unknown) => {
+          loadFailed = true;
           console.error(
             "[useSlashCommandController] Failed to load the slash-command catalog; slash menu will be empty",
             error,
@@ -244,8 +261,9 @@ export function useSlashCommandController(
         });
       const customActions: CustomActionDef[] = await client
         .listCustomActions()
-        // error-policy:J4 omit custom actions with the failure logged
+        // error-policy:J4 omit custom actions with the failure logged + flagged.
         .catch((error: unknown) => {
+          loadFailed = true;
           console.error(
             "[useSlashCommandController] Failed to load custom actions; omitting them from the slash menu",
             error,
@@ -261,6 +279,7 @@ export function useSlashCommandController(
         .filter((a) => a.enabled)
         .map((a) => customActionToCommand(a.name));
       setCustomCommands([...saved, ...custom]);
+      setLoadError(loadFailed);
       setLoading(false);
     })();
     return () => {
@@ -351,6 +370,7 @@ export function useSlashCommandController(
     () => ({
       commands,
       loading,
+      error: loadError,
       naturalShortcutsEnabled,
       resolveChoices,
       resolveSection: resolveSettingsSectionToken,
@@ -365,6 +385,7 @@ export function useSlashCommandController(
     [
       commands,
       loading,
+      loadError,
       naturalShortcutsEnabled,
       resolveChoices,
       isAuthorized,
