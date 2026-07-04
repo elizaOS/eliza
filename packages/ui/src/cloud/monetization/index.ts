@@ -3,10 +3,11 @@
  * /api/v1/redemptions` + `/balance` `/quote` `/status`; redeem-to-$ELIZA on
  * base/solana/ethereum/bnb) + Affiliates (referrals: `GET/POST/PUT
  * /api/v1/affiliates`, `GET /api/v1/referrals`), merged into the single tabbed
- * `cloud-monetization` Settings section (`/settings#cloud-monetization`).
+ * `cloud-monetization` Settings section (`/settings#cloud-monetization`) and
+ * the standalone `dashboard/monetization` console page.
  *
- * Legacy `dashboard/{monetization,earnings,affiliates}` deep links resolve to
- * the section via the CloudRouterShell compat redirects.
+ * Legacy `dashboard/{earnings,affiliates}` deep links resolve to the console
+ * page via the CloudRouterShell compat redirects.
  */
 
 export { AffiliatesPageClient } from "./affiliates/AffiliatesPageClient";

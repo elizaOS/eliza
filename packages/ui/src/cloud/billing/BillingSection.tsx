@@ -1,6 +1,7 @@
 /**
- * Canonical billing surface — the body the `cloud-billing` Settings section
- * mounts (`/settings#cloud-billing`).
+ * Canonical billing surface — the body mounted by the `cloud-billing` Settings
+ * section (`/settings#cloud-billing`) and the standalone `dashboard/billing`
+ * console page.
  *
  * Fetches the current user/org (the `BillingTab` needs `organization_id`,
  * `wallet_address`, and the seed `credit_balance`), then renders `BillingTab`.
@@ -8,9 +9,9 @@
  * direct-payment wallet stack (wagmi/RainbowKit/Solana) never enters the entry
  * bundle elsewhere.
  *
- * The Stripe Checkout cancel URL points back here with `?canceled=true` (via
- * the `dashboard/billing` compat redirect, which preserves the query), so the
- * canceled banner renders at the top of the body.
+ * The Stripe Checkout cancel URL points back here with `?canceled=true` (it
+ * targets `/dashboard/billing`, the standalone console page that mounts this
+ * same body), so the canceled banner renders at the top of the body.
  */
 
 import {

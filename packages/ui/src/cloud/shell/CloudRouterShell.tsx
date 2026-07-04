@@ -49,13 +49,13 @@ import {
 import { StewardAuthProvider } from "./StewardProvider";
 
 /**
- * `/dashboard/*` compatibility redirect map. The old cloud dashboard lived
- * under `/dashboard/*`; in the app the canonical homes are the standalone
- * views (apps, agents, analytics, api-explorer, admin) and the in-app
- * settings sections (account, security, billing, api-keys, monetization,
- * connections), so these resolve every legacy deep link the backend or old
- * bookmarks may still point at. `:param` segments are substituted from the
- * matched route params, and the original query string is preserved.
+ * `/dashboard/*` compatibility redirect map. Every console surface has a
+ * standalone `dashboard/*` route (apps, agents, analytics, api-explorer,
+ * admin, billing, api-keys, account, security, monetization, connectors,
+ * organization — see `register-all.ts`); these redirects resolve only the
+ * legacy spellings that no longer exist as routes (old bookmarks and
+ * backend-issued URLs). `:param` segments are substituted from the matched
+ * route params, and the original query string is preserved.
  */
 export const DASHBOARD_REDIRECTS: ReadonlyArray<{ from: string; to: string }> =
   [
@@ -75,21 +75,9 @@ export const DASHBOARD_REDIRECTS: ReadonlyArray<{ from: string; to: string }> =
     { from: "dashboard/agents/:id/chat", to: "/dashboard/agents/:id" },
     // App-create modal is opened from the apps list, not its own route.
     { from: "dashboard/apps/create", to: "/dashboard/apps" },
-    // Account-management surfaces live in the in-app Settings sections; none of
-    // these have a standalone route — the redirects are the sole entry for
-    // every in-repo link and old deep link (including the backend-issued
-    // /dashboard/billing top-up URLs).
-    { from: "dashboard/billing", to: "/settings#cloud-billing" },
-    { from: "dashboard/api-keys", to: "/settings#cloud-api-keys" },
-    { from: "dashboard/monetization", to: "/settings#cloud-monetization" },
-    { from: "dashboard/earnings", to: "/settings#cloud-monetization" },
-    { from: "dashboard/affiliates", to: "/settings#cloud-monetization" },
-    { from: "dashboard/account", to: "/settings#cloud-account" },
-    { from: "dashboard/security", to: "/settings#cloud-security" },
-    {
-      from: "dashboard/security/permissions",
-      to: "/settings#cloud-plugin-grants",
-    },
+    // Earnings + Affiliates merged into the tabbed Monetization console page.
+    { from: "dashboard/earnings", to: "/dashboard/monetization" },
+    { from: "dashboard/affiliates", to: "/dashboard/monetization" },
     // Knowledge/Documents now lives in the app; old deep links land on the agents list.
     { from: "dashboard/documents", to: "/dashboard/agents" },
   ];
@@ -115,26 +103,23 @@ function ParamRedirect({ to }: { to: string }): React.JSX.Element {
 /**
  * The legacy `/dashboard/settings?tab=<x>` URLs the backend still issues
  * (OAuth-connect callbacks, Stripe cancel URLs, agent GitHub-connect returns)
- * map onto the canonical in-app settings sections. Unknown/absent tabs land on
- * the settings hub.
+ * map onto the standalone console pages — those work on every host, including
+ * the apex control-plane hosts where the in-app Settings view never mounts.
+ * `agents` has no settings-style console page; it lands on the Instances
+ * table. Unknown/absent tabs land on the console home.
  */
-const LEGACY_SETTINGS_TAB_SECTIONS: Readonly<Record<string, string>> = {
-  connections: "cloud-connectors",
-  billing: "cloud-billing",
-  organization: "cloud-organization",
-  agents: "cloud-agents",
+const LEGACY_SETTINGS_TAB_TARGETS: Readonly<Record<string, string>> = {
+  connections: "/dashboard/connectors",
+  billing: "/dashboard/billing",
+  organization: "/dashboard/organization",
+  agents: "/dashboard/agents",
 };
 
 function LegacySettingsTabRedirect(): React.JSX.Element {
   const location = useLocation();
   const tab = new URLSearchParams(location.search).get("tab") ?? "";
-  const section = LEGACY_SETTINGS_TAB_SECTIONS[tab];
-  return (
-    <Navigate
-      to={`/settings${location.search}${section ? `#${section}` : ""}`}
-      replace
-    />
-  );
+  const target = LEGACY_SETTINGS_TAB_TARGETS[tab] ?? "/dashboard";
+  return <Navigate to={`${target}${location.search}`} replace />;
 }
 
 function renderRouteElement(
@@ -269,31 +254,32 @@ function isApexControlPlaneHost(): boolean {
 }
 
 /**
- * Where an authenticated visitor landing on the apex ROOT is sent. The apex
+ * Where an authenticated visitor landing on the apex is sent. The apex
  * (elizacloud.ai) is the cloud CONSOLE — its job is "add credits / manage your
  * account", not chat (chat is the agent app's home, served from
- * app.elizacloud.ai). `/settings#cloud-billing` is the canonical
- * credits/billing surface (every in-app billing link resolves here, e.g. the
- * `dashboard/billing` compat redirect above) and the settings hub around it
- * (Billing · Developer/API keys · Connections · Organization) is the
- * account-management home. Both domains serve the SAME packages/app bundle, so
- * without this the apex and the app subdomain look identical when signed in.
+ * app.elizacloud.ai). `/dashboard` is the standalone console overview (balance
+ * + a directory of every console surface), and it is a REGISTERED cloud route,
+ * so navigating there never re-enters this catch-all.
  */
-const APEX_AUTHENTICATED_HOME = "/settings#cloud-billing";
+const APEX_AUTHENTICATED_HOME = "/dashboard";
 
 /**
- * Catch-all element. Renders the agent app exactly as before, EXCEPT on an apex
- * control-plane host, where it makes the two domains behave differently:
+ * Catch-all element. Renders the agent app exactly as before, EXCEPT on an
+ * apex control-plane host, where the agent app must NEVER boot: the apex has
+ * no same-origin agent backend, so the app's boot sequence 404-storms on
+ * `/api/*` and the failed `/api/first-run/status` probe throws the first-run
+ * onboarding chooser over the console (the exact "elizacloud.ai shows the
+ * app" prod bug this guard exists for). On an apex host every path that falls
+ * through to this catch-all is an agent-app path by definition — all console
+ * surfaces are registered routes and match before it — so:
  *
- *  - unauthenticated → the Steward `/login` page (`returnTo` preserved) instead
- *    of booting the agent shell that would 401-wall on `/api/*`. (The apex
- *    401-wall was a router fall-through: no route registers the apex root `/`,
- *    so an unauthenticated apex visitor hit this catch-all and booted the agent
- *    runtime against a backend that isn't there.)
- *  - authenticated AND on the bare apex root (`/`) → the cloud console home
- *    ({@link APEX_AUTHENTICATED_HOME}) instead of chat, so elizacloud.ai lands
- *    on the credits/manage dashboard. Deeper apex paths (a shared agent, a deep
- *    link) still render the app so those links keep working.
+ *  - unauthenticated → the Steward `/login` page (`returnTo` preserved).
+ *  - authenticated → the console home ({@link APEX_AUTHENTICATED_HOME}),
+ *    whatever the path: `/`, `/settings`, `/chat`, or any other app-only URL
+ *    would otherwise boot the backendless app.
+ *  - auth state not yet readable → a blank fallback, never the app; rendering
+ *    the app while auth resolves lets its tab system rewrite the URL and
+ *    strand the visitor before the redirect can fire.
  *
  * Every non-apex host (per-agent subdomains, app.elizacloud.ai, localhost) is
  * untouched: chat stays home.
@@ -305,21 +291,17 @@ export function AppCatchAllRoute({
 }): React.JSX.Element {
   const { ready, authenticated } = useSessionAuth();
   const location = useLocation();
-  if (isApexControlPlaneHost() && ready) {
+  if (isApexControlPlaneHost()) {
+    if (!ready) {
+      return <RouteChunkFallback />;
+    }
     if (!authenticated) {
       const returnTo = encodeURIComponent(
         `${location.pathname}${location.search}`,
       );
       return <Navigate to={`/login?returnTo=${returnTo}`} replace />;
     }
-    // Authenticated on the bare apex root → the console home. Guard on the root
-    // path (and no tab hash) so we redirect ONLY the landing, never a deep link
-    // the user navigated to on purpose. The target is `/settings`, which is not
-    // an apex-console route, so it re-enters this catch-all at a non-root path
-    // and renders the app (which reads `#cloud-billing`) — no redirect loop.
-    if (location.pathname === "/" && !location.hash) {
-      return <Navigate to={APEX_AUTHENTICATED_HOME} replace />;
-    }
+    return <Navigate to={APEX_AUTHENTICATED_HOME} replace />;
   }
   return <>{appElement}</>;
 }
@@ -358,8 +340,8 @@ export function CloudRouterShell({
           ))}
 
           {/* Backend OAuth/Stripe return URLs still target the legacy
-              /dashboard/settings?tab=<x> shape; map them onto the settings
-              sections instead of the dashboard/* 404 below. */}
+              /dashboard/settings?tab=<x> shape; map them onto the standalone
+              console pages instead of the dashboard/* 404 below. */}
           <Route
             path="dashboard/settings"
             element={<LegacySettingsTabRedirect />}
@@ -373,9 +355,10 @@ export function CloudRouterShell({
            */}
           <Route path="dashboard/*" element={<CloudNotFound />} />
 
-          {/* Catch-all: the existing tab/view app (chat is home) — except an
-              unauthenticated visit to an apex control-plane host, which
-              redirects to /login instead of 401-walling. See AppCatchAllRoute. */}
+          {/* Catch-all: the existing tab/view app (chat is home) — except on
+              apex control-plane hosts, where the agent app never boots:
+              unauthenticated → /login, authenticated → the console home.
+              See AppCatchAllRoute. */}
           <Route
             path="*"
             element={<AppCatchAllRoute appElement={appElement} />}

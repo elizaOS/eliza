@@ -14,10 +14,12 @@
  * is keyed by route path / section id — so calling it more than once is safe.
  *
  * Account-management surfaces (account, security, plugin grants, billing,
- * API keys, monetization, connections, organization-as-section) have NO
- * standalone dashboard routes — their single home is the in-app Settings
- * sections, and the `CloudRouterShell` compat redirects carry the legacy
- * `/dashboard/*` deep links there.
+ * API keys, monetization, connectors) are mounted twice on purpose: as in-app
+ * Settings sections (the app's own settings hub) AND as standalone
+ * `dashboard/*` console pages. The standalone mounts are what make the apex
+ * console (elizacloud.ai) work — the agent app never boots there (see
+ * `AppCatchAllRoute`), so the console pages are the only reachable home for
+ * add-funds / API keys / account on a control-plane host.
  */
 
 // Side-effecting domain modules: importing them runs their top-level
@@ -29,7 +31,12 @@
 // that package alongside `registerAllCloudSurfaces()` here.
 import "./instances";
 import "./analytics";
+import "./home/routes";
 import "./billing/routes";
+import "./api-keys/routes";
+import "./account-security/routes";
+import "./monetization/routes";
+import "./connectors/routes";
 import "./organization/routes";
 
 import { registerAdminCloudRoutes } from "./admin";

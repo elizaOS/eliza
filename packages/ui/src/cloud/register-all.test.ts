@@ -17,14 +17,26 @@ describe("registerAllCloudSurfaces", () => {
     const paths = new Set(listCloudRoutes().map((r) => r.path));
     for (const p of [
       "join",
+      // The console home — the apex catch-all's authenticated landing.
+      "dashboard",
       "dashboard/agents",
       "dashboard/my-agents",
       // Analytics registers as an import side effect — this entry guards that
       // the register-all import stays wired.
       "dashboard/analytics",
-      // Stripe return URL + invoice detail (flow pages, not a billing home).
+      // Billing home + Stripe return URL + invoice detail.
+      "dashboard/billing",
       "dashboard/billing/success",
       "dashboard/invoices/:id",
+      // Account-management console pages. These are what make the apex console
+      // (elizacloud.ai) usable — the agent app (and its in-app Settings view)
+      // never boots on a control-plane host.
+      "dashboard/api-keys",
+      "dashboard/account",
+      "dashboard/security",
+      "dashboard/security/permissions",
+      "dashboard/monetization",
+      "dashboard/connectors",
       "dashboard/organization",
       "dashboard/api-explorer",
       "dashboard/apps",
@@ -42,22 +54,16 @@ describe("registerAllCloudSurfaces", () => {
     }
   });
 
-  it("mounts each account-management surface exactly once — in Settings, with no standalone dashboard route", () => {
+  it("keeps legacy-only spellings as redirects, not routes", () => {
     registerAllCloudSurfaces();
     const paths = new Set(listCloudRoutes().map((r) => r.path));
-    // The single mount for each of these is its Settings section; legacy
-    // /dashboard/* deep links resolve to it via the CloudRouterShell compat
-    // redirects (which only fire when no identically-pathed route shadows
-    // them), NOT a registered route.
+    // These resolve via the CloudRouterShell compat redirects (earnings /
+    // affiliates → the monetization page; dashboard/settings?tab=<x> → the
+    // matching console page). Registering them as routes too would shadow the
+    // redirects and fork the canonical homes.
     for (const p of [
-      "dashboard/api-keys",
-      "dashboard/billing",
-      "dashboard/monetization",
       "dashboard/earnings",
       "dashboard/affiliates",
-      "dashboard/account",
-      "dashboard/security",
-      "dashboard/security/permissions",
       "dashboard/settings",
       "dashboard/settings/connections",
     ]) {

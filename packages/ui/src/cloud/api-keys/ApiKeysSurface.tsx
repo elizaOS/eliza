@@ -1,9 +1,10 @@
 /**
  * API-keys surface. Gates on the Steward session, fetches the keys with
  * {@link useApiKeys}, maps the server records to the cloud-ui display shape,
- * and renders {@link ApiKeysView}. Mounted by the `cloud-api-keys` Settings
- * section (`/settings#cloud-api-keys`); legacy `/dashboard/api-keys` deep
- * links resolve there via the CloudRouterShell compat redirect.
+ * and renders {@link ApiKeysView}. Mounted twice: by the `cloud-api-keys`
+ * Settings section (`/settings#cloud-api-keys`) in the app, and by the
+ * standalone `dashboard/api-keys` console page (the apex-console home for
+ * key management).
  */
 
 import { useContext } from "react";
