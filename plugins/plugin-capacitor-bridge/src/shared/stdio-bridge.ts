@@ -10,41 +10,93 @@
  * desktop stdio bridge can all construct one from the same code instead of each
  * re-implementing the buffering + framing.
  *
- * Buffered request/response only; streaming (`http_request_stream`) is added
- * with its consumer in item 5/6.
+ * Supports both buffered request/response and incremental streaming: a frame
+ * whose `stream === true` is routed to the optional `requestStream` handler,
+ * which pushes `{ id, stream: "response" | "chunk" | "complete" }` frames as the
+ * body arrives (the Android WebView maps these onto `agentStream*` Capacitor
+ * events). Buffered frames still get one terminal `{ ok, result }`.
  *
  * The kernel deliberately owns NO transport trust, runtime boot, host-call
  * re-entrancy, or stdout reservation — those stay platform-specific. It is a
  * pure line/frame codec around a request handler.
  */
 
-/** A single inbound request frame: `{ id?, method?, payload? }`. */
+/** A single inbound request frame: `{ id?, method?, payload?, stream? }`. */
 export interface StdioBridgeRequestFrame {
 	id?: unknown;
 	method?: unknown;
 	payload?: unknown;
+	/** When `true`, dispatch to the streaming handler and emit stream frames. */
+	stream?: unknown;
 }
 
-/** A single outbound response frame written back per request. */
+/** A single outbound frame written back to the peer. */
 export interface StdioBridgeResponseFrame {
 	id: unknown;
-	ok: boolean;
+	/** Buffered terminal outcome. Absent on streaming frames. */
+	ok?: boolean;
 	result?: unknown;
 	error?: string;
+	/**
+	 * Stream phase for an incremental response: `"response"` (head), `"chunk"`
+	 * (one body fragment), or `"complete"` (terminal). Absent on buffered frames.
+	 */
+	stream?: "response" | "chunk" | "complete";
+	/** Response status — carried on the `"response"` head frame. */
+	status?: number;
+	statusText?: string;
+	/** Response headers — carried on the `"response"` head frame. */
+	headers?: Record<string, string>;
+	/** Base64 body fragment — carried on each `"chunk"` frame. */
+	dataBase64?: string;
 }
 
 /**
- * Handles one parsed request frame and resolves its result payload. Throwing
- * (or rejecting) is surfaced to the peer as `{ ok: false, error }` — the kernel
- * never swallows a handler failure into a success frame.
+ * Handles one parsed buffered request frame and resolves its result payload.
+ * Throwing (or rejecting) is surfaced to the peer as `{ ok: false, error }` —
+ * the kernel never swallows a handler failure into a success frame.
  */
 export type StdioBridgeRequestHandler = (
 	request: StdioBridgeRequestFrame,
 ) => Promise<unknown>;
 
+/** The head of a streaming response, emitted once before any chunk. */
+export interface StdioBridgeStreamHead {
+	status: number;
+	statusText: string;
+	headers: Record<string, string>;
+}
+
+/**
+ * Sink a streaming handler drives to push a response head, body chunks, and a
+ * terminal completion. `emitError` and `emitComplete` are mutually terminal.
+ */
+export interface StdioBridgeStreamSink {
+	emitResponse: (head: StdioBridgeStreamHead) => void;
+	emitChunk: (dataBase64: string) => void;
+	emitComplete: () => void;
+	emitError: (message: string) => void;
+}
+
+/**
+ * Handles one parsed streaming request frame by driving `sink`. A throw/reject
+ * before the sink is completed is surfaced as a terminal stream error frame.
+ */
+export type StdioBridgeStreamHandler = (
+	request: StdioBridgeRequestFrame,
+	sink: StdioBridgeStreamSink,
+) => Promise<void>;
+
 export interface CreateStdioBridgeOptions {
 	/** Buffered request/response handler. Required. */
 	request: StdioBridgeRequestHandler;
+	/**
+	 * Optional incremental streaming handler. When a frame arrives with
+	 * `stream === true` and this is set, the kernel routes to it and emits
+	 * `stream` frames. Without it, a streaming frame falls back to the buffered
+	 * `request` handler (one terminal result).
+	 */
+	requestStream?: StdioBridgeStreamHandler;
 	/**
 	 * Writes one outbound frame to the peer. The caller owns the actual transport
 	 * (which stdout FD, whether stdout is reserved for the protocol, etc.).
@@ -83,7 +135,7 @@ export interface StdioBridge {
 export function createStdioBridge(
 	options: CreateStdioBridgeOptions,
 ): StdioBridge {
-	const { request, writeFrame, interceptLine } = options;
+	const { request, requestStream, writeFrame, interceptLine } = options;
 
 	const writeError = (id: unknown, err: unknown): void => {
 		writeFrame({
@@ -91,6 +143,49 @@ export function createStdioBridge(
 			ok: false,
 			error: err instanceof Error ? err.message : String(err),
 		});
+	};
+
+	const dispatchStream = async (
+		id: unknown,
+		parsed: StdioBridgeRequestFrame,
+		handler: StdioBridgeStreamHandler,
+	): Promise<void> => {
+		// One-shot terminal guard: the head/chunk/complete/error frames are a
+		// single ordered lifecycle, and a handler that both completes and throws
+		// (or emits after completing) must not double-terminate the peer's stream.
+		let terminated = false;
+		const sink: StdioBridgeStreamSink = {
+			emitResponse: (head) => {
+				if (terminated) return;
+				writeFrame({
+					id,
+					stream: "response",
+					status: head.status,
+					statusText: head.statusText,
+					headers: head.headers,
+				});
+			},
+			emitChunk: (dataBase64) => {
+				if (terminated) return;
+				writeFrame({ id, stream: "chunk", dataBase64 });
+			},
+			emitComplete: () => {
+				if (terminated) return;
+				terminated = true;
+				writeFrame({ id, stream: "complete" });
+			},
+			emitError: (message) => {
+				if (terminated) return;
+				terminated = true;
+				writeFrame({ id, stream: "complete", error: message });
+			},
+		};
+		try {
+			await handler(parsed, sink);
+			sink.emitComplete();
+		} catch (err) {
+			sink.emitError(err instanceof Error ? err.message : String(err));
+		}
 	};
 
 	const dispatchLine = async (line: string): Promise<void> => {
@@ -105,6 +200,10 @@ export function createStdioBridge(
 		}
 
 		const id = parsed.id ?? null;
+		if (parsed.stream === true && requestStream) {
+			await dispatchStream(id, parsed, requestStream);
+			return;
+		}
 		try {
 			const result = await request(parsed);
 			writeFrame({ id, ok: true, result });

@@ -164,6 +164,15 @@ export interface DispatchRouteArgs {
   isTrustedLocal?: () => boolean;
   /** Optional host context (config, restartRuntime, etc.) — installed on the runtime for the duration of the dispatch. */
   hostContext?: RuntimeRouteHostContext;
+  /**
+   * Optional incremental sink for a legacy SSE handler's body writes. When set,
+   * every `res.write(...)` chunk is forwarded the instant the handler flushes it
+   * — so an in-process transport (stdio bridge) delivers token frames as they
+   * arrive instead of only after `res.end()`. The buffered `RouteHandlerResult`
+   * is still returned on completion (with the full body) for callers that ignore
+   * the sink. Unset over HTTP, where the socket already flushes incrementally.
+   */
+  onChunk?: (chunk: Buffer) => void;
 }
 
 /** Lowercase normalize a header map. */
@@ -235,6 +244,7 @@ function buildLegacyShim(args: {
   params: Record<string, string>;
   body: unknown;
   rawBody?: string;
+  onChunk?: (chunk: Buffer) => void;
 }): { req: IncomingMessage; res: ServerResponse; captured: CapturedResponse } {
   const incomingHeaders = toIncomingHttpHeaders(args.headers);
   // Provide a readable stream body so handlers that call req.on('data') still work.
@@ -300,15 +310,20 @@ function buildLegacyShim(args: {
 
   const writeChunk = (chunk: unknown): void => {
     if (chunk == null) return;
+    let buf: Buffer;
     if (typeof chunk === "string") {
-      captured.chunks.push(Buffer.from(chunk, "utf8"));
+      buf = Buffer.from(chunk, "utf8");
     } else if (Buffer.isBuffer(chunk)) {
-      captured.chunks.push(chunk);
+      buf = chunk;
     } else if (chunk instanceof Uint8Array) {
-      captured.chunks.push(Buffer.from(chunk));
+      buf = Buffer.from(chunk);
     } else {
-      captured.chunks.push(Buffer.from(String(chunk), "utf8"));
+      buf = Buffer.from(String(chunk), "utf8");
     }
+    captured.chunks.push(buf);
+    // Forward to the incremental sink the instant the handler flushes, so an
+    // in-process streaming transport can emit token frames as they arrive.
+    args.onChunk?.(buf);
   };
 
   // Build a minimal ServerResponse-ish object. Plugin handlers only reach for
@@ -499,6 +514,7 @@ export async function dispatchRoute(
         params,
         body: args.body,
         rawBody: args.rawBody,
+        onChunk: args.onChunk,
       });
 
       try {

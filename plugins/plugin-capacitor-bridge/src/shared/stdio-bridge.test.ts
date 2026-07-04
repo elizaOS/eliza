@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
 	createStdioBridge,
 	type StdioBridgeResponseFrame,
+	type StdioBridgeStreamHandler,
 } from "./stdio-bridge.ts";
 
 /**
@@ -22,6 +23,22 @@ function harness(
 		request: handler,
 		writeFrame: (frame) => frames.push(frame),
 		interceptLine: opts.intercept,
+	});
+	return { frames, bridge };
+}
+
+/** Collect frames from a bridge with both buffered + streaming handlers. */
+function streamHarness(
+	streamHandler: StdioBridgeStreamHandler,
+	bufferedHandler: (request: unknown) => Promise<unknown> = async () => ({
+		status: 200,
+	}),
+) {
+	const frames: StdioBridgeResponseFrame[] = [];
+	const bridge = createStdioBridge({
+		request: bufferedHandler,
+		requestStream: streamHandler,
+		writeFrame: (frame) => frames.push(frame),
 	});
 	return { frames, bridge };
 }
@@ -127,5 +144,93 @@ describe("createStdioBridge — buffered NDJSON round-trip", () => {
 		await bridge.drain();
 		expect(dispatched).toBe(1);
 		expect(frames.map((f) => f.id)).toEqual([1]);
+	});
+});
+
+describe("createStdioBridge — incremental streaming", () => {
+	it("routes a stream:true frame to requestStream and emits head/chunk/complete in order", async () => {
+		const { frames, bridge } = streamHarness(async (_request, sink) => {
+			sink.emitResponse({
+				status: 200,
+				statusText: "OK",
+				headers: { "content-type": "text/event-stream" },
+			});
+			sink.emitChunk("Zm9v"); // "foo"
+			sink.emitChunk("YmFy"); // "bar"
+		});
+		await bridge.handleLine(
+			JSON.stringify({
+				id: "s-1",
+				method: "http_request_stream",
+				stream: true,
+				payload: { path: "/api/conversations/c/messages/stream" },
+			}),
+		);
+		await bridge.drain();
+
+		expect(frames).toEqual([
+			{
+				id: "s-1",
+				stream: "response",
+				status: 200,
+				statusText: "OK",
+				headers: { "content-type": "text/event-stream" },
+			},
+			{ id: "s-1", stream: "chunk", dataBase64: "Zm9v" },
+			{ id: "s-1", stream: "chunk", dataBase64: "YmFy" },
+			{ id: "s-1", stream: "complete" },
+		]);
+	});
+
+	it("emits a terminal complete-with-error frame when the stream handler throws", async () => {
+		const { frames, bridge } = streamHarness(async (_request, sink) => {
+			sink.emitResponse({ status: 200, statusText: "OK", headers: {} });
+			throw new Error("stream blew up");
+		});
+		await bridge.handleLine(
+			JSON.stringify({ id: 9, method: "http_request_stream", stream: true }),
+		);
+		await bridge.drain();
+
+		expect(frames.at(-1)).toEqual({
+			id: 9,
+			stream: "complete",
+			error: "stream blew up",
+		});
+		// The head still made it out before the failure.
+		expect(frames[0]?.stream).toBe("response");
+	});
+
+	it("does not double-terminate when a handler both completes and later emits", async () => {
+		const { frames, bridge } = streamHarness(async (_request, sink) => {
+			sink.emitResponse({ status: 200, statusText: "OK", headers: {} });
+			sink.emitComplete();
+			// Late writes after completion must be dropped, not re-terminate.
+			sink.emitChunk("bGF0ZQ==");
+			sink.emitError("late error");
+		});
+		await bridge.handleLine(
+			JSON.stringify({ id: "s-2", method: "http_request_stream", stream: true }),
+		);
+		await bridge.drain();
+
+		const completeFrames = frames.filter((f) => f.stream === "complete");
+		expect(completeFrames).toHaveLength(1);
+		expect(completeFrames[0]).toEqual({ id: "s-2", stream: "complete" });
+	});
+
+	it("falls back to the buffered handler when no requestStream is wired", async () => {
+		const frames: StdioBridgeResponseFrame[] = [];
+		const bridge = createStdioBridge({
+			request: async () => ({ status: 200, body: "buffered" }),
+			writeFrame: (frame) => frames.push(frame),
+		});
+		await bridge.handleLine(
+			JSON.stringify({ id: "s-3", method: "http_request", stream: true }),
+		);
+		await bridge.drain();
+		expect(frames).toEqual([
+			{ id: "s-3", ok: true, result: { status: 200, body: "buffered" } },
+		]);
 	});
 });
