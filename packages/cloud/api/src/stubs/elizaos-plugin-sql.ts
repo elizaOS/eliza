@@ -25,13 +25,19 @@ const agents = pgTable("agents", {
   updatedAt: updated(),
 });
 
+// Column names MUST mirror plugins/plugin-sql/src/schema/* (the source the
+// cloud migrations were generated from): repositories in cloud-shared build
+// real SQL from these tables, so a drifted column here (e.g. the old
+// `server_id`, renamed upstream to `message_server_id`) makes every
+// `select().from(...)` fail with 42703 in the deployed Worker (#13406).
 const rooms = pgTable("rooms", {
   id: id(),
   agentId: text("agent_id"),
   source: text("source"),
   type: text("type"),
-  serverId: text("server_id"),
+  messageServerId: text("message_server_id"),
   worldId: text("world_id"),
+  name: text("name"),
   channelId: text("channel_id"),
   metadata: meta(),
   createdAt: created(),
@@ -130,7 +136,7 @@ const worlds = pgTable("worlds", {
   agentId: text("agent_id"),
   name: text("name"),
   metadata: meta(),
-  serverId: text("server_id"),
+  messageServerId: text("message_server_id"),
   createdAt: created(),
 });
 
@@ -174,7 +180,7 @@ const messageServers = pgTable("message_servers", {
 
 const channels = pgTable("channels", {
   id: id(),
-  serverId: text("server_id"),
+  messageServerId: text("message_server_id"),
   name: text("name"),
   type: text("type"),
   sourceType: text("source_type"),
@@ -187,7 +193,7 @@ const channels = pgTable("channels", {
 
 const channelParticipants = pgTable("channel_participants", {
   channelId: text("channel_id"),
-  userId: text("user_id"),
+  entityId: text("entity_id"),
 });
 
 export const schema = {

@@ -29,6 +29,7 @@ import { Client } from "pg";
 import {
   api,
   bearerHeaders,
+  exchangeApiKeyForSession,
   getApiKey,
   getBaseUrl,
   isServerReachable,
@@ -143,12 +144,109 @@ async function seedOwnedCharacter(input: {
   }
 }
 
+/**
+ * Seeds the real "signed-in user chatted with an affiliate character" state
+ * the claim-affiliate-characters route reads: an anonymous affiliate owner
+ * (own org + @anonymous.elizacloud.ai email), a user_characters row it owns,
+ * the eliza runtime rows (agents / entities / rooms) and a participants row
+ * linking the claiming user (entity_id = users.id, rooms.agent_id =
+ * user_characters.id — the route's "new architecture" mapping).
+ */
+async function seedAffiliateInteraction(input: {
+  userId: string;
+}): Promise<{ characterId: string; anonOrgId: string }> {
+  const databaseUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
+  if (!databaseUrl) {
+    throw new Error(
+      "TEST_DATABASE_URL or DATABASE_URL must be set by the e2e harness",
+    );
+  }
+
+  const suffix = crypto.randomUUID().slice(0, 8);
+  const anonOrgId = crypto.randomUUID();
+  const anonUserId = crypto.randomUUID();
+  const characterId = crypto.randomUUID();
+  const roomId = crypto.randomUUID();
+
+  const client = new Client({ connectionString: databaseUrl });
+  await client.connect();
+  try {
+    await client.query(
+      `INSERT INTO organizations (id, name, slug) VALUES ($1, $2, $3)`,
+      [anonOrgId, `E2E Anon Org ${suffix}`, `e2e-anon-org-${suffix}`],
+    );
+    await client.query(
+      `INSERT INTO users (id, email, steward_user_id, is_anonymous, organization_id)
+       VALUES ($1, $2, $3, true, $4)`,
+      [
+        anonUserId,
+        `e2e-anon-${suffix}@anonymous.elizacloud.ai`,
+        `e2e-anon-steward-${suffix}`,
+        anonOrgId,
+      ],
+    );
+    await seedOwnedCharacter({
+      id: characterId,
+      organizationId: anonOrgId,
+      userId: anonUserId,
+      name: `E2E Affiliate ${suffix}`,
+    });
+    // The eliza runtime rows the route joins through: rooms.agent_id is the
+    // character id, participants.entity_id is the claiming user's users.id.
+    await client.query(`INSERT INTO agents (id, name) VALUES ($1, $2)`, [
+      characterId,
+      `E2E Affiliate ${suffix}`,
+    ]);
+    await client.query(
+      `INSERT INTO entities (id, agent_id) VALUES ($1, $2)
+       ON CONFLICT (id) DO NOTHING`,
+      [input.userId, characterId],
+    );
+    await client.query(
+      `INSERT INTO rooms (id, agent_id, source, type) VALUES ($1, $2, 'client_chat', 'dm')`,
+      [roomId, characterId],
+    );
+    await client.query(
+      `INSERT INTO participants (entity_id, room_id, agent_id) VALUES ($1, $2, $3)`,
+      [input.userId, roomId, characterId],
+    );
+  } finally {
+    await client.end();
+  }
+
+  return { characterId, anonOrgId };
+}
+
+const seededAnonOrgIds: string[] = [];
+
 afterAll(async () => {
   if (!serverReachable || !hasTestApiKey) return;
   for (const id of createdCharacterIds) {
     await api.delete(`/api/my-agents/characters/${id}`, {
       headers: bearerHeaders(),
     });
+  }
+  // Remove the affiliate-claim seed rows (agents cascades rooms/participants/
+  // entities; organizations cascades the anonymous owner user).
+  if (seededAnonOrgIds.length > 0) {
+    const databaseUrl =
+      process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
+    if (databaseUrl) {
+      const client = new Client({ connectionString: databaseUrl });
+      await client.connect();
+      try {
+        for (const id of createdCharacterIds) {
+          await client.query(`DELETE FROM agents WHERE id = $1`, [id]);
+        }
+        for (const orgId of seededAnonOrgIds) {
+          await client.query(`DELETE FROM organizations WHERE id = $1`, [
+            orgId,
+          ]);
+        }
+      } finally {
+        await client.end();
+      }
+    }
   }
 });
 
@@ -894,6 +992,74 @@ describeE2E("/api/my-agents/claim-affiliate-characters", () => {
       },
     );
     expect(res.status).toBe(401);
+  });
+
+  // -----------------------------------------------------------------------
+  // Signed-in page-load path (session cookie). /dashboard/my-agents fires
+  // exactly this request on load; it must never 500 for a normal signed-in
+  // user — regression for tracker #13406 (HTTP 500 on page load).
+  // -----------------------------------------------------------------------
+  test("POST with a session cookie and empty body returns 200 no-op (the /dashboard/my-agents page-load request)", async () => {
+    const sessionCookie = await exchangeApiKeyForSession();
+    const res = await api.post(
+      "/api/my-agents/claim-affiliate-characters",
+      {},
+      { headers: { Cookie: sessionCookie } },
+    );
+    const bodyText = await res.text();
+    expect(res.status, `body: ${bodyText.slice(0, 500)}`).toBe(200);
+    const body = JSON.parse(bodyText) as {
+      success?: boolean;
+      claimed?: unknown[];
+    };
+    expect(body.success).toBe(true);
+    expect(Array.isArray(body.claimed)).toBe(true);
+  });
+
+  test("POST with a session cookie claims an affiliate character the user chatted with", async () => {
+    const userId = process.env.TEST_USER_ID;
+    const organizationId = process.env.TEST_ORGANIZATION_ID;
+    if (!userId || !organizationId) {
+      throw new Error(
+        "TEST_USER_ID and TEST_ORGANIZATION_ID must be set by e2e preload",
+      );
+    }
+
+    const seeded = await seedAffiliateInteraction({ userId });
+    createdCharacterIds.push(seeded.characterId);
+    seededAnonOrgIds.push(seeded.anonOrgId);
+
+    const sessionCookie = await exchangeApiKeyForSession();
+    const res = await api.post(
+      "/api/my-agents/claim-affiliate-characters",
+      {},
+      { headers: { Cookie: sessionCookie } },
+    );
+    const bodyText = await res.text();
+    expect(res.status, `body: ${bodyText.slice(0, 500)}`).toBe(200);
+    const body = JSON.parse(bodyText) as {
+      success?: boolean;
+      claimed?: Array<{ id?: string; name?: string }>;
+    };
+    expect(body.success).toBe(true);
+    expect(body.claimed?.some((c) => c.id === seeded.characterId)).toBe(true);
+
+    // Ownership actually transferred to the claiming user + org (gated ≠ owned).
+    const client = new Client({
+      connectionString:
+        process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL,
+    });
+    await client.connect();
+    try {
+      const row = await client.query(
+        `SELECT user_id, organization_id FROM user_characters WHERE id = $1`,
+        [seeded.characterId],
+      );
+      expect(row.rows[0]?.user_id).toBe(userId);
+      expect(row.rows[0]?.organization_id).toBe(organizationId);
+    } finally {
+      await client.end();
+    }
   });
 });
 
