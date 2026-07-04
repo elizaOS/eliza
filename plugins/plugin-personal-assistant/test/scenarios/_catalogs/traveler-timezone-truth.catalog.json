@@ -19,7 +19,205 @@
       "tier": "T2",
       "surface": "scenario-runner",
       "status": "authored",
-      "notes": "Original live report flagged the 3am JST conflict, but the persisted definition stored dueAt 2026-07-05T13:00:00.000Z (22:00 JST), so this awaits recapture with expectedDueLocalTimes passing."
+      "notes": "Live-only. Original live report flagged the 3am JST conflict, but the persisted definition stored dueAt 2026-07-05T13:00:00.000Z (22:00 JST), so this awaits recapture with expectedDueLocalTimes passing. Live-verify deferred to the key boundary (#12781)."
+    },
+    {
+      "id": "traveler.timezone.absolute-instant-flight-boarding",
+      "pack": "C1",
+      "tier": "T2",
+      "surface": "scenario-runner",
+      "status": "authored",
+      "notes": "Live-only. The #12283 byte-for-byte exemplar for pack C1: an ambiguous '9am Tuesday' ask must clarify the zone before committing, then the reminder is anchored to Asia/Tokyo (definitionCountDelta expectedTimeZone) with a reminderIntensity check and a judge for asked-not-assumed. Live-verify deferred (#12781)."
+    },
+    {
+      "id": "traveler-pretrip-shift-plan-request",
+      "pack": "C1",
+      "tier": "T2",
+      "surface": "scenario-runner",
+      "status": "authored",
+      "notes": "Live-only. Pre-trip circadian-shift plan anchored to the destination offset, wellness-framed (no medication dosing): memoryWriteOccurred + judge. Live-verify deferred (#12781)."
+    },
+    {
+      "id": "traveler-lighter-load-around-travel-days",
+      "pack": "C1",
+      "tier": "T2",
+      "surface": "scenario-runner",
+      "status": "authored",
+      "notes": "Live-only. A non-urgent errand is captured (definitionCountDelta delta:1) but scheduled OFF the travel days (judge). Live-verify deferred (#12781)."
+    },
+    {
+      "id": "traveler-wrong-recipient-high-stakes-trap",
+      "pack": "C1",
+      "tier": "T4",
+      "surface": "scenario-runner",
+      "status": "authored",
+      "notes": "Live-only, adversarial. Two contacts named Alex in different tz contexts; ambiguous send must confirm, not auto-send. Zero connector egress (custom, non-skippable) + noSideEffectOnReject + judge. Live-verify deferred (#12781)."
+    },
+    {
+      "id": "traveler-multi-leg-itinerary-context-carryover",
+      "pack": "C1",
+      "tier": "T2",
+      "surface": "scenario-runner",
+      "status": "authored",
+      "notes": "Live-only. A pasted multi-leg itinerary is retained and re-planned against two turns later, resolving the Tokyo leg's timezone without re-supply: memoryWriteOccurred + judge. Live-verify deferred (#12781)."
+    },
+    {
+      "id": "traveler-reanchor-on-timezone-change-signal",
+      "pack": "C1",
+      "tier": "T3",
+      "surface": "scenario-runner",
+      "status": "verified",
+      "notes": "pr-deterministic (keyless). Real scheduler tick under active travel: an owner_local cron re-anchors to the destination (08:00 Asia/Tokyo) while a concrete America/New_York cron and a once{atIso} absolute instant do NOT; the re-anchored and fixed occurrences resolve to different UTC instants. Passes keyless under TZ=UTC SCENARIO_USE_LLM_PROXY=1 SCENARIO_LLM_PROXY_STRICT=1 --conditions eliza-source."
+    },
+    {
+      "id": "traveler-absolute-vs-wallclock-disambiguation-flight",
+      "pack": "C1",
+      "tier": "T3",
+      "surface": "scenario-runner",
+      "status": "verified",
+      "notes": "pr-deterministic (keyless). Real scheduler tick: a during_window 'morning' reminder fires only because the window re-anchored to the destination (23:00Z is 08:00 in Tokyo, 19:00 in New York), while a once{atIso} boarding instant is invariant. Passes keyless under TZ=UTC + --conditions eliza-source."
+    },
+    {
+      "id": "traveler-dst-boundary-reminder-integrity",
+      "pack": "C1",
+      "tier": "T4",
+      "surface": "scenario-runner",
+      "status": "verified",
+      "notes": "pr-deterministic (keyless). Real scheduler tick across the 2026-11-01 US fall-back: a daily 08:00 America/New_York cron keeps 08:00 local on both sides (12:00Z EDT then 13:00Z EST) — no missed/duplicate/hour-early fire. Passes keyless under TZ=UTC + --conditions eliza-source."
+    },
+    {
+      "id": "traveler-disruption-recovery-missed-connection",
+      "pack": "C1",
+      "tier": "T4",
+      "surface": "scenario-runner",
+      "status": "verified",
+      "notes": "pr-deterministic (keyless). Real scheduler tick: a delayed connection re-times the boarding reminder via REST snooze; it does NOT fire at the stale original instant and fires exactly once (scheduled_override_due) at the recovered instant; single-delivery finalCheck. Passes keyless under TZ=UTC + --conditions eliza-source."
+    },
+    {
+      "id": "traveler.explicit_absolute_instant_call_reminder",
+      "pack": "C1",
+      "tier": "T1",
+      "surface": "lifeops-bench",
+      "status": "verified"
+    },
+    {
+      "id": "traveler.local_wall_clock_wake_reminder",
+      "pack": "C1",
+      "tier": "T1",
+      "surface": "lifeops-bench",
+      "status": "verified"
+    },
+    {
+      "id": "traveler.ambiguous_9am_tuesday_no_zone",
+      "pack": "C1",
+      "tier": "T2",
+      "surface": "lifeops-bench",
+      "status": "verified"
+    },
+    {
+      "id": "traveler.reanchor_on_travel_owner_fact",
+      "pack": "C1",
+      "tier": "T2",
+      "surface": "lifeops-bench",
+      "status": "verified"
+    },
+    {
+      "id": "traveler.pretrip_lighter_task_load",
+      "pack": "C1",
+      "tier": "T3",
+      "surface": "lifeops-bench",
+      "status": "verified"
+    },
+    {
+      "id": "traveler.flag_meeting_in_biological_night",
+      "pack": "C1",
+      "tier": "T4",
+      "surface": "lifeops-bench",
+      "status": "verified"
+    },
+    {
+      "id": "traveler.messy_multiday_itinerary_capture",
+      "pack": "C1",
+      "tier": "T1",
+      "surface": "lifeops-bench",
+      "status": "verified"
+    },
+    {
+      "id": "traveler.timezone_history_log",
+      "pack": "C1",
+      "tier": "T2",
+      "surface": "lifeops-bench",
+      "status": "verified"
+    },
+    {
+      "id": "live.traveler.tz_change_reanchor_reminder",
+      "pack": "C1",
+      "tier": "T3",
+      "surface": "lifeops-bench",
+      "status": "verified"
+    },
+    {
+      "id": "live.traveler.jetlag_preshift_plan_safety",
+      "pack": "C1",
+      "tier": "T4",
+      "surface": "lifeops-bench",
+      "status": "verified"
+    },
+    {
+      "id": "live.traveler.flight_delay_disruption_recovery",
+      "pack": "C1",
+      "tier": "T3",
+      "surface": "lifeops-bench",
+      "status": "verified"
+    },
+    {
+      "id": "live.traveler.wrong_timezone_silent_assumption_trap",
+      "pack": "C1",
+      "tier": "T4",
+      "surface": "lifeops-bench",
+      "status": "verified"
+    },
+    {
+      "id": "live.traveler.cross_tz_meeting_conflict_flag",
+      "pack": "C1",
+      "tier": "T2",
+      "surface": "lifeops-bench",
+      "status": "verified"
+    },
+    {
+      "id": "live.traveler.multileg_reanchor_three_zones_one_week",
+      "pack": "C1",
+      "tier": "T3",
+      "surface": "lifeops-bench",
+      "status": "verified"
+    },
+    {
+      "id": "live.traveler.what_time_is_it_for_everyone",
+      "pack": "C1",
+      "tier": "T2",
+      "surface": "lifeops-bench",
+      "status": "verified"
+    },
+    {
+      "id": "live.traveler.vip_message_inflight_queue",
+      "pack": "C1",
+      "tier": "T4",
+      "surface": "lifeops-bench",
+      "status": "verified"
+    },
+    {
+      "id": "live.traveler.posttrip_renormalize_home_timezone",
+      "pack": "C1",
+      "tier": "T3",
+      "surface": "lifeops-bench",
+      "status": "verified"
+    },
+    {
+      "id": "live.traveler.pretrip_lighter_load_live_negotiation",
+      "pack": "C1",
+      "tier": "T3",
+      "surface": "lifeops-bench",
+      "status": "verified"
     }
   ]
 }

@@ -259,6 +259,18 @@ const EXPECTED_PR_DETERMINISTIC_SCENARIO_IDS = [
   // ledger can still resolve their ids.
   "adhd-distractor-storm-mid-capture",
   "adhd-hyperfocus-guardrail-protects-standup",
+  // LifeOps persona pack C1 (traveler-timezone-truth, #12773). Same G1
+  // convention: keyless `tick`-driven timezone journeys authored under
+  // plugins/plugin-personal-assistant/test/scenarios and pinned here in the same
+  // commit. They prove the travel/tz spine — owner_local cron re-anchoring to
+  // the active-travel destination while a fixed absolute instant stays
+  // invariant, a wall-clock morning window re-anchoring, DST local-time
+  // integrity across a fall-back, and a disruption re-time — through the real
+  // scheduler under the deterministic proxy.
+  "traveler-absolute-vs-wallclock-disambiguation-flight",
+  "traveler-disruption-recovery-missed-connection",
+  "traveler-dst-boundary-reminder-integrity",
+  "traveler-reanchor-on-timezone-change-signal",
   "agent-orchestrator.list-agents",
   // LifeOps persona pack B1 (night-owl-anchored-day, #12771). Same G1
   // convention as A1: authored under the SCANNED root
