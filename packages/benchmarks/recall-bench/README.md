@@ -32,16 +32,16 @@ hosted CI runner.
 
 The deterministic embedding measures **ranking-pipeline correctness** (does the
 hybrid/vector/keyword/fail-open machinery rank the right fragments?), not
-production embedding *quality*. It is a regression gate on the recall *code*, not
+production embedding *quality*. It is a regression check on the recall *code*, not
 a leaderboard for an embedding model. That separation is deliberate: a real
 embedding model would make the bench non-deterministic and credential-bound,
-defeating the CI gate.
+defeating the point of a deterministic run-it-yourself check.
 
 ## Run
 
 ```bash
 bun run bench:recall           # smoke tier (60 docs) — fast local check
-bun run bench:recall:1k        # 1k tier — the document-scale CI gate
+bun run bench:recall:1k        # 1k tier — the document-scale run
 bun run --cwd packages/benchmarks/recall-bench test   # unit tests (pure pieces)
 ```
 
@@ -49,8 +49,8 @@ Or via the orchestrator (registered as `recall_bench` in `registry/commands.py`)
 the command resolves to `bun --conditions=eliza-source run.ts --tier <tier>` with
 `tier ∈ {smoke, 1k, 10k}`.
 
-Exit codes follow the `memperf` contract: `0` budgets pass · `1` a budget
-regressed (the gate) · `2` nothing measurable.
+Exit codes follow the `memperf` contract: `0` within thresholds · `1` a
+measurement over threshold (a regression) · `2` nothing measurable.
 
 ## Corpus (deterministic, committed as code)
 
@@ -141,14 +141,14 @@ generalizing keyword win, gated by `stemming.minRecallLift`.
 `match_threshold` 0.1/0.05 depend on the real embedding's cosine distribution, so
 tuning them against this deterministic embedding would overfit, not improve.
 
-## Budgets & CI
+## Budgets (reference thresholds)
 
 `budgets.json` holds per-mode floors (Recall@5 / nDCG@5 / p95) and a minimum
-observable fail-open drop, calibrated to the 1k baseline with ~20% headroom.
-`.github/workflows/recall-bench.yml` runs the unit tests, the registry-contract
-check (`scripts/check-registry.py`), and the 1k gate; it turns red when a budget
-is crossed (e.g. a bad hybrid-weight change, or semantic recall silently
-collapsing into keyword).
+observable fail-open drop, calibrated to the 1k baseline with ~20% headroom. Run
+`bun run bench:recall:1k` to measure regressions: it exits non-zero when a
+measurement crosses a threshold (e.g. a bad hybrid-weight change, or semantic
+recall silently collapsing into keyword). The unit tests and the
+registry-contract check (`scripts/check-registry.py`) run alongside it.
 
 ## Files
 
