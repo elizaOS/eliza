@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
 
+/**
+ * Unit coverage for the navigate-view helpers: payload consume, path
+ * derivation, direct-tab resolution, and the handler that opens registered
+ * views or desktop tabs. Pure functions + injected bridge, no runtime.
+ */
+
 import { createNavigateViewEvent } from "@elizaos/shared/events";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {

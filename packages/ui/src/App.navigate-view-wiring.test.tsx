@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
 
+/**
+ * Unit coverage for App-level navigate-view event wiring: a dispatched
+ * navigate-view event drives the tab switch through the rendered shell. Boot
+ * config + desktop tabs mocked, no runtime.
+ */
+
 import { createNavigateViewEvent } from "@elizaos/shared/events";
 import {
   cleanup,

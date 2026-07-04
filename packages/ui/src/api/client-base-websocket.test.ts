@@ -1,5 +1,10 @@
 // @vitest-environment jsdom
 
+/**
+ * Unit coverage for the base client's WebSocket lifecycle and the
+ * network-status-change event it emits. WebSocket stubbed, no live server.
+ */
+
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { NETWORK_STATUS_CHANGE_EVENT } from "../events";
 import { __resetNetworkStatusForTests, ElizaClient } from "./client-base";

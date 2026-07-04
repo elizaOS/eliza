@@ -1,5 +1,9 @@
 /**
- * Root App component — routing shell.
+ * Root App component and the dashboard routing shell mounted by every elizaOS
+ * front-end. It resolves the shell mode from the URL (`?shellMode=` — `full`,
+ * `chat-overlay`, `voice-*`), gates boot/pairing behind `StartupScreen`, mounts
+ * the shared `AppBackground` and first-run conductor once, and renders either
+ * the floating chat-overlay surface or the full tabbed shell.
  */
 
 import {

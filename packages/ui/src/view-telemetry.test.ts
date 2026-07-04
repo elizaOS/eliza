@@ -1,4 +1,11 @@
 // @vitest-environment jsdom
+
+/**
+ * Unit coverage for view-launcher interaction telemetry: the bounded event ring
+ * and the emit/read surface (including conversation-swipe jank). In-memory ring,
+ * no runtime.
+ */
+
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { FrameBudgetSummary } from "./hooks/frame-budget";
 import {

@@ -1,6 +1,4 @@
 /**
- * probe-local-agent.ts
- *
  * Liveness probe for an on-device Eliza agent.
  *
  * Android reaches the bundled foreground service over loopback. iOS reaches

@@ -1,5 +1,10 @@
 // @vitest-environment jsdom
 
+/**
+ * Unit coverage for direct-Cloud auth on hosted web (non-native path). Capacitor
+ * forced to web + CapacitorHttp mocked, fetch stubbed, no live cloud.
+ */
+
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@capacitor/core", () => ({

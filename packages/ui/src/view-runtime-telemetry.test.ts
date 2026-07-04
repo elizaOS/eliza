@@ -1,4 +1,10 @@
 // @vitest-environment jsdom
+
+/**
+ * Unit coverage for per-view runtime telemetry: the bounded event ring, its
+ * install/reset, and the emit/read surface (#10202). In-memory ring, no runtime.
+ */
+
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   __resetViewRuntimeTelemetryForTests,

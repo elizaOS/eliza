@@ -1,34 +1,36 @@
 // @vitest-environment jsdom
-//
-// Fuzz test for the screen / background color invariant across view switching.
-//
-// The unified app background (`AppBackground`) is mounted ONCE at the shell root
-// and is driven purely by the persisted background config — so navigating
-// between views must NEVER change the screen color. Each route resolves a
-// background policy (`useActiveScreenBackgroundPolicy`) to exactly one painted
-// layer:
-//
-//   • `app-background-shader` / `app-background-image` / `app-background-glsl`
-//     — the persisted wallpaper shows through (policy "shared"). The screen
-//     color === the user's chosen background color.
-//   • `app-opaque-background` — an opaque `bg-bg` underlay covers the wallpaper
-//     (policy "opaque"). The screen color === the theme base.
-//
-// This file mounts the REAL <App/> (same harness as App.navigate-view-wiring)
-// and fuzzes randomized walks over EVERY builtin tab, returning to the launcher
-// (`/views`) between every view, asserting after every transition:
-//
-//   A. Exactly one background layer renders (shader/image/glsl XOR opaque) —
-//      the screen color is always defined; never blank, never two conflicting layers.
-//   B. When the wallpaper shows, its color === the seeded persisted color —
-//      switching views never mutates the user's background color.
-//   C. The known-shared surfaces (chat, background, settings, /views,
-//      /apps) always show the wallpaper — never the opaque underlay.
-//   D. Returning to the launcher (`/views`) always restores the wallpaper,
-//      regardless of which (possibly opaque) view preceded it.
-//
-// Runs the whole fuzz under shader, image, and programmable GLSL configs so
-// every wallpaper kind is proven to survive every transition.
+
+/**
+ * Fuzz test for the screen / background color invariant across view switching.
+ *
+ * The unified app background (`AppBackground`) is mounted ONCE at the shell root
+ * and is driven purely by the persisted background config — so navigating
+ * between views must NEVER change the screen color. Each route resolves a
+ * background policy (`useActiveScreenBackgroundPolicy`) to exactly one painted
+ * layer:
+ *
+ *   • `app-background-shader` / `app-background-image` / `app-background-glsl`
+ *     — the persisted wallpaper shows through (policy "shared"). The screen
+ *     color === the user's chosen background color.
+ *   • `app-opaque-background` — an opaque `bg-bg` underlay covers the wallpaper
+ *     (policy "opaque"). The screen color === the theme base.
+ *
+ * Mounts the REAL <App/> (same harness as App.navigate-view-wiring) and fuzzes
+ * randomized walks over EVERY builtin tab, returning to the launcher (`/views`)
+ * between every view, asserting after every transition:
+ *
+ *   A. Exactly one background layer renders (shader/image/glsl XOR opaque) —
+ *      the screen color is always defined; never blank, never two conflicting layers.
+ *   B. When the wallpaper shows, its color === the seeded persisted color —
+ *      switching views never mutates the user's background color.
+ *   C. The known-shared surfaces (chat, background, settings, /views,
+ *      /apps) always show the wallpaper — never the opaque underlay.
+ *   D. Returning to the launcher (`/views`) always restores the wallpaper,
+ *      regardless of which (possibly opaque) view preceded it.
+ *
+ * Runs the whole fuzz under shader, image, and programmable GLSL configs so
+ * every wallpaper kind is proven to survive every transition.
+ */
 
 import { act, cleanup, render } from "@testing-library/react";
 import type * as React from "react";

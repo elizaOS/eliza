@@ -1,4 +1,11 @@
 // @vitest-environment jsdom
+
+/**
+ * Unit coverage for the module-cache eviction telemetry stream (#10196): heap-
+ * pressure accounting and bounded dispatch of the eviction events emitted by
+ * the retained-lazy loader. In-memory ring, no real modules.
+ */
+
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   emitModuleCacheTelemetry,
@@ -6,12 +13,6 @@ import {
   type ModuleCacheTelemetryEvent,
 } from "./cache-telemetry";
 
-/**
- * Consumes the module-cache eviction telemetry (#10196). This is the stream that
- * is supposed to prove module eviction tracks REAL heap growth (not just the
- * static device-RAM tier); it was emitted but asserted by no test, so the
- * heap-pressure accounting + bounded dispatch were unverified.
- */
 type Ring = ModuleCacheTelemetryEvent[];
 type CacheGlobal = typeof globalThis & {
   __ELIZA_MODULE_CACHE_TELEMETRY__?: Ring;

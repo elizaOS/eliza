@@ -1,5 +1,14 @@
 // @vitest-environment jsdom
 
+/**
+ * Unit coverage for direct-Cloud base resolution during the hosted-web `/join`
+ * flow: a signed-in Steward session with NO agent baseUrl yet. The base must
+ * resolve from the PAGE host so `getCloudCompatAgents` hits the cloud worker
+ * rather than the agent-proxy path (`/api/cloud/compat/agents`), which only
+ * agent servers mount. Capacitor forced web + CapacitorHttp mocked, fetch
+ * stubbed, no live cloud.
+ */
+
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@capacitor/core", () => ({
@@ -15,14 +24,6 @@ vi.mock("@capacitor/core", () => ({
 
 import { ElizaClient } from "./client-base";
 import "./client-cloud";
-
-// The /join flow's exact client state on hosted web: a signed-in Steward
-// session (token global set by selectOrProvisionCloudAgent) but NO agent
-// baseUrl yet. The direct-cloud base must resolve from the PAGE host — when it
-// resolved to null, getCloudCompatAgents fell through to the agent-proxy path
-// /api/cloud/compat/agents, which only agent servers mount; the cloud worker
-// 404s it and every web sign-in dead-ended on "Couldn't connect to your
-// agent".
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {

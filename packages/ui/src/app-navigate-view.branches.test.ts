@@ -1,5 +1,12 @@
 // @vitest-environment jsdom
 
+/**
+ * Branch coverage for `createNavigateViewHandler()` beyond `app-navigate-
+ * view.test.ts`: the early-return guards, viewPath-only navigation, and viewId
+ * navigation resolving a registry entry that is neither pin-tab nor
+ * desktopTabEnabled (navigates without opening a desktop tab). No runtime.
+ */
+
 import {
   createNavigateViewEvent,
   NAVIGATE_VIEW_EVENT,
@@ -10,11 +17,6 @@ import {
   type DesktopBridgeRequest,
 } from "./app-navigate-view";
 import type { ViewRegistryEntry } from "./hooks/useAvailableViews";
-
-// Branch coverage for createNavigateViewHandler() that app-navigate-view.test.ts
-// does not exercise: the early-return guards, viewPath-only navigation, and
-// viewId navigation that resolves a registry entry which is neither pin-tab nor
-// desktopTabEnabled (must navigate without opening a desktop tab).
 
 function view(patch: Partial<ViewRegistryEntry> = {}): ViewRegistryEntry {
   return {

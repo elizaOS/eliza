@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
 
+/**
+ * Unit coverage for boot-time reconciliation of a stale persisted mobile
+ * runtime mode against the build's native truth (the #11030 splash-hang guard).
+ * Capacitor Preferences + native detection mocked, no real device.
+ */
+
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MOBILE_RUNTIME_MODE_STORAGE_KEY } from "./mobile-runtime-mode";
 import {

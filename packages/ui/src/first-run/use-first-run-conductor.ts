@@ -12,12 +12,11 @@
  * channel so the chat's single send funnel short-circuits first-run picks
  * before they hit the server.
  *
- * The composer is UNLOCKED during onboarding (#12178, a deliberate reversal of
- * the #9952 onboarding lock): the user can type freely, and a second channel
- * handler (`setFirstRunTextHandler`) answers that free text with a local user
- * turn + a deterministic assistant reply that varies by flow position. Free
- * text NEVER reaches the server pre-completion — the AppContext funnel enforces
- * that; this hook only renders the local echo.
+ * The composer is UNLOCKED during onboarding (#12178): the user can type
+ * freely, and a second channel handler (`setFirstRunTextHandler`) answers that
+ * free text with a local user turn + a deterministic assistant reply that
+ * varies by flow position. Free text NEVER reaches the server pre-completion —
+ * the AppContext funnel enforces that; this hook only renders the local echo.
  *
  * Provisioning runs exactly once and POSTs /api/first-run exactly once (the
  * finish module funnels + idempotency-guards it). The real `firstRunComplete`

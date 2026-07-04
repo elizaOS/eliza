@@ -1,10 +1,9 @@
 /**
  * Deterministic first-run helpers shared by the in-chat onboarding conductor
  * and the headless finish path: draft normalization, runtime-target mapping,
- * submit validation, and the POST /api/first-run payload builder. The old
- * wizard's step machine, persisted step/draft state, and voice-transcript
- * routing were deleted with the wizard itself (#12178); onboarding state now
- * lives in the conductor's refs plus `firstRunComplete`.
+ * submit validation, and the POST /api/first-run payload builder. Onboarding
+ * is in-chat (#12178): there is no wizard step machine or persisted step/draft
+ * state — onboarding state lives in the conductor's refs plus `firstRunComplete`.
  */
 
 import {

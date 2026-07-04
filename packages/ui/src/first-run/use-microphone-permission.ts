@@ -1,11 +1,4 @@
 /**
- * Hook for microphone permission in voice-first onboarding (see block below).
- */
-import type { PermissionStatus } from "@elizaos/shared";
-import * as React from "react";
-import { client } from "../api";
-
-/**
  * Microphone permission for voice-first onboarding.
  *
  * Wraps the cross-platform permission client (`client.requestPermission` /
@@ -17,6 +10,9 @@ import { client } from "../api";
  * None of these paths throw: every failure resolves to a concrete state so the
  * onboarding UI can always render an actionable affordance.
  */
+import type { PermissionStatus } from "@elizaos/shared";
+import * as React from "react";
+import { client } from "../api";
 
 const MICROPHONE = "microphone" as const;
 

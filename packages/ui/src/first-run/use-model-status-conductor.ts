@@ -1,5 +1,5 @@
 /**
- * In-chat model-status conductor (headless) — #12178 WI-4.
+ * In-chat model-status conductor (headless) (#12178).
  *
  * While the local text model is not yet ready (missing / downloading / loading
  * / error), this hook keeps ONE live system turn (`model:download-status`) in

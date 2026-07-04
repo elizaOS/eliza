@@ -1,5 +1,10 @@
 // @vitest-environment jsdom
 
+/**
+ * Unit coverage for reading the Steward session token and computing its
+ * seconds-remaining from the JWT `exp`. Tokens hand-built, no live cloud.
+ */
+
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ElizaClient } from "./client-base";
 import { cloudTokenSecsRemaining, getCloudAuthToken } from "./client-cloud";

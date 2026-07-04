@@ -1,21 +1,22 @@
-// Source-level guard for the SAFE-AREA FILL INVARIANT (see the big comment on
-// the shell root in App.tsx). Every view must fill edge-to-edge UNDER the notch
-// while content stays notch-aware. That works because:
-//   1. the shell root reserves the notch via `paddingTop: var(--safe-area-top)`
-//      (so content is pushed below the notch), and
-//   2. the background layers (`app-opaque-background` underlay + the shared
-//      AppBackground wallpaper + the settings scrim) are `fixed inset-0`, so they
-//      anchor to the VIEWPORT and paint the full notch band — NOT the padded box.
-//
-// The whole guarantee collapses the instant the shell root acquires a property
-// that establishes a containing block for `position: fixed` descendants
-// (transform / filter / backdrop-filter / perspective / will-change / paint or
-// layout `contain`). Then the fixed layers anchor to the padded root box
-// (top = safe-area-top) and an unfilled band re-appears under the notch (the
-// WKWebView host color — brand orange — shows through). This is exactly the bug
-// the old build had before the opaque underlay landed. This test fails CI if any
-// of those properties creep onto the root, or if a background layer stops being
-// `fixed inset-0`.
+/**
+ * Source-level guard for the SAFE-AREA FILL INVARIANT (see the big comment on
+ * the shell root in App.tsx). Every view must fill edge-to-edge UNDER the notch
+ * while content stays notch-aware. That works because:
+ *   1. the shell root reserves the notch via `paddingTop: var(--safe-area-top)`
+ *      (so content is pushed below the notch), and
+ *   2. the background layers (`app-opaque-background` underlay + the shared
+ *      AppBackground wallpaper + the settings scrim) are `fixed inset-0`, so they
+ *      anchor to the VIEWPORT and paint the full notch band — NOT the padded box.
+ *
+ * The whole guarantee collapses the instant the shell root acquires a property
+ * that establishes a containing block for `position: fixed` descendants
+ * (transform / filter / backdrop-filter / perspective / will-change / paint or
+ * layout `contain`). Then the fixed layers anchor to the padded root box
+ * (top = safe-area-top) and an unfilled band re-appears under the notch (the
+ * WKWebView host color — brand orange — shows through). This test fails CI if
+ * any of those properties creep onto the root, or if a background layer stops
+ * being `fixed inset-0`. Scans App.tsx source, no runtime.
+ */
 
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";

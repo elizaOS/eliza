@@ -2,9 +2,8 @@
  * Standalone chat-overlay window-shell wiring test.
  *
  * Source-level invariants for the detached chat-overlay shell and how it is
- * classified and navigated. (The former pre-agent crystal-ball home backdrop
- * and the home screen have been removed; the app now lands on /onboarding and
- * then /chat.)
+ * classified and navigated: the app lands on /onboarding and then /chat, with
+ * no pre-agent home backdrop or home screen. Scans App source, no runtime.
  */
 
 import { readFileSync } from "node:fs";

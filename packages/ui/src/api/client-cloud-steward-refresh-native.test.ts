@@ -1,5 +1,10 @@
 // @vitest-environment jsdom
 
+/**
+ * Unit coverage for refreshing the Steward session token on native builds.
+ * Capacitor forced native + CapacitorHttp mocked, no live cloud.
+ */
+
 import { STEWARD_TOKEN_KEY } from "@elizaos/shared/steward-session-client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 

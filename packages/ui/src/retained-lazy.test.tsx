@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
 
+/**
+ * Unit coverage for the retained-lazy loader: modules stay resolved across
+ * unmount/remount, cache-eviction telemetry fires, and app-pause frees them.
+ * React Testing Library render, no real module graph.
+ */
+
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
