@@ -1,0 +1,16 @@
+{
+  "project": "chromium",
+  "seed": 74613,
+  "actions": 40,
+  "alphabet": "navigation-safe (tileIds: [])",
+  "brand": {
+    "blueBefore": [],
+    "blueAfter": [],
+    "hoverViolationsBefore": [],
+    "hoverViolationsAfter": [],
+    "hoverProbeFailuresBefore": [],
+    "hoverProbeFailuresAfter": []
+  },
+  "finalDataPage": "launcher",
+  "pageErrors": []
+}
