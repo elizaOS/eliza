@@ -1,3 +1,7 @@
+/**
+ * Tests password-manager reference resolution with mocked CLI subprocesses.
+ */
+
 import { execFile } from "node:child_process";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { resolveReference } from "../src/password-managers.js";

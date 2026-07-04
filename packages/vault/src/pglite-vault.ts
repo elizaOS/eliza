@@ -1,3 +1,11 @@
+/**
+ * PGlite-backed vault storage engine.
+ *
+ * Stores non-sensitive values and encrypted secrets in a dedicated PGlite DB,
+ * migrates the legacy JSON store once, and heals provably stale single-writer
+ * locks before opening the database.
+ */
+
 import { promises as fs } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -29,8 +37,8 @@ import { VaultMissError } from "./vault-types.js";
  *     registers at step 7b — no ordering contortions
  *   - keeps vault corruption isolated from chat/memory corruption
  *
- * Crypto + master-key flow are unchanged from VaultImpl: AES-256-GCM with
- * the key as AAD, master key from OS Keychain via `@napi-rs/keyring`. The
+ * Crypto + master-key flow matches the Vault contract: AES-256-GCM with the
+ * key as AAD, master key from OS Keychain via `@napi-rs/keyring`. The
  * DB stores opaque ciphertext; PGlite never sees plaintext or the master
  * key.
  *
@@ -78,7 +86,7 @@ export interface PgliteVaultOptions {
 
 /**
  * Outcome of inspecting a PGlite data dir's `postmaster.pid`. `cleared-*`
- * means a provably-stale lock was removed and the open may be retried;
+ * means the lock is provably stale and the open may be retried;
  * `active` means a live process owns the dir; `missing` / `unconfirmed` mean
  * there is nothing safe to remove.
  */
@@ -526,7 +534,7 @@ export class PgliteVaultImpl implements Vault {
   }
 
   /**
-   * One-shot migration from `vault.json` → vault_entries. Runs on first
+   * One-shot import from `vault.json` to vault_entries. Runs on first
    * PgliteVaultImpl boot when the table is empty AND the legacy file
    * exists. Copies entries verbatim — ciphertext stays opaque, master
    * key unchanged. Writes a sentinel row so we never re-run.

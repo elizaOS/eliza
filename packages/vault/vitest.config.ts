@@ -1,3 +1,7 @@
+/**
+ * Vitest config for the vault package test suite.
+ */
+
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({

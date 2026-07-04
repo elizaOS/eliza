@@ -1,3 +1,7 @@
+/**
+ * Tests saved-login helpers against a real encrypted test vault.
+ */
+
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   deleteSavedLogin,

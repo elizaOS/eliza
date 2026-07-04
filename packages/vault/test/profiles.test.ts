@@ -1,3 +1,7 @@
+/**
+ * Tests per-key profile and routing resolution against encrypted temp vaults.
+ */
+
 import { promises as fs } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";

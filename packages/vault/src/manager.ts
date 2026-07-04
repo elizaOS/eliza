@@ -1,3 +1,10 @@
+/**
+ * Secrets-manager routing layer over the vault storage API.
+ *
+ * Detects password-manager backends, applies user preferences, and combines
+ * in-house saved logins with external credential listings.
+ */
+
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import {

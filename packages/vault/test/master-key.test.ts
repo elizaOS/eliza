@@ -1,3 +1,7 @@
+/**
+ * Tests master-key resolver behavior without touching the host keychain.
+ */
+
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { generateMasterKey, KEY_BYTES } from "../src/crypto.js";
 import {
