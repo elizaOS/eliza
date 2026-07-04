@@ -1,0 +1,407 @@
+{
+  "provider_mode": "mock",
+  "surfaces": [
+    "zoom",
+    "google_meet",
+    "on_device",
+    "cloud_agent",
+    "hybrid_local_cloud"
+  ],
+  "capture_modes": [
+    "bot",
+    "bot_free"
+  ],
+  "transcript_schema": {
+    "required_fields": [
+      "meeting_id",
+      "source",
+      "consent",
+      "segments",
+      "speakers",
+      "artifacts",
+      "retention_policy"
+    ]
+  },
+  "adapters": [
+    {
+      "id": "zoom",
+      "capture_modes": ["bot", "bot_free"]
+    },
+    {
+      "id": "google_meet",
+      "capture_modes": ["bot", "bot_free"]
+    },
+    {
+      "id": "on_device_capture",
+      "capture_modes": ["bot_free"]
+    }
+  ],
+  "stressors": [
+    "music",
+    "noise",
+    "babble",
+    "overlap",
+    "far_field"
+  ],
+  "scenarios": [
+    {
+      "id": "clean_single_speaker",
+      "surface": "on_device",
+      "capture_mode": "bot_free",
+      "evidence": ["transcript_artifact", "metrics"]
+    },
+    {
+      "id": "zoom_bot",
+      "surface": "zoom",
+      "capture_mode": "bot",
+      "evidence": ["audio", "video", "backend_logs", "transcript_artifact"]
+    },
+    {
+      "id": "zoom_bot_free",
+      "surface": "zoom",
+      "capture_mode": "bot_free",
+      "evidence": ["audio", "frontend_logs", "screenshots", "transcript_artifact"]
+    },
+    {
+      "id": "google_meet_bot",
+      "surface": "google_meet",
+      "capture_mode": "bot",
+      "evidence": ["audio", "video", "backend_logs", "transcript_artifact"]
+    },
+    {
+      "id": "google_meet_bot_free",
+      "surface": "google_meet",
+      "capture_mode": "bot_free",
+      "evidence": ["audio", "frontend_logs", "screenshots", "transcript_artifact"]
+    },
+    {
+      "id": "on_device_capture",
+      "surface": "on_device",
+      "capture_mode": "bot_free",
+      "evidence": ["audio", "metrics", "transcript_artifact"]
+    },
+    {
+      "id": "cloud_agent_capture",
+      "surface": "cloud_agent",
+      "capture_mode": "bot",
+      "evidence": ["backend_logs", "model_trajectories", "transcript_artifact"]
+    },
+    {
+      "id": "hybrid_local_cloud",
+      "surface": "hybrid_local_cloud",
+      "capture_mode": "bot_free",
+      "evidence": ["audio", "backend_logs", "frontend_logs", "model_trajectories"]
+    },
+    {
+      "id": "multiple_people_single_stream",
+      "surface": "google_meet",
+      "capture_mode": "bot_free",
+      "evidence": ["audio", "video", "speaker_profile_artifact"]
+    },
+    {
+      "id": "shared_room_microphone",
+      "surface": "zoom",
+      "capture_mode": "bot_free",
+      "evidence": ["audio", "video", "speaker_profile_artifact"]
+    },
+    {
+      "id": "speech_over_music",
+      "surface": "on_device",
+      "capture_mode": "bot_free",
+      "evidence": ["audio", "metrics", "transcript_artifact"]
+    },
+    {
+      "id": "speech_over_noise",
+      "surface": "on_device",
+      "capture_mode": "bot_free",
+      "evidence": ["audio", "metrics", "transcript_artifact"]
+    },
+    {
+      "id": "speech_over_babble",
+      "surface": "on_device",
+      "capture_mode": "bot_free",
+      "evidence": ["audio", "metrics", "transcript_artifact"]
+    },
+    {
+      "id": "overlapped_speech",
+      "surface": "cloud_agent",
+      "capture_mode": "bot",
+      "evidence": ["audio", "metrics", "speaker_profile_artifact"]
+    },
+    {
+      "id": "far_field_room",
+      "surface": "zoom",
+      "capture_mode": "bot_free",
+      "evidence": ["audio", "video", "metrics"]
+    },
+    {
+      "id": "known_speaker_recognition",
+      "surface": "hybrid_local_cloud",
+      "capture_mode": "bot_free",
+      "evidence": ["speaker_profile_artifact", "metrics"]
+    },
+    {
+      "id": "unknown_speaker_creation",
+      "surface": "hybrid_local_cloud",
+      "capture_mode": "bot_free",
+      "evidence": ["speaker_profile_artifact", "metrics"]
+    },
+    {
+      "id": "speaker_name_correction",
+      "surface": "hybrid_local_cloud",
+      "capture_mode": "bot_free",
+      "evidence": ["screenshots", "speaker_profile_artifact", "transcript_artifact"]
+    },
+    {
+      "id": "voice_profile_deletion",
+      "surface": "hybrid_local_cloud",
+      "capture_mode": "bot_free",
+      "evidence": ["speaker_profile_artifact", "retention_artifact"]
+    },
+    {
+      "id": "transcript_sharing_export_delete",
+      "surface": "cloud_agent",
+      "capture_mode": "bot",
+      "evidence": ["consent_record", "retention_artifact", "screenshots"]
+    }
+  ],
+  "dataset_sources": [
+    {
+      "id": "musan",
+      "source_url": "https://www.openslr.org/17/",
+      "license": "dataset-specific",
+      "version": "mock-fixture",
+      "checksum": "mock-musan-checksum",
+      "conditions": [
+        "speech_over_music",
+        "speech_over_noise",
+        "speech_over_babble"
+      ],
+      "splits": ["music", "noise", "babble"],
+      "sample_count": 3,
+      "duration_seconds": 180.0,
+      "annotation_types": ["noise_music_babble_labels"],
+      "target_metrics": ["wer", "cer", "end_of_turn_latency_ms"],
+      "evidence": ["audio", "metrics"]
+    },
+    {
+      "id": "libricss",
+      "source_url": "https://github.com/chenzhuo1011/libri_css",
+      "license": "dataset-specific",
+      "version": "mock-fixture",
+      "checksum": "mock-libricss-checksum",
+      "conditions": [
+        "overlapped_speech",
+        "multiple_people_single_stream"
+      ],
+      "splits": ["overlap_0s", "overlap_0l"],
+      "sample_count": 2,
+      "duration_seconds": 120.0,
+      "annotation_types": ["transcript", "diarization", "speaker_identity"],
+      "target_metrics": ["wer", "speaker_attributed_wer", "der", "jer", "overlap_aware_wer"],
+      "evidence": ["audio", "transcript_artifact", "metrics"]
+    },
+    {
+      "id": "chime6",
+      "source_url": "https://www.openslr.org/150/",
+      "license": "dataset-specific",
+      "version": "mock-fixture",
+      "checksum": "mock-chime6-checksum",
+      "conditions": [
+        "far_field_reverberant_room",
+        "shared_room_microphone"
+      ],
+      "splits": ["dev", "eval"],
+      "sample_count": 2,
+      "duration_seconds": 120.0,
+      "annotation_types": ["transcript", "diarization", "speaker_identity"],
+      "target_metrics": ["wer", "speaker_attributed_wer", "der", "jer"],
+      "evidence": ["audio", "transcript_artifact", "speaker_profile_artifact", "metrics"]
+    },
+    {
+      "id": "misp_meeting",
+      "source_url": "https://github.com/coalboss/MISP-Meeting",
+      "license": "dataset-specific",
+      "version": "mock-fixture",
+      "checksum": "mock-misp-meeting-checksum",
+      "conditions": [
+        "audiovisual_meeting",
+        "shared_room_microphone",
+        "multiple_people_single_stream"
+      ],
+      "splits": ["dev", "test"],
+      "sample_count": 2,
+      "duration_seconds": 120.0,
+      "annotation_types": ["transcript", "diarization", "speaker_identity", "active_speaker_video"],
+      "target_metrics": ["active_speaker_accuracy", "der", "speaker_attributed_wer"],
+      "evidence": ["audio", "video", "transcript_artifact", "speaker_profile_artifact", "metrics"]
+    }
+  ],
+  "capture_paths": [
+    {
+      "id": "zoom_bot",
+      "surface": "zoom",
+      "capture_mode": "bot",
+      "participant_metadata": "zoom participant ids, names, and active-speaker events",
+      "consent_disclosure": "bot participant and recording notice",
+      "media_streams": ["mixed_audio", "active_speaker_video"],
+      "evidence": ["audio", "video", "backend_logs", "consent_record"]
+    },
+    {
+      "id": "zoom_bot_free",
+      "surface": "zoom",
+      "capture_mode": "bot_free",
+      "participant_metadata": "desktop foreground app and user-confirmed meeting roster",
+      "consent_disclosure": "local capture disclosure in app UI",
+      "media_streams": ["system_audio", "microphone_audio", "screen_video"],
+      "evidence": ["audio", "video", "frontend_logs", "screenshots", "consent_record"]
+    },
+    {
+      "id": "google_meet_bot",
+      "surface": "google_meet",
+      "capture_mode": "bot",
+      "participant_metadata": "Google Meet participant ids, names, and active-speaker events when available",
+      "consent_disclosure": "bot participant and recording notice",
+      "media_streams": ["mixed_audio", "active_speaker_video"],
+      "evidence": ["audio", "video", "backend_logs", "consent_record"]
+    },
+    {
+      "id": "google_meet_bot_free",
+      "surface": "google_meet",
+      "capture_mode": "bot_free",
+      "participant_metadata": "browser tab title, calendar attendees, and user-confirmed roster",
+      "consent_disclosure": "local capture disclosure in app UI",
+      "media_streams": ["tab_audio", "microphone_audio", "screen_video"],
+      "evidence": ["audio", "video", "frontend_logs", "screenshots", "consent_record"]
+    },
+    {
+      "id": "on_device_capture",
+      "surface": "on_device",
+      "capture_mode": "bot_free",
+      "participant_metadata": "local speaker profile roster and explicit user labels",
+      "consent_disclosure": "device microphone capture disclosure",
+      "media_streams": ["microphone_audio"],
+      "evidence": ["audio", "frontend_logs", "screenshots", "consent_record"]
+    },
+    {
+      "id": "cloud_agent_capture",
+      "surface": "cloud_agent",
+      "capture_mode": "bot",
+      "participant_metadata": "cloud agent meeting participant metadata",
+      "consent_disclosure": "agent recording notice and retention policy",
+      "media_streams": ["mixed_audio", "active_speaker_video"],
+      "evidence": ["audio", "video", "backend_logs", "model_trajectories", "consent_record"]
+    },
+    {
+      "id": "hybrid_local_cloud",
+      "surface": "hybrid_local_cloud",
+      "capture_mode": "bot_free",
+      "participant_metadata": "local roster plus cloud transcript participant reconciliation",
+      "consent_disclosure": "local capture and cloud processing disclosure",
+      "media_streams": ["system_audio", "microphone_audio"],
+      "evidence": ["audio", "backend_logs", "frontend_logs", "model_trajectories", "consent_record"]
+    }
+  ],
+  "speaker_operations": [
+    {
+      "id": "known_speaker_enrollment",
+      "surface": "on_device",
+      "evidence": ["audio", "speaker_profile_artifact", "consent_record"],
+      "metrics": ["voice_profile_false_reject_rate", "speaker_identity_quality"],
+      "privacy_control": "explicit opt-in enrollment with profile artifact review",
+      "confidence_policy": "store profile only when enrollment clip and consent record both pass"
+    },
+    {
+      "id": "known_speaker_recognition",
+      "surface": "hybrid_local_cloud",
+      "evidence": ["audio", "speaker_profile_artifact", "metrics"],
+      "metrics": ["voice_profile_false_accept_rate", "voice_profile_false_reject_rate", "speaker_identity_quality"],
+      "privacy_control": "speaker labels are user-visible and editable before sharing",
+      "confidence_policy": "attach a known name only above threshold, otherwise keep an unknown speaker label"
+    },
+    {
+      "id": "unknown_speaker_creation",
+      "surface": "hybrid_local_cloud",
+      "evidence": ["audio", "speaker_profile_artifact", "transcript_artifact"],
+      "metrics": ["der", "jer", "speaker_identity_quality"],
+      "privacy_control": "unknown profiles remain local unless the user opts in to cloud sync",
+      "confidence_policy": "create a temporary unknown speaker only after repeated segments exceed clustering confidence"
+    },
+    {
+      "id": "speaker_name_correction",
+      "surface": "hybrid_local_cloud",
+      "evidence": ["screenshots", "speaker_profile_artifact", "transcript_artifact"],
+      "metrics": ["speaker_attributed_wer", "speaker_identity_quality"],
+      "privacy_control": "manual label edits are auditable and reversible",
+      "confidence_policy": "manual corrections override model labels for that transcript and future opted-in profiles"
+    },
+    {
+      "id": "duplicate_speaker_merge",
+      "surface": "cloud_agent",
+      "evidence": ["speaker_profile_artifact", "transcript_artifact", "model_trajectories"],
+      "metrics": ["der", "speaker_attributed_wer", "speaker_identity_quality"],
+      "privacy_control": "merge requires explicit review of affected transcript segments",
+      "confidence_policy": "suggest merge only when voice and roster signals agree"
+    },
+    {
+      "id": "incorrect_speaker_split",
+      "surface": "cloud_agent",
+      "evidence": ["speaker_profile_artifact", "transcript_artifact", "model_trajectories"],
+      "metrics": ["der", "jer", "speaker_attributed_wer"],
+      "privacy_control": "split preserves both profile histories with user-confirmed names",
+      "confidence_policy": "suggest split when segment embeddings and active-speaker video disagree with current label"
+    },
+    {
+      "id": "voice_profile_deletion",
+      "surface": "hybrid_local_cloud",
+      "evidence": ["speaker_profile_artifact", "retention_artifact", "consent_record"],
+      "metrics": ["consent_retention_quality", "speaker_identity_quality"],
+      "privacy_control": "delete removes stored voice profile material and records retention proof",
+      "confidence_policy": "deleted profiles must not be used for recognition in later runs"
+    },
+    {
+      "id": "post_deletion_non_recognition",
+      "surface": "hybrid_local_cloud",
+      "evidence": ["audio", "retention_artifact", "metrics"],
+      "metrics": ["voice_profile_false_accept_rate", "consent_retention_quality"],
+      "privacy_control": "post-deletion replay proves no stale profile can identify the speaker",
+      "confidence_policy": "speaker remains unknown unless newly enrolled with fresh consent"
+    },
+    {
+      "id": "multi_speaker_single_stream_attribution",
+      "surface": "google_meet",
+      "evidence": ["audio", "video", "speaker_profile_artifact", "metrics"],
+      "metrics": ["der", "jer", "active_speaker_accuracy", "speaker_attributed_wer"],
+      "privacy_control": "single camera/microphone rooms require visible uncertainty when labels are inferred",
+      "confidence_policy": "combine diarization, active-speaker video, and roster priors before naming speakers"
+    },
+    {
+      "id": "shared_room_uncertainty",
+      "surface": "zoom",
+      "evidence": ["audio", "video", "speaker_profile_artifact", "transcript_artifact"],
+      "metrics": ["der", "active_speaker_accuracy", "speaker_identity_quality"],
+      "privacy_control": "shared-room transcripts expose confidence and avoid overconfident names",
+      "confidence_policy": "prefer room-level labels when visual or voice evidence is ambiguous"
+    }
+  ],
+  "metrics": {
+    "transcript_quality": 1.0,
+    "diarization_quality": 1.0,
+    "speaker_identity_quality": 1.0,
+    "consent_retention_quality": 1.0,
+    "wer": 0.0,
+    "cer": 0.0,
+    "speaker_attributed_wer": 0.0,
+    "der": 0.0,
+    "jer": 0.0,
+    "overlap_aware_wer": 0.0,
+    "active_speaker_accuracy": 1.0,
+    "voice_profile_false_accept_rate": 0.0,
+    "voice_profile_false_reject_rate": 0.0,
+    "end_of_turn_latency_ms": 0,
+    "barge_in_latency_ms": 0,
+    "p95_end_to_end_latency_ms": 0,
+    "notes_factuality": 1.0,
+    "action_item_extraction": 1.0
+  }
+}

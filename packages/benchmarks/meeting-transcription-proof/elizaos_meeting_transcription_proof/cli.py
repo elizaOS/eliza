@@ -1,0 +1,627 @@
+from __future__ import annotations
+
+import argparse
+import json
+import time
+from pathlib import Path
+from typing import Any
+
+LANES = {"mocked_plumbing", "real_product"}
+REQUIRED_SURFACES = {"zoom", "google_meet", "on_device", "cloud_agent", "hybrid_local_cloud"}
+REQUIRED_CAPTURE_MODES = {"bot", "bot_free"}
+REQUIRED_CAPTURE_PATHS = {
+    "zoom_bot",
+    "zoom_bot_free",
+    "google_meet_bot",
+    "google_meet_bot_free",
+    "on_device_capture",
+    "cloud_agent_capture",
+    "hybrid_local_cloud",
+}
+REQUIRED_CAPTURE_PATH_FIELDS = {
+    "id",
+    "surface",
+    "capture_mode",
+    "participant_metadata",
+    "consent_disclosure",
+    "media_streams",
+    "evidence",
+}
+REQUIRED_EVIDENCE = {
+    "audio",
+    "video",
+    "backend_logs",
+    "frontend_logs",
+    "screenshots",
+    "metrics",
+    "model_trajectories",
+    "transcript_artifact",
+    "speaker_profile_artifact",
+    "consent_record",
+    "retention_artifact",
+}
+REQUIRED_SPEAKER_OPERATIONS = {
+    "known_speaker_enrollment",
+    "known_speaker_recognition",
+    "unknown_speaker_creation",
+    "speaker_name_correction",
+    "duplicate_speaker_merge",
+    "incorrect_speaker_split",
+    "voice_profile_deletion",
+    "post_deletion_non_recognition",
+    "multi_speaker_single_stream_attribution",
+    "shared_room_uncertainty",
+}
+REQUIRED_SPEAKER_OPERATION_FIELDS = {
+    "id",
+    "surface",
+    "evidence",
+    "metrics",
+    "privacy_control",
+    "confidence_policy",
+}
+REQUIRED_SCENARIOS = {
+    "clean_single_speaker",
+    "zoom_bot",
+    "zoom_bot_free",
+    "google_meet_bot",
+    "google_meet_bot_free",
+    "on_device_capture",
+    "cloud_agent_capture",
+    "hybrid_local_cloud",
+    "multiple_people_single_stream",
+    "shared_room_microphone",
+    "speech_over_music",
+    "speech_over_noise",
+    "speech_over_babble",
+    "overlapped_speech",
+    "far_field_room",
+    "known_speaker_recognition",
+    "unknown_speaker_creation",
+    "speaker_name_correction",
+    "voice_profile_deletion",
+    "transcript_sharing_export_delete",
+}
+REQUIRED_SCENARIO_FIELDS = {"id", "surface", "capture_mode", "evidence"}
+REQUIRED_DATASET_CONDITIONS = {
+    "speech_over_music",
+    "speech_over_noise",
+    "speech_over_babble",
+    "overlapped_speech",
+    "far_field_reverberant_room",
+    "multiple_people_single_stream",
+    "shared_room_microphone",
+    "audiovisual_meeting",
+}
+REQUIRED_DATASET_ANNOTATIONS = {
+    "transcript",
+    "diarization",
+    "speaker_identity",
+    "active_speaker_video",
+    "noise_music_babble_labels",
+}
+REQUIRED_DATASET_FIELDS = {
+    "id",
+    "source_url",
+    "license",
+    "version",
+    "checksum",
+    "conditions",
+    "splits",
+    "sample_count",
+    "duration_seconds",
+    "annotation_types",
+    "target_metrics",
+    "evidence",
+}
+REQUIRED_QUALITY_METRICS = {
+    "transcript_quality",
+    "diarization_quality",
+    "speaker_identity_quality",
+    "consent_retention_quality",
+}
+REQUIRED_DETAILED_METRICS = {
+    "wer",
+    "cer",
+    "speaker_attributed_wer",
+    "der",
+    "jer",
+    "overlap_aware_wer",
+    "active_speaker_accuracy",
+    "voice_profile_false_accept_rate",
+    "voice_profile_false_reject_rate",
+    "end_of_turn_latency_ms",
+    "barge_in_latency_ms",
+    "p95_end_to_end_latency_ms",
+    "notes_factuality",
+    "action_item_extraction",
+}
+RATIO_METRICS = {
+    *REQUIRED_QUALITY_METRICS,
+    "wer",
+    "cer",
+    "speaker_attributed_wer",
+    "der",
+    "jer",
+    "overlap_aware_wer",
+    "active_speaker_accuracy",
+    "voice_profile_false_accept_rate",
+    "voice_profile_false_reject_rate",
+    "notes_factuality",
+    "action_item_extraction",
+}
+LATENCY_METRICS = {"end_of_turn_latency_ms", "barge_in_latency_ms", "p95_end_to_end_latency_ms"}
+KNOWN_METRICS = REQUIRED_QUALITY_METRICS | REQUIRED_DETAILED_METRICS
+
+
+def _package_root() -> Path:
+    return Path(__file__).resolve().parents[1]
+
+
+def _load_json(path: Path) -> dict[str, Any]:
+    with path.open("r", encoding="utf-8") as handle:
+        data = json.load(handle)
+    if not isinstance(data, dict):
+        raise ValueError(f"{path}: manifest root must be an object")
+    return data
+
+
+def _as_set(value: Any, *, field: str) -> set[str]:
+    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+        raise ValueError(f"{field} must be a string array")
+    return {item for item in value if item}
+
+
+def _require_number(metrics: dict[str, Any], key: str) -> float:
+    value = metrics.get(key)
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise ValueError(f"metrics.{key} must be numeric")
+    number = float(value)
+    if number < 0 or number > 1:
+        raise ValueError(f"metrics.{key} must be in [0, 1]")
+    return number
+
+
+def _require_non_negative_number(metrics: dict[str, Any], key: str) -> float:
+    value = metrics.get(key)
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise ValueError(f"metrics.{key} must be numeric")
+    number = float(value)
+    if number < 0:
+        raise ValueError(f"metrics.{key} must be non-negative")
+    return number
+
+
+def _validate_metrics(metrics: Any, *, lane: str) -> dict[str, float]:
+    if not isinstance(metrics, dict):
+        raise ValueError("metrics must be an object")
+    missing_quality = REQUIRED_QUALITY_METRICS - set(metrics)
+    if missing_quality:
+        raise ValueError(f"missing quality metrics: {sorted(missing_quality)}")
+    if lane == "real_product":
+        missing_detailed = REQUIRED_DETAILED_METRICS - set(metrics)
+        if missing_detailed:
+            raise ValueError(f"missing detailed metrics: {sorted(missing_detailed)}")
+
+    metric_values: dict[str, float] = {}
+    optional_detailed_metrics = REQUIRED_DETAILED_METRICS & set(metrics)
+    required_for_lane = REQUIRED_QUALITY_METRICS | (
+        REQUIRED_DETAILED_METRICS if lane == "real_product" else optional_detailed_metrics
+    )
+    for key in sorted(required_for_lane):
+        if key in LATENCY_METRICS:
+            metric_values[key] = _require_non_negative_number(metrics, key)
+        elif key in RATIO_METRICS:
+            metric_values[key] = _require_number(metrics, key)
+        else:
+            raise ValueError(f"metrics.{key} has no validator")
+    return metric_values
+
+
+def _validate_evidence_files(manifest: dict[str, Any], manifest_path: Path) -> dict[str, str]:
+    evidence = manifest.get("evidence")
+    if not isinstance(evidence, dict):
+        raise ValueError("evidence must be an object")
+    missing_types = REQUIRED_EVIDENCE - set(evidence)
+    if missing_types:
+        raise ValueError(f"missing evidence types: {sorted(missing_types)}")
+
+    resolved: dict[str, str] = {}
+    for evidence_type in sorted(REQUIRED_EVIDENCE):
+        raw_path = evidence.get(evidence_type)
+        if not isinstance(raw_path, str) or not raw_path.strip():
+            raise ValueError(f"evidence.{evidence_type} must be a non-empty path")
+        path = Path(raw_path)
+        if not path.is_absolute():
+            path = manifest_path.parent / path
+        if not path.is_file():
+            raise ValueError(f"evidence.{evidence_type} does not exist: {path}")
+        resolved[evidence_type] = str(path.resolve())
+    return resolved
+
+
+def _validate_scenarios(manifest: dict[str, Any]) -> tuple[list[dict[str, Any]], set[str]]:
+    scenarios = manifest.get("scenarios")
+    if not isinstance(scenarios, list) or not scenarios:
+        raise ValueError("scenarios must be a non-empty array")
+
+    scenario_ids: set[str] = set()
+    referenced_evidence: set[str] = set()
+    normalized: list[dict[str, Any]] = []
+    for index, scenario in enumerate(scenarios):
+        if not isinstance(scenario, dict):
+            raise ValueError(f"scenarios[{index}] must be an object")
+        missing_fields = REQUIRED_SCENARIO_FIELDS - set(scenario)
+        if missing_fields:
+            raise ValueError(f"scenarios[{index}] missing fields: {sorted(missing_fields)}")
+        scenario_id = scenario.get("id")
+        if not isinstance(scenario_id, str) or not scenario_id.strip():
+            raise ValueError(f"scenarios[{index}].id must be a non-empty string")
+        scenario_ids.add(scenario_id)
+
+        surface = scenario.get("surface")
+        if not isinstance(surface, str) or not surface.strip():
+            raise ValueError(f"scenarios[{index}].surface must be a non-empty string")
+        capture_mode = scenario.get("capture_mode")
+        if not isinstance(capture_mode, str) or not capture_mode.strip():
+            raise ValueError(f"scenarios[{index}].capture_mode must be a non-empty string")
+        evidence = scenario.get("evidence")
+        if not isinstance(evidence, list) or not all(isinstance(item, str) and item for item in evidence):
+            raise ValueError(f"scenarios[{index}].evidence must be a non-empty string array")
+        evidence_types = set(evidence)
+        unknown_evidence = evidence_types - REQUIRED_EVIDENCE
+        if unknown_evidence:
+            raise ValueError(f"scenarios[{index}] references unknown evidence: {sorted(unknown_evidence)}")
+        referenced_evidence.update(evidence_types)
+        normalized.append(
+            {
+                "id": scenario_id,
+                "surface": surface,
+                "capture_mode": capture_mode,
+                "evidence": sorted(evidence_types),
+            }
+        )
+
+    missing_scenarios = REQUIRED_SCENARIOS - scenario_ids
+    if missing_scenarios:
+        raise ValueError(f"missing scenarios: {sorted(missing_scenarios)}")
+    missing_evidence_references = REQUIRED_EVIDENCE - referenced_evidence
+    if missing_evidence_references:
+        raise ValueError(f"scenarios do not reference evidence: {sorted(missing_evidence_references)}")
+    return sorted(normalized, key=lambda scenario: scenario["id"]), referenced_evidence
+
+
+def _validate_dataset_sources(manifest: dict[str, Any]) -> tuple[list[dict[str, Any]], set[str]]:
+    dataset_sources = manifest.get("dataset_sources")
+    if not isinstance(dataset_sources, list) or not dataset_sources:
+        raise ValueError("dataset_sources must be a non-empty array")
+
+    covered_conditions: set[str] = set()
+    covered_annotations: set[str] = set()
+    referenced_evidence: set[str] = set()
+    normalized: list[dict[str, Any]] = []
+    for index, dataset in enumerate(dataset_sources):
+        if not isinstance(dataset, dict):
+            raise ValueError(f"dataset_sources[{index}] must be an object")
+        missing_fields = REQUIRED_DATASET_FIELDS - set(dataset)
+        if missing_fields:
+            raise ValueError(f"dataset_sources[{index}] missing fields: {sorted(missing_fields)}")
+        dataset_id = dataset.get("id")
+        if not isinstance(dataset_id, str) or not dataset_id.strip():
+            raise ValueError(f"dataset_sources[{index}].id must be a non-empty string")
+        source_url = dataset.get("source_url")
+        if not isinstance(source_url, str) or not source_url.strip():
+            raise ValueError(f"dataset_sources[{index}].source_url must be a non-empty string")
+        license_name = dataset.get("license")
+        if not isinstance(license_name, str) or not license_name.strip():
+            raise ValueError(f"dataset_sources[{index}].license must be a non-empty string")
+        version = dataset.get("version")
+        if not isinstance(version, str) or not version.strip():
+            raise ValueError(f"dataset_sources[{index}].version must be a non-empty string")
+        checksum = dataset.get("checksum")
+        if not isinstance(checksum, str) or not checksum.strip():
+            raise ValueError(f"dataset_sources[{index}].checksum must be a non-empty string")
+        conditions = _as_set(dataset.get("conditions"), field=f"dataset_sources[{index}].conditions")
+        splits = _as_set(dataset.get("splits"), field=f"dataset_sources[{index}].splits")
+        if not splits:
+            raise ValueError(f"dataset_sources[{index}].splits must be non-empty")
+        sample_count = dataset.get("sample_count")
+        if isinstance(sample_count, bool) or not isinstance(sample_count, int) or sample_count <= 0:
+            raise ValueError(f"dataset_sources[{index}].sample_count must be a positive integer")
+        duration_seconds = dataset.get("duration_seconds")
+        if (
+            isinstance(duration_seconds, bool)
+            or not isinstance(duration_seconds, int | float)
+            or float(duration_seconds) <= 0
+        ):
+            raise ValueError(f"dataset_sources[{index}].duration_seconds must be a positive number")
+        annotation_types = _as_set(
+            dataset.get("annotation_types"), field=f"dataset_sources[{index}].annotation_types"
+        )
+        if not annotation_types:
+            raise ValueError(f"dataset_sources[{index}].annotation_types must be non-empty")
+        target_metrics = _as_set(dataset.get("target_metrics"), field=f"dataset_sources[{index}].target_metrics")
+        if not target_metrics:
+            raise ValueError(f"dataset_sources[{index}].target_metrics must be non-empty")
+        unknown_target_metrics = target_metrics - KNOWN_METRICS
+        if unknown_target_metrics:
+            raise ValueError(
+                f"dataset_sources[{index}] references unknown target metrics: {sorted(unknown_target_metrics)}"
+            )
+        evidence = _as_set(dataset.get("evidence"), field=f"dataset_sources[{index}].evidence")
+        unknown_evidence = evidence - REQUIRED_EVIDENCE
+        if unknown_evidence:
+            raise ValueError(f"dataset_sources[{index}] references unknown evidence: {sorted(unknown_evidence)}")
+        covered_conditions.update(conditions)
+        covered_annotations.update(annotation_types)
+        referenced_evidence.update(evidence)
+        normalized.append(
+            {
+                "id": dataset_id,
+                "source_url": source_url,
+                "license": license_name,
+                "version": version,
+                "checksum": checksum,
+                "conditions": sorted(conditions),
+                "splits": sorted(splits),
+                "sample_count": sample_count,
+                "duration_seconds": float(duration_seconds),
+                "annotation_types": sorted(annotation_types),
+                "target_metrics": sorted(target_metrics),
+                "evidence": sorted(evidence),
+            }
+        )
+
+    missing_conditions = REQUIRED_DATASET_CONDITIONS - covered_conditions
+    if missing_conditions:
+        raise ValueError(f"dataset_sources missing conditions: {sorted(missing_conditions)}")
+    missing_annotations = REQUIRED_DATASET_ANNOTATIONS - covered_annotations
+    if missing_annotations:
+        raise ValueError(f"dataset_sources missing annotation types: {sorted(missing_annotations)}")
+    return sorted(normalized, key=lambda dataset: dataset["id"]), referenced_evidence
+
+
+def _validate_capture_paths(manifest: dict[str, Any]) -> tuple[list[dict[str, Any]], set[str]]:
+    capture_paths = manifest.get("capture_paths")
+    if not isinstance(capture_paths, list) or not capture_paths:
+        raise ValueError("capture_paths must be a non-empty array")
+
+    path_ids: set[str] = set()
+    referenced_evidence: set[str] = set()
+    normalized: list[dict[str, Any]] = []
+    for index, capture_path in enumerate(capture_paths):
+        if not isinstance(capture_path, dict):
+            raise ValueError(f"capture_paths[{index}] must be an object")
+        missing_fields = REQUIRED_CAPTURE_PATH_FIELDS - set(capture_path)
+        if missing_fields:
+            raise ValueError(f"capture_paths[{index}] missing fields: {sorted(missing_fields)}")
+        path_id = capture_path.get("id")
+        if not isinstance(path_id, str) or not path_id.strip():
+            raise ValueError(f"capture_paths[{index}].id must be a non-empty string")
+        path_ids.add(path_id)
+        surface = capture_path.get("surface")
+        if not isinstance(surface, str) or not surface.strip():
+            raise ValueError(f"capture_paths[{index}].surface must be a non-empty string")
+        capture_mode = capture_path.get("capture_mode")
+        if not isinstance(capture_mode, str) or capture_mode not in REQUIRED_CAPTURE_MODES:
+            raise ValueError(f"capture_paths[{index}].capture_mode must be one of {sorted(REQUIRED_CAPTURE_MODES)}")
+        participant_metadata = capture_path.get("participant_metadata")
+        if not isinstance(participant_metadata, str) or not participant_metadata.strip():
+            raise ValueError(f"capture_paths[{index}].participant_metadata must be a non-empty string")
+        consent_disclosure = capture_path.get("consent_disclosure")
+        if not isinstance(consent_disclosure, str) or not consent_disclosure.strip():
+            raise ValueError(f"capture_paths[{index}].consent_disclosure must be a non-empty string")
+        media_streams = _as_set(capture_path.get("media_streams"), field=f"capture_paths[{index}].media_streams")
+        evidence = _as_set(capture_path.get("evidence"), field=f"capture_paths[{index}].evidence")
+        unknown_evidence = evidence - REQUIRED_EVIDENCE
+        if unknown_evidence:
+            raise ValueError(f"capture_paths[{index}] references unknown evidence: {sorted(unknown_evidence)}")
+        referenced_evidence.update(evidence)
+        normalized.append(
+            {
+                "id": path_id,
+                "surface": surface,
+                "capture_mode": capture_mode,
+                "participant_metadata": participant_metadata,
+                "consent_disclosure": consent_disclosure,
+                "media_streams": sorted(media_streams),
+                "evidence": sorted(evidence),
+            }
+        )
+
+    missing_paths = REQUIRED_CAPTURE_PATHS - path_ids
+    if missing_paths:
+        raise ValueError(f"missing capture paths: {sorted(missing_paths)}")
+    return sorted(normalized, key=lambda capture_path: capture_path["id"]), referenced_evidence
+
+
+def _validate_speaker_operations(manifest: dict[str, Any]) -> tuple[list[dict[str, Any]], set[str]]:
+    speaker_operations = manifest.get("speaker_operations")
+    if not isinstance(speaker_operations, list) or not speaker_operations:
+        raise ValueError("speaker_operations must be a non-empty array")
+
+    operation_ids: set[str] = set()
+    referenced_evidence: set[str] = set()
+    normalized: list[dict[str, Any]] = []
+    for index, operation in enumerate(speaker_operations):
+        if not isinstance(operation, dict):
+            raise ValueError(f"speaker_operations[{index}] must be an object")
+        missing_fields = REQUIRED_SPEAKER_OPERATION_FIELDS - set(operation)
+        if missing_fields:
+            raise ValueError(f"speaker_operations[{index}] missing fields: {sorted(missing_fields)}")
+        operation_id = operation.get("id")
+        if not isinstance(operation_id, str) or not operation_id.strip():
+            raise ValueError(f"speaker_operations[{index}].id must be a non-empty string")
+        operation_ids.add(operation_id)
+        surface = operation.get("surface")
+        if not isinstance(surface, str) or not surface.strip():
+            raise ValueError(f"speaker_operations[{index}].surface must be a non-empty string")
+        evidence = _as_set(operation.get("evidence"), field=f"speaker_operations[{index}].evidence")
+        unknown_evidence = evidence - REQUIRED_EVIDENCE
+        if unknown_evidence:
+            raise ValueError(f"speaker_operations[{index}] references unknown evidence: {sorted(unknown_evidence)}")
+        metrics = _as_set(operation.get("metrics"), field=f"speaker_operations[{index}].metrics")
+        unknown_metrics = metrics - KNOWN_METRICS
+        if unknown_metrics:
+            raise ValueError(f"speaker_operations[{index}] references unknown metrics: {sorted(unknown_metrics)}")
+        privacy_control = operation.get("privacy_control")
+        if not isinstance(privacy_control, str) or not privacy_control.strip():
+            raise ValueError(f"speaker_operations[{index}].privacy_control must be a non-empty string")
+        confidence_policy = operation.get("confidence_policy")
+        if not isinstance(confidence_policy, str) or not confidence_policy.strip():
+            raise ValueError(f"speaker_operations[{index}].confidence_policy must be a non-empty string")
+        referenced_evidence.update(evidence)
+        normalized.append(
+            {
+                "id": operation_id,
+                "surface": surface,
+                "evidence": sorted(evidence),
+                "metrics": sorted(metrics),
+                "privacy_control": privacy_control,
+                "confidence_policy": confidence_policy,
+            }
+        )
+
+    missing_operations = REQUIRED_SPEAKER_OPERATIONS - operation_ids
+    if missing_operations:
+        raise ValueError(f"missing speaker operations: {sorted(missing_operations)}")
+    return sorted(normalized, key=lambda operation: operation["id"]), referenced_evidence
+
+
+def validate_manifest(manifest: dict[str, Any], *, lane: str, manifest_path: Path) -> dict[str, Any]:
+    if lane not in LANES:
+        raise ValueError(f"lane must be one of {sorted(LANES)}")
+
+    surfaces = _as_set(manifest.get("surfaces"), field="surfaces")
+    missing_surfaces = REQUIRED_SURFACES - surfaces
+    if missing_surfaces:
+        raise ValueError(f"missing surfaces: {sorted(missing_surfaces)}")
+
+    capture_modes = _as_set(manifest.get("capture_modes"), field="capture_modes")
+    missing_modes = REQUIRED_CAPTURE_MODES - capture_modes
+    if missing_modes:
+        raise ValueError(f"missing capture modes: {sorted(missing_modes)}")
+
+    transcript_schema = manifest.get("transcript_schema")
+    if not isinstance(transcript_schema, dict):
+        raise ValueError("transcript_schema must be an object")
+    required_schema_fields = {
+        "meeting_id",
+        "source",
+        "consent",
+        "segments",
+        "speakers",
+        "artifacts",
+        "retention_policy",
+    }
+    schema_fields = _as_set(transcript_schema.get("required_fields"), field="transcript_schema.required_fields")
+    missing_schema = required_schema_fields - schema_fields
+    if missing_schema:
+        raise ValueError(f"missing transcript schema fields: {sorted(missing_schema)}")
+
+    adapters = manifest.get("adapters")
+    if not isinstance(adapters, list) or not adapters:
+        raise ValueError("adapters must be a non-empty array")
+    adapter_ids: set[str] = set()
+    for index, adapter in enumerate(adapters):
+        if not isinstance(adapter, dict):
+            raise ValueError(f"adapters[{index}] must be an object")
+        adapter_id = adapter.get("id")
+        if not isinstance(adapter_id, str) or not adapter_id:
+            raise ValueError(f"adapters[{index}].id must be a non-empty string")
+        adapter_ids.add(adapter_id)
+        adapter_modes = _as_set(adapter.get("capture_modes"), field=f"adapters[{index}].capture_modes")
+        if not adapter_modes <= capture_modes:
+            raise ValueError(f"adapters[{index}] declares capture modes outside manifest")
+    if {"zoom", "google_meet"} - adapter_ids:
+        raise ValueError("zoom and google_meet adapters are required")
+
+    stressors = _as_set(manifest.get("stressors"), field="stressors")
+    required_stressors = {"music", "noise", "babble", "overlap", "far_field"}
+    missing_stressors = required_stressors - stressors
+    if missing_stressors:
+        raise ValueError(f"missing stressors: {sorted(missing_stressors)}")
+    scenarios, scenario_evidence_types = _validate_scenarios(manifest)
+    dataset_sources, dataset_evidence_types = _validate_dataset_sources(manifest)
+    capture_paths, capture_evidence_types = _validate_capture_paths(manifest)
+    speaker_operations, speaker_operation_evidence_types = _validate_speaker_operations(manifest)
+
+    metric_values = _validate_metrics(manifest.get("metrics"), lane=lane)
+
+    evidence_files: dict[str, str] = {}
+    provider_mode = str(manifest.get("provider_mode") or "").strip().lower()
+    if lane == "mocked_plumbing":
+        if provider_mode != "mock":
+            raise ValueError("mocked_plumbing lane requires provider_mode=mock")
+    else:
+        if provider_mode in {"", "mock", "fixture", "oracle"}:
+            raise ValueError("real_product lane requires a non-mock provider_mode")
+        evidence_files = _validate_evidence_files(manifest, manifest_path)
+        missing_real_evidence = scenario_evidence_types - set(evidence_files)
+        if missing_real_evidence:
+            raise ValueError(f"scenario evidence files missing: {sorted(missing_real_evidence)}")
+        missing_dataset_evidence = dataset_evidence_types - set(evidence_files)
+        if missing_dataset_evidence:
+            raise ValueError(f"dataset evidence files missing: {sorted(missing_dataset_evidence)}")
+        missing_capture_evidence = capture_evidence_types - set(evidence_files)
+        if missing_capture_evidence:
+            raise ValueError(f"capture evidence files missing: {sorted(missing_capture_evidence)}")
+        missing_speaker_operation_evidence = speaker_operation_evidence_types - set(evidence_files)
+        if missing_speaker_operation_evidence:
+            raise ValueError(f"speaker operation evidence files missing: {sorted(missing_speaker_operation_evidence)}")
+
+    return {
+        "surfaces": sorted(surfaces),
+        "capture_modes": sorted(capture_modes),
+        "adapter_ids": sorted(adapter_ids),
+        "stressors": sorted(stressors),
+        "scenarios": scenarios,
+        "dataset_sources": dataset_sources,
+        "capture_paths": capture_paths,
+        "speaker_operations": speaker_operations,
+        "metrics": metric_values,
+        "evidence_files": evidence_files,
+        "provider_mode": provider_mode,
+    }
+
+
+def build_report(*, lane: str, manifest_path: Path) -> dict[str, Any]:
+    manifest = _load_json(manifest_path)
+    validation = validate_manifest(manifest, lane=lane, manifest_path=manifest_path)
+    metrics = validation["metrics"]
+    if lane == "mocked_plumbing":
+        score = 1.0
+        publishable = False
+    else:
+        score = min(metrics[key] for key in REQUIRED_QUALITY_METRICS)
+        publishable = True
+    return {
+        "kind": "meeting_transcription_proof_report",
+        "version": 1,
+        "issue": 12486,
+        "lane": lane,
+        "publishable": publishable,
+        "score": score,
+        "generated_at_unix": int(time.time()),
+        "manifest_path": str(manifest_path.resolve()),
+        **validation,
+    }
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--lane", choices=sorted(LANES), default="mocked_plumbing")
+    parser.add_argument("--manifest", type=Path)
+    parser.add_argument("--output", type=Path, required=True)
+    args = parser.parse_args(argv)
+
+    manifest_path = args.manifest
+    if manifest_path is None:
+        manifest_path = _package_root() / "fixtures" / "mock-meeting-manifest.json"
+    report = build_report(lane=args.lane, manifest_path=manifest_path)
+
+    args.output.mkdir(parents=True, exist_ok=True)
+    report_path = args.output / "meeting-transcription-proof-report.json"
+    report_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    print(str(report_path))
+    return 0

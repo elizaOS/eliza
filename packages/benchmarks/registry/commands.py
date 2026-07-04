@@ -29,6 +29,7 @@ try:
         _score_from_humaneval_json,
         _score_from_hyperliquid_bench_json,
         _score_from_lifeops_bench_json,
+        _score_from_meeting_transcription_proof_json,
         _score_from_mind2web_json,
         _score_from_mint_json,
         _score_from_mmau_json,
@@ -82,6 +83,7 @@ except ImportError:
         _score_from_humaneval_json,
         _score_from_hyperliquid_bench_json,
         _score_from_lifeops_bench_json,
+        _score_from_meeting_transcription_proof_json,
         _score_from_mind2web_json,
         _score_from_mint_json,
         _score_from_mmau_json,
@@ -2182,6 +2184,31 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
     def _voiceagentbench_result(output_dir: Path) -> Path:
         return find_latest_file(output_dir, glob_pattern="voiceagentbench_*.json")
 
+    def _meeting_transcription_proof_cmd(
+        output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]
+    ) -> list[str]:
+        lane_raw = extra.get("lane")
+        lane = lane_raw.strip() if isinstance(lane_raw, str) and lane_raw.strip() else ""
+        if not lane:
+            provider_name = (model.provider or "").strip().lower()
+            lane = "mocked_plumbing" if provider_name == "mock" else "real_product"
+        args = [
+            python,
+            "-m",
+            "elizaos_meeting_transcription_proof",
+            "--lane",
+            lane,
+            "--output",
+            str(output_dir),
+        ]
+        manifest = extra.get("manifest")
+        if isinstance(manifest, str) and manifest.strip():
+            args.extend(["--manifest", manifest.strip()])
+        return args
+
+    def _meeting_transcription_proof_result(output_dir: Path) -> Path:
+        return output_dir / "meeting-transcription-proof-report.json"
+
     # --- Hermes-native envs (tblite / terminalbench_2 / yc_bench / hermes_swe_env) ---
     # The four envs share one subprocess shim and one score extractor; only the
     # short env-id arg and the result-glob differ between them.
@@ -2899,6 +2926,33 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             build_command=_voiceagentbench_cmd,
             locate_result=_voiceagentbench_result,
             extract_score=_score_from_voiceagentbench_json,
+        ),
+        BenchmarkDefinition(
+            id="meeting_transcription_proof",
+            display_name="Meeting Transcription Proof",
+            description=(
+                "Issue #12486 proof registry for Zoom, Google Meet, on-device "
+                "capture, cloud agents, hybrid inference, diarization, speaker "
+                "identity, consent, retention, and evidence bundles"
+            ),
+            cwd_rel="packages/benchmarks/meeting-transcription-proof",
+            requirements=BenchmarkRequirements(
+                env_vars=(),
+                paths=(
+                    "packages/benchmarks/meeting-transcription-proof/elizaos_meeting_transcription_proof",
+                    "packages/benchmarks/meeting-transcription-proof/fixtures/mock-meeting-manifest.json",
+                ),
+                notes=(
+                    "Set extra.lane='mocked_plumbing' for the no-key schema/capture/evidence "
+                    "fixture lane, or extra.lane='real_product' plus extra.manifest=<path> "
+                    "for real Zoom/Google Meet/on-device/cloud/hybrid evidence. The scorer "
+                    "marks mocked reports non-publishable and requires complete evidence files "
+                    "for real_product reports."
+                ),
+            ),
+            build_command=_meeting_transcription_proof_cmd,
+            locate_result=_meeting_transcription_proof_result,
+            extract_score=_score_from_meeting_transcription_proof_json,
         ),
         # ----- standard public LLM benchmarks (W1-B1, gap C6) -----
         BenchmarkDefinition(

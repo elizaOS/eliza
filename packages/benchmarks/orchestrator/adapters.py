@@ -2582,6 +2582,7 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
         "gsm8k": "standard",
         "mt_bench": "standard",
         "mmau": "mmau-audio",
+        "meeting_transcription_proof": "meeting-transcription-proof",
     }
     hermes_env_benchmark_ids = {
         "hermes_tblite",

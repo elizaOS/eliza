@@ -4,7 +4,7 @@ This matrix is reconciled against the **registry** (the canonical source of
 truth in `registry/commands.py`) and the orchestrator's adapter discovery
 (#10193). It is split into two clearly-labeled sections:
 
-1. **Registered benchmarks (44)** — every id declared in `registry/commands.py`.
+1. **Registered benchmarks (45)** — every id declared in `registry/commands.py`.
 2. **Adapter-discovered / non-registry (9)** — ids exposed only as orchestrator
    adapters, with no registry entry (`orchestrator.discover_adapters` minus the
    registry). These are runnable but are **not** part of the canonical registry.
@@ -57,7 +57,7 @@ harnesses live there and must never leak into this matrix).
 
 ---
 
-## Registered benchmarks (44)
+## Registered benchmarks (45)
 
 `lane` is the CI lane from `orchestrator/ci_coverage.py`
 (`scheduled` / `smoke` / `manual`). The four score columns show the posted
@@ -82,6 +82,7 @@ or `gated`.
 | humaneval | smoke | 1.00 | 1.00 | 1.00 | 1.00 |
 | hyperliquid_bench | scheduled | gated | gated | gated | gated |
 | lifeops_bench | scheduled | 1.00 | 1.00 | 1.00 | 1.00 |
+| meeting_transcription_proof | smoke | not-run | not-run | not-run | gated |
 | mind2web | smoke | not-run | not-run | not-run | gated |
 | mint | scheduled | 1.00 | 1.00 | 1.00 | 1.00 |
 | mmau | manual | gated | gated | gated | gated |
@@ -111,7 +112,7 @@ or `gated`.
 | webshop | smoke | not-run | not-run | not-run | gated |
 | woobench | smoke | 0.89 | 0.89 | 0.93 | 0.91 |
 
-**Registered totals:** 44 benchmarks. 15 have a real posted score (from the
+**Registered totals:** 45 benchmarks. 15 have a real posted score (from the
 2026-05-28 certification pass, `benchmark_results/latest/`); the rest are
 `not-run` (no committed graded run) or `gated` (infra/credentials required).
 
@@ -147,7 +148,7 @@ openclaw agent stacks (infra-gated successor scope, #10199 / #10193).
 ## Adapter-discovered / non-registry (9)
 
 These ids are exposed by `orchestrator.discover_adapters` but have **no entry
-in `registry/commands.py`**. They are not part of the canonical 44 and have no
+in `registry/commands.py`**. They are not part of the canonical 45 and have no
 committed graded `latest/` run — they are shown for completeness only.
 
 | benchmark | lane | eliza | hermes | openclaw | smithers |
@@ -180,7 +181,7 @@ registry in three ways, all fixed here:
   are quarantined into the clearly-labeled non-registry section above; the other
   2 (`compactbench`, `loca_bench`) were part of the phantom set removed.
 
-The registered set (44), the non-registry adapter set (9), the lane cells, and
+The registered set (45), the non-registry adapter set (9), the lane cells, and
 the certified numeric rows here are kept in sync by
 `tests/test_results_matrix_sync.py`; the CI lane taxonomy itself is pinned by
 `tests/test_ci_coverage.py`.
