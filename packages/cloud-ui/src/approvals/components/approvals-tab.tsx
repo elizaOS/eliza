@@ -19,7 +19,7 @@ import {
   AlertTitle,
   Button,
   Textarea,
-} from "../../../components/primitives";
+} from "@elizaos/ui/components/primitives";
 import {
   type ApprovalRequest,
   formatApprovalTimestamp,

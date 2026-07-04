@@ -1971,12 +1971,20 @@ const CloudRouterShell = lazy(async () => {
   }
   // Populate the cloud-route + settings-section registries before the shell
   // mounts and reads `listCloudRoutes()`; without this the registry is empty and
-  // no cloud/auth/payment route resolves.
-  const [{ registerAllCloudSurfaces }, mod] = await Promise.all([
-    import("@elizaos/ui/cloud/register-all"),
-    import("@elizaos/ui/cloud/shell/CloudRouterShell"),
-  ]);
+  // no cloud/auth/payment route resolves. Cloud product surfaces come from two
+  // sources that register into the SAME process-global registries: the trunk
+  // `@elizaos/ui` cloud modules and the standalone `@elizaos/cloud-ui` package
+  // (arch #12092 item 23 — the cloud UI's own home). Both imports live inside
+  // this `__ELIZA_WEB_SHELL__`-guarded factory, so a cloud-free build drops
+  // them statically with no stub alias.
+  const [{ registerAllCloudSurfaces }, { registerCloudUiSurfaces }, mod] =
+    await Promise.all([
+      import("@elizaos/ui/cloud/register-all"),
+      import("@elizaos/cloud-ui"),
+      import("@elizaos/ui/cloud/shell/CloudRouterShell"),
+    ]);
   registerAllCloudSurfaces();
+  registerCloudUiSurfaces();
   return { default: mod.CloudRouterShell };
 });
 

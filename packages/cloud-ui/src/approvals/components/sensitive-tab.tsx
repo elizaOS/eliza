@@ -18,7 +18,7 @@ import {
   AlertTitle,
   Button,
   Input,
-} from "../../../components/primitives";
+} from "@elizaos/ui/components/primitives";
 import {
   formatApprovalTimestamp,
   useCancelSensitiveRequest,

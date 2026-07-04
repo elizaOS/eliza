@@ -25,11 +25,11 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api } from "../../lib/api-client";
+import { api } from "@elizaos/ui/cloud/lib/api-client";
 import {
   authenticatedQueryKey,
   useAuthenticatedQueryGate,
-} from "../../lib/auth-query";
+} from "@elizaos/ui/cloud/lib/auth-query";
 
 // ── Approval requests ──────────────────────────────────────────────────────
 

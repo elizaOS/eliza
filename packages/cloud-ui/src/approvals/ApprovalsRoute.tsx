@@ -18,14 +18,14 @@
  */
 
 import { ShieldCheck } from "lucide-react";
-import { DashboardLoadingState } from "../../cloud-ui/components/dashboard/route-placeholders";
+import { DashboardLoadingState } from "@elizaos/ui/cloud-ui/components/dashboard/route-placeholders";
 import {
   Tabs,
   TabsContent,
   TabsList,
   TabsTrigger,
-} from "../../components/primitives";
-import { useRequireAuth } from "../lib/use-session-auth";
+} from "@elizaos/ui/components/primitives";
+import { useRequireAuth } from "@elizaos/ui/cloud/lib/use-session-auth";
 import { ApprovalsTab } from "./components/approvals-tab";
 import { BallotsTab } from "./components/ballots-tab";
 import { SensitiveTab } from "./components/sensitive-tab";

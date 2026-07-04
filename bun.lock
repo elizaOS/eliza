@@ -236,6 +236,7 @@
         "@elizaos/capacitor-talkmode": "workspace:*",
         "@elizaos/capacitor-websiteblocker": "workspace:*",
         "@elizaos/capacitor-wifi": "workspace:*",
+        "@elizaos/cloud-ui": "workspace:*",
         "@elizaos/logger": "workspace:*",
         "@elizaos/plugin-agent-orchestrator": "workspace:*",
         "@elizaos/plugin-background-runner": "workspace:*",
@@ -519,6 +520,19 @@
       "devDependencies": {
         "jsdom": "^29.1.1",
         "vitest": "^4.0.17",
+      },
+    },
+    "packages/cloud-ui": {
+      "name": "@elizaos/cloud-ui",
+      "version": "2.0.3-beta.7",
+      "dependencies": {
+        "@elizaos/ui": "workspace:*",
+        "@tanstack/react-query": "^5.90.20",
+        "lucide-react": "^1.0.0",
+      },
+      "peerDependencies": {
+        "react": ">=19",
+        "react-dom": ">=19",
       },
     },
     "packages/cloud/api": {
@@ -6355,6 +6369,8 @@
     "@elizaos/cloud-shared": ["@elizaos/cloud-shared@workspace:packages/cloud/shared"],
 
     "@elizaos/cloud-test-mocks": ["@elizaos/cloud-test-mocks@workspace:packages/test/cloud-mocks"],
+
+    "@elizaos/cloud-ui": ["@elizaos/cloud-ui@workspace:packages/cloud-ui"],
 
     "@elizaos/coding-remote-runner": ["@elizaos/coding-remote-runner@workspace:packages/cloud/services/coding-remote-runner"],
 

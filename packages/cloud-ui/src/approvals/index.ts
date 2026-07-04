@@ -20,7 +20,7 @@ import { lazy } from "react";
 import {
   type CloudRouteDef,
   registerCloudRoute,
-} from "../shell/cloud-route-registry";
+} from "@elizaos/ui/cloud/shell/cloud-route-registry";
 
 export { ApprovalsSurface, default as ApprovalsRoute } from "./ApprovalsRoute";
 export {

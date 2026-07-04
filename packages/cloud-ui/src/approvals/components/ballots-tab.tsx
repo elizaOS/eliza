@@ -14,7 +14,7 @@ import {
   Button,
   Input,
   Textarea,
-} from "../../../components/primitives";
+} from "@elizaos/ui/components/primitives";
 import {
   type Ballot,
   formatApprovalTimestamp,

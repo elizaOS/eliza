@@ -8,7 +8,7 @@
  * outline.
  */
 
-import { cn } from "../../../lib/utils";
+import { cn } from "@elizaos/ui/lib/utils";
 
 type Tone = "accent" | "success" | "danger" | "neutral";
 
