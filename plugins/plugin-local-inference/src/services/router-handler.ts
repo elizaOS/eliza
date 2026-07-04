@@ -406,17 +406,17 @@ function makeRouterHandler(slot: AgentModelSlot): AnyHandler {
 
 				if (manualPreferred || !hasAlternative || ttsFailsClosed) {
 					if (ttsFailsClosed && hasAlternative) {
+						const rawCode =
+							err instanceof Error
+								? (err as { code?: unknown }).code
+								: undefined;
 						logger.error(
 							{
 								provider: pick.provider,
 								slot,
 								policy,
 								error: err instanceof Error ? err.message : String(err),
-								errorCode:
-									err instanceof Error &&
-									typeof (err as { code?: unknown }).code === "string"
-										? (err as { code: string }).code
-										: undefined,
+								errorCode: typeof rawCode === "string" ? rawCode : undefined,
 								alternativesRefused: remaining.length - 1,
 							},
 							`[LocalInferenceRouter] ${pick.provider} failed for TEXT_TO_SPEECH; failing closed — refusing to swap to another voice engine`,
