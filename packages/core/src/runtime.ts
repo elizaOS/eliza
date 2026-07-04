@@ -77,7 +77,10 @@ import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "./runtime/builtin-fie
 import { ChatPreHandlerRegistry } from "./runtime/chat-pre-handler-registry";
 import { ContextRegistry } from "./runtime/context-registry";
 import { DEFAULT_CONTEXT_DEFINITIONS } from "./runtime/default-contexts";
-import { findEquivalentFactId } from "./runtime/fact-write-dedupe";
+import {
+	findEquivalentFact,
+	mergeStrongerFactMetadata,
+} from "./runtime/fact-write-dedupe";
 import type { ResponseHandlerEvaluator } from "./runtime/response-handler-evaluators";
 import type { ResponseHandlerFieldEvaluator } from "./runtime/response-handler-field-evaluator";
 import { ResponseHandlerFieldRegistry } from "./runtime/response-handler-field-registry";
@@ -9736,9 +9739,18 @@ ${section_end}`;
 		// similarity check needs an embedding (absent inline on fact writes) and
 		// is bypassed whenever callers pass `unique` — so without this guard the
 		// same claim lands as multiple rows (see runtime/fact-write-dedupe.ts).
+		// A dedupe hit may still carry new information: stronger metadata on the
+		// incoming occurrence (higher confidence, an explicit kind, a fresher
+		// validity timestamp) upgrades the kept row instead of being dropped.
 		if (tableName === "facts") {
-			const equivalentId = await findEquivalentFactId(this, memory);
-			if (equivalentId) return equivalentId;
+			const equivalent = await findEquivalentFact(this, memory);
+			if (equivalent?.id) {
+				const upgraded = mergeStrongerFactMetadata(equivalent, memory);
+				if (upgraded) {
+					await this.updateMemory({ id: equivalent.id, metadata: upgraded });
+				}
+				return equivalent.id;
+			}
 		}
 
 		const ids = await this.adapter.createMemories([

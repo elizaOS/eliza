@@ -89,7 +89,11 @@ function makeState(): State {
 	};
 }
 
-function makeFact(text: string, entityId: UUID = USER): Memory {
+function makeFact(
+	text: string,
+	entityId: UUID = USER,
+	metadata?: Memory["metadata"],
+): Memory {
 	return {
 		id: crypto.randomUUID() as UUID,
 		entityId,
@@ -97,6 +101,7 @@ function makeFact(text: string, entityId: UUID = USER): Memory {
 		roomId: ROOM,
 		content: { text, type: "fact" },
 		createdAt: Date.now(),
+		...(metadata ? { metadata } : {}),
 	};
 }
 
@@ -143,6 +148,87 @@ describe("fact write-time dedupe (runtime.createMemory)", () => {
 		await runtime.createMemory(makeFact("!!!"), "facts", true);
 		await runtime.createMemory(makeFact("???"), "facts", true);
 		expect(await readFactRows(runtime)).toHaveLength(2);
+	});
+
+	it("a duplicate with stronger metadata upgrades the kept row", async () => {
+		const runtime = makeRuntime();
+		const firstId = await runtime.createMemory(
+			makeFact("nubs plays guitar", USER, {
+				type: "custom",
+				source: "facts_and_relationships_stage",
+				kind: "current",
+				confidence: 0.4,
+				validAt: "2026-07-01T00:00:00.000Z",
+			}),
+			"facts",
+			true,
+		);
+		const secondId = await runtime.createMemory(
+			makeFact("Nubs plays guitar.", USER, {
+				type: "custom",
+				confidence: 0.9,
+				validAt: "2026-07-04T00:00:00.000Z",
+			}),
+			"facts",
+			true,
+		);
+		expect(secondId).toBe(firstId);
+		const rows = await readFactRows(runtime);
+		expect(rows).toHaveLength(1);
+		const meta = rows[0].metadata as Record<string, unknown>;
+		expect(meta.confidence).toBe(0.9);
+		expect(meta.validAt).toBe("2026-07-04T00:00:00.000Z");
+		// Untouched kept-row fields survive the upgrade.
+		expect(meta.kind).toBe("current");
+		expect(meta.source).toBe("facts_and_relationships_stage");
+	});
+
+	it("a duplicate with weaker metadata is a plain skip", async () => {
+		const runtime = makeRuntime();
+		await runtime.createMemory(
+			makeFact("nubs plays guitar", USER, {
+				type: "custom",
+				kind: "durable",
+				confidence: 0.9,
+				validAt: "2026-07-04T00:00:00.000Z",
+			}),
+			"facts",
+			true,
+		);
+		await runtime.createMemory(
+			makeFact("nubs plays guitar", USER, {
+				type: "custom",
+				kind: "current",
+				confidence: 0.4,
+				validAt: "2026-07-01T00:00:00.000Z",
+			}),
+			"facts",
+			true,
+		);
+		const rows = await readFactRows(runtime);
+		expect(rows).toHaveLength(1);
+		const meta = rows[0].metadata as Record<string, unknown>;
+		expect(meta.confidence).toBe(0.9);
+		// An already-set kind is never flipped by a duplicate.
+		expect(meta.kind).toBe("durable");
+		expect(meta.validAt).toBe("2026-07-04T00:00:00.000Z");
+	});
+
+	it("an explicit kind fills a kept row that has none", async () => {
+		const runtime = makeRuntime();
+		await runtime.createMemory(
+			makeFact("nubs plays guitar", USER, { type: "custom" }),
+			"facts",
+			true,
+		);
+		await runtime.createMemory(
+			makeFact("nubs plays guitar", USER, { type: "custom", kind: "current" }),
+			"facts",
+			true,
+		);
+		const rows = await readFactRows(runtime);
+		expect(rows).toHaveLength(1);
+		expect((rows[0].metadata as Record<string, unknown>).kind).toBe("current");
 	});
 });
 

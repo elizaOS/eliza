@@ -1,6 +1,8 @@
 /** Exercises account API route behavior with deterministic auth and storage fixtures. */
 import { IncomingMessage, ServerResponse } from "node:http";
 import { Socket } from "node:net";
+import { listAccounts, saveAccount } from "@elizaos/auth/account-storage";
+import { getAccessToken } from "@elizaos/auth/credentials";
 import type { LinkedAccountConfig } from "@elizaos/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AccountsRouteContext } from "../../src/api/accounts-routes";
@@ -8,35 +10,30 @@ import {
   _resetAccountsRoutesPoolCache,
   handleAccountsRoutes,
 } from "../../src/api/accounts-routes";
-import { listAccounts, saveAccount } from "../../src/auth/account-storage.js";
-import { getAccessToken } from "../../src/auth/credentials.ts";
+import {
+  _resetAgentHostBridge,
+  defaultAgentHostBridge,
+  setAgentHostBridge,
+} from "../../src/runtime/host-bridge.ts";
 
-const poolMock = vi.hoisted(() => ({
+const poolMock = {
   list: vi.fn(),
   get: vi.fn(),
   upsert: vi.fn(),
   deleteMetadata: vi.fn(),
   refreshUsage: vi.fn(),
-}));
+};
 
-vi.mock("@elizaos/app-core", () => ({
-  getDefaultAccountPool: () => poolMock,
-}));
-
-vi.mock("@elizaos/app-core/account-pool", () => ({
-  getDefaultAccountPool: () => poolMock,
-}));
-
-vi.mock("../../src/auth/account-storage.js", () => ({
+vi.mock("@elizaos/auth/account-storage", () => ({
   deleteAccount: vi.fn(),
   listAccounts: vi.fn(() => []),
   loadAccount: vi.fn(() => null),
   saveAccount: vi.fn(),
 }));
 
-vi.mock("../../src/auth/credentials.ts", async (importOriginal) => {
+vi.mock("@elizaos/auth/credentials", async (importOriginal) => {
   const actual =
-    await importOriginal<typeof import("../../src/auth/credentials.ts")>();
+    await importOriginal<typeof import("@elizaos/auth/credentials")>();
   return { ...actual, getAccessToken: vi.fn(async () => null) };
 });
 
@@ -92,11 +89,19 @@ describe("accounts routes provider-scoped account resolution", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     _resetAccountsRoutesPoolCache();
+    // The routes read the pool through the host-bridge seam (not an
+    // @elizaos/app-core import), so the fixture pool is installed the same
+    // way a real host installs it.
+    setAgentHostBridge({
+      ...defaultAgentHostBridge,
+      getDefaultAccountPool: () => poolMock,
+    });
   });
 
   afterEach(() => {
     vi.unstubAllEnvs();
     vi.unstubAllGlobals();
+    _resetAgentHostBridge();
   });
 
   it("sends the oauth beta header when testing an anthropic subscription", async () => {

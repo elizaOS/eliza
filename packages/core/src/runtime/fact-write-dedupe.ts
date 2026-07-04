@@ -2,7 +2,9 @@
  * Structural write-time dedupe for the `facts` table: before a fact insert,
  * find an existing row with the same normalized text in the same
  * room + entity scope so `runtime.createMemory` can skip the write and return
- * the existing row's id.
+ * the existing row's id — after folding any stronger metadata the new
+ * occurrence carries (higher confidence, an explicit kind, a fresher validity
+ * timestamp) into the kept row, so a dedupe hit never drops new information.
  *
  * This guard exists because nothing else structurally prevents duplicate fact
  * rows. The adapter-level similarity check requires an embedding (facts
@@ -20,8 +22,7 @@
  * error) on rooms with very deep fact history.
  */
 
-import type { Memory } from "../types/memory";
-import type { UUID } from "../types/primitives";
+import type { FactMetadata, Memory, MemoryMetadata } from "../types/memory";
 import type { IAgentRuntime } from "../types/runtime";
 
 const DEDUPE_CANDIDATE_POOL = 120;
@@ -39,15 +40,15 @@ export function normalizeFactTextKey(value: string): string {
 }
 
 /**
- * Returns the id of an existing `facts` row equivalent to `memory`
- * (same normalized text, same room, same entity), or null when the write
- * should proceed. Rows sharing `memory.id` are ignored — same-id idempotence
- * is the adapter's contract, not a duplicate.
+ * Returns the existing `facts` row equivalent to `memory` (same normalized
+ * text, same room, same entity), or null when the write should proceed. Rows
+ * sharing `memory.id` are ignored — same-id idempotence is the adapter's
+ * contract, not a duplicate.
  */
-export async function findEquivalentFactId(
+export async function findEquivalentFact(
 	runtime: Pick<IAgentRuntime, "getMemories">,
 	memory: Memory,
-): Promise<UUID | null> {
+): Promise<Memory | null> {
 	const text =
 		typeof memory.content?.text === "string" ? memory.content.text : "";
 	const key = normalizeFactTextKey(text);
@@ -64,7 +65,59 @@ export async function findEquivalentFactId(
 		if ((candidate.entityId ?? null) !== (memory.entityId ?? null)) continue;
 		const candidateText =
 			typeof candidate.content?.text === "string" ? candidate.content.text : "";
-		if (normalizeFactTextKey(candidateText) === key) return candidate.id;
+		if (normalizeFactTextKey(candidateText) === key) return candidate;
 	}
 	return null;
+}
+
+function readFactMetadata(memory: Memory): FactMetadata {
+	const meta = memory.metadata;
+	if (!meta || typeof meta !== "object" || Array.isArray(meta)) return {};
+	return meta as FactMetadata;
+}
+
+/**
+ * Field-wise "stronger metadata" merge for a dedupe hit: returns the kept
+ * row's full metadata with the incoming occurrence's stronger fields applied,
+ * or null when the incoming occurrence adds nothing (plain skip). Stronger
+ * means, per field:
+ *
+ * - `confidence` — strictly higher (or present where the kept row has none).
+ * - `kind` — present where the kept row has none. The FACTS reader defaults a
+ *   missing kind to `durable`, so an explicit stamp is always more precise;
+ *   an already-set kind is never flipped here (durable/current transitions
+ *   belong to the reflection pass).
+ * - `validAt` / `lastConfirmedAt` — strictly more recent (or newly present):
+ *   a re-asserted `current` fact should not keep decaying from its first
+ *   observation's timestamp.
+ */
+export function mergeStrongerFactMetadata(
+	existing: Memory,
+	incoming: Memory,
+): MemoryMetadata | null {
+	const kept = readFactMetadata(existing);
+	const next = readFactMetadata(incoming);
+	const upgrades: FactMetadata = {};
+
+	if (
+		typeof next.confidence === "number" &&
+		Number.isFinite(next.confidence) &&
+		(typeof kept.confidence !== "number" || next.confidence > kept.confidence)
+	) {
+		upgrades.confidence = next.confidence;
+	}
+	if (next.kind && !kept.kind) {
+		upgrades.kind = next.kind;
+	}
+	for (const field of ["validAt", "lastConfirmedAt"] as const) {
+		const incomingAt = Date.parse(next[field] ?? "");
+		if (Number.isNaN(incomingAt)) continue;
+		const keptAt = Date.parse(kept[field] ?? "");
+		if (Number.isNaN(keptAt) || incomingAt > keptAt) {
+			upgrades[field] = next[field];
+		}
+	}
+
+	if (Object.keys(upgrades).length === 0) return null;
+	return { ...existing.metadata, ...upgrades } as MemoryMetadata;
 }
