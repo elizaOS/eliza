@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for the save-footer primitive (dirty/saving state action bar).
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { SaveFooter } from "./save-footer";
 

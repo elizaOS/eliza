@@ -1,3 +1,8 @@
+/**
+ * Dropdown-menu primitive family (trigger, content, items, checkbox/radio
+ * items, submenus, separators, shortcuts) wrapping the Radix dropdown-menu
+ * primitives with the kit's tokens. A leaf primitive in components/ui.
+ */
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import { Check, ChevronRight, Circle } from "lucide-react";
 import * as React from "react";

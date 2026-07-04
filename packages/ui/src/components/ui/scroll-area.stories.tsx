@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for the scroll-area primitive (custom scrollbar container).
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { ScrollArea, ScrollBar } from "./scroll-area";
 

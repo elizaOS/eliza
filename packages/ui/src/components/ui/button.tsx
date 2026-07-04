@@ -1,3 +1,11 @@
+/**
+ * The kit's base button and its cva `buttonVariants` (default/destructive/
+ * outline/secondary/ghost/link × size). The canonical primitive in
+ * components/ui — other components (alert-dialog, banner, …) reuse
+ * `buttonVariants` rather than restyling their own buttons. `asChild` renders
+ * the styling onto a Radix Slot child so links can adopt button appearance.
+ * Accent-orange resting → darker-orange hover per the brand hover system.
+ */
 import { Slot } from "@radix-ui/react-slot";
 import { cva, type VariantProps } from "class-variance-authority";
 import * as React from "react";

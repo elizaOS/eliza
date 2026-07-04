@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for the input-group primitive (input with addons/buttons/text).
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import {
   InputGroup,

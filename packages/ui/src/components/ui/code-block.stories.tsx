@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for the code-block primitive (syntax display with optional copy button).
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { CodeBlock } from "./code-block";
 

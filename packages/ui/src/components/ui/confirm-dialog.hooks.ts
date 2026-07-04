@@ -1,3 +1,9 @@
+/**
+ * Imperative `useConfirm` / `usePrompt` hooks that turn the controlled
+ * ConfirmDialog / PromptDialog into promise-returning calls: `confirm(opts)` /
+ * `prompt(opts)` resolve when the user chooses, and the returned `modalProps`
+ * is spread onto the matching dialog component (`confirm-dialog.tsx`).
+ */
 import * as React from "react";
 
 import type {

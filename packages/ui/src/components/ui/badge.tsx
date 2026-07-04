@@ -1,3 +1,7 @@
+/**
+ * Inline status/label pill with cva-driven variants (default, secondary,
+ * destructive, outline). A leaf primitive in the components/ui base layer.
+ */
 import { cva, type VariantProps } from "class-variance-authority";
 import type * as React from "react";
 

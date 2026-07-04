@@ -1,15 +1,19 @@
+/**
+ * Modal dialog primitive family (root, trigger, overlay, content with close
+ * button, header/footer, title/description) wrapping the Radix dialog
+ * primitives with the kit's tokens. The base dialog in components/ui; the
+ * denser admin variant composes on top of it (admin-dialog.tsx).
+ */
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import * as React from "react";
 import { cn } from "../../lib/utils";
 
-// NOTE: z-index values below are kept as literal arbitrary classes
-// (`z-[160]` / `z-[170]`) so Tailwind v4's source scanner emits them.
-// A previous revision used `` z-[${Z_DIALOG_OVERLAY}] `` template-literal
-// interpolation from the floating-layers constants, but Tailwind cannot
-// resolve classes built from runtime values — the overlay/content lost
-// `position: fixed` and stacking, leaving page chrome visible through the
-// modal. Keep these in sync with packages/ui/src/lib/floating-layers.ts
+// Overlay/content z-index must be a literal arbitrary class (`z-[160]` /
+// `z-[170]`) so Tailwind v4's source scanner emits it — Tailwind cannot resolve
+// classes built from runtime template-literal values, and a non-emitted class
+// drops `position: fixed`/stacking so page chrome shows through the modal. Keep
+// in sync with packages/ui/src/lib/floating-layers.ts
 // (Z_DIALOG_OVERLAY = 160, Z_DIALOG = 170).
 
 const Dialog = DialogPrimitive.Root;

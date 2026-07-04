@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for the field-switch primitive (labelled toggle field).
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import * as React from "react";
 import { FieldSwitch } from "./field-switch";

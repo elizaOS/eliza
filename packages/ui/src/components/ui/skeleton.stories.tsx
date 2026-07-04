@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for the skeleton loading-placeholder primitive.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { Skeleton } from "./skeleton";
 

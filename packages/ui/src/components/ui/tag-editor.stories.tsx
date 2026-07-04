@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for the tag-editor primitive (add/remove chip input).
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { useState } from "react";
 import { TagEditor } from "./tag-editor";

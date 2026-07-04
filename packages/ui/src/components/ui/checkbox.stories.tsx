@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for the checkbox primitive (checked/unchecked, disabled, required).
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { Checkbox } from "./checkbox";
 

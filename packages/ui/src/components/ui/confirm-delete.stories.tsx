@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for the confirm-delete primitive (destructive-action confirmation trigger).
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { ConfirmDelete } from "./confirm-delete";
 

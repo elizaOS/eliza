@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for the icon-tooltip primitive (tooltip wrapping an icon trigger).
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { IconTooltip } from "./tooltip-extended";
 

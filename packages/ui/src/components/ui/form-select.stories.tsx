@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for the form-select primitive.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { FormSelect, FormSelectItem } from "./form-select";
 

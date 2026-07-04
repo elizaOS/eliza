@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for the collapsible disclosure primitive.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import {
   Collapsible,

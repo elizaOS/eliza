@@ -1,3 +1,10 @@
+/**
+ * Chrome parts for admin-console dialogs — a namespaced set (`AdminDialog.*`)
+ * layered on the base Dialog primitive (`./dialog`): flush-padded content,
+ * sticky card-tinted header/footer, a scrollable body, mono/badge metadata
+ * spans, a mono input + code editor, and a segmented tab strip. Provides the
+ * denser, edge-to-edge admin layout in place of the default centered padding.
+ */
 import type * as React from "react";
 import { forwardRef } from "react";
 

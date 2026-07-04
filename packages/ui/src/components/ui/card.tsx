@@ -1,3 +1,8 @@
+/**
+ * Surface container primitive plus its slot parts (Header, Title, Description,
+ * Action, Content, Footer). cva variants select behaviour/padding: default,
+ * interactive (hover-affordance), status, setting, flat.
+ */
 import { cva, type VariantProps } from "class-variance-authority";
 import * as React from "react";
 

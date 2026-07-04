@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for the pagination primitive.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import {
   Pagination,

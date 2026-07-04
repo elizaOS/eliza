@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for the settings-controls primitives (input/textarea/segmented/muted-text).
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import {
   SettingsControls,

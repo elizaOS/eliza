@@ -1,3 +1,9 @@
+/**
+ * Unit tests for the status-badge label helpers (pure functions, no DOM):
+ * `statusLabelForState` title-cases raw enums for the dev/admin console, and
+ * `agentLifecycleLabel` maps lifecycle states to friendly onboarding copy while
+ * leaving non-lifecycle (e.g. Steward transaction) states title-cased.
+ */
 import { describe, expect, it } from "vitest";
 import {
   agentLifecycleLabel,

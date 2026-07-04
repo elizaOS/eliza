@@ -1,3 +1,7 @@
+/**
+ * Centered placeholder for empty lists/views: optional icon, title,
+ * description, and a primary action slot.
+ */
 import * as React from "react";
 import { cn } from "../../lib/utils";
 

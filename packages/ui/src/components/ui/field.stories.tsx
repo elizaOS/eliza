@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for the form field primitive (label, description, and validation-message slots).
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { Field, FieldDescription, FieldLabel, FieldMessage } from "./field";
 import { Input } from "./input";

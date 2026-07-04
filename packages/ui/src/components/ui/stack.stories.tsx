@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for the stack layout primitive.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { Stack } from "./stack";
 

@@ -1,3 +1,10 @@
+/**
+ * Presentational Confirm and Prompt dialogs built on the base Dialog primitive.
+ * Both are fully controlled (`open` + `onConfirm`/`onCancel`); the imperative
+ * promise-returning wrappers live in `confirm-dialog.hooks.ts`, which feeds
+ * these components via `modalProps`. ConfirmVariant tunes the confirm-button
+ * emphasis (danger/warn/default).
+ */
 import * as React from "react";
 
 import { Button } from "./button";
