@@ -74,7 +74,10 @@ function hasRuntimeEvmService(runtime: AgentRuntime | null): boolean {
           ) {
             return true;
           }
-        } catch {}
+        } catch {
+          // A services map that throws on lookup just isn't the EVM wallet —
+          // probe the next candidate name.
+        }
       }
     }
     return false;
@@ -88,7 +91,9 @@ function hasRuntimeEvmService(runtime: AgentRuntime | null): boolean {
         if (getService(serviceName)) {
           return true;
         }
-      } catch {}
+      } catch {
+        // getService throwing means that plugin isn't loaded — probe the next name.
+      }
     }
     return false;
   } catch {

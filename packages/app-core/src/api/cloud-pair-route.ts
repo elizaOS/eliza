@@ -106,7 +106,7 @@ function renderRedirectHtml(apiKey: string): string {
         window.__ELIZAOS_APP_BOOT_CONFIG__ = next;
         window.__ELIZA_APP_BOOT_CONFIG__ = next;
         window[slot] = { current: next };
-      } catch (e) {}
+      } catch { /* best-effort boot-config write; the redirect below runs regardless */ }
       window.location.replace("/");
     })();
   </script>

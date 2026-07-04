@@ -185,7 +185,10 @@ async function fetchLocalJson<T>(
       });
       if (!response.ok) continue;
       return (await response.json()) as T;
-    } catch {}
+    } catch {
+      // Best-effort local probe: an unreachable candidate base URL means try
+      // the next one; all-unreachable falls through to `return null`.
+    }
   }
   return null;
 }

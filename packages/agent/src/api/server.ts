@@ -4709,7 +4709,10 @@ export async function startApiServer(opts?: {
       );
       try {
         socket.destroy();
-      } catch {}
+      } catch {
+        // Best-effort teardown of an already-errored upgrade socket; a throw
+        // here has nowhere useful to go and must not re-crash the handler.
+      }
     });
     try {
       const wsUrl = new URL(
