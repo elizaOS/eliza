@@ -1,3 +1,10 @@
+/**
+ * Drift tests for literal contract exports consumed outside @elizaos/contracts.
+ *
+ * Runtime assertions pin the exported tuple values while expectTypeOf checks
+ * keep their public union types aligned with those literals.
+ */
+
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import {
 	type BscTradeRoutePreference,

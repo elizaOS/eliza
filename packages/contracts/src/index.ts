@@ -1,3 +1,7 @@
+/**
+ * Barrel exports for every public type contract module in this package.
+ */
+
 export * from './cloud-topology.js';
 export * from './deployment.js';
 export * from './roles.js';
