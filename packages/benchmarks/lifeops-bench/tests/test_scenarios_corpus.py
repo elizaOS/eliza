@@ -69,28 +69,29 @@ def test_corpus_size_meets_minimum() -> None:
 
 
 def test_corpus_expands_current_core_by_exactly_10x() -> None:
-    # 1314 distinct base scenarios (1260 prior + 18 issue #12279 traveler
+    # 1400 distinct base scenarios (1260 prior + 18 issue #12279 traveler
     # timezone scenarios + 18 issue #12282 neurotypical-control scenarios +
-    # 18 issue #12281 comms-flood scenarios), each re-emitted 10x under fixed
-    # prompt-prefix framings = 14454
+    # 18 issue #12281 comms-flood scenarios + 32 issue #12278 irregular-sleep
+    # scenarios + 54 issue #12280 ADHD/low-activation scenarios), each re-emitted
+    # 10x under fixed prompt-prefix framings = 15400
     # robustness runs. The legacy keys
     # (existing/added/total/multiplierAdded) stay pinned for back-compat; the
     # base/variantsPerBase/totalRuns/summary keys state the split.
     assert count_lifeops_scenarios() == {
         "suite": "lifeops-bench",
-        "existing": 1314,
-        "added": 13140,
-        "total": 14454,
+        "existing": 1400,
+        "added": 14000,
+        "total": 15400,
         "multiplierAdded": 10,
-        "base": 1314,
+        "base": 1400,
         "variantsPerBase": 10,
-        "totalRuns": 14454,
-        "summary": "1314 base scenarios; 10x prompt-prefix robustness variants = 14454 runs",
+        "totalRuns": 15400,
+        "summary": "1400 base scenarios; 10x prompt-prefix robustness variants = 15400 runs",
     }
     assert validate_lifeops_scenarios() == {
         "valid": True,
-        "total": 14454,
-        "uniqueIds": 14454,
+        "total": 15400,
+        "uniqueIds": 15400,
         "duplicateIds": [],
         "emptyInstructions": [],
         "expansionMatches": True,
