@@ -1,4 +1,7 @@
-/** Payment-source / transaction / recurring-charge types for the finance back-end. */
+/**
+ * Finance payment types describe payment sources, transactions, spending
+ * summaries, and recurring charges.
+ */
 export type LifeOpsPaymentSourceKind =
   | "csv"
   | "plaid"

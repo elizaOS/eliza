@@ -1,12 +1,7 @@
-// Unit tests for the load-bearing minor-units -> currency render helper.
-//
-// The CLAUDE.md contract: "Currency amounts are stored as minor units (cents)
-// in amountMinor ... convert at the render boundary." `formatMinor` IS that
-// boundary, so its conversion (cents -> major units via Intl.NumberFormat) and
-// its invalid-ISO-code catch fallback are asserted here independent of the DOM.
-//
-// Expected formatted strings were verified against Node's full-ICU
-// Intl.NumberFormat output (the same engine the test runner uses).
+/**
+ * Currency formatting tests pin the finance view boundary that converts stored
+ * minor units into user-facing Intl currency strings.
+ */
 
 import { describe, expect, it } from "vitest";
 import { formatMinor } from "./FinancesView.tsx";

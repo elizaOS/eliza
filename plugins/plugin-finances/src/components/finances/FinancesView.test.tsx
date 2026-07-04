@@ -1,6 +1,6 @@
-// @vitest-environment jsdom
-
 /**
+ * @vitest-environment jsdom
+ *
  * Drives the unified FinancesView (the single GUI/XR data wrapper) through the
  * rendered DOM: the same component the bundle exports for both the "gui" and
  * "xr" modalities. It reads the four read-only money endpoints PA serves:
@@ -17,10 +17,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-// `@elizaos/ui` is the giant renderer barrel; FinancesView only touches
-// `client.getBaseUrl()` (default fetcher seam, overridden in every test) and
-// `client.sendChatMessage()` (connect + drill-down affordances). The spatial
-// primitives come from the separate `@elizaos/ui/spatial` subpath, not mocked.
+// FinancesView only touches base URL and chat affordances from the UI client.
 const { sendChatMessage } = vi.hoisted(() => ({ sendChatMessage: vi.fn() }));
 vi.mock("@elizaos/ui", () => ({
   client: {

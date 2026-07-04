@@ -1,5 +1,7 @@
-/** Vitest config for @elizaos/plugin-finances (module aliases + test globs). */
-
+/**
+ * Vitest configuration for finances unit and React view tests with local module
+ * aliases.
+ */
 import { createRequire } from "node:module";
 import path from "node:path";
 import { defineConfig } from "vitest/config";
@@ -8,9 +10,7 @@ const require = createRequire(import.meta.url);
 
 export default defineConfig({
   resolve: {
-    // Pin a single React copy so jsdom view tests do not mix the workspace and
-    // hoisted React peers (which breaks hooks / rendering). Mirrors
-    // plugin-facewear / plugin-documents.
+    // Pin one React copy so jsdom view tests do not mix workspace and hoisted peers.
     alias: [
       {
         find: /^react$/,
