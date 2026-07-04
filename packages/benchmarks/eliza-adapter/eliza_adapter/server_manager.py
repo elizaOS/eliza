@@ -23,18 +23,23 @@ logger = logging.getLogger(__name__)
 def _find_repo_root() -> Path:
     """Walk up from this file to find the elizaOS repo root.
 
-    The repo root is the directory containing `packages/app-core/src/benchmark/server.ts`.
-    Older layouts used `packages/eliza/`; both are checked.
+    The repo root is the directory containing `packages/lifeops-bench/src/server.ts`.
+    Older layouts kept the server under `packages/app-core/` or `packages/eliza/`;
+    all are checked for backward compatibility.
     """
     current = Path(__file__).resolve()
     for parent in current.parents:
+        if (parent / "packages" / "lifeops-bench" / "src" / "server.ts").exists():
+            return parent
         if (parent / "packages" / "app-core" / "src" / "benchmark" / "server.ts").exists():
             return parent
         if (parent / "packages" / "eliza" / "src" / "benchmark" / "server.ts").exists():
             return parent
     raise FileNotFoundError(
-        "Could not locate repository root "
-        "(expected packages/app-core/src/benchmark/server.ts or packages/eliza/src/benchmark/server.ts)"
+        "Could not locate repository root (expected "
+        "packages/lifeops-bench/src/server.ts, "
+        "packages/app-core/src/benchmark/server.ts, or "
+        "packages/eliza/src/benchmark/server.ts)"
     )
 
 
@@ -302,6 +307,10 @@ class ElizaServerManager:
             return
 
         candidates = [
+            (
+                self.repo_root / "packages" / "lifeops-bench" / "src" / "server.ts",
+                self.repo_root / "packages" / "lifeops-bench",
+            ),
             (
                 self.repo_root / "packages" / "app-core" / "src" / "benchmark" / "server.ts",
                 self.repo_root / "packages" / "app-core",

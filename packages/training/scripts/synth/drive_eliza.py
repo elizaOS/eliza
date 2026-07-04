@@ -4,7 +4,7 @@ Architecture:
     drive_eliza.py
         ↓ HTTP POST /api/benchmark/message
     eliza benchmark server (started by `startBenchmarkServer()` in
-        eliza/packages/app-core/src/benchmark/server.ts)
+        eliza/packages/lifeops-bench/src/server.ts)
         ↓ runs the FULL agent pipeline:
             shouldRespond → context_routing → action_planner → response
         ↓ each model call writes to the trajectory_collector service
@@ -33,7 +33,7 @@ Sub-agent capture (closes M8 / W1-T1 + W1-T2 + W1-T3):
 
 Usage:
     # 1. Start the eliza benchmark server (separate process):
-    cd /home/shaw/eliza && bun run --cwd packages/app-core src/benchmark/server.ts
+    cd /home/shaw/eliza && bun run --cwd packages/lifeops-bench src/server.ts
 
     # 2. Run this driver:
     .venv/bin/python scripts/synth/drive_eliza.py \\

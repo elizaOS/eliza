@@ -313,7 +313,7 @@ async def run_eliza_benchmark_mode(
     The Python AgentRuntime path is being removed: every task now routes
     through ``eliza_adapter.rlm_bench.run_eliza_bridge_benchmark`` which
     sends the context + question to the TS benchmark server
-    (``packages/app-core/src/benchmark/server.ts``) and parses the
+    (``packages/lifeops-bench/src/server.ts``) and parses the
     predicted answer out of the response.
 
     Args:
@@ -329,7 +329,7 @@ async def run_eliza_benchmark_mode(
 
     print("Running Eliza TS benchmark bridge mode...")
     print("Tasks are forwarded to the elizaOS TypeScript benchmark server")
-    print("at packages/app-core/src/benchmark/server.ts.")
+    print("at packages/lifeops-bench/src/server.ts.")
     print()
 
     configure_bridge_model_env(config)

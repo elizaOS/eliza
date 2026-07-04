@@ -37,7 +37,7 @@ curl -sL "$(curl -s https://pypi.org/pypi/<pkg>/json \
 
 ## 3. elizaOS TS bench bridge — RESOLVED (boots)
 
-`node --import tsx packages/app-core/src/benchmark/server.ts` (managed by
+`node --import tsx packages/lifeops-bench/src/server.ts` (managed by
 `ElizaServerManager`) boots with Node `v22.22.3` + `tsx`. Bridge-routed
 benchmarks now post for smithers: **mind2web 1.00** (this pass), with
 mint/realm/lifeops_bench already posted by the parallel factory work.

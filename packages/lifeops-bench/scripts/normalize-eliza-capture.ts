@@ -1,6 +1,6 @@
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { normalizeElizaCapture } from "../src/benchmark/replay-capture.ts";
+import { normalizeElizaCapture } from "../src/replay-capture.ts";
 
 interface CliArgs {
   input: string;

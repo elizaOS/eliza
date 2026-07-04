@@ -3,7 +3,7 @@ Terminal-Bench Runner
 
 Orchestrates the full Terminal-Bench evaluation pipeline. Every task is
 solved by the elizaOS TypeScript benchmark bridge
-(``packages/app-core/src/benchmark/server.ts``); the legacy Python
+(``packages/lifeops-bench/src/server.ts``); the legacy Python
 ``AgentRuntime`` path has been removed.
 """
 

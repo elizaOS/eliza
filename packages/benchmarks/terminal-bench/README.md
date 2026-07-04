@@ -175,7 +175,7 @@ asyncio.run(main())
 ### Bridge integration
 
 By default runs are routed through the elizaOS TypeScript benchmark
-bridge (`packages/app-core/src/benchmark/server.ts`). The CLI spawns the
+bridge (`packages/lifeops-bench/src/server.ts`). The CLI spawns the
 bridge automatically when `ELIZA_BENCH_URL` is unset, and
 `TerminalBenchRunner` delegates per-task decision-making to
 `ElizaBridgeTerminalAgent` (in `eliza_adapter.terminal_bench`). The

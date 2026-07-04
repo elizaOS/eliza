@@ -1,7 +1,7 @@
 """Eliza adapter for ClawBench scenarios.
 
 This adapter runs ClawBench scenarios against the eliza benchmark server
-(``packages/app-core/src/benchmark/server.ts``) instead of the legacy Groq
+(``packages/lifeops-bench/src/server.ts``) instead of the legacy Groq
 + mock-tools harness. It is the canonical entry point invoked by the
 benchmark registry's ``_clawbench_cmd``.
 

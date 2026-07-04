@@ -2280,6 +2280,23 @@
         "@types/node": "^24.0.0",
       },
     },
+    "packages/lifeops-bench": {
+      "name": "@elizaos/lifeops-bench",
+      "version": "0.1.0",
+      "dependencies": {
+        "@elizaos/agent": "workspace:*",
+        "@elizaos/core": "workspace:*",
+        "@elizaos/shared": "workspace:*",
+        "dotenv": "^17.2.3",
+        "zod": "^4.4.3",
+      },
+      "devDependencies": {
+        "@types/node": "25.6.2",
+        "tsx": "^4.21.0",
+        "typescript": "^6.0.3",
+        "vitest": "^4.0.18",
+      },
+    },
     "packages/logger": {
       "name": "@elizaos/logger",
       "version": "2.0.3-beta.7",
@@ -5495,6 +5512,7 @@
       "name": "@elizaos/plugin-workflow",
       "version": "2.0.3-beta.7",
       "dependencies": {
+        "@elizaos/shared": "workspace:*",
         "drizzle-orm": "^0.45.1",
         "effect": "^3.21.1",
         "quickjs-emscripten": "0.32.0",
@@ -6434,6 +6452,8 @@
     "@elizaos/interrupt-bench": ["@elizaos/interrupt-bench@workspace:packages/benchmarks/interrupt-bench"],
 
     "@elizaos/ios-native-deps": ["@elizaos/ios-native-deps@workspace:packages/native/ios-deps"],
+
+    "@elizaos/lifeops-bench": ["@elizaos/lifeops-bench@workspace:packages/lifeops-bench"],
 
     "@elizaos/logger": ["@elizaos/logger@workspace:packages/logger"],
 

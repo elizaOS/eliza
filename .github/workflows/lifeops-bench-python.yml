@@ -32,8 +32,8 @@ on:
       - "packages/benchmarks/lifeops-bench/**"
       - "packages/benchmarks/eliza-adapter/eliza_adapter/lifeops_bench.py"
       - "packages/benchmarks/eliza-adapter/eliza_adapter/client.py"
-      - "packages/app-core/src/benchmark/lifeops-bench-handler.ts"
-      - "packages/app-core/src/benchmark/lifeops-fake-backend.ts"
+      - "packages/lifeops-bench/src/lifeops-bench-handler.ts"
+      - "packages/lifeops-bench/src/lifeops-fake-backend.ts"
       - "plugins/plugin-personal-assistant/src/actions/**"
       - ".github/workflows/lifeops-bench-python.yml"
   workflow_dispatch:

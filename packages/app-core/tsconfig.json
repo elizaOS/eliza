@@ -162,7 +162,6 @@
   },
   "exclude": [
     "src/cli/**",
-    "src/benchmark/**",
     "src/**/*.stories.ts",
     "src/**/*.stories.tsx"
   ],

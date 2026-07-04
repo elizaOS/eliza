@@ -11,7 +11,7 @@
  *
  * Two surfaces guard against regression:
  *
- *  1. packages/app-core/src/benchmark/cerebras-autowire.ts auto-wires
+ *  1. packages/lifeops-bench/src/cerebras-autowire.ts auto-wires
  *     OPENAI_BASE_URL=https://api.cerebras.ai/v1 (and pins the model id
  *     and provider hint) so the bench server boots with Cerebras config
  *     the openai plugin actually reads.
@@ -198,7 +198,6 @@ describe("plugin-openai model construction (static source check)", () => {
   it("constructs the language model via openai.chat(), not openai.responses() or openai.languageModel()", () => {
     const textModelPath = join(
       HERE,
-      "..",
       "..",
       "..",
       "..",

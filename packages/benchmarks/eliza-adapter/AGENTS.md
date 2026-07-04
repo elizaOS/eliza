@@ -23,7 +23,7 @@ pip install -e .
 from eliza_adapter import ElizaServerManager
 
 mgr = ElizaServerManager()
-mgr.start()          # spawns node --import tsx packages/app-core/src/benchmark/server.ts
+mgr.start()          # spawns node --import tsx packages/lifeops-bench/src/server.ts
 client = mgr.client  # ready-to-use ElizaClient (HTTP to localhost:3939)
 
 resp = client.send_message("hello", context={"benchmark": "agentbench", "task_id": "1"})
@@ -36,7 +36,7 @@ Or point `ElizaClient` at an already-running server:
 
 ```bash
 # Start the TypeScript server manually (in the repo root)
-node --import tsx packages/app-core/src/benchmark/server.ts
+node --import tsx packages/lifeops-bench/src/server.ts
 ```
 
 ```python
@@ -88,7 +88,7 @@ subprocess calls.
 
 ## Notes
 
-- The TypeScript server lives at `packages/app-core/src/benchmark/server.ts`.
+- The TypeScript server lives at `packages/lifeops-bench/src/server.ts`.
   `ElizaServerManager` auto-locates it by walking up from `__file__`.
 - Default port is `3939`; override with `ELIZA_BENCH_PORT`.
 - `BENCHMARK_HARNESS` / `ELIZA_BENCH_HARNESS` routes `ElizaClient` through

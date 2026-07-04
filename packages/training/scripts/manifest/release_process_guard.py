@@ -15,7 +15,7 @@ BLOCKED_PATTERNS: tuple[str, ...] = (
     "ollama runner",
     "kokoro_e2e",
     "eliza1_eval_suite",
-    "benchmark/server.ts",
+    "lifeops-bench/src/server.ts",
     "benchmarks.realm.cli",
     "mtp_drafter_runtime_smoke",
     "elizaos_webshop",

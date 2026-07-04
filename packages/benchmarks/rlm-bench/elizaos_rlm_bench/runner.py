@@ -7,7 +7,7 @@ Supports the following execution modes:
 - stub: Fast testing with heuristic-based mock
 - rlm: Direct RLM plugin for recursive inference (bypasses Eliza runtime)
 - eliza: Full elizaOS agent loop, dispatched via the elizaOS TypeScript
-  benchmark bridge (``packages/app-core/src/benchmark/server.ts``) — the
+  benchmark bridge (``packages/lifeops-bench/src/server.ts``) — the
   Python ``AgentRuntime`` path has been removed; ``run_benchmark.py``
   invokes ``eliza_adapter.rlm_bench.run_eliza_bridge_benchmark`` directly
   for this mode and never reaches ``RLMBenchRunner.run_task('eliza')``.

@@ -31,7 +31,7 @@ The Python client side can live in a local adapter directory such as `benchmarks
 npm run benchmark:server
 
 # or directly
-node --import tsx src/benchmark/server.ts
+node --import tsx src/server.ts
 ```
 
 The server prints `ELIZA_BENCH_READY port=<port>` when ready.
@@ -40,13 +40,13 @@ The server prints `ELIZA_BENCH_READY port=<port>` when ready.
 
 ```bash
 # benchmark-focused unit tests
-bunx vitest run src/benchmark/*.test.ts
+bunx vitest run --config vitest.config.ts
 
 # watch a live benchmark smoke run end-to-end
 bun run benchmark:watch
 
 # see the full benchmark testing/checklist protocol
-cat src/benchmark/TESTING_PROTOCOL.md
+cat src/TESTING_PROTOCOL.md
 ```
 
 ## HTTP API

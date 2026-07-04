@@ -3,7 +3,7 @@
 Run OSWorld benchmark with the Eliza bridge agent.
 
 Routes ALL decision-making through the elizaOS TypeScript benchmark
-bridge (``packages/app-core/src/benchmark/server.ts``); the legacy
+bridge (``packages/lifeops-bench/src/server.ts``); the legacy
 Python ``AgentRuntime`` path has been removed.
 
 Usage:
