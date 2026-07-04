@@ -61,9 +61,9 @@ import {
   type TextToSpeechParams,
   type TranscriptionParams,
 } from "@elizaos/core";
-// @elizaos/shared/local-inference is no longer imported here: every AOSP TTS
-// path now flows through `makeAospFusedKokoroTextToSpeechHandler` below,
-// which dlopen's `libelizainference.so` via bun:ffi and synthesizes Kokoro
+// @elizaos/shared/local-inference is intentionally not imported here: every
+// AOSP TTS path flows through `makeAospFusedKokoroTextToSpeechHandler` below,
+// which dlopens `libelizainference.so` via bun:ffi and synthesizes Kokoro
 // TTS in-process through the fused `eliza_inference_kokoro_*` ABI.
 import { writeAospLlamaDebugLog } from "./aosp-debug-log.js";
 import {

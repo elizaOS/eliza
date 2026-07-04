@@ -1,4 +1,9 @@
 #!/usr/bin/env bun
+/**
+ * CLI wrapper around the memory-benchmark service: loads a local model (optionally
+ * the installed default) and measures peak RSS across a generation run, printing a
+ * summary or JSON report. Tracks the on-device memory budget for Eliza-1 tiers.
+ */
 import {
 	runMemoryBenchmark,
 	summarizeMemoryBenchmark,

@@ -1,3 +1,10 @@
+/**
+ * Startup validation for the OpenAI provider, run from the plugin's `init`: it
+ * fires a best-effort `GET /models` against the resolved base URL so a missing
+ * or invalid key surfaces as an early warning rather than a first-call failure.
+ * Browser builds skip the check (no server-side key). Also silences the AI SDK
+ * warning log globally.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import type { OpenAIPluginConfig } from "./types";

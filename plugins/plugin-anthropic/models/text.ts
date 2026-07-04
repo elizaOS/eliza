@@ -1,3 +1,21 @@
+/**
+ * Text-generation core for every Anthropic text/reasoning `ModelType`. Exposes
+ * the per-slot handlers (`handleTextSmall`, `handleTextLarge`,
+ * `handleReasoningLarge`, `handleActionPlanner`, …), each of which resolves its
+ * default model from `utils/config` and calls the shared `generateTextWithModel`.
+ *
+ * `resolveTextParams` normalizes the request before it reaches the AI SDK:
+ * builds the canonical system prompt, applies prompt-cache breakpoints, forces
+ * `temperature=1` for opus-4 / temperature-locked models, drops `topP` when
+ * both topP and temperature are set (the API rejects both), and caps
+ * `maxTokens`. Streaming vs non-streaming is chosen per request; tool-using and
+ * `ELIZA_ANTHROPIC_DISABLE_STREAM` requests take the non-streaming path to avoid
+ * `AI_NoOutputGeneratedError` on tool_use-only responses. `responseSchema`
+ * requests build a native AI SDK `output` object and return parsed JSON.
+ *
+ * When the auth mode is `cli`, generation is delegated to `claude -p` via
+ * `generateViaCli` / `streamViaCli` instead of the SDK client.
+ */
 import type {
   GenerateTextParams,
   IAgentRuntime,

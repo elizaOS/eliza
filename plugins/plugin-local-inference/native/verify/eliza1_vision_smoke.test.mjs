@@ -1,3 +1,8 @@
+/**
+ * Deterministic coverage for the eliza1_vision_smoke report builder and
+ * vision-artifact resolver, exercised over temp bundles with a missing mtmd
+ * binary. No real model — verifies the fail-closed report shape only.
+ */
 import assert from "node:assert/strict";
 import {
   mkdirSync,

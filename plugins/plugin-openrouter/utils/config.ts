@@ -1,3 +1,12 @@
+/**
+ * Setting resolution for the plugin. `getSetting` reads character settings first
+ * (`runtime.getSetting`), then `process.env`, then a caller default. The
+ * `get*Model` helpers layer the priority the README documents: `OPENROUTER_*`
+ * variant, then the generic (`SMALL_MODEL`, …) fallback, then a hard default —
+ * with nano/medium/mega/response-handler/action-planner cascading onto their
+ * base tier when unset. Also holds the default model constants and the
+ * base-URL/dimension/cleanup accessors.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 
 export const DEFAULT_BASE_URL = "https://openrouter.ai/api/v1";

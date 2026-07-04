@@ -1,3 +1,4 @@
+/** Public surface of the local voice pipeline: audio ingest, barge-in, cancellation, streaming ASR, phrase scheduling, speaker attribution, and the engine bridge. */
 export {
 	type AttributedTurn,
 	type AttributedTurnListener,

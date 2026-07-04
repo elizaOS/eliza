@@ -1,3 +1,10 @@
+/**
+ * Plugin `init` hook: warns (on Node) when no NEAR AI API key is resolvable, so
+ * text generation degrades to a limited state rather than failing silently.
+ * Browser builds skip the warning since the key is expected to live behind a
+ * proxy. Also defines `PluginConfig`, the typed shape of the `NEARAI_*` env
+ * passthrough declared in `index.ts`.
+ */
 import { type IAgentRuntime, logger } from "@elizaos/core";
 import { getApiKeyOptional, isBrowser } from "./utils/config";
 

@@ -1,3 +1,7 @@
+/**
+ * Shape tests for Cerebras-mode config resolution (base URL, key, model getters)
+ * and the deterministic local embedding fallback. Mocked runtime, no network.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 

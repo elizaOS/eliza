@@ -1,3 +1,4 @@
+/** Unit tests for `MemoryMonitor` pressure sampling over shared voice resources. Deterministic. */
 import { describe, expect, it } from "vitest";
 import { MemoryMonitor } from "./memory-monitor";
 import {

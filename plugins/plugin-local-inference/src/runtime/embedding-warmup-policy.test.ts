@@ -1,3 +1,8 @@
+/**
+ * Unit tests for `shouldWarmupLocalEmbeddingModel`: the env-flag matrix that
+ * gates GGUF embedding prefetch (skip/disable plus cloud-embeddings interplay).
+ */
+
 import { afterEach, describe, expect, it } from "vitest";
 import { shouldWarmupLocalEmbeddingModel } from "./embedding-warmup-policy";
 

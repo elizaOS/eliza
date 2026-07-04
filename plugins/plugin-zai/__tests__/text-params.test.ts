@@ -1,3 +1,4 @@
+/** Unit tests for text-param resolution (model selection, max-token caps, thinking body) driving mocked `ai.generateText` and the z.ai client — no live model. */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const generateTextMock = vi.fn(async () => ({ text: "ok", usage: undefined }));

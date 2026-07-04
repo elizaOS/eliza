@@ -1,3 +1,4 @@
+/** Covers the voice E2E harness core scoring: WER, artifact validation, and barge-in. Deterministic, fixture inputs. */
 import { describe, expect, it } from "vitest";
 import {
 	assertRequiredVoiceArtifacts,

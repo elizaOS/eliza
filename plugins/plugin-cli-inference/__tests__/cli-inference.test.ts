@@ -1,3 +1,11 @@
+/**
+ * Unit and opportunistic real-binary tests for the CLI inference route: the
+ * `ELIZA_CHAT_VIA_CLI` auto-enable gate, backend resolution, the large-tier
+ * model map, and the claude/codex spawn plus JSONL-parse and prompt-flatten
+ * paths. The child-process spawn seam is mocked so no real model runs; the few
+ * real-binary cases are skipped unless `claude`/`codex` resolve through the SOC2
+ * allowlist on this box.
+ */
 import type { ChatMessage, PluginAutoEnableContext } from "@elizaos/core";
 import { afterEach, describe, expect, it } from "vitest";
 import { shouldEnable } from "../auto-enable";

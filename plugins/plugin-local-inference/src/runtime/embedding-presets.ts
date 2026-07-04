@@ -1,3 +1,13 @@
+/**
+ * Hardware-tiered presets for the local `TEXT_EMBEDDING` model.
+ *
+ * Maps a device's probe (Apple Silicon / GPU / RAM) to one of three tiers —
+ * all currently gte-small (384-dim, ~64MB fp16 GGUF), differing only in GPU
+ * offload. The dimension is fixed at 384 to match plugin-sql's `dim384` column
+ * exactly, so no per-device model juggling or truncation is needed. Consumed by
+ * `ensureLocalInferenceHandler` and the embedding warm-up path.
+ */
+
 import os from "node:os";
 import type { HardwareProbe } from "../services/types.js";
 

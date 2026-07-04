@@ -1,3 +1,14 @@
+/**
+ * Assembles the `nearaiPlugin` Plugin object: registers `TEXT_SMALL` and
+ * `TEXT_LARGE` model handlers that route text generation through NEAR AI
+ * Cloud's OpenAI-compatible inference API, seeds `config` from the `NEARAI_*`
+ * environment variables, and wires initialization via `initializeNearAI`.
+ *
+ * The plugin registers no actions, providers, evaluators, or routes — only the
+ * two text-model handlers (delegated to `models/text.ts`). The bundled
+ * `tests` suite drives both handlers against a live NEAR AI key when present.
+ * Node and browser entry points re-export from here.
+ */
 import type {
   GenerateTextParams,
   IAgentRuntime,

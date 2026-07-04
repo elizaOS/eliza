@@ -1,3 +1,9 @@
+/**
+ * Structural tests for the Capacitor-llama `local-ai` plugin's metadata and
+ * handler registration (name, description, init, model-handler presence). No
+ * native model — pure object-shape assertions.
+ */
+
 import { ModelType } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { configSchema } from "../environment";

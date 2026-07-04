@@ -1,3 +1,4 @@
+/** Barrel re-exporting every OpenAI model handler for registration in the plugin. */
 export { handleTextToSpeech, handleTranscription } from "./audio";
 export { handleTextEmbedding } from "./embedding";
 export { handleImageDescription, handleImageGeneration } from "./image";

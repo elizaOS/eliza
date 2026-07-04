@@ -1,3 +1,11 @@
+/**
+ * HTTP handler for the local-inference catalog, download orchestration, active-
+ * model status, hardware detection, and chat-command routes — the root
+ * `@elizaos/plugin-local-inference` subpath (app-core mounts the compat variant
+ * in `routes/local-inference-compat-routes.ts`). The heavy service graph
+ * (engine / voice / catalog / downloader) is imported lazily on first route use
+ * to keep it off the boot critical path (#9565).
+ */
 import crypto from "node:crypto";
 import * as dns from "node:dns";
 import fs from "node:fs";

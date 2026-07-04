@@ -1,3 +1,9 @@
+/**
+ * Fuses text-tag, ASR-metadata, and acoustic-feature signals into a single
+ * emotion label for a voice turn, recording which method produced it so
+ * downstream consumers know how confident the attribution is. Sits between the
+ * expressive-tag parser and the acoustic emotion classifier.
+ */
 import {
 	asrEmotionToTag,
 	EXPRESSIVE_EMOTION_TAGS,

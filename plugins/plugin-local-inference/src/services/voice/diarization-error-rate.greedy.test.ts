@@ -1,3 +1,4 @@
+/** Covers the greedy speaker-mapping fallback in `computeDiarizationErrorRate`. Deterministic. */
 import { describe, expect, it } from "vitest";
 import {
 	computeDiarizationErrorRate,

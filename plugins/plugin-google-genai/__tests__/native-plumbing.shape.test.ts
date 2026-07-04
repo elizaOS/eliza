@@ -1,3 +1,10 @@
+/**
+ * Unit tests for the generic-to-Google request/response plumbing in
+ * `models/text`: tool + toolChoice + responseSchema + attachment mapping into
+ * `generateContent`, native tool-call extraction, duplicate-system-message
+ * elision, and the unnamed-tool / uninitialized-client error paths. The core
+ * runtime and `generateContent` are mocked — no live model.
+ */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({

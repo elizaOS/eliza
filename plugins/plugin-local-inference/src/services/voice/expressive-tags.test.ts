@@ -1,3 +1,4 @@
+/** Unit tests for parsing, detecting, and stripping expressive emotion tags in text. Deterministic. */
 import { describe, expect, it } from "vitest";
 import {
 	emotionToEnum,

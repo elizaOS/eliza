@@ -1,3 +1,4 @@
+/** Re-exports the acoustic-echo-cancellation playback-delay estimators from `@elizaos/shared/voice/aec`. */
 export {
 	DEFAULT_PLAYBACK_DELAY_MS,
 	type EchoDelayEstimate,

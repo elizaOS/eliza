@@ -1,3 +1,10 @@
+/**
+ * Unit tests for the START/STOP_TRANSCRIPTION actions and `emitVoiceControl`.
+ * A fake runtime with a stubbed agent-event bus stands in for the real service;
+ * asserts the one-way voice-control command is emitted, and reported as
+ * undeliverable when no bus is connected.
+ */
+
 import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import {

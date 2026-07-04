@@ -1,3 +1,9 @@
+/**
+ * Nominal string brands (`ValidatedApiKey`, `ModelName`) plus their
+ * constructing assertions, and the `ProviderOptions` shape for nearai-specific
+ * request fields. Construct branded values only through `assertValidApiKey` /
+ * `createModelName` — never cast.
+ */
 export type ValidatedApiKey = string & { readonly __brand: "ValidatedApiKey" };
 
 export type ModelName = string & { readonly __brand: "ModelName" };

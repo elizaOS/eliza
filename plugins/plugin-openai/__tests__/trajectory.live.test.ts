@@ -1,3 +1,7 @@
+/**
+ * Live test asserting that the text handlers record their LLM call into the
+ * active trajectory context. Post-merge lane, real model.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import { runWithTrajectoryContext } from "@elizaos/core";
 import { describe, expect, it } from "vitest";

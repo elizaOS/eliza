@@ -1,3 +1,4 @@
+/** Covers speaker-preset path resolution and the `SpeakerPresetCache` LRU. Deterministic, temp fixtures. */
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";

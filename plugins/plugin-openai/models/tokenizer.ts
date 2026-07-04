@@ -1,3 +1,8 @@
+/**
+ * `TEXT_TOKENIZER_ENCODE`/`DECODE` handlers backed by js-tiktoken: they validate
+ * params and delegate to the offline tokenization helpers, never hitting the
+ * network.
+ */
 import type { DetokenizeTextParams, IAgentRuntime, TokenizeTextParams } from "@elizaos/core";
 import { detokenizeText, tokenizeText } from "../utils/tokenization";
 

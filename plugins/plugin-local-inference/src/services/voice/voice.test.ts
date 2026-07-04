@@ -1,3 +1,4 @@
+/** Integration-style coverage of the voice scheduler pipeline: phrase chunking, rollback, and barge-in wired together. Deterministic. */
 import { describe, expect, it, vi } from "vitest";
 import { BargeInController } from "./barge-in";
 import { RuleBasedEnglishPhonemeTokenizer } from "./phoneme-tokenizer";

@@ -1,3 +1,8 @@
+/**
+ * Vitest config for the live-API lane (`*.live.test.ts`): resolves the
+ * workspace `@elizaos/*` packages (core, plugin-sql) to source so a real
+ * runtime can boot against the live Anthropic API.
+ */
 import path from "node:path";
 import { defineConfig } from "vitest/config";
 

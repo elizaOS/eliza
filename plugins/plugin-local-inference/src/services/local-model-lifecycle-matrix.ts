@@ -1,3 +1,10 @@
+/**
+ * Builds the per-tier, per-component (text / vision / MTP / embedding) lifecycle
+ * matrix that reports each Eliza-1 model's install, download, and assignment
+ * state against the current hardware probe. Cross-references the catalog,
+ * installed registry, supported backends, and recommendation logic to tell the
+ * UI which components are ready, downloadable, or unfit on this device.
+ */
 import fs from "node:fs/promises";
 import path from "node:path";
 import { EMBEDDING_PRESETS } from "../runtime/embedding-presets";

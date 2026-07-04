@@ -1,3 +1,4 @@
+/** Covers `VoiceAttributionPipeline` end-to-end over diarizer + encoder + profile store. Deterministic, fake components. */
 import { describe, expect, it } from "vitest";
 import {
 	VOICE_PROFILE_RECORD_SCHEMA_VERSION,

@@ -1,3 +1,4 @@
+/** Covers the Kokoro mock runtime used by the TTS backend tests. Deterministic. */
 import { afterEach, describe, expect, it } from "vitest";
 
 import { KokoroMockRuntime } from "../kokoro-runtime";

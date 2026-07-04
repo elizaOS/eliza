@@ -1,3 +1,16 @@
+/**
+ * Plugin definition for the Anthropic Claude model provider: builds the
+ * `anthropicPlugin` object that registers a handler for every text, reasoning,
+ * image-description, response-handler, and action-planner `ModelType` into the
+ * elizaOS model dispatch layer. Each handler delegates to the functions in
+ * `models/`; no actions, providers, evaluators, services, routes, or events are
+ * registered.
+ *
+ * Also carries the built-in `TestSuite` that exercises key validation and a few
+ * live `useModel()` calls, and the `config` block declaring every supported env
+ * var. `initializeAnthropic` (init.ts) runs at plugin init to detect the auth
+ * mode. The Node and browser build entrypoints re-export this module.
+ */
 import type {
   GenerateTextParams,
   IAgentRuntime,

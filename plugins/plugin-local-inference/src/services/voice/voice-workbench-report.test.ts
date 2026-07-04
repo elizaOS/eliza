@@ -1,3 +1,4 @@
+/** Covers building the voice-workbench report, its markdown rendering, and baseline regression detection. Deterministic. */
 import { describe, expect, it } from "vitest";
 import {
 	scoreBargeInGating,

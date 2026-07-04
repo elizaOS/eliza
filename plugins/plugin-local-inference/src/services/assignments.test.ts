@@ -1,3 +1,4 @@
+/** Covers reading/writing model-slot assignments and building recommended defaults against a real temp state dir. No model. */
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";

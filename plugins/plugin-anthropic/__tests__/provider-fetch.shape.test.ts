@@ -1,3 +1,9 @@
+/**
+ * Shape tests for the custom fetch wrapper in the client factory: verifies it
+ * survives malformed JSON request bodies and strips `temperature` only when a
+ * JSON body carries both `top_p` and a zero temperature. `@ai-sdk/anthropic` is
+ * mocked to capture the wrapped fetch; no live API.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 

@@ -1,3 +1,4 @@
+/** Covers remote lifecycle checks: request headers, URL validation, and manifest file-path flattening for hosted bundles. Deterministic. */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
 	checkLifecycleUrl,

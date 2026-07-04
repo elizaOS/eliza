@@ -1,3 +1,4 @@
+/** Unit tests for runtime-mode / platform-class inference from env, including that removed spawn/http aliases resolve to null. Deterministic. */
 import { describe, expect, it } from "vitest";
 
 import {

@@ -1,3 +1,9 @@
+/**
+ * Live test that real `TEXT_SMALL`/`TEXT_LARGE` and native tool-call generation
+ * flow through `recordLlmCall` into the trajectory logger with correct step id,
+ * action type, token counts, and response. Hits the real Gemini API and
+ * self-skips when `GOOGLE_GENERATIVE_AI_API_KEY` is unset.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import { runWithTrajectoryContext } from "@elizaos/core";
 import { describe, expect, it } from "vitest";

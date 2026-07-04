@@ -1,3 +1,21 @@
+/**
+ * Text-generation handlers backing every text `ModelType` tier
+ * (nano/small/medium/large/mega, response-handler, action-planner). Each
+ * handler resolves its concrete Gemini model name via `../utils/config`, builds
+ * a `generateContent` request, and runs it through `recordLlmCall` so the call
+ * lands in the trajectory log before returning.
+ *
+ * This module owns the translation between elizaOS's generic call shape and
+ * Google's native `@google/genai` protocol: `normalizeToolsForGoogle` /
+ * `normalizeToolConfigForGoogle` convert generic or native tool definitions to
+ * `functionDeclarations` + `functionCallingConfig`, `resolveResponseJsonSchema`
+ * routes structured-output schemas into `responseJsonSchema`, and
+ * `buildPromptParts` inlines attachments (data URLs, remote URIs, raw bytes).
+ * On the way back, `buildGoogleNativeTextResult` folds text, tool calls, finish
+ * reason, and token usage into a single object that is returned as a
+ * string-with-attached-fields (`GoogleTextModelResult`) whenever the caller
+ * passed messages/tools/toolChoice/responseSchema, else as plain text.
+ */
 import type {
   GenerateTextParams,
   IAgentRuntime,

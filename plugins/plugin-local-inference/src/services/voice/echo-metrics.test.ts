@@ -1,3 +1,4 @@
+/** Unit tests for `computeErle` echo-return-loss-enhancement metrics. Deterministic. */
 import { describe, expect, it } from "vitest";
 import { computeErle } from "./echo-metrics";
 

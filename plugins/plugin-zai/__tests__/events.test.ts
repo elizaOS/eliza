@@ -1,3 +1,4 @@
+/** Unit tests for `emitModelUsageEvent` token normalization, asserting the `MODEL_USED` payload against a mocked `runtime.emitEvent`. */
 import { EventType } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { emitModelUsageEvent } from "../utils/events";

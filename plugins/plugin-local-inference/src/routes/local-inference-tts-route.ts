@@ -1,3 +1,14 @@
+/**
+ * HTTP route for on-device text-to-speech — `POST /api/tts/local-inference`.
+ *
+ * `sanitizeLocalInferenceSpeechText` strips reasoning/tool tags, code fences,
+ * markdown, and URLs so the synthesizer never voices markup; the handler then
+ * drives the TEXT_TO_SPEECH model over the platform provider chain
+ * (`eliza-local-inference` → capacitor → device-bridge → AOSP) and returns the
+ * first provider's audio. The sanitizer and `normalizeAudioBytes` are exported
+ * as pure helpers for the route-contract fuzz tests.
+ */
+
 import type http from "node:http";
 import { type AgentRuntime, ModelType } from "@elizaos/core";
 import {

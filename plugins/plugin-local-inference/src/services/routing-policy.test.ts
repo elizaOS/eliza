@@ -1,3 +1,4 @@
+/** Covers the `PolicyEngine` auto policy: static tier selection, live-signal demotion, and per-modality independence. Deterministic, injected signals. */
 import { describe, expect, it } from "vitest";
 import { classifyDeviceTier, type DeviceTierAssessment } from "./device-tier";
 import type { HandlerRegistration } from "./handler-registry";

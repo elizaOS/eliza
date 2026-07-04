@@ -1,3 +1,4 @@
+/** Unit tests for the prompt/KV cache bridge: slot derivation, prefix hashing, cache-key resolution, and TTL-based eviction against a real temp cache dir. */
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";

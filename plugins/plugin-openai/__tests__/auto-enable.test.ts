@@ -1,3 +1,7 @@
+/**
+ * Unit test for `shouldEnable`: the provider auto-enables only when one of the
+ * OpenAI-compatible API keys is present. Pure function, no runtime.
+ */
 import type { PluginAutoEnableContext } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 

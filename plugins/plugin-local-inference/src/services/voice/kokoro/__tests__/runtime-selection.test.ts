@@ -1,3 +1,4 @@
+/** Covers Kokoro voice-backend selection and env-mode parsing. Deterministic. */
 import { describe, expect, it } from "vitest";
 import {
 	readVoiceBackendModeFromEnv,

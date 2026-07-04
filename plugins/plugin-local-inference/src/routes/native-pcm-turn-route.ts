@@ -1,3 +1,13 @@
+/**
+ * HTTP route for a native-captured voice turn — `POST /api/voice/native-pcm-turn`.
+ *
+ * Decodes a base64 Float32 mono PCM buffer plus its sample rate, then hands the
+ * turn to `localInferenceEngine.runVoiceTurn` (after staging the active bundle's
+ * ASR model) so a mobile WebView that captured audio natively can drive the full
+ * on-device voice pipeline. Turn lifecycle events are logged; engine failure
+ * surfaces as a 503.
+ */
+
 import type http from "node:http";
 import { logger, readJsonBody, sendJson, sendJsonError } from "@elizaos/core";
 import { localInferenceEngine } from "../services/engine";

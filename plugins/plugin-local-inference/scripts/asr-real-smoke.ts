@@ -94,7 +94,8 @@ try {
 	if (trimmed.length === 0) fail("empty transcript");
 	if ((words?.length ?? 0) < 5) fail(`too few words (${words?.length ?? 0})`);
 	// freeman.wav is several sentences. >=2 sentence-final marks proves the
-	// decode loop no longer early-stops at the first '.'/'?'/'!'.
+	// decode loop runs to completion rather than early-stopping at the first
+	// '.'/'?'/'!'.
 	if (sentenceCount < 2) {
 		fail(
 			`transcript has ${sentenceCount} sentence-final marks — looks truncated ` +

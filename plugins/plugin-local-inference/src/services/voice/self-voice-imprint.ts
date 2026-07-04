@@ -1,3 +1,9 @@
+/**
+ * Builds and maintains the agent's own voice centroid from its TTS output, so
+ * the speaker-attribution pipeline can recognize (and exclude) the assistant's
+ * playback as self rather than mis-attributing it to a human speaker. Encodes
+ * recent agent-TTS segments through the speaker encoder into a running centroid.
+ */
 import { averageEmbeddings, type SpeakerEncoder } from "./speaker/encoder";
 import {
 	SPEAKER_GGML_MIN_SAMPLES,

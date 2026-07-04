@@ -1,3 +1,4 @@
+/** Unit tests for voice metric-math helpers (rounding, percentiles). Deterministic. */
 import { describe, expect, it } from "vitest";
 import { percentile, round1, round4 } from "./metric-math";
 

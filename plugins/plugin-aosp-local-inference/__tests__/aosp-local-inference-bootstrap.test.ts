@@ -1,3 +1,11 @@
+/**
+ * Unit tests for the pure bootstrap helpers — load-arg building, generate
+ * token-budget resolution, embedding gating, bundled-model resolution, and
+ * memory-eviction thresholds. No native library or model is loaded; the
+ * helpers run against real filesystem tempdirs and env overrides, so the
+ * assertions cover the deterministic JS logic rather than the FFI boundary.
+ */
+
 import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";

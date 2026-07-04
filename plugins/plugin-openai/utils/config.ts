@@ -1,3 +1,11 @@
+/**
+ * Central settings and endpoint resolution for the plugin: `getSetting` reads
+ * runtime config first then `process.env`, and the typed getters here resolve
+ * every model slot, base URL, auth header, embedding dimension, and timeout with
+ * their documented fallback chains. Also home to provider-mode detection
+ * (Cerebras / EvoLink / proxy) and the browser-vs-node branch that decides
+ * whether an `Authorization` header is sent.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import { DEFAULT_CEREBRAS_TEXT_MODEL, logger } from "@elizaos/core";
 

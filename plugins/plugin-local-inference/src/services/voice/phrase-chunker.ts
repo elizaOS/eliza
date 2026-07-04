@@ -1,3 +1,9 @@
+/**
+ * Cuts the streaming token feed into speakable phrases so TTS can start before
+ * the model finishes a sentence: it breaks at the first clause/sentence-final
+ * punctuation or a hard word cap, whichever comes first. Feeds the voice
+ * scheduler's phrase pipeline.
+ */
 import type { PhonemeTokenizer } from "./phoneme-tokenizer";
 import type {
 	AcceptedToken,

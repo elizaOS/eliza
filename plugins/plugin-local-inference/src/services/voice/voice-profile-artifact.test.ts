@@ -1,3 +1,4 @@
+/** Covers voice-profile artifact construction, consent gating, and status. Deterministic. */
 import { describe, expect, it } from "vitest";
 import {
 	analyzeVoiceProfileWav,

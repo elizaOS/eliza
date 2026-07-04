@@ -1,3 +1,9 @@
+/**
+ * Audio model handlers: `handleTranscription` uploads audio to the transcription
+ * endpoint (sniffing the container via `detectAudioMimeType` to pick an upload
+ * filename), and `handleTextToSpeech` synthesizes speech via the TTS endpoint.
+ * Both accept the core param shapes as well as raw Blob/File/Buffer input.
+ */
 import type {
   TextToSpeechParams as CoreTextToSpeechParams,
   TranscriptionParams as CoreTranscriptionParams,

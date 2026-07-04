@@ -1,3 +1,4 @@
+/** Local transport/DTO interfaces for the Gemini provider's request and response shapes. */
 export interface TokenUsage {
   promptTokens: number;
   completionTokens: number;

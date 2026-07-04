@@ -1,3 +1,10 @@
+/**
+ * Boot-time API key validation for the plugin's `init` hook (node builds only).
+ * Warns rather than throws when `OPENROUTER_API_KEY` is missing so the agent can
+ * still start with limited functionality, and no-ops in browser environments
+ * where the key lives behind the proxy. Also silences the AI SDK warning log
+ * before any provider is constructed.
+ */
 import { type IAgentRuntime, logger } from "@elizaos/core";
 import { getApiKey, getBaseURL } from "./utils/config";
 

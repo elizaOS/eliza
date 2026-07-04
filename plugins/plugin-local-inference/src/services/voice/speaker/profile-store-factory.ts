@@ -5,8 +5,8 @@
  * Pipeline A (the Android live-frames path, `live-diarization-session.ts`) and
  * Pipeline B (the desktop speak-back loop, `engine.ts` → `engine-bridge.ts`)
  * must attribute the *same* person to the *same* profile regardless of which
- * path heard them. Both used to be free to `new VoiceProfileStore(...)` at their
- * own `$ELIZA_STATE_DIR/voice-profiles/` root; two stores over one dir race on
+ * path heard them. If each were free to `new VoiceProfileStore(...)` at its own
+ * `$ELIZA_STATE_DIR/voice-profiles/` root, two stores over one dir would race on
  * the shared `index.json` + `vp_*.json` records. This factory memoizes one
  * initialized store per resolved root so the two consumers share centroids,
  * Welford refinement, LRU state, and entity bindings.

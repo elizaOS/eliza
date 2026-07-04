@@ -1,3 +1,9 @@
+/**
+ * Warms the local voice stack (ASR + Kokoro TTS) once an Eliza-1 bundle becomes
+ * active, so the first real voice turn does not eat the model-load latency. Runs
+ * a throwaway transcribe + synthesize pass, deduped per model id so concurrent
+ * activations share one prewarm promise.
+ */
 import { logger } from "@elizaos/core";
 import { localInferenceEngine } from "./engine";
 

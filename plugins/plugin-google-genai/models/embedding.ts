@@ -1,3 +1,11 @@
+/**
+ * `TEXT_EMBEDDING` handler backed by Google's `text-embedding-004` (768-dim).
+ * A `null`/empty-object input is treated as an initialization probe and answered
+ * with a fixed 768-length marker vector so the runtime can size its embedding
+ * column without a network call; real text is truncated to the model's ~8192
+ * token limit, embedded, and reported via `emitModelUsageEvent`. Throws on empty
+ * text and on an empty API response rather than fabricating a vector.
+ */
 import type { IAgentRuntime, TextEmbeddingParams } from "@elizaos/core";
 import * as ElizaCore from "@elizaos/core";
 import { logger } from "@elizaos/core";

@@ -1,3 +1,4 @@
+/** Covers host lib-target resolution and bundle lib-file selection/staging naming for the FFI backend. Deterministic. */
 import { describe, expect, it } from "vitest";
 import {
 	libStagedName,

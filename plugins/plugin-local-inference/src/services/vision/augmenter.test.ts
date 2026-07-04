@@ -1,3 +1,4 @@
+/** Covers the vision context-augmenter registry and `augmentVisionRequest`. Deterministic. */
 import { afterEach, describe, expect, it } from "vitest";
 import {
 	augmentVisionRequest,

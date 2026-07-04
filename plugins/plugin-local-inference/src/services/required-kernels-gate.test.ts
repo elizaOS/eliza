@@ -1,3 +1,4 @@
+/** Verifies `assertRequiredKernelsPresent` fails closed when a manifest omits a required native kernel (native/CLAUDE.md §3#5). Deterministic. */
 import { describe, expect, it } from "vitest";
 import {
 	assertRequiredKernelsPresent,

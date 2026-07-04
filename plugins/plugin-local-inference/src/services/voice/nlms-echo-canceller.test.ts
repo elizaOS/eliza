@@ -1,3 +1,4 @@
+/** Covers the NLMS adaptive echo canceller and its opt-in residual suppressor (#9583/#9649). Deterministic. */
 import { describe, expect, it } from "vitest";
 import { NlmsEchoCanceller } from "./nlms-echo-canceller";
 

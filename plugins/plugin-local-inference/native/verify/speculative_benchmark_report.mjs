@@ -1,3 +1,9 @@
+/**
+ * Shared report shape for speculative-decode benchmarks (MTP, EAGLE3): builds the
+ * eliza.speculative-benchmark.v1 record — acceptance rate, speedup, timestamped
+ * report paths — from with/without-drafter runs. Consumed by mtp_runtime_smoke.mjs
+ * and eagle3_drafter_runtime_smoke.mjs.
+ */
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";

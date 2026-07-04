@@ -1,3 +1,4 @@
+/** Covers the headless voice-scenario runner: honesty contract, scoring, and audio-capture sink (#8934). Deterministic. */
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";

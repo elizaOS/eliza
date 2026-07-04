@@ -1,4 +1,10 @@
 #!/usr/bin/env node
+/**
+ * Runtime smoke for EAGLE3 speculative decoding: spawns the spec-capable
+ * llama-cli against a real Eliza-1 bundle with and without the EAGLE3 drafter and
+ * writes a speculative benchmark report (acceptance rate, speedup) via
+ * speculative_benchmark_report.mjs. Hits a real native backend and model files.
+ */
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";

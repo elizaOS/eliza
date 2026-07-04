@@ -1,3 +1,8 @@
+/**
+ * Live test hitting a real Cerebras endpoint through the plugin to verify
+ * provider-mode detection and text generation. Runs only in the post-merge lane
+ * with credentials.
+ */
 import { ModelType } from "@elizaos/core";
 import { expect, it } from "vitest";
 

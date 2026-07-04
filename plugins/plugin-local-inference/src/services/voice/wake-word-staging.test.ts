@@ -1,3 +1,4 @@
+/** Covers the wake-word staging plan (#9880). Deterministic. */
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";

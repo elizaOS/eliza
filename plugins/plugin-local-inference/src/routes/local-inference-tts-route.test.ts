@@ -1,3 +1,9 @@
+/**
+ * Tests for the TTS route and `sanitizeLocalInferenceSpeechText`: markup/tag
+ * stripping and the provider-chain dispatch. The TEXT_TO_SPEECH model is stubbed
+ * via a fake runtime; no audio is synthesized.
+ */
+
 import * as http from "node:http";
 import { Socket } from "node:net";
 import { describe, expect, it, vi } from "vitest";

@@ -1,3 +1,4 @@
+/** Unit tests for `installRouterHandler` wiring the routing-policy layer onto the runtime. Deterministic, fake runtime. */
 import { type AgentRuntime, ModelType } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { installRouterHandler, ROUTER_PROVIDER } from "./router-handler";

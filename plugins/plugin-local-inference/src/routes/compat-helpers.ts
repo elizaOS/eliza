@@ -1,3 +1,14 @@
+/**
+ * Shared auth and I/O helpers for the local-inference compat HTTP routes.
+ *
+ * Every `*-compat-routes.ts` handler authorizes through here: a request is
+ * trusted when it arrives on loopback with no proxy-forwarding header and a
+ * same-origin/loopback Host (`isTrustedLocalRequest`), otherwise it must present
+ * the configured API token (`getCompatApiToken`, constant-time `tokenMatches`).
+ * Also provides bounded JSON body reading and the JSON responders, which scrub
+ * `Error`/`stack` fields so a route failure never leaks a stack trace to callers.
+ */
+
 import crypto from "node:crypto";
 import type http from "node:http";
 import { isIP } from "node:net";

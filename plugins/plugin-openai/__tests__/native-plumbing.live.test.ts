@@ -1,3 +1,7 @@
+/**
+ * Live smoke test that `handleTextSmall` reaches a real endpoint and returns text
+ * plus usage. Post-merge lane only.
+ */
 import { expect, it } from "vitest";
 
 import { describeLive } from "../../../packages/app-core/test/helpers/live-agent-test";

@@ -1,3 +1,9 @@
+/**
+ * Static-source guard: every `SDK_PACKAGE` a session file lazily imports must be
+ * declared as an `optionalDependency` in package.json (scans the source text; no
+ * real SDK loaded), so the variable dynamic import can resolve when the backend
+ * is enabled while the plugin stays inert otherwise.
+ */
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

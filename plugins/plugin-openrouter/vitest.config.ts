@@ -1,3 +1,10 @@
+/**
+ * Default vitest config for the unit suite (`__tests__/**\/*.test.ts`). Excludes
+ * the `*.harness.test.ts` (real-PGLite) and `*.live.test.ts` (real-API) files —
+ * the guarded `models.live` suite runs only in the `post-merge` lane, and the
+ * unguarded native-plumbing live file stays excluded everywhere. Runs files
+ * sequentially and isolated, and redirects PGlite data to the OS temp dir.
+ */
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { defineConfig } from "vitest/config";
@@ -25,7 +32,6 @@ export default defineConfig({
     sequence: {
       shuffle: false,
     },
-    // Isolate test files
     isolate: true,
     fileParallelism: false,
     // Redirect PGlite data dir to OS temp so :memory: artifacts

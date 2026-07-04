@@ -1,3 +1,4 @@
+/** Proves the router dispatches via runtime introspection rather than a prototype patch. Deterministic, fake runtime. */
 import {
 	type AgentRuntime,
 	type IAgentRuntime,

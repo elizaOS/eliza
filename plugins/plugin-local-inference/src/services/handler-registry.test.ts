@@ -1,3 +1,4 @@
+/** Proves the handler registry populates via the core `getModelRegistrations()` snapshot plus the `MODEL_REGISTERED` event, never by monkey-patching `registerModel`. Fake runtime double, deterministic. */
 import type {
 	IAgentRuntime,
 	ModelRegisteredEventPayload,

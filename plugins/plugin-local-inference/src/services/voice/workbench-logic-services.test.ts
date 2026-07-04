@@ -1,3 +1,4 @@
+/** Covers `realDecisionLogicServices` across the built-in scenario matrix. Deterministic. */
 import { describe, expect, it } from "vitest";
 import { generateVoiceCorpus } from "./corpus-generator";
 import type { VoiceScenario } from "./voice-scenario";

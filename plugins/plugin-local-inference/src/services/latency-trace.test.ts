@@ -1,3 +1,4 @@
+/** Unit tests for the latency-trace recorder spanning the local-inference request timeline. Deterministic. */
 import { describe, expect, it } from "vitest";
 import {
 	buildVoiceLatencyDevPayload,

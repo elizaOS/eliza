@@ -1,3 +1,9 @@
+/**
+ * Retry and error-formatting helpers shared by the model handlers.
+ * `executeWithRetry` wraps a call with exponential backoff on transient
+ * failures; `formatModelError` produces a caller-facing message and
+ * `sanitizeUrlForLogs` strips secrets from URLs before they reach the logger.
+ */
 import { logger } from "@elizaos/core";
 
 interface RetryConfig {

@@ -1,3 +1,9 @@
+/**
+ * Plugin init step: `initializeAnthropic` resolves the effective `PluginConfig`
+ * from runtime settings, detects the auth mode (apikey / oauth / cli) via the
+ * config and credential-store helpers, and logs the chosen mode at startup. Runs
+ * once when `anthropicPlugin` is loaded; performs no network calls.
+ */
 import { type IAgentRuntime, logger } from "@elizaos/core";
 import { getApiKeyOptional, getAuthMode, isBrowser } from "./utils/config";
 import { getClaudeOAuthMeta, getClaudeOAuthToken } from "./utils/credential-store";

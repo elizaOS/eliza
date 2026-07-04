@@ -1,3 +1,4 @@
+/** Public surface of the local-inference service layer: backend dispatch, catalog, engine, arbiter, downloader, routing, and registry helpers. */
 export type { LocalInferenceLoader } from "./active-model";
 export {
 	assertVoiceBundleFitsHost,

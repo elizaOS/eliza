@@ -1,3 +1,16 @@
+/**
+ * Assembles `openaiPlugin` — the elizaOS `Plugin` object that registers every
+ * OpenAI-backed model handler on the `AgentRuntime`: text tiers (small→mega,
+ * response-handler, action-planner), embeddings, tokenizer, image
+ * generation/description, transcription, TTS, and deep research.
+ *
+ * Text/embedding/tokenizer/research handlers register statically via `models`.
+ * The media handlers (IMAGE, IMAGE_DESCRIPTION, TRANSCRIPTION, TEXT_TO_SPEECH)
+ * register in `init()` through `registerMediaModels`, which skips them in
+ * Cerebras mode unless a per-capability endpoint override points at a server
+ * that serves them. `tests` carries the live connectivity/round-trip suite the
+ * plugin loader runs against a real endpoint.
+ */
 import type {
   TextToSpeechParams as CoreTextToSpeechParams,
   TranscriptionParams as CoreTranscriptionParams,

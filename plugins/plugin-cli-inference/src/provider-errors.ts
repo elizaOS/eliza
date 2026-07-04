@@ -1,3 +1,12 @@
+/**
+ * Typed upstream-provider failure plus retryability classification, shared by the
+ * CLI and SDK handlers. `ProviderApiError` carries the upstream status so
+ * `useModel` / AccountPool failover classify 429/529/5xx as retryable.
+ * `parseProviderApiErrorText` recognizes the SDK's own streamed error envelope
+ * ("API Error: <status> …") that Claude Code emits as assistant text, so a leaked
+ * error string is thrown to failover instead of relayed to the user as a reply.
+ */
+
 export class ProviderApiError extends Error {
   readonly statusCode?: number;
   readonly retryable: boolean;

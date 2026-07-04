@@ -1,3 +1,4 @@
+/** Verifies `ActiveModelCoordinator.switchTo` rolls back to the prior active model when the loader throws mid-swap. Deterministic, fake loader. */
 import type { AgentRuntime } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {

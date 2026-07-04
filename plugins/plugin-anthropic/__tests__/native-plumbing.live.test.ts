@@ -1,3 +1,4 @@
+/** Live test: `handleTextSmall` against the real Anthropic API (gated by `describeLive`), asserting real text and populated token usage. */
 import { expect, it } from "vitest";
 
 import { describeLive } from "../../../packages/app-core/test/helpers/live-agent-test";

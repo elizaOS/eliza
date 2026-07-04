@@ -1,3 +1,4 @@
+/** Unit tests for inference-capability helpers including the thermal-throttle decision. Deterministic. */
 import { describe, expect, it } from "vitest";
 import {
 	defaultsForNoBinding,

@@ -1,3 +1,12 @@
+/**
+ * Settings resolution for the Gemini provider. `getSetting` reads
+ * `runtime.getSetting` first, then `process.env` (guarding `typeof process` so
+ * the browser build stays Node-free), trimming blanks to `undefined`. The
+ * `get*Model` helpers layer the model-name fallback chain: each tier prefers its
+ * `GOOGLE_*` key, then the generic alias, then a coarser tier's default.
+ * `createGoogleGenAI` builds an authenticated client (null when no key), and
+ * `getSafetySettings` returns the hardcoded block-medium-and-above thresholds.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { GoogleGenAI, HarmBlockThreshold, HarmCategory } from "@google/genai";

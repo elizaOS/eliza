@@ -1,3 +1,8 @@
+/**
+ * Coverage for the "load the assigned model before a model call" boot path,
+ * exercising the assignments/installed-model/loader state via hoisted mocks
+ * rather than a real backend load.
+ */
 import { type AgentRuntime, ModelType } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 

@@ -10,14 +10,13 @@
  * the router sits at MAX_SAFE_INTEGER and consults the user's policy
  * (manual / cheapest / fastest / prefer-local / round-robin) on every call.
  *
- * Until the cuttlefish smoke landed this was -1 to "let cloud win by default,"
- * but that conflated routing-policy (a user preference) with handler
- * priority (a registration ordinal). The runtime's getModel() returns
- * undefined when no priority-0 handler is registered, which manifested as
- * "No handler found for delegate type: TEXT_SMALL" on AOSP builds where
- * the AOSP local inference loader is the only provider. Both cloud-only and
- * local-only deployments now have a registered priority-0 handler; the
- * router decides which one fires per request.
+ * Priority must not be negative: the runtime's getModel() returns undefined
+ * when no priority-0 handler is registered, which on AOSP builds — where the
+ * AOSP local inference loader is the only provider — surfaces as "No handler
+ * found for delegate type: TEXT_SMALL". A negative priority would conflate
+ * routing-policy (a user preference) with handler priority (a registration
+ * ordinal). Both cloud-only and local-only deployments register a priority-0
+ * handler; the router decides which one fires per request.
  *
  * Parallels `ensure-text-to-speech-handler.ts` — same shape, same guards.
  */
@@ -430,11 +429,10 @@ function engineGenerateArgsFromParams(
 					.join("\n\n")
 			: "";
 	const streamStructured = params.streamStructured === true;
-	// Surface per-token chunks to the caller. The runtime passes the agent
-	// reply path's `onStreamChunk` here when it wants the LLM→TTS handoff —
-	// previously dropped at this layer. Only wire it when the caller asked
-	// for streaming (`stream` or `streamStructured`) so non-streaming callers
-	// don't pay the chunk-callback overhead.
+	// Surface per-token chunks to the caller: the runtime passes the agent
+	// reply path's `onStreamChunk` here for the LLM→TTS handoff. Wire it only
+	// when the caller asked for streaming (`stream` or `streamStructured`) so
+	// non-streaming callers don't pay the chunk-callback overhead.
 	const onTextChunk =
 		(params.stream === true || streamStructured) &&
 		typeof params.onStreamChunk === "function"

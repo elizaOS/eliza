@@ -1,3 +1,9 @@
+/**
+ * Container sniffing for audio bytes: `detectAudioMimeType` matches magic-byte
+ * signatures (WAV/MP3/OGG/FLAC/M4A/WebM) to a MIME type, and the helpers derive
+ * an upload filename/extension from it. Used by the transcription handler to
+ * label multipart uploads.
+ */
 import { logger } from "@elizaos/core";
 
 const MAGIC_BYTES = {

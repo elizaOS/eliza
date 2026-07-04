@@ -1,3 +1,8 @@
+/**
+ * Unit tests for the settings-resolution helpers in `utils/config` — runtime vs
+ * env precedence, blank trimming, model-alias fallback, and client creation.
+ * `@google/genai` and the logger are mocked; no network.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 

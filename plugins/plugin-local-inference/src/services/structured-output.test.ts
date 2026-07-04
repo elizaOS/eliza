@@ -1,3 +1,4 @@
+/** Covers skeleton collapsing, GBNF grammar compilation, and grammar-resolution precedence for constrained local decoding. Deterministic. */
 import type { ResponseSkeleton } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {

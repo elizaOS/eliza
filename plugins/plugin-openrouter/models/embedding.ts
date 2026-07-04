@@ -1,3 +1,10 @@
+/**
+ * The `TEXT_EMBEDDING` model handler, POSTing directly to OpenRouter's
+ * `/embeddings` endpoint. Validates the configured dimension against
+ * `VECTOR_DIMS` and rejects a returned vector whose length disagrees — no silent
+ * truncation. A `null` param yields a deterministic marker probe vector; oversized
+ * input is truncated to ~8000 tokens with a warning. Emits a `MODEL_USED` event.
+ */
 import type { IAgentRuntime, TextEmbeddingParams } from "@elizaos/core";
 import { logger, ModelType, VECTOR_DIMS } from "@elizaos/core";
 

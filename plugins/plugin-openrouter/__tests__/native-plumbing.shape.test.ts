@@ -1,3 +1,10 @@
+/**
+ * Shape test for the native text path (`ai` SDK mocked, no live API): covers
+ * tool-set normalization from runtime ToolDefinition arrays, attachment/message
+ * merging, system-prompt de-duplication, cache providerOptions forwarding,
+ * sampling-param suppression for reasoning models, and that malformed params and
+ * streaming provider errors surface rather than resolving empty.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 

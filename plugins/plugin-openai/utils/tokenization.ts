@@ -1,3 +1,8 @@
+/**
+ * js-tiktoken wrappers for offline token math — encode/decode/count/truncate
+ * keyed to a runtime model slot. Resolves the tiktoken encoding from the model
+ * name, falling back to o200k_base for 4o-family models else cl100k_base.
+ */
 import type { IAgentRuntime, ModelTypeName } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
 import {

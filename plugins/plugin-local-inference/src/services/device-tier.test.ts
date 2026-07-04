@@ -1,3 +1,4 @@
+/** Covers device-tier classification and the mobile guard that keeps a phone from being assigned a 9B model. Deterministic, synthetic probes. */
 import { describe, expect, it } from "vitest";
 import {
 	classifyDeviceTier,

@@ -1,3 +1,9 @@
+/**
+ * Tests the Capacitor structured-output planning: grammar / JSON-schema request
+ * shaping and OpenAI-shaped tool-call extraction back into the elizaOS
+ * `ToolCallResult`. Deterministic, no native model.
+ */
+
 import { describe, expect, it } from "vitest";
 import {
 	applyStructuredPlan,

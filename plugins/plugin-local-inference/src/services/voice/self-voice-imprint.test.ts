@@ -1,3 +1,4 @@
+/** Covers `AgentSelfVoiceImprint` building the agent's own voice centroid from TTS output. Deterministic, fake encoder. */
 import { describe, expect, it } from "vitest";
 import { AgentSelfVoiceImprint } from "./self-voice-imprint";
 import type { SpeakerEncoder } from "./speaker/encoder";

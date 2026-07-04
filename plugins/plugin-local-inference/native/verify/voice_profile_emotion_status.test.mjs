@@ -1,3 +1,9 @@
+/**
+ * Deterministic coverage for the voice-profile/emotion status deriver: builds
+ * placeholder and valid voice-preset binaries in a temp dir and asserts the
+ * fail-closed report flags zero-filled Samantha placeholders and missing native
+ * emotion evidence. No real model.
+ */
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";

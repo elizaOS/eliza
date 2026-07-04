@@ -1,3 +1,10 @@
+/**
+ * The `IMAGE_DESCRIPTION` and `IMAGE` (generation) model handlers, both routed
+ * through the AI SDK `generateText` against the OpenRouter chat model. Description
+ * sends the image URL as a multimodal user message and parses the model's
+ * Title/Description text; generation returns the model's text response as the
+ * image URL. Both emit a `MODEL_USED` event from the response usage.
+ */
 import type {
   IAgentRuntime,
   ImageDescriptionParams,

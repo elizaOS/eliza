@@ -1,4 +1,12 @@
 #!/usr/bin/env node
+/**
+ * Derives a fail-closed product-status report for the reference-voice-profile and
+ * native-emotion features: inspects the default voice-preset binary (magic and
+ * version header, zero-filled placeholder detection), scans bundle assets, and
+ * checks for the required native ASR/emotion runtime symbols. Writes status
+ * evidence used as a publish gate; a missing or placeholder asset yields an
+ * explicit "not ready" rather than a passing default.
+ */
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {

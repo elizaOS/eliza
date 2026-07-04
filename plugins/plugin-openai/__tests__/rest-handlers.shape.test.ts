@@ -1,3 +1,8 @@
+/**
+ * Shape tests for the media/embedding handlers (TTS, embedding, image
+ * generation/description): assert request construction and response parsing
+ * against a mocked runtime and fetch, no network.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { handleTextToSpeech } from "../models/audio";

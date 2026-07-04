@@ -1,3 +1,4 @@
+/** Covers live device-signal reads (decode-token estimation, local demotion on pressure) feeding the routing policy. Deterministic, injected signal source. */
 import { afterEach, describe, expect, it } from "vitest";
 import { inferenceTelemetry } from "./inference-telemetry";
 import {

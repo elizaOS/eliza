@@ -1,3 +1,4 @@
+/** Speaker isolation under babble, overlap, and transient bystanders (#10726), driven by synthetic mixed speech. Deterministic. */
 import { describe, expect, it } from "vitest";
 import {
 	makeSpeechWithSilenceFixture,

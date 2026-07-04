@@ -1,3 +1,10 @@
+/**
+ * Structured-output recovery helpers: `extractJsonFromText` walks a fallback
+ * chain (raw JSON, fenced blocks, first `{...}` span) to salvage an object from a
+ * chatty model completion, and `handleObjectGenerationError` turns a failure into
+ * an `{ error }` object. `getJsonRepairFunction` optionally loads `jsonrepair`
+ * when installed.
+ */
 import { type JsonValue, logger } from "@elizaos/core";
 
 export function getJsonRepairFunction(): ((text: string) => string) | undefined {

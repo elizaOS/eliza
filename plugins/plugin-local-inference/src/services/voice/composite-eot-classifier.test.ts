@@ -1,3 +1,4 @@
+/** Covers the composite end-of-turn classifier combining the fused scorer with heuristic signals. Deterministic. */
 import { describe, expect, it, vi } from "vitest";
 import { CompositeEotClassifier } from "./eot-classifier";
 import type { FfiEotScorer } from "./fused-eot-scorer";

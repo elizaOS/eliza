@@ -1,3 +1,4 @@
+/** Covers `verifyBundleOnDevice` bundle self-check. Deterministic. */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createVerifyBundleOnDevice } from "./verify-on-device";
 

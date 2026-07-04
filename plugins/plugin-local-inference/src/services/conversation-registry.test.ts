@@ -1,3 +1,4 @@
+/** Unit tests for `ConversationRegistry`: opening/tracking per-conversation inference sessions. Deterministic. */
 import { describe, expect, it } from "vitest";
 import {
 	ConversationRegistry,

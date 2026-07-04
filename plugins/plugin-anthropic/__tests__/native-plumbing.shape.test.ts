@@ -1,3 +1,9 @@
+/**
+ * Shape tests for the native text path: tool-request streaming fallback, prompt
+ * cache-metadata emission and breakpoint capping, per-call model override, AI
+ * SDK v6 usage normalization, and system-message handling. Drives the real
+ * handlers against a mocked runtime and AI SDK — no live API.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 

@@ -1,3 +1,15 @@
+/**
+ * The `TEXT_SMALL` / `TEXT_LARGE` handlers backing the plugin's model map.
+ * Each resolves the configured model name, builds a NEAR AI client, runs the
+ * Vercel AI SDK `generateText`, and emits a `MODEL_USED` event with token usage.
+ *
+ * NEAR AI's OpenAI-compatible endpoint diverges from OpenAI proper, so
+ * `createNearAIRequestFetch` wraps the request fetch to normalise each JSON body
+ * before it leaves: `max_completion_tokens` → `max_tokens` (without clobbering an
+ * explicit `max_tokens`), the `store` / `reasoning_effort` / `strict` fields are
+ * dropped, and any `developer`-role message is rewritten to `system`. Update
+ * that shim if the upstream API changes what it accepts.
+ */
 import type { GenerateTextParams, IAgentRuntime } from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
 import { generateText, type ToolSet } from "ai";

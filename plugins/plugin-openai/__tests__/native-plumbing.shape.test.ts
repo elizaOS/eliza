@@ -1,3 +1,8 @@
+/**
+ * Shape tests exercising the text handler's plumbing — message normalization,
+ * model-usage events, and trajectory recording — against a mocked `ai` SDK
+ * (`generateText`/`streamText`), no network.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import { EventType, ModelType, runWithTrajectoryContext } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

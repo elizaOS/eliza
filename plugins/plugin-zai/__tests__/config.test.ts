@@ -1,3 +1,4 @@
+/** Unit tests for the config resolvers, exercising setting-vs-env precedence, model/base-URL defaults, and the deprecated CoT-budget-to-thinking mapping against a stub runtime (no live API). */
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, describe, expect, it } from "vitest";
 import {

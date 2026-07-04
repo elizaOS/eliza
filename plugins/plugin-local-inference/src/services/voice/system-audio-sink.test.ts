@@ -1,3 +1,4 @@
+/** Covers `WavFileAudioSink` writing PCM out to a WAV file. Real fs temp files. */
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";

@@ -1,3 +1,9 @@
+/**
+ * Vitest config: aliases the `@elizaos/*` packages to their workspace sources and
+ * runs both the legacy `__tests__/**` suites and the co-located `src/**`
+ * `.test.ts` siblings. Real-FFI / real-model `*.real.test.ts` files run only in
+ * the post-merge lane (`TEST_LANE=post-merge`).
+ */
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 

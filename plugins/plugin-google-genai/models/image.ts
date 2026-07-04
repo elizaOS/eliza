@@ -1,3 +1,9 @@
+/**
+ * `IMAGE_DESCRIPTION` handler: fetches an image by URL, encodes it inline, and
+ * asks the multimodal Gemini model for a `{ title, description }`. Prefers the
+ * model's JSON output and falls back to regex title extraction from prose. The
+ * call is wrapped in `recordLlmCall` for trajectory capture.
+ */
 import type {
   IAgentRuntime,
   ImageDescriptionParams,

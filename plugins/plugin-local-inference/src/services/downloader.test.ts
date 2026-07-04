@@ -1,3 +1,4 @@
+/** Exercises the curated Eliza-1 `Downloader`: disk preflight, gated-repo handling, and registry writes on completion, against a real temp state dir with a fake HardwareProbe. No network. */
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";

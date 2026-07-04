@@ -1,4 +1,11 @@
 #!/usr/bin/env bun
+/**
+ * CLI that builds the local-model lifecycle matrix: runs file, bundle, remote,
+ * and optional load-run checks across the Eliza-1 model catalog against the
+ * installed registry and detected hardware, then emits JSON or Markdown. A
+ * --require-complete run is the gate that every catalog model can be resolved,
+ * downloaded, loaded, and run on this host.
+ */
 import fs from "node:fs/promises";
 import path from "node:path";
 import { MODEL_CATALOG } from "../src/services/catalog";

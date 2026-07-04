@@ -1,3 +1,8 @@
+/**
+ * Emits `EventType.MODEL_USED` after a NEAR AI inference call, normalising the
+ * AI SDK's varying usage shape (prompt/completion vs input/output tokens) into
+ * a `{ prompt, completion, total }` count for downstream billing/telemetry.
+ */
 import type { IAgentRuntime, ModelTypeName } from "@elizaos/core";
 import { EventType } from "@elizaos/core";
 

@@ -1,3 +1,9 @@
+/**
+ * Edge-case tests for `processBody`: billing/system/metadata insertion, trailing
+ * assistant-prefill and thinking-block stripping, and malformed-body handling.
+ * Pure string transforms, no network.
+ */
+
 import { describe, expect, it } from "vitest";
 import {
   type ProcessBodyConfig,

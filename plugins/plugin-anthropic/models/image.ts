@@ -1,3 +1,9 @@
+/**
+ * `IMAGE_DESCRIPTION` handler: sends an image URL to the configured small model
+ * and parses the `Title:` / `Description:` response into an
+ * `ImageDescriptionResult`. Uses the shared client factory, retry wrapper, and
+ * usage-event emitter; the small-model default comes from `getSmallModel`.
+ */
 import type { IAgentRuntime, ImageDescriptionParams, ImageDescriptionResult } from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
 import { generateText } from "ai";

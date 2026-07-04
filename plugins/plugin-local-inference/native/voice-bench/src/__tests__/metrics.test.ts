@@ -1,3 +1,9 @@
+/**
+ * Unit coverage for the voice-bench MetricsCollector and percentile helper:
+ * asserts first-observation timestamps and derived latencies (TTFA,
+ * speech-end to first-audio) from probed events. Deterministic, stub driver
+ * result.
+ */
 import { describe, it, expect } from "bun:test";
 import { MetricsCollector, percentile } from "../metrics.ts";
 import type { BenchDriverResult } from "../types.ts";

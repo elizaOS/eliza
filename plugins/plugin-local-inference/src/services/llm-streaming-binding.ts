@@ -1,12 +1,12 @@
 /**
  * Narrow streaming-LLM binding.
  *
- * `FfiStreamingRunner` (`services/ffi-streaming-runner.ts`) used to require
- * the full `ElizaInferenceFfi` surface (TTS + ASR + VAD + mmap regions +
- * the entire fused libelizainference) just to run text generation. That
- * surface implies a *bundle-anchored* runtime — libelizainference owns a
- * context built from a bundle root, not a single GGUF — and ~25 methods
- * that have nothing to do with LLM streaming.
+ * `FfiStreamingRunner` (`services/ffi-streaming-runner.ts`) needs only a
+ * narrow slice of the FFI to run text generation, not the full
+ * `ElizaInferenceFfi` surface (TTS + ASR + VAD + mmap regions + the entire
+ * fused libelizainference). That full surface implies a *bundle-anchored*
+ * runtime — libelizainference owns a context built from a bundle root, not a
+ * single GGUF — and ~25 methods that have nothing to do with LLM streaming.
  *
  * This file extracts the actual contract the runner depends on: the seven
  * `llmStream*` methods plus the (optional) two slot save/restore methods.

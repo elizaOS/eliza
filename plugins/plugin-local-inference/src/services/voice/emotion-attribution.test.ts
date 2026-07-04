@@ -1,3 +1,4 @@
+/** Covers fused text/acoustic emotion attribution for a voice turn. Deterministic. */
 import { describe, expect, it } from "vitest";
 import { attributeVoiceEmotion } from "./emotion-attribution";
 import { WAV2SMALL_INT8_MODEL_ID } from "./voice-emotion-classifier";

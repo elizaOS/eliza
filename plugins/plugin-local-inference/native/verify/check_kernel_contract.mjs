@@ -1,5 +1,11 @@
 #!/usr/bin/env node
 
+/**
+ * Validates native/verify/kernel-contract.json against the llama.cpp MTP build
+ * script, the Eliza-1 manifest schema, and the per-backend runtime-dispatch
+ * evidence (metal, vulkan, cuda, cpu) — fails when the declared kernel contract
+ * and the build/manifest/dispatch artifacts drift apart.
+ */
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

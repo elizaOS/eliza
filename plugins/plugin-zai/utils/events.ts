@@ -1,3 +1,7 @@
+/**
+ * Normalizes AI SDK token usage (prompt/completion or input/output naming) and
+ * emits `EventType.MODEL_USED` so the runtime can meter each z.ai call.
+ */
 import type { IAgentRuntime, ModelTypeName } from "@elizaos/core";
 import { EventType } from "@elizaos/core";
 

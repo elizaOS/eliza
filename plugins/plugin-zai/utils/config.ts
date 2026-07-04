@@ -1,3 +1,10 @@
+/**
+ * Central resolver for every z.ai setting: reads `runtime.getSetting(key)` first,
+ * then `process.env[key]`, applying defaults (base URL, small/large model IDs).
+ * Owns API-key resolution (with the legacy `Z_AI_API_KEY` alias), strict base-URL
+ * normalization that rejects the Coding/Anthropic endpoints, browser detection,
+ * and the deprecated CoT-budget shims that map onto `ZAI_THINKING_TYPE`.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import type { ModelName, ModelSize, ValidatedApiKey } from "../types";
 import { assertValidApiKey, createModelName } from "../types";

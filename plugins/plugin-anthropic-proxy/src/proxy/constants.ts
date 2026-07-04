@@ -1,26 +1,18 @@
 /**
- * Plugin constants — algorithm parameters + default fingerprint dictionaries.
- *
- * The 7-layer transformation algorithm itself was ported byte-for-byte from
- * Shadow's `openclaw-routing-layer/proxy.js` v2.2.3. The constants in this
- * file split into two groups:
+ * Algorithm parameters and default fingerprint dictionaries for the transform
+ * pipeline. The constants split into two groups:
  *
  *   1. **Algorithm parameters** (BILLING_HASH_*, REQUIRED_BETAS,
- *      CC_SYNTHETIC_TOOLS, CC_VERSION, etc.) — these are
- *      upstream-detection-bypass surface and
- *      MUST NOT change. They produce the byte-stable identity that makes the
- *      proxy look like a real Claude Code session to Anthropic.
+ *      CC_SYNTHETIC_TOOLS, CC_VERSION, etc.) — upstream-detection-bypass
+ *      surface that MUST stay byte-for-byte accurate: they produce the stable
+ *      identity that makes the proxy look like a real Claude Code session to
+ *      Anthropic.
  *
  *   2. **Fingerprint dictionaries** (DEFAULT_REPLACEMENTS, DEFAULT_TOOL_RENAMES,
  *      DEFAULT_PROP_RENAMES, DEFAULT_REVERSE_MAP, SYSTEM_CONFIG_PARAPHRASE) —
- *      these are *framework-shaped*. v0.2.0 ships eliza defaults derived from
- *      profiling `@elizaos/native-reasoning` outbound calls. Non-eliza users
- *      override via `config.json` or `CLAUDE_MAX_PROXY_CONFIG_PATH` (see
- *      config.json.example).
- *
- * The OpenClaw-specific dictionary that v0.1.0 inherited from proxy.js was
- * removed in v0.2.0 — it leaked OC-specific tool names like `sessions_spawn`
- * mapping to `TaskCreate` for the wrong reasons.
+ *      framework-shaped, defaulting to eliza values derived from profiling
+ *      `@elizaos/native-reasoning` outbound calls. Non-eliza users override via
+ *      `config.json` or `CLAUDE_MAX_PROXY_CONFIG_PATH` (see config.json.example).
  */
 
 import {

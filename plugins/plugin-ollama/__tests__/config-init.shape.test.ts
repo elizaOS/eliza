@@ -1,3 +1,4 @@
+/** Deterministic unit tests for base-URL/endpoint resolution and the init validation fetch (fetch mocked, no live server). */
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { shouldEnable } from "../auto-enable";

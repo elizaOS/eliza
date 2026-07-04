@@ -1,3 +1,4 @@
+/** Unit tests for `DeviceResourceMetrics` RAM/CPU/thermal sampling. Deterministic. */
 import { describe, expect, it } from "vitest";
 import { DeviceResourceMetrics } from "./device-resource-metrics";
 

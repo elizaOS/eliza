@@ -1,3 +1,4 @@
+/** Unit tests for WAV encode/decode round-trips. Deterministic. */
 import { describe, expect, it } from "vitest";
 import { decodeMonoPcm16Wav, encodeMonoPcm16Wav } from "./wav-codec";
 

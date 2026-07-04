@@ -1,3 +1,4 @@
+/** Unit tests for corpus augmentation: dB helpers and additive noise (babble/music). Deterministic. */
 import { describe, expect, it } from "vitest";
 import {
 	addNoise,

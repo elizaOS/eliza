@@ -1,3 +1,9 @@
+/**
+ * Derives the `LocalInferenceReadiness` DTO — per-slot (text/embedding/…) status
+ * the dashboard renders — by folding the catalog, installed registry, active
+ * model, and in-flight download state into one snapshot. Pure computation; the
+ * client displays these fields without re-deriving them.
+ */
 import { MODEL_CATALOG } from "./catalog";
 import { catalogDownloadSizeBytes } from "./recommendation";
 import type {

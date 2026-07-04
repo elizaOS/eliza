@@ -1,3 +1,8 @@
+/**
+ * Coverage for the local-inference TTS HTTP route handler and its speech-text
+ * sanitizer, driving requests through mocked node:http objects rather than a
+ * live TTS backend.
+ */
 import * as http from "node:http";
 import { Socket } from "node:net";
 import { describe, expect, it, vi } from "vitest";

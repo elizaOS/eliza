@@ -1,3 +1,4 @@
+/** Unit tests for parsing llama-server Prometheus metrics and diffing snapshots. Deterministic. */
 import { describe, expect, it } from "vitest";
 import {
 	diffSnapshots,

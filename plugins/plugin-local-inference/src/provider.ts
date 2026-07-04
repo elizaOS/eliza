@@ -1,3 +1,19 @@
+/**
+ * Defines the local-inference `Plugin` object and the model-handler factory that
+ * fronts every Eliza-1 model slot (`TEXT_SMALL`/`TEXT_LARGE`/`TEXT_EMBEDDING`/
+ * `IMAGE`/`IMAGE_DESCRIPTION`/`TEXT_TO_SPEECH`/`TRANSCRIPTION`). Each handler
+ * resolves the runtime loader service (bionic host / AOSP adapter / device
+ * bridge) and dispatches through it, gating text generation on the process-wide
+ * interactive-over-background priority lane; vision and image generation route
+ * through the MemoryArbiter capability when it is registered.
+ *
+ * When no backend service is exposed, or an active service lacks a capability,
+ * calls raise a typed {@link LocalInferenceUnavailableError} (code
+ * `LOCAL_INFERENCE_UNAVAILABLE`) rather than fabricating output — embeddings in
+ * particular refuse to synthesize zero-vectors. `TEXT_EMBEDDING` is deliberately
+ * absent from the static plugin `models` map and wired later at boot by
+ * `ensureLocalInferenceHandler()`.
+ */
 import {
 	type AudioStreamResult,
 	applyBackgroundInferenceBudget,

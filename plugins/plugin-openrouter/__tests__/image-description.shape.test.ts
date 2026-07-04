@@ -1,3 +1,9 @@
+/**
+ * Shape test for the image handlers with the `ai` SDK and provider mocked (no
+ * live API): checks IMAGE_DESCRIPTION parses title/description from the model
+ * text and that blank image URLs and prompts are rejected before the provider is
+ * called.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";

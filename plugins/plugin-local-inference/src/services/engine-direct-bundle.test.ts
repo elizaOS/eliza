@@ -1,3 +1,4 @@
+/** Covers `LocalInferenceEngine` loading a direct Eliza-1 bundle from disk (manifest resolution, backend plan). Real fs temp bundles; no live model forward pass. */
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";

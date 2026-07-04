@@ -1,3 +1,4 @@
+/** Plugin-local TypeScript interfaces for OpenRouter config and generation params. */
 export interface OpenRouterConfig {
   apiKey: string;
   baseUrl: string;

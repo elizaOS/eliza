@@ -1,3 +1,11 @@
+/**
+ * Startup validation for the Gemini provider: `initializeGoogleGenAI` reads the
+ * API key and lists available models to confirm the credential works, logging a
+ * warning (never throwing) when the key is missing or the check fails so a
+ * misconfigured key degrades to "no models registered" rather than crashing
+ * boot. Invoked from the plugin's `init` hook. `PluginConfig` is the shape of
+ * the settings object elizaOS passes in.
+ */
 import { type IAgentRuntime, logger } from "@elizaos/core";
 import { GoogleGenAI } from "@google/genai";
 import { getApiKey } from "./utils/config";

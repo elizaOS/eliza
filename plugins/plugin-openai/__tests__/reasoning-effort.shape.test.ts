@@ -1,3 +1,8 @@
+/**
+ * Shape test verifying `OPENAI_REASONING_EFFORT` forwards into
+ * `providerOptions.openai.reasoningEffort` for the four valid efforts. Mocked
+ * runtime.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 

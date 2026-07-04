@@ -1,3 +1,4 @@
+/** Covers the fallback G2P phonemizer. Deterministic. */
 import { describe, expect, it } from "vitest";
 
 import {

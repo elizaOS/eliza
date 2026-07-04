@@ -1,4 +1,10 @@
 #!/usr/bin/env bun
+/**
+ * Bundles the plugin's public entrypoints with `Bun.build` (ESM, workspace and
+ * native deps kept external) and emits `.d.ts` declarations via tsc, then
+ * smoke-imports the built route/voice barrels to catch resolution breaks the
+ * bundler does not surface on its own.
+ */
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { $ } from "bun";
@@ -23,8 +29,7 @@ function rmRecursive(target: string) {
 const external = await externalsFromPackageJson("./package.json", {
 	// Transitive workspace deps + native sub-packages + wildcards the prior
 	// hand-list relied on. `llama-cpp-capacitor` is the canonical mobile
-	// binding; bun:* covers the desktop bun:ffi loader. node-llama-cpp has
-	// been removed.
+	// binding; bun:* covers the desktop bun:ffi loader.
 	extra: [
 		"@elizaos/agent",
 		"llama-cpp-capacitor",

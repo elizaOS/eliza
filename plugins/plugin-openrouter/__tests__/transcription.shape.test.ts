@@ -1,3 +1,8 @@
+/**
+ * Shape test for the TRANSCRIPTION handler with a stubbed `fetch` (no live API):
+ * verifies the handler registers, posts Buffer audio as base64 `input_audio`, and
+ * fetches http `audioUrl` inputs while preserving the response content type.
+ */
 import { type IAgentRuntime, ModelType } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 

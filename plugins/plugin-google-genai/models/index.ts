@@ -1,3 +1,4 @@
+/** Barrel re-exporting every model handler for the plugin's `models` map. */
 export { handleTextEmbedding } from "./embedding";
 export { handleImageDescription } from "./image";
 export {

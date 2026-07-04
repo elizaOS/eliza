@@ -1,3 +1,10 @@
+/**
+ * Deterministically repairs a local model's raw text into schema-valid
+ * structured output without a second model pass: it reconciles the emitted text
+ * against the response skeleton and JSON schema(s), returning a status
+ * (`unchanged` / `repaired` / `ambiguous` / `invalid`) so callers can tell a
+ * clean parse from an unrecoverable one rather than fabricating a default.
+ */
 import type {
 	JSONSchema,
 	ResponseSkeleton,

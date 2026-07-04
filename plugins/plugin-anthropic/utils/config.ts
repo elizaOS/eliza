@@ -1,3 +1,12 @@
+/**
+ * Central settings layer for the plugin. Every accessor reads
+ * `runtime.getSetting(key)` first, then `process.env[key]`, with the `ANTHROPIC_`
+ * prefix taking priority over bare-name cross-provider fallbacks. Provides the
+ * per-slot model selectors (`getSmallModel`, `getLargeModel`, `getNanoModel`, …)
+ * with their small/large fallback chains, auth-mode / API-key / base-URL
+ * resolution, the `isBrowser` guard, and the CoT-budget, temperature-lock, and
+ * max-output-token override parsers documented in this package's CLAUDE.md.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import type { ModelName, ModelSize, ValidatedApiKey } from "../types";
 import { createModelName } from "../types";

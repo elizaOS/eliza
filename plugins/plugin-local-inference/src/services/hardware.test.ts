@@ -1,3 +1,4 @@
+/** Covers the hardware probe: OpenVino/GPU device detection and device-tier classification, driven by a synthetic sysfs-file detector. Deterministic. */
 import { afterEach, describe, expect, it } from "vitest";
 import { classifyDeviceTier } from "./device-tier";
 import {

@@ -1,3 +1,9 @@
+/**
+ * Unit tests for `utils/config` setting resolution against a stubbed runtime and
+ * mutated `process.env`: setting-over-env precedence, base-URL/model defaults and
+ * trailing-slash normalisation, browser-proxy switching, telemetry parsing, and
+ * fail-fast on a missing key.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, describe, expect, it } from "vitest";
 import {

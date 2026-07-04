@@ -1,3 +1,10 @@
+/**
+ * Behavioral tests for the Capacitor-llama `local-ai` plugin's model handlers.
+ * The loader is mocked and a hand-built `CapacitorLlamaContext` fake drives
+ * completion/streaming, so the handler wiring — not a real native model — is
+ * under test.
+ */
+
 import type { IAgentRuntime } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";

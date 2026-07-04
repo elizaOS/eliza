@@ -1,3 +1,8 @@
+/**
+ * Vitest config for the unit suite (mock spawn / fake SDK — no real CLI process
+ * or live model). Aliases `@elizaos/core` to its built node bundle and excludes
+ * the live/real lanes.
+ */
 import path from "node:path";
 import { defineConfig } from "vitest/config";
 

@@ -1,3 +1,8 @@
+/**
+ * Registration and singleton lifecycle of the Apple Foundation Models backend
+ * adapter. Drives the adapter against a stubbed iOS computer-use bridge rather
+ * than a real on-device model.
+ */
 import { beforeEach, describe, expect, it } from "vitest";
 import type {
   IosBridgeResult,

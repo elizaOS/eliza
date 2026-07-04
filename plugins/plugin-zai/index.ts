@@ -1,3 +1,13 @@
+/**
+ * Plugin definition for @elizaos/plugin-zai: registers z.ai's `TEXT_SMALL` and
+ * `TEXT_LARGE` model handlers against its OpenAI-compatible API. Registers no
+ * actions, providers, evaluators, or routes.
+ *
+ * `init` validates the API key via `initializeZai`; the `models` map wires
+ * `handleTextSmall`/`handleTextLarge`. The bundled `tests` suite exercises key
+ * validation and handler dispatch. Auto-enabled from `auto-enable.ts` when
+ * `ZAI_API_KEY` (or legacy `Z_AI_API_KEY`) is set.
+ */
 import type {
   GenerateTextParams,
   IAgentRuntime,

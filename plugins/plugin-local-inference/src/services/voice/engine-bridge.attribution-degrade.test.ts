@@ -67,8 +67,8 @@ describe("engine-bridge attribution degradation (#12257)", () => {
 	it("starts voice WITHOUT attribution, warns exactly once, never throws", async () => {
 		const warn = vi.spyOn(logger, "warn");
 
-		// profileStore wired, but useFfiBackend:false → no fused handle. Previously
-		// this threw VoiceStartupError; now it degrades.
+		// profileStore wired, but useFfiBackend:false → no fused handle, so start()
+		// degrades instead of throwing VoiceStartupError.
 		const first = EngineVoiceBridge.start({
 			bundleRoot,
 			useFfiBackend: false,

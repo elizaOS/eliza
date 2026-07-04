@@ -4,8 +4,8 @@
  *
  * The speaker encoder runs EXCLUSIVELY through the fused `libelizainference`
  * `eliza_inference_speaker_*` ABI (`FusedSpeakerEncoder` in `encoder-fused.ts`).
- * The standalone `libvoice_classifier` binding that previously lived here has
- * been removed — there is one on-device voice runtime.
+ * There is one on-device voice runtime — no standalone `libvoice_classifier`
+ * binding.
  *
  * This module retains the pieces the fused path shares:
  *   - the canonical dims (`SPEAKER_GGML_*`), pinned at 256 to match the C-side

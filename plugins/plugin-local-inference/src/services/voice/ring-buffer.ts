@@ -1,3 +1,9 @@
+/**
+ * Fixed-capacity PCM ring buffer between the phrase scheduler and the audio
+ * sink: writes wrap and overwrite the oldest unread samples, firing `onOverflow`
+ * so the scheduler can apply upstream backpressure instead of glitching. Also
+ * exports the in-memory sink used in tests.
+ */
 import type { AudioSink } from "./types";
 
 export interface PcmRingBufferOptions {

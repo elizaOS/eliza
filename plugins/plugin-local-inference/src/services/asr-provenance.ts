@@ -1,3 +1,11 @@
+/**
+ * Scans a bundle manifest for ASR lineage/provenance fields that reveal Qwen
+ * heritage, returning human-readable blocker strings. Eliza-1 is a Gemma-4
+ * release; the strict-release gate rejects any default-eligible bundle whose
+ * ASR base or source models still carry Qwen provenance (a pre-cutover
+ * stand-in). Paired with `text-provenance.ts`, which reads the same guarantee
+ * out of the GGUF header bytes.
+ */
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 

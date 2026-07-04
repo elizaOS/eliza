@@ -1,3 +1,4 @@
+/** Covers `LocalInferenceService` orchestration: activation prewarm and image-gen GPU vendor detection (#10727). Deterministic, mocked engine/hardware. */
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";

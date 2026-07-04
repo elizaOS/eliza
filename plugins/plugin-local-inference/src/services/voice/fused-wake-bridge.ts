@@ -5,11 +5,10 @@
  * `wake-word-ggml.ts`, wrapped by {@link OpenWakeWordDetector}) runs in the
  * agent/native (Bun) process. Its firing must reach the renderer, where
  * `useWakeController` (`@elizaos/ui`) activates the bottom bar and starts a
- * turn. Previously the detector fired only into `prewarmConversation`; nothing
- * forwarded the firing to the renderer, so the bar was driven only by the
- * Swabble Web-Speech fallback.
+ * turn. Without this seam nothing forwards the native detector's firing to the
+ * renderer, and the bar is driven only by the Swabble Web-Speech fallback.
  *
- * This module is the missing seam: it adapts an {@link OpenWakeWordDetector}
+ * This module supplies that seam: it adapts an {@link OpenWakeWordDetector}
  * firing into a canonical {@link FusedWakeEventDetail} and hands it to a
  * {@link FusedWakeSink}. The host wires the sink to its renderer transport
  * (Capacitor event / Electrobun RPC / WebSocket push) where the renderer's

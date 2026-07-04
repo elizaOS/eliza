@@ -201,9 +201,9 @@ export interface RuntimeEventSink {
 /**
  * Transcribe a finalized turn's buffered PCM to text (#8786). When injected, the
  * consumer joins the ASR transcript into the diarization attribution so
- * `VOICE_TURN_OBSERVED` carries the real text — previously the live audio-frame
- * path attributed *who* spoke but always emitted `text: ""`, so name/partner
- * extraction (`VoiceObserver.ingestTurn`) could never fire from live audio.
+ * `VOICE_TURN_OBSERVED` carries the real text, letting name/partner extraction
+ * (`VoiceObserver.ingestTurn`) fire from live audio. Without a transcriber the
+ * live audio-frame path attributes *who* spoke but emits `text: ""`.
  *
  * Returns the transcript, or `null`/empty for silence / no decode. Best-effort:
  * the consumer swallows a rejection (counted in `transcriptionErrors`) and falls

@@ -1,3 +1,9 @@
+/**
+ * Unit coverage for the ASR-bench labelled-set provenance classifier: asserts
+ * that TTS-loopback and unknown-provenance WAV sets are marked
+ * publish-gate-ineligible so self-labelled or generated audio never counts as
+ * real-recorded WER. Pure, no model or audio backend.
+ */
 import { describe, expect, test } from "bun:test";
 
 import {

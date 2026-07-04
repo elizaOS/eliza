@@ -1,3 +1,10 @@
+/**
+ * End-to-end tests for the forward/reverse transform pipeline and `ProxyServer`,
+ * driven against a local `node:http` stub standing in for api.anthropic.com plus
+ * a temp credentials file — deterministic, no live Anthropic call. Also covers
+ * the sanitize/reverse-map round-trip, billing fingerprint, and `resolveConfig`.
+ */
+
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";

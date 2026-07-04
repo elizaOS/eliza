@@ -1,3 +1,9 @@
+/**
+ * Tests for `createSseStream`: reverse-map patterns and multi-byte UTF-8 /
+ * surrogate-pair sequences split across chunk boundaries flush intact. Pure,
+ * no network.
+ */
+
 import { describe, expect, it } from "vitest";
 import { createSseStream } from "../src/proxy/sse-rewrite.js";
 

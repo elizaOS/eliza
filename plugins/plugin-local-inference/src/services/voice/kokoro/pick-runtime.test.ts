@@ -1,3 +1,4 @@
+/** Covers `pickKokoroRuntimeBackend` runtime selection against the FFI bindings. Deterministic. */
 import { describe, expect, it } from "vitest";
 
 import type { ElizaInferenceFfi } from "../ffi-bindings";

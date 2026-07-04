@@ -1,3 +1,4 @@
+/** Global test setup: loads `.env` before the suite so real-API tests can find `OPENROUTER_API_KEY`. */
 import { resolve } from "node:path";
 import { config } from "dotenv";
 import { beforeAll } from "vitest";

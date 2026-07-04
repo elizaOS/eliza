@@ -1,3 +1,4 @@
+/** Verifies the fused-lib FFI backend frees the native library exactly once during acquire/release, with the bindings module mocked so no real lib is dlopened. */
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BackendPlan } from "./backend";

@@ -1,3 +1,8 @@
+/**
+ * Coverage for `wrapWithFirstLineCache`, which decorates a TTS handler so the
+ * first synthesized sentence is served from `FirstLineCache`. Exercises the
+ * real cache against a temp directory with a stub runtime and handler.
+ */
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";

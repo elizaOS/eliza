@@ -1,3 +1,10 @@
+/**
+ * Picks the Eliza-1 tiers and quantization variants to recommend for a given
+ * hardware probe: `selectRecommendedModels` / `recommendForFirstRun` rank
+ * catalog tiers by RAM fit, and `selectBestQuantizationVariant` chooses the
+ * heaviest quant that still fits. Only default-eligible, publish-ready tiers are
+ * ever auto-recommended; generic GGUF is never auto-assigned.
+ */
 import {
 	DEFAULT_ELIGIBLE_MODEL_IDS,
 	type Eliza1TierId,

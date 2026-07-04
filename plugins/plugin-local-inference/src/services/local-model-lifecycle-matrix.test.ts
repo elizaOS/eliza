@@ -1,3 +1,4 @@
+/** Covers building the per-tier model lifecycle matrix and its markdown rendering. Deterministic, synthetic catalog/probe. */
 import { describe, expect, it } from "vitest";
 import {
 	buildLocalModelLifecycleMatrix,

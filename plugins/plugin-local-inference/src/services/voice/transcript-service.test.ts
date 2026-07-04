@@ -1,3 +1,4 @@
+/** Covers `TranscriptService` transcript lifecycle. Deterministic. */
 import type { Memory, UUID } from "@elizaos/core";
 import type { Transcript } from "@elizaos/shared/transcripts";
 import { describe, expect, it, vi } from "vitest";

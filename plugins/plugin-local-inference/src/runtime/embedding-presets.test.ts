@@ -1,3 +1,8 @@
+/**
+ * Unit tests for embedding-preset/tier selection across hardware probes
+ * (Apple Silicon / GPU / RAM). Pure-function assertions.
+ */
+
 import { describe, expect, it } from "vitest";
 import type { HardwareProbe } from "../services/types";
 import {

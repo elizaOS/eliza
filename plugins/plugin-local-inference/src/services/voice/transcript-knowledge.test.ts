@@ -1,3 +1,4 @@
+/** Unit tests for `transcriptKnowledgePayload` shaping transcripts into knowledge items. Deterministic. */
 import type { Transcript } from "@elizaos/shared/transcripts";
 import { describe, expect, it } from "vitest";
 import {

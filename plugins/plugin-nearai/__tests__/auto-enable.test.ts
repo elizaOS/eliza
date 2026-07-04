@@ -1,3 +1,4 @@
+/** Unit tests for `shouldEnable` — asserts auto-enable keys on a non-empty NEARAI_API_KEY. */
 import { describe, expect, it } from "vitest";
 import { shouldEnable } from "../auto-enable";
 

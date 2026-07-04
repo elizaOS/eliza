@@ -73,7 +73,7 @@ import type { KvOffloadMode, LocalInferenceLoadArgs } from "./load-args.js";
  * (v3.18.1-eliza.3+) extends `GgmlType` with TBQ3_0 (43), TBQ4_0 (44),
  * QJL1_256 (46), Q4_POLAR (47) so the binding accepts the lowercase
  * aliases below. Whether the C++ kernel actually runs depends on the
- * loaded the legacy node-llama-cpp NAPI prebuild (no longer used) binary — the elizaOS/llama.cpp
+ * loaded binary — the elizaOS/llama.cpp
  * prebuild ships the kernels; upstream's prebuild does not.
  *
  * `validateLocalInferenceLoadArgs({ allowFork: false })` (the route-layer

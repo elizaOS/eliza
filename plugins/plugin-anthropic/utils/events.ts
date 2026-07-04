@@ -1,3 +1,9 @@
+/**
+ * `emitModelUsageEvent` fires `EventType.MODEL_USED` after each successful
+ * Anthropic call, normalizing the SDK's usage shape (prompt/completion vs
+ * input/output token names, plus cache read/write counts) into the runtime's
+ * usage payload so billing and telemetry consumers see one consistent record.
+ */
 import type { EventPayload, IAgentRuntime, ModelTypeName } from "@elizaos/core";
 import { EventType } from "@elizaos/core";
 

@@ -1,3 +1,9 @@
+/**
+ * Builds the `@ai-sdk/openai-compatible` client pointed at z.ai's general API
+ * (base URL from config, validated against the blocked Coding/Anthropic paths).
+ * Accepts an optional custom `fetch` so the text handlers can splice in the
+ * `thinking` request body.
+ */
 import {
   createOpenAICompatible,
   type OpenAICompatibleProvider,

@@ -1,3 +1,4 @@
+/** Covers the vision describe fallback chain (local → cloud) ordering. Deterministic, fake backends. */
 import type { ImageDescriptionResult } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import type { LocalImageDescriptionHandler } from "./cloud-fallback";

@@ -1,3 +1,10 @@
+/**
+ * CLI auth mode: `generateViaCli` / `streamViaCli` shell out to `claude -p` via
+ * `Bun.spawn` when `ANTHROPIC_AUTH_MODE=claude-cli`, parsing the CLI's JSON
+ * result into text plus token usage and emitting a usage event. Bun-only (fails
+ * on Node runtimes); does not support `messages`, `tools`, `toolChoice`, or
+ * `responseSchema`.
+ */
 import type { IAgentRuntime, ModelTypeName, TextStreamResult } from "@elizaos/core";
 import { buildCanonicalSystemPrompt, logger } from "@elizaos/core";
 import { emitModelUsageEvent } from "./events";

@@ -1,3 +1,4 @@
+/** Branded string types and guards shared across the z.ai plugin: `ValidatedApiKey`, `ModelName`, `ModelSize`, and `ProviderOptions`. */
 export type ValidatedApiKey = string & { readonly __brand: "ValidatedApiKey" };
 
 export type ModelName = string & { readonly __brand: "ModelName" };

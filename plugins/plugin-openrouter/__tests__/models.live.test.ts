@@ -1,3 +1,9 @@
+/**
+ * Live integration test (real OpenRouter API, gated on `OPENROUTER_API_KEY`):
+ * boots a real AgentRuntime with `@elizaos/plugin-sql` and exercises TEXT_SMALL,
+ * TEXT_LARGE, structured output via responseSchema, IMAGE_DESCRIPTION, and
+ * TEXT_EMBEDDING through `runtime.useModel`.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { openrouterPlugin } from "../index";

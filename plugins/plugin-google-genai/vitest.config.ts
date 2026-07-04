@@ -1,3 +1,8 @@
+/**
+ * Default unit-test config: runs `__tests__/**\/*.test.ts`, excluding the
+ * PGLite-backed `*.harness.test.ts` suite (see `vitest.harness.config.ts`) and
+ * the live `*.live.test.ts` suite outside the post-merge lane.
+ */
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({

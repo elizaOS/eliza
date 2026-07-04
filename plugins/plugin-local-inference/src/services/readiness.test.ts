@@ -1,3 +1,4 @@
+/** Covers `LocalInferenceReadiness` derivation for the text slot from catalog/installed/active/download state. Deterministic. */
 import { describe, expect, it } from "vitest";
 import { buildTextGenerationReadiness } from "./readiness";
 import type { ActiveModelState, DownloadJob, InstalledModel } from "./types";

@@ -1,3 +1,9 @@
+/**
+ * `emitModelUsageEvent`: normalizes token-usage counts from the three shapes the
+ * plugin encounters (local `TokenUsage`, AI SDK usage, raw OpenAI API usage) into
+ * one payload and emits `EventType.MODEL_USED` for telemetry, truncating the
+ * prompt to keep event payloads small.
+ */
 import type { IAgentRuntime, ModelTypeName } from "@elizaos/core";
 import { EventType } from "@elizaos/core";
 import type { TokenUsage } from "../types";

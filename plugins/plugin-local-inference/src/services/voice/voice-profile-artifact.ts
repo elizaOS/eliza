@@ -1,3 +1,10 @@
+/**
+ * Defines and builds the persisted voice-profile artifact (schema
+ * `eliza.voice_profile.v1`): the speaker embedding, reference metadata, and
+ * consent record that let a recognized voice be reused for attribution and,
+ * with explicit consent, synthesis. Consent flags gate what the profile may be
+ * used for.
+ */
 import { createHash } from "node:crypto";
 import type { VoiceInputSource } from "./types";
 
