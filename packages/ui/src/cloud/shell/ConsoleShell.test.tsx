@@ -29,21 +29,26 @@ import {
 } from "../../cloud-ui/components/layout";
 import { ConsoleShell } from "./ConsoleShell";
 
+/** The launch-core nav (nubs's cut): exactly these, nothing else. */
 const NAV_HREFS = [
   "/dashboard",
   "/dashboard/agents",
-  "/dashboard/my-agents",
   "/dashboard/apps",
+  "/dashboard/billing",
+  "/dashboard/api-keys",
+  "/dashboard/account",
+  "/dashboard/organization",
+];
+
+/** De-navved surfaces — routable, but must NOT appear in the sidebar. */
+const CULLED_HREFS = [
+  "/dashboard/my-agents",
   "/dashboard/mcps",
   "/dashboard/analytics",
   "/dashboard/api-explorer",
-  "/dashboard/billing",
-  "/dashboard/api-keys",
   "/dashboard/monetization",
   "/dashboard/connectors",
-  "/dashboard/account",
   "/dashboard/security",
-  "/dashboard/organization",
 ];
 
 function TitledPage() {
@@ -95,6 +100,11 @@ describe("ConsoleShell", () => {
     for (const href of NAV_HREFS) {
       expect(hrefs.has(href), `missing sidebar link ${href}`).toBe(true);
     }
+    for (const href of CULLED_HREFS) {
+      expect(hrefs.has(href), `culled surface back in nav: ${href}`).toBe(
+        false,
+      );
+    }
   });
 
   it("surfaces a standalone route's title in the top bar (EnsurePageHeaderProvider defers to the shell, no shadowed provider)", () => {
@@ -112,7 +122,7 @@ describe("ConsoleShell", () => {
     expect(screen.getByRole("heading", { name: "Standalone QA" })).toBeTruthy();
   });
 
-  it("names the account-plumbing section 'Workspace', not 'Account' (no section title duplicating an item label)", () => {
+  it("renders a flat nav with no section titles (the launch cut; also settles the Account/Account double-label)", () => {
     render(
       <MemoryRouter initialEntries={["/dashboard"]}>
         <ConsoleShell>
@@ -121,10 +131,14 @@ describe("ConsoleShell", () => {
       </MemoryRouter>,
     );
 
-    // The section that holds Connectors/Account/Security/Organization is
-    // titled "Workspace" so it doesn't repeat the "Account" item label below
-    // it (the sidebar half of the double-title fix).
-    expect(screen.getByText("Workspace")).toBeTruthy();
+    // One unsectioned list: no "Run"/"Observe"/"Money"/"Workspace" (or any
+    // other) section headings above the items.
+    for (const title of ["Run", "Observe", "Money", "Workspace", "Account"]) {
+      expect(
+        screen.queryByRole("heading", { name: title }),
+        `unexpected sidebar section title: ${title}`,
+      ).toBeNull();
+    }
     // The "Account" nav item itself is unchanged.
     expect(
       screen.getByRole("link", { name: /Account/i }).getAttribute("href"),

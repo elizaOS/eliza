@@ -622,9 +622,7 @@ export function AppDomains({ appId }: AppDomainsProps) {
                     defaultValue: "Root Domains",
                   })}
                 </p>
-                <p className="text-xs text-muted font-mono mt-1">
-                  example.com
-                </p>
+                <p className="text-xs text-muted font-mono mt-1">example.com</p>
               </div>
               <div className="text-right">
                 <p className="text-sm text-txt-strong font-mono">A</p>
@@ -1192,9 +1190,7 @@ function DnsRecordRow({
                 defaultValue: "Value / Target",
               })}
             </p>
-            <p className="font-mono text-xs text-muted break-all">
-              {value}
-            </p>
+            <p className="font-mono text-xs text-muted break-all">{value}</p>
           </div>
         </div>
       </div>

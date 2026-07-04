@@ -13,19 +13,12 @@
 
 import type { LucideIcon } from "lucide-react";
 import {
-  BarChart3,
   Bot,
-  Braces,
   Building2,
   CreditCard,
   Grid3x3,
   KeyRound,
-  Lock,
-  Plug,
-  Sparkles,
-  TrendingUp,
   User,
-  Workflow,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { DashboardLoadingState } from "../../cloud-ui/components/dashboard/route-placeholders";
@@ -45,26 +38,19 @@ interface ConsoleSurface {
 }
 
 /**
- * Every standalone console surface, in scan order: run things first (agents /
- * apps), then measure (analytics / explorer / MCPs), then money (billing /
- * keys / monetization), then account plumbing.
+ * The launch-core surfaces (nubs's cut, 2026-07-04) — mirrors the console
+ * sidebar exactly: agents, apps, money, keys, account plumbing. De-navved
+ * surfaces (my-agents, analytics, api-explorer, mcps, monetization,
+ * connectors, security) stay routable but aren't advertised here.
  */
 const CONSOLE_SURFACES: ReadonlyArray<ConsoleSurface> = [
   {
     to: "/dashboard/agents",
     icon: Bot,
     titleKey: "cloud.home.agents",
-    titleDefault: "Instances",
+    titleDefault: "Agents",
     descKey: "cloud.home.agentsDesc",
     descDefault: "Hosted agents: create, wake, sleep, logs.",
-  },
-  {
-    to: "/dashboard/my-agents",
-    icon: Sparkles,
-    titleKey: "cloud.home.myAgents",
-    titleDefault: "My Agents",
-    descKey: "cloud.home.myAgentsDesc",
-    descDefault: "Character library and agent console.",
   },
   {
     to: "/dashboard/apps",
@@ -73,30 +59,6 @@ const CONSOLE_SURFACES: ReadonlyArray<ConsoleSurface> = [
     titleDefault: "Apps",
     descKey: "cloud.home.appsDesc",
     descDefault: "Hosted apps: monetization, domains, users.",
-  },
-  {
-    to: "/dashboard/analytics",
-    icon: BarChart3,
-    titleKey: "cloud.home.analytics",
-    titleDefault: "Analytics",
-    descKey: "cloud.home.analyticsDesc",
-    descDefault: "Usage, cost, and success-rate trends.",
-  },
-  {
-    to: "/dashboard/api-explorer",
-    icon: Braces,
-    titleKey: "cloud.home.apiExplorer",
-    titleDefault: "API Explorer",
-    descKey: "cloud.home.apiExplorerDesc",
-    descDefault: "Try models and media generation live.",
-  },
-  {
-    to: "/dashboard/mcps",
-    icon: Workflow,
-    titleKey: "cloud.home.mcps",
-    titleDefault: "MCPs",
-    descKey: "cloud.home.mcpsDesc",
-    descDefault: "Hosted MCP servers for your agents.",
   },
   {
     to: "/dashboard/billing",
@@ -115,36 +77,12 @@ const CONSOLE_SURFACES: ReadonlyArray<ConsoleSurface> = [
     descDefault: "Create and revoke inference API keys.",
   },
   {
-    to: "/dashboard/monetization",
-    icon: TrendingUp,
-    titleKey: "cloud.home.monetization",
-    titleDefault: "Monetization",
-    descKey: "cloud.home.monetizationDesc",
-    descDefault: "Earnings, redemptions, and affiliates.",
-  },
-  {
-    to: "/dashboard/connectors",
-    icon: Plug,
-    titleKey: "cloud.home.connectors",
-    titleDefault: "Connectors",
-    descKey: "cloud.home.connectorsDesc",
-    descDefault: "Discord, Telegram, Google, and more.",
-  },
-  {
     to: "/dashboard/account",
     icon: User,
     titleKey: "cloud.home.account",
     titleDefault: "Account",
     descKey: "cloud.home.accountDesc",
-    descDefault: "Profile, email, and identity.",
-  },
-  {
-    to: "/dashboard/security",
-    icon: Lock,
-    titleKey: "cloud.home.security",
-    titleDefault: "Security",
-    descKey: "cloud.home.securityDesc",
-    descDefault: "Sessions, privacy, and audit log.",
+    descDefault: "Profile, email, identity, and security.",
   },
   {
     to: "/dashboard/organization",

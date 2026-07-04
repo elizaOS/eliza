@@ -49,20 +49,13 @@ function renderHome(): void {
   );
 }
 
-/** Every standalone console surface the directory must link to. */
+/** The launch-core directory (mirrors the sidebar cut exactly). */
 const EXPECTED_LINKS = [
   "/dashboard/agents",
-  "/dashboard/my-agents",
   "/dashboard/apps",
-  "/dashboard/analytics",
-  "/dashboard/api-explorer",
-  "/dashboard/mcps",
   "/dashboard/billing",
   "/dashboard/api-keys",
-  "/dashboard/monetization",
-  "/dashboard/connectors",
   "/dashboard/account",
-  "/dashboard/security",
   "/dashboard/organization",
 ];
 

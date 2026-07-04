@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { render, screen } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("../shell/CloudI18nProvider", () => ({
@@ -47,8 +48,16 @@ import { SecurityPage } from "./SecurityPage";
 
 describe("account/security standalone pages", () => {
   it("wraps the account surface in a page-header provider", () => {
-    render(<AccountPage />);
+    // Router context: the page links to the de-navved Security page.
+    render(
+      <MemoryRouter>
+        <AccountPage />
+      </MemoryRouter>,
+    );
     expect(screen.getByText("account body")).toBeTruthy();
+    expect(
+      screen.getByRole("link", { name: /Sessions & security/ }),
+    ).toBeTruthy();
   });
 
   it("wraps the security surface in a page-header provider", () => {

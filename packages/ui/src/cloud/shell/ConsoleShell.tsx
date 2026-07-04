@@ -14,20 +14,13 @@
 
 import { BRAND_PATHS, LOGO_FILES } from "@elizaos/shared/brand";
 import {
-  BarChart3,
   Bot,
-  Braces,
   Building2,
   CreditCard,
   Grid3x3,
   Home,
   KeyRound,
-  Lock,
-  Plug,
-  Sparkles,
-  TrendingUp,
   User,
-  Workflow,
 } from "lucide-react";
 import { type ReactNode, useCallback, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
@@ -43,53 +36,20 @@ import {
 } from "../../cloud-ui/components/layout";
 import { useRequireAuth } from "../lib/use-session-auth";
 
-/** The console nav, in scan order: overview, run things, observe, money,
- * account plumbing. Every href is a registered standalone cloud route. */
+/**
+ * The console nav: one flat list, launch-core surfaces only (nubs's cut,
+ * 2026-07-04 — manage account, funds, agents, apps, API keys). Everything
+ * else (my-agents, mcps, analytics, api-explorer, monetization, connectors,
+ * security) stays REGISTERED and deep-linkable — it just isn't advertised
+ * here until it earns its slot back. One unsectioned list means no section
+ * titles at all, which also settles the Account/Account double-label.
+ */
 const CONSOLE_NAV_SECTIONS: DashboardSidebarSection[] = [
   {
     items: [
       { id: "overview", label: "Overview", href: "/dashboard", icon: Home },
-    ],
-  },
-  {
-    title: "Run",
-    items: [
-      {
-        id: "agents",
-        label: "Instances",
-        href: "/dashboard/agents",
-        icon: Bot,
-      },
-      {
-        id: "my-agents",
-        label: "My Agents",
-        href: "/dashboard/my-agents",
-        icon: Sparkles,
-      },
+      { id: "agents", label: "Agents", href: "/dashboard/agents", icon: Bot },
       { id: "apps", label: "Apps", href: "/dashboard/apps", icon: Grid3x3 },
-      { id: "mcps", label: "MCPs", href: "/dashboard/mcps", icon: Workflow },
-    ],
-  },
-  {
-    title: "Observe",
-    items: [
-      {
-        id: "analytics",
-        label: "Analytics",
-        href: "/dashboard/analytics",
-        icon: BarChart3,
-      },
-      {
-        id: "api-explorer",
-        label: "API Explorer",
-        href: "/dashboard/api-explorer",
-        icon: Braces,
-      },
-    ],
-  },
-  {
-    title: "Money",
-    items: [
       {
         id: "billing",
         label: "Billing",
@@ -103,36 +63,10 @@ const CONSOLE_NAV_SECTIONS: DashboardSidebarSection[] = [
         icon: KeyRound,
       },
       {
-        id: "monetization",
-        label: "Monetization",
-        href: "/dashboard/monetization",
-        icon: TrendingUp,
-      },
-    ],
-  },
-  {
-    // Section title was "Account", which duplicated the "Account" item label
-    // right below it (double-title feel in the sidebar). "Workspace" covers
-    // the whole group — connectors, account, security, and organization.
-    title: "Workspace",
-    items: [
-      {
-        id: "connectors",
-        label: "Connectors",
-        href: "/dashboard/connectors",
-        icon: Plug,
-      },
-      {
         id: "account",
         label: "Account",
         href: "/dashboard/account",
         icon: User,
-      },
-      {
-        id: "security",
-        label: "Security",
-        href: "/dashboard/security",
-        icon: Lock,
       },
       {
         id: "organization",
