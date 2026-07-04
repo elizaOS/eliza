@@ -1,5 +1,9 @@
 "use client";
 
+/**
+ * Transactions section of the cloud agent-instance detail: the agent's on-chain
+ * transaction history.
+ */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "../../../components/ui/button";
 

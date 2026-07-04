@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for MCP surface registration into the cloud route registry.
+ * Route components mocked, no runtime.
+ */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("./McpsRoute", () => ({

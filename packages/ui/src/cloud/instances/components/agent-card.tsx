@@ -1,5 +1,9 @@
 "use client";
 
+/**
+ * Grid/list card for a cloud agent instance (avatar, status, quick actions) on
+ * the My Agents surface.
+ */
 import {
   ensureAvatarUrl,
   isBuiltInAvatar,

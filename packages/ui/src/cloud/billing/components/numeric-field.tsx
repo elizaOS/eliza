@@ -1,5 +1,8 @@
 "use client";
 
+/**
+ * Labeled numeric input field for the cloud billing forms.
+ */
 import { Input, Label } from "@elizaos/ui/cloud-ui";
 
 interface NumericFieldProps {

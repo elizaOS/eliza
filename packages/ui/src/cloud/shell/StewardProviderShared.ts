@@ -1,3 +1,7 @@
+/**
+ * Shared Steward session plumbing for the cloud shell: token storage keys and the
+ * session/refresh endpoints the Steward auth provider uses.
+ */
 import {
   clearStoredStewardToken,
   STEWARD_REFRESH_ENDPOINT,

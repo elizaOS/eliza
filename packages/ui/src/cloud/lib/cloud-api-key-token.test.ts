@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for the cloud-API-key token predicate (#12046). Pure function, no
+ * harness.
+ */
 import { describe, expect, it } from "vitest";
 
 import { isCloudApiKeyToken } from "./cloud-api-key-token";

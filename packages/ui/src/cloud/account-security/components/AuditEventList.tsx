@@ -1,3 +1,7 @@
+/**
+ * Renders the account-security audit event list (sign-in/security events) with
+ * per-event shield iconography, on the cloud dashboard.
+ */
 import { ShieldAlert, ShieldCheck, ShieldX } from "lucide-react";
 import { useCloudT } from "../../shell/CloudI18nProvider";
 

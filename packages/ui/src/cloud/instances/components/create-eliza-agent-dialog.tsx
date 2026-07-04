@@ -1,5 +1,9 @@
 "use client";
 
+/**
+ * Dialog to create a cloud Eliza agent: pick a flavor for the environment and
+ * provision it.
+ */
 import type { AgentFlavor } from "@elizaos/cloud-shared/lib/constants/agent-flavors";
 import {
   getAgentFlavorsForEnv,

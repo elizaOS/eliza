@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for JWT payload decode and expiry math. Pure functions over
+ * synthetic tokens, no signature verification.
+ */
 import { describe, expect, it } from "vitest";
 import { decodeJwtPayload, jwtExpiryMs } from "./jwt";
 

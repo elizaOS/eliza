@@ -1,3 +1,7 @@
+/**
+ * Drives a cloud-agent handoff end to end, dispatching phase events and honoring
+ * retry so the banner (useCloudHandoffPhase) tracks progress.
+ */
 import {
   CLOUD_HANDOFF_RETRY_EVENT,
   type CloudHandoffRetryDetail,

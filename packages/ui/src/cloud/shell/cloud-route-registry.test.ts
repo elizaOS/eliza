@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for the cloud route registry (register/get, public-access map).
+ * In-memory registry, no runtime.
+ */
 import { describe, expect, it, vi } from "vitest";
 import {
   CLOUD_PUBLIC_ROUTE_ACCESS,

@@ -1,5 +1,9 @@
 "use client";
 
+/**
+ * Wallet section of the cloud agent-instance detail: balance and wallet actions,
+ * polled while the document is visible.
+ */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "../../../components/ui/button";
 import { useIntervalWhenDocumentVisible } from "../../../hooks/useDocumentVisibility";

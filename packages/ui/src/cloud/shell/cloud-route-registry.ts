@@ -1,3 +1,7 @@
+/**
+ * Runtime registry of cloud dashboard routes: register lazy route components and
+ * their public/authed access policy, consumed by the CloudRouterShell.
+ */
 import type {
   ComponentType,
   LazyExoticComponent,

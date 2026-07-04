@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for Steward config resolution (API URL / tenant overrides). Env
+ * mocked, no network.
+ */
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {

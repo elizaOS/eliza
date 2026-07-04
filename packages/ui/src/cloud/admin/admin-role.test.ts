@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for the admin-role rank/predicate helpers. Pure functions, no
+ * harness.
+ */
 import {
   ADMIN_ROLE_RANK,
   adminRoleRank,

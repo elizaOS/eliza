@@ -1,5 +1,8 @@
 "use client";
 
+/**
+ * Direct-crypto credit-card entry card for the cloud billing flow.
+ */
 import {
   Button,
   Card,

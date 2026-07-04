@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for org-role predicates (owner, manage, role membership). Pure
+ * functions, no harness.
+ */
 import { describe, expect, it } from "vitest";
 import {
   canManageOrg,

@@ -1,5 +1,9 @@
 "use client";
 
+/**
+ * Policies section of the cloud agent-instance detail: view/edit the agent's
+ * spend/action policies.
+ */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "../../../components/ui/button";
 

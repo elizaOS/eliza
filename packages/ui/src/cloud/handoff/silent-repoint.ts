@@ -1,3 +1,7 @@
+/**
+ * Silently repoints the app at a provisioned cloud agent — adds the profile and
+ * persists the active-server record without a user-facing switch.
+ */
 import { client } from "../../api";
 import {
   addAgentProfile,

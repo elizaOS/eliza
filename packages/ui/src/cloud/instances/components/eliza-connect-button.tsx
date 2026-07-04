@@ -1,5 +1,9 @@
 "use client";
 
+/**
+ * Button that opens/connects to a cloud agent instance (external link into the
+ * running agent).
+ */
 import { BrandButton } from "@elizaos/ui/cloud-ui";
 import { ExternalLink } from "lucide-react";
 import { useT } from "../lib/i18n";

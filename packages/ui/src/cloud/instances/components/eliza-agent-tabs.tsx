@@ -1,5 +1,9 @@
 "use client";
 
+/**
+ * Tab strip for the cloud agent-instance detail view (logs, wallet, policies,
+ * transactions, backups).
+ */
 import { type ReactNode, useState } from "react";
 import { Button } from "../../../components/ui/button";
 import { useT } from "../lib/i18n";
