@@ -721,11 +721,17 @@ app.post("/", async (c) => {
     // valid `tools` array); keep it inside the settle-refunding try so a
     // conversion throw refunds the reservation instead of stranding the debit
     // the caller was just charged (refund-gap class, #11795).
-    // Request-stable id for the affiliate-earnings dedupe sourceId in billUsage
-    // (getRequestIdempotencyKey is header-based, so a client retry of the SAME
-    // request dedupes the cashable creator/affiliate legs; a fresh uuid is the
-    // no-header fallback). Threaded into handleStream / handleNonStream.
-    const requestId = getRequestIdempotencyKey() ?? crypto.randomUUID();
+    // #11588: the billing requestId feeds the affiliate-earnings dedupe sourceId
+    // (getAffiliateEarningsSourceId → `ai_billing:<op>:<requestId>`, deduped on
+    // addEarnings) while the org charge is unconditional. It MUST NOT be
+    // client-controllable, or a caller pinning `x-request-id`/`idempotency-key`
+    // across two billed requests could suppress the second creator credit while
+    // still being charged the markup. Server-generate it (stable for THIS
+    // request, so the abort-vs-finish single-flight dedupe is preserved). The
+    // client's retry-idempotency mechanism stays the reserve `idempotencyKey`
+    // header path below — kept separate from this billing sourceId. Mirrors
+    // chat/completions (thanks @lalalune, #12938 review).
+    const requestId = crypto.randomUUID();
     const messages = anthropicMessagesToModelMessages(request.messages);
     const tools = convertTools(request.tools);
     const toolChoice = mapToolChoice(request.tool_choice);
