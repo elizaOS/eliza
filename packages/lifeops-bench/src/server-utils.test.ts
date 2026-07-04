@@ -256,8 +256,13 @@ describe("composeBenchmarkPrompt", () => {
     });
 
     expect(prompt).toContain("orchestrator lifecycle benchmark");
-    expect(prompt).toContain("updated plan has been applied");
-    expect(prompt).toContain("active subagent status or progress");
+    expect(prompt).toContain("normal orchestrator task-management actions");
+    expect(prompt).toContain("send updates to an active task");
+    expect(prompt).toContain("prose-only lifecycle claims do not satisfy");
+    expect(prompt).toContain("Use REPLY only for the user-facing narration");
+    expect(prompt).toContain("Do not call BENCHMARK_ACTION");
+    expect(prompt).not.toContain("Use REPLY text for the next lifecycle message");
+    expect(prompt).not.toContain("mention active subagent status or progress");
   });
 });
 
@@ -383,7 +388,7 @@ describe("benchmark plugin LifeOps tool capture", () => {
     setBenchmarkContext(null);
   });
 
-  it("renders orchestrator lifecycle-specific reply instructions", async () => {
+  it("renders orchestrator lifecycle-specific action instructions", async () => {
     setBenchmarkContext({
       benchmark: "orchestrator_lifecycle",
       taskId: "lifecycle-a",
@@ -403,8 +408,15 @@ describe("benchmark plugin LifeOps tool capture", () => {
     expect(rendered?.text).toContain(
       "This is an orchestrator lifecycle benchmark",
     );
-    expect(rendered?.text).toContain("updated plan has been applied");
-    expect(rendered?.text).toContain("active subagent");
+    expect(rendered?.text).toContain(
+      "normal orchestrator task-management actions",
+    );
+    expect(rendered?.text).toContain("send the updated instruction");
+    expect(rendered?.text).toContain(
+      "Prose-only lifecycle claims do not satisfy",
+    );
+    expect(rendered?.text).toContain("Do not call BENCHMARK_ACTION");
+    expect(rendered?.text).not.toContain("Respond with actions: REPLY");
 
     setBenchmarkContext(null);
   });
