@@ -10,6 +10,7 @@ import {
   isLoopbackBindHost,
   isNullOriginAllowed,
   isTrustedLocalRequest as isTrustedLocalRequestShared,
+  isWildcardBindHost,
   resolveAllowedHosts,
   resolveAllowedOrigins,
   resolveApiBindHost,
@@ -583,15 +584,33 @@ export function ensureApiTokenForBindHost(host: string): void {
   if (token) return;
 
   const cloudProvisioned = isCloudProvisionedContainer();
+  const wildcardBind = isWildcardBindHost(host);
+
+  // M7 (#12228): a wildcard bind (0.0.0.0 / ::) relaxes both the DNS-rebind
+  // Host check (`hostAllowed`) and the CORS origin check (`resolveCorsOrigin`
+  // reflects any origin with credentials). With ELIZA_DISABLE_AUTO_API_TOKEN=1
+  // and no explicit ELIZA_API_TOKEN that leaves the server listening on every
+  // interface with *no* authenticated boundary and both browser-origin
+  // protections off — silently wide open. Refuse to honor the disable flag in
+  // that exact combo: force a generated token so a real auth boundary exists.
+  // (A specific non-loopback IP bind keeps Host+CORS enforced, so the disable
+  // flag is still honored there.)
+  const forceTokenForWildcard = wildcardBind && disableAutoApiToken;
 
   // Cloud-provisioned containers must never run without an inbound API token
   // (isAuthorized rejects all requests when no token + cloud flag is set).
   // Override the disable flag for cloud containers so they always get a
   // fallback token rather than dead-locking into 401 on every request.
-  if (disableAutoApiToken && !cloudProvisioned) {
+  if (disableAutoApiToken && !cloudProvisioned && !forceTokenForWildcard) {
     return;
   }
-  if (!cloudProvisioned && isLoopbackBindHost(host)) return;
+  if (forceTokenForWildcard) {
+    logger.warn(
+      `[eliza-api] ELIZA_API_BIND=${host} is a wildcard bind and ELIZA_DISABLE_AUTO_API_TOKEN is set with no ELIZA_API_TOKEN. Refusing to start without an authenticated boundary: forcing a generated API token. DNS-rebind + CORS checks stay relaxed for wildcard binds, so this token is the only boundary. Set ELIZA_API_TOKEN explicitly, or bind to 127.0.0.1, to override.`,
+    );
+  }
+  if (!cloudProvisioned && !forceTokenForWildcard && isLoopbackBindHost(host))
+    return;
 
   const generated = crypto.randomBytes(32).toString("hex");
   setApiToken(process.env, generated);
