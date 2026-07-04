@@ -6,6 +6,7 @@
  * the cloud-secrets cache around each case.
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { getBootConfig, setBootConfig } from "../config/boot-config.js";
 import { _resetCloudSecretsForTesting } from "../elizacloud/cloud-secrets.js";
 import { resolveHfDownloadBase, resolveHfDownloadBases } from "./hf-proxy.js";
 
@@ -17,7 +18,9 @@ import { resolveHfDownloadBase, resolveHfDownloadBases } from "./hf-proxy.js";
  *   3. Direct public huggingface.co — no auth.
  */
 describe("resolveHfDownloadBase", () => {
+  const savedConfig = getBootConfig();
   const savedEnv = {
+    ACME_CLOUD_BASE_URL: process.env.ACME_CLOUD_BASE_URL,
     ELIZA_HF_BASE_URL: process.env.ELIZA_HF_BASE_URL,
     ELIZA_HF_BASE_URLS: process.env.ELIZA_HF_BASE_URLS,
     ELIZAOS_CLOUD_API_KEY: process.env.ELIZAOS_CLOUD_API_KEY,
@@ -30,6 +33,8 @@ describe("resolveHfDownloadBase", () => {
     delete process.env.ELIZA_HF_BASE_URLS;
     delete process.env.ELIZAOS_CLOUD_API_KEY;
     delete process.env.ELIZAOS_CLOUD_BASE_URL;
+    delete process.env.ACME_CLOUD_BASE_URL;
+    setBootConfig(savedConfig);
   });
 
   afterEach(() => {
@@ -38,6 +43,7 @@ describe("resolveHfDownloadBase", () => {
       if (value === undefined) delete process.env[key];
       else process.env[key] = value;
     }
+    setBootConfig(savedConfig);
   });
 
   it("routes directly to the public HuggingFace host when nothing is configured", () => {
@@ -58,6 +64,23 @@ describe("resolveHfDownloadBase", () => {
       viaCloud: true,
       label: "cloud",
     });
+  });
+
+  it("uses a branded cloud base URL alias for the cloud proxy without syncing env", () => {
+    setBootConfig({
+      ...savedConfig,
+      envAliases: [["ACME_CLOUD_BASE_URL", "ELIZAOS_CLOUD_BASE_URL"]],
+    });
+    process.env.ELIZAOS_CLOUD_API_KEY = "key-123";
+    process.env.ACME_CLOUD_BASE_URL = "https://acme.example.com/api/v1";
+
+    expect(resolveHfDownloadBase()).toEqual({
+      base: "https://acme.example.com/api/v1/hf-proxy",
+      authHeader: { authorization: "Bearer key-123" },
+      viaCloud: true,
+      label: "cloud",
+    });
+    expect(process.env.ELIZAOS_CLOUD_BASE_URL).toBeUndefined();
   });
 
   it("tries explicit mirrors before the cloud proxy and public host", () => {

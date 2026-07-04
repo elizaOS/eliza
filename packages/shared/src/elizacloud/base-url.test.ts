@@ -6,11 +6,16 @@
  * The ELIZAOS_CLOUD_BASE_URL env override takes precedence over the passed URL.
  */
 import { afterEach, describe, expect, it } from "vitest";
+import { getBootConfig, setBootConfig } from "../config/boot-config";
 import { normalizeCloudSiteUrl, resolveCloudApiBaseUrl } from "./base-url";
 
 describe("Eliza Cloud base URL normalization", () => {
+  const savedConfig = getBootConfig();
+
   afterEach(() => {
     delete process.env.ELIZAOS_CLOUD_BASE_URL;
+    delete process.env.ACME_CLOUD_BASE_URL;
+    setBootConfig(savedConfig);
   });
 
   it("normalizes every cloud host alias to the apex origin", () => {
@@ -59,5 +64,17 @@ describe("Eliza Cloud base URL normalization", () => {
     expect(normalizeCloudSiteUrl("https://raw.example.com")).toBe(
       "https://env.example.com",
     );
+  });
+
+  it("resolves branded env aliases without materializing the canonical key", () => {
+    setBootConfig({
+      ...savedConfig,
+      envAliases: [["ACME_CLOUD_BASE_URL", "ELIZAOS_CLOUD_BASE_URL"]],
+    });
+    process.env.ACME_CLOUD_BASE_URL =
+      "http://branded.example.com:8080/api/v1?debug=1";
+
+    expect(resolveCloudApiBaseUrl()).toBe("https://branded.example.com/api/v1");
+    expect(process.env.ELIZAOS_CLOUD_BASE_URL).toBeUndefined();
   });
 });

@@ -10,6 +10,7 @@
 import http from "node:http";
 import { Socket } from "node:net";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { getBootConfig, setBootConfig } from "./config/boot-config.js";
 import {
   isLoopbackRemoteAddress,
   isTrustedLocalRequest,
@@ -237,8 +238,14 @@ describe("isTrustedLocalRequest — shared host/origin classification", () => {
 });
 
 describe("isTrustedLocalRequest — app-core policy gates (cloudCheck=env, dev bypass)", () => {
+  const savedConfig = getBootConfig();
+
   beforeEach(clearTrustEnv);
-  afterEach(clearTrustEnv);
+  afterEach(() => {
+    clearTrustEnv();
+    delete process.env.ACME_CLOUD_PROVISIONED;
+    setBootConfig(savedConfig);
+  });
 
   const localReq = () => makeReq({ headers: { host: "localhost:2138" } });
 
@@ -264,6 +271,17 @@ describe("isTrustedLocalRequest — app-core policy gates (cloudCheck=env, dev b
   it("cloudCheck=env: raw ELIZA_CLOUD_PROVISIONED=1 denies trust (no token needed)", () => {
     process.env.ELIZA_CLOUD_PROVISIONED = "1";
     expect(isTrustedLocalRequest(localReq(), APP_CORE_OPTIONS)).toBe(false);
+  });
+
+  it("cloudCheck=env: branded cloud-provisioned alias denies trust without syncing env", () => {
+    setBootConfig({
+      ...savedConfig,
+      envAliases: [["ACME_CLOUD_PROVISIONED", "ELIZA_CLOUD_PROVISIONED"]],
+    });
+    process.env.ACME_CLOUD_PROVISIONED = "1";
+
+    expect(isTrustedLocalRequest(localReq(), APP_CORE_OPTIONS)).toBe(false);
+    expect(process.env.ELIZA_CLOUD_PROVISIONED).toBeUndefined();
   });
 });
 
