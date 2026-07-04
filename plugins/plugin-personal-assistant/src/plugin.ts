@@ -57,10 +57,10 @@ import { remindersPlugin } from "@elizaos/plugin-reminders";
 import { remoteDesktopPlugin } from "@elizaos/plugin-remote-desktop";
 import { XDmAdapter } from "@elizaos/plugin-x/lifeops-message-adapter";
 import type {
-	IPermissionsRegistry,
-	PermissionState,
-	Platform,
-	Prober,
+  IPermissionsRegistry,
+  PermissionState,
+  Platform,
+  Prober,
 } from "@elizaos/shared";
 import { blockAction } from "./actions/block.js";
 import { briefAction } from "./actions/brief.js";
@@ -253,7 +253,8 @@ function toSharedPermissionState(state: {
 
 const websiteBlockingPermissionProber: Prober = {
   id: "website-blocking",
-  check: async () => toSharedPermissionState(await getSelfControlPermissionState()),
+  check: async () =>
+    toSharedPermissionState(await getSelfControlPermissionState()),
   request: async () =>
     toSharedPermissionState(await requestSelfControlPermission()),
   openSettings: openSelfControlPermissionLocation,
