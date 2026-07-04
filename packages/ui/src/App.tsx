@@ -172,6 +172,10 @@ import {
   listAppShellPages,
   subscribeAppShellPages,
 } from "./app-shell-registry";
+import {
+  resolveBuiltinBackgroundPolicy,
+  resolveBuiltinTabId,
+} from "./builtin-tab-registry";
 // DesktopTabBar and FineTuningView stay static: they are already pulled
 // eagerly elsewhere in the app graph (plugin-loader / boot-config), so a
 // lazy() boundary here would only fold back into main. The remaining page
@@ -802,12 +806,13 @@ function builtinRouteBackgroundPolicy(
   tab: string,
   navigationPath: string,
 ): AppShellBackgroundPolicy | null {
-  const normalizedPath = trimmedNavigationPath(navigationPath);
-  if (tab === "chat" || tab === "background") return "shared";
-  if (tab === "settings") return "shared";
-  if (tab === "views" && normalizedPath === "/views") return "shared";
-  if (tab === "apps" && normalizedPath === "/apps") return "shared";
-  return null;
+  // Data-driven lookup over the single builtin-tab registry (see
+  // builtin-tab-registry.ts) — replaces the former per-tab if-chain that ran
+  // parallel to the router's own tab enumeration and could silently drift.
+  return resolveBuiltinBackgroundPolicy(
+    tab,
+    trimmedNavigationPath(navigationPath),
+  );
 }
 
 function resolveActiveScreenBackgroundPolicy({
@@ -1132,6 +1137,105 @@ function renderAppsSurface(navigationPath: string): ReactNode {
   );
 }
 
+/** Runtime context a builtin static-tab renderer may read. */
+interface StaticTabRenderContext {
+  nativeOsSurfaceEnabled: boolean;
+  navigationPath: string;
+  settingsInitialSection?: string | null;
+  walletNav?: ReactNode;
+}
+
+/**
+ * The single builtin static-tab render registry: canonical-id -> renderer.
+ *
+ * This replaces the former split between a `directViews` object literal and a
+ * trailing `if (tab === "...")` chain (App.tsx audit item #34). Both were
+ * hand-maintained tab enumerations sitting next to a SECOND enumeration in
+ * `builtinRouteBackgroundPolicy`; a tab added to one and forgotten in another
+ * was an unobservable drift bug. Now every builtin surface (simple or one that
+ * needs runtime context / a custom wrapper) is ONE keyed entry, and alias tabs
+ * (`triggers` -> `automations`, `advanced` -> `fine-tuning`) resolve through
+ * the shared `builtin-tab-registry` so the router and the background resolver
+ * read the same alias table.
+ *
+ * Built lazily per-call (not a module constant) because several renderers close
+ * over per-render context (settings section, wallet nav, native-surface gate).
+ */
+function buildStaticTabRenderers(): Record<
+  string,
+  (ctx: StaticTabRenderContext) => ReactNode
+> {
+  const wrap = (node: ReactNode) => () => (
+    <TabContentView>{node}</TabContentView>
+  );
+  return {
+    tutorial: wrap(<TutorialView />),
+    help: wrap(<HelpView />),
+    chat: () => <ViewUnavailableFallback />,
+    browser: () => <BrowserWorkspaceView />,
+    stream: () => <StreamView />,
+    tasks: wrap(<TasksPageView />),
+    automations: () => <AutomationsFeed />,
+    plugins: wrap(<PluginsPageView />),
+    skills: wrap(<SkillsView />),
+    trajectories: wrap(<TrajectoriesView />),
+    transcripts: wrap(<TranscriptsPageView />),
+    relationships: wrap(<RelationshipsView />),
+    documents: wrap(<KnowledgeView />),
+    experience: wrap(<CharacterExperienceView />),
+    "character-skills": wrap(<CharacterSkillsView />),
+    memories: wrap(<MemoryViewerView />),
+    files: () => (
+      <TabScrollView>
+        <FilesView />
+      </TabScrollView>
+    ),
+    runtime: wrap(<RuntimeView />),
+    database: wrap(<DatabasePageView />),
+    logs: wrap(<LogsView />),
+    desktop: wrap(<DesktopWorkspaceSection />),
+    settings: ({ settingsInitialSection }) => (
+      <TabContentView surface="transparent">
+        <SettingsView
+          key="settings-root"
+          initialSection={settingsInitialSection ?? undefined}
+        />
+      </TabContentView>
+    ),
+    // Camera is an AOSP-ElizaOS-fork-only surface — gate the route on the same
+    // marker as the home tile, so a deep-link off the fork falls back to
+    // "unavailable" instead of rendering on web/desktop/iOS/Play-Store Android.
+    camera: () => renderPhoneSurface(isAospShellEnabled(), CameraPageView),
+    phone: ({ nativeOsSurfaceEnabled }) =>
+      renderPhoneSurface(nativeOsSurfaceEnabled, PhonePageView),
+    messages: ({ nativeOsSurfaceEnabled }) =>
+      renderPhoneSurface(nativeOsSurfaceEnabled, MessagesPageView),
+    contacts: ({ nativeOsSurfaceEnabled }) =>
+      renderPhoneSurface(nativeOsSurfaceEnabled, ContactsPageView),
+    views: ({ navigationPath }) => renderAppsSurface(navigationPath),
+    apps: ({ navigationPath }) => renderAppsSurface(navigationPath),
+    // Rendered directly (no opaque TabContentView chrome) so the live app
+    // background shows through behind the controls.
+    background: () => <BackgroundView />,
+    character: () => (
+      <TabContentView>
+        <CharacterEditor />
+      </TabContentView>
+    ),
+    "character-select": () => (
+      <TabContentView>
+        <CharacterEditor />
+      </TabContentView>
+    ),
+    inventory: ({ walletNav }) => (
+      <TabScrollView nav={walletNav}>
+        <WalletInventoryPage />
+      </TabScrollView>
+    ),
+    "fine-tuning": wrap(<FineTuningView />),
+  };
+}
+
 function renderStaticViewRouterTab({
   tab,
   nativeOsSurfaceEnabled,
@@ -1145,151 +1249,20 @@ function renderStaticViewRouterTab({
   settingsInitialSection?: string | null;
   walletNav?: ReactNode;
 }): ReactNode {
-  const directViews: Record<string, ReactNode> = {
-    tutorial: (
-      <TabContentView>
-        <TutorialView />
-      </TabContentView>
-    ),
-    help: (
-      <TabContentView>
-        <HelpView />
-      </TabContentView>
-    ),
-    chat: <ViewUnavailableFallback />,
-    browser: <BrowserWorkspaceView />,
-    stream: <StreamView />,
-    tasks: (
-      <TabContentView>
-        <TasksPageView />
-      </TabContentView>
-    ),
-    automations: <AutomationsFeed />,
-    triggers: <AutomationsFeed />,
-    settings: (
-      <TabContentView surface="transparent">
-        <SettingsView
-          key="settings-root"
-          initialSection={settingsInitialSection ?? undefined}
-        />
-      </TabContentView>
-    ),
-    plugins: (
-      <TabContentView>
-        <PluginsPageView />
-      </TabContentView>
-    ),
-    skills: (
-      <TabContentView>
-        <SkillsView />
-      </TabContentView>
-    ),
-    trajectories: (
-      <TabContentView>
-        <TrajectoriesView />
-      </TabContentView>
-    ),
-    transcripts: (
-      <TabContentView>
-        <TranscriptsPageView />
-      </TabContentView>
-    ),
-    relationships: (
-      <TabContentView>
-        <RelationshipsView />
-      </TabContentView>
-    ),
-    documents: (
-      <TabContentView>
-        <KnowledgeView />
-      </TabContentView>
-    ),
-    experience: (
-      <TabContentView>
-        <CharacterExperienceView />
-      </TabContentView>
-    ),
-    "character-skills": (
-      <TabContentView>
-        <CharacterSkillsView />
-      </TabContentView>
-    ),
-    memories: (
-      <TabContentView>
-        <MemoryViewerView />
-      </TabContentView>
-    ),
-    files: (
-      <TabScrollView>
-        <FilesView />
-      </TabScrollView>
-    ),
-    runtime: (
-      <TabContentView>
-        <RuntimeView />
-      </TabContentView>
-    ),
-    database: (
-      <TabContentView>
-        <DatabasePageView />
-      </TabContentView>
-    ),
-    logs: (
-      <TabContentView>
-        <LogsView />
-      </TabContentView>
-    ),
-    desktop: (
-      <TabContentView>
-        <DesktopWorkspaceSection />
-      </TabContentView>
-    ),
-  };
-  if (tab === "camera") {
-    // Camera is an AOSP-ElizaOS-fork-only surface — gate the route on the same
-    // marker as the home tile, so a deep-link off the fork falls back to
-    // "unavailable" instead of rendering on web/desktop/iOS/Play-Store Android.
-    return renderPhoneSurface(isAospShellEnabled(), CameraPageView);
+  // Resolve legacy alias ids (e.g. `triggers` -> `automations`, `advanced` ->
+  // `fine-tuning`) onto their canonical builtin id via the shared registry, so
+  // the router and background resolver honor the same alias table.
+  const canonicalTab = resolveBuiltinTabId(tab);
+  const render = buildStaticTabRenderers()[canonicalTab];
+  if (render) {
+    return render({
+      nativeOsSurfaceEnabled,
+      navigationPath,
+      settingsInitialSection,
+      walletNav,
+    });
   }
-  if (tab === "phone") {
-    return renderPhoneSurface(nativeOsSurfaceEnabled, PhonePageView);
-  }
-  if (tab === "messages") {
-    return renderPhoneSurface(nativeOsSurfaceEnabled, MessagesPageView);
-  }
-  if (tab === "contacts") {
-    return renderPhoneSurface(nativeOsSurfaceEnabled, ContactsPageView);
-  }
-  if (tab === "views" || tab === "apps") {
-    return renderAppsSurface(navigationPath);
-  }
-  if (tab === "background") {
-    // Rendered directly (no opaque TabContentView chrome) so the live app
-    // background shows through behind the controls.
-    return <BackgroundView />;
-  }
-  if (tab === "character" || tab === "character-select") {
-    return (
-      <TabContentView>
-        <CharacterEditor />
-      </TabContentView>
-    );
-  }
-  if (tab === "inventory") {
-    return (
-      <TabScrollView nav={walletNav}>
-        <WalletInventoryPage />
-      </TabScrollView>
-    );
-  }
-  if (tab === "fine-tuning" || tab === "advanced") {
-    return (
-      <TabContentView>
-        <FineTuningView />
-      </TabContentView>
-    );
-  }
-  return directViews[tab] ?? <ViewUnavailableFallback />;
+  return <ViewUnavailableFallback />;
 }
 
 function renderViewRouterContent({
