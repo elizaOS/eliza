@@ -3813,3 +3813,172 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(useModelCalls(runtime)).toHaveLength(1);
 	});
 });
+
+// A sub-agent completion relay's envelope echoes the ORIGINAL task text
+// ("[sub-agent: Build and deploy…]"), so the direct-candidate injection
+// backstop used to read a FINISHED task as fresh task intent: it forced
+// requiresTool + a delegation candidate onto the relay turn, the planner
+// rejected REPLY up to the required-tool miss cap, and some turns re-spawned
+// the already-completed task. Relay turns are detected by their structural
+// markers (content.metadata.subAgent / the relay envelope prefix), never by
+// classifying LLM text — genuine user task-intent turns keep the backstop.
+describe("sub-agent completion relay vs the direct-candidate injection backstop", () => {
+	const RELAY_ENVELOPE_TEXT =
+		"[sub-agent: Build and deploy a dice roller web app (opencode) — completed]\n" +
+		"Done. I built the dice roller web app and deployed it. " +
+		"The app is live at https://apps.example.test/dice/ — repo updated on branch feat/dice.";
+
+	function makeSpawnAction(handler: () => Promise<unknown>) {
+		return {
+			name: "TASKS_SPAWN_AGENT",
+			similes: [],
+			tags: ["domain:coding", "resource:agent-task", "capability:delegate"],
+			description: "Spawn a coding sub-agent for a delegated task.",
+			parameters: [
+				{
+					name: "task",
+					description: "Task description",
+					required: true,
+					schema: { type: "string" },
+				},
+			],
+			examples: [],
+			validate: async () => true,
+			handler,
+		};
+	}
+
+	it("lets REPLY through on a metadata-marked relay turn (structured Stage 1) — no force-tools, no re-spawn", async () => {
+		const spawnHandler = vi.fn(async () => ({
+			success: true,
+			text: "spawned",
+			data: { actionName: "TASKS_SPAWN_AGENT" },
+		}));
+		// A terse relay reply fails looksLikeCompleteDirectReply, so nothing but
+		// the relay gate itself keeps the injection backstop off this turn — the
+		// exact shape that used to be force-planned into the miss-cap loop.
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["simple"],
+				replyText: "Done.",
+			}),
+		]);
+		runtime.actions = [makeSpawnAction(spawnHandler)] as never;
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: RELAY_ENVELOPE_TEXT,
+				source: "sub_agent",
+				metadata: { subAgent: true },
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("direct_reply");
+		expect(result.messageHandler.plan.requiresTool).toBe(false);
+		expect(result.messageHandler.plan.candidateActions ?? []).not.toContain(
+			"TASKS_SPAWN_AGENT",
+		);
+		expect(spawnHandler).not.toHaveBeenCalled();
+		// Stage 1 only — no planner stage, no required-tool miss loop.
+		expect(useModelCalls(runtime)).toHaveLength(1);
+		if (result.kind === "direct_reply") {
+			expect(result.result.responseContent?.text).toBe("Done.");
+		}
+	});
+
+	it("lets REPLY through on an envelope-prefix relay turn (plain-text Stage 1 fallback)", async () => {
+		const spawnHandler = vi.fn(async () => ({
+			success: true,
+			text: "spawned",
+			data: { actionName: "TASKS_SPAWN_AGENT" },
+		}));
+		// Plain-text Stage 1 output exercises the
+		// applyDirectCurrentCandidateBackstopToMessageHandler path; the relay is
+		// recognized by its envelope prefix alone (no metadata on the memory).
+		const runtime = makeRuntime([
+			"Build finished — the dice roller app is deployed and the link was shared above.",
+		]);
+		runtime.actions = [makeSpawnAction(spawnHandler)] as never;
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: RELAY_ENVELOPE_TEXT,
+				source: "sub_agent",
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("direct_reply");
+		// The plain-text synthesizer leaves requiresTool unset; the defect was
+		// the backstop PROMOTING it to true — assert the promotion never happens.
+		expect(result.messageHandler.plan.requiresTool).not.toBe(true);
+		expect(result.messageHandler.plan.candidateActions ?? []).not.toContain(
+			"TASKS_SPAWN_AGENT",
+		);
+		expect(spawnHandler).not.toHaveBeenCalled();
+		expect(useModelCalls(runtime)).toHaveLength(1);
+	});
+
+	it("keeps the backstop on a genuine user task-intent turn with the same task words", async () => {
+		const spawnHandler = vi.fn(async () => ({
+			success: true,
+			text: "sub-agent session started",
+			data: { actionName: "TASKS_SPAWN_AGENT" },
+		}));
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: [],
+				replyText: "On it.",
+			}),
+			{
+				thought: "Delegate the build to a coding sub-agent.",
+				toolCalls: [
+					{
+						id: "spawn-1",
+						name: "TASKS_SPAWN_AGENT",
+						args: { task: "Build and deploy a dice roller web app" },
+					},
+				],
+			},
+			JSON.stringify({
+				success: true,
+				decision: "FINISH",
+				thought: "Sub-agent spawned.",
+				messageToUser: "Spawned a coding agent to build the dice roller.",
+			}),
+		]);
+		runtime.actions = [makeSpawnAction(spawnHandler)] as never;
+
+		const message = makeMessage();
+		message.content = {
+			...message.content,
+			text: "Build and deploy a dice roller web app",
+			mentionContext: { isMention: true },
+		};
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message,
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		expect(spawnHandler).toHaveBeenCalledTimes(1);
+		const calls = useModelCalls(runtime);
+		expect(calls[1]?.[0]).toBe(ModelType.ACTION_PLANNER);
+		const plannerCall = calls[1]?.[1] as {
+			messages?: Array<{ role?: string; content?: string | null }>;
+		};
+		const plannerUserContent = plannerCall.messages?.[1]?.content ?? "";
+		expect(plannerUserContent).toContain('"requiresTool":true');
+		expect(plannerUserContent).toContain(
+			'"candidateActions":["TASKS_SPAWN_AGENT"]',
+		);
+	});
+});

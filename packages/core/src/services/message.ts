@@ -3807,6 +3807,7 @@ export function messageHandlerFromFieldResult(
 		actions: ReadonlyArray<Pick<Action, "name" | "similes" | "tags">>;
 		messageText?: string;
 		candidateBackstopRules?: readonly CandidateActionBackstopRule[];
+		subAgentCompletionRelay?: boolean;
 	},
 ): MessageHandlerResult {
 	const rawContexts = Array.isArray(result.contexts)
@@ -3818,12 +3819,27 @@ export function messageHandlerFromFieldResult(
 				.filter(Boolean)
 		: [];
 	const currentMessageText = runtimeContext?.messageText ?? "";
-	const candidateBackstop = applyCodingCandidateBackstop({
-		candidateActions: rawCandidateActions,
-		actions: runtimeContext?.actions ?? [],
-		messageText: currentMessageText,
-		backstopRules: runtimeContext?.candidateBackstopRules ?? [],
-	});
+	// A sub-agent completion relay's envelope echoes the original task text
+	// ("[sub-agent: Build and deploy…]"), so every text-intent inference over
+	// the CURRENT message reads a FINISHED task as fresh task intent. Disable
+	// the text-derived candidate injections (coding backstop, ack-intent
+	// inference, direct-current inference) on relay turns — the relay's only
+	// job is to deliver the result, and forcing a tool over it rejects REPLY up
+	// to the required-tool miss cap or re-spawns completed work. Structural:
+	// the flag comes from the relay's own markers (metadata.subAgent / router
+	// source / envelope prefix), not from classifying LLM text. The model's OWN
+	// explicit routing (contexts + candidateActionNames it emitted) is
+	// untouched, so genuine user task-intent turns keep the full backstop.
+	const subAgentCompletionRelay =
+		runtimeContext?.subAgentCompletionRelay === true;
+	const candidateBackstop = subAgentCompletionRelay
+		? { candidateActions: [...rawCandidateActions], forceCodeContext: false }
+		: applyCodingCandidateBackstop({
+				candidateActions: rawCandidateActions,
+				actions: runtimeContext?.actions ?? [],
+				messageText: currentMessageText,
+				backstopRules: runtimeContext?.candidateBackstopRules ?? [],
+			});
 	const candidateActions = candidateBackstop.candidateActions;
 	const contexts =
 		candidateBackstop.forceCodeContext &&
@@ -3838,6 +3854,7 @@ export function messageHandlerFromFieldResult(
 		runtimeContext,
 	);
 	const inferredAckCandidateActions =
+		!subAgentCompletionRelay &&
 		!hasRunnableCandidateAction &&
 		hasAckOnlyActionableIntent(result, replyTextRaw, currentMessageText)
 			? inferAckIntentCandidateActions(
@@ -3857,7 +3874,7 @@ export function messageHandlerFromFieldResult(
 				})
 			: candidateActions.length > 0;
 	const directCurrentCandidateActions =
-		currentMessageText.trim().length > 0
+		!subAgentCompletionRelay && currentMessageText.trim().length > 0
 			? inferDirectCurrentRequestCandidateActions(
 					runtimeContext?.actions ?? [],
 					currentMessageText,
@@ -4206,13 +4223,24 @@ export function applyDirectCurrentCandidateBackstopToMessageHandler(
 		| {
 				actions: ReadonlyArray<Pick<Action, "name" | "similes" | "tags">>;
 				messageText?: string;
+				subAgentCompletionRelay?: boolean;
 		  }
 		| undefined,
 ): MessageHandlerResult {
 	const currentMessageText = runtimeContext?.messageText ?? "";
+	// A sub-agent completion relay is not a user request — its envelope ECHOES
+	// the original task text ("[sub-agent: Build and deploy…]"), so the intent
+	// inference below reads a FINISHED task as fresh task intent, promotes the
+	// turn to requiresTool, and the planner rejects REPLY up to the
+	// required-tool miss cap (or re-runs the injected delegation candidate,
+	// re-spawning completed work). The flag is derived from the relay's
+	// structural markers (metadata.subAgent / router source / envelope
+	// prefix), never from classifying LLM text, so genuine user task-intent
+	// turns keep the backstop.
 	if (
 		messageHandler.processMessage !== "RESPOND" ||
 		!runtimeContext ||
+		runtimeContext.subAgentCompletionRelay === true ||
 		currentMessageText.trim().length === 0
 	) {
 		return messageHandler;
@@ -4810,6 +4838,7 @@ function parseMessageHandlerModelOutput(
 	runtimeContext?: {
 		actions: ReadonlyArray<Pick<Action, "name" | "similes" | "tags">>;
 		messageText?: string;
+		subAgentCompletionRelay?: boolean;
 	},
 ): MessageHandlerResult | null {
 	const applyBackstops = (result: MessageHandlerResult | null) =>
@@ -6145,6 +6174,7 @@ export async function runV5MessageRuntimeStage1(args: {
 					actions: args.runtime.actions,
 					messageText: getUserMessageText(args.message),
 					candidateBackstopRules: getCandidateActionBackstopRules(args.runtime),
+					subAgentCompletionRelay: isSubAgentCompletionArtifact(args.message),
 				},
 			);
 		}
@@ -6152,6 +6182,7 @@ export async function runV5MessageRuntimeStage1(args: {
 			messageHandler = parseMessageHandlerModelOutput(rawMessageHandler, {
 				actions: args.runtime.actions,
 				messageText: getUserMessageText(args.message),
+				subAgentCompletionRelay: isSubAgentCompletionArtifact(args.message),
 			});
 		}
 		const stage1CompletionLimitHit = stage1HitCompletionLimit(
