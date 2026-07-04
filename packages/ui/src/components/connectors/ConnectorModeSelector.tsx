@@ -1,3 +1,10 @@
+/**
+ * Mode selector for a connector's setup surface: renders the connector's
+ * declared setup modes (from `ConnectorModeSelector.helpers`, ultimately the
+ * connector-mode registry) as a button group. Renders nothing when the
+ * connector has one mode or fewer.
+ */
+
 import { useAppSelector } from "../../state";
 import { Button } from "../ui/button";
 import { getConnectorModes } from "./ConnectorModeSelector.helpers";

@@ -1,3 +1,9 @@
+/**
+ * Unit tests for the connector-account catalog helpers — privacy/role
+ * confirmation requirements and plugin-managed-account resolution. Pure
+ * functions, no runtime or network.
+ */
+
 import { describe, expect, it } from "vitest";
 import {
   CONNECTOR_OWNER_ROLE_CONFIRMATION,

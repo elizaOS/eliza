@@ -1,19 +1,24 @@
+/**
+ * Registry of connector setup-mode declarations, keyed by connector id (#12094).
+ *
+ * A connector's setup UI (`ConnectorModeSelector`) renders its mode selector
+ * generically from these declarations rather than a per-connector `switch`, so
+ * a connector plugin whose id appears nowhere in this package still gets a
+ * working mode selector by calling {@link registerConnectorModes} — the same
+ * pattern `registerConnectorSetupPanel` uses for panels. Built-in connectors
+ * are seeded at module load below; `ConnectorModeSelector.helpers.ts` reads
+ * back through {@link getDeclaredConnectorModes}.
+ */
+
 import {
   type ConnectorManagementMode,
   normalizeConnectorCatalogId,
 } from "./connector-account-options";
 
 /**
- * Declarative description of a single connector setup mode.
- *
- * This is the metadata a connector plugin declares (in its registry entry /
- * manifest) so the setup UI can render its mode selector generically. The
- * previous implementation hardcoded one giant `switch (connectorId)` in
- * `ConnectorModeSelector.helpers.ts`; a new or renamed connector plugin fell
- * through to an empty mode list with no setup UI. Declarations now live in this
- * registry — built-ins are seeded below, and any plugin can register its own
- * via {@link registerConnectorModes}, mirroring the sanctioned
- * `registerConnectorSetupPanel` pattern already used for panels.
+ * Declarative description of a single connector setup mode: the metadata a
+ * connector plugin declares (in its registry entry / manifest) so the setup UI
+ * can render its mode selector without hardcoding the connector.
  */
 export interface ConnectorModeDeclaration {
   /** Mode id, unique within a connector. */
@@ -68,8 +73,7 @@ export function getDeclaredConnectorModes(
 // ---------------------------------------------------------------------------
 // Built-in connector mode declarations.
 //
-// These seed the modes that used to be hardcoded in the `getConnectorModes`
-// switch. Ordering is significant — it is the exact order modes are presented
+// Declaration order is significant — it is the exact order modes are presented
 // (cloud-only modes are filtered out when Eliza Cloud is not connected, keeping
 // their declared position). The plugin-managed mode is injected separately by
 // `withPluginManagedMode` from the connector-account catalog, so it is not

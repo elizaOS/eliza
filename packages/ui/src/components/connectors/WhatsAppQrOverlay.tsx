@@ -1,3 +1,8 @@
+/**
+ * WhatsApp-specific QR pairing overlay: wires the `useWhatsAppPairing` hook and
+ * WhatsApp linking copy into the shared `ConnectorQrPairingOverlay`.
+ */
+
 import { useMemo } from "react";
 import { useWhatsAppPairing } from "../../hooks";
 import { DEFAULT_CONNECTOR_ACCOUNT_ID } from "../../hooks/useConnectorAccounts";

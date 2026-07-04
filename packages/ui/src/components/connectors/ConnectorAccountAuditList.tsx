@@ -1,3 +1,10 @@
+/**
+ * Audit-log list for a single connector account: renders the recent
+ * `ConnectorAccountAuditEventRecord` events (fetched via the API client) inside
+ * an account's management view, with a manual refresh and localized event
+ * labels/timestamps.
+ */
+
 import { RefreshCw } from "lucide-react";
 import { useMemo } from "react";
 import { client } from "../../api";

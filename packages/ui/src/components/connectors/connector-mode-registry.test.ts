@@ -1,3 +1,9 @@
+/**
+ * Seam test for the connector-mode registry (#12094 item 1): a connector plugin
+ * whose id appears nowhere in this package can register its modes and get a
+ * fully working mode selector. In-memory registry, no runtime.
+ */
+
 import { describe, expect, it } from "vitest";
 import {
   getConnectorModes,

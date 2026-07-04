@@ -1,3 +1,11 @@
+/**
+ * List of a connector's accounts, grouped by role section, backed by the
+ * `useConnectorAccounts` hook. Renders one `ConnectorAccountCard` per account
+ * and an add-account affordance; unknown-role accounts fall into the
+ * `CONNECTOR_UNKNOWN_ROLE_BUCKET` section so they are neither dropped nor
+ * mislabelled as the owner's own (#12087).
+ */
+
 import { Plus } from "lucide-react";
 import { useEffect, useMemo } from "react";
 import type {

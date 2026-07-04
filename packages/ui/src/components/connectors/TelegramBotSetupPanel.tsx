@@ -1,3 +1,9 @@
+/**
+ * Setup panel for the Telegram bot connector: takes a bot token, validates it
+ * against the API client (which resolves the bot's identity), and reports the
+ * idle/validating/connected/error state.
+ */
+
 import { useCallback, useState } from "react";
 import { client } from "../../api";
 import { useAppSelector } from "../../state";

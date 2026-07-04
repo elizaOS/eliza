@@ -1,3 +1,10 @@
+/**
+ * Catalog and confirmation rules for connector-account attributes: the privacy
+ * levels, purposes/roles, and plugin-managed mode metadata rendered by the
+ * account selectors, plus the single source of truth for when a privacy
+ * escalation or owner-role promotion requires typed/explicit confirmation.
+ */
+
 import type {
   ConnectorAccountCreateInput,
   ConnectorAccountPrivacy,

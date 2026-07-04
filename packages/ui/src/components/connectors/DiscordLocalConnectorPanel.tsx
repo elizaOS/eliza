@@ -1,3 +1,9 @@
+/**
+ * Setup panel for the locally-hosted Discord connector: reads bridge status and
+ * the bot's guilds/channels via the API client and lets the owner pick the
+ * guild + channel the agent listens on.
+ */
+
 import { useCallback, useEffect, useState } from "react";
 import { client } from "../../api";
 import { useAppSelector } from "../../state";

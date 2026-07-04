@@ -1,3 +1,11 @@
+/**
+ * Status panel for the BlueBubbles iMessage bridge, rendered in the connector
+ * setup surface. Fetches bridge status via `client.getBlueBubblesStatus` and
+ * surfaces the resolved webhook URL the user pastes into their BlueBubbles
+ * server, resolving a relative webhook path against the API base URL or the
+ * current window origin.
+ */
+
 import { useEffect } from "react";
 import { client } from "../../api";
 import { useFetchData } from "../../hooks";

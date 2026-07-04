@@ -1,3 +1,9 @@
+/**
+ * React state hook for `ConnectorModeSelector`: tracks the selected connector
+ * mode, seeds it from the connector's default, and re-defaults when the
+ * available mode list changes (e.g. Eliza Cloud connects/disconnects).
+ */
+
 import { useEffect, useState } from "react";
 import {
   getConnectorModes,

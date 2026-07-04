@@ -1,3 +1,7 @@
+/**
+ * Storybook stories for `TelegramBotSetupPanel` under a mock app context.
+ */
+
 import type { Meta, StoryObj } from "@storybook/react";
 import type { AppContextValue } from "../../state/types";
 import { AppContext } from "../../state/useApp";

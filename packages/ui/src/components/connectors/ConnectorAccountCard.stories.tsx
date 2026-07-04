@@ -1,3 +1,8 @@
+/**
+ * Storybook stories for `ConnectorAccountCard` covering the account states
+ * (connected/owner default, other roles, error) under the translation provider.
+ */
+
 import type { Meta, StoryObj } from "@storybook/react";
 import type { ConnectorAccountRecord } from "../../api/client-agent";
 import { TranslationProvider } from "../../state/TranslationProvider";

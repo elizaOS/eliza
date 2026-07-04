@@ -1,3 +1,9 @@
+/**
+ * Setup panel for the Telegram user-account (MTProto) connector, as opposed to
+ * the bot connector. Drives the phone-number/login-code pairing flow against
+ * the API client and shows the linked account's handle/name once connected.
+ */
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { client } from "../../api";
 import { useAppSelector } from "../../state";

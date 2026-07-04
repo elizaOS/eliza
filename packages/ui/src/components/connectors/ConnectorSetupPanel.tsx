@@ -1,3 +1,10 @@
+/**
+ * Dispatcher that renders the correct setup panel for a connector. Resolves the
+ * panel from the runtime registry (`connector-setup-panel-registry`) plus the
+ * built-in connector panels in this directory, and falls back to the generic
+ * account-management panel for plugin-managed connectors.
+ */
+
 import { getBootConfig } from "../../config/boot-config";
 import { BlueBubblesStatusPanel } from "./BlueBubblesStatusPanel";
 import { ConnectorAccountList } from "./ConnectorAccountList";

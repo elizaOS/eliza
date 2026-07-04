@@ -1,3 +1,10 @@
+/**
+ * Registry + resolution helpers for `ConnectorSetupPanel`. Holds the runtime
+ * registry that lets plugins register their own setup-panel component for a
+ * connector id (normalized to lowercase alphanumerics) instead of editing a
+ * hardcoded switch, and the lookups the dispatcher uses to pick a panel.
+ */
+
 import type React from "react";
 import { getBootConfig } from "../../config/boot-config";
 import { parseConnectorAccountManagementPanelPluginId } from "./connector-account-options";

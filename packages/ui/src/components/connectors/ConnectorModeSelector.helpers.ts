@@ -1,3 +1,10 @@
+/**
+ * Pure helpers backing `ConnectorModeSelector`: resolves a connector's ordered
+ * setup modes from the connector-mode registry, appends the plugin-managed mode
+ * from the connector-account catalog when applicable, filters cloud-only modes
+ * by Eliza Cloud connectivity, and maps a selected mode to its setup plugin id.
+ */
+
 import {
   CONNECTOR_PLUGIN_MANAGED_MODE_ID,
   type ConnectorManagementMode,
