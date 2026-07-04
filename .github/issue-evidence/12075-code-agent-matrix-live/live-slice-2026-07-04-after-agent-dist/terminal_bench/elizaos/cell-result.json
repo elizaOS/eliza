@@ -1,0 +1,35 @@
+{
+  "adapter": "elizaos",
+  "benchmark": "terminal_bench",
+  "command_path": "/private/tmp/eliza-comment-verify/.github/issue-evidence/12075-code-agent-matrix-live/live-slice-2026-07-04-after-agent-dist/terminal_bench/elizaos/command.json",
+  "duration_seconds": 347.1091411113739,
+  "exit_code": 0,
+  "failure_class": "tests_failed",
+  "notes": [
+    "benchmark item failures reported"
+  ],
+  "outcome_metrics": {
+    "accuracy": 0.0,
+    "right": 0,
+    "total": 1,
+    "wrong": 1
+  },
+  "output_dir": "/private/tmp/eliza-comment-verify/.github/issue-evidence/12075-code-agent-matrix-live/live-slice-2026-07-04-after-agent-dist/terminal_bench/elizaos/output",
+  "result_path": "/private/tmp/eliza-comment-verify/.github/issue-evidence/12075-code-agent-matrix-live/live-slice-2026-07-04-after-agent-dist/terminal_bench/elizaos/output/terminal-bench-20260704_133701.json",
+  "resumed": false,
+  "score": 0.0,
+  "status": "succeeded",
+  "stderr_path": "/private/tmp/eliza-comment-verify/.github/issue-evidence/12075-code-agent-matrix-live/live-slice-2026-07-04-after-agent-dist/terminal_bench/elizaos/stderr.log",
+  "stdout_path": "/private/tmp/eliza-comment-verify/.github/issue-evidence/12075-code-agent-matrix-live/live-slice-2026-07-04-after-agent-dist/terminal_bench/elizaos/stdout.log",
+  "token_metrics": {
+    "cache_creation_tokens": 0,
+    "cached_token_percent": 44.529044962257956,
+    "cached_tokens": 6784,
+    "input_tokens": 15235,
+    "llm_call_count": 20,
+    "output_tokens": 13609,
+    "total_tokens": 28844,
+    "trajectory_file_count": 1,
+    "trajectory_turn_count": 20
+  }
+}

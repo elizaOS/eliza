@@ -1,0 +1,38 @@
+{
+  "adapter": "elizaos",
+  "benchmark": "terminal_bench",
+  "command": [
+    "/opt/homebrew/opt/python@3.14/bin/python3.14",
+    "-m",
+    "elizaos_terminal_bench.cli",
+    "--agent-harness",
+    "eliza",
+    "--task-agent",
+    "elizaos",
+    "--model-provider",
+    "cerebras",
+    "--model",
+    "gemma-4-31b",
+    "--output-dir",
+    "/private/tmp/eliza-comment-verify/.github/issue-evidence/12075-code-agent-matrix-live/live-slice-2026-07-04-after-agent-dist/terminal_bench/elizaos/output",
+    "--no-leaderboard",
+    "--max-tasks",
+    "1",
+    "--local-sandbox"
+  ],
+  "cwd": "/private/tmp/eliza-comment-verify/packages/benchmarks/terminal-bench",
+  "env_overrides": {
+    "BENCHMARK_MODEL_NAME": "gemma-4-31b",
+    "BENCHMARK_MODEL_PROVIDER": "cerebras",
+    "BENCHMARK_RUN_DIR": "/private/tmp/eliza-comment-verify/.github/issue-evidence/12075-code-agent-matrix-live/live-slice-2026-07-04-after-agent-dist/terminal_bench/elizaos/trajectories",
+    "BENCHMARK_TASK_AGENT": "elizaos",
+    "BENCHMARK_TELEMETRY_JSONL": "/private/tmp/eliza-comment-verify/.github/issue-evidence/12075-code-agent-matrix-live/live-slice-2026-07-04-after-agent-dist/terminal_bench/elizaos/trajectories/telemetry.jsonl",
+    "CEREBRAS_BASE_URL": "https://api.cerebras.ai/v1",
+    "CODE_AGENT_MATRIX_ADAPTER": "elizaos",
+    "CODE_AGENT_MATRIX_BENCHMARK": "terminal_bench",
+    "OPENAI_API_BASE": "https://api.cerebras.ai/v1"
+  },
+  "output_dir": "/private/tmp/eliza-comment-verify/.github/issue-evidence/12075-code-agent-matrix-live/live-slice-2026-07-04-after-agent-dist/terminal_bench/elizaos/output",
+  "secret_policy": "real process env is inherited, metadata/logs redact secret-looking values",
+  "trajectory_dir": "/private/tmp/eliza-comment-verify/.github/issue-evidence/12075-code-agent-matrix-live/live-slice-2026-07-04-after-agent-dist/terminal_bench/elizaos/trajectories"
+}

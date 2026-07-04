@@ -1,0 +1,1228 @@
+{
+  "artifact_paths": {
+    "report_rows_csv": "/private/tmp/eliza-comment-verify/.github/issue-evidence/12075-code-agent-matrix-live/live-slice-2026-07-04-after-agent-dist/report-rows.csv",
+    "report_rows_jsonl": "/private/tmp/eliza-comment-verify/.github/issue-evidence/12075-code-agent-matrix-live/live-slice-2026-07-04-after-agent-dist/report-rows.jsonl",
+    "run_root": "/private/tmp/eliza-comment-verify/.github/issue-evidence/12075-code-agent-matrix-live/live-slice-2026-07-04-after-agent-dist",
+    "summary_json": "/private/tmp/eliza-comment-verify/.github/issue-evidence/12075-code-agent-matrix-live/live-slice-2026-07-04-after-agent-dist/summary.json",
+    "summary_md": "/private/tmp/eliza-comment-verify/.github/issue-evidence/12075-code-agent-matrix-live/live-slice-2026-07-04-after-agent-dist/summary.md",
+    "viewer_data": "/private/tmp/eliza-comment-verify/.github/issue-evidence/12075-code-agent-matrix-live/live-slice-2026-07-04-after-agent-dist/viewer/data.js",
+    "viewer_index": "/private/tmp/eliza-comment-verify/.github/issue-evidence/12075-code-agent-matrix-live/live-slice-2026-07-04-after-agent-dist/viewer/index.html"
+  },
+  "benchmark_gate": {
+    "blocking_benchmarks": [
+      "swe_bench",
+      "terminal_bench"
+    ],
+    "blocking_statuses": [
+      "inferior",
+      "weak",
+      "missing"
+    ],
+    "message": "elizaos is not yet comparable-or-better on all selected benchmarks",
+    "ok": false,
+    "required_statuses": [
+      "superior",
+      "comparable"
+    ],
+    "status_counts": {
+      "comparable": 0,
+      "inferior": 0,
+      "missing": 2,
+      "superior": 0,
+      "weak": 0
+    }
+  },
+  "by_adapter": {
+    "elizaos": {
+      "no_patch": 1,
+      "tests_failed": 1
+    }
+  },
+  "by_benchmark": {
+    "swe_bench": {
+      "no_patch": 1
+    },
+    "terminal_bench": {
+      "tests_failed": 1
+    }
+  },
+  "cells": [
+    {
+      "adapter": "elizaos",
+      "benchmark": "swe_bench",
+      "command_path": "/private/tmp/eliza-comment-verify/.github/issue-evidence/12075-code-agent-matrix-live/live-slice-2026-07-04-after-agent-dist/swe_bench/elizaos/command.json",
+      "duration_seconds": 309.75766801834106,
+      "exit_code": 0,
+      "failure_class": "no_patch",
+      "notes": [
+        "no generated patch reported"
+      ],
+      "outcome_metrics": {
+        "accuracy": 0.0,
+        "right": 0,
+        "total": 1,
+        "wrong": 1
+      },
+      "output_dir": "/private/tmp/eliza-comment-verify/.github/issue-evidence/12075-code-agent-matrix-live/live-slice-2026-07-04-after-agent-dist/swe_bench/elizaos/output",
+      "result_path": "/private/tmp/eliza-comment-verify/.github/issue-evidence/12075-code-agent-matrix-live/live-slice-2026-07-04-after-agent-dist/swe_bench/elizaos/output/orchestrated-20260704_172723.json",
+      "resumed": false,
+      "score": 0.0,
+      "status": "succeeded",
+      "stderr_path": "/private/tmp/eliza-comment-verify/.github/issue-evidence/12075-code-agent-matrix-live/live-slice-2026-07-04-after-agent-dist/swe_bench/elizaos/stderr.log",
+      "stdout_path": "/private/tmp/eliza-comment-verify/.github/issue-evidence/12075-code-agent-matrix-live/live-slice-2026-07-04-after-agent-dist/swe_bench/elizaos/stdout.log",
+      "token_metrics": {
+        "cache_creation_tokens": 0,
+        "cached_token_percent": 0.0,
+        "cached_tokens": 0,
+        "input_tokens": 11038,
+        "llm_call_count": 2,
+        "output_tokens": 8192,
+        "total_tokens": 19230,
+        "trajectory_file_count": 1,
+        "trajectory_turn_count": 2
+      }
+    },
+    {
+      "adapter": "elizaos",
+      "benchmark": "terminal_bench",
+      "command_path": "/private/tmp/eliza-comment-verify/.github/issue-evidence/12075-code-agent-matrix-live/live-slice-2026-07-04-after-agent-dist/terminal_bench/elizaos/command.json",
+      "duration_seconds": 347.1091411113739,
+      "exit_code": 0,
+      "failure_class": "tests_failed",
+      "notes": [
+        "benchmark item failures reported"
+      ],
+      "outcome_metrics": {
+        "accuracy": 0.0,
+        "right": 0,
+        "total": 1,
+        "wrong": 1
+      },
+      "output_dir": "/private/tmp/eliza-comment-verify/.github/issue-evidence/12075-code-agent-matrix-live/live-slice-2026-07-04-after-agent-dist/terminal_bench/elizaos/output",
+      "result_path": "/private/tmp/eliza-comment-verify/.github/issue-evidence/12075-code-agent-matrix-live/live-slice-2026-07-04-after-agent-dist/terminal_bench/elizaos/output/terminal-bench-20260704_133701.json",
+      "resumed": false,
+      "score": 0.0,
+      "status": "succeeded",
+      "stderr_path": "/private/tmp/eliza-comment-verify/.github/issue-evidence/12075-code-agent-matrix-live/live-slice-2026-07-04-after-agent-dist/terminal_bench/elizaos/stderr.log",
+      "stdout_path": "/private/tmp/eliza-comment-verify/.github/issue-evidence/12075-code-agent-matrix-live/live-slice-2026-07-04-after-agent-dist/terminal_bench/elizaos/stdout.log",
+      "token_metrics": {
+        "cache_creation_tokens": 0,
+        "cached_token_percent": 44.529044962257956,
+        "cached_tokens": 6784,
+        "input_tokens": 15235,
+        "llm_call_count": 20,
+        "output_tokens": 13609,
+        "total_tokens": 28844,
+        "trajectory_file_count": 1,
+        "trajectory_turn_count": 20
+      }
+    }
+  ],
+  "coverage": {
+    "deferred_benchmarks": [
+      {
+        "benchmark": "vision_language",
+        "domains": [
+          "computer-use",
+          "browser",
+          "vision"
+        ],
+        "promotion_priority": "p1",
+        "promotion_requirements": [
+          "validate non-stub ElizaOS and OpenCode runs through the vision-language harness labels",
+          "require real eliza-1/VLM input bundles and non-stub desktop capture",
+          "normalize grounding/click verification into right/wrong/total plus token and LLM-call telemetry"
+        ],
+        "reason": "The eliza-1 vision-CUA harness exercises real screen capture, VLM grounding, OCR, and plugin-computeruse clicks, and the vision-language runner now exposes ElizaOS/OpenCode harness labels, but it still needs non-stub matched-driver runs before release-comparable inclusion."
+      }
+    ],
+    "included_benchmarks": [
+      {
+        "benchmark": "swe_bench",
+        "domains": [
+          "coding"
+        ],
+        "reason": "Python issue-resolution benchmark with the eliza adapter bridge.",
+        "selected": true
+      },
+      {
+        "benchmark": "terminal_bench",
+        "domains": [
+          "terminal",
+          "coding"
+        ],
+        "reason": "Terminal task benchmark with task-agent adapter selection.",
+        "selected": true
+      },
+      {
+        "benchmark": "mind2web",
+        "domains": [
+          "browser",
+          "web"
+        ],
+        "reason": "Browser interaction benchmark routed through the eliza bridge.",
+        "selected": false
+      },
+      {
+        "benchmark": "visualwebbench",
+        "domains": [
+          "browser",
+          "vision"
+        ],
+        "reason": "Visual browser benchmark routed through the eliza bridge.",
+        "selected": false
+      },
+      {
+        "benchmark": "webshop",
+        "domains": [
+          "browser",
+          "web"
+        ],
+        "reason": "Shopping-agent browser benchmark with bridge-backed agent calls.",
+        "selected": false
+      },
+      {
+        "benchmark": "osworld",
+        "domains": [
+          "computer-use",
+          "desktop"
+        ],
+        "reason": "Desktop computer-use benchmark via the OSWorld eliza bridge.",
+        "selected": false
+      },
+      {
+        "benchmark": "nl2repo",
+        "domains": [
+          "coding"
+        ],
+        "reason": "Natural-language-to-repository coding benchmark with built-in ElizaOS/OpenCode agent command wiring, trajectory/token capture, and Docker-backed live scoring.",
+        "selected": false
+      },
+      {
+        "benchmark": "agentbench",
+        "domains": [
+          "terminal",
+          "browser",
+          "web",
+          "computer-use"
+        ],
+        "reason": "AgentBench OS, WebShop, and Mind2Web-related fixture tasks run through the ElizaOS/OpenCode bridge with deterministic environment scoring, right/wrong totals, and trajectory/token telemetry.",
+        "selected": false
+      },
+      {
+        "benchmark": "mint",
+        "domains": [
+          "coding",
+          "tool-use"
+        ],
+        "reason": "MINT HumanEval/MBPP coding subtasks run through the ElizaOS/OpenCode agent bridge with the benchmark's multi-turn tool/feedback loop, turn-k scoring, right/wrong totals, and trajectory/token telemetry.",
+        "selected": false
+      },
+      {
+        "benchmark": "standard_humaneval",
+        "domains": [
+          "coding"
+        ],
+        "reason": "HumanEval is wrapped as a code-agent function-body task with ElizaOS/OpenCode agent command execution, sandboxed pass/fail scoring, and trajectory/token telemetry.",
+        "selected": false
+      }
+    ],
+    "message": "some included code-agent benchmarks were not selected for this run",
+    "repo_local_audit": {
+      "benchmarks_dir": "/private/tmp/eliza-comment-verify/packages/benchmarks",
+      "directories": [
+        {
+          "benchmark": "swe_bench",
+          "directory": "swe_bench",
+          "domains": [
+            "coding"
+          ],
+          "exists": true,
+          "manifest_status": "included"
+        },
+        {
+          "benchmark": "terminal_bench",
+          "directory": "terminal-bench",
+          "domains": [
+            "terminal",
+            "coding"
+          ],
+          "exists": true,
+          "manifest_status": "included"
+        },
+        {
+          "benchmark": "mind2web",
+          "directory": "mind2web",
+          "domains": [
+            "browser",
+            "web"
+          ],
+          "exists": true,
+          "manifest_status": "included"
+        },
+        {
+          "benchmark": "visualwebbench",
+          "directory": "visualwebbench",
+          "domains": [
+            "browser",
+            "vision"
+          ],
+          "exists": true,
+          "manifest_status": "included"
+        },
+        {
+          "benchmark": "webshop",
+          "directory": "webshop",
+          "domains": [
+            "browser",
+            "web"
+          ],
+          "exists": true,
+          "manifest_status": "included"
+        },
+        {
+          "benchmark": "osworld",
+          "directory": "OSWorld",
+          "domains": [
+            "computer-use",
+            "desktop"
+          ],
+          "exists": true,
+          "manifest_status": "included"
+        },
+        {
+          "benchmark": "nl2repo",
+          "directory": "nl2repo",
+          "domains": [
+            "coding"
+          ],
+          "exists": true,
+          "manifest_status": "included"
+        },
+        {
+          "benchmark": "agentbench",
+          "directory": "agentbench",
+          "domains": [
+            "terminal",
+            "browser",
+            "web",
+            "computer-use"
+          ],
+          "exists": true,
+          "manifest_status": "included"
+        },
+        {
+          "benchmark": "mint",
+          "directory": "mint",
+          "domains": [
+            "coding",
+            "tool-use"
+          ],
+          "exists": true,
+          "manifest_status": "included"
+        },
+        {
+          "benchmark": "standard_humaneval",
+          "directory": "standard",
+          "domains": [
+            "coding"
+          ],
+          "exists": true,
+          "manifest_status": "included"
+        },
+        {
+          "benchmark": "vision_language",
+          "directory": "eliza-1/vision-cua-e2e",
+          "domains": [
+            "computer-use",
+            "browser",
+            "vision"
+          ],
+          "exists": true,
+          "manifest_status": "deferred"
+        }
+      ],
+      "directory_count": 11,
+      "existing_directory_count": 11,
+      "manifest_complete": true,
+      "message": "all audited repo-local related benchmark directories are represented in coverage",
+      "missing_directory_entries": [],
+      "missing_manifest_directories": [],
+      "ok": true
+    },
+    "selected_benchmarks": [
+      "swe_bench",
+      "terminal_bench"
+    ],
+    "selection_complete": false,
+    "status_counts": {
+      "deferred": 1,
+      "included": 10,
+      "included_selected": 2,
+      "included_unselected": 8
+    },
+    "unselected_included_benchmarks": [
+      "mind2web",
+      "visualwebbench",
+      "webshop",
+      "osworld",
+      "nl2repo",
+      "agentbench",
+      "mint",
+      "standard_humaneval"
+    ]
+  },
+  "coverage_gate": {
+    "blocking_benchmarks": [
+      "agentbench",
+      "mind2web",
+      "mint",
+      "nl2repo",
+      "osworld",
+      "standard_humaneval",
+      "visualwebbench",
+      "webshop"
+    ],
+    "deferred_benchmarks": [
+      "vision_language"
+    ],
+    "message": "not all included code-agent benchmarks are selected",
+    "missing_manifest_directories": [],
+    "ok": false,
+    "required": "all included code-agent benchmarks selected"
+  },
+  "deferred_promotion_queue": [
+    {
+      "benchmark": "vision_language",
+      "domains": [
+        "computer-use",
+        "browser",
+        "vision"
+      ],
+      "evidence_command_template": "python -m benchmarks.orchestrator.code_agent_matrix --benchmarks vision_language --adapters elizaos,opencode --provider cerebras --model gemma-4-31b --max-tasks 1 --timeout-seconds 3600 --run-root /private/tmp/eliza-comment-verify/.github/issue-evidence/12075-code-agent-matrix-live/live-slice-2026-07-04-after-agent-dist --force --enforce-live-report --enforce-trajectory-reviews --enforce-report --enforce-comparable --enforce-required-stats --enforce-token-evidence --enforce-efficiency",
+      "next_action": "validate non-stub ElizaOS and OpenCode runs through the vision-language harness labels",
+      "priority": "p1",
+      "remaining_count": 3,
+      "remaining_requirements": [
+        "validate non-stub ElizaOS and OpenCode runs through the vision-language harness labels",
+        "require real eliza-1/VLM input bundles and non-stub desktop capture",
+        "normalize grounding/click verification into right/wrong/total plus token and LLM-call telemetry"
+      ]
+    }
+  ],
+  "efficiency_gate": {
+    "blocking_benchmarks": [],
+    "enforced": false,
+    "message": "ElizaOS has no token, LLM-call, or cached-token regressions versus OpenCode",
+    "ok": true,
+    "regressions": []
+  },
+  "efficiency_queue": [],
+  "exit_code": 0,
+  "exit_codes": {
+    "comparable_gate_failed": {
+      "code": 3,
+      "message": "ElizaOS was not comparable-or-better than OpenCode on every selected benchmark"
+    },
+    "coverage_gate_failed": {
+      "code": 6,
+      "message": "the run did not cover every included code-agent benchmark"
+    },
+    "efficiency_gate_failed": {
+      "code": 8,
+      "message": "ElizaOS used more tokens, made more LLM calls, or had lower cached-token percentage than OpenCode"
+    },
+    "live_report_failed": {
+      "code": 12,
+      "message": "the report was not generated from live benchmark execution"
+    },
+    "no_regression_failed": {
+      "code": 9,
+      "message": "ElizaOS regressed against the previous comparison summary"
+    },
+    "ok": {
+      "code": 0,
+      "message": "run completed without an enforced gate failure"
+    },
+    "preflight_failed": {
+      "code": 2,
+      "message": "preflight checks failed"
+    },
+    "quality_guardrail_failed": {
+      "code": 10,
+      "message": "the broader non-code benchmark readiness guardrail failed"
+    },
+    "release_readiness_failed": {
+      "code": 13,
+      "message": "the final release-readiness checklist failed"
+    },
+    "report_gate_failed": {
+      "code": 7,
+      "message": "the combined release-readiness report gate failed"
+    },
+    "required_stats_failed": {
+      "code": 5,
+      "message": "one or more selected benchmarks lacked required outcome or token stats"
+    },
+    "token_evidence_failed": {
+      "code": 4,
+      "message": "one or more selected cells lacked usable LLM token telemetry"
+    },
+    "trajectory_review_failed": {
+      "code": 11,
+      "message": "one or more selected cells lacked reviewable trajectory telemetry"
+    }
+  },
+  "exit_reason": "ok",
+  "failure_classes": {
+    "auth_or_provider": 0,
+    "harness_error": 0,
+    "missing_cli": 0,
+    "no_patch": 1,
+    "no_trajectory": 0,
+    "pass": 0,
+    "patch_apply_failed": 0,
+    "stopped_early": 0,
+    "tests_failed": 1,
+    "timeout": 0,
+    "unknown_failure": 0
+  },
+  "generated_at": "2026-07-04T17:37:07.372963+00:00",
+  "head_to_head": {
+    "baseline_adapter": "opencode",
+    "comparisons": [
+      {
+        "accuracy_delta": null,
+        "baseline_accuracy": null,
+        "baseline_adapter": "opencode",
+        "baseline_cached_token_percent": null,
+        "baseline_input_tokens": null,
+        "baseline_llm_call_count": null,
+        "baseline_output_tokens": null,
+        "baseline_right": null,
+        "baseline_total": null,
+        "baseline_total_tokens": null,
+        "baseline_wrong": null,
+        "benchmark": "swe_bench",
+        "cached_token_percent_delta": null,
+        "input_token_delta": null,
+        "llm_call_delta": null,
+        "output_token_delta": null,
+        "right_delta": null,
+        "status": "missing",
+        "target_accuracy": 0.0,
+        "target_adapter": "elizaos",
+        "target_cached_token_percent": 0.0,
+        "target_input_tokens": 11038,
+        "target_llm_call_count": 2,
+        "target_output_tokens": 8192,
+        "target_right": 0,
+        "target_total": 1,
+        "target_total_tokens": 19230,
+        "target_wrong": 1,
+        "total_token_delta": null,
+        "wrong_delta": null
+      },
+      {
+        "accuracy_delta": null,
+        "baseline_accuracy": null,
+        "baseline_adapter": "opencode",
+        "baseline_cached_token_percent": null,
+        "baseline_input_tokens": null,
+        "baseline_llm_call_count": null,
+        "baseline_output_tokens": null,
+        "baseline_right": null,
+        "baseline_total": null,
+        "baseline_total_tokens": null,
+        "baseline_wrong": null,
+        "benchmark": "terminal_bench",
+        "cached_token_percent_delta": null,
+        "input_token_delta": null,
+        "llm_call_delta": null,
+        "output_token_delta": null,
+        "right_delta": null,
+        "status": "missing",
+        "target_accuracy": 0.0,
+        "target_adapter": "elizaos",
+        "target_cached_token_percent": 44.529044962257956,
+        "target_input_tokens": 15235,
+        "target_llm_call_count": 20,
+        "target_output_tokens": 13609,
+        "target_right": 0,
+        "target_total": 1,
+        "target_total_tokens": 28844,
+        "target_wrong": 1,
+        "total_token_delta": null,
+        "wrong_delta": null
+      }
+    ],
+    "inferior_benchmarks": [],
+    "status_counts": {
+      "comparable": 0,
+      "inferior": 0,
+      "missing": 2,
+      "superior": 0,
+      "weak": 0
+    },
+    "target_adapter": "elizaos"
+  },
+  "improvement_queue": [
+    {
+      "accuracy_delta": null,
+      "baseline_artifacts": {
+        "output_dir": null,
+        "result_path": null,
+        "stderr_path": null,
+        "stdout_path": null,
+        "trajectory_dir": null
+      },
+      "baseline_failure_class": null,
+      "baseline_notes": [],
+      "baseline_trajectory_review": {
+        "cached_token_percent": null,
+        "input_tokens": 0,
+        "mean_latency_ms": null,
+        "output_tokens": 0,
+        "p95_latency_ms": null,
+        "repeated_prefix_count": 0,
+        "review_notes": [
+          "no trajectory directory recorded"
+        ],
+        "top_repeated_prefixes": [],
+        "total_tokens": 0,
+        "trajectory_dir": null,
+        "trajectory_files": 0,
+        "turns": 0
+      },
+      "benchmark": "swe_bench",
+      "cached_token_percent_delta": null,
+      "diagnosis": [
+        "missing comparable outcome evidence",
+        "target failure class: no_patch",
+        "baseline cell result is missing",
+        "baseline right/wrong/total evidence is incomplete",
+        "baseline trajectory telemetry is missing",
+        "target repeated prompt prefixes need review"
+      ],
+      "llm_call_delta": null,
+      "next_action": "run live benchmark cell until both adapters have comparable outcome metrics",
+      "primary_diagnosis": "missing comparable outcome evidence",
+      "priority": "p1",
+      "rerun_command_template": "python -m benchmarks.orchestrator.code_agent_matrix --rerun-queue {summary_json} --queue-priorities p1 --queue-statuses missing --compare-summary {summary_json} --provider cerebras --model gemma-4-31b --max-tasks 1 --timeout-seconds 3600 --run-root /private/tmp/eliza-comment-verify/.github/issue-evidence/12075-code-agent-matrix-live/live-slice-2026-07-04-after-agent-dist --no-docker --force",
+      "right_delta": null,
+      "status": "missing",
+      "suggested_focus": [
+        "fix target harness/runtime failure before tuning prompts",
+        "restore trajectory capture for comparable review evidence",
+        "remove repeated prompt-prefix churn",
+        "reduce trajectory token load versus baseline"
+      ],
+      "target_artifacts": {
+        "output_dir": "/private/tmp/eliza-comment-verify/.github/issue-evidence/12075-code-agent-matrix-live/live-slice-2026-07-04-after-agent-dist/swe_bench/elizaos/output",
+        "result_path": "/private/tmp/eliza-comment-verify/.github/issue-evidence/12075-code-agent-matrix-live/live-slice-2026-07-04-after-agent-dist/swe_bench/elizaos/output/orchestrated-20260704_172723.json",
+        "stderr_path": "/private/tmp/eliza-comment-verify/.github/issue-evidence/12075-code-agent-matrix-live/live-slice-2026-07-04-after-agent-dist/swe_bench/elizaos/stderr.log",
+        "stdout_path": "/private/tmp/eliza-comment-verify/.github/issue-evidence/12075-code-agent-matrix-live/live-slice-2026-07-04-after-agent-dist/swe_bench/elizaos/stdout.log",
+        "trajectory_dir": "/private/tmp/eliza-comment-verify/.github/issue-evidence/12075-code-agent-matrix-live/live-slice-2026-07-04-after-agent-dist/swe_bench/elizaos/trajectories"
+      },
+      "target_failure_class": "no_patch",
+      "target_notes": [
+        "no generated patch reported"
+      ],
+      "target_trajectory_review": {
+        "cached_token_percent": 0.0,
+        "input_tokens": 11038,
+        "mean_latency_ms": 3005.0583545016707,
+        "output_tokens": 8192,
+        "p95_latency_ms": 3550.2319170045666,
+        "repeated_prefix_count": 1,
+        "review_notes": [
+          "repeated prompt prefixes detected"
+        ],
+        "top_repeated_prefixes": [
+          {
+            "count": 2,
+            "snippet": "ameters\n    ----------\n    left, right : `astropy.modeling.Model` or ndarray\n        If input is of an array, it is the output of `coord_matrix`.\n\n    Returns\n "
+          }
+        ],
+        "total_tokens": 19230,
+        "trajectory_dir": "/private/tmp/eliza-comment-verify/.github/issue-evidence/12075-code-agent-matrix-live/live-slice-2026-07-04-after-agent-dist/swe_bench/elizaos/trajectories",
+        "trajectory_files": 1,
+        "turns": 2
+      },
+      "total_token_delta": null,
+      "trajectory_delta": {
+        "cached_token_percent_delta": null,
+        "input_token_delta": 11038.0,
+        "mean_latency_ms_delta": null,
+        "output_token_delta": 8192.0,
+        "p95_latency_ms_delta": null,
+        "repeated_prefix_delta": 1.0,
+        "total_token_delta": 19230.0,
+        "turn_delta": 2.0
+      }
+    },
+    {
+      "accuracy_delta": null,
+      "baseline_artifacts": {
+        "output_dir": null,
+        "result_path": null,
+        "stderr_path": null,
+        "stdout_path": null,
+        "trajectory_dir": null
+      },
+      "baseline_failure_class": null,
+      "baseline_notes": [],
+      "baseline_trajectory_review": {
+        "cached_token_percent": null,
+        "input_tokens": 0,
+        "mean_latency_ms": null,
+        "output_tokens": 0,
+        "p95_latency_ms": null,
+        "repeated_prefix_count": 0,
+        "review_notes": [
+          "no trajectory directory recorded"
+        ],
+        "top_repeated_prefixes": [],
+        "total_tokens": 0,
+        "trajectory_dir": null,
+        "trajectory_files": 0,
+        "turns": 0
+      },
+      "benchmark": "terminal_bench",
+      "cached_token_percent_delta": null,
+      "diagnosis": [
+        "missing comparable outcome evidence",
+        "target failure class: tests_failed",
+        "baseline cell result is missing",
+        "baseline right/wrong/total evidence is incomplete",
+        "baseline trajectory telemetry is missing",
+        "target repeated prompt prefixes need review"
+      ],
+      "llm_call_delta": null,
+      "next_action": "run live benchmark cell until both adapters have comparable outcome metrics",
+      "primary_diagnosis": "missing comparable outcome evidence",
+      "priority": "p1",
+      "rerun_command_template": "python -m benchmarks.orchestrator.code_agent_matrix --rerun-queue {summary_json} --queue-priorities p1 --queue-statuses missing --compare-summary {summary_json} --provider cerebras --model gemma-4-31b --max-tasks 1 --timeout-seconds 3600 --run-root /private/tmp/eliza-comment-verify/.github/issue-evidence/12075-code-agent-matrix-live/live-slice-2026-07-04-after-agent-dist --no-docker --force",
+      "right_delta": null,
+      "status": "missing",
+      "suggested_focus": [
+        "fix target harness/runtime failure before tuning prompts",
+        "restore trajectory capture for comparable review evidence",
+        "remove repeated prompt-prefix churn",
+        "reduce trajectory token load versus baseline"
+      ],
+      "target_artifacts": {
+        "output_dir": "/private/tmp/eliza-comment-verify/.github/issue-evidence/12075-code-agent-matrix-live/live-slice-2026-07-04-after-agent-dist/terminal_bench/elizaos/output",
+        "result_path": "/private/tmp/eliza-comment-verify/.github/issue-evidence/12075-code-agent-matrix-live/live-slice-2026-07-04-after-agent-dist/terminal_bench/elizaos/output/terminal-bench-20260704_133701.json",
+        "stderr_path": "/private/tmp/eliza-comment-verify/.github/issue-evidence/12075-code-agent-matrix-live/live-slice-2026-07-04-after-agent-dist/terminal_bench/elizaos/stderr.log",
+        "stdout_path": "/private/tmp/eliza-comment-verify/.github/issue-evidence/12075-code-agent-matrix-live/live-slice-2026-07-04-after-agent-dist/terminal_bench/elizaos/stdout.log",
+        "trajectory_dir": "/private/tmp/eliza-comment-verify/.github/issue-evidence/12075-code-agent-matrix-live/live-slice-2026-07-04-after-agent-dist/terminal_bench/elizaos/trajectories"
+      },
+      "target_failure_class": "tests_failed",
+      "target_notes": [
+        "benchmark item failures reported"
+      ],
+      "target_trajectory_review": {
+        "cached_token_percent": 44.529044962257956,
+        "input_tokens": 15235,
+        "mean_latency_ms": 726.2005937504,
+        "output_tokens": 13609,
+        "p95_latency_ms": 920.774791011354,
+        "repeated_prefix_count": 20,
+        "review_notes": [
+          "repeated prompt prefixes detected"
+        ],
+        "top_repeated_prefixes": [
+          {
+            "count": 8,
+            "snippet": "\nstdout=Dockerfile\nJSON_FORMAT.md\ndocker-compose.yaml\nrun-tests.sh\nsolution.sh\ntask.yaml\ntests\n\n/var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/terminal-bench-"
+          },
+          {
+            "count": 8,
+            "snippet": "/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/terminal-bench-local-8fzomqdu/workspace/tests:\nadditional_test_models\ntest_cmake.py\ntest_outputs.py\n\n/var/folders/1"
+          },
+          {
+            "count": 8,
+            "snippet": "/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/terminal-bench-local-8fzomqdu/workspace/tests/additional_test_models:\nbunbun.mdf\ncyberman.mdf\ndragon.mdf\n\nstderr=\n\n"
+          }
+        ],
+        "total_tokens": 28844,
+        "trajectory_dir": "/private/tmp/eliza-comment-verify/.github/issue-evidence/12075-code-agent-matrix-live/live-slice-2026-07-04-after-agent-dist/terminal_bench/elizaos/trajectories",
+        "trajectory_files": 1,
+        "turns": 20
+      },
+      "total_token_delta": null,
+      "trajectory_delta": {
+        "cached_token_percent_delta": null,
+        "input_token_delta": 15235.0,
+        "mean_latency_ms_delta": null,
+        "output_token_delta": 13609.0,
+        "p95_latency_ms_delta": null,
+        "repeated_prefix_delta": 20.0,
+        "total_token_delta": 28844.0,
+        "turn_delta": 20.0
+      }
+    }
+  ],
+  "live_report_gate": {
+    "dry_run": false,
+    "enforced": false,
+    "message": "report was generated from live benchmark execution",
+    "mode": "live",
+    "ok": true,
+    "smoke": false,
+    "summarize": ""
+  },
+  "next_commands": {
+    "deferred_live_evidence": "python -m benchmarks.orchestrator.code_agent_matrix --benchmarks vision_language --adapters elizaos,opencode --provider cerebras --model gemma-4-31b --max-tasks 1 --timeout-seconds 3600 --run-root /private/tmp/eliza-comment-verify/.github/issue-evidence/12075-code-agent-matrix-live/live-slice-2026-07-04-after-agent-dist --force --enforce-live-report --enforce-trajectory-reviews --enforce-report --enforce-comparable --enforce-required-stats --enforce-token-evidence --enforce-efficiency",
+    "live_evidence": "python -m benchmarks.orchestrator.code_agent_matrix --benchmarks swe_bench,terminal_bench --adapters elizaos --provider cerebras --model gemma-4-31b --max-tasks 1 --timeout-seconds 3600 --run-root /private/tmp/eliza-comment-verify/.github/issue-evidence/12075-code-agent-matrix-live/live-slice-2026-07-04-after-agent-dist --force --enforce-live-report --enforce-trajectory-reviews --enforce-report --enforce-coverage --enforce-comparable --enforce-required-stats --enforce-token-evidence --enforce-efficiency --enforce-release-readiness --no-docker",
+    "release_comparable": "python -m benchmarks.orchestrator.code_agent_matrix --benchmarks agentbench,mind2web,mint,nl2repo,osworld,standard_humaneval,swe_bench,terminal_bench,visualwebbench,webshop --adapters elizaos,opencode --provider cerebras --model gemma-4-31b --max-tasks 1 --timeout-seconds 3600 --run-root /private/tmp/eliza-comment-verify/.github/issue-evidence/12075-code-agent-matrix-live/live-slice-2026-07-04-after-agent-dist --force --enforce-live-report --enforce-trajectory-reviews --enforce-report --enforce-coverage --enforce-comparable --enforce-required-stats --enforce-token-evidence --enforce-efficiency --quality-guardrail-summary /path/to/non-code-quality-guardrail.json --enforce-quality-guardrail --enforce-release-readiness",
+    "release_preflight": "python -m benchmarks.orchestrator.code_agent_matrix --benchmarks agentbench,mind2web,mint,nl2repo,osworld,standard_humaneval,swe_bench,terminal_bench,visualwebbench,webshop --adapters elizaos,opencode --provider cerebras --model gemma-4-31b --max-tasks 1 --timeout-seconds 3600 --run-root /private/tmp/eliza-comment-verify/.github/issue-evidence/12075-code-agent-matrix-live/live-slice-2026-07-04-after-agent-dist --quality-guardrail-summary /path/to/non-code-quality-guardrail.json --preflight --enforce-release-readiness",
+    "retry_preflight": "python -m benchmarks.orchestrator.code_agent_matrix --benchmarks swe_bench,terminal_bench --adapters elizaos --provider cerebras --model gemma-4-31b --max-tasks 1 --timeout-seconds 3600 --run-root /private/tmp/eliza-comment-verify/.github/issue-evidence/12075-code-agent-matrix-live/live-slice-2026-07-04-after-agent-dist --preflight --no-docker"
+  },
+  "no_regression_gate": {
+    "blocking_benchmarks": [],
+    "enforced": false,
+    "message": "no-regression gate is advisory without a previous summary",
+    "ok": true,
+    "regressions": []
+  },
+  "outcome_by_adapter": {
+    "elizaos": {
+      "accuracy": 0.0,
+      "right": 0,
+      "total": 2,
+      "wrong": 2
+    }
+  },
+  "preflight": {
+    "cells": [
+      {
+        "adapter": "elizaos",
+        "benchmark": "swe_bench",
+        "cwd": "/private/tmp/eliza-comment-verify",
+        "cwd_ok": true,
+        "executable": "/opt/homebrew/opt/python@3.14/bin/python3.14",
+        "executable_ok": true,
+        "output_dir": "/private/tmp/eliza-comment-verify/.github/issue-evidence/12075-code-agent-matrix-live/live-slice-2026-07-04-after-agent-dist/swe_bench/elizaos/output",
+        "trajectory_dir": "/private/tmp/eliza-comment-verify/.github/issue-evidence/12075-code-agent-matrix-live/live-slice-2026-07-04-after-agent-dist/swe_bench/elizaos/trajectories"
+      },
+      {
+        "adapter": "elizaos",
+        "benchmark": "terminal_bench",
+        "cwd": "/private/tmp/eliza-comment-verify/packages/benchmarks/terminal-bench",
+        "cwd_ok": true,
+        "executable": "/opt/homebrew/opt/python@3.14/bin/python3.14",
+        "executable_ok": true,
+        "output_dir": "/private/tmp/eliza-comment-verify/.github/issue-evidence/12075-code-agent-matrix-live/live-slice-2026-07-04-after-agent-dist/terminal_bench/elizaos/output",
+        "trajectory_dir": "/private/tmp/eliza-comment-verify/.github/issue-evidence/12075-code-agent-matrix-live/live-slice-2026-07-04-after-agent-dist/terminal_bench/elizaos/trajectories"
+      }
+    ],
+    "issues": [],
+    "ok": true,
+    "opencode_bin": "/private/tmp/eliza-comment-verify/plugins/plugin-agent-orchestrator/bin/opencode",
+    "provider": "cerebras",
+    "provider_key": "CEREBRAS_API_KEY",
+    "provider_key_present": true,
+    "provider_key_required": true,
+    "quality_guardrail_summary": "",
+    "quality_guardrail_summary_blocking_findings": [],
+    "quality_guardrail_summary_findings": 0,
+    "quality_guardrail_summary_ok": null,
+    "quality_guardrail_summary_present": false,
+    "quality_guardrail_summary_required": false,
+    "unblock_count": 0,
+    "unblock_steps": []
+  },
+  "quality_guardrail_gate": {
+    "enforced": false,
+    "findings": [],
+    "latest_dir": null,
+    "message": "quality guardrail is advisory without a summary",
+    "ok": true,
+    "summary_path": "",
+    "tolerance": null
+  },
+  "release_readiness": {
+    "blocking_requirements": [
+      "full_included_coverage",
+      "all_related_benchmark_coverage",
+      "comparable_or_better",
+      "right_wrong_token_stats",
+      "non_code_quality_guardrail"
+    ],
+    "checks": [
+      {
+        "evidence": "report was generated from live benchmark execution",
+        "id": "live_execution",
+        "next_action": "run without --smoke/--dry-run and enforce --enforce-live-report",
+        "ok": true,
+        "required": true
+      },
+      {
+        "evidence": "not all included code-agent benchmarks are selected",
+        "id": "full_included_coverage",
+        "next_action": "select every included code-agent benchmark",
+        "ok": false,
+        "required": true
+      },
+      {
+        "evidence": "deferred related benchmarks remain: vision_language",
+        "id": "all_related_benchmark_coverage",
+        "next_action": "promote deferred related benchmarks into the release-comparable matrix",
+        "ok": false,
+        "required": true
+      },
+      {
+        "evidence": "elizaos is not yet comparable-or-better on all selected benchmarks",
+        "id": "comparable_or_better",
+        "next_action": "review improvement_queue and improve ElizaOS on blocking benchmarks",
+        "ok": false,
+        "required": true
+      },
+      {
+        "evidence": "required benchmark stats are incomplete for this run mode",
+        "id": "right_wrong_token_stats",
+        "next_action": "rerun blocking cells until right/wrong/total and token stats are present",
+        "ok": false,
+        "required": true
+      },
+      {
+        "evidence": "all cells produced LLM token telemetry",
+        "id": "llm_token_telemetry",
+        "next_action": "enable trajectory/token capture for every selected cell",
+        "ok": true,
+        "required": true
+      },
+      {
+        "evidence": "all selected cells have reviewable trajectory telemetry",
+        "id": "trajectory_reviews",
+        "next_action": "run with --enforce-trajectory-reviews and inspect trajectory artifacts",
+        "ok": true,
+        "required": true
+      },
+      {
+        "evidence": "ElizaOS has no token, LLM-call, or cached-token regressions versus OpenCode",
+        "id": "efficiency_not_worse",
+        "next_action": "reduce extra token/call cost or improve cache behavior versus OpenCode",
+        "ok": true,
+        "required": true
+      },
+      {
+        "evidence": "quality guardrail is advisory without a summary",
+        "id": "non_code_quality_guardrail",
+        "next_action": "generate non-code guardrail JSON with `PYTHONPATH=packages python -m benchmarks.orchestrator validate-latest-readiness --skip-runtime-gates --exclude-benchmarks agentbench,mind2web,mint,nl2repo,osworld,standard_humaneval,swe_bench,terminal_bench,vision_language,visualwebbench,webshop --json > /path/to/non-code-quality-guardrail.json` and pass it with --quality-guardrail-summary",
+        "ok": false,
+        "required": true
+      },
+      {
+        "evidence": "no-regression gate is advisory without a previous summary",
+        "id": "longitudinal_no_regression",
+        "next_action": "compare against the previous summary with --compare-summary",
+        "ok": true,
+        "required": false
+      }
+    ],
+    "message": "release readiness checklist is incomplete",
+    "ok": false,
+    "passed_required_count": 4,
+    "required_count": 9,
+    "unblock_commands": [
+      {
+        "command_template": "python -m benchmarks.orchestrator.code_agent_matrix --benchmarks agentbench,mind2web,mint,nl2repo,osworld,standard_humaneval,swe_bench,terminal_bench,visualwebbench,webshop --adapters elizaos,opencode --provider cerebras --model gemma-4-31b --max-tasks 1 --timeout-seconds 3600 --run-root /private/tmp/eliza-comment-verify/.github/issue-evidence/12075-code-agent-matrix-live/live-slice-2026-07-04-after-agent-dist --force --enforce-live-report --enforce-trajectory-reviews --enforce-report --enforce-coverage --enforce-comparable --enforce-required-stats --enforce-token-evidence --enforce-efficiency --enforce-release-readiness",
+        "id": "run_full_live_evidence",
+        "requirements": [
+          "comparable_or_better",
+          "full_included_coverage",
+          "right_wrong_token_stats"
+        ]
+      },
+      {
+        "command_template": "python -m benchmarks.orchestrator.code_agent_matrix --benchmarks vision_language --adapters elizaos,opencode --provider cerebras --model gemma-4-31b --max-tasks 1 --timeout-seconds 3600 --run-root /private/tmp/eliza-comment-verify/.github/issue-evidence/12075-code-agent-matrix-live/live-slice-2026-07-04-after-agent-dist --force --enforce-live-report --enforce-trajectory-reviews --enforce-report --enforce-comparable --enforce-required-stats --enforce-token-evidence --enforce-efficiency",
+        "id": "run_deferred_live_evidence",
+        "requirements": [
+          "all_related_benchmark_coverage"
+        ]
+      },
+      {
+        "command_template": "python -m benchmarks.orchestrator.code_agent_matrix --summarize {summary_json}",
+        "id": "promote_deferred_benchmarks",
+        "requirements": [
+          "all_related_benchmark_coverage"
+        ]
+      },
+      {
+        "command_template": "python -m benchmarks.orchestrator.code_agent_matrix --benchmarks agentbench,mind2web,mint,nl2repo,osworld,standard_humaneval,swe_bench,terminal_bench,visualwebbench,webshop --adapters elizaos,opencode --provider cerebras --model gemma-4-31b --max-tasks 1 --timeout-seconds 3600 --run-root /private/tmp/eliza-comment-verify/.github/issue-evidence/12075-code-agent-matrix-live/live-slice-2026-07-04-after-agent-dist --force --quality-guardrail-summary /path/to/non-code-quality-guardrail.json --enforce-quality-guardrail --enforce-report --enforce-release-readiness",
+        "id": "attach_non_code_quality_guardrail",
+        "requirements": [
+          "non_code_quality_guardrail"
+        ]
+      }
+    ]
+  },
+  "report_gate": {
+    "blocking_gates": [
+      "benchmark coverage",
+      "comparable-or-better outcomes",
+      "required stats"
+    ],
+    "gate_status": {
+      "benchmark_gate": false,
+      "coverage_gate": false,
+      "required_stats_gate": false
+    },
+    "message": "benchmark report is not yet release-ready",
+    "ok": false
+  },
+  "report_rows": [
+    {
+      "accuracy_delta": null,
+      "baseline_accuracy": null,
+      "baseline_adapter": "opencode",
+      "baseline_cached_token_percent": null,
+      "baseline_command_path": null,
+      "baseline_failure_class": null,
+      "baseline_input_tokens": null,
+      "baseline_llm_call_count": null,
+      "baseline_output_tokens": null,
+      "baseline_result_path": null,
+      "baseline_right": null,
+      "baseline_total": null,
+      "baseline_total_tokens": null,
+      "baseline_trajectory_dir": null,
+      "baseline_wrong": null,
+      "benchmark": "swe_bench",
+      "benchmark_gate_ok": false,
+      "cached_token_percent_delta": null,
+      "coverage_gate_ok": false,
+      "efficiency_gate_ok": true,
+      "generated_at": "2026-07-04T17:37:07.372963+00:00",
+      "input_token_delta": null,
+      "live_report_gate_ok": true,
+      "llm_call_delta": null,
+      "mode": "live",
+      "model": "gemma-4-31b",
+      "no_regression_gate_ok": true,
+      "output_token_delta": null,
+      "provider": "cerebras",
+      "quality_guardrail_gate_ok": true,
+      "release_readiness_blocking_requirements": "full_included_coverage,all_related_benchmark_coverage,comparable_or_better,right_wrong_token_stats,non_code_quality_guardrail",
+      "release_readiness_ok": false,
+      "release_readiness_unblock_command_ids": "run_full_live_evidence,run_deferred_live_evidence,promote_deferred_benchmarks,attach_non_code_quality_guardrail",
+      "report_gate_ok": false,
+      "required_stats_gate_ok": false,
+      "run_root": "/private/tmp/eliza-comment-verify/.github/issue-evidence/12075-code-agent-matrix-live/live-slice-2026-07-04-after-agent-dist",
+      "status": "missing",
+      "target_accuracy": 0.0,
+      "target_adapter": "elizaos",
+      "target_cached_token_percent": 0.0,
+      "target_command_path": "/private/tmp/eliza-comment-verify/.github/issue-evidence/12075-code-agent-matrix-live/live-slice-2026-07-04-after-agent-dist/swe_bench/elizaos/command.json",
+      "target_failure_class": "no_patch",
+      "target_input_tokens": 11038,
+      "target_llm_call_count": 2,
+      "target_output_tokens": 8192,
+      "target_result_path": "/private/tmp/eliza-comment-verify/.github/issue-evidence/12075-code-agent-matrix-live/live-slice-2026-07-04-after-agent-dist/swe_bench/elizaos/output/orchestrated-20260704_172723.json",
+      "target_right": 0,
+      "target_total": 1,
+      "target_total_tokens": 19230,
+      "target_trajectory_dir": "/private/tmp/eliza-comment-verify/.github/issue-evidence/12075-code-agent-matrix-live/live-slice-2026-07-04-after-agent-dist/swe_bench/elizaos/trajectories",
+      "target_wrong": 1,
+      "total_token_delta": null,
+      "trajectory_review_gate_ok": true
+    },
+    {
+      "accuracy_delta": null,
+      "baseline_accuracy": null,
+      "baseline_adapter": "opencode",
+      "baseline_cached_token_percent": null,
+      "baseline_command_path": null,
+      "baseline_failure_class": null,
+      "baseline_input_tokens": null,
+      "baseline_llm_call_count": null,
+      "baseline_output_tokens": null,
+      "baseline_result_path": null,
+      "baseline_right": null,
+      "baseline_total": null,
+      "baseline_total_tokens": null,
+      "baseline_trajectory_dir": null,
+      "baseline_wrong": null,
+      "benchmark": "terminal_bench",
+      "benchmark_gate_ok": false,
+      "cached_token_percent_delta": null,
+      "coverage_gate_ok": false,
+      "efficiency_gate_ok": true,
+      "generated_at": "2026-07-04T17:37:07.372963+00:00",
+      "input_token_delta": null,
+      "live_report_gate_ok": true,
+      "llm_call_delta": null,
+      "mode": "live",
+      "model": "gemma-4-31b",
+      "no_regression_gate_ok": true,
+      "output_token_delta": null,
+      "provider": "cerebras",
+      "quality_guardrail_gate_ok": true,
+      "release_readiness_blocking_requirements": "full_included_coverage,all_related_benchmark_coverage,comparable_or_better,right_wrong_token_stats,non_code_quality_guardrail",
+      "release_readiness_ok": false,
+      "release_readiness_unblock_command_ids": "run_full_live_evidence,run_deferred_live_evidence,promote_deferred_benchmarks,attach_non_code_quality_guardrail",
+      "report_gate_ok": false,
+      "required_stats_gate_ok": false,
+      "run_root": "/private/tmp/eliza-comment-verify/.github/issue-evidence/12075-code-agent-matrix-live/live-slice-2026-07-04-after-agent-dist",
+      "status": "missing",
+      "target_accuracy": 0.0,
+      "target_adapter": "elizaos",
+      "target_cached_token_percent": 44.529044962257956,
+      "target_command_path": "/private/tmp/eliza-comment-verify/.github/issue-evidence/12075-code-agent-matrix-live/live-slice-2026-07-04-after-agent-dist/terminal_bench/elizaos/command.json",
+      "target_failure_class": "tests_failed",
+      "target_input_tokens": 15235,
+      "target_llm_call_count": 20,
+      "target_output_tokens": 13609,
+      "target_result_path": "/private/tmp/eliza-comment-verify/.github/issue-evidence/12075-code-agent-matrix-live/live-slice-2026-07-04-after-agent-dist/terminal_bench/elizaos/output/terminal-bench-20260704_133701.json",
+      "target_right": 0,
+      "target_total": 1,
+      "target_total_tokens": 28844,
+      "target_trajectory_dir": "/private/tmp/eliza-comment-verify/.github/issue-evidence/12075-code-agent-matrix-live/live-slice-2026-07-04-after-agent-dist/terminal_bench/elizaos/trajectories",
+      "target_wrong": 1,
+      "total_token_delta": null,
+      "trajectory_review_gate_ok": true
+    }
+  ],
+  "required_stats_gate": {
+    "blocking_requirements": [
+      "outcome_right_wrong_totals"
+    ],
+    "message": "required benchmark stats are incomplete for this run mode",
+    "mode": "live",
+    "ok": false,
+    "outcome_blocking_benchmarks": [
+      "swe_bench",
+      "terminal_bench"
+    ],
+    "outcome_blocking_comparisons": [
+      {
+        "baseline_accuracy": null,
+        "baseline_total": null,
+        "benchmark": "swe_bench",
+        "rerun_command_template": "python -m benchmarks.orchestrator.code_agent_matrix --benchmarks swe_bench --adapters elizaos,opencode --provider cerebras --model gemma-4-31b --max-tasks 1 --timeout-seconds 3600 --run-root /private/tmp/eliza-comment-verify/.github/issue-evidence/12075-code-agent-matrix-live/live-slice-2026-07-04-after-agent-dist --no-docker --force --enforce-required-stats",
+        "status": "missing",
+        "target_accuracy": 0.0,
+        "target_total": 1
+      },
+      {
+        "baseline_accuracy": null,
+        "baseline_total": null,
+        "benchmark": "terminal_bench",
+        "rerun_command_template": "python -m benchmarks.orchestrator.code_agent_matrix --benchmarks terminal_bench --adapters elizaos,opencode --provider cerebras --model gemma-4-31b --max-tasks 1 --timeout-seconds 3600 --run-root /private/tmp/eliza-comment-verify/.github/issue-evidence/12075-code-agent-matrix-live/live-slice-2026-07-04-after-agent-dist --no-docker --force --enforce-required-stats",
+        "status": "missing",
+        "target_accuracy": 0.0,
+        "target_total": 1
+      }
+    ],
+    "outcome_evidence_ok": false,
+    "outcome_evidence_required": true,
+    "token_blocking_cells": [],
+    "token_evidence_ok": true,
+    "token_evidence_required": true
+  },
+  "run_config": {
+    "adapters": [
+      "elizaos"
+    ],
+    "benchmarks": [
+      "swe_bench",
+      "terminal_bench"
+    ],
+    "compare_summary": "",
+    "dry_run": false,
+    "enforce_comparable": false,
+    "enforce_coverage": false,
+    "enforce_efficiency": false,
+    "enforce_live_report": false,
+    "enforce_no_regression": false,
+    "enforce_quality_guardrail": false,
+    "enforce_release_readiness": false,
+    "enforce_report": false,
+    "enforce_required_stats": false,
+    "enforce_token_evidence": false,
+    "enforce_trajectory_reviews": false,
+    "force": true,
+    "max_tasks": 1,
+    "mode": "live",
+    "model": "gemma-4-31b",
+    "no_docker": true,
+    "provider": "cerebras",
+    "publish_latest_dir": "",
+    "quality_guardrail_summary": "",
+    "queue_priorities": "",
+    "queue_statuses": "",
+    "rerun_queue": "",
+    "resume": true,
+    "run_root": "/private/tmp/eliza-comment-verify/.github/issue-evidence/12075-code-agent-matrix-live/live-slice-2026-07-04-after-agent-dist",
+    "smoke": false,
+    "summarize": "",
+    "swe_bench_pro_eval_num_workers": "",
+    "swe_bench_pro_evaluator_backend": "",
+    "timeout_seconds": 3600
+  },
+  "status_counts": {
+    "succeeded": 2
+  },
+  "token_by_adapter": {
+    "elizaos": {
+      "cache_creation_tokens": 0,
+      "cached_token_percent": 25.821185247211965,
+      "cached_tokens": 6784,
+      "input_tokens": 26273,
+      "llm_call_count": 22,
+      "output_tokens": 21801,
+      "total_tokens": 48074,
+      "trajectory_file_count": 2,
+      "trajectory_turn_count": 22
+    }
+  },
+  "token_evidence": {
+    "cells": [
+      {
+        "adapter": "elizaos",
+        "benchmark": "swe_bench",
+        "cached_token_percent": 0.0,
+        "input_tokens": 11038,
+        "llm_call_count": 2,
+        "note": "LLM call, token, and cache telemetry found",
+        "output_tokens": 8192,
+        "status": "present",
+        "total_tokens": 19230,
+        "trajectory_dir": "/private/tmp/eliza-comment-verify/.github/issue-evidence/12075-code-agent-matrix-live/live-slice-2026-07-04-after-agent-dist/swe_bench/elizaos/trajectories",
+        "trajectory_file_count": 1
+      },
+      {
+        "adapter": "elizaos",
+        "benchmark": "terminal_bench",
+        "cached_token_percent": 44.529044962257956,
+        "input_tokens": 15235,
+        "llm_call_count": 20,
+        "note": "LLM call, token, and cache telemetry found",
+        "output_tokens": 13609,
+        "status": "present",
+        "total_tokens": 28844,
+        "trajectory_dir": "/private/tmp/eliza-comment-verify/.github/issue-evidence/12075-code-agent-matrix-live/live-slice-2026-07-04-after-agent-dist/terminal_bench/elizaos/trajectories",
+        "trajectory_file_count": 1
+      }
+    ],
+    "message": "all cells produced LLM token telemetry",
+    "ok": true,
+    "status_counts": {
+      "empty": 0,
+      "missing": 0,
+      "present": 2
+    }
+  },
+  "total": 2,
+  "trajectory_review_gate": {
+    "blocking_cells": [],
+    "blocking_count": 0,
+    "enforced": false,
+    "message": "all selected cells have reviewable trajectory telemetry",
+    "ok": true,
+    "reviewed_cells": 2
+  }
+}
