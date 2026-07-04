@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { withCanonicalActionDocs } from "../action-docs.ts";
 import { secretsAction } from "../features/secrets/actions/manage-secret.ts";
 import { trustAction } from "../features/trust/actions/trust.ts";
 import { allActionDocs } from "../generated/action-docs.ts";
+import type { Action } from "../types/index.ts";
 
 const RETIRED_GENERATED_ACTION_NAMES = [
 	"ASK_USER_QUESTION",
@@ -130,12 +132,23 @@ const PAGE_DELEGATE_REPLACES = [
 	"OWNER_ACTIONS",
 ] as const;
 
-const REQUIRED_OWNER_SURFACE_ACTION_NAMES = [
+// Owner-surface actions that must stay resolvable to the planner. PAYMENT is
+// defined in packages/core (core-owned) and is baked into the generated
+// aggregate. The rest are plugin-owned (SCHEDULED_TASKS / CREDENTIALS /
+// PERSONAL_ASSISTANT / OWNER_DOCUMENTS in plugin-personal-assistant, FILE in
+// plugin-coding-tools). Per arch-audit #12092 item 29 their docs are no longer
+// baked into packages/core: each plugin's Action object carries its own docs and
+// the fallback-only overlay (withCanonicalActionDocs) resolves them at
+// registration. The real no-regression property is therefore threefold —
+// core-owned surfaces stay in the aggregate, plugin-owned surfaces are absent
+// from it, and the overlay preserves an Action's own docs when the aggregate has
+// no row for it.
+const CORE_OWNED_OWNER_SURFACE_ACTION_NAMES = ["PAYMENT"] as const;
+const PLUGIN_OWNED_OWNER_SURFACE_ACTION_NAMES = [
 	"SCHEDULED_TASKS",
 	"CREDENTIALS",
 	"PERSONAL_ASSISTANT",
 	"OWNER_DOCUMENTS",
-	"PAYMENT",
 	"FILE",
 ] as const;
 
@@ -156,18 +169,66 @@ describe("action structure audit guards", () => {
 		}
 	});
 
-	it("keeps canonical owner surfaces present in generated canonical docs", () => {
+	it("keeps core-owned owner surfaces in the aggregate", () => {
 		const names = new Set(allActionDocs.map((action) => action.name));
 		const retired = new Set<string>(RETIRED_GENERATED_ACTION_NAMES);
-		for (const name of REQUIRED_OWNER_SURFACE_ACTION_NAMES) {
+		for (const name of CORE_OWNED_OWNER_SURFACE_ACTION_NAMES) {
 			expect(retired.has(name), `${name} must not be marked retired`).toBe(
 				false,
 			);
 			expect(names.has(name), `${name} must be generated`).toBe(true);
 		}
-		expect(retired.has("PAYMENT"), "PAYMENT is not a retired parent").toBe(
-			false,
-		);
+	});
+
+	it("does not bake plugin-owned owner surfaces into the core aggregate", () => {
+		// Item 29: plugin-owned action docs must not live in packages/core so that
+		// editing a plugin's action docs no longer forces a core regen + rebuild.
+		const names = new Set(allActionDocs.map((action) => action.name));
+		const retired = new Set<string>(RETIRED_GENERATED_ACTION_NAMES);
+		for (const name of PLUGIN_OWNED_OWNER_SURFACE_ACTION_NAMES) {
+			expect(retired.has(name), `${name} must not be marked retired`).toBe(
+				false,
+			);
+			expect(
+				names.has(name),
+				`${name} is plugin-owned and must not be baked into the core aggregate`,
+			).toBe(false);
+		}
+	});
+
+	it("resolves plugin-owned owner surfaces from the Action object via the fallback overlay", () => {
+		// The real no-regression property: because the overlay is fallback-only, a
+		// plugin Action that carries its own description/similes/parameters resolves
+		// unchanged even though the core aggregate holds no row for it. This is what
+		// makes dropping the plugin-owned rows safe.
+		for (const name of PLUGIN_OWNED_OWNER_SURFACE_ACTION_NAMES) {
+			const pluginAction: Action = {
+				name,
+				description: `${name} owner-surface description carried by the plugin`,
+				similes: [`${name}_ALIAS`],
+				parameters: [
+					{
+						name: "action",
+						description: "operation to perform",
+						required: true,
+						schema: { type: "string" },
+					},
+				],
+				validate: async () => true,
+				handler: async () => {},
+			};
+
+			const resolved = withCanonicalActionDocs(pluginAction);
+
+			expect(resolved.description).toBe(pluginAction.description);
+			expect(resolved.similes).toEqual(pluginAction.similes);
+			expect(resolved.parameters?.map((parameter) => parameter.name)).toEqual([
+				"action",
+			]);
+			// The overlay only fills the compressed alias; it never overwrites the
+			// Action's own fields.
+			expect(typeof resolved.descriptionCompressed).toBe("string");
+		}
 	});
 
 	it("requires schemas with legacy discriminator aliases to expose action", () => {

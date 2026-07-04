@@ -208,6 +208,25 @@ function getPluginRoot(filePath) {
   return pluginName ? path.join(PLUGINS_ROOT, pluginName) : null;
 }
 
+/**
+ * Owning package for a discovered action definition (e.g. "plugins/plugin-x").
+ * This scan only walks PLUGINS_ROOT, so every action it finds is plugin-owned;
+ * the helper makes that classification explicit and correct if the scan ever
+ * grows to include packages/core or packages/agent.
+ * @param {string} filePath
+ * @returns {string}
+ */
+function actionOwnerPackage(filePath) {
+  const relative = path.relative(REPO_ROOT, filePath);
+  const [top, name] = relative.split(path.sep);
+  return name ? `${top}/${name}` : relative;
+}
+
+/** @param {string} filePath */
+function isPluginOwned(filePath) {
+  return actionOwnerPackage(filePath).startsWith("plugins/");
+}
+
 function resolveTsImport(entryDir, importPath) {
   if (!importPath.startsWith(".")) return null;
   const base = path.resolve(entryDir, importPath);
@@ -1623,7 +1642,15 @@ function main() {
   }
 
   const tsFiles = listTsFiles(PLUGINS_ROOT);
+  // Item 29 (arch-audit #12092): core's generated action-docs aggregate must
+  // carry only CORE-OWNED action docs. Every action discovered by this scan is
+  // plugin-owned, so plugin-owned rows are dropped by default — the plugin's own
+  // Action object carries its docs and the fallback-only overlay
+  // (withCanonicalActionDocs) resolves them at registration. A plugin row is
+  // kept ONLY when dropping it would regress the resolved docs, i.e. the overlay
+  // still supplies something the runtime Action object does not carry itself.
   const actionDocsByName = new Map();
+  const droppedNames = new Set();
 
   for (const filePath of tsFiles) {
     if (process.env.DEBUG_ACTION_SPEC) {
@@ -1649,7 +1676,17 @@ function main() {
       if (coreActionNames.has(name)) continue;
       const dynamicDocs = dynamicCommandActionDocs(filePath, name);
       if (dynamicDocs) {
+        // Command actions are built at runtime by plugin-commands' buildAction(),
+        // which carries `description` + `similes` from the command registry but
+        // never declares `parameters`. Keep only rows whose parameters the
+        // runtime Action cannot supply itself; drop the paramless rest.
         for (const doc of dynamicDocs) {
+          const overlaySuppliesParameters =
+            Array.isArray(doc.parameters) && doc.parameters.length > 0;
+          if (!overlaySuppliesParameters) {
+            droppedNames.add(doc.name);
+            continue;
+          }
           if (!actionDocsByName.has(doc.name)) {
             actionDocsByName.set(doc.name, doc);
           }
@@ -1684,7 +1721,28 @@ function main() {
             : jsonTemplateParameters.length > 0
               ? jsonTemplateParameters
               : inferParameters(obj.objectText);
-      const exampleCalls = buildExampleCallForAction(name, parameters);
+      // Drop this plugin-owned row unless the overlay still supplies content the
+      // runtime Action object does not carry itself. The overlay is fallback-only:
+      //  - parameters: when the Action declares its own `parameters`, the overlay
+      //    uses those and ignores the row, so the row is redundant. It is only
+      //    load-bearing when the row's parameters were INFERRED (the Action
+      //    declares none) — dropping that regresses the planner's param hints.
+      //  - description: the row's description is extracted verbatim from the
+      //    Action's own `description`, so it only adds value when the Action has
+      //    no description of its own.
+      //  - similes are always sourced from the Action's own `similes`, and
+      //    exampleCalls are consumed by no live code path — neither can regress.
+      const declaresOwnParameters = explicitParameters.length > 0;
+      const overlaySuppliesUnbackedParameters =
+        !declaresOwnParameters && parameters.length > 0;
+      const overlaySuppliesDescription = description.trim().length === 0;
+      const overlayAddsUnbackedDocs =
+        overlaySuppliesUnbackedParameters || overlaySuppliesDescription;
+
+      if (isPluginOwned(filePath) && !overlayAddsUnbackedDocs) {
+        droppedNames.add(name);
+        continue;
+      }
 
       if (!actionDocsByName.has(name)) {
         actionDocsByName.set(name, {
@@ -1696,7 +1754,7 @@ function main() {
               : undefined,
           similes: similes.length > 0 ? similes : undefined,
           parameters,
-          exampleCalls,
+          exampleCalls: buildExampleCallForAction(name, parameters),
         });
       }
     }
@@ -1725,7 +1783,7 @@ function main() {
   ensureDirectory(path.dirname(OUTPUT_PATH));
   fs.writeFileSync(OUTPUT_PATH, `${JSON.stringify(outRoot, null, 2)}\n`);
   console.log(
-    `Wrote ${actions.length} plugin actions to ${path.relative(REPO_ROOT, OUTPUT_PATH)}`,
+    `Wrote ${actions.length} plugin-owned overlay rows (kept because the runtime Action does not carry them) to ${path.relative(REPO_ROOT, OUTPUT_PATH)}; dropped ${droppedNames.size} self-backed plugin actions.`,
   );
 }
 
