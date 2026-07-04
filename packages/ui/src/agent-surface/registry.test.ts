@@ -1,4 +1,10 @@
 // @vitest-environment jsdom
+
+/**
+ * Covers ViewAgentRegistry: registering/snapshotting/unregistering agent
+ * elements per (view, modality) and routing agent-surface capabilities against
+ * the registered snapshot. Uses real DOM nodes under jsdom.
+ */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { handleAgentSurfaceCapability } from "./capabilities";
 import {

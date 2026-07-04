@@ -1,13 +1,12 @@
 /**
- * Boot-time generated-UI action registry (#12087 Item 26).
+ * Boot-time registry of the action names a generated-UI component may dispatch
+ * (#12087 Item 26).
  *
- * Which action names a generated-UI component may dispatch used to be a single
- * hardcoded prefix list in `catalog.ts`, so a feature/plugin that introduced a
- * new action family had to edit that shared constant. This registry — keyed on a
- * global symbol, mirroring `settings-section-registry` / `app-shell-registry` —
- * lets each feature/plugin module contribute its allowed action names/prefixes
- * at import time; the gate (`routeElizaGenUiAction`) reads the registry, and an
- * unregistered name still throws.
+ * Keyed on a global symbol, mirroring `settings-section-registry` /
+ * `app-shell-registry`: each feature/plugin module contributes its allowed
+ * action names/prefixes at import time, so a new action family needs no edit to
+ * a shared constant in `catalog.ts`. The gate (`routeElizaGenUiAction`) reads
+ * the registry, and an unregistered name still throws.
  *
  * The store self-seeds with the built-in prefixes ({@link
  * ELIZA_GENUI_ALLOWED_ACTION_PREFIXES}) so the default surface keeps working

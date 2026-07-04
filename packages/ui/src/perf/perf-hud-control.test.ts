@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
 
+/**
+ * Covers the perf-HUD enable affordance: boot-from-flag/pref, the hotkey and
+ * console-handle toggles, and that each path flips `window.__ELIZA_PERF_HUD__`
+ * and emits PERF_TOGGLE_EVENT. Drives window globals + localStorage under jsdom.
+ */
+
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   bootPerfHud,

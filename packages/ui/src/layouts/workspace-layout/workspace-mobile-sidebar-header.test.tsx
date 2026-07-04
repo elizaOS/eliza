@@ -1,13 +1,13 @@
 // @vitest-environment jsdom
-//
-// The mobile sidebar trigger belongs in the view header, not the content flow.
-// A `PageLayout` with a sidebar used to render a lone outlined "Browse" button
-// (`page-layout-mobile-sidebar-trigger`) between a view's centered `ViewHeader`
-// and its content on mobile — the orphan control this suite pins down the
-// replacement for: `useWorkspaceMobileSidebarHeader` +
-// `WorkspaceMobileSidebarScope` suppress the inline button and surface the
-// registered drawer as a compact `ViewHeaderSidebarTrigger` in the header's
-// right slot, keeping the documented testid for drawer-opening helpers.
+
+/**
+ * Verifies the mobile sidebar trigger lives in the view header, not the content
+ * flow: `useWorkspaceMobileSidebarHeader` + `WorkspaceMobileSidebarScope`
+ * suppress the inline `page-layout-mobile-sidebar-trigger` button and surface
+ * the registered drawer as a compact `ViewHeaderSidebarTrigger` in the header's
+ * right slot, keeping the documented testid for drawer-opening helpers.
+ * Renders against jsdom (no real viewport).
+ */
 
 import {
   cleanup,

@@ -1,4 +1,10 @@
 // @vitest-environment jsdom
+
+/**
+ * Pins BackgroundHost as the static solid host for marketing/login pages: it
+ * renders exactly one solid background element and never mounts a video,
+ * canvas, or animation surface. jsdom render.
+ */
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 

@@ -13,8 +13,8 @@
  *     heavier than TTS.
  *   - Cloud agents (any device) → fast free Microsoft Edge neural TTS
  *     (`edge`) for speech, Eliza Cloud (`eliza-cloud`) for ASR. ElevenLabs is
- *     no longer a default — it is slow and key-gated; users can still opt into
- *     it from the advanced voice picker.
+ *     not a default (slow and key-gated); users can still opt into it from the
+ *     advanced voice picker.
  *   - Remote-controller surfaces (UI hitting a remote API base) → same as
  *     cloud agents (`edge` TTS, Eliza Cloud ASR).
  *

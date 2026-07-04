@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
 
+/**
+ * Covers `detectDomModality` / `setShellModality` (#9946): a shell owns the
+ * active modality (gui/tui), a present XR context wins over it, and an invalid
+ * shell value falls back to gui. Reads window globals under jsdom.
+ */
+
 import { afterEach, describe, expect, it } from "vitest";
 import { detectDomModality, setShellModality } from "./dom.tsx";
 

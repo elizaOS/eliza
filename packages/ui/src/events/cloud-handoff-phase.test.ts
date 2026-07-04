@@ -1,4 +1,10 @@
 // @vitest-environment jsdom
+
+/**
+ * Covers `dispatchCloudHandoffPhase`: each phase (migrating, done, …) is emitted
+ * on the window as a CLOUD_HANDOFF_PHASE_EVENT CustomEvent carrying the agent id
+ * and phase. Listens on the jsdom window.
+ */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   CLOUD_HANDOFF_PHASE_EVENT,

@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
 
+/**
+ * Covers `injectPopoutApiBase`: a hosted-chat launch URL's `waifu_access_token`
+ * is lifted into the API bearer token in boot config. Builds its own JSDOM
+ * window so the URL/history plumbing is real.
+ */
+
 import { JSDOM } from "jsdom";
 import { beforeEach, describe, expect, it } from "vitest";
 import { getBootConfig, setBootConfig } from "../config/boot-config";
