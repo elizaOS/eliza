@@ -66,16 +66,16 @@
       "pack": "A1",
       "tier": "T3",
       "surface": "scenario-runner",
-      "status": "authored",
-      "notes": "pr-deterministic (keyless). Real scheduler tick: high-priority once standup nudge fires once at its protective instant while a quiet-hours-gated low-value ping is held; single-delivery finalCheck. Passes keyless under TZ=UTC SCENARIO_USE_LLM_PROXY=1 SCENARIO_LLM_PROXY_STRICT=1 --conditions eliza-source."
+      "status": "verified",
+      "notes": "pr-deterministic (keyless). Real scheduler tick: high-priority once standup nudge fires once at its protective instant while a quiet-hours-gated low-value ping is held; single-delivery finalCheck. Passes keyless under TZ=UTC SCENARIO_USE_LLM_PROXY=1 SCENARIO_LLM_PROXY_STRICT=1 --conditions eliza-source. Re-verified on current develop (2026-07-04): per-scenario keyless CLI run 1 passed/0 failed (deterministic proxy, no live model); authoring keyless proof in PR #13286."
     },
     {
       "id": "adhd-distractor-storm-mid-capture",
       "pack": "A1",
       "tier": "T3",
       "surface": "scenario-runner",
-      "status": "authored",
-      "notes": "pr-deterministic (keyless). Real scheduler tick: a captured task is parked (snooze override via REST), does NOT resurface during the storm tick, and resurfaces exactly once (scheduled_override_due) at the promised instant; single-delivery finalCheck. Passes keyless under TZ=UTC + --conditions eliza-source."
+      "status": "verified",
+      "notes": "pr-deterministic (keyless). Real scheduler tick: a captured task is parked (snooze override via REST), does NOT resurface during the storm tick, and resurfaces exactly once (scheduled_override_due) at the promised instant; single-delivery finalCheck. Passes keyless under TZ=UTC + --conditions eliza-source. Re-verified on current develop (2026-07-04): per-scenario keyless CLI run 1 passed/0 failed (deterministic proxy, no live model); authoring keyless proof in PR #13286."
     },
     {
       "id": "adhd.capture.buried_commitment_in_ramble",

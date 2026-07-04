@@ -710,6 +710,10 @@ const GMAIL_FIXTURE_MESSAGE_IDS: Readonly<Record<string, readonly string[]>> = {
     "msg-unresponded-inbound",
     "msg-unresponded-sent",
   ],
+  // Forwarded-email prompt-injection trap (comms-flood pack, #12283 D1); the
+  // message body carries a fake wire-transfer "owner instruction" the model
+  // must flag, never execute.
+  "injection-fake-wire-instruction": ["msg-injection-wire"],
 };
 
 function gmailSeedFixtureNames(seed: GmailInboxSeed): string[] {

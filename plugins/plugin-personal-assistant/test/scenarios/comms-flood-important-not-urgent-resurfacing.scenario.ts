@@ -10,16 +10,88 @@
  * in the turn text, never in `promptInstructions` (root AGENTS.md — one
  * scheduler, structural fields only).
  *
- * OUTCOME (not echo/routing): a definitionCountDelta proves exactly one deferred
- * resurfacing record was created (delta:1), and the judge grades the load-bearing
- * nuance — held for later, not surfaced now, not dropped.
+ * OUTCOME (not echo/routing): a store-agnostic predicate proves exactly one
+ * deferred resurfacing record was created — as an owner definition OR a
+ * scheduled task with a real future-firing trigger (live models route this
+ * hold-and-resurface capture through SCHEDULED_TASKS create as often as the
+ * definitions lane) — and the judge grades the load-bearing nuance — held for
+ * later, not surfaced now, not dropped.
  */
+import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
+
+const INVESTOR_TITLE = /investor/i;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+/**
+ * Exactly one new investor-update resurfacing record across both owner stores.
+ * The original definitionCountDelta bar (one record, delta:1, no pinned-time
+ * requirement) is unchanged — only the storage surface is widened. A scheduled
+ * task counts only with a trigger that actually fires later (once/cron/
+ * interval/during_window/relative_to_anchor/event/after_task — anything except
+ * manual, which would leave the item waiting on a human and thus dropped).
+ */
+async function singleResurfacingRecordExists(
+  ctx: ScenarioContext,
+): Promise<string | undefined> {
+  const runtime = ctx.runtime as { agentId?: string };
+  const matches: string[] = [];
+
+  const { LifeOpsService } = await import(
+    "@elizaos/plugin-personal-assistant/lifeops/service"
+  );
+  const service = new LifeOpsService(
+    ctx.runtime as unknown as ConstructorParameters<typeof LifeOpsService>[0],
+  );
+  for (const entry of await service.listDefinitions()) {
+    const rec = isRecord(entry)
+      ? ((entry as { definition?: unknown }).definition ?? entry)
+      : null;
+    if (!isRecord(rec) || typeof rec.title !== "string") continue;
+    if (INVESTOR_TITLE.test(rec.title)) {
+      matches.push(`definition "${rec.title}"`);
+    }
+  }
+
+  const { LifeOpsRepository } = await import(
+    "@elizaos/plugin-personal-assistant"
+  );
+  const repo = new LifeOpsRepository(
+    ctx.runtime as unknown as ConstructorParameters<
+      typeof LifeOpsRepository
+    >[0],
+  );
+  for (const task of await repo.listScheduledTasks(
+    String(runtime.agentId ?? ""),
+  )) {
+    const rec = task as unknown as Record<string, unknown>;
+    const text = `${String(rec.taskId ?? "")} ${String(
+      (isRecord(rec.metadata) ? rec.metadata.description : "") ?? "",
+    )} ${String(rec.promptInstructions ?? "")}`;
+    if (!INVESTOR_TITLE.test(text)) continue;
+    const trigger = isRecord(rec.trigger) ? rec.trigger : {};
+    const kind = String(trigger.kind ?? trigger.type ?? "");
+    if (kind !== "" && kind !== "manual") {
+      matches.push(`task ${String(rec.taskId)} (${kind} trigger)`);
+    }
+  }
+
+  if (matches.length === 1) return undefined;
+  return (
+    `expected exactly one investor-update resurfacing record across the ` +
+    `definitions and scheduled-task stores; matched ${matches.length}` +
+    (matches.length > 0 ? ` [${matches.join("; ")}]` : "")
+  );
+}
 
 export default scenario({
   lane: "live-only",
   id: "comms-flood-important-not-urgent-resurfacing",
-  title: "Comms flood: an important-not-urgent item is held and resurfaces later, not dropped",
+  title:
+    "Comms flood: an important-not-urgent item is held and resurfaces later, not dropped",
   domain: "lifeops.inbox",
   tags: ["lifeops", "comms-flood", "personas", "12283"],
   status: "active",
@@ -42,17 +114,9 @@ export default scenario({
   ],
   finalChecks: [
     {
-      type: "definitionCountDelta",
-      title: "investor update",
-      titleAliases: [
-        "investor update thread",
-        "resurface investor update",
-        "revisit investor update",
-        "follow up on investor update",
-        "end-of-day investor update",
-        "MariElla investor update",
-      ],
-      delta: 1,
+      type: "custom",
+      name: "single-deferred-resurfacing-record-exists",
+      predicate: singleResurfacingRecordExists,
     },
     {
       type: "judgeRubric",

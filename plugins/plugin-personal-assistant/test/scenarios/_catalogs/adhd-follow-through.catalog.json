@@ -60,7 +60,7 @@
       "tier": "T2",
       "surface": "scenario-runner",
       "status": "authored",
-      "notes": "Live-only. Missed reminder -> re-plan smaller, no shame/streak language, ask before scheduling (judgeRubric grades tone + shrink-and-consent). Ports lifeops-bench live.adhd.follow.missed_step_replan_without_guilt. Live-verify deferred to the key boundary (#12781)."
+      "notes": "Live-only. Missed reminder -> re-plan smaller, no shame/streak language, ask before scheduling (judgeRubric grades tone + shrink-and-consent). Ports lifeops-bench live.adhd.follow.missed_step_replan_without_guilt. Live-verify deferred to the key boundary (#12781). Live-verify attempts 2026-07-04 (Cerebras gpt-oss-120b, TZ=UTC) FAILED — row stays authored: attempt 1's action asked a good clarifier but the runtime's apology fallback swallowed the response; attempt 2 graded genuinely — the model interrogated for date/time/recurrence and re-proposed the full task instead of a neutral, guilt-free smaller-step replan (judge 0.00)."
     },
     {
       "id": "adhd-followthrough-repeated-miss-shrink-or-pause",
@@ -68,7 +68,7 @@
       "tier": "T4",
       "surface": "scenario-runner",
       "status": "authored",
-      "notes": "Live-only. Repeated misses (incl. one mid-conversation) -> offer a smaller habit or a pause, never streak shame, no unprompted identical re-add (judgeRubric). Ports lifeops-bench live.adhd.follow.repeated_miss_shrink_or_pause. Live-verify deferred (#12781)."
+      "notes": "Live-only. Repeated misses (incl. one mid-conversation) -> offer a smaller habit or a pause, never streak shame, no unprompted identical re-add (judgeRubric). Ports lifeops-bench live.adhd.follow.repeated_miss_shrink_or_pause. Live-verify deferred (#12781). Live-verify attempts 2026-07-04 (Cerebras gpt-oss-120b, TZ=UTC) FAILED — row stays authored: attempt 1 drafted an identical unprompted reminder with no shrink offer; attempt 2 offered no smaller habit or pause, attempted an identical reminder, and misclaimed an app-settings limitation (judge 0.00)."
     },
     {
       "id": "adhd-followthrough-end-of-day-wins-first-recap",
@@ -76,7 +76,7 @@
       "tier": "T2",
       "surface": "scenario-runner",
       "status": "authored",
-      "notes": "Live-only. End-of-day recap leads with wins, neutral carryover framing, consent before creating tomorrow's reminder (judgeRubric grades ordering + framing + consent). Ports lifeops-bench live.adhd.follow.end_of_day_wins_first_recap. Live-verify deferred (#12781)."
+      "notes": "Live-only. End-of-day recap leads with wins, neutral carryover framing, consent before creating tomorrow's reminder (judgeRubric grades ordering + framing + consent). Ports lifeops-bench live.adhd.follow.end_of_day_wins_first_recap. Live-verify deferred (#12781). Live-verify attempts 2026-07-04 (Cerebras gpt-oss-120b, TZ=UTC) FAILED — row stays authored: the scenario now seeds real day-state through the definitions + occurrence-completion routes (fixed in this PR — the rubric was previously ungradeable with no stored data), yet the model still answered that it cannot see today's activities and produced no recap (judge 0.00, same shape both graded attempts)."
     },
     {
       "id": "live.adhd.follow.missed_step_replan_without_guilt",
