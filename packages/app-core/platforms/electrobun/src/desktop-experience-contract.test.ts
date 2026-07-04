@@ -74,11 +74,13 @@ describe("desktop experience contract — tray", () => {
     expect(shouldCreateDesktopTray({ ELIZA_DESKTOP_TRAY: "0" })).toBe(false);
   });
 
-  it("keeps tray-first and the popover opt-in (macOS)", () => {
-    expect(shouldStartTrayFirst({}, "darwin", [])).toBe(false);
+  it("defaults dockless (tray-first) ON for macOS with a =0 kill switch; popover stays opt-in", () => {
+    // #12184: dockless is now the resting macOS experience — pill + menu-bar
+    // icon, no Dock icon until a full window opens.
+    expect(shouldStartTrayFirst({}, "darwin", [])).toBe(true);
     expect(
-      shouldStartTrayFirst({ ELIZA_DESKTOP_TRAY_FIRST: "1" }, "darwin", []),
-    ).toBe(true);
+      shouldStartTrayFirst({ ELIZA_DESKTOP_TRAY_FIRST: "0" }, "darwin", []),
+    ).toBe(false);
     expect(shouldEnableTrayPopover({}, "darwin", [])).toBe(false);
     expect(
       shouldEnableTrayPopover(
@@ -89,7 +91,8 @@ describe("desktop experience contract — tray", () => {
     ).toBe(true);
   });
 
-  it("gates tray-first and popover off non-macOS platforms", () => {
+  it("gates dockless and popover off non-macOS platforms", () => {
+    expect(shouldStartTrayFirst({}, "win32", [])).toBe(false);
     expect(
       shouldStartTrayFirst({ ELIZA_DESKTOP_TRAY_FIRST: "1" }, "win32", []),
     ).toBe(false);

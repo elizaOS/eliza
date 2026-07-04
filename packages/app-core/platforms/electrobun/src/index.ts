@@ -1230,10 +1230,11 @@ function attachMainWindow(
     transparent: presentation.transparent,
   });
   trackFocusedWindow(win);
-  // Reveal the Dock icon in tray-first mode whenever a main window is attached,
+  // Dockless mode: only a FULL main window (dashboard/kiosk) reveals the Dock
+  // icon — the chromeless bottom-bar pill never does. Declare which this is,
   // regardless of how it was opened (boot, tray "Show Window", Dock reopen, or
   // a direct restoreWindow() from a deep link that bypasses showWindow()).
-  getDesktopManager().markMainWindowShown();
+  getDesktopManager().setMainWindowFullWindow(presentation.mode !== "bottom-bar");
 
   win.webview.on("dom-ready", () => {
     injectApiBase(win);
@@ -2559,33 +2560,29 @@ async function main(): Promise<void> {
   // Create window first — on Windows (CEF) the UI message loop must be
   // running before any synchronous FFI calls like setApplicationMenu().
   // Calling setupApplicationMenu() before createMainWindow() deadlocks.
-  const trayFirst = shouldStartTrayFirst();
-  let mainWin: BrowserWindow | null = null;
-  if (trayFirst) {
-    // Tray-first (macOS, opt-in): no window at launch. The tray icon is the
-    // only surface; the main window is created lazily via restoreWindow() /
-    // DesktopManager.showWindow() on tray "Show Window", Dock reopen, or a
-    // deep link. setTrayFirstMode hides the Dock icon until a window is shown.
-    logger.info("[Main] Tray-first startup — deferring main window creation");
+  // Dockless (tray-first) mode is the macOS default (#12184): the resting
+  // experience is the pill + menu-bar icon with NO Dock icon. Unlike the old
+  // tray-first behavior we STILL create the pill window at boot — the pill is
+  // not a "full window" for Dock purposes, so setTrayFirstMode keeps the Dock
+  // icon hidden until a full window (dashboard/surface/settings/app) opens.
+  const dockless = shouldStartTrayFirst();
+  if (dockless) {
+    logger.info("[Main] Dockless startup — pill only, Dock icon hidden at rest");
     getDesktopManager().setTrayFirstMode(true);
-    recordStartupPhase("window_ready", {
-      pid: process.pid,
-    });
-  } else {
-    recordStartupPhase("creating_window", {
-      pid: process.pid,
-    });
-    const { rpc: mainRpc, sendToWebview: mainSendToWebview } =
-      createDesktopRpc("main");
-    mainWin = attachMainWindow(
-      await createMainWindow(mainRpc),
-      mainRpc,
-      mainSendToWebview,
-    );
-    recordStartupPhase("window_ready", {
-      pid: process.pid,
-    });
   }
+  recordStartupPhase("creating_window", {
+    pid: process.pid,
+  });
+  const { rpc: mainRpc, sendToWebview: mainSendToWebview } =
+    createDesktopRpc("main");
+  const mainWin: BrowserWindow | null = attachMainWindow(
+    await createMainWindow(mainRpc),
+    mainRpc,
+    mainSendToWebview,
+  );
+  recordStartupPhase("window_ready", {
+    pid: process.pid,
+  });
   seedFirstPartyRemotePluginsForStartup();
 
   // Per-window RPC tracking: surface windows each get their own typed
@@ -2623,6 +2620,11 @@ async function main(): Promise<void> {
     onRegistryChanged: () => {
       sendManagedWindowsChanged();
       setupApplicationMenu();
+      // Dockless mode: any open managed window (dashboard/surface/settings/app)
+      // reveals the Dock icon; closing the last one hides it again.
+      getDesktopManager().setManagedWindowsPresent(
+        (surfaceWindowManager?.listWindows().length ?? 0) > 0,
+      );
     },
     boundsStore: createAppWindowBoundsStore(),
   });

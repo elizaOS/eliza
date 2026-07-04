@@ -44,45 +44,38 @@ describe("desktop tray config", () => {
 });
 
 describe("shouldStartTrayFirst", () => {
-  it("is opt-in: off by default even on macOS", () => {
-    expect(shouldStartTrayFirst({}, "darwin", [])).toBe(false);
-  });
-
-  it("is enabled on macOS when ELIZA_DESKTOP_TRAY_FIRST is truthy", () => {
+  it("defaults ON (dockless) for macOS (#12184)", () => {
+    expect(shouldStartTrayFirst({}, "darwin", [])).toBe(true);
     expect(
       shouldStartTrayFirst({ ELIZA_DESKTOP_TRAY_FIRST: "1" }, "darwin", []),
     ).toBe(true);
-    expect(
-      shouldStartTrayFirst({ ELIZA_DESKTOP_TRAY_FIRST: "true" }, "darwin", []),
-    ).toBe(true);
   });
 
-  it("stays off on non-macOS platforms even when requested", () => {
+  it("honors the ELIZA_DESKTOP_TRAY_FIRST=0 kill switch on macOS", () => {
+    for (const off of ["0", "false", "no"]) {
+      expect(
+        shouldStartTrayFirst({ ELIZA_DESKTOP_TRAY_FIRST: off }, "darwin", []),
+      ).toBe(false);
+    }
+  });
+
+  it("stays off on non-macOS platforms even by default", () => {
+    expect(shouldStartTrayFirst({}, "win32", [])).toBe(false);
+    expect(shouldStartTrayFirst({}, "linux", [])).toBe(false);
     expect(
       shouldStartTrayFirst({ ELIZA_DESKTOP_TRAY_FIRST: "1" }, "win32", []),
-    ).toBe(false);
-    expect(
-      shouldStartTrayFirst({ ELIZA_DESKTOP_TRAY_FIRST: "1" }, "linux", []),
     ).toBe(false);
   });
 
   it("stays off when the tray itself is disabled", () => {
     expect(
-      shouldStartTrayFirst(
-        { ELIZA_DESKTOP_TRAY_FIRST: "1", ELIZA_DESKTOP_DISABLE_TRAY: "1" },
-        "darwin",
-        [],
-      ),
+      shouldStartTrayFirst({ ELIZA_DESKTOP_DISABLE_TRAY: "1" }, "darwin", []),
     ).toBe(false);
   });
 
   it("stays off in kiosk shell mode", () => {
     expect(
-      shouldStartTrayFirst(
-        { ELIZA_DESKTOP_TRAY_FIRST: "1", ELIZAOS_SHELL_MODE: "kiosk" },
-        "darwin",
-        [],
-      ),
+      shouldStartTrayFirst({ ELIZAOS_SHELL_MODE: "kiosk" }, "darwin", []),
     ).toBe(false);
   });
 });

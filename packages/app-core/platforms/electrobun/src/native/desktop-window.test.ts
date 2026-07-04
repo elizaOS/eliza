@@ -146,6 +146,8 @@ const electrobunMock = vi.hoisted(() => {
     quit: vi.fn(),
     showNotification: vi.fn(),
     showItemInFolder: vi.fn(),
+    setDockIconVisible: vi.fn(),
+    isDockIconVisible: vi.fn(() => true),
   };
   const GlobalShortcut = {
     isRegistered: vi.fn(() => false),
@@ -606,5 +608,65 @@ describe("DesktopManager main window controls", () => {
       expect.any(Function),
     );
     expect(tray.remove).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("DesktopManager dockless (tray-first) Dock tracking (#12184)", () => {
+  const originalPlatform = process.platform;
+
+  beforeEach(() => {
+    resetDesktopManagerForTesting();
+    electrobunMock.reset();
+    // Dock control is macOS-only (setDockIconVisibility guards on darwin).
+    Object.defineProperty(process, "platform", {
+      value: "darwin",
+      configurable: true,
+    });
+  });
+
+  afterEach(() => {
+    Object.defineProperty(process, "platform", {
+      value: originalPlatform,
+      configurable: true,
+    });
+  });
+
+  const dockCalls = (): boolean[] =>
+    electrobunMock.Utils.setDockIconVisible.mock.calls.map(
+      (call: unknown[]) => call[0] as boolean,
+    );
+
+  it("hides the Dock icon at rest — only the pill exists", () => {
+    const manager = new DesktopManager();
+    manager.setTrayFirstMode(true);
+    // Pill main window is attached: NOT a full window → Dock stays hidden.
+    manager.setMainWindowFullWindow(false);
+    expect(dockCalls().at(-1)).toBe(false);
+  });
+
+  it("reveals the Dock icon when a managed window opens, hides it when the last closes", () => {
+    const manager = new DesktopManager();
+    manager.setTrayFirstMode(true);
+    manager.setMainWindowFullWindow(false);
+
+    manager.setManagedWindowsPresent(true);
+    expect(dockCalls().at(-1)).toBe(true);
+
+    manager.setManagedWindowsPresent(false);
+    expect(dockCalls().at(-1)).toBe(false);
+  });
+
+  it("reveals the Dock icon when the main window itself is a full dashboard", () => {
+    const manager = new DesktopManager();
+    manager.setTrayFirstMode(true);
+    manager.setMainWindowFullWindow(true);
+    expect(dockCalls().at(-1)).toBe(true);
+  });
+
+  it("does not touch the Dock icon when dockless mode is off", () => {
+    const manager = new DesktopManager();
+    manager.setMainWindowFullWindow(true);
+    manager.setManagedWindowsPresent(true);
+    expect(electrobunMock.Utils.setDockIconVisible).not.toHaveBeenCalled();
   });
 });

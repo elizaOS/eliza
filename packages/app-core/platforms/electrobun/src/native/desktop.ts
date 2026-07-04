@@ -375,8 +375,17 @@ export class DesktopManager {
     | null = null;
   private requestQuitCallback: (() => void | Promise<void>) | null = null;
   private restoreMainWindowCallback: (() => void | Promise<void>) | null = null;
-  /** Tray-first mode: Dock icon follows main-window presence (macOS). */
+  /**
+   * Dockless (tray-first) mode: the Dock icon reflects the presence of FULL
+   * windows only (dashboard / surface / settings / app windows), never the
+   * chromeless pill. macOS-only; the Dock icon is hidden while just the pill
+   * exists and revealed the moment a full window opens.
+   */
   private trayFirstMode = false;
+  /** Keys of full/managed windows currently present (pill excluded). */
+  private readonly fullWindowKeys = new Set<string>();
+  /** Whether the attached main window counts as a full window (not the pill). */
+  private mainWindowIsFullWindow = false;
 
   // Track menu items for context-menu-clicked matching
   private trayMenuItems: Map<string, TrayMenuItem> = new Map();
@@ -497,7 +506,8 @@ export class DesktopManager {
     if (!window || this.mainWindow === window) {
       this.teardownWindowEvents(this.mainWindow);
       this.mainWindow = null;
-      this.syncTrayFirstDock(false);
+      this.mainWindowIsFullWindow = false;
+      this.refreshMainWindowPresence();
     }
   }
 
@@ -1224,7 +1234,7 @@ X-GNOME-Autostart-enabled=true
       win.minimize();
     }
     this._windowHidden = true;
-    this.syncTrayFirstDock(false);
+    this.refreshMainWindowPresence();
   }
 
   async focusWindow(): Promise<void> {
@@ -1274,7 +1284,7 @@ X-GNOME-Autostart-enabled=true
       win.focus();
     }
     this._windowHidden = false;
-    this.syncTrayFirstDock(true);
+    this.refreshMainWindowPresence();
   }
 
   private setupWindowEvents(): void {
@@ -1779,37 +1789,79 @@ X-GNOME-Autostart-enabled=true
   }
 
   /**
-   * Enable tray-first mode: the Dock icon is hidden until a main window is
-   * shown, then follows window presence (hidden when the window is hidden or
-   * closed). Call once at startup. No-op off macOS (setDockIconVisibility
-   * guards the native call).
+   * Enable dockless (tray-first) mode: the Dock icon is hidden until at least
+   * one FULL window (dashboard / surface / settings / app) exists, then tracks
+   * that set — the chromeless pill never counts. Call once at startup. No-op
+   * off macOS (setDockIconVisibility guards the native call).
    */
   setTrayFirstMode(enabled: boolean): void {
     this.trayFirstMode = enabled;
-    if (enabled) {
-      void this.setDockIconVisibility({ visible: false }).catch(() => {});
+    // Start from the current full-window set (empty at boot → Dock hidden).
+    this.syncTrayFirstDock();
+  }
+
+  /**
+   * Declare whether the attached main window counts as a full window (the
+   * dashboard/kiosk) or is the chromeless pill (which never reveals the Dock).
+   * Called from attachMainWindow() with the resolved shell presentation.
+   */
+  setMainWindowFullWindow(isFull: boolean): void {
+    this.mainWindowIsFullWindow = isFull;
+    this.refreshMainWindowPresence();
+  }
+
+  /**
+   * Report whether any managed surface/settings/app windows are currently open.
+   * Wired to SurfaceWindowManager.onRegistryChanged so opening the dashboard
+   * (or any view window) reveals the Dock icon and closing the last one hides
+   * it again.
+   */
+  setManagedWindowsPresent(present: boolean): void {
+    this.setFullWindowPresence("managed", present);
+  }
+
+  /**
+   * Signal that the main window has been attached/shown. Reveals the Dock icon
+   * in dockless mode only when the main window is a full window (not the pill),
+   * regardless of how it was opened (boot, tray "Show Window", Dock reopen, or
+   * a direct restoreWindow() from a deep link).
+   */
+  markMainWindowShown(): void {
+    this.refreshMainWindowPresence();
+  }
+
+  private refreshMainWindowPresence(): void {
+    this.setFullWindowPresence(
+      "main",
+      this.mainWindowIsFullWindow && !this._windowHidden,
+    );
+  }
+
+  /**
+   * Track whether a class of full/managed window is present. In dockless mode
+   * the Dock icon is visible iff the tracked set is non-empty. The pill is
+   * never reported here, so it never reveals the Dock.
+   */
+  private setFullWindowPresence(key: string, present: boolean): void {
+    const changed = present
+      ? !this.fullWindowKeys.has(key)
+      : this.fullWindowKeys.has(key);
+    if (present) {
+      this.fullWindowKeys.add(key);
+    } else {
+      this.fullWindowKeys.delete(key);
+    }
+    if (changed) {
+      this.syncTrayFirstDock();
     }
   }
 
-  /**
-   * Signal that a main window has been attached/shown. Reveals the Dock icon in
-   * tray-first mode regardless of how the window was opened — including
-   * createMainWindow()/attachMainWindow() paths (boot, restoreWindow() from a
-   * deep link) that bypass showWindow()/showMainWindow(). No-op outside
-   * tray-first.
-   */
-  markMainWindowShown(): void {
-    this.syncTrayFirstDock(true);
-  }
-
-  /**
-   * Toggle the Dock icon to match window presence, only in tray-first mode.
-   * Routed through every show/hide path so reopen-from-tray (which bypasses
-   * the window create path) keeps the Dock icon correct.
-   */
-  private syncTrayFirstDock(visible: boolean): void {
+  /** Match the Dock icon to full-window presence; only in dockless mode. */
+  private syncTrayFirstDock(): void {
     if (!this.trayFirstMode) return;
-    void this.setDockIconVisibility({ visible }).catch(() => {});
+    void this.setDockIconVisibility({
+      visible: this.fullWindowKeys.size > 0,
+    }).catch(() => {});
   }
 
   async showSelectionContextMenu(options: {

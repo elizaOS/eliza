@@ -10,12 +10,18 @@ Issue #10720.
 
 On launch the desktop app opens **chat first** — a chromeless, transparent,
 always-on-top bottom bar rendering only the floating chat overlay, **not** the
-full dashboard window. Onboarding runs **conversationally inside that chat**
-(pick where the agent runs → optional Cloud login → provider → tutorial), never
-a separate setup window. The full app is always one gesture away (tray, menu
-bar "Views", deep link, or dock click), each of which opens the requested
-surface in its own window. This matches assistants like Claude Desktop: a
-resting chat surface, the rest of the app summoned on demand.
+full dashboard window. On macOS the app is **dockless by default** (#12184): the
+pill + menu-bar icon are the resting surface and there is **no Dock icon** until
+a full window opens. The pill passes clicks through its transparent regions
+(`passthrough`), joins every Space (`setVisibleOnAllWorkspaces`), and re-anchors
+to the primary display's work area when displays change. Onboarding runs
+**conversationally inside that chat** (pick where the agent runs → optional
+Cloud login → provider → tutorial), never a separate setup window. The full app
+is always one gesture away (tray popover launcher, tray/menu-bar "Views", deep
+link, or dock click), each of which opens the requested surface in its own
+window — and opening one reveals the Dock icon. This matches assistants like
+Claude Desktop / Wispr Flow: a resting chat surface, the rest of the app
+summoned on demand.
 
 ## Launch: chat-first is the default
 
@@ -31,6 +37,10 @@ The renderer's `ChatOverlayShell` (`packages/ui/src/App.tsx`) renders just the
 `HomePill` + `ContinuousChatOverlay` over a transparent background when
 `shellMode === "chat-overlay"`. No full-app tab system is mounted in this mode;
 "show a view" intents open a dedicated window instead (see **Summoning views**).
+Escape collapses the overlay first, then (when already collapsed) hides the
+window; the global summon hotkey **toggles** the pill (focused+visible →
+hide, else show+focus) via the pure `decideChatOverlayToggle()`
+(`packages/app/src/desktop-hotkey.ts`).
 
 ## Onboarding: in-chat, not a separate window
 
@@ -71,8 +81,9 @@ dedicated window:
 | Concern | Where | Behavior |
 | --- | --- | --- |
 | Tray created | `shouldCreateDesktopTray()` | ON by default; opt out `ELIZA_DESKTOP_DISABLE_TRAY=1` |
-| Tray-first (no boot window, window created lazily) | `shouldStartTrayFirst()` | macOS opt-in `ELIZA_DESKTOP_TRAY_FIRST=1` |
-| Tray popover (widget surface anchored at the tray) | `shouldEnableTrayPopover()` | macOS opt-in `ELIZA_DESKTOP_TRAY_POPOVER=1` |
+| Dockless (tray-first): pill at boot, Dock icon hidden at rest | `shouldStartTrayFirst()` | macOS **default ON** (#12184); kill switch `ELIZA_DESKTOP_TRAY_FIRST=0`. The pill window is still created at boot — it just isn't a "full window" for the Dock. |
+| Dock icon tracking | `DesktopManager.syncTrayFirstDock()` | Dock visible iff ≥1 full/managed window (dashboard/surface/settings/app) — driven by `setMainWindowFullWindow()` + `setManagedWindowsPresent()` (wired to `SurfaceWindowManager.onRegistryChanged`). The pill never counts. |
+| Tray popover (launcher + widget surface anchored at the tray icon) | `shouldEnableTrayPopover()` | macOS opt-in `ELIZA_DESKTOP_TRAY_POPOVER=1`; anchors under the real `Tray.getBounds()`, reuses one window across toggles, dismisses on blur (200ms tray-click guard). Hosts the `TrayLauncher` rows above the widget stack. |
 | Restore / create-if-missing / focus | `restoreWindow()` (`index.ts`) | unminimize + focus, or create the main window and attach RPC |
 | Show a surface + focus | `showMainSurface()` | `restoreWindow()` then `showWindow()` + tray-menu event to renderer |
 | Tray-icon click | `DesktopManager.trayClickHandler` | toggles the popover if configured, else `show + focus` (summon parity with the hotkey) |
@@ -82,14 +93,16 @@ dedicated window:
 ## Environment knobs
 
 `ELIZA_DESKTOP_BOTTOM_BAR` · `ELIZA_DESKTOP_DISABLE_TRAY` / `ELIZA_DESKTOP_TRAY`
-· `ELIZA_DESKTOP_TRAY_FIRST` · `ELIZA_DESKTOP_TRAY_POPOVER` · kiosk shell mode.
-All default to the chat-first, tray-enabled experience above.
+· `ELIZA_DESKTOP_TRAY_FIRST` (macOS dockless; **default ON**, set `=0` to keep
+the Dock icon at rest) · `ELIZA_DESKTOP_TRAY_POPOVER` · kiosk shell mode. All
+default to the chat-first, dockless-on-macOS, tray-enabled experience above.
 
 ## Contract tests
 
 `desktop-experience-contract.test.ts` pins the defaults this doc promises
 (chat-first bottom bar ON, `?shellMode=chat-overlay` appended, tray ON,
-tray-first/popover opt-in, kiosk overrides). `desktop-deep-link-events.test.ts`
+dockless/tray-first ON for macOS with a `=0` kill switch, popover opt-in, kiosk
+overrides). `desktop-deep-link-events.test.ts`
 covers the deep-link router. Full-shell e2e that drives the real Electrobun
 window via the `/api/dev/*` loopback (`dev/stack`, `dev/cursor-screenshot`,
 `dev/console-log`) requires a built desktop app and is captured by a human per
