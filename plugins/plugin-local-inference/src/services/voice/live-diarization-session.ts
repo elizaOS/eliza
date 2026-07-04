@@ -423,6 +423,11 @@ export class LiveDiarizationSession {
 			encoder,
 			diarizer,
 			profileStore: store,
+			// Surface the detached speech-start speculative match's failures into the
+			// runtime's error stream when the sink is a real runtime (#12894 J7).
+			...(this.runtime.reportError
+				? { reportError: this.runtime.reportError.bind(this.runtime) }
+				: {}),
 		});
 		const residualSuppression = resolveResidualSuppression();
 		const config: AudioFrameConsumerConfig = {

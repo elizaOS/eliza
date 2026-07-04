@@ -18,6 +18,7 @@
  * encoder / profile-store dependencies into the streaming-ASR contract.
  */
 
+import { logger } from "@elizaos/core";
 import type {
 	VoiceImprintMatchHandle,
 	VoiceProfileObservation,
@@ -34,10 +35,31 @@ import type { Diarizer, LocalSpeakerSegment } from "./diarizer";
 import type { SpeakerEncoder } from "./encoder";
 import { WESPEAKER_MIN_SAMPLES } from "./encoder";
 
+/**
+ * Diagnostic sink for a failure that has no return-value path back to a caller
+ * — matches `IAgentRuntime.reportError` so a wired live session forwards the
+ * failure into RECENT_ERRORS / owner-escalation (#12263 J7). Optional: a
+ * pipeline built without a runtime (tests, older callers) falls back to
+ * `logger.warn`, but the failure is always observed, never swallowed.
+ */
+export type AttributionDiagnosticSink = (
+	scope: string,
+	error: unknown,
+	context?: Record<string, unknown>,
+) => void;
+
 export interface VoiceAttributionPipelineDeps {
 	encoder: SpeakerEncoder;
 	diarizer?: Diarizer;
 	profileStore: VoiceProfileStore;
+	/**
+	 * Observability boundary for the speech-start speculative match's background
+	 * result promise. That encode runs detached from any caller (no code awaits
+	 * `speculativeMatch.result` — turn-taking that will read it is #12255), so an
+	 * `encode()`/`findBestMatch()` rejection has nowhere to surface and would
+	 * become an unhandled rejection (#12894). Routed here instead.
+	 */
+	reportError?: AttributionDiagnosticSink;
 }
 
 export interface VoiceAttributionRequest {
@@ -94,6 +116,13 @@ export interface IncrementalTurnFinalize {
 export interface IncrementalTurnAttributor {
 	pushWindow(windowPcm: Float32Array, windowStartMs: number): Promise<void>;
 	finalize(args: IncrementalTurnFinalize): Promise<VoiceAttributionOutput>;
+	/**
+	 * Abandon a turn that never reaches `finalize` (VAD close mid-turn,
+	 * zero-buffer speech-end). Settles the speech-start window promise so a
+	 * suspended speculative `embed()` unwinds instead of hanging forever
+	 * (#12896), and cancels the match handle. Idempotent; safe after `finalize`.
+	 */
+	cancel(): void;
 	readonly speculativeMatch: VoiceImprintMatchHandle;
 	/** Count of window decodes done DURING the turn (excludes the finalize window). */
 	readonly windowsDiarized: number;
@@ -265,6 +294,27 @@ export class VoiceAttributionPipeline {
 			},
 			...(init.signal ? { signal: init.signal } : {}),
 		});
+		// Nothing in this pipeline awaits the speculative result (turn-taking that
+		// will consume it is #12255), so its rejection has no caller to land on.
+		// Consume it here once so an `encode()`/`findBestMatch()` failure surfaces
+		// through the diagnostic sink instead of becoming an unhandled rejection
+		// (#12894). `cancel()` resolves the promise to `null` (never rejects), so
+		// this only fires on a genuine encode/match failure.
+		speculativeMatch.result.catch((error: unknown) => {
+			const context = { turnId: init.turnId };
+			if (this.deps.reportError) {
+				this.deps.reportError(
+					"VoiceAttributionPipeline.speculativeMatch",
+					error,
+					context,
+				);
+			} else {
+				logger.warn(
+					{ error, ...context },
+					"[VoiceAttributionPipeline] speculative match failed",
+				);
+			}
+		});
 
 		const diarizeInto = async (
 			pcm: Float32Array,
@@ -282,11 +332,21 @@ export class VoiceAttributionPipeline {
 			}
 		};
 
+		// Settle the speech-start window promise (to `null`) and cancel the match.
+		// A suspended `embed()` (still `await`-ing `firstWindow` because no window
+		// ever pushed) unwinds via the `!pcm` guard → `beginMatch` resolves its
+		// result to `null` rather than hanging forever (#12896). Idempotent.
+		const abandonSpeculativeMatch = (): void => {
+			settleFirstWindow(null);
+			speculativeMatch.cancel();
+		};
+
 		return {
 			get windowsDiarized() {
 				return windowsDiarized;
 			},
 			speculativeMatch,
+			cancel: abandonSpeculativeMatch,
 			pushWindow: async (windowPcm, windowStartMs) => {
 				settleFirstWindow(windowPcm);
 				windowsDiarized += 1;

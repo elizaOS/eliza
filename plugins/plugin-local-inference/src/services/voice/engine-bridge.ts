@@ -1312,6 +1312,11 @@ export class EngineVoiceBridge {
 					encoder: lazyEncoder,
 					...(lazyDiarizer ? { diarizer: lazyDiarizer } : {}),
 					profileStore: opts.profileStore,
+					// Surface the detached speech-start speculative match's failures into
+					// the runtime error stream when a full runtime is present (#12894 J7).
+					...(isEventRuntime(opts.runtime)
+						? { reportError: opts.runtime.reportError.bind(opts.runtime) }
+						: {}),
 				});
 			}
 		}

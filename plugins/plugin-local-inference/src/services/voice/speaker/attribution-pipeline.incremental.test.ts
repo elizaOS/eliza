@@ -1,9 +1,11 @@
 /**
- * Windowed long-turn attribution tests (#12257). Real VoiceProfileStore on a
- * temp dir + a fake encoder/diarizer so the windowing, the shared-tail parity
- * with one-shot `attribute`, the post-endpoint decode bound, and the
- * speech-start speculative `beginMatch` are all exercised against the real
- * profile store — only the native GGUF forward passes are faked.
+ * Windowed long-turn attribution tests (#12257) plus the speculative-match
+ * promise-lifecycle regressions (#12894 orphaned result promise, #12896
+ * firstWindow never settling on cancel). Real VoiceProfileStore on a temp dir +
+ * a fake encoder/diarizer so the windowing, the shared-tail parity with one-shot
+ * `attribute`, the post-endpoint decode bound, and the speech-start speculative
+ * `beginMatch` are all exercised against the real profile store — only the
+ * native GGUF forward passes are faked.
  */
 
 import { mkdtempSync } from "node:fs";
@@ -11,7 +13,10 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { VoiceProfileStore } from "../profile-store";
-import { VoiceAttributionPipeline } from "./attribution-pipeline";
+import {
+	type AttributionDiagnosticSink,
+	VoiceAttributionPipeline,
+} from "./attribution-pipeline";
 import type { Diarizer } from "./diarizer";
 import { PYANNOTE_SEGMENTATION_3_INT8_MODEL_ID } from "./diarizer";
 import type { SpeakerEncoder } from "./encoder";
@@ -48,6 +53,46 @@ function makeEncoder(): SpeakerEncoder & { inputs: number[] } {
 		},
 		async dispose() {},
 	};
+}
+
+/** Encoder whose `encode()` always rejects — models a native GGUF forward-pass
+ *  failure so the speculative match's detached result promise rejects. */
+function makeRejectingEncoder(message: string): SpeakerEncoder {
+	return {
+		embeddingDim: 256,
+		sampleRate: SR,
+		modelId: MODEL,
+		async encode() {
+			throw new Error(message);
+		},
+		async dispose() {},
+	};
+}
+
+/** Run pending microtasks + one macrotask so a background promise (the detached
+ *  speculative `embed()`/`findBestMatch()`) settles and any unhandled rejection
+ *  is delivered to the process listener before we assert. */
+async function drainTasks(): Promise<void> {
+	await Promise.resolve();
+	await new Promise<void>((resolve) => setTimeout(resolve, 0));
+}
+
+/** Capture unhandled promise rejections for the duration of `fn`. */
+async function withUnhandledRejectionCapture(
+	fn: () => Promise<void>,
+): Promise<unknown[]> {
+	const captured: unknown[] = [];
+	const onReject = (reason: unknown): void => {
+		captured.push(reason);
+	};
+	process.on("unhandledRejection", onReject);
+	try {
+		await fn();
+		await drainTasks();
+	} finally {
+		process.off("unhandledRejection", onReject);
+	}
+	return captured;
 }
 
 /** One full-window single-speaker segment per decode; records input lengths. */
@@ -223,3 +268,108 @@ describe("VoiceAttributionPipeline windowed long turns", () => {
 		expect(out.observation).not.toBeNull();
 	});
 });
+
+describe("VoiceAttributionPipeline speculative-match promise lifecycle", () => {
+	it("routes an encode failure to reportError, not an unhandled rejection (#12894)", async () => {
+		const reported: Array<{ scope: string; error: unknown }> = [];
+		const reportError: AttributionDiagnosticSink = (scope, error) => {
+			reported.push({ scope, error });
+		};
+		const pipeline = new VoiceAttributionPipeline({
+			encoder: makeRejectingEncoder("wespeaker forward pass failed"),
+			diarizer: makeDiarizer(),
+			profileStore: await freshStore(),
+			reportError,
+		});
+
+		const captured = await withUnhandledRejectionCapture(async () => {
+			const attributor = pipeline.beginTurn({
+				turnId: "t-reject",
+				startedAtMs: 0,
+			});
+			// Pushing a full window settles firstWindow with real PCM, so the
+			// speculative embed() proceeds to encode() — which rejects.
+			await attributor.pushWindow(new Float32Array(WINDOW_SAMPLES), 0);
+			// Abandon the turn (the real cancel path). The detached result promise
+			// must already be consumed by the pipeline, so cancelling adds no orphan.
+			attributor.cancel();
+		});
+
+		// The rejection surfaced through the diagnostic sink...
+		expect(reported).toHaveLength(1);
+		expect(reported[0]?.scope).toBe(
+			"VoiceAttributionPipeline.speculativeMatch",
+		);
+		expect((reported[0]?.error as Error).message).toBe(
+			"wespeaker forward pass failed",
+		);
+		// ...and NEVER as an unhandled rejection.
+		expect(captured).toEqual([]);
+	});
+
+	it("cancel() settles a suspended speculative embed() so it never hangs (#12896)", async () => {
+		// No reportError wired — a clean cancel resolves the result to null, so the
+		// diagnostic sink must not fire and no unhandled rejection may occur.
+		const pipeline = new VoiceAttributionPipeline({
+			encoder: makeEncoder(),
+			diarizer: makeDiarizer(),
+			profileStore: await freshStore(),
+		});
+
+		const captured = await withUnhandledRejectionCapture(async () => {
+			const attributor = pipeline.beginTurn({
+				turnId: "t-cancel",
+				startedAtMs: 0,
+			});
+			// No window ever pushed: embed() is suspended on `await firstWindow`.
+			expect(attributor.windowsDiarized).toBe(0);
+			attributor.cancel();
+			// The suspended embed() must now unwind and the result promise settle.
+			// A hung promise would time out here instead of resolving.
+			const result = await withTimeout(
+				attributor.speculativeMatch.result,
+				1_000,
+			);
+			expect(result).toBeNull();
+		});
+		expect(captured).toEqual([]);
+	});
+
+	it("cancel() is idempotent and safe after finalize (#12896)", async () => {
+		const pipeline = new VoiceAttributionPipeline({
+			encoder: makeEncoder(),
+			diarizer: makeDiarizer(),
+			profileStore: await freshStore(),
+		});
+		const captured = await withUnhandledRejectionCapture(async () => {
+			const attributor = pipeline.beginTurn({
+				turnId: "t-idem",
+				startedAtMs: 0,
+			});
+			await attributor.pushWindow(new Float32Array(WINDOW_SAMPLES), 0);
+			await attributor.finalize({
+				fullPcm: new Float32Array(WINDOW_SAMPLES),
+				endedAtMs: 5_000,
+			});
+			// Extra cancels after a normal finalize are no-ops, not re-settles.
+			attributor.cancel();
+			attributor.cancel();
+			await withTimeout(attributor.speculativeMatch.result, 1_000);
+		});
+		expect(captured).toEqual([]);
+	});
+});
+
+/** Reject if a promise has not settled within `ms`, so a regression that leaves
+ *  the speculative match hanging fails fast instead of timing out the suite. */
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+	return Promise.race([
+		promise,
+		new Promise<T>((_resolve, reject) => {
+			setTimeout(
+				() => reject(new Error(`promise did not settle within ${ms}ms`)),
+				ms,
+			);
+		}),
+	]);
+}

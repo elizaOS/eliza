@@ -1,11 +1,17 @@
 /**
- * AudioFrameConsumer windowed long-turn integration (#12257). Drives the
- * consumer with a manual VAD and an incremental fake pipeline to prove that a
- * long turn decodes each 5 s window DURING capture and only the trailing
- * partial window at speech-end — so post-endpoint attribution work is bounded
- * to one window. A pipeline without `beginTurn` still takes the one-shot path.
+ * AudioFrameConsumer windowed long-turn integration (#12257) + the speculative-
+ * match promise-lifecycle cancel path (#12896). Drives the consumer with a
+ * manual VAD and an incremental fake pipeline to prove that a long turn decodes
+ * each 5 s window DURING capture and only the trailing partial window at
+ * speech-end. The lifecycle block wires the REAL `VoiceAttributionPipeline`
+ * (fake encoder/diarizer + real profile store) so `close()` and a zero-buffer
+ * speech-end exercise the real `IncrementalTurnAttributor.cancel()`, proving a
+ * turn abandoned before finalize unwinds its suspended speculative `embed()`.
  */
 
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
 	type AttributionPipelineLike,
@@ -13,10 +19,15 @@ import {
 	type RuntimeEventSink,
 	type VadSegmenter,
 } from "./audio-frame-consumer";
-import type {
-	IncrementalTurnAttributor,
-	VoiceAttributionOutput,
+import { VoiceProfileStore } from "./profile-store";
+import {
+	type IncrementalTurnAttributor,
+	type VoiceAttributionOutput,
+	VoiceAttributionPipeline,
 } from "./speaker/attribution-pipeline";
+import type { Diarizer } from "./speaker/diarizer";
+import { PYANNOTE_SEGMENTATION_3_INT8_MODEL_ID } from "./speaker/diarizer";
+import type { SpeakerEncoder } from "./speaker/encoder";
 import type { PcmFrame, VadEvent } from "./types";
 
 const SR = 16_000;
@@ -97,6 +108,9 @@ class IncrementalFakePipeline implements AttributionPipelineLike {
 				cancel: () => {
 					cancelled = true;
 				},
+			},
+			cancel: () => {
+				cancelled = true;
 			},
 			pushWindow: async (windowPcm, windowStartMs) => {
 				windowsDiarized += 1;
@@ -235,5 +249,178 @@ describe("AudioFrameConsumer windowed long-turn attribution (#12257)", () => {
 		expect(pipeline.attributeCalls).toBe(1);
 		expect(pipeline.lastPcmLength).toBe(12 * SR);
 		expect(turns).toHaveLength(1);
+	});
+});
+
+// ---- speculative-match cancel path (#12896) ------------------------------
+
+const MODEL = "wespeaker-resnet34-lm-int8";
+
+function fixedEmbedding(): Float32Array {
+	const v = new Float32Array(256);
+	for (let i = 0; i < v.length; i += 1) v[i] = Math.sin(i * 0.05);
+	return v;
+}
+
+function makeEncoder(): SpeakerEncoder {
+	return {
+		embeddingDim: 256,
+		sampleRate: SR,
+		modelId: MODEL,
+		async encode() {
+			return fixedEmbedding();
+		},
+		async dispose() {},
+	};
+}
+
+function makeDiarizer(): Diarizer {
+	return {
+		modelId: PYANNOTE_SEGMENTATION_3_INT8_MODEL_ID,
+		sampleRate: SR,
+		async diarizeWindow(pcm) {
+			const durationMs = Math.round((pcm.length / SR) * 1000);
+			return {
+				localSpeakerCount: 1,
+				speechMs: durationMs,
+				segments: [
+					{
+						startMs: 0,
+						endMs: durationMs,
+						localSpeakerId: 0,
+						confidence: 0.9,
+						hasOverlap: false,
+					},
+				],
+			};
+		},
+		async dispose() {},
+	};
+}
+
+async function freshStore(): Promise<VoiceProfileStore> {
+	const dir = mkdtempSync(path.join(tmpdir(), "vp-afc-"));
+	const store = new VoiceProfileStore({ rootDir: dir });
+	await store.init();
+	return store;
+}
+
+/**
+ * Real `VoiceAttributionPipeline` that also hands each created attributor to the
+ * test, so it can hold the live speculative handle after the consumer has nulled
+ * its private reference. The consumer's `close()` / zero-buffer speech-end still
+ * drive the REAL `cancel()` — nothing about the abandon path is faked.
+ */
+function buildRealPipeline(pipeline: VoiceAttributionPipeline): {
+	pipeline: AttributionPipelineLike;
+	attributors: IncrementalTurnAttributor[];
+} {
+	const attributors: IncrementalTurnAttributor[] = [];
+	const wrapped: AttributionPipelineLike = {
+		attribute: (req) => pipeline.attribute(req),
+		beginTurn: (init) => {
+			const attributor = pipeline.beginTurn(init);
+			attributors.push(attributor);
+			return attributor;
+		},
+	};
+	return { pipeline: wrapped, attributors };
+}
+
+async function withUnhandledRejectionCapture(
+	fn: () => Promise<void>,
+): Promise<unknown[]> {
+	const captured: unknown[] = [];
+	const onReject = (reason: unknown): void => {
+		captured.push(reason);
+	};
+	process.on("unhandledRejection", onReject);
+	try {
+		await fn();
+		await Promise.resolve();
+		await new Promise<void>((resolve) => setTimeout(resolve, 0));
+	} finally {
+		process.off("unhandledRejection", onReject);
+	}
+	return captured;
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+	return Promise.race([
+		promise,
+		new Promise<T>((_resolve, reject) => {
+			setTimeout(
+				() => reject(new Error(`promise did not settle within ${ms}ms`)),
+				ms,
+			);
+		}),
+	]);
+}
+
+function buildRealConsumer(pipeline: AttributionPipelineLike) {
+	const vad = new ManualVad();
+	const runtime = new FakeRuntime();
+	const consumer = new AudioFrameConsumer(
+		{ vad, pipeline, runtime },
+		{ preRollSeconds: 0, maxTurnSeconds: 60 },
+	);
+	return { vad, consumer };
+}
+
+describe("AudioFrameConsumer speculative-match cancel path (#12896)", () => {
+	it("close() while a turn is open settles the suspended speculative embed()", async () => {
+		const { pipeline, attributors } = buildRealPipeline(
+			new VoiceAttributionPipeline({
+				encoder: makeEncoder(),
+				diarizer: makeDiarizer(),
+				profileStore: await freshStore(),
+			}),
+		);
+		const { vad, consumer } = buildRealConsumer(pipeline);
+
+		const captured = await withUnhandledRejectionCapture(async () => {
+			// Speech-start opens a turn; no window ever fills, so the speculative
+			// embed() is suspended awaiting the first window.
+			vad.emit({ type: "speech-start", timestampMs: 0, probability: 0.9 });
+			await consumer.pushDecodedFrame(new Float32Array(0.5 * SR), 0);
+			expect(attributors).toHaveLength(1);
+
+			// Close mid-turn: the REAL cancel() must settle firstWindow so embed()
+			// unwinds. A regression leaves it hanging → withTimeout rejects.
+			await consumer.close();
+			const result = await withTimeout(
+				attributors[0].speculativeMatch.result,
+				1_000,
+			);
+			expect(result).toBeNull();
+		});
+		expect(captured).toEqual([]);
+	});
+
+	it("a zero-buffer speech-end settles the suspended speculative embed()", async () => {
+		const { pipeline, attributors } = buildRealPipeline(
+			new VoiceAttributionPipeline({
+				encoder: makeEncoder(),
+				diarizer: makeDiarizer(),
+				profileStore: await freshStore(),
+			}),
+		);
+		const { vad, consumer } = buildRealConsumer(pipeline);
+
+		const captured = await withUnhandledRejectionCapture(async () => {
+			// Speech-start then an immediate speech-end with no buffered frames:
+			// finalizeTurn(total===0) takes the abandon branch.
+			vad.emit({ type: "speech-start", timestampMs: 0, probability: 0.9 });
+			expect(attributors).toHaveLength(1);
+			vad.emit({ type: "speech-end", timestampMs: 0, speechDurationMs: 0 });
+			await consumer.flush();
+
+			const result = await withTimeout(
+				attributors[0].speculativeMatch.result,
+				1_000,
+			);
+			expect(result).toBeNull();
+		});
+		expect(captured).toEqual([]);
 	});
 });

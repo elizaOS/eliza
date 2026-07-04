@@ -196,6 +196,17 @@ export interface RuntimeEventSink {
 	 * playback-frames ingest route. Absent on headless/core runtimes.
 	 */
 	voiceEchoReferenceProvider?: EchoReferenceProvider;
+	/**
+	 * `IAgentRuntime.reportError` when the sink is a real runtime (#12263 J7).
+	 * Threaded into the attribution pipeline so the detached speech-start
+	 * speculative match's failures surface into RECENT_ERRORS / owner-escalation
+	 * (#12894). Absent on headless/core sinks — the pipeline then logs instead.
+	 */
+	reportError?(
+		scope: string,
+		error: unknown,
+		context?: Record<string, unknown>,
+	): void;
 }
 
 /**
@@ -506,9 +517,10 @@ export class AudioFrameConsumer {
 		if (this.closed) return;
 		this.closed = true;
 		this.unsubscribeVad();
-		// A turn left open at close never reaches speech-end: cancel its
-		// speculative match so the encoder promise cannot dangle.
-		this.incrementalTurn?.speculativeMatch.cancel();
+		// A turn left open at close never reaches speech-end: abandon it so its
+		// speech-start speculative `embed()` unwinds (settles `firstWindow`) rather
+		// than hanging on an await that never resolves (#12896).
+		this.incrementalTurn?.cancel();
 		this.incrementalTurn = null;
 		await this.attributing;
 		this.turnListeners.clear();
@@ -576,8 +588,9 @@ export class AudioFrameConsumer {
 		this.incrementalTurn = null;
 		this.diarizedSamples = 0;
 		if (total === 0) {
-			// No buffered audio — release the speculative match so it can't dangle.
-			incrementalTurn?.speculativeMatch.cancel();
+			// No buffered audio — abandon the turn so its speculative `embed()`
+			// unwinds (settles `firstWindow`) instead of suspending forever (#12896).
+			incrementalTurn?.cancel();
 			return;
 		}
 		const pcm = concatFloat32(chunks, total);
