@@ -29,6 +29,7 @@ import {
   type NewAgentSandboxBackup,
 } from "../../db/schemas/agent-sandboxes";
 import { jobs } from "../../db/schemas/jobs";
+import { InsufficientCreditsError as InsufficientCreditsApiError } from "../api/errors";
 import { containersEnv } from "../config/containers-env";
 import { getElizaAgentPublicWebUiUrl } from "../eliza-agent-web-ui";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
@@ -229,6 +230,16 @@ export interface BridgeRequest {
   method: string;
   params?: Record<string, unknown>;
 }
+
+/**
+ * JSON-RPC error code for a shared-runtime turn rejected by the credit
+ * reserve. REST callers (shared-rest-adapter, the messages/stream route)
+ * match on this code to translate the failure into the canonical 402
+ * insufficient-credits response instead of a generic retryable failure —
+ * an empty balance is permanent until the org tops up, not a transient
+ * outage.
+ */
+export const BRIDGE_INSUFFICIENT_CREDITS_CODE = -32002;
 
 export interface BridgeResponse {
   jsonrpc: "2.0";
@@ -2016,7 +2027,7 @@ export class ElizaSandboxService {
             jsonrpc: "2.0",
             id: rpc.id,
             error: {
-              code: -32002,
+              code: BRIDGE_INSUFFICIENT_CREDITS_CODE,
               message: `Insufficient credits. Required: $${error.required.toFixed(4)}, Available: $${error.available.toFixed(4)}`,
             },
           };
@@ -3475,6 +3486,15 @@ export class ElizaSandboxService {
         return this.createBridgeSseTextResponse(text);
       }
       if (sharedResponse.error) {
+        // A credit-reserve rejection is not a stream failure — no SSE bytes
+        // exist yet, so throw the canonical typed 402 for the route boundary
+        // to translate (messages/stream → 402 JSON; agent stream routes'
+        // errorToResponse / control-plane errorBody map ApiError natively).
+        // Wrapping it in an SSE error frame here would bury a permanent
+        // add-credits condition inside a 200 stream.
+        if (sharedResponse.error.code === BRIDGE_INSUFFICIENT_CREDITS_CODE) {
+          throw new InsufficientCreditsApiError(sharedResponse.error.message);
+        }
         return this.createBridgeSseErrorResponse(sharedResponse.error.message);
       }
       return fallbackText ? this.createBridgeSseTextResponse(fallbackText) : null;

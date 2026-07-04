@@ -17,6 +17,7 @@
  * bridge already writes.
  */
 
+import { InsufficientCreditsError } from "../../api/errors";
 import type { BridgeRequest } from "../eliza-sandbox";
 // Namespace import (resolved at call-time, not captured at module-eval) so the
 // adapter always reads the *current* eliza-sandbox export. Under bun's
@@ -353,6 +354,12 @@ export async function sharedRestMessageSend(
   };
   const response = await elizaSandbox.elizaSandboxService.bridge(agentId, orgId, rpc);
   if (response.error) {
+    // A credit-reserve rejection is a permanent add-credits condition, not a
+    // transient bridge failure — surface it typed so the route boundary can
+    // return the canonical 402 instead of the generic retryable 503.
+    if (response.error.code === elizaSandbox.BRIDGE_INSUFFICIENT_CREDITS_CODE) {
+      throw new InsufficientCreditsError(response.error.message);
+    }
     throw new Error(response.error.message || "shared message.send failed");
   }
   const result = (response.result ?? {}) as { text?: unknown };

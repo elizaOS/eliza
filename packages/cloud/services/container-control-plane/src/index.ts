@@ -9,6 +9,7 @@ import {
   errorEnvelope,
   toCompatOpResult,
 } from "@elizaos/cloud-shared/lib/api/compat-envelope";
+import { ApiError } from "@elizaos/cloud-shared/lib/api/errors";
 import { containersEnv } from "@elizaos/cloud-shared/lib/config/containers-env";
 import { runWithCloudBindingsAsync } from "@elizaos/cloud-shared/lib/runtime/cloud-bindings";
 import { WarmPoolManager } from "@elizaos/cloud-shared/lib/services/containers/agent-warm-pool";
@@ -52,6 +53,12 @@ export const app = new Hono();
 const client = getHetznerContainersClient();
 
 function errorStatus(error: unknown): number {
+  // Typed API errors (e.g. the 402 insufficient-credits throw from
+  // bridgeStream's shared branch) carry their own status — pass it through
+  // instead of flattening to 500.
+  if (error instanceof ApiError) {
+    return error.status;
+  }
   if (error instanceof HetznerClientError) {
     switch (error.code) {
       case "container_not_found":
@@ -71,6 +78,9 @@ function errorStatus(error: unknown): number {
 }
 
 function errorBody(error: unknown) {
+  if (error instanceof ApiError) {
+    return error.toJSON();
+  }
   return {
     success: false,
     code:
