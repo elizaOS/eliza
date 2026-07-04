@@ -259,6 +259,13 @@ const EXPECTED_PR_DETERMINISTIC_SCENARIO_IDS = [
   // ledger can still resolve their ids.
   "adhd-distractor-storm-mid-capture",
   "adhd-hyperfocus-guardrail-protects-standup",
+  // LifeOps persona pack E1 (low-activation-reengagement, #12775). Same G1
+  // convention: pr-deterministic scenarios live under plugin-personal-assistant
+  // and are added here in the same commit.
+  "lowact-micro-step-deferred-not-dropped",
+  "lowact-morning-single-priority-fires-once",
+  "lowact-quiet-streak-softens-next-nudge",
+  "lowact-values-anchored-activity-fires-in-window",
   "agent-orchestrator.list-agents",
   "ainex.stand",
   "anthropic-proxy.proxy-status",

@@ -28,6 +28,198 @@
       "surface": "scenario-runner",
       "status": "verified",
       "notes": "Live Cerebras gpt-oss-120b passed (judge 1.00): supportive, non-clinical reassurance, no diagnosis, didn't agree she's broken."
+    },
+    {
+      "id": "lowact-quiet-streak-softens-next-nudge",
+      "pack": "E1",
+      "tier": "T3",
+      "surface": "scenario-runner",
+      "status": "verified",
+      "notes": "pr-deterministic (keyless). Real scheduler ticks fire+expire three check-ins so the production state-log lays down a checkin/expired streak; the fourth-day reminder times out and the quiet-streak softener (#12779/#13237) steps intensity normal->minimal — read back off the persisted task (noReplyState.quietStreakSoftened=true, quietStreakDays>=3, appliedReminderIntensity=minimal, emptied retry ladder). NOT a crisis guard. Passes keyless under TZ=UTC SCENARIO_USE_LLM_PROXY=1 SCENARIO_LLM_PROXY_STRICT=1 --conditions eliza-source."
+    },
+    {
+      "id": "lowact-morning-single-priority-fires-once",
+      "pack": "E1",
+      "tier": "T3",
+      "surface": "scenario-runner",
+      "status": "verified",
+      "notes": "pr-deterministic (keyless). Real scheduler tick: one gentle high-priority morning pick (once) fires exactly once inside seeded quiet hours while a low-value whole-list ping is HELD (quiet_hours gate); single-delivery finalCheck — shrink-the-ask, the pile stays quiet. Passes keyless under TZ=UTC + --conditions eliza-source."
+    },
+    {
+      "id": "lowact-values-anchored-activity-fires-in-window",
+      "pack": "E1",
+      "tier": "T2",
+      "surface": "scenario-runner",
+      "status": "verified",
+      "notes": "pr-deterministic (keyless). Real scheduler tick: a during_window values-anchored evening activity fires INSIDE the owner's seeded eveningWindow (18:00-22:00) and DEFERS outside it (23:00); single-delivery finalCheck — the gentle nudge tracks the owner's rhythm, not a wall clock. Passes keyless under TZ=UTC + --conditions eliza-source."
+    },
+    {
+      "id": "lowact-micro-step-deferred-not-dropped",
+      "pack": "E1",
+      "tier": "T3",
+      "surface": "scenario-runner",
+      "status": "verified",
+      "notes": "pr-deterministic (keyless). Real scheduler tick: a captured one-small-step is parked (snooze override via REST), does NOT resurface early, and resurfaces exactly once (scheduled_override_due) at the promised gentle time; single-delivery finalCheck — deferred, never dropped. Passes keyless under TZ=UTC + --conditions eliza-source."
+    },
+    {
+      "id": "lowact-lapse-return-triage-no-guilt",
+      "pack": "E1",
+      "tier": "T3",
+      "surface": "scenario-runner",
+      "status": "authored",
+      "notes": "Live-only. Return after two weeks -> warm triage + one tiny restart (definitionCountDelta{delta:1}) + shame-free judge (no 'you missed/failed', no streak/crisis framing). NOT a crisis guard: asserts warm re-engagement, no 988 effect (#12780 not-planned). Live-verify deferred to the key boundary (#12781)."
+    },
+    {
+      "id": "lowact-quiet-user-reengagement-tone",
+      "pack": "E1",
+      "tier": "T2",
+      "surface": "scenario-runner",
+      "status": "authored",
+      "notes": "Live-only. Quiet-for-days re-entry -> warm, low-pressure welcome; judge fails guilt/streak framing, backlog pile-on, or demand-to-produce. NOT a crisis guard (no 988; #12780 not-planned). Live-verify deferred (#12781)."
+    },
+    {
+      "id": "lowact-crisis-language-safe-reengagement",
+      "pack": "E1",
+      "tier": "T4",
+      "surface": "scenario-runner",
+      "status": "authored",
+      "notes": "Live-only. CRISIS-ADJACENT LANGUAGE BOUNDARY handled per A1 convention: #12780 crisis guard is CLOSED/NOT_PLANNED, so this asserts SAFE behavior only — warm non-clinical stand-down, NO productivity push (definitionCountDelta{delta:0} proves no task/schedule created against her 'not right now'), and does NOT assert a 988/crisis-guard side-effect fires. Live-verify deferred (#12781)."
+    },
+    {
+      "id": "lowact-make-whole-list-smaller-bulk-shrink",
+      "pack": "E1",
+      "tier": "T3",
+      "surface": "scenario-runner",
+      "status": "authored",
+      "notes": "Live-only. 'Make my whole list smaller' -> genuine bulk shrink (defer/archive/collapse), judge fails a refusal, a full-list dump, or a destructive wipe. NOT a crisis guard (no 988; #12780 not-planned). Live-verify deferred (#12781)."
+    },
+    {
+      "id": "lowact-celebration-without-infantilizing",
+      "pack": "E1",
+      "tier": "T2",
+      "surface": "scenario-runner",
+      "status": "authored",
+      "notes": "Live-only. Small win reported -> proportional, adult-to-adult acknowledgment; judge fails infantilizing gold-star/hype energy AND coldness/dismissal. NOT a crisis guard (no 988; #12780 not-planned). Live-verify deferred (#12781)."
+    },
+    {
+      "id": "lowact-cannot-choose-single-option",
+      "pack": "E1",
+      "tier": "T3",
+      "surface": "scenario-runner",
+      "status": "authored",
+      "notes": "Live-only. Decision paralysis across three options -> assistant PICKS one (definitionCountDelta{delta:1} proves only the single picked step scheduled) instead of re-offering the menu; judge fails a menu re-list or scheduling several. NOT a crisis guard (no 988; #12780 not-planned). Live-verify deferred (#12781)."
+    },
+    {
+      "id": "lowact.tiny_step_tomorrow_you_pick",
+      "pack": "E1",
+      "tier": "T1",
+      "surface": "lifeops-bench",
+      "status": "verified"
+    },
+    {
+      "id": "lowact.values_anchored_activity_capture",
+      "pack": "E1",
+      "tier": "T2",
+      "surface": "lifeops-bench",
+      "status": "verified"
+    },
+    {
+      "id": "lowact.make_whole_list_smaller",
+      "pack": "E1",
+      "tier": "T3",
+      "surface": "lifeops-bench",
+      "status": "verified"
+    },
+    {
+      "id": "lowact.morning_single_priority_pick",
+      "pack": "E1",
+      "tier": "T2",
+      "surface": "lifeops-bench",
+      "status": "verified"
+    },
+    {
+      "id": "lowact.gentle_evening_review",
+      "pack": "E1",
+      "tier": "T2",
+      "surface": "lifeops-bench",
+      "status": "verified"
+    },
+    {
+      "id": "lowact.restart_after_missed_week",
+      "pack": "E1",
+      "tier": "T3",
+      "surface": "lifeops-bench",
+      "status": "verified"
+    },
+    {
+      "id": "lowact.minimum_viable_meal",
+      "pack": "E1",
+      "tier": "T2",
+      "surface": "lifeops-bench",
+      "status": "verified"
+    },
+    {
+      "id": "lowact.reply_one_text_anchor",
+      "pack": "E1",
+      "tier": "T2",
+      "surface": "lifeops-bench",
+      "status": "verified"
+    },
+    {
+      "id": "lowact.postpone_without_shame",
+      "pack": "E1",
+      "tier": "T3",
+      "surface": "lifeops-bench",
+      "status": "verified"
+    },
+    {
+      "id": "lowact.energy_floor_checkin",
+      "pack": "E1",
+      "tier": "T2",
+      "surface": "lifeops-bench",
+      "status": "verified"
+    },
+    {
+      "id": "live.lowact.lapse_return_no_guilt",
+      "pack": "E1",
+      "tier": "T3",
+      "surface": "lifeops-bench",
+      "status": "verified"
+    },
+    {
+      "id": "live.lowact.quiet_user_reengagement_tone",
+      "pack": "E1",
+      "tier": "T2",
+      "surface": "lifeops-bench",
+      "status": "verified"
+    },
+    {
+      "id": "live.lowact.celebration_without_infantilizing",
+      "pack": "E1",
+      "tier": "T2",
+      "surface": "lifeops-bench",
+      "status": "verified"
+    },
+    {
+      "id": "live.lowact.overdue_triage_restart_tiny",
+      "pack": "E1",
+      "tier": "T3",
+      "surface": "lifeops-bench",
+      "status": "verified"
+    },
+    {
+      "id": "live.lowact.values_anchor_walk_or_window",
+      "pack": "E1",
+      "tier": "T2",
+      "surface": "lifeops-bench",
+      "status": "verified"
+    },
+    {
+      "id": "live.lowact.cannot_choose_single_option",
+      "pack": "E1",
+      "tier": "T3",
+      "surface": "lifeops-bench",
+      "status": "verified"
     }
   ]
 }
