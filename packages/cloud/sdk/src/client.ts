@@ -1,3 +1,14 @@
+/**
+ * `ElizaCloudClient` — the SDK's primary class: a typed fetch wrapper over every
+ * endpoint of `api.elizacloud.ai` (auth, inference, credits, containers, Eliza
+ * agents, earnings, workflows, and more). Wraps the low-level `ElizaCloudHttpClient`
+ * and exposes the generated `.routes` public-route client. Consumed by
+ * `plugins/plugin-elizacloud` and `packages/ui`.
+ *
+ * Two auth surfaces coexist: `bearerToken` (session) wins over `apiKey` when both
+ * are set. Every method returns a concrete DTO — no `unknown` in public signatures.
+ */
+
 import { CloudApiClient, CloudApiError, ElizaCloudHttpClient } from "./http.js";
 import { ElizaCloudPublicRoutesClient } from "./public-routes.js";
 import {

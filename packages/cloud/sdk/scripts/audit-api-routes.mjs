@@ -1,5 +1,12 @@
 #!/usr/bin/env node
 
+/**
+ * Audits the generated `src/public-routes.ts` wrappers against the live Cloud
+ * API route tree, reporting public routes that are missing a wrapper, stale, or
+ * have drifted. Read-only companion to generate-public-routes.mjs; both share
+ * route-discovery.mjs.
+ */
+
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import {

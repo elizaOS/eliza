@@ -1,3 +1,5 @@
+/** Unit tests for `ElizaCloudClient`'s apps (Eliza Cloud Apps) methods, asserting route/verb/body against a recording mock fetch. */
+
 import { describe, expect, it } from "vitest";
 import { ElizaCloudClient } from "./client.js";
 

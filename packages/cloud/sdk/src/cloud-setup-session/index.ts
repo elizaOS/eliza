@@ -1,3 +1,5 @@
+/** Barrel for the `@elizaos/cloud-sdk/cloud-setup-session` sub-export: guided-setup service interface, mock implementation, policy, and types. */
+
 export {
   MockCloudSetupSessionService,
   type MockCloudSetupSessionServiceOptions,

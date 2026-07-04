@@ -1,3 +1,9 @@
+/**
+ * Builds the canonical third-party app authorize URL for the Eliza Cloud
+ * app-auth (OAuth-style) flow — the redirect a host app sends a user to so
+ * Cloud can grant it scoped access. Pure URL construction; no network calls.
+ */
+
 import { DEFAULT_ELIZA_CLOUD_BASE_URL } from "./types.js";
 
 export const APP_AUTHORIZE_PATH = "/app-auth/authorize";

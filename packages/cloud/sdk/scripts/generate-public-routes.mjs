@@ -1,5 +1,12 @@
 #!/usr/bin/env node
 
+/**
+ * Regenerates `src/public-routes.ts` from the Cloud API route tree — the sole
+ * writer of that generated file, which must never be hand-edited. Discovers
+ * public routes via route-discovery.mjs and emits typed wrappers plus the
+ * `ELIZA_CLOUD_PUBLIC_ENDPOINTS` descriptor map.
+ */
+
 import { spawnSync } from "node:child_process";
 import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";

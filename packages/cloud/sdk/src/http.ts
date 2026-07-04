@@ -1,3 +1,11 @@
+/**
+ * Low-level HTTP layer for the SDK: `ElizaCloudHttpClient` (GET/POST/PUT/PATCH/
+ * DELETE with auth-header injection and query building), the `CloudApiClient`
+ * subclass scoped to `/api/v1`, and the error types `CloudApiError` (thrown on
+ * any non-2xx) and its 402 specialisation `InsufficientCreditsError`.
+ * `ElizaCloudClient` builds on top of this.
+ */
+
 import {
   type CloudApiErrorBody,
   type CloudRequestOptions,

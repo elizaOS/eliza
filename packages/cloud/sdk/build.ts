@@ -1,5 +1,10 @@
 #!/usr/bin/env bun
 
+/**
+ * Bun build script for the SDK: compiles `src/` to ESM in `dist/`, wiping any
+ * prior output first. Invoked by the package's `build` script.
+ */
+
 import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 

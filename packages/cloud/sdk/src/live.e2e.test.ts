@@ -1,3 +1,10 @@
+/**
+ * Live integration tests that hit the real Eliza Cloud API — every block is
+ * gated by an `ELIZA_CLOUD_SDK_LIVE*` env flag and skips when unset (see the
+ * package CLAUDE.md for the full flag matrix). Not a mocked suite: these exercise
+ * real auth, generation, containers, and agent lifecycle against live endpoints.
+ */
+
 import { describe, expect, it } from "vitest";
 import {
   CloudApiClient,

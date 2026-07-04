@@ -1,3 +1,5 @@
+/** Unit tests for `ElizaCloudPublicRoutesClient` (the generated route wrappers) against a stub transport, checking method/path dispatch and the `Raw` variants. */
+
 import { describe, expect, it } from "vitest";
 import { ElizaCloudPublicRoutesClient } from "./public-routes.js";
 import type { CloudRequestOptions, HttpMethod } from "./types.js";

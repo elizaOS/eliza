@@ -1,3 +1,11 @@
+/**
+ * Request/response interfaces and `ElizaCloudClientOptions` for every SDK method,
+ * plus the base-URL constants and re-exports of the Cloud API DTOs from
+ * `types.cloud-api.ts`. Field names on request bodies must match the server zod
+ * schemas verbatim (see `CreateContainerRequest`) — the server strips unknown
+ * keys, so a mismatched casing is silently dropped.
+ */
+
 export type {
   AgentDatabaseStatus,
   AgentDetailDto,
@@ -646,10 +654,10 @@ export interface CloudContainer {
  * `packages/cloud/api/v1/containers/route.ts`) verbatim — the server is
  * camelCase. The server validates with `z.object`, which strips unknown keys,
  * so a snake_case body (`project_name`, `environment_vars`, …) is silently
- * dropped before the handler ever runs. That previously discarded
- * `environmentVars.ELIZA_APP_ID` (per-app monetization attribution) and
- * `projectName` (the sticky deploy key) on every container create, even on the
- * happy path. Keep this in exact camelCase agreement with the server.
+ * dropped before the handler ever runs — losing `environmentVars.ELIZA_APP_ID`
+ * (per-app monetization attribution) and `projectName` (the sticky deploy key)
+ * on every container create, even on the happy path. Keep this in exact
+ * camelCase agreement with the server.
  */
 export interface CreateContainerRequest {
   /** Human-readable container name (1–100 chars). */
