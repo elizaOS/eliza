@@ -1,4 +1,4 @@
-import type { IAgentRuntime, Route } from "@elizaos/core";
+import type { IAgentRuntime, LegacyRouteHandler, Route } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { dispatchRoute } from "./dispatch-route.ts";
 
@@ -15,13 +15,17 @@ function runtimeWithRoutes(routes: Route[]): IAgentRuntime {
   return { routes } as unknown as IAgentRuntime;
 }
 
+function legacyHandler(handler: LegacyRouteHandler): LegacyRouteHandler {
+  return handler;
+}
+
 describe("dispatchRoute onChunk sink (#12352)", () => {
   it("forwards each SSE fragment live and returns the buffered body", async () => {
     const seen: string[] = [];
     const route: Route = {
       type: "POST",
       path: "/api/stream",
-      handler: async (_req: unknown, res: unknown) => {
+      handler: legacyHandler(async (_req, res) => {
         const r = res as unknown as {
           setHeader: (k: string, v: string) => void;
           write: (c: string) => void;
@@ -31,7 +35,7 @@ describe("dispatchRoute onChunk sink (#12352)", () => {
         r.write("data: one\n\n");
         r.write("data: two\n\n");
         r.end();
-      },
+      }),
     } as unknown as Route;
 
     const chunks: string[] = [];
@@ -60,9 +64,9 @@ describe("dispatchRoute onChunk sink (#12352)", () => {
     const route: Route = {
       type: "GET",
       path: "/api/plain",
-      handler: async (_req: unknown, res: unknown) => {
+      handler: legacyHandler(async (_req, res) => {
         (res as unknown as { json: (b: unknown) => void }).json({ ok: true });
-      },
+      }),
     } as unknown as Route;
 
     let chunkCount = 0;
@@ -87,7 +91,7 @@ describe("dispatchRoute onChunk sink (#12352)", () => {
     const route: Route = {
       type: "POST",
       path: "/api/stream",
-      handler: async (_req: unknown, res: unknown) => {
+      handler: legacyHandler(async (_req, res) => {
         const r = res as unknown as {
           write: (c: string) => void;
           end: () => void;
@@ -95,7 +99,7 @@ describe("dispatchRoute onChunk sink (#12352)", () => {
         r.write("a");
         r.write("b");
         r.end();
-      },
+      }),
     } as unknown as Route;
 
     const result = await dispatchRoute({
