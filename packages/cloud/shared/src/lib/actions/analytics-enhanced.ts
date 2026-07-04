@@ -44,7 +44,9 @@ export function parseProjectionCreditBalance(
   // missing/corrupt value is not a $0 balance: projections and low-balance
   // alerts are user-facing billing signals, so fail closed instead of emitting
   // a success-shaped analytics payload with a fabricated zero.
-  const balance = Number.parseFloat(String(organization.credit_balance ?? ""));
+  const rawBalance = organization.credit_balance;
+  const balanceText = rawBalance == null ? "" : String(rawBalance).trim();
+  const balance = balanceText === "" ? Number.NaN : Number(balanceText);
   if (!Number.isFinite(balance)) {
     throw new Error(`Unable to read projection credit_balance for organization ${organizationId}`);
   }

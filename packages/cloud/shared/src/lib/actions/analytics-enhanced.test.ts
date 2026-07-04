@@ -32,4 +32,10 @@ describe("parseProjectionCreditBalance", () => {
       /credit_balance/,
     );
   });
+
+  test("throws on partially numeric corrupt balance strings", () => {
+    expect(() => parseProjectionCreditBalance(orgWithBalance("12.5oops"), ORG_ID)).toThrow(
+      /credit_balance/,
+    );
+  });
 });
