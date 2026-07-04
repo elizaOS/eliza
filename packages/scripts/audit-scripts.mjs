@@ -163,6 +163,14 @@ const ROOT_CWD_WRAPPER_ALLOWLIST = new Map([
   ["dev:core", "day-to-day root core dev entrypoint"],
   ["test:hmr", "root release/regression gate for app HMR behavior"],
   [
+    "test:desktop:packaged",
+    "root release/regression gate for packaged desktop app startup behavior",
+  ],
+  [
+    "test:desktop:packaged:windows",
+    "root release/regression gate for the packaged Windows desktop smoke lane",
+  ],
+  [
     "test:apple-entitlements",
     "root release/regression gate for app entitlement checks",
   ],
