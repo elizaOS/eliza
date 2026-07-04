@@ -825,6 +825,20 @@ export function nativeModuleStubPlugin(
             "export default noopObj;",
           ].join("\n");
         }
+        if (capPkg === "@capacitor/filesystem") {
+          return [
+            "const Filesystem = Object.freeze({});",
+            "export { Filesystem };",
+            "export default Filesystem;",
+          ].join("\n");
+        }
+        if (capPkg === "@capacitor/share") {
+          return [
+            "const Share = Object.freeze({});",
+            "export { Share };",
+            "export default Share;",
+          ].join("\n");
+        }
         if (capPkg === "@capacitor/background-runner") {
           return [
             "const asyncNoop = async () => {};",
