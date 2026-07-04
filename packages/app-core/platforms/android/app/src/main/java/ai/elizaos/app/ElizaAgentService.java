@@ -3359,22 +3359,18 @@ public class ElizaAgentService extends Service {
      * - On AOSP / ElizaOS-branded devices (`ro.elizaos.product` set or any
      *   white-label fork's `ro.<brand>os.product`), the device IS the
      *   agent: always start.
-     * - On stock Android, only start when the user has explicitly picked
-     *   the Local runtime in the onboarding picker (mobile-runtime-mode
-     *   == "local"). Cloud and Remote modes do not need this service.
+     * - On stock Android, only start when the user has explicitly picked the
+     *   Local runtime in the onboarding picker (mobile-runtime-mode ==
+     *   "local"). Cloud, hybrid cloud, remote, tunnel, and not-yet-chosen
+     *   modes do not need this service.
      */
     public static boolean shouldAutoStart(Context context) {
-        if (isBrandedDevice()) {
-            return true;
-        }
-        // This APK is the on-device local-agent sideload build (the cloud
-        // thin-client is a separate build). Autostart the agent unless the
-        // user has explicitly chosen a cloud runtime mode. A fresh install
-        // has no persisted mode yet (the renderer writes it only after the
-        // WebView boots), so default to autostart instead of stranding the
-        // dashboard with no agent to connect to.
-        String mode = readRuntimeMode(context);
-        return !"cloud".equals(mode);
+        return shouldAutoStartForRuntimeMode(isBrandedDevice(), readRuntimeMode(context));
+    }
+
+    static boolean shouldAutoStartForRuntimeMode(boolean brandedDevice, String mode) {
+        if (brandedDevice) return true;
+        return "local".equals(mode == null ? null : mode.trim());
     }
 
     /**
@@ -3383,12 +3379,9 @@ public class ElizaAgentService extends Service {
      * runtime mode has been explicitly persisted by the onboarding picker.
      *
      * Distinct from {@link #shouldAutoStart}: a fresh stock install has no
-     * persisted mode yet, so the agent still auto-starts (so the dashboard has
-     * something to talk to) but the user has chosen nothing. We use this to
-     * avoid cold-asking for notification consent during first-run onboarding —
-     * iOS-style, we ask only after there is a committed reason (the foreground
-     * service still runs without the grant; its notification is just
-     * suppressed until later granted).
+     * persisted mode yet, so the user has chosen nothing. We use this to avoid
+     * cold-asking for notification consent during first-run onboarding —
+     * iOS-style, we ask only after there is a committed reason.
      */
     public static boolean hasCommittedRuntimeChoice(Context context) {
         return isBrandedDevice() || readRuntimeMode(context) != null;
