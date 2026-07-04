@@ -1,3 +1,4 @@
+// Exercises lifeops-quality benchmark lifeops quality triage metrics.test behavior against deterministic harness fixtures.
 import { describe, expect, it } from "vitest";
 import { scoreTriage } from "./metrics.ts";
 

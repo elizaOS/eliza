@@ -1,3 +1,4 @@
+// Exercises lib benchmark lib src tests retrieval defaults.test behavior against deterministic harness fixtures.
 import { describe, expect, it } from "vitest";
 import {
   RETRIEVAL_DEFAULTS_BY_TIER,

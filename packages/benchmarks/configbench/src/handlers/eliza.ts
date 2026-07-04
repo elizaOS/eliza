@@ -751,7 +751,7 @@ async function loadSqlPlugin(): Promise<Plugin | null> {
 function addLegacyAdapterMethods(
   adapter: Record<string, unknown>,
 ): Record<string, unknown> {
-  // biome-ignore lint/suspicious/noExplicitAny: adapter is dynamically patched with legacy DB methods; DatabaseAdapter has no stable structural type here.
+  // biome-ignore lint/suspicious/noExplicitAny: adapter is dynamically patched with compatibility DB methods; DatabaseAdapter has no stable structural type here.
   const a = adapter as Record<string, any>;
 
   a.getAgent ??= async (agentId: string) =>

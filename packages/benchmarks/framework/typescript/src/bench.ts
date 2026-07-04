@@ -617,7 +617,7 @@ function instrumentRuntime(
     return result;
   }) as typeof runtime.useModel;
 
-  // Wrap evaluate (the legacy Evaluator plugin component was removed; older
+  // Wrap evaluate because the previous Evaluator plugin component was removed; older
   // runtimes still expose runtime.evaluate, newer ones do not — skip if absent).
   const origEvaluate = getLegacyEvaluate(runtime);
   if (origEvaluate) {
@@ -695,7 +695,7 @@ async function runStartupBenchmark(
     const elapsed = timer.stop();
     timings.push(elapsed);
 
-    // Clean up
+    // Releases benchmark runtime resources
     if (rt.adapter && "close" in rt.adapter) {
       await (rt.adapter as { close: () => Promise<void> }).close();
     }

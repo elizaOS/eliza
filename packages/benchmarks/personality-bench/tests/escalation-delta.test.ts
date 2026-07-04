@@ -1,3 +1,4 @@
+// Exercises personality-bench benchmark personality bench tests escalation delta.test behavior against deterministic harness fixtures.
 import { describe, expect, it } from "vitest";
 import { resolveOptions } from "../src/judge/index.ts";
 import { gradeEscalationDelta } from "../src/judge/rubrics/escalation-delta.ts";

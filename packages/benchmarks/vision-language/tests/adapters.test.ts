@@ -1,3 +1,4 @@
+// Exercises vision-language benchmark vision language tests adapters.test behavior against deterministic harness fixtures.
 import { describe, expect, it } from "vitest";
 import { ChartQaAdapter } from "../src/adapters/chartqa_adapter.ts";
 import { DocVqaAdapter } from "../src/adapters/docvqa_adapter.ts";

@@ -1,3 +1,4 @@
+// Exercises app-eval benchmark app eval evaluate.real.test behavior against deterministic harness fixtures.
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";

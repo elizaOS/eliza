@@ -1,3 +1,4 @@
+// Exercises personality-bench benchmark personality bench tests runner load.test behavior against deterministic harness fixtures.
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";

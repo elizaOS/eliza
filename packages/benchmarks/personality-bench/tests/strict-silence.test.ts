@@ -1,3 +1,4 @@
+// Exercises personality-bench benchmark personality bench tests strict silence.test behavior against deterministic harness fixtures.
 import { describe, expect, it } from "vitest";
 import { resolveOptions } from "../src/judge/index.ts";
 import { gradeStrictSilence } from "../src/judge/rubrics/strict-silence.ts";

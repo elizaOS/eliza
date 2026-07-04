@@ -1,3 +1,4 @@
+// Measures ConfigBench plugin configuration and secret-handling benchmark behavior.
 import type {
   CategoryScore,
   CheckResult,

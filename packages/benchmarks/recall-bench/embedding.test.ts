@@ -1,3 +1,4 @@
+// Exercises recall-bench benchmark recall bench embedding.test behavior against deterministic harness fixtures.
 import { describe, expect, it } from "vitest";
 import {
   cosine,

@@ -1,3 +1,4 @@
+// Exercises vision-language benchmark vision language tests runner.test behavior against deterministic harness fixtures.
 import { existsSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";

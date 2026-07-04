@@ -1,3 +1,4 @@
+// Exercises lib benchmark lib src tests local llama cpp.test behavior against deterministic harness fixtures.
 import { existsSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 

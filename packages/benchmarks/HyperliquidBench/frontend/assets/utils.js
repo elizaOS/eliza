@@ -1,3 +1,4 @@
+// Powers the HyperliquidBench frontend view for trading-competence trajectories and scores.
 export async function fetchJSON(url) {
   const resp = await fetch(url);
   if (!resp.ok) throw new Error(`Failed to fetch ${url}: ${resp.status}`);

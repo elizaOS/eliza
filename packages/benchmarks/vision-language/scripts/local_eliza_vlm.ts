@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+// Supports vision-language benchmark runtime and adapter validation.
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";

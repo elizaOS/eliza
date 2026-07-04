@@ -1,3 +1,4 @@
+// Powers the HyperliquidBench frontend view for trading-competence trajectories and scores.
 import {
   domainPill,
   fetchJSON,

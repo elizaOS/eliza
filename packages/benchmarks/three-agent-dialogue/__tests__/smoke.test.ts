@@ -371,7 +371,7 @@ describe.skipIf(!GROQ_KEY_SET)(
     let _runOutputDir: string | null = null;
 
     afterEach(() => {
-      // Don't clean up — artefacts are the point
+      // Preserve artifacts because they are the verification target
     });
 
     it(

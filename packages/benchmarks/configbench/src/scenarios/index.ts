@@ -1,3 +1,4 @@
+// Measures ConfigBench plugin configuration and secret-handling benchmark behavior.
 import type { Scenario } from "../types.js";
 import { integrationScenarios } from "./integration.js";
 import { pluginConfigScenarios } from "./plugin-config.js";

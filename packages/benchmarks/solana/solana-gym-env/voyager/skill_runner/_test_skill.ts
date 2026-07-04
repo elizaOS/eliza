@@ -1,3 +1,4 @@
+// Supports Solana-Gym instruction-discovery benchmark viewers and skill execution.
 import { PublicKey, Transaction } from "@solana/web3.js";
 
 export async function executeSkill(blockhash: string): Promise<string> {

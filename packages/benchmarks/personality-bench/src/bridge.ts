@@ -1,3 +1,4 @@
+// Bridges personality-bench trajectory inputs into the layered consistency judge.
 export type PersonalityScenarioLike = {
   personalityExpect?: {
     bucket?: string;

@@ -1,3 +1,4 @@
+// Exercises configbench benchmark configbench tests exit code.test behavior against deterministic harness fixtures.
 import { describe, expect, it } from "vitest";
 import { determineExitCode } from "../src/exit-code.js";
 import type { BenchmarkResults, HandlerResult } from "../src/types.js";

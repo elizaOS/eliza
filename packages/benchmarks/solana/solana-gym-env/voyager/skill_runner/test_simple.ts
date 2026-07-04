@@ -1,3 +1,4 @@
+// Supports Solana-Gym instruction-discovery benchmark viewers and skill execution.
 interface SkillEnvironment {
   simulateTransaction(): Promise<string>;
 }

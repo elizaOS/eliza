@@ -44,7 +44,7 @@ import { judgeWithLlm } from "../checks/llm-judge.ts";
 import { combineVerdict } from "../verdict.ts";
 
 type Mode =
-  // Legacy modes (pre-P1-15 names) — kept for back-compat with authored
+  // Compatibility modes (pre-P1-15 names) stay mapped for authored
   // scenarios that set `options.mode` directly.
   | "per-user-isolation"
   | "global-applies"
@@ -155,7 +155,7 @@ function normalizeMode(rawMode: unknown, rawVariant: unknown): Mode {
   const variant =
     typeof rawVariant === "string" ? rawVariant.toLowerCase() : "";
 
-  // Legacy variantKey strings — map to the P1-15 canonical modes.
+  // Compatibility variantKey strings map to the P1-15 canonical modes.
   if (
     variant === "user_tries_global_should_refuse" ||
     variant === "user-tries-global-should-refuse"
@@ -184,7 +184,7 @@ function normalizeMode(rawMode: unknown, rawVariant: unknown): Mode {
     return mode as Mode;
   }
 
-  // Legacy mode strings — kept for back-compat with authored scenarios.
+  // Compatibility mode strings stay mapped for authored scenarios.
   if (mode === "user-tries-global-should-refuse") return "refuse";
   if (mode === "global-rejected-for-non-admin")
     return "global-rejected-for-non-admin";
@@ -530,7 +530,7 @@ export async function gradeScopeIsolated(
         layer = checkLeakage(turn.content, opts.forbiddenLeakage, []);
         break;
 
-      // ── Legacy modes — kept for back-compat with pre-P1-15 authored scenarios
+      // ── Compatibility modes for pre-P1-15 authored scenarios
 
       case "per-user-isolation":
         layer = checkLeakage(turn.content, opts.forbiddenLeakage, []);

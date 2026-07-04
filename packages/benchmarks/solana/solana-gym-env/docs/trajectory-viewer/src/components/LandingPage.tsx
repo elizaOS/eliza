@@ -1,3 +1,4 @@
+// Supports Solana-Gym instruction-discovery benchmark viewers and skill execution.
 import Prism from "prismjs";
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";

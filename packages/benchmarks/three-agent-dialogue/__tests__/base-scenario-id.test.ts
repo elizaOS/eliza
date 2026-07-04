@@ -1,3 +1,4 @@
+// Exercises three-agent-dialogue benchmark three agent dialogue tests base scenario id.test behavior against deterministic harness fixtures.
 import { describe, expect, it } from "vitest";
 import { baseScenarioId, EDGE_VARIANTS } from "../runner/scenarios";
 

@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+// Runs app-eval deterministic scoring for research and coding agent tasks.
 import { spawn } from "node:child_process";
 /**
  * elizaOS App Benchmark Orchestrator

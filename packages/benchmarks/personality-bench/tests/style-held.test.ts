@@ -1,3 +1,4 @@
+// Exercises personality-bench benchmark personality bench tests style held.test behavior against deterministic harness fixtures.
 import { describe, expect, it } from "vitest";
 import { resolveOptions } from "../src/judge/index.ts";
 import { gradeStyleHeld } from "../src/judge/rubrics/style-held.ts";

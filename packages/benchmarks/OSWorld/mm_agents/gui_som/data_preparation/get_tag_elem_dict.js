@@ -1,3 +1,4 @@
+// Supports OSWorld desktop-agent benchmark data extraction and monitoring views.
 (() => {
   let labels = [];
   const selector_id_table = {};

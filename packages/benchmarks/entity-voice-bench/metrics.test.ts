@@ -1,3 +1,4 @@
+// Exercises entity-voice-bench benchmark entity voice bench metrics.test behavior against deterministic harness fixtures.
 import { describe, expect, it } from "vitest";
 import { sessionById } from "./corpus.ts";
 import {

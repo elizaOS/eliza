@@ -1,3 +1,4 @@
+// Measures ConfigBench plugin configuration and secret-handling benchmark behavior.
 import type { CheckVerdict, ScenarioCheck, ScenarioOutcome } from "../types.js";
 
 export function allResponseText(result: ScenarioOutcome): string {

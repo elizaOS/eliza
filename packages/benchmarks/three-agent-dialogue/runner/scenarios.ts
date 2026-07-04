@@ -1,3 +1,4 @@
+// Supports three-agent dialogue scenario execution and synthetic-audio verification.
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";

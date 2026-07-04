@@ -1,3 +1,4 @@
+// Exercises personality-bench benchmark personality bench tests phrase checks.test behavior against deterministic harness fixtures.
 import { describe, expect, it } from "vitest";
 import {
   checkForbiddenPhrases,

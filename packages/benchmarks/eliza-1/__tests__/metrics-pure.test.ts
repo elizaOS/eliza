@@ -1,3 +1,4 @@
+// Exercises eliza-1 benchmark eliza 1 tests metrics pure.test behavior against deterministic harness fixtures.
 import { describe, expect, it } from "vitest";
 import {
   approxTokens,

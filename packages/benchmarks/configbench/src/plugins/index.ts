@@ -1,3 +1,4 @@
+// Measures ConfigBench plugin configuration and secret-handling benchmark behavior.
 import type { MockPluginDefinition } from "../types.js";
 
 export const ALL_MOCK_PLUGINS: MockPluginDefinition[] = [

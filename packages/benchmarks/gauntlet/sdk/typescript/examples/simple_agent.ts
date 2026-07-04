@@ -1,3 +1,4 @@
+// Exposes Solana Gauntlet TypeScript SDK helpers for adversarial DeFi agents.
 import {
   type AgentResponse,
   type GauntletAgent,

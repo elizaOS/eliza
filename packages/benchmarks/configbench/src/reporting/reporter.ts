@@ -1,3 +1,4 @@
+// Measures ConfigBench plugin configuration and secret-handling benchmark behavior.
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type {

@@ -1,3 +1,4 @@
+// Exercises configbench benchmark configbench tests eliza handler.test behavior against deterministic harness fixtures.
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   collectConfigBenchProviderSettings,

@@ -1,3 +1,4 @@
+// Exercises personality-bench benchmark personality bench tests scope isolated.test behavior against deterministic harness fixtures.
 import { describe, expect, it } from "vitest";
 import { resolveOptions } from "../src/judge/index.ts";
 import { gradeScopeIsolated } from "../src/judge/rubrics/scope-isolated.ts";

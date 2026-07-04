@@ -1,3 +1,4 @@
+// Exercises configbench benchmark configbench tests scenario library.test behavior against deterministic harness fixtures.
 import { describe, expect, it } from "vitest";
 import {
   countConfigBenchScenarios,

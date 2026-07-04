@@ -1,3 +1,4 @@
+// Supports three-agent dialogue scenario execution and synthetic-audio verification.
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({

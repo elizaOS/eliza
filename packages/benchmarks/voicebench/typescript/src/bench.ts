@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+// Runs VoiceBench TypeScript latency measurement across STT, LLM, and TTS stages.
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";

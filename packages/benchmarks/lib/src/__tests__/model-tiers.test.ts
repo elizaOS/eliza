@@ -1,3 +1,4 @@
+// Exercises lib benchmark lib src tests model tiers.test behavior against deterministic harness fixtures.
 import { describe, expect, it } from "vitest";
 
 import { DEFAULT_TIERS, isModelTier, resolveTier } from "../model-tiers.ts";

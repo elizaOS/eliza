@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+// Builds Social-Alpha Trenches chat datasets for trust-marketplace scoring.
 
 import "dotenv/config";
 import { createWriteStream } from "node:fs";

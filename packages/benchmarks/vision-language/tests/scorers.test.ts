@@ -1,3 +1,4 @@
+// Exercises vision-language benchmark vision language tests scorers.test behavior against deterministic harness fixtures.
 import { describe, expect, it } from "vitest";
 import {
   anls,

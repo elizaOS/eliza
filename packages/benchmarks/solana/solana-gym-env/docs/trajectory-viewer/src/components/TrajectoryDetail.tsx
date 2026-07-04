@@ -1,3 +1,4 @@
+// Supports Solana-Gym instruction-discovery benchmark viewers and skill execution.
 import Prism from "prismjs";
 import type React from "react";
 import { useCallback, useEffect, useState } from "react";

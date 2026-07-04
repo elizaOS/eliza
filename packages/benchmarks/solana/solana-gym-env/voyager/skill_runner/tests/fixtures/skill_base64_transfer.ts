@@ -1,3 +1,4 @@
+// Exercises solana benchmark solana solana gym env voyager skill runner tests fixtures skill base64 transfer behavior against deterministic harness fixtures.
 import { PublicKey, SystemProgram, Transaction } from "@solana/web3.js";
 
 interface SkillEnvironment {

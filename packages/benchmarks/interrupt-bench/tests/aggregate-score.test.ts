@@ -1,3 +1,4 @@
+// Exercises interrupt-bench benchmark interrupt bench tests aggregate score.test behavior against deterministic harness fixtures.
 import { describe, expect, it } from "vitest";
 import { aggregateScore } from "../src/report.js";
 import type { ScenarioResult } from "../src/types.js";

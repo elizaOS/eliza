@@ -1,3 +1,4 @@
+// Renders benchmark registry results for local suite inspection.
 const state = {
   data: null,
   sortBy: "started_at",

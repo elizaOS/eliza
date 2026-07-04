@@ -1,3 +1,4 @@
+// Supports Solana-Gym instruction-discovery benchmark viewers and skill execution.
 import type React from "react";
 import { useState } from "react";
 import { Link } from "react-router-dom";

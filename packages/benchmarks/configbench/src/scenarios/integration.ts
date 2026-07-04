@@ -1,3 +1,4 @@
+// Exercises configbench benchmark configbench src scenarios integration behavior against deterministic harness fixtures.
 import type { CheckVerdict, Scenario, ScenarioOutcome } from "../types.js";
 import {
   allResponseText,

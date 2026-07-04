@@ -1,3 +1,4 @@
+// Exercises interrupt-bench benchmark interrupt bench tests judge.test behavior against deterministic harness fixtures.
 import { describe, expect, it } from "vitest";
 import { normalizeJudgeResult } from "../src/judge.ts";
 

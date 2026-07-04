@@ -1,3 +1,4 @@
+// Exercises configbench benchmark configbench tests scorer.test behavior against deterministic harness fixtures.
 import { describe, expect, it } from "vitest";
 import { aggregateByCategory, scoreScenario } from "../src/scoring/scorer.js";
 import type { Scenario, ScenarioOutcome } from "../src/types.js";

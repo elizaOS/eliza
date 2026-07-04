@@ -1,3 +1,4 @@
+// Exercises gauntlet benchmark gauntlet sdk typescript tests sdk.test behavior against deterministic harness fixtures.
 import { describe, expect, test } from "bun:test";
 import type {
   AgentResponse,

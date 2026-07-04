@@ -1,3 +1,4 @@
+// Measures ConfigBench plugin configuration and secret-handling benchmark behavior.
 export const CONFIGBENCH_SETUP_INCOMPATIBLE = "CONFIGBENCH_SETUP_INCOMPATIBLE";
 
 export class SetupIncompatibleError extends Error {

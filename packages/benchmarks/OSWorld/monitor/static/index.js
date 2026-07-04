@@ -1,3 +1,4 @@
+// Supports OSWorld desktop-agent benchmark data extraction and monitoring views.
 document.addEventListener('DOMContentLoaded', () => {
     fetchAvailableConfigs().then(() => {
         fetchConfig();

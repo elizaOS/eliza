@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+// Builds Social-Alpha Trenches chat datasets for trust-marketplace scoring.
 
 import fs from "node:fs/promises";
 import path from "node:path";

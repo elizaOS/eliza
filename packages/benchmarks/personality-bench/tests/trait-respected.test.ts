@@ -1,3 +1,4 @@
+// Exercises personality-bench benchmark personality bench tests trait respected.test behavior against deterministic harness fixtures.
 import { describe, expect, it } from "vitest";
 import { resolveOptions } from "../src/judge/index.ts";
 import { gradeTraitRespected } from "../src/judge/rubrics/trait-respected.ts";

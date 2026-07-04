@@ -1,3 +1,4 @@
+// Supports Solana-Gym instruction-discovery benchmark viewers and skill execution.
 import path from "node:path";
 
 type TupleSkillResult = [number, string, string | null];

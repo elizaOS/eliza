@@ -1,3 +1,4 @@
+// Exercises entity-voice-bench benchmark entity voice bench corpus.test behavior against deterministic harness fixtures.
 import { describe, expect, it } from "vitest";
 import {
   allUtterances,

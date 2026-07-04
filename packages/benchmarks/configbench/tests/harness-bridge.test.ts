@@ -1,3 +1,4 @@
+// Exercises configbench benchmark configbench tests harness bridge.test behavior against deterministic harness fixtures.
 import { describe, expect, it } from "vitest";
 import { ensureCanonicalSecretNamesInReply } from "../src/handlers/harness-bridge.js";
 

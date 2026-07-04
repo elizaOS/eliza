@@ -1,3 +1,4 @@
+// Measures ConfigBench plugin configuration and secret-handling benchmark behavior.
 import { scoreHandler } from "./scoring/scorer.js";
 import { isSetupIncompatibleError } from "./setup-incompatible.js";
 import type {

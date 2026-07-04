@@ -1,3 +1,4 @@
+// Exercises lifeops-quality benchmark lifeops quality timeliness oracle.test behavior against deterministic harness fixtures.
 import { describe, expect, it } from "vitest";
 import {
   type ActualFire,

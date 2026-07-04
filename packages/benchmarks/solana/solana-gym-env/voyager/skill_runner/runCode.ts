@@ -1,3 +1,4 @@
+// Supports Solana-Gym instruction-discovery benchmark viewers and skill execution.
 import { writeFileSync } from "node:fs";
 import path from "node:path";
 
@@ -12,7 +13,7 @@ let transactionCount = 0;
 // A mock environment for the skill to interact with.
 // In a real scenario, this would be a more complex object
 // that mirrors the Python SurfpoolEnv's capabilities.
-// For now, it simulates a transaction receipt.
+// Simulates a transaction receipt for the benchmark skill runner.
 const _surfpoolEnv = {
   // This is a simplified mock. In a real scenario, this would
   // interact with a Solana test validator or similar.

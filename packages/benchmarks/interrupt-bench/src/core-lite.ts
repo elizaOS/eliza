@@ -1,3 +1,4 @@
+// Supports InterruptBench turn-interruption scoring and scripted scenario execution.
 export interface JSONSchema {
   type?: string | string[];
   properties?: Record<string, JSONSchema>;
