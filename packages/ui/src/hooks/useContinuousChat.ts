@@ -20,6 +20,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { useDictationLiveActivity } from "../voice/ios-live-activity";
 import type { VoiceChatState } from "../voice/voice-chat-types";
 import {
   DEFAULT_VOICE_CONTINUOUS_MODE,
@@ -351,9 +352,19 @@ export function useContinuousChat(
     voice.isSpeaking,
   ]);
 
+  const active = voice.isListening && voice.captureMode === "passive";
+
+  // Mirror the live session onto the iOS Lock Screen + Dynamic Island Live
+  // Activity (#12185). Inert off iOS.
+  useDictationLiveActivity({
+    active,
+    status,
+    transcript: voice.interimTranscript ?? "",
+  });
+
   return {
     status,
-    active: voice.isListening && voice.captureMode === "passive",
+    active,
     mode,
     interimTranscript: voice.interimTranscript,
     interrupting,

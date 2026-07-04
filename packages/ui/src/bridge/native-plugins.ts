@@ -903,6 +903,37 @@ export interface ElizaVoicePluginLike extends NativePlugin {
   wakewordClose(options: { handle: string }): Promise<void>;
 }
 
+/**
+ * `ElizaLiveActivity` — iOS ActivityKit bridge for the voice/dictation Live
+ * Activity (issue #12185). Starts/updates/ends the Lock Screen + Dynamic Island
+ * activity rendered by the ElizaWidgets extension. iOS-only; the getter returns
+ * an empty object on every other platform, so callers must feature-detect the
+ * methods before invoking them.
+ */
+export type DictationActivityPhase =
+  | "recording"
+  | "transcribing"
+  | "thinking"
+  | "speaking";
+
+export interface LiveActivityPluginLike extends NativePlugin {
+  isSupported(): Promise<{ supported: boolean; enabled: boolean }>;
+  start(options: {
+    sessionTitle?: string;
+    phase?: DictationActivityPhase;
+    transcript?: string;
+  }): Promise<{ activityId: string }>;
+  update(options: {
+    activityId?: string;
+    phase: DictationActivityPhase;
+    transcript?: string;
+  }): Promise<{ updated: boolean }>;
+  end(options?: {
+    activityId?: string;
+    phase?: DictationActivityPhase;
+  }): Promise<{ ended: boolean }>;
+}
+
 export type GenericNativePlugin = NativePlugin;
 
 export function getAgentPlugin(): AgentPluginLike {
@@ -926,6 +957,10 @@ export function getSwabblePlugin(): SwabblePluginLike {
 
 export function getTalkModePlugin(): TalkModePluginLike {
   return getNativePlugin<TalkModePluginLike>("TalkMode");
+}
+
+export function getLiveActivityPlugin(): LiveActivityPluginLike {
+  return getNativePlugin<LiveActivityPluginLike>("ElizaLiveActivity");
 }
 
 export function getMobileSignalsPlugin(): MobileSignalsPluginLike {
