@@ -372,13 +372,15 @@ describe("native assistant entry contracts", () => {
     // Explicit user-facing states — no silent nothing when the app-side ASR
     // engine is not running or returns empty.
     expect(keyboardViewControllerSwift).toContain("needsFullAccess");
-    expect(keyboardViewControllerSwift).toContain("textDocumentProxy.insertText");
+    expect(keyboardViewControllerSwift).toContain(
+      "textDocumentProxy.insertText",
+    );
     expect(keyboardViewControllerSwift).toContain("empty transcript");
 
     // The App-Group handoff record is the only cross-process channel; keyed by
     // a versioned store key with a freshness window so stale text never inserts.
     expect(keyboardDictationStateSwift).toContain(
-      'enum ElizaKeyboardDictationState',
+      "enum ElizaKeyboardDictationState",
     );
     expect(keyboardDictationStateSwift).toContain(
       'storeKey = "keyboard_dictation_state_v1"',
@@ -395,9 +397,7 @@ describe("native assistant entry contracts", () => {
     expect(keyboardBridgeSwift).toContain('name: "setDictationState"');
     expect(keyboardBridgeSwift).toContain('name: "clearDictationState"');
     expect(keyboardBridgeSwift).toContain('name: "getDictationState"');
-    expect(keyboardBridgeSwift).toContain(
-      "requires a non-empty transcript",
-    );
+    expect(keyboardBridgeSwift).toContain("requires a non-empty transcript");
 
     // ElizaKeyboardDictationState.swift is a member of BOTH the App target
     // (bridge writes) and the ElizaKeyboard target (keyboard reads) — the shared

@@ -210,9 +210,7 @@ export function startKeyboardDictationSession(
     });
   }
 
-  function writeState(
-    status: "recording" | "transcribing",
-  ): Promise<boolean> {
+  function writeState(status: "recording" | "transcribing"): Promise<boolean> {
     if (!bridge) return Promise.resolve(false);
     const write = writeChain.then(() =>
       bridge.setDictationState({ status, sessionId }),
@@ -250,7 +248,11 @@ export function startKeyboardDictationSession(
     if (!bridge) return;
     writeChain = writeChain
       .then(() =>
-        bridge.setDictationState({ status: "ready", transcript: text, sessionId }),
+        bridge.setDictationState({
+          status: "ready",
+          transcript: text,
+          sessionId,
+        }),
       )
       .then(
         () => {

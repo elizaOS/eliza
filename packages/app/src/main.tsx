@@ -136,7 +136,6 @@ import { renderBootFailure } from "./boot-failure";
 import { APP_ENV_ALIASES, APP_ENV_PREFIX } from "./brand-env";
 import { APP_CHARACTER_CATALOG } from "./character-catalog";
 import { isTrustedAppLink } from "./deep-link-handler";
-import { startKeyboardDictationSession } from "./keyboard-dictation";
 import {
   buildAssistantLaunchHashRoute,
   type DeepLinkNavigationIntent,
@@ -151,6 +150,7 @@ import {
   type IosRuntimeConfig,
   resolveIosRuntimeConfig,
 } from "./ios-runtime";
+import { startKeyboardDictationSession } from "./keyboard-dictation";
 import {
   createMobileLifecycle,
   type MobileLifecycle,
