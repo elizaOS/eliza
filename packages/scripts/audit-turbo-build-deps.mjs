@@ -27,6 +27,7 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { listPackages } from "./lib/workspaces.mjs";
 
 const repoRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -38,57 +39,15 @@ function readJson(p) {
   return JSON.parse(readFileSync(p, "utf8"));
 }
 
-/** Expand a workspace glob (only whole-segment `*` wildcards) to real dirs. */
-function expandGlob(pattern) {
-  let dirs = [repoRoot];
-  for (const part of pattern.split("/")) {
-    const next = [];
-    for (const d of dirs) {
-      if (part === "*") {
-        let ents;
-        try {
-          ents = readdirSync(d, { withFileTypes: true });
-        } catch {
-          continue;
-        }
-        for (const e of ents)
-          if (e.isDirectory()) next.push(path.join(d, e.name));
-      } else {
-        const p = path.join(d, part);
-        try {
-          if (statSync(p).isDirectory()) next.push(p);
-        } catch {}
-      }
-    }
-    dirs = next;
-  }
-  return dirs;
-}
-
 /**
- * Map every workspace package name → its directory by expanding the root
- * `workspaces` globs. Resolves against THIS repo (not node_modules, which in a
- * worktree may symlink elsewhere) and handles nested workspaces like
- * `packages/app-core/platforms/*`.
+ * Map every named workspace package → its absolute directory in THIS repo (not
+ * node_modules, which in a worktree may symlink elsewhere). Discovery is the
+ * shared seam; unnamed private packages carry no `#build` override to audit.
  */
 function buildWorkspaceMap() {
-  const root = readJson(path.join(repoRoot, "package.json"));
-  const globs = root.workspaces ?? [];
-  const excludes = new Set(
-    globs
-      .filter((g) => g.startsWith("!"))
-      .map((g) => path.join(repoRoot, g.slice(1))),
-  );
   const map = new Map();
-  for (const g of globs) {
-    if (g.startsWith("!")) continue;
-    for (const dir of expandGlob(g)) {
-      if (excludes.has(dir)) continue;
-      try {
-        const pkg = readJson(path.join(dir, "package.json"));
-        if (pkg.name) map.set(pkg.name, dir);
-      } catch {}
-    }
+  for (const pkg of listPackages({ repoRoot })) {
+    if (pkg.name) map.set(pkg.name, path.join(repoRoot, pkg.dir));
   }
   return map;
 }
