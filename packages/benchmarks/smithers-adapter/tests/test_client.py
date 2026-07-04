@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 import json
-import os
-import subprocess
+import sys
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-import pytest
+_TEST_DIR = Path(__file__).resolve().parent
+if str(_TEST_DIR) not in sys.path:
+    sys.path.insert(0, str(_TEST_DIR))
 
+from live_harness import materialize_live_smithers_install
 from smithers_adapter.client import (
     MessageResponse,
     SmithersClient,
@@ -102,46 +104,8 @@ def test_build_command_shape(tmp_path: Path) -> None:
 def test_send_message_runs_real_smithers_harness_against_local_chat_server(
     tmp_path: Path,
 ) -> None:
-    packages_root = Path(__file__).resolve().parents[3]
-    repo_root = packages_root.parent
-    node_modules = repo_root / "node_modules"
-    has_harness_deps = all(
-        (node_modules / dep).exists()
-        for dep in ("smithers-orchestrator", "@ai-sdk/openai", "ai", "zod")
-    )
-    if not has_harness_deps:
-        node_modules = repo_root / "plugins" / "plugin-workflow" / "node_modules"
-        has_harness_deps = all(
-            (node_modules / dep).exists()
-            for dep in ("smithers-orchestrator", "@ai-sdk/openai", "ai", "zod")
-        )
-    should_provision = os.environ.get("SMITHERS_LIVE_SUBPROCESS_PROOF") == "1"
-    if not has_harness_deps and not should_provision:
-        pytest.skip(
-            "set SMITHERS_LIVE_SUBPROCESS_PROOF=1 to provision JS deps and run the live Smithers subprocess proof"
-        )
-
     install_dir = tmp_path / "smithers-install"
-    install_dir.mkdir()
-    if has_harness_deps:
-        (install_dir / "node_modules").symlink_to(node_modules, target_is_directory=True)
-    else:
-        (install_dir / "package.json").write_text('{"type":"module"}\n', encoding="utf-8")
-        subprocess.run(
-            [
-                os.environ.get("BUN_BIN", "bun"),
-                "add",
-                "smithers-orchestrator@0.26.1",
-                "@ai-sdk/openai",
-                "ai",
-                "zod",
-            ],
-            cwd=install_dir,
-            check=True,
-            capture_output=True,
-            text=True,
-            timeout=180,
-        )
+    materialize_live_smithers_install(install_dir)
     received: list[dict[str, object]] = []
 
     class Handler(BaseHTTPRequestHandler):

@@ -10,6 +10,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import sys
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import pytest
@@ -92,6 +95,151 @@ def test_simple_multiple_smoke_full_score(fixture_dir: Path) -> None:
     assert results.metrics.total_tests == 2
     assert results.metrics.ast_accuracy == pytest.approx(1.0, abs=0.001)
     assert all(r.status == TestStatus.PASSED for r in results.results)
+
+
+def test_smithers_harness_runs_real_bfcl_runner_against_local_server(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    packages_root = Path(__file__).resolve().parents[3]
+    smithers_test_helpers = packages_root / "benchmarks" / "smithers-adapter" / "tests"
+    if str(smithers_test_helpers) not in sys.path:
+        sys.path.insert(0, str(smithers_test_helpers))
+    from live_harness import materialize_live_smithers_install
+
+    data_dir = tmp_path / "data"
+    _write_ndjson(
+        data_dir / "BFCL_v3_irrelevance.json",
+        [
+            {
+                "id": "irrelevance_smithers_0",
+                "question": [[{"role": "user", "content": "Tell me a short greeting."}]],
+                "function": [
+                    {
+                        "name": "get_weather",
+                        "description": "get weather",
+                        "parameters": {
+                            "type": "dict",
+                            "required": ["location"],
+                            "properties": {
+                                "location": {"type": "string", "description": "city"}
+                            },
+                        },
+                    }
+                ],
+            }
+        ],
+    )
+    _write_ndjson(
+        data_dir / "possible_answer" / "BFCL_v3_irrelevance.json",
+        [{"id": "irrelevance_smithers_0", "ground_truth": []}],
+    )
+
+    install_dir = tmp_path / "smithers-install"
+    materialize_live_smithers_install(install_dir)
+
+    received: list[dict[str, object]] = []
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_POST(self) -> None:  # noqa: N802
+            length = int(self.headers.get("content-length", "0"))
+            body = json.loads(self.rfile.read(length).decode("utf-8"))
+            body["_path"] = self.path
+            received.append(body)
+            if self.path.endswith("/responses"):
+                payload = {
+                    "id": "resp-bfcl-smithers-local",
+                    "object": "response",
+                    "created_at": 1,
+                    "status": "completed",
+                    "model": body.get("model", "local-smithers"),
+                    "output": [
+                        {
+                            "id": "msg-bfcl-smithers-local",
+                            "type": "message",
+                            "status": "completed",
+                            "role": "assistant",
+                            "content": [
+                                {
+                                    "type": "output_text",
+                                    "text": "hello from local smithers",
+                                    "annotations": [],
+                                }
+                            ],
+                        }
+                    ],
+                    "usage": {
+                        "input_tokens": 11,
+                        "output_tokens": 4,
+                        "total_tokens": 15,
+                    },
+                }
+            else:
+                payload = {
+                    "id": "chatcmpl-bfcl-smithers-local",
+                    "object": "chat.completion",
+                    "created": 1,
+                    "model": body.get("model", "local-smithers"),
+                    "choices": [
+                        {
+                            "index": 0,
+                            "message": {
+                                "role": "assistant",
+                                "content": "hello from local smithers",
+                            },
+                            "finish_reason": "stop",
+                        }
+                    ],
+                    "usage": {
+                        "prompt_tokens": 11,
+                        "completion_tokens": 4,
+                        "total_tokens": 15,
+                    },
+                }
+            encoded = json.dumps(payload).encode("utf-8")
+            self.send_response(200)
+            self.send_header("content-type", "application/json")
+            self.send_header("content-length", str(len(encoded)))
+            self.end_headers()
+            self.wfile.write(encoded)
+
+        def log_message(self, _format: str, *_args: object) -> None:
+            return
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    monkeypatch.setenv("BENCHMARK_HARNESS", "smithers")
+    monkeypatch.setenv("BENCHMARK_MODEL_PROVIDER", "openai")
+    monkeypatch.setenv("OPENAI_BASE_URL", f"http://127.0.0.1:{server.server_port}/v1")
+    monkeypatch.setenv("OPENAI_API_KEY", "local-key")
+    monkeypatch.setenv("SMITHERS_DIR", str(install_dir))
+    try:
+        config = BFCLConfig(
+            data_path=str(data_dir),
+            output_dir=str(tmp_path / "out"),
+            use_huggingface=False,
+            categories=[BFCLCategory.IRRELEVANCE],
+            generate_report=False,
+            save_raw_responses=True,
+            save_detailed_logs=True,
+        )
+        runner = BFCLRunner(config, provider="eliza", model="local-smithers")
+        results = asyncio.run(runner.run())
+    finally:
+        server.shutdown()
+        thread.join(timeout=5)
+
+    assert runner.agent.__class__.__name__ == "SmithersBFCLAgent"
+    assert results.provider == "smithers"
+    assert results.metrics.total_tests == 1
+    assert results.metrics.overall_score == pytest.approx(1.0)
+    assert results.results[0].status == TestStatus.PASSED
+    assert received
+    assert received[0]["model"] == "local-smithers"
+    assert received[0]["_path"] in {"/v1/chat/completions", "/v1/responses"}
+    trajectory_files = list((tmp_path / "out" / "trajectories").glob("bfcl_compact_*.jsonl"))
+    assert len(trajectory_files) == 1
 
 
 def test_edge_expansion_adds_ten_variants_per_selected_case(fixture_dir: Path) -> None:
