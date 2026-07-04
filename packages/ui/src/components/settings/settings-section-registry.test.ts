@@ -1,3 +1,10 @@
+/**
+ * Covers the settings-section registry: register + list back (so apps can add
+ * sections), re-registering an id replaces the prior entry, and sections sort by
+ * explicit order before registration sequence. Pure in-memory registry, no
+ * render.
+ */
+
 import { Cog } from "lucide-react";
 import { beforeEach, describe, expect, it } from "vitest";
 import { resetUiRegistryHostForTests } from "../../registry-host";

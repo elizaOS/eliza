@@ -1,4 +1,11 @@
 // @vitest-environment jsdom
+
+/**
+ * Pins that AppearanceSettingsSection does NOT render the wallpaper controls —
+ * they live in the dedicated Background settings section. jsdom render with the
+ * app store seeded via `__setAppValueForTests`.
+ */
+
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { __setAppValueForTests } from "../../state/app-store";

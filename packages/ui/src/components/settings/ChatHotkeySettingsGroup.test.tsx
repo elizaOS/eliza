@@ -1,4 +1,13 @@
 // @vitest-environment jsdom
+
+/**
+ * Covers ChatHotkeySettingsGroup: default accelerator + enabled toggle,
+ * disabling (persist + unregister shortcut), recording a keystroke to rebind,
+ * Escape-cancels-recording, and surfacing an OS-rejected accelerator without
+ * persisting. jsdom render with the desktop bridge mocked and the real hotkey
+ * store.
+ */
+
 import {
   act,
   cleanup,

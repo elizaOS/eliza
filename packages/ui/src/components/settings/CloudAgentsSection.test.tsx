@@ -1,5 +1,12 @@
 // @vitest-environment jsdom
 
+/**
+ * Covers CloudAgentsSection rename (client call + persisted active-server label
+ * sync, no-op on unchanged/empty names, error revert) and suspend/resume
+ * lifecycle (direct-path client calls, error surfacing, status re-sync). jsdom
+ * render with the app store, cloud API client, and persistence mocked.
+ */
+
 import {
   cleanup,
   fireEvent,

@@ -1,3 +1,11 @@
+/**
+ * Connect/disconnect UI for coding-plan subscription providers (Claude,
+ * Codex/OpenAI) inside the AI Model settings section. Renders the current
+ * subscription status and drives the paste-the-code OAuth exchange shell —
+ * start login, submit the callback code, sign out — against the shared client.
+ * Mounted by SubscriptionPanel (ProviderPanels.tsx).
+ */
+
 import { AlertTriangle, CheckCircle2, Loader2, LogOut } from "lucide-react";
 import {
   type ReactNode,

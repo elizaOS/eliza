@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
 
+/**
+ * Covers VoiceTierBanner: per-device-tier copy/data attributes and the optional
+ * summary line (rendered when supplied, omitted otherwise). jsdom render, no
+ * mocks.
+ */
+
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { VoiceTierBanner } from "./VoiceTierBanner";

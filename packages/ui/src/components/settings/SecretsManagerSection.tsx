@@ -1,3 +1,17 @@
+/**
+ * Settings → Vault section.
+ *
+ *  - `SecretsManagerSection` — the inline launcher row in Settings;
+ *    clicking dispatches the global open event for the modal.
+ *  - `VaultModal` — the modal itself. App root mounts it lazily on the
+ *    first global open dispatch (launcher, ⌘⌥⌃V chord, menu accelerator)
+ *    via `SecretsManagerModalMount` in `App.tsx`, keeping this module off
+ *    the eager boot graph (#11351).
+ *
+ * The modal is a tabbed Vault interface (Overview / Secrets / Logins /
+ * Routing). Data is fetched once per open and shared across tabs.
+ */
+
 import { KeyRound, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 // All requests go through the shared client (never bare `fetch`) so they hit
@@ -37,20 +51,6 @@ import type {
   VaultEntryMeta,
   VaultTabNavigate,
 } from "./vault-tabs/types";
-
-/**
- * Settings → Vault section.
- *
- *  - `SecretsManagerSection` — the inline launcher row in Settings;
- *    clicking dispatches the global open event for the modal.
- *  - `VaultModal` — the modal itself. App root mounts it lazily on the
- *    first global open dispatch (launcher, ⌘⌥⌃V chord, menu accelerator)
- *    via `SecretsManagerModalMount` in `App.tsx`, keeping this module off
- *    the eager boot graph (#11351).
- *
- * The modal is a tabbed Vault interface (Overview / Secrets / Logins /
- * Routing). Data is fetched once per open and shared across tabs.
- */
 
 const HASH_PREFIX = "vault";
 

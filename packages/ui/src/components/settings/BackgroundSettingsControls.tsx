@@ -1,3 +1,11 @@
+/**
+ * The wallpaper picker rendered inside the Background settings subview: shader
+ * color presets + custom picker, image upload, and cloud image generation, with
+ * undo/redo. Writes to the shared background store (`useBackgroundConfig` /
+ * `ui-preferences`) that drives Home, Launcher, chat, and every view, so choices
+ * apply live. Every control is agent-addressable via `useAgentElement`.
+ */
+
 import {
   ArrowUp,
   Check,

@@ -1,5 +1,12 @@
 // @vitest-environment jsdom
 
+/**
+ * Covers VoiceConfigView's Swabble audio-meter listener lifecycle: an
+ * `audioLevel` listener that resolves after the component unmounts is still
+ * removed (no leaked native listener). jsdom render with the API, agent-surface,
+ * and native-plugin bridge mocked.
+ */
+
 import { cleanup, render, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getSwabblePlugin } from "../../bridge/native-plugins";

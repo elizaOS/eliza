@@ -1,3 +1,9 @@
+/**
+ * Static source-scan guard: fails if any `.tsx` under settings/ (plus
+ * RoutingMatrix) hand-rolls a raw `<select>` instead of the canonical settings
+ * controls. Reads files off disk — no render. Rationale below.
+ */
+
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import { describe, expect, it } from "vitest";

@@ -1,3 +1,13 @@
+/**
+ * Declares and registers every built-in settings section into the
+ * settings-section registry (`settings-section-registry.ts`), which SettingsView
+ * reads to build its nav + render the active section. Section bodies are lazy
+ * chunks (see the note below); metadata/order/grouping come from
+ * `settings-section-meta.ts`. Also owns the tone/hue icon-class maps and the
+ * `#settings/<section>` hash-routing helpers. Importing this module for its side
+ * effect is what populates the registry, so it is imported once at app boot.
+ */
+
 import {
   Archive,
   Bot,

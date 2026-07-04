@@ -1,3 +1,11 @@
+/**
+ * Settings → Appearance section: theme mode, brand accent preset, UI language,
+ * the home time/date widget toggle, loaded content packs, and the advanced
+ * toggle. All choices persist through the app store (`useAppSelector` setters);
+ * every tile is agent-addressable via `useAgentElement`. The advanced toggle
+ * reveals the content-pack loader.
+ */
+
 import type { LucideIcon } from "lucide-react";
 import { Check, Monitor, Moon, Sun } from "lucide-react";
 import { useAgentElement } from "../../agent-surface";

@@ -1,4 +1,12 @@
 // @vitest-environment jsdom
+
+/**
+ * Pins useProviderEntries' provider ordering by platform: on mobile the local
+ * provider sits right after cloud (before subscriptions); on desktop/web it
+ * comes after the subscription providers. renderHook with the platform guard
+ * mocked.
+ */
+
 import { renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useProviderEntries } from "./useProviderEntries";

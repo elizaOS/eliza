@@ -1,3 +1,10 @@
+/**
+ * Settings → Cloud overview: the marketing summary of Eliza Cloud (hosted
+ * connectors, cloud agents, API keys/publishing, billing, marketplace) plus the
+ * connect/open CTA. Reads connection + login-busy state from the app store and
+ * drives `handleCloudLogin`; the CTA is agent-addressable via `useAgentElement`.
+ */
+
 import {
   Bot,
   Cloud,

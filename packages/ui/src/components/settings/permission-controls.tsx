@@ -1,3 +1,11 @@
+/**
+ * Presentational rows for the Permissions settings section. `PermissionRow`
+ * renders one OS/app permission (icon, name, status badge, request/open-settings
+ * action, and the optional shell-enable switch); `CapabilityToggle` renders a
+ * capability on/off row. Status/badge/action copy is resolved through
+ * `permission-types`; the controls are agent-addressable via `useAgentElement`.
+ */
+
 import {
   AppWindow,
   Battery,

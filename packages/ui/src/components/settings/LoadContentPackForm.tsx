@@ -1,3 +1,11 @@
+/**
+ * Content-pack loader form for the Appearance settings section: load a pack from
+ * a URL or (where the platform supports directory picking) a local folder, and
+ * deactivate the active pack. Drives the `useContentPack` store; inputs and
+ * buttons are agent-addressable via `useAgentElement`. Mounted only when the
+ * advanced toggle is on.
+ */
+
 import { FolderOpen } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useAgentElement } from "../../agent-surface";

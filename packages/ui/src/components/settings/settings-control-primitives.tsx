@@ -1,3 +1,10 @@
+/**
+ * Compatibility re-export of the field primitives plus the
+ * `AdvancedSettingsDisclosure` collapsible for settings sections. The canonical
+ * `SettingsField*` primitives live in `../ui/settings-controls`; this module
+ * re-exports them for `./settings-control-primitives` importers.
+ */
+
 import type * as React from "react";
 import { useState } from "react";
 import { cn } from "../../lib/utils";

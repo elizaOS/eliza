@@ -1,3 +1,5 @@
+/** Storybook fixtures for `DesktopWorkspaceDisplay`: populated, empty, short, and long-wrapping diagnostics output. */
+
 import type { Meta, StoryObj } from "@storybook/react";
 import { withMockApp } from "../../storybook/mock-providers.helpers";
 import { DesktopWorkspaceDisplay } from "./DesktopWorkspaceDisplay";

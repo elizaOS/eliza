@@ -1,3 +1,16 @@
+/**
+ * Agent-addressable settings controls.
+ *
+ * These pair a {@link SettingsRow} with a control that registers itself on the
+ * active view's agent surface (`useAgentElement`). Because the Settings view is
+ * itself an agent surface (`ShellViewAgentSurface viewId="settings"`), any row
+ * built with these is editable straight from chat/voice — the agent can
+ * `list-elements` and `agent-click` / `agent-fill` them with no extra plumbing.
+ *
+ * Use these instead of a bare `SettingsRow + Switch/Select` whenever the setting
+ * should be configurable from chat (which is the default for settings).
+ */
+
 import type { LucideIcon } from "lucide-react";
 import * as React from "react";
 import { useAgentElement } from "../../agent-surface";
@@ -13,19 +26,6 @@ import {
 } from "../ui/settings-controls";
 import { Switch } from "../ui/switch";
 import { SettingsRow } from "./settings-layout";
-
-/**
- * Agent-addressable settings controls.
- *
- * These pair a {@link SettingsRow} with a control that registers itself on the
- * active view's agent surface (`useAgentElement`). Because the Settings view is
- * itself an agent surface (`ShellViewAgentSurface viewId="settings"`), any row
- * built with these is editable straight from chat/voice — the agent can
- * `list-elements` and `agent-click` / `agent-fill` them with no extra plumbing.
- *
- * Use these instead of a bare `SettingsRow + Switch/Select` whenever the setting
- * should be configurable from chat (which is the default for settings).
- */
 
 function labelToString(label: React.ReactNode, fallback: string): string {
   return typeof label === "string" ? label : fallback;
