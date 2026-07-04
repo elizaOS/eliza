@@ -88,7 +88,10 @@ export function languageFromAcceptLanguage(
         ?.slice(2);
       return { tag: tag.trim(), q: q ? Number.parseFloat(q) : 1 };
     })
-    .filter((entry) => entry.tag && entry.tag !== "*")
+    // `q=0` means "not acceptable" (RFC 9110 §12.4.2) — such tags must be
+    // excluded, not merely ranked last, or a lone `ja;q=0` would still select
+    // Japanese. Unparseable q-values are dropped with them (`NaN > 0` is false).
+    .filter((entry) => entry.tag && entry.tag !== "*" && entry.q > 0)
     .sort((a, b) => b.q - a.q);
 
   for (const { tag } of ranked) {

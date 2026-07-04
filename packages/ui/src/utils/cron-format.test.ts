@@ -44,6 +44,15 @@ describe("describeCron", () => {
     expect(describeCron("0 25 * * *")).toBeNull();
   });
 
+  it("returns null for range/list minute or hour fields instead of describing their first value", () => {
+    // These fire many times a day; parseInt used to read "9-17" as 9 and
+    // "0,30" as 0, mis-describing them as a single daily time.
+    expect(describeCron("0 9-17 * * *")).toBeNull();
+    expect(describeCron("0,30 9 * * *")).toBeNull();
+    expect(describeCron("30 6,18 * * *")).toBeNull();
+    expect(describeCron("0 9/2 * * *")).toBeNull();
+  });
+
   it("matches every preset to a friendly description", () => {
     for (const preset of CRON_PRESETS) {
       expect(describeCron(preset.expression)).not.toBeNull();
@@ -58,5 +67,9 @@ describe("formatSchedule", () => {
 
   it("falls back to the raw expression when not recognised", () => {
     expect(formatSchedule("0 9 1 * *")).toBe("0 9 1 * *");
+  });
+
+  it("falls back to the raw expression for range/list minute-hour shapes", () => {
+    expect(formatSchedule("0 9-17 * * *")).toBe("0 9-17 * * *");
   });
 });

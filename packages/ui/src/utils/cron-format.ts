@@ -74,10 +74,13 @@ export function describeCron(expression: string): string | null {
     return "Every hour";
   }
 
-  // Specific hour:minute, repeated each day or on a dow set
+  // Specific hour:minute, repeated each day or on a dow set. Both fields must
+  // be a single plain integer — `Number.parseInt` alone would read the first
+  // number out of a range/list ("9-17" → 9, "0,30" → 0) and confidently
+  // describe a multi-fire schedule as a single daily time.
+  if (!/^\d+$/.test(minPart) || !/^\d+$/.test(hourPart)) return null;
   const minute = Number.parseInt(minPart, 10);
   const hour = Number.parseInt(hourPart, 10);
-  if (!Number.isFinite(minute) || !Number.isFinite(hour)) return null;
   if (minute < 0 || minute > 59 || hour < 0 || hour > 23) return null;
   const time = formatTime(hour, minute);
 

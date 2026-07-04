@@ -12,9 +12,20 @@ function makeToken(payload: Record<string, unknown>): string {
   return `${header}.${body}.sig`;
 }
 
-/** Standard-then-url base64 encode (mirrors a real JWT segment, no padding). */
+/**
+ * Standard-then-url base64 encode of the UTF-8 bytes (mirrors a real JWT
+ * segment, no padding). Real issuers encode UTF-8 JSON (RFC 7519 §3), so the
+ * bytes are produced via TextEncoder — a bare `btoa(json)` would emit latin1
+ * bytes no real token contains.
+ */
 function base64url(input: string): string {
-  return btoa(input).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  const bytes = new TextEncoder().encode(input);
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary)
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
 }
 
 describe("decodeJwtPayload", () => {
@@ -41,12 +52,27 @@ describe("decodeJwtPayload", () => {
     expect(decodeJwtPayload(token)).toEqual(payload);
   });
 
+  it("decodes non-ASCII UTF-8 claims without mojibake", () => {
+    // Real tokens carry UTF-8 JSON; decoding the atob byte string directly
+    // used to yield "josÃ©@example.com".
+    const payload = { email: "josé@example.com", sub: "u1", exp: 42 };
+    expect(decodeJwtPayload(makeToken(payload))).toEqual(payload);
+  });
+
+  it("decodes claims outside latin1 (CJK, emoji)", () => {
+    const payload = { email: "太郎@example.com", sub: "🙂", exp: 42 };
+    expect(decodeJwtPayload(makeToken(payload))).toEqual(payload);
+  });
+
   it.each([
     ["empty string", ""],
     ["wrong segment count", "a.b"],
     ["too many segments", "a.b.c.d"],
     ["non-base64 payload", "a.!!!.c"],
     ["payload is not JSON", `a.${base64url("not json")}.c`],
+    // 0xFF alone is not valid UTF-8 — the strict decode maps it to null
+    // rather than a fabricated payload.
+    ["payload bytes are not UTF-8", `a.${btoa('{"sub":"ÿ"}')}.c`],
   ])("returns null for %s", (_label, token) => {
     expect(decodeJwtPayload(token)).toBeNull();
   });
