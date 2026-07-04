@@ -8,6 +8,16 @@
  */
 
 import {
+  BROWSER_CONVERSATION_IMPORT_SOURCES,
+  type BrowserConversationImportPreview,
+  type BrowserConversationImportSource,
+  enumerateBatchDocumentIds,
+  type ImportManifest,
+  previewConversationImportText,
+  runConversationImportText,
+  uninstallBatch,
+} from "@elizaos/import-conversations/browser";
+import {
   AlertTriangle,
   Brain,
   CheckCircle2,
@@ -65,12 +75,7 @@ import { Button } from "../ui/button";
 import { SegmentedControl } from "../ui/segmented-control";
 import { ListSkeleton } from "../ui/skeleton-layouts";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
-import {
-  type ConversationImportPreview,
-  type ConversationImportSource,
-  formatImportedConversationMemory,
-  parseConversationImport,
-} from "./conversation-importer";
+import { createConversationImportDocumentSink } from "./conversation-import-documents";
 
 // ── Constants ────────────────────────────────────────────────────────────
 
@@ -667,26 +672,18 @@ const PersonItem = memo(function PersonItem({
 
 // ── Conversation Import ──────────────────────────────────────────────────
 
-const IMPORT_SOURCES: Array<{
-  value: ConversationImportSource;
-  label: string;
-}> = [
-  { value: "chatgpt", label: "ChatGPT" },
-  { value: "claude", label: "Claude" },
-  { value: "hermes", label: "Hermes" },
-  { value: "openclaw", label: "OpenClaw" },
-];
-
 type ImportJobStatus = "running" | "complete" | "partial" | "deleted";
 
 interface ImportJobRecord {
   id: string;
-  source: ConversationImportSource;
+  source: BrowserConversationImportSource;
   total: number;
   imported: number;
   deleted: number;
-  memoryIds: string[];
-  failed: Array<{ index: number; error: string }>;
+  documentIds: string[];
+  manifest: ImportManifest;
+  failed: Array<{ error: string }>;
+  readback: "verified" | "unverified";
   status: ImportJobStatus;
 }
 
@@ -699,12 +696,12 @@ function createImportBatchId(): string {
 
 function ConversationImportPanel({ onImported }: { onImported: () => void }) {
   const { t } = useTranslation();
-  const [source, setSource] = useState<ConversationImportSource>("chatgpt");
+  const [source, setSource] =
+    useState<BrowserConversationImportSource>("chatgpt");
   const [fileName, setFileName] = useState<string | null>(null);
   const [rawText, setRawText] = useState("");
-  const [preview, setPreview] = useState<ConversationImportPreview | null>(
-    null,
-  );
+  const [preview, setPreview] =
+    useState<BrowserConversationImportPreview | null>(null);
   const [parseError, setParseError] = useState<string | null>(null);
   const [consent, setConsent] = useState(false);
   const [retainRawSession, setRetainRawSession] = useState(false);
@@ -713,14 +710,22 @@ function ConversationImportPanel({ onImported }: { onImported: () => void }) {
   const [jobs, setJobs] = useState<ImportJobRecord[]>([]);
 
   const parseRawText = useCallback(
-    (text: string, selectedSource = source) => {
+    async (
+      text: string,
+      selectedSource = source,
+      selectedFileName = fileName ?? undefined,
+    ) => {
       try {
-        const nextPreview = parseConversationImport(selectedSource, text);
+        const nextPreview = await previewConversationImportText(
+          selectedSource,
+          text,
+          { filename: selectedFileName },
+        );
         setPreview(nextPreview);
         setParseError(
-          nextPreview.counts.turns === 0
+          nextPreview.counts.messages === 0
             ? t("memoryviewer.import.noTurns", {
-                defaultValue: "No importable conversation turns found.",
+                defaultValue: "No importable conversation messages found.",
               })
             : null,
         );
@@ -735,12 +740,12 @@ function ConversationImportPanel({ onImported }: { onImported: () => void }) {
         );
       }
     },
-    [source, t],
+    [fileName, source, t],
   );
 
-  const handleSourceChange = (nextSource: ConversationImportSource) => {
+  const handleSourceChange = (nextSource: BrowserConversationImportSource) => {
     setSource(nextSource);
-    if (rawText) parseRawText(rawText, nextSource);
+    if (rawText) void parseRawText(rawText, nextSource);
   };
 
   const handleFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -755,74 +760,88 @@ function ConversationImportPanel({ onImported }: { onImported: () => void }) {
     }
     const text = await file.text();
     setRawText(text);
-    parseRawText(text);
+    await parseRawText(text, source, file.name);
   };
 
   const handleImport = async () => {
-    if (!preview || preview.redactedTurns.length === 0 || !consent || busy) {
+    if (!preview || preview.counts.messages === 0 || !consent || busy) {
       return;
     }
     setBusy(true);
     const batchId = createImportBatchId();
-    const memoryIds: string[] = [];
-    const failed: ImportJobRecord["failed"] = [];
-    setProgress({ done: 0, total: preview.redactedTurns.length });
-
-    for (const [index, turn] of preview.redactedTurns.entries()) {
-      try {
-        const result = await client.rememberMemory(
-          formatImportedConversationMemory(source, turn, batchId),
-        );
-        memoryIds.push(result.id);
-      } catch (err) {
-        failed.push({
-          index,
-          error: err instanceof Error ? err.message : "Import failed",
-        });
-      } finally {
-        setProgress((current) => ({
-          ...current,
-          done: Math.min(current.total, index + 1),
-        }));
+    setProgress({ done: 0, total: preview.counts.conversations });
+    try {
+      const result = await runConversationImportText({
+        source,
+        rawText,
+        filename: fileName ?? undefined,
+        batchId,
+        sink: createConversationImportDocumentSink(client),
+        onProgress: (event) => setProgress(event),
+      });
+      const documentIds = enumerateBatchDocumentIds(result.manifest);
+      let readback: ImportJobRecord["readback"] = "unverified";
+      if (documentIds[0]) {
+        try {
+          await client.getDocument(documentIds[0]);
+          readback = "verified";
+        } catch {
+          readback = "unverified";
+        }
       }
+      const failed =
+        result.report.summary.errors > 0
+          ? result.report.items
+              .filter((item) => item.outcome === "error")
+              .map((item) => ({ error: item.reason ?? "Import failed" }))
+          : [];
+      const status: ImportJobStatus =
+        failed.length > 0 ? "partial" : "complete";
+      setJobs((current) =>
+        [
+          {
+            id: batchId,
+            source,
+            total: result.report.summary.total,
+            imported: result.report.summary.documentsStored,
+            deleted: 0,
+            documentIds,
+            manifest: result.manifest,
+            failed,
+            readback,
+            status,
+          },
+          ...current,
+        ].slice(0, 6),
+      );
+      setConsent(false);
+      if (!retainRawSession) {
+        setRawText("");
+        setFileName(null);
+        setPreview(null);
+      }
+      onImported();
+    } catch (err) {
+      setParseError(err instanceof Error ? err.message : "Import failed");
+    } finally {
+      setBusy(false);
     }
-
-    const job: ImportJobRecord = {
-      id: batchId,
-      source,
-      total: preview.redactedTurns.length,
-      imported: memoryIds.length,
-      deleted: 0,
-      memoryIds,
-      failed,
-      status: failed.length > 0 ? "partial" : "complete",
-    };
-    setJobs((current) => [job, ...current].slice(0, 6));
-    setBusy(false);
-    setConsent(false);
-    if (!retainRawSession) {
-      setRawText("");
-      setFileName(null);
-      setPreview(null);
-    }
-    onImported();
   };
 
   const handleDeleteBatch = async (job: ImportJobRecord) => {
-    if (busy || job.memoryIds.length === 0) return;
+    if (busy || job.documentIds.length === 0) return;
     setBusy(true);
-    let deleted = 0;
     const failed: ImportJobRecord["failed"] = [];
-    for (const [index, id] of job.memoryIds.entries()) {
-      try {
-        await client.deleteMemory(id);
-        deleted += 1;
-      } catch (err) {
-        failed.push({
-          index,
-          error: err instanceof Error ? err.message : "Delete failed",
-        });
-      }
+    let deleted = 0;
+    try {
+      deleted = await uninstallBatch(
+        createConversationImportDocumentSink(client),
+        job.manifest,
+      );
+    } catch (err) {
+      failed.push({
+        error: err instanceof Error ? err.message : "Delete failed",
+      });
     }
     setJobs((current) =>
       current.map((candidate) =>
@@ -831,7 +850,10 @@ function ConversationImportPanel({ onImported }: { onImported: () => void }) {
               ...candidate,
               deleted,
               failed: [...candidate.failed, ...failed],
-              status: failed.length > 0 ? "partial" : "deleted",
+              status:
+                failed.length > 0 || deleted < job.documentIds.length
+                  ? "partial"
+                  : "deleted",
             }
           : candidate,
       ),
@@ -852,7 +874,7 @@ function ConversationImportPanel({ onImported }: { onImported: () => void }) {
             </div>
             <div className="mt-1 text-sm text-muted">
               {t("memoryviewer.import.subtitle", {
-                defaultValue: "Preview, scrub, consent, then write memories.",
+                defaultValue: "Preview, scrub, consent, then write documents.",
               })}
             </div>
           </div>
@@ -869,12 +891,12 @@ function ConversationImportPanel({ onImported }: { onImported: () => void }) {
               value={source}
               onChange={(event) =>
                 handleSourceChange(
-                  event.target.value as ConversationImportSource,
+                  event.target.value as BrowserConversationImportSource,
                 )
               }
               disabled={busy}
             >
-              {IMPORT_SOURCES.map((item) => (
+              {BROWSER_CONVERSATION_IMPORT_SOURCES.map((item) => (
                 <option key={item.value} value={item.value}>
                   {item.label}
                 </option>
@@ -951,10 +973,12 @@ function ConversationImportPanel({ onImported }: { onImported: () => void }) {
             </PagePanel.SummaryCard>
             <PagePanel.SummaryCard compact>
               <div className="text-xs-tight text-muted">
-                {t("memoryviewer.import.turns", { defaultValue: "Turns" })}
+                {t("memoryviewer.import.messages", {
+                  defaultValue: "Messages",
+                })}
               </div>
               <div className="mt-1 text-lg font-semibold text-txt">
-                {preview.counts.turns}
+                {preview.counts.messages}
               </div>
             </PagePanel.SummaryCard>
             <PagePanel.SummaryCard compact>
@@ -986,12 +1010,12 @@ function ConversationImportPanel({ onImported }: { onImported: () => void }) {
           <div className="space-y-2">
             {preview.examples.map((turn) => (
               <div
-                key={`${turn.conversationTitle}-${turn.speaker}-${turn.createdAt ?? turn.text.slice(0, 24)}`}
+                key={`${turn.title}-${turn.role}-${turn.createdAt ?? turn.text.slice(0, 24)}`}
                 className="rounded-sm border border-border/20 bg-bg-hover/40 p-3"
               >
                 <div className="flex flex-wrap items-center gap-2 text-xs-tight text-muted">
-                  <MetaPill compact>{turn.conversationTitle}</MetaPill>
-                  <span>{turn.speaker}</span>
+                  <MetaPill compact>{turn.title}</MetaPill>
+                  <span>{turn.role}</span>
                 </div>
                 <div className="mt-2 line-clamp-3 text-sm leading-6 text-txt">
                   {turn.text}
@@ -1007,7 +1031,7 @@ function ConversationImportPanel({ onImported }: { onImported: () => void }) {
                 checked={consent}
                 onChange={(event) => setConsent(event.target.checked)}
                 className="h-4 w-4 accent-current"
-                disabled={busy || preview.counts.turns === 0}
+                disabled={busy || preview.counts.messages === 0}
               />
               {t("memoryviewer.import.consent", {
                 defaultValue: "Import the scrubbed preview",
@@ -1017,7 +1041,7 @@ function ConversationImportPanel({ onImported }: { onImported: () => void }) {
               type="button"
               size="sm"
               onClick={handleImport}
-              disabled={!consent || busy || preview.counts.turns === 0}
+              disabled={!consent || busy || preview.counts.messages === 0}
             >
               {busy
                 ? t("memoryviewer.import.progress", {
@@ -1055,6 +1079,7 @@ function ConversationImportPanel({ onImported }: { onImported: () => void }) {
                   {job.status}
                   {job.deleted ? ` · ${job.deleted} deleted` : ""}
                   {job.failed.length ? ` · ${job.failed.length} failed` : ""}
+                  {job.readback === "verified" ? " · read back" : ""}
                 </div>
               </div>
               <Button

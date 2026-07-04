@@ -576,11 +576,6 @@ export interface MemoryRememberResponse {
   createdAt: number;
 }
 
-export interface MemoryDeleteResponse {
-  deleted: boolean;
-  id: string;
-}
-
 export interface QuickContextResponse {
   query: string;
   answer: string;
