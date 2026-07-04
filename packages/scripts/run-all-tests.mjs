@@ -258,8 +258,11 @@ if (!["text", "json"].includes(planFormat)) {
 // exits green and reads as coverage. `--min-tasks`/`MIN_TEST_TASKS` turns both
 // into a loud non-zero exit (3) so the exhaustive lane's proof job can rely on it.
 const minTasksRaw = minTasksFlag ?? process.env.MIN_TEST_TASKS ?? "0";
-const minTasks = Number.parseInt(minTasksRaw, 10);
-if (!Number.isInteger(minTasks) || minTasks < 0) {
+const minTasks =
+  typeof minTasksRaw === "string" && /^\d+$/.test(minTasksRaw)
+    ? Number(minTasksRaw)
+    : Number.NaN;
+if (!Number.isSafeInteger(minTasks)) {
   failUsage(
     `--min-tasks/MIN_TEST_TASKS must be a non-negative integer, got "${minTasksRaw}"`,
   );
@@ -1145,11 +1148,6 @@ for (const packageJsonPath of packageJsonPaths) {
 
 const laneEnv = buildLaneEnv();
 
-if (planEnabled) {
-  printPlan(tasks);
-  process.exit(0);
-}
-
 // Collection-time vacuous-green floor. Evaluated before any task runs so a lane
 // that matched nothing fails immediately instead of "passing" with no work.
 if (minTasks > 0 && tasks.length < minTasks) {
@@ -1158,6 +1156,11 @@ if (minTasks > 0 && tasks.length < minTasks) {
       "A filter/shard/glob collapsed this lane to (near-)zero work. Failing loudly instead of reporting green.",
   );
   process.exit(3);
+}
+
+if (planEnabled) {
+  printPlan(tasks);
+  process.exit(0);
 }
 
 ensurePluginSqlPostgresEnv();

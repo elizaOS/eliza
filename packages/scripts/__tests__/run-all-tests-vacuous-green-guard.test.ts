@@ -69,6 +69,22 @@ describe("run-all-tests --min-tasks vacuous-green guard", () => {
   );
 
   test(
+    "enforces the task floor before plan mode exits",
+    () => {
+      const result = run([
+        "--plan=json",
+        "--no-cloud",
+        `--filter=${NOWHERE_FILTER}`,
+        "--min-tasks=1",
+      ]);
+      expect(result.status).toBe(3);
+      expect(result.stderr).toContain("collected 0 task(s)");
+      expect(result.stdout).toBe("");
+    },
+    SPAWN_TIMEOUT_MS,
+  );
+
+  test(
     "without the guard, a collapsed lane keeps its historical non-failing exit",
     () => {
       // The guard is strictly additive: omitting --min-tasks must not change the
@@ -83,6 +99,16 @@ describe("run-all-tests --min-tasks vacuous-green guard", () => {
     "rejects a non-numeric --min-tasks with a usage error (exit 2)",
     () => {
       const result = run(["--plan=json", "--min-tasks=notanumber"]);
+      expect(result.status).toBe(2);
+      expect(result.stderr).toContain("--min-tasks/MIN_TEST_TASKS must be");
+    },
+    SPAWN_TIMEOUT_MS,
+  );
+
+  test(
+    "rejects a partially numeric --min-tasks with a usage error (exit 2)",
+    () => {
+      const result = run(["--plan=json", "--min-tasks=10abc"]);
       expect(result.status).toBe(2);
       expect(result.stderr).toContain("--min-tasks/MIN_TEST_TASKS must be");
     },
