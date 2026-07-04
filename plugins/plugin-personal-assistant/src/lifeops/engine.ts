@@ -86,12 +86,33 @@ function resolveOccurrenceState(
   return "pending";
 }
 
-function deriveTarget(
+// Exported for direct unit coverage: materializing an occurrence and reading
+// back its `derivedTarget` would exercise the same logic, but testing the pure
+// progression math here is far more precise than standing up a full definition.
+export function deriveTarget(
   progressionRule: LifeOpsProgressionRule,
   completedCountBefore: number,
 ): Record<string, unknown> | null {
   if (progressionRule.kind === "none") {
     return null;
+  }
+  if (progressionRule.kind === "laddered") {
+    // Each completed occurrence advances one rung; the current rung is the
+    // count of prior completions, clamped so an owner who keeps completing stays
+    // on the final (largest) step rather than running off the end of the ladder.
+    const rungIndex = Math.min(
+      completedCountBefore,
+      progressionRule.rungs.length - 1,
+    );
+    return {
+      kind: "laddered",
+      metric: progressionRule.metric,
+      rung: rungIndex,
+      rungTitle: progressionRule.rungs[rungIndex],
+      rungsTotal: progressionRule.rungs.length,
+      unit: progressionRule.unit ?? null,
+      completedCountBefore,
+    };
   }
   const target =
     progressionRule.start + completedCountBefore * progressionRule.step;

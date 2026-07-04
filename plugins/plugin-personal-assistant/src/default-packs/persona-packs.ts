@@ -3,9 +3,12 @@
  *
  * Three packs that serve the ADHD and overwhelmed/depressed personas through
  * the ONE-scheduler contract — no new mechanism, only trigger / gate /
- * completionCheck / escalation fields on `ScheduledTask` records. The
- * behavioural-activation and body-double *framing* lives in `promptInstructions`
- * content (interpreted by the planner); the *routing* stays structural.
+ * completionCheck / escalation fields on `ScheduledTask` records. Routing stays
+ * structural (the runner never inspects `promptInstructions`). The
+ * `promptInstructions` here are a model *prompt* payload — self-compassionate
+ * tone the planner reads when composing the check-in — not a behavior claim; the
+ * behavioral-activation "shrink to one small step" transform itself lives in the
+ * typed `laddered` progression rule, materialized by the occurrence engine.
  *
  *   - `low-energy-support` (D.5.1/D.5.2): a soft-only, low-priority morning
  *     check-in. Inline escalation steps are soft intensity with longer delays
@@ -84,7 +87,6 @@ const lowEnergyCheckinDefinition: CheckInTaskDefinition = {
     packKey: LOW_ENERGY_SUPPORT_PACK_KEY,
     recordKey: "morning-checkin",
     personaAxis: "overwhelmed_depressed",
-    framing: "behavioral_activation",
   },
 };
 
@@ -142,7 +144,6 @@ const adhdBodyDoubleDefinition: CheckInTaskDefinition = {
     packKey: ADHD_BODY_DOUBLE_PACK_KEY,
     recordKey: "start-now",
     personaAxis: "adhd_executive_dysfunction",
-    framing: "body_double_start_now",
   },
 };
 

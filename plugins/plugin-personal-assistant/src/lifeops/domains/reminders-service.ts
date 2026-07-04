@@ -620,19 +620,38 @@ function readLatestPendingReminderReviewAttempt(
   );
 }
 
-function buildReminderBody(args: {
+// A laddered progression rule materializes its current rung into the
+// occurrence's `derivedTarget`; when present, the reminder leads with the small
+// rung step ("Read one page") instead of the raw definition title ("Read the
+// book"). That is the owner-facing surface of the shrink-to-one-small-step
+// transform — the only place the ladder reaches the owner.
+export function readLadderRungTitle(
+  derivedTarget: Record<string, unknown> | null | undefined,
+): string | null {
+  if (derivedTarget?.kind !== "laddered") {
+    return null;
+  }
+  const rungTitle = derivedTarget.rungTitle;
+  return typeof rungTitle === "string" && rungTitle.trim().length > 0
+    ? rungTitle.trim()
+    : null;
+}
+
+export function buildReminderBody(args: {
   title: string;
   scheduledFor: string;
   dueAt: string | null;
   channel: LifeOpsReminderStep["channel"];
   lifecycle: ReminderAttemptLifecycle;
   nearbyReminderTitles?: string[];
+  derivedTarget?: Record<string, unknown> | null;
 }): string {
+  const focus = readLadderRungTitle(args.derivedTarget) ?? args.title;
   const parts: string[] = [];
   if (args.lifecycle === "escalation") {
-    parts.push(`Follow-up reminder: ${args.title}`);
+    parts.push(`Follow-up reminder: ${focus}`);
   } else {
-    parts.push(`Reminder: ${args.title}`);
+    parts.push(`Reminder: ${focus}`);
   }
   if (args.dueAt) {
     parts.push(`Due: ${new Date(args.dueAt).toLocaleString()}`);
@@ -1382,7 +1401,13 @@ export class RemindersDomain {
     urgency: LifeOpsReminderUrgency;
     subjectType: LifeOpsSubjectType;
     nearbyReminderTitles?: string[];
+    derivedTarget?: Record<string, unknown> | null;
   }): Promise<string> {
+    // The laddered rung, when present, is the small step the reminder should be
+    // about — both the deterministic fallback and the model prompt lead with it
+    // instead of the raw task title.
+    const rungTitle = readLadderRungTitle(args.derivedTarget);
+    const reminderFocusTitle = rungTitle ?? args.title;
     const fallback = buildReminderBody({
       title: args.title,
       scheduledFor: args.scheduledFor,
@@ -1390,6 +1415,7 @@ export class RemindersDomain {
       channel: args.channel,
       lifecycle: args.lifecycle,
       nearbyReminderTitles: args.nearbyReminderTitles,
+      derivedTarget: args.derivedTarget,
     });
     if (typeof this.ctx.runtime.useModel !== "function") {
       return fallback;
@@ -1402,7 +1428,7 @@ export class RemindersDomain {
     const reminderAt = args.dueAt ?? args.scheduledFor;
     const prompt = buildReminderDispatchPrompt({
       runtime: this.ctx.runtime,
-      title: args.title,
+      title: reminderFocusTitle,
       reminderAt,
       channel: args.channel,
       lifecycle: args.lifecycle,
@@ -3404,7 +3430,11 @@ export class RemindersDomain {
     activityProfile: ReminderActivityProfileSnapshot | null;
     occurrence?: Pick<
       LifeOpsOccurrenceView,
-      "relevanceStartAt" | "snoozedUntil" | "metadata" | "state"
+      | "relevanceStartAt"
+      | "snoozedUntil"
+      | "metadata"
+      | "state"
+      | "derivedTarget"
     > | null;
     eventStartAt?: string | null;
     acknowledged: boolean;
@@ -3692,6 +3722,7 @@ export class RemindersDomain {
       nearbyReminderTitles: args.nearbyReminderTitles,
       timezone: args.timezone,
       definition: args.definition,
+      derivedTarget: args.occurrence?.derivedTarget ?? null,
     });
 
     if (
@@ -3923,6 +3954,7 @@ export class RemindersDomain {
     nearbyReminderTitles?: string[];
     timezone: string;
     definition: Pick<LifeOpsTaskDefinition, "kind" | "metadata"> | null;
+    derivedTarget?: Record<string, unknown> | null;
     bodyOverride?: string;
   }): Promise<LifeOpsReminderAttempt> {
     const attemptedAt = args.attemptedAt;
@@ -3939,6 +3971,7 @@ export class RemindersDomain {
         urgency: args.urgency,
         subjectType: args.subjectType,
         nearbyReminderTitles: args.nearbyReminderTitles,
+        derivedTarget: args.derivedTarget,
       }));
     let outcome: LifeOpsReminderAttemptOutcome = "delivered";
     let connectorRef: string | null = null;
@@ -4866,6 +4899,7 @@ export class RemindersDomain {
         }),
         timezone: ownerTimezone,
         definition,
+        derivedTarget: occurrence.derivedTarget,
       });
       dueAttempts.push(attempt);
       if (isDeliveredReminderOutcome(attempt.outcome)) {

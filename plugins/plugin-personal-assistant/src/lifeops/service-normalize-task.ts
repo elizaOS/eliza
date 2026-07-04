@@ -625,6 +625,9 @@ export function normalizeProgressionRule(
   if (!rule || rule.kind === "none") {
     return { kind: "none" };
   }
+  if (rule.kind === "laddered") {
+    return normalizeLadderedProgressionRule(rule);
+  }
   if (rule.kind !== "linear_increment") {
     fail(400, "progressionRule.kind is not supported");
   }
@@ -639,6 +642,32 @@ export function normalizeProgressionRule(
     metric,
     start,
     step,
+  };
+  const unit = normalizeOptionalString(rule.unit);
+  if (unit) {
+    normalized.unit = unit;
+  }
+  return normalized;
+}
+
+// A laddered rule needs at least one rung — `rungs[0]` is the two-minute
+// starter step that the shrink-to-one-small-step transform surfaces first. An
+// empty ladder would leave the engine with no rung to materialize, so it fails
+// fast here rather than being silently coerced to `none`.
+function normalizeLadderedProgressionRule(
+  rule: Extract<LifeOpsProgressionRule, { kind: "laddered" }>,
+): LifeOpsProgressionRule {
+  const metric = requireNonEmptyString(rule.metric, "progressionRule.metric");
+  if (!Array.isArray(rule.rungs) || rule.rungs.length === 0) {
+    fail(400, "progressionRule.rungs must be a non-empty array");
+  }
+  const rungs = rule.rungs.map((rung, index) =>
+    requireNonEmptyString(rung, `progressionRule.rungs[${index}]`),
+  );
+  const normalized: LifeOpsProgressionRule = {
+    kind: "laddered",
+    metric,
+    rungs,
   };
   const unit = normalizeOptionalString(rule.unit);
   if (unit) {

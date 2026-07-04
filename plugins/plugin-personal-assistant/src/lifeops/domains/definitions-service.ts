@@ -202,9 +202,17 @@ export class DefinitionsDomain {
       reminderPlanId: null,
       goalId,
       source: normalizeOptionalString(request.source) ?? "manual",
+      // A laddered progression rule is the structural form of the
+      // behavioral-activation "shrink the ask to one small step" transform. The
+      // `activationStrategy` marker is asserted last so request metadata cannot
+      // override it — when the rule is laddered, the definition is truthfully
+      // marked one_small_step. This replaces the old dead `metadata.framing`
+      // claim that no runtime code ever read.
       metadata: mergeMetadata(
-        {},
-        normalizeOptionalRecord(request.metadata, "metadata"),
+        normalizeOptionalRecord(request.metadata, "metadata") ?? {},
+        progressionRule.kind === "laddered"
+          ? { activationStrategy: "one_small_step" }
+          : undefined,
       ),
     });
     await this.ctx.repository.createDefinition(definition);

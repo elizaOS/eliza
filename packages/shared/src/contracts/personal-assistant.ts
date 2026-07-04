@@ -653,6 +653,19 @@ export type LifeOpsProgressionRule =
       start: number;
       step: number;
       unit?: string;
+    }
+  // Behavioral-activation "shrink the ask to one small step" ladder: `rungs[0]`
+  // is the two-minute starter step, and completing occurrences advances the
+  // owner up the ladder one rung at a time (clamped at the last rung). The
+  // occurrence engine materializes the current rung into `derivedTarget` so the
+  // reminder body can lead with the rung title rather than the raw task title;
+  // `rungs.length === 1` is the degenerate pure-shrink case (a single small
+  // step that never grows). Structural only — the scheduler never inspects it.
+  | {
+      kind: "laddered";
+      metric: string;
+      rungs: string[];
+      unit?: string;
     };
 
 export interface LifeOpsReminderStep {
