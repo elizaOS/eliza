@@ -358,6 +358,10 @@ export class VoicePipeline {
 		// idle ASR pages now (within-turn RSS trim, AGENTS.md §4). Fire-and-
 		// forget: a slow `madvise` must not delay the drafter kick-off.
 		if (this.events.onAsrPhaseComplete) {
+			// error-policy:J6 best-effort — this is an optional within-turn RSS trim
+			// (madvise page-drop hint), not a data path. A failed or slow hint must
+			// neither delay the drafter kick-off nor surface as an unhandled
+			// rejection; the next turn re-issues it.
 			void Promise.resolve(this.events.onAsrPhaseComplete()).catch(() => {});
 		}
 

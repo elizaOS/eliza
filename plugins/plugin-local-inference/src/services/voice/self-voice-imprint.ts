@@ -98,6 +98,10 @@ export class AgentSelfVoiceImprint {
 		const work = this.queue.then(() =>
 			this.observeAudioLocked(pcm, sampleRate),
 		);
+		// error-policy:J5 unhandled-rejection suppression — the caller observes the
+		// failure via the returned `work` promise. `this.queue` only serializes the
+		// next observeAudio behind this one, so it stores a settled-either-way
+		// promise and must not carry the rejection forward.
 		this.queue = work.catch(() => {});
 		return work;
 	}

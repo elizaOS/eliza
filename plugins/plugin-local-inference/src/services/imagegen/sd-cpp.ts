@@ -278,9 +278,9 @@ export async function loadSdCppImageGenBackend(
 		async dispose() {
 			if (disposed) return;
 			disposed = true;
-			// Best-effort scratch cleanup. We don't fail dispose if the
-			// temp dir is missing — it just means a prior caller already
-			// removed it.
+			// error-policy:J6 best-effort teardown — scratch cleanup on dispose. We
+			// don't fail dispose if the temp dir is missing; it just means a prior
+			// caller already removed it.
 			await fs.rm(outputDir, { recursive: true, force: true }).catch(() => {});
 		},
 	};

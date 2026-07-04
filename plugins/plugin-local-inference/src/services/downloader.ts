@@ -1490,6 +1490,9 @@ export class Downloader {
 				// replaced by the fresh bundle artifact (never accepted as valid).
 			}
 		} else {
+			// error-policy:J6 best-effort teardown — discard any stale staging file
+			// before the fresh download re-creates it; an already-absent file is the
+			// expected no-op and must not abort the download.
 			await fsp.rm(stagingPath, { force: true }).catch(() => undefined);
 		}
 

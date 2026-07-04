@@ -227,6 +227,8 @@ export async function loadTensorRtImageGenBackend(
 		async dispose() {
 			if (disposed) return;
 			disposed = true;
+			// error-policy:J6 best-effort teardown — scratch-dir removal on dispose;
+			// an already-gone dir is the expected no-op and must not fail dispose.
 			await fs.rm(outputDir, { recursive: true, force: true }).catch(() => {});
 		},
 	};

@@ -298,6 +298,9 @@ export async function fetchMetricsSnapshot(
 		clearTimeout(timer);
 		signal?.removeEventListener("abort", abortFromCaller);
 		if (res?.body && (!bodySettled || controller.signal.aborted)) {
+			// error-policy:J6 best-effort teardown — cancel an unconsumed/aborted
+			// response body in the finally path so the socket is released; a cancel
+			// failure must not overwrite the snapshot the try already returned.
 			await res.body.cancel(controller.signal.reason).catch(() => undefined);
 		}
 	}

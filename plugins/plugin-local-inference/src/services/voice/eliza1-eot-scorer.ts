@@ -143,6 +143,11 @@ export class Eliza1EotScorer {
 		const next = this.inflight.then(() =>
 			this.runOnce(sequence, tokens, endOfTurnId),
 		);
+		// error-policy:J5 unhandled-rejection suppression — the real failure is
+		// observed by `await next` on the following line (and rethrown to the
+		// caller). `this.inflight` only serializes the next scoring call behind
+		// this one, so it stores a settled-either-way promise and must not carry
+		// the rejection forward.
 		this.inflight = next.catch(() => undefined);
 		const probability = await next;
 		return {

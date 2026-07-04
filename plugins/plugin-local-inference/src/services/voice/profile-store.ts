@@ -361,6 +361,9 @@ export class VoiceProfileStore {
 			if (record && (record.confidence >= 0.5 || record.sampleCount >= 3)) {
 				continue;
 			}
+			// error-policy:J6 best-effort teardown — the index (rewritten below) is
+			// the source of truth; a stale/missing profile file left on disk is
+			// harmless, so eviction must not fail on an unlink error.
 			await fsp.unlink(this.profilePath(victim.profileId)).catch(() => {});
 			index.entries = index.entries.filter(
 				(e) => e.profileId !== victim.profileId,
@@ -691,6 +694,9 @@ export class VoiceProfileStore {
 				`[VoiceProfileStore.deleteProfile] refusing to delete ${args.profileId}: bound to entity ${record.entityId}`,
 			);
 		}
+		// error-policy:J6 best-effort teardown — the index (rewritten below) is the
+		// source of truth; a leftover profile file on disk is harmless, so delete
+		// must not fail on an unlink error.
 		await fsp.unlink(this.profilePath(args.profileId)).catch(() => {});
 		this.hot.delete(args.profileId);
 		const index = await this.readIndex();

@@ -207,6 +207,11 @@ export class MemoryMonitor {
 		const { freeBytes, totalBytes } = this.osMemory();
 		const totalMb = Math.round(totalBytes / BYTES_PER_MB);
 		const freeMb = Math.round(freeBytes / BYTES_PER_MB);
+		// error-policy:J4 designed degrade — `null` is the typed "RSS unavailable"
+		// value (the server metrics endpoint is optional). The block below is
+		// written to skip the RSS-headroom refinement when it is null and fall
+		// back to the OS free figure, so an unreadable RSS degrades the estimate
+		// rather than masking a failure with a fake number.
 		const serverRssMb = await this.serverRssMb().catch(() => null);
 		// If the server process is huge relative to total RAM, treat the
 		// headroom (total - RSS - what other things need) as a tighter free

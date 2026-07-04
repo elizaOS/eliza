@@ -183,7 +183,20 @@ export class LocalInferenceService {
 		if (!this.bundledBootstrap) {
 			this.bundledBootstrap = registerBundledModels()
 				.then(() => undefined)
-				.catch(() => undefined);
+				.catch((error) => {
+					// error-policy:J4 designed degrade — a bundled-model registration
+					// failure must not brick the installed-model read (getInstalled
+					// still returns whatever registered), but it may not be swallowed
+					// silently either: surface it through the logger's recent-log ring
+					// so it is observable, and clear the once-latch so the next
+					// getInstalled() retries instead of caching this failure as a
+					// permanent silent success.
+					this.bundledBootstrap = null;
+					logger.error(
+						{ err: error },
+						"[LocalInferenceService] bundled-model bootstrap failed; retrying on next getInstalled()",
+					);
+				});
 		}
 		return this.bundledBootstrap;
 	}

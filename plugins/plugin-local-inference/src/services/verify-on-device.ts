@@ -118,6 +118,9 @@ export function createVerifyBundleOnDevice(
 			// Always release the model the verify pass loaded — the bundle is not
 			// "active" yet, and the active-model coordinator owns load/unload from
 			// here on.
+			// error-policy:J6 best-effort teardown — release the verify-loaded model
+			// in the finally path; an unload failure here must not mask the verify
+			// result (success or the error already propagating out of the try).
 			await engine.unload().catch(() => {});
 		}
 	};

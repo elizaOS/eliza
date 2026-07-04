@@ -214,10 +214,18 @@ export function streamCapacitorPrompt(
 			);
 			return usage;
 		})
+		// error-policy:J5 unhandled-rejection suppression — a completion failure
+		// is observed by the `text`/`textStream` consumers (fullTextPromise does
+		// not catch and rejects). `usage`/`finishReason` are optional metadata
+		// that degrade to their typed `undefined`; the catch only prevents these
+		// companion reads from surfacing the same failure a second time as an
+		// unhandled rejection.
 		.catch(() => undefined);
 
 	const finishReasonPromise: Promise<string | undefined> = completionPromise
 		.then(() => completionFinishReason ?? "stop")
+		// error-policy:J5 unhandled-rejection suppression — see usagePromise above;
+		// the completion failure surfaces via `text`/`textStream`.
 		.catch(() => undefined);
 
 	return {

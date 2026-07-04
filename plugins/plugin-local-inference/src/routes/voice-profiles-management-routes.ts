@@ -335,6 +335,9 @@ async function mergeProfile(
 			allowEntityOverwrite: body.allowEntityOverwrite === true,
 		});
 	} catch (err) {
+		// error-policy:J1 boundary translation — HTTP route boundary. A merge
+		// failure is translated into a structured HTTP error (409 on a conflict,
+		// else 400); `return true` signals the dispatcher the request was handled.
 		const message = err instanceof Error ? err.message : "merge failed";
 		sendJsonError(res, message, /conflict/i.test(message) ? 409 : 400);
 		return true;
@@ -369,6 +372,9 @@ async function splitProfile(
 			sampleIds: utteranceIds,
 		});
 	} catch (err) {
+		// error-policy:J1 boundary translation — HTTP route boundary. A split
+		// failure is translated into a structured HTTP 400; `return true` signals
+		// the dispatcher the request was handled.
 		sendJsonError(
 			res,
 			err instanceof Error ? err.message : "split failed",

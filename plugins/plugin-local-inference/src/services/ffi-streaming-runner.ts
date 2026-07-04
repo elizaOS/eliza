@@ -176,6 +176,10 @@ export class FfiStreamingRunner {
 			return fn();
 		}
 		const prior = this.slotInFlight.get(slotId);
+		// error-policy:J5 unhandled-rejection suppression — the prior slot user's
+		// failure was already observed by that caller (it awaited its own `run`).
+		// Here we only serialize behind its completion; swallowing its rejection
+		// keeps one generation's failure from blocking the next on the same slot.
 		const run = (prior ?? Promise.resolve()).catch(() => {}).then(fn);
 		const tail = run.then(
 			() => {},
