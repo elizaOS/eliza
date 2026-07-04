@@ -322,10 +322,12 @@ const IOS_PRIVILEGED_EXTENSION_LIST_ENTRY_IDS = [
   "DAMON000100000000000702",
   "DAREP000100000000000702",
   "EWDG00010000000000000702",
+  "EKBD00010000000000000702",
   "WBCB00010000000000000401",
   "DAMON000100000000000401",
   "DAREP000100000000000401",
   "EWDG00010000000000000401",
+  "EKBD00010000000000000401",
 ];
 const IOS_PERSONAL_TEAM_ENTITLEMENTS = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -823,6 +825,7 @@ export function applyIosAppIdentity({
       "DeviceActivityMonitorExtension",
       "DeviceActivityReportExtension",
       "ElizaWidgets",
+      "ElizaKeyboard",
     ];
     for (const suffix of extensionBundleSuffixes) {
       project = project.replace(
@@ -937,6 +940,7 @@ export function applyIosAppIdentity({
       "DeviceActivityReportExtension.entitlements",
     ),
     path.join("App", "ElizaWidgets", "ElizaWidgets.entitlements"),
+    path.join("App", "ElizaKeyboard", "ElizaKeyboard.entitlements"),
   ]) {
     const filePath = path.join(iosAppRoot, relPath);
     if (
@@ -952,6 +956,7 @@ export function applyIosAppIdentity({
     `${appId}.DeviceActivityMonitorExtension`,
     `${appId}.DeviceActivityReportExtension`,
     `${appId}.ElizaWidgets`,
+    `${appId}.ElizaKeyboard`,
   ].join(",");
   const fastlaneReplacements = [
     [

@@ -40,6 +40,7 @@ const TEMPLATE_FILES = [
     "DeviceActivityReportExtension.entitlements",
   ),
   path.join("App", "ElizaWidgets", "ElizaWidgets.entitlements"),
+  path.join("App", "ElizaKeyboard", "ElizaKeyboard.entitlements"),
 ];
 
 const tempDirs = [];
@@ -89,6 +90,7 @@ describe("applyIosAppIdentity (template pbxproj + entitlements)", () => {
       "DeviceActivityMonitorExtension",
       "DeviceActivityReportExtension",
       "ElizaWidgets",
+      "ElizaKeyboard",
     ]) {
       expect(pbxproj).toContain(
         `PRODUCT_BUNDLE_IDENTIFIER = com.acme.whitelabel.${suffix};`,
@@ -100,7 +102,7 @@ describe("applyIosAppIdentity (template pbxproj + entitlements)", () => {
     expect(pbxproj).not.toContain("PRODUCT_BUNDLE_IDENTIFIER = ai.elizaos.app");
   });
 
-  it("rewrites the ElizaWidgets app-group entitlement to the brand app group", () => {
+  it("rewrites the ElizaWidgets and ElizaKeyboard app-group entitlements to the brand app group", () => {
     const { appDirValue, iosAppRoot } = stageTemplateAppDir();
     applyIosAppIdentity({
       appDirValue,
@@ -110,14 +112,16 @@ describe("applyIosAppIdentity (template pbxproj + entitlements)", () => {
       versionCode: null,
       log: () => {},
     });
-    const entitlements = readStaged(
-      iosAppRoot,
+    for (const relPath of [
       path.join("App", "ElizaWidgets", "ElizaWidgets.entitlements"),
-    );
-    expect(entitlements).toContain(
-      "<string>group.com.acme.whitelabel</string>",
-    );
-    expect(entitlements).not.toContain("group.ai.elizaos.app");
+      path.join("App", "ElizaKeyboard", "ElizaKeyboard.entitlements"),
+    ]) {
+      const entitlements = readStaged(iosAppRoot, relPath);
+      expect(entitlements).toContain(
+        "<string>group.com.acme.whitelabel</string>",
+      );
+      expect(entitlements).not.toContain("group.ai.elizaos.app");
+    }
   });
 
   it("threads versionName/versionCode into every target's version settings", () => {
