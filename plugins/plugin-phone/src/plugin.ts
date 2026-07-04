@@ -45,6 +45,7 @@ export const appPhonePlugin: Plugin = {
       tags: ["phone", "calls", "android"],
       visibleInManager: true,
       desktopTabEnabled: true,
+      nativeOs: true,
     },
   ],
   app: {

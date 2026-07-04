@@ -29,6 +29,7 @@ export const appMessagesPlugin: Plugin = {
       tags: ["messaging", "sms", "android"],
       visibleInManager: true,
       desktopTabEnabled: true,
+      nativeOs: true,
     },
   ],
 };

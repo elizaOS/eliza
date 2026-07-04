@@ -24,7 +24,6 @@ import {
 import {
   type BuiltinTab,
   isAospShellEnabled,
-  NATIVE_OS_VIEW_IDS,
   TAB_PATHS,
   titleForTab,
 } from "../navigation";
@@ -95,6 +94,12 @@ export interface ViewRegistryEntry {
   builtin?: boolean;
   /** When true, the view can be pinned as a native desktop tab in the Electrobun shell. */
   desktopTabEnabled?: boolean;
+  /**
+   * True when this view is a native device-OS surface that only exists on the
+   * AOSP ElizaOS fork (phone/messages/contacts/camera). Stripped from the view
+   * set on every non-AOSP build. Declared on the owning `ViewDeclaration`.
+   */
+  nativeOs?: boolean;
 }
 
 interface UseAvailableViewsResult {
@@ -114,14 +119,6 @@ interface UseAvailableViewsOptions {
 }
 
 const POLL_INTERVAL_MS = 30_000;
-
-/**
- * Native device-OS surfaces that only exist on the AOSP ElizaOS fork, as a set
- * for O(1) filtering. The id list is the canonical `NATIVE_OS_VIEW_IDS` in
- * `../navigation`; they are stripped from the routable view set on every other
- * build (web, desktop, iOS, stock Play-Store Android).
- */
-const NATIVE_OS_VIEW_ID_SET: ReadonlySet<string> = new Set(NATIVE_OS_VIEW_IDS);
 
 async function fetchViewList(
   viewType?: "gui" | "tui" | "xr",
@@ -414,12 +411,13 @@ export function useAvailableViews(
     resource.status === "success" ? resource.data : EMPTY_VIEWS;
   const views = useMemo(() => {
     const merged = mergeWithAppShellViews(networkViews, appShellViews);
-    // Phone, messages, contacts, and camera are AOSP-ElizaOS-fork-only surfaces
-    // (native device apps). Strip them from the view manager + router everywhere
-    // else — web, desktop, iOS, and stock Play-Store Android — matching the
+    // Native device-OS surfaces (phone, messages, contacts, camera) exist only
+    // on the AOSP ElizaOS fork. Each such view declares `nativeOs: true` on its
+    // `ViewDeclaration`; strip them from the view manager + router on every
+    // non-AOSP build (web, desktop, iOS, stock Play-Store Android), matching the
     // AOSP-gated home tiles (`nativeOs`) and the route gates in App.tsx.
     if (isAospShellEnabled()) return merged;
-    return merged.filter((view) => !NATIVE_OS_VIEW_ID_SET.has(view.id));
+    return merged.filter((view) => !view.nativeOs);
   }, [networkViews, appShellViews]);
 
   return {

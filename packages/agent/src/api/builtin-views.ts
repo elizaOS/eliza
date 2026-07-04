@@ -54,6 +54,7 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
     visibleInManager: true,
     desktopTabEnabled: true,
     platforms: ["android"],
+    nativeOs: true,
   },
   {
     id: "chat",

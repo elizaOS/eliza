@@ -766,6 +766,15 @@ export interface ViewDeclaration {
 	 */
 	platforms?: ViewPlatform[];
 	/**
+	 * Native device-OS surface that only exists on the AOSP ElizaOS fork (e.g.
+	 * the phone dialer, messages, contacts, camera apps). When true the view is
+	 * stripped from the routable view set on every non-AOSP build (web, desktop,
+	 * iOS, stock Play-Store Android), matching the AOSP-gated home tiles. Hosts
+	 * read this declared flag instead of hardcoding native-OS view ids. Default
+	 * false.
+	 */
+	nativeOs?: boolean;
+	/**
 	 * Hidden unless developer mode is enabled. Default false. Equivalent to
 	 * `viewKind: "developer"`.
 	 */
