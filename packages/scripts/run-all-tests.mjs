@@ -367,6 +367,33 @@ const NO_TEST_OUTPUT_PATTERNS = [
   // how vitest's --passWithNoTests packages are handled.
   /did not match any test files/i,
 ];
+// Genuine test/run FAILURE signals. When a non-zero child exit carries any of
+// these, the run really failed even if the SAME buffer also contains a
+// "No test files found" line — e.g. a multi-project vitest / `bun test` run
+// where one project has no files (emits the no-tests banner) while a sibling
+// project has a red test (emits a failure line). Without this guard the
+// no-tests substring scan below would swallow that failure as SKIP=green
+// (#13620 task 4). We only skip-as-no-tests when NO failure signal is present.
+const TEST_FAILURE_OUTPUT_PATTERNS = [
+  // vitest summary lines: `Tests  1 failed | 2 passed`, `Test Files  1 failed`.
+  /\bTests?\s+Files?\b[^\n]*\bfailed\b/i,
+  /\bTests?\b[^\n]*\bfailed\b/i,
+  // vitest per-file / per-test markers: a line beginning with `FAIL ` or the
+  // `× ` / ` ✗ ` fail glyphs it prints for a failing case.
+  /(^|\n)\s*FAIL\s/,
+  /(^|\n)\s*(?:×|✗)\s/,
+  // `N failed` / `N test(s) failed` (vitest & generic runners).
+  /\b\d+\s+(?:tests?\s+)?failed\b/i,
+  // bun test: `N fail` in the summary and the per-assertion `(fail)` marker.
+  /\b\d+\s+fail\b/i,
+  /\(fail\)/i,
+];
+// NOTE: deliberately NOT matching a bare `error:` / `exited with code` line.
+// A benign no-tests lane run through `bun run test` still exits non-zero and
+// Bun appends `error: script "test" exited with code 1` — matching that would
+// wrongly withhold the skip for the exact empty-lane case this must preserve.
+// The specific per-test/per-suite failure markers above are sufficient and do
+// not appear in a graceful "No test files found" run.
 const TEST_FILE_PATTERN = /\.(?:test|spec)\.[cm]?[tj]sx?$/;
 const TEST_FILE_SKIP_DIRS = new Set([
   ".git",
@@ -703,6 +730,19 @@ function outputIndicatesNoTests(output) {
   return NO_TEST_OUTPUT_PATTERNS.some((pattern) => pattern.test(output));
 }
 
+function outputIndicatesTestFailure(output) {
+  return TEST_FAILURE_OUTPUT_PATTERNS.some((pattern) => pattern.test(output));
+}
+
+// A non-zero child exit may be reclassified as a benign "no tests" skip only
+// when the command is a single skippable runner invocation, its output carries
+// a no-tests banner, AND that output shows NO genuine failure signal. The last
+// clause is what stops a multi-project run (one empty project + one failing
+// test in the same merged buffer) from being swallowed as SKIP=green (#13620).
+function shouldSkipAsNoTests(output) {
+  return outputIndicatesNoTests(output) && !outputIndicatesTestFailure(output);
+}
+
 function hasLocalTestFiles(dir) {
   let entries;
   try {
@@ -966,7 +1006,21 @@ function runScript(
       },
     );
     let capturedOutput = "";
-    const canSkipNoTests = canSkipWhenOutputHasNoTests(scriptName, scripts);
+    // A non-zero exit may only be reclassified as a benign "no tests" skip when
+    // BOTH hold:
+    //   1. the command is a single vitest/bun-test invocation, AND
+    //   2. the lane genuinely has no test files on disk (the runner's own
+    //      authoritative empty-file determination).
+    // Anchoring on (2) — not just an output substring — is what #13620 task 4
+    // asks for: if test files DO exist, a non-zero exit is a real failure/
+    // misconfig and must never be swallowed as green, even when the output
+    // happens to contain a "No test files found" banner (e.g. a runtime filter
+    // that matched nothing in one project while a sibling project failed, or a
+    // test/setup process that aborts before printing its normal failure
+    // summary). Benign lanes with no test files still skip.
+    const canSkipNoTests =
+      canSkipWhenOutputHasNoTests(scriptName, scripts) &&
+      !hasLocalTestFiles(cwd);
 
     child.stdout?.on("data", (chunk) => {
       if (stream) {
@@ -993,7 +1047,7 @@ function runScript(
         resolve({ skipped: false });
         return;
       }
-      if (canSkipNoTests && outputIndicatesNoTests(capturedOutput)) {
+      if (canSkipNoTests && shouldSkipAsNoTests(capturedOutput)) {
         resolve({ skipped: true });
         return;
       }
