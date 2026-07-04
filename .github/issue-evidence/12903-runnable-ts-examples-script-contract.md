@@ -20,7 +20,7 @@ Branch slice: normalize script contracts for five runnable TypeScript examples.
 
 ## Verification
 
-Current working tree: `origin/develop` at `e3267dd50c`.
+Current working tree: `github/develop` at `02928af63c`.
 
 Static guard:
 
@@ -70,29 +70,42 @@ packages/examples/mcp: biome check passed for 4 files; biome format passed for 4
 packages/examples/telegram: biome check passed for 5 files; biome format passed for 5 files.
 ```
 
-## Local blockers
+Typecheck:
 
-This auxiliary worktree does not have a valid workspace install.
+```bash
+bun run --cwd plugins/plugin-inmemorydb build
+bun run --cwd plugins/plugin-google-genai build
+for pkg in packages/examples/autonomous packages/examples/chat packages/examples/convex packages/examples/mcp packages/examples/telegram; do
+  bun run --cwd "$pkg" typecheck
+done
+```
+
+Result:
+
+```text
+packages/examples/autonomous: passed after building @elizaos/plugin-inmemorydb
+packages/examples/chat: passed
+packages/examples/convex: passed after building @elizaos/plugin-google-genai
+packages/examples/mcp: passed
+packages/examples/telegram: passed
+```
 
 Tests:
 
-```text
-packages/examples/autonomous: Cannot find module '@elizaos/core'
-packages/examples/chat: Cannot find module 'dotenv/config'
-packages/examples/convex: skipped cleanly because CONVEX_URL is not set
-packages/examples/mcp: ENOENT while resolving package '@elizaos/core', then MCP connection closed
-packages/examples/telegram: Cannot find module '@elizaos/core'
+```bash
+for pkg in packages/examples/autonomous packages/examples/chat packages/examples/convex packages/examples/mcp packages/examples/telegram; do
+  timeout 60s bun run --cwd "$pkg" test
+done
 ```
 
-Typecheck with a temporary
-`node_modules -> /Users/shawwalters/eliza/node_modules` symlink:
+Result:
 
 ```text
-packages/examples/autonomous: TS2688 cannot find type definition file for 'node'
-packages/examples/chat: TS2688 cannot find type definition file for 'node'
-packages/examples/convex: unresolved workspace/convex modules and node globals
-packages/examples/mcp: TS2688 cannot find type definition file for 'node'
-packages/examples/telegram: TS2688 cannot find type definition file for 'node'
+packages/examples/autonomous: 4 tests passed
+packages/examples/chat: 3 tests passed
+packages/examples/convex: skipped cleanly because CONVEX_URL is not set
+packages/examples/mcp: stdio smoke passed; live chat skipped unless ELIZA_EXAMPLE_MCP_LIVE_CHAT=1
+packages/examples/telegram: 2 tests passed
 ```
 
 This slice changes only package scripts; it does not change runtime or test code.
