@@ -20,6 +20,7 @@ This directory contains:
 |---|---|
 | `server.ts` | HTTP server for benchmark traffic. Initializes `AgentRuntime`, handles benchmark sessions, and routes each message through `runtime.messageService.handleMessage(...)`. |
 | `mock-plugin.ts` | Deterministic mock benchmark plugin loaded when `ELIZA_BENCH_MOCK=true`. Diagnostic only; mock runs are not valid release evidence. |
+| `sierra-style-fixtures.ts` | eliza-owned synthetic knowledge and voice-interruption fixture contracts inspired by Sierra tau-Knowledge / tau-Voice methodology, with no Sierra raw data. |
 | `TESTING_PROTOCOL.md` | Benchmark action/testing protocol (required checks). |
 
 The Python client side can live in a local adapter directory such as `benchmarks/eliza-adapter/`.
@@ -48,6 +49,22 @@ bun run benchmark:watch
 # see the full benchmark testing/checklist protocol
 cat src/TESTING_PROTOCOL.md
 ```
+
+## Sierra-Style Synthetic Fixtures
+
+`sierra-style-fixtures.ts` defines two eliza-owned benchmark contracts:
+
+- `createSierraStyleKnowledgeFixture()` returns a deterministic LifeWorld task
+  where scoring is based on backend end state: a calendar event, draft email,
+  and reminder must exist with exact target fields.
+- `SIERRA_STYLE_VOICE_INTERRUPTION_FIXTURE` describes a synthetic voice task
+  covering interruption recovery, background noise, dropped-frame windows,
+  auth-code/email/name spelling, pass@1, and required report fields.
+
+These fixtures borrow methodology shape only. They do not commit Sierra data,
+and fixture smoke tests are not release-quality evidence. Publishable voice
+results still need real model/voice runs with provider/model, STT/TTS/VAD
+configuration, pass@1, recovery categories, and manually reviewed outputs.
 
 ## HTTP API
 
