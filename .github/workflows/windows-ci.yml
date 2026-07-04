@@ -26,7 +26,21 @@ on:
       - "packages/app-core/**"
       - "packages/agent/**"
       - "packages/ui/**"
+      - "packages/elizaos/**"
+      - "packages/cloud/shared/**"
+      - "packages/scenario-runner/**"
+      - "packages/vault/**"
+      - "packages/security/**"
       - "packages/scripts/**"
+      - "plugins/plugin-coding-tools/**"
+      - "plugins/plugin-elizacloud/**"
+      - "plugins/plugin-discord/**"
+      - "plugins/plugin-anthropic/**"
+      - "plugins/plugin-openai/**"
+      - "plugins/plugin-app-control/**"
+      - "plugins/plugin-task-coordinator/**"
+      - "plugins/plugin-browser/**"
+      - "scripts/verify-riscv64-buildpaths.sh"
       - "WINDOWS.md"
       - ".github/workflows/windows-ci.yml"
   pull_request:
@@ -39,7 +53,21 @@ on:
       - "packages/app-core/**"
       - "packages/agent/**"
       - "packages/ui/**"
+      - "packages/elizaos/**"
+      - "packages/cloud/shared/**"
+      - "packages/scenario-runner/**"
+      - "packages/vault/**"
+      - "packages/security/**"
       - "packages/scripts/**"
+      - "plugins/plugin-coding-tools/**"
+      - "plugins/plugin-elizacloud/**"
+      - "plugins/plugin-discord/**"
+      - "plugins/plugin-anthropic/**"
+      - "plugins/plugin-openai/**"
+      - "plugins/plugin-app-control/**"
+      - "plugins/plugin-task-coordinator/**"
+      - "plugins/plugin-browser/**"
+      - "scripts/verify-riscv64-buildpaths.sh"
       - "WINDOWS.md"
       - ".github/workflows/windows-ci.yml"
   workflow_dispatch:
@@ -54,56 +82,45 @@ permissions:
 jobs:
   windows:
     runs-on: windows-latest
-    timeout-minutes: ${{ matrix.timeout || 45 }}
+    timeout-minutes: ${{ matrix.timeout || 90 }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - lane: typecheck-core
-            command: |
-              node packages/scripts/run-turbo.mjs run typecheck --filter=@elizaos/core --filter=@elizaos/shared --filter=@elizaos/cloud-shared --concurrency=4
-          - lane: test-core
-            command: bun run --cwd packages/core test
-          - lane: test-shared
-            command: bun run --cwd packages/shared test
-          - lane: test-app-core
-            command: bun run --cwd packages/app-core test
-          - lane: test-elizaos-cli
-            command: bun run --cwd packages/elizaos test
-          - lane: test-cloud-shared
-            command: bun run --cwd packages/cloud/shared test
-          - lane: test-plugin-coding-tools
-            command: bun run --cwd plugins/plugin-coding-tools test
-          - lane: test-scenario-runner
-            command: bun run --cwd packages/scenario-runner test
-          - lane: test-vault
-            command: bun run --cwd packages/vault test
-          - lane: test-security
-            command: bun run --cwd packages/security test
-          - lane: test-plugin-elizacloud
-            command: bun run --cwd plugins/plugin-elizacloud test
-          - lane: test-plugin-discord
-            command: bun run --cwd plugins/plugin-discord test
-          - lane: test-plugin-anthropic
-            command: bun run --cwd plugins/plugin-anthropic test
-          - lane: test-plugin-openai
-            command: bun run --cwd plugins/plugin-openai test
-          - lane: test-plugin-app-control
-            command: bun run --cwd plugins/plugin-app-control test
-          - lane: test-plugin-task-coordinator
-            command: bun run --cwd plugins/plugin-task-coordinator test
-          - lane: test-plugin-browser
-            command: bun run --cwd plugins/plugin-browser test
-          - lane: build-agent-cascade
+          - lane: core-runtime
             timeout: 75
-            command: |
-              node packages/scripts/run-turbo.mjs run build --filter=@elizaos/core --filter=@elizaos/shared --filter=@elizaos/agent --concurrency=4
-          - lane: helper-smokes
-            command: |
-              node packages/scripts/run-bash-linux-only.mjs scripts/verify-riscv64-buildpaths.sh
-              node packages/scripts/run-python.mjs --version
-              node packages/scripts/test-cloud-run.mjs
-              node packages/scripts/clean-stray-dts.mjs
+            commands:
+              - node packages/scripts/run-turbo.mjs run typecheck --filter=@elizaos/core --filter=@elizaos/shared --filter=@elizaos/cloud-shared --concurrency=4
+              - bun run --cwd packages/core test
+              - bun run --cwd packages/shared test
+          - lane: app-and-cli
+            commands:
+              - bun run --cwd packages/app-core test
+              - bun run --cwd packages/elizaos test
+              - bun run --cwd packages/cloud/shared test
+          - lane: framework-packages
+            commands:
+              - bun run --cwd packages/scenario-runner test
+              - bun run --cwd packages/vault test
+              - bun run --cwd packages/security test
+              - bun run --cwd plugins/plugin-coding-tools test
+          - lane: plugins
+            commands:
+              - bun run --cwd plugins/plugin-elizacloud test
+              - bun run --cwd plugins/plugin-discord test
+              - bun run --cwd plugins/plugin-anthropic test
+              - bun run --cwd plugins/plugin-openai test
+              - bun run --cwd plugins/plugin-app-control test
+              - bun run --cwd plugins/plugin-task-coordinator test
+              - bun run --cwd plugins/plugin-browser test
+          - lane: build-and-helper-smokes
+            timeout: 90
+            commands:
+              - node packages/scripts/run-turbo.mjs run build --filter=@elizaos/core --filter=@elizaos/shared --filter=@elizaos/agent --concurrency=4
+              - node packages/scripts/run-bash-linux-only.mjs scripts/verify-riscv64-buildpaths.sh
+              - node packages/scripts/run-python.mjs --version
+              - node packages/scripts/test-cloud-run.mjs
+              - node packages/scripts/clean-stray-dts.mjs
 
     steps:
       - name: Enable long paths
@@ -163,6 +180,18 @@ jobs:
           node packages/scripts/run-turbo.mjs run build --filter=@elizaos/core --filter=@elizaos/shared --concurrency=1
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Run lane "${{ matrix.lane }}"
+      - name: Run shard "${{ matrix.lane }}"
         shell: pwsh
-        run: ${{ matrix.command }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $commands = '${{ toJson(matrix.commands) }}' | ConvertFrom-Json
+          foreach ($command in $commands) {
+            Write-Host "::group::$command"
+            Invoke-Expression $command
+            $code = $LASTEXITCODE
+            Write-Host "::endgroup::"
+            if ($code -ne 0) {
+              Write-Error "Command failed with exit code $code`: $command"
+              exit $code
+            }
+          }
