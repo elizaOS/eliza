@@ -3,14 +3,15 @@
  *
  * The self-host AccountPool assumes ONE pool per process (wired through
  * globalThis bridges). Cloud is multi-tenant: this registry holds one
- * `AccountPool` + `DrizzleAccountPoolDeps` per organization in an LRU-evicted
- * map, and NEVER touches the globalThis bridges (those are single-tenant
- * self-host plumbing).
+ * account-selection pool + `DrizzleAccountPoolDeps` per organization in an
+ * LRU-evicted map, and NEVER touches the globalThis bridges (those are
+ * single-tenant self-host plumbing).
  *
- * The AccountPool class is loaded lazily from @elizaos/app-core/account-pool
- * and every public method is strict-fallback: any failure (module load, DB,
- * decrypt) returns null / no-ops so callers keep today's platform-env
- * behavior. Pooled keys are an additive layer, never a new failure mode.
+ * The account-selection pool is supplied by the host layer through
+ * `registerTeamAccountPoolFactory()`. Every public method is strict-fallback:
+ * any failure (missing registration, DB, decrypt) returns null / no-ops so
+ * callers keep today's platform-env behavior. Pooled keys are an additive
+ * layer, never a new failure mode.
  *
  * Keep-alive: a low-frequency sweep over ACTIVE orgs (orgs currently in the
  * registry) that (a) re-probes flagged credentials whose cool-off has passed
@@ -23,11 +24,11 @@
  * rate-limits at selection time and every acquire refreshes from the DB.
  */
 
-import type { AccountPool, Strategy } from "@elizaos/app-core/account-pool";
+import type { LinkedAccountConfig } from "@elizaos/shared/contracts/service-routing";
 import { pooledCredentialsRepository } from "../../../db/repositories/pooled-credentials";
 import { logger } from "../../utils/logger";
 import { secretsService } from "../secrets/secrets";
-import { DrizzleAccountPoolDeps } from "./pool-deps";
+import { type AccountPoolDeps, DrizzleAccountPoolDeps, type PoolProviderId } from "./pool-deps";
 import { probePooledApiKey } from "./probe";
 import {
   isPooledDirectProvider,
@@ -42,8 +43,42 @@ const KEEP_ALIVE_PROBES_PER_SWEEP = 8;
 /** Healthy credentials get re-verified when older than this. */
 const STALE_OK_REPROBE_MS = 6 * 60 * 60_000;
 
+export type TeamAccountPoolStrategy = "priority" | "round-robin" | "least-used" | "quota-aware";
+
+export interface TeamAccountPoolLike {
+  get(accountId: string, providerId?: PoolProviderId): LinkedAccountConfig | null;
+  list(providerId?: PoolProviderId): LinkedAccountConfig[];
+  select(input: {
+    providerId: PoolProviderId;
+    sessionKey?: string;
+    strategy?: TeamAccountPoolStrategy;
+    accountIds?: string[];
+    exclude?: string[];
+  }): Promise<LinkedAccountConfig | null>;
+  reprobeFlagged(): Promise<string[]>;
+  markRateLimited(
+    accountId: string,
+    untilMs: number,
+    detail?: string,
+    options?: { providerId?: PoolProviderId },
+  ): Promise<void>;
+  markNeedsReauth(
+    accountId: string,
+    detail?: string,
+    options?: { providerId?: PoolProviderId },
+  ): Promise<void>;
+}
+
+export type TeamAccountPoolFactory = (deps: AccountPoolDeps) => TeamAccountPoolLike;
+
+let defaultAccountPoolFactory: TeamAccountPoolFactory | null = null;
+
+export function registerTeamAccountPoolFactory(factory: TeamAccountPoolFactory | null): void {
+  defaultAccountPoolFactory = factory;
+}
+
 interface OrgPoolEntry {
-  pool: AccountPool;
+  pool: TeamAccountPoolLike;
   deps: DrizzleAccountPoolDeps;
   lastAccessAt: number;
 }
@@ -53,7 +88,7 @@ export interface SelectPooledCredentialParams {
   providerId: PooledDirectProvider;
   /** Stable affinity key (e.g. agent sandbox id). */
   sessionKey?: string;
-  strategy?: Strategy;
+  strategy?: TeamAccountPoolStrategy;
 }
 
 export interface SelectedPooledCredential {
@@ -67,10 +102,15 @@ export interface SelectedPooledCredential {
 export class TeamPoolRegistry {
   private readonly pools = new Map<string, OrgPoolEntry>();
   private readonly maxOrgPools: number;
+  private readonly accountPoolFactory: TeamAccountPoolFactory | null;
   private keepAlive: ReturnType<typeof setInterval> | null = null;
 
-  constructor(options?: { maxOrgPools?: number }) {
+  constructor(options?: {
+    maxOrgPools?: number;
+    accountPoolFactory?: TeamAccountPoolFactory | null;
+  }) {
     this.maxOrgPools = options?.maxOrgPools ?? DEFAULT_MAX_ORG_POOLS;
+    this.accountPoolFactory = options?.accountPoolFactory ?? null;
   }
 
   /** Orgs with a live pool instance (keep-alive scope). */
@@ -92,10 +132,16 @@ export class TeamPoolRegistry {
     try {
       let entry = this.pools.get(organizationId);
       if (!entry) {
-        const { AccountPool: AccountPoolClass } = await import("@elizaos/app-core/account-pool");
+        const accountPoolFactory = this.accountPoolFactory ?? defaultAccountPoolFactory;
+        if (!accountPoolFactory) {
+          logger.warn("[TeamPoolRegistry] account pool factory is not registered", {
+            organizationId,
+          });
+          return null;
+        }
         const deps = new DrizzleAccountPoolDeps(organizationId);
         entry = {
-          pool: new AccountPoolClass(deps),
+          pool: accountPoolFactory(deps),
           deps,
           lastAccessAt: Date.now(),
         };

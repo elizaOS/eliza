@@ -13,6 +13,7 @@ import type { AppEnv } from "@/types/cloud-worker-env";
  * IMPORTANT: Do NOT call provider APIs directly. Always use AI SDK.
  */
 
+import { AccountPool } from "@elizaos/app-core/account-pool";
 import {
   APICallError,
   generateText,
@@ -95,6 +96,7 @@ import {
 import { getCachedGatewayModelById } from "@/lib/services/model-catalog";
 import {
   getTeamPoolRegistry,
+  registerTeamAccountPoolFactory,
   type SelectedPooledCredential,
 } from "@/lib/services/team-credential-pool";
 import { createCreditReservationSettler } from "@/lib/utils/credit-reservation";
@@ -103,6 +105,8 @@ import { getRouteTimeoutMs } from "@/lib/utils/request-timeout";
 import { settleOffResponsePath } from "@/lib/utils/settle-off-response-path";
 
 const ROUTE_MAX_DURATION = 800;
+
+registerTeamAccountPoolFactory((deps) => new AccountPool(deps));
 
 // Minimum tokens to reserve for actual response generation when CoT is active
 const MIN_RESPONSE_TOKENS = 4096;

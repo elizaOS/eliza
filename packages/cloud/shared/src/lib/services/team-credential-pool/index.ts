@@ -13,6 +13,10 @@ export {
 } from "./provider-map";
 export {
   getTeamPoolRegistry,
+  registerTeamAccountPoolFactory,
   type SelectedPooledCredential,
+  type TeamAccountPoolFactory,
+  type TeamAccountPoolLike,
+  type TeamAccountPoolStrategy,
   TeamPoolRegistry,
 } from "./registry";

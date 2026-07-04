@@ -1,11 +1,11 @@
 /**
  * Team credential pool — REAL AccountPool brain + REAL PGlite DB (#11332).
  *
- * These cases run the actual `AccountPool` class (lazy-loaded from
- * @elizaos/app-core/account-pool through `TeamPoolRegistry`) against real
- * `pooled_credentials` rows, real envelope-encrypted `secrets` rows, and a
- * real HTTP provider stub for the live contribution probe (the probe honors
- * ANTHROPIC_BASE_URL, so no fetch mocking — real request, real 200/401).
+ * These cases run the actual `AccountPool` class (injected from the host-layer
+ * package into `TeamPoolRegistry`) against real `pooled_credentials` rows, real
+ * envelope-encrypted `secrets` rows, and a real HTTP provider stub for the live
+ * contribution probe (the probe honors ANTHROPIC_BASE_URL, so no fetch mocking
+ * — real request, real 200/401).
  *
  * Proven here, against the DB:
  *  - contribution probe-gates keys (bad key → rejected, no row, no secret)
@@ -49,6 +49,7 @@ let dbWrite: typeof import("../../../db/client").dbWrite;
 let repo: typeof import("../../../db/repositories/pooled-credentials").pooledCredentialsRepository;
 let svc: typeof import("../team-credential-pool/service");
 let registryMod: typeof import("../team-credential-pool/registry");
+let AccountPoolClass: typeof import("@elizaos/app-core/account-pool").AccountPool;
 
 const ORG_A = "11111111-1111-4111-8111-111111111111";
 const ORG_B = "22222222-2222-4222-8222-222222222222";
@@ -61,6 +62,12 @@ const AUDIT = {
   actorId: OWNER_A,
   source: "team-credential-pool.test",
 };
+
+function createRegistry(): InstanceType<typeof registryMod.TeamPoolRegistry> {
+  return new registryMod.TeamPoolRegistry({
+    accountPoolFactory: (deps) => new AccountPoolClass(deps),
+  });
+}
 
 beforeAll(async () => {
   try {
@@ -85,6 +92,7 @@ beforeAll(async () => {
     ));
     svc = await import("../team-credential-pool/service");
     registryMod = await import("../team-credential-pool/registry");
+    ({ AccountPool: AccountPoolClass } = await import("@elizaos/app-core/account-pool"));
 
     const { organizations } = await import("../../../db/schemas/organizations");
     const { users } = await import("../../../db/schemas/users");
@@ -256,7 +264,7 @@ describe("selection — real AccountPool rotation + health", () => {
     credAlpha = all.find((r) => r.label === "alpha")?.id ?? "";
     expect(credAlpha).not.toBe("");
 
-    const registry = new registryMod.TeamPoolRegistry();
+    const registry = createRegistry();
     const picked: string[] = [];
     const keys = new Set<string>();
     for (let i = 0; i < 6; i++) {
@@ -287,7 +295,7 @@ describe("selection — real AccountPool rotation + health", () => {
   });
 
   test("a rate-limited key is skipped, then re-admitted after `until` passes", async () => {
-    const registry = new registryMod.TeamPoolRegistry();
+    const registry = createRegistry();
     const entry = await registry.getOrgPool(ORG_A);
     if (!entry) throw new Error("no pool for ORG_A");
     // 429 recorded against beta with a 60s cool-off — through the REAL pool
@@ -331,7 +339,7 @@ describe("selection — real AccountPool rotation + health", () => {
   });
 
   test("Worker provider outcome writeback marks 429 and 401 credentials unhealthy", async () => {
-    const registry = new registryMod.TeamPoolRegistry();
+    const registry = createRegistry();
 
     await registry.recordProviderFailure({
       organizationId: ORG_A,
@@ -373,7 +381,7 @@ describe("selection — real AccountPool rotation + health", () => {
     if (!before) throw new Error("gamma missing");
     const cipherBefore = (await secretRow(before.secret_id))?.encrypted_value;
 
-    const registry = new registryMod.TeamPoolRegistry();
+    const registry = createRegistry();
     const entry = await registry.getOrgPool(ORG_A);
     if (!entry) throw new Error("no pool for ORG_A");
     await entry.pool.markNeedsReauth(credGamma, "401 from provider", {
@@ -388,7 +396,7 @@ describe("selection — real AccountPool rotation + health", () => {
   });
 
   test("a stale-snapshot health write cannot revert a concurrent admin disable", async () => {
-    const registry = new registryMod.TeamPoolRegistry();
+    const registry = createRegistry();
     // Load the snapshot while alpha is still enabled.
     const entry = await registry.getOrgPool(ORG_A);
     if (!entry) throw new Error("no pool for ORG_A");
@@ -429,7 +437,7 @@ describe("selection — real AccountPool rotation + health", () => {
     // alpha's key gets revoked at the provider console.
     GOOD_KEYS.delete("sk-ant-pool-key-alpha-0001");
 
-    const registry = new registryMod.TeamPoolRegistry();
+    const registry = createRegistry();
     const entry = await registry.getOrgPool(ORG_A);
     if (!entry) throw new Error("no pool for ORG_A");
     await registry.sweepActivePools();
@@ -453,7 +461,7 @@ describe("selection — real AccountPool rotation + health", () => {
   });
 
   test("per-member daily rollup upserts (credential, user, day) and sums per org-day", async () => {
-    const registry = new registryMod.TeamPoolRegistry();
+    const registry = createRegistry();
     await registry.recordUse({
       organizationId: ORG_A,
       credentialId: credAlpha,

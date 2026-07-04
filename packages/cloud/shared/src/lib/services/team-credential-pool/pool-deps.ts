@@ -1,10 +1,9 @@
 /**
  * Drizzle-backed AccountPoolDeps (#11332).
  *
- * The self-host AccountPool brain (@elizaos/app-core/account-pool) is
- * dependency-injected: give it `readAccounts` / `writeAccount` /
- * `deleteAccount` and every selection strategy, health rule, and affinity
- * behavior works unchanged. This implements those deps against the
+ * The account-selection brain is dependency-injected: give it `readAccounts` /
+ * `writeAccount` / `deleteAccount` and every selection strategy, health rule,
+ * and affinity behavior works unchanged. This implements those deps against the
  * `pooled_credentials` table for ONE organization:
  *
  * - `readAccounts` is synchronous by contract (the self-host impl reads a
@@ -23,8 +22,10 @@
  * metadata records; callers resolve ciphertext via SecretsService at use time.
  */
 
-import type { AccountPoolDeps, PoolProviderId } from "@elizaos/app-core/account-pool";
-import type { LinkedAccountConfig, LinkedAccountHealth } from "@elizaos/contracts";
+import type {
+  LinkedAccountConfig,
+  LinkedAccountHealth,
+} from "@elizaos/shared/contracts/service-routing";
 import {
   type PooledCredential,
   pooledCredentialsRepository,
@@ -52,6 +53,17 @@ function rowToLinkedAccount(row: PooledCredential): LinkedAccountConfig {
     organizationId: row.organization_id,
     ...(row.contributed_by ? { userId: row.contributed_by } : {}),
   };
+}
+
+export type PoolProviderId = LinkedAccountConfig["providerId"];
+
+export interface AccountPoolDeps {
+  /** Read the current account metadata snapshot. */
+  readAccounts: () => Record<string, LinkedAccountConfig>;
+  /** Persist the account fields mutated by the selection brain. */
+  writeAccount: (account: LinkedAccountConfig) => Promise<void>;
+  /** Remove metadata for an account. */
+  deleteAccount?: (providerId: PoolProviderId, accountId: string) => Promise<void>;
 }
 
 export class DrizzleAccountPoolDeps implements AccountPoolDeps {
