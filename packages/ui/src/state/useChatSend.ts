@@ -6,6 +6,7 @@
  */
 
 import { MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core";
+import { logger } from "@elizaos/logger";
 import { asRecord } from "@elizaos/shared";
 import { type MutableRefObject, useCallback, useEffect, useRef } from "react";
 import type { Conversation, CustomActionDef } from "../api";
@@ -214,7 +215,13 @@ function abortServerConversationTurn(
   reason: string,
 ): void {
   if (!roomId) return;
-  void client.abortConversationTurn(roomId, reason).catch(() => {});
+  // error-policy:J6 best-effort abort signal for a turn the user already
+  // stopped locally; the server also ends the turn when the SSE closes.
+  void client.abortConversationTurn(roomId, reason).catch((err) => {
+    logger.warn(
+      `[useChatSend] abortConversationTurn(${roomId}) failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  });
 }
 
 function normalizeViewPath(path: string | null | undefined): string {
@@ -728,8 +735,13 @@ export function useChatSend(deps: UseChatSendDeps) {
           customActions = (await client.listCustomActions()).filter(
             (action) => action.enabled,
           );
-        } catch {
-          // If custom actions can't be loaded, fall back to normal slash routing.
+        } catch (err) {
+          // error-policy:J4 designed degrade: a broken custom-action catalog
+          // must not block the send — the slash text falls through to normal
+          // chat routing, and the failure is logged so it stays observable.
+          logger.warn(
+            `[useChatSend] listCustomActions failed; falling back to normal slash routing: ${err instanceof Error ? err.message : String(err)}`,
+          );
           return { handled: false };
         }
 
@@ -1047,6 +1059,7 @@ export function useChatSend(deps: UseChatSendDeps) {
           convId = conversation.id;
           convRoomId = conversation.roomId;
         } catch {
+          // error-policy:J4 surfaced user-facing failure state.
           // First-message conversation creation failed (cold open on weak
           // signal). The composer was already cleared upstream and the
           // optimistic bubble hasn't rendered yet, so a bare return drops the
@@ -1293,9 +1306,11 @@ export function useChatSend(deps: UseChatSendDeps) {
               void loadConversations();
             })
             .catch((err) => {
-              console.warn(
-                "Failed to generate conversation title",
-                err instanceof Error ? err.message : err,
+              // error-policy:J4 title generation is decorative — the snippet
+              // fallback title is already applied; the reload keeps the list
+              // fresh either way.
+              logger.warn(
+                `[useChatSend] conversation title generation failed: ${err instanceof Error ? err.message : String(err)}`,
               );
               void loadConversations();
             });
@@ -1374,12 +1389,20 @@ export function useChatSend(deps: UseChatSendDeps) {
               dropEmptyAssistantPlaceholder(assistantMsgId);
               return;
             }
-            // Non-cloud base, or a different create failure — preserve the prior
-            // behaviour (drop the empty assistant placeholder).
+            // Non-cloud base, or a different create failure — the recovery
+            // could not produce a conversation to replay into. Drop the empty
+            // placeholder and tell the user; a silent return here read as a
+            // lost message.
             dropEmptyAssistantPlaceholder(assistantMsgId);
+            setActionNotice(buildSendFailureNotice(createErr), "error", 8_000);
             return;
           }
 
+          // Seed ids live above the try so the failure handler below can
+          // remove the replay's own placeholder (the original assistant id no
+          // longer exists once the thread is re-seeded).
+          const replayUserId = `temp-${Date.now()}`;
+          const replayAssistantId = `temp-resp-${Date.now()}`;
           try {
             const nextCutoffTs = Date.now();
             setConversations((prev) => [conversation, ...prev]);
@@ -1395,8 +1418,6 @@ export function useChatSend(deps: UseChatSendDeps) {
             // assistant placeholder, then REPLAY as a token stream — the 404
             // recovery must stream like the primary send, not pop the whole
             // reply in at once with the non-streaming endpoint (#10231).
-            const replayUserId = `temp-${Date.now()}`;
-            const replayAssistantId = `temp-resp-${Date.now()}`;
             // Seed unfiltered (like the primary send path) — the empty assistant
             // placeholder must survive so streamed tokens have a target;
             // filterRenderableConversationMessages would drop an empty turn.
@@ -1454,8 +1475,24 @@ export function useChatSend(deps: UseChatSendDeps) {
                   : {}),
               });
             }
-          } catch {
-            dropEmptyAssistantPlaceholder(assistantMsgId);
+          } catch (replayErr) {
+            // The re-seed above replaced the whole thread, so the ORIGINAL
+            // placeholder id is gone — dropping it was a no-op that left the
+            // replay's empty bubble stuck forever and the failure invisible.
+            // Clean up the replay placeholder and surface the failure exactly
+            // like the primary send path (aborts stay silent by design).
+            flushStreamingText();
+            dropEmptyAssistantPlaceholder(replayAssistantId);
+            if (
+              (replayErr as Error).name !== "AbortError" &&
+              !controller?.signal.aborted
+            ) {
+              setActionNotice(
+                buildSendFailureNotice(replayErr),
+                "error",
+                8_000,
+              );
+            }
           }
         } else {
           // Non-abort, non-404 send failure (network/timeout/5xx/auth/429/4xx).
@@ -1776,6 +1813,15 @@ export function useChatSend(deps: UseChatSendDeps) {
             convId = conversation.id;
             convRoomId = conversation.roomId;
           } catch {
+            // error-policy:J4 surfaced user-facing failure state. An
+            // action/inbox send that can't start a conversation must not
+            // vanish silently (mirrors the cold-open path in
+            // runQueuedChatSend).
+            setActionNotice(
+              "Couldn't start the conversation — check your connection and try again.",
+              "error",
+              8_000,
+            );
             return;
           }
         }
@@ -2007,7 +2053,13 @@ export function useChatSend(deps: UseChatSendDeps) {
     // Also stop any active PTY sessions — the user wants everything to halt.
     // Read from the ref so this callback stays stable even as ptySessions polls.
     for (const session of ptySessionsRef.current) {
-      client.stopCodingAgent(session.sessionId).catch(() => {});
+      // error-policy:J6 best-effort bulk stop on user-initiated halt; a session
+      // that fails to stop keeps reporting its live status in the PTY panel.
+      client.stopCodingAgent(session.sessionId).catch((err) => {
+        logger.warn(
+          `[useChatSend] stopCodingAgent(${session.sessionId}) failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      });
     }
     // ptySessionsRef is a stable ref object — only include the ref itself, not .current
   }, [interruptActiveChatPipeline, ptySessionsRef]);
