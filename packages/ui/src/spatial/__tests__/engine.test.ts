@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for the TUI layout engine: node measurement and the fixed-width
+ * line contract. Pure, no live terminal.
+ */
 import { visibleWidth } from "@elizaos/tui";
 import { describe, expect, it } from "vitest";
 import type { SpatialBoxNode, SpatialTextNode } from "../ir.ts";

@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for runtime detection + startup-timeout selection (web/cloud vs
+ * on-device host). Capacitor probe mocked, no real shell.
+ */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { getBackendStartupTimeoutMs } from "./electrobun-runtime";
 

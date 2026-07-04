@@ -1,3 +1,7 @@
+/**
+ * Routing for detached desktop shell windows: parses the window-shell route and
+ * resolves the pathname/target tab for a popped-out surface.
+ */
 import { pathForTab } from "../navigation";
 import type { HistoryLike } from "./types";
 

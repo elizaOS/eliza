@@ -1,3 +1,7 @@
+/**
+ * The frozen catalog of GenUI primitive component names and allowed action
+ * prefixes — the A2UI-compatible subset a generated spec may reference.
+ */
 export const ELIZA_GENUI_PRIMITIVE_COMPONENTS = [
   "Row",
   "Column",

@@ -1,3 +1,7 @@
+/**
+ * Unit coverage asserting client shortcut execution fails closed for unknown/
+ * unauthorized commands. Pure functions, no live agent.
+ */
 import { describe, expect, it } from "vitest";
 import type { SlashCommandCatalogItem } from "./slash-menu";
 import { resolveClientShortcutExecution } from "./slash-menu";

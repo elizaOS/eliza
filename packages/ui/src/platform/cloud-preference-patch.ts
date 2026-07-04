@@ -1,3 +1,7 @@
+/**
+ * Resolves Eliza Cloud deployment/service-routing preferences from a config,
+ * used to patch first-run defaults toward the linked cloud topology.
+ */
 import {
   getFirstRunProviderOption,
   isElizaCloudLinkedInConfig,

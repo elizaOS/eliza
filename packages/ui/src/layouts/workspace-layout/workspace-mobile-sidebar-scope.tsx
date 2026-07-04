@@ -1,3 +1,7 @@
+/**
+ * Provider that scopes the mobile-sidebar controls to a subtree so nested
+ * layouts don't cross-drive each other's drawers.
+ */
 import type * as React from "react";
 
 import {

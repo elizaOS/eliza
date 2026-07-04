@@ -1,3 +1,8 @@
+/**
+ * Renders a validated GenUI spec tree to React using the package's own
+ * primitives (Button/Card/Input/…), the concrete component set behind the A2UI
+ * subset.
+ */
 import * as React from "react";
 import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";

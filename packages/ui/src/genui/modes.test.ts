@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for GenUI mode prompt assembly (standalone vs inline rules and
+ * system prompt). Pure functions, no live model.
+ */
 import { describe, expect, it } from "vitest";
 import {
   buildCatalogPromptWithMode,

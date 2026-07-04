@@ -1,3 +1,6 @@
+/**
+ * Barrel for the desktop/native bridges (@elizaos/ui/bridge).
+ */
 export * from "./capacitor-bridge";
 export * from "./electrobun-rpc";
 export * from "./electrobun-runtime";

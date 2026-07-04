@@ -1,3 +1,6 @@
+/**
+ * Props and header-placement type for WorkspaceLayout.
+ */
 import type * as React from "react";
 
 import type { SidebarProps } from "../../components/composites/sidebar";

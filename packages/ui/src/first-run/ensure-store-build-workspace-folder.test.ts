@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for ensuring a persisted desktop workspace folder on store
+ * builds. Storage + bridge mocked, no real filesystem picker.
+ */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   clearStoredWorkspaceFolder,

@@ -1,3 +1,6 @@
+/**
+ * Header row for PageLayout — the outside-placement header slot.
+ */
 import type { HTMLAttributes } from "react";
 import * as React from "react";
 

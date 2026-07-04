@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for the first-run action channel: classifying and dispatching
+ * onboarding action messages. Pure functions + injected handler.
+ */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   classifyActionMessage,

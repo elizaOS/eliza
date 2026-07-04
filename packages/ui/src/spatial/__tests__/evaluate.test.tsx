@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for evaluating the spatial primitive tree (HStack/List/Button/…)
+ * to the layout IR. Pure, no renderer.
+ */
 import { describe, expect, it } from "vitest";
 import {
   Button,

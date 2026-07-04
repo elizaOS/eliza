@@ -1,3 +1,7 @@
+/**
+ * First-run reset flow: clears persisted onboarding state and navigates back to
+ * the setup surface via the injected storage/history/client shims.
+ */
 import type {
   FirstRunClientLike as ClientLike,
   HistoryLike,

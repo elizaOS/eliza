@@ -1,3 +1,7 @@
+/**
+ * Keys and parsing for the assistant-launch deep-link payload (which query keys
+ * carry the launch text).
+ */
 export const ASSISTANT_LAUNCH_TEXT_KEYS = [
   "text",
   "q",

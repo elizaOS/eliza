@@ -1,3 +1,8 @@
+/**
+ * Accessors for the Capacitor native plugins (agent, screen-capture, OCR, voice,
+ * …) with permission-state typing, so renderer code reaches native features
+ * through one typed surface.
+ */
 import { Capacitor, type PluginListenerHandle } from "@capacitor/core";
 
 type NativePlugin = Record<string, unknown>;

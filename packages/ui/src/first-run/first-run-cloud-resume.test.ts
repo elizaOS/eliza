@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for the cloud-login-pending flag that resumes onboarding after a
+ * redirect. localStorage-backed, no live cloud.
+ */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   __TEST_ONLY__,

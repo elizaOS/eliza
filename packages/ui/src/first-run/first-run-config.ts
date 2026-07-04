@@ -1,3 +1,7 @@
+/**
+ * Builds the first-run configuration payload: deployment target, credential
+ * inputs, and Eliza Cloud service routing for the chosen provider/topology.
+ */
 import {
   buildDefaultElizaCloudServiceRouting,
   buildElizaCloudServiceRoute,

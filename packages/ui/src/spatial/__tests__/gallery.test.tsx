@@ -1,3 +1,7 @@
+/**
+ * Parity coverage rendering the gallery views to both GUI markup and TUI lines,
+ * asserting the line-width contract. No live terminal.
+ */
 import { visibleWidth } from "@elizaos/tui";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";

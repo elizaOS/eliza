@@ -1,3 +1,6 @@
+/**
+ * Unit coverage for the shader preset table and lookup. Pure data, no GPU.
+ */
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_SHADER_PRESET_ID,

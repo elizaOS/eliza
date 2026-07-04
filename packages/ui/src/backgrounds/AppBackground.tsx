@@ -1,3 +1,8 @@
+/**
+ * The unified app background mounted once at the shell root: renders the persisted
+ * BackgroundConfig as a ShaderBackground or ImageBackground and installs the
+ * background:apply channel. See the backgrounds section of the package CLAUDE.md.
+ */
 import type * as React from "react";
 import { lazy, Suspense, useState } from "react";
 import type { ShaderConfig } from "../state/ui-preferences";

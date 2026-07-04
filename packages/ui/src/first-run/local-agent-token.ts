@@ -1,3 +1,7 @@
+/**
+ * Manages the local-agent auth token for mobile: reads/writes it via the native
+ * agent plugin and boot config, and detects local-agent URLs.
+ */
 import { Capacitor } from "@capacitor/core";
 import { getAgentPlugin } from "../bridge/native-plugins";
 import { getBootConfig, setBootConfig } from "../config/boot-config";

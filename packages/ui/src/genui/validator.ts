@@ -1,3 +1,7 @@
+/**
+ * Validates a GenUI spec against the catalog: rejects unknown components and
+ * disallowed action names before the renderer runs.
+ */
 import {
   ELIZA_GENUI_ALLOWED_ACTION_PREFIXES,
   isElizaGenUiActionNameAllowed,

@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for the Escape primitive (raw passthrough) across GUI + spatial
+ * evaluation. Static-markup renders, no live terminal.
+ */
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import {

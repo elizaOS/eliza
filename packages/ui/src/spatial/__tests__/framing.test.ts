@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for TUI framing analysis over the gallery views. Line renders,
+ * no live terminal.
+ */
 import { createElement } from "react";
 import { describe, expect, it } from "vitest";
 import { GALLERY } from "../gallery.tsx";

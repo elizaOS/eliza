@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for adopting a remote agent's first-run state (URL
+ * normalization, config probe). Client injected, no live agent.
+ */
 import { describe, expect, it, vi } from "vitest";
 import {
   adoptRemoteAgentFirstRun,

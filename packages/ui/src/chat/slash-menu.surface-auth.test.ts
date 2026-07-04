@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for filtering slash commands by surface + auth so a surface only
+ * sees the commands it may run. Pure functions, no live agent.
+ */
 import { describe, expect, it } from "vitest";
 import type { CommandSurface, SlashCommandCatalogItem } from "./slash-menu";
 import { filterCommandsForSurface } from "./slash-menu";

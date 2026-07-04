@@ -1,3 +1,6 @@
+/**
+ * Hook for microphone permission in voice-first onboarding (see block below).
+ */
 import type { PermissionStatus } from "@elizaos/shared";
 import * as React from "react";
 import { client } from "../api";

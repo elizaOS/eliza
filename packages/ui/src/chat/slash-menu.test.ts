@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for slash-menu parsing/completion (active arg, arg completion,
+ * catalog matching). Pure functions, no live agent.
+ */
 import { describe, expect, it, vi } from "vitest";
 import type { SlashCommandCatalogItem } from "./slash-menu";
 import {

@@ -1,3 +1,7 @@
+/**
+ * GenUI generation modes and their prompt rules: standalone emits full JSONL
+ * patch streams, inline is constrained. Feeds the catalog prompt builder.
+ */
 import type { ElizaGenUiMode, ElizaGenUiModeConfig } from "./types";
 
 export const STANDALONE_MODE_PROMPT_RULES = [

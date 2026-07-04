@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for message-source classification (agent greeting, coding agent,
+ * …). Pure functions, no live agent.
+ */
 import {
   MESSAGE_SOURCE_AGENT_GREETING,
   MESSAGE_SOURCE_CODING_AGENT,

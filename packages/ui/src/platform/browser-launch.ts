@@ -1,3 +1,7 @@
+/**
+ * Applies a browser/deep-link launch: creates or activates the target agent
+ * profile and persists the active-server record so the app opens pointed at it.
+ */
 import { client } from "../api";
 import { getBootConfig } from "../config/boot-config-store";
 import { upsertAndActivateAgentProfile } from "../state/agent-profiles";

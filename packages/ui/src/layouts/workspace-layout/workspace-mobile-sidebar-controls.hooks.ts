@@ -1,3 +1,7 @@
+/**
+ * Context + hooks for the mobile sidebar controls (open/close per control id)
+ * shared between the layout and its drawer toggle.
+ */
 import * as React from "react";
 
 export interface WorkspaceMobileSidebarControl {

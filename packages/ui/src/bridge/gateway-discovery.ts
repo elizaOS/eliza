@@ -1,3 +1,7 @@
+/**
+ * Discovers reachable local gateway endpoints via the plugin bridge, feeding the
+ * connect/handoff surfaces.
+ */
 import { logger } from "@elizaos/logger";
 import { getPlugins, isFeatureAvailable } from "./plugin-bridge";
 

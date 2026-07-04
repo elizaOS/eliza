@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for interactive TUI components (focus/state on Button via
+ * useSpatialState). Pure, no live terminal.
+ */
 import { visibleWidth } from "@elizaos/tui";
 import { describe, expect, it } from "vitest";
 import { AgentProfileView } from "../example.tsx";

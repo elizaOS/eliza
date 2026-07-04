@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for probing the mobile local agent's reachability. Capacitor +
+ * agent bridge mocked, no real device.
+ */
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

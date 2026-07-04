@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for GenUI action routing and the prefix-handler factory. Pure
+ * functions, no live agent.
+ */
 import { describe, expect, it } from "vitest";
 import {
   createElizaGenUiPrefixActionHandler,

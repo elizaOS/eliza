@@ -1,3 +1,7 @@
+/**
+ * Mobile permission client: maps the shared permission registry to the Capacitor
+ * permission plugins and reports normalized states.
+ */
 import type {
   IPermissionsRegistry,
   PermissionFeatureRef,

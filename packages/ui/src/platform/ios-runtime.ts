@@ -1,3 +1,7 @@
+/**
+ * iOS runtime-mode model (remote-mac / cloud / cloud-hybrid) and the default
+ * Eliza Cloud base, used to route the iOS app's agent connection.
+ */
 export const DEFAULT_ELIZA_CLOUD_BASE = "https://elizacloud.ai";
 
 export type IosRuntimeMode =

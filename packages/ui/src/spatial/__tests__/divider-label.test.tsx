@@ -1,3 +1,7 @@
+/**
+ * Regression guard for the labeled Divider affordance across GUI + TUI renders.
+ * Static-markup + line renders, no live terminal.
+ */
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { Divider, SpatialSurface } from "../index.ts";

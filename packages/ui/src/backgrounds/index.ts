@@ -1,3 +1,6 @@
+/**
+ * Barrel for the backgrounds surface (@elizaos/ui backgrounds).
+ */
 export { AppBackground, type AppBackgroundProps } from "./AppBackground";
 export type { BackgroundHostProps } from "./BackgroundHost";
 export { BackgroundHost } from "./BackgroundHost";

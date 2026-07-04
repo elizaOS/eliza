@@ -1,3 +1,7 @@
+/**
+ * Animated shader field for the unified app background: a flat base color with a
+ * gentle rim pulse.
+ */
 import type * as React from "react";
 import { DEFAULT_BACKGROUND_COLOR } from "../state/ui-preferences";
 

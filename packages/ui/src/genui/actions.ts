@@ -1,3 +1,8 @@
+/**
+ * Dispatch layer for agent-generated UI: routes an ElizaGenUiAction to its
+ * handler, gated by the action-name allowlist so a generated component can only
+ * fire permitted actions.
+ */
 import { isElizaGenUiActionAllowed } from "./genui-action-registry";
 import type {
   ElizaGenUiAction,

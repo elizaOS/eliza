@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for the default boot config invariants (e.g. shared-cloud-tier
+ * handoff default). Pure data, no runtime.
+ */
 import { describe, expect, it } from "vitest";
 
 import { DEFAULT_BOOT_CONFIG } from "./boot-config-store";
