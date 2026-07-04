@@ -1,0 +1,33 @@
+{
+  "scenarios": [
+    {
+      "scenario_id": "control.calendar.reschedule_launch_checklist_plain_default",
+      "seed": 2026,
+      "turns": [],
+      "state_hash_match": false,
+      "output_substring_matches": [
+        false,
+        false
+      ],
+      "total_score": 0.0,
+      "max_score": 1.0,
+      "terminated_reason": "error",
+      "total_cost_usd": 0.0,
+      "total_latency_ms": 0,
+      "error": "Eliza LifeOps bridge call failed"
+    }
+  ],
+  "pass_at_1": 0.0,
+  "pass_at_k": 0.0,
+  "mean_score_per_domain": {
+    "calendar": 0.0
+  },
+  "total_cost_usd": 0.0,
+  "total_latency_ms": 0,
+  "model_name": "gemma-4-31b",
+  "judge_model_name": "claude-opus-4-7",
+  "timestamp": "2026-07-04T21:29:15.014718+00:00",
+  "seeds": 1,
+  "agent_cost_usd": 0.0,
+  "eval_cost_usd": 0.0
+}

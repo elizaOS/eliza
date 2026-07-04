@@ -1,0 +1,11 @@
+$ vitest run --config vitest.gate.config.ts timeliness
+
+ RUN  v4.1.5 /Users/shawwalters/elizaclone-lanes/lane-3
+
+
+ Test Files  1 passed (1)
+      Tests  1 passed (1)
+   Start at  19:15:57
+   Duration  789.54s (transform 174.47s, setup 5.17s, import 121.07s, tests 662.78s, environment 0ms)
+
+EXIT=0

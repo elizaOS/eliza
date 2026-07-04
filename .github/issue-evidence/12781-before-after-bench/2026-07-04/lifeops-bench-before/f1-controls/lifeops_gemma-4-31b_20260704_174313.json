@@ -1,0 +1,177 @@
+{
+  "scenarios": [
+    {
+      "scenario_id": "control.health.steps_today_no_unsolicited_coaching",
+      "seed": 2026,
+      "turns": [
+        {
+          "turn_number": 1,
+          "agent_message": "",
+          "agent_actions": [
+            {
+              "name": "HEALTH",
+              "kwargs": {
+                "subaction": "today"
+              }
+            }
+          ],
+          "user_response": "",
+          "latency_ms": null,
+          "input_tokens": 50453,
+          "output_tokens": 14,
+          "cost_usd": null,
+          "tool_results": [
+            {
+              "name": "HEALTH",
+              "tool_call_id": "1d232dac4",
+              "content": "{\"subaction\": \"today\", \"ok\": true, \"noop\": true}",
+              "payload": {
+                "subaction": "today",
+                "ok": true,
+                "noop": true
+              }
+            }
+          ],
+          "cache_read_input_tokens": 50304,
+          "cache_creation_input_tokens": null,
+          "cache_hit_pct": null,
+          "cache_supported": true,
+          "model_tier": null,
+          "prompt_cache_key": null,
+          "model_name": "gemma-4-31b"
+        },
+        {
+          "turn_number": 2,
+          "agent_message": "",
+          "agent_actions": [
+            {
+              "name": "HEALTH",
+              "kwargs": {
+                "subaction": "today"
+              }
+            }
+          ],
+          "user_response": "",
+          "latency_ms": null,
+          "input_tokens": 50738,
+          "output_tokens": 14,
+          "cost_usd": null,
+          "tool_results": [
+            {
+              "name": "HEALTH",
+              "tool_call_id": "0d1fe143e",
+              "content": "{\"subaction\": \"today\", \"ok\": true, \"noop\": true}",
+              "payload": {
+                "subaction": "today",
+                "ok": true,
+                "noop": true
+              }
+            }
+          ],
+          "cache_read_input_tokens": 9344,
+          "cache_creation_input_tokens": null,
+          "cache_hit_pct": null,
+          "cache_supported": true,
+          "model_tier": null,
+          "prompt_cache_key": null,
+          "model_name": "gemma-4-31b"
+        },
+        {
+          "turn_number": 3,
+          "agent_message": "",
+          "agent_actions": [
+            {
+              "name": "HEALTH",
+              "kwargs": {
+                "subaction": "today"
+              }
+            }
+          ],
+          "user_response": "",
+          "latency_ms": null,
+          "input_tokens": 51020,
+          "output_tokens": 14,
+          "cost_usd": null,
+          "tool_results": [
+            {
+              "name": "HEALTH",
+              "tool_call_id": "b6c7dee09",
+              "content": "{\"subaction\": \"today\", \"ok\": true, \"noop\": true}",
+              "payload": {
+                "subaction": "today",
+                "ok": true,
+                "noop": true
+              }
+            }
+          ],
+          "cache_read_input_tokens": 9472,
+          "cache_creation_input_tokens": null,
+          "cache_hit_pct": null,
+          "cache_supported": true,
+          "model_tier": null,
+          "prompt_cache_key": null,
+          "model_name": "gemma-4-31b"
+        },
+        {
+          "turn_number": 4,
+          "agent_message": "",
+          "agent_actions": [
+            {
+              "name": "HEALTH",
+              "kwargs": {
+                "subaction": "today"
+              }
+            }
+          ],
+          "user_response": "",
+          "latency_ms": null,
+          "input_tokens": 51302,
+          "output_tokens": 14,
+          "cost_usd": null,
+          "tool_results": [
+            {
+              "name": "HEALTH",
+              "tool_call_id": "2f2e16e37",
+              "content": "{\"subaction\": \"today\", \"ok\": true, \"noop\": true}",
+              "payload": {
+                "subaction": "today",
+                "ok": true,
+                "noop": true
+              }
+            }
+          ],
+          "cache_read_input_tokens": 9344,
+          "cache_creation_input_tokens": null,
+          "cache_hit_pct": null,
+          "cache_supported": true,
+          "model_tier": null,
+          "prompt_cache_key": null,
+          "model_name": "gemma-4-31b"
+        }
+      ],
+      "state_hash_match": true,
+      "output_substring_matches": [
+        false
+      ],
+      "total_score": 0.0,
+      "max_score": 1.0,
+      "terminated_reason": "max_turns",
+      "total_cost_usd": 0,
+      "total_latency_ms": 0,
+      "error": null
+    }
+  ],
+  "pass_at_1": 0.0,
+  "pass_at_k": 0.0,
+  "mean_score_per_domain": {
+    "health": 0.0
+  },
+  "total_cost_usd": 0.0,
+  "total_latency_ms": 0,
+  "model_name": "gemma-4-31b",
+  "judge_model_name": "claude-opus-4-7",
+  "timestamp": "2026-07-04T21:43:13.638361+00:00",
+  "seeds": 1,
+  "agent_cost_usd": 0.0,
+  "eval_cost_usd": 0.0
+}
