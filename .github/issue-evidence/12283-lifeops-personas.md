@@ -1,10 +1,10 @@
-# Evidence — #12283 LifeOps persona-journey scenarios (first B1 increment)
+# Evidence — #12283 LifeOps persona-journey scenarios
 
 Issue #12283 asks for 72 persona-journey scenarios across 8 packs. This is the
-first increment: two live-only scenarios (packs B1 and A1) driven against a
+first increment: four live-only scenarios (packs B1 and A1) driven against a
 **live** model and hand-reviewed.
 
-## Scenario 2 — A1 adhd-capture-and-start (tier T1)
+## Scenarios 2-4 — A1 adhd-capture-and-start (tier T1)
 
 `plugins/plugin-personal-assistant/test/scenarios/adhd-buried-commitment-ramble.scenario.ts`.
 Premise (issue A1 table): *one load-bearing task buried in a rambling multi-topic
@@ -18,6 +18,25 @@ pharmacy before 5 PM today about your prescription refill…"* — captured the 
 buried task **with** its deadline and created **no** distractor tasks.
 `definitionCountDelta` matched "call the pharmacy"; `judgeRubric` **1.00**. Report:
 `.github/issue-evidence/12283-lifeops-personas/adhd-buried-commitment-ramble.report.json`.
+
+`plugins/plugin-personal-assistant/test/scenarios/adhd-medication-refill-fuzzy-date-capture.scenario.ts`.
+Premise: a fuzzy-date medication refill reminder ("early next week") should be
+captured as a concrete dated reminder instead of being dropped for ambiguity.
+
+Live run (Cerebras `gpt-oss-120b`): **passed, 6386ms**. Trajectory reviewed:
+`actionsCalled: ["OWNER_REMINDERS"]`; reply set the Adderall refill reminder for
+Wednesday morning. `definitionCountDelta` matched "refill"; `judgeRubric`
+**1.00**. Report:
+`.github/issue-evidence/12283-lifeops-personas/adhd-medication-refill-fuzzy-date-capture.report.json`.
+
+`plugins/plugin-personal-assistant/test/scenarios/adhd-wait-no-correction-supersedes.scenario.ts`.
+Premise: a mid-message "wait no" correction should supersede the first task.
+
+Live run (Cerebras `gpt-oss-120b`): **passed, 6562ms**. Trajectory reviewed:
+`actionsCalled: ["OWNER_REMINDERS"]`; reply saved the corrected Tom reminder.
+`definitionCountDelta` matched "email Tom" with delta 1 and "email Sarah" with
+delta 0; `judgeRubric` **1.00**. Report:
+`.github/issue-evidence/12283-lifeops-personas/adhd-wait-no-correction-supersedes.report.json`.
 
 ## Scenario 1 — B1 night-owl-anchored-day (tier T1)
 
@@ -55,10 +74,13 @@ Passed on two independent runs (6.3s / 6.8s) — reliable, not a fluke.
 - `_catalogs/night-owl-anchored-day.catalog.json` records the scenario as
   `verified`. `node packages/scripts/check-lifeops-persona-catalog-coverage.mjs`
   → B1 1/24 authored, 1/1 verified; the entry resolves to the real file.
+- `_catalogs/adhd-capture-and-start.catalog.json` records three A1 scenarios as
+  `verified`. The same catalog coverage command reports A1 3/28 authored, 3/3
+  verified; each entry resolves to the real scenario file.
 - All four scenario-runner corpus ratchets stay green (14 tests): the live-only
-  scenario does not touch the `pr-deterministic` id list, its `responseIncludes`
-  are absent (no echo), and its `finalChecks` include an effect-reading check
-  (`definitionCountDelta`) plus a non-skippable one.
+  scenarios do not touch the `pr-deterministic` id list, their `responseIncludes`
+  are absent (no echo), and their `finalChecks` include effect-reading checks
+  (`definitionCountDelta`) plus non-skippable ones.
 
 ## Scope note (honest)
 
@@ -73,6 +95,6 @@ shipped here. The remaining packs/premises are enumerated in the issue's tables.
 
 | Evidence | Status |
 | --- | --- |
-| Real-LLM trajectory | **Attached + reviewed** — live Cerebras `gpt-oss-120b`; `OWNER_REMINDERS` created the flexible habit, judge 1.00; report JSON in `.github/issue-evidence/12283-lifeops-personas/`. |
-| Domain artifacts | `life_scheduled_definitions` row (the created habit) — asserted via `definitionCountDelta`. |
+| Real-LLM trajectory | **Attached + reviewed** — live Cerebras `gpt-oss-120b`; `OWNER_REMINDERS` created the B1 habit plus three A1 reminders, each judge 1.00; report JSON in `.github/issue-evidence/12283-lifeops-personas/`. |
+| Domain artifacts | `life_scheduled_definitions` rows — asserted via `definitionCountDelta`, including delta 0 for the superseded Sarah task. |
 | Frontend / screenshots | N/A — no UI surface changed (scenario authoring). |
