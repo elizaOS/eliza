@@ -663,7 +663,12 @@ function parseByteRange(
   }
   const start = startRaw ? Number.parseInt(startRaw, 10) : 0;
   let end = endRaw ? Number.parseInt(endRaw, 10) : size - 1;
-  if (Number.isNaN(start) || Number.isNaN(end) || start > end || start >= size) {
+  if (
+    Number.isNaN(start) ||
+    Number.isNaN(end) ||
+    start > end ||
+    start >= size
+  ) {
     return { unsatisfiable: true };
   }
   end = Math.min(end, size - 1);
@@ -712,7 +717,8 @@ export function handleMediaRouteRequest(
     ...mediaSecurityHeaders(resolved.name, resolved.contentType),
   };
 
-  const range = method === "GET" ? parseByteRange(rangeHeader, resolved.size) : null;
+  const range =
+    method === "GET" ? parseByteRange(rangeHeader, resolved.size) : null;
   if (range && "unsatisfiable" in range) {
     return {
       status: 416,
@@ -733,10 +739,9 @@ export function handleMediaRouteRequest(
         "Content-Range": `bytes ${range.start}-${range.end}/${resolved.size}`,
         "Content-Length": String(length),
       },
-      body: fs.readFileSync(resolved.filePath).subarray(
-        range.start,
-        range.end + 1,
-      ),
+      body: fs
+        .readFileSync(resolved.filePath)
+        .subarray(range.start, range.end + 1),
     };
   }
 
@@ -777,7 +782,8 @@ export function serveMediaFile(
     ...mediaSecurityHeaders(resolved.name, contentType),
   };
 
-  const range = method === "GET" ? parseByteRange(req.headers.range, size) : null;
+  const range =
+    method === "GET" ? parseByteRange(req.headers.range, size) : null;
   if (range && "unsatisfiable" in range) {
     res.writeHead(416, {
       "Content-Range": `bytes */${size}`,
