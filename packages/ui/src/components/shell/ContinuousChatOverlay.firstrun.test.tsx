@@ -188,7 +188,9 @@ describe("ContinuousChatOverlay first-run gating", () => {
   });
 
   it("paints an OPAQUE bg-bg backdrop while onboarding is open (no launcher/home shows through)", () => {
-    render(<ContinuousChatOverlay controller={makeController()} firstRunOpen />);
+    render(
+      <ContinuousChatOverlay controller={makeController()} firstRunOpen />,
+    );
     const backdrop = screen.getByTestId("chat-first-run-backdrop");
     expect(backdrop.getAttribute("data-first-run-opaque")).toBe("true");
     expect(backdrop.className).toContain("bg-bg");

@@ -58,7 +58,9 @@ function makeWorkbenchTask(overrides: Partial<Task>): Task {
 
 describe("decodeScheduleTag", () => {
   it("decodes a schedule:<cron> tag", () => {
-    expect(decodeScheduleTag(["workbench-task", "schedule:0 9 * * 1-5"])).toEqual({
+    expect(
+      decodeScheduleTag(["workbench-task", "schedule:0 9 * * 1-5"]),
+    ).toEqual({
       triggerType: "cron",
       cronExpression: "0 9 * * 1-5",
     });
@@ -92,7 +94,9 @@ describe("migrateWorkbenchScheduleTags", () => {
     const patch = updates[0].patch;
     expect(patch.name).toBe(TRIGGER_TASK_NAME);
     // Retagged to the trigger tags; the schedule tag and workbench-task tag are gone.
-    expect(patch.tags).toEqual(expect.arrayContaining(["queue", "repeat", "trigger"]));
+    expect(patch.tags).toEqual(
+      expect.arrayContaining(["queue", "repeat", "trigger"]),
+    );
     expect(patch.tags).not.toContain("workbench-task");
     expect(patch.tags?.some((t) => t.startsWith("schedule:"))).toBe(false);
 

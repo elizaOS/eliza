@@ -937,7 +937,8 @@ export function useFirstRunConductor(): void {
           : erroredRef.current
             ? FIRST_RUN_TEXT_REPLY.error
             : FIRST_RUN_TEXT_REPLY.choosing;
-      const seq = (textTurnSeqRef.current += 1);
+      textTurnSeqRef.current += 1;
+      const seq = textTurnSeqRef.current;
       seedTurn({
         id: `first-run:user:${seq}`,
         role: "user",

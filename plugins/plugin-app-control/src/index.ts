@@ -39,10 +39,10 @@ import { VerificationRoomBridgeService } from "./services/verification-room-brid
 import { viewNavigationShortcuts } from "./shortcuts.js";
 
 export {
-	agentSwitchAction,
 	type AgentSwitchActionDeps,
 	type AgentSwitchFn,
 	type AgentSwitchOutcome,
+	agentSwitchAction,
 	createAgentSwitchAction,
 	inferAgentSwitchProfile,
 } from "./actions/agent-switch.js";
@@ -57,20 +57,20 @@ export {
 	inferBackgroundPlan,
 } from "./actions/background.js";
 export {
-	__matcherData,
-	MATCHER_VIEW_IDS,
-	matchViewCommand,
-} from "./actions/view-command-matcher.js";
-export {
 	createModelSwitchAction,
 	inferModelSwitchRequest,
 	type ModelSwitchActionDeps,
 	type ModelSwitchFn,
 	type ModelSwitchOutcome,
-	modelSwitchAction,
 	type ModelSwitchTarget,
+	modelSwitchAction,
 	sanctionedModelError,
 } from "./actions/model-switch.js";
+export {
+	__matcherData,
+	MATCHER_VIEW_IDS,
+	matchViewCommand,
+} from "./actions/view-command-matcher.js";
 export type { ViewsMode } from "./actions/views.js";
 export {
 	closeAllViewsAction,
