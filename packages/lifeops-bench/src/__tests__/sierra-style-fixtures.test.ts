@@ -1,3 +1,7 @@
+/**
+ * Verifies the synthetic Sierra-style fixture contracts with deterministic
+ * backend state and report validation checks.
+ */
 import { describe, expect, it } from "vitest";
 import { LifeOpsFakeBackend } from "../lifeops-fake-backend.js";
 import {

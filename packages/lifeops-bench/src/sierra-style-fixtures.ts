@@ -1,3 +1,7 @@
+/**
+ * Defines eliza-owned synthetic LifeOps benchmark contracts shaped after public
+ * knowledge and voice-interruption benchmark methodology.
+ */
 import type { LifeWorldDocument } from "./lifeops-fake-backend.js";
 
 export type SierraStyleFailureCategory =
