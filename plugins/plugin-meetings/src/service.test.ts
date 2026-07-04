@@ -155,6 +155,39 @@ describe("MeetingService.requestJoin — validation", () => {
     });
     expect(lower.maxDurationMs).toBe(15 * 60 * 1000);
   });
+
+  it("uses only strict decimal integers for the configured duration cap", async () => {
+    const hexAdapter = new ScriptedAdapter("google_meet");
+    const { fake: hexFake, service: hexService } = makeService([hexAdapter]);
+    hexFake.settings.ELIZA_MEETINGS_MAX_DURATION_MS = "0x10";
+
+    const hexDto = await hexService.requestJoin({
+      platform: "google_meet",
+      meetingUrl: MEET_URL,
+      maxDurationMs: 17,
+    });
+    expect(hexDto.maxDurationMs).toBe(17);
+    expect(hexAdapter.session).not.toBeNull();
+    await hexAdapter.started;
+    hexAdapter.end("normal_completion");
+    await new Promise((r) => setTimeout(r, 10));
+    expect(hexService.getSession(hexDto.id as never)?.status).toBe("ended");
+
+    const decimalAdapter = new ScriptedAdapter("google_meet");
+    const { fake: decimalFake, service: decimalService } = makeService([
+      decimalAdapter,
+    ]);
+    decimalFake.settings.ELIZA_MEETINGS_MAX_DURATION_MS = "1000";
+
+    await expect(
+      decimalService.requestJoin({
+        platform: "google_meet",
+        meetingUrl: MEET_URL,
+        maxDurationMs: 1001,
+      }),
+    ).rejects.toMatchObject({ code: "invalid_duration_cap" });
+    expect(decimalAdapter.session).toBeNull();
+  });
 });
 
 describe("MeetingService — session state machine", () => {

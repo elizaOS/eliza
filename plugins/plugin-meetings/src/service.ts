@@ -30,6 +30,7 @@ import {
   type MeetingSession,
   type MeetingSessionStatus,
   parseMeetingUrl,
+  parsePositiveInteger,
 } from "@elizaos/shared";
 import type { TranscriptSegment } from "@elizaos/shared/transcripts";
 import { MeetingEventEmitter } from "./events.js";
@@ -628,8 +629,6 @@ export class MeetingService extends Service {
 
   private settingPositiveInteger(key: string): number | null {
     const raw = this.settingString(key);
-    if (!raw) return null;
-    const parsed = Number(raw);
-    return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+    return parsePositiveInteger(raw) ?? null;
   }
 }
