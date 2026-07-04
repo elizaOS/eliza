@@ -40,6 +40,25 @@ export type DurableReplayReservation =
   | { ok: true; owner: string; atomic: boolean }
   | { ok: false };
 
+/**
+ * Thrown when a successfully-verified payment credential could NOT be durably
+ * recorded as consumed (SQL commit matched no reserved row, or the cache write
+ * failed). This is security-critical: an un-recorded consumption leaves the
+ * credential replayable once its inflight reservation TTL lapses, so callers
+ * MUST fail closed (deny the unlock) rather than proceed on a consumption the
+ * replay guard cannot back. Distinct type so the payment boundary can classify
+ * it precisely rather than treating it as a generic verification error.
+ * error-policy:J4 fail-closed.
+ */
+export class X402ReplayCommitError extends Error {
+  readonly replayKeys: string[];
+  constructor(message: string, replayKeys: string[]) {
+    super(message);
+    this.name = "X402ReplayCommitError";
+    this.replayKeys = replayKeys;
+  }
+}
+
 type QueryableDb = {
   execute: (query: unknown) => Promise<unknown>;
 };
@@ -146,6 +165,7 @@ async function commitSqlReservations(
     state: "consumed",
     consumedAt: Date.now(),
   };
+  const uncommitted: string[] = [];
   for (const cacheKey of cacheKeys) {
     const result = await db.execute(sql`
       UPDATE cache
@@ -157,10 +177,23 @@ async function commitSqlReservations(
       RETURNING key
     `);
     if (!resultHadRows(result)) {
+      // error-policy:J4 fail-closed — the reserved 'inflight' row we owned was
+      // NOT transitioned to 'consumed' (stolen after TTL, released, or already
+      // committed by a racing request). Do NOT silently continue: an
+      // un-consumed credential becomes replayable once any lingering inflight
+      // reservation lapses. Record it and throw so the payment boundary denies
+      // the unlock instead of granting access the guard can't back.
       logger.error(
         `[x402] durable replay: failed to commit reserved replay key ${cacheKey}`,
       );
+      uncommitted.push(cacheKey);
     }
+  }
+  if (uncommitted.length > 0) {
+    throw new X402ReplayCommitError(
+      `durable replay: ${uncommitted.length} replay key(s) not marked consumed on commit`,
+      uncommitted,
+    );
   }
 }
 
@@ -319,18 +352,30 @@ export async function durableReplayCommitReservation(
     state: "consumed",
     consumedAt: Date.now(),
   };
+  const uncommitted: string[] = [];
   for (const replayKey of keys) {
     const ok = await runtime.setCache(
       durableReplayCacheKey(agentId, replayKey),
       payload,
     );
     if (!ok) {
+      // error-policy:J4 fail-closed — same invariant as the SQL path: a
+      // credential we could not persist as 'consumed' stays replayable. Surface
+      // + throw so the caller denies the unlock rather than fabricating a
+      // durable consumption that never landed.
       logger.error(
         `[x402] durable replay: setCache failed for replay key ${replayKey.slice(
           0,
           80,
-        )} (payment may be retryable if this persists)`,
+        )} (consumption not persisted — failing closed)`,
       );
+      uncommitted.push(replayKey);
     }
+  }
+  if (uncommitted.length > 0) {
+    throw new X402ReplayCommitError(
+      `durable replay: ${uncommitted.length} replay key(s) not persisted as consumed`,
+      uncommitted,
+    );
   }
 }

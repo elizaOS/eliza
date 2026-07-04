@@ -152,18 +152,24 @@ export async function replayGuardCommit(
       break;
     }
   }
-  for (const k of keys) {
-    inflight.delete(k);
-    durableReservationOwners.delete(k);
-  }
   if (useDurable && keys.length > 0 && runtime) {
+    // Persist the durable consumption FIRST. If it throws (error-policy:J4
+    // fail-closed from the durable layer — consumption could not be recorded),
+    // leave the in-process inflight guard intact so a same-process retry is
+    // still blocked, and let the error propagate so the payment boundary denies
+    // the unlock rather than granting access the guard can't back.
     await durableReplayCommitReservation(
       runtime,
       agentId,
       keys,
       ownerConsistent ? owner : undefined,
     );
-  } else if (!useDurable) {
+  }
+  for (const k of keys) {
+    inflight.delete(k);
+    durableReservationOwners.delete(k);
+  }
+  if (!useDurable) {
     for (const k of keys) consumedMemory.set(k, exp);
   }
 }
