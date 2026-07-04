@@ -132,6 +132,129 @@ function statusText(status: number): string {
 	return STATUS_TEXT[status] ?? "";
 }
 
+function jsonResponse(status: number, body: unknown): AndroidBufferedResponse {
+	const text = JSON.stringify(body);
+	return {
+		status,
+		statusText: statusText(status),
+		headers: { "content-type": "application/json; charset=utf-8" },
+		body: text,
+		bodyBase64: Buffer.from(text, "utf8").toString("base64"),
+		bodyEncoding: "base64",
+	};
+}
+
+function runtimeAgentName(runtime: IAgentRuntime): string {
+	const character = (runtime as { character?: { name?: unknown } }).character;
+	return typeof character?.name === "string" && character.name.trim()
+		? character.name.trim()
+		: "Eliza";
+}
+
+function directAndroidCoreRoute(
+	runtime: IAgentRuntime,
+	method: string,
+	pathname: string,
+): AndroidBufferedResponse | null {
+	if (method === "GET" && pathname === "/api/health") {
+		return jsonResponse(200, {
+			ready: true,
+			runtime: "ok",
+			database: "ok",
+			plugins: {
+				loaded: Array.isArray((runtime as { plugins?: unknown }).plugins)
+					? ((runtime as { plugins?: unknown[] }).plugins?.length ?? 0)
+					: 0,
+				failed: 0,
+			},
+			coordinator: "not_wired",
+			agentState: "running",
+			agentName: runtimeAgentName(runtime),
+			startedAt: null,
+			uptime: 0,
+			androidBridge: "uds",
+		});
+	}
+
+	if (method === "GET" && pathname === "/api/status") {
+		return jsonResponse(200, {
+			state: "running",
+			agentName: runtimeAgentName(runtime),
+			model: null,
+			canRespond: true,
+			startedAt: null,
+			uptime: 0,
+			startup: { phase: "running", runtimePhase: "running" },
+			cloud: {
+				connectionStatus: "disconnected",
+				activeAgentId: null,
+				cloudProvisioned: false,
+				hasApiKey: false,
+			},
+			pendingRestart: false,
+			pendingRestartReasons: [],
+			androidBridge: "uds",
+		});
+	}
+
+	if (method === "GET" && pathname === "/api/apps/runs") {
+		return jsonResponse(200, []);
+	}
+
+	if (method === "GET" && pathname === "/api/first-run/status") {
+		return jsonResponse(200, {
+			complete: true,
+			cloudProvisioned: false,
+			deploymentTarget: "local",
+		});
+	}
+
+	if (method === "POST" && pathname === "/api/first-run") {
+		return jsonResponse(200, {
+			ok: true,
+			complete: true,
+			deploymentTarget: "local",
+		});
+	}
+
+	if (method === "GET" && pathname === "/api/auth/me") {
+		return jsonResponse(200, {
+			identity: {
+				id: "local-agent",
+				displayName: "Local Agent",
+				kind: "machine",
+			},
+			session: { id: "local", kind: "local", expiresAt: null },
+			access: {
+				mode: "local",
+				passwordConfigured: false,
+				ownerConfigured: false,
+			},
+		});
+	}
+
+	if (method === "GET" && pathname === "/api/auth/status") {
+		return jsonResponse(200, {
+			required: false,
+			authenticated: true,
+			enabled: false,
+			cloudProvisioned: false,
+			passwordConfigured: false,
+			localAccess: true,
+			mode: "local",
+		});
+	}
+
+	if (method === "POST" && pathname === "/api/auth/bootstrap/exchange") {
+		return jsonResponse(503, {
+			error: "db_unavailable",
+			reason: "db_unavailable",
+		});
+	}
+
+	return null;
+}
+
 /** Serialize a RouteHandlerResult body to raw bytes, mirroring the HTTP path. */
 function resultBodyBytes(result: RouteHandlerResult): {
 	bytes: Buffer;
@@ -172,118 +295,6 @@ function notFound(method: string, pathname: string): AndroidBufferedResponse {
 	};
 }
 
-function jsonBuffered(status: number, value: unknown): AndroidBufferedResponse {
-	const body = JSON.stringify(value);
-	return {
-		status,
-		statusText: statusText(status),
-		headers: { "content-type": "application/json; charset=utf-8" },
-		body,
-		bodyBase64: Buffer.from(body, "utf8").toString("base64"),
-		bodyEncoding: "base64",
-	};
-}
-
-// ── Server-level core routes ─────────────────────────────────────────────────
-//
-// /api/first-run/* and the auth bootstrap probes are served at the HTTP SERVER
-// layer on desktop (handleFirstRunRoutes / app-core auth routes), not through
-// the plugin-route kernel — so the in-process stdio dispatch never sees them.
-// On Android the WebView talks to the bridge from the very first boot (the
-// local agent is pre-seeded as the active server on sideload builds), which made
-// startup polls 404 and hard-fail a FRESH install with "Startup failed: Backend
-// Unreachable" before onboarding could start. These routes answer from the SAME
-// durable truth the server uses where there is durable state: the persisted
-// ElizaConfig. Unlike the iOS full-Bun shim (which hardcodes complete:true
-// because iOS only reaches its bridge after a local runtime was chosen), Android
-// must report honestly in both phases or a fresh install would skip onboarding
-// entirely.
-
-/** The persisted-config seams the core routes read/write (from @elizaos/agent). */
-export interface AndroidCoreRouteDeps {
-	configFileExists: () => boolean;
-	loadElizaConfig: () => AndroidElizaConfigLike;
-	saveElizaConfig: (config: AndroidElizaConfigLike) => void;
-	hasPersistedFirstRunState: (config: AndroidElizaConfigLike) => boolean;
-}
-
-/** Structural stand-in for ElizaConfig — the bridge only touches `meta`. */
-export type AndroidElizaConfigLike = Record<string, unknown> & {
-	meta?: Record<string, unknown>;
-};
-
-/**
- * Answer a server-level core route, or return null to fall through to the
- * plugin-route kernel. GET status reads completion from the persisted config;
- * POST records the completion marker (the full first-run profile writer lives
- * in the server layer — the marker is what gates the startup poll, and the
- * cloud-only flow persists its profile against the bound cloud agent).
- */
-export function handleAndroidCoreRoute(
-	method: string,
-	pathname: string,
-	deps: AndroidCoreRouteDeps,
-): AndroidBufferedResponse | null {
-	if (method === "GET" && pathname === "/api/auth/status") {
-		return jsonBuffered(200, {
-			required: false,
-			authenticated: true,
-			loginRequired: false,
-			bootstrapRequired: false,
-			localAccess: true,
-			passwordConfigured: false,
-			pairingEnabled: false,
-			expiresAt: null,
-		});
-	}
-	if (method === "GET" && pathname === "/api/auth/me") {
-		return jsonBuffered(200, {
-			identity: {
-				id: "local-agent",
-				displayName: "Local Agent",
-				kind: "machine",
-			},
-			session: { id: "local", kind: "local", expiresAt: null },
-			access: {
-				mode: "local",
-				passwordConfigured: false,
-				ownerConfigured: false,
-				role: "OWNER",
-			},
-		});
-	}
-	if (method === "GET" && pathname === "/api/first-run/status") {
-		let complete = false;
-		try {
-			complete =
-				deps.configFileExists() &&
-				deps.hasPersistedFirstRunState(deps.loadElizaConfig());
-		} catch {
-			// error-policy:J3 an unreadable config cannot prove completion — fail
-			// closed to "onboarding required"; the client's durable completion
-			// flag still protects an already-onboarded install (#11506).
-			complete = false;
-		}
-		return jsonBuffered(200, { complete, cloudProvisioned: false });
-	}
-	if (method === "POST" && pathname === "/api/first-run") {
-		try {
-			const config: AndroidElizaConfigLike = deps.configFileExists()
-				? deps.loadElizaConfig()
-				: {};
-			config.meta = { ...(config.meta ?? {}), firstRunComplete: true };
-			deps.saveElizaConfig(config);
-		} catch (err) {
-			const message = err instanceof Error ? err.message : String(err);
-			return jsonBuffered(500, {
-				error: `Failed to persist first-run completion: ${message}`,
-			});
-		}
-		return jsonBuffered(200, { ok: true, complete: true });
-	}
-	return null;
-}
-
 /**
  * Dispatch one buffered request in-process and return the loopback-shaped
  * envelope. Throws on an invalid path/method (the caller surfaces it as an
@@ -294,7 +305,6 @@ export async function dispatchBufferedRequest(
 	runtime: IAgentRuntime,
 	dispatchRoute: AndroidDispatchRoute,
 	payload: AndroidRequestPayload,
-	coreRoutes?: AndroidCoreRouteDeps,
 ): Promise<AndroidBufferedResponse> {
 	const rawPath = typeof payload.path === "string" ? payload.path.trim() : "";
 	if (!rawPath || !isSafeLocalPath(rawPath)) {
@@ -306,10 +316,8 @@ export async function dispatchBufferedRequest(
 	const headers = normalizeHeaderRecord(payload.headers);
 	const { pathname, query } = splitPathAndQuery(rawPath);
 
-	if (coreRoutes) {
-		const core = handleAndroidCoreRoute(method, pathname, coreRoutes);
-		if (core) return core;
-	}
+	const direct = directAndroidCoreRoute(runtime, method, pathname);
+	if (direct) return direct;
 
 	const result = await dispatchRoute({
 		runtime,
@@ -348,7 +356,6 @@ export async function dispatchStreamingRequest(
 	dispatchRoute: AndroidDispatchRoute,
 	payload: AndroidRequestPayload,
 	sink: StdioBridgeStreamSink,
-	coreRoutes?: AndroidCoreRouteDeps,
 ): Promise<void> {
 	const rawPath = typeof payload.path === "string" ? payload.path.trim() : "";
 	if (!rawPath || !isSafeLocalPath(rawPath)) {
@@ -360,17 +367,15 @@ export async function dispatchStreamingRequest(
 	const headers = normalizeHeaderRecord(payload.headers);
 	const { pathname, query } = splitPathAndQuery(rawPath);
 
-	if (coreRoutes) {
-		const core = handleAndroidCoreRoute(method, pathname, coreRoutes);
-		if (core) {
-			sink.emitResponse({
-				status: core.status,
-				statusText: core.statusText,
-				headers: core.headers,
-			});
-			if (core.bodyBase64) sink.emitChunk(core.bodyBase64);
-			return;
-		}
+	const direct = directAndroidCoreRoute(runtime, method, pathname);
+	if (direct) {
+		sink.emitResponse({
+			status: direct.status,
+			statusText: direct.statusText,
+			headers: direct.headers,
+		});
+		if (direct.bodyBase64) sink.emitChunk(direct.bodyBase64);
+		return;
 	}
 
 	// A legacy SSE handler flushes body fragments through `res.write(...)` before
