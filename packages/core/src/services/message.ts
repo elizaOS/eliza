@@ -60,7 +60,7 @@ import {
 	type CandidateActionBackstopRule,
 	getCandidateActionBackstopRules,
 } from "../runtime/candidate-action-backstop";
-import { filterByContextGate } from "../runtime/context-gates";
+import { filterProvidersByContextGate } from "../runtime/context-gates";
 import { computePrefixHashes, hashString } from "../runtime/context-hash";
 import {
 	appendContextEvent,
@@ -1168,7 +1168,7 @@ async function composeProviderGroundedResponseState(
 	);
 }
 
-function selectV5PlannerStateProviderNames(args: {
+export function selectV5PlannerStateProviderNames(args: {
 	runtime: IAgentRuntime;
 	message: Memory;
 	selectedContexts: readonly AgentContext[];
@@ -1189,7 +1189,10 @@ function selectV5PlannerStateProviderNames(args: {
 	for (const name of alwaysOnResponseStateProviderNames(args.runtime)) {
 		providerNames.add(name);
 	}
-	for (const provider of filterByContextGate(
+	// filterProvidersByContextGate honors the FULL declared contextGate
+	// (anyOf/allOf/noneOf) plus the catalog fallback for undeclared providers —
+	// the plain {contexts, roleGate} reduction dropped world-style gates (#13203).
+	for (const provider of filterProvidersByContextGate(
 		providers,
 		args.selectedContexts,
 		args.userRoles,

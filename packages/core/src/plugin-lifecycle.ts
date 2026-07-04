@@ -41,6 +41,7 @@ import type { IAgentRuntime } from "./types/runtime";
 import type { Service, ServiceTypeName } from "./types/service";
 import type { ShortcutDefinition } from "./types/shortcut";
 import {
+	lookupProviderCatalogContexts,
 	resolveActionContexts,
 	resolveProviderContexts,
 } from "./utils/context-catalog";
@@ -367,9 +368,65 @@ function applyEffectiveActionAccess(
 	};
 }
 
+// One-time-per-name guard for the silent-default registration warning below —
+// re-registration (plugin reload, multi-agent processes) must not spam logs.
+const generalFallbackWarnedProviders = new Set<string>();
+
+/** Test hook: reset the one-time registration-warning guard. */
+export function _resetProviderContextWarningsForTests(): void {
+	generalFallbackWarnedProviders.clear();
+}
+
+/**
+ * Materialize `contexts` for a provider that declares none. A gate-only
+ * declaration (`contextGate` with context terms but no `contexts`) materializes
+ * from the gate's anyOf surface — falling back to allOf when the gate is
+ * allOf-only — instead of the `["general"]` default, which would invert the
+ * declared routing (ride ordinary chat turns, miss its own gated turns,
+ * #13203). Everything else resolves declared → catalog → `["general"]`; the
+ * uncataloged general fallback logs a one-time nudge so plugin authors declare
+ * `contexts`/`contextGate` or opt into `alwaysInResponseState`.
+ */
+function materializeProviderContexts(
+	provider: RuntimeProvider,
+	runtime: RuntimeWithPluginLifecycle,
+): AgentContext[] {
+	const gate = provider.contextGate;
+	const gateAnyOfSurface = [
+		...new Set([...(gate?.contexts ?? []), ...(gate?.anyOf ?? [])]),
+	];
+	if (gateAnyOfSurface.length > 0) {
+		return gateAnyOfSurface;
+	}
+	if ((gate?.allOf?.length ?? 0) > 0) {
+		return [...new Set(gate?.allOf)];
+	}
+
+	const resolved = resolveProviderContexts(provider);
+	if (
+		lookupProviderCatalogContexts(provider.name) === undefined &&
+		!provider.contextGate &&
+		!provider.dynamic &&
+		!provider.alwaysInResponseState &&
+		!generalFallbackWarnedProviders.has(provider.name)
+	) {
+		generalFallbackWarnedProviders.add(provider.name);
+		runtime.logger.warn(
+			{
+				src: "agent",
+				agentId: runtime.agentId,
+				provider: provider.name,
+			},
+			`[PluginLifecycle] Provider "${provider.name}" declares no contexts/contextGate and has no catalog entry; defaulting to ["general"]. Declare contexts or a contextGate to route it, or set alwaysInResponseState for an always-on signal.`,
+		);
+	}
+	return [...resolved];
+}
+
 function applyEffectiveProviderContexts(
 	provider: RuntimeProvider,
 	pluginContexts: Plugin["contexts"] | undefined,
+	runtime: RuntimeWithPluginLifecycle,
 ): RuntimeProvider {
 	const inherited = inheritPluginContexts(provider, pluginContexts);
 	if ((inherited.contexts?.length ?? 0) > 0) {
@@ -377,13 +434,13 @@ function applyEffectiveProviderContexts(
 	}
 
 	if (inherited === provider) {
-		provider.contexts = [...resolveProviderContexts(inherited)];
+		provider.contexts = materializeProviderContexts(inherited, runtime);
 		return provider;
 	}
 
 	return {
 		...inherited,
-		contexts: [...resolveProviderContexts(inherited)],
+		contexts: materializeProviderContexts(inherited, runtime),
 	};
 }
 
@@ -831,6 +888,7 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 			applyEffectiveProviderContexts(
 				provider,
 				capture?.ownership.plugin.contexts,
+				runtimeWithLifecycle,
 			),
 		);
 		if (!capture || runtimeWithLifecycle.providers.length <= providersBefore)

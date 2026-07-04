@@ -95,6 +95,10 @@ export const recentErrorsProvider: Provider = {
 	description:
 		"Recent runtime failures reported outside the action path (deduped by code)",
 	dynamic: true,
+	// Failures matter most on the narrow planner/tool turns this provider would
+	// otherwise miss (undeclared → ["general"] routing). Always-on is free on the
+	// happy path: it renders nothing when there are no recent errors (#13203).
+	alwaysInResponseState: true,
 
 	get: async (
 		runtime: IAgentRuntime,

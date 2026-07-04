@@ -201,6 +201,11 @@ export const PROVIDER_CONTEXT_MAP: Record<string, AgentContext[]> = {
 	"solana-wallet": ["wallet"],
 	CODING_AGENT_EXAMPLES: ["code", "automation"],
 	ACTIVE_WORKSPACE_CONTEXT: ["code", "automation"],
+	// Orchestrator inventory (plugin-agent-orchestrator): the coding-backend /
+	// sub-agent listings belong on code/automation planner turns, matching
+	// ACTIVE_WORKSPACE_CONTEXT — not on ordinary "general" chat turns (#13203).
+	AVAILABLE_AGENTS: ["code", "automation"],
+	ACTIVE_SUB_AGENTS: ["code", "automation"],
 	contacts: ["contacts"],
 	trustScores: ["contacts"],
 	platformIdentity: ["messaging"],
@@ -243,15 +248,29 @@ export function resolveActionContexts(action: Action): AgentContext[] {
 	return ACTION_CONTEXT_MAP[action.name.toUpperCase()] ?? ["general"];
 }
 
-export function resolveProviderContexts(provider: Provider): AgentContext[] {
+/**
+ * Catalog lookup for a provider name (exact, lower, upper), or `undefined` when
+ * the provider is uncataloged. Split out so registration can distinguish a
+ * deliberate catalog entry of `["general"]` from the uncataloged default and
+ * warn only on the latter (#13203).
+ */
+export function lookupProviderCatalogContexts(
+	name: string,
+): AgentContext[] | undefined {
+	return (
+		PROVIDER_CONTEXT_MAP[name] ??
+		PROVIDER_CONTEXT_MAP[name.toLowerCase()] ??
+		PROVIDER_CONTEXT_MAP[name.toUpperCase()]
+	);
+}
+
+export function resolveProviderContexts(
+	provider: Pick<Provider, "name" | "contexts">,
+): AgentContext[] {
 	const declared = normalizeContexts(provider.contexts);
 	if (declared.length > 0) {
 		return declared;
 	}
 
-	return (
-		PROVIDER_CONTEXT_MAP[provider.name] ??
-		PROVIDER_CONTEXT_MAP[provider.name.toLowerCase()] ??
-		PROVIDER_CONTEXT_MAP[provider.name.toUpperCase()] ?? ["general"]
-	);
+	return lookupProviderCatalogContexts(provider.name) ?? ["general"];
 }

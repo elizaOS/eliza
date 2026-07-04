@@ -631,10 +631,24 @@ export interface Provider {
 	 * Domain contexts this provider belongs to.
 	 * The context-routing classifier uses these to decide which providers to
 	 * include in the planner's state composition for a given turn.
+	 *
+	 * When neither `contexts` nor a `contextGate` with context terms is
+	 * declared, registration materializes this field from the provider-context
+	 * catalog (`utils/context-catalog.ts`), defaulting to `["general"]` —
+	 * present on ordinary chat turns, absent from narrow planner/tool turns.
+	 * Declare contexts or a gate to route the provider, or opt into
+	 * `alwaysInResponseState` for an always-on signal.
 	 */
 	contexts?: AgentContext[];
 
-	/** Declarative context gate for v5 provider selection. */
+	/**
+	 * Declarative context gate for v5 provider selection. All context terms
+	 * (contexts/anyOf/allOf/noneOf) are honored; a gate-only declaration also
+	 * materializes `contexts` from the gate's anyOf surface at registration.
+	 * A contextGate adds context requirements on top of the provider's
+	 * top-level `roleGate`; it does not waive it unless it declares its own
+	 * (#12087 Item 14).
+	 */
 	contextGate?: ContextGate;
 
 	/** Whether this provider's prompt contribution is stable enough to cache. */
@@ -658,6 +672,12 @@ export interface Provider {
 	 * FACTS / CURRENT_TIME signals). Lets a plugin opt a dynamic provider into
 	 * always-on Stage-1 rendering without core having to name it — keeping the
 	 * core → plugin dependency direction inward-only.
+	 *
+	 * This is the explicit opt-in for FACTS/CURRENT_TIME-class always-on
+	 * signals; it bypasses context routing entirely, so keep the provider's
+	 * happy-path render empty/cheap (e.g. RECENT_ERRORS renders nothing when
+	 * healthy). Providers whose relevance is turn-scoped should declare
+	 * `contexts`/`contextGate` instead.
 	 */
 	alwaysInResponseState?: boolean;
 
