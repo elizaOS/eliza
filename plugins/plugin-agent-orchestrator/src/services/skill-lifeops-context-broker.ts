@@ -578,6 +578,8 @@ export async function runLifeOpsContextBroker(
       },
     };
   } catch (error) {
+    // error-policy:J1 boundary translation — a delegated-action fault is logged
+    // and returned as a structured success:false broker result.
     const message =
       error instanceof Error
         ? error.message

@@ -73,6 +73,7 @@ export function createActiveSessionForwardHandler(
       if (!acp) return;
       const sessions = await Promise.resolve(acp.listSessions()).catch(
         (err: unknown) => {
+          // error-policy:J4 listSessions unavailable → skip mid-task forward; logged
           runtime.logger?.warn?.(
             { src: SRC, err: err instanceof Error ? err.message : String(err) },
             "active-session forward listSessions failed",
@@ -150,6 +151,7 @@ export function createActiveSessionForwardHandler(
         try {
           await acp.sendPrompt(active.id, payload);
         } catch (err) {
+          // error-policy:J4 sendPrompt failed → requeue for flush-listener retry; user text never dropped
           subAgentInbox.enqueue(active.id, payload);
           runtime.logger?.warn?.(
             {
@@ -177,6 +179,7 @@ export function createActiveSessionForwardHandler(
           // planner pipeline runs on this same MESSAGE_RECEIVED and routes the
           // user's redirect; we do not re-deliver to the dead session.
           subAgentInbox.clear(active.id);
+          // error-policy:J6 best-effort session cancel on interrupt; warn only
           await acp.cancelSession?.(active.id)?.catch?.((err: unknown) =>
             runtime.logger?.warn?.(
               {
@@ -202,6 +205,7 @@ export function createActiveSessionForwardHandler(
         }
       }
     } catch (err) {
+      // error-policy:J1 event-listener boundary; one bad message must not crash the MESSAGE_RECEIVED bus
       runtime.logger?.warn?.(
         { src: SRC, err: err instanceof Error ? err.message : String(err) },
         "active-session forward listener threw",

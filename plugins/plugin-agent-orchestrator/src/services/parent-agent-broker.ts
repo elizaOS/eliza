@@ -1329,6 +1329,7 @@ async function askParentAgent(request: {
   });
 
   await request.runtime.createMemory(memory, "messages").catch((error) => {
+    // error-policy:J7 request memory persistence is auxiliary; handleMessage runs off the in-memory `memory` below regardless, and the warn keeps a failed write observable.
     getLogger(request.runtime)?.warn?.(
       {
         src: LOG_PREFIX,
@@ -1468,6 +1469,7 @@ async function runSpawnSubAgent(request: {
       data: { ...data, parentTaskId, nestingDepth: childDepth },
     };
   } catch (error) {
+    // error-policy:J1 boundary — translates a spawn failure into the structured {success:false} result the child sub-agent reads.
     const message = error instanceof Error ? error.message : String(error);
     log?.error?.(
       {
@@ -1537,6 +1539,7 @@ export async function runParentAgentBroker(
         sessionId: request.sessionId,
       });
     } catch (error) {
+      // error-policy:J1 boundary — translates a Cloud command fault into the structured {success:false} broker result.
       const message =
         error instanceof Error
           ? error.message
@@ -1603,6 +1606,7 @@ export async function runParentAgentBroker(
       },
     };
   } catch (error) {
+    // error-policy:J1 boundary — translates an ask-mode failure into the structured {success:false} broker result.
     const message =
       error instanceof Error
         ? error.message

@@ -396,6 +396,8 @@ function stringifyEventData(data: Record<string, unknown>): string {
   try {
     return truncate(JSON.stringify(data), 1500);
   } catch {
+    // error-policy:J3 arbitrary event data may be non-serializable (circular);
+    // empty means "no minable text from this event", not a masked failure.
     return "";
   }
 }
@@ -690,6 +692,8 @@ export class OrchestratorTaskService extends Service {
         this.subscribeToAcp(acp);
       }
     } catch (error) {
+      // error-policy:J7 background ACP bind; the failure is warned and observable
+      // and must not crash service start.
       this.log(
         "warn",
         "ACP service did not become available; session events will not be recorded",
@@ -738,7 +742,8 @@ export class OrchestratorTaskService extends Service {
       try {
         listener();
       } catch {
-        // ignore
+        // error-policy:J7 change-ping fan-out; a broken SSE subscriber must not
+        // abort the write that emitted the ping or the other subscribers.
       }
     }
   }
@@ -968,6 +973,8 @@ export class OrchestratorTaskService extends Service {
         },
       });
     } catch (err) {
+      // error-policy:J7 best-effort mirror on the task_complete path; debug-logged
+      // and must not break the event-bridge write. The DTO simply omits the diff.
       this.log("debug", "mirror change-set to store failed", {
         sessionId,
         error: err instanceof Error ? err.message : String(err),
@@ -1025,6 +1032,8 @@ export class OrchestratorTaskService extends Service {
       void this.writeEvidenceTrajectory(taskId, sessionId, bundle);
       return buildCompletionEvidenceString(bundle);
     } catch (err) {
+      // error-policy:J7 fire-and-forget on the task_complete path; on failure it
+      // degrades to the bare summary (the prior behavior), never throws.
       this.log("debug", "build completion evidence failed", {
         taskId,
         sessionId,
@@ -1226,6 +1235,8 @@ export class OrchestratorTaskService extends Service {
       });
       this.emitChange(taskId);
     } catch (err) {
+      // error-policy:J7 trajectory write is fire-and-forget; a failed write only
+      // means the artifact never lands, debug-logged, never breaks completion.
       this.log("debug", "persist evidence trajectory failed", {
         taskId,
         sessionId,
@@ -1249,7 +1260,8 @@ export class OrchestratorTaskService extends Service {
       const workdir = str(live?.workdir);
       if (workdir) dir = join(workdir, ".eliza", "trajectories");
     } catch {
-      // best-effort — keep the home-scoped task dir
+      // error-policy:J4 the ACP workdir lookup is optional enrichment; on failure
+      // fall back to the documented home-scoped trajectory dir.
     }
     return join(dir, "completion-evidence.jsonl");
   }
@@ -1270,7 +1282,8 @@ export class OrchestratorTaskService extends Service {
         if (fromLive) return fromLive;
       }
     } catch {
-      // best-effort — fall through to the store-session copy
+      // error-policy:J4 the live ACP read is optional; fall through to the
+      // mirrored store-session change-set copy.
     }
     const stored = doc.sessions.find(
       (session) => session.sessionId === sessionId,
@@ -1948,6 +1961,8 @@ export class OrchestratorTaskService extends Service {
         attempt: attempts,
       });
     } catch (err) {
+      // error-policy:J7 auto-verify is fire-and-forget from the event bridge; a
+      // failure warns and must not break the session-event write path.
       this.log("warn", "auto goal verification failed", {
         taskId,
         sessionId,
@@ -2056,6 +2071,8 @@ export class OrchestratorTaskService extends Service {
       );
       await this.store.updateTask(taskId, { status: "active" });
     } catch (sendErr) {
+      // error-policy:J1 boundary — a failed corrective send becomes a structured
+      // escalation (event + waiting_on_user), never a silent stall.
       // The kept-alive session could not take the follow-up — escalate rather
       // than silently leaving the task stuck in `validating`.
       await this.store.addEvent({
@@ -2191,6 +2208,8 @@ export class OrchestratorTaskService extends Service {
       try {
         await acp.stopSession(verifierSessionId);
       } catch (stopErr) {
+        // error-policy:J6 best-effort teardown of the ephemeral verifier session;
+        // a failed stop is warned and must not mask the verdict.
         this.log("warn", "failed to stop independent verifier session", {
           sessionId: verifierSessionId,
           error: stopErr instanceof Error ? stopErr.message : String(stopErr),
@@ -2267,6 +2286,8 @@ export class OrchestratorTaskService extends Service {
           await acp.sendToSession(session.sessionId, followUp);
           forwardedTo.push(session.sessionId);
         } catch (err) {
+          // error-policy:J1 per-session relay failure is collected into the
+          // structured failedTo result and the session marked send_failed.
           const error = err instanceof Error ? err.message : String(err);
           failedTo.push({ sessionId: session.sessionId, error });
           await this.store.updateSession(session.sessionId, {
@@ -2289,6 +2310,8 @@ export class OrchestratorTaskService extends Service {
         });
         forwardedTo.push("auto-spawned");
       } catch (err) {
+        // error-policy:J1 auto-spawn failure is reported through the structured
+        // failedTo result, not swallowed.
         const error = err instanceof Error ? err.message : String(err);
         failedTo.push({ sessionId: "(auto-spawn)", error });
         this.log("warn", "auto-spawn on user message failed", { error });
@@ -2671,6 +2694,8 @@ export class OrchestratorTaskService extends Service {
         });
         await writeFile(join(workdir, "SKILLS.md"), manifest.markdown, "utf8");
       } catch (err) {
+        // error-policy:J7 SKILLS.md scaffolding is best-effort; a failed write is
+        // warned and the spawn proceeds without it.
         this.runtime.logger?.warn?.(
           { src: "orchestrator-task-service", taskId, workdir },
           `failed to write SKILLS.md: ${err instanceof Error ? err.message : String(err)}`,
@@ -2774,6 +2799,9 @@ export class OrchestratorTaskService extends Service {
       await this.advanceTaskStatus(taskId, "active");
       return this.getTask(taskId);
     } catch (err) {
+      // error-policy:J4 the ACP spawn already succeeded (session is live); a
+      // failed durable write degrades to a truthful live-session detail below,
+      // never a false 500/404.
       this.log("warn", "spawn succeeded but recording the session failed", {
         taskId,
         sessionId: result.sessionId,
@@ -2916,6 +2944,8 @@ export class OrchestratorTaskService extends Service {
     try {
       await acp.sendToSession(sessionId, followUp);
     } catch (err) {
+      // error-policy:J2 mark the session send_failed for observability, then
+      // rethrow the original failure so the caller sees it.
       await this.store.updateSession(sessionId, { status: "send_failed" });
       throw err;
     }
@@ -2936,6 +2966,8 @@ export class OrchestratorTaskService extends Service {
     try {
       await acp.stopSession(sessionId);
     } catch (err) {
+      // error-policy:J2 mark the session stop_failed for observability, then
+      // rethrow the original failure so the caller sees it.
       await this.store.updateSession(sessionId, {
         status: "stop_failed",
       });
@@ -3177,6 +3209,8 @@ export class OrchestratorTaskService extends Service {
         try {
           await acp.stopSession(session.sessionId);
         } catch (err) {
+          // error-policy:J1 collect per-session stop failures; the loop throws a
+          // structured RecoveryConflictError afterward when any session failed.
           const error = err instanceof Error ? err.message : String(err);
           failures.push({ sessionId: session.sessionId, error });
           await this.store.updateSession(session.sessionId, {

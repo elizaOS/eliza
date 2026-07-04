@@ -105,6 +105,8 @@ export function deriveBuiltApp(
     try {
       parsed = new URL(url);
     } catch {
+      // error-policy:J3 untrusted URL string — an unparseable candidate is
+      // skipped, exactly the "not this URL" signal the scan wants.
       continue;
     }
     if (parsed.protocol !== "http:" && parsed.protocol !== "https:") continue;
@@ -224,6 +226,8 @@ export async function registerBuiltAppsForCompletion(
     });
     return record;
   } catch (err) {
+    // error-policy:J7 the built-app registry is a side-record on the completion
+    // path; a failure warns and must not break completion delivery to the user.
     log?.("warn", "built-app registration failed", {
       sessionId: session.id,
       error: err instanceof Error ? err.message : String(err),

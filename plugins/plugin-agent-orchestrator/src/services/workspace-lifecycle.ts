@@ -39,6 +39,7 @@ export async function removeScratchDir(
     await fs.promises.rm(resolved, { recursive: true, force: true });
     log(`Removed scratch dir ${resolved}`);
   } catch (err) {
+    // error-policy:J6 best-effort scratch-dir teardown; rm failure is logged and non-fatal
     log(
       `[CodingWorkspaceService] Failed to remove scratch dir ${resolved}: ${err}`,
     );
@@ -61,6 +62,7 @@ export async function gcOrphanedWorkspaces(
   try {
     entries = await fs.promises.readdir(baseDir, { withFileTypes: true });
   } catch {
+    // error-policy:J4 base dir absent (readdir failed) → nothing to GC; designed no-op
     // Base dir doesn't exist yet — nothing to clean
     return;
   }
@@ -89,6 +91,7 @@ export async function gcOrphanedWorkspaces(
         skipped++;
       }
     } catch (err) {
+      // error-policy:J6 best-effort GC cleanup; per-entry stat/rm failure is logged and skipped so the loop continues
       // Stat or remove failed — skip
       log(`GC: skipping ${entry.name}: ${err}`);
       skipped++;

@@ -446,6 +446,8 @@ async function ensureDistinctTaskRoom(
     } as Room);
     return roomId;
   } catch (error) {
+    // error-policy:J4 task-room mint failed → documented single-room (origin)
+    // fallback (same as the opt-out env); warned, so the degrade is observable.
     coreLogger.warn(
       `[TASKS] distinct task room creation failed, using origin room: ${
         error instanceof Error ? error.message : String(error)
@@ -602,6 +604,7 @@ async function runPromptViaSmithers(
       durationMs: Date.now() - startedAt,
     });
   } catch (error) {
+    // error-policy:J2 emit an observable 'error' session event, then rethrow.
     emitSessionEvent(service, session.sessionId, "error", {
       message: failureMessage(error),
     });
@@ -642,6 +645,7 @@ async function runPromptAndClose(
       stopReason: result.stopReason,
     });
   } catch (error) {
+    // error-policy:J2 emit an observable 'error' session event, then rethrow.
     emitSessionEvent(service, session.sessionId, "error", {
       message: failureMessage(error),
     });
@@ -921,6 +925,8 @@ async function runCreate(
       threadId = detail?.id ?? null;
     }
   } catch (error) {
+    // error-policy:J4 durable-thread mint failed → omit the task widget (threadId
+    // null); the spawned agents already succeeded, and the failure is warned.
     logger(runtime).warn(
       `[TASKS:create] durable task thread creation failed: ${
         error instanceof Error ? error.message : String(error)
@@ -963,6 +969,8 @@ async function runCreate(
           ...(model ? { model } : {}),
         });
       } catch (error) {
+        // error-policy:J7 per-session attach is best-effort widget bookkeeping;
+        // warned, never demotes the already-succeeded spawn.
         logger(runtime).warn(
           `[TASKS:create] attachSession failed for ${session.sessionId} on task ${threadId}: ${
             error instanceof Error ? error.message : String(error)
@@ -1312,6 +1320,8 @@ async function runSpawnAgent(
       },
     };
   } catch (error) {
+    // error-policy:J1 spawn action boundary → user-facing error message + a
+    // structured failure result.
     const messageTextValue = failureMessage(error);
     const code = isAuthError(error) ? "INVALID_CREDENTIALS" : messageTextValue;
     await callbackText(
@@ -1397,6 +1407,7 @@ async function runSend(
     );
     return errorResult("NO_INPUT");
   } catch (error) {
+    // error-policy:J1 send action boundary → user-facing error + structured failure.
     const msg = failureMessage(error);
     await callbackText(callback, `Failed to send to agent: ${msg}`);
     return { success: false, error: msg };
@@ -1514,6 +1525,7 @@ async function runStopAgent(
       data: { sessionId: target.id, agentType: String(target.agentType) },
     };
   } catch (error) {
+    // error-policy:J1 stop action boundary → user-facing error + structured failure.
     const msg = failureMessage(error);
     await callbackText(callback, `Failed to stop agent: ${msg}`);
     return { success: false, error: msg };
@@ -1665,6 +1677,7 @@ async function runCancel(
       },
     };
   } catch (error) {
+    // error-policy:J1 cancel action boundary → user-facing error + structured failure.
     const msg = failureMessage(error);
     await callbackText(callback, `Failed to cancel task: ${msg}`);
     return { success: false, error: msg };
@@ -2038,6 +2051,7 @@ async function runHistory(
         },
       };
     } catch (error) {
+      // error-policy:J1 history action boundary → user-facing error + structured failure.
       const msg = failureMessage(error);
       if (callback)
         await callback({ text: `Failed to read task history: ${msg}` });
@@ -2204,6 +2218,8 @@ async function runControl(
       try {
         resumedTask = await taskService.resumeTask(controlTaskId);
       } catch (err) {
+        // error-policy:J1 control action boundary → warns + user-facing error +
+        // structured failure result.
         const errMsg = err instanceof Error ? err.message : String(err);
         coreLogger.warn(`[TASKS:control] resume failed: ${errMsg}`);
         const out = `Failed to resume coding task ${controlTaskId}: ${errMsg}`;
@@ -2475,6 +2491,7 @@ async function runProvisionWorkspace(
       },
     };
   } catch (error) {
+    // error-policy:J1 provision action boundary → user-facing error + structured failure.
     const errorMessage = error instanceof Error ? error.message : String(error);
     if (callback)
       await callback({
@@ -2630,6 +2647,7 @@ async function runSubmitWorkspace(
       },
     };
   } catch (error) {
+    // error-policy:J1 submit action boundary → user-facing error + structured failure.
     const errorMessage = error instanceof Error ? error.message : String(error);
     if (callback)
       await callback({ text: `Failed to finalize workspace: ${errorMessage}` });
@@ -2905,6 +2923,7 @@ async function handleIssueAction(
         return { success: false, error: "UNKNOWN_OPERATION" };
     }
   } catch (error) {
+    // error-policy:J1 issue-operation boundary → user-facing error + structured failure.
     const errorMessage = error instanceof Error ? error.message : String(error);
     if (callback)
       await callback({ text: `Issue operation failed: ${errorMessage}` });
@@ -3063,6 +3082,8 @@ async function runTaskLifecycleControl(
       data: { actionName, taskId, task: result },
     };
   } catch (err) {
+    // error-policy:J1 lifecycle action boundary → warns + user-facing error +
+    // structured failure result.
     const errMsg = err instanceof Error ? err.message : String(err);
     coreLogger.warn(`[${actionName}] failed: ${errMsg}`);
     const out = `Failed to ${op} coding task ${taskId}: ${errMsg}`;

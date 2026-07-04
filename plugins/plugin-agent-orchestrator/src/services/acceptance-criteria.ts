@@ -256,6 +256,7 @@ export async function generateDefaultAcceptanceCriteria(
     const refined = normalizeCriteria(candidates, fallback);
     return refined.length >= MIN_CRITERIA ? refined : fallback;
   } catch {
+    // error-policy:J4 optional model refinement of an external dep; any failure degrades to the designed deterministic static template
     // Defensive: criteria generation must never break task creation.
     return fallback;
   }

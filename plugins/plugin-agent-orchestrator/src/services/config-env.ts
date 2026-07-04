@@ -27,6 +27,8 @@ function readConfig(): Record<string, unknown> | undefined {
     const raw = readFileSync(configPath, "utf-8");
     return JSON.parse(raw);
   } catch {
+    // error-policy:J3 optional config file absent (ENOENT) or unparseable → undefined
+    // "not configured"; callers fall back to process.env, never a fake-valid default.
     return undefined;
   }
 }

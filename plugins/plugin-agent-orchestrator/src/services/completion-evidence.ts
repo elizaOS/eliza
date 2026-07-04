@@ -143,6 +143,7 @@ function isLoopbackUrl(value: string): boolean {
     const host = new URL(value).hostname.toLowerCase();
     return host === "localhost" || host === "127.0.0.1" || host === "::1";
   } catch {
+    // error-policy:J3 unparseable URL string is an explicit not-loopback result
     return false;
   }
 }

@@ -342,6 +342,7 @@ export function addSessionSpendUsd(
   sessionSpendUsd.set(sessionId, next);
   if (safe > 0 && ledgerBackend) {
     void ledgerBackend.save(sessionId, next).catch((err) => {
+      // error-policy:J4 persist best-effort; cap still enforced from in-memory total; logged
       logger.warn(
         { src: "spend-allowance", sessionId, err: errorMessage(err) },
         "[spend-allowance] failed to persist session spend",

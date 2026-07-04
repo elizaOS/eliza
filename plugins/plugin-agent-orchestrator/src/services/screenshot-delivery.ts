@@ -72,6 +72,7 @@ function getFileSize(path: string): number | undefined {
   try {
     return statSync(path).size;
   } catch {
+    // error-policy:J3 unreadable/absent path → undefined size → selector skips it rather than dispatching a doomed send
     return undefined;
   }
 }
@@ -159,6 +160,7 @@ export async function deliverScreenshots(
     });
     return attachments.length;
   } catch (error) {
+    // error-policy:J4 screenshot delivery is a best-effort side channel; a connector send failure is warned and degrades to 0 delivered so it never breaks the completion flow
     logger.warn(
       `[screenshot-delivery] failed to deliver ${attachments.length} screenshot(s): ${
         error instanceof Error ? error.message : String(error)

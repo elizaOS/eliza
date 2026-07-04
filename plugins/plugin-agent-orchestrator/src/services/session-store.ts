@@ -578,6 +578,7 @@ export class FileSessionStore extends InMemorySessionStore {
           );
         }
       } catch (error) {
+        // error-policy:J3 store-file read/JSON.parse fallback: absent (ENOENT) starts empty on first run; a non-ENOENT unreadable/corrupt file is warned before starting empty
         const code =
           isRecord(error) && typeof error.code === "string"
             ? error.code
@@ -638,6 +639,7 @@ export class FileSessionStore extends InMemorySessionStore {
         this.lockFile,
       );
     } catch (error) {
+      // error-policy:J3 stat probe of the lock file: a missing lock (ENOENT) is a benign no-op, every other error rethrows
       const code =
         isRecord(error) && typeof error.code === "string"
           ? error.code

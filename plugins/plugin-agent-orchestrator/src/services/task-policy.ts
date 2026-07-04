@@ -97,6 +97,7 @@ function parseTaskAgentPolicy(runtime: IAgentRuntime): TaskAgentPolicyConfig {
     try {
       parsed = JSON.parse(configured);
     } catch {
+      // error-policy:J3 malformed operator policy JSON → conservative built-in default (fails closed, same as an absent setting)
       return DEFAULT_POLICY;
     }
   }
@@ -202,6 +203,7 @@ async function resolveSenderRole(
           return await localRolesModule.checkSenderRole(runtime, message);
         }
       } catch {
+        // error-policy:J4 optional local roles module unresolvable here → fall through to the installed @elizaos/core import below
         // fall through to the installed package import below
       }
     }
@@ -218,6 +220,7 @@ async function resolveSenderRole(
       return await rolesModule.checkSenderRole(runtime, message);
     }
   } catch {
+    // error-policy:J4 roles package unavailable (standalone tests) → null role → caller denies any non-GUEST requirement (fails closed)
     // Package not available in standalone tests.
   }
   return null;

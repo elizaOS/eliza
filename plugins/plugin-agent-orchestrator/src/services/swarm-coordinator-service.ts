@@ -354,6 +354,7 @@ export class SwarmCoordinatorService
       try {
         unsub();
       } catch (err) {
+        // error-policy:J6 teardown — an unsubscribe fault during stop() is warned and must not block the rest of stop() cleanup.
         logger.warn(
           `[SwarmCoordinator] AcpService unsubscribe threw during stop(): ${
             err instanceof Error ? err.message : String(err)
@@ -468,6 +469,7 @@ export class SwarmCoordinatorService
       const origin = await taskService.getTaskOriginTarget(threadId);
       return origin ? { roomId: origin.roomId } : null;
     } catch {
+      // error-policy:J4 degrade — null is this reader's designed "no origin" signal; the connector-route caller falls back to its own per-task room.
       return null;
     }
   }
@@ -836,6 +838,7 @@ export class SwarmCoordinatorService
     try {
       sessionMeta = await this.getEnrichmentMetadata(sessionId);
     } catch {
+      // error-policy:J4 fail-open degrade — empty metadata reads as "not router-owned / not handed-off", so a terminal still synthesizes rather than silencing a genuine stop.
       sessionMeta = { metadata: {} };
     }
     const meta = sessionMeta.metadata;
@@ -1097,6 +1100,7 @@ export class SwarmCoordinatorService
       try {
         listener(swarmEvent);
       } catch (err) {
+        // error-policy:J7 fan-out isolation — one throwing subscriber is warned and must not stop delivery to the remaining listeners.
         logger.warn(
           `[SwarmCoordinator] subscriber threw: ${
             err instanceof Error ? err.message : String(err)
@@ -1110,6 +1114,7 @@ export class SwarmCoordinatorService
       try {
         this.wsBroadcast(swarmEvent);
       } catch (err) {
+        // error-policy:J7 fan-out isolation — a ws-broadcast fault is warned and must not stop in-process subscriber delivery of the same event.
         logger.warn(
           `[SwarmCoordinator] wsBroadcast threw: ${
             err instanceof Error ? err.message : String(err)
@@ -1149,6 +1154,7 @@ export class SwarmCoordinatorService
         return session.metadata;
       }
     } catch {
+      // error-policy:J4 fail-open degrade — an unreadable session yields {}, treated as not-superseded so a genuine stop is never silenced.
       // fall through to empty — fail open (treat unknown as not-superseded)
     }
     return {};
@@ -1214,6 +1220,7 @@ export class SwarmCoordinatorService
         record.agentType = sessionMeta.agentType;
       }
     } catch {
+      // error-policy:J4 additive degrade — on failure the real raw record is returned un-enriched, never a fabricated empty.
       // Best-effort enrichment only; raw data is still useful to consumers.
     }
     return record;
@@ -1304,6 +1311,7 @@ export class SwarmCoordinatorService
         },
       );
     } catch (err) {
+      // error-policy:J1 boundary — translates a validator fault into a structured escalation result (verdict fail) dispatched below.
       logger.warn(
         `[SwarmCoordinator] custom validator failed: ${
           err instanceof Error ? err.message : String(err)
@@ -1390,6 +1398,7 @@ export class SwarmCoordinatorService
         await acp
           .sendPrompt(sessionId, decision.response.trim())
           .catch((err: unknown) => {
+            // error-policy:J7 a failed decision-response send is warned/observable and must not wedge the decision-routing loop.
             logger.warn(
               `[SwarmCoordinator] failed to send decision response: ${
                 err instanceof Error ? err.message : String(err)
@@ -1398,6 +1407,7 @@ export class SwarmCoordinatorService
           });
       }
     } catch (err) {
+      // error-policy:J7 event-handler boundary — a decision-callback fault is warned (in-flight cleared in finally) so the event stream keeps flowing.
       logger.warn(
         `[SwarmCoordinator] agent decision callback failed: ${
           err instanceof Error ? err.message : String(err)

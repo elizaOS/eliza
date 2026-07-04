@@ -166,6 +166,8 @@ export async function runSupervisorTick(
       seen.set(roomId, digest);
       posted.push(roomId);
     } catch (error) {
+      // error-policy:J7 per-room send loop must not die on one delivery failure;
+      // seen is left unset so the next tick retries — warn-observable, self-healing.
       // A delivery failure must not abort the rest of the tick or poison the
       // dedup cache (so the next tick retries this room).
       logger.warn(
@@ -293,6 +295,8 @@ export class TaskSupervisorService extends Service {
         const handled = await sink(target, content);
         if (handled !== false) return handled;
       } catch (error) {
+        // error-policy:J4 one delivery sink unavailable → warn and fail over to
+        // the next sink/fallback; if every path fails the function throws below.
         logger.warn(
           `[TaskSupervisorService] digest sink failed for ${target.source}: ${
             error instanceof Error ? error.message : String(error)
@@ -350,6 +354,9 @@ export class TaskSupervisorService extends Service {
       }
       return result;
     } catch (error) {
+      // error-policy:J7 fire-and-forget background tick — catch keeps the interval
+      // alive and prevents a per-tick unhandled rejection; warn-observable, empty
+      // result is void-consumed by the timer (not read as real "nothing posted").
       logger.warn(
         `[TaskSupervisorService] tick failed: ${
           error instanceof Error ? error.message : String(error)

@@ -74,6 +74,7 @@ async function rotateIfTooLarge(path: string): Promise<void> {
     const st = await stat(path);
     size = st.size;
   } catch {
+    // error-policy:J4 stat failed → file absent → no rotation needed; first append creates it
     return; // file doesn't exist yet — first append creates it
   }
   if (size < AUDIT_LOG_MAX_BYTES) return;
@@ -82,6 +83,7 @@ async function rotateIfTooLarge(path: string): Promise<void> {
     // than two files. Anyone needing deeper history can ship logs elsewhere.
     await rename(path, `${path}.1`);
   } catch {
+    // error-policy:J4 rename/rotation failed → degrade to unrotated append (documented: prefer growth over losing audit entries)
     // best-effort: if rotation fails we still append; growing past the cap
     // is preferable to losing audit entries entirely.
   }

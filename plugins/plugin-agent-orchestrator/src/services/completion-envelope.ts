@@ -136,6 +136,7 @@ export function parseCompletionEnvelope(text: string): CompletionEnvelopeParse {
   try {
     raw = JSON.parse(candidate);
   } catch {
+    // error-policy:J3 untrusted sub-agent output; JSON.parse failure → explicit invalid envelope
     // A fenced json block that doesn't parse IS a (broken) attempt — block it.
     return { present: true, ok: false, errors: ["envelope is not valid JSON"] };
   }

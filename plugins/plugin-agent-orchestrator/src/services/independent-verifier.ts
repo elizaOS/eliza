@@ -137,6 +137,8 @@ export async function runIndependentVerification(
   try {
     completion = await deps.spawnAndAwait(prompt);
   } catch (error) {
+    // error-policy:J1 boundary — a verifier spawn failure becomes an explicit
+    // inconclusive verdict (never a false pass), so the caller keeps validating.
     return {
       passed: false,
       unmet: [],

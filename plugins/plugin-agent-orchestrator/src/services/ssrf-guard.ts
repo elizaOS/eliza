@@ -228,6 +228,7 @@ export async function assertHostAllowed(
   try {
     records = await hostResolver(host);
   } catch (err) {
+    // error-policy:J1 DNS resolution failure on an untrusted host → fail-closed structured SsrfBlockedError (never allow an unresolvable host)
     const reason = err instanceof Error ? err.message : String(err);
     throw new SsrfBlockedError(
       host,
@@ -262,6 +263,7 @@ export async function assertUrlAllowed(
   try {
     parsed = typeof url === "string" ? new URL(url) : url;
   } catch {
+    // error-policy:J3 unparseable untrusted URL → explicit typed SsrfBlockedError (invalid/blocked)
     throw new SsrfBlockedError(String(url), `unparseable URL ${String(url)}`);
   }
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
@@ -419,6 +421,7 @@ export async function safeFetch(
     try {
       next = new URL(location, current);
     } catch {
+      // error-policy:J3 unparseable redirect target → explicit typed SsrfBlockedError (invalid/blocked)
       throw new SsrfBlockedError(
         current,
         `unparseable redirect target ${location}`,

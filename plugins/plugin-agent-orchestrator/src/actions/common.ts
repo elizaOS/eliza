@@ -296,6 +296,7 @@ export async function resolveOriginatingRequestText(
       ),
     ]);
   } catch {
+    // error-policy:J4 optional last-resort room read; failure degrades to the direct message text (a real value, not fabricated)
     return direct;
   }
   const latestUserText = recent
@@ -393,6 +394,7 @@ export async function waitForSpawnSlot(
         (s) => !TERMINAL_SESSION_STATUSES.has(String(s.status)),
       ).length;
     } catch {
+      // error-policy:J4 session-state read failed → fail-open (don't block the spawn); no data fabricated
       // If we can't read session state, don't block the spawn.
       return;
     }

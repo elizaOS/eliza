@@ -157,6 +157,7 @@ function bodyIsOnlyUrls(text: string): boolean {
       try {
         return new URL(line).toString().length > 0;
       } catch {
+        // error-policy:J3 model text probed for URL-only lines; a parse failure means the line is not a URL (explicit invalid), not a fabricated result.
         return false;
       }
     })
@@ -185,6 +186,7 @@ function userFacingVerifiedUrl(urls: readonly string[]): string | undefined {
       try {
         return { url, parsed: new URL(url) };
       } catch {
+        // error-policy:J3 untrusted candidate URL parsed; unparseable entries are dropped as invalid, never treated as valid.
         return undefined;
       }
     })
@@ -215,6 +217,7 @@ function parseUrl(value: string): URL | undefined {
   try {
     return new URL(value);
   } catch {
+    // error-policy:J3 untrusted string probed as a URL; a parse failure returns the explicit "not a URL" signal (undefined).
     return undefined;
   }
 }

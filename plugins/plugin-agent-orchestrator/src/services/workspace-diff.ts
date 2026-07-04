@@ -403,6 +403,7 @@ function captureToolPathOnlyChangeSet(
         }
       }
     } catch {
+      // error-policy:J4 unreadable file → omit from diff preview; still listed in changedFiles
       fileDiff = "";
     }
     if (fileDiff) diff = diff ? `${diff}\n${fileDiff}` : fileDiff;
@@ -442,6 +443,7 @@ export function verifyChangedFilesOnDisk(
             : ("other" as const),
       };
     } catch (err) {
+      // error-policy:J3 stat probe failure → explicit exists:false result with error; surfaced via missingFiles
       return {
         path: rel,
         absolutePath,

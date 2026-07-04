@@ -442,6 +442,8 @@ export class AcpService extends Service {
             "errored",
             "Sub-agent was mid-flight when the runtime restarted. No automatic action taken.",
           )
+          // error-policy:J7 reconcile status-write; warn-logged and retried by
+          // the next health-check tick, so it must not abort the orphan sweep.
           .catch((err) =>
             this.log("warn", "failed to mark orphaned session errored", {
               sessionId: s.id,
@@ -564,6 +566,8 @@ export class AcpService extends Service {
           .updateStatus(s.id, "errored", message)
           .then(() => true)
           .catch((err) => {
+            // error-policy:J7 status-write inside the health-check loop; warn +
+            // return false gates emission and retries next tick — never fabricates.
             this.log("warn", "health-check: failed to mark errored", {
               sessionId: s.id,
               err,
@@ -623,6 +627,8 @@ export class AcpService extends Service {
       const st = await stat(this.acpxSessionStateFile(acpxSessionId));
       return { exists: true, mtimeMs: st.mtimeMs };
     } catch {
+      // error-policy:J3 stat probe — a missing state file is an explicit "absent"
+      // ({exists:false}) the callers branch on, not a masked failure.
       return { exists: false, mtimeMs: 0 };
     }
   }
@@ -776,6 +782,8 @@ export class AcpService extends Service {
           model: opts.model,
         })
           .catch((err: unknown) => {
+            // error-policy:J5 fire-and-forget initial prompt; the underlying
+            // failure is also surfaced by sendPrompt (errored status + error event).
             this.log("error", "initial prompt failed", {
               sessionId: id,
               agentType,
@@ -849,6 +857,8 @@ export class AcpService extends Service {
         model: opts.model,
       })
         .catch((err: unknown) => {
+          // error-policy:J5 fire-and-forget initial prompt; the underlying
+          // failure is also surfaced by sendPrompt (errored status + error event).
           this.log("error", "initial prompt failed", {
             sessionId: id,
             agentType,
@@ -904,6 +914,8 @@ export class AcpService extends Service {
         await this.store.updateStatus(sessionId, "busy");
         return await this.sendNativePrompt(session, text, opts, startedAt);
       } catch (err) {
+        // error-policy:J2 release the synchronous busy-claim on the pre-prompt
+        // error path, then propagate the original error unchanged.
         this.nativePromptSessionIds.delete(sessionId);
         throw err;
       }
@@ -1072,6 +1084,8 @@ export class AcpService extends Service {
 
   async deleteSession(sessionId: string): Promise<void> {
     await this.closeSession(sessionId).catch((err: unknown) => {
+      // error-policy:J6 best-effort close before delete; a teardown failure must
+      // not block removing the session record + satellite maps below.
       this.log("warn", "deleteSession close failed", {
         sessionId,
         error: errorMessage(err),
@@ -1137,6 +1151,8 @@ export class AcpService extends Service {
             ? session.metadata.label
             : undefined,
       });
+      // error-policy:J5 fire-and-forget resume; the real failure is surfaced by
+      // sendPrompt (errored status + error event), this only logs the rejection.
       void this.sendPrompt(session.id, ORPHAN_RESUME_PROMPT).catch(
         (err: unknown) =>
           this.log("warn", "orphan resume sendPrompt failed", {
@@ -1190,6 +1206,8 @@ export class AcpService extends Service {
       if (!stateOk) continue;
       const workdirOk = await stat(session.workdir)
         .then((s) => s.isDirectory())
+        // error-policy:J3 stat probe — a vanished workdir is the explicit "not
+        // resumable" signal (false → continue), not a masked failure.
         .catch(() => false);
       if (workdirOk) return session;
     }
@@ -1277,6 +1295,8 @@ export class AcpService extends Service {
       return;
     }
     await this.closeSession(sessionId).catch((err: unknown) => {
+      // error-policy:J6 best-effort teardown of the initial-task session; a close
+      // failure must not abort the fire-and-forget completion path.
       this.log("warn", "initial task session close failed", {
         sessionId,
         error: errorMessage(err),
@@ -1630,6 +1650,9 @@ export class AcpService extends Service {
       }
       return promptResult;
     } catch (err) {
+      // error-policy:J1 native-transport boundary — translates a prompt failure
+      // into a structured PromptResult (errored store + error event), never a
+      // fake success.
       const message = errorMessage(err);
       if (this.nativeStoppingSessionIds.has(session.id)) {
         await this.store.updateStatus(session.id, "stopped");
@@ -1984,6 +2007,8 @@ export class AcpService extends Service {
     try {
       return JSON.parse(line) as AcpJsonRpcMessage;
     } catch {
+      // error-policy:J3 untrusted subprocess stdout — a malformed NDJSON line is
+      // an explicit invalid (null) result the caller skips.
       this.log("warn", "malformed acpx NDJSON line ignored", {
         sessionId,
         line: line.slice(0, 200),
@@ -2009,6 +2034,8 @@ export class AcpService extends Service {
     ) {
       void this.store
         .update(localSessionId, { acpxSessionId: protocolSessionId })
+        // error-policy:J7 acpxSessionId mirror-write inside the sync event
+        // handler; warn-logged, the emitted event is the primary signal.
         .catch((err) =>
           this.log("warn", "failed to persist acpxSessionId", {
             sessionId: localSessionId,
@@ -2021,6 +2048,8 @@ export class AcpService extends Service {
       try {
         callback(event, sessionId);
       } catch (err) {
+        // error-policy:J7 isolate a throwing subscriber so the remaining ACP
+        // callbacks still run; the failure is warn-logged.
         this.log("warn", "ACP event callback failed", {
           sessionId,
           error: errorMessage(err),
@@ -2077,6 +2106,8 @@ export class AcpService extends Service {
             message: description,
             request: params,
           });
+        // error-policy:J7 status mirror-write; the "blocked"/"login_required"
+        // events already fired above, this only warns if the durable mirror lags.
         void this.store.updateStatus(sessionId, "blocked").catch((err) =>
           this.log("warn", "failed to persist blocked status", {
             sessionId,
@@ -2211,6 +2242,8 @@ export class AcpService extends Service {
           isTerminalStatus
         ) {
           this.emitSessionEvent(sessionId, "tool_running", { toolCall });
+          // error-policy:J7 status mirror-write; the tool_running event already
+          // fired above, this only warns if the durable mirror lags.
           void this.store.updateStatus(sessionId, "tool_running").catch((err) =>
             this.log("warn", "failed to persist tool_running status", {
               sessionId,
@@ -2319,6 +2352,8 @@ export class AcpService extends Service {
       try {
         callback(sessionId, event, data);
       } catch (err) {
+        // error-policy:J7 isolate a throwing subscriber so the remaining session
+        // callbacks still run; the failure is warn-logged.
         this.log("warn", "session event callback failed", {
           sessionId,
           event,
@@ -2645,6 +2680,8 @@ export class AcpService extends Service {
         reason,
       });
     } catch (err) {
+      // error-policy:J6 best-effort lease release on an already-terminal session;
+      // a broker error is warn-logged, never thrown.
       this.log("warn", "model-gateway lease revoke failed", {
         sessionId,
         leaseId: lease.leaseId,
@@ -3278,6 +3315,8 @@ function parseJsonRecord(text: string): Record<string, unknown> | undefined {
   try {
     return asRecord(JSON.parse(text));
   } catch {
+    // error-policy:J3 untrusted text — a parse failure is an explicit "not a
+    // record" (undefined) result the caller branches on.
     return undefined;
   }
 }
@@ -3405,6 +3444,8 @@ function isPidAlive(pid: number): boolean {
     process.kill(pid, 0);
     return true;
   } catch {
+    // error-policy:J3 liveness probe — a throw means the pid is gone (explicit
+    // false), not a masked failure.
     return false;
   }
 }
@@ -3422,6 +3463,8 @@ function killProcessTree(
       process.kill(-proc.pid, signal);
       return;
     } catch {
+      // error-policy:J6 best-effort process-group kill; fall through to a direct
+      // signal on the lead process.
       // Group may already be gone, or the platform doesn't support it
       // (Windows). Fall through to a direct signal on the lead process.
     }
@@ -3431,6 +3474,8 @@ function killProcessTree(
   try {
     proc.kill(signal);
   } catch {
+    // error-policy:J6 best-effort termination; nothing left to do if the lead
+    // process is already gone.
     // Best-effort termination only.
   }
 }
@@ -3471,6 +3516,8 @@ export async function scanAndUnlinkOlderThanDetailed(
   try {
     entries = await readdir(dir);
   } catch {
+    // error-policy:J3 an absent GC directory is the expected shape → explicit
+    // zero-work result (documented contract), not a masked read failure.
     return { deleted: 0, lingering: 0 };
   }
   const matching = entries.filter(predicate);
@@ -3490,6 +3537,8 @@ export async function scanAndUnlinkOlderThanDetailed(
           lingering++;
         }
       } catch {
+        // error-policy:J6 best-effort per-file GC; a vanished/locked file is
+        // skipped so the sweep continues.
         // best-effort
       }
     }),

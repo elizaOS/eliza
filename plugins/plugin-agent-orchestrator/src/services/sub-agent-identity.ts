@@ -162,7 +162,8 @@ export async function writeWorkspaceIdentity(workdir: string): Promise<void> {
       `[sub-agent-identity] scaffolded operating manual into bare workspace ${workdir}`,
     );
   } catch (err) {
-    // Best-effort: a missing manual degrades context but must not abort a spawn.
+    // error-policy:J7 identity scaffold is best-effort; a failure warns and must
+    // not abort the spawn — a missing manual only degrades context.
     logger.warn(
       { error: err },
       `[sub-agent-identity] could not scaffold identity into ${workdir}`,

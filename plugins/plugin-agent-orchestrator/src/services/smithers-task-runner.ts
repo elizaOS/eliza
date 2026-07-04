@@ -105,6 +105,8 @@ async function resolvePluginRoot(): Promise<string> {
       };
       if (manifest.name === "@elizaos/plugin-agent-orchestrator") return dir;
     } catch {
+      // error-policy:J3 a missing/unreadable package.json at this level is the
+      // expected "not the root here" probe result → keep walking up.
       // keep walking up to the plugin root
     }
     const parent = dirname(dir);
@@ -293,6 +295,7 @@ export async function runTaskWithSmithers(
     try {
       proc.kill("SIGKILL");
     } catch {
+      // error-policy:J6 best-effort abort kill; the subprocess is already gone.
       // already gone
     }
   };
@@ -376,6 +379,8 @@ export async function runTaskWithSmithers(
           record(request.kind, request.ctx, output);
           writeResponse({ requestId: request.requestId, ok: true, output });
         })
+        // error-policy:J1 boundary — translates an executor step failure into a
+        // structured StepResponse (ok:false) the subprocess step rejects on.
         .catch((error: unknown) =>
           writeResponse({
             requestId: request.requestId,
@@ -397,6 +402,8 @@ export async function runTaskWithSmithers(
     try {
       message = JSON.parse(trimmed) as StepRequest;
     } catch {
+      // error-policy:J3 untrusted subprocess stdout — a non-JSON line is ignored
+      // (Smithers shares stdout with its own logging).
       return;
     }
     if (message.type === "executeStep") dispatchStep(message);

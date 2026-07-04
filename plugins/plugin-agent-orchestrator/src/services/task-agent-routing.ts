@@ -238,6 +238,7 @@ export function resolveWorkdirByConvention(
         .filter((e) => e.isDirectory() && !e.name.startsWith("."))
         .map((e) => e.name);
     } catch {
+      // error-policy:J4 configured workspace root may not exist; unreadable root → skip, degrade to default workdir
       continue;
     }
     for (const name of entries) {
@@ -330,6 +331,7 @@ function parseWorkdirRoutes(raw: string | undefined): WorkdirRoute[] {
         (entry.urlMappings === undefined || Array.isArray(entry.urlMappings)),
     );
   } catch (err) {
+    // error-policy:J3 untrusted config; TASK_AGENT_WORKDIR_ROUTES parse failure → warn + no routes
     logger.warn(
       `[workdir-routes] Failed to parse TASK_AGENT_WORKDIR_ROUTES: ${(err as Error).message}`,
     );

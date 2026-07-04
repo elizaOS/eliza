@@ -55,6 +55,7 @@ export function normalizeRepositoryInput(repo: string): string {
         }
       }
     } catch {
+      // error-policy:J3 untrusted repo input; URL parse failure → pass raw through to downstream assertSafeGitRemote validation
       return withoutTrailingSlash;
     }
     return withoutTrailingSlash;

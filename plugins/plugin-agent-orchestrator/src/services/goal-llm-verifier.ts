@@ -376,6 +376,8 @@ export function parseJudgeResponse(
   try {
     parsed = JSON.parse(jsonSlice);
   } catch {
+    // error-policy:J3 untrusted-input sanitizing — an unparseable model verdict
+    // fails closed (passed:false, all criteria unmet), never a fake-valid pass.
     return {
       passed: false,
       summary: MALFORMED_RESPONSE_SUMMARY,
@@ -448,6 +450,8 @@ export async function verifyGoalCompletion(
     });
     raw = typeof result === "string" ? result : String(result);
   } catch (err) {
+    // error-policy:J1 boundary translation — a failed verifier model call
+    // becomes a structured fail verdict naming the error, never a fake pass.
     const detail = err instanceof Error ? err.message : String(err);
     return {
       passed: false,
@@ -529,6 +533,8 @@ async function recordVerifierBoundary(
     await recorder.recordStage(trajectoryId, stage);
     await recorder.endTrajectory(trajectoryId, "finished");
   } catch (err) {
+    // error-policy:J7 diagnostics-must-not-kill-the-loop — a trajectory-recorder
+    // fault is warned and must never alter or block the verifier verdict.
     runtime.logger?.warn?.(
       { err: err instanceof Error ? err.message : String(err) },
       "[goal-llm-verifier] failed to record verifier trajectory (non-fatal)",

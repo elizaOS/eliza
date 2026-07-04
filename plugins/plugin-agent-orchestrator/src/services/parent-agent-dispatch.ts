@@ -68,6 +68,8 @@ async function deliverReplyToChild(
       await acp.sendToSession(sessionId, reply);
       return true;
     } catch (err) {
+      // error-policy:J1 transport-delivery boundary; a terminal send failure
+      // warns and returns the structured false (delivery failed) below.
       if (isSessionBusyError(err) && Date.now() < deadline) {
         await delay(REPLY_DELIVERY_POLL_MS);
         continue;
@@ -149,7 +151,8 @@ export function extractParentAgentDirective(
             };
           }
         } catch {
-          // Balanced but not valid JSON — drop it (caller trims past the marker).
+          // error-policy:J3 untrusted streamed directive; malformed JSON resolves
+          // to null so the caller drops it (trims past the marker).
         }
         return null;
       }
@@ -190,6 +193,8 @@ export async function dispatchParentAgentDirective(
     ok = result.success;
     reply = result.text;
   } catch (err) {
+    // error-policy:J1 broker boundary; the failure becomes a structured
+    // { ok: false } result plus a child-facing error reply, logged at error.
     reply = `parent-agent bridge error: ${err instanceof Error ? err.message : String(err)}`;
     log?.error?.({ src: DISPATCH_LOG_SRC, sessionId }, reply);
   }

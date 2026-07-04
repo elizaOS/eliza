@@ -365,13 +365,16 @@ function safeGetSetting(
     const fromConfig = readConfigEnvKey(key);
     if (fromConfig?.trim()) return fromConfig.trim();
   } catch {
-    // ignore — fall through to runtime
+    // error-policy:J4 config-file source unavailable degrades to the runtime
+    // setting source below.
   }
   if (!runtime) return undefined;
   try {
     const value = runtime.getSetting(key);
     return typeof value === "string" && value.trim() ? value.trim() : undefined;
   } catch {
+    // error-policy:J4 optional setting lookup; an unavailable store degrades to
+    // undefined (not configured), which callers resolve to a default.
     return undefined;
   }
 }
@@ -696,7 +699,8 @@ async function computeTaskAgentFrameworkState(
         }
       }
     } catch {
-      // Keep status surfaces alive even if preflight fails transiently.
+      // error-policy:J4 ACP preflight probe failed transiently; discovery degrades
+      // to static filesystem/env detection so status surfaces stay alive.
     }
   }
 

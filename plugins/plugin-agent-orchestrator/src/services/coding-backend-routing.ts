@@ -122,6 +122,8 @@ function readCodingRoutingEntry(
     const fromEnv = parseCodingAxis(JSON.parse(rawEnv));
     return fromEnv ? { routing: fromEnv, source: "env" } : undefined;
   } catch (err) {
+    // error-policy:J3 untrusted env JSON; a parse failure warns and resolves to
+    // undefined (no routing), never a fabricated policy.
     logger.warn(
       `[backend-routing] failed to parse ELIZA_BACKEND_ROUTING: ${
         (err as Error).message

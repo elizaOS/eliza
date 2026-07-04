@@ -239,6 +239,7 @@ export async function decideInterruptionWithModel(
     );
     return verdict ?? baseline;
   } catch {
+    // error-policy:J4 model unavailable/unparseable → deterministic regex baseline; never regresses pure path
     return baseline;
   }
 }

@@ -87,6 +87,7 @@ export function detectLandlockAvailability(
       .filter(Boolean);
     return enabled.includes("landlock") ? "available" : "unavailable";
   } catch {
+    // error-policy:J3 LSM probe read failed → explicit "unknown" (never a fabricated available/unavailable).
     return "unknown";
   }
 }

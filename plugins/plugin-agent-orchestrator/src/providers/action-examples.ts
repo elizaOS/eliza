@@ -106,6 +106,7 @@ export const codingAgentExamplesProvider: Provider = {
         text: detailedText,
       };
     } catch (err) {
+      // error-policy:J4 best-effort prompt enrichment; framework/auth state unavailable → prompt proceeds without examples
       logger(runtime).debug?.(
         { error: err },
         "[codingAgentExamplesProvider] failed to build examples",

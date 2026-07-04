@@ -148,6 +148,8 @@ function lookupDefaultBranch(
       // subsequent clone rejects it as the hard gate. See assertSafeGitRemote.
       assertSafeGitRemote(repoUrl);
     } catch {
+      // error-policy:J3 untrusted remote failed validation; treat it as an
+      // unresolved default branch (resolve null) — the clone is the hard gate.
       resolve(null);
       return;
     }
@@ -367,6 +369,8 @@ export class CodingWorkspaceService {
 
     // Run startup GC in background (non-blocking)
     this.gcOrphanedWorkspaces().catch((err) => {
+      // error-policy:J6 background startup GC of orphaned workspaces; warn-only
+      // and must not block initialization.
       logger.warn(
         `[CodingWorkspaceService] Startup GC failed: ${
           err instanceof Error ? err.message : String(err)
@@ -427,6 +431,8 @@ export class CodingWorkspaceService {
       try {
         await this.removeWorkspace(id);
       } catch (err) {
+        // error-policy:J6 best-effort teardown; a workspace that won't clean up is
+        // logged and the remaining ones are still torn down.
         this.log(`Error cleaning up workspace ${id}: ${err}`);
       }
     }
@@ -763,6 +769,8 @@ export class CodingWorkspaceService {
       try {
         callback(event);
       } catch (err) {
+        // error-policy:J7 workspace-event fan-out; a broken subscriber must not
+        // abort dispatch to the others.
         this.log(`Event callback error: ${err}`);
       }
     }
@@ -843,6 +851,8 @@ export class CodingWorkspaceService {
       if (this.scratchDecisionCallback) {
         this.log(`Firing scratch decision prompt for "${label}" at ${dirPath}`);
         this.scratchDecisionCallback(record).catch((err) => {
+          // error-policy:J7 the scratch-decision prompt is fire-and-forget; a
+          // failed send is warned and observable.
           logger.warn(
             `[CodingWorkspaceService] Failed to send scratch decision prompt: ${err}`,
           );
@@ -890,6 +900,8 @@ export class CodingWorkspaceService {
     try {
       await fs.rename(record.path, targetPath);
     } catch (error) {
+      // error-policy:J4 only the expected EXDEV (cross-device) error degrades to a
+      // copy+remove; every other error rethrows (fail-fast).
       const isExdev =
         typeof error === "object" &&
         error !== null &&
@@ -1030,6 +1042,8 @@ export class CodingWorkspaceService {
         if (record?.status !== "pending_decision") return;
         await this.removeScratchDir(record.path);
       } catch (error) {
+        // error-policy:J6 best-effort scheduled scratch-dir cleanup; a failure is
+        // warned and the timer/map bookkeeping still runs in finally.
         logger.warn(
           `[CodingWorkspaceService] scratch cleanup failed for ${sessionId}: ${String(error)}`,
         );
@@ -1067,6 +1081,8 @@ export class CodingWorkspaceService {
       try {
         await fs.access(candidate);
       } catch {
+        // error-policy:J3 fs.access throwing (ENOENT) is the existence probe's
+        // "free slot" answer — return this candidate path.
         return candidate;
       }
     }

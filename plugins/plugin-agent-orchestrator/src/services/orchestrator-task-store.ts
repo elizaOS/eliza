@@ -599,6 +599,8 @@ export class FileTaskStore extends InMemoryTaskStore {
           this.hydrate([]);
         }
       } catch (error) {
+        // error-policy:J3 persisted-store load: ENOENT = no file yet, any other
+        // read/parse error warns and starts empty (observable recovery).
         const code =
           isRecord(error) && typeof error.code === "string" ? error.code : "";
         if (code !== "ENOENT") {
@@ -707,6 +709,8 @@ export class FileTaskStore extends InMemoryTaskStore {
           }
         }
       } catch (error) {
+        // error-policy:J3 persisted-merge read: ENOENT skipped, corrupt/unreadable
+        // file warns and re-seeds the merge from in-memory state (observable).
         const code =
           isRecord(error) && typeof error.code === "string" ? error.code : "";
         if (code !== "ENOENT") {
@@ -755,6 +759,8 @@ export class FileTaskStore extends InMemoryTaskStore {
         await pending.writeFile(`${process.pid}\n${Date.now()}\n`, "utf8");
         handle = pending;
       } catch (error) {
+        // error-policy:J3 lock-acquire: EEXIST (lock held) is retried until the
+        // deadline; every other error is rethrown below (fail-fast).
         if (pending) {
           // error-policy:J6 best-effort teardown — unwind a partial lock
           // acquire; the original acquire error below is authoritative and is
@@ -783,6 +789,8 @@ export class FileTaskStore extends InMemoryTaskStore {
       if (Date.now() - info.mtimeMs < FILE_LOCK_STALE_MS) return;
       await rm(this.lockFile, { force: true });
     } catch (error) {
+      // error-policy:J3 stale-lock stat: ENOENT = lock already gone (fine); any
+      // other stat error is rethrown (fail-fast).
       const code =
         isRecord(error) && typeof error.code === "string" ? error.code : "";
       if (code !== "ENOENT") throw error;

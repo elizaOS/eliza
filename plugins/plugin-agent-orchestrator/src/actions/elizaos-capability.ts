@@ -213,6 +213,8 @@ export const elizaOsCapabilityAction: Action = {
         },
       };
     } catch (error) {
+      // error-policy:J1 boundary — a broker exec failure becomes a structured
+      // action failure ({success:false}) surfaced to the user, not swallowed.
       const text = failureText(error);
       await emit(callback, text);
       return { success: false, error: text, text };

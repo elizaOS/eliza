@@ -372,6 +372,7 @@ function comparableUrlTarget(url: string): string | undefined {
     const pathname = parsed.pathname.replace(/\/+$/, "") || "/";
     return `${pathname}${parsed.search}${parsed.hash}`;
   } catch {
+    // error-policy:J3 URL parse of untrusted narration; unparseable → undefined.
     return undefined;
   }
 }
@@ -461,6 +462,7 @@ function appRoutePathPrefix(url: string): string | undefined {
     if (!match) return undefined;
     return match[0].endsWith("/") ? match[0] : `${match[0]}/`;
   } catch {
+    // error-policy:J3 URL parse of untrusted narration; unparseable → undefined.
     return undefined;
   }
 }
@@ -696,6 +698,8 @@ export class SubAgentRouter extends Service {
         this.acp = acp;
         this.unsubscribe = acp.onSessionEvent((sid, event, data) => {
           this.handleEvent(sid, event, data).catch((err) => {
+            // error-policy:J1 outermost handler for the ACP session-event stream
+            // (a transport boundary); logs the event failure at error level.
             this.log("error", "router event failed", {
               sessionId: sid,
               event,
@@ -1020,6 +1024,7 @@ export class SubAgentRouter extends Service {
         count: nextCount,
         cap: this.loopState.roundTripCap,
       });
+      // error-policy:J6 best-effort teardown; force-stop failure is warned.
       await acp.stopSession(sessionId).catch((err) =>
         this.log("warn", "force-stop after cap failed", {
           sessionId,
@@ -1056,6 +1061,8 @@ export class SubAgentRouter extends Service {
         },
       })
       .catch((err) => {
+        // error-policy:J7 background event-routing: createEntity failure is warned;
+        // the downstream memory insert self-guards, so it must not abort handleEvent.
         this.log("warn", "createEntity for sub-agent failed", {
           sessionId,
           event,
@@ -1097,6 +1104,8 @@ export class SubAgentRouter extends Service {
           });
         }
       } catch (err) {
+        // error-policy:J7 change-set capture is best-effort narration enrichment;
+        // debug-logged, the completion still posts without the diff.
         this.log("debug", "change-set capture failed", {
           sessionId,
           error: err instanceof Error ? err.message : String(err),
@@ -1314,6 +1323,7 @@ export class SubAgentRouter extends Service {
           },
         })
         .catch((err: unknown) => {
+          // error-policy:J7 notification is a best-effort side-channel; debug-logged.
           this.log("debug", "notification emit failed", {
             sessionId,
             error: err instanceof Error ? err.message : String(err),
@@ -1347,6 +1357,8 @@ export class SubAgentRouter extends Service {
         this.runtime
           .addParticipant(subAgentEntityId, target.roomId)
           .catch((err) => {
+            // error-policy:J7 best-effort room participation; warned, one target's
+            // failure must not abort the fan-out.
             this.log("warn", "addParticipant for sub-agent failed", {
               sessionId,
               event,
@@ -1472,6 +1484,8 @@ export class SubAgentRouter extends Service {
         await this.runtime.messageService
           .handleMessage(this.runtime, memory, replyCallback)
           .catch((err) => {
+            // error-policy:J7 per-target delivery: logs the failure at error level
+            // and continues the target loop; the subscription .catch is the boundary.
             this.log("error", "handleMessage for sub-agent post failed", {
               sessionId,
               event,
@@ -1490,6 +1504,8 @@ export class SubAgentRouter extends Service {
           },
         );
         await this.runtime.createMemory(memory, "messages").catch((err) => {
+          // error-policy:J7 fallback createMemory is best-effort in the background
+          // router post; warned, does not abort the loop.
           this.log("warn", "createMemory for sub-agent post failed", {
             sessionId,
             event,
@@ -1549,6 +1565,8 @@ export class SubAgentRouter extends Service {
         },
         threadedResponse,
       ).catch((err) => {
+        // error-policy:J1 reply-delivery boundary; warns and returns an empty
+        // delivered list on failure (honest "0 delivered").
         this.log("warn", "sub-agent reply delivery failed", {
           sessionId,
           source,
@@ -1654,6 +1672,8 @@ export class SubAgentRouter extends Service {
       const rows = bridge.describe()[agentType.toLowerCase()] ?? [];
       return rows.some((row) => row.healthy > 0);
     } catch {
+      // error-policy:J3 account-bridge probe failure → fail-safe "no healthy
+      // account"; declines failover so the task's honest failure reaches the user.
       return false;
     }
   }
@@ -1693,6 +1713,8 @@ export class SubAgentRouter extends Service {
         [HANDED_OFF_SUCCESSOR_META_KEY]: successorSessionId,
       });
     } catch {
+      // error-policy:J6 best-effort handoff marker; a missed stamp only risks the
+      // prior duplicate-post, never a dropped terminal.
       // best-effort — see doc comment
     }
   }
@@ -2497,6 +2519,7 @@ function isBareRouteMappingPrefix(
   try {
     parsed = new URL(url);
   } catch {
+    // error-policy:J3 URL parse of untrusted narration; unparseable → not a match.
     return false;
   }
   const urlPath = parsed.pathname.endsWith("/")
@@ -2507,6 +2530,7 @@ function isBareRouteMappingPrefix(
     try {
       prefix = new URL(mapping.urlPrefix);
     } catch {
+      // error-policy:J3 URL parse of untrusted route prefix; unparseable → no match.
       return false;
     }
     if (parsed.origin !== prefix.origin) return false;
@@ -2528,6 +2552,7 @@ function routeMatchForUrl(
       parsed = new URL(url);
       prefix = new URL(mapping.urlPrefix);
     } catch {
+      // error-policy:J3 URL parse of untrusted narration; unparseable → skip mapping.
       continue;
     }
     if (parsed.origin !== prefix.origin) continue;
@@ -2551,6 +2576,7 @@ function urlForRouteMapping(
       : `${mapping.urlPrefix}/`;
     return new URL(relativePath, prefix).toString();
   } catch {
+    // error-policy:J3 URL construction from untrusted route input; failure → undefined.
     return undefined;
   }
 }
@@ -2942,6 +2968,8 @@ export async function annotateUnverifiedUrls(
       }
       return { status: null, servedLive: true };
     } catch (err) {
+      // error-policy:J3 untrusted-URL liveness probe: SSRF-block/fetch failure →
+      // explicit unreachable status, never a fabricated "live".
       // A blocked non-public host is not a reachable artifact; report it as
       // such (it must never be surfaced to the user as "live").
       const reason =
@@ -3160,6 +3188,7 @@ function mappedLocalTarget(
     parsed = new URL(url);
     prefix = new URL(mapping.urlPrefix);
   } catch {
+    // error-policy:J3 URL parse of untrusted narration; unparseable → undefined.
     return undefined;
   }
   if (parsed.origin !== prefix.origin) return undefined;
@@ -3226,6 +3255,7 @@ async function detectCachedMiss(
   try {
     busted = new URL(url);
   } catch {
+    // error-policy:J3 URL parse of untrusted narration; unparseable → null (no probe).
     return null;
   }
   // Some static hosts/CDNs serve a stale cached 404 without useful cache
@@ -3275,6 +3305,7 @@ export function extractSubResources(html: string, pageUrl: string): string[] {
         refs.add(resolved.toString());
       }
     } catch {
+      // error-policy:J3 URL parse of an untrusted HTML ref; unparseable → skip.
       // unparseable ref — skip
     }
   };

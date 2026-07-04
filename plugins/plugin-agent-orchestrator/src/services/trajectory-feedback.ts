@@ -384,6 +384,9 @@ export async function queryPastExperience(
       .sort((a, b) => b.timestamp - a.timestamp)
       .slice(0, maxEntries);
   } catch (err) {
+    // error-policy:J4 explicit degrade — optional spawn-time experience
+    // enrichment; a trajectory-DB read failure is logged and degrades to no
+    // injected context, the same functional state as no past experience.
     // Non-critical — log and return empty
     elizaLogger.error(
       `[trajectory-feedback] Failed to query past experience: ${err}`,

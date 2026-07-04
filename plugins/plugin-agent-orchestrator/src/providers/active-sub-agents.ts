@@ -32,6 +32,7 @@ function stalledSessionIds(runtime: IAgentRuntime): Set<string> {
   try {
     return new Set(watchdog.getStalledSessionIds());
   } catch {
+    // error-policy:J4 watchdog is optional; an unavailable getter degrades to no stalled set (a supplementary planner signal, not the session list itself)
     return new Set();
   }
 }
@@ -59,6 +60,7 @@ function approachingCapBySession(
       if (!map.has(id) || kind === "round-trip") map.set(id, kind);
     }
   } catch {
+    // error-policy:J4 watchdog is optional; an unavailable getter degrades to no approaching-cap set (a supplementary planner signal, not the session list itself)
     return new Map();
   }
   return map;
@@ -153,6 +155,7 @@ export const activeSubAgentsProvider: Provider = {
             const tail = summarizeOutputTail(raw);
             if (tail) liveByName.set(session.id, tail);
           } catch {
+            // error-policy:J4 live-tail is per-session enrichment; unavailable output degrades to structural status only
             // ignore — fall back to structural status only
           }
         }),

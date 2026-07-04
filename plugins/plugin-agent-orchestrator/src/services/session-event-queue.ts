@@ -66,6 +66,8 @@ export class SessionEventQueue {
         try {
           await this.handler(event);
         } catch (err) {
+          // error-policy:J7 per-session FIFO drain must not stall on one bad
+          // event; warn-observable and subsequent events keep flowing.
           logger.warn(
             `[SessionEventQueue] handler error for session ${sessionId}: ${err instanceof Error ? err.message : String(err)}`,
           );

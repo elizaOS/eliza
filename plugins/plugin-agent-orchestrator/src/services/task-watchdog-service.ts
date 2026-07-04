@@ -291,6 +291,7 @@ export class TaskWatchdogService extends Service {
           )}s) — prodding`,
         );
       } catch (error) {
+        // error-policy:J7 watchdog loop must survive a single failed prod; the failure is warned and retried next tick
         // Prod failed; un-mark so the next tick retries.
         this.prodded.delete(s.id);
         logger.warn(
@@ -356,6 +357,7 @@ export class TaskWatchdogService extends Service {
       try {
         await this.postCapWarning(warning, metaById.get(warning.id));
       } catch (error) {
+        // error-policy:J7 watchdog loop must survive a single failed warning delivery; the failure is warned and retried next tick
         // Delivery failed; un-mark so the next tick retries.
         this.warned.delete(key);
         logger.warn(

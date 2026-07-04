@@ -174,6 +174,8 @@ export class NativeAcpClient {
       try {
         this.opts.onStderr?.(text);
       } catch {
+        // error-policy:J7 diagnostics-must-not-kill-the-loop — a consumer
+        // onStderr observer throw must not tear down the agent stderr stream.
         // best-effort observability; swallow
       }
     });
@@ -334,6 +336,8 @@ export class NativeAcpClient {
     try {
       this.opts.onEvent?.(message);
     } catch {
+      // error-policy:J7 diagnostics-must-not-kill-the-loop — onEvent is
+      // best-effort trajectory capture; a consumer throw must not break ACP I/O.
       // best-effort observer; swallow so ACP I/O keeps flowing
     }
   }
@@ -359,6 +363,8 @@ export class NativeAcpClient {
     try {
       message = JSON.parse(line) as AcpJsonRpcMessage;
     } catch {
+      // error-policy:J3 untrusted-input sanitizing — a non-JSON line on the
+      // subprocess stdout stream is dropped rather than crashing the reader.
       return;
     }
     this.emitEvent(message);
@@ -387,6 +393,8 @@ export class NativeAcpClient {
       );
       this.respond(id, result ?? {});
     } catch (err) {
+      // error-policy:J1 boundary translation — a client-request handler fault
+      // is returned to the ACP peer as a structured JSON-RPC error response.
       this.respondError(id, err, jsonRpcCodeForError(err, method));
     }
   }
@@ -661,6 +669,8 @@ export class NativeAcpClient {
     ensureResolvedInsideRoot(root, parent, requested ?? filePath);
     const existing = await lstat(filePath).catch(
       (err: NodeJS.ErrnoException) => {
+        // error-policy:J3 untrusted-input sanitizing — an ENOENT probe miss
+        // means "no existing file" (undefined); any other stat error rethrows.
         if (err.code === "ENOENT") return undefined;
         throw err;
       },
@@ -812,6 +822,8 @@ function compactJson(value: unknown): string | undefined {
       ? `${serialized.slice(0, limit)}…`
       : serialized;
   } catch {
+    // error-policy:J3 untrusted-input sanitizing — an unserializable diagnostic
+    // value (e.g. a circular error.data) yields no compact detail, not a crash.
     return undefined;
   }
 }
@@ -944,7 +956,8 @@ function signalTerminal(
       return;
     }
   } catch {
-    // Fall back to signaling the direct child below.
+    // error-policy:J6 best-effort teardown — process-group kill can ESRCH on an
+    // already-dead child; fall back to signaling the direct child below.
   }
   if (!proc.killed) proc.kill(signal);
 }
