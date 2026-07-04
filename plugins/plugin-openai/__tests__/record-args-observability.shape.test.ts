@@ -188,6 +188,46 @@ describe("#13111 strict-safe record/map tool args", () => {
       },
     ]);
   });
+
+  it("reverse-maps a record property literally named items", () => {
+    const { recordArgTransformsByTool } = normalizeNativeToolsForCall([
+      {
+        name: "save_inventory",
+        parameters: {
+          type: "object",
+          properties: {
+            items: { type: "object", additionalProperties: { type: "string" } },
+          },
+          required: ["items"],
+        },
+      },
+    ]);
+
+    expect(
+      restoreRecordArgToolCalls(
+        [
+          {
+            toolName: "save_inventory",
+            input: {
+              items: {
+                [ENTRIES_KEY]: [{ key: "sku-1", value: "in-stock" }],
+              },
+            },
+          },
+        ],
+        recordArgTransformsByTool
+      )
+    ).toEqual([
+      {
+        toolName: "save_inventory",
+        input: {
+          items: {
+            "sku-1": "in-stock",
+          },
+        },
+      },
+    ]);
+  });
 });
 
 /**

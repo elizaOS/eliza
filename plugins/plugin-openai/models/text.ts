@@ -718,7 +718,10 @@ function restoreRecordArgAtPath(
   }
 
   const [token, ...rest] = tokens;
-  if (token === "items" || /^items\[\d+\]$/.test(token)) {
+  if (token === "items" && Array.isArray(value)) {
+    return value.map((item) => restoreRecordArgAtPath(item, rest, transform));
+  }
+  if (/^items\[\d+\]$/.test(token)) {
     return Array.isArray(value)
       ? value.map((item) => restoreRecordArgAtPath(item, rest, transform))
       : value;
