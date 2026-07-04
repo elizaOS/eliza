@@ -25,6 +25,19 @@ if str(SCRIPTS) not in sys.path:
 train_local = importlib.import_module("train_local")
 
 
+class _FakeParam:
+    def __init__(self, *, requires_grad: bool = True) -> None:
+        self.requires_grad = requires_grad
+
+
+class _FakeModel:
+    def __init__(self, named_params: list[tuple[str, _FakeParam]]) -> None:
+        self._named_params = named_params
+
+    def named_parameters(self):
+        return iter(self._named_params)
+
+
 def _resolve(argv):
     """Drive the same parser + merge pipeline that `train_local.main()` uses.
 
@@ -160,6 +173,42 @@ def test_liger_arch_gate_fails_loud_for_requested_gemma4_unified() -> None:
             requested_mode="on",
             model_type="gemma4_unified",
             architectures=["Gemma4UnifiedForCausalLM"],
+        )
+
+
+def test_apollo_split_preserves_pre_fsdp_lowrank_names() -> None:
+    lowrank, other = train_local._split_named(
+        _FakeModel([
+            ("model.layers.0.mlp.up_proj.weight", _FakeParam()),
+            ("model.layers.0.input_layernorm.weight", _FakeParam()),
+            ("model.layers.0.self_attn.q_proj.weight", _FakeParam(requires_grad=False)),
+        ]),
+        {"model.layers.0.mlp.up_proj.weight"},
+    )
+    assert len(lowrank) == 1
+    assert len(other) == 1
+
+
+def test_apollo_split_strips_fsdp_wrapped_module_prefix() -> None:
+    lowrank, other = train_local._split_named(
+        _FakeModel([
+            ("_fsdp_wrapped_module.model.layers.0.mlp.up_proj.weight", _FakeParam()),
+            ("_fsdp_wrapped_module.model.layers.0.input_layernorm.weight", _FakeParam()),
+        ]),
+        {"model.layers.0.mlp.up_proj.weight"},
+    )
+    assert len(lowrank) == 1
+    assert len(other) == 1
+
+
+def test_apollo_split_fails_when_fsdp_flattens_lowrank_names() -> None:
+    with pytest.raises(RuntimeError, match="APOLLO low-rank routing mismatch"):
+        train_local._split_named(
+            _FakeModel([
+                ("_fsdp_wrapped_module.flat_param", _FakeParam()),
+                ("_fsdp_wrapped_module.model.layers.0.input_layernorm.weight", _FakeParam()),
+            ]),
+            {"model.layers.0.mlp.up_proj.weight"},
         )
 
 

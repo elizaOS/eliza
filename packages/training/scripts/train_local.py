@@ -51,6 +51,7 @@ def _split_named(
     """
     lowrank: list[Any] = []
     other: list[Any] = []
+    matched_lowrank_names: set[str] = set()
     for name, p in model.named_parameters():
         if not p.requires_grad:
             continue
@@ -59,8 +60,20 @@ def _split_named(
         clean = name.replace("_fsdp_wrapped_module.", "")
         if clean in lowrank_names:
             lowrank.append(p)
+            matched_lowrank_names.add(clean)
         else:
             other.append(p)
+    missing_lowrank_names = lowrank_names - matched_lowrank_names
+    if missing_lowrank_names:
+        examples = ", ".join(sorted(missing_lowrank_names)[:5])
+        raise RuntimeError(
+            "APOLLO low-rank routing mismatch after FSDP wrap: "
+            f"matched {len(matched_lowrank_names)}/{len(lowrank_names)} "
+            "pre-FSDP 2-D parameter names. Missing examples: "
+            f"{examples}. This usually means FSDP flattened or renamed "
+            "parameters before optimizer construction; fix FSDP name "
+            "preservation before training."
+        )
     return lowrank, other
 
 logging.basicConfig(
