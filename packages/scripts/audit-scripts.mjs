@@ -78,7 +78,6 @@ const ALLOWED_NAMESPACES = new Set([
   "ai-qa",
   "fix-deps",
   "trajectory",
-  "plugin-submodules",
   "ensure-plugin-test-conventions",
   "smartglasses",
   "capability-router",

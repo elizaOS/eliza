@@ -1,13 +1,11 @@
 #!/usr/bin/env node
 
 /**
- * Agent harness dev (TUI / watch): plugin submodules, install, build plugin dist if missing,
+ * Agent harness dev (TUI / watch): install, build plugin dist if missing,
  * then `packages/agent` in watch mode.
  *
  * Run via: `bun run dev:harness` from the eliza repo root.
  * For the web + API dev stack, use `bun run dev` instead.
- *
- * For registry-only plugins (no submodules), use `bun run plugin-submodules:restore` and commit.
  */
 
 import { execFileSync } from "node:child_process";
@@ -17,18 +15,11 @@ import { join, resolve } from "node:path";
 const ROOT = resolve(import.meta.dirname, "../..");
 const INSTALL_STAMP = join(ROOT, ".eliza", "plugin-dev-needs-install");
 
-const PLUGIN_TYPESCRIPT = [
-  "plugins/plugin-sql",
-  "plugins/plugin-ollama",
-  "plugins/plugin-local-ai",
-];
+const PLUGIN_TYPESCRIPT = ["plugins/plugin-sql", "plugins/plugin-ollama"];
 
 function run(cmd, args, opts = {}) {
   execFileSync(cmd, args, { cwd: ROOT, stdio: "inherit", ...opts });
 }
-
-console.log("[dev] plugin submodules + workspace deps…\n");
-run("bun", ["packages/scripts/plugin-submodules-dev.mjs"]);
 
 const nodeModules = join(ROOT, "node_modules");
 const needsInstall = !existsSync(nodeModules) || existsSync(INSTALL_STAMP);
