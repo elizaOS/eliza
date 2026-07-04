@@ -9,8 +9,8 @@
 
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { build, type Plugin } from "esbuild";
 import tailwind from "@tailwindcss/postcss";
+import { build, type Plugin } from "esbuild";
 import postcss from "postcss";
 
 export interface BundleFixtureOptions {

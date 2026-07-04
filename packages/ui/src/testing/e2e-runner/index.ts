@@ -7,21 +7,6 @@
  */
 
 export {
-  stubElizaCore,
-  stubNodeBuiltins,
-  stubPromptSuggestions,
-} from "./esbuild-stubs.ts";
-export {
-  bundleFixture,
-  type BundleFixtureOptions,
-  buildFixtureHtml,
-  compileTailwindTheme,
-  type CompileTailwindThemeOptions,
-  type FixtureHtmlOptions,
-  writeFixturePage,
-  type WriteFixturePageOptions,
-} from "./fixture-bundle.ts";
-export {
   type AssertGate,
   type BrowserFixtureConfig,
   type BrowserFixtureScenarioContext,
@@ -33,3 +18,18 @@ export {
   type Snapper,
   withChromium,
 } from "./browser-harness.ts";
+export {
+  stubElizaCore,
+  stubNodeBuiltins,
+  stubPromptSuggestions,
+} from "./esbuild-stubs.ts";
+export {
+  type BundleFixtureOptions,
+  buildFixtureHtml,
+  bundleFixture,
+  type CompileTailwindThemeOptions,
+  compileTailwindTheme,
+  type FixtureHtmlOptions,
+  type WriteFixturePageOptions,
+  writeFixturePage,
+} from "./fixture-bundle.ts";
