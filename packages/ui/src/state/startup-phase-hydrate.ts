@@ -50,6 +50,7 @@ import {
   parseProactiveMessageEvent,
   parseStreamEventEnvelopeEvent,
 } from "./internal";
+import { shouldStartAtCharacterSelectOnLaunch } from "./shell-routing";
 import type { StartupEvent } from "./startup-coordinator";
 import { switchRuntimeNonDestructive } from "./switch-runtime";
 
