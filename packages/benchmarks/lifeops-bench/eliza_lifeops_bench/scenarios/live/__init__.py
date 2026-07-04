@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from ...types import Domain, Scenario
 from .calendar import LIVE_CALENDAR_SCENARIOS
+from .comms_flood_triage import LIVE_COMMS_FLOOD_TRIAGE_SCENARIOS
 from .contacts import LIVE_CONTACTS_SCENARIOS
 from .finance import LIVE_FINANCE_SCENARIOS
 from .focus import LIVE_FOCUS_SCENARIOS
@@ -30,6 +31,7 @@ from .traveler_timezone import LIVE_TRAVELER_TIMEZONE_SCENARIOS
 
 ALL_LIVE_SCENARIOS: list[Scenario] = [
     *LIVE_CALENDAR_SCENARIOS,
+    *LIVE_COMMS_FLOOD_TRIAGE_SCENARIOS,
     *LIVE_MAIL_SCENARIOS,
     *LIVE_MESSAGES_SCENARIOS,
     *LIVE_NEUROTYPICAL_CONTROL_SCENARIOS,
@@ -52,6 +54,7 @@ for _scenario in ALL_LIVE_SCENARIOS:
 __all__ = [
     "ALL_LIVE_SCENARIOS",
     "LIVE_CALENDAR_SCENARIOS",
+    "LIVE_COMMS_FLOOD_TRIAGE_SCENARIOS",
     "LIVE_CONTACTS_SCENARIOS",
     "LIVE_FINANCE_SCENARIOS",
     "LIVE_FOCUS_SCENARIOS",

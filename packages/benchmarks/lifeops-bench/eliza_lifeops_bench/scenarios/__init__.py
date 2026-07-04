@@ -17,6 +17,7 @@ from dataclasses import replace
 from ..types import Domain, Scenario
 from ._smoke_scenarios import SMOKE_SCENARIOS
 from .calendar import CALENDAR_SCENARIOS
+from .comms_flood_triage import COMMS_FLOOD_TRIAGE_SCENARIOS
 from .contacts import CONTACTS_SCENARIOS
 from .expanded import EXPANDED_SCENARIOS
 from .finance import FINANCE_SCENARIOS
@@ -55,6 +56,7 @@ if len(EDGE_VARIANTS) != EDGE_EXPANSION_MULTIPLIER:
 CORE_SCENARIOS: list[Scenario] = [
     *SMOKE_SCENARIOS,
     *CALENDAR_SCENARIOS,
+    *COMMS_FLOOD_TRIAGE_SCENARIOS,
     *MAIL_SCENARIOS,
     *MESSAGES_SCENARIOS,
     *NEUROTYPICAL_CONTROL_SCENARIOS,
@@ -168,6 +170,7 @@ __all__ = [
     "ALL_LIVE_SCENARIOS",
     "ALL_SCENARIOS",
     "CALENDAR_SCENARIOS",
+    "COMMS_FLOOD_TRIAGE_SCENARIOS",
     "CONTACTS_SCENARIOS",
     "CORE_SCENARIOS",
     "EDGE_EXPANDED_SCENARIOS",
