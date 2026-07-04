@@ -88,6 +88,7 @@ function isHttpsAuthorizationUrl(url: unknown): url is string {
   try {
     return new URL(url).protocol === "https:";
   } catch {
+    // error-policy:J3 untrusted URL from message content — fail closed
     return false;
   }
 }

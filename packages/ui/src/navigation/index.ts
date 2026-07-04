@@ -230,6 +230,7 @@ export function isAppWindowRoute(
   try {
     return new URLSearchParams(location.search).get("appWindow") === "1";
   } catch {
+    // error-policy:J3 unparseable location.search — treat as the main window
     return false;
   }
 }

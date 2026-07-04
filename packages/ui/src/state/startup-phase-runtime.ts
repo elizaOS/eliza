@@ -242,6 +242,9 @@ export async function runStartingRuntime(
       return;
     }
     try {
+      // error-policy:J4 boot poll — the API is expected to be unreachable
+      // while the backend comes up; the loop's deadline surfaces a visible
+      // startup error (setStartupError) when it never recovers
       const launchProgress = await client.getLaunchProgress().catch(() => null);
       if (launchProgress) {
         const launchStatus = mapLaunchProgressToAgentStatus(launchProgress);
@@ -299,6 +302,7 @@ export async function runStartingRuntime(
         continue;
       }
 
+      // error-policy:J4 boot poll — same deadline-guarded probe as above
       const bootProgress = await client.getBootProgress().catch(() => null);
       if (bootProgress) {
         const bootStatus = mapBootProgressToAgentStatus(bootProgress);

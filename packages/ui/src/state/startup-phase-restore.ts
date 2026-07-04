@@ -129,6 +129,8 @@ async function backfillCloudApiBase(
   client.setBaseUrl(DIRECT_CLOUD_API_BASE);
   try {
     if (active.accessToken) client.setToken(active.accessToken);
+    // error-policy:J4 lookup probe — on failure the restore falls back to the
+    // id-derived api base below rather than blocking session restore
     const res = await client.getCloudCompatAgent(agentId).catch(() => null);
     const data = res?.success ? res.data : null;
     const rawApiBase = data
@@ -414,6 +416,8 @@ async function resolveRestoredStewardToken(): Promise<string | null> {
 
   let timeout: ReturnType<typeof setTimeout> | undefined;
   const refreshed = await Promise.race([
+    // error-policy:J4 refresh failure is handled explicitly below: an expired
+    // token is dropped (restore unauthenticated), a still-valid one is kept
     refreshCloudStewardSession({
       endpoint: resolveRestoreStewardRefreshEndpoint(),
     }).catch(() => null),
@@ -435,7 +439,8 @@ async function resolveRestoredStewardToken(): Promise<string | null> {
         window.dispatchEvent(new CustomEvent("steward-token-sync"));
       }
     } catch {
-      // best-effort — listeners re-read on their next tick regardless
+      // error-policy:J6 best-effort nudge — listeners re-read on their next
+      // tick regardless
     }
     return refreshed.token;
   }

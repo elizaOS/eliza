@@ -169,9 +169,10 @@ export function CalendarUpcomingWidget({
       setConnection(linked ? "connected" : "disconnected");
       return linked;
     } catch {
-      // A probe failure must SETTLE the widget (show the connect affordance),
-      // never leave it on "unknown" → a permanent "Loading…" tile (the reported
-      // stuck-loading bug: listConnectorAccounts failing/timing out on device).
+      // error-policy:J4 a probe failure must SETTLE the widget (show the
+      // connect affordance), never leave it on "unknown" → a permanent
+      // "Loading…" tile (the reported stuck-loading bug:
+      // listConnectorAccounts failing/timing out on device).
       setConnection("disconnected");
       return false;
     }

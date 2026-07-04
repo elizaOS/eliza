@@ -187,6 +187,8 @@ function formatTimestamp(createdAt: number): string {
       day: "numeric",
     });
   } catch {
+    // error-policy:J3 invalid stored timestamp — a date label is decoration;
+    // omit it rather than render "Invalid Date"
     return "";
   }
 }

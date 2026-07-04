@@ -125,6 +125,8 @@ export function tryParse(s: string): unknown {
   try {
     return JSON.parse(s);
   } catch {
+    // error-policy:J3 "is this JSON?" probe over untrusted message text —
+    // null is the explicit "not a spec" signal
     return null;
   }
 }
@@ -160,6 +162,7 @@ export function tryParsePatch(line: string): PatchOp | null {
       return obj as PatchOp;
     return null;
   } catch {
+    // error-policy:J3 untrusted stream line — null means "not a patch op"
     return null;
   }
 }

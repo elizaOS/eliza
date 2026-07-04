@@ -39,7 +39,8 @@ function getChannel(): BroadcastChannel | null {
   try {
     _channel = new BroadcastChannel(CHANNEL_NAME);
   } catch {
-    // Some environments (SSR, restricted workers) throw on construction.
+    // error-policy:J4 some environments (SSR, restricted workers) throw on
+    // construction; the same-window CustomEvent transport still delivers.
     return null;
   }
   return _channel;

@@ -115,6 +115,8 @@ export function parseFormBody(body: string): FormRequestSpec | null {
   try {
     parsed = JSON.parse(body);
   } catch {
+    // error-policy:J3 untrusted model output — null is the explicit
+    // "malformed form" signal (the block renders as plain text)
     return null;
   }
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {

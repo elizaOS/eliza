@@ -78,6 +78,8 @@ export async function isLocalInferenceAsrReady(
     } | null;
     return parsed?.ready === true;
   } catch {
+    // error-policy:J4 readiness probe — "unknown readiness" deliberately reads
+    // as "not ready" (see header) so we never capture untranscribable audio
     return false;
   }
 }

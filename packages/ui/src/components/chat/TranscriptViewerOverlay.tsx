@@ -282,8 +282,9 @@ export function TranscriptViewerOverlay({
       window.setTimeout(() => setCopyStatus("idle"), 1500);
       return true;
     } catch {
-      // Clipboard blocked/missing (e.g. insecure context) — surface the failure
-      // (share/download remain as alternatives) instead of a phantom success.
+      // error-policy:J4 clipboard blocked/missing (e.g. insecure context) —
+      // surface the failure (share/download remain as alternatives) instead of
+      // a phantom success.
       setCopyStatus("failed");
       window.setTimeout(() => setCopyStatus("idle"), 2500);
       return false;

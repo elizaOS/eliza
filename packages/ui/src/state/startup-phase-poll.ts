@@ -710,6 +710,8 @@ export async function runPollingBackend(
           try {
             const [options, config] = await Promise.all([
               client.getFirstRunOptions(),
+              // error-policy:J4 config only pre-fills resume fields; the
+              // required options fetch fails loudly via the loop's deadline
               client.getConfig().catch(() => null),
             ]);
             // The effect may have been torn down (unmount / re-run) while the

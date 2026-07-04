@@ -306,6 +306,8 @@ export function ConversationsSidebar({
           );
           return hasUserTurn ? null : conversation.id;
         } catch {
+          // error-policy:J4 hide-empty-draft probe — on failure the
+          // conversation stays visible (fail open), never wrongly hidden
           return null;
         }
       }),

@@ -127,7 +127,8 @@ function runCleanup(cleanup: RetainedCleanup | undefined): void {
   void Promise.resolve()
     .then(() => cleanup())
     .catch(() => {
-      // Module cleanup is best-effort and must never crash the host shell.
+      // error-policy:J6 module cleanup is best-effort teardown and must never
+      // crash the host shell.
     });
 }
 

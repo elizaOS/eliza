@@ -65,6 +65,8 @@ function parseJsonObject(input: string): Record<string, unknown> | null {
       ? (parsed as Record<string, unknown>)
       : null;
   } catch {
+    // error-policy:J3 "is this structured?" probe — non-JSON message text is
+    // the normal case and speaks as plain text
     return null;
   }
 }
