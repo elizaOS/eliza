@@ -1,3 +1,4 @@
+/** Tests for the FILE `read` handler: line/size caps and read recording, over the real filesystem. */
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import {

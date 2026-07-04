@@ -1,3 +1,9 @@
+/**
+ * WORKTREE umbrella action: dispatches enter/exit git-worktree operations to their
+ * handlers. Entering registers the new root in SandboxService and pushes it onto
+ * the SessionCwdService stack; exiting pops it. Gated to coding contexts with
+ * ADMIN role.
+ */
 import type {
   Action,
   ActionResult,

@@ -1,3 +1,9 @@
+/**
+ * FILE umbrella action: a single agent-facing tool that dispatches to the
+ * read/write/edit/grep/glob/ls handlers by operation name. Reads and writes route
+ * through the local filesystem, or through a `device_filesystem` bridge service
+ * when `target=device` (mobile). Gated to coding contexts with ADMIN role.
+ */
 import type {
   Action,
   ActionResult,

@@ -1,3 +1,8 @@
+/**
+ * Tests for the SHELL action: command execution, timeout clamping, history, and the
+ * CHAT command-rewrite behaviour, driven against a real shell and a local HTTP
+ * server in-process.
+ */
 import { execFile } from "node:child_process";
 import * as fs from "node:fs/promises";
 import { createServer } from "node:http";

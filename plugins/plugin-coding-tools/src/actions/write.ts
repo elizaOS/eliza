@@ -1,3 +1,9 @@
+/**
+ * FILE `write` handler: writes full file contents after a SandboxService path
+ * check and a FileStateService writability check (rejects if the file changed
+ * since the last read). Flags secrets in the payload via lib/secrets before
+ * writing. Supports the `device_filesystem` bridge for device targets.
+ */
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 

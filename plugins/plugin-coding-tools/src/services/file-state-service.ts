@@ -1,3 +1,10 @@
+/**
+ * `FileStateService` (serviceType `CODING_TOOLS_FILE_STATE`): tracks the mtime and
+ * size of each file per conversation at read time so write/edit handlers can reject
+ * a write when the file was modified externally since the last read — the
+ * read-before-write invariant that keeps agent edits from clobbering outside
+ * changes.
+ */
 import * as fs from "node:fs/promises";
 import {
   logger as coreLogger,

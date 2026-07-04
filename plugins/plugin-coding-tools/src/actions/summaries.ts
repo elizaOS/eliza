@@ -1,3 +1,8 @@
+/**
+ * Text helpers that turn a completed FILE or SHELL operation into a short
+ * human-readable summary line for action results. Pure string formatting, shared
+ * by the file and bash actions.
+ */
 export function basename(path: string): string {
   return path.split("/").pop() || path;
 }

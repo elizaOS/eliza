@@ -1,3 +1,8 @@
+/**
+ * `CodingTaskExecutor`: maps a coding-related task spec into the agent action that
+ * fulfils it, resolving the delegation action name via the core registry. Consumed
+ * by orchestration plugins that hand coding work to a coding-capable agent.
+ */
 import crypto from "node:crypto";
 import type { Content, IAgentRuntime, Memory, UUID } from "@elizaos/core";
 import { findCodingDelegationActionName, ModelType } from "@elizaos/core";

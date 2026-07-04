@@ -1,3 +1,8 @@
+/**
+ * `RipgrepService` (serviceType `CODING_TOOLS_RIPGREP`): wraps the
+ * `@vscode/ripgrep` binary (falling back to a system `rg` on PATH) for the FILE
+ * `grep` operation. Always excludes VCS directories and enforces a hard 30 s cap.
+ */
 import { execFile } from "node:child_process";
 import { statSync } from "node:fs";
 import * as path from "node:path";

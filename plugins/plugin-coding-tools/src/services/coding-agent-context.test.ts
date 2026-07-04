@@ -1,3 +1,4 @@
+/** Unit tests for the coding-agent-context Zod schemas. */
 import { describe, expect, it } from "vitest";
 import {
   addIteration,

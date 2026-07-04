@@ -1,3 +1,8 @@
+/**
+ * Path predicates and resolution used by the sandbox policy and file handlers:
+ * `isAbsolutePath`, `isWithin`, `resolveRealPath`, `isUncPath`, plus a blocklist of
+ * device and `/proc/<pid>/fd` pseudo-paths that must never be opened.
+ */
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 

@@ -1,3 +1,8 @@
+/**
+ * Integration tests for the assembled `codingToolsPlugin` — service registration,
+ * action wiring, and auto-enable gating — exercised in-process against the real
+ * filesystem.
+ */
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";

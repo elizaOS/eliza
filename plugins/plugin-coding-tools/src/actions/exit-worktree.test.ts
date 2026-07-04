@@ -1,3 +1,4 @@
+/** Tests for the WORKTREE `exit` handler and the SessionCwdService stack pop. */
 import { execFileSync } from "node:child_process";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";

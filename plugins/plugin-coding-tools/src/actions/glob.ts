@@ -1,3 +1,8 @@
+/**
+ * FILE `glob` handler: expands a glob pattern to matching file paths, rooted at an
+ * explicit path or the conversation's SessionCwdService cwd, with SandboxService
+ * validation on the search root.
+ */
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 

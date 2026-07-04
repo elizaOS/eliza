@@ -1,3 +1,4 @@
+/** Unit tests for the path predicates and blocklist resolution. */
 import { describe, expect, it } from "vitest";
 import {
   isAbsolutePath,

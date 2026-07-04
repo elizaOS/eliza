@@ -1,3 +1,9 @@
+/**
+ * `SessionCwdService` (serviceType `CODING_TOOLS_SESSION_CWD`): the per-conversation
+ * working directory, defaulting to `process.cwd()`. Glob/grep/ls/shell use it when
+ * no explicit path is given; the worktree actions push/pop it as a stack when
+ * entering and leaving worktrees.
+ */
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import {

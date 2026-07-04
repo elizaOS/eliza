@@ -1,3 +1,4 @@
+/** Tests for the FILE `grep` handler driving RipgrepService over a real temp workspace. */
 import { existsSync } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";

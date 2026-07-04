@@ -1,3 +1,4 @@
+/** Tests for the FILE `glob` handler over a real temp directory tree. */
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";

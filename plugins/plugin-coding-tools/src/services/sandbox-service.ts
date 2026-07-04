@@ -1,3 +1,10 @@
+/**
+ * `SandboxService` (serviceType `CODING_TOOLS_SANDBOX`): the path-access policy for
+ * every filesystem operation. `validatePath` rejects paths on the blocklist
+ * (defaults cover `~/.ssh`, `~/.aws`, `~/.gnupg`, credential stores, and per-OS
+ * system paths) and, when `CODING_TOOLS_WORKSPACE_ROOTS` is set, any path outside
+ * the allow-roots. No file handler may touch disk without passing through here.
+ */
 import { homedir } from "node:os";
 import * as path from "node:path";
 import {

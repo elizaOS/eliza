@@ -1,3 +1,9 @@
+/**
+ * FILE `read` handler: returns file contents (line-numbered, size- and
+ * line-capped) after validating the path through SandboxService, and records the
+ * read with FileStateService so a later write/edit can detect external
+ * modification. Supports the `device_filesystem` bridge when reading device files.
+ */
 import * as fs from "node:fs/promises";
 
 import {

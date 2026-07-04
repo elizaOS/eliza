@@ -1,3 +1,4 @@
+/** Tests for the FILE umbrella action's operation dispatch, including the `device_filesystem` bridge path via a fake bridge service. */
 import type { IAgentRuntime, Memory, Service } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 

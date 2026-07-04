@@ -1,3 +1,4 @@
+/** Unit tests for the secret-token detector used to gate WRITE/EDIT. */
 import { describe, expect, it } from "vitest";
 import { detectSecrets } from "./secrets.js";
 

@@ -1,3 +1,4 @@
+/** Tests for the SandboxService path policy: blocklist defaults and allow-root enforcement. */
 import { homedir } from "node:os";
 import * as path from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";

@@ -1,3 +1,10 @@
+/**
+ * Platform terminal capability detection: resolves the host shell and probes the
+ * PATH for the binaries the coding tools depend on (sh, git, rg, bun, codex,
+ * claude, opencode, …), and reports Android/AOSP runtime constraints. Consumed by
+ * the SHELL action and run-shell to decide what can execute and to produce
+ * missing-tool messages.
+ */
 import { accessSync, constants } from "node:fs";
 import path from "node:path";
 

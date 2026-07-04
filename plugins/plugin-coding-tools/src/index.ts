@@ -1,3 +1,13 @@
+/**
+ * Plugin entry for @elizaos/plugin-coding-tools: assembles the FILE, SHELL, and
+ * WORKTREE actions, the AVAILABLE_CODING_TOOLS provider, and the sandbox /
+ * file-state / session-cwd / ripgrep services into the `codingToolsPlugin`
+ * object, and declares the auto-enable predicate that turns the plugin on only
+ * when a coding feature flag is set and the environment supports a terminal.
+ * `terminalSupportedByEnv` mirrors the gating in auto-enable.ts (disabled on the
+ * store build variant and iOS; Android only in local-yolo mode). Also re-exports
+ * the services and types for external consumers.
+ */
 import type { Plugin } from "@elizaos/core";
 import { fileAction, shellAction, worktreeAction } from "./actions/index.js";
 import { availableToolsProvider } from "./providers/available-tools.js";
@@ -57,7 +67,7 @@ export const codingToolsPlugin: Plugin = {
       ?.stop();
   },
   // Self-declared auto-enable: activate when features.codingTools is enabled,
-  // or via the legacy "coding-agent" feature key (the plugin was renamed).
+  // or via the legacy "coding-agent" feature key kept as an alias.
   autoEnable: {
     shouldEnable: (env, config) => {
       const features = config.features as Record<string, unknown> | undefined;

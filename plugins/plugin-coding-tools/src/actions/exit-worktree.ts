@@ -1,3 +1,7 @@
+/**
+ * WORKTREE `exit` handler: pops the current worktree root off the SessionCwdService
+ * stack, returning subsequent operations to the previous working directory.
+ */
 import {
   type ActionResult,
   logger as coreLogger,

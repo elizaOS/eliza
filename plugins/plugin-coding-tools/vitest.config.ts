@@ -1,3 +1,4 @@
+/** Vitest config for the coding-tools package: resolves `@elizaos/*` to workspace source. */
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";

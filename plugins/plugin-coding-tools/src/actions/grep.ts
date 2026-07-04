@@ -1,3 +1,8 @@
+/**
+ * FILE `grep` handler: content search over the workspace via RipgrepService,
+ * rooted at an explicit path or the conversation's SessionCwdService cwd. Output is
+ * capped by `head_limit` (default `CODING_TOOLS_GREP_HEAD_LIMIT`).
+ */
 import {
   type ActionResult,
   logger as coreLogger,

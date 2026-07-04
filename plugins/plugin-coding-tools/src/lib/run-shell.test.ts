@@ -1,3 +1,4 @@
+/** Tests for the `runShell` child-process wrapper, using the core capability router doubles. */
 import {
   CAPABILITY_ROUTER_SERVICE_TYPE,
   type ElizaCapabilityRouter,

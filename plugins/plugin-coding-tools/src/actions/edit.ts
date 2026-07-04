@@ -1,3 +1,8 @@
+/**
+ * FILE `edit` handler: applies a find/replace edit to an existing file after
+ * validating the path and confirming (via FileStateService) it was not modified
+ * externally since the last read. Flags secrets in the new content before writing.
+ */
 import * as fs from "node:fs/promises";
 
 import {

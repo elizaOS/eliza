@@ -1,3 +1,4 @@
+/** Unit tests for the operation-summary string helpers. */
 import { describe, expect, it } from "vitest";
 import {
   compactSummaryText,
