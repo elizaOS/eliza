@@ -7,6 +7,54 @@
  * Worker-side path reaches them.
  */
 
+// The stub may bundle real core source ONLY when the module is pure — zero
+// imports (or type-only), zero top-level I/O, zero node built-ins. Reusing
+// the real module beats a drift-prone copy for anything security-relevant
+// (SSRF blocklists, log redaction). Anything heavier gets a Worker-safe
+// stand-in below instead.
+import {
+  isBlockedHostname,
+  isPrivateIpAddress,
+  type LookupFn,
+  type PinnedHostname,
+  type PinnedLookup,
+  resolvePinnedHostname,
+  resolvePinnedHostnameWithPolicy,
+  SsrfBlockedError,
+  type SsrfPolicy,
+} from "../../../../core/src/network/ssrf";
+
+// `globalThis` Symbol.for account-selection bridges (pure). app-core service
+// modules bundled into the Worker call the setters at module scope.
+export {
+  ANTHROPIC_ACCOUNT_POOL_BRIDGE_SYMBOL,
+  CODING_AGENT_SELECTOR_BRIDGE_SYMBOL,
+  getAnthropicAccountPoolBridge,
+  getCodingAgentSelectorBridge,
+  setAnthropicAccountPoolBridge,
+  setCodingAgentSelectorBridge,
+} from "../../../../core/src/account-pool-bridge";
+// Subscription-auth provider registry (pure Map). packages/auth registers and
+// reads providers through @elizaos/core; every bundled import resolves to this
+// stub, so re-exporting the real module keeps one shared registry instance.
+export {
+  getSubscriptionAuthProvider,
+  hasSubscriptionAuthProvider,
+  listSubscriptionAuthProviders,
+  registerSubscriptionAuthProvider,
+  resetSubscriptionAuthProviders,
+} from "../../../../core/src/features/subscription-auth/registry.ts";
+
+// Log-redaction helpers used by cloud-shared's logger. These MUST stay the
+// real implementations — a pass-through here would leak API keys/tokens into
+// Worker logs. Pure string/regex logic, safe to bundle.
+export {
+  isSensitiveKeyName,
+  redactLogArgs,
+} from "../../../../core/src/security/redact";
+export type { SsrfPolicy };
+export { SsrfBlockedError };
+
 const NOT_AVAILABLE =
   "@elizaos/core runtime APIs are not available in the Cloudflare Workers API bundle. Route agent runtime work through the agent-server sidecar.";
 
@@ -258,6 +306,22 @@ export function runWithTrajectoryContext<T>(
   return fn();
 }
 
+/**
+ * Worker-safe stand-in for `runWithTrajectoryPurpose`. In core this tags the
+ * active trajectory context with a pipeline purpose before running `fn`; the
+ * trajectory context manager lives on the agent sidecar and no trajectory is
+ * ever recorded in the Worker bundle, so just run the function. (Pulled into
+ * the bundle transitively via `@elizaos/shared` email-classification — not
+ * invoked on a Worker route. Deleting this export breaks the Worker build:
+ * #11845/#11875.)
+ */
+export function runWithTrajectoryPurpose<T>(
+  _purpose: string,
+  fn: () => T | Promise<T>,
+): T | Promise<T> {
+  return fn();
+}
+
 type InferenceTimingMeta = Record<string, string | number | boolean>;
 
 /**
@@ -357,6 +421,337 @@ export function sendJsonError(
   status = 400,
 ): Response {
   return Response.json({ error: message }, { status });
+}
+
+// ---------------------------------------------------------------------------
+// SSRF-guarded fetch — Worker port of core `network/fetch-guard.ts`. Pulled
+// into the bundle via plugin-elizacloud's transcription model (audioUrl
+// fetches are attachment fetches and MUST stay SSRF-guarded). Mirrors core's
+// edge branch exactly: workerd has no `node:dns`, so core itself documents
+// this same no-pin literal-host mode for Workers (see EDGE-SSRF in core).
+// The ONLY delta from core is dropping the Node-autoloaded pinned transport
+// (`node-pinned-fetch`), which cannot run on workerd; callers may still
+// inject `lookupFn` + `pinnedFetchImpl`, and a lookupFn WITHOUT a pinned
+// transport fails CLOSED, same as core. Do not weaken these checks.
+// ---------------------------------------------------------------------------
+
+type FetchLike = (
+  input: RequestInfo | URL,
+  init?: RequestInit,
+) => Promise<Response>;
+
+export type PinnedLookupFetchParams = {
+  url: URL;
+  init: RequestInit;
+  lookup: PinnedLookup;
+  addresses: string[];
+};
+
+export type PinnedLookupFetchLike = (
+  params: PinnedLookupFetchParams,
+) => Promise<Response>;
+
+export type GuardedFetchOptions = {
+  url: string;
+  fetchImpl?: FetchLike;
+  pinnedFetchImpl?: PinnedLookupFetchLike;
+  init?: RequestInit;
+  maxRedirects?: number;
+  timeoutMs?: number;
+  signal?: AbortSignal;
+  policy?: SsrfPolicy;
+  lookupFn?: LookupFn;
+};
+
+export type GuardedFetchResult = {
+  response: Response;
+  finalUrl: string;
+  release: () => Promise<void>;
+};
+
+const DEFAULT_MAX_REDIRECTS = 3;
+
+// Credential-bearing headers that must never follow a redirect to a different
+// origin (this guard follows redirects manually with `redirect: "manual"`, so
+// it must reproduce the stripping standard fetch does).
+const CROSS_ORIGIN_STRIPPED_HEADERS = [
+  "authorization",
+  "proxy-authorization",
+  "cookie",
+] as const;
+
+// Entity/body headers dropped when a redirect rewrites the request to a
+// bodyless GET (301/302 POST, any 303), per the WHATWG redirect rules.
+const REDIRECT_BODY_STRIPPED_HEADERS = [
+  "content-encoding",
+  "content-language",
+  "content-location",
+  "content-type",
+  "content-length",
+] as const;
+
+function stripCredentialHeaders(
+  headers: HeadersInit | undefined,
+): HeadersInit | undefined {
+  if (!headers) {
+    return headers;
+  }
+  const cleaned = new Headers(headers);
+  for (const name of CROSS_ORIGIN_STRIPPED_HEADERS) {
+    cleaned.delete(name);
+  }
+  return cleaned;
+}
+
+function stripBodyHeaders(
+  headers: HeadersInit | undefined,
+): HeadersInit | undefined {
+  if (!headers) {
+    return headers;
+  }
+  const cleaned = new Headers(headers);
+  for (const name of REDIRECT_BODY_STRIPPED_HEADERS) {
+    cleaned.delete(name);
+  }
+  return cleaned;
+}
+
+function shouldRewriteToGet(status: number, method: string): boolean {
+  const upper = method.toUpperCase();
+  if ((status === 301 || status === 302) && upper === "POST") {
+    return true;
+  }
+  if (status === 303 && upper !== "GET" && upper !== "HEAD") {
+    return true;
+  }
+  return false;
+}
+
+function isRedirectStatus(status: number): boolean {
+  return (
+    status === 301 ||
+    status === 302 ||
+    status === 303 ||
+    status === 307 ||
+    status === 308
+  );
+}
+
+function buildAbortSignal(params: {
+  timeoutMs?: number;
+  signal?: AbortSignal;
+}): {
+  signal?: AbortSignal;
+  cleanup: () => void;
+} {
+  const { timeoutMs, signal } = params;
+  if (!timeoutMs && !signal) {
+    return { signal: undefined, cleanup: () => {} };
+  }
+
+  if (!timeoutMs) {
+    return { signal, cleanup: () => {} };
+  }
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  const onAbort = () => controller.abort();
+  if (signal) {
+    if (signal.aborted) {
+      controller.abort();
+    } else {
+      signal.addEventListener("abort", onAbort, { once: true });
+    }
+  }
+
+  const cleanup = () => {
+    clearTimeout(timeoutId);
+    if (signal) {
+      signal.removeEventListener("abort", onAbort);
+    }
+  };
+
+  return { signal: controller.signal, cleanup };
+}
+
+/**
+ * Fetch with SSRF protection — Worker-safe mirror of core's
+ * `fetchWithSsrfGuard` contract:
+ *
+ * - Validates URL protocol (http/https only) on EVERY hop
+ * - Blocks literal private/loopback/link-local IPs and internal hostnames via
+ *   the real core validators (honoring `policy.allowPrivateNetwork` /
+ *   `policy.allowedHostnames`)
+ * - With an injected `lookupFn` + `pinnedFetchImpl`: resolves and pins DNS to
+ *   also defend against rebinding; a `lookupFn` without a pinned transport
+ *   throws (fail closed) — never downgrades to unpinned fetch
+ * - Follows redirects manually, re-validating every hop, rewriting to a
+ *   bodyless GET where the WHATWG rules require it, and stripping credential
+ *   headers on cross-origin hops
+ * - Supports timeout and abort signals
+ */
+export async function fetchWithSsrfGuard(
+  params: GuardedFetchOptions,
+): Promise<GuardedFetchResult> {
+  const fetcher: FetchLike | undefined = params.fetchImpl ?? globalThis.fetch;
+  if (!fetcher) {
+    throw new Error("fetch is not available");
+  }
+  const lookupFn = params.lookupFn;
+  const pinnedFetchImpl = params.pinnedFetchImpl;
+
+  // Same fail-closed footgun guard as core (#11147): a lookupFn computes a DNS
+  // pin, but without a pinnedFetchImpl to connect to that pinned IP the pin
+  // would be silently discarded, re-opening the rebinding race.
+  if (lookupFn && !pinnedFetchImpl) {
+    throw new Error(
+      "SSRF guard: a DNS lookupFn was provided without a pinnedFetchImpl. " +
+        "Refusing to fall back to the unpinned fetcher — the computed DNS pin " +
+        "would be discarded, re-introducing a DNS-rebinding race. Provide a " +
+        "pinnedFetchImpl alongside the lookupFn.",
+    );
+  }
+
+  const maxRedirects =
+    typeof params.maxRedirects === "number" &&
+    Number.isFinite(params.maxRedirects)
+      ? Math.max(0, Math.floor(params.maxRedirects))
+      : DEFAULT_MAX_REDIRECTS;
+
+  const { signal, cleanup } = buildAbortSignal({
+    timeoutMs: params.timeoutMs,
+    signal: params.signal,
+  });
+
+  let released = false;
+  const release = async () => {
+    if (released) {
+      return;
+    }
+    released = true;
+    cleanup();
+  };
+
+  const visited = new Set<string>();
+  let currentUrl = params.url;
+  let redirectCount = 0;
+  let hopHeaders = params.init?.headers;
+  let hopMethod = params.init?.method;
+  let hopBodyDropped = false;
+
+  while (true) {
+    let parsedUrl: URL;
+    try {
+      parsedUrl = new URL(currentUrl);
+    } catch {
+      await release();
+      throw new Error("Invalid URL: must be http or https");
+    }
+    if (!["http:", "https:"].includes(parsedUrl.protocol)) {
+      await release();
+      throw new Error("Invalid URL: must be http or https");
+    }
+    try {
+      let pinned: PinnedHostname | undefined;
+      if (lookupFn) {
+        const usePolicy = Boolean(
+          params.policy?.allowPrivateNetwork ||
+            params.policy?.allowedHostnames?.length,
+        );
+        pinned = usePolicy
+          ? await resolvePinnedHostnameWithPolicy(parsedUrl.hostname, {
+              lookupFn,
+              policy: params.policy,
+            })
+          : await resolvePinnedHostname(parsedUrl.hostname, lookupFn);
+      } else {
+        // EDGE-SSRF (matches core): no `node:dns` on workerd, so no socket
+        // pinning — block literal internal targets on every hop; the residual
+        // rebinding exposure is closed operationally by Cloudflare egress
+        // policy (see core network/fetch-guard.ts EDGE-SSRF note).
+        const allowPrivate = Boolean(params.policy?.allowPrivateNetwork);
+        const host = parsedUrl.hostname.trim().toLowerCase().replace(/\.$/, "");
+        const allowed = new Set(
+          (params.policy?.allowedHostnames ?? []).map((value) =>
+            value.trim().toLowerCase().replace(/\.$/, ""),
+          ),
+        );
+        if (!allowPrivate && !allowed.has(host)) {
+          if (isBlockedHostname(parsedUrl.hostname)) {
+            await release();
+            throw new SsrfBlockedError(
+              `Blocked hostname: ${parsedUrl.hostname}`,
+            );
+          }
+          if (isPrivateIpAddress(parsedUrl.hostname)) {
+            await release();
+            throw new SsrfBlockedError("Blocked: private/internal IP address");
+          }
+        }
+      }
+
+      const init: RequestInit = {
+        ...(params.init ? { ...params.init } : {}),
+        ...(hopHeaders ? { headers: hopHeaders } : {}),
+        ...(hopMethod !== undefined ? { method: hopMethod } : {}),
+        ...(hopBodyDropped ? { body: undefined } : {}),
+        redirect: "manual",
+        ...(signal ? { signal } : {}),
+      };
+
+      const response =
+        pinned && pinnedFetchImpl
+          ? await pinnedFetchImpl({
+              url: parsedUrl,
+              init,
+              lookup: pinned.lookup,
+              addresses: pinned.addresses,
+            })
+          : await fetcher(parsedUrl.toString(), init);
+
+      if (isRedirectStatus(response.status)) {
+        const location = response.headers.get("location");
+        if (!location) {
+          await release();
+          throw new Error(
+            `Redirect missing location header (${response.status})`,
+          );
+        }
+        redirectCount += 1;
+        if (redirectCount > maxRedirects) {
+          await release();
+          throw new Error(`Too many redirects (limit: ${maxRedirects})`);
+        }
+        const nextParsedUrl = new URL(location, parsedUrl);
+        const nextUrl = nextParsedUrl.toString();
+        if (visited.has(nextUrl)) {
+          await release();
+          throw new Error("Redirect loop detected");
+        }
+        visited.add(nextUrl);
+        if (shouldRewriteToGet(response.status, hopMethod ?? "GET")) {
+          hopMethod = "GET";
+          hopBodyDropped = true;
+          hopHeaders = stripBodyHeaders(hopHeaders);
+        }
+        if (parsedUrl.origin !== nextParsedUrl.origin) {
+          hopHeaders = stripCredentialHeaders(hopHeaders);
+        }
+        void response.body?.cancel();
+        currentUrl = nextUrl;
+        continue;
+      }
+
+      return {
+        response,
+        finalUrl: currentUrl,
+        release,
+      };
+    } catch (err) {
+      await release();
+      throw err;
+    }
+  }
 }
 
 const CONNECTOR_SOURCE_ALIASES: Record<string, readonly string[]> = {
@@ -604,7 +999,13 @@ export const ServiceType = {
   PDF: "PDF",
   REMOTE_FILES: "REMOTE_FILES",
   MEDIA_GENERATION: "MEDIA_GENERATION",
+  CLOUD_AUTH: "CLOUD_AUTH",
 } as const;
+
+// Mirrors core's `cloud-auth-service.ts` (`ServiceType.CLOUD_AUTH`). Pulled in
+// via plugin-elizacloud's cloud-auth service, which the Worker bundle reaches
+// transitively — the service itself runs on the agent sidecar.
+export const CLOUD_AUTH_SERVICE_TYPE = ServiceType.CLOUD_AUTH;
 
 export const VECTOR_DIMS = {
   SMALL: 384,
