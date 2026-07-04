@@ -191,7 +191,8 @@ const INTERNAL_TOOL_VIEW_DECLARATIONS: readonly InternalToolViewDeclaration[] =
     {
       name: "@elizaos/plugin-task-coordinator",
       displayName: "Automations",
-      description: "Create, inspect, and manage scheduled tasks and workflows.",
+      description:
+        "Create, inspect, and manage workflows, triggers, and scheduled items.",
       capabilities: ["tasks", "workflows", "automations"],
       heroImage: "/api/apps/hero/task-coordinator",
       targetTab: "tasks",

@@ -4,7 +4,7 @@ import { useCallback } from "react";
 //   - AutomationItem: packages/ui/src/api/client-types-config.ts
 //   - AutomationStatus = "active" | "paused" | "completed" | "draft" | "system"
 // The unified set merges automations (GET /api/automations) with LifeOps
-// scheduled tasks (GET /api/lifeops/scheduled-tasks) client-side — see
+// scheduled items (GET /api/lifeops/scheduled-tasks) client-side — see
 // hooks/useUnifiedTasks.ts. No second scheduler, no store touch.
 import type { AutomationItem } from "../../../api/client-types-config";
 import { useUnifiedTasks } from "../../../hooks/useUnifiedTasks";
@@ -14,16 +14,16 @@ import { HomeWidgetCard, useWidgetNavigation } from "./home-widget-card";
 const AUTOMATIONS_VIEW = "/automations";
 // Bound the bridge call so a hung agent channel settles the tile (self-hide)
 // rather than spinning on "Loading…" forever.
-const TASKS_TIMEOUT_MS = 6_000;
+const AUTOMATIONS_TIMEOUT_MS = 6_000;
 
 /**
- * "Running" = a task the agent is actively keeping alive on a fresh install:
- * the always-on coordinator/system automations, any user workflow that is
- * enabled and not a draft, AND any LifeOps scheduled task whose status is
- * "active" (a scheduled, non-manual trigger — e.g. the boot-seeded gm / gn /
+ * "Running" = an automation the agent is actively keeping alive on a fresh
+ * install: the always-on coordinator/system automations, any user workflow
+ * that is enabled and not a draft, AND any LifeOps scheduled item whose status
+ * is "active" (a scheduled, non-manual trigger — e.g. the boot-seeded gm / gn /
  * daily check-in / morning-brief watcher). Paused (manual-trigger, e.g. the
  * seeded weekly-review), draft, and completed items are excluded from the
- * running top-line but still appear in the full Tasks list.
+ * running top-line but still appear in the full Automations list.
  */
 function isRunning(item: AutomationItem): boolean {
   if (item.isDraft) return false;
@@ -31,7 +31,7 @@ function isRunning(item: AutomationItem): boolean {
   return item.enabled && item.status === "active";
 }
 
-/** Stable display order: system tasks first, then the rest by title. */
+/** Stable display order: system automations first, then the rest by title. */
 function compareRunning(a: AutomationItem, b: AutomationItem): number {
   if (a.system !== b.system) return a.system ? -1 : 1;
   return a.title.localeCompare(b.title);
@@ -53,7 +53,7 @@ function compareRunning(a: AutomationItem, b: AutomationItem): number {
 export function AutomationsWidget({
   spanClassName = "col-span-2 row-span-1",
 }: Partial<WidgetProps>) {
-  const { state } = useUnifiedTasks({ timeoutMs: TASKS_TIMEOUT_MS });
+  const { state } = useUnifiedTasks({ timeoutMs: AUTOMATIONS_TIMEOUT_MS });
   const nav = useWidgetNavigation();
 
   const open = useCallback(

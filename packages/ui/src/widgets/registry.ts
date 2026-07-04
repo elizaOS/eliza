@@ -81,9 +81,10 @@ registerWidgetComponent(
 // affordance that crowded the naked home grid with setup noise.
 registerWidgetComponent("feed", "feed.agent-activity", AgentActivityWidget);
 registerWidgetComponent("wallet", "wallet.balance", WalletBalanceWidget);
-// Running automations tile (ITEM 5): backed by the core GET /api/automations
+// Running-automations tile (ITEM 5): backed by the core GET /api/automations
 // surface (system automations + active user workflows), so it is always-visible
-// and self-hides when nothing is running.
+// and self-hides when nothing is running. The widget kind stays "workflow" —
+// it is the backend widget-registration key, not a user-facing label.
 registerWidgetComponent("workflow", "workflow.running", AutomationsWidget);
 // Setup-progress home tiles: the local model download (LOCAL mode, backed by the
 // local-inference hub) and the cloud-agent provisioning handoff (CLOUD mode,

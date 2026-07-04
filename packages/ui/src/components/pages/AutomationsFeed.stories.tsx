@@ -3,7 +3,7 @@ import { withMockApp } from "../../storybook/mock-providers.helpers";
 import { AutomationsFeed } from "./AutomationsFeed";
 
 /**
- * The Automations feed lists tasks and workflows in a single row format.
+ * The Automations feed lists workflows and prompt automations in a single row format.
  * In Storybook there is no backend, so the on-mount fetch settles into the
  * empty / loading state — both are valid, useful renderings of the surface.
  */

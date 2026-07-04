@@ -1,6 +1,7 @@
 /**
- * TaskEditor — single-screen editor for a "simple" automation: title,
- * prompt, and a schedule (once / recurring cron / on-event).
+ * TaskEditor — single-screen editor for a prompt automation (glossary term):
+ * title, prompt, and a schedule (once / recurring cron / on-event). No node
+ * graph — that's a workflow, a separate surface (WorkflowEditor).
  *
  * Most users land here and don't need a node graph. A recurring or
  * on-event schedule is a prompt-kind `TriggerConfig` — the editor creates
@@ -95,7 +96,7 @@ export function TaskEditor({
     role: "text-input",
     label: t("taskeditor.titleLabel", { defaultValue: "Title" }),
     group: "task-editor",
-    description: "Task title",
+    description: "Prompt automation title",
     getValue: () => name,
     onFill: (value) => setName(value),
   });
@@ -104,7 +105,7 @@ export function TaskEditor({
     role: "textarea",
     label: t("taskeditor.promptLabel", { defaultValue: "Prompt" }),
     group: "task-editor",
-    description: "Prompt the agent runs for this task",
+    description: "Prompt the agent runs for this prompt automation",
     getValue: () => prompt,
     onFill: (value) => setPrompt(value),
   });
@@ -122,7 +123,7 @@ export function TaskEditor({
     role: "select",
     label: t("taskeditor.eventLabel", { defaultValue: "Trigger event" }),
     group: "task-editor",
-    description: "Trigger event that runs this task",
+    description: "Trigger event that runs this prompt automation",
     options: availableEvents.map((event) => event.id),
     getValue: () => eventName,
     onFill: (value) => setEventName(value),
@@ -139,10 +140,12 @@ export function TaskEditor({
     id: "task-save",
     role: "button",
     label: isEditing
-      ? t("taskeditor.saveTask", { defaultValue: "Save task" })
-      : t("taskeditor.createTask", { defaultValue: "Create task" }),
+      ? t("taskeditor.saveTask", { defaultValue: "Save prompt automation" })
+      : t("taskeditor.createTask", {
+          defaultValue: "Create prompt automation",
+        }),
     group: "task-editor",
-    description: "Save the task",
+    description: "Save the prompt automation",
   });
 
   const submit = useCallback(async () => {
@@ -208,7 +211,9 @@ export function TaskEditor({
       setError(
         e instanceof Error
           ? e.message
-          : t("taskeditor.saveError", { defaultValue: "Failed to save task." }),
+          : t("taskeditor.saveError", {
+              defaultValue: "Failed to save prompt automation.",
+            }),
       );
     } finally {
       setBusy(false);
@@ -255,7 +260,7 @@ export function TaskEditor({
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
           placeholder={t("taskeditor.promptPlaceholder", {
-            defaultValue: "What should the agent do when this task runs?",
+            defaultValue: "What should the agent do when this runs?",
           })}
           rows={5}
           data-testid="task-editor-prompt"
@@ -370,8 +375,12 @@ export function TaskEditor({
         >
           {busy ? <Spinner className="mr-2 h-3.5 w-3.5" /> : null}
           {isEditing
-            ? t("taskeditor.saveTask", { defaultValue: "Save task" })
-            : t("taskeditor.createTask", { defaultValue: "Create task" })}
+            ? t("taskeditor.saveTask", {
+                defaultValue: "Save prompt automation",
+              })
+            : t("taskeditor.createTask", {
+                defaultValue: "Create prompt automation",
+              })}
         </Button>
       </div>
     </PagePanel>

@@ -103,6 +103,16 @@ describe("AutomationsWidget", () => {
     expect(screen.getByText("Loading…")).toBeTruthy();
   });
 
+  it("labels the widget with the Automations glossary term, never Tasks", async () => {
+    listAutomationsMock.mockResolvedValue(
+      listResponse([automation({ id: "w-1", title: "Daily digest" })]),
+    );
+    render(<AutomationsWidget />);
+    await screen.findByText("Daily digest");
+    expect(screen.getByText("Automations")).toBeTruthy();
+    expect(screen.queryByText("Tasks")).toBeNull();
+  });
+
   it("surfaces a boot-seeded scheduled task as the running task", async () => {
     // Fresh install: no workflows, but the seeded gm scheduled task exists.
     listAutomationsMock.mockResolvedValue(listResponse([]));

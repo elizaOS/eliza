@@ -1,7 +1,8 @@
 /**
  * AutomationsFeed — focused, single-screen list of every automation
- * (tasks AND workflows) with the same row format. Click a row to open
- * the matching editor (TaskEditor or WorkflowEditor).
+ * (workflows, prompt automations, and scheduled items) with the same row
+ * format. Click a row to open the matching editor (WorkflowEditor,
+ * TaskEditor for a prompt automation, or ScheduledTaskEditor).
  *
  * This component is intentionally separate from the existing
  * `AutomationsView` — that surface is the full dashboard with sidebar
@@ -9,9 +10,9 @@
  * just want to see what's running.
  *
  * Backend: the list is fetched from `GET /api/automations` (served by
- * `@elizaos/plugin-workflow`), which already aggregates workbench tasks,
- * triggers, and workflows into one `AutomationListResponse`. Editing routes
- * through the workflow CRUD endpoints under `/api/workflow/*`.
+ * `@elizaos/plugin-workflow`), which already aggregates workbench prompt
+ * automations, triggers, and workflows into one `AutomationListResponse`.
+ * Editing routes through the workflow CRUD endpoints under `/api/workflow/*`.
  */
 
 import {
@@ -225,7 +226,7 @@ export function AutomationsFeed({
     role: "button",
     label: t("automationsfeed.new", { defaultValue: "New" }),
     group: "automations-actions",
-    description: "Focus Automations chat to create a task or workflow",
+    description: "Focus Automations chat to create a workflow or prompt automation",
     onActivate: focusAutomationChat,
   });
 
@@ -535,7 +536,7 @@ export function AutomationsFeed({
                 </p>
                 <p className="text-xs text-muted-strong">
                   {t("automationsfeed.emptySub", {
-                    defaultValue: "Tasks and workflows you create run here.",
+                    defaultValue: "Workflows and prompt automations you create run here.",
                   })}
                 </p>
               </div>
@@ -715,7 +716,7 @@ function FeedRowItem({
     description:
       row.kind === "workflow"
         ? "Open workflow graph, runs, logs, and JSON"
-        : "Open task schedule and prompt",
+        : "Open prompt automation schedule and prompt",
     status: row.active ? "active" : "inactive",
     onActivate: onOpen,
   });

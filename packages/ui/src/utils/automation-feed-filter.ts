@@ -11,6 +11,9 @@ export type FeedFilter =
   | "active"
   | "inactive";
 
+// `kind` is the internal row discriminant: a "task" row is a workbench prompt
+// automation (glossary "prompt automation"); a "workflow" row is a node-graph
+// workflow. The user-facing filter for prompt automations is "prompts".
 export interface FeedRowSummary {
   // A workbench/simple automation surfaces as kind "task" in the read-model;
   // in glossary terms it is a "prompt" automation, which the "prompts" filter
