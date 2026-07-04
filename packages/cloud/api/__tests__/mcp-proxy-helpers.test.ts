@@ -10,6 +10,7 @@
 import { describe, expect, test } from "bun:test";
 
 import {
+  isJsonRpcErrorResponse,
   type McpProxyJson,
   parseJsonBody,
   resolveMcpProxyView,
@@ -175,5 +176,77 @@ describe("resolveMcpProxyView (cross-org access gate)", () => {
       viewerOrganizationId: "",
     });
     expect(view).toEqual({ allowed: false, isOwner: false });
+  });
+});
+
+describe("isJsonRpcErrorResponse (billing fail-closed on 2xx JSON-RPC error)", () => {
+  test("detects a JSON-RPC 2.0 error envelope (tool call failed over HTTP 200)", () => {
+    const body = JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      error: { code: -32000, message: "tool execution failed" },
+    });
+    expect(isJsonRpcErrorResponse(body)).toBe(true);
+  });
+
+  test("a successful result envelope is NOT an error (must still bill)", () => {
+    const body = JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      result: { content: [{ type: "text", text: "ok" }] },
+    });
+    expect(isJsonRpcErrorResponse(body)).toBe(false);
+  });
+
+  test("an `error: null` (JSON-RPC success convention) is NOT an error", () => {
+    const body = JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      error: null,
+      result: {},
+    });
+    expect(isJsonRpcErrorResponse(body)).toBe(false);
+  });
+
+  test("an error member without a numeric `code` is not treated as an RPC error", () => {
+    // A non-conforming body must not be fabricated into a refund-worthy failure.
+    expect(
+      isJsonRpcErrorResponse(
+        JSON.stringify({ error: { message: "no code field" } }),
+      ),
+    ).toBe(false);
+    expect(
+      isJsonRpcErrorResponse(JSON.stringify({ error: "just a string" })),
+    ).toBe(false);
+    expect(isJsonRpcErrorResponse(JSON.stringify({ error: [] }))).toBe(false);
+  });
+
+  test("unparseable / non-JSON body is NOT an explicit error (never fabricate a failure)", () => {
+    expect(isJsonRpcErrorResponse("")).toBe(false);
+    expect(isJsonRpcErrorResponse("   ")).toBe(false);
+    expect(isJsonRpcErrorResponse("not json at all")).toBe(false);
+    expect(isJsonRpcErrorResponse("{ broken json")).toBe(false);
+    expect(isJsonRpcErrorResponse("42")).toBe(false);
+    expect(isJsonRpcErrorResponse("null")).toBe(false);
+  });
+
+  test("a batch where EVERY entry errored counts as failed (refund)", () => {
+    const body = JSON.stringify([
+      { jsonrpc: "2.0", id: 1, error: { code: -32601, message: "a" } },
+      { jsonrpc: "2.0", id: 2, error: { code: -32000, message: "b" } },
+    ]);
+    expect(isJsonRpcErrorResponse(body)).toBe(true);
+  });
+
+  test("a partial-success batch is NOT failed (still delivers value — must bill)", () => {
+    const body = JSON.stringify([
+      { jsonrpc: "2.0", id: 1, error: { code: -32601, message: "a" } },
+      { jsonrpc: "2.0", id: 2, result: { ok: true } },
+    ]);
+    expect(isJsonRpcErrorResponse(body)).toBe(false);
+  });
+
+  test("an empty batch array is not an error", () => {
+    expect(isJsonRpcErrorResponse("[]")).toBe(false);
   });
 });

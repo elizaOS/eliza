@@ -50,6 +50,55 @@ export function toolNameFromRpcBody(body: McpProxyJson): string {
 }
 
 /**
+ * Detect a JSON-RPC 2.0 error envelope in an MCP response body.
+ *
+ * error-policy:J4 — MCP servers speak JSON-RPC 2.0, where a *failed* tool call
+ * is returned as HTTP 200 with a top-level `{ "error": { "code", "message" } }`
+ * envelope (the transport succeeded, the RPC did not). Billing keyed only on the
+ * HTTP status (`mcpResponse.ok`) therefore charges the caller for a tool call the
+ * MCP never completed — the same silent over-charge class #11637 closed for the
+ * HTTP layer, still open at the JSON-RPC layer. This surfaces the protocol-level
+ * failure so the pre-charge is refunded instead of success-shaped into a bill.
+ *
+ * Conservative by design: only a JSON-RPC `error` member that is itself an object
+ * carrying a numeric `code` counts. A `result` payload, a bare/absent `error`, an
+ * unparseable body, or a plain object without the RPC error shape is NOT treated
+ * as a failure here (an unparseable success-shaped body is still delivered to the
+ * caller and billed — this helper never *fabricates* a failure, only recognises an
+ * explicit one), so a well-behaved success is never wrongly refunded.
+ */
+export function isJsonRpcErrorResponse(responseBody: string): boolean {
+  const text = responseBody.trim();
+  if (!text || (text[0] !== "{" && text[0] !== "[")) return false;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    // Unparseable body: not an *explicit* JSON-RPC error. Do not fabricate a
+    // failure — let the existing success path bill it (transport was 2xx).
+    return false;
+  }
+  const isRpcError = (value: unknown): boolean => {
+    if (value === null || typeof value !== "object" || Array.isArray(value)) {
+      return false;
+    }
+    const err = (value as { error?: unknown }).error;
+    if (err === null || typeof err !== "object" || Array.isArray(err)) {
+      return false;
+    }
+    // A JSON-RPC 2.0 error object is required to carry an integer `code`.
+    return typeof (err as { code?: unknown }).code === "number";
+  };
+  // Batched JSON-RPC responses come back as an array; treat the batch as failed
+  // if EVERY entry is an error envelope (a partial success still delivers value
+  // and should bill — refunding a partial batch would under-charge).
+  if (Array.isArray(parsed)) {
+    return parsed.length > 0 && parsed.every((entry) => isRpcError(entry));
+  }
+  return isRpcError(parsed);
+}
+
+/**
  * Decide what an `/api/mcp/proxy/[mcpId]` GET caller may see for a `live` MCP.
  *
  * `userMcpsService.getById` is unscoped (no org / is_public filter), and a `live`
@@ -387,7 +436,13 @@ app.post("/", async (c) => {
     return c.json({ error: "Failed to read MCP response" }, 502);
   }
 
-  if (mcpResponse.ok) {
+  // A 2xx transport does NOT mean the tool call succeeded: MCP speaks JSON-RPC
+  // 2.0, so a failed call is delivered as HTTP 200 with an `{ error: {...} }`
+  // envelope. Billing on `mcpResponse.ok` alone charged the caller for a call
+  // the MCP never completed (#11637 at the HTTP layer, still open at the RPC
+  // layer). Refund on an explicit JSON-RPC error instead of success-shaping it.
+  const rpcErrored = mcpResponse.ok && isJsonRpcErrorResponse(responseBody);
+  if (mcpResponse.ok && !rpcErrored) {
     await userMcpsService
       .recordUsageWithoutDeduction({
         mcpId: mcp.id,
@@ -415,6 +470,18 @@ app.post("/", async (c) => {
             typeof usageError === "string" ? usageError : usageError.message,
         });
       });
+  } else if (rpcErrored) {
+    // Protocol-level failure over a 2xx transport: refund and do not bill. The
+    // caller still receives the MCP's error envelope verbatim below.
+    logger.warn(
+      "[MCP Proxy] MCP returned a JSON-RPC error over 2xx; refunding",
+      {
+        mcpId,
+        status: mcpResponse.status,
+        toolName,
+      },
+    );
+    await refundPrecharge("mcp_jsonrpc_error", { status: mcpResponse.status });
   } else {
     await refundPrecharge("mcp_call_failed", { status: mcpResponse.status });
   }
