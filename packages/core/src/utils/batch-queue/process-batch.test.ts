@@ -1,12 +1,13 @@
+/**
+ * Exercises the opt-in `processBatch` path on BatchQueue that lets the
+ * embedding-drain embed N texts in one request. Per-item callers (no
+ * `processBatch`) are unaffected; with it set, a drain calls it ONCE and only
+ * falls back to the per-item `process` if the batched call throws.
+ */
+
 import { describe, expect, test } from "vitest";
 import { BatchQueue } from "./index";
 
-/**
- * Tests for the opt-in `processBatch` path on BatchQueue (added for the
- * embedding-drain so N texts embed in one request). Existing per-item callers
- * (no `processBatch`) are unaffected; with it set, a drain calls it ONCE and
- * only falls back to the per-item `process` if the batched call throws.
- */
 describe("BatchQueue processBatch", () => {
 	function makeQueue(opts: {
 		process: (item: number) => Promise<void>;

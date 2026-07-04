@@ -1,3 +1,9 @@
+/**
+ * Pins getV5ModelText and extractGenerateTextContentText normalization across the
+ * provider-boundary shapes real adapters return — raw string, text field, string
+ * or part-array content, and response-only payload — so typed access to
+ * GenerateTextResult's content/response fields keeps working without unsafe casts.
+ */
 import { describe, expect, it } from "vitest";
 import type { GenerateTextResult } from "../../types/model";
 import {
@@ -5,12 +11,6 @@ import {
 	getV5ModelText,
 } from "./generate-text-result";
 
-/**
- * #9155: `GenerateTextResult` now declares the real provider-boundary fields
- * (`content`, `response`) that the normalizer reads. These tests pin the
- * normalization of the three shapes real adapters return so the typed access
- * (no `as unknown as Record<string, unknown>` casts) keeps working.
- */
 describe("getV5ModelText (#9155 boundary normalization)", () => {
 	it("returns a raw string passthrough", () => {
 		expect(getV5ModelText("hello")).toBe("hello");

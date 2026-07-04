@@ -1,3 +1,8 @@
+/**
+ * Unit coverage for the provider-error hygiene helpers: model-provider
+ * failover/rate-limit classification (including the TEXT_TO_SPEECH fail-closed
+ * carve-out) and the transient-failure response-memory skip rule.
+ */
 import { describe, expect, it } from "vitest";
 import { type Memory, ModelType } from "../../types";
 import { shouldSkipResponseMemoryPersistence } from "../message";

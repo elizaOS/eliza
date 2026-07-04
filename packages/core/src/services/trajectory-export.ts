@@ -1,3 +1,11 @@
+/**
+ * Trajectory export helpers: flatten persisted trajectory steps into per-LLM-call
+ * records, summarize token and cache usage, and serialize a batch of
+ * trajectories to eliza-native JSON/JSONL rows, CSV, or ART message rows. Reads
+ * either the in-memory `steps` array or the persisted `stepsJson` string, and
+ * tolerates missing or malformed fields by coercing to finite numbers and
+ * skipping unparseable rows.
+ */
 import { textFromChatMessageContent } from "../runtime/system-prompt";
 
 export {

@@ -1,3 +1,11 @@
+/**
+ * Core context routing gates which actions/providers are surfaced each turn.
+ * shouldIncludeByContext is permissive by design (no declared or no active
+ * contexts → include) but otherwise requires an overlap, so a context-scoped
+ * action only appears in its context. inferContextRoutingFromText scores the
+ * message text into a primary context (general when nothing matches).
+ */
+
 import { describe, expect, it } from "vitest";
 import type { Action, Provider } from "../types/components";
 import {
@@ -7,14 +15,6 @@ import {
 	routingContextsOverlap,
 	shouldIncludeByContext,
 } from "./context-routing.ts";
-
-/**
- * Core context routing gates which actions/providers are surfaced each turn.
- * shouldIncludeByContext is permissive by design (no declared or no active
- * contexts → include) but otherwise requires an overlap, so a context-scoped
- * action only appears in its context. inferContextRoutingFromText scores the
- * message text into a primary context (general when nothing matches).
- */
 
 const action = (name: string, contexts?: string[]): Action =>
 	({ name, ...(contexts ? { contexts } : {}) }) as unknown as Action;

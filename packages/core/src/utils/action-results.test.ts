@@ -1,3 +1,10 @@
+/**
+ * Action-result helpers bound how much of a (potentially huge) tool output
+ * lands in prompt state. Token estimation, middle-truncation with a full-output
+ * reference, and oversize warnings keep a verbose action from blowing the
+ * context budget.
+ */
+
 import { describe, expect, it } from "vitest";
 import type { ActionResult } from "../types/components";
 import {
@@ -8,13 +15,6 @@ import {
 	stringifyActionResultError,
 	truncateMiddle,
 } from "./action-results.ts";
-
-/**
- * Action-result helpers bound how much of a (potentially huge) tool output
- * lands in prompt state. Token estimation, middle-truncation with a full-output
- * reference, and oversize warnings keep a verbose action from blowing the
- * context budget.
- */
 
 const result = (r: Partial<ActionResult>): ActionResult => r as ActionResult;
 

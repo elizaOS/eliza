@@ -1,3 +1,9 @@
+/**
+ * Exercises `EmbeddingGenerationService`: drain configuration (batch vs per-item,
+ * fast-shutdown) and the `processBatch` path — one batch call with per-id
+ * write-back, empty-vector and count-mismatch failure handling, and isolated
+ * per-item fallback. Runs against a mock runtime with stubbed embedding models.
+ */
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { ModelType } from "../types/model";
 import type { IAgentRuntime } from "../types/runtime";

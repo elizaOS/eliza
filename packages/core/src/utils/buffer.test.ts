@@ -1,3 +1,9 @@
+/**
+ * Cross-platform buffer abstraction (Node Buffer / browser Uint8Array). The
+ * encoding round-trips and byte ops must agree across representations, since
+ * crypto/secret code depends on these for hex/base64 conversions.
+ */
+
 import { describe, expect, it } from "vitest";
 import {
 	alloc,
@@ -13,12 +19,6 @@ import {
 	slice,
 	toHex,
 } from "./buffer.ts";
-
-/**
- * Cross-platform buffer abstraction (Node Buffer / browser Uint8Array). The
- * encoding round-trips and byte ops must agree across representations, since
- * crypto/secret code depends on these for hex/base64 conversions.
- */
 
 describe("hex / string round-trips", () => {
 	it("utf8 ⇄ hex ⇄ string", () => {

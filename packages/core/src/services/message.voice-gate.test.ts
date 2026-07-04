@@ -1,3 +1,8 @@
+/**
+ * Covers the message service's voice-turn helpers: dual-path parsing of the
+ * turn-signal and speaker id from either content top-level or content.metadata,
+ * and the server-side suppress/confirm truth table over the client's signal (#9147).
+ */
 import { describe, expect, it } from "vitest";
 import {
 	getVoiceSpeakerEntityId,

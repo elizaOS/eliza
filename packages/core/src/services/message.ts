@@ -1,3 +1,13 @@
+/**
+ * Built-in `DefaultMessageService` (the runtime's `IMessageService` singleton) and
+ * the helpers it composes, implementing the full inbound-message pipeline: memory
+ * creation, should-respond gating, the pre-LLM shortcut gate, Stage-1 response
+ * generation with its retry/truncation policy, the planner loop over tiered
+ * actions, attachment enrichment, voice-turn arbitration, and post-turn evaluation
+ * — turning a received `Memory` into a response plus any executed actions. The
+ * runtime message loop drives it; a host may swap in an alternate `IMessageService`
+ * to replace it wholesale.
+ */
 import { v4 } from "uuid";
 import z from "zod";
 import { formatActionNames, formatActions } from "../actions";
@@ -2237,16 +2247,14 @@ async function collectV5PlannerCandidateActions(args: {
 	candidateActions?: readonly string[];
 	userRoles?: readonly RoleGateRole[];
 }): Promise<Action[]> {
-	// We used to filter the candidate set by `action.contexts` against the
-	// messageHandler-picked `selectedContexts`. That filter excluded owner
-	// actions, CALENDAR, SCHEDULED_TASKS, etc. whenever the messageHandler routed to
-	// "general" — even when the user clearly asked for a habit/event/etc.
-	// (See the 2026-05-09 candidate-surface root-cause audit.)
-	//
-	// Now: the surface starts from every action, then applies only the same
-	// execution gates the planner executor will enforce. That keeps role-policy
-	// overrides working for deployments that intentionally expose an action
-	// outside its declared context, while avoiding dead tools that the planner
+	// The candidate surface starts from every runtime action and applies only the
+	// same execution gates the planner executor will enforce — it deliberately does
+	// NOT pre-filter by `action.contexts` against the messageHandler-picked
+	// `selectedContexts`. Context pre-filtering excludes owner actions, CALENDAR,
+	// SCHEDULED_TASKS, etc. whenever the messageHandler routes to "general", even
+	// when the user clearly asked for a habit/event/etc. Starting from every action
+	// keeps role-policy overrides working for deployments that intentionally expose
+	// an action outside its declared context, while avoiding dead tools the planner
 	// could select but execution would immediately reject.
 	const allRuntimeActions = args.runtime.actions;
 	const actionLookup = buildRuntimeActionLookup(args.runtime);
@@ -4162,12 +4170,12 @@ export function applyDirectCurrentCandidateBackstopToMessageHandler(
 	// to force-plan over a finished answer whose only planning signals are weak,
 	// injectable ones (a simple/general context + search/shell-class candidates)
 	// via shouldPreferCompleteDirectReply. The plain-text fallback lands here
-	// instead and previously skipped that valve, so a COMPLETE plain-text answer
+	// too and must apply the same valve: without it, a COMPLETE plain-text answer
 	// ("Your lucky number is 4291." / a solved logic puzzle) that this backstop
-	// happened to tag with an inferred WEB_SEARCH candidate got promoted to
+	// happened to tag with an inferred WEB_SEARCH candidate would be promoted to
 	// requiresTool=true — forcing a pointless web search + a slow extra planner
 	// round, even though the identical answer in JSON form (contexts=[simple])
-	// went direct. Apply the same structural valve here so the two Stage-1 shapes
+	// goes direct. Apply the same structural valve here so the two Stage-1 shapes
 	// route identically. Live-info stays correct: its Stage-1 reply is an ack
 	// ("Checking the price now."), not a complete answer, so it fails
 	// looksLikeCompleteDirectReply and still forces the fetch. Coding/spawn stays
@@ -10547,7 +10555,6 @@ export class DefaultMessageService implements IMessageService {
 
 	/**
 	 * Deletes a message from the agent's memory.
-	 * This method handles the actual deletion logic that was previously in event handlers.
 	 *
 	 * @param runtime - The agent runtime instance
 	 * @param message - The message memory to delete

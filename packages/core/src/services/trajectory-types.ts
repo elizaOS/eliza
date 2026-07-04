@@ -1,10 +1,14 @@
+/**
+ * Canonical type definitions for the trajectory subsystem: recorded LLM-call,
+ * provider-access, skill-invocation, and step records; per-trajectory summary,
+ * usage-totals, and cache-stats shapes; and the eliza-native export row and
+ * format tag that the export helpers and training pipelines consume.
+ */
 import type { JsonValue } from "../types/primitives.ts";
 
 // Re-export the canonical retrieval-funnel shapes from `trajectory-recorder`
-// so external consumers can depend on the services-layer surface instead of
-// reaching into runtime/. Closes the Wave 2-C funnel-instrumentation
-// contract: per-stage retrieval entries + fused top-K + selected/correct
-// action lists.
+// so external consumers depend on the services-layer surface instead of
+// reaching into runtime/.
 export type {
 	RecordedRetrievalPerStageScores,
 	RecordedRetrievalStageEntry,
@@ -144,7 +148,7 @@ export type TrajectoryStepId = string;
 
 /**
  * Structured truncation marker shape persisted alongside per-skill
- * invocation records. Mirrors the W1-T4 action-step marker emitted by
+ * invocation records. Mirrors the action-step marker emitted by
  * `applyTrajectoryFieldCap` so downstream consumers can apply identical
  * handling regardless of which seam produced the cap.
  */
@@ -155,12 +159,11 @@ export interface TrajectorySkillInvocationTruncationMarker {
 }
 
 /**
- * One captured skill invocation. Closes M13 (W1-T5): every USE_SKILL
- * execution emits one of these against the active trajectory step so the
- * trajectory viewer and training pipelines can replay the skill seam in
- * full detail.
+ * One captured skill invocation. Every USE_SKILL execution emits one of
+ * these against the active trajectory step so the trajectory viewer and
+ * training pipelines can replay the skill seam in full detail.
  *
- * Shape mirrors the W1-T4 tool-stage capture: encoded JSON strings for
+ * Shape mirrors the tool-stage capture: encoded JSON strings for
  * structured fields, per-field 64KB cap with a structured marker on
  * overflow. `args` and `result` are stored pre-encoded so reads do not
  * need to re-parse; consumers can `JSON.parse` when they need the
@@ -206,7 +209,7 @@ export interface TrajectoryStepRecord {
 	scriptHash?: string;
 	usedSkills?: string[];
 	/**
-	 * Per-skill invocation records. Closes M13 (W1-T5). Each record carries
+	 * Per-skill invocation records. Each record carries
 	 * `(skillSlug, args, result, durationMs, parentStepId)` plus mode/script
 	 * metadata so the trajectory viewer can render the skill seam without
 	 * re-running the action.
@@ -214,9 +217,9 @@ export interface TrajectoryStepRecord {
 	skillInvocations?: TrajectorySkillInvocationRecord[];
 	/**
 	 * Name of the evaluator that produced this step. Only set when
-	 * `kind === "evaluator"`. Closes M14: every evaluator turn emits an
-	 * EVALUATOR step wrapping its model call as a child so reviewers and
-	 * training pipelines can isolate the evaluator seam.
+	 * `kind === "evaluator"`. Every evaluator turn emits an EVALUATOR step
+	 * wrapping its model call as a child so reviewers and training pipelines
+	 * can isolate the evaluator seam.
 	 */
 	evaluatorName?: string;
 }

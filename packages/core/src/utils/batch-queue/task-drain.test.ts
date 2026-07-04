@@ -1,3 +1,9 @@
+/**
+ * TaskDrain startup reconciliation: dedupes persisted repeat tasks that share a
+ * managed drain, reusing and re-intervalling one while deleting the rest instead
+ * of creating a new task. Driven against a mock runtime backed by an in-memory
+ * task list.
+ */
 import { describe, expect, test, vi } from "vitest";
 import { createMockRuntime } from "../../testing/mock-runtime";
 import type { Task } from "../../types/task";

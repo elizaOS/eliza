@@ -1,3 +1,13 @@
+/**
+ * Builds the relationships graph model backing RelationshipsService: unions
+ * entities into identity clusters ("people"), derives weighted, sentiment-tagged
+ * edges from explicit relationship rows and from conversation adjacency/reply
+ * signals, and assembles per-person detail (facts, recent conversations,
+ * relevant memories, personality preferences). Exposes a TTL-cached
+ * RelationshipsGraphService (snapshot / person-detail / merge propose+accept+
+ * reject) plus cluster-aware getMemories/searchMemories helpers that fan a
+ * lookup across every member of a person's identity cluster.
+ */
 import { getCloudAuthService } from "../cloud-auth-service";
 import type {
 	Entity,

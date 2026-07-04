@@ -1,6 +1,3 @@
-import { describe, expect, it } from "vitest";
-import { formatError } from "./format-error.ts";
-
 /**
  * `formatError` is the canonical error-message extractor and runs on failure
  * paths across the runtime, so it must never itself throw and mask the original
@@ -9,6 +6,10 @@ import { formatError } from "./format-error.ts";
  * `toString` / `Symbol.toPrimitive`; a pathological `Error` subclass can expose
  * a throwing `message` getter. Every one of these must resolve to a string.
  */
+
+import { describe, expect, it } from "vitest";
+import { formatError } from "./format-error.ts";
+
 describe("formatError", () => {
 	it("returns an Error's message", () => {
 		expect(formatError(new Error("socket hang up"))).toBe("socket hang up");

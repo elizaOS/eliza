@@ -1,3 +1,9 @@
+/**
+ * Tests for `extractFirstSentence`, the sentence-boundary splitter behind
+ * reply/TTS early-emit: the cases pin abbreviation handling (e.g./i.e./Mr./Dr.,
+ * including quoted/parenthesized/emphasized forms) so it never chops a reply
+ * mid-abbreviation.
+ */
 import { describe, expect, it } from "vitest";
 import { extractFirstSentence } from "./text-splitting.ts";
 

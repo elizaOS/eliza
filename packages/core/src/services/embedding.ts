@@ -1,3 +1,13 @@
+/**
+ * Long-lived singleton that owns asynchronous embedding generation for memories.
+ * Registered by the basic-capabilities bundle; it listens for
+ * EMBEDDING_GENERATION_REQUESTED events and drains a priority `BatchQueue` on the
+ * task scheduler, embedding each memory's text and writing the vector back via
+ * `updateMemory`. When a TEXT_EMBEDDING_BATCH model is registered it collapses a
+ * per-turn embed burst into one round-trip, falling back per-item on any batch
+ * failure; when no TEXT_EMBEDDING model exists it starts disabled so text-only
+ * deployments still run.
+ */
 import type { EmbeddingGenerationPayload } from "../types/events";
 import { EventType } from "../types/events";
 import type { Memory } from "../types/memory";

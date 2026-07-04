@@ -1,3 +1,12 @@
+/**
+ * Packs resolved prompt sections into batched model call plans and executes
+ * them: groups by affinity, then priority, then model preference; bin-packs
+ * packable sections under a per-call token budget while isolated sections go
+ * alone; runs the plans through a concurrency-limited semaphore; then
+ * de-namespaces the pooled response back into per-section field maps. Returns
+ * the per-section results plus per-call metadata for the batcher's stats and
+ * drain log. Consumed by PromptBatcher.
+ */
 import type { GenerateTextParams } from "../../types/model";
 import type { ResolvedSection } from "../../types/prompt-batcher";
 import type { IAgentRuntime } from "../../types/runtime";

@@ -1,3 +1,8 @@
+/**
+ * Unit coverage for NotificationService over a mock runtime with an in-memory
+ * cache and event bus: creation/validation, listing filters, read state,
+ * groupKey collapse, expiry, retention-cap eviction, and cache rehydration.
+ */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createMockRuntime } from "../testing/mock-runtime";
 import type { AgentNotification } from "../types/notification.ts";

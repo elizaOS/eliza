@@ -1,3 +1,12 @@
+/**
+ * `EvaluatorService`: the runtime singleton that runs every registered post-turn
+ * evaluator in a single merged, schema-constrained SMALL-model call, then routes
+ * each evaluator's slice of the output through its processors. Exposes the
+ * `runPostTurnEvaluators` helper the message loop invokes after a turn (skipped on
+ * mobile, where reflection would serialize on the on-device engine). Remembers,
+ * per runtime, when a provider rejects schema-constrained output and falls back to
+ * a json_object request so a doomed schema round-trip is not repaid every turn.
+ */
 import { v4 as uuidv4 } from "uuid";
 import { logger } from "../logger.ts";
 import { isMobilePlatform } from "../runtime-env.ts";

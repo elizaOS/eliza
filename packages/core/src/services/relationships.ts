@@ -1,3 +1,13 @@
+/**
+ * RelationshipsService: the runtime's long-lived contact and relationship store.
+ * Owns per-agent contacts (CRUD, platform handles, interaction history,
+ * relationship goals and followup cadence, cross-platform import), relationship
+ * analytics and strength scoring, strengthened identity records
+ * (`entity_identities`) with confidence-based auto-merge candidates
+ * (`entity_merge_candidates`), and identity-cluster resolution via union-find.
+ * Graph snapshot and person-detail assembly are delegated to the graph builder.
+ * Consumed by relationships providers/actions, LifeOps, and the dashboard.
+ */
 import { sql } from "drizzle-orm";
 import { logger } from "../logger";
 import type { Component, Entity, Relationship } from "../types/environment";
@@ -43,7 +53,6 @@ function isConfirmedIdentityLinkLike(relationship: Relationship): boolean {
 	return typeof status === "string" && status === "confirmed";
 }
 
-// Extended Relationship interface with new fields
 interface ExtendedRelationship extends Relationship {
 	relationshipType?: string;
 	strength?: number;
@@ -727,7 +736,6 @@ export class RelationshipsService extends Service {
 		// Load existing contact info from components
 		await this.loadContactInfoFromComponents();
 
-		// Service initialized
 		logger.info("[RelationshipsService] Initialized successfully");
 	}
 
@@ -736,7 +744,6 @@ export class RelationshipsService extends Service {
 		this.contactInfoCache.clear();
 		this.analyticsCache.clear();
 		this.categoriesCache = [];
-		// Service stopped
 		logger.info("[RelationshipsService] Stopped successfully");
 	}
 
@@ -2286,7 +2293,7 @@ export class RelationshipsService extends Service {
 	}
 
 	// ───────────────────────────────────────────────────────────────────────
-	// Graph snapshot / person detail (merged from former RelationshipsGraphService)
+	// Graph snapshot / person detail
 	// ───────────────────────────────────────────────────────────────────────
 
 	/**

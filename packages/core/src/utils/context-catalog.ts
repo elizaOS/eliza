@@ -1,3 +1,11 @@
+/**
+ * Static catalog mapping built-in action and provider names to the agent
+ * contexts they belong to, and the resolvers that pick a component's contexts —
+ * its own declared `contexts` when present, otherwise this catalog's entry,
+ * defaulting to "general". The source of routing context for components that do
+ * not declare their own.
+ */
+
 import { FIRST_PARTY_CONTEXT_IDS } from "../runtime/context-normalization";
 import type { Action, AgentContext, Provider } from "../types/components";
 
@@ -12,9 +20,8 @@ export const ACTION_CONTEXT_MAP: Record<string, AgentContext[]> = {
 	CONFIGURE: ["general", "settings"],
 	APP: ["connectors"],
 	PLUGIN: ["connectors", "admin"],
-	// PAGE_DELEGATE replaces the eight retired per-page <NAME>_ACTIONS parents.
-	// Its contexts array is declared on the action itself; this fallback entry
-	// covers any code paths that still resolve via this catalog.
+	// PAGE_DELEGATE's contexts array is declared on the action itself; this
+	// fallback entry covers any code paths that still resolve via this catalog.
 	PAGE_DELEGATE: ["general"],
 	WALLET: ["wallet"],
 	PREDICTION_MARKET: ["wallet"],

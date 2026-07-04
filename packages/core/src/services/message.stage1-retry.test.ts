@@ -1,16 +1,17 @@
+/**
+ * Exercises the Stage-1 retry policy (shouldRetryStage1Generation and
+ * getStage1RetryReason). A "malformed HANDLE_RESPONSE tool call" caused by a
+ * completion-cap truncation must NOT be retried — regenerating at the same token
+ * cap truncates again, burning full Stage-1 turns for the same result (a +12-16s
+ * tail-latency spike on direct/DM chat); truncation is routed to the dedicated
+ * recovery path instead. Empty or garbled output that did not hit the cap is
+ * still worth one retry.
+ */
 import { describe, expect, it } from "vitest";
 import { HANDLE_RESPONSE_TOOL_NAME } from "../actions/to-tool";
 import type { GenerateTextResult } from "../types/index";
 import { getStage1RetryReason, shouldRetryStage1Generation } from "./message";
 
-/**
- * Stage-1 retry policy (latency fix): a "malformed HANDLE_RESPONSE tool call"
- * caused by a completion-limit truncation must NOT be retried — regenerating at
- * the same token cap truncates again, burning full Stage-1 turns for the same
- * result (the measured +12-16s tail-latency spike on direct/DM chat). Truncation
- * is routed to the dedicated recovery path instead. Empty/garbled output that did
- * not hit the cap is still worth one retry.
- */
 function rawWith(opts: {
 	finishReason?: string;
 	completionTokens?: number;

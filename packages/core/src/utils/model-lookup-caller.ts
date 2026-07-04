@@ -1,3 +1,10 @@
+/**
+ * Attributes a `runtime.useModel()` call to the plugin or package that triggered
+ * it by parsing the captured stack trace down to package names, skipping internal
+ * runtime frames and unrelated third-party `node_modules` dependencies while
+ * still crediting installed `@elizaos/*` packages. Feeds model-lookup debug
+ * diagnostics.
+ */
 export type ModelLookupCallerTrace = {
 	/** Outermost plugin or package that triggered the lookup. */
 	caller?: string;

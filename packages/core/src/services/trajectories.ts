@@ -1,3 +1,10 @@
+/**
+ * Services-layer barrel for the trajectory subsystem: re-exports the
+ * TrajectoriesService, its read routes, and the export/type modules, and
+ * defines the public `TrajectoryProviderAccess`/`TrajectoryLlmCall` shapes —
+ * the recorder records widened with their resolved step/run identifiers — that
+ * external consumers depend on instead of reaching into runtime/.
+ */
 export { tryHandleTrajectoryReadRoutes } from "../features/trajectories/read-routes";
 export { TrajectoriesService } from "../features/trajectories/TrajectoriesService";
 export * from "./trajectory-export";

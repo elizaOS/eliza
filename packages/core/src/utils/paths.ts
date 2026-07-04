@@ -1,3 +1,10 @@
+/**
+ * Resolves and caches the filesystem directories elizaOS reads and writes — data,
+ * database, characters, generated, and upload folders. Each is overridable by a
+ * dedicated env var and otherwise derived from the resolved state dir. Exposes a
+ * process-wide cached singleton, per-directory accessors, and a reset used by
+ * tests.
+ */
 import { join } from "node:path";
 import { resolveStateDir } from "./state-dir";
 

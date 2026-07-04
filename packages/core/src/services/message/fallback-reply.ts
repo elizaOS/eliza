@@ -1,3 +1,12 @@
+/**
+ * Classifies model-call failures — rate-limit/429, auth 401/403, and transient
+ * provider errors worth failing over to another provider — and assembles the
+ * user-facing fallback reply when a turn's grounding trajectory fails.
+ * Classification unwraps the AI SDK retry envelope and reads the structured HTTP
+ * status first, falling back to a message-substring scan for status-less errors.
+ * buildFailureReplyPrompt shapes the in-character apology (never answering on the
+ * merits), and stripReasoningBlocks removes <think> spans from the raw reply.
+ */
 import { ModelType } from "../../types/model";
 
 type ErrorWithStatus = {

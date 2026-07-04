@@ -1,3 +1,9 @@
+/**
+ * Exercises the `agent-event-bridge` functions that fan runtime lifecycle,
+ * action, evaluator, and connector-message events into `AgentEventService`
+ * streams and guarded inbox notifications, including the no-service no-op path.
+ * Runs against a mock runtime backed by a real AgentEventService.
+ */
 import { describe, expect, it } from "vitest";
 import { createMockRuntime } from "../testing/mock-runtime";
 import type { AgentEventPayload } from "../types/agentEvent.ts";

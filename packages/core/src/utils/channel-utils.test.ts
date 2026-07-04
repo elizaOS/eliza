@@ -1,11 +1,3 @@
-import { describe, expect, it } from "vitest";
-import {
-	normalizeChatType,
-	resolveMentionGating,
-	resolveMentionGatingWithBypass,
-	shouldAckReaction,
-} from "./channel-utils.ts";
-
 /**
  * Channel decision gates. resolveMentionGating decides whether the agent even
  * processes a message: it must SKIP only when a mention is required, detectable,
@@ -13,6 +5,14 @@ import {
  * counts as mentioned. Getting this wrong makes the bot either ignore people who
  * @-mentioned it or spam every message in a group.
  */
+
+import { describe, expect, it } from "vitest";
+import {
+	normalizeChatType,
+	resolveMentionGating,
+	resolveMentionGatingWithBypass,
+	shouldAckReaction,
+} from "./channel-utils.ts";
 
 describe("normalizeChatType", () => {
 	it("folds platform synonyms into direct/group/channel", () => {

@@ -1,10 +1,11 @@
-import { parseBooleanValue } from "./boolean.js";
-
 /**
- * Browser and Node.js compatible environment variable abstraction
- * This module provides a cross-platform interface for accessing environment variables
- * that works in both browser and Node.js environments.
+ * Browser- and Node-compatible environment-variable abstraction — a
+ * cross-platform interface for reading and setting env vars in both browser and
+ * Node runtimes (via a cached singleton and typed convenience getters), plus
+ * Node-only upward .env discovery and dotenv loading.
  */
+
+import { parseBooleanValue } from "./boolean.js";
 
 /**
  * Type representing the runtime environment

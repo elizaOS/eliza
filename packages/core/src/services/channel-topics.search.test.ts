@@ -1,3 +1,9 @@
+/**
+ * Exercises `matchTopicRooms` (channel-topics): cross-channel topic search that
+ * ranks rooms by matching-topic count, matches whitespace tokens
+ * case-insensitively, and honors the empty-query / limit / no-match edge cases.
+ * Pure-function checks.
+ */
 import { describe, expect, it } from "vitest";
 import { matchTopicRooms } from "./channel-topics.ts";
 

@@ -1,3 +1,10 @@
+/**
+ * Integration tests for runShortcutGate, the pre-LLM shortcut gate: confident
+ * slash-command and natural-language matches dispatch straight to the target
+ * action with zero model calls, honoring role gates, validate() failures, and
+ * the disable env flag. The fake runtime's useModel throws, so any inference
+ * attempt fails the test.
+ */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ShortcutRegistry } from "../runtime/shortcut-registry";
 import type { Action } from "../types/components";
@@ -5,11 +12,6 @@ import { EventType } from "../types/events";
 import type { Memory, State, UUID } from "../types/index";
 import { runShortcutGate } from "./message";
 
-/**
- * Integration test for the pre-LLM shortcut gate (#8791): a confident match
- * runs the target action and returns its reply with ZERO model calls. The fake
- * runtime's useModel throws, so any inference attempt fails the test.
- */
 function echoAction(
 	opts: {
 		validate?: () => Promise<boolean>;
@@ -242,10 +244,9 @@ describe("runShortcutGate (#8791 pre-LLM gate)", () => {
 		expect(shortcutEvents).toHaveLength(1);
 	});
 
-	// #12087 Item 3: the shortcut path must enforce the target action's declared
-	// roleGate before running its handler. Previously it called validate()/handler()
-	// directly, so a shortcut targeting an OWNER-gated action was reachable by any
-	// USER whose shortcut lacked `requiresElevated`.
+	// #12087 Item 3: the shortcut path enforces the target action's declared
+	// roleGate before running its handler, so a shortcut targeting an OWNER-gated
+	// action is unreachable by a USER whose shortcut lacks `requiresElevated`.
 	function ownerGatedEcho(handler: Action["handler"]): Action {
 		return {
 			name: "ECHO_COMMAND",

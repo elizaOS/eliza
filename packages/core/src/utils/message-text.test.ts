@@ -1,3 +1,7 @@
+/**
+ * Tests for `getUserMessageText`, covering that a connector's current-turn text
+ * wins over the rendered channel envelope stored on the message content.
+ */
 import { describe, expect, it } from "vitest";
 import type { Memory } from "../types/memory";
 import { getUserMessageText } from "./message-text";

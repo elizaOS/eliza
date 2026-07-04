@@ -1,3 +1,12 @@
+/**
+ * Batches many independent structured prompt "sections" into a small number of
+ * pooled LLM calls, keyed by affinity group, to cut per-turn model traffic.
+ * Owns the section registry, per-message buffers, the in-memory + persisted
+ * result cache, and one repeating drain task per affinity; consumers register
+ * sections through askOnce / askNow / onDrain / think and await the resolved
+ * fields (or receive them via onResult). The runtime constructs one
+ * PromptBatcher singleton and feeds it messages via tick().
+ */
 import type { Memory } from "../../types/memory";
 import type { GenerateTextParams } from "../../types/model";
 import {
@@ -290,7 +299,7 @@ export class PromptBatcher {
 		this.inMemoryCache.delete(cacheKey);
 		// error-policy:J7 best-effort DB cache invalidation — the in-memory entry is
 		// already cleared above and a stale DB cache row is harmless, so a delete
-		// failure (deleteCache now throws on DB error, #12269) must NOT become an
+		// failure (deleteCache throws on DB error, #12269) must NOT become an
 		// unhandled rejection that terminates one-shot CLI / embedded hosts. Surface
 		// via reportError, never rethrow.
 		void this.runtime

@@ -1,3 +1,9 @@
+/**
+ * Covers `DefaultMessageService.processAttachments`: remote fetches route through
+ * the mocked SSRF-guarded fetcher (zero real network), a failing attachment is
+ * isolated as ephemeral without throwing, and local text/csv/markdown/pdf docs
+ * extract real text through the un-mocked extractor.
+ */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ContentType, type Media } from "../types/primitives";
 import type { IAgentRuntime } from "../types/runtime";

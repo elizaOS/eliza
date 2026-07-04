@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import { type BackoffPolicy, computeBackoff } from "./retry";
 
 /**
- * Tests for the restart/retry backoff math (#10203 / #10197 stability, #8801).
- * computeBackoff drives crash-recovery and retry delays; the exponential growth,
- * the attempt clamp, the maxMs cap, and the jitter bounds were untested.
+ * Tests for the restart/retry backoff math. computeBackoff drives crash-recovery
+ * and retry delays; these cover the exponential growth, the attempt clamp, the
+ * maxMs cap, and the jitter bounds.
  */
 const noJitter: BackoffPolicy = {
 	initialMs: 100,

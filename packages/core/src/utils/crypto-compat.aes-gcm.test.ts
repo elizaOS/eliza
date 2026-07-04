@@ -1,14 +1,14 @@
-import { describe, expect, it } from "vitest";
-import { decryptAes256Gcm, encryptAes256Gcm } from "./crypto-compat.ts";
-
 /**
  * AES-256-GCM authenticated encryption (#8801 — the crypto primitive that
- * protects stored secrets/character keys, shipped untested). The properties that
- * matter for security are pinned: an exact round-trip, AAD binding, and that any
+ * protects stored secrets/character keys). The properties that matter for
+ * security are pinned: an exact round-trip, AAD binding, and that any
  * tamper / wrong key / wrong AAD is REJECTED (GCM's authentication), plus the
  * key/IV/tag length guards. A regression that silently returned plaintext on a
  * bad tag would be a critical confidentiality+integrity break.
  */
+
+import { describe, expect, it } from "vitest";
+import { decryptAes256Gcm, encryptAes256Gcm } from "./crypto-compat.ts";
 
 const KEY = new Uint8Array(32).map((_, i) => i + 1); // 32 bytes → AES-256
 const KEY2 = new Uint8Array(32).map((_, i) => 255 - i); // a different key

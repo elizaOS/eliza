@@ -1,3 +1,9 @@
+/**
+ * Deterministic helpers must be reproducible: the same seed always yields the
+ * same RNG stream / shuffle / sample, and stableStringify must be key-order
+ * independent. Reproducibility is what makes seeded tests and stable IDs work.
+ */
+
 import { describe, expect, it } from "vitest";
 import {
 	buildDeterministicSeed,
@@ -9,12 +15,6 @@ import {
 	hashStringToUint32,
 	stableStringify,
 } from "./deterministic.ts";
-
-/**
- * Deterministic helpers must be reproducible: the same seed always yields the
- * same RNG stream / shuffle / sample, and stableStringify must be key-order
- * independent. Reproducibility is what makes seeded tests and stable IDs work.
- */
 
 describe("hashStringToUint32", () => {
 	it("is a stable uint32 hash, input-sensitive", () => {

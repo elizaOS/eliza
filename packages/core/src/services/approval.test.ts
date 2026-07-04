@@ -1,3 +1,8 @@
+/**
+ * Exercises `ApprovalService.listPendingUserActions`: in-flight async approvals
+ * map to canonical `PendingUserAction` records with options, weight, and the
+ * self-expiry deadline for timed requests. Runs against a minimal stub runtime.
+ */
 import { describe, expect, it } from "vitest";
 import type { IAgentRuntime, UUID } from "../types/index.ts";
 import { PENDING_USER_ACTION_WEIGHT } from "../types/index.ts";

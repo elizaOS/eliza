@@ -1,3 +1,8 @@
+/**
+ * Tests for the trajectory export helpers: usage/cache summaries, flattened
+ * LLM-call iteration, and JSON/JSONL/ART serialization over a sample trajectory
+ * built from both persisted `stepsJson` and inline `steps`.
+ */
 import { describe, expect, it } from "vitest";
 import {
 	iterateTrajectoryLlmCalls,

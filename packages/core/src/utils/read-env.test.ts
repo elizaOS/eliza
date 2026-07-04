@@ -1,3 +1,8 @@
+/**
+ * Covers readEnv / readEnvBool: canonical-key lookup, default fallback,
+ * whitespace-only treated as unset, and truthy/falsy string parsing (against an
+ * injected env map, not process.env).
+ */
 import { describe, expect, it } from "vitest";
 import { readEnv, readEnvBool } from "./read-env.ts";
 

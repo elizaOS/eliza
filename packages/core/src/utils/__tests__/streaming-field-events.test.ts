@@ -1,3 +1,9 @@
+/**
+ * Streaming field extractors (StructuredFieldStreamExtractor,
+ * ResponseSkeletonStreamExtractor): per-field start/done/chunk events, clean
+ * text-only streaming, JSON-skeleton field selection, think-tag hiding, and
+ * abort handling, fed in small slices to exercise chunk boundaries.
+ */
 import { describe, expect, it } from "vitest";
 import type { SchemaRow } from "../../types/state";
 import {
@@ -220,9 +226,9 @@ describe("ResponseSkeletonStreamExtractor", () => {
 	it("streams non-envelope prose straight through as the reply (passthrough)", () => {
 		// A local model that was not grammar-constrained (e.g. the FFI backend,
 		// which cannot apply GBNF) emits the reply as raw prose with no JSON
-		// envelope. Previously the extractor matched no spans and emitted nothing,
-		// so chat-routes collapsed the whole reply into one trailing chunk. Now it
-		// streams the prose token-by-token.
+		// envelope. The extractor still streams that prose token-by-token rather
+		// than matching no spans and collapsing the whole reply into one trailing
+		// chunk.
 		const chunks: string[] = [];
 		const accumulated: string[] = [];
 		const extractor = new ResponseSkeletonStreamExtractor({

@@ -1,3 +1,8 @@
+/**
+ * Exercises PromptBatcher's recurring drain loop, minCycleMs throttling, and
+ * once-section cache reuse / stale-while-revalidate against an in-memory runtime
+ * and a fake dispatcher (no real model calls).
+ */
 import { describe, expect, test } from "vitest";
 import type {
 	BatcherResult,

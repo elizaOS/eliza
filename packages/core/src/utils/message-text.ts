@@ -1,3 +1,10 @@
+/**
+ * Extracts the user's actual request text from a message `Memory`. Unwraps the
+ * document-augmentation `<user_request>` envelope, strips a trailing
+ * `[language instruction: ...]` suffix, and caps oversized input. Prefers a
+ * connector's `currentMessageText` over the rendered `text`, and offers a
+ * lowercased, whitespace-collapsed variant for matching.
+ */
 import type { Memory } from "../types/memory";
 
 const DOCUMENT_AUGMENTATION_PREFIX =

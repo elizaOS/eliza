@@ -1,3 +1,9 @@
+/**
+ * Tests for the state-directory resolvers (`resolveStateDir`,
+ * `getElizaNamespace`, `resolveOAuthDir`, `resolveUserPath`, `migrateStateDir`):
+ * env/XDG precedence and `~` expansion are checked against a platform-portable
+ * fake homedir, and `migrateStateDir` runs against real temp directories.
+ */
 import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { isAbsolute, join, resolve, sep } from "node:path";

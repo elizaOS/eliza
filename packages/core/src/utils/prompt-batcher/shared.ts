@@ -1,3 +1,12 @@
+/**
+ * Shared types and pure helpers for the prompt-batcher (batcher + dispatcher):
+ * the deferred, cache-entry, call-meta, and settings shapes, plus identifier
+ * sanitizing, retry-count clamping (0..2, floored), minimal-State construction,
+ * character-context assembly, per-platform source-message id derivation for
+ * dedup, schema field picking, section-drift comparison, and an incremental
+ * rolling average. Re-exports the single Semaphore implementation for the
+ * dispatcher.
+ */
 import type { Memory } from "../../types/memory";
 import type {
 	BatcherResult,

@@ -1,3 +1,8 @@
+/**
+ * Exercises `wrapSingleTurnVisibleCallback` (services/message): action-callback
+ * text is rewritten through TEXT_SMALL into natural language, while passive REPLY
+ * callbacks pass through untouched. Runs against a mock runtime with a stubbed model.
+ */
 import { describe, expect, it, vi } from "vitest";
 import { createMockRuntime } from "../../testing/mock-runtime";
 import type { HandlerCallback, Memory } from "../../types";

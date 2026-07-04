@@ -1,3 +1,9 @@
+/**
+ * Tests for resolveSetting: runtime-setting-wins-over-env precedence, non-string
+ * coercion, the readEnv-based env fallback (whitespace treated as unset), and
+ * default handling, driven through an in-memory SettingReader stub rather than a
+ * live runtime.
+ */
 import { describe, expect, it } from "vitest";
 import { resolveSetting, type SettingReader } from "./resolve-setting.ts";
 

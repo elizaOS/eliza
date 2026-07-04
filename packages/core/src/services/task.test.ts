@@ -1,3 +1,8 @@
+/**
+ * Tests for TaskService tick re-arm, repeat-task backoff/auto-pause, and
+ * self-queue suppression, driven by fake timers over an in-memory task store,
+ * plus the AgentRuntime task mutations that mark the local service dirty.
+ */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentRuntime } from "../runtime";
 import type { UUID } from "../types/primitives";

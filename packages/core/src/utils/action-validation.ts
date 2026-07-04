@@ -1,3 +1,9 @@
+/**
+ * Decides whether an action is eligible this turn by testing that the action's
+ * declared routing contexts overlap the routing contexts active for the current
+ * message and state. Eligibility depends only on active routing contexts, not on
+ * natural-language keyword matching.
+ */
 import type { AgentContext, Memory, State } from "../types/index.ts";
 import {
 	getActiveRoutingContextsForTurn,

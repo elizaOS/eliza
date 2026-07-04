@@ -1,14 +1,13 @@
+/**
+ * Verifies HookService.start registers exactly the HOOK_* members of the
+ * statically-imported EventType enum — every HOOK_* event, and only those.
+ * Drives the real service against a minimal fake runtime that records each
+ * registerEvent call.
+ */
 import { describe, expect, it } from "vitest";
 import { EventType } from "../types/events";
 import type { IAgentRuntime } from "../types/runtime";
 import { HookService } from "./hook";
-
-/**
- * Item #36 (Refs #12091): HookService enumerates HOOK_* event types via a
- * static `import { EventType }` instead of an inline `require("../types/events")`.
- * This proves the statically-imported enum is the source the interceptor setup
- * registers, and that every HOOK_* member (and only those) gets wired.
- */
 
 function makeRuntime(registered: string[]): IAgentRuntime {
 	return {

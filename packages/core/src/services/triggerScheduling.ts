@@ -1,3 +1,11 @@
+/**
+ * Trigger scheduling math: parses 5-field cron expressions (with `N/step`,
+ * range, list, and the Sunday-as-7 alias), computes the next matching run time
+ * in a given timezone (honoring POSIX day-of-month/day-of-week OR-semantics and
+ * DST fall-back dedupe), and resolves interval/once/cron/event triggers to
+ * their next-run timing. Cron parsing returns null on malformed input; interval
+ * values are clamped to [MIN, MAX]_TRIGGER_INTERVAL_MS.
+ */
 import type { TriggerConfig, TriggerType } from "../types/trigger";
 
 export const MIN_TRIGGER_INTERVAL_MS = 60_000;
@@ -264,9 +272,9 @@ export function computeNextCronRunAtMs(
 	// Cap the window at the max representable Date so a base near the ceiling
 	// scans only the representable remainder, not ~527k Invalid-Date candidates.
 	const cutoff = Math.min(start + CRON_SCAN_WINDOW_MS, MAX_REPRESENTABLE_MS);
-	// Hoist ONE formatter for the entire scan. Previously getTimezoneOffsetMs
-	// allocated a fresh Intl.DateTimeFormat per candidate minute — up to ~527k
-	// allocations across the 366-day window.
+	// Hoist ONE formatter for the entire scan: a per-candidate-minute
+	// Intl.DateTimeFormat would allocate up to ~527k times across the 366-day
+	// window.
 	const formatter =
 		timezone && timezone !== "UTC" ? buildTzFormatter(timezone) : null;
 

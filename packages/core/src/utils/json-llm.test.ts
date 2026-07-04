@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import { extractAndParseJSONObjectFromText } from "./json-llm";
 
 /**
- * Tests for the core LLM-output JSON parser (#8801 / #9943). This is used across
- * the runtime to turn a model's text into a structured object; a regression
- * breaks every structured output. It was untested.
+ * Tests for `extractAndParseJSONObjectFromText`, the core LLM-output JSON parser
+ * (#8801 / #9943): it turns a model's text into a structured object, so a
+ * regression here breaks every structured model output.
  */
 describe("extractAndParseJSONObjectFromText", () => {
 	it("parses a plain JSON object", () => {

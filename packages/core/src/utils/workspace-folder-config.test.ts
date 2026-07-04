@@ -1,3 +1,9 @@
+/**
+ * Tests for the workspace-folder config store (`read`/`write`/`clear` +
+ * `workspaceFolderConfigPath`): round-trips path + bookmark, tolerates null
+ * bookmarks and malformed JSON, and honors `ELIZA_STATE_DIR`, all against a real
+ * temp state directory.
+ */
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import { join } from "node:path";

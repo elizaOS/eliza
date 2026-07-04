@@ -1,3 +1,12 @@
+/**
+ * Bounds how much of a (potentially huge) action/tool result reaches prompt
+ * state. Estimates token cost from character length, truncates the text and
+ * error fields in the middle while preserving head and tail, and surfaces a
+ * filesystem reference (e.g. `fullOutputPath`) to the complete output when one
+ * is present in the result data. `collectActionResultSizeWarnings` flags fields
+ * over a token threshold, and `formatActionResultsForPrompt` renders the most
+ * recent results (capped at `MAX_PROMPTED_ACTION_RESULTS`) into the prompt block.
+ */
 import type { ActionResult, ProviderDataRecord } from "../types/components";
 
 export const MAX_PROMPTED_ACTION_RESULTS = 8;

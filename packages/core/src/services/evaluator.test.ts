@@ -1,3 +1,10 @@
+/**
+ * Exercises `EvaluatorService.run`: active evaluator sections merge into one
+ * structured model call in priority order, invalid sections and processor
+ * failures stay isolated, and the schema -> json_object -> plain-JSON fallback
+ * ladder (with schema-skip arming) degrades gracefully. Runs against a real
+ * AgentRuntime + InMemoryDatabaseAdapter with a stubbed useModel.
+ */
 import { describe, expect, it, vi } from "vitest";
 import { InMemoryDatabaseAdapter } from "../database/inMemoryAdapter";
 import { AgentRuntime } from "../runtime";

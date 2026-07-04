@@ -1,3 +1,9 @@
+/**
+ * Pins `buildFailureReplyPrompt` and the `isRateLimitError` /
+ * `isModelProviderFallbackError` classifiers (services/message) against the live
+ * hallucination and 429-cascade regressions detailed below. Pure-function checks,
+ * no runtime.
+ */
 import { APICallError, RetryError } from "ai";
 import { describe, expect, it } from "vitest";
 import {

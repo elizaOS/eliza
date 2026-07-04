@@ -1,3 +1,8 @@
+/**
+ * Unit coverage for the shared task-scheduler tick loop under fake timers:
+ * error resilience when getTasks rejects, dirty-agent re-arm/quiet semantics,
+ * and not re-arming an agent that unregisters mid-tick.
+ */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { logger } from "../logger";
 import type { IDatabaseAdapter } from "../types/database";

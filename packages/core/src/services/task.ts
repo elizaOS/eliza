@@ -1,4 +1,11 @@
-// registered to runtime through plugin
+/**
+ * TaskService: the runtime singleton that polls `queue`-tagged tasks and runs
+ * their registered worker when due. Owns the tick loop — a local `setInterval`,
+ * a shared task-scheduler daemon, or serverless `runDueTasks()` — plus
+ * repeat-task cadence, failure backoff and auto-pause, and overlap suppression
+ * for blocking runs. Registered by the basic-capabilities plugin and reached
+ * via `runtime.getService(ServiceType.TASK)`.
+ */
 
 import { promptRunnerTaskWorker } from "../features/basic-capabilities/prompt-runner-task";
 import type { JsonValue } from "../types";
@@ -28,26 +35,9 @@ function resolveDueTime(task: Task): number | null {
 }
 
 /**
- * TaskService class representing a service that schedules and executes tasks.
- * @extends Service
- * @property {NodeJS.Timeout|null} timer - Timer for executing tasks
- * @property {number} TICK_INTERVAL - Interval in milliseconds to check for tasks
- * @property {ServiceTypeName} serviceType - Service type of TASK
- * @property {string} capabilityDescription - Description of the service's capability
- * @static
- * @method start - Static method to start the TaskService
- * @method createTestTasks - Method to create test tasks
- * @method startTimer - Public method to start the timer for checking tasks
- * @method validateTasks - Private method to validate tasks
- * @method checkTasks - Private method to check tasks and execute them
- * @method executeTask - Private method to execute a task
- * @static
- * @method stop - Static method to stop the TaskService
- * @method stop - Method to stop the TaskService
- */
-/**
- * Start the TaskService with the given runtime.
- * @param {IAgentRuntime} runtime - The runtime for the TaskService.
+ * Each tick validates due `queue` tasks against their worker's `shouldRun`,
+ * then runs `worker.execute`. Repeat tasks reschedule on their interval (with
+ * failure backoff); one-shot tasks are deleted after running.
  */
 export class TaskService extends Service {
 	private timer: NodeJS.Timeout | null = null;

@@ -1,3 +1,12 @@
+/**
+ * Turn-level context routing: derives the active agent contexts for a turn —
+ * from routing metadata carried on state/message, or by scoring the message
+ * text against keyword signals — and gates which actions/providers surface by
+ * testing whether a component's declared contexts overlap the active set.
+ * Gating is permissive: a component with no declared contexts, or an empty
+ * active set, is always included.
+ */
+
 import type { Action, AgentContext, Provider } from "../types/components";
 import type { Memory } from "../types/memory";
 import type { Content, ContentValue } from "../types/primitives";

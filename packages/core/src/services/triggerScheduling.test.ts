@@ -1,3 +1,8 @@
+/**
+ * Tests for the trigger cron parser and next-run computation: `N/step`
+ * expansion, the Sunday-as-7 alias, DST fall-back dedupe, POSIX dom/dow OR
+ * semantics, and the non-representable-base guard.
+ */
 import { describe, expect, it } from "vitest";
 import {
 	computeNextCronRunAtMs,
@@ -47,8 +52,8 @@ describe("parseCronExpression - minute field", () => {
 
 describe("parseCronExpression - day-of-week Sunday alias (7 == 0)", () => {
 	// POSIX/Vixie cron accepts BOTH 0 and 7 for Sunday, and LLMs commonly emit
-	// `7`. Previously the dayOfWeek range was capped at 6, so `7` (and any range
-	// or step touching it) hard-failed trigger creation.
+	// `7`; the parser accepts `7` (single, range end, or step) and folds it onto
+	// Sunday (0) rather than hard-failing trigger creation.
 	it("accepts a bare `7` and folds it onto Sunday (0)", () => {
 		expect(daysOfWeek("0 0 * * 7")).toEqual([0]);
 	});

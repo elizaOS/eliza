@@ -1,3 +1,8 @@
+/**
+ * Public entry point for the prompt batcher: re-exports the batcher and
+ * dispatcher classes, shared helpers, and types that coalesce many per-section
+ * prompt requests into batched model calls.
+ */
 export {
 	BatcherDisposedError,
 	type BatcherStats,

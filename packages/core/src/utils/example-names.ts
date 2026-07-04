@@ -1,3 +1,10 @@
+/**
+ * Fixed roster of gender-neutral placeholder display names for seeding examples
+ * and synthetic entities, plus pickRandomExampleName for a random pick (with a
+ * `user<n>` fallback). The ordered `as const` list keeps seeded consumers
+ * (deterministic.ts) reproducible across runs.
+ */
+
 export const EXAMPLE_NAMES = [
 	"Avery",
 	"Blake",

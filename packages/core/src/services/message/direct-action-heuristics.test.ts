@@ -1,3 +1,10 @@
+/**
+ * Tests the direct-action heuristics — shell / web-search intent detection and
+ * action-name resolution by canonical name, simile, or delegation tag. They must
+ * fire on clear intent yet respect explicit negations ("don't run commands",
+ * "don't browse the web"), since a false positive runs an unwanted
+ * side-effecting action.
+ */
 import { describe, expect, it } from "vitest";
 import type { Action } from "../../types/components";
 import {
@@ -7,13 +14,6 @@ import {
 	looksLikeLocalShellRequest,
 	looksLikeWebSearchRequest,
 } from "./direct-action-heuristics.ts";
-
-/**
- * Direct-action heuristics decide whether a message should directly trigger a
- * shell / web-search action. They must fire on clear intent but respect
- * explicit negations ("don't run commands", "don't browse the web") — a false
- * positive runs an unwanted side-effecting action.
- */
 
 describe("looksLikeLocalShellRequest", () => {
 	it("fires on local inspect-the-repo intent, not on unrelated text", () => {

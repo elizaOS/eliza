@@ -1,3 +1,9 @@
+/**
+ * Exercises `ChannelTopicsService`: the per-room LRU of recent channel topics —
+ * dedup with move-to-most-recent, FIFO eviction at capacity, persistence to
+ * room.metadata, hydration on restart, and defensive handling when rooms or the
+ * DB are missing. Backed by a mock runtime over an in-memory room map.
+ */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createMockRuntime } from "../../testing/mock-runtime";
 import type { Room, UUID } from "../../types/index";

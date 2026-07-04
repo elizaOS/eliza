@@ -1,5 +1,3 @@
-import { logger } from "../../logger.js";
-
 /**
  * In-memory priority queue: **high** items dequeue before **normal**, before **low**.
  *
@@ -10,6 +8,8 @@ import { logger } from "../../logger.js";
  * **Why `onPressure` returns boolean:** The caller decides whether to evict, reject the new
  * item, or take other action — we do not silently drop work here.
  */
+
+import { logger } from "../../logger.js";
 
 export type QueuePriority = "high" | "normal" | "low";
 
@@ -91,7 +91,6 @@ export class PriorityQueue<T> {
 			}
 			this.normalItems.push(item);
 		}
-		// Note: separates items by priority for efficient batch processing and avoids linear scans.
 	}
 
 	/** Remove up to `n` items from the front (highest priority first). */

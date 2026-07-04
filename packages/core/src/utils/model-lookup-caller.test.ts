@@ -1,3 +1,9 @@
+/**
+ * Tests for `captureModelLookupCaller` / `captureModelLookupCallerFromStack`,
+ * covering plugin/package attribution across live stacks, installed
+ * `node_modules` and pnpm virtual-store layouts, and rejection of third-party
+ * frames.
+ */
 import { describe, expect, it } from "vitest";
 import {
 	captureModelLookupCaller,

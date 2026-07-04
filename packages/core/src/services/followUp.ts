@@ -1,3 +1,11 @@
+/**
+ * `FollowUpService`: the runtime singleton that schedules and manages contact
+ * follow-ups as queue tasks (one-shot `dueAt` rows the task scheduler runs then
+ * deletes) and surfaces smart follow-up suggestions derived from relationship
+ * analytics. Depends on `RelationshipsService` for contact data and mirrors the
+ * next follow-up into each contact's custom fields; its registered `follow_up`
+ * task worker writes a reminder memory and emits `follow_up:due` when a task fires.
+ */
 import { createUniqueUuid } from "../entities";
 import { logger } from "../logger";
 import type { Memory } from "../types/memory";

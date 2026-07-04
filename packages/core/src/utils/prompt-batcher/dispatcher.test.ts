@@ -1,3 +1,8 @@
+/**
+ * Verifies PromptDispatcher threads each section's retry budget into structured
+ * model calls and tags call-plan priority (background vs interactive, #11914),
+ * against a mock runtime whose dynamicPromptExecFromState is stubbed.
+ */
 import { describe, expect, test } from "vitest";
 import { createMockRuntime } from "../../testing/mock-runtime";
 import type { ResolvedSection } from "../../types/prompt-batcher";

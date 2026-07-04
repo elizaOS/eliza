@@ -1,3 +1,12 @@
+/**
+ * Pre-model heuristics that decide which registered actions a raw message should
+ * directly trigger: local-shell inspection, web/live-info lookup, coding-task
+ * delegation, and views/app navigation. Each detector fires on clear intent,
+ * honors explicit negations ("don't run commands", "don't browse the web"), and
+ * resolves action names structurally by canonical name, simile, or tag — so a
+ * runtime missing a given backend action simply yields no candidate. Also derives
+ * a concrete shell command or web-search query from the message text.
+ */
 import type { Action } from "../../types/components";
 
 export interface DirectActionInferenceHooks {
@@ -149,9 +158,7 @@ export function findAvailableActionName(
 ): string | undefined {
 	// Resolve in `names` PRIORITY order, not action-registration order: for each
 	// wanted name in turn, return the first action whose name or simile matches.
-	// The leading preference wins — the first name in `names` that matches any
-	// registered action (by name or simile) is returned, regardless of
-	// registration order.
+	// The leading preference wins regardless of registration order.
 	for (const want of names) {
 		const wanted = normalizeActionIdentifier(want);
 		const match = actions.find((action) => {
@@ -228,9 +235,9 @@ export function inferDirectCurrentRequestCandidateActions(
 		// apps", "list running apps", "launch the shopify app") is ambiguous
 		// between the views/apps *page* (VIEWS) and the applications themselves
 		// (the APP control action). Surface BOTH candidates and let the planner
-		// arbitrate from the exposed routing hints — previously only VIEWS was
-		// hinted, so every installed-apps ask was answered with the UI view
-		// catalog (#9950). Structurally anchored to a registered app-control
+		// arbitrate from the exposed routing hints; hinting only VIEWS answers
+		// every installed-apps ask with the UI view catalog instead of the app
+		// itself (#9950). Structurally anchored to a registered app-control
 		// action, so runtimes without one are unaffected.
 		const appControlAction = findAppControlActionNameForAppRequest(
 			actions,
