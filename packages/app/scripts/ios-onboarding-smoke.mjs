@@ -14,6 +14,11 @@ import {
   captureIosSimulatorScreenshot,
   startIosSimulatorVideo,
 } from "./lib/ios-simulator-capture.mjs";
+import { clearIosSmokeDefaults } from "./lib/ios-sim-defaults-hygiene.mjs";
+import {
+  assertCandidateIosAppRendererFresh,
+  assertInstalledIosAppRendererFresh,
+} from "./lib/ios-renderer-stamp.mjs";
 
 const appDir = path.resolve(fileURLToPath(import.meta.url), "..", "..");
 const repoRoot = path.resolve(appDir, "..", "..");
@@ -175,13 +180,27 @@ function latestBuiltApp() {
 }
 
 function installLatestApp(udid, appId) {
-  if (has("--skip-install")) return;
+  if (has("--skip-install")) {
+    assertInstalledIosAppRendererFresh({
+      udid,
+      bundleId: appId,
+      repoRoot,
+      log,
+    });
+    return;
+  }
   const appPath = val("--app-path") ?? latestBuiltApp();
   if (!appPath) {
     throw new Error(
       "Could not find a Debug-iphonesimulator App.app. Build the iOS simulator app first or pass --app-path.",
     );
   }
+  assertCandidateIosAppRendererFresh({
+    appPath,
+    bundleId: appId,
+    repoRoot,
+    log,
+  });
   tryRun("xcrun", ["simctl", "terminate", udid, appId]);
   tryRun("xcrun", ["simctl", "uninstall", udid, appId]);
   log(`installing ${appPath}`);
@@ -196,6 +215,12 @@ function installLatestApp(udid, appId) {
   if (!installed) {
     throw new Error(`${appId} was not installed after simctl install.`);
   }
+  assertInstalledIosAppRendererFresh({
+    udid,
+    bundleId: appId,
+    repoRoot,
+    log,
+  });
 }
 
 function prefsDomainPath(udid, appId) {
@@ -485,11 +510,20 @@ async function main() {
   removePathRecursive(resultDir);
   fs.mkdirSync(resultDir, { recursive: true });
 
-  deleteSimulatorPreferenceDomainKeys(udid, appId, FIRST_RUN_STATE_KEYS);
-  flushPreferences(udid);
+  clearIosSmokeDefaults({
+    udid,
+    bundleId: appId,
+    extraKeys: FIRST_RUN_STATE_KEYS,
+    log,
+  });
   installLatestApp(udid, appId);
   tryRun("xcrun", ["simctl", "terminate", udid, appId]);
-  clearFirstRunState(udid, appId);
+  clearIosSmokeDefaults({
+    udid,
+    bundleId: appId,
+    extraKeys: FIRST_RUN_STATE_KEYS,
+    log,
+  });
   defaultsWriteString(udid, appId, REQUEST_KEY, JSON.stringify({ apiBase }));
   defaultsWriteString(
     udid,
@@ -628,6 +662,12 @@ async function main() {
         `iOS relaunch smoke did not prove onboarding was hidden: ${JSON.stringify(relaunchResult)}`,
       );
     }
+    clearIosSmokeDefaults({
+      udid,
+      bundleId: appId,
+      extraKeys: FIRST_RUN_STATE_KEYS,
+      log,
+    });
     fs.writeFileSync(
       path.join(resultDir, "result.json"),
       `${JSON.stringify(
@@ -649,6 +689,12 @@ async function main() {
   } catch (error) {
     const screenshot = takeScreenshot(udid, "failure");
     await stopVideo(recording);
+    clearIosSmokeDefaults({
+      udid,
+      bundleId: appId,
+      extraKeys: FIRST_RUN_STATE_KEYS,
+      log,
+    });
     throw new Error(
       `${error instanceof Error ? error.message : String(error)}${screenshot ? ` (screenshot: ${screenshot})` : ""}`,
     );
