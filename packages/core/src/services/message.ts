@@ -903,9 +903,19 @@ const MODEL_CONTEXT_PROVIDER_EXCLUSION_SET = new Set<string>(
  * (no per-call CURRENT_TIME drift) so the provider's prefix cache
  * grows with the conversation rather than resetting every turn.
  *
- * Note: we still keep FACTS rendered if present — Stage 1 may need a
- * grounded fact to discriminate ambiguous routing, and FACTS are stable
- * across calls (only refreshed when the underlying store changes).
+ * These exclusions apply to COMPOSITION as well as rendering:
+ * `composeResponseState` subtracts them from the include list it hands
+ * `composeState`, so the providers never execute for a Stage-1-only turn
+ * (ENTITIES is a room-participant DB fetch per inbound message — pure
+ * waste on group noise that ends in IGNORE, since nothing on the Stage-1
+ * or simple-reply path reads its output). Planner turns still get them:
+ * `selectV5PlannerStateProviderNames` re-adds the core set and the
+ * planner recompose runs any provider missing from the turn's cached
+ * state (see composeState's refreshProviders contract in runtime.ts).
+ *
+ * Note: we still keep FACTS composed and rendered — Stage 1 may need a
+ * grounded fact to discriminate ambiguous routing, and stored facts must
+ * be recallable on the simple path (see CORE_RESPONSE_STATE_PROVIDERS).
  */
 const STAGE1_EXTRA_PROVIDER_EXCLUSIONS = [
 	"CURRENT_TIME",
@@ -1097,16 +1107,30 @@ function withMessageHistoryCompactionProviderOptions<
 	} as T;
 }
 
+/**
+ * The provider include list for Stage-1 response-state composition: the core
+ * response providers plus always-on plugin providers, minus the Stage-1
+ * exclusions (which are execution exclusions, not just render exclusions —
+ * see STAGE1_EXTRA_PROVIDER_EXCLUSIONS). Exported for tests.
+ */
+export function stage1ResponseStateProviderNames(
+	runtime: IAgentRuntime,
+	message: Memory,
+): string[] {
+	const exclusions = new Set(stage1ProviderExclusionsForMessage(message));
+	return [
+		...CORE_RESPONSE_STATE_PROVIDERS,
+		...alwaysOnResponseStateProviderNames(runtime),
+		...(hasInboundBenchmarkContext(message) ? ["CONTEXT_BENCH"] : []),
+	].filter((name) => !exclusions.has(name));
+}
+
 async function composeResponseState(
 	runtime: IAgentRuntime,
 	message: Memory,
 	skipCache = false,
 ): Promise<State> {
-	const providers = [
-		...CORE_RESPONSE_STATE_PROVIDERS,
-		...alwaysOnResponseStateProviderNames(runtime),
-		...(hasInboundBenchmarkContext(message) ? ["CONTEXT_BENCH"] : []),
-	];
+	const providers = stage1ResponseStateProviderNames(runtime, message);
 	if (hasPageScopedRoutingMetadata(message)) {
 		const state = await runtime.composeState(
 			message,

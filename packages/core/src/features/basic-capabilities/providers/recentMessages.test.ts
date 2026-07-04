@@ -43,6 +43,7 @@ function makeRuntime(
 		metadata?: Record<string, unknown>;
 		conversationLength?: number;
 	} = {},
+	overrides: Record<string, unknown> = {},
 ): IAgentRuntime {
 	return {
 		agentId: AGENT_ID,
@@ -61,7 +62,9 @@ function makeRuntime(
 		getEntityById: vi.fn(async () => null),
 		getMemories: vi.fn(async () => memories),
 		getRoomsForParticipants: vi.fn(async () => []),
+		getMemoriesByRoomIds: vi.fn(async () => []),
 		getService: vi.fn(() => null),
+		...overrides,
 	} as IAgentRuntime;
 }
 
@@ -435,5 +438,91 @@ describe("recentMessagesProvider", () => {
 		]);
 		expect(result.text).toContain("User: message 12");
 		expect(result.text).not.toContain("User: message 9");
+	});
+
+	it("skips the cross-room interactions fetch on the first compose of a turn", async () => {
+		const OTHER_ROOM_ID = "00000000-0000-0000-0000-00000000000a";
+		const memories = [
+			makeMemory("msg-1", USER_ID, "hello agent", "discord", 1000),
+		];
+		const runtime = makeRuntime(
+			memories,
+			{},
+			{
+				getRoomsForParticipants: vi.fn(async () => [OTHER_ROOM_ID]),
+				getMemoriesByRoomIds: vi.fn(async () => [
+					{
+						id: "cross-1",
+						agentId: AGENT_ID,
+						roomId: OTHER_ROOM_ID,
+						entityId: USER_ID,
+						createdAt: 500,
+						content: { text: "the blue key is under the mat" },
+					} as Memory,
+				]),
+			},
+		);
+
+		// Stage-1 compose: no prior provider results in the turn's cached state.
+		const result = await recentMessagesProvider.get(
+			runtime,
+			makeMemory("current", USER_ID, "gm", "discord", 2000),
+			{ values: {}, data: {}, text: "" },
+		);
+
+		expect(runtime.getRoomsForParticipants).not.toHaveBeenCalled();
+		expect(runtime.getMemoriesByRoomIds).not.toHaveBeenCalled();
+		expect(result.values?.recentMessageInteractions).toBe("");
+		expect(result.data?.recentInteractions).toEqual([]);
+		// The in-room transcript is unaffected by the lean pass.
+		expect(result.text).toContain("User: hello agent");
+		expect(result.text).not.toContain("blue key");
+	});
+
+	it("fetches cross-room interactions on a turn recompose (cached state has this provider)", async () => {
+		const OTHER_ROOM_ID = "00000000-0000-0000-0000-00000000000a";
+		const memories = [
+			makeMemory("msg-1", USER_ID, "hello agent", "discord", 1000),
+		];
+		const runtime = makeRuntime(
+			memories,
+			{},
+			{
+				getRoomsForParticipants: vi.fn(async () => [ROOM_ID, OTHER_ROOM_ID]),
+				getMemoriesByRoomIds: vi.fn(async () => [
+					{
+						id: "cross-1",
+						agentId: AGENT_ID,
+						roomId: OTHER_ROOM_ID,
+						entityId: USER_ID,
+						createdAt: 500,
+						content: { text: "the blue key is under the mat" },
+					} as Memory,
+				]),
+			},
+		);
+
+		// Planner/action recompose: the turn's cached state already holds a
+		// RECENT_MESSAGES result from the Stage-1 compose.
+		const result = await recentMessagesProvider.get(
+			runtime,
+			makeMemory("current", USER_ID, "gm", "discord", 2000),
+			{
+				values: {},
+				data: { providers: { RECENT_MESSAGES: { text: "stage-1 result" } } },
+				text: "",
+			},
+		);
+
+		expect(runtime.getRoomsForParticipants).toHaveBeenCalled();
+		expect(runtime.getMemoriesByRoomIds).toHaveBeenCalledWith({
+			tableName: "messages",
+			roomIds: [OTHER_ROOM_ID],
+			limit: 20,
+		});
+		expect(result.data?.recentInteractions).toHaveLength(1);
+		expect(result.values?.recentMessageInteractions).toContain(
+			"the blue key is under the mat",
+		);
 	});
 });

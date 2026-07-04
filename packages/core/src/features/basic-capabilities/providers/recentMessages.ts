@@ -20,6 +20,9 @@
  *
  * Also surfaces cross-room `recentInteractions` between the sender's identity
  * cluster and the agent, rendered as message or post interactions by room type.
+ * That fetch only runs on a turn RECOMPOSE (the provider already present in the
+ * cached state passed in): no Stage-1 template renders it, so the first compose
+ * of a turn skips the cross-room queries entirely.
  */
 
 import { getEntityDetails } from "../../../entities.ts";
@@ -368,13 +371,35 @@ export const recentMessagesProvider: Provider = {
 	get: async (
 		runtime: IAgentRuntime,
 		message: Memory,
-		_state: State,
+		state: State,
 	): Promise<ProviderResult> => {
 		try {
 			const { roomId } = message;
 			const conversationLength = Math.min(
 				runtime.getConversationLength(),
 				MAX_RECENT_MESSAGES_LOOKBACK,
+			);
+
+			// The cross-room interactions fetch (identity-cluster expansion, a
+			// rooms query per identity, then a 20-row pull across every other
+			// shared room) is consumed only by downstream state — action-time
+			// reads like MESSAGE target inference — never by the Stage-1 prompt
+			// or the simple-reply path. Stage 1 is the first compose of a turn
+			// (no prior result for this provider in the turn's cached state), so
+			// gate the fetch on a recompose: any pass whose state can reach a
+			// consumer builds over the cached state where this provider already
+			// ran (the planner names RECENT_MESSAGES in refreshProviders; action
+			// composes reuse the turn cache). Skipping on the first compose
+			// removes per-message cross-room DB work on turns that end at
+			// Stage 1.
+			const cachedProviderResults =
+				state?.data && typeof state.data === "object"
+					? (state.data as { providers?: unknown }).providers
+					: undefined;
+			const isTurnRecompose = Boolean(
+				cachedProviderResults &&
+					typeof cachedProviderResults === "object" &&
+					(cachedProviderResults as Record<string, unknown>)[spec.name],
 			);
 
 			// First get room to check for compaction point
@@ -398,7 +423,7 @@ export const recentMessagesProvider: Provider = {
 						// Use compaction point to filter history
 						start: lastCompactionAt,
 					}),
-					message.entityId !== runtime.agentId
+					message.entityId !== runtime.agentId && isTurnRecompose
 						? getRecentInteractions(
 								runtime,
 								message.entityId,
