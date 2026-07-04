@@ -45,6 +45,8 @@ export default scenario({
         "stay hydrated",
       ],
       delta: 1,
+      cadenceKind: "once",
+      forbiddenDueLocalTimes: [{ hour: 9, minute: 0 }],
     },
     {
       type: "judgeRubric",

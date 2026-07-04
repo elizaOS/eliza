@@ -468,6 +468,11 @@ type DefinitionCountCheck = {
   requiredEveryMinutes?: number;
   requiredMaxOccurrencesPerDay?: number;
   expectedTimeZone?: string;
+  forbiddenDueLocalTimes?: Array<{
+    hour?: number;
+    minute?: number;
+    timeZone?: string;
+  }>;
   requireReminderPlan?: boolean;
   websiteAccess?: Record<string, unknown>;
 };
@@ -593,6 +598,40 @@ function looselyMatchesValue(actual: unknown, expected: unknown): boolean {
   return actual === expected;
 }
 
+function localHourMinuteForInstant(
+  dueAt: unknown,
+  timeZone: unknown,
+): { hour: number; minute: number } | null {
+  if (typeof dueAt !== "string" || typeof timeZone !== "string") {
+    return null;
+  }
+  const date = new Date(dueAt);
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+  try {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: false,
+    }).formatToParts(date);
+    const hourPart = parts.find((part) => part.type === "hour")?.value;
+    const minutePart = parts.find((part) => part.type === "minute")?.value;
+    if (hourPart === undefined || minutePart === undefined) {
+      return null;
+    }
+    const parsedHour = Number(hourPart);
+    const parsedMinute = Number(minutePart);
+    if (Number.isNaN(parsedHour) || Number.isNaN(parsedMinute)) {
+      return null;
+    }
+    return { hour: parsedHour % 24, minute: parsedMinute };
+  } catch {
+    return null;
+  }
+}
+
 function definitionMismatchReasons(
   record: DefinitionRecordLike,
   check: DefinitionCountCheck,
@@ -652,6 +691,31 @@ function definitionMismatchReasons(
     reasons.push(
       `maxOccurrencesPerDay expected ${check.requiredMaxOccurrencesPerDay}, saw ${String(cadence?.maxOccurrencesPerDay ?? "missing")}`,
     );
+  }
+  if (
+    Array.isArray(check.forbiddenDueLocalTimes) &&
+    check.forbiddenDueLocalTimes.length > 0
+  ) {
+    const dueAt = cadence?.dueAt;
+    for (const forbidden of check.forbiddenDueLocalTimes) {
+      if (typeof forbidden.hour !== "number") {
+        continue;
+      }
+      const timeZone = forbidden.timeZone ?? record.definition.timezone;
+      const local = localHourMinuteForInstant(dueAt, timeZone);
+      if (!local) {
+        reasons.push(
+          `dueAt local time unavailable for ${String(dueAt ?? "missing")} in ${String(timeZone ?? "missing timezone")}`,
+        );
+        continue;
+      }
+      const minute = forbidden.minute ?? 0;
+      if (local.hour === forbidden.hour && local.minute === minute) {
+        reasons.push(
+          `dueAt local time ${String(local.hour).padStart(2, "0")}:${String(local.minute).padStart(2, "0")} in ${String(timeZone)} is forbidden`,
+        );
+      }
+    }
   }
   if (typeof check.requireReminderPlan === "boolean") {
     const hasReminderPlan =

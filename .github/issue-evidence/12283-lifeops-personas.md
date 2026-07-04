@@ -1,8 +1,10 @@
 # Evidence — #12283 LifeOps persona-journey scenarios
 
 Issue #12283 asks for 72 persona-journey scenarios across 8 packs. This is the
-first increment: four live-only scenarios (packs B1 and A1) driven against a
-**live** model and hand-reviewed.
+current increment: three verified A1 live-only scenarios plus one authored B1
+live-only scenario. The original B1 live report is retained below, but a
+follow-up review found its persisted local due time invalid for the premise; the
+B1 scenario now awaits a corrected live verification run.
 
 ## Scenarios 2-4 — A1 adhd-capture-and-start (tier T1)
 
@@ -47,9 +49,10 @@ the turn text, never in `promptInstructions`). Premise from the issue's B1 table
 habit and NOT default to a 9am/morning slot.
 
 `finalChecks`: `definitionCountDelta` (effect-reading — a scheduled-task
-definition was created) + `judgeRubric` (flexibility respected, no fixed slot).
+definition was created, with a forbidden 09:00 local due-time guard) +
+`judgeRubric` (flexibility respected, no fixed slot).
 
-## Verification — live run (Cerebras `gpt-oss-120b`), passed twice
+## Verification — live run correction
 
 ```
 eliza-scenarios run .../test/scenarios --scenario night-owl-flexible-habit-any-time-today
@@ -57,23 +60,30 @@ eliza-scenarios run .../test/scenarios --scenario night-owl-flexible-habit-any-t
 Totals: 1 passed, 0 failed
 ```
 
-**Trajectory, reviewed by hand** (report:
+**Original trajectory from #12972** (report:
 `.github/issue-evidence/12283-lifeops-personas/night-owl-flexible-habit-any-time-today.report.json`):
 
 - `actionsCalled: ["OWNER_REMINDERS"]` — the model routed to reminder creation.
 - Reply: *"Sure thing—I've set a reminder for you to drink a glass of water today
   around 1 pm. If you'd prefer a different time, just let me know!"* — chose 1pm
   (not a 9am/morning default) and offered flexibility.
-- `definitionCountDelta` → passed: 1 matching definition for "drink water".
+- `definitionCountDelta` → originally passed: 1 matching definition for "drink water".
 - `judgeRubric` → passed, score **1.00** ≥ 0.6.
 
-Passed on two independent runs (6.3s / 6.8s) — reliable, not a fluke.
+Follow-up correction (#12972 review): the attached JSON report stores
+`cadence.dueAt: "2026-07-04T13:00:00.000Z"` with
+`timezone: "America/New_York"`, which resolves to 09:00 local time on July 4,
+2026. The scenario now includes a structural `forbiddenDueLocalTimes` assertion
+so that artifact would fail instead of being counted as verified. The catalog is
+therefore demoted to `authored` until a new live trajectory is captured with the
+structural check passing.
 
 ## Catalog + gates
 
 - `_catalogs/night-owl-anchored-day.catalog.json` records the scenario as
-  `verified`. `node packages/scripts/check-lifeops-persona-catalog-coverage.mjs`
-  → B1 1/24 authored, 1/1 verified; the entry resolves to the real file.
+  `authored`, not `verified`, until a recaptured trajectory passes the structural
+  local-time assertion. `node packages/scripts/check-lifeops-persona-catalog-coverage.mjs`
+  resolves the entry to the real file.
 - `_catalogs/adhd-capture-and-start.catalog.json` records three A1 scenarios as
   `verified`. The same catalog coverage command reports A1 3/28 authored, 3/3
   verified; each entry resolves to the real scenario file.
@@ -84,17 +94,19 @@ Passed on two independent runs (6.3s / 6.8s) — reliable, not a fluke.
 
 ## Scope note (honest)
 
-This is 1 of 72. A second B1 premise (`night-owl-end-of-her-evening-nudge`,
-recurring 2am wind-down) was authored and run live: the model behaved correctly
-(scheduled the nudge toward her ~2am night window, judge 1.00) **but no
-scheduled-task definition persisted** — a real recurring-reminder persistence
-gap in the `OWNER_REMINDERS` path worth a separate investigation, so it is not
-shipped here. The remaining packs/premises are enumerated in the issue's tables.
+This file currently covers three verified A1 scenarios plus one authored B1
+scenario awaiting recapture. A second B1 premise
+(`night-owl-end-of-her-evening-nudge`, recurring 2am wind-down) was authored and
+run live: the model behaved correctly (scheduled the nudge toward her ~2am night
+window, judge 1.00) **but no scheduled-task definition persisted** — a real
+recurring-reminder persistence gap in the `OWNER_REMINDERS` path worth a
+separate investigation, so it is not shipped here. The remaining packs/premises
+are enumerated in the issue's tables.
 
 ## Evidence rows
 
 | Evidence | Status |
 | --- | --- |
-| Real-LLM trajectory | **Attached + reviewed** — live Cerebras `gpt-oss-120b`; `OWNER_REMINDERS` created the B1 habit plus three A1 reminders, each judge 1.00; report JSON in `.github/issue-evidence/12283-lifeops-personas/`. |
-| Domain artifacts | `life_scheduled_definitions` rows — asserted via `definitionCountDelta`, including delta 0 for the superseded Sarah task. |
+| Real-LLM trajectory | A1 trajectories are **attached + reviewed** — live Cerebras `gpt-oss-120b`, each judge 1.00. B1 trajectory is attached but **invalid as verification** because the persisted `dueAt` resolves to 09:00 America/New_York; a new B1 live trajectory is required. |
+| Domain artifacts | A1 `life_scheduled_definitions` rows are asserted via `definitionCountDelta`, including delta 0 for the superseded Sarah task. The B1 row is now rejected by `forbiddenDueLocalTimes` until recaptured with a non-9am local due time. |
 | Frontend / screenshots | N/A — no UI surface changed (scenario authoring). |

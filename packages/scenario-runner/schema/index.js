@@ -105,6 +105,7 @@ export const FINAL_CHECK_KEYS = new Map(
       "requiredEveryMinutes",
       "requiredMaxOccurrencesPerDay",
       "expectedTimeZone",
+      "forbiddenDueLocalTimes",
       "requireReminderPlan",
       "websiteAccess",
     ],

@@ -209,6 +209,11 @@ type DefinitionCountRequiredSlot = {
   label?: string;
   minuteOfDay?: number;
 };
+type DefinitionCountForbiddenDueLocalTime = {
+  hour: number;
+  minute?: number;
+  timeZone?: string;
+};
 type DefinitionCountWebsiteAccess = {
   groupKey?: string;
   websites?: string[];
@@ -419,6 +424,7 @@ export type ScenarioFinalCheck =
       requiredEveryMinutes?: number;
       requiredMaxOccurrencesPerDay?: number;
       expectedTimeZone?: string;
+      forbiddenDueLocalTimes?: DefinitionCountForbiddenDueLocalTime[];
       requireReminderPlan?: boolean;
       websiteAccess?: DefinitionCountWebsiteAccess;
     })

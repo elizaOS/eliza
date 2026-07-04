@@ -18,8 +18,8 @@
       "pack": "B1",
       "tier": "T1",
       "surface": "scenario-runner",
-      "status": "verified",
-      "notes": "Live Cerebras gpt-oss-120b run passed (judge 1.00): a flexible 'any time today' water habit; the model chose 1pm rather than a 9am/morning default."
+      "status": "authored",
+      "notes": "Follow-up to #12972: the first live report resolved 2026-07-04T13:00:00Z to 09:00 America/New_York, so it is not verified until recaptured with the structural forbiddenDueLocalTimes check passing."
     }
   ]
 }

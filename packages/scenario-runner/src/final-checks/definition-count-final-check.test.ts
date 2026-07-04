@@ -131,6 +131,31 @@ describe("definitionCountDelta final check", () => {
     expect(result.detail).toContain("1260");
   });
 
+  it("fails when a once definition lands on a forbidden local due time", async () => {
+    mockState.definitions = [
+      definitionRecord({
+        title: "Drink water",
+        timezone: "America/New_York",
+        cadence: {
+          kind: "once",
+          dueAt: "2026-07-04T13:00:00.000Z",
+        },
+      }),
+    ];
+
+    const result = await run({
+      type: "definitionCountDelta",
+      title: "Drink water",
+      delta: 1,
+      cadenceKind: "once",
+      forbiddenDueLocalTimes: [{ hour: 9, minute: 0 }],
+    });
+
+    expect(result.status).toBe("failed");
+    expect(result.detail).toContain("09:00");
+    expect(result.detail).toContain("forbidden");
+  });
+
   it("lists the stored definition titles when no title matches (misroute diagnostic)", async () => {
     // The live gemma-4-31b brush-teeth misroute saved the habit under the
     // goals store / a different title; the "saw none" branch must name what
