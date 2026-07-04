@@ -299,10 +299,13 @@ interface NoRecentUserMessageInParams {
 
 /**
  * `no_recent_user_message_in` — real generic reader over the activity bus.
- * Denies (suppresses) the fire when a `message_activity_event` occurred within
- * `params.minutes`. PA's runner wiring registers a richer reader that also
- * consults the `ActivityProfile.lastSeenAt` heartbeat and defers rather than
- * denies; first-wins keeps that one when present.
+ * When a `message_activity_event` occurred within `params.minutes`, the user is
+ * active, so the proactive poke is DEFERRED (delayed), not denied — dropping it
+ * would silently lose the poke. Without a `lastSeenAt` heartbeat this built-in
+ * can't know exactly when the user last spoke, so it delays by the full
+ * suppression window. PA's runner wiring registers a richer reader that reads
+ * `ActivityProfile.lastSeenAt` and defers by the precise remaining time;
+ * first-wins keeps that one when present.
  */
 const noRecentUserMessageInGate: TaskGateContribution = {
   kind: "no_recent_user_message_in",
@@ -330,8 +333,9 @@ const noRecentUserMessageInGate: TaskGateContribution = {
       return { kind: "allow" };
     }
     return {
-      kind: "deny",
-      reason: `no_recent_user_message_in: user active within ${minutes}m`,
+      kind: "defer",
+      until: { offsetMinutes: minutes },
+      reason: `no_recent_user_message_in: user active within ${minutes}m; deferring ${minutes}m`,
     };
   },
 };

@@ -12,7 +12,10 @@ import type {
   GateEvaluationContext,
   ScheduledTask,
 } from "@elizaos/plugin-scheduling";
-import { createTaskGateRegistry } from "@elizaos/plugin-scheduling";
+import {
+  createTaskGateRegistry,
+  registerBuiltInGates,
+} from "@elizaos/plugin-scheduling";
 import { describe, expect, it } from "vitest";
 import type { ActivityProfile } from "../../activity-profile/types.js";
 import {
@@ -247,5 +250,52 @@ describe("behaviouralBaselineFromProfile (B3 feeder)", () => {
       }),
     );
     expect(result).toEqual({ sampleCount: 3, windowDays: 7 });
+  });
+});
+
+describe("first-wins: PA's real reader overrides the plugin-scheduling fallback", () => {
+  // This mirrors the production wiring in runtime-wiring.ts: PA registers its
+  // ActivityProfile-backed readers BEFORE registerBuiltInGates, which is
+  // first-wins, so the PA reader stays authoritative.
+  it("PA's circadian_state_in (asleep-aware) wins over the built-in awake-default fallback", async () => {
+    const reg = createTaskGateRegistry();
+    // 1. PA registers its real reader first, over a profile that says asleep.
+    registerActivityProfileGates(
+      makeRuntime(baseProfile({ isCurrentlySleeping: true })),
+      reg,
+    );
+    // 2. Built-ins run second and must NOT overwrite it.
+    registerBuiltInGates(reg);
+
+    const task = taskWithGate("circadian_state_in", { states: ["awake"] });
+    const decision = await reg
+      .get("circadian_state_in")
+      ?.evaluate(task, makeContext(task));
+    // PA's reader denies (user asleep). The built-in fallback, if it had won,
+    // would have allowed (no profile → assume awake). deny proves PA won.
+    expect(decision?.kind).toBe("deny");
+  });
+
+  it("PA's no_recent_user_message_in (heartbeat-aware) wins over the built-in bus-only fallback", async () => {
+    const NOW = "2026-05-10T12:00:00.000Z";
+    const nowMs = Date.parse(NOW);
+    const reg = createTaskGateRegistry();
+    // PA reader over a profile with a recent heartbeat but NO bus signal.
+    registerActivityProfileGates(
+      makeRuntime(baseProfile({ lastSeenAt: nowMs - 10 * 60 * 1000 })),
+      reg,
+    );
+    registerBuiltInGates(reg);
+
+    const task = taskWithGate("no_recent_user_message_in", { minutes: 30 });
+    // Bus reports no activity; only the profile heartbeat does. The built-in
+    // fallback (bus-only) would ALLOW; PA's reader DEFERS by the remaining 20m.
+    const decision = await reg
+      .get("no_recent_user_message_in")
+      ?.evaluate(task, makeContext(task, { nowIso: NOW, busActive: false }));
+    expect(decision?.kind).toBe("defer");
+    if (decision?.kind === "defer" && "offsetMinutes" in decision.until) {
+      expect(decision.until.offsetMinutes).toBe(20);
+    }
   });
 });

@@ -194,14 +194,30 @@ export async function executeProactiveTask(
   // wake/sleep rhythm into OwnerFacts.morningWindow / eveningWindow so
   // during_window triggers and wake/bedtime anchors track the user's real
   // rhythm. User-set windows are never clobbered; the write is idempotent.
-  await learnRhythmWindows(
-    runtime,
-    {
-      typicalWakeHour: profile.typicalWakeHour,
-      typicalSleepHour: profile.typicalSleepHour,
-    },
-    now,
-  );
+  //
+  // Guarded: rhythm learning is a best-effort side-effect of the tick. A
+  // transient store/cache write failure here must NOT abort the proactive tick
+  // (which would feed the core failure ladder even though the profile already
+  // persisted). Log-and-continue is the intended behavior for this one call.
+  try {
+    await learnRhythmWindows(
+      runtime,
+      {
+        typicalWakeHour: profile.typicalWakeHour,
+        typicalSleepHour: profile.typicalSleepHour,
+      },
+      now,
+    );
+  } catch (error) {
+    logger.warn(
+      {
+        src: "lifeops:activity-profile:proactive-worker",
+        agentId: runtime.agentId,
+        error: error instanceof Error ? error.message : String(error),
+      },
+      "[proactive] rhythm-window learning failed; continuing tick (best-effort learning)",
+    );
+  }
 
   return { nextInterval: PROACTIVE_TASK_INTERVAL_MS };
 }

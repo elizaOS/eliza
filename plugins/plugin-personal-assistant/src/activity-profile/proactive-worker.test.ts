@@ -247,4 +247,36 @@ describe("proactive-worker behavioral tripwire", () => {
     expect(metadata.firedActionsLog).toBeUndefined();
     expect(metadata.proactiveAgent).toMatchObject({ kind: "runtime_runner" });
   });
+
+  it("the tick INVOKES the rhythm learner, patching OwnerFacts with the derived window (B1 end-to-end)", async () => {
+    const { runtime } = createTripwireRuntime();
+    const { readProfileFromMetadata, buildActivityProfile, refreshCurrentState } =
+      await import("./service.js");
+    // Give the profile a real observed rhythm so the learner has something to
+    // fold into owner facts: 07:00 wake / 23:00 sleep.
+    const rhythmProfile = {
+      ...gmFavorableProfile,
+      typicalWakeHour: 7,
+      typicalSleepHour: 23,
+    } as unknown as ActivityProfile;
+    vi.mocked(readProfileFromMetadata).mockReturnValueOnce(rhythmProfile);
+    vi.mocked(buildActivityProfile).mockResolvedValueOnce(rhythmProfile);
+    vi.mocked(refreshCurrentState).mockResolvedValueOnce(rhythmProfile);
+
+    await executeProactiveTask(runtime, { now: GM_FAVORABLE_NOW });
+
+    // Read the REAL OwnerFactStore back: the learner must have written the
+    // derived morning/evening windows with agent_inferred provenance.
+    const { resolveOwnerFactStore } = await import("../lifeops/owner/fact-store.js");
+    const facts = await resolveOwnerFactStore(runtime).read();
+    expect(facts.morningWindow?.value).toEqual({
+      startLocal: "07:00",
+      endLocal: "10:00",
+    });
+    expect(facts.morningWindow?.provenance.source).toBe("agent_inferred");
+    expect(facts.eveningWindow?.value).toEqual({
+      startLocal: "21:00",
+      endLocal: "23:00",
+    });
+  });
 });

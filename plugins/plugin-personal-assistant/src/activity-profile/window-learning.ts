@@ -70,8 +70,30 @@ function toHHMM(hour: number): string {
 }
 
 /**
+ * Build a same-day `[startHour, endHour)` window, but ONLY when it is valid for
+ * the plugin-scheduling `during_window` bounds resolver — which has NO
+ * wraparound for morning/evening/afternoon (a segment is `[start, end)` matched
+ * by `atMinutes >= start && atMinutes < end`). An inverted window
+ * (`start >= end` after wrap-to-wall-clock) is unsatisfiable — it would
+ * PERMANENTLY kill the trigger — so we decline to emit it rather than write a
+ * window the reader can never satisfy. Returns `null` when invalid.
+ */
+function validSameDayWindow(
+  startHour: number,
+  endHour: number,
+): OwnerFactWindow | null {
+  const start = clampHour(startHour);
+  const end = clampHour(endHour);
+  if (start >= end) return null;
+  return { startLocal: toHHMM(start), endLocal: toHHMM(end) };
+}
+
+/**
  * Map observed wake/sleep hours into flexible morning/evening windows. Pure:
- * no store access, no clock. Returns only the windows the sample can support.
+ * no store access, no clock. Returns only the windows the sample can support
+ * AND that resolve to a valid (non-inverted) `during_window` band — an edge
+ * chronotype whose derived band would wrap past midnight is skipped, never
+ * written as an unsatisfiable window.
  */
 export function deriveWindowsFromRhythm(sample: RhythmSample): LearnedWindows {
   const result: LearnedWindows = {};
@@ -80,22 +102,22 @@ export function deriveWindowsFromRhythm(sample: RhythmSample): LearnedWindows {
     typeof sample.typicalWakeHour === "number" &&
     Number.isFinite(sample.typicalWakeHour)
   ) {
-    const start = clampHour(sample.typicalWakeHour);
-    result.morningWindow = {
-      startLocal: toHHMM(start),
-      endLocal: toHHMM(start + MORNING_SPAN_HOURS),
-    };
+    const morning = validSameDayWindow(
+      sample.typicalWakeHour,
+      sample.typicalWakeHour + MORNING_SPAN_HOURS,
+    );
+    if (morning) result.morningWindow = morning;
   }
 
   if (
     typeof sample.typicalSleepHour === "number" &&
     Number.isFinite(sample.typicalSleepHour)
   ) {
-    const end = clampHour(sample.typicalSleepHour);
-    result.eveningWindow = {
-      startLocal: toHHMM(end - EVENING_LEAD_HOURS),
-      endLocal: toHHMM(end),
-    };
+    const evening = validSameDayWindow(
+      sample.typicalSleepHour - EVENING_LEAD_HOURS,
+      sample.typicalSleepHour,
+    );
+    if (evening) result.eveningWindow = evening;
   }
 
   return result;

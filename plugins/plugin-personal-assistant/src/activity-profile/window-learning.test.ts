@@ -82,6 +82,44 @@ describe("deriveWindowsFromRhythm (pure mapping)", () => {
     });
     expect(deriveWindowsFromRhythm({ typicalWakeHour: null, typicalSleepHour: null })).toEqual({});
   });
+
+  it("SKIPS an inverted morning window instead of emitting one the reader cannot satisfy", () => {
+    // wake 22:00 → naive band [22:00, 01:00): start(22) > end(01) after wrap.
+    // The plugin-scheduling during_window resolver matches
+    // `atMinutes >= start && atMinutes < end` with NO wraparound for morning,
+    // so an inverted band is UNSATISFIABLE and would permanently kill the
+    // trigger. The learner must decline to emit it.
+    const windows = deriveWindowsFromRhythm({
+      typicalWakeHour: 22,
+      typicalSleepHour: null,
+    });
+    expect(windows.morningWindow).toBeUndefined();
+  });
+
+  it("SKIPS an inverted evening window instead of emitting one the reader cannot satisfy", () => {
+    // sleep 01:00 → naive band [23:00, 01:00): start(23) > end(01) after wrap.
+    const windows = deriveWindowsFromRhythm({
+      typicalWakeHour: null,
+      typicalSleepHour: 1,
+    });
+    expect(windows.eveningWindow).toBeUndefined();
+  });
+
+  it("NEVER emits a window with startLocal >= endLocal for any hour 0..23", () => {
+    for (let hour = 0; hour < 24; hour += 1) {
+      const windows = deriveWindowsFromRhythm({
+        typicalWakeHour: hour,
+        typicalSleepHour: hour,
+      });
+      for (const w of [windows.morningWindow, windows.eveningWindow]) {
+        if (w) {
+          const [sh] = w.startLocal.split(":").map(Number);
+          const [eh] = w.endLocal.split(":").map(Number);
+          expect(sh).toBeLessThan(eh);
+        }
+      }
+    }
+  });
 });
 
 describe("resolveWindowPatch (override + idempotency policy)", () => {

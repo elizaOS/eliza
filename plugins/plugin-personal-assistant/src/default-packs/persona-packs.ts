@@ -68,8 +68,11 @@ const lowEnergyCheckinDefinition: CheckInTaskDefinition = {
     params: { lookbackMinutes: 240 },
   },
   // Soft-only ladder: two gentle in-app nudges, no urgent cross-channel step.
+  // INLINE steps only — no `ladderKey`, because a `ladderKey` must reference a
+  // ladder registered in the runner's EscalationLadderRegistry (the runner
+  // rejects an unregistered key at schedule time) and inline `steps` already
+  // win over any named ladder in `resolveEffectiveLadder`.
   escalation: {
-    ladderKey: "low_energy_soft",
     steps: [...SOFT_LOW_ENERGY_ESCALATION_STEPS],
   },
   respectsGlobalPause: true,
@@ -126,8 +129,8 @@ const adhdBodyDoubleDefinition: CheckInTaskDefinition = {
     kind: "user_replied_within",
     params: { lookbackMinutes: 120 },
   },
+  // Inline soft-only steps (no `ladderKey`; see low-energy-support above).
   escalation: {
-    ladderKey: "low_energy_soft",
     steps: [...SOFT_LOW_ENERGY_ESCALATION_STEPS],
   },
   respectsGlobalPause: true,
