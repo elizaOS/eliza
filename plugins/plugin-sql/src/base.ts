@@ -25,6 +25,7 @@ import {
   type CreateOAuthFlowStateParams,
   DatabaseAdapter,
   type DeleteConnectorAccountParams,
+  ElizaError,
   type EntitiesForRoomsResult,
   type Entity,
   type GetConnectorAccountCredentialRefParams,
@@ -639,7 +640,11 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           },
           "Failed to delete agents"
         );
-        return false;
+        throw new ElizaError("deleteAgents failed", {
+          code: "DB_DELETE_AGENTS_FAILED",
+          cause: error,
+          context: { agentIds },
+        });
       }
     });
   }
@@ -907,11 +912,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
    */
   async countAgents(): Promise<number> {
     return this.withDatabase(async () => {
+      let result: Array<{ count: number }>;
       try {
-        const result = await this.db.select({ count: count() }).from(agentTable);
-
-        const result0 = result[0];
-        return result0?.count || 0;
+        result = await this.db.select({ count: count() }).from(agentTable);
       } catch (error) {
         logger.error(
           {
@@ -920,8 +923,20 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           },
           "Failed to count agents"
         );
-        return 0;
+        throw new ElizaError("countAgents failed", {
+          code: "DB_COUNT_AGENTS_FAILED",
+          cause: error,
+          context: { table: "agents" },
+        });
       }
+      const total = result[0]?.count;
+      if (typeof total !== "number") {
+        throw new ElizaError("countAgents returned no count row", {
+          code: "DB_COUNT_AGENTS_FAILED",
+          context: { table: "agents" },
+        });
+      }
+      return total;
     });
   }
 
@@ -1101,7 +1116,11 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           },
           "Failed to create entities"
         );
-        return [];
+        throw new ElizaError("createEntities failed", {
+          code: "DB_CREATE_ENTITIES_FAILED",
+          cause: error,
+          context: { entityIds: entities.map((entity) => entity.id).filter(Boolean) },
+        });
       }
     });
   }
@@ -1134,7 +1153,11 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         },
         "Failed to ensure entity exists"
       );
-      return false;
+      throw new ElizaError("ensureEntityExists failed", {
+        code: "DB_ENSURE_ENTITY_FAILED",
+        cause: error,
+        context: { entityId: entity.id },
+      });
     }
   }
 
@@ -1394,7 +1417,19 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           })
           .where(eq(componentTable.id, component.id));
       } catch (e) {
-        console.error("updateComponent error", e);
+        logger.error(
+          {
+            src: "plugin:sql",
+            componentId: component.id,
+            error: e instanceof Error ? e.message : String(e),
+          },
+          "Failed to update component"
+        );
+        throw new ElizaError("updateComponent failed", {
+          code: "DB_UPDATE_COMPONENT_FAILED",
+          cause: e,
+          context: { componentId: component.id },
+        });
       }
     });
   }
