@@ -27,6 +27,10 @@
     "typecheck": "tsgo --noEmit -p tsconfig.build.json",
     "dev": "tsgo -p tsconfig.build.json --watch --preserveWatchOutput",
     "test": "vitest run test/",
+    "lint": "bunx @biomejs/biome check --write src test",
+    "lint:check": "bunx @biomejs/biome check src test",
+    "format": "bunx @biomejs/biome format --write src test",
+    "format:check": "bunx @biomejs/biome format src test",
     "prepublishOnly": "bun run clean && bun run build"
   },
   "files": [
