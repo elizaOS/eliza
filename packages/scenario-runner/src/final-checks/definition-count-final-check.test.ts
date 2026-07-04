@@ -156,6 +156,56 @@ describe("definitionCountDelta final check", () => {
     expect(result.detail).toContain("forbidden");
   });
 
+  it("fails when a once definition misses an expected local due time", async () => {
+    mockState.definitions = [
+      definitionRecord({
+        title: "US colleague sync",
+        timezone: "America/New_York",
+        cadence: {
+          kind: "once",
+          dueAt: "2026-07-05T13:00:00.000Z",
+        },
+      }),
+    ];
+
+    const result = await run({
+      type: "definitionCountDelta",
+      title: "sync",
+      titleAliases: ["US colleague sync"],
+      delta: 1,
+      cadenceKind: "once",
+      expectedDueLocalTimes: [{ hour: 3, minute: 0, timeZone: "Asia/Tokyo" }],
+    });
+
+    expect(result.status).toBe("failed");
+    expect(result.detail).toContain("expected 03:00 in Asia/Tokyo");
+    expect(result.detail).toContain("22:00 in Asia/Tokyo");
+  });
+
+  it("passes when a once definition matches an expected local due time", async () => {
+    mockState.definitions = [
+      definitionRecord({
+        title: "US colleague sync",
+        timezone: "America/New_York",
+        cadence: {
+          kind: "once",
+          dueAt: "2026-07-05T18:00:00.000Z",
+        },
+      }),
+    ];
+
+    const result = await run({
+      type: "definitionCountDelta",
+      title: "sync",
+      titleAliases: ["US colleague sync"],
+      delta: 1,
+      cadenceKind: "once",
+      expectedDueLocalTimes: [{ hour: 3, minute: 0, timeZone: "Asia/Tokyo" }],
+    });
+
+    expect(result.status).toBe("passed");
+  });
+
   it("lists the stored definition titles when no title matches (misroute diagnostic)", async () => {
     // The live gemma-4-31b brush-teeth misroute saved the habit under the
     // goals store / a different title; the "saw none" branch must name what

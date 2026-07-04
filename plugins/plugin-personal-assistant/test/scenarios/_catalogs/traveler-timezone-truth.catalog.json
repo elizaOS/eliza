@@ -18,8 +18,8 @@
       "pack": "C1",
       "tier": "T2",
       "surface": "scenario-runner",
-      "status": "verified",
-      "notes": "Live Cerebras gpt-oss-120b passed (judge+delta): converted 2pm US Eastern to 3am JST, flagged the biological-night conflict, created the reminder."
+      "status": "authored",
+      "notes": "Original live report flagged the 3am JST conflict, but the persisted definition stored dueAt 2026-07-05T13:00:00.000Z (22:00 JST), so this awaits recapture with expectedDueLocalTimes passing."
     }
   ]
 }

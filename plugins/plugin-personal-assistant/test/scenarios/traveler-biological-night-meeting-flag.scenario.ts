@@ -54,6 +54,8 @@ export default scenario({
         "reminder for the sync",
       ],
       delta: 1,
+      cadenceKind: "once",
+      expectedDueLocalTimes: [{ hour: 3, minute: 0, timeZone: "Asia/Tokyo" }],
     },
   ],
 });
