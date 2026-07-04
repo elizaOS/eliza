@@ -1,5 +1,5 @@
 /**
- * Hover-triggered popover over Radix `@radix-ui/react-hover-card`. Verbatim
+ * Hover-triggered popover over Radix `@radix-ui/react-hover-card`. Derived
  * from shadcn/ui `hover-card` (https://ui.shadcn.com/docs/components/hover-card).
  */
 "use client";
