@@ -172,6 +172,7 @@ function callStreaming(
     30_000,
     settleReservation as never,
     "gateway" as never,
+    "req-test-abort",
   );
 }
 
@@ -225,6 +226,14 @@ describe("streaming messages — client abort settles delivered usage (#11513)",
     expect(ledger.balance).toBeCloseTo(ledger.startBalance - expectedCost, 10);
     expect(billUsage).toHaveBeenCalledTimes(1);
     expect(recordUsageAnalytics).toHaveBeenCalledTimes(1);
+    // The abort billing context now carries a stable requestId, so
+    // getAffiliateEarningsSourceId dedupes a retried request instead of falling
+    // back to legacy_<uuid> and double-accruing cashable affiliate earnings.
+    const abortBillingCtx = billUsage.mock.calls[0]?.[0] as {
+      requestId?: unknown;
+    };
+    expect(typeof abortBillingCtx?.requestId).toBe("string");
+    expect(abortBillingCtx?.requestId).toBeTruthy();
   });
 
   test("request-signal abort after text deltas settles partial usage on the catch path", async () => {

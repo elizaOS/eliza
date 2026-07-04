@@ -721,6 +721,11 @@ app.post("/", async (c) => {
     // valid `tools` array); keep it inside the settle-refunding try so a
     // conversion throw refunds the reservation instead of stranding the debit
     // the caller was just charged (refund-gap class, #11795).
+    // Request-stable id for the affiliate-earnings dedupe sourceId in billUsage
+    // (getRequestIdempotencyKey is header-based, so a client retry of the SAME
+    // request dedupes the cashable creator/affiliate legs; a fresh uuid is the
+    // no-header fallback). Threaded into handleStream / handleNonStream.
+    const requestId = getRequestIdempotencyKey() ?? crypto.randomUUID();
     const messages = anthropicMessagesToModelMessages(request.messages);
     const tools = convertTools(request.tools);
     const toolChoice = mapToolChoice(request.tool_choice);
@@ -749,6 +754,7 @@ app.post("/", async (c) => {
         routeTimeoutMs,
         settleReservation,
         billingSource,
+        requestId,
       );
     }
 
@@ -768,6 +774,7 @@ app.post("/", async (c) => {
       routeTimeoutMs,
       settleReservation,
       billingSource,
+      requestId,
     );
   } catch (error) {
     await settleReservation?.(0);
@@ -818,6 +825,10 @@ async function handleNonStream(
     actualCost: number,
   ) => Promise<CreditReconciliationResult | null>,
   billingSource: PricingBillingSource,
+  // Stable per-request id → the getAffiliateEarningsSourceId dedupe key. Without
+  // it billUsage falls back to legacy_<uuid> and a retry double-accrues cashable
+  // affiliate earnings. Mirrors chat/completions (#11588).
+  requestId: string,
 ) {
   const provider = getProviderFromModel(model);
 
@@ -855,6 +866,7 @@ async function handleNonStream(
         provider,
         billingSource,
         affiliateCode,
+        requestId,
       },
       result.usage,
     );
@@ -1025,6 +1037,7 @@ async function settleStreamingAbortReservation(params: {
   apiKey: { id: string } | null;
   affiliateCode: string | null;
   billingSource: PricingBillingSource;
+  requestId: string;
   estimatedInputTokens: number;
   deliveredText: string;
   steps: readonly FinishedStepUsageSource[];
@@ -1057,6 +1070,7 @@ async function settleStreamingAbortReservation(params: {
         provider: params.provider,
         billingSource: params.billingSource,
         affiliateCode: params.affiliateCode,
+        requestId: params.requestId,
       },
       {
         inputTokens,
@@ -1135,6 +1149,10 @@ async function handleStream(
     actualCost: number,
   ) => Promise<CreditReconciliationResult | null>,
   billingSource: PricingBillingSource,
+  // Stable per-request id → the getAffiliateEarningsSourceId dedupe key. Without
+  // it billUsage falls back to legacy_<uuid> and a retry double-accrues cashable
+  // affiliate earnings. Mirrors chat/completions (#11588).
+  requestId: string,
 ) {
   const provider = getProviderFromModel(model);
   const messageId = `msg_${crypto.randomUUID().replace(/-/g, "").slice(0, 24)}`;
@@ -1151,10 +1169,12 @@ async function handleStream(
     factory: () => Promise<CreditReconciliationResult | null>,
   ): Promise<CreditReconciliationResult | null> => {
     if (!streamingSettlementPromise) {
-      streamingSettlementPromise = factory().catch((error) => {
-        streamingSettlementPromise = null;
-        throw error;
-      });
+      // Cache unconditionally — never reset on rejection. A racing settle path
+      // must not re-run a failed settlement (it would re-bill/re-record the
+      // abort). The inner reservation settler is first-call-wins idempotent and
+      // retries its reconcile legs safely, so the awaiting caller still sees the
+      // failure without a reset. Mirrors /v1/chat/completions (#11512).
+      streamingSettlementPromise = factory();
     }
     return streamingSettlementPromise;
   };
@@ -1174,6 +1194,7 @@ async function handleStream(
           apiKey,
           affiliateCode,
           billingSource,
+          requestId,
           estimatedInputTokens,
           deliveredText,
           steps,
@@ -1215,6 +1236,7 @@ async function handleStream(
               provider,
               billingSource,
               affiliateCode,
+              requestId,
             },
             totalUsage,
           );
