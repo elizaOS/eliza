@@ -232,6 +232,22 @@ function defaultsDelete(udid, appId, key) {
   }
 }
 
+function deleteSimulatorPreferenceDomainKeys(udid, appId, keys) {
+  for (const key of keys) {
+    for (const nativeKey of preferenceNativeKeys(key)) {
+      tryRun("xcrun", [
+        "simctl",
+        "spawn",
+        udid,
+        "defaults",
+        "delete",
+        appId,
+        nativeKey,
+      ]);
+    }
+  }
+}
+
 function defaultsWriteString(udid, appId, key, value) {
   const nativeKeys = preferenceNativeKeys(key);
   // Write through the simulator defaults domain. Host-path `defaults write`
@@ -300,20 +316,22 @@ function flushPreferences(udid) {
   tryRun("xcrun", ["simctl", "spawn", udid, "killall", "cfprefsd"]);
 }
 
+const FIRST_RUN_STATE_KEYS = [
+  REQUEST_KEY,
+  RESULT_KEY,
+  ATTACHMENT_REQUEST_KEY,
+  ATTACHMENT_RESULT_KEY,
+  "elizaos:active-server",
+  "eliza:first-run-complete",
+  "eliza:setup:step",
+  "eliza:onboarding-complete",
+  "eliza:mobile-runtime-mode",
+  "eliza.background.config",
+  "elizaos:first-run:force-fresh",
+];
+
 function clearFirstRunState(udid, appId) {
-  for (const key of [
-    REQUEST_KEY,
-    RESULT_KEY,
-    ATTACHMENT_REQUEST_KEY,
-    ATTACHMENT_RESULT_KEY,
-    "elizaos:active-server",
-    "eliza:first-run-complete",
-    "eliza:setup:step",
-    "eliza:onboarding-complete",
-    "eliza:mobile-runtime-mode",
-    "eliza.background.config",
-    "elizaos:first-run:force-fresh",
-  ]) {
+  for (const key of FIRST_RUN_STATE_KEYS) {
     defaultsDelete(udid, appId, key);
   }
 }
@@ -387,6 +405,8 @@ async function main() {
   removePathRecursive(resultDir);
   fs.mkdirSync(resultDir, { recursive: true });
 
+  deleteSimulatorPreferenceDomainKeys(udid, appId, FIRST_RUN_STATE_KEYS);
+  flushPreferences(udid);
   installLatestApp(udid, appId);
   tryRun("xcrun", ["simctl", "terminate", udid, appId]);
   clearFirstRunState(udid, appId);
