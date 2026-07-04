@@ -36,6 +36,186 @@
       "surface": "scenario-runner",
       "status": "verified",
       "notes": "Live Cerebras gpt-oss-120b passed (judge 1.00): captured the corrected task (email Tom), created NO reminder for the superseded Sarah task (email-Sarah delta:0)."
+    },
+    {
+      "id": "adhd-duplicate-capture-dedup",
+      "pack": "A1",
+      "tier": "T2",
+      "surface": "scenario-runner",
+      "status": "authored",
+      "notes": "Live-only. Identical re-ask collapses to one reminder: definitionCountDelta{recycling, delta:1} proves capture, judge grades the no-duplicate nuance. Live-verify deferred to the key boundary (#12781)."
+    },
+    {
+      "id": "adhd-search-not-create-yesterday-mention",
+      "pack": "A1",
+      "tier": "T2",
+      "surface": "scenario-runner",
+      "status": "authored",
+      "notes": "Live-only. Half-remembered mention searches (actionCalled INBOX) instead of creating: paired with definitionCountDelta{dentist, delta:0} to beat the all-actionCalled ratchet and prove 'search, don't create'. Live-verify deferred (#12781)."
+    },
+    {
+      "id": "adhd-task-initiation-two-minute-step",
+      "pack": "A1",
+      "tier": "T2",
+      "surface": "scenario-runner",
+      "status": "authored",
+      "notes": "Live-only. Stuck-on-starting -> one consented ~2-minute step, non-shaming tone (judge) + definitionCountDelta{expense, delta:1}. NOT a crisis guard: asserts no 988/crisis-guard effect (#12780 not-planned). Live-verify deferred (#12781)."
+    },
+    {
+      "id": "adhd-hyperfocus-guardrail-protects-standup",
+      "pack": "A1",
+      "tier": "T3",
+      "surface": "scenario-runner",
+      "status": "authored",
+      "notes": "pr-deterministic (keyless). Real scheduler tick: high-priority once standup nudge fires once at its protective instant while a quiet-hours-gated low-value ping is held; single-delivery finalCheck. Passes keyless under TZ=UTC SCENARIO_USE_LLM_PROXY=1 SCENARIO_LLM_PROXY_STRICT=1 --conditions eliza-source."
+    },
+    {
+      "id": "adhd-distractor-storm-mid-capture",
+      "pack": "A1",
+      "tier": "T3",
+      "surface": "scenario-runner",
+      "status": "authored",
+      "notes": "pr-deterministic (keyless). Real scheduler tick: a captured task is parked (snooze override via REST), does NOT resurface during the storm tick, and resurfaces exactly once (scheduled_override_due) at the promised instant; single-delivery finalCheck. Passes keyless under TZ=UTC + --conditions eliza-source."
+    },
+    {
+      "id": "adhd.capture.buried_commitment_in_ramble",
+      "pack": "A1",
+      "tier": "T1",
+      "surface": "lifeops-bench",
+      "status": "authored"
+    },
+    {
+      "id": "adhd.capture.buried_calendar_commitment_in_ramble",
+      "pack": "A1",
+      "tier": "T1",
+      "surface": "lifeops-bench",
+      "status": "authored"
+    },
+    {
+      "id": "adhd.capture.buried_reply_commitment_in_ramble",
+      "pack": "A1",
+      "tier": "T1",
+      "surface": "lifeops-bench",
+      "status": "authored"
+    },
+    {
+      "id": "adhd.capture.wait_no_self_correction",
+      "pack": "A1",
+      "tier": "T2",
+      "surface": "lifeops-bench",
+      "status": "authored"
+    },
+    {
+      "id": "adhd.capture.two_interleaved_intents",
+      "pack": "A1",
+      "tier": "T3",
+      "surface": "lifeops-bench",
+      "status": "authored"
+    },
+    {
+      "id": "adhd.capture.decompose_apartment_first_step",
+      "pack": "A1",
+      "tier": "T2",
+      "surface": "lifeops-bench",
+      "status": "authored"
+    },
+    {
+      "id": "adhd.capture.airport_leave_time_reality_check",
+      "pack": "A1",
+      "tier": "T3",
+      "surface": "lifeops-bench",
+      "status": "authored"
+    },
+    {
+      "id": "adhd.capture.dentist_memory_search_not_create",
+      "pack": "A1",
+      "tier": "T2",
+      "surface": "lifeops-bench",
+      "status": "authored"
+    },
+    {
+      "id": "adhd.capture.duplicate_capture_dedup",
+      "pack": "A1",
+      "tier": "T2",
+      "surface": "lifeops-bench",
+      "status": "authored"
+    },
+    {
+      "id": "adhd.capture.visual_timer_deck_micro_session",
+      "pack": "A1",
+      "tier": "T2",
+      "surface": "lifeops-bench",
+      "status": "authored"
+    },
+    {
+      "id": "adhd.capture.out_of_sight_jordan_reply",
+      "pack": "A1",
+      "tier": "T3",
+      "surface": "lifeops-bench",
+      "status": "authored"
+    },
+    {
+      "id": "adhd.capture.med_refill_fuzzy_date",
+      "pack": "A1",
+      "tier": "T2",
+      "surface": "lifeops-bench",
+      "status": "authored"
+    },
+    {
+      "id": "live.adhd.task_initiation_two_minute_step",
+      "pack": "A1",
+      "tier": "T2",
+      "surface": "lifeops-bench",
+      "status": "authored"
+    },
+    {
+      "id": "live.adhd.body_double_mid_session_checkins",
+      "pack": "A1",
+      "tier": "T2",
+      "surface": "lifeops-bench",
+      "status": "authored"
+    },
+    {
+      "id": "live.adhd.hyperfocus_standup_guardrail",
+      "pack": "A1",
+      "tier": "T2",
+      "surface": "lifeops-bench",
+      "status": "authored"
+    },
+    {
+      "id": "live.adhd.plan_shrink_negotiation",
+      "pack": "A1",
+      "tier": "T3",
+      "surface": "lifeops-bench",
+      "status": "authored"
+    },
+    {
+      "id": "live.adhd.distractor_storm_park_then_capture",
+      "pack": "A1",
+      "tier": "T4",
+      "surface": "lifeops-bench",
+      "status": "authored"
+    },
+    {
+      "id": "live.adhd.today_commitment_grounding",
+      "pack": "A1",
+      "tier": "T2",
+      "surface": "lifeops-bench",
+      "status": "authored"
+    },
+    {
+      "id": "live.adhd.novelty_reframe_request",
+      "pack": "A1",
+      "tier": "T2",
+      "surface": "lifeops-bench",
+      "status": "authored"
+    },
+    {
+      "id": "live.adhd.interruption_recovery_where_were_we",
+      "pack": "A1",
+      "tier": "T3",
+      "surface": "lifeops-bench",
+      "status": "authored"
     }
   ]
 }
