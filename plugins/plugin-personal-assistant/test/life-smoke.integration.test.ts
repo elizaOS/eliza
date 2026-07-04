@@ -87,6 +87,23 @@ function send(params: Record<string, unknown>, messageText?: string) {
   );
 }
 
+// Owner chat (not "autonomy") exercises the confirmation gate — unlike `send`,
+// an unconfirmed create here previews instead of persisting immediately.
+function sendFromOwnerChat(params: Record<string, unknown>, messageText?: string) {
+  return runLifeOperationHandler(
+    runtime,
+    {
+      entityId: runtime.agentId,
+      content: {
+        source: "discord",
+        text: messageText ?? (params.intent as string) ?? "test",
+      },
+    } as never,
+    undefined,
+    { parameters: params },
+  );
+}
+
 beforeAll(async () => {
   setIsolatedLifeSmokeEnv();
   const result = await createRealTestRuntime({
@@ -137,6 +154,38 @@ describe("LIFE action smoke tests -- BRD acceptance criteria", () => {
 
     expect(result).toMatchObject({ success: true });
     expect((result as { text: string }).text).toContain("Brush teeth");
+  }, 60_000);
+
+  // -- Regression (task_611a9f0b): an unconfirmed RECURRING create from owner
+  //    chat must PREVIEW honestly and never claim success while nothing
+  //    persisted; confirming it then writes a real definition. Before the fix
+  //    the preview branch returned success:true, so a recurring create rendered
+  //    "I've set it" with zero rows saved (a no-fabricate violation). --
+  it("recurring create previews without fabricating success, then persists on confirm", async () => {
+    const recurring = {
+      action: "create" as const,
+      intent: "remind me to wind down every night around 10pm",
+      title: "Wind down",
+      details: {
+        kind: "habit",
+        cadence: { kind: "daily", windows: ["evening"] },
+      },
+    };
+
+    // Unconfirmed, from owner chat (not "autonomy") -> a PREVIEW, not a save.
+    const preview = await sendFromOwnerChat(recurring);
+    expect(preview).toMatchObject({ success: false });
+    expect(
+      (preview as { data?: Record<string, unknown> }).data,
+    ).toMatchObject({ deferred: true, saved: false, requiresConfirmation: true });
+
+    // Confirming the same recurring create persists a real definition.
+    const saved = await sendFromOwnerChat({
+      ...recurring,
+      details: { ...recurring.details, confirmed: true },
+    });
+    expect(saved).toMatchObject({ success: true });
+    expect((saved as { text: string }).text).toContain("Wind down");
   }, 60_000);
 
   // -- AC-2: Snooze a brushing reminder for 30 minutes --
