@@ -10,9 +10,21 @@ import {
   normalizeBackgroundConfig,
   saveBackgroundConfig,
 } from "./persistence";
-import { DEFAULT_BACKGROUND_COLOR } from "./ui-preferences";
+import {
+  DEFAULT_BACKGROUND_COLOR,
+  DEFAULT_BACKGROUND_CONFIG,
+} from "./ui-preferences";
 
-const DEFAULT = { mode: "shader", color: DEFAULT_BACKGROUND_COLOR } as const;
+// The boot default is now the curated "Ember Night" image (#13538), returned for
+// empty/absent/unusable-record input.
+const DEFAULT = DEFAULT_BACKGROUND_CONFIG;
+// A present-but-malformed config still collapses to the plain shader field (a
+// bad shader / image-without-url can never wedge the background) — NOT the image
+// boot default.
+const SHADER_FALLBACK = {
+  mode: "shader",
+  color: DEFAULT_BACKGROUND_COLOR,
+} as const;
 
 afterEach(() => {
   try {
@@ -29,13 +41,22 @@ describe("background config persistence", () => {
     ).toEqual({ mode: "shader", color: "#aabbcc" });
   });
 
-  it("falls back to the default shader for unusable input", () => {
+  it("falls back to the boot default for unusable (absent) input", () => {
+    // null / non-record → the boot default (curated image).
     expect(normalizeBackgroundConfig(null)).toEqual(DEFAULT);
     expect(normalizeBackgroundConfig("nope")).toEqual(DEFAULT);
-    // image mode with no usable url collapses to the shader
-    expect(normalizeBackgroundConfig({ mode: "image" })).toEqual(DEFAULT);
+  });
+
+  it("collapses a malformed present config to the plain shader field", () => {
+    // image mode with no usable url collapses to the shader (not the image
+    // boot default) — a present-but-broken config can never wedge the bg.
+    expect(normalizeBackgroundConfig({ mode: "image" })).toEqual(
+      SHADER_FALLBACK,
+    );
     // invalid color collapses to the default color
-    expect(normalizeBackgroundConfig({ color: "red" })).toEqual(DEFAULT);
+    expect(normalizeBackgroundConfig({ color: "red" })).toEqual(
+      SHADER_FALLBACK,
+    );
   });
 
   it("keeps an image config that carries a usable url", () => {

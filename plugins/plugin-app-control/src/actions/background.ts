@@ -29,9 +29,15 @@ import {
 	type Memory,
 	type State,
 } from "@elizaos/core";
+import {
+	BACKGROUND_CATALOG_INDEX,
+	detectCatalogId,
+	matchCatalogId,
+} from "@elizaos/shared/backgrounds/catalog-index";
 import type {
 	BackgroundApplyPayload,
 	BackgroundShaderUniformPatch,
+	NavigateViewDetail,
 } from "@elizaos/shared/events";
 import { BACKGROUND_APPLY_EVENT } from "@elizaos/shared/events";
 import { normalizeActionOptions, readStringOption } from "../params.js";
@@ -61,6 +67,12 @@ type BackgroundPlan =
 			uniforms: ShaderUniformPatch;
 			tweakLabel: string;
 	  }
+	// A named curated-catalog entry ("use the misty-forest background"). The
+	// renderer resolves `catalogId` → config; the action only names it (#13538).
+	| { op: "set"; mode: "catalog"; catalogId: string; catalogLabel: string }
+	// The user wants to upload a background — no color/image/prompt to apply.
+	// Route them to the /background view instead of a dead end (#13538 handoff).
+	| { op: "navigate-upload" }
 	| { op: "set"; generatePrompt: string };
 
 // Any reference to the background surface — gates the action so unrelated chat
@@ -84,6 +96,32 @@ const RESET_RE =
 const SET_RE = /\b(set|make|change|use|turn|switch|give me|apply|put)\b/i;
 // Explicit ask for a generated image rather than a flat color.
 const GENERATE_RE = /\b(generate|create|paint|draw|design|render|imagine)\b/i;
+// An intent to UPLOAD a background FILE from the user's device ("I want to upload
+// a background", "let me choose my own wallpaper", "pick a background from my
+// photos", "upload an image"). With no attachment to apply, this routes to the
+// /background view where upload lives (#13538 handoff) rather than dead-ending.
+//
+// Scoped TIGHTLY to genuine device-file intent so it never hijacks a plain color
+// or selection request:
+//   - the word "upload" (any background/image object), OR
+//   - a choose/pick/select/browse verb combined with a DEVICE-FILE signal:
+//     "my own", "from my …", "my photos/gallery/files/library/computer/device",
+//     or a bare file noun ("file"). "choose a green background" does NOT qualify
+//     (no device-file signal), so it flows on to color parsing.
+const UPLOAD_WORD_RE = /\bupload(?:ed|ing|s)?\b/i;
+const PICK_VERB_RE = /\b(choose|pick|select|browse)\b/i;
+const DEVICE_FILE_SIGNAL_RE =
+	/\b(my own|own|from my|my (?:photos?|gallery|files?|library|computer|device|phone|camera roll))\b|\bfile\b|\b(?:photo|camera) roll\b/i;
+const BG_OR_IMAGE_OBJECT_RE =
+	/\b(background|wallpaper|backdrop|image|photo|picture)\b/i;
+function isUploadIntent(text: string): boolean {
+	// "upload …" tied to a background/image object.
+	if (UPLOAD_WORD_RE.test(text) && BG_OR_IMAGE_OBJECT_RE.test(text)) {
+		return true;
+	}
+	// choose/pick/select/browse + an explicit device-file signal.
+	return PICK_VERB_RE.test(text) && DEVICE_FILE_SIGNAL_RE.test(text);
+}
 // References to an attachment-like object. If these are present with unusable
 // attachment records, do not reinterpret the request as an image-generation
 // prompt like "from this attachment".
@@ -303,6 +341,52 @@ export function inferBackgroundPlan(
 		return { op: "redo" };
 	if (explicitOp === "reset" || RESET_RE.test(trimmed)) return { op: "reset" };
 
+	// A named curated-catalog entry ("use the misty-forest background"). An
+	// explicit `catalog` option wins; otherwise detect a catalog LABEL in the
+	// text (distinctive multi-word names / id slugs only, so a plain color word
+	// still resolves to a color below). Checked before color/preset parsing so a
+	// catalog name is never mis-read as a color. #13538.
+	const explicitCatalog = readStringOption(options, "catalog");
+	// When the user explicitly asks to GENERATE/create a NEW background, honor
+	// that (a fresh render) over a same-named curated entry — "generate a misty
+	// forest" means make one, not pick the catalog's Misty Forest. Likewise, an
+	// image the user ATTACHED takes precedence over a same-named catalog entry
+	// ("use this misty forest photo" with an attachment → apply the attachment,
+	// not the curated Misty Forest) — unless they explicitly named a catalog id.
+	const wantsFreshGenerate = GENERATE_RE.test(trimmed);
+	const hasImageAttachment = Boolean(firstImageAttachment(attachments));
+	const catalogId = explicitCatalog
+		? matchCatalogId(explicitCatalog)
+		: wantsFreshGenerate || hasImageAttachment
+			? undefined
+			: detectCatalogId(trimmed);
+	if (catalogId) {
+		const meta = BACKGROUND_CATALOG_INDEX.find((e) => e.id === catalogId);
+		return {
+			op: "set",
+			mode: "catalog",
+			catalogId,
+			catalogLabel: meta?.label ?? catalogId,
+		};
+	}
+
+	// "I want to upload a background" with no usable attachment → send the user to
+	// the /background view (upload lives there), not a dead end. Only when the
+	// message is about uploading and carries no image attachment/URL to apply.
+	if (
+		!explicitImage &&
+		!explicitPrompt &&
+		!GENERATE_RE.test(trimmed) &&
+		// Not a reference to an EXISTING (this/that/attached) attachment — those
+		// are attachment-backed requests handled below, not a browse-for-a-file
+		// intent. "use this uploaded file" with a broken attachment stays null.
+		!(ATTACHMENT_REFERENCE_RE.test(trimmed) && attachments?.length) &&
+		isUploadIntent(trimmed) &&
+		!firstImageAttachment(attachments)
+	) {
+		return { op: "navigate-upload" };
+	}
+
 	// Explicit options win over text parsing.
 	if (explicitImage)
 		return { op: "set", mode: "image", imageUrl: explicitImage };
@@ -407,10 +491,13 @@ export type BackgroundEmitter = (
 ) => Promise<void>;
 /** Generates a background image from a prompt; returns a served URL. */
 export type BackgroundImageGenerator = (prompt: string) => Promise<string>;
+/** Navigates the frontend to a view (the chat→background-view handoff). */
+export type BackgroundNavigator = (detail: NavigateViewDetail) => Promise<void>;
 
 export interface BackgroundActionDeps {
 	emit?: BackgroundEmitter;
 	generateImage?: BackgroundImageGenerator;
+	navigate?: BackgroundNavigator;
 }
 
 async function loopbackPort(): Promise<number> {
@@ -456,11 +543,51 @@ async function defaultGenerateImage(prompt: string): Promise<string> {
 	return data.url;
 }
 
+async function defaultNavigate(detail: NavigateViewDetail): Promise<void> {
+	const port = await loopbackPort();
+	// Drive the SAME shell navigate path the VIEWS action uses. When a concrete
+	// view id is supplied, POST to that view's own navigate route
+	// (`/api/views/<id>/navigate`) so the shell stamps the ACTUAL view as current
+	// (current-view state, view-switched events, action affinity all report the
+	// Background view, not the synthetic view-manager). Fall back to the
+	// view-manager path-navigate only when we have just a path. The generic
+	// view-event bus is NOT wired to navigation, so neither uses it. A 501/404
+	// means the host doesn't implement navigation (headless/test) — best-effort
+	// no-op, not a failure; any other non-2xx is a real error.
+	const base = `http://127.0.0.1:${port}`;
+	const { url, body } = detail.viewId
+		? {
+				url: `${base}/api/views/${encodeURIComponent(detail.viewId)}/navigate`,
+				// Carry the explicit path too: `background` is a built-in TAB, not a
+				// registered view, so without `path` the server broadcasts a null
+				// viewPath and the client falls back to `/apps/<id>` instead of the
+				// canonical `/background` route.
+				body: JSON.stringify({
+					...(detail.viewPath ? { path: detail.viewPath } : {}),
+					...(detail.viewType ? { viewType: detail.viewType } : {}),
+				}),
+			}
+		: {
+				url: `${base}/api/views/__view-manager__/navigate`,
+				body: JSON.stringify({ path: detail.viewPath ?? "/" }),
+			};
+	const resp = await fetch(url, {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body,
+		signal: AbortSignal.timeout(5_000),
+	});
+	if (!resp.ok && resp.status !== 501 && resp.status !== 404) {
+		throw new Error(`navigate returned ${resp.status}`);
+	}
+}
+
 export function createBackgroundAction(
 	deps: BackgroundActionDeps = {},
 ): Action {
 	const emit = deps.emit ?? defaultEmit;
 	const generateImage = deps.generateImage ?? defaultGenerateImage;
+	const navigate = deps.navigate ?? defaultNavigate;
 
 	return {
 		name: "BACKGROUND",
@@ -589,6 +716,31 @@ export function createBackgroundAction(
 					const reply = "Reset the background to the default.";
 					await callback?.({ text: reply });
 					return { success: true, text: reply, values: { op: "reset" } };
+				}
+				if (plan.op === "navigate-upload") {
+					// No image to apply — take the user to the Background view, where
+					// upload/generate/gallery live (#13538 chat→background handoff).
+					await navigate({ viewId: "background", viewPath: "/background" });
+					const reply =
+						"Opening the Background view — you can upload or pick a wallpaper there.";
+					await callback?.({ text: reply });
+					return {
+						success: true,
+						text: reply,
+						values: { op: "navigate-upload", viewId: "background" },
+					};
+				}
+				if ("mode" in plan && plan.mode === "catalog") {
+					// Named curated-catalog entry. The renderer resolves catalogId →
+					// config (color / vetted image / named GLSL preset). #13538.
+					await emit({ op: "set", catalogId: plan.catalogId });
+					const reply = `Set the background to ${plan.catalogLabel}.`;
+					await callback?.({ text: reply });
+					return {
+						success: true,
+						text: reply,
+						values: { op: "set", mode: "catalog", catalogId: plan.catalogId },
+					};
 				}
 				if ("mode" in plan && plan.mode === "glsl") {
 					// Named programmable-shader preset. The renderer resolves the

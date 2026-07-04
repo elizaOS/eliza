@@ -125,3 +125,73 @@ describe("useBackgroundApplyChannel — raw GLSL source is not a sink (#11088)",
     expect(config.shader?.uniforms.u_speed).toBe(0.25);
   });
 });
+
+describe("useBackgroundApplyChannel — named catalog entry (#13538)", () => {
+  it("applies a curated IMAGE catalog entry by id", () => {
+    const setBackgroundConfig = mountChannel({
+      mode: "shader",
+      color: "#101010",
+    });
+    apply({ op: "set", catalogId: "misty-forest" });
+    expect(setBackgroundConfig).toHaveBeenCalledTimes(1);
+    const config = setBackgroundConfig.mock.calls[0][0] as BackgroundConfig;
+    expect(config.mode).toBe("image");
+    expect(config.imageUrl).toContain("data:image/svg+xml");
+  });
+
+  it("resolves a catalog GLSL entry through the vetted preset corpus", () => {
+    const setBackgroundConfig = mountChannel({
+      mode: "shader",
+      color: "#101010",
+    });
+    apply({ op: "set", catalogId: "aurora" });
+    expect(setBackgroundConfig).toHaveBeenCalledTimes(1);
+    const config = setBackgroundConfig.mock.calls[0][0] as BackgroundConfig;
+    expect(config.mode).toBe("glsl");
+    expect(config.shader?.presetId).toBe("aurora");
+    expect(config.shader?.source).toBe(getShaderPreset("aurora")?.source);
+  });
+
+  it("resolves a catalog entry by label / fuzzy name", () => {
+    const setBackgroundConfig = mountChannel({
+      mode: "shader",
+      color: "#101010",
+    });
+    apply({ op: "set", catalogId: "Misty Forest" });
+    expect(setBackgroundConfig).toHaveBeenCalledTimes(1);
+    expect(
+      (setBackgroundConfig.mock.calls[0][0] as BackgroundConfig).mode,
+    ).toBe("image");
+  });
+
+  it("IGNORES an unknown catalog name (confinement: never wedges the bg)", () => {
+    const setBackgroundConfig = mountChannel({
+      mode: "shader",
+      color: "#101010",
+    });
+    apply({ op: "set", catalogId: "definitely-not-a-real-background" });
+    expect(setBackgroundConfig).not.toHaveBeenCalled();
+  });
+
+  it("a catalogId can NOT smuggle raw GLSL source or a URL past the broker", () => {
+    const setBackgroundConfig = mountChannel({
+      mode: "shader",
+      color: "#101010",
+    });
+    // Even paired with a for-bomb source + a hostile URL, only the named
+    // catalog entry's own (vetted) config is applied — the raw fields are
+    // dropped because catalogId short-circuits before the glsl/image branches.
+    apply({
+      op: "set",
+      catalogId: "aurora",
+      source: FOR_BOMB,
+      imageUrl: "https://evil.example/x.png",
+    });
+    expect(setBackgroundConfig).toHaveBeenCalledTimes(1);
+    const config = setBackgroundConfig.mock.calls[0][0] as BackgroundConfig;
+    expect(config.mode).toBe("glsl");
+    expect(config.shader?.source).toBe(getShaderPreset("aurora")?.source);
+    expect(config.shader?.source).not.toContain("200000");
+    expect(config.imageUrl).toBeUndefined();
+  });
+});
