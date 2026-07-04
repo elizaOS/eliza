@@ -36,7 +36,9 @@ describe("agent local-agent IPC port gate (#12352)", () => {
   });
 
   it("binds the port in local-agent mode when ELIZA_API_EXPOSE_PORT opts back in", () => {
-    expect(shouldSkipApiListen(true, { ELIZA_API_EXPOSE_PORT: "1" })).toBe(false);
+    expect(shouldSkipApiListen(true, { ELIZA_API_EXPOSE_PORT: "1" })).toBe(
+      false,
+    );
     expect(shouldSkipApiListen(true, { ELIZA_API_EXPOSE_PORT: "true" })).toBe(
       false,
     );

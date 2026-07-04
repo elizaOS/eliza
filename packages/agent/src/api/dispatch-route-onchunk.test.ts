@@ -21,7 +21,7 @@ describe("dispatchRoute onChunk sink (#12352)", () => {
     const route: Route = {
       type: "POST",
       path: "/api/stream",
-      handler: async (_req, res) => {
+      handler: async (_req: unknown, res: unknown) => {
         const r = res as unknown as {
           setHeader: (k: string, v: string) => void;
           write: (c: string) => void;
@@ -60,7 +60,7 @@ describe("dispatchRoute onChunk sink (#12352)", () => {
     const route: Route = {
       type: "GET",
       path: "/api/plain",
-      handler: async (_req, res) => {
+      handler: async (_req: unknown, res: unknown) => {
         (res as unknown as { json: (b: unknown) => void }).json({ ok: true });
       },
     } as unknown as Route;
@@ -87,8 +87,11 @@ describe("dispatchRoute onChunk sink (#12352)", () => {
     const route: Route = {
       type: "POST",
       path: "/api/stream",
-      handler: async (_req, res) => {
-        const r = res as unknown as { write: (c: string) => void; end: () => void };
+      handler: async (_req: unknown, res: unknown) => {
+        const r = res as unknown as {
+          write: (c: string) => void;
+          end: () => void;
+        };
         r.write("a");
         r.write("b");
         r.end();

@@ -74,7 +74,9 @@ function isSafeLocalPath(path: string): boolean {
 }
 
 function normalizeMethod(value: unknown): string {
-	const method = (typeof value === "string" ? value : "GET").trim().toUpperCase();
+	const method = (typeof value === "string" ? value : "GET")
+		.trim()
+		.toUpperCase();
 	if (!/^[A-Z]{1,16}$/.test(method)) {
 		throw new Error("Unsupported HTTP method");
 	}
@@ -280,7 +282,9 @@ export async function dispatchStreamingRequest(
 		emitHead(result.status, result.headers ?? {});
 		for await (const frame of result.stream) {
 			const buf =
-				typeof frame === "string" ? Buffer.from(frame, "utf8") : Buffer.from(frame);
+				typeof frame === "string"
+					? Buffer.from(frame, "utf8")
+					: Buffer.from(frame);
 			if (buf.length > 0) sink.emitChunk(buf.toString("base64"));
 		}
 		return;

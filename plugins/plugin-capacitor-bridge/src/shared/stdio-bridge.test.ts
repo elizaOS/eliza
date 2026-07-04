@@ -210,7 +210,11 @@ describe("createStdioBridge — incremental streaming", () => {
 			sink.emitError("late error");
 		});
 		await bridge.handleLine(
-			JSON.stringify({ id: "s-2", method: "http_request_stream", stream: true }),
+			JSON.stringify({
+				id: "s-2",
+				method: "http_request_stream",
+				stream: true,
+			}),
 		);
 		await bridge.drain();
 

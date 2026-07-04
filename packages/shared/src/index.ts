@@ -274,7 +274,6 @@ export * from "./lifeops-normalize/index.js";
 export * from "./local-inference/index.js";
 export * from "./loopback-trust.js";
 export * from "./meetings.js";
-export * from "./platform/aosp-user-agent.js";
 export * from "./platform/eliza-os.js";
 export * from "./platform/is-native-server.js";
 export * from "./process-guards.js";

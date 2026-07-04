@@ -18,9 +18,10 @@ import {
 const runtime = {} as IAgentRuntime;
 
 /** A dispatchRoute that returns a fixed buffered result for the matched path. */
-function fixedRoute(
-	result: RouteHandlerResult | null,
-): { route: AndroidDispatchRoute; calls: Array<Record<string, unknown>> } {
+function fixedRoute(result: RouteHandlerResult | null): {
+	route: AndroidDispatchRoute;
+	calls: Array<Record<string, unknown>>;
+} {
 	const calls: Array<Record<string, unknown>> = [];
 	const route: AndroidDispatchRoute = async (args) => {
 		calls.push(args as unknown as Record<string, unknown>);
