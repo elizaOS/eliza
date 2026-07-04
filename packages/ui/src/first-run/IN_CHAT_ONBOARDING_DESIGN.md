@@ -110,3 +110,45 @@ taps them out of order. The contract, enforced in `use-first-run-conductor.ts`
   provider by hand. Both this and `error:settings` route through the same
   `exitToSettings` helper, latched by `completedRef` so a double-tap can't flip
   the gate twice.
+
+## In-chat model download/load status (#12178 WI-4)
+
+The local text-model download/load is part of the chat, not a separate screen.
+`use-model-status-conductor.ts` (headless, mounted next to the first-run
+conductor) reads the already-plumbed `deriveHomeModelStatus` snapshot
+(`useHomeModelStatus`) and, while a local runtime's text model is
+`missing | downloading | loading | error`, seeds **one** live-updating assistant
+turn (`model:download-status`, `source:"model_status"`) into the same transcript
+the overlay renders. The turn is updated **in place** and refreshed **at most
+once per second**; percent is **clamped monotonic** so a transient readiness dip
+never rewinds the bar. When the model becomes ready (or the runtime is
+cloud/remote) the turn is removed. The home model-download widget is unchanged
+and there is **no floating pill**.
+
+The turn carries a `[CHOICE]` control row whose VALUES use a new reserved
+`__model__:` prefix, handled by `model-action-channel.ts` (a mirror of
+`first-run-action-channel.ts`):
+
+- **Cancel** (`__model__:cancel`) → `DELETE /downloads/:id` for the assigned
+  model id, then the turn flips to a non-dead-end "cancelled — pick how to
+  continue" (re-offer download / switch-cloud).
+- **Retry** (`__model__:retry`, error state) / **Download**
+  (`__model__:download`, after cancel) → `POST /downloads` for the same id.
+- **Switch to Eliza Cloud** (`__model__:switch-cloud`) → force `cloud-only`
+  routing on the text slots (`setLocalInferencePolicy`), opening cloud login
+  first when not connected. This is the sanctioned client-side switch until the
+  `MODEL_SWITCH` action (WI-6) lands.
+- **Keep waiting** (`__model__:keep-waiting`) → explicit no-op.
+
+The `__model__:` prefix is reserved unconditionally at the send funnel
+(`AppContext.sendActionMessage` consults `isModelActionMessage` /
+`tryHandleModelAction` before the real send), so a tap on a leftover status
+widget after the model is ready is dropped, never sent as a literal sentinel.
+
+**Typed while blocked never lost.** When a real chat message is sent while the
+model still blocks send (`handleChatSend` / the action funnel call
+`notifyTypedWhileBlocked`), the conductor seeds an instant local "still getting
+ready" acknowledgment; the real send still rides the existing server
+hold/503-retry. The composer placeholder reads
+"downloading eliza-1 — you can keep typing" (input is never disabled by the
+model status).
