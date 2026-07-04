@@ -46,6 +46,8 @@ import {
 } from "./eot-classifier";
 import type { VoiceScheduler } from "./scheduler";
 import type {
+	BargeInInterruptEvidence,
+	BargeInInterruptGate,
 	StreamingTranscriber,
 	TranscriberEvent,
 	TranscriptUpdate,
@@ -116,6 +118,12 @@ export interface VoiceTurnControllerDeps {
 	 * wait for the user to continue.
 	 */
 	turnDetector?: EotClassifier;
+	/**
+	 * Optional speaker/echo/wake-word interrupt gate for barge-in while the agent
+	 * is speaking. When absent, confirmed ASR words preserve the legacy behavior
+	 * and hard-stop immediately.
+	 */
+	bargeInInterruptGate?: BargeInInterruptGate;
 	/**
 	 * Run a generation pass. The callee builds the message, calls the runtime
 	 * message handler / `useModel`, and streams `replyText` into TTS via the
@@ -210,6 +218,7 @@ export class VoiceTurnController {
 		// Barge-in controller takes the VAD directly so it can pause/resume TTS
 		// while the agent is speaking; the scheduler already listens to its
 		// `onSignal` stream.
+		this.bargeIn.setInterruptGate(this.deps.bargeInInterruptGate ?? null);
 		this.bargeIn.bindVad(this.deps.vad);
 		this.bargeSignalUnsub = this.bargeIn.onSignal((signal) => {
 			if (signal.type !== "hard-stop") return;
@@ -238,6 +247,7 @@ export class VoiceTurnController {
 		this.bargeIn.unbindVad();
 		this.bargeSignalUnsub?.();
 		this.bargeSignalUnsub = null;
+		this.bargeIn.setInterruptGate(null);
 		this.abortSpeculative();
 		if (
 			this.activeFinalController &&
@@ -315,9 +325,20 @@ export class VoiceTurnController {
 					wordCount: event.words.length,
 					partialText: event.words.join(" "),
 					timestampMs: Date.now(),
+					evidence: this.bargeInEvidenceForWords(event),
 				});
 				break;
 		}
+	}
+
+	private bargeInEvidenceForWords(
+		event: Extract<TranscriberEvent, { kind: "words" }>,
+	): Partial<BargeInInterruptEvidence> {
+		const update = event.update ?? this.latestUpdate;
+		return {
+			...voiceRequestMetadata(update),
+			...event.evidence,
+		};
 	}
 
 	// --- prewarm -----------------------------------------------------------

@@ -439,7 +439,8 @@ describe("VoiceScheduler end-to-end", () => {
 
 			expect(sink.totalWritten()).toBeGreaterThan(0);
 			expect(sched.bargeIn.isAgentSpeaking).toBe(true);
-			await vi.advanceTimersByTimeAsync(100);
+			vi.advanceTimersByTime(100);
+			await Promise.resolve();
 			expect(sched.bargeIn.isAgentSpeaking).toBe(false);
 		} finally {
 			vi.useRealTimers();
@@ -466,7 +467,8 @@ describe("VoiceScheduler end-to-end", () => {
 			await sched.accept(tok(0, "Hello"));
 			expect(phraseEvents).toHaveLength(0);
 
-			await vi.advanceTimersByTimeAsync(51);
+			vi.advanceTimersByTime(51);
+			await Promise.resolve();
 			await sched.waitIdle();
 
 			expect(phraseEvents.map((p) => p.text)).toEqual(["Hello"]);
@@ -734,6 +736,69 @@ describe("VoiceScheduler end-to-end", () => {
 		expect(sched.ttsPaused).toBe(false);
 		expect(resumed).toHaveLength(1);
 		expect(sink.totalWritten()).toBeGreaterThan(0);
+	});
+
+	it("denied self-echo barge-in resumes buffered TTS without replay or hard-stop", async () => {
+		const backend = new FakeBackend();
+		const sink = new InMemoryAudioSink();
+		let cancels = 0;
+		const resumed: number[] = [];
+		const sched = new VoiceScheduler(
+			{
+				chunkerConfig: { maxTokensPerPhrase: 10 },
+				preset: makePreset(),
+				ringBufferCapacity: 4096,
+				sampleRate: 24000,
+			},
+			{ backend, sink },
+			{
+				onCancel: () => cancels++,
+				onTtsResume: () => resumed.push(1),
+			},
+		);
+		const listeners = new Set<(e: VadEvent) => void>();
+		sched.bargeIn.bindVad({
+			onVadEvent: (l) => {
+				listeners.add(l);
+				return () => listeners.delete(l);
+			},
+		});
+		sched.bargeIn.setInterruptGate((evidence) =>
+			evidence.selfVoiceSimilarity && evidence.selfVoiceSimilarity >= 0.8
+				? { allow: false, reason: "self-echo" }
+				: { allow: true },
+		);
+		sched.bargeIn.setAgentSpeaking(true);
+		const emit = (e: VadEvent) => {
+			for (const l of listeners) l(e);
+		};
+
+		emit({
+			type: "speech-active",
+			timestampMs: 1,
+			probability: 0.9,
+			speechDurationMs: 100,
+		});
+		await sched.accept(tok(0, "Stay"));
+		await sched.accept(tok(1, " smooth"));
+		await sched.accept(tok(2, "."));
+		await sched.waitIdle();
+		const buffered = sched.ringBuffer.size();
+		expect(buffered).toBeGreaterThan(0);
+		expect(sink.totalWritten()).toBe(0);
+
+		sched.bargeIn.onWordsDetected({
+			wordCount: 2,
+			partialText: "echo words",
+			timestampMs: 2,
+			evidence: { selfVoiceSimilarity: 0.92 },
+		});
+
+		expect(cancels).toBe(0);
+		expect(resumed).toHaveLength(1);
+		expect(sched.ttsPaused).toBe(false);
+		expect(sched.ringBuffer.size()).toBe(0);
+		expect(sink.totalWritten()).toBe(buffered);
 	});
 
 	it("hard-stop barge-in drains the ring buffer and cancels in-flight TTS", async () => {

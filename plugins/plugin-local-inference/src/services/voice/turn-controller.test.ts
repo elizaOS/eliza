@@ -25,6 +25,7 @@ import {
 	type VoiceTurnOutcome,
 } from "./turn-controller";
 import type {
+	BargeInInterruptGate,
 	SpeakerPreset,
 	StreamingTranscriber,
 	TranscriberEvent,
@@ -164,7 +165,11 @@ interface Harness {
 }
 
 function makeHarness(
-	opts: { speculatePauseMs?: number; turnDetector?: EotClassifier } = {},
+	opts: {
+		speculatePauseMs?: number;
+		turnDetector?: EotClassifier;
+		bargeInInterruptGate?: BargeInInterruptGate;
+	} = {},
 ): Harness {
 	const vad = new FakeVad();
 	const transcriber = new FakeTranscriber();
@@ -187,6 +192,9 @@ function makeHarness(
 			scheduler,
 			prewarm,
 			...(opts.turnDetector ? { turnDetector: opts.turnDetector } : {}),
+			...(opts.bargeInInterruptGate
+				? { bargeInInterruptGate: opts.bargeInInterruptGate }
+				: {}),
 			generate: (request) => {
 				generateCalls.push(request);
 				return new Promise<VoiceTurnOutcome>((resolve, reject) => {
@@ -524,6 +532,68 @@ describe("VoiceTurnController", () => {
 		// ASR confirms real words → hard-stop.
 		h.transcriber.emit({ kind: "words", words: ["wait", "stop"] });
 		expect(hardStopped).toBe(true);
+	});
+
+	it("threads self-echo evidence into the barge-in gate and resumes without hard-stop", () => {
+		const decisions: Array<{
+			partialText: string;
+			selfVoiceSimilarity?: number;
+		}> = [];
+		const h = makeHarness({
+			bargeInInterruptGate: (evidence) => {
+				decisions.push({
+					partialText: evidence.partialText,
+					selfVoiceSimilarity: evidence.selfVoiceSimilarity,
+				});
+				return evidence.selfVoiceSimilarity &&
+					evidence.selfVoiceSimilarity >= 0.8
+					? { allow: false, reason: "self-echo" }
+					: { allow: true };
+			},
+		});
+		h.controller.start();
+		h.scheduler.bargeIn.setAgentSpeaking(true);
+		const signals: string[] = [];
+		h.scheduler.bargeIn.onSignal((s) => signals.push(s.type));
+		h.vad.emit(vadEvent({ type: "speech-active" }));
+
+		h.transcriber.emit({
+			kind: "words",
+			words: ["weekly", "forecast"],
+			evidence: { selfVoiceSimilarity: 0.93 },
+		});
+
+		expect(decisions).toEqual([
+			{ partialText: "weekly forecast", selfVoiceSimilarity: 0.93 },
+		]);
+		expect(signals).toEqual(["pause-tts", "resume-tts"]);
+		expect(h.scheduler.bargeIn.currentCancelToken()).toBeNull();
+	});
+
+	it("threads wake-word evidence into the barge-in gate and allows hard-stop", () => {
+		const h = makeHarness({
+			bargeInInterruptGate: (evidence) =>
+				evidence.wakeWordActive
+					? { allow: true, reason: "wake-word" }
+					: { allow: false, reason: "not-addressed" },
+		});
+		h.controller.start();
+		h.scheduler.bargeIn.setAgentSpeaking(true);
+		const signals: string[] = [];
+		h.scheduler.bargeIn.onSignal((s) => signals.push(s.type));
+		h.vad.emit(vadEvent({ type: "speech-active" }));
+
+		h.transcriber.emit({
+			kind: "words",
+			words: ["hey", "Eliza", "stop"],
+			evidence: { wakeWordActive: true },
+		});
+
+		expect(signals).toEqual(["pause-tts", "hard-stop"]);
+		expect(h.scheduler.bargeIn.currentCancelToken()?.cancelled).toBe(true);
+		expect(h.scheduler.bargeIn.currentCancelToken()?.reason).toBe(
+			"barge-in-words",
+		);
 	});
 
 	it("surfaces a prewarm rejection via onError without killing the turn", async () => {

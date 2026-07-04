@@ -37,6 +37,9 @@
 
 import type {
 	BargeInCancelToken,
+	BargeInInterruptDecision,
+	BargeInInterruptEvidence,
+	BargeInInterruptGate,
 	BargeInSignal,
 	BargeInSignalListener,
 	VadEvent,
@@ -92,6 +95,15 @@ function tripToken(
 	if (trip) trip(reason);
 }
 
+function isPromiseLike<T>(value: T | Promise<T>): value is Promise<T> {
+	return (
+		typeof value === "object" &&
+		value !== null &&
+		"then" in value &&
+		typeof (value as { then?: unknown }).then === "function"
+	);
+}
+
 export interface BargeInControllerConfig {
 	/**
 	 * After a `speech-active` (TTS paused) with no ASR word confirmation,
@@ -100,12 +112,19 @@ export interface BargeInControllerConfig {
 	 * cough doesn't keep the agent muted.
 	 */
 	wordsGraceMs?: number;
+	/**
+	 * Optional speaker/echo/wake-word gate. When it denies an ASR-confirmed
+	 * interjection, the controller resumes TTS instead of hard-stopping it.
+	 * Omit to preserve the historical "any confirmed word interrupts" behavior.
+	 */
+	interruptGate?: BargeInInterruptGate | null;
 }
 
 export class BargeInController implements WordsDetectedSink {
 	private readonly listeners = new Set<BargeInListener>();
 	private readonly signalListeners = new Set<BargeInSignalListener>();
 	private readonly wordsGraceMs: number;
+	private interruptGate: BargeInInterruptGate | null;
 
 	/** Legacy single-shot cancel flag, reset by `reset()`. */
 	private signal: CancelSignal = { cancelled: false };
@@ -124,6 +143,7 @@ export class BargeInController implements WordsDetectedSink {
 
 	constructor(config: BargeInControllerConfig = {}) {
 		this.wordsGraceMs = config.wordsGraceMs ?? 600;
+		this.interruptGate = config.interruptGate ?? null;
 	}
 
 	// --- New subscription API ---------------------------------------------------
@@ -161,6 +181,10 @@ export class BargeInController implements WordsDetectedSink {
 
 	get isAgentSpeaking(): boolean {
 		return this.agentSpeaking;
+	}
+
+	setInterruptGate(gate: BargeInInterruptGate | null | undefined): void {
+		this.interruptGate = gate ?? null;
 	}
 
 	// --- VAD event handling -----------------------------------------------------
@@ -215,6 +239,7 @@ export class BargeInController implements WordsDetectedSink {
 		wordCount: number;
 		partialText: string;
 		timestampMs: number;
+		evidence?: Partial<BargeInInterruptEvidence>;
 	}): void {
 		if (args.wordCount < 1) return;
 		const withinConfirmWindow =
@@ -226,8 +251,45 @@ export class BargeInController implements WordsDetectedSink {
 		) {
 			return;
 		}
+		const decision = this.evaluateInterrupt(args);
+		if (isPromiseLike(decision)) {
+			void decision.then(
+				(resolved) => this.applyInterruptDecision(args, resolved),
+				() =>
+					this.applyInterruptDecision(args, {
+						allow: false,
+						reason: "interrupt-gate-error",
+					}),
+			);
+			return;
+		}
+		this.applyInterruptDecision(args, decision);
+	}
+
+	private applyInterruptDecision(
+		args: {
+			wordCount: number;
+			partialText: string;
+			timestampMs: number;
+			evidence?: Partial<BargeInInterruptEvidence>;
+		},
+		decision: BargeInInterruptDecision,
+	): void {
+		const withinConfirmWindow =
+			this.wordConfirmExpiresAtMs != null &&
+			args.timestampMs <= this.wordConfirmExpiresAtMs;
+		if (
+			!this.agentSpeaking ||
+			(!this.awaitingWordConfirm && !withinConfirmWindow)
+		) {
+			return;
+		}
+		if (!decision.allow) {
+			this.denyInterrupt(args.timestampMs, decision.reason);
+			return;
+		}
 		// Authoritative: real user speech. Hard-stop.
-		this.hardStop("barge-in-words", args.timestampMs);
+		this.hardStop("barge-in-words", args.timestampMs, decision.reason);
 	}
 
 	// --- Hard stop --------------------------------------------------------------
@@ -241,6 +303,7 @@ export class BargeInController implements WordsDetectedSink {
 	hardStop(
 		reason: NonNullable<BargeInCancelToken["reason"]> = "manual",
 		timestampMs: number = this.lastEventTimestampMs || Date.now(),
+		decisionReason?: string,
 	): BargeInCancelToken {
 		this.clearWordConfirm();
 		this.awaitingWordConfirm = false;
@@ -255,6 +318,7 @@ export class BargeInController implements WordsDetectedSink {
 			type: "hard-stop",
 			timestampMs,
 			token: this.activeToken,
+			...(decisionReason ? { reason: decisionReason } : {}),
 		});
 		return this.activeToken;
 	}
@@ -295,6 +359,36 @@ export class BargeInController implements WordsDetectedSink {
 
 	private emitSignal(signal: BargeInSignal): void {
 		for (const l of this.signalListeners) l(signal);
+	}
+
+	private evaluateInterrupt(args: {
+		wordCount: number;
+		partialText: string;
+		timestampMs: number;
+		evidence?: Partial<BargeInInterruptEvidence>;
+	}): BargeInInterruptDecision | Promise<BargeInInterruptDecision> {
+		if (!this.interruptGate) return { allow: true, reason: "no-gate" };
+		try {
+			return this.interruptGate({
+				wordCount: args.wordCount,
+				partialText: args.partialText,
+				timestampMs: args.timestampMs,
+				agentSpeaking: this.agentSpeaking,
+				...args.evidence,
+			});
+		} catch {
+			return { allow: false, reason: "interrupt-gate-error" };
+		}
+	}
+
+	private denyInterrupt(timestampMs: number, reason: string): void {
+		this.awaitingWordConfirm = false;
+		this.clearWordConfirm();
+		this.emitSignal({
+			type: "resume-tts",
+			timestampMs,
+			reason,
+		});
 	}
 
 	private armWordConfirmDeadline(timestampMs: number): void {

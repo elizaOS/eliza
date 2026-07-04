@@ -312,7 +312,12 @@ export type TranscriberEvent =
 	 * (`onWordsDetected`) so the agent hard-stops TTS + aborts in-flight
 	 * LLM/drafter generation only on real speech, not a blip.
 	 */
-	| { kind: "words"; words: string[] };
+	| {
+			kind: "words";
+			words: string[];
+			update?: TranscriptUpdate;
+			evidence?: Partial<BargeInInterruptEvidence>;
+	  };
 
 export type TranscriberEventListener = (event: TranscriberEvent) => void;
 
@@ -521,11 +526,41 @@ export interface BargeInCancelToken {
 	readonly signal: AbortSignal;
 }
 
+export type BargeInInterruptDecision =
+	| { allow: true; reason?: string }
+	| { allow: false; reason: string };
+
+export interface BargeInInterruptEvidence {
+	wordCount: number;
+	partialText: string;
+	timestampMs: number;
+	source?: VoiceInputSource;
+	speaker?: VoiceSpeaker;
+	segments?: VoiceSegment[];
+	turn?: VoiceTurnMetadata;
+	wakeWordActive?: boolean;
+	knownSpeakerEntityIds?: readonly string[];
+	selfVoiceSimilarity?: number;
+	selfVoiceThreshold?: number;
+	recentAgentReply?: string;
+	replyAgeMs?: number;
+	agentSpeaking?: boolean;
+}
+
+export type BargeInInterruptGate = (
+	evidence: BargeInInterruptEvidence,
+) => BargeInInterruptDecision | Promise<BargeInInterruptDecision>;
+
 /** Signal emitted by `BargeInController` to the scheduler / engine. */
 export type BargeInSignal =
 	| { type: "pause-tts"; timestampMs: number }
-	| { type: "resume-tts"; timestampMs: number }
-	| { type: "hard-stop"; timestampMs: number; token: BargeInCancelToken };
+	| { type: "resume-tts"; timestampMs: number; reason?: string }
+	| {
+			type: "hard-stop";
+			timestampMs: number;
+			token: BargeInCancelToken;
+			reason?: string;
+	  };
 
 export type BargeInSignalListener = (signal: BargeInSignal) => void;
 
@@ -544,6 +579,7 @@ export interface WordsDetectedSink {
 		/** Best partial transcript so far (may be empty). */
 		partialText: string;
 		timestampMs: number;
+		evidence?: Partial<BargeInInterruptEvidence>;
 	}): void;
 }
 

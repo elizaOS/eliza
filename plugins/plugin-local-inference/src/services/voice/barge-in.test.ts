@@ -122,6 +122,92 @@ describe("BargeInController — VAD-driven barge-in", () => {
 		expect(onCancelCalls).toBe(1);
 	});
 
+	it("denies a gated self-echo word confirmation and resumes TTS", () => {
+		const c = new BargeInController({
+			interruptGate: (evidence) =>
+				evidence.selfVoiceSimilarity && evidence.selfVoiceSimilarity >= 0.8
+					? { allow: false, reason: "self-echo" }
+					: { allow: true },
+		});
+		const vad = new FakeVad();
+		c.bindVad(vad);
+		c.setAgentSpeaking(true);
+		const signals: BargeInSignal[] = [];
+		c.onSignal((s) => signals.push(s));
+
+		vad.emit(speechActive(100));
+		c.onWordsDetected({
+			wordCount: 2,
+			partialText: "forecast echo",
+			timestampMs: 180,
+			evidence: { selfVoiceSimilarity: 0.91 },
+		});
+
+		expect(signals.map((s) => s.type)).toEqual(["pause-tts", "resume-tts"]);
+		const resume = signals.find((s) => s.type === "resume-tts");
+		expect(resume?.reason).toBe("self-echo");
+		expect(c.currentCancelToken()).toBeNull();
+		expect(c.cancelSignal().cancelled).toBe(false);
+	});
+
+	it("lets a wake-word interjection hard-stop even when a gate would deny other speech", () => {
+		const c = new BargeInController({
+			interruptGate: (evidence) =>
+				evidence.wakeWordActive
+					? { allow: true, reason: "wake-word" }
+					: { allow: false, reason: "not-addressed" },
+		});
+		const vad = new FakeVad();
+		c.bindVad(vad);
+		c.setAgentSpeaking(true);
+		const signals: BargeInSignal[] = [];
+		c.onSignal((s) => signals.push(s));
+
+		vad.emit(speechActive(100));
+		c.onWordsDetected({
+			wordCount: 3,
+			partialText: "hey Eliza stop",
+			timestampMs: 190,
+			evidence: { wakeWordActive: true },
+		});
+
+		expect(signals.map((s) => s.type)).toEqual(["pause-tts", "hard-stop"]);
+		const hard = signals.find((s) => s.type === "hard-stop");
+		expect(hard?.reason).toBe("wake-word");
+		expect(c.currentCancelToken()?.reason).toBe("barge-in-words");
+	});
+
+	it("ignores a late async gate allow after the agent has stopped speaking", async () => {
+		let resolveGate:
+			| ((decision: { allow: true; reason: string }) => void)
+			| undefined;
+		const c = new BargeInController({
+			interruptGate: () =>
+				new Promise((resolve) => {
+					resolveGate = resolve;
+				}),
+		});
+		const vad = new FakeVad();
+		c.bindVad(vad);
+		c.setAgentSpeaking(true);
+		const signals: BargeInSignal[] = [];
+		c.onSignal((s) => signals.push(s));
+
+		vad.emit(speechActive(100));
+		c.onWordsDetected({
+			wordCount: 1,
+			partialText: "wait",
+			timestampMs: 180,
+		});
+		c.setAgentSpeaking(false);
+		resolveGate?.({ allow: true, reason: "late-allow" });
+		await Promise.resolve();
+
+		expect(signals.map((s) => s.type)).toEqual(["pause-tts"]);
+		expect(c.currentCancelToken()).toBeNull();
+		expect(c.cancelSignal().cancelled).toBe(false);
+	});
+
 	it("ignores onWordsDetected with zero words", () => {
 		const c = new BargeInController();
 		const vad = new FakeVad();
