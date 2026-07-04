@@ -1,3 +1,8 @@
+/**
+ * CacheRedisClient adapter over the Upstash REST Redis client, for environments
+ * that reach Redis over HTTP rather than a raw socket.
+ */
+
 import type { Redis as UpstashRedis } from "@upstash/redis";
 import type { CacheRedisClient } from "./types";
 

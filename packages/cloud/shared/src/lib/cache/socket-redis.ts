@@ -3,7 +3,7 @@
  *
  * Why this exists: Workers cannot use the `redis` or `ioredis` npm packages
  * (both depend on Node's `net` module). Upstash REST is the usual workaround
- * but we now run Redis on Railway (TCP only), so we speak RESP2 directly via
+ * but Redis runs on Railway (TCP only), so we speak RESP2 directly via
  * the Workers `connect()` API.
  *
  * One socket per CacheClient instance; reused across pipelined ops within

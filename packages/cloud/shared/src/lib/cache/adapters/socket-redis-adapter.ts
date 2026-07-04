@@ -1,3 +1,8 @@
+/**
+ * CacheRedisClient adapter over the RESP2 SocketRedis client, used on
+ * Cloudflare Workers where only `cloudflare:sockets` TCP is available.
+ */
+
 import type { SocketRedis } from "../socket-redis";
 import type { CacheRedisClient } from "./types";
 

@@ -1,13 +1,14 @@
+/**
+ * Two-tier cache of established Eliza room-entity connections, keeping the
+ * message path from re-running ensureConnection() (a DB write) on every turn.
+ */
+
 import { logger } from "../utils/logger";
 import { cache } from "./client";
 
 /**
- * Connection Cache Service
- *
- * Tracks established Eliza room-entity connections to avoid redundant
- * ensureConnection() calls which hit the database on every message.
- *
- * Architecture: Service-layer caching with Redis backend
+ * Tracks established room-entity connections behind an in-memory map plus a
+ * Redis second level, so repeat messages skip the ensureConnection() DB round-trip.
  */
 export class ConnectionCache {
   private static instance: ConnectionCache;

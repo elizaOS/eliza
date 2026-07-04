@@ -1,3 +1,9 @@
+/**
+ * In-process CacheRedisClient with no external backend, used for tests and
+ * single-process local runs. Holds string values and lists in Maps with manual
+ * TTL expiry checked on read.
+ */
+
 import type { CacheRedisClient } from "./types";
 
 export class MemoryCacheAdapter implements CacheRedisClient {

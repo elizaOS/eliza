@@ -1,3 +1,5 @@
+/** Covers buildRedisClient/hasRedisConfig under MOCK_REDIS=1; no real Redis connection. */
+
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
 const PREV_MOCK = process.env.MOCK_REDIS;
