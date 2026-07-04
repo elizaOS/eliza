@@ -12,7 +12,7 @@ import type {
 	RoleGate,
 	RoleGateRole,
 } from "../types/contexts";
-import { resolveProviderContexts } from "../utils/context-catalog";
+import { lookupProviderCatalogContexts } from "../utils/context-catalog";
 import { normalizeContextList } from "./context-normalization";
 
 // #9948: single source of truth for role ranking — delegates to CANONICAL_ROLE_RANK.
@@ -143,8 +143,15 @@ export interface ProviderContextGateCandidate extends ContextGateCandidate {
  * verbatim — `filterByContextGate`'s `{contexts, roleGate}` reduction silently
  * dropped anyOf/allOf/noneOf, so a world-style `contextGate: { anyOf: [...] }`
  * provider lost its gate on the v5 planner selection path. Providers declaring
- * no gate terms resolve declared `contexts` → catalog (PROVIDER_CONTEXT_MAP) →
- * `["general"]`.
+ * no gate terms resolve declared `contexts` → catalog (PROVIDER_CONTEXT_MAP);
+ * a provider with neither declares no routing at all, and stays UNGATED
+ * (#13204 follow-up): the pre-#13203 selection filter included that class on
+ * every turn, and an injected `["general"]` here would silently drop
+ * undeclared plugin providers (TWITTER_IDENTITY-shaped) from the narrow turns
+ * they rode before. Only an explicit declaration or catalog entry may gate a
+ * provider out; the wrapped registration path still materializes the
+ * `["general"]` lean onto `contexts` (plugin-lifecycle), which this resolver
+ * honors as declared.
  *
  * #12087 Item 14 preserved: a contextGate adds context requirements; it does
  * not waive the provider's top-level roleGate unless it declares its own.
@@ -170,7 +177,16 @@ export function resolveProviderContextGate(
 		};
 	}
 
-	return { contexts: resolveProviderContexts(provider), roleGate };
+	const declared = (provider.contexts ?? []).filter((context) =>
+		Boolean(context),
+	);
+	return {
+		contexts:
+			declared.length > 0
+				? declared
+				: lookupProviderCatalogContexts(provider.name),
+		roleGate,
+	};
 }
 
 /**

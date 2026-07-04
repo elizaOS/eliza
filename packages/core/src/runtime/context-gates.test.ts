@@ -130,14 +130,61 @@ describe("filterProvidersByContextGate — full declared contextGate honored (#1
 		).toEqual([]);
 	});
 
-	it("defaults an undeclared, uncataloged provider to the general context", () => {
-		const undeclared = { name: "TOTALLY_UNDECLARED_SIGNAL" };
+	it("keeps an undeclared, uncataloged provider on every turn — prior inclusion parity (#13204 follow-up)", () => {
+		// A plugin provider that declares nothing (no contexts, no contextGate)
+		// and has no catalog entry — the TWITTER_IDENTITY shape. Before #13203's
+		// provider-specific resolver, the selection filter (filterByContextGate)
+		// gated only on the contexts the object carries, so this class was
+		// included on every turn. Undeclared must stay on the safe side: only an
+		// explicitly declared gate/contexts or a catalog entry may exclude a
+		// provider from a turn.
+		const undeclared = { name: "TWITTER_IDENTITY" };
+		for (const turn of [["general"], ["messaging"], []] as AgentContext[][]) {
+			expect(filterProvidersByContextGate([undeclared], turn)).toEqual(
+				filterByContextGate([undeclared], turn),
+			);
+			expect(filterProvidersByContextGate([undeclared], turn)).toEqual([
+				undeclared,
+			]);
+		}
+	});
+
+	it("fail-open on contexts never waives an undeclared provider's roleGate", () => {
+		const gated = {
+			name: "UNDECLARED_ADMIN_SIGNAL",
+			roleGate: { minRole: "ADMIN" as RoleGateRole },
+		};
 		expect(
-			filterProvidersByContextGate([undeclared], ["general"] as AgentContext[]),
-		).toEqual([undeclared]);
-		expect(
-			filterProvidersByContextGate([undeclared], ["wallet"] as AgentContext[]),
+			filterProvidersByContextGate([gated], ["messaging"] as AgentContext[], [
+				"USER",
+			]),
 		).toEqual([]);
+		expect(
+			filterProvidersByContextGate([gated], ["messaging"] as AgentContext[], [
+				"ADMIN",
+			]),
+		).toEqual([gated]);
+	});
+
+	it("still leans a provider whose contexts were materialized at registration", () => {
+		// The wrapped registration path (plugin-lifecycle) materializes the
+		// undeclared class to ["general"]; a provider carrying that resolution
+		// stays leaned off narrow turns — the fail-open default above applies
+		// only to providers that reach the filter with no contexts at all.
+		const materialized = {
+			name: "TWITTER_IDENTITY",
+			contexts: ["general"] as AgentContext[],
+		};
+		expect(
+			filterProvidersByContextGate([materialized], [
+				"messaging",
+			] as AgentContext[]),
+		).toEqual([]);
+		expect(
+			filterProvidersByContextGate([materialized], [
+				"general",
+			] as AgentContext[]),
+		).toEqual([materialized]);
 	});
 
 	it("keeps declared-contexts providers on their declared routing (hot-path parity)", () => {

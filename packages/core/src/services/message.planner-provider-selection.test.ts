@@ -104,6 +104,33 @@ describe("selectV5PlannerStateProviderNames — declared contextGate honored (#1
 		expect(select([declared], ["wallet"])).not.toContain("DECLARED_SIGNAL");
 	});
 
+	it("keeps an undeclared, uncataloged plugin provider on narrow turns (#13204 follow-up)", () => {
+		// TWITTER_IDENTITY shape: a plugin provider with no contexts, no
+		// contextGate, and no catalog entry. Hosts that bypass the wrapped
+		// registration path hand the selection exactly this object; the pre-#13203
+		// filter included it on every turn, and undeclared must keep that safe
+		// default — only a declared gate/contexts or catalog entry may gate it out.
+		const undeclared = provider({ name: "TWITTER_IDENTITY", dynamic: true });
+		expect(select([undeclared], ["messaging"])).toContain("TWITTER_IDENTITY");
+		expect(select([undeclared], ["general"])).toContain("TWITTER_IDENTITY");
+		expect(select([undeclared], [])).toContain("TWITTER_IDENTITY");
+	});
+
+	it("keeps the registration-materialized general lean for providers that carry it (#13204 follow-up)", () => {
+		// The wrapped registration path materializes the undeclared class to
+		// ["general"] (plugin-lifecycle); those providers stay off narrow turns.
+		const materialized = provider({
+			name: "NOISY_PLUGIN_SIGNAL",
+			contexts: ["general"],
+		});
+		expect(select([materialized], ["wallet"])).not.toContain(
+			"NOISY_PLUGIN_SIGNAL",
+		);
+		expect(select([materialized], ["general"])).toContain(
+			"NOISY_PLUGIN_SIGNAL",
+		);
+	});
+
 	it("composes RECENT_ERRORS on every turn via alwaysInResponseState (#13203)", () => {
 		// RECENT_ERRORS is uncataloged and declares no contexts; without the
 		// always-on opt-in it would resolve to ["general"] and miss the narrow
