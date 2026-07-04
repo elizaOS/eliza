@@ -111,7 +111,7 @@ function AgentConsoleOverview({
       <div className="border border-white/10 bg-black p-5">
         <div className="flex flex-col gap-5 md:flex-row md:items-start md:justify-between">
           <div className="max-w-2xl space-y-3">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#FF5800]">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[var(--accent)]">
               {t("cloud.myAgents.agentConsole", {
                 defaultValue: "Agent console",
               })}
@@ -134,7 +134,7 @@ function AgentConsoleOverview({
           <div className="flex shrink-0 flex-col gap-2 sm:flex-row md:flex-col">
             <Link
               to={chatPath}
-              className="inline-flex h-10 items-center justify-center gap-2 bg-[#FF5800] px-4 text-sm font-medium text-black transition-colors hover:bg-[#e54f00]"
+              className="inline-flex h-10 items-center justify-center gap-2 bg-[var(--accent)] px-4 text-sm font-medium text-black transition-colors hover:bg-[#e54f00]"
             >
               <MessageCircle className="h-4 w-4" />
               {primaryAgent
@@ -199,7 +199,7 @@ function AgentConsoleOverview({
             "group flex items-start gap-3 bg-black p-4 transition-colors hover:bg-white/5";
           const sectionInner = (
             <>
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center border border-white/10 bg-black text-[#FF5800]">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center border border-white/10 bg-black text-[var(--accent)]">
                 <Icon className="h-4 w-4" />
               </span>
               <span className="min-w-0 flex-1">

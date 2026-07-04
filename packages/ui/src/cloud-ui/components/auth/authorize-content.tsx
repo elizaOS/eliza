@@ -358,7 +358,7 @@ function AuthorizeFlow({
   if (status === "validating" || authLoading) {
     return (
       <Frame>
-        <Loader2 className="h-12 w-12 animate-spin text-[#FF5800]" />
+        <Loader2 className="h-12 w-12 animate-spin text-[var(--accent)]" />
         <h3 className="text-lg font-semibold text-white">
           Verifying application...
         </h3>
@@ -379,7 +379,7 @@ function AuthorizeFlow({
   if (status === "authorizing") {
     return (
       <Frame>
-        <Loader2 className="h-12 w-12 animate-spin text-[#FF5800]" />
+        <Loader2 className="h-12 w-12 animate-spin text-[var(--accent)]" />
         <h3 className="text-lg font-semibold text-white">Authorizing...</h3>
         <p className="text-sm text-white/60">
           Redirecting you back to {appInfo.name}
@@ -478,7 +478,7 @@ function AppHeader({ appInfo }: { appInfo: AppInfo }) {
           unoptimized
         />
       ) : (
-        <div className="h-16 w-16 rounded-sm bg-gradient-to-br from-[#FF5800] to-[#FF8800] flex items-center justify-center">
+        <div className="h-16 w-16 rounded-sm bg-gradient-to-br from-[var(--accent)] to-[#FF8800] flex items-center justify-center">
           <span className="text-2xl font-bold text-white">
             {appInfo.name.charAt(0)}
           </span>
@@ -614,7 +614,7 @@ function SignedOutActions({
         </>
       ) : (
         <div className="flex flex-col items-center gap-3 py-6">
-          <Loader2 className="h-6 w-6 animate-spin text-[#FF5800]" />
+          <Loader2 className="h-6 w-6 animate-spin text-[var(--accent)]" />
           <p className="text-sm text-white/60">Loading sign-in options...</p>
         </div>
       )}

@@ -127,15 +127,15 @@ function EmailCallbackContent() {
   if (status === "error") {
     return (
       <Frame>
-        <div className="bg-[#FF5800] p-4 text-black">
+        <div className="bg-accent p-4 text-accent-foreground">
           <AlertTriangle className="h-8 w-8" />
         </div>
-        <h1 className="text-lg font-semibold text-white">
+        <h1 className="text-lg font-semibold text-txt">
           {t("cloud.emailCallback.signInFailed", {
             defaultValue: "Sign-in failed",
           })}
         </h1>
-        <p className="max-w-xs text-center text-sm text-white/74">{error}</p>
+        <p className="max-w-xs text-center text-sm text-muted">{error}</p>
       </Frame>
     );
   }
@@ -143,11 +143,11 @@ function EmailCallbackContent() {
   if (status === "success") {
     return (
       <Frame>
-        <CheckCircle2 className="h-12 w-12 text-white" />
-        <h1 className="text-lg font-semibold text-white">
+        <CheckCircle2 className="h-12 w-12 text-txt" />
+        <h1 className="text-lg font-semibold text-txt">
           {t("cloud.emailCallback.signedIn", { defaultValue: "Signed in" })}
         </h1>
-        <p className="text-sm text-white/74">
+        <p className="text-sm text-muted">
           {t("cloud.emailCallback.returning", {
             defaultValue: "Returning to the app authorization screen...",
           })}
@@ -166,8 +166,8 @@ function EmailCallbackContent() {
 
   return (
     <Frame>
-      <Loader2 className="h-12 w-12 animate-spin text-[#FF5800]" />
-      <h1 className="text-lg font-semibold text-white">
+      <Loader2 className="h-12 w-12 animate-spin text-accent" />
+      <h1 className="text-lg font-semibold text-txt">
         {t("cloud.emailCallback.verifying", {
           defaultValue: "Verifying sign-in link...",
         })}
@@ -178,9 +178,9 @@ function EmailCallbackContent() {
 
 function Frame({ children }: { children: ReactNode }) {
   return (
-    <div className="theme-cloud relative flex min-h-screen w-full flex-col overflow-hidden bg-black font-poppins text-white">
+    <div className="theme-cloud relative flex min-h-[100dvh] w-full flex-col overflow-hidden bg-bg font-sans text-txt">
       <div className="relative z-10 flex flex-1 items-center justify-center p-4">
-        <div className="w-full max-w-md border border-white/14 bg-black p-8">
+        <div className="w-full max-w-md border border-border bg-card p-8">
           <div className="flex flex-col items-center gap-6">{children}</div>
         </div>
       </div>

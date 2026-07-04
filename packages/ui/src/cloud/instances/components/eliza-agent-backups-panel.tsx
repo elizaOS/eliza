@@ -44,9 +44,9 @@ const SNAPSHOT_TYPE_LABELS: Record<BackupRecord["snapshotType"], string> = {
 };
 
 const SNAPSHOT_TYPE_STYLES: Record<BackupRecord["snapshotType"], string> = {
-  auto: "border-white/20 bg-white/5 text-white/80",
-  manual: "border-[#FF5800]/40 bg-[#FF5800]/10 text-[#FF9B66]",
-  "pre-shutdown": "border-purple-500/40 bg-purple-500/10 text-purple-400",
+  auto: "border-border bg-bg-muted text-muted-strong",
+  manual: "border-accent/40 bg-accent-subtle text-accent",
+  "pre-shutdown": "border-border-strong bg-surface text-txt-strong",
 };
 
 function formatTimestamp(value: string): {
@@ -181,22 +181,19 @@ export function ElizaAgentBackupsPanel({
   return (
     <BrandCard className="relative" cornerSize="sm">
       <div className="relative z-10 space-y-6">
-        <div className="flex flex-col gap-4 border-b border-white/10 pb-4 lg:flex-row lg:items-start lg:justify-between">
+        <div className="flex flex-col gap-4 border-b border-border pb-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <div className="mb-1 flex flex-wrap items-center gap-2">
-              <span className="inline-block h-2 w-2 rounded-full bg-[#FF5800]" />
-              <h2
-                className="text-xl font-normal text-white"
-                style={{ fontFamily: "var(--font-roboto-mono)" }}
-              >
+              <span className="inline-block h-2 w-2 rounded-full bg-accent" />
+              <h2 className="font-mono text-xl font-normal text-txt-strong">
                 Backups &amp; History
               </h2>
             </div>
-            <p className="text-sm text-white/60">
+            <p className="text-sm text-muted-strong">
               Snapshot history and restore controls for{" "}
               {agentName || "this agent"}.
             </p>
-            <p className="mt-1 text-xs text-white/40">
+            <p className="mt-1 text-xs text-muted">
               Use &ldquo;Save Snapshot&rdquo; above to capture the current
               running state.
             </p>
@@ -226,13 +223,13 @@ export function ElizaAgentBackupsPanel({
         </div>
 
         {!isRunning && latestBackup && (
-          <div className="flex items-start gap-3 border border-yellow-500/30 bg-yellow-950/20 p-4">
-            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-yellow-400" />
+          <div className="flex items-start gap-3 border border-status-warning/30 bg-status-warning-bg p-4">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-status-warning" />
             <div className="space-y-1">
-              <p className="text-sm text-yellow-300">
+              <p className="text-sm text-status-warning">
                 This agent is not currently running.
               </p>
-              <p className="text-xs text-yellow-200/80">
+              <p className="text-xs text-status-warning/80">
                 For stopped agents, restores are limited to the latest backup
                 only. Historical per-row restore actions stay hidden until the
                 agent is running again.
@@ -242,9 +239,9 @@ export function ElizaAgentBackupsPanel({
         )}
 
         {isBusy && (
-          <div className="flex items-start gap-3 border border-white/15 bg-white/[0.04] p-4">
-            <Loader2 className="mt-0.5 h-4 w-4 shrink-0 animate-spin text-white/70" />
-            <p className="text-sm text-white/80">
+          <div className="flex items-start gap-3 border border-border-strong bg-bg-muted p-4">
+            <Loader2 className="mt-0.5 h-4 w-4 shrink-0 animate-spin text-muted-strong" />
+            <p className="text-sm text-txt-strong">
               Provisioning is in progress. Wait for the agent to finish starting
               before restoring.
             </p>
@@ -263,9 +260,11 @@ export function ElizaAgentBackupsPanel({
           </div>
         ) : error ? (
           <div className="py-8 text-center">
-            <History className="mx-auto mb-3 h-8 w-8 text-neutral-600" />
-            <p className="mb-1 text-sm text-red-400">Failed to load backups</p>
-            <p className="text-xs text-white/40">{error}</p>
+            <History className="mx-auto mb-3 h-8 w-8 text-muted" />
+            <p className="mb-1 text-sm text-destructive">
+              Failed to load backups
+            </p>
+            <p className="text-xs text-muted">{error}</p>
             <BrandButton
               variant="outline"
               size="sm"
@@ -278,9 +277,9 @@ export function ElizaAgentBackupsPanel({
           </div>
         ) : backups.length === 0 ? (
           <div className="py-10 text-center">
-            <DatabaseBackup className="mx-auto mb-3 h-8 w-8 text-neutral-600" />
-            <p className="text-sm text-white/60">No backups yet</p>
-            <p className="mt-1 text-xs text-white/40">
+            <DatabaseBackup className="mx-auto mb-3 h-8 w-8 text-muted" />
+            <p className="text-sm text-muted-strong">No backups yet</p>
+            <p className="mt-1 text-xs text-muted">
               Run the agent and save a snapshot to create the first restore
               point.
             </p>
@@ -288,45 +287,27 @@ export function ElizaAgentBackupsPanel({
         ) : (
           <>
             <div className="grid gap-4 md:grid-cols-3">
-              <div className="border border-white/10 bg-black/20 p-4 text-center">
-                <p
-                  className="text-2xl font-medium text-white"
-                  style={{ fontFamily: "var(--font-roboto-mono)" }}
-                >
+              <div className="border border-border bg-bg-muted p-4 text-center">
+                <p className="font-mono text-2xl font-medium text-txt-strong">
                   {backups.length}
                 </p>
-                <p
-                  className="mt-1 text-xs uppercase tracking-wider text-white/60"
-                  style={{ fontFamily: "var(--font-roboto-mono)" }}
-                >
+                <p className="mt-1 font-mono text-xs uppercase tracking-wider text-muted-strong">
                   Total backups
                 </p>
               </div>
-              <div className="border border-white/10 bg-black/20 p-4 text-center">
-                <p
-                  className="text-lg font-medium text-[#FF9B66]"
-                  style={{ fontFamily: "var(--font-roboto-mono)" }}
-                >
+              <div className="border border-border bg-bg-muted p-4 text-center">
+                <p className="font-mono text-lg font-medium text-accent">
                   {manualCount}
                 </p>
-                <p
-                  className="mt-1 text-xs uppercase tracking-wider text-white/60"
-                  style={{ fontFamily: "var(--font-roboto-mono)" }}
-                >
+                <p className="mt-1 font-mono text-xs uppercase tracking-wider text-muted-strong">
                   Manual snapshots
                 </p>
               </div>
-              <div className="border border-white/10 bg-black/20 p-4 text-center">
-                <p
-                  className="text-lg font-medium text-purple-400"
-                  style={{ fontFamily: "var(--font-roboto-mono)" }}
-                >
+              <div className="border border-border bg-bg-muted p-4 text-center">
+                <p className="font-mono text-lg font-medium text-txt-strong">
                   {preShutdownCount}
                 </p>
-                <p
-                  className="mt-1 text-xs uppercase tracking-wider text-white/60"
-                  style={{ fontFamily: "var(--font-roboto-mono)" }}
-                >
+                <p className="mt-1 font-mono text-xs uppercase tracking-wider text-muted-strong">
                   Pre-shutdown backups
                 </p>
               </div>
@@ -341,7 +322,7 @@ export function ElizaAgentBackupsPanel({
                 return (
                   <div
                     key={backup.id}
-                    className="border border-white/10 bg-black/30 p-4 transition-colors hover:border-white/20 hover:bg-black/40"
+                    className="border border-border bg-card p-4 transition-colors hover:border-border-strong hover:bg-bg-hover"
                   >
                     <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                       <div className="min-w-0 space-y-2">
@@ -349,48 +330,37 @@ export function ElizaAgentBackupsPanel({
                           {isLatest && (
                             <Badge
                               variant="outline"
-                              className="border-green-500/40 bg-green-500/10 text-green-400"
+                              className="border-status-success/40 bg-status-success-bg text-status-success"
                             >
                               Latest
                             </Badge>
                           )}
                           <Badge
                             variant="outline"
-                            className={
-                              SNAPSHOT_TYPE_STYLES[backup.snapshotType]
-                            }
+                            className={SNAPSHOT_TYPE_STYLES[backup.snapshotType]}
                           >
                             {SNAPSHOT_TYPE_LABELS[backup.snapshotType]}
                           </Badge>
                         </div>
 
                         <div>
-                          <p
-                            className="text-sm font-medium text-white"
-                            style={{ fontFamily: "var(--font-roboto-mono)" }}
-                          >
+                          <p className="font-mono text-sm font-medium text-txt-strong">
                             {timestamp.absolute}
                           </p>
-                          <p className="text-xs text-white/74">
+                          <p className="text-xs text-muted-strong">
                             {timestamp.relative}
                           </p>
                         </div>
 
-                        <div className="flex flex-wrap items-center gap-4 text-xs text-white/74">
-                          <span
-                            style={{ fontFamily: "var(--font-roboto-mono)" }}
-                          >
+                        <div className="flex flex-wrap items-center gap-4 font-mono text-xs text-muted-strong">
+                          <span>
                             Size:{" "}
                             {formatByteSize(backup.sizeBytes, {
                               precision: 1,
                               unknownLabel: "—",
                             })}
                           </span>
-                          <span
-                            style={{ fontFamily: "var(--font-roboto-mono)" }}
-                          >
-                            Backup ID: {backup.id.slice(0, 8)}
-                          </span>
+                          <span>Backup ID: {backup.id.slice(0, 8)}</span>
                         </div>
                       </div>
 
@@ -410,12 +380,12 @@ export function ElizaAgentBackupsPanel({
                             Restore this backup
                           </BrandButton>
                         ) : isLatest ? (
-                          <p className="text-xs text-white/74">
+                          <p className="text-xs text-muted-strong">
                             Use &ldquo;Restore latest&rdquo; above for
                             stopped-agent recovery.
                           </p>
                         ) : (
-                          <p className="text-xs text-white/40">
+                          <p className="text-xs text-muted">
                             Historical restores require a running agent.
                           </p>
                         )}

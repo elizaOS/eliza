@@ -44,7 +44,7 @@ function getPricingTextStyle(pricing: ApiEndpointCardPricing | undefined) {
   if (!pricing) return "text-neutral-500";
   if (pricing.isFree) return "text-green-400";
   if (pricing.isVariable) return "text-orange-400";
-  return "text-[#FF5800]";
+  return "text-[var(--accent)]";
 }
 
 function fallbackPricingLabel(pricing: ApiEndpointCardPricing) {
@@ -75,7 +75,7 @@ export function EndpointCard<
       className="group relative w-full min-w-0 overflow-hidden rounded-sm border border-white/5 bg-neutral-900/50 p-4 text-left transition-all hover:border-white/10 hover:bg-neutral-900/70"
     >
       <div className="absolute right-4 top-4 opacity-0 transition-all duration-200 group-hover:opacity-100">
-        <div className="flex items-center gap-1 text-xs font-medium text-[#FF5800]">
+        <div className="flex items-center gap-1 text-xs font-medium text-[var(--accent)]">
           Test <ChevronRight className="h-3 w-3" />
         </div>
       </div>
@@ -86,7 +86,7 @@ export function EndpointCard<
             <span className="text-neutral-500">
               {getCategoryIcon(endpoint.category)}
             </span>
-            <h3 className="pr-16 text-sm font-semibold text-white transition-colors group-hover:text-[#FF5800]">
+            <h3 className="pr-16 text-sm font-semibold text-white transition-colors group-hover:text-[var(--accent)]">
               {endpoint.name}
             </h3>
           </div>

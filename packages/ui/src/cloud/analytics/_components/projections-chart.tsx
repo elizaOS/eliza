@@ -47,7 +47,7 @@ export function ProjectionsChart({ data }: ProjectionsChartProps) {
       label: t("cloud.projectionsChart.historical", {
         defaultValue: "Historical",
       }),
-      color: "#FF5800",
+      color: "var(--accent)",
     },
     projected: {
       label: t("cloud.projectionsChart.projected", {

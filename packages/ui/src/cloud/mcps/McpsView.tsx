@@ -129,7 +129,7 @@ export function McpsView() {
   return (
     <DashboardPageContainer className="flex flex-col gap-5">
       {/* Tabs */}
-      <div className="flex gap-1 border-b border-white/10">
+      <div className="flex gap-1 border-b border-border">
         {tabs.map((tabDef) => (
           <Button
             variant="ghost"
@@ -137,10 +137,10 @@ export function McpsView() {
             key={tabDef.id}
             onClick={() => setTab(tabDef.id)}
             className={cn(
-              "px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors",
+              "min-h-touch px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors",
               tab === tabDef.id
-                ? "border-accent text-white"
-                : "border-transparent text-white/50 hover:text-white/80",
+                ? "border-accent text-txt-strong"
+                : "border-transparent text-muted hover:text-txt",
             )}
           >
             {tabDef.label}
@@ -151,7 +151,7 @@ export function McpsView() {
       {/* Search + category filters */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/40" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted" />
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -169,10 +169,10 @@ export function McpsView() {
               key={cat}
               onClick={() => setCategory(cat)}
               className={cn(
-                "h-8 px-3 text-xs rounded-full border transition-colors capitalize",
+                "min-h-touch px-3 text-xs rounded-full border transition-colors capitalize",
                 category === cat
-                  ? "border-accent/50 bg-accent/15 text-white"
-                  : "border-white/10 bg-white/5 text-white/60 hover:bg-white/10 hover:text-white",
+                  ? "border-accent/50 bg-accent-subtle text-txt-strong"
+                  : "border-border bg-bg-elevated text-muted hover:bg-bg-hover hover:text-txt",
               )}
             >
               {cat}
@@ -268,21 +268,21 @@ const UserMcpCard = memo(function UserMcpCard({
       variant="ghost"
       type="button"
       onClick={() => onSelect(mcp.id)}
-      className="text-left rounded-sm border border-white/10 bg-white/5 p-4 transition-colors hover:border-white/20 hover:bg-white/[0.07]"
+      className="group text-left rounded-sm border border-border bg-card p-4 transition-colors hover:border-border-strong hover:bg-bg-hover"
     >
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-3 min-w-0">
-          <div className="p-2 rounded-sm border border-white/10 bg-white/5 shrink-0">
+          <div className="p-2 rounded-sm border border-border bg-bg-elevated shrink-0">
             <Puzzle className="h-4 w-4 text-accent" />
           </div>
           <div className="min-w-0">
-            <h3 className="font-semibold text-white truncate flex items-center gap-2">
+            <h3 className="font-semibold text-txt-strong truncate flex items-center gap-2">
               {mcp.name}
               {mcp.x402_enabled && (
                 <Zap className="h-3 w-3 text-accent shrink-0" />
               )}
             </h3>
-            <p className="text-xs text-white/50">
+            <p className="text-xs text-muted">
               v{mcp.version} ·{" "}
               {t("cloud.mcps.toolsCount", {
                 defaultValue: "{{n}} tools",
@@ -293,12 +293,12 @@ const UserMcpCard = memo(function UserMcpCard({
         </div>
         <StatusBadge status={mcp.status} />
       </div>
-      <p className="mt-3 text-xs text-white/60 line-clamp-2 min-h-[2.5rem]">
+      <p className="mt-3 text-xs text-muted line-clamp-2 min-h-[2.5rem]">
         {mcp.description}
       </p>
-      <div className="mt-3 flex items-center justify-between text-xs text-white/40">
+      <div className="mt-3 flex items-center justify-between text-xs text-muted">
         <span className="capitalize">{mcp.category}</span>
-        <span className="text-white/30 group-hover:text-white">
+        <span className="text-muted group-hover:text-txt-strong transition-colors">
           {t("cloud.mcps.viewDetails", { defaultValue: "View details" })}
         </span>
       </div>
@@ -324,15 +324,17 @@ const BuiltinCard = memo(function BuiltinCard({
   };
 
   return (
-    <div className="rounded-sm border border-white/10 bg-white/5 p-4">
+    <div className="rounded-sm border border-border bg-card p-4">
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-3 min-w-0">
-          <div className="p-2 rounded-sm border border-white/10 bg-white/5 shrink-0">
+          <div className="p-2 rounded-sm border border-border bg-bg-elevated shrink-0">
             <Puzzle className="h-4 w-4 text-accent" />
           </div>
           <div className="min-w-0">
-            <h3 className="font-semibold text-white truncate">{mcp.name}</h3>
-            <p className="text-xs text-white/50">
+            <h3 className="font-semibold text-txt-strong truncate">
+              {mcp.name}
+            </h3>
+            <p className="text-xs text-muted">
               v{mcp.version} ·{" "}
               {t("cloud.mcps.toolsCount", {
                 defaultValue: "{{n}} tools",
@@ -341,15 +343,17 @@ const BuiltinCard = memo(function BuiltinCard({
             </p>
           </div>
         </div>
-        <span className="text-[10px] px-1.5 py-0 rounded-full border border-emerald-500/30 bg-emerald-500/15 text-emerald-300 capitalize">
+        <span className="text-2xs px-1.5 py-0 rounded-full border border-status-success/30 bg-status-success-bg text-status-success capitalize">
           {mcp.status}
         </span>
       </div>
-      <p className="mt-3 text-xs text-white/60 line-clamp-2 min-h-[2.5rem]">
+      <p className="mt-3 text-xs text-muted line-clamp-2 min-h-[2.5rem]">
         {mcp.description}
       </p>
       <div className="mt-3 flex items-center justify-between">
-        <code className="text-xs text-white/40 truncate">{mcp.endpoint}</code>
+        <code className="font-mono text-xs text-muted truncate">
+          {mcp.endpoint}
+        </code>
         <BrandButton
           variant="outline"
           size="sm"
@@ -364,10 +368,10 @@ const BuiltinCard = memo(function BuiltinCard({
       {result && (
         <pre
           className={cn(
-            "mt-3 rounded-sm border p-2 font-mono text-[11px] max-h-32 overflow-auto",
+            "mt-3 rounded-sm border p-2 font-mono text-xs-tight max-h-32 overflow-auto",
             result.ok
-              ? "border-white/10 bg-white/5 text-white/60"
-              : "border-red-500/30 bg-red-500/10 text-red-200",
+              ? "border-border bg-bg-elevated text-muted"
+              : "border-destructive/30 bg-status-danger-bg text-destructive",
           )}
         >
           {result.summary}
@@ -383,7 +387,7 @@ function GridSkeleton() {
       {[0, 1, 2, 3].map((i) => (
         <div
           key={i}
-          className="h-32 rounded-sm border border-white/10 bg-white/5 animate-pulse"
+          className="h-32 rounded-sm border border-border bg-card animate-pulse motion-reduce:animate-none"
         />
       ))}
     </div>
@@ -398,9 +402,9 @@ function EmptyState({
   action?: React.ReactNode;
 }) {
   return (
-    <div className="flex flex-col items-center justify-center gap-4 rounded-sm border border-white/10 bg-white/[0.03] py-16 text-center">
-      <Puzzle className="h-10 w-10 text-white/30" />
-      <p className="text-sm text-white/50">{message}</p>
+    <div className="flex flex-col items-center justify-center gap-4 rounded-sm border border-border bg-card py-16 text-center">
+      <Puzzle className="h-10 w-10 text-muted" />
+      <p className="text-sm text-muted">{message}</p>
       {action}
     </div>
   );

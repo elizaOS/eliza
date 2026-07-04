@@ -133,7 +133,8 @@ function getDefaultLineClassName(line: string): string {
     return "border-l-red-500 text-red-300";
   }
   if (normalized.includes("warn")) return "border-l-yellow-500 text-yellow-300";
-  if (normalized.includes("info")) return "border-l-blue-500 text-blue-300";
+  if (normalized.includes("info"))
+    return "border-l-status-info text-status-info";
   return "border-l-neutral-700 text-neutral-300";
 }
 
@@ -157,7 +158,7 @@ function getDefaultEntryClassName(entry: LogViewerStructuredEntry): string {
     case "warn":
       return "text-yellow-500";
     case "info":
-      return "text-blue-500";
+      return "text-status-info";
     case "debug":
       return "text-gray-500";
     default:
@@ -236,10 +237,10 @@ export function LogViewer({
   return (
     <BrandCard className={cn("relative ", className)} cornerSize="sm">
       <div className="relative z-10 space-y-6">
-        <div className="flex flex-col gap-4 border-b border-white/10 pb-4 lg:flex-row lg:items-start lg:justify-between">
+        <div className="flex flex-col gap-4 border-b border-border pb-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <div className="mb-1 flex flex-wrap items-center gap-2">
-              <span className="inline-block h-2 w-2 rounded-full bg-[#FF5800]" />
+              <span className="inline-block h-2 w-2 rounded-full bg-[var(--accent)]" />
               <h2
                 className="text-xl font-normal text-white"
                 style={{ fontFamily: "var(--font-roboto-mono)" }}
@@ -272,13 +273,13 @@ export function LogViewer({
               >
                 <SelectTrigger
                   className={cn(
-                    "h-8 w-[100px] rounded-none border-white/10 bg-black/40 text-xs",
+                    "h-8 w-[100px] rounded-none border-border bg-black/40 text-xs",
                     lineCountControl.triggerClassName,
                   )}
                 >
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent className="rounded-none border-white/10 bg-neutral-900">
+                <SelectContent className="rounded-none border-border bg-neutral-900">
                   {lineCountControl.options.map((option) => (
                     <SelectItem key={option.value} value={option.value}>
                       {option.label}
@@ -351,7 +352,7 @@ export function LogViewer({
                   placeholder={search.placeholder ?? "Search logs..."}
                   value={search.value}
                   onChange={(event) => search.onChange(event.target.value)}
-                  className="rounded-none border-white/10 bg-black/40 pl-9 text-white placeholder:text-white/40 "
+                  className="rounded-none border-border bg-black/40 pl-9 text-white placeholder:text-white/40 "
                   style={{ fontFamily: "var(--font-roboto-mono)" }}
                 />
               </div>
@@ -363,14 +364,14 @@ export function LogViewer({
               >
                 <SelectTrigger
                   className={cn(
-                    "w-full rounded-none border-white/10 bg-black/40 sm:w-[140px]",
+                    "w-full rounded-none border-border bg-black/40 sm:w-[140px]",
                     levelFilter.triggerClassName,
                   )}
                   style={{ fontFamily: "var(--font-roboto-mono)" }}
                 >
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent className="rounded-none border-white/10 bg-[#0A0A0A]">
+                <SelectContent className="rounded-none border-border bg-card">
                   {levelFilter.options.map((option) => (
                     <SelectItem key={option.value} value={option.value}>
                       {option.label}
@@ -447,7 +448,7 @@ export function LogViewer({
         ) : (
           <ScrollArea
             className={cn(
-              "w-full rounded-none border border-white/10",
+              "w-full rounded-none border border-border",
               heightClassName,
             )}
           >

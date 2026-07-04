@@ -107,7 +107,7 @@ function StepIndicator({ state }: { state: StepState }) {
     case "complete":
       return (
         <div
-          className={`${base} bg-green-500/15 text-green-400 border border-green-500/30`}
+          className={`${base} bg-status-success-bg text-status-success border border-status-success/30`}
         >
           <Check className="h-3 w-3" />
         </div>
@@ -115,23 +115,23 @@ function StepIndicator({ state }: { state: StepState }) {
     case "active":
       return (
         <div
-          className={`${base} bg-[#FF5800]/15 border border-[#FF5800]/30 relative`}
+          className={`${base} bg-accent-subtle border border-accent/30 relative`}
         >
-          <Loader2 className="h-3 w-3 text-[#FF5800] animate-spin" />
+          <Loader2 className="h-3 w-3 text-accent animate-spin" />
         </div>
       );
     case "error":
       return (
         <div
-          className={`${base} bg-red-500/15 text-red-400 border border-red-500/30 animate-[shake_0.3s_ease-in-out]`}
+          className={`${base} bg-destructive-subtle text-destructive border border-destructive/30 animate-[shake_0.3s_ease-in-out]`}
         >
           <X className="h-3 w-3" />
         </div>
       );
     default:
       return (
-        <div className={`${base} bg-white/[0.03] border border-white/10`}>
-          <span className="h-1 w-1 bg-white/20" />
+        <div className={`${base} bg-bg-muted border border-border`}>
+          <span className="h-1 w-1 bg-muted" />
         </div>
       );
   }
@@ -160,7 +160,7 @@ function ProvisioningProgress({
   return (
     <div className="space-y-5 py-1">
       <div className="flex items-center justify-between">
-        <p className="text-sm text-white/70">
+        <p className="text-sm text-txt">
           {isComplete
             ? t("cloud.createAgent.ready", {
                 defaultValue: "Your agent is ready",
@@ -174,7 +174,7 @@ function ProvisioningProgress({
                 })}
         </p>
         {!isComplete && !hasError && (
-          <span className="text-[11px] tabular-nums text-white/30">
+          <span className="text-xs-tight tabular-nums text-muted">
             {elapsedSec < 60
               ? `${elapsedSec}s`
               : `${Math.floor(elapsedSec / 60)}m ${elapsedSec % 60}s`}
@@ -200,10 +200,10 @@ function ProvisioningProgress({
                   <div
                     className={`h-full w-full transition-colors duration-500 ${
                       state === "complete"
-                        ? "bg-green-500/30"
+                        ? "bg-status-success/30"
                         : state === "error"
-                          ? "bg-red-500/20"
-                          : "bg-white/5"
+                          ? "bg-destructive/20"
+                          : "bg-border"
                     }`}
                   />
                 </div>
@@ -213,12 +213,12 @@ function ProvisioningProgress({
                 <p
                   className={`text-sm transition-colors duration-300 ${
                     state === "complete"
-                      ? "text-green-400/80"
+                      ? "text-status-success/80"
                       : state === "active"
-                        ? "text-white"
+                        ? "text-txt-strong"
                         : state === "error"
-                          ? "text-red-400"
-                          : "text-white/25"
+                          ? "text-destructive"
+                          : "text-muted"
                   }`}
                 >
                   {t(step.labelKey, { defaultValue: step.defaultLabel })}
@@ -230,13 +230,13 @@ function ProvisioningProgress({
       </div>
 
       {hasError && error && (
-        <div className="border border-red-500/20 bg-red-500/5 px-3 py-2.5 space-y-2">
-          <p className="text-sm text-red-400">{error}</p>
+        <div className="border border-destructive/20 bg-destructive-subtle px-3 py-2.5 space-y-2">
+          <p className="text-sm text-destructive">{error}</p>
           <Button
             variant="ghost"
             type="button"
             onClick={onRetry}
-            className="inline-flex items-center gap-1.5 text-xs text-red-300 hover:text-white transition-colors"
+            className="inline-flex min-h-touch items-center gap-1.5 text-xs text-destructive hover:text-txt-strong transition-colors"
           >
             <RotateCcw className="h-3 w-3" />
             {t("cloud.createAgent.retryProvisioning", {
@@ -577,9 +577,9 @@ export function CreateElizaAgentDialog({
           }
         }}
       >
-        <DialogContent className="sm:max-w-md bg-neutral-900 border-white/10">
+        <DialogContent className="sm:max-w-md bg-card border-border">
           <DialogHeader>
-            <DialogTitle className="text-white">
+            <DialogTitle className="text-txt-strong">
               {isProvisioningPhase
                 ? t("cloud.createAgent.launchingAgent", {
                     defaultValue: "Launching Agent",
@@ -606,7 +606,7 @@ export function CreateElizaAgentDialog({
                 <div className="space-y-1.5">
                   <Label
                     htmlFor="eliza-agent-name"
-                    className="text-white/60 text-xs"
+                    className="text-muted text-xs"
                   >
                     {t("cloud.createAgent.agentName", {
                       defaultValue: "Agent Name",
@@ -620,7 +620,7 @@ export function CreateElizaAgentDialog({
                     value={agentName}
                     onChange={(e) => setAgentName(e.target.value)}
                     disabled={busy}
-                    className="bg-black/40 border-white/10 text-white placeholder:text-white/25 "
+                    className="bg-card border-border text-txt placeholder:text-muted"
                     onKeyDown={(e) => {
                       if (e.key === "Enter") {
                         e.preventDefault();
@@ -634,7 +634,7 @@ export function CreateElizaAgentDialog({
 
                 {/* Execution mode — Shared vs Dedicated. */}
                 <div className="space-y-1.5">
-                  <Label className="text-white/60 text-xs">
+                  <Label className="text-muted text-xs">
                     {t("cloud.createAgent.executionMode", {
                       defaultValue: "Execution mode",
                     })}
@@ -648,14 +648,14 @@ export function CreateElizaAgentDialog({
                   >
                     <label
                       htmlFor="create-agent-execution-shared"
-                      className={`flex flex-col items-start gap-1.5 border px-3 py-2.5 text-left transition-colors    ${
+                      className={`flex flex-col items-start gap-1.5 border px-3 py-2.5 text-left transition-colors ${
                         busy
                           ? "cursor-not-allowed opacity-50"
                           : "cursor-pointer"
                       } ${
                         !isDedicated
-                          ? "border-[#FF5800]/60 bg-[#FF5800]/[0.06]"
-                          : "border-white/10 bg-black/20 hover:border-white/20"
+                          ? "border-accent/60 bg-accent-subtle"
+                          : "border-border bg-bg-muted hover:border-border-hover"
                       }`}
                     >
                       <Input
@@ -668,19 +668,19 @@ export function CreateElizaAgentDialog({
                         className="sr-only"
                       />
                       <div className="flex w-full items-center justify-between gap-2">
-                        <span className="inline-flex items-center gap-1.5 text-sm text-white">
+                        <span className="inline-flex items-center gap-1.5 text-sm text-txt-strong">
                           <Cloud className="h-3.5 w-3.5" />
                           {t("cloud.createAgent.modeSharedTitle", {
                             defaultValue: "Shared",
                           })}
                         </span>
-                        <span className="text-[10px] font-mono text-white/35">
+                        <span className="text-2xs font-mono text-muted">
                           {t("cloud.createAgent.modeSharedPrice", {
                             defaultValue: "free",
                           })}
                         </span>
                       </div>
-                      <p className="text-[11px] text-white/50 leading-snug">
+                      <p className="text-xs-tight text-muted-strong leading-snug">
                         {t("cloud.createAgent.modeSharedDescription", {
                           defaultValue:
                             "Multi-tenant runtime. No container. Best for chat, webhooks and cron agents.",
@@ -690,14 +690,14 @@ export function CreateElizaAgentDialog({
 
                     <label
                       htmlFor="create-agent-execution-dedicated"
-                      className={`flex flex-col items-start gap-1.5 border px-3 py-2.5 text-left transition-colors    ${
+                      className={`flex flex-col items-start gap-1.5 border px-3 py-2.5 text-left transition-colors ${
                         busy
                           ? "cursor-not-allowed opacity-50"
                           : "cursor-pointer"
                       } ${
                         isDedicated
-                          ? "border-[#FF5800]/60 bg-[#FF5800]/[0.06]"
-                          : "border-white/10 bg-black/20 hover:border-white/20"
+                          ? "border-accent/60 bg-accent-subtle"
+                          : "border-border bg-bg-muted hover:border-border-hover"
                       }`}
                     >
                       <Input
@@ -710,17 +710,17 @@ export function CreateElizaAgentDialog({
                         className="sr-only"
                       />
                       <div className="flex w-full items-center justify-between gap-2">
-                        <span className="inline-flex items-center gap-1.5 text-sm text-white">
+                        <span className="inline-flex items-center gap-1.5 text-sm text-txt-strong">
                           <Server className="h-3.5 w-3.5" />
                           {t("cloud.createAgent.modeDedicatedTitle", {
                             defaultValue: "Dedicated",
                           })}
                         </span>
-                        <span className="text-[10px] font-mono text-white/35">
+                        <span className="text-2xs font-mono text-muted">
                           {formatHourlyRate(AGENT_PRICING.RUNNING_HOURLY_RATE)}
                         </span>
                       </div>
-                      <p className="text-[11px] text-white/50 leading-snug">
+                      <p className="text-xs-tight text-muted-strong leading-snug">
                         {t("cloud.createAgent.modeDedicatedDescription", {
                           defaultValue:
                             "Own Docker container on a Hetzner node. Required for custom images, always-on plugins (Discord/Telegram), or BYO runtime.",
@@ -735,7 +735,7 @@ export function CreateElizaAgentDialog({
                   <div className="space-y-1.5">
                     <Label
                       htmlFor="eliza-flavor"
-                      className="text-white/60 text-xs"
+                      className="text-muted text-xs"
                     >
                       {t("cloud.createAgent.image", { defaultValue: "Image" })}
                     </Label>
@@ -746,7 +746,7 @@ export function CreateElizaAgentDialog({
                     >
                       <SelectTrigger
                         id="eliza-flavor"
-                        className="bg-black/40 border-white/10 text-white"
+                        className="bg-card border-border text-txt"
                       >
                         <SelectValue
                           placeholder={t("cloud.createAgent.selectFlavor", {
@@ -754,7 +754,7 @@ export function CreateElizaAgentDialog({
                           })}
                         />
                       </SelectTrigger>
-                      <SelectContent className="border-white/10 bg-neutral-900">
+                      <SelectContent className="border-border bg-card">
                         {getAgentFlavorsForEnv().map((flavor: AgentFlavor) => (
                           <SelectItem key={flavor.id} value={flavor.id}>
                             <div className="flex flex-col">
@@ -765,7 +765,7 @@ export function CreateElizaAgentDialog({
                       </SelectContent>
                     </Select>
                     {selectedFlavor && (
-                      <p className="text-[11px] text-white/35">
+                      <p className="text-xs-tight text-muted">
                         {selectedFlavor.description}
                       </p>
                     )}
@@ -777,7 +777,7 @@ export function CreateElizaAgentDialog({
                   <div className="space-y-1.5">
                     <Label
                       htmlFor="eliza-custom-image"
-                      className="text-white/60 text-xs"
+                      className="text-muted text-xs"
                     >
                       {t("cloud.createAgent.dockerImage", {
                         defaultValue: "Docker Image",
@@ -794,7 +794,7 @@ export function CreateElizaAgentDialog({
                       value={customImage}
                       onChange={(e) => setCustomImage(e.target.value)}
                       disabled={busy}
-                      className="bg-black/40 border-white/10 text-white placeholder:text-white/25"
+                      className="bg-card border-border text-txt placeholder:text-muted"
                       maxLength={256}
                     />
                   </div>
@@ -802,17 +802,17 @@ export function CreateElizaAgentDialog({
 
                 {/* Auto-start toggle — only meaningful for Dedicated agents. */}
                 {isDedicated && (
-                  <div className="flex items-center justify-between gap-4 border border-white/10 bg-black/20 px-3 py-2.5">
+                  <div className="flex items-center justify-between gap-4 border border-border bg-bg-muted px-3 py-2.5">
                     <div className="space-y-0.5">
                       <Label
                         htmlFor="eliza-auto-start"
-                        className="text-sm text-white/70"
+                        className="text-sm text-txt"
                       >
                         {t("cloud.createAgent.startImmediately", {
                           defaultValue: "Start container immediately",
                         })}
                       </Label>
-                      <p className="text-[11px] text-white/35">
+                      <p className="text-xs-tight text-muted">
                         {t("cloud.createAgent.startAfterCreation", {
                           defaultValue:
                             "Provision the Hetzner node and boot the container right after create.",
@@ -830,10 +830,10 @@ export function CreateElizaAgentDialog({
 
                 {/* Cost notice */}
                 {isDedicated && autoStart ? (
-                  <div className="flex items-start gap-2.5 border border-[#FF5800]/15 bg-[#FF5800]/5 px-3 py-2.5">
-                    <div className="shrink-0 mt-0.5 w-1.5 h-1.5 bg-[#FF5800] rounded-full" />
+                  <div className="flex items-start gap-2.5 border border-accent/15 bg-accent-subtle px-3 py-2.5">
+                    <div className="shrink-0 mt-0.5 w-1.5 h-1.5 bg-accent rounded-full" />
                     <div className="space-y-0.5">
-                      <p className="text-[11px] font-mono text-white/70">
+                      <p className="text-xs-tight font-mono text-txt">
                         {t("cloud.createAgent.hourlyRates", {
                           running: formatHourlyRate(
                             AGENT_PRICING.RUNNING_HOURLY_RATE,
@@ -845,7 +845,7 @@ export function CreateElizaAgentDialog({
                             "{{running}}/hr running · {{idle}}/hr idle",
                         })}
                       </p>
-                      <p className="text-[10px] font-mono text-white/35">
+                      <p className="text-2xs font-mono text-muted">
                         {t("cloud.createAgent.minDeposit", {
                           amount: formatUSD(AGENT_PRICING.MINIMUM_DEPOSIT),
                           defaultValue: "Min. deposit {{amount}}",
@@ -854,9 +854,9 @@ export function CreateElizaAgentDialog({
                     </div>
                   </div>
                 ) : !isDedicated ? (
-                  <div className="flex items-start gap-2.5 border border-white/10 bg-black/20 px-3 py-2.5">
-                    <div className="shrink-0 mt-0.5 w-1.5 h-1.5 bg-white/40 rounded-full" />
-                    <p className="text-[11px] font-mono text-white/55 leading-snug">
+                  <div className="flex items-start gap-2.5 border border-border bg-bg-muted px-3 py-2.5">
+                    <div className="shrink-0 mt-0.5 w-1.5 h-1.5 bg-muted rounded-full" />
+                    <p className="text-xs-tight font-mono text-muted-strong leading-snug">
                       {t("cloud.createAgent.sharedCostNote", {
                         defaultValue:
                           "No compute cost. You only pay for LLM tokens consumed by the agent.",
@@ -867,7 +867,7 @@ export function CreateElizaAgentDialog({
 
                 {/* Inline error */}
                 {error && (
-                  <div className="border border-red-500/20 bg-red-500/5 px-3 py-2 text-sm text-red-400">
+                  <div className="border border-destructive/20 bg-destructive-subtle px-3 py-2 text-sm text-destructive">
                     {error}
                   </div>
                 )}

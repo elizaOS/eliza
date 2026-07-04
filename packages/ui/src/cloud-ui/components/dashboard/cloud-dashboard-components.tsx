@@ -93,7 +93,7 @@ export function DashboardActionCards({
     <div className={cn("grid gap-3 sm:grid-cols-2 xl:grid-cols-5", className)}>
       <Link
         to="/dashboard/my-agents"
-        className="group relative flex min-h-[148px] flex-col justify-between rounded-sm border border-white/10 bg-[#FF5800] p-5 text-black transition-colors hover:bg-black hover:text-white sm:col-span-2 xl:col-span-1"
+        className="group relative flex min-h-[148px] flex-col justify-between rounded-sm border border-white/10 bg-[var(--accent)] p-5 text-black transition-colors hover:bg-black hover:text-white sm:col-span-2 xl:col-span-1"
       >
         <div className="mb-4 flex items-center justify-between">
           <Rocket className="h-5 w-5" />
@@ -102,28 +102,28 @@ export function DashboardActionCards({
         <h3 className="text-base font-semibold">My Agent</h3>
       </Link>
 
-      <div className="group relative flex min-h-[148px] flex-col justify-between rounded-sm border border-white/10 bg-[#0B35F1] p-5 text-white sm:col-span-2 xl:col-span-1">
+      <div className="group relative flex min-h-[148px] flex-col justify-between rounded-sm border border-border bg-black p-5 text-white sm:col-span-2 xl:col-span-1">
         <Code className="h-5 w-5" />
         <div>
           <h3 className="text-base font-semibold">API Access</h3>
           <div className="mt-2 flex flex-wrap items-center gap-3 text-xs font-medium">
             <Link
               to="/dashboard/api-keys"
-              className="inline-flex items-center gap-1.5 hover:text-[#FF5800]"
+              className="inline-flex items-center gap-1.5 hover:text-[var(--accent)]"
             >
               <KeyRound className="h-3 w-3" />
               Keys
             </Link>
             <Link
               to="/docs"
-              className="inline-flex items-center gap-1.5 hover:text-[#FF5800]"
+              className="inline-flex items-center gap-1.5 hover:text-[var(--accent)]"
             >
               <BookOpen className="h-3 w-3" />
               Docs
             </Link>
             <Link
               to="/dashboard/api-explorer"
-              className="inline-flex items-center gap-1.5 hover:text-[#FF5800]"
+              className="inline-flex items-center gap-1.5 hover:text-[var(--accent)]"
             >
               <Bot className="h-3 w-3" />
               Explorer
@@ -138,7 +138,7 @@ export function DashboardActionCards({
       >
         <div className="flex items-center justify-between">
           <Wallet className="h-5 w-5" />
-          <span className="rounded-sm bg-[#FF5800] px-2 py-0.5 text-xs font-semibold text-black">
+          <span className="rounded-sm bg-[var(--accent)] px-2 py-0.5 text-xs font-semibold text-black">
             {formattedBalance}
           </span>
         </div>
@@ -254,7 +254,7 @@ export function ContainersEmptyState() {
   };
 
   return (
-    <div className="flex min-h-[400px] flex-col items-center justify-center gap-6 rounded-sm bg-neutral-900 py-12">
+    <div className="flex min-h-[400px] flex-col items-center justify-center gap-6 rounded-sm bg-card py-12">
       <div className="space-y-2 text-center">
         <h3 className="text-xl font-medium text-white">No containers yet</h3>
       </div>
@@ -268,19 +268,19 @@ export function ContainersEmptyState() {
               index < commands.length - 1 && "border-b border-white/5",
             )}
           >
-            <span className="select-none text-neutral-600">$</span>
-            <code className="flex-1 font-mono text-sm text-neutral-300">
+            <span className="select-none text-muted">$</span>
+            <code className="flex-1 font-mono text-sm text-txt">
               {cmd}
             </code>
             <Button
               variant="ghost"
               type="button"
               onClick={() => handleCopy(cmd, index)}
-              className="rounded-sm text-neutral-600 transition-colors hover:text-neutral-300"
+              className="rounded-sm text-muted transition-colors hover:text-txt"
               aria-label={`Copy ${cmd}`}
             >
               {copiedIndex === index ? (
-                <Check className="h-4 w-4 text-green-500" />
+                <Check className="h-4 w-4 text-status-success" />
               ) : (
                 <Copy className="h-4 w-4" />
               )}
@@ -292,7 +292,7 @@ export function ContainersEmptyState() {
       <BrandButton
         variant="outline"
         asChild
-        className="h-10 border-neutral-700 text-neutral-400 hover:border-neutral-600 hover:text-white"
+        className="h-10 border-border text-muted hover:border-border-strong hover:text-txt"
       >
         <a
           href="https://elizaos.github.io/eliza/docs/cli"

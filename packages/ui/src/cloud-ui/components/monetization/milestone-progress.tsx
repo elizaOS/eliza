@@ -55,7 +55,7 @@ export function MilestoneProgress({
         <div
           className={cn(
             "absolute inset-y-0 left-0 rounded-full transition-all duration-700 ease-out",
-            isComplete ? "bg-emerald-500" : "bg-[#FF5800]",
+            isComplete ? "bg-emerald-500" : "bg-[var(--accent)]",
           )}
           style={{ width: `${animatedProgress}%` }}
         />

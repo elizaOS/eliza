@@ -55,22 +55,21 @@ export default function AuthErrorPage() {
   const error = errorMessages[reason] || errorMessages.unknown;
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-black p-4">
-      <div className="absolute inset-0 bg-black" />
-      <div className="relative w-full max-w-md bg-black border border-white/14 p-8">
+    <div className="theme-cloud relative flex min-h-[100dvh] items-center justify-center bg-bg p-4">
+      <div className="relative w-full max-w-md bg-card border border-border p-8">
         <div className="flex flex-col items-center gap-6 text-center">
-          <div className="flex h-14 w-14 items-center justify-center bg-red-500/10">
-            <AlertCircle className="h-7 w-7 text-red-500" />
+          <div className="flex h-14 w-14 items-center justify-center bg-destructive-subtle">
+            <AlertCircle className="h-7 w-7 text-destructive" />
           </div>
           <div className="space-y-2">
-            <h2 className="text-xl font-semibold text-white">{error.title}</h2>
-            <p className="text-sm text-neutral-500">{error.description}</p>
+            <h2 className="text-xl font-semibold text-txt">{error.title}</h2>
+            <p className="text-sm text-muted">{error.description}</p>
           </div>
 
           <div className="w-full space-y-3">
             <Button
               onClick={() => navigate("/login")}
-              className="w-full h-11 bg-[#FF5800] hover:bg-[#e54f00] text-white"
+              className="w-full h-11 bg-accent hover:bg-accent-hover text-accent-foreground"
             >
               <RefreshCw className="h-4 w-4 mr-2" />
               {t("cloud.authError.tryAgain", { defaultValue: "Try Again" })}
@@ -78,7 +77,7 @@ export default function AuthErrorPage() {
             <Button
               variant="outline"
               asChild
-              className="w-full h-11 border-white/14 hover:bg-white/10"
+              className="w-full h-11 border-border hover:bg-bg-hover"
             >
               <Link to="/">
                 <Home className="h-4 w-4 mr-2" />
@@ -87,7 +86,7 @@ export default function AuthErrorPage() {
             </Button>
           </div>
 
-          <p className="text-xs text-neutral-600">
+          <p className="text-xs text-muted">
             {t("cloud.authError.contactSupport", {
               defaultValue: "If this problem persists, please contact support.",
             })}

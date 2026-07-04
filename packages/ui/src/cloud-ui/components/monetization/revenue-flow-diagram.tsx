@@ -48,8 +48,8 @@ export function RevenueFlowDiagram({
             icon={<User className="h-5 w-5" />}
             label="User"
             value={`Pays $${userPays.toFixed(2)}`}
-            color="text-blue-400"
-            bgColor="bg-blue-500/10"
+            color="text-status-info"
+            bgColor="bg-status-info-bg"
           />
 
           {/* Arrow 1 */}
@@ -72,8 +72,8 @@ export function RevenueFlowDiagram({
             icon={<Wallet className="h-5 w-5" />}
             label="You"
             value={`Earn $${markup.toFixed(2)}`}
-            color="text-[#FF5800]"
-            bgColor="bg-[#FF5800]/10"
+            color="text-[var(--accent)]"
+            bgColor="bg-[var(--accent)]/10"
             highlight
           />
         </div>
@@ -84,7 +84,7 @@ export function RevenueFlowDiagram({
             icon={<User className="h-4 w-4" />}
             label="User pays"
             value={`$${userPays.toFixed(2)}`}
-            color="text-blue-400"
+            color="text-status-info"
           />
           <div className="flex justify-center">
             <ArrowRight className="h-4 w-4 text-neutral-600 rotate-90" />
@@ -97,13 +97,13 @@ export function RevenueFlowDiagram({
             sublabel="(base cost)"
           />
           <div className="flex justify-center">
-            <ArrowRight className="h-4 w-4 text-[#FF5800] rotate-90" />
+            <ArrowRight className="h-4 w-4 text-[var(--accent)] rotate-90" />
           </div>
           <FlowNodeMobile
             icon={<Wallet className="h-4 w-4" />}
             label="You earn"
             value={`$${markup.toFixed(2)}`}
-            color="text-[#FF5800]"
+            color="text-[var(--accent)]"
             sublabel={`(${markupPercentage}% markup)`}
             highlight
           />
@@ -114,9 +114,9 @@ export function RevenueFlowDiagram({
       <div className="mt-auto pt-4 border-t border-white/10">
         <div className="space-y-3 text-xs">
           <div className="flex items-start gap-2">
-            <Zap className="h-3 w-3 text-purple-400 mt-0.5" />
+            <Zap className="h-3 w-3 text-accent mt-0.5" />
             <div>
-              <p className="font-medium text-purple-400">Inference Markup</p>
+              <p className="font-medium text-accent">Inference Markup</p>
               <p className="text-neutral-500 mt-0.5">
                 You set {markupPercentage}% markup on AI costs. More usage =
                 more earnings.
@@ -160,7 +160,7 @@ function FlowNode({
     <div
       className={cn(
         "flex flex-col items-center gap-2 p-3 rounded-sm border transition-colors w-[90px]",
-        highlight ? "border-[#FF5800]/30" : "border-white/10",
+        highlight ? "border-[var(--accent)]/30" : "border-white/10",
         bgColor,
       )}
     >
@@ -184,13 +184,13 @@ function FlowArrow({ label, highlight }: FlowArrowProps) {
       <ArrowRight
         className={cn(
           "h-4 w-4",
-          highlight ? "text-[#FF5800]" : "text-neutral-600",
+          highlight ? "text-[var(--accent)]" : "text-neutral-600",
         )}
       />
       <span
         className={cn(
           "text-[10px] font-mono",
-          highlight ? "text-[#FF5800]" : "text-neutral-500",
+          highlight ? "text-[var(--accent)]" : "text-neutral-500",
         )}
       >
         {label}
@@ -221,7 +221,7 @@ function FlowNodeMobile({
       className={cn(
         "flex items-center justify-between p-3 rounded-sm border",
         highlight
-          ? "border-[#FF5800]/30 bg-[#FF5800]/10"
+          ? "border-[var(--accent)]/30 bg-[var(--accent)]/10"
           : "border-white/10 bg-black/30",
       )}
     >

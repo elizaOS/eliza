@@ -43,13 +43,10 @@ export default function BscPromoPage() {
     amountValue === null ? 0 : amountValue + (bonusApplies ? 5 : 0);
 
   return (
-    <div
-      className="theme-clouds min-h-screen bg-white font-poppins text-black"
-      style={{ background: "var(--background)" }}
-    >
+    <div className="theme-clouds min-h-[100dvh] bg-bg font-sans text-txt">
       <main
         id="main"
-        className="relative z-10 mx-auto flex min-h-screen w-full max-w-5xl flex-col px-5 py-6 sm:px-8"
+        className="relative z-10 mx-auto flex min-h-[100dvh] w-full max-w-5xl flex-col px-5 py-6 sm:px-8"
       >
         <header className="flex items-center justify-between">
           <Link
@@ -70,12 +67,12 @@ export default function BscPromoPage() {
 
         <section className="grid flex-1 gap-8 py-10 lg:grid-cols-[minmax(0,1fr)_420px] lg:items-center lg:py-16">
           <div className="max-w-2xl">
-            <h1 className="text-5xl font-semibold leading-[0.95] text-black sm:text-6xl lg:text-7xl">
+            <h1 className="text-5xl font-semibold leading-[0.95] text-txt sm:text-6xl lg:text-7xl">
               {t("cloud.bsc.heading", {
                 defaultValue: "Buy cloud credit on BSC",
               })}
             </h1>
-            <p className="mt-5 inline-flex items-center gap-2 rounded-xs border border-black/14 bg-white/72 px-3 py-2 text-sm font-medium text-black">
+            <p className="mt-5 inline-flex items-center gap-2 rounded-xs border border-border bg-surface px-3 py-2 text-sm font-medium text-txt">
               <Gift className="size-4" />
               {t("cloud.bsc.bonusBadge", {
                 defaultValue: "$10+ in BSC = $5 bonus credit",
@@ -84,21 +81,21 @@ export default function BscPromoPage() {
           </div>
 
           <div className="space-y-4">
-            <Card className="rounded-xs border-black/12 bg-white/88 text-black">
+            <Card className="rounded-xs border-border bg-card text-txt">
               <CardHeader className="p-5 pb-4">
-                <CardTitle className="text-lg text-black">
+                <CardTitle className="text-lg text-txt">
                   {t("cloud.bsc.topUp", { defaultValue: "Top up credit" })}
                 </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-4 border-t border-black/10 p-5">
+              <CardContent className="space-y-4 border-t border-border p-5">
                 <label className="block space-y-2" htmlFor="bsc-credit-amount">
-                  <span className="text-xs font-medium text-black/62">
+                  <span className="text-xs font-medium text-muted">
                     {t("cloud.bsc.purchaseAmount", {
                       defaultValue: "Purchase amount",
                     })}
                   </span>
-                  <div className="flex items-center rounded-xs border border-black/14 bg-white">
-                    <span className="px-3 text-black/56">$</span>
+                  <div className="flex items-center rounded-xs border border-border bg-bg">
+                    <span className="px-3 text-muted">$</span>
                     <Input
                       id="bsc-credit-amount"
                       type="number"
@@ -106,7 +103,7 @@ export default function BscPromoPage() {
                       max={10000}
                       value={amount}
                       onChange={(event) => setAmount(event.target.value)}
-                      className="border-0 bg-transparent px-0 text-base text-black  "
+                      className="border-0 bg-transparent px-0 text-base text-txt"
                     />
                   </div>
                 </label>
@@ -122,8 +119,8 @@ export default function BscPromoPage() {
                         aria-pressed={active}
                         className={`min-w-[56px] rounded-xs border px-3 py-1.5 text-sm font-medium transition-colors ${
                           active
-                            ? "border-black bg-black text-white"
-                            : "border-black/14 bg-white text-black/72 hover:bg-black/[0.04] hover:text-black"
+                            ? "border-accent bg-accent text-accent-foreground"
+                            : "border-border bg-card text-muted hover:bg-bg-hover hover:text-txt"
                         }`}
                       >
                         ${preset}
@@ -132,21 +129,21 @@ export default function BscPromoPage() {
                   })}
                 </div>
                 <div className="grid grid-cols-2 gap-3 text-sm">
-                  <div className="rounded-xs border border-black/10 bg-black/[0.03] p-3">
-                    <p className="text-xs text-black/58">
+                  <div className="rounded-xs border border-border bg-surface p-3">
+                    <p className="text-xs text-muted">
                       {t("cloud.bsc.youPay", { defaultValue: "You pay" })}
                     </p>
-                    <p className="mt-1 text-lg font-semibold text-black">
+                    <p className="mt-1 text-lg font-semibold text-txt">
                       ${amountValue?.toFixed(2) ?? "0.00"}
                     </p>
                   </div>
-                  <div className="rounded-xs border border-black/10 bg-black/[0.03] p-3">
-                    <p className="text-xs text-black/58">
+                  <div className="rounded-xs border border-border bg-surface p-3">
+                    <p className="text-xs text-muted">
                       {t("cloud.bsc.youReceive", {
                         defaultValue: "You receive",
                       })}
                     </p>
-                    <p className="mt-1 text-lg font-semibold text-black">
+                    <p className="mt-1 text-lg font-semibold text-txt">
                       {t("cloud.bsc.credits", {
                         amount: totalCredits.toFixed(2),
                         defaultValue: "{{amount}} credits",
@@ -160,18 +157,18 @@ export default function BscPromoPage() {
             {!ready ? (
               <Card
                 aria-busy="true"
-                className="rounded-xs border-black/12 bg-white/88 text-black"
+                className="rounded-xs border-border bg-card text-txt"
               >
                 <CardContent className="space-y-3 p-5">
-                  <div className="h-4 w-32 animate-pulse rounded-xs bg-black/10" />
-                  <div className="h-3 w-64 max-w-full animate-pulse rounded-xs bg-black/8" />
-                  <div className="mt-2 h-10 w-full animate-pulse rounded-xs bg-black/10" />
+                  <div className="h-4 w-32 animate-pulse rounded-xs bg-bg-muted motion-reduce:animate-none" />
+                  <div className="h-3 w-64 max-w-full animate-pulse rounded-xs bg-bg-muted motion-reduce:animate-none" />
+                  <div className="mt-2 h-10 w-full animate-pulse rounded-xs bg-bg-muted motion-reduce:animate-none" />
                 </CardContent>
               </Card>
             ) : !authenticated ? (
-              <Card className="rounded-xs border-black/12 bg-white/88 text-black">
+              <Card className="rounded-xs border-border bg-card text-txt">
                 <CardContent className="space-y-4 p-5">
-                  <p className="text-sm leading-6 text-black/68">
+                  <p className="text-sm leading-6 text-muted-strong">
                     {t("cloud.bsc.signInFirst", {
                       defaultValue:
                         "Sign in first so we know whose account to credit.",
@@ -185,9 +182,9 @@ export default function BscPromoPage() {
                 </CardContent>
               </Card>
             ) : (
-              <Card className="rounded-xs border-black/12 bg-white/88 text-black">
+              <Card className="rounded-xs border-border bg-card text-txt">
                 <CardContent className="space-y-4 p-5">
-                  <p className="text-sm leading-6 text-black/68">
+                  <p className="text-sm leading-6 text-muted-strong">
                     {t("cloud.bsc.checkoutInApp", {
                       defaultValue:
                         "Continue your BSC credit purchase from the billing settings.",

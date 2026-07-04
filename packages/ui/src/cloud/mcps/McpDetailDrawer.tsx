@@ -169,14 +169,14 @@ export function McpDetailDrawer({
     <Drawer open={!!mcpId} onOpenChange={(open) => !open && onClose()}>
       <DrawerContent className="max-h-[88vh] flex flex-col">
         {isLoading || !mcp ? (
-          <div className="p-8 text-sm text-white/50">
+          <div className="p-8 text-sm text-muted">
             {t("cloud.mcps.loadingDetail", { defaultValue: "Loading MCP..." })}
           </div>
         ) : (
           <>
-            <div className="shrink-0 flex items-start justify-between gap-4 p-4 sm:p-6 border-b border-white/10">
+            <div className="shrink-0 flex items-start justify-between gap-4 p-4 sm:p-6 border-b border-border">
               <div className="flex items-start gap-3 min-w-0">
-                <div className="p-2.5 rounded-sm border border-white/10 bg-white/5 shrink-0">
+                <div className="p-2.5 rounded-sm border border-border bg-bg-elevated shrink-0">
                   <Puzzle className="h-5 w-5 text-accent" />
                 </div>
                 <div className="min-w-0">
@@ -184,7 +184,7 @@ export function McpDetailDrawer({
                     <span className="truncate">{mcp.name}</span>
                     <StatusBadge status={mcp.status} />
                     {mcp.x402_enabled && (
-                      <span className="px-1.5 py-0.5 text-[10px] rounded-full border border-accent/40 bg-accent/15 text-accent">
+                      <span className="px-1.5 py-0.5 text-2xs rounded-full border border-accent/40 bg-accent-subtle text-accent">
                         x402
                       </span>
                     )}
@@ -194,8 +194,8 @@ export function McpDetailDrawer({
                   </DrawerDescription>
                 </div>
               </div>
-              <DrawerClose className="p-2 rounded-sm hover:bg-white/10 transition-colors">
-                <X className="h-5 w-5 text-white/50" />
+              <DrawerClose className="inline-flex min-h-touch items-center justify-center p-2 rounded-sm hover:bg-bg-hover transition-colors">
+                <X className="h-5 w-5 text-muted" />
               </DrawerClose>
             </div>
 
@@ -207,20 +207,20 @@ export function McpDetailDrawer({
                   })}
                 >
                   <div className="flex items-center gap-2">
-                    <code className="flex-1 rounded-sm border border-white/10 bg-white/5 p-3 font-mono text-sm text-white/80 overflow-x-auto">
+                    <code className="flex-1 rounded-sm border border-border bg-bg-elevated p-3 font-mono text-sm text-txt overflow-x-auto">
                       {endpointUrl}
                     </code>
                     <Button
                       variant="ghost"
                       type="button"
                       onClick={() => void copyEndpoint()}
-                      className="p-3 rounded-sm bg-white/5 hover:bg-white/10 transition-colors"
+                      className="inline-flex min-h-touch items-center justify-center p-3 rounded-sm bg-bg-elevated hover:bg-bg-hover transition-colors"
                       aria-label="Copy endpoint"
                     >
                       {copied ? (
                         <Check className="h-4 w-4 text-accent" />
                       ) : (
-                        <Copy className="h-4 w-4 text-white/60" />
+                        <Copy className="h-4 w-4 text-muted" />
                       )}
                     </Button>
                   </div>
@@ -232,7 +232,7 @@ export function McpDetailDrawer({
                   defaultValue: "Agent configuration",
                 })}
               >
-                <pre className="rounded-sm border border-white/10 bg-white/5 p-3 font-mono text-xs text-white/70 overflow-x-auto">
+                <pre className="rounded-sm border border-border bg-bg-elevated p-3 font-mono text-xs text-txt overflow-x-auto">
                   {configSnippet}
                 </pre>
               </Field>
@@ -243,7 +243,7 @@ export function McpDetailDrawer({
                 })} (${mcp.tools.length})`}
               >
                 {mcp.tools.length === 0 ? (
-                  <p className="text-sm text-white/40">
+                  <p className="text-sm text-muted">
                     {t("cloud.mcps.noTools", {
                       defaultValue: "No tools defined yet.",
                     })}
@@ -254,7 +254,7 @@ export function McpDetailDrawer({
                       <span
                         key={tool.name}
                         title={tool.description}
-                        className="px-2.5 py-1 text-xs rounded-full border border-white/10 bg-white/5 text-white/70"
+                        className="px-2.5 py-1 text-xs rounded-full border border-border bg-bg-elevated text-txt"
                       >
                         {tool.name}
                       </span>
@@ -307,8 +307,8 @@ export function McpDetailDrawer({
                   <pre
                     className={`rounded-sm border p-3 font-mono text-xs overflow-x-auto max-h-48 overflow-y-auto ${
                       testResult.ok
-                        ? "border-white/10 bg-white/5 text-white/70"
-                        : "border-red-500/30 bg-red-500/10 text-red-200"
+                        ? "border-border bg-bg-elevated text-txt"
+                        : "border-destructive/30 bg-status-danger-bg text-destructive"
                     }`}
                   >
                     {testResult.detail}
@@ -317,7 +317,7 @@ export function McpDetailDrawer({
               )}
             </div>
 
-            <div className="shrink-0 flex flex-wrap items-center justify-between gap-3 p-4 sm:p-6 border-t border-white/10">
+            <div className="shrink-0 flex flex-wrap items-center justify-between gap-3 p-4 sm:p-6 border-t border-border">
               <div className="flex flex-wrap items-center gap-2">
                 {mcp.documentation_url && (
                   <BrandButton variant="outline" size="sm" asChild>
@@ -368,7 +368,7 @@ export function McpDetailDrawer({
                       size="sm"
                       onClick={() => setConfirmDelete(true)}
                       disabled={del.isPending}
-                      className="text-red-300 hover:text-red-200 hover:bg-red-500/10"
+                      className="text-destructive hover:text-destructive hover:bg-destructive-subtle"
                     >
                       <Trash2 className="h-4 w-4" />
                       {t("cloud.mcps.delete", { defaultValue: "Delete" })}
@@ -422,7 +422,7 @@ export function McpDetailDrawer({
             </AlertDialogCancel>
             <AlertDialogAction
               onClick={() => void doDelete()}
-              className="bg-red-600 hover:bg-red-700"
+              className="bg-destructive hover:bg-accent-hover text-accent-foreground"
             >
               {t("cloud.mcps.delete", { defaultValue: "Delete" })}
             </AlertDialogAction>
@@ -442,7 +442,7 @@ function Field({
 }) {
   return (
     <div className="space-y-2">
-      <p className="text-xs uppercase tracking-wider text-white/40">{label}</p>
+      <p className="text-xs uppercase tracking-wider text-muted">{label}</p>
       {children}
     </div>
   );
@@ -450,9 +450,11 @@ function Field({
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-sm border border-white/10 bg-white/5 p-3">
-      <p className="text-xs text-white/40">{label}</p>
-      <p className="mt-1 text-lg font-semibold text-white">{value}</p>
+    <div className="rounded-sm border border-border bg-bg-elevated p-3">
+      <p className="text-xs text-muted">{label}</p>
+      <p className="mt-1 text-lg font-semibold text-txt-strong tabular-nums">
+        {value}
+      </p>
     </div>
   );
 }
@@ -460,14 +462,14 @@ function Stat({ label, value }: { label: string; value: string }) {
 export function StatusBadge({ status }: { status: UserMcpRecord["status"] }) {
   const tone =
     status === "live"
-      ? "border-emerald-500/30 bg-emerald-500/15 text-emerald-300"
+      ? "border-status-success/30 bg-status-success-bg text-status-success"
       : status === "suspended" || status === "deprecated"
-        ? "border-red-500/30 bg-red-500/15 text-red-300"
-        : "border-white/15 bg-white/5 text-white/60";
+        ? "border-destructive/30 bg-status-danger-bg text-destructive"
+        : "border-border bg-bg-elevated text-muted";
   return (
     <Badge
       variant="outline"
-      className={`text-[10px] px-1.5 py-0 capitalize ${tone}`}
+      className={`text-2xs px-1.5 py-0 capitalize ${tone}`}
     >
       {status.replace("_", " ")}
     </Badge>

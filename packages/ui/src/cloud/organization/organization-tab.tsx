@@ -72,7 +72,7 @@ export function OrganizationTab({ user }: OrganizationTabProps) {
         <div className="relative z-10 flex flex-col sm:flex-row items-start justify-between gap-4">
           <div className="flex-1">
             <div className="flex items-center gap-2 mb-2">
-              <div className="w-2 h-2 rounded-full bg-[#FF5800]" />
+              <div className="w-2 h-2 rounded-full bg-[var(--accent)]" />
               <h2 className="text-base md:text-xl font-mono font-semibold text-[#e1e1e1] uppercase">
                 {user.organization.name}
               </h2>

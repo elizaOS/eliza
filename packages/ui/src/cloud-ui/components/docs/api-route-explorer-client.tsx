@@ -3,6 +3,17 @@
 /**
  * Interactive API-route explorer: filter/select a discovered route and view its details.
  */
+import {
+  Check,
+  Copy,
+  DollarSign,
+  FileCode2,
+  Lock,
+  Search,
+  Tag,
+  Terminal,
+  Zap,
+} from "lucide-react";
 import { useMemo, useState } from "react";
 import { Button } from "../../../components/ui/button";
 import { Input } from "../../../components/ui/input";
@@ -39,23 +50,30 @@ const GROUP_LABELS: Record<string, string> = {
   x402: "x402 Payments",
 };
 
+// HTTP method badges use semantic/status tokens only (no rainbow raw hex).
+// The brand palette is black/white/orange + one status-green, so methods are
+// differentiated by the tokenized status ramp rather than arbitrary colors:
+//   GET    -> success (safe, read-only)
+//   POST   -> accent (the brand action color)
+//   PUT    -> warning (mutating)
+//   PATCH  -> info (neutral, partial update)
+//   DELETE -> destructive (orange-by-design in this system)
 function methodBadgeClass(method: HttpMethod) {
   const base =
-    "inline-flex items-center rounded-none px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider border transition-all";
+    "inline-flex items-center rounded-sm px-2.5 py-1 text-2xs font-bold uppercase tracking-wider border transition-colors";
   switch (method) {
     case "GET":
-      return `${base} bg-emerald-500/10 text-emerald-400 border-emerald-500/30 `;
+      return `${base} bg-status-success-bg text-status-success border-status-success/30`;
     case "POST":
-      // Brand rule: no blue. Slate keeps POST distinct from the amber PUT.
-      return `${base} bg-slate-500/10 text-slate-300 border-slate-500/30 `;
+      return `${base} bg-accent-subtle text-accent border-accent/30`;
     case "PUT":
-      return `${base} bg-amber-500/10 text-amber-400 border-amber-500/30 `;
+      return `${base} bg-status-warning-bg text-status-warning border-status-warning/30`;
     case "PATCH":
-      return `${base} bg-violet-500/10 text-violet-400 border-violet-500/30 `;
+      return `${base} bg-status-info-bg text-status-info border-status-info/30`;
     case "DELETE":
-      return `${base} bg-rose-500/10 text-rose-400 border-rose-500/30 `;
+      return `${base} bg-destructive-subtle text-destructive border-destructive/30`;
     default:
-      return `${base} bg-white/5 text-white/60 border-white/10`;
+      return `${base} bg-bg-muted text-muted border-border`;
   }
 }
 
@@ -87,9 +105,15 @@ function CopyButton({ text }: { text: string }) {
       variant="ghost"
       type="button"
       onClick={handleCopy}
-      className="absolute top-2 right-2 px-2 py-1 text-[10px] font-medium uppercase tracking-wider text-white/40 hover:text-white/80 bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 transition-all"
+      aria-label={copied ? "Copied" : "Copy to clipboard"}
+      className="absolute top-2 right-2 inline-flex min-h-touch items-center gap-1.5 rounded-sm border border-border bg-bg-elevated px-2.5 py-1 text-2xs font-medium uppercase tracking-wider text-muted transition-colors hover:border-border-strong hover:bg-bg-hover hover:text-txt"
     >
-      {copied ? "Copied!" : "Copy"}
+      {copied ? (
+        <Check aria-hidden="true" className="size-3.5 text-status-success" strokeWidth={2} />
+      ) : (
+        <Copy aria-hidden="true" className="size-3.5" strokeWidth={2} />
+      )}
+      {copied ? "Copied" : "Copy"}
     </Button>
   );
 }
@@ -183,26 +207,26 @@ export function ApiRouteExplorerClient({
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[340px_minmax(0,1fr)]">
         {/* Left explorer panel */}
         <div className="lg:sticky lg:top-4 h-fit">
-          <div className="border border-white/10 bg-gradient-to-b from-black/60 to-black/40 overflow-hidden">
+          <div className="border border-border bg-card overflow-hidden rounded-md">
             {/* Header */}
-            <div className="border-b border-white/10 p-4 bg-gradient-to-r from-[#ff5800]/5 to-transparent">
+            <div className="border-b border-border p-4 bg-bg-elevated">
               <div className="flex items-center justify-between gap-3 mb-3">
                 <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-[#ff5800] " />
-                  <span className="text-xs font-bold uppercase tracking-[0.18em] text-white/60">
+                  <div className="w-2 h-2 rounded-full bg-accent" />
+                  <span className="text-xs font-bold uppercase tracking-[0.18em] text-muted">
                     Route Explorer
                   </span>
                 </div>
                 <label
                   htmlFor="api-route-explorer-show-all"
-                  className="flex items-center gap-2 text-xs text-white/50 select-none cursor-pointer hover:text-white/70 transition-colors"
+                  className="flex min-h-touch items-center gap-2 text-xs text-muted select-none cursor-pointer hover:text-txt transition-colors"
                 >
                   <Input
                     id="api-route-explorer-show-all"
                     type="checkbox"
                     checked={showAll}
                     onChange={(e) => setShowAll(e.target.checked)}
-                    className="accent-[#ff5800] w-3.5 h-3.5"
+                    className="accent-[var(--accent)] w-3.5 h-3.5"
                   />
                   Show all
                 </label>
@@ -210,40 +234,31 @@ export function ApiRouteExplorerClient({
 
               {/* Search input */}
               <div className="relative">
-                <svg
+                <Search
                   aria-hidden="true"
-                  className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                  />
-                </svg>
+                  className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted"
+                  strokeWidth={2}
+                />
                 <Input
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   placeholder="Search endpoints..."
-                  className="w-full pl-10 pr-4 py-2.5 rounded-none border border-white/10 bg-black/40 text-sm text-white placeholder:text-white/30     transition-all"
+                  className="w-full min-h-touch pl-10 pr-4 py-2.5 rounded-sm border border-border bg-bg text-sm text-txt placeholder:text-muted transition-colors"
                 />
               </div>
 
-              <div className="mt-3 flex items-center justify-between text-xs text-white/40">
+              <div className="mt-3 flex items-center justify-between text-xs text-muted">
                 <span>
                   {filtered.length} endpoint{filtered.length === 1 ? "" : "s"}
                 </span>
-                <span className="text-white/30">Click to view details</span>
+                <span className="text-muted">Click to view details</span>
               </div>
             </div>
 
             {/* Route list */}
-            <div className="max-h-[65vh] overflow-auto scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
+            <div className="max-h-[65vh] overflow-auto">
               {groups.length === 0 ? (
-                <div className="p-6 text-center text-sm text-white/40">
+                <div className="p-6 text-center text-sm text-muted">
                   No endpoints match your search
                 </div>
               ) : (
@@ -251,11 +266,11 @@ export function ApiRouteExplorerClient({
                   <details
                     key={g.group}
                     open
-                    className="border-b border-white/5 group"
+                    className="border-b border-border group"
                   >
-                    <summary className="cursor-pointer select-none px-4 py-3 text-sm font-semibold text-white/70 hover:text-white hover:bg-white/5 transition-colors flex items-center justify-between">
+                    <summary className="cursor-pointer select-none px-4 py-3 text-sm font-semibold text-muted-strong hover:text-txt hover:bg-bg-hover transition-colors flex min-h-touch items-center justify-between">
                       <span>{GROUP_LABELS[g.group] || g.group}</span>
-                      <span className="text-xs font-normal text-white/30 bg-white/5 px-2 py-0.5 rounded-full">
+                      <span className="text-xs font-normal text-muted bg-bg-muted px-2 py-0.5 rounded-full">
                         {g.routes.length}
                       </span>
                     </summary>
@@ -273,10 +288,10 @@ export function ApiRouteExplorerClient({
                             type="button"
                             onClick={() => setSelectedKey(key)}
                             className={cn(
-                              "w-full text-left rounded-none border px-3 py-2.5 transition-all my-1",
+                              "w-full min-h-touch text-left rounded-sm border px-3 py-2.5 transition-colors my-1",
                               active
-                                ? "bg-[#ff5800]/10 border-[#ff5800]/40 "
-                                : "border-transparent hover:bg-white/5 hover:border-white/10",
+                                ? "bg-accent-subtle border-accent/40"
+                                : "border-transparent hover:bg-bg-hover hover:border-border",
                             )}
                           >
                             <div className="flex items-start gap-2">
@@ -295,7 +310,7 @@ export function ApiRouteExplorerClient({
                                     </span>
                                   ))}
                                 {r.methods.length > 2 && (
-                                  <span className="text-[10px] text-white/40 px-1">
+                                  <span className="text-2xs text-muted px-1">
                                     +{r.methods.length - 2}
                                   </span>
                                 )}
@@ -304,12 +319,12 @@ export function ApiRouteExplorerClient({
                                 <div
                                   className={cn(
                                     "text-sm font-medium truncate transition-colors",
-                                    active ? "text-white" : "text-white/80",
+                                    active ? "text-txt-strong" : "text-muted-strong",
                                   )}
                                 >
                                   {title}
                                 </div>
-                                <div className="mt-0.5 font-mono text-[10px] text-white/40 truncate">
+                                <div className="mt-0.5 font-mono text-2xs text-muted truncate">
                                   {r.path}
                                 </div>
                               </div>
@@ -326,11 +341,11 @@ export function ApiRouteExplorerClient({
         </div>
 
         {/* Right details panel */}
-        <div className="border border-white/10 bg-gradient-to-br from-black/40 to-black/20 min-h-[400px]">
+        <div className="border border-border bg-card rounded-md min-h-[400px]">
           {selected ? (
             <div className="p-6">
               {/* Endpoint header */}
-              <div className="pb-5 border-b border-white/10">
+              <div className="pb-5 border-b border-border">
                 <div className="flex flex-wrap items-center gap-2 mb-4">
                   {selected.methods.map((m) => (
                     <span key={m} className={methodBadgeClass(m)}>
@@ -338,24 +353,24 @@ export function ApiRouteExplorerClient({
                     </span>
                   ))}
                 </div>
-                <code className="block font-mono text-sm text-white bg-black/40 border border-white/10 px-4 py-3 break-all">
+                <code className="block font-mono text-sm text-txt-strong bg-bg border border-border rounded-sm px-4 py-3 break-all">
                   {selected.path}
                 </code>
               </div>
 
               {/* Title and description */}
-              <div className="py-5 border-b border-white/10">
-                <h3 className="text-xl font-bold text-white mb-2">
+              <div className="py-5 border-b border-border">
+                <h3 className="text-xl font-bold text-txt-strong mb-2">
                   {selected.meta?.name ||
                     selected.path.split("/").pop()?.replace(/-/g, " ") ||
                     "Endpoint"}
                 </h3>
                 {selected.meta?.description ? (
-                  <p className="text-sm leading-relaxed text-white/60">
+                  <p className="text-sm leading-relaxed text-muted">
                     {selected.meta.description}
                   </p>
                 ) : (
-                  <p className="text-sm leading-relaxed text-white/40 italic">
+                  <p className="text-sm leading-relaxed text-muted italic">
                     This endpoint is available but doesn&apos;t have detailed
                     documentation yet. Check the source file or API response for
                     parameter details.
@@ -368,8 +383,9 @@ export function ApiRouteExplorerClient({
                     {selected.meta.tags.map((tag) => (
                       <span
                         key={tag}
-                        className="text-[10px] font-medium uppercase tracking-wider px-2 py-1 bg-white/5 border border-white/10 text-white/50"
+                        className="inline-flex items-center gap-1 text-2xs font-medium uppercase tracking-wider rounded-sm px-2 py-1 bg-bg-muted border border-border text-muted"
                       >
+                        <Tag aria-hidden="true" className="size-3" strokeWidth={2} />
                         {tag}
                       </span>
                     ))}
@@ -378,26 +394,17 @@ export function ApiRouteExplorerClient({
               </div>
 
               {/* Info grid */}
-              <div className="py-5 border-b border-white/10">
+              <div className="py-5 border-b border-border">
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                   {/* Auth */}
-                  <div className="p-4 bg-black/30 border border-white/10">
+                  <div className="p-4 bg-bg border border-border rounded-sm">
                     <div className="flex items-center gap-2 mb-2">
-                      <svg
+                      <Lock
                         aria-hidden="true"
-                        className="w-4 h-4 text-white/40"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
-                        />
-                      </svg>
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-white/40">
+                        className="size-4 text-muted"
+                        strokeWidth={2}
+                      />
+                      <span className="text-2xs font-bold uppercase tracking-wider text-muted">
                         Auth
                       </span>
                     </div>
@@ -405,8 +412,8 @@ export function ApiRouteExplorerClient({
                       className={cn(
                         "text-sm font-medium",
                         selected.meta?.requiresAuth
-                          ? "text-amber-400"
-                          : "text-emerald-400",
+                          ? "text-status-warning"
+                          : "text-status-success",
                       )}
                     >
                       {selected.meta
@@ -418,80 +425,53 @@ export function ApiRouteExplorerClient({
                   </div>
 
                   {/* Rate Limit */}
-                  <div className="p-4 bg-black/30 border border-white/10">
+                  <div className="p-4 bg-bg border border-border rounded-sm">
                     <div className="flex items-center gap-2 mb-2">
-                      <svg
+                      <Zap
                         aria-hidden="true"
-                        className="w-4 h-4 text-white/40"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M13 10V3L4 14h7v7l9-11h-7z"
-                        />
-                      </svg>
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-white/40">
+                        className="size-4 text-muted"
+                        strokeWidth={2}
+                      />
+                      <span className="text-2xs font-bold uppercase tracking-wider text-muted">
                         Rate Limit
                       </span>
                     </div>
-                    <div className="text-sm font-medium text-white/70">
+                    <div className="text-sm font-medium text-muted-strong">
                       {rateLimitDisplay}
                     </div>
                   </div>
 
                   {/* Category */}
-                  <div className="p-4 bg-black/30 border border-white/10">
+                  <div className="p-4 bg-bg border border-border rounded-sm">
                     <div className="flex items-center gap-2 mb-2">
-                      <svg
+                      <Tag
                         aria-hidden="true"
-                        className="w-4 h-4 text-white/40"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"
-                        />
-                      </svg>
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-white/40">
+                        className="size-4 text-muted"
+                        strokeWidth={2}
+                      />
+                      <span className="text-2xs font-bold uppercase tracking-wider text-muted">
                         Category
                       </span>
                     </div>
-                    <div className="text-sm font-medium text-white/70 capitalize">
+                    <div className="text-sm font-medium text-muted-strong capitalize">
                       {selected.meta?.category ||
                         groupKeyForPath(selected.path)}
                     </div>
                   </div>
 
                   {/* Pricing */}
-                  <div className="p-4 bg-black/30 border border-white/10">
+                  <div className="p-4 bg-bg border border-border rounded-sm">
                     <div className="flex items-center gap-2 mb-2">
-                      <svg
+                      <DollarSign
                         aria-hidden="true"
-                        className="w-4 h-4 text-white/40"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                        />
-                      </svg>
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-white/40">
+                        className="size-4 text-muted"
+                        strokeWidth={2}
+                      />
+                      <span className="text-2xs font-bold uppercase tracking-wider text-muted">
                         Pricing
                       </span>
                     </div>
-                    <div className="text-sm font-medium text-white/70">
+                    <div className="text-sm font-medium text-muted-strong">
                       {pricingDisplay}
                     </div>
                   </div>
@@ -502,58 +482,49 @@ export function ApiRouteExplorerClient({
               <div className="py-5">
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-2">
-                    <svg
+                    <Terminal
                       aria-hidden="true"
-                      className="w-4 h-4 text-[#ff5800]"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
-                      />
-                    </svg>
-                    <span className="text-xs font-bold uppercase tracking-wider text-white/60">
+                      className="size-4 text-accent"
+                      strokeWidth={2}
+                    />
+                    <span className="text-xs font-bold uppercase tracking-wider text-muted">
                       Quick cURL
                     </span>
                   </div>
                 </div>
 
                 <div className="relative">
-                  <pre className="overflow-x-auto border border-white/10 bg-black/60 p-4 text-[13px] leading-relaxed font-mono">
-                    <code className="text-white/80">
-                      <span className="text-emerald-400">curl</span>
-                      <span className="text-white/60"> -X </span>
-                      <span className="text-amber-400">
+                  <pre className="overflow-x-auto border border-border bg-bg rounded-sm p-4 text-xs-tight leading-relaxed font-mono">
+                    <code className="text-muted-strong">
+                      <span className="text-status-success">curl</span>
+                      <span className="text-muted"> -X </span>
+                      <span className="text-status-warning">
                         {selected.methods[0] ?? "GET"}
                       </span>
-                      <span className="text-white/60"> </span>
-                      <span className="text-blue-400">
+                      <span className="text-muted"> </span>
+                      <span className="text-status-info">
                         &quot;https://www.elizacloud.ai{selected.path}&quot;
                       </span>
-                      <span className="text-white/40"> \</span>
+                      <span className="text-muted"> \</span>
                       {"\n"}
-                      <span className="text-white/60"> -H </span>
-                      <span className="text-green-400">
+                      <span className="text-muted"> -H </span>
+                      <span className="text-status-success">
                         &quot;Authorization: Bearer YOUR_API_KEY&quot;
                       </span>
                       {["POST", "PUT", "PATCH"].includes(
                         selected.methods[0] ?? "",
                       ) && (
                         <>
-                          <span className="text-white/40"> \</span>
+                          <span className="text-muted"> \</span>
                           {"\n"}
-                          <span className="text-white/60"> -H </span>
-                          <span className="text-green-400">
+                          <span className="text-muted"> -H </span>
+                          <span className="text-status-success">
                             &quot;Content-Type: application/json&quot;
                           </span>
-                          <span className="text-white/40"> \</span>
+                          <span className="text-muted"> \</span>
                           {"\n"}
-                          <span className="text-white/60"> -d </span>
-                          <span className="text-purple-400">
+                          <span className="text-muted"> -d </span>
+                          <span className="text-accent">
                             &apos;{"{}"}&apos;
                           </span>
                         </>
@@ -563,14 +534,14 @@ export function ApiRouteExplorerClient({
                   <CopyButton text={curlExample} />
                 </div>
 
-                <p className="mt-3 text-xs text-white/40">
+                <p className="mt-3 text-xs text-muted">
                   Replace{" "}
-                  <code className="text-[#ff5800] bg-[#ff5800]/10 px-1.5 py-0.5">
+                  <code className="text-accent bg-accent-subtle rounded-sm px-1.5 py-0.5">
                     YOUR_API_KEY
                   </code>{" "}
                   with your actual API key from{" "}
                   <a
-                    className="text-[#ff5800] hover:underline"
+                    className="text-accent hover:underline"
                     href="/dashboard/api-keys"
                   >
                     Dashboard → API Keys
@@ -579,24 +550,15 @@ export function ApiRouteExplorerClient({
               </div>
 
               {/* Source file reference */}
-              <div className="pt-5 border-t border-white/10">
-                <div className="flex items-center gap-2 text-xs text-white/30">
-                  <svg
+              <div className="pt-5 border-t border-border">
+                <div className="flex items-center gap-2 text-xs text-muted">
+                  <FileCode2
                     aria-hidden="true"
-                    className="w-4 h-4"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"
-                    />
-                  </svg>
+                    className="size-4"
+                    strokeWidth={2}
+                  />
                   <span>Source:</span>
-                  <code className="font-mono text-white/40">
+                  <code className="font-mono text-muted">
                     {selected.filePath.replace(process.cwd?.() || "", "")}
                   </code>
                 </div>
@@ -605,26 +567,17 @@ export function ApiRouteExplorerClient({
           ) : (
             /* Empty state */
             <div className="flex flex-col items-center justify-center h-full min-h-[400px] p-8 text-center">
-              <div className="w-16 h-16 rounded-full bg-gradient-to-br from-[#ff5800]/20 to-[#ff5800]/5 flex items-center justify-center mb-4">
-                <svg
+              <div className="w-16 h-16 rounded-full bg-accent-subtle flex items-center justify-center mb-4">
+                <Terminal
                   aria-hidden="true"
-                  className="w-8 h-8 text-[#ff5800]/60"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={1.5}
-                    d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
-                  />
-                </svg>
+                  className="size-8 text-accent"
+                  strokeWidth={1.5}
+                />
               </div>
-              <h4 className="text-lg font-semibold text-white/80 mb-2">
+              <h4 className="text-lg font-semibold text-txt-strong mb-2">
                 Select an Endpoint
               </h4>
-              <p className="text-sm text-white/40 max-w-[280px]">
+              <p className="text-sm text-muted max-w-[280px]">
                 Choose an endpoint from the list to view details, authentication
                 requirements, and example code.
               </p>

@@ -156,7 +156,9 @@ export function AppDomains({ appId }: AppDomainsProps) {
                   description: t("cloud.appDomains.sslProvisioningNow", {
                     defaultValue: "SSL certificate is now being provisioned",
                   }),
-                  icon: <CheckCircle2 className="h-4 w-4 text-green-400" />,
+                  icon: (
+                    <CheckCircle2 className="h-4 w-4 text-status-success" />
+                  ),
                 },
               );
             }
@@ -342,15 +344,15 @@ export function AppDomains({ appId }: AppDomainsProps) {
     <TooltipProvider>
       <div className="space-y-4">
         {/* Main Domains Card */}
-        <div className="bg-neutral-900 rounded-sm p-4">
+        <div className="bg-card rounded-sm p-4">
           {/* Header */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
             <div>
-              <h3 className="text-sm font-medium text-white flex items-center gap-2">
-                <Globe className="h-4 w-4 text-[#FF5800]" />
+              <h3 className="text-sm font-medium text-txt-strong flex items-center gap-2">
+                <Globe className="h-4 w-4 text-accent" />
                 {t("cloud.appDomains.title", { defaultValue: "Domains" })}
               </h3>
-              <p className="text-xs text-neutral-500 mt-1">
+              <p className="text-xs text-muted mt-1">
                 {t("cloud.appDomains.subtitle", {
                   defaultValue: "Connect custom domains to your app",
                 })}
@@ -363,7 +365,7 @@ export function AppDomains({ appId }: AppDomainsProps) {
                 <Button
                   onClick={() => setShowAddForm(true)}
                   size="sm"
-                  className="bg-[#FF5800] hover:bg-[#e54f00] text-white rounded-sm"
+                  className="min-h-touch bg-accent hover:bg-accent-hover text-accent-foreground rounded-sm"
                 >
                   <Plus className="h-4 w-4 mr-1.5" />
                   {t("cloud.appDomains.addDomain", {
@@ -376,8 +378,8 @@ export function AppDomains({ appId }: AppDomainsProps) {
           {/* Loading State */}
           {isLoading ? (
             <div className="space-y-3">
-              <div className="h-16 bg-black/30 rounded-sm animate-pulse" />
-              <div className="h-16 bg-black/30 rounded-sm animate-pulse opacity-50" />
+              <div className="h-16 bg-bg-muted rounded-sm animate-pulse motion-reduce:animate-none" />
+              <div className="h-16 bg-bg-muted rounded-sm animate-pulse opacity-50 motion-reduce:animate-none" />
             </div>
           ) : !primaryDomain && sandboxUrl ? (
             /* Sandbox URL */
@@ -390,16 +392,16 @@ export function AppDomains({ appId }: AppDomainsProps) {
                 copyToClipboard={copyToClipboard}
                 copiedValue={copiedValue}
               />
-              <div className="p-3 rounded-sm bg-white/5 border border-white/10">
+              <div className="p-3 rounded-sm bg-bg-muted border border-border">
                 <div className="flex items-start gap-2">
-                  <Info className="h-4 w-4 text-white/70 shrink-0 mt-0.5" />
+                  <Info className="h-4 w-4 text-muted-strong shrink-0 mt-0.5" />
                   <div>
-                    <p className="text-xs text-white/90 font-medium">
+                    <p className="text-xs text-txt-strong font-medium">
                       {t("cloud.appDomains.developmentUrl", {
                         defaultValue: "Development URL",
                       })}
                     </p>
-                    <p className="text-xs text-white/60 mt-0.5">
+                    <p className="text-xs text-muted mt-0.5">
                       {t("cloud.appDomains.developmentUrlHint", {
                         defaultValue:
                           "Deploy your app to get a permanent subdomain and add custom domains.",
@@ -411,16 +413,16 @@ export function AppDomains({ appId }: AppDomainsProps) {
             </div>
           ) : !primaryDomain ? (
             /* No App Deployed */
-            <div className="p-6 rounded-sm bg-orange-500/5 border border-orange-500/20 text-center">
-              <div className="w-12 h-12 rounded-full bg-orange-500/10 flex items-center justify-center mx-auto mb-3">
-                <AlertTriangle className="h-6 w-6 text-orange-400" />
+            <div className="p-6 rounded-sm bg-accent-subtle border border-accent/20 text-center">
+              <div className="w-12 h-12 rounded-full bg-accent-subtle flex items-center justify-center mx-auto mb-3">
+                <AlertTriangle className="h-6 w-6 text-accent" />
               </div>
-              <h4 className="text-sm font-medium text-white mb-1">
+              <h4 className="text-sm font-medium text-txt-strong mb-1">
                 {t("cloud.appDomains.noAppDeployed", {
                   defaultValue: "No App Deployed",
                 })}
               </h4>
-              <p className="text-xs text-neutral-500 max-w-sm mx-auto">
+              <p className="text-xs text-muted max-w-sm mx-auto">
                 {t("cloud.appDomains.noAppDeployedHint", {
                   defaultValue:
                     "Deploy your app first to get a subdomain. Once deployed, you can add custom domains here.",
@@ -473,13 +475,13 @@ export function AppDomains({ appId }: AppDomainsProps) {
                     exit={{ opacity: 0, height: 0 }}
                     transition={{ duration: 0.2 }}
                   >
-                    <div className="p-6 rounded-sm border border-white/5 bg-black/20">
-                      <h4 className="text-sm font-medium text-white mb-1">
+                    <div className="p-6 rounded-sm border border-border bg-bg-muted">
+                      <h4 className="text-sm font-medium text-txt-strong mb-1">
                         {t("cloud.appDomains.addCustomDomain", {
                           defaultValue: "Add Custom Domain",
                         })}
                       </h4>
-                      <p className="text-xs text-neutral-500 mb-4">
+                      <p className="text-xs text-muted mb-4">
                         {t("cloud.appDomains.enterDomainName", {
                           defaultValue: "Enter your domain name below",
                         })}
@@ -500,16 +502,16 @@ export function AppDomains({ appId }: AppDomainsProps) {
                               setNewDomain("");
                             }
                           }}
-                          className="flex-1 bg-black/30 border-white/10  rounded-sm placeholder:text-neutral-600"
+                          className="flex-1 bg-bg-muted border-border rounded-sm placeholder:text-muted"
                         />
                         <div className="flex gap-2">
                           <Button
                             onClick={handleAddDomain}
                             disabled={isAdding || !newDomain.trim()}
-                            className={`h-9 px-4 ${
+                            className={`h-9 px-4 min-h-touch ${
                               isAdding || !newDomain.trim()
-                                ? "bg-neutral-700 text-neutral-400"
-                                : "bg-[#FF5800] hover:bg-[#e54f00] text-white"
+                                ? "bg-bg-muted text-muted"
+                                : "bg-accent hover:bg-accent-hover text-accent-foreground"
                             }`}
                           >
                             {isAdding ? (
@@ -526,7 +528,7 @@ export function AppDomains({ appId }: AppDomainsProps) {
                               setShowAddForm(false);
                               setNewDomain("");
                             }}
-                            className="h-9 px-4 border-white/20 text-white hover:bg-white/10"
+                            className="h-9 px-4 min-h-touch border-border-strong text-txt-strong hover:bg-bg-hover"
                           >
                             {t("cloud.appDomains.cancel", {
                               defaultValue: "Cancel",
@@ -541,13 +543,13 @@ export function AppDomains({ appId }: AppDomainsProps) {
 
               {/* Empty Custom Domain State */}
               {primaryDomain && !hasCustomDomain && !showAddForm && (
-                <div className="p-6 rounded-sm border border-white/5 bg-black/20 text-center">
-                  <h4 className="text-sm font-medium text-white">
+                <div className="p-6 rounded-sm border border-border bg-bg-muted text-center">
+                  <h4 className="text-sm font-medium text-txt-strong">
                     {t("cloud.appDomains.useYourOwnDomain", {
                       defaultValue: "Use Your Own Domain",
                     })}
                   </h4>
-                  <p className="text-xs text-neutral-500 max-w-xs mx-auto mt-2">
+                  <p className="text-xs text-muted max-w-xs mx-auto mt-2">
                     {t("cloud.appDomains.useYourOwnDomainHint", {
                       defaultValue:
                         "Connect a custom domain to make your app accessible at your own branded URL",
@@ -588,49 +590,51 @@ export function AppDomains({ appId }: AppDomainsProps) {
         </AnimatePresence>
 
         {/* Quick Reference */}
-        <div className="bg-neutral-900 rounded-sm p-4">
-          <h3 className="text-sm font-medium text-white mb-4">
+        <div className="bg-card rounded-sm p-4">
+          <h3 className="text-sm font-medium text-txt-strong mb-4">
             {t("cloud.appDomains.quickDnsReference", {
               defaultValue: "Quick DNS Reference",
             })}
           </h3>
           <div className="grid sm:grid-cols-2 gap-3">
-            <div className="flex items-center justify-between p-4 rounded-sm bg-black/40">
+            <div className="flex items-center justify-between p-4 rounded-sm bg-bg-muted">
               <div>
-                <p className="text-sm font-medium text-white">
+                <p className="text-sm font-medium text-txt-strong">
                   {t("cloud.appDomains.subdomains", {
                     defaultValue: "Subdomains",
                   })}
                 </p>
-                <p className="text-xs text-neutral-500 font-mono mt-1">
+                <p className="text-xs text-muted font-mono mt-1">
                   app.example.com
                 </p>
               </div>
               <div className="text-right">
-                <p className="text-sm text-white font-mono">CNAME</p>
-                <p className="text-xs text-white font-mono mt-1">
+                <p className="text-sm text-txt-strong font-mono">CNAME</p>
+                <p className="text-xs text-txt-strong font-mono mt-1">
                   {"<your-cloudflare-cname>"}
                 </p>
               </div>
             </div>
-            <div className="flex items-center justify-between p-4 rounded-sm bg-black/40">
+            <div className="flex items-center justify-between p-4 rounded-sm bg-bg-muted">
               <div>
-                <p className="text-sm font-medium text-white">
+                <p className="text-sm font-medium text-txt-strong">
                   {t("cloud.appDomains.rootDomains", {
                     defaultValue: "Root Domains",
                   })}
                 </p>
-                <p className="text-xs text-neutral-500 font-mono mt-1">
+                <p className="text-xs text-muted font-mono mt-1">
                   example.com
                 </p>
               </div>
               <div className="text-right">
-                <p className="text-sm text-white font-mono">A</p>
-                <p className="text-xs text-white font-mono mt-1">76.76.21.21</p>
+                <p className="text-sm text-txt-strong font-mono">A</p>
+                <p className="text-xs text-txt-strong font-mono mt-1">
+                  76.76.21.21
+                </p>
               </div>
             </div>
           </div>
-          <p className="mt-3 text-xs text-neutral-500">
+          <p className="mt-3 text-xs text-muted">
             {t("cloud.appDomains.dnsPropagationNote", {
               defaultValue:
                 "DNS changes typically propagate within 5 minutes to 48 hours",
@@ -675,24 +679,24 @@ function DomainCard({
     <div
       className={`
         rounded-sm border p-3
-        ${isVerified ? "bg-black/30 border-white/10" : "bg-orange-500/5 border-orange-500/20"}
+        ${isVerified ? "bg-card border-border" : "bg-accent-subtle border-accent/20"}
       `}
     >
       <div className="flex items-center gap-3">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-mono text-sm text-white truncate">
+            <span className="font-mono text-sm text-txt-strong truncate">
               {domain}
             </span>
             <DomainStatusBadge status={status} sslStatus={sslStatus} />
             {type === "subdomain" && (
-              <span className="text-[10px] text-neutral-500 uppercase tracking-wider">
+              <span className="text-2xs text-muted uppercase tracking-wider">
                 {t("cloud.appDomains.default", { defaultValue: "Default" })}
               </span>
             )}
           </div>
           {isVerified && (
-            <div className="flex items-center gap-1 text-green-400/80 mt-2">
+            <div className="flex items-center gap-1 text-status-success mt-2">
               <Lock className="h-3 w-3" />
               <span className="text-xs">
                 {t("cloud.appDomains.sslTlsSecured", {
@@ -702,7 +706,7 @@ function DomainCard({
             </div>
           )}
           {!isVerified && type === "custom" && (
-            <div className="flex items-center gap-1 text-orange-400/80 mt-2">
+            <div className="flex items-center gap-1 text-accent mt-2">
               <AlertTriangle className="h-3 w-3" />
               <span className="text-xs">
                 {t("cloud.appDomains.dnsVerificationPending", {
@@ -725,10 +729,10 @@ function DomainCard({
                     t("cloud.appDomains.urlLabel", { defaultValue: "URL" }),
                   )
                 }
-                className="h-8 w-8 p-0 text-neutral-400 hover:text-white hover:bg-white/10"
+                className="h-8 w-8 p-0 min-h-touch text-muted hover:text-txt-strong hover:bg-bg-hover"
               >
                 {copiedValue === fullUrl ? (
-                  <Check className="h-4 w-4 text-green-400" />
+                  <Check className="h-4 w-4 text-status-success" />
                 ) : (
                   <Copy className="h-4 w-4" />
                 )}
@@ -736,7 +740,7 @@ function DomainCard({
             </TooltipTrigger>
             <TooltipContent
               side="bottom"
-              className="bg-neutral-800 text-white border-white/10"
+              className="bg-card text-txt-strong border-border"
             >
               {t("cloud.appDomains.copyUrl", { defaultValue: "Copy URL" })}
             </TooltipContent>
@@ -757,14 +761,14 @@ function DomainCard({
                       e.preventDefault();
                     }
                   }}
-                  className="inline-flex items-center justify-center h-8 w-8 text-neutral-400 hover:text-white hover:bg-white/10 rounded-sm transition-colors"
+                  className="inline-flex items-center justify-center h-8 w-8 min-h-touch text-muted hover:text-txt-strong hover:bg-bg-hover rounded-sm transition-colors"
                 >
                   <ExternalLink className="h-4 w-4" />
                 </a>
               </TooltipTrigger>
               <TooltipContent
                 side="bottom"
-                className="bg-neutral-800 text-white border-white/10"
+                className="bg-card text-txt-strong border-border"
               >
                 {t("cloud.appDomains.openInNewTab", {
                   defaultValue: "Open in new tab",
@@ -781,7 +785,7 @@ function DomainCard({
                   size="sm"
                   onClick={onRefresh}
                   disabled={isChecking}
-                  className="h-8 w-8 p-0 text-neutral-400 hover:text-white hover:bg-white/10"
+                  className="h-8 w-8 p-0 min-h-touch text-muted hover:text-txt-strong hover:bg-bg-hover"
                 >
                   <RefreshCw
                     className={`h-4 w-4 ${isChecking ? "animate-spin" : ""}`}
@@ -790,7 +794,7 @@ function DomainCard({
               </TooltipTrigger>
               <TooltipContent
                 side="bottom"
-                className="bg-neutral-800 text-white border-white/10"
+                className="bg-card text-txt-strong border-border"
               >
                 {t("cloud.appDomains.checkDnsStatus", {
                   defaultValue: "Check DNS status",
@@ -808,7 +812,7 @@ function DomainCard({
                       variant="ghost"
                       size="sm"
                       disabled={isRemoving}
-                      className="h-8 w-8 p-0 text-neutral-400 hover:text-red-400 hover:bg-red-500/10"
+                      className="h-8 w-8 p-0 min-h-touch text-muted hover:text-destructive hover:bg-destructive-subtle"
                     >
                       {isRemoving ? (
                         <Loader2 className="h-4 w-4 animate-spin" />
@@ -820,7 +824,7 @@ function DomainCard({
                 </TooltipTrigger>
                 <TooltipContent
                   side="bottom"
-                  className="bg-neutral-800 text-white border-white/10"
+                  className="bg-card text-txt-strong border-border"
                 >
                   {t("cloud.appDomains.removeDomainTooltip", {
                     defaultValue: "Remove domain",
@@ -838,7 +842,7 @@ function DomainCard({
                     {t("cloud.appDomains.removeDomainConfirmPre", {
                       defaultValue: "Are you sure you want to remove",
                     })}{" "}
-                    <code className="px-1.5 py-0.5 bg-white/10 rounded-sm font-mono text-white">
+                    <code className="px-1.5 py-0.5 bg-bg-muted rounded-sm font-mono text-txt-strong">
                       {domain}
                     </code>
                     {t("cloud.appDomains.removeDomainConfirmPost", {
@@ -853,7 +857,7 @@ function DomainCard({
                   </AlertDialogCancel>
                   <AlertDialogAction
                     onClick={onRemove}
-                    className="bg-red-600 hover:bg-red-700"
+                    className="bg-destructive hover:bg-accent-hover text-accent-foreground"
                   >
                     {t("cloud.appDomains.removeDomainTitle", {
                       defaultValue: "Remove Domain",
@@ -879,10 +883,10 @@ function DomainStatusBadge({
   const t = useCloudT();
   if (status === "verified" && sslStatus === "active") {
     return (
-      <Badge className="bg-green-500/10 text-green-400 border-green-500/30 gap-1 text-[10px]">
+      <Badge className="bg-status-success-bg text-status-success border-status-success/30 gap-1 text-2xs">
         <span className="relative flex h-1.5 w-1.5">
-          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-50" />
-          <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-green-400" />
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-status-success opacity-50 motion-reduce:animate-none" />
+          <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-status-success" />
         </span>
         {t("cloud.appDomains.statusActive", { defaultValue: "Active" })}
       </Badge>
@@ -891,7 +895,7 @@ function DomainStatusBadge({
 
   if (sslStatus === "provisioning") {
     return (
-      <Badge className="bg-white/10 text-white/80 border-white/20 gap-1 text-[10px]">
+      <Badge className="bg-bg-muted text-muted-strong border-border-strong gap-1 text-2xs">
         <Loader2 className="h-3 w-3 animate-spin" />
         {t("cloud.appDomains.statusSslProvisioning", {
           defaultValue: "SSL Provisioning",
@@ -901,7 +905,7 @@ function DomainStatusBadge({
   }
 
   return (
-    <Badge className="bg-orange-500/10 text-orange-400 border-orange-500/30 gap-1 text-[10px]">
+    <Badge className="bg-accent-subtle text-accent border-accent/30 gap-1 text-2xs">
       <Clock className="h-3 w-3" />
       {t("cloud.appDomains.statusPending", { defaultValue: "Pending" })}
     </Badge>
@@ -943,18 +947,18 @@ function DnsConfigPanel({
     domainStatus?.records?.filter((r) => r.type === "TXT") || [];
 
   return (
-    <div className="bg-neutral-900 rounded-sm p-4 space-y-4">
+    <div className="bg-card rounded-sm p-4 space-y-4">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="flex items-center gap-2">
-          <Zap className="h-4 w-4 text-orange-400" />
+          <Zap className="h-4 w-4 text-accent" />
           <div>
-            <h3 className="text-sm font-medium text-white">
+            <h3 className="text-sm font-medium text-txt-strong">
               {t("cloud.appDomains.configureDns", {
                 defaultValue: "Configure DNS",
               })}
             </h3>
-            <p className="text-xs text-neutral-500">
+            <p className="text-xs text-muted">
               {t("cloud.appDomains.addRecordsHint", {
                 defaultValue: "Add these records at your DNS provider",
               })}
@@ -963,7 +967,7 @@ function DnsConfigPanel({
         </div>
         <div className="flex items-center gap-2">
           {lastChecked && (
-            <span className="text-xs text-neutral-500 hidden sm:block">
+            <span className="text-xs text-muted hidden sm:block">
               {t("cloud.appDomains.lastChecked", {
                 time: lastChecked.toLocaleTimeString("en-US"),
                 defaultValue: "Last checked: {{time}}",
@@ -975,7 +979,7 @@ function DnsConfigPanel({
             size="sm"
             onClick={onRefresh}
             disabled={isChecking}
-            className="border-white/10 hover:bg-white/10 rounded-sm"
+            className="min-h-touch border-border hover:bg-bg-hover rounded-sm"
           >
             {isChecking ? (
               <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
@@ -991,22 +995,22 @@ function DnsConfigPanel({
       <div
         className={`p-3 rounded-sm border flex items-start gap-2 ${
           currentStatus === "valid"
-            ? "bg-green-500/10 border-green-500/20"
+            ? "bg-status-success-bg border-status-success/20"
             : currentStatus === "invalid"
-              ? "bg-red-500/10 border-red-500/20"
-              : "bg-orange-500/10 border-orange-500/20"
+              ? "bg-destructive-subtle border-destructive/20"
+              : "bg-accent-subtle border-accent/20"
         }`}
       >
         {currentStatus === "valid" ? (
           <>
-            <CheckCircle2 className="h-4 w-4 text-green-400 shrink-0 mt-0.5" />
+            <CheckCircle2 className="h-4 w-4 text-status-success shrink-0 mt-0.5" />
             <div>
-              <p className="text-xs text-green-300 font-medium">
+              <p className="text-xs text-status-success font-medium">
                 {t("cloud.appDomains.dnsVerified", {
                   defaultValue: "DNS Verified",
                 })}
               </p>
-              <p className="text-xs text-green-300/70">
+              <p className="text-xs text-status-success/80">
                 {t("cloud.appDomains.sslProvisioning", {
                   defaultValue: "SSL certificate is being provisioned",
                 })}
@@ -1015,14 +1019,14 @@ function DnsConfigPanel({
           </>
         ) : currentStatus === "invalid" ? (
           <>
-            <AlertTriangle className="h-4 w-4 text-red-400 shrink-0 mt-0.5" />
+            <AlertTriangle className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
             <div>
-              <p className="text-xs text-red-300 font-medium">
+              <p className="text-xs text-destructive font-medium">
                 {t("cloud.appDomains.dnsConfigIssue", {
                   defaultValue: "DNS Configuration Issue",
                 })}
               </p>
-              <p className="text-xs text-red-300/70">
+              <p className="text-xs text-destructive/80">
                 {t("cloud.appDomains.dnsConfigIssueHint", {
                   defaultValue: "Please check your records match exactly",
                 })}
@@ -1031,14 +1035,14 @@ function DnsConfigPanel({
           </>
         ) : (
           <>
-            <Loader2 className="h-4 w-4 text-orange-400 animate-spin shrink-0 mt-0.5" />
+            <Loader2 className="h-4 w-4 text-accent animate-spin shrink-0 mt-0.5" />
             <div>
-              <p className="text-xs text-orange-300 font-medium">
+              <p className="text-xs text-accent font-medium">
                 {t("cloud.appDomains.waitingForPropagation", {
                   defaultValue: "Waiting for DNS Propagation",
                 })}
               </p>
-              <p className="text-xs text-orange-300/70">
+              <p className="text-xs text-accent/80">
                 {t("cloud.appDomains.waitingFewMinutes", {
                   defaultValue: "This may take a few minutes",
                 })}
@@ -1052,7 +1056,7 @@ function DnsConfigPanel({
       <div className="space-y-3">
         {txtRecords.length > 0 && (
           <div>
-            <h4 className="text-[10px] font-medium text-neutral-500 uppercase tracking-wider mb-2">
+            <h4 className="text-2xs font-medium text-muted uppercase tracking-wider mb-2">
               {t("cloud.appDomains.verificationRecord", {
                 defaultValue: "Verification Record",
               })}
@@ -1073,7 +1077,7 @@ function DnsConfigPanel({
         )}
 
         <div>
-          <h4 className="text-[10px] font-medium text-neutral-500 uppercase tracking-wider mb-2">
+          <h4 className="text-2xs font-medium text-muted uppercase tracking-wider mb-2">
             {isApex
               ? t("cloud.appDomains.aRecord", { defaultValue: "A Record" })
               : t("cloud.appDomains.cnameRecord", {
@@ -1117,29 +1121,29 @@ function DnsRecordRow({
     defaultValue: "{{type}} value",
   });
   return (
-    <div className="group bg-black/30 rounded-sm border border-white/5 p-3">
+    <div className="group bg-bg-muted rounded-sm border border-border p-3">
       {/* Desktop */}
       <div className="hidden sm:flex items-center gap-3">
         <Badge
           variant="outline"
-          className="font-mono text-[10px] border-white/20 text-neutral-400 bg-white/5"
+          className="font-mono text-2xs border-border-strong text-muted bg-bg-muted"
         >
           {type}
         </Badge>
-        <span className="font-mono text-xs text-white flex-1 truncate">
+        <span className="font-mono text-xs text-txt-strong flex-1 truncate">
           {name}
         </span>
-        <span className="font-mono text-xs text-neutral-500 flex-1 truncate">
+        <span className="font-mono text-xs text-muted flex-1 truncate">
           {value}
         </span>
         <Button
           variant="ghost"
           size="sm"
           onClick={() => copyToClipboard(value, valueLabel)}
-          className="h-7 w-7 p-0 text-neutral-500 hover:text-white hover:bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity"
+          className="h-7 w-7 p-0 text-muted hover:text-txt-strong hover:bg-bg-hover opacity-0 group-hover:opacity-100 transition-opacity"
         >
           {copiedValue === value ? (
-            <Check className="h-3.5 w-3.5 text-green-400" />
+            <Check className="h-3.5 w-3.5 text-status-success" />
           ) : (
             <Copy className="h-3.5 w-3.5" />
           )}
@@ -1151,7 +1155,7 @@ function DnsRecordRow({
         <div className="flex items-center justify-between">
           <Badge
             variant="outline"
-            className="font-mono text-[10px] border-white/20 text-neutral-400 bg-white/5"
+            className="font-mono text-2xs border-border-strong text-muted bg-bg-muted"
           >
             {type}
           </Badge>
@@ -1159,34 +1163,36 @@ function DnsRecordRow({
             variant="ghost"
             size="sm"
             onClick={() => copyToClipboard(value, valueLabel)}
-            className="h-7 px-2 text-neutral-500 hover:text-white"
+            className="h-7 px-2 min-h-touch text-muted hover:text-txt-strong"
           >
             {copiedValue === value ? (
-              <Check className="h-3.5 w-3.5 text-green-400" />
+              <Check className="h-3.5 w-3.5 text-status-success" />
             ) : (
               <Copy className="h-3.5 w-3.5" />
             )}
-            <span className="ml-1.5 text-[10px]">
+            <span className="ml-1.5 text-2xs">
               {t("cloud.appDomains.copy", { defaultValue: "Copy" })}
             </span>
           </Button>
         </div>
         <div className="space-y-1.5">
           <div>
-            <p className="text-[10px] text-neutral-500 mb-0.5">
+            <p className="text-2xs text-muted mb-0.5">
               {t("cloud.appDomains.nameHost", {
                 defaultValue: "Name / Host",
               })}
             </p>
-            <p className="font-mono text-xs text-white break-all">{name}</p>
+            <p className="font-mono text-xs text-txt-strong break-all">
+              {name}
+            </p>
           </div>
           <div>
-            <p className="text-[10px] text-neutral-500 mb-0.5">
+            <p className="text-2xs text-muted mb-0.5">
               {t("cloud.appDomains.valueTarget", {
                 defaultValue: "Value / Target",
               })}
             </p>
-            <p className="font-mono text-xs text-neutral-400 break-all">
+            <p className="font-mono text-xs text-muted break-all">
               {value}
             </p>
           </div>

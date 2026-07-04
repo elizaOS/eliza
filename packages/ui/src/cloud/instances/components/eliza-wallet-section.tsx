@@ -4,6 +4,7 @@
  * Wallet section of the cloud agent-instance detail: balance and wallet actions,
  * polled while the document is visible.
  */
+import { Check, Copy } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "../../../components/ui/button";
 import { useIntervalWhenDocumentVisible } from "../../../hooks/useDocumentVisibility";
@@ -80,38 +81,12 @@ function CopyButton({ text }: { text: string }) {
       type="button"
       onClick={handleCopy}
       title={t("cloud.elizaWallet.copy", { defaultValue: "Copy" })}
-      className="ml-1.5 text-white/30 hover:text-white/70 transition-colors"
+      className="ml-1.5 inline-flex h-7 w-7 shrink-0 items-center justify-center text-muted hover:text-txt transition-colors"
     >
       {copied ? (
-        <svg
-          className="w-3 h-3 text-green-400"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-          strokeWidth={2}
-          aria-hidden="true"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            d="M5 13l4 4L19 7"
-          />
-        </svg>
+        <Check className="w-3 h-3 text-status-success" strokeWidth={2} aria-hidden="true" />
       ) : (
-        <svg
-          className="w-3 h-3"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-          strokeWidth={2}
-          aria-hidden="true"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
-          />
-        </svg>
+        <Copy className="w-3 h-3" strokeWidth={2} aria-hidden="true" />
       )}
     </Button>
   );
@@ -120,8 +95,8 @@ function CopyButton({ text }: { text: string }) {
 function SectionHeader({ label }: { label: string }) {
   return (
     <div className="flex items-center gap-2 mb-3">
-      <span className="inline-block size-1.5 bg-[#FF5800]" />
-      <p className="font-mono text-[11px] uppercase tracking-[0.32em] text-white/60">
+      <span className="inline-block size-1.5 bg-accent" />
+      <p className="font-mono text-xs-tight uppercase tracking-[0.32em] text-muted-strong">
         {label}
       </p>
     </div>
@@ -200,7 +175,7 @@ export function ElizaWalletSection({ agentId }: ElizaWalletSectionProps) {
     return (
       <div className="space-y-3 animate-pulse">
         {[1, 2, 3].map((i) => (
-          <div key={i} className="h-16 bg-white/5 border border-white/10" />
+          <div key={i} className="h-16 bg-bg-muted border border-border" />
         ))}
       </div>
     );
@@ -208,15 +183,15 @@ export function ElizaWalletSection({ agentId }: ElizaWalletSectionProps) {
 
   if (error) {
     return (
-      <div className="flex items-start gap-3 p-4 bg-red-950/20 border border-red-500/20">
-        <span className="w-2 h-2 rounded-full bg-red-500 shrink-0 mt-1" />
+      <div className="flex items-start gap-3 p-4 bg-destructive-subtle border border-destructive/20">
+        <span className="w-2 h-2 rounded-full bg-destructive shrink-0 mt-1" />
         <div>
-          <p className="font-mono text-xs text-red-400">
+          <p className="font-mono text-xs text-destructive">
             {t("cloud.elizaWallet.loadFailed", {
               defaultValue: "Failed to load wallet data",
             })}
           </p>
-          <p className="font-mono text-[11px] text-red-400/60 mt-0.5">
+          <p className="font-mono text-xs-tight text-destructive/60 mt-0.5">
             {error}
           </p>
         </div>
@@ -229,8 +204,8 @@ export function ElizaWalletSection({ agentId }: ElizaWalletSectionProps) {
 
   if (!hasEvm && !hasSolana) {
     return (
-      <div className="p-8 text-center border border-white/10 bg-black/40">
-        <p className="font-mono text-sm text-white/40">
+      <div className="p-8 text-center border border-border bg-card">
+        <p className="font-mono text-sm text-muted">
           {t("cloud.elizaWallet.noWallets", {
             defaultValue: "No wallets configured for this agent",
           })}
@@ -248,14 +223,14 @@ export function ElizaWalletSection({ agentId }: ElizaWalletSectionProps) {
             defaultValue: "Addresses",
           })}
         />
-        <div className="border border-white/10 bg-black/40 divide-y divide-white/5">
+        <div className="border border-border bg-card divide-y divide-border">
           {hasEvm && (
             <div className="px-4 py-3 grid grid-cols-[80px_1fr] gap-4 items-center">
-              <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-white/35">
+              <p className="font-mono text-xs-tight uppercase tracking-[0.2em] text-muted">
                 EVM
               </p>
               <div className="flex items-center min-w-0">
-                <span className="font-mono text-sm text-white/80 break-all">
+                <span className="font-mono text-sm text-txt-strong break-all">
                   {data.addresses?.evmAddress}
                 </span>
                 <CopyButton text={data.addresses?.evmAddress ?? ""} />
@@ -264,11 +239,11 @@ export function ElizaWalletSection({ agentId }: ElizaWalletSectionProps) {
           )}
           {hasSolana && (
             <div className="px-4 py-3 grid grid-cols-[80px_1fr] gap-4 items-center">
-              <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-white/35">
+              <p className="font-mono text-xs-tight uppercase tracking-[0.2em] text-muted">
                 Solana
               </p>
               <div className="flex items-center min-w-0">
-                <span className="font-mono text-sm text-white/80 break-all">
+                <span className="font-mono text-sm text-txt-strong break-all">
                   {data.addresses?.solanaAddress}
                 </span>
                 <CopyButton text={data.addresses?.solanaAddress ?? ""} />
@@ -284,18 +259,18 @@ export function ElizaWalletSection({ agentId }: ElizaWalletSectionProps) {
           <SectionHeader
             label={t("cloud.elizaWallet.steward", { defaultValue: "Steward" })}
           />
-          <div className="border border-white/10 bg-black/40 divide-y divide-white/5">
+          <div className="border border-border bg-card divide-y divide-border">
             <div className="px-4 py-3 grid grid-cols-[80px_1fr] gap-4 items-center">
-              <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-white/35">
+              <p className="font-mono text-xs-tight uppercase tracking-[0.2em] text-muted">
                 {t("cloud.elizaWallet.status", { defaultValue: "Status" })}
               </p>
               <div className="flex items-center gap-2">
                 <span
                   className={`inline-block w-2 h-2 rounded-full ${
-                    data.steward.connected ? "bg-green-500" : "bg-white/20"
+                    data.steward.connected ? "bg-status-success" : "bg-muted"
                   }`}
                 />
-                <span className="font-mono text-sm text-white/80">
+                <span className="font-mono text-sm text-txt-strong">
                   {data.steward.configured
                     ? data.steward.connected
                       ? t("cloud.elizaWallet.connected", {
@@ -312,10 +287,10 @@ export function ElizaWalletSection({ agentId }: ElizaWalletSectionProps) {
             </div>
             {data.steward.version && (
               <div className="px-4 py-3 grid grid-cols-[80px_1fr] gap-4 items-center">
-                <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-white/35">
+                <p className="font-mono text-xs-tight uppercase tracking-[0.2em] text-muted">
                   {t("cloud.elizaWallet.version", { defaultValue: "Version" })}
                 </p>
-                <span className="font-mono text-sm text-white/80">
+                <span className="font-mono text-sm text-txt-strong">
                   {data.steward.version}
                 </span>
               </div>
@@ -336,24 +311,24 @@ export function ElizaWalletSection({ agentId }: ElizaWalletSectionProps) {
             {data.balances.evm.map((chain) => (
               <div
                 key={chain.chainId}
-                className="border border-white/10 bg-black/40"
+                className="border border-border bg-card"
               >
-                <div className="px-4 py-2 border-b border-white/5 flex items-center justify-between">
-                  <span className="font-mono text-[11px] uppercase tracking-[0.2em] text-white/35">
+                <div className="px-4 py-2 border-b border-border flex items-center justify-between">
+                  <span className="font-mono text-xs-tight uppercase tracking-[0.2em] text-muted">
                     {chain.chainName} ({chain.chainId})
                   </span>
                 </div>
-                <div className="divide-y divide-white/5">
+                <div className="divide-y divide-border">
                   <div className="px-4 py-2.5 flex items-center justify-between">
-                    <span className="font-mono text-xs text-white/60">
+                    <span className="font-mono text-xs text-muted-strong">
                       {chain.nativeSymbol ?? "ETH"}
                     </span>
                     <div className="text-right">
-                      <span className="font-mono text-sm text-white/90 tabular-nums">
+                      <span className="font-mono text-sm text-txt-strong tabular-nums">
                         {formatNative(chain.nativeBalance, chain.nativeSymbol)}
                       </span>
                       {chain.nativeUsdValue != null && (
-                        <span className="font-mono text-[11px] text-white/30 ml-2">
+                        <span className="font-mono text-xs-tight text-muted ml-2">
                           {formatUsd(chain.nativeUsdValue)}
                         </span>
                       )}
@@ -364,15 +339,15 @@ export function ElizaWalletSection({ agentId }: ElizaWalletSectionProps) {
                       key={token.symbol}
                       className="px-4 py-2.5 flex items-center justify-between"
                     >
-                      <span className="font-mono text-xs text-white/60">
+                      <span className="font-mono text-xs text-muted-strong">
                         {token.symbol}
                       </span>
                       <div className="text-right">
-                        <span className="font-mono text-sm text-white/90 tabular-nums">
+                        <span className="font-mono text-sm text-txt-strong tabular-nums">
                           {token.balance} {token.symbol}
                         </span>
                         {token.usdValue != null && (
-                          <span className="font-mono text-[11px] text-white/30 ml-2">
+                          <span className="font-mono text-xs-tight text-muted ml-2">
                             {formatUsd(token.usdValue)}
                           </span>
                         )}
@@ -388,8 +363,8 @@ export function ElizaWalletSection({ agentId }: ElizaWalletSectionProps) {
 
       {/* Live indicator */}
       <div className="flex items-center gap-2 pt-1">
-        <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-        <span className="font-mono text-[10px] text-white/30 tracking-wide">
+        <span className="w-1.5 h-1.5 rounded-full bg-status-success animate-pulse motion-reduce:animate-none" />
+        <span className="font-mono text-2xs text-muted tracking-wide">
           {t("cloud.elizaWallet.liveIndicator", { defaultValue: "LIVE · 30S" })}
         </span>
       </div>

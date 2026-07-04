@@ -143,7 +143,7 @@ export function DashboardSidebarNavigationItem({
     "relative flex items-center border-l-2 transition-colors duration-150",
     "hover:bg-white/[0.06] hover:text-white",
     isActive
-      ? "border-l-[#FF5800] bg-white/[0.06] text-white"
+      ? "border-l-[var(--accent)] bg-white/[0.06] text-white"
       : "border-l-transparent text-white/70",
     isCollapsed ? "justify-center p-2.5" : "gap-3 px-3 py-2.5",
   );

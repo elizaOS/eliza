@@ -106,7 +106,7 @@ export function AppPromote({ app }: AppPromoteProps) {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h3 className="text-sm font-medium text-white flex items-center gap-2">
-            <Megaphone className="h-4 w-4 text-[#FF5800]" />
+            <Megaphone className="h-4 w-4 text-[var(--accent)]" />
             {t("cloud.appPromote.title", {
               name: app.name,
               defaultValue: "Promote {{name}}",
@@ -146,7 +146,7 @@ export function AppPromote({ app }: AppPromoteProps) {
           <Button
             onClick={() => setShowPromoteDialog(true)}
             size="sm"
-            className="bg-[#FF5800] hover:bg-[#e54f00] text-white rounded-sm"
+            className="bg-[var(--accent)] hover:bg-[#e54f00] text-white rounded-sm"
           >
             <Megaphone className="h-4 w-4 mr-1.5" />
             {t("cloud.appPromote.launch", { defaultValue: "Launch Promotion" })}
@@ -170,8 +170,8 @@ export function AppPromote({ app }: AppPromoteProps) {
           <div className="space-y-2">
             {suggestions.tips.map((tip, index) => (
               <div key={tip} className="flex items-start gap-2">
-                <div className="w-5 h-5 rounded-full bg-[#FF5800]/10 flex items-center justify-center shrink-0 mt-0.5">
-                  <span className="text-[#FF5800] text-[10px] font-semibold">
+                <div className="w-5 h-5 rounded-full bg-[var(--accent)]/10 flex items-center justify-center shrink-0 mt-0.5">
+                  <span className="text-[var(--accent)] text-[10px] font-semibold">
                     {index + 1}
                   </span>
                 </div>

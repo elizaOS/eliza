@@ -32,13 +32,13 @@ export function CostInsightsCard({
         : `${costTrending.daysUntilBalanceZero}d`;
 
   return (
-    <BrandCard corners={false} className="border-[#FF5800]/40 bg-[#FF5800]/10">
+    <BrandCard corners={false} className="border-[var(--accent)]/40 bg-[var(--accent)]/10">
       <div className="flex flex-col gap-2 p-6 pb-4">
         <div className="flex items-center gap-3">
           <h3 className="text-base font-semibold text-white">Cost outlook</h3>
           <Badge
             variant="outline"
-            className="border-[#FF5800]/30 bg-[#FF5800]/10 text-xs font-medium text-[#FF5800]"
+            className="border-[var(--accent)]/30 bg-[var(--accent)]/10 text-xs font-medium text-[var(--accent)]"
           >
             {costTrending.burnChangePercent > 0 ? "+" : ""}
             {costTrending.burnChangePercent.toFixed(1)}%

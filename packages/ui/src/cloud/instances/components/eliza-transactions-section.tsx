@@ -4,6 +4,7 @@
  * Transactions section of the cloud agent-instance detail: the agent's on-chain
  * transaction history.
  */
+import { ExternalLink, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "../../../components/ui/button";
 
@@ -23,16 +24,13 @@ interface StewardTxRecord {
 }
 
 const STATUS_COLORS: Record<string, { text: string; dot: string }> = {
-  signed: { text: "text-green-400", dot: "bg-green-500" },
-  confirmed: { text: "text-green-400", dot: "bg-green-500" },
-  approved: { text: "text-green-400", dot: "bg-green-500" },
-  broadcast: { text: "text-white/80", dot: "bg-white/60" },
-  pending: {
-    text: "text-[var(--brand-orange)]",
-    dot: "bg-[var(--brand-orange)]",
-  },
-  failed: { text: "text-red-400", dot: "bg-red-500" },
-  rejected: { text: "text-red-400", dot: "bg-red-500" },
+  signed: { text: "text-status-success", dot: "bg-status-success" },
+  confirmed: { text: "text-status-success", dot: "bg-status-success" },
+  approved: { text: "text-status-success", dot: "bg-status-success" },
+  broadcast: { text: "text-muted-strong", dot: "bg-muted" },
+  pending: { text: "text-accent", dot: "bg-accent" },
+  failed: { text: "text-destructive", dot: "bg-destructive" },
+  rejected: { text: "text-destructive", dot: "bg-destructive" },
 };
 
 const EXPLORER_URLS: Record<number, string> = {
@@ -170,7 +168,7 @@ export function ElizaTransactionsSection({
     <div className="space-y-4">
       {/* Filter bar */}
       <div className="flex items-center gap-2 overflow-x-auto">
-        <span className="font-mono text-[10px] tracking-[0.15em] text-white/30 shrink-0">
+        <span className="font-mono text-2xs tracking-[0.15em] text-muted shrink-0">
           FILTER:
         </span>
         {STATUS_FILTERS.map((f) => (
@@ -179,10 +177,10 @@ export function ElizaTransactionsSection({
             key={f.value}
             type="button"
             onClick={() => setStatusFilter(f.value)}
-            className={`shrink-0 px-3 py-1.5 font-mono text-[10px] tracking-wide border transition-colors ${
+            className={`shrink-0 min-h-touch px-3 py-1.5 font-mono text-2xs tracking-wide border transition-colors ${
               statusFilter === f.value
-                ? "text-white border-[var(--brand-orange)]/30 bg-[var(--brand-orange)]/5"
-                : "text-white/40 border-white/10 hover:text-white/70 hover:border-white/20"
+                ? "text-txt-strong border-accent bg-accent-subtle"
+                : "text-muted border-border hover:text-txt hover:border-border-strong"
             }`}
           >
             {f.label}
@@ -191,13 +189,13 @@ export function ElizaTransactionsSection({
       </div>
 
       {/* Table */}
-      <div className="border border-white/10 bg-black/40 overflow-hidden">
+      <div className="border border-border bg-card overflow-hidden">
         {/* Header */}
-        <div className="hidden sm:grid grid-cols-[140px_1fr_1fr_100px_1fr] gap-px bg-white/5">
+        <div className="hidden sm:grid grid-cols-[140px_1fr_1fr_100px_1fr] gap-px bg-border">
           {["DATE", "TO", "AMOUNT", "STATUS", "TX HASH"].map((h) => (
             <div
               key={h}
-              className="bg-black/60 px-3 py-2 font-mono text-[9px] tracking-[0.15em] text-white/30"
+              className="bg-card px-3 py-2 font-mono text-3xs tracking-[0.15em] text-muted"
             >
               {h}
             </div>
@@ -206,8 +204,12 @@ export function ElizaTransactionsSection({
 
         {loading && (
           <div className="flex items-center justify-center py-12 gap-3">
-            <div className="w-4 h-4 rounded-full border-2 border-[var(--brand-orange)]/30 border-t-[var(--brand-orange)] animate-spin" />
-            <span className="font-mono text-xs text-white/30">
+            <Loader2
+              className="h-4 w-4 animate-spin text-accent"
+              strokeWidth={2}
+              aria-hidden="true"
+            />
+            <span className="font-mono text-xs text-muted">
               Loading transactions…
             </span>
           </div>
@@ -215,12 +217,12 @@ export function ElizaTransactionsSection({
 
         {!loading && error && (
           <div className="p-6 text-center space-y-2">
-            <p className="font-mono text-xs text-red-400">{error}</p>
+            <p className="font-mono text-xs text-destructive">{error}</p>
             <Button
               variant="ghost"
               type="button"
               onClick={() => fetchRecords(0, false)}
-              className="font-mono text-[11px] text-white/50 hover:text-white transition-colors"
+              className="min-h-touch font-mono text-xs-tight text-muted hover:text-txt transition-colors"
             >
               RETRY
             </Button>
@@ -229,8 +231,8 @@ export function ElizaTransactionsSection({
 
         {!loading && !error && records.length === 0 && (
           <div className="p-8 text-center">
-            <p className="font-mono text-sm text-white/30">NO TRANSACTIONS</p>
-            <p className="font-mono text-xs text-white/20 mt-1">
+            <p className="font-mono text-sm text-muted">NO TRANSACTIONS</p>
+            <p className="font-mono text-xs text-muted mt-1">
               {statusFilter
                 ? `No transactions with status "${statusFilter}"`
                 : "No transaction history found"}
@@ -244,48 +246,48 @@ export function ElizaTransactionsSection({
             return (
               <div
                 key={tx.id || `tx-${i}`}
-                className="grid grid-cols-1 sm:grid-cols-[140px_1fr_1fr_100px_1fr] gap-px bg-white/5 border-t border-white/5 first:border-t-0"
+                className="grid grid-cols-1 sm:grid-cols-[140px_1fr_1fr_100px_1fr] gap-px bg-border border-t border-border first:border-t-0"
               >
-                <div className="bg-black/60 px-3 py-2.5">
-                  <span className="sm:hidden font-mono text-[9px] text-white/30 mr-2">
+                <div className="bg-card px-3 py-2.5">
+                  <span className="sm:hidden font-mono text-3xs text-muted mr-2">
                     DATE:
                   </span>
-                  <span className="font-mono text-[11px] text-white/70 tabular-nums">
+                  <span className="font-mono text-xs-tight text-muted-strong tabular-nums">
                     {formatDate(tx.createdAt)}
                   </span>
                 </div>
-                <div className="bg-black/60 px-3 py-2.5 flex items-center">
-                  <span className="sm:hidden font-mono text-[9px] text-white/30 mr-2">
+                <div className="bg-card px-3 py-2.5 flex items-center">
+                  <span className="sm:hidden font-mono text-3xs text-muted mr-2">
                     TO:
                   </span>
                   {tx.request?.to ? (
-                    <span className="font-mono text-[11px] text-white/70">
+                    <span className="font-mono text-xs-tight text-muted-strong">
                       {truncate(tx.request.to)}
                     </span>
                   ) : (
-                    <span className="font-mono text-[11px] text-white/25">
-                      —
-                    </span>
+                    <span className="font-mono text-xs-tight text-muted">—</span>
                   )}
                 </div>
-                <div className="bg-black/60 px-3 py-2.5">
-                  <span className="sm:hidden font-mono text-[9px] text-white/30 mr-2">
+                <div className="bg-card px-3 py-2.5">
+                  <span className="sm:hidden font-mono text-3xs text-muted mr-2">
                     AMOUNT:
                   </span>
-                  <span className="font-mono text-[11px] text-white/70 tabular-nums">
+                  <span className="font-mono text-xs-tight text-muted-strong tabular-nums">
                     {formatValue(tx.request?.value)}
                   </span>
                 </div>
-                <div className="bg-black/60 px-3 py-2.5 flex items-center gap-1.5">
-                  <span className={`w-1.5 h-1.5 rounded-full ${colors.dot}`} />
+                <div className="bg-card px-3 py-2.5 flex items-center gap-1.5">
                   <span
-                    className={`font-mono text-[10px] tracking-wide ${colors.text}`}
+                    className={`inline-block size-1.5 rounded-full ${colors.dot}`}
+                  />
+                  <span
+                    className={`font-mono text-2xs tracking-wide ${colors.text}`}
                   >
                     {tx.status.toUpperCase()}
                   </span>
                 </div>
-                <div className="bg-black/60 px-3 py-2.5">
-                  <span className="sm:hidden font-mono text-[9px] text-white/30 mr-2">
+                <div className="bg-card px-3 py-2.5">
+                  <span className="sm:hidden font-mono text-3xs text-muted mr-2">
                     HASH:
                   </span>
                   {tx.txHash ? (
@@ -293,28 +295,17 @@ export function ElizaTransactionsSection({
                       href={explorerUrl(tx.txHash, tx.request?.chainId)}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="font-mono text-[11px] text-white/60 hover:text-white transition-colors inline-flex items-center gap-1"
+                      className="font-mono text-xs-tight text-muted-strong hover:text-txt transition-colors inline-flex items-center gap-1"
                     >
                       {truncate(tx.txHash)}
-                      <svg
-                        className="w-3 h-3"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
+                      <ExternalLink
+                        className="h-3 w-3"
                         strokeWidth={2}
                         aria-hidden="true"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          d="M4.5 19.5l15-15m0 0H8.25m11.25 0v11.25"
-                        />
-                      </svg>
+                      />
                     </a>
                   ) : (
-                    <span className="font-mono text-[11px] text-white/25">
-                      —
-                    </span>
+                    <span className="font-mono text-xs-tight text-muted">—</span>
                   )}
                 </div>
               </div>
@@ -322,25 +313,29 @@ export function ElizaTransactionsSection({
           })}
 
         {!loading && records.length < total && (
-          <div className="p-3 bg-black/60 border-t border-white/5 text-center">
+          <div className="p-3 bg-card border-t border-border text-center">
             <Button
               variant="ghost"
               type="button"
               onClick={handleLoadMore}
               disabled={loadingMore}
-              className="inline-flex items-center gap-2 px-4 py-2 font-mono text-[11px] tracking-wide
-                text-[var(--brand-orange)] hover:opacity-75
+              className="inline-flex items-center gap-2 min-h-touch px-4 py-2 font-mono text-xs-tight tracking-wide
+                text-accent hover:opacity-75
                 transition-opacity disabled:opacity-40"
             >
               {loadingMore ? (
                 <>
-                  <div className="w-3 h-3 rounded-full border border-[var(--brand-orange)]/30 border-t-[var(--brand-orange)] animate-spin" />
+                  <Loader2
+                    className="h-3 w-3 animate-spin"
+                    strokeWidth={2}
+                    aria-hidden="true"
+                  />
                   LOADING…
                 </>
               ) : (
                 <>
                   LOAD MORE{" "}
-                  <span className="text-white/30">
+                  <span className="text-muted">
                     ({records.length}/{total})
                   </span>
                 </>

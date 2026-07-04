@@ -213,7 +213,7 @@ export function CreateAppDialog({ open, onOpenChange }: CreateAppDialogProps) {
           <DialogFooter>
             <Button
               onClick={handleClose}
-              className="bg-[#FF5800] hover:bg-[#e54f00] w-full sm:w-auto"
+              className="bg-[var(--accent)] hover:bg-[#e54f00] w-full sm:w-auto"
             >
               {t("cloud.apps.create.setMarkupCta", {
                 defaultValue: "Set Markup & Earnings →",
@@ -310,7 +310,7 @@ export function CreateAppDialog({ open, onOpenChange }: CreateAppDialogProps) {
             <Button
               type="submit"
               disabled={!canSubmit}
-              className="bg-[#FF5800] hover:bg-[#e54f00] w-full sm:w-auto"
+              className="bg-[var(--accent)] hover:bg-[#e54f00] w-full sm:w-auto"
             >
               {isLoading ? (
                 <>

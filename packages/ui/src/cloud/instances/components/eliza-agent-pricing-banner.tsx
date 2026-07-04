@@ -52,8 +52,8 @@ export function ElizaAgentPricingBanner({
         {/* Header */}
         <div className="flex items-center justify-between mb-5">
           <div className="flex items-center gap-2">
-            <div className="flex items-center justify-center w-7 h-7 bg-[#FF5800]/10 border border-[#FF5800]/20">
-              <DollarSign className="h-3.5 w-3.5 text-[#FF5800]" />
+            <div className="flex items-center justify-center w-7 h-7 bg-[var(--accent)]/10 border border-[var(--accent)]/20">
+              <DollarSign className="h-3.5 w-3.5 text-[var(--accent)]" />
             </div>
             <p className="text-sm font-medium text-white">
               {t("cloud.containers.pricingBanner.usageRates", {
@@ -114,7 +114,7 @@ export function ElizaAgentPricingBanner({
           {/* Current burn */}
           <div className="bg-black/60 p-3.5 space-y-1.5">
             <div className="flex items-center gap-1.5">
-              <DollarSign className="h-3 w-3 text-[#FF5800]" />
+              <DollarSign className="h-3 w-3 text-[var(--accent)]" />
               <p className="text-[10px] uppercase tracking-[0.2em] text-white/40">
                 {t("cloud.containers.pricingBanner.yourCost", {
                   defaultValue: "Your Cost",

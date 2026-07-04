@@ -298,7 +298,7 @@ export function ElizaAgentLogsViewer({
           )}
           {statusHint && status !== "running" && (
             <div className="flex items-start gap-3 border border-white/10 bg-black/30 p-4">
-              <FileText className="mt-0.5 h-4 w-4 shrink-0 text-[#FF5800]" />
+              <FileText className="mt-0.5 h-4 w-4 shrink-0 text-[var(--accent)]" />
               <p className="text-sm text-white/70">{statusHint}</p>
             </div>
           )}

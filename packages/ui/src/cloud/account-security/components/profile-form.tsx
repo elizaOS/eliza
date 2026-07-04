@@ -320,28 +320,28 @@ export function ProfileForm({ user }: ProfileFormProps) {
       <div className="relative z-10 space-y-6">
         <div>
           <div className="flex items-center gap-2 mb-2">
-            <User className="h-5 w-5 text-[var(--brand-orange)]" />
-            <h3 className="text-lg font-bold text-white">
+            <User className="h-5 w-5 text-accent" />
+            <h3 className="text-lg font-bold text-txt-strong">
               Profile Information
             </h3>
           </div>
-          <p className="text-sm text-white/60">
+          <p className="text-sm text-muted">
             Update your profile information and manage your account settings
           </p>
         </div>
 
         {!user.email && !emailAdded && (
-          <div className="space-y-2 p-4 border border-orange-500/40 bg-orange-500/5 rounded-sm">
+          <div className="space-y-2 p-4 border border-accent-muted bg-accent-subtle rounded-sm">
             <div className="flex items-center gap-2 mb-3">
-              <Mail className="h-4 w-4 text-orange-400" />
+              <Mail className="h-4 w-4 text-accent" />
               <label
                 htmlFor="new-email"
-                className="text-xs font-medium text-orange-400 uppercase tracking-wide"
+                className="text-xs font-medium text-accent uppercase tracking-wide"
               >
                 Add Email Address
               </label>
             </div>
-            <p className="text-xs text-white/60 mb-3">
+            <p className="text-xs text-muted mb-3">
               Adding an email allows you to receive important notifications and
               updates.
             </p>
@@ -353,7 +353,7 @@ export function ProfileForm({ user }: ProfileFormProps) {
                 placeholder="your@email.com"
                 disabled={isUpdatingEmail}
                 required
-                className="rounded-sm border-white/20 bg-black/40 text-white placeholder:text-white/40   "
+                className="min-h-touch rounded-sm border-input bg-bg-elevated text-txt placeholder:text-muted disabled:opacity-50 disabled:cursor-not-allowed"
               />
               <BrandButton
                 type="submit"
@@ -364,13 +364,13 @@ export function ProfileForm({ user }: ProfileFormProps) {
               >
                 {isUpdatingEmail ? (
                   <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin motion-reduce:animate-none" />
                     Adding Email...
                   </>
                 ) : (
                   <>
-                    <Mail className="h-4 w-4 mr-2 text-white" />
-                    <p className="text-white">Add Email Address</p>
+                    <Mail className="h-4 w-4 mr-2" />
+                    Add Email Address
                   </>
                 )}
               </BrandButton>
@@ -382,7 +382,7 @@ export function ProfileForm({ user }: ProfileFormProps) {
           <div className="space-y-2">
             <label
               htmlFor="email"
-              className="text-xs font-medium text-white/70 uppercase tracking-wide flex items-center gap-2"
+              className="text-xs font-medium text-muted uppercase tracking-wide flex items-center gap-2"
             >
               <Mail className="h-4 w-4" />
               Email Address
@@ -392,9 +392,9 @@ export function ProfileForm({ user }: ProfileFormProps) {
               type="email"
               value={user.email}
               disabled
-              className="rounded-sm border-white/10 bg-black/60 text-white/50"
+              className="min-h-touch rounded-sm border-border bg-bg-muted text-muted disabled:opacity-50 disabled:cursor-not-allowed"
             />
-            <p className="text-xs text-white/74">
+            <p className="text-xs text-muted">
               Email cannot be changed. Please contact support if you need to
               update this.
             </p>
@@ -402,14 +402,14 @@ export function ProfileForm({ user }: ProfileFormProps) {
         )}
 
         {emailAdded && !user.email && (
-          <div className="space-y-2 p-4 border border-green-500/40 bg-green-500/5 rounded-sm">
+          <div className="space-y-2 p-4 border border-status-success bg-status-success-bg rounded-sm">
             <div className="flex items-center gap-2">
-              <Mail className="h-4 w-4 text-green-400" />
-              <p className="text-sm font-medium text-green-400">
+              <Mail className="h-4 w-4 text-status-success" />
+              <p className="text-sm font-medium text-status-success">
                 Email Added Successfully!
               </p>
             </div>
-            <p className="text-xs text-white/60">
+            <p className="text-xs text-muted">
               Your email has been added and will appear here after the page
               refreshes.
             </p>
@@ -417,11 +417,11 @@ export function ProfileForm({ user }: ProfileFormProps) {
         )}
 
         <form onSubmit={handleSubmit} className="space-y-6">
-          <div className="flex flex-col sm:flex-row items-start gap-4 pb-6 border-b border-white/10">
+          <div className="flex flex-col sm:flex-row items-start gap-4 pb-6 border-b border-border">
             <div className="relative group">
               {previewUrl ? (
                 <div className="relative">
-                  <div className="h-24 w-24 rounded-full overflow-hidden    ">
+                  <div className="h-24 w-24 rounded-full overflow-hidden">
                     <Image
                       src={previewUrl}
                       alt="Preview"
@@ -431,12 +431,12 @@ export function ProfileForm({ user }: ProfileFormProps) {
                       unoptimized
                     />
                   </div>
-                  <div className="absolute -top-1 -right-1 bg-orange-500 text-black text-[10px] font-bold px-2 py-0.5 rounded-full animate-pulse">
+                  <div className="absolute -top-1 -right-1 bg-accent text-accent-foreground text-2xs font-bold px-2 py-0.5 rounded-full animate-pulse motion-reduce:animate-none">
                     PREVIEW
                   </div>
                 </div>
               ) : (
-                <Avatar className="h-24 w-24    ">
+                <Avatar className="h-24 w-24">
                   <AvatarImage
                     src={user.avatar || undefined}
                     alt={
@@ -447,7 +447,7 @@ export function ProfileForm({ user }: ProfileFormProps) {
                         : "User")
                     }
                   />
-                  <AvatarFallback className="text-xl bg-[var(--brand-orange)]/15">
+                  <AvatarFallback className="text-xl bg-accent-subtle">
                     {getInitials(user.name, user.email, user.wallet_address)}
                   </AvatarFallback>
                 </Avatar>
@@ -458,11 +458,11 @@ export function ProfileForm({ user }: ProfileFormProps) {
               <div>
                 <label
                   htmlFor="avatar-upload"
-                  className="text-xs font-medium text-white/70 uppercase tracking-wide"
+                  className="text-xs font-medium text-muted uppercase tracking-wide"
                 >
                   Profile Picture
                 </label>
-                <p className="text-xs text-white/74 mt-1">
+                <p className="text-xs text-muted mt-1">
                   PNG, JPG or WEBP. Max 5MB. Drag & drop or click to upload.
                 </p>
               </div>
@@ -479,12 +479,12 @@ export function ProfileForm({ user }: ProfileFormProps) {
 
               {previewUrl && pendingFile ? (
                 <div className="space-y-3">
-                  <div className="flex items-center gap-2 p-3 rounded-sm border border-[var(--brand-orange)]/30 bg-[var(--brand-orange)]/5">
+                  <div className="flex items-center gap-2 p-3 rounded-sm border border-accent-muted bg-accent-subtle">
                     <div className="flex-1">
-                      <p className="text-sm text-white font-medium truncate">
+                      <p className="text-sm text-txt font-medium truncate">
                         {pendingFile.name}
                       </p>
-                      <p className="text-xs text-white/74">
+                      <p className="text-xs text-muted">
                         {(pendingFile.size / 1024).toFixed(1)} KB
                       </p>
                     </div>
@@ -500,7 +500,7 @@ export function ProfileForm({ user }: ProfileFormProps) {
                     >
                       {isUploadingAvatar ? (
                         <>
-                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin motion-reduce:animate-none" />
                           Uploading...
                         </>
                       ) : (
@@ -530,23 +530,23 @@ export function ProfileForm({ user }: ProfileFormProps) {
                   onDragOver={handleDragOver}
                   onDragLeave={handleDragLeave}
                   onDrop={handleDrop}
-                  className={`flex items-center justify-center gap-3 p-4 rounded-sm border-2 border-dashed transition-all cursor-pointer w-full bg-transparent ${
+                  className={`flex min-h-touch items-center justify-center gap-3 p-4 rounded-sm border-2 border-dashed transition-colors cursor-pointer w-full bg-transparent ${
                     isDragging
-                      ? "border-white/50 bg-white/10"
-                      : "border-white/20 hover:border-white/40 hover:bg-white/5"
+                      ? "border-accent bg-accent-subtle"
+                      : "border-border-strong hover:border-border-hover hover:bg-bg-hover"
                   }`}
                 >
                   {isDragging ? (
                     <>
-                      <ImagePlus className="h-5 w-5 text-[var(--brand-orange)]" />
-                      <span className="text-sm font-medium text-[var(--brand-orange)]">
+                      <ImagePlus className="h-5 w-5 text-accent" />
+                      <span className="text-sm font-medium text-accent">
                         Drop your image here
                       </span>
                     </>
                   ) : (
                     <>
-                      <Upload className="h-5 w-5 text-white/50" />
-                      <span className="text-sm text-white/70">
+                      <Upload className="h-5 w-5 text-muted" />
+                      <span className="text-sm text-muted">
                         Click or drag image to upload
                       </span>
                     </>
@@ -560,9 +560,9 @@ export function ProfileForm({ user }: ProfileFormProps) {
             <div className="space-y-2">
               <label
                 htmlFor="name"
-                className="text-xs font-medium text-white/70 uppercase tracking-wide"
+                className="text-xs font-medium text-muted uppercase tracking-wide"
               >
-                Full Name <span className="text-red-400">*</span>
+                Full Name <span className="text-accent">*</span>
               </label>
               <Input
                 id="name"
@@ -573,7 +573,7 @@ export function ProfileForm({ user }: ProfileFormProps) {
                 required
                 maxLength={100}
                 disabled={isPending}
-                className="rounded-sm border-white/10 bg-black/40 text-white placeholder:text-white/40   "
+                className="min-h-touch rounded-sm border-input bg-bg-elevated text-txt placeholder:text-muted disabled:opacity-50 disabled:cursor-not-allowed"
               />
             </div>
 
@@ -581,7 +581,7 @@ export function ProfileForm({ user }: ProfileFormProps) {
               <div className="space-y-2">
                 <label
                   htmlFor="wallet-address"
-                  className="text-xs font-medium text-white/70 uppercase tracking-wide flex items-center gap-2"
+                  className="text-xs font-medium text-muted uppercase tracking-wide flex items-center gap-2"
                 >
                   <User className="h-4 w-4" />
                   Wallet Address
@@ -591,10 +591,10 @@ export function ProfileForm({ user }: ProfileFormProps) {
                   type="text"
                   value={user.wallet_address}
                   disabled
-                  className="rounded-sm border-white/10 bg-black/60 text-white/50 font-mono text-xs"
+                  className="min-h-touch rounded-sm border-border bg-bg-muted text-muted font-mono text-xs disabled:opacity-50 disabled:cursor-not-allowed"
                 />
                 {user.wallet_chain_type && (
-                  <p className="text-xs text-white/74 capitalize">
+                  <p className="text-xs text-muted capitalize">
                     Connected via {user.wallet_chain_type} wallet
                   </p>
                 )}
@@ -604,7 +604,7 @@ export function ProfileForm({ user }: ProfileFormProps) {
             <div className="space-y-2">
               <label
                 htmlFor="avatar"
-                className="text-xs font-medium text-white/70 uppercase tracking-wide"
+                className="text-xs font-medium text-muted uppercase tracking-wide"
               >
                 Avatar URL (Optional)
               </label>
@@ -615,9 +615,9 @@ export function ProfileForm({ user }: ProfileFormProps) {
                 defaultValue={user.avatar || ""}
                 placeholder="https://example.com/avatar.jpg"
                 disabled={isPending}
-                className="rounded-sm border-white/10 bg-black/40 text-white placeholder:text-white/40   "
+                className="min-h-touch rounded-sm border-input bg-bg-elevated text-txt placeholder:text-muted disabled:opacity-50 disabled:cursor-not-allowed"
               />
-              <p className="text-xs text-white/74">
+              <p className="text-xs text-muted">
                 Or use the upload button above to add a profile picture.
               </p>
             </div>
@@ -625,7 +625,7 @@ export function ProfileForm({ user }: ProfileFormProps) {
             <div className="space-y-2">
               <label
                 htmlFor="user-role"
-                className="text-xs font-medium text-white/70 uppercase tracking-wide flex items-center gap-2"
+                className="text-xs font-medium text-muted uppercase tracking-wide flex items-center gap-2"
               >
                 <Shield className="h-4 w-4" />
                 Role
@@ -635,9 +635,9 @@ export function ProfileForm({ user }: ProfileFormProps) {
                 type="text"
                 value={user.role}
                 disabled
-                className="rounded-sm border-white/10 bg-black/60 text-white/50 capitalize"
+                className="min-h-touch rounded-sm border-border bg-bg-muted text-muted capitalize disabled:opacity-50 disabled:cursor-not-allowed"
               />
-              <p className="text-xs text-white/74">
+              <p className="text-xs text-muted">
                 Your role in the organization. Contact an admin to change this.
               </p>
             </div>
@@ -646,17 +646,17 @@ export function ProfileForm({ user }: ProfileFormProps) {
           {error && (
             <Alert
               variant="destructive"
-              className="rounded-sm border-red-500/40 bg-red-500/10"
+              className="rounded-sm border-status-danger bg-status-danger-bg"
             >
-              <AlertDescription className="text-red-400">
+              <AlertDescription className="text-status-danger">
                 {error}
               </AlertDescription>
             </Alert>
           )}
 
           {success && (
-            <Alert className="rounded-sm border-green-500/40 bg-green-500/10">
-              <AlertDescription className="text-green-400">
+            <Alert className="rounded-sm border-status-success bg-status-success-bg">
+              <AlertDescription className="text-status-success">
                 {success}
               </AlertDescription>
             </Alert>
@@ -666,11 +666,11 @@ export function ProfileForm({ user }: ProfileFormProps) {
             <BrandButton type="submit" variant="primary" disabled={isPending}>
               {isPending ? (
                 <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin motion-reduce:animate-none" />
                   Saving...
                 </>
               ) : (
-                <p className="text-white">Save Changes</p>
+                "Save Changes"
               )}
             </BrandButton>
             <BrandButton

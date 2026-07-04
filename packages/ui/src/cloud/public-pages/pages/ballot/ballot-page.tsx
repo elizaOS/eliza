@@ -142,7 +142,7 @@ export default function BallotPage() {
 
   if (isLoading) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
+      <div className="flex min-h-[100dvh] items-center justify-center bg-bg text-txt">
         <Loader2 className="h-6 w-6 animate-spin" />
       </div>
     );
@@ -151,8 +151,8 @@ export default function BallotPage() {
   if (error || !ballot) {
     return (
       <div className="mx-auto max-w-md py-16 text-center">
-        <AlertCircle className="mx-auto h-8 w-8 text-red-500" />
-        <p className="mt-4 text-sm text-gray-700">
+        <AlertCircle className="mx-auto h-8 w-8 text-destructive" />
+        <p className="mt-4 text-sm text-muted-strong">
           {error ??
             t("cloud.ballot.notFound", { defaultValue: "Ballot not found." })}
         </p>
@@ -163,23 +163,23 @@ export default function BallotPage() {
   const isClosed = ballot.status !== "open";
 
   return (
-    <div className="mx-auto max-w-lg space-y-6 py-12">
+    <div className="mx-auto max-w-lg space-y-6 px-4 py-12 text-txt">
       <header className="space-y-2">
-        <div className="flex items-center gap-2 text-sm text-gray-500">
+        <div className="flex items-center gap-2 text-sm text-muted">
           <Vote className="h-4 w-4" />
           <span>
             {t("cloud.ballot.secretBallot", { defaultValue: "Secret ballot" })}
           </span>
         </div>
         <h1 className="text-2xl font-semibold">{ballot.purpose}</h1>
-        <p className="text-sm text-gray-600">
+        <p className="text-sm text-muted-strong">
           {t("cloud.ballot.participantsRequired", {
             threshold: ballot.threshold,
             total: ballot.participants.length,
             defaultValue: "{{threshold}} of {{total}} participants required.",
           })}
         </p>
-        <p className="text-xs text-gray-500">
+        <p className="text-xs text-muted">
           {t("cloud.ballot.expires", {
             when:
               formatDate(ballot.expiresAt) ??
@@ -190,7 +190,7 @@ export default function BallotPage() {
       </header>
 
       {isClosed ? (
-        <div className="rounded-md border border-gray-200 bg-gray-50 p-4 text-sm text-gray-700">
+        <div className="rounded-md border border-border bg-surface p-4 text-sm text-muted-strong">
           {t("cloud.ballot.closed", {
             status: ballot.status,
             defaultValue:
@@ -206,7 +206,7 @@ export default function BallotPage() {
           }}
         >
           <label htmlFor="ballot-scoped-token" className="block text-sm">
-            <span className="text-gray-700">
+            <span className="text-muted-strong">
               {t("cloud.ballot.scopedToken", {
                 defaultValue: "Your scoped token",
               })}
@@ -216,7 +216,7 @@ export default function BallotPage() {
               type="text"
               value={scopedToken}
               onChange={(event) => setScopedToken(event.target.value)}
-              className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+              className="mt-1 w-full rounded-md border border-input bg-bg px-3 py-2 text-sm text-txt"
               placeholder="sb_..."
               autoComplete="off"
               spellCheck={false}
@@ -224,14 +224,14 @@ export default function BallotPage() {
             />
           </label>
           <label htmlFor="ballot-vote" className="block text-sm">
-            <span className="text-gray-700">
+            <span className="text-muted-strong">
               {t("cloud.ballot.yourVote", { defaultValue: "Your vote" })}
             </span>
             <Textarea
               id="ballot-vote"
               value={value}
               onChange={(event) => setValue(event.target.value)}
-              className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+              className="mt-1 w-full rounded-md border border-input bg-bg px-3 py-2 text-sm text-txt"
               rows={3}
               required
             />
@@ -240,7 +240,7 @@ export default function BallotPage() {
             variant="ghost"
             type="submit"
             disabled={isSubmitting || !scopedToken.trim() || !value.trim()}
-            className="inline-flex items-center gap-2 rounded-md bg-[#FF5800] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#e54f00] disabled:opacity-50"
+            className="inline-flex items-center gap-2 rounded-md bg-accent px-4 py-2 text-sm font-medium text-accent-foreground transition-colors hover:bg-accent-hover disabled:opacity-50"
           >
             {isSubmitting ? (
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -253,7 +253,7 @@ export default function BallotPage() {
       )}
 
       {submitMessage ? (
-        <div className="rounded-md border border-gray-200 bg-white p-3 text-sm text-gray-700">
+        <div className="rounded-md border border-border bg-card p-3 text-sm text-muted-strong">
           {submitMessage}
         </div>
       ) : null}

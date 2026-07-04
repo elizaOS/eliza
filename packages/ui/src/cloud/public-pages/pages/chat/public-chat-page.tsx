@@ -114,8 +114,8 @@ export default function PublicChatPage() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-black text-white">
-        <div className="flex items-center gap-3 text-white/70">
+      <div className="theme-cloud flex min-h-[100dvh] items-center justify-center bg-bg text-txt">
+        <div className="flex items-center gap-3 text-muted">
           <Loader2 className="h-5 w-5 animate-spin" />
           {t("cloud.publicChat.loadingAgent", {
             defaultValue: "Loading agent...",
@@ -127,14 +127,14 @@ export default function PublicChatPage() {
 
   if (!character || error) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-black p-6 text-white">
+      <div className="theme-cloud flex min-h-[100dvh] items-center justify-center bg-bg p-6 text-txt">
         <div className="max-w-md space-y-4 text-center">
           <h1 className="text-2xl font-semibold">
             {t("cloud.publicChat.notFoundHeading", {
               defaultValue: "Agent not found",
             })}
           </h1>
-          <p className="text-sm text-white/60">
+          <p className="text-sm text-muted">
             {error ??
               t("cloud.publicChat.unavailableOrPrivate", {
                 defaultValue:
@@ -142,7 +142,7 @@ export default function PublicChatPage() {
               })}
           </p>
           <Link
-            className="text-sm text-white/70 hover:text-white transition-colors"
+            className="text-sm text-muted hover:text-txt transition-colors"
             to="/"
           >
             {t("cloud.publicChat.openChat", { defaultValue: "Open chat" })}
@@ -153,35 +153,35 @@ export default function PublicChatPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-black p-6 text-white">
+    <div className="theme-cloud flex min-h-[100dvh] items-center justify-center bg-bg p-6 text-txt">
       <div className="w-full max-w-md space-y-6 text-center">
         {character.avatarUrl ? (
           <img
             src={character.avatarUrl}
             alt=""
-            className="mx-auto h-20 w-20 rounded-full border border-white/10 object-cover"
+            className="mx-auto h-20 w-20 rounded-full border border-border object-cover"
           />
         ) : (
-          <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full border border-white/10 bg-white/5 text-2xl font-semibold text-white/70">
+          <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full border border-border bg-bg-elevated text-2xl font-semibold text-muted">
             {character.name.slice(0, 2).toUpperCase()}
           </div>
         )}
         <div className="space-y-2">
           <h1 className="text-2xl font-semibold">{character.name}</h1>
           {character.creatorUsername ? (
-            <p className="text-sm text-white/50">
+            <p className="text-sm text-muted">
               @{character.creatorUsername}
             </p>
           ) : null}
           {character.bio ? (
-            <p className="text-sm leading-relaxed text-white/70">
+            <p className="text-sm leading-relaxed text-muted">
               {character.bio}
             </p>
           ) : null}
         </div>
         <Link
           to={`/?characterId=${encodeURIComponent(character.id)}`}
-          className="inline-flex w-full items-center justify-center bg-[#FF5800] px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-[#e54f00]"
+          className="inline-flex w-full items-center justify-center bg-accent px-4 py-3 text-sm font-semibold text-accent-foreground transition-colors hover:bg-accent-hover"
         >
           {t("cloud.publicChat.startChat", {
             name: character.name,

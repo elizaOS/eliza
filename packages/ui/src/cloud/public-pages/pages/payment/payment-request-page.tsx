@@ -140,25 +140,25 @@ export default function PaymentRequestPage() {
 
   if (isLoading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#080A0D] p-4">
-        <Loader2 className="h-8 w-8 animate-spin text-white/60" />
+      <div className="theme-cloud flex min-h-[100dvh] items-center justify-center bg-bg p-4">
+        <Loader2 className="h-8 w-8 animate-spin text-muted" />
       </div>
     );
   }
 
   if (!paymentRequest) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#080A0D] p-4 text-white">
-        <div className="w-full max-w-sm border border-red-400/30 bg-red-500/10 p-5">
+      <div className="theme-cloud flex min-h-[100dvh] items-center justify-center bg-bg p-4 text-txt">
+        <div className="w-full max-w-sm border border-destructive/30 bg-destructive-subtle p-5">
           <div className="flex items-center gap-3">
-            <AlertCircle className="h-6 w-6 text-red-300" />
+            <AlertCircle className="h-6 w-6 text-destructive" />
             <div>
               <h1 className="text-base font-semibold">
                 {t("cloud.paymentRequest.unavailableTitle", {
                   defaultValue: "Payment request unavailable",
                 })}
               </h1>
-              <p className="mt-1 text-sm text-red-100/75">
+              <p className="mt-1 text-sm text-muted">
                 {error ||
                   t("cloud.paymentRequest.linkUnavailable", {
                     defaultValue: "This payment link is unavailable.",
@@ -167,7 +167,7 @@ export default function PaymentRequestPage() {
             </div>
           </div>
           <Link
-            className="mt-5 inline-flex text-sm text-white/70 hover:text-white"
+            className="mt-5 inline-flex text-sm text-muted hover:text-txt"
             to="/"
           >
             {t("cloud.paymentRequest.returnHome", {
@@ -190,15 +190,15 @@ export default function PaymentRequestPage() {
   const shortId = paymentRequest.id.slice(0, 8);
 
   return (
-    <div className="min-h-screen bg-[#080A0D] px-4 py-8 text-white sm:px-6 lg:px-8">
+    <div className="theme-cloud min-h-[100dvh] bg-bg px-4 py-8 text-txt sm:px-6 lg:px-8">
       <main
         id="main"
-        className="mx-auto flex min-h-[calc(100vh-4rem)] w-full max-w-xl items-center"
+        className="mx-auto flex min-h-[calc(100dvh-4rem)] w-full max-w-xl items-center"
       >
-        <section className="w-full border border-white/10 bg-white/[0.06] p-5 sm:p-7">
+        <section className="w-full border border-border bg-surface p-5 sm:p-7">
           <div className="flex flex-col items-center text-center">
-            <div className="flex h-16 w-16 items-center justify-center border border-orange-400/30 bg-orange-400/10">
-              <CreditCard className="h-7 w-7 text-orange-200" />
+            <div className="flex h-16 w-16 items-center justify-center border border-accent/30 bg-accent-subtle">
+              <CreditCard className="h-7 w-7 text-accent" />
             </div>
             <div className="mt-5 text-5xl font-semibold leading-none sm:text-6xl">
               {formatAmount(
@@ -206,7 +206,7 @@ export default function PaymentRequestPage() {
                 paymentRequest.currency,
               )}
             </div>
-            <div className="mt-3 text-sm text-white/55">
+            <div className="mt-3 text-sm text-muted">
               {isPaid
                 ? t("cloud.paymentRequest.paid", { defaultValue: "Paid" })
                 : isExpired
@@ -231,15 +231,15 @@ export default function PaymentRequestPage() {
                       })}
             </div>
             {paymentRequest.reason && (
-              <p className="mt-3 max-w-md text-sm text-white/65">
+              <p className="mt-3 max-w-md text-sm text-muted-strong">
                 {paymentRequest.reason}
               </p>
             )}
           </div>
 
           {error && (
-            <div className="mt-7 flex items-center gap-3 border border-red-400/30 bg-red-500/10 p-3 text-sm text-red-100">
-              <AlertCircle className="h-5 w-5 shrink-0 text-red-300" />
+            <div className="mt-7 flex items-center gap-3 border border-destructive/30 bg-destructive-subtle p-3 text-sm text-txt">
+              <AlertCircle className="h-5 w-5 shrink-0 text-destructive" />
               <span>{error}</span>
             </div>
           )}
@@ -250,7 +250,7 @@ export default function PaymentRequestPage() {
               type="button"
               disabled={!canPay || isPaying}
               onClick={beginCheckout}
-              className="flex w-full items-center justify-center gap-3 bg-orange-400/10 px-4 py-4 text-white transition hover:bg-white/10 hover:text-white disabled:pointer-events-none disabled:opacity-30"
+              className="flex w-full items-center justify-center gap-3 bg-accent-subtle px-4 py-4 text-txt transition hover:bg-bg-hover disabled:pointer-events-none disabled:opacity-30"
             >
               {isPaying ? (
                 <Loader2 className="h-5 w-5 animate-spin" />
@@ -270,7 +270,7 @@ export default function PaymentRequestPage() {
             </Button>
           </div>
 
-          <div className="mt-6 flex items-center justify-between border-t border-white/10 pt-4 text-xs text-white/35">
+          <div className="mt-6 flex items-center justify-between border-t border-border pt-4 text-xs text-muted">
             <span>#{shortId}</span>
             <span>{paymentRequest.provider}</span>
           </div>

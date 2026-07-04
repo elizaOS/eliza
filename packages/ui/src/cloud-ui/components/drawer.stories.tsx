@@ -4,6 +4,7 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import {
   Drawer,
+  DrawerBody,
   DrawerClose,
   DrawerContent,
   DrawerDescription,
@@ -47,10 +48,10 @@ export const BottomSheet: Story = {
             This will roll out the new agent version to production.
           </DrawerDescription>
         </DrawerHeader>
-        <div className="px-4 pb-2 text-sm text-white/70">
+        <DrawerBody className="px-4 pb-2 text-sm text-white/70">
           The current rollout will be replaced and all active sessions will be
           migrated to the new build.
-        </div>
+        </DrawerBody>
         <DrawerFooter>
           <button type="button" className={primaryButtonClass}>
             Deploy now

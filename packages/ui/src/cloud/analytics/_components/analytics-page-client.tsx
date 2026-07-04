@@ -207,7 +207,7 @@ export function AnalyticsPageClient({
         <div className="space-y-5 lg:max-w-3xl">
           <div className="flex flex-wrap items-center gap-2 gap-y-3 text-xs font-medium text-white/60">
             <span className="flex items-center gap-1 rounded-sm border border-white/20 bg-white/10 px-3 py-1">
-              <CalendarRange className="h-3.5 w-3.5 text-[#FF5800]" />
+              <CalendarRange className="h-3.5 w-3.5 text-[var(--accent)]" />
               {rangeLabel}
             </span>
             <span className="rounded-sm border border-white/20 bg-white/10 px-3 py-1">

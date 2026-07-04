@@ -287,9 +287,9 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
     <div className="space-y-4">
       {/* New API Key Alert */}
       {showKey && displayApiKey && (
-        <div className="p-4 rounded-sm bg-[#FF5800]/10 border border-[#FF5800]/20">
+        <div className="p-4 rounded-sm bg-[var(--accent)]/10 border border-[var(--accent)]/20">
           <div className="flex items-start gap-3">
-            <Key className="h-5 w-5 text-[#FF5800] mt-0.5 shrink-0" />
+            <Key className="h-5 w-5 text-[var(--accent)] mt-0.5 shrink-0" />
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-white mb-2">
                 {t("cloud.apps.overview.apiKeyOnce", {
@@ -375,7 +375,7 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
       <div className="bg-neutral-900 rounded-sm p-4 space-y-3">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-medium text-white flex items-center gap-2">
-            <Rocket className="h-4 w-4 text-[#FF5800]" />
+            <Rocket className="h-4 w-4 text-[var(--accent)]" />
             {t("cloud.apps.overview.deployment", {
               defaultValue: "Deployment",
             })}
@@ -424,7 +424,7 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
         <div className="bg-neutral-900 rounded-sm p-4 space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-medium text-white flex items-center gap-2">
-              <Key className="h-4 w-4 text-[#FF5800]" />
+              <Key className="h-4 w-4 text-[var(--accent)]" />
               {t("cloud.apps.overview.apiKey", { defaultValue: "API Key" })}
             </h3>
             <AlertDialog>
@@ -467,7 +467,7 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
                   </AlertDialogCancel>
                   <AlertDialogAction
                     onClick={handleRegenerateApiKey}
-                    className="bg-[#FF5800] hover:bg-[#e54f00]"
+                    className="bg-[var(--accent)] hover:bg-[#e54f00]"
                   >
                     {t("cloud.apps.overview.regenerate", {
                       defaultValue: "Regenerate",
@@ -524,7 +524,7 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
         {/* Basic Info Card */}
         <div className="bg-neutral-900 rounded-sm p-4 space-y-4">
           <h3 className="text-sm font-medium text-white flex items-center gap-2">
-            <Globe className="h-4 w-4 text-[#FF5800]" />
+            <Globe className="h-4 w-4 text-[var(--accent)]" />
             {t("cloud.apps.overview.appInformation", {
               defaultValue: "App Information",
             })}

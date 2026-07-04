@@ -39,23 +39,22 @@ export function InvoiceDetailClient({ invoice }: InvoiceDetailClientProps) {
 
   const statusColor =
     invoice.status === "paid"
-      ? "text-green-500"
+      ? "text-status-success"
       : invoice.status === "open"
-        ? "text-yellow-500"
-        : "text-red-500";
+        ? "text-status-warning"
+        : "text-destructive";
 
   return (
     <div className="flex flex-col gap-6 max-w-6xl mx-auto p-6">
       {/* Back Navigation */}
-      <div className="border-b border-white/10 pb-4">
+      <div className="border-b border-border pb-4">
         <Button
           variant="ghost"
           type="button"
           onClick={() => navigate("/settings#cloud-billing")}
-          className="group flex items-center gap-2 text-sm text-white/70 hover:text-white transition-all duration-200"
-          style={{ fontFamily: "var(--font-roboto-mono)" }}
+          className="group flex min-h-touch items-center gap-2 font-mono text-sm text-muted hover:text-txt-strong transition-colors"
         >
-          <div className="flex items-center justify-center w-8 h-8 rounded-sm bg-black/40 group-hover:bg-white/10 transition-all duration-200">
+          <div className="flex items-center justify-center w-8 h-8 rounded-sm bg-bg-elevated group-hover:bg-bg-hover transition-colors">
             <ArrowLeft className="h-4 w-4" />
           </div>
           <span className="font-medium">
@@ -73,8 +72,8 @@ export function InvoiceDetailClient({ invoice }: InvoiceDetailClientProps) {
         <div className="relative z-10 space-y-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-2 h-2 rounded-full bg-[var(--brand-orange)]" />
-              <h1 className="text-2xl font-mono text-[#e1e1e1] uppercase">
+              <div className="w-2 h-2 rounded-full bg-accent" />
+              <h1 className="text-2xl font-mono text-txt-strong uppercase">
                 {t("cloud.invoiceDetail.title", {
                   defaultValue: "Invoice Details",
                 })}
@@ -89,7 +88,7 @@ export function InvoiceDetailClient({ invoice }: InvoiceDetailClientProps) {
                     invoice.invoice_pdf &&
                     window.open(invoice.invoice_pdf, "_blank")
                   }
-                  className="flex items-center gap-2 text-base font-mono text-white underline hover:text-white/80 transition-colors"
+                  className="flex min-h-touch items-center gap-2 text-base font-mono text-txt-strong underline hover:text-accent transition-colors"
                 >
                   <Download className="h-4 w-4" />
                   {t("cloud.invoiceDetail.downloadPdf", {
@@ -105,7 +104,7 @@ export function InvoiceDetailClient({ invoice }: InvoiceDetailClientProps) {
                     invoice.hosted_invoice_url &&
                     window.open(invoice.hosted_invoice_url, "_blank")
                   }
-                  className="flex items-center gap-2 text-base font-mono text-white underline hover:text-white/80 transition-colors"
+                  className="flex min-h-touch items-center gap-2 text-base font-mono text-txt-strong underline hover:text-accent transition-colors"
                 >
                   <ExternalLink className="h-4 w-4" />
                   {t("cloud.invoiceDetail.viewInStripe", {
@@ -118,24 +117,26 @@ export function InvoiceDetailClient({ invoice }: InvoiceDetailClientProps) {
 
           <div className="grid grid-cols-3 gap-6">
             <div className="space-y-2">
-              <p className="text-sm font-mono text-white/60 uppercase">
+              <p className="text-sm font-mono text-muted uppercase">
                 {t("cloud.invoiceDetail.invoiceNumber", {
                   defaultValue: "Invoice Number",
                 })}
               </p>
-              <p className="text-base font-mono text-white">
+              <p className="text-base font-mono text-txt-strong">
                 {invoice.invoice_number ||
                   `INV-${invoice.stripe_invoice_id.slice(-8).toUpperCase()}`}
               </p>
             </div>
             <div className="space-y-2">
-              <p className="text-sm font-mono text-white/60 uppercase">
+              <p className="text-sm font-mono text-muted uppercase">
                 {t("cloud.invoiceDetail.date", { defaultValue: "Date" })}
               </p>
-              <p className="text-base font-mono text-white">{formattedDate}</p>
+              <p className="text-base font-mono text-txt-strong">
+                {formattedDate}
+              </p>
             </div>
             <div className="space-y-2">
-              <p className="text-sm font-mono text-white/60 uppercase">
+              <p className="text-sm font-mono text-muted uppercase">
                 {t("cloud.invoiceDetail.status", { defaultValue: "Status" })}
               </p>
               <p className={`text-base font-mono uppercase ${statusColor}`}>
@@ -152,8 +153,8 @@ export function InvoiceDetailClient({ invoice }: InvoiceDetailClientProps) {
 
         <div className="relative z-10 space-y-6">
           <div className="flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full bg-[var(--brand-orange)]" />
-            <h2 className="text-base font-mono text-[#e1e1e1] uppercase">
+            <div className="w-2 h-2 rounded-full bg-accent" />
+            <h2 className="text-base font-mono text-txt-strong uppercase">
               {t("cloud.invoiceDetail.transactionSummary", {
                 defaultValue: "Transaction Summary",
               })}
@@ -162,23 +163,23 @@ export function InvoiceDetailClient({ invoice }: InvoiceDetailClientProps) {
 
           <div className="space-y-0 w-full">
             <div className="flex w-full">
-              <div className="bg-[rgba(10,10,10,0.75)] border border-brand-surface flex-1 p-4">
-                <p className="text-sm font-mono text-white/60 uppercase">
+              <div className="bg-card border border-brand-surface flex-1 p-4">
+                <p className="text-sm font-mono text-muted uppercase">
                   {t("cloud.invoiceDetail.description", {
                     defaultValue: "Description",
                   })}
                 </p>
               </div>
-              <div className="bg-[rgba(10,10,10,0.75)] border-t border-r border-b border-brand-surface flex-1 p-4">
-                <p className="text-sm font-mono text-white/60 uppercase">
+              <div className="bg-card border-t border-r border-b border-brand-surface flex-1 p-4">
+                <p className="text-sm font-mono text-muted uppercase">
                   {t("cloud.invoiceDetail.amount", { defaultValue: "Amount" })}
                 </p>
               </div>
             </div>
 
             <div className="flex w-full">
-              <div className="bg-[rgba(10,10,10,0.75)] border-l border-r border-b border-brand-surface flex-1 p-4">
-                <p className="text-base font-mono text-white">
+              <div className="bg-card border-l border-r border-b border-brand-surface flex-1 p-4">
+                <p className="text-base font-mono text-txt-strong">
                   {invoice.invoice_type === "one_time_purchase"
                     ? t("cloud.invoiceDetail.oneTimeCreditPurchase", {
                         defaultValue: "One-Time Credit Purchase",
@@ -192,8 +193,8 @@ export function InvoiceDetailClient({ invoice }: InvoiceDetailClientProps) {
                         })}
                 </p>
               </div>
-              <div className="bg-[rgba(10,10,10,0.75)] border-r border-b border-brand-surface flex-1 p-4">
-                <p className="text-base font-mono text-white">
+              <div className="bg-card border-r border-b border-brand-surface flex-1 p-4">
+                <p className="text-base font-mono text-txt-strong tabular-nums">
                   ${Number(invoice.amount_paid).toFixed(2)}
                 </p>
               </div>
@@ -201,15 +202,15 @@ export function InvoiceDetailClient({ invoice }: InvoiceDetailClientProps) {
 
             {invoice.credits_added && (
               <div className="flex w-full">
-                <div className="bg-[rgba(10,10,10,0.75)] border-l border-r border-b border-brand-surface flex-1 p-4">
-                  <p className="text-base font-mono text-white">
+                <div className="bg-card border-l border-r border-b border-brand-surface flex-1 p-4">
+                  <p className="text-base font-mono text-txt-strong">
                     {t("cloud.invoiceDetail.creditsAdded", {
                       defaultValue: "Credits Added",
                     })}
                   </p>
                 </div>
-                <div className="bg-[rgba(10,10,10,0.75)] border-r border-b border-brand-surface flex-1 p-4">
-                  <p className="text-base font-mono text-[var(--brand-orange)]">
+                <div className="bg-card border-r border-b border-brand-surface flex-1 p-4">
+                  <p className="text-base font-mono text-accent tabular-nums">
                     +${Number(invoice.credits_added).toFixed(2)}
                   </p>
                 </div>
@@ -218,15 +219,17 @@ export function InvoiceDetailClient({ invoice }: InvoiceDetailClientProps) {
 
             {paidDate && (
               <div className="flex w-full">
-                <div className="bg-[rgba(10,10,10,0.75)] border-l border-r border-b border-brand-surface flex-1 p-4">
-                  <p className="text-base font-mono text-white">
+                <div className="bg-card border-l border-r border-b border-brand-surface flex-1 p-4">
+                  <p className="text-base font-mono text-txt-strong">
                     {t("cloud.invoiceDetail.paymentDate", {
                       defaultValue: "Payment Date",
                     })}
                   </p>
                 </div>
-                <div className="bg-[rgba(10,10,10,0.75)] border-r border-b border-brand-surface flex-1 p-4">
-                  <p className="text-base font-mono text-white">{paidDate}</p>
+                <div className="bg-card border-r border-b border-brand-surface flex-1 p-4">
+                  <p className="text-base font-mono text-txt-strong">
+                    {paidDate}
+                  </p>
                 </div>
               </div>
             )}
@@ -240,8 +243,8 @@ export function InvoiceDetailClient({ invoice }: InvoiceDetailClientProps) {
 
         <div className="relative z-10 space-y-6">
           <div className="flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full bg-[var(--brand-orange)]" />
-            <h2 className="text-base font-mono text-[#e1e1e1] uppercase">
+            <div className="w-2 h-2 rounded-full bg-accent" />
+            <h2 className="text-base font-mono text-txt-strong uppercase">
               {t("cloud.invoiceDetail.paymentInformation", {
                 defaultValue: "Payment Information",
               })}
@@ -250,40 +253,40 @@ export function InvoiceDetailClient({ invoice }: InvoiceDetailClientProps) {
 
           <div className="grid grid-cols-2 gap-6">
             <div className="space-y-2">
-              <p className="text-sm font-mono text-white/60 uppercase">
+              <p className="text-sm font-mono text-muted uppercase">
                 {t("cloud.invoiceDetail.amountDue", {
                   defaultValue: "Amount Due",
                 })}
               </p>
-              <p className="text-base font-mono text-white">
+              <p className="text-base font-mono text-txt-strong tabular-nums">
                 ${Number(invoice.amount_due).toFixed(2)}
               </p>
             </div>
             <div className="space-y-2">
-              <p className="text-sm font-mono text-white/60 uppercase">
+              <p className="text-sm font-mono text-muted uppercase">
                 {t("cloud.invoiceDetail.amountPaid", {
                   defaultValue: "Amount Paid",
                 })}
               </p>
-              <p className="text-base font-mono text-[var(--brand-orange)]">
+              <p className="text-base font-mono text-accent tabular-nums">
                 ${Number(invoice.amount_paid).toFixed(2)}
               </p>
             </div>
             <div className="space-y-2">
-              <p className="text-sm font-mono text-white/60 uppercase">
+              <p className="text-sm font-mono text-muted uppercase">
                 {t("cloud.invoiceDetail.currency", {
                   defaultValue: "Currency",
                 })}
               </p>
-              <p className="text-base font-mono text-white uppercase">
+              <p className="text-base font-mono text-txt-strong uppercase">
                 {invoice.currency}
               </p>
             </div>
             <div className="space-y-2">
-              <p className="text-sm font-mono text-white/60 uppercase">
+              <p className="text-sm font-mono text-muted uppercase">
                 {t("cloud.invoiceDetail.type", { defaultValue: "Type" })}
               </p>
-              <p className="text-base font-mono text-white">
+              <p className="text-base font-mono text-txt-strong">
                 {invoice.invoice_type === "one_time_purchase"
                   ? t("cloud.invoiceDetail.oneTimePurchase", {
                       defaultValue: "One-Time Purchase",
@@ -300,12 +303,12 @@ export function InvoiceDetailClient({ invoice }: InvoiceDetailClientProps) {
           {invoice.stripe_payment_intent_id && (
             <div className="border-t border-brand-surface pt-4">
               <div className="space-y-2">
-                <p className="text-sm font-mono text-white/60 uppercase">
+                <p className="text-sm font-mono text-muted uppercase">
                   {t("cloud.invoiceDetail.paymentIntentId", {
                     defaultValue: "Payment Intent ID",
                   })}
                 </p>
-                <p className="text-xs font-mono text-white/40 break-all">
+                <p className="text-xs font-mono text-muted break-all">
                   {invoice.stripe_payment_intent_id}
                 </p>
               </div>

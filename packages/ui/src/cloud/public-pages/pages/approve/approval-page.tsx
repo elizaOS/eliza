@@ -213,22 +213,22 @@ export default function ApprovalPage() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
-        <Loader2 className="h-6 w-6 animate-spin text-zinc-400" />
+      <div className="flex min-h-[100dvh] items-center justify-center bg-bg text-txt">
+        <Loader2 className="h-6 w-6 animate-spin text-muted" />
       </div>
     );
   }
 
   if (loadError || !request) {
     return (
-      <div className="mx-auto flex min-h-screen max-w-md flex-col items-center justify-center gap-3 p-6 text-center">
-        <AlertCircle className="h-8 w-8 text-red-500" />
+      <div className="mx-auto flex min-h-[100dvh] max-w-md flex-col items-center justify-center gap-3 p-6 text-center text-txt">
+        <AlertCircle className="h-8 w-8 text-destructive" />
         <h1 className="text-lg font-semibold">
           {t("cloud.approval.couldNotLoad", {
             defaultValue: "Could not load approval request",
           })}
         </h1>
-        <p className="text-sm text-zinc-500">
+        <p className="text-sm text-muted">
           {loadError ??
             t("cloud.approval.unknownError", {
               defaultValue: "Unknown error",
@@ -243,31 +243,31 @@ export default function ApprovalPage() {
   const expiresAt = formatTimestamp(request.expiresAt);
 
   return (
-    <div className="mx-auto max-w-xl p-6">
+    <div className="mx-auto max-w-xl p-6 text-txt">
       <div className="flex items-center gap-2">
-        <ShieldCheck className="h-6 w-6 text-[#FF5800]" />
+        <ShieldCheck className="h-6 w-6 text-accent" />
         <h1 className="text-xl font-semibold">
           {t("cloud.approval.heading", { defaultValue: "Approval request" })}
         </h1>
       </div>
 
-      <div className="mt-4 rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950">
+      <div className="mt-4 rounded-lg border border-border bg-card p-4">
         <dl className="grid grid-cols-1 gap-3 text-sm">
           <div>
-            <dt className="text-zinc-500">
+            <dt className="text-muted">
               {t("cloud.approval.kind", { defaultValue: "Kind" })}
             </dt>
             <dd className="font-mono">{request.challengeKind}</dd>
           </div>
           <div>
-            <dt className="text-zinc-500">
+            <dt className="text-muted">
               {t("cloud.approval.status", { defaultValue: "Status" })}
             </dt>
             <dd>{statusLabel(request.status, t)}</dd>
           </div>
           {expiresAt ? (
             <div>
-              <dt className="text-zinc-500">
+              <dt className="text-muted">
                 {t("cloud.approval.expires", { defaultValue: "Expires" })}
               </dt>
               <dd>{expiresAt}</dd>
@@ -275,7 +275,7 @@ export default function ApprovalPage() {
           ) : null}
           {request.expectedSignerIdentityId ? (
             <div>
-              <dt className="text-zinc-500">
+              <dt className="text-muted">
                 {t("cloud.approval.expectedSigner", {
                   defaultValue: "Expected signer",
                 })}
@@ -287,7 +287,7 @@ export default function ApprovalPage() {
           ) : null}
           {signerKind ? (
             <div>
-              <dt className="text-zinc-500">
+              <dt className="text-muted">
                 {t("cloud.approval.signerKind", {
                   defaultValue: "Signer kind",
                 })}
@@ -299,12 +299,12 @@ export default function ApprovalPage() {
 
         {challenge.message ? (
           <div className="mt-4">
-            <p className="text-xs uppercase tracking-wide text-zinc-500">
+            <p className="text-xs uppercase tracking-wide text-muted">
               {t("cloud.approval.challengeMessage", {
                 defaultValue: "Challenge message",
               })}
             </p>
-            <pre className="mt-1 max-h-64 overflow-auto whitespace-pre-wrap break-all rounded bg-zinc-50 p-3 text-xs dark:bg-zinc-900">
+            <pre className="mt-1 max-h-64 overflow-auto whitespace-pre-wrap break-all rounded bg-surface p-3 text-xs">
               {challenge.message}
             </pre>
           </div>
@@ -312,7 +312,7 @@ export default function ApprovalPage() {
       </div>
 
       {submitResult === "approved" ? (
-        <div className="mt-6 flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-800 dark:border-green-900 dark:bg-green-950 dark:text-green-200">
+        <div className="mt-6 flex items-center gap-2 rounded-lg border border-status-success/30 bg-status-success-bg p-3 text-sm text-status-success">
           <CheckCircle2 className="h-5 w-5" />
           {t("cloud.approval.signatureAccepted", {
             defaultValue: "Signature accepted.",
@@ -321,7 +321,7 @@ export default function ApprovalPage() {
       ) : null}
 
       {submitResult === "denied" ? (
-        <div className="mt-6 flex items-center gap-2 rounded-lg border border-zinc-300 bg-zinc-50 p-3 text-sm text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300">
+        <div className="mt-6 flex items-center gap-2 rounded-lg border border-border bg-surface p-3 text-sm text-muted-strong">
           <XCircle className="h-5 w-5" />
           {t("cloud.approval.approvalDenied", {
             defaultValue: "Approval denied.",
@@ -353,10 +353,10 @@ export default function ApprovalPage() {
                     })
             }
             rows={4}
-            className="w-full rounded border border-zinc-300 bg-white p-2 font-mono text-xs dark:border-zinc-700 dark:bg-zinc-950"
+            className="w-full rounded border border-input bg-bg p-2 font-mono text-xs text-txt"
           />
           {submitError ? (
-            <p className="text-sm text-red-600">{submitError}</p>
+            <p className="text-sm text-destructive">{submitError}</p>
           ) : null}
           <div className="flex gap-2">
             <Button
@@ -364,7 +364,7 @@ export default function ApprovalPage() {
               type="button"
               onClick={handleApprove}
               disabled={submitting || signature.trim().length === 0}
-              className="inline-flex items-center gap-2 rounded bg-[#FF5800] hover:bg-[#e54f00] px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+              className="inline-flex items-center gap-2 rounded bg-accent hover:bg-accent-hover px-4 py-2 text-sm font-medium text-accent-foreground disabled:opacity-50"
             >
               {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
               {t("cloud.approval.approve", { defaultValue: "Approve" })}
@@ -374,7 +374,7 @@ export default function ApprovalPage() {
               type="button"
               onClick={handleDeny}
               disabled={submitting || signature.trim().length === 0}
-              className="inline-flex items-center gap-2 rounded border border-zinc-300 px-4 py-2 text-sm dark:border-zinc-700"
+              className="inline-flex items-center gap-2 rounded border border-border px-4 py-2 text-sm hover:bg-bg-hover"
             >
               {t("cloud.approval.deny", { defaultValue: "Deny" })}
             </Button>

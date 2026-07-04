@@ -130,9 +130,9 @@ export default function AgentDetailPage() {
       <div className="flex items-center justify-between">
         <Link
           to="/dashboard/agents"
-          className="group flex items-center gap-2 text-sm text-white/50 hover:text-white transition-colors"
+          className="group flex min-h-touch items-center gap-2 text-sm text-muted-strong hover:text-txt-strong transition-colors"
         >
-          <div className="flex items-center justify-center w-7 h-7 bg-black/40 group-hover:bg-white/10 transition-colors">
+          <div className="flex items-center justify-center w-7 h-7 bg-card group-hover:bg-bg-hover transition-colors">
             <ArrowLeft className="h-3.5 w-3.5" />
           </div>
           <span>
@@ -149,19 +149,16 @@ export default function AgentDetailPage() {
 
       <div className="space-y-4">
         <div className="flex items-start gap-4">
-          <div className="flex items-center justify-center w-12 h-12 border border-[var(--brand-orange)]/25 bg-[var(--brand-orange)]/10 shrink-0">
+          <div className="flex items-center justify-center w-12 h-12 border border-accent/25 bg-accent-subtle shrink-0">
             {isDockerBacked ? (
-              <Server className="h-6 w-6 text-[var(--brand-orange)]" />
+              <Server className="h-6 w-6 text-accent" />
             ) : (
-              <Cloud className="h-6 w-6 text-[var(--brand-orange)]" />
+              <Cloud className="h-6 w-6 text-accent" />
             )}
           </div>
           <div className="min-w-0 space-y-1.5">
             <div className="flex flex-wrap items-center gap-2.5">
-              <h1
-                className="text-2xl font-semibold text-white truncate"
-                style={{ fontFamily: "var(--font-roboto-mono)" }}
-              >
+              <h1 className="text-2xl font-semibold text-txt-strong truncate font-mono">
                 {agent.agentName ??
                   t("cloud.agents.detail.unnamedAgent", {
                     defaultValue: "Unnamed Agent",
@@ -177,35 +174,29 @@ export default function AgentDetailPage() {
                 {agent.status}
               </Badge>
             </div>
-            <div className="flex items-center gap-3 text-xs text-white/35">
+            <div className="flex items-center gap-3 text-xs text-muted">
               <span className="font-mono tabular-nums">{agent.id}</span>
             </div>
           </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-px bg-white/5 border border-white/10">
-        <div className="bg-black/60 p-4 space-y-1">
-          <p className="text-[11px] uppercase tracking-[0.2em] text-white/35">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-px bg-border border border-border">
+        <div className="bg-card p-4 space-y-1">
+          <p className="text-xs-tight uppercase tracking-[0.2em] text-muted">
             {t("cloud.agents.detail.statusLabel", { defaultValue: "Status" })}
           </p>
-          <p
-            className="text-lg font-medium text-white capitalize tabular-nums"
-            style={{ fontFamily: "var(--font-roboto-mono)" }}
-          >
+          <p className="text-lg font-medium text-txt-strong capitalize tabular-nums font-mono">
             {agent.status}
           </p>
         </div>
-        <div className="bg-black/60 p-4 space-y-1">
-          <p className="text-[11px] uppercase tracking-[0.2em] text-white/35">
+        <div className="bg-card p-4 space-y-1">
+          <p className="text-xs-tight uppercase tracking-[0.2em] text-muted">
             {t("cloud.agents.detail.databaseLabel", {
               defaultValue: "Database",
             })}
           </p>
-          <p
-            className="text-lg font-medium text-white tabular-nums"
-            style={{ fontFamily: "var(--font-roboto-mono)" }}
-          >
+          <p className="text-lg font-medium text-txt-strong tabular-nums font-mono">
             {agent.databaseStatus === "ready"
               ? t("cloud.agents.detail.dbConnected", {
                   defaultValue: "Connected",
@@ -221,14 +212,11 @@ export default function AgentDetailPage() {
                     })}
           </p>
         </div>
-        <div className="bg-black/60 p-4 space-y-1">
-          <p className="text-[11px] uppercase tracking-[0.2em] text-white/35">
+        <div className="bg-card p-4 space-y-1">
+          <p className="text-xs-tight uppercase tracking-[0.2em] text-muted">
             {t("cloud.agents.detail.costLabel", { defaultValue: "Cost" })}
           </p>
-          <p
-            className="text-lg font-medium text-white tabular-nums"
-            style={{ fontFamily: "var(--font-roboto-mono)" }}
-          >
+          <p className="text-lg font-medium text-txt-strong tabular-nums font-mono">
             {isRunningish
               ? formatHourlyRate(AGENT_PRICING.RUNNING_HOURLY_RATE)
               : isIdle
@@ -236,43 +224,37 @@ export default function AgentDetailPage() {
                 : "—"}
           </p>
           {(isRunningish || isIdle) && (
-            <p className="text-[10px] text-white/30 tabular-nums">
+            <p className="text-2xs text-muted tabular-nums">
               {isRunningish
                 ? formatMonthlyEstimate(AGENT_PRICING.RUNNING_HOURLY_RATE)
                 : formatMonthlyEstimate(AGENT_PRICING.IDLE_HOURLY_RATE)}
             </p>
           )}
         </div>
-        <div className="bg-black/60 p-4 space-y-1">
-          <p className="text-[11px] uppercase tracking-[0.2em] text-white/35">
+        <div className="bg-card p-4 space-y-1">
+          <p className="text-xs-tight uppercase tracking-[0.2em] text-muted">
             {t("cloud.agents.detail.createdLabel", {
               defaultValue: "Created",
             })}
           </p>
-          <p
-            className="text-lg font-medium text-white tabular-nums"
-            style={{ fontFamily: "var(--font-roboto-mono)" }}
-          >
+          <p className="text-lg font-medium text-txt-strong tabular-nums font-mono">
             {formatDate(agent.createdAt)}
           </p>
-          <p className="text-[10px] text-white/30 tabular-nums">
+          <p className="text-2xs text-muted tabular-nums">
             {formatTime(agent.createdAt)}
           </p>
         </div>
-        <div className="bg-black/60 p-4 space-y-1">
-          <p className="text-[11px] uppercase tracking-[0.2em] text-white/35">
+        <div className="bg-card p-4 space-y-1">
+          <p className="text-xs-tight uppercase tracking-[0.2em] text-muted">
             {t("cloud.agents.detail.lastHeartbeatLabel", {
               defaultValue: "Last Heartbeat",
             })}
           </p>
-          <p
-            className="text-lg font-medium text-white tabular-nums"
-            style={{ fontFamily: "var(--font-roboto-mono)" }}
-          >
+          <p className="text-lg font-medium text-txt-strong tabular-nums font-mono">
             {formatRelativeShort(agent.lastHeartbeatAt, t)}
           </p>
           {agent.lastHeartbeatAt && (
-            <p className="text-[10px] text-white/30 tabular-nums">
+            <p className="text-2xs text-muted tabular-nums">
               {formatDate(agent.lastHeartbeatAt)}
             </p>
           )}
@@ -281,17 +263,17 @@ export default function AgentDetailPage() {
 
       <ElizaAgentTabs agentId={agent.id}>
         {agent.errorMessage && (
-          <div className="flex items-start gap-3 p-4 bg-red-950/20 border border-red-500/20">
-            <AlertCircle className="h-4 w-4 text-red-400 shrink-0 mt-0.5" />
+          <div className="flex items-start gap-3 p-4 bg-destructive-subtle border border-destructive/20">
+            <AlertCircle className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
             <div className="min-w-0 space-y-0.5">
-              <p className="text-sm font-medium text-red-400">
+              <p className="text-sm font-medium text-destructive">
                 {t("cloud.agents.detail.errorWithCount", {
                   defaultValue: "Error ({{n}} occurrence{{plural}})",
                   n: agent.errorCount,
                   plural: agent.errorCount !== 1 ? "s" : "",
                 })}
               </p>
-              <p className="text-sm text-red-400/70">{agent.errorMessage}</p>
+              <p className="text-sm text-destructive/70">{agent.errorMessage}</p>
             </div>
           </div>
         )}
@@ -299,14 +281,14 @@ export default function AgentDetailPage() {
         {agent.webUiUrl && (
           <section className="space-y-3">
             <div className="flex items-center gap-2">
-              <span className="inline-block size-2 bg-[var(--brand-orange)]" />
-              <p className="font-mono text-[11px] uppercase tracking-[0.32em] text-white/60">
+              <span className="inline-block size-2 bg-accent" />
+              <p className="font-mono text-xs-tight uppercase tracking-[0.32em] text-muted-strong">
                 {t("cloud.agents.detail.webUi", { defaultValue: "Web UI" })}
               </p>
             </div>
 
-            <div className="border border-white/10 bg-black/40 px-4 py-3 flex items-start gap-3 text-sm">
-              <span className="text-[11px] uppercase tracking-widest text-white/35 shrink-0 pt-0.5">
+            <div className="border border-border bg-card px-4 py-3 flex items-start gap-3 text-sm">
+              <span className="text-xs-tight uppercase tracking-widest text-muted shrink-0 pt-0.5">
                 {t("cloud.agents.detail.publicUrl", {
                   defaultValue: "Public URL",
                 })}
@@ -315,7 +297,7 @@ export default function AgentDetailPage() {
                 href={agent.webUiUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-white/74 hover:text-white font-mono text-xs break-all transition-colors"
+                className="text-muted-strong hover:text-txt-strong font-mono text-xs break-all transition-colors"
               >
                 {agent.webUiUrl}
               </a>
@@ -326,15 +308,15 @@ export default function AgentDetailPage() {
         {adminDetails && isDockerBacked && (
           <section className="space-y-3">
             <div className="flex items-center gap-2">
-              <span className="inline-block size-2 bg-[var(--brand-orange)]" />
-              <p className="font-mono text-[11px] uppercase tracking-[0.32em] text-white/60">
+              <span className="inline-block size-2 bg-accent" />
+              <p className="font-mono text-xs-tight uppercase tracking-[0.32em] text-muted-strong">
                 {t("cloud.agents.detail.infrastructure", {
                   defaultValue: "Infrastructure",
                 })}
               </p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-px bg-white/5 border border-white/10">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-px bg-border border border-border">
               <InfoCell
                 label={t("cloud.agents.detail.node", { defaultValue: "Node" })}
                 value={adminDetails.nodeId ?? "—"}
@@ -361,7 +343,7 @@ export default function AgentDetailPage() {
                   })}
                   value={adminDetails.headscaleIp}
                   mono
-                  accent="emerald"
+                  accent="success"
                 />
               )}
               {adminDetails.bridgePort !== null && (
@@ -389,8 +371,8 @@ export default function AgentDetailPage() {
         {adminDetails?.sshCommand && (
           <section className="space-y-3">
             <div className="flex items-center gap-2">
-              <span className="inline-block size-2 bg-[var(--brand-orange)]" />
-              <p className="font-mono text-[11px] uppercase tracking-[0.32em] text-white/60">
+              <span className="inline-block size-2 bg-accent" />
+              <p className="font-mono text-xs-tight uppercase tracking-[0.32em] text-muted-strong">
                 {t("cloud.agents.detail.sshAccess", {
                   defaultValue: "SSH Access",
                 })}
@@ -398,22 +380,16 @@ export default function AgentDetailPage() {
             </div>
 
             <div className="space-y-2">
-              <div className="flex items-center gap-3 px-4 py-3 border border-white/10 bg-black/60">
-                <Terminal className="h-4 w-4 text-green-400 shrink-0" />
-                <code
-                  className="text-sm text-green-400 font-mono flex-1"
-                  style={{ fontFamily: "var(--font-roboto-mono)" }}
-                >
+              <div className="flex items-center gap-3 px-4 py-3 border border-border bg-card">
+                <Terminal className="h-4 w-4 text-status-success shrink-0" />
+                <code className="text-sm text-status-success font-mono flex-1">
                   {adminDetails.sshCommand}
                 </code>
               </div>
               {adminDetails.bridgePort !== null && adminDetails.headscaleIp && (
-                <div className="flex items-center gap-3 px-4 py-3 border border-white/10 bg-black/60">
-                  <Terminal className="h-4 w-4 text-[#FF5800] shrink-0" />
-                  <code
-                    className="text-sm text-[#FF5800] font-mono flex-1"
-                    style={{ fontFamily: "var(--font-roboto-mono)" }}
-                  >
+                <div className="flex items-center gap-3 px-4 py-3 border border-border bg-card">
+                  <Terminal className="h-4 w-4 text-accent shrink-0" />
+                  <code className="text-sm text-accent font-mono flex-1">
                     {`curl http://${adminDetails.headscaleIp}:${adminDetails.bridgePort}/health`}
                   </code>
                 </div>
@@ -425,16 +401,16 @@ export default function AgentDetailPage() {
         {adminDetails && !isDockerBacked && agent.bridgeUrl && (
           <section className="space-y-3">
             <div className="flex items-center gap-2">
-              <span className="inline-block size-2 bg-[var(--brand-orange)]" />
-              <p className="font-mono text-[11px] uppercase tracking-[0.32em] text-white/60">
+              <span className="inline-block size-2 bg-accent" />
+              <p className="font-mono text-xs-tight uppercase tracking-[0.32em] text-muted-strong">
                 {t("cloud.agents.detail.sandboxConnection", {
                   defaultValue: "Sandbox Connection",
                 })}
               </p>
             </div>
 
-            <div className="border border-white/10 bg-black/40 px-4 py-3 flex items-start gap-3">
-              <span className="text-[11px] uppercase tracking-widest text-white/35 shrink-0 pt-0.5">
+            <div className="border border-border bg-card px-4 py-3 flex items-start gap-3">
+              <span className="text-xs-tight uppercase tracking-widest text-muted shrink-0 pt-0.5">
                 {t("cloud.agents.detail.bridgeUrl", {
                   defaultValue: "Bridge URL",
                 })}
@@ -443,7 +419,7 @@ export default function AgentDetailPage() {
                 href={agent.bridgeUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-sm text-white/70 hover:text-white flex items-center gap-1 transition-colors font-mono break-all"
+                className="text-sm text-txt hover:text-txt-strong flex items-center gap-1 transition-colors font-mono break-all"
               >
                 {agent.bridgeUrl}
                 <ExternalLink className="h-3 w-3 shrink-0" />
@@ -506,23 +482,22 @@ function InfoCell({
   label: string;
   value: string;
   mono?: boolean;
-  accent?: "emerald" | "neutral" | "orange";
+  accent?: "success" | "neutral" | "orange";
 }) {
   const valueColor =
-    accent === "emerald"
-      ? "text-green-400"
+    accent === "success"
+      ? "text-status-success"
       : accent === "orange"
-        ? "text-orange-400"
-        : "text-white/80";
+        ? "text-accent"
+        : "text-txt-strong";
 
   return (
-    <div className="bg-black/60 p-4 space-y-1 min-w-0">
-      <p className="text-[11px] uppercase tracking-[0.2em] text-white/35">
+    <div className="bg-card p-4 space-y-1 min-w-0">
+      <p className="text-xs-tight uppercase tracking-[0.2em] text-muted">
         {label}
       </p>
       <p
         className={`text-sm font-medium ${valueColor} break-all ${mono ? "font-mono" : ""}`}
-        style={mono ? { fontFamily: "var(--font-roboto-mono)" } : undefined}
       >
         {value}
       </p>

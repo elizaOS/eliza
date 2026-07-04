@@ -64,9 +64,9 @@ export function CostAlerts({ costTrending }: CostAlertsProps) {
   }
 
   const toneClasses: Record<"warning" | "error" | "info", string> = {
-    warning: "border-[#FF5800]/40 bg-[#FF5800]/10 text-white",
-    error: "border-[#FF5800] bg-[#FF5800] text-black",
-    info: "border-[#0B35F1]/40 bg-[#0B35F1]/10 text-white",
+    warning: "border-[var(--accent)]/40 bg-[var(--accent)]/10 text-white",
+    error: "border-[var(--accent)] bg-[var(--accent)] text-black",
+    info: "border-border bg-surface text-txt",
   };
 
   const iconMap: Record<"warning" | "error" | "info", ReactNode> = {

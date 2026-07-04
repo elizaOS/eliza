@@ -237,25 +237,25 @@ export default function AppChargePaymentPage() {
 
   if (isLoading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#080A0D] p-4">
-        <Loader2 className="h-8 w-8 animate-spin text-white/60" />
+      <div className="theme-cloud flex min-h-[100dvh] items-center justify-center bg-bg p-4">
+        <Loader2 className="h-8 w-8 animate-spin text-muted" />
       </div>
     );
   }
 
   if (!details || !charge) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#080A0D] p-4 text-white">
-        <div className="w-full max-w-sm border border-red-400/30 bg-red-500/10 p-5">
+      <div className="theme-cloud flex min-h-[100dvh] items-center justify-center bg-bg p-4 text-txt">
+        <div className="w-full max-w-sm border border-destructive/30 bg-destructive-subtle p-5">
           <div className="flex items-center gap-3">
-            <AlertCircle className="h-6 w-6 text-red-300" />
+            <AlertCircle className="h-6 w-6 text-destructive" />
             <div>
               <h1 className="text-base font-semibold">
                 {t("cloud.appCharge.unavailableTitle", {
                   defaultValue: "Charge unavailable",
                 })}
               </h1>
-              <p className="mt-1 text-sm text-red-100/75">
+              <p className="mt-1 text-sm text-muted">
                 {error ||
                   t("cloud.appCharge.linkUnavailable", {
                     defaultValue: "This payment link is unavailable.",
@@ -264,7 +264,7 @@ export default function AppChargePaymentPage() {
             </div>
           </div>
           <Link
-            className="mt-5 inline-flex text-sm text-white/80 hover:text-white"
+            className="mt-5 inline-flex text-sm text-muted-strong hover:text-txt"
             to="/"
           >
             {t("cloud.appCharge.returnHome", { defaultValue: "Return home" })}
@@ -275,13 +275,13 @@ export default function AppChargePaymentPage() {
   }
 
   const statusIcon = isPaid ? (
-    <CheckCircle2 className="h-7 w-7 text-green-200" />
+    <CheckCircle2 className="h-7 w-7 text-status-success" />
   ) : isExpired ? (
-    <AlertCircle className="h-7 w-7 text-orange-200" />
+    <AlertCircle className="h-7 w-7 text-accent" />
   ) : returnedFromPayment ? (
-    <Loader2 className="h-7 w-7 animate-spin text-white/80" />
+    <Loader2 className="h-7 w-7 animate-spin text-muted-strong" />
   ) : (
-    <CreditCard className="h-7 w-7 text-white/80" />
+    <CreditCard className="h-7 w-7 text-muted-strong" />
   );
   const statusText = isPaid
     ? t("cloud.appCharge.statusPaid", { defaultValue: "Paid" })
@@ -291,29 +291,29 @@ export default function AppChargePaymentPage() {
         ? t("cloud.appCharge.statusConfirming", { defaultValue: "Confirming" })
         : t("cloud.appCharge.statusReady", { defaultValue: "Ready" });
   const statusClass = isPaid
-    ? "border-green-300/30 bg-green-400/10 text-green-100"
+    ? "border-status-success/30 bg-status-success-bg text-status-success"
     : isExpired
-      ? "border-orange-300/30 bg-orange-400/10 text-orange-100"
-      : "border-white/15 bg-white/[0.06] text-white";
+      ? "border-accent/30 bg-accent-subtle text-accent"
+      : "border-border-strong bg-surface text-txt";
   const shortId = charge.id.slice(0, 8);
 
   return (
-    <div className="min-h-screen bg-[#080A0D] px-4 py-8 text-white sm:px-6 lg:px-8">
+    <div className="theme-cloud min-h-[100dvh] bg-bg px-4 py-8 text-txt sm:px-6 lg:px-8">
       <main
         id="main"
-        className="mx-auto flex min-h-[calc(100vh-4rem)] w-full max-w-xl items-center"
+        className="mx-auto flex min-h-[calc(100dvh-4rem)] w-full max-w-xl items-center"
       >
-        <section className="w-full border border-white/10 bg-white/[0.06] p-5 sm:p-7">
+        <section className="w-full border border-border bg-surface p-5 sm:p-7">
           <div className="flex items-start justify-between gap-4">
             <div className="flex min-w-0 items-center gap-3">
               {details.app.logo_url ? (
                 <img
                   src={details.app.logo_url}
                   alt=""
-                  className="h-12 w-12 shrink-0 border border-white/10 object-cover"
+                  className="h-12 w-12 shrink-0 border border-border object-cover"
                 />
               ) : (
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center border border-white/10 bg-white/5 text-sm font-semibold text-white/70">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center border border-border bg-bg-elevated text-sm font-semibold text-muted">
                   {details.app.name.slice(0, 2).toUpperCase()}
                 </div>
               )}
@@ -321,7 +321,7 @@ export default function AppChargePaymentPage() {
                 <h1 className="truncate text-lg font-semibold">
                   {details.app.name}
                 </h1>
-                <p className="truncate text-sm text-white/50">
+                <p className="truncate text-sm text-muted">
                   {charge.description ||
                     details.app.description ||
                     t("cloud.appCharge.creditCharge", {
@@ -341,7 +341,7 @@ export default function AppChargePaymentPage() {
               })}
               onClick={() => loadCharge()}
               disabled={isLoading}
-              className="flex h-10 w-10 shrink-0 items-center justify-center border border-white/10 bg-white/5 text-white/55 transition hover:border-white/25 hover:text-white disabled:opacity-40"
+              className="flex h-10 w-10 shrink-0 items-center justify-center border border-border bg-bg-elevated text-muted transition hover:border-border-strong hover:text-txt disabled:opacity-40"
             >
               <RotateCcw className="h-4 w-4" />
             </Button>
@@ -356,7 +356,7 @@ export default function AppChargePaymentPage() {
             <div className="mt-5 text-5xl font-semibold leading-none sm:text-6xl">
               {formatAmount(charge.amountUsd)}
             </div>
-            <div className="mt-3 text-sm text-white/55">
+            <div className="mt-3 text-sm text-muted">
               {t("cloud.appCharge.statusExpiresLine", {
                 status: statusText,
                 date: formatDate(charge.expiresAt),
@@ -364,7 +364,7 @@ export default function AppChargePaymentPage() {
               })}
             </div>
             {charge.paidAt && (
-              <div className="mt-2 text-xs text-green-200/75">
+              <div className="mt-2 text-xs text-status-success">
                 {t("cloud.appCharge.confirmedAt", {
                   date: formatDate(charge.paidAt),
                   defaultValue: "Confirmed {{date}}",
@@ -374,15 +374,15 @@ export default function AppChargePaymentPage() {
           </div>
 
           {error && (
-            <div className="mt-7 flex items-center gap-3 border border-red-400/30 bg-red-500/10 p-3 text-sm text-red-100">
-              <AlertCircle className="h-5 w-5 shrink-0 text-red-300" />
+            <div className="mt-7 flex items-center gap-3 border border-destructive/30 bg-destructive-subtle p-3 text-sm text-txt">
+              <AlertCircle className="h-5 w-5 shrink-0 text-destructive" />
               <span>{error}</span>
             </div>
           )}
 
           {returnedFromPayment && !isPaid && !isExpired && (
-            <div className="mt-7 flex items-center gap-3 border border-white/15 bg-white/[0.06] p-3 text-sm text-white">
-              <Loader2 className="h-5 w-5 shrink-0 animate-spin text-white/80" />
+            <div className="mt-7 flex items-center gap-3 border border-border-strong bg-surface p-3 text-sm text-txt">
+              <Loader2 className="h-5 w-5 shrink-0 animate-spin text-muted-strong" />
               <span>
                 {t("cloud.appCharge.waitingConfirmation", {
                   defaultValue: "Waiting for confirmation.",
@@ -404,7 +404,7 @@ export default function AppChargePaymentPage() {
                 checkoutProvider !== null
               }
               onClick={() => beginCheckout("stripe")}
-              className="group flex aspect-[1.35] min-h-28 flex-col items-center justify-center gap-3 bg-orange-400/10 text-white transition hover:bg-white/10 hover:text-white disabled:pointer-events-none disabled:opacity-30"
+              className="group flex aspect-[1.35] min-h-28 flex-col items-center justify-center gap-3 bg-accent-subtle text-txt transition hover:bg-bg-hover disabled:pointer-events-none disabled:opacity-30"
             >
               {checkoutProvider === "stripe" ? (
                 <Loader2 className="h-9 w-9 animate-spin" />
@@ -427,7 +427,7 @@ export default function AppChargePaymentPage() {
                 checkoutProvider !== null
               }
               onClick={() => beginCheckout("oxapay")}
-              className="group flex aspect-[1.35] min-h-28 flex-col items-center justify-center gap-3 border border-green-300/25 bg-green-400/10 text-green-100 transition hover:border-green-200/60 hover:bg-green-300/15 disabled:pointer-events-none disabled:opacity-30"
+              className="group flex aspect-[1.35] min-h-28 flex-col items-center justify-center gap-3 border border-status-success/25 bg-status-success-bg text-status-success transition hover:border-status-success/60 disabled:pointer-events-none disabled:opacity-30"
             >
               {checkoutProvider === "oxapay" ? (
                 <Loader2 className="h-9 w-9 animate-spin" />
@@ -440,7 +440,7 @@ export default function AppChargePaymentPage() {
             </Button>
           </div>
 
-          <div className="mt-6 flex items-center justify-between border-t border-white/10 pt-4 text-xs text-white/35">
+          <div className="mt-6 flex items-center justify-between border-t border-border pt-4 text-xs text-muted">
             <span>#{shortId}</span>
             <span>{charge.providers.join(" / ")}</span>
           </div>
