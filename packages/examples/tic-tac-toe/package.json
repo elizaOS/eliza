@@ -11,8 +11,10 @@
     "bench": "bun run game.ts --bench",
     "test": "bun run game.ts --bench --no-prompt --iterations=5",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
-    "typecheck": "tsgo --noEmit",
-    "build": "bun run typecheck"
+    "lint:check": "bunx @biomejs/biome check .",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format .",
+    "typecheck": "tsgo --noEmit"
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
