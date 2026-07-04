@@ -1,3 +1,7 @@
+/**
+ * Storybook states for the automations feed, including backendless loading and
+ * connected-credential context variants.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { withMockApp } from "../../storybook/mock-providers.helpers";
 import { AutomationsFeed } from "./AutomationsFeed";

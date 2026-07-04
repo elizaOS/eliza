@@ -1,3 +1,7 @@
+/**
+ * Embeds an app-run viewer iframe and coordinates the origin-pinned
+ * postMessage authentication handshake for hosted app surfaces.
+ */
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { AppViewerAuthMessage } from "../../api/client-types-cloud";
 import {
@@ -34,7 +38,7 @@ export interface EmbeddedAppViewerProps {
  * postMessage auth payload) runs the `*_READY` → auth handshake so the embedded
  * app loads authenticated — e.g. the full Feed web app signed in as the agent.
  *
- * Extracted from {@link FullscreenView} so any view (Feed, future embedded apps) can
+ * Extracted from {@link FullscreenView} so any view or embedded app can
  * reuse the exact same secure, origin-pinned handshake. The auth payload carries
  * a session/agent token, so it is only ever posted to a concrete, verified
  * http(s) `targetOrigin`; an unparseable/non-http(s)/opaque viewer origin fails

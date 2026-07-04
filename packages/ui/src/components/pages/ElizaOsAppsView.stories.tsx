@@ -1,3 +1,7 @@
+/**
+ * Storybook states for the Android-native Phone, Messages, and Contacts app
+ * pages when the native plugin bridge is absent.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { withMockApp } from "../../storybook/mock-providers.helpers";
 import {

@@ -1,3 +1,7 @@
+/**
+ * Chooses when blocked or failed coding-agent sessions should pull focus into
+ * the Terminal channel without repeatedly stealing attention.
+ */
 import type { CodingAgentSession } from "../../api/client";
 
 /**
@@ -25,7 +29,7 @@ export function isProblemSessionStatus(
  * - A problem session the user is already viewing is marked handled for the
  *   same reason.
  * - Sessions that left the problem state (or left the list) are evicted, so a
- *   NEW error/blocked transition can auto-focus again.
+ *   fresh error/blocked transition can auto-focus again.
  *
  * Returns the sessionId to focus, or null when nothing new needs attention.
  */
@@ -42,7 +46,7 @@ export function pickProblemSessionToAutoFocus(
   }
 
   // Evict sessions that recovered/finished: their next problem transition is a
-  // new event and may auto-focus again.
+  // The next problem state is a fresh event and may auto-focus again.
   for (const id of handledSessionIds) {
     if (!problemIds.has(id)) {
       handledSessionIds.delete(id);

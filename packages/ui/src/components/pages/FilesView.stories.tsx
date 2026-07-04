@@ -1,3 +1,7 @@
+/**
+ * Storybook states for the Files page using deterministic stored-file fixtures
+ * and stubbed file client methods.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { client, type StoredFile } from "../../api";
 import { withMockApp } from "../../storybook/mock-providers.helpers";

@@ -1,3 +1,7 @@
+/**
+ * Storybook states for the dynamic view bundle loader, covering loading,
+ * rejected imports, view-type variants, and forwarded props.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { withMockApp } from "../../storybook/mock-providers.helpers";
 import { DynamicViewLoader } from "./DynamicViewLoader";

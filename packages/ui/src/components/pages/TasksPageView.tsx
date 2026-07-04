@@ -1,3 +1,7 @@
+/**
+ * Hosts the full-page task coordinator panel inside the Tasks shell view
+ * without duplicating the panel's own header or empty state.
+ */
 import { CodingAgentTasksPanel } from "../../slots/task-coordinator-slots.js";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 

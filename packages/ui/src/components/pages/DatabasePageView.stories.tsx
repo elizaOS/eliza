@@ -1,3 +1,7 @@
+/**
+ * Storybook states for the Database page shell across tables, media, vectors,
+ * and optional content-header layouts.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { mockApp } from "../../storybook/mock-providers.helpers";
 import { DatabasePageView } from "./DatabasePageView";

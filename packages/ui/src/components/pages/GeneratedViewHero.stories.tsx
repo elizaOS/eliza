@@ -1,3 +1,7 @@
+/**
+ * Storybook states for generated view hero tiles, including deterministic
+ * palette selection, pinned built-in palettes, and icon fallbacks.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { GeneratedViewHero } from "./GeneratedViewHero";
 

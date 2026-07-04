@@ -1,3 +1,7 @@
+/**
+ * Storybook coverage for the database table editor in standalone and
+ * externally-navigated page layouts.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { withMockApp } from "../../storybook/mock-providers.helpers";
 import { DatabaseView } from "./DatabaseView";

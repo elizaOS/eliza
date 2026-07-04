@@ -1,3 +1,7 @@
+/**
+ * Verifies the native-app read permission gate blocks denied Contacts and
+ * Messages bridge reads before Capacitor emits raw plugin errors.
+ */
 import { describe, expect, it, vi } from "vitest";
 import { ensureNativeReadGranted } from "./ElizaOsAppsView";
 

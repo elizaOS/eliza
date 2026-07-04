@@ -1,3 +1,7 @@
+/**
+ * Resolves and renders the strongest available plugin visual, from connector
+ * brand icons through provider logos to deterministic monogram tiles.
+ */
 import { useState } from "react";
 import type { PluginInfo } from "../../api";
 import { getProviderLogo } from "../../providers";

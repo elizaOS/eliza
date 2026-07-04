@@ -1,3 +1,7 @@
+/**
+ * Storybook states for the Eliza Cloud dashboard connection, credits, billing,
+ * and authentication status surfaces.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { mockApp } from "../../storybook/mock-providers.helpers";
 import { CloudDashboard } from "./ElizaCloudDashboard";

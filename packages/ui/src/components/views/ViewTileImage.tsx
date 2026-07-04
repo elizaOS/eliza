@@ -1,3 +1,7 @@
+/**
+ * Paints launcher and catalog tile imagery with deterministic fallback glyph
+ * styling and runtime-safe API URL resolution.
+ */
 import { type CSSProperties, useState } from "react";
 import { client } from "../../api";
 import {

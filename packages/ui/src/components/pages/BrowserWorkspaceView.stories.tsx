@@ -1,3 +1,7 @@
+/**
+ * Storybook states for the browser workspace page under mocked app context,
+ * including absent bridge, installed bridge plugin, and wallet-connected cases.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { mockApp } from "../../storybook/mock-providers.helpers";
 import { BrowserWorkspaceView } from "./BrowserWorkspaceView";

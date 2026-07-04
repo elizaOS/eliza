@@ -1,3 +1,7 @@
+/**
+ * Loads and warms the Apps catalog by merging internal tools, server apps,
+ * catalog entries, and overlay app registrations.
+ */
 import { client, type RegistryAppInfo } from "../../api";
 import { fetchAvailableViews } from "../../hooks/useAvailableViews";
 import { writeAppsCache } from "./apps-cache";
@@ -19,7 +23,7 @@ export async function loadAppsCatalog(): Promise<RegistryAppInfo[]> {
     .catch((reason) => ({ status: "rejected" as const, reason }));
   const serverApps =
     serverAppsResult.status === "fulfilled" ? serverAppsResult.value : [];
-  // non-transient server list failure is silent; catalog + overlay entries fill the gap
+  // A server list failure leaves catalog and overlay entries to fill the gap.
 
   const networkViews = await fetchAvailableViews();
 
@@ -50,13 +54,13 @@ export async function loadAppsCatalog(): Promise<RegistryAppInfo[]> {
 
 /**
  * Fire-and-forget prefetch used at hydration so the Apps tab opens warm.
- * Errors are swallowed — the UI's own loadApps will retry on mount.
+ * Errors are ignored here because the UI's own loadApps retries on mount.
  */
 export async function prefetchAppsCatalog(): Promise<void> {
   try {
     const apps = await loadAppsCatalog();
     writeAppsCache(apps);
   } catch {
-    // prefetch failure is silent; AppsView loads on mount
+    // AppsView performs the visible load path on mount.
   }
 }

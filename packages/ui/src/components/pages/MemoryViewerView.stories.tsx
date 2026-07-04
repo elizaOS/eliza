@@ -1,3 +1,7 @@
+/**
+ * Storybook states for the agent memory dashboard as API-backed people, stats,
+ * and memory feeds resolve into loading or empty states.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { withMockApp } from "../../storybook/mock-providers.helpers";
 import { MemoryViewerView } from "./MemoryViewerView";

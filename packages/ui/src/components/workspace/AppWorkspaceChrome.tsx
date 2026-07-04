@@ -1,3 +1,7 @@
+/**
+ * Provides the routed app workspace chrome that stacks optional navigation over
+ * the main pane while leaving chat to the global shell overlay.
+ */
 import type React from "react";
 import type { ReactNode } from "react";
 import { useMediaQuery } from "../../hooks";

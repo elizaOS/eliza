@@ -1,3 +1,7 @@
+/**
+ * Storybook layouts for the Documents page across full-page, modal, embedded,
+ * compact, and controlled-selection surfaces.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { withMockApp } from "../../storybook/mock-providers.helpers";
 import { DocumentsView } from "./DocumentsView";
