@@ -2603,7 +2603,7 @@
   "desktopworkspacesection.surface.cloud.label": "Janela Nuvem",
   "desktopworkspacesection.surface.connectors.label": "Janela Conectores",
   "desktopworkspacesection.surface.plugins.label": "Janela de plug-ins",
-  "desktopworkspacesection.surface.triggers.label": "Janela de batimentos cardíacos",
+  "desktopworkspacesection.surface.triggers.label": "Janela de gatilhos",
   "desktopworkspacesection.SurfaceOpened": "Aberto {{surface}}.",
   "desktopworkspacesection.UnmaximizeWindow": "Desmaximizar janela",
   "desktopworkspacesection.WindowControls": "Controles de janela",

@@ -2603,7 +2603,7 @@
   "desktopworkspacesection.surface.cloud.label": "Cửa sổ đám mây",
   "desktopworkspacesection.surface.connectors.label": "Cửa sổ kết nối",
   "desktopworkspacesection.surface.plugins.label": "Cửa sổ plugin",
-  "desktopworkspacesection.surface.triggers.label": "Cửa sổ nhịp tim",
+  "desktopworkspacesection.surface.triggers.label": "Cửa sổ trình kích hoạt",
   "desktopworkspacesection.SurfaceOpened": "Đã mở {{surface}}.",
   "desktopworkspacesection.UnmaximizeWindow": "Không phóng to cửa sổ",
   "desktopworkspacesection.WindowControls": "Điều khiển cửa sổ",

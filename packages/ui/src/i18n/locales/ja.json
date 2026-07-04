@@ -2603,7 +2603,7 @@
   "desktopworkspacesection.surface.cloud.label": "クラウドウィンドウ",
   "desktopworkspacesection.surface.connectors.label": "コネクタウィンドウ",
   "desktopworkspacesection.surface.plugins.label": "プラグインウィンドウ",
-  "desktopworkspacesection.surface.triggers.label": "ハートビートウィンドウ",
+  "desktopworkspacesection.surface.triggers.label": "トリガーウィンドウ",
   "desktopworkspacesection.SurfaceOpened": "{{surface}}を開きました。",
   "desktopworkspacesection.UnmaximizeWindow": "ウィンドウの最大化を解除",
   "desktopworkspacesection.WindowControls": "ウィンドウコントロール",

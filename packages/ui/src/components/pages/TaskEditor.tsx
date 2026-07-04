@@ -181,6 +181,12 @@ export function TaskEditor({
           await client.updateTrigger(initial.triggerId, request);
         } else {
           await client.createTrigger(request);
+          // Cross-boundary edit: this automation was a workbench "once" task and
+          // is now a trigger. Delete the stale workbench task so it doesn't keep
+          // existing alongside the new trigger (no duplicate).
+          if (initial?.id) {
+            await client.deleteWorkbenchTask(initial.id);
+          }
         }
       } else {
         // Plain "once" task with no recurrence — a workbench task.
@@ -189,6 +195,12 @@ export function TaskEditor({
           await client.updateWorkbenchTask(initial.id, payload);
         } else {
           await client.createWorkbenchTask(payload);
+          // Cross-boundary edit: this automation was a recurring/event trigger
+          // and is now a plain "once" task. Delete the stale trigger so it stops
+          // firing (no duplicate).
+          if (initial?.triggerId) {
+            await client.deleteTrigger(initial.triggerId);
+          }
         }
       }
       onSaved?.();

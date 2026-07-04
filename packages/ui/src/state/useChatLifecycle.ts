@@ -514,10 +514,10 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
 
       void showDesktopNotification({
         title: isFailure
-          ? "Heartbeat failed"
+          ? "Automation failed"
           : isSkipped
-            ? "Heartbeat skipped"
-            : "Heartbeat ran",
+            ? "Automation skipped"
+            : "Automation ran",
         body,
         urgency: isFailure ? "critical" : isSkipped ? "normal" : "low",
         silent: false,

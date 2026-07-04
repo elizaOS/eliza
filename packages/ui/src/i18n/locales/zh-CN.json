@@ -2603,7 +2603,7 @@
   "desktopworkspacesection.surface.cloud.label": "云端窗口",
   "desktopworkspacesection.surface.connectors.label": "连接器窗口",
   "desktopworkspacesection.surface.plugins.label": "插件窗口",
-  "desktopworkspacesection.surface.triggers.label": "心跳窗口",
+  "desktopworkspacesection.surface.triggers.label": "触发器窗口",
   "desktopworkspacesection.SurfaceOpened": "已打开 {{surface}}。",
   "desktopworkspacesection.UnmaximizeWindow": "取消最大化窗口",
   "desktopworkspacesection.WindowControls": "窗口控制",

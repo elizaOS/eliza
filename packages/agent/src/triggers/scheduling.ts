@@ -162,11 +162,19 @@ export function buildTriggerConfig(params: {
   if (params.draft.kind === "prompt") {
     return { ...base, kind: "prompt" };
   }
-  // Workflow kind: `normalizeTriggerDraft` guarantees workflowId is present.
+  // Workflow kind requires a real workflowId. `normalizeTriggerDraft` already
+  // rejects a workflow draft without one, so reaching here without it means a
+  // broken pipeline — fail loudly rather than persist an empty target.
+  const { workflowId } = params.draft;
+  if (!workflowId) {
+    throw new Error(
+      "buildTriggerConfig: workflow-kind trigger requires a workflowId",
+    );
+  }
   return {
     ...base,
     kind: "workflow",
-    workflowId: params.draft.workflowId ?? "",
+    workflowId,
     workflowName: params.draft.workflowName,
   };
 }

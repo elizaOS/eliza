@@ -2603,7 +2603,7 @@
   "desktopworkspacesection.surface.cloud.label": "클라우드 윈도우",
   "desktopworkspacesection.surface.connectors.label": "커넥터 창",
   "desktopworkspacesection.surface.plugins.label": "플러그인 창",
-  "desktopworkspacesection.surface.triggers.label": "하트비트 창",
+  "desktopworkspacesection.surface.triggers.label": "트리거 창",
   "desktopworkspacesection.SurfaceOpened": "{{surface}}을(를) 열었습니다.",
   "desktopworkspacesection.UnmaximizeWindow": "창 최대화 해제",
   "desktopworkspacesection.WindowControls": "창 제어",

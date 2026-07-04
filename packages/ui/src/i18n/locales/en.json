@@ -2613,7 +2613,7 @@
   "desktopworkspacesection.surface.cloud.label": "Cloud Window",
   "desktopworkspacesection.surface.connectors.label": "Connectors Window",
   "desktopworkspacesection.surface.plugins.label": "Plugins Window",
-  "desktopworkspacesection.surface.triggers.label": "Heartbeats Window",
+  "desktopworkspacesection.surface.triggers.label": "Triggers Window",
   "desktopworkspacesection.SurfaceOpened": "Opened {{surface}}.",
   "desktopworkspacesection.UnmaximizeWindow": "Unmaximize Window",
   "desktopworkspacesection.WindowControls": "Window Controls",

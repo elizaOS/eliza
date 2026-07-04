@@ -13,6 +13,7 @@ import {
   MAX_TRIGGER_RUN_HISTORY,
 } from "./scheduling.ts";
 import type {
+  PromptTriggerConfig,
   TriggerConfig,
   TriggerHealthSnapshot,
   TriggerRunRecord,
@@ -252,7 +253,7 @@ interface AutonomyRoomService {
  */
 async function dispatchPrompt(
   runtime: IAgentRuntime,
-  trigger: TriggerConfig,
+  trigger: PromptTriggerConfig,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const instructions = trigger.instructions.trim();
   if (!instructions) {
@@ -342,13 +343,18 @@ export async function executeTriggerTask(
     };
   }
 
-  if (trigger.kind !== "workflow" && trigger.kind !== "prompt") {
+  // `trigger.kind` is a `TriggerKind` literal in the type system, but the value
+  // is read from persisted jsonb, so a corrupt row could carry anything. Widen
+  // to string once here so the guard can report the offending value without a
+  // cast on the narrowed (`never`) branch.
+  const triggerKind: string = trigger.kind;
+  if (triggerKind !== "workflow" && triggerKind !== "prompt") {
     runtime.logger.warn(
       {
         src: "trigger-runtime",
         taskId: task.id,
         triggerId: trigger.triggerId,
-        kind: (trigger as { kind: string }).kind,
+        kind: triggerKind,
       },
       "Trigger kind is not workflow or prompt; skipping",
     );

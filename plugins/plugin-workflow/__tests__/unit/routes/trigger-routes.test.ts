@@ -172,3 +172,76 @@ describe('POST /api/triggers — kind parsing (WI-3)', () => {
     expect((captured.body as { error: string }).error).toContain('instructions is required');
   });
 });
+
+describe("PUT /api/triggers/:id — switching to prompt kind (WI-3 review fix #1)", () => {
+  // A stored workflow trigger whose instructions are the synthesized default.
+  const workflowCurrent = {
+    version: 1,
+    triggerId: '00000000-0000-0000-0000-000000000002',
+    displayName: 'Morning report',
+    instructions: 'Run workflow wf-1',
+    triggerType: 'cron',
+    enabled: true,
+    wakeMode: 'inject_now',
+    createdBy: 'api',
+    cronExpression: '0 9 * * *',
+    runCount: 0,
+    kind: 'workflow',
+    workflowId: 'wf-1',
+  };
+
+  function putCtx(
+    body: Record<string, unknown>,
+    current: Record<string, unknown> = workflowCurrent,
+  ) {
+    const built = makeCtx({
+      method: 'PUT',
+      pathname: '/api/triggers/00000000-0000-0000-0000-000000000002',
+      readJsonBody: async () => body as never,
+      readTriggerConfig: () => current as never,
+    });
+    return built;
+  }
+
+  test('switching a workflow trigger to prompt WITHOUT instructions → 400', async () => {
+    const { ctx, captured } = putCtx({ kind: 'prompt' });
+    const handled = await handleTriggerRoutes(ctx);
+    expect(handled).toBe(true);
+    expect(captured.status).toBe(400);
+    expect((captured.body as { error: string }).error).toContain(
+      "instructions is required when kind is 'prompt'",
+    );
+  });
+
+  test('switching a workflow trigger to prompt WITH instructions passes the kind guard', async () => {
+    // normalizeTriggerDraft is stubbed to return no draft, so the handler stops
+    // at the generic "Invalid update" 400 AFTER the instructions guard — proving
+    // the instructions guard did NOT trip.
+    const { ctx, captured } = putCtx({
+      kind: 'prompt',
+      instructions: 'Summarize my calendar every morning',
+    });
+    const handled = await handleTriggerRoutes(ctx);
+    expect(handled).toBe(true);
+    expect(captured.status).toBe(400);
+    expect((captured.body as { error: string }).error).not.toContain(
+      "instructions is required when kind is 'prompt'",
+    );
+  });
+
+  test('a same-kind prompt→prompt update without instructions does NOT trip the guard', async () => {
+    const promptCurrent = {
+      ...workflowCurrent,
+      instructions: 'Existing prompt instructions',
+      kind: 'prompt',
+      workflowId: undefined,
+    };
+    const { ctx, captured } = putCtx({ kind: 'prompt' }, promptCurrent);
+    const handled = await handleTriggerRoutes(ctx);
+    expect(handled).toBe(true);
+    // Falls through to the generic invalid-update path, not the instructions 400.
+    expect((captured.body as { error: string }).error).not.toContain(
+      "instructions is required when kind is 'prompt'",
+    );
+  });
+});

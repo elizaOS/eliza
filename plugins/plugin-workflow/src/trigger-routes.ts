@@ -546,6 +546,18 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
       error(res, "workflowId is required when kind is 'workflow'", 400);
       return true;
     }
+    // Switching TO prompt kind must supply fresh instructions — otherwise the
+    // update would silently reuse the old workflow trigger's synthesized
+    // "Run workflow <name>" text as the prompt. A same-kind prompt→prompt update
+    // may legitimately fall back to its own current.instructions.
+    if (
+      nextKind === 'prompt' &&
+      current.kind !== 'prompt' &&
+      !parseNonEmptyString(body.instructions)
+    ) {
+      error(res, "instructions is required when kind is 'prompt'", 400);
+      return true;
+    }
 
     const mergedInput: TriggerDraftInput = {
       displayName: typeof body.displayName === 'string' ? body.displayName : undefined,

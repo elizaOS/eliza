@@ -38,8 +38,13 @@ Branch: `fix/12177-automation-nomenclature` (off `develop` @ `03dbd8c501e`).
 - Trigger runtime dispatches kind `"prompt"` by injecting the trigger's
   `instructions` as an agent turn via `runtime.messageService.handleMessage`
   (prompt automation), keeping `WORKFLOW_DISPATCH` for kind `"workflow"`.
-- `parseTriggerKind(Strict)` + `POST/PUT /api/triggers` accept `"prompt"`
-  (require `instructions`, forbid `workflowId`).
+- `parseTriggerKind(Strict)` + `POST/PUT /api/triggers` accept `"prompt"`.
+  Both `POST` and `PUT` require `instructions` when the resulting kind is
+  `"prompt"` and forbid `workflowId` for prompt kind. (Review fix #1: the `PUT`
+  handler now guards `instructions` when switching a non-prompt trigger to
+  `"prompt"`, so it no longer silently reuses the old workflow trigger's
+  synthesized "Run workflow …" text; a same-kind prompt→prompt update may fall
+  back to its own current instructions.)
 - One-time boot migration (`packages/agent/src/triggers/workbench-migration.ts`,
   wired in `eliza-plugin` init) folds legacy `schedule:<cron>` / `event:<name>`
   tag-encoded workbench tasks into a prompt-kind `TriggerConfig` on

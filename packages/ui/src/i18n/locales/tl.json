@@ -2603,7 +2603,7 @@
   "desktopworkspacesection.surface.cloud.label": "Window ng Cloud",
   "desktopworkspacesection.surface.connectors.label": "Window ng Mga Konektor",
   "desktopworkspacesection.surface.plugins.label": "Window ng Mga Plugin",
-  "desktopworkspacesection.surface.triggers.label": "Window ng Mga Heartbeat",
+  "desktopworkspacesection.surface.triggers.label": "Window ng Mga Trigger",
   "desktopworkspacesection.SurfaceOpened": "Binuksan ang {{surface}}.",
   "desktopworkspacesection.UnmaximizeWindow": "I-unmaximize ang Window",
   "desktopworkspacesection.WindowControls": "Mga Kontrol sa Window",

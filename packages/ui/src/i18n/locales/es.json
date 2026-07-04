@@ -2603,7 +2603,7 @@
   "desktopworkspacesection.surface.cloud.label": "Ventana de nube",
   "desktopworkspacesection.surface.connectors.label": "Ventana de conectores",
   "desktopworkspacesection.surface.plugins.label": "Ventana de complementos",
-  "desktopworkspacesection.surface.triggers.label": "Ventana de latidos del corazón",
+  "desktopworkspacesection.surface.triggers.label": "Ventana de disparadores",
   "desktopworkspacesection.SurfaceOpened": "Abierto {{surface}}.",
   "desktopworkspacesection.UnmaximizeWindow": "Restaurar ventana",
   "desktopworkspacesection.WindowControls": "Controles de ventana",
