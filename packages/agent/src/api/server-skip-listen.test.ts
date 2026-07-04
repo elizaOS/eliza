@@ -163,6 +163,23 @@ describe("startApiServer skipListen — source-level guard (#12180)", () => {
   });
 });
 
+describe("startApiServer streaming screen capture lookup — source-level guard (#12249)", () => {
+  it("resolves screenCapture lazily from the current runtime", () => {
+    expect(SERVER_SRC).toContain(
+      "const resolveScreenCapture = (): IScreenCaptureService | undefined =>",
+    );
+    expect(SERVER_SRC).toMatch(
+      /get\s+screenCapture\(\)\s*\{\s*return\s+resolveScreenCapture\(\);\s*\}/s,
+    );
+  });
+
+  it("does not snapshot the screen-capture service while streaming routes register", () => {
+    expect(SERVER_SRC).not.toMatch(
+      /const\s+screenCapture\s*=\s*state\.runtime\?\.getService/s,
+    );
+  });
+});
+
 describe("startApiServer skipListen — real boot in a Bun subprocess (#12180)", () => {
   it("has a boot harness fixture", () => {
     expect(existsSync(HARNESS_PATH)).toBe(true);

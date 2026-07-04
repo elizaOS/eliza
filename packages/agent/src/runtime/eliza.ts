@@ -128,6 +128,7 @@ import {
   settingsDebugCloudSummary,
 } from "@elizaos/shared";
 import { buildDefaultElizaCloudServiceRouting } from "@elizaos/shared/contracts/service-routing";
+import { registerDesktopScreenCaptureBridgeService } from "./desktop-screen-capture-bridge-service.ts";
 import { type AgentHostBridge, getAgentHostBridge } from "./host-bridge.ts";
 
 // Host capabilities (wallet-key hydration, vault bootstrap/access, account
@@ -220,11 +221,11 @@ import {
   evaluateTeeBootGate,
   type TeeBootGate,
 } from "../services/tee-boot-gate.ts";
-import { resolveTeeEvidenceProvider } from "../services/tee-evidence-provider.ts";
 import {
   setTeeBootGateState,
   teeBootGateBlocksSecrets,
 } from "../services/tee-boot-gate-state.ts";
+import { resolveTeeEvidenceProvider } from "../services/tee-evidence-provider.ts";
 import {
   resolveDefaultAgentWorkspaceDir,
   shouldBootstrapWorkspaceInitFiles,
@@ -5090,6 +5091,8 @@ export async function startEliza(
 
     await initializeCoreRuntime();
     bootTimer.lap("svc:runtime.initialize");
+    await registerDesktopScreenCaptureBridgeService(runtime);
+    bootTimer.lap("svc:desktop-screen-capture");
   };
 
   const registerDeferredRuntimePlugins = async (

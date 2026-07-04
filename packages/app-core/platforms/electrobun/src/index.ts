@@ -122,6 +122,7 @@ import {
   resolveRendererAssetDir,
 } from "./runtime-layout";
 import { mergeRuntimePermissionStates } from "./runtime-permissions";
+import { startScreenCaptureBridgeServer } from "./screen-capture-bridge-server";
 import { startScreenshotDevServer } from "./screenshot-dev-server";
 import { recordStartupPhase, resolveStartupBundlePath } from "./startup-trace";
 import {
@@ -1234,7 +1235,9 @@ function attachMainWindow(
   // icon — the chromeless bottom-bar pill never does. Declare which this is,
   // regardless of how it was opened (boot, tray "Show Window", Dock reopen, or
   // a direct restoreWindow() from a deep link that bypasses showWindow()).
-  getDesktopManager().setMainWindowFullWindow(presentation.mode !== "bottom-bar");
+  getDesktopManager().setMainWindowFullWindow(
+    presentation.mode !== "bottom-bar",
+  );
 
   win.webview.on("dom-ready", () => {
     injectApiBase(win);
@@ -2526,6 +2529,18 @@ async function main(): Promise<void> {
     const stop = await browserWorkspaceBridgeStop;
     await stop?.();
   });
+  try {
+    const stopScreenCaptureBridgeServer =
+      await startScreenCaptureBridgeServer();
+    recordStartupPhase("screen_capture_bridge_ready", {
+      pid: process.pid,
+    });
+    cleanupFns.push(stopScreenCaptureBridgeServer);
+  } catch (err) {
+    logger.warn(
+      `[Main] Screen-capture bridge startup failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
   const stopDesktopTestBridgeServer = await startDesktopTestBridgeServer();
   recordStartupPhase("desktop_test_bridge_ready", {
     pid: process.pid,
@@ -2567,7 +2582,9 @@ async function main(): Promise<void> {
   // icon hidden until a full window (dashboard/surface/settings/app) opens.
   const dockless = shouldStartTrayFirst();
   if (dockless) {
-    logger.info("[Main] Dockless startup — pill only, Dock icon hidden at rest");
+    logger.info(
+      "[Main] Dockless startup — pill only, Dock icon hidden at rest",
+    );
     getDesktopManager().setTrayFirstMode(true);
   }
   recordStartupPhase("creating_window", {
