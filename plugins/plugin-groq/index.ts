@@ -323,12 +323,27 @@ function createGroqClient(runtime: IAgentRuntime) {
   });
 }
 
-function extractRetryDelay(message: string): number {
-  const match = message.match(/try again in (\d+\.?\d*)s/i);
-  if (match?.[1]) {
-    return Math.ceil(Number.parseFloat(match[1]) * 1000) + 1000;
+// Groq 429s phrase the cooldown as a Go-style duration: "7m30s", "2m59.56s",
+// "859ms", or plain "30s". Sum every component; a seconds-only regex reads
+// "7m30s" as no match (10s default) and re-collides with the same window.
+export function extractRetryDelay(message: string): number {
+  const match = message.match(/try again in ((?:\d+(?:\.\d+)?(?:ms|[smhd]))+)/i);
+  if (!match?.[1]) {
+    return 10000;
   }
-  return 10000;
+  const unitMs: Record<string, number> = {
+    ms: 1,
+    s: 1_000,
+    m: 60_000,
+    h: 3_600_000,
+    d: 86_400_000,
+  };
+  let totalMs = 0;
+  for (const part of match[1].matchAll(/(\d+(?:\.\d+)?)(ms|[smhd])/gi)) {
+    totalMs +=
+      Number.parseFloat(part[1] ?? "0") * (unitMs[(part[2] ?? "s").toLowerCase()] ?? 1_000);
+  }
+  return Math.ceil(totalMs) + 1000;
 }
 
 /**
@@ -401,6 +416,97 @@ function buildGroqStructuredOutput(responseSchema: unknown): NativeOutput {
     ...(schemaOptions.name ? { name: schemaOptions.name } : {}),
     ...(schemaOptions.description ? { description: schemaOptions.description } : {}),
   }) as NativeOutput;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+// The runtime exposes tools as ordered core `ToolDefinition[]` ({ name,
+// description, parameters }). The AI SDK expects a `ToolSet` keyed by
+// provider-visible tool names with `inputSchema`; passing the array through
+// gives Groq function names like "0" with an empty schema. Pre-built ToolSet
+// objects (no `name` field on values) pass through unchanged.
+function readGroqToolSet(value: unknown): ToolSet | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const isArr = Array.isArray(value);
+  if (!isArr && !isRecord(value)) {
+    return undefined;
+  }
+  const entries: Array<[string, unknown]> = isArr
+    ? (value as unknown[]).map((v, i) => [String(i), v] as [string, unknown])
+    : Object.entries(value as Record<string, unknown>);
+
+  const tools: Record<string, unknown> = {};
+  let sawNamedTool = false;
+  for (const [origKey, rawTool] of entries) {
+    if (!isRecord(rawTool)) {
+      continue;
+    }
+    const functionTool = isRecord(rawTool.function) ? rawTool.function : undefined;
+    const name =
+      typeof rawTool.name === "string" && rawTool.name
+        ? rawTool.name
+        : typeof functionTool?.name === "string" && functionTool.name
+          ? functionTool.name
+          : undefined;
+    if (name) {
+      sawNamedTool = true;
+      const schema = isRecord(rawTool.parameters)
+        ? (rawTool.parameters as JSONSchema7)
+        : isRecord(functionTool?.parameters)
+          ? (functionTool.parameters as JSONSchema7)
+          : isRecord(rawTool.input_schema)
+            ? (rawTool.input_schema as JSONSchema7)
+            : ({ type: "object" } satisfies JSONSchema7);
+      const description =
+        typeof rawTool.description === "string"
+          ? rawTool.description
+          : typeof functionTool?.description === "string"
+            ? functionTool.description
+            : undefined;
+      tools[name] = {
+        ...(description ? { description } : {}),
+        inputSchema: jsonSchema(schema),
+      };
+    } else if (!isArr) {
+      tools[origKey] = rawTool;
+    }
+  }
+
+  if (sawNamedTool) {
+    return Object.keys(tools).length > 0 ? (tools as ToolSet) : undefined;
+  }
+  return !isArr && isRecord(value) ? (value as ToolSet) : undefined;
+}
+
+// Core `ToolChoice` uses `{ type: "tool", name }` / `{ type: "function",
+// function: { name } }`; the AI SDK only understands `{ type: "tool",
+// toolName }` and the string enums.
+function readGroqToolChoice(value: unknown): ToolChoice<ToolSet> | undefined {
+  if (!value) {
+    return undefined;
+  }
+  if (typeof value === "string" && (value === "auto" || value === "none" || value === "required")) {
+    return value;
+  }
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  if (value.type === "tool" && typeof value.toolName === "string") {
+    return value as ToolChoice<ToolSet>;
+  }
+  if (value.type === "tool" && typeof value.name === "string") {
+    return { type: "tool", toolName: value.name };
+  }
+  if (value.type === "function" && isRecord(value.function)) {
+    const name = value.function.name;
+    return typeof name === "string" ? { type: "tool", toolName: name } : undefined;
+  }
+  return typeof value.name === "string" ? { type: "tool", toolName: value.name } : undefined;
 }
 
 type GroqUsage = {
@@ -580,8 +686,8 @@ function buildGroqGenerateParams(
 } {
   const paramsWithNative = params as GenerateTextParams & {
     messages?: ModelMessage[];
-    tools?: ToolSet;
-    toolChoice?: ToolChoice<ToolSet>;
+    tools?: unknown;
+    toolChoice?: unknown;
     responseSchema?: unknown;
   };
   const returnNative = Boolean(
@@ -590,6 +696,8 @@ function buildGroqGenerateParams(
       paramsWithNative.toolChoice ||
       paramsWithNative.responseSchema
   );
+  const normalizedTools = readGroqToolSet(paramsWithNative.tools);
+  const normalizedToolChoice = readGroqToolChoice(paramsWithNative.toolChoice);
   return {
     prompt: promptText,
     system: systemPrompt,
@@ -602,8 +710,8 @@ function buildGroqGenerateParams(
     presencePenalty: boundedNumber(params.presencePenalty, 0.7, -2, 2),
     stopSequences: stringArray(params.stopSequences),
     ...(paramsWithNative.messages ? { messages: paramsWithNative.messages } : {}),
-    ...(paramsWithNative.tools ? { tools: paramsWithNative.tools } : {}),
-    ...(paramsWithNative.toolChoice ? { toolChoice: paramsWithNative.toolChoice } : {}),
+    ...(normalizedTools ? { tools: normalizedTools } : {}),
+    ...(normalizedToolChoice ? { toolChoice: normalizedToolChoice } : {}),
     ...(paramsWithNative.responseSchema ? { responseSchema: paramsWithNative.responseSchema } : {}),
     ...(returnNative ? { returnNative } : {}),
   };
