@@ -1,3 +1,8 @@
+/**
+ * Test-time package path resolver for generated projects that can import
+ * elizaOS packages from local source mode or installed dependencies.
+ */
+
 import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";

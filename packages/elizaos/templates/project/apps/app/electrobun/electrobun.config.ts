@@ -1,3 +1,8 @@
+/**
+ * Electrobun desktop packaging configuration for the scaffolded app, including
+ * bundled resources and platform-specific Chromium flags.
+ */
+
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

@@ -1,3 +1,9 @@
+/**
+ * Migration tests build OpenClaw-style fixture homes and feed generated
+ * `.eliza-agent` archives through the real importer to prove format
+ * compatibility.
+ */
+
 import * as fs from "node:fs";
 import { createRequire } from "node:module";
 import * as os from "node:os";

@@ -1,3 +1,14 @@
+/**
+ * Test stub for the app-core desktop bridge used by generated app unit and
+ * browser smoke tests.
+ */
+
+/**
+ * Browser-safe Electrobun bridge stub for scaffolded app tests.
+ *
+ * It mirrors the renderer bridge surface closely enough for Vitest and
+ * Playwright helpers to run without a desktop shell process.
+ */
 export interface ElectrobunRendererRpc {
   request?: Record<string, (params?: unknown) => Promise<unknown> | unknown>;
   onMessage: (event: string, listener: (payload: unknown) => void) => void;

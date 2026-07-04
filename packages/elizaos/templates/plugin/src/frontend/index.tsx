@@ -1,3 +1,8 @@
+/**
+ * React frontend entrypoint for the scaffolded plugin view, including a small
+ * API-backed time display and agent context probe.
+ */
+
 import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { createRoot } from "react-dom/client";
 import "./index.css";

@@ -1,3 +1,8 @@
+/**
+ * Path-contained recursive copy helper for packaging template trees without
+ * carrying local build artifacts or dependency directories into dist.
+ */
+
 import * as fs from "node:fs";
 import * as path from "node:path";
 

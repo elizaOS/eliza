@@ -1,3 +1,7 @@
+/**
+ * Browser API mocks for generated project tests that run app code in Vitest.
+ */
+
 const CONSOLE_PATCH_MARK = Symbol.for("eliza.test.consoleErrorPatched");
 const CONSOLE_WARN_PATCH_MARK = Symbol.for("eliza.test.consoleWarnPatched");
 const CONSOLE_LOG_PATCH_MARK = Symbol.for("eliza.test.consoleLogPatched");

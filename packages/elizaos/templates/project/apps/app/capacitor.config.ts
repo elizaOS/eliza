@@ -1,3 +1,8 @@
+/**
+ * Capacitor configuration for the scaffolded app, including app identity and
+ * allowed navigation hosts derived from app config and environment overrides.
+ */
+
 import type { CapacitorConfig } from "@capacitor/cli";
 import {
   parseAllowedHostEnv,

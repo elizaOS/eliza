@@ -1,3 +1,7 @@
+/**
+ * Tailwind theme configuration for the scaffolded plugin frontend.
+ */
+
 import tailwindcssAnimate from "tailwindcss-animate";
 
 /** @type {import('tailwindcss').Config} */

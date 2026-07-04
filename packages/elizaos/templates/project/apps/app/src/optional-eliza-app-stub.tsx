@@ -1,3 +1,8 @@
+/**
+ * Empty optional app-plugin exports so scaffolded projects can compile without
+ * first-party optional feature packages installed.
+ */
+
 import type { ComponentType } from "react";
 
 const EmptyComponent: ComponentType = () => null;

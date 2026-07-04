@@ -1,3 +1,7 @@
+/**
+ * Minimal runtime plugin entrypoint for a scaffolded Eliza plugin.
+ */
+
 import type { Plugin } from "@elizaos/core";
 import { infoProvider } from "./providers/info.js";
 

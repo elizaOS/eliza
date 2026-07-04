@@ -1,3 +1,9 @@
+/**
+ * Project and plugin scaffold command that renders packaged templates, applies
+ * token values, initializes upstream workspaces, and records managed-file
+ * metadata for future upgrades.
+ */
+
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as clack from "@clack/prompts";

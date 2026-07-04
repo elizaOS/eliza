@@ -1,4 +1,9 @@
 #!/usr/bin/env bun
+/**
+ * Build pipeline for the published CLI package: copies templates, regenerates
+ * the template manifest, compiles TypeScript, and restores the executable
+ * shebang on the generated CLI entry.
+ */
 
 import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";

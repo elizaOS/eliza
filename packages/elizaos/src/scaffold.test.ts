@@ -1,3 +1,8 @@
+/**
+ * Scaffold engine tests exercise token replacement, template tree rendering,
+ * and managed-file diff classification with temporary filesystem fixtures.
+ */
+
 import { createHash } from "node:crypto";
 import {
   mkdirSync,

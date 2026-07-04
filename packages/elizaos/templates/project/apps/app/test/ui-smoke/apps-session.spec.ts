@@ -1,3 +1,14 @@
+/**
+ * UI smoke coverage for generated app navigation from the apps catalog into
+ * internal tool routes.
+ */
+
+/**
+ * Playwright smoke coverage for the generated app catalog routing surface.
+ *
+ * The test drives the real renderer shell against seeded browser state and
+ * verifies app pages survive route reloads.
+ */
 import { expect, test } from "@playwright/test";
 import { openAppPath, seedAppStorage } from "./helpers";
 

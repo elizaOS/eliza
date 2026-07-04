@@ -1,3 +1,7 @@
+/**
+ * Runtime plugin entrypoint for the scaffolded minimal app project.
+ */
+
 import type { Plugin } from "@elizaos/core";
 
 const APP_NAME = "__APP_NAME__";

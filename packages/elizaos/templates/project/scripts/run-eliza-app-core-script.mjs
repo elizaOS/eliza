@@ -1,4 +1,9 @@
 #!/usr/bin/env node
+/**
+ * Runs an app-core helper script from a generated project, resolving it from a
+ * local elizaOS checkout when source mode is enabled or from installed packages.
+ */
+
 import { spawn } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

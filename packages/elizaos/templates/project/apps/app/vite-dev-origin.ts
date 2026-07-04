@@ -1,3 +1,14 @@
+/**
+ * Vite dev-server origin helpers for generated apps running behind desktop or
+ * mobile shells.
+ */
+
+/**
+ * Vite dev-server origin and HMR resolution for generated app projects.
+ *
+ * The helpers support desktop loopback URLs, browser LAN access, and Capacitor
+ * live reload without rewriting module URLs to the wrong host.
+ */
 export interface ViteHmrConfig {
   host?: string;
   port: number;

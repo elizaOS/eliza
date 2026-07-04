@@ -1,3 +1,14 @@
+/**
+ * Environment sanitizer for Windows packaged-app smoke tests so generated apps
+ * launch without dev-server or host-machine test leakage.
+ */
+
+/**
+ * Isolated environment builder for packaged Windows desktop smoke tests.
+ *
+ * The returned environment redirects profile directories and strips host API
+ * variables so each launch proves the packaged app uses the injected test API.
+ */
 const STRIPPED_ENV_KEYS = [
   "ELIZA_API_PORT",
   "ELIZA_PORT",

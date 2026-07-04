@@ -1,3 +1,8 @@
+/**
+ * Runtime integration tests for the scaffolded plugin action, provider, route,
+ * and service surfaces using an in-memory AgentRuntime.
+ */
+
 import type { Content, HandlerCallback, IAgentRuntime, Memory, State, UUID } from "@elizaos/core";
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { starterPlugin } from "../index";

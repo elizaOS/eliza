@@ -1,3 +1,7 @@
+/**
+ * Version command that prints the installed CLI package name and version.
+ */
+
 import pc from "picocolors";
 import { readPackageJson } from "../package-info.js";
 

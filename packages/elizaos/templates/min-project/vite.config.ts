@@ -1,3 +1,7 @@
+/**
+ * Vite configuration for the scaffolded minimal React app.
+ */
+
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 

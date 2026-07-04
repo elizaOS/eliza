@@ -1,4 +1,9 @@
 #!/usr/bin/env bun
+/**
+ * Build script for a scaffolded plugin package: cleans dist, compiles the
+ * runtime and frontend bundles, and copies package metadata for publishing.
+ */
+
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";

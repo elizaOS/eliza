@@ -1,3 +1,9 @@
+/**
+ * End-to-end smoke for the packaged `elizaos` CLI: packs the workspace package,
+ * installs it into temporary global/local locations, and exercises create /
+ * upgrade flows against generated projects.
+ */
+
 import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";

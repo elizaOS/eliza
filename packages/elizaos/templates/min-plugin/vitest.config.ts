@@ -1,3 +1,7 @@
+/**
+ * Vitest configuration for scaffolded minimal plugin tests.
+ */
+
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({

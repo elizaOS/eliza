@@ -1,3 +1,8 @@
+/**
+ * Deploy command tests cover dry-run planning, credential discovery, and cloud
+ * polling behavior with real temporary project files and stubbed fetch calls.
+ */
+
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";

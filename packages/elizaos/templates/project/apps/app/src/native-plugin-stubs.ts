@@ -1,3 +1,8 @@
+/**
+ * Browser-safe native plugin stubs used when the scaffolded app runs without
+ * Capacitor or desktop bridge implementations.
+ */
+
 export const Agent = {
   async getStatus(): Promise<{ status: string }> {
     return { status: "unavailable" };

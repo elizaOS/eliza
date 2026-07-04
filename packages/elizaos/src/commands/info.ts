@@ -1,3 +1,8 @@
+/**
+ * Template discovery command that prints the shipped template manifest in human
+ * readable or JSON form.
+ */
+
 import pc from "picocolors";
 import { getTemplateById, loadManifest, TEMPLATE_ICONS } from "../manifest.js";
 import type { InfoOptions } from "../types.js";

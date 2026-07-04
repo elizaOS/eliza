@@ -1,3 +1,14 @@
+/**
+ * Shared Playwright helpers for generated app UI smoke tests, including local
+ * storage seeding and route readiness assertions.
+ */
+
+/**
+ * Shared Playwright helpers for generated app smoke tests.
+ *
+ * They seed first-run state, open shell routes, and assert route-specific ready
+ * checks without requiring a live agent backend.
+ */
 import { expect, type Locator, type Page } from "@playwright/test";
 
 export const ROOT_TIMEOUT_MS = 20_000;

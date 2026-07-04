@@ -1,3 +1,14 @@
+/**
+ * UI smoke coverage for generated app chat, apps, and settings routes through
+ * the real browser shell.
+ */
+
+/**
+ * Playwright smoke coverage for the generated app shell's primary routes.
+ *
+ * The test uses seeded browser state and exercises the real navigation controls
+ * across chat, apps, and settings.
+ */
 import { expect, test } from "@playwright/test";
 import { assertReadyChecks, openAppPath, seedAppStorage } from "./helpers";
 

@@ -1,3 +1,8 @@
+/**
+ * Capability-router command tests exercise request construction, option
+ * parsing, and error handling with fetch stubbed at the process boundary.
+ */
+
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { runCapabilityRouterConnect } from "./capability-router";
 

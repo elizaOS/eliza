@@ -1,3 +1,8 @@
+/**
+ * Resolves app-core helper scripts for generated projects from local source
+ * mode or installed package dependencies.
+ */
+
 import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";

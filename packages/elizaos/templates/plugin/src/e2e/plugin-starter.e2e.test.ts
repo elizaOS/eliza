@@ -1,3 +1,8 @@
+/**
+ * Vitest adapter for running the scaffolded plugin TestSuite against an
+ * in-memory runtime.
+ */
+
 import { describe, it } from "vitest";
 import { cleanupTestRuntime, createTestRuntime } from "../__tests__/test-utils";
 import plugin from "../plugin";

@@ -1,3 +1,14 @@
+/**
+ * Vitest configuration for generated app tests with app-core and native plugin
+ * aliases resolved for package or source-mode installs.
+ */
+
+/**
+ * Vitest configuration for the generated app renderer.
+ *
+ * It aliases app-core, native Capacitor plugins, and browser stubs so scaffold
+ * tests run against source without requiring a full desktop or mobile shell.
+ */
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";

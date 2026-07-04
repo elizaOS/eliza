@@ -1,3 +1,8 @@
+/**
+ * Resolves local native Capacitor plugin package names for scaffolded app
+ * builds when source-mode workspaces are available.
+ */
+
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

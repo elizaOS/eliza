@@ -1,4 +1,8 @@
 #!/usr/bin/env node
+/**
+ * Ensures generated projects have local stub packages for optional app plugins
+ * when those first-party packages are not installed.
+ */
 
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";

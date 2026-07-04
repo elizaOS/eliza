@@ -1,4 +1,8 @@
 #!/usr/bin/env node
+/**
+ * Source-mode switcher for generated projects, toggling between local elizaOS
+ * checkouts and published package dependencies.
+ */
 
 import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";

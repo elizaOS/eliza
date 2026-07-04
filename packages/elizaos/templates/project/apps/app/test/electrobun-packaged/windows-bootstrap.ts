@@ -1,3 +1,14 @@
+/**
+ * Windows packaged-app bootstrap detection helpers for distinguishing renderer
+ * startup traffic from main-process heartbeat requests.
+ */
+
+/**
+ * Bootstrap request predicates for packaged Windows renderer smoke tests.
+ *
+ * The accepted paths prove the packaged shell reached its configured API base
+ * even when first-run setup stops before chat or stream endpoints are touched.
+ */
 function hasRequestForPath(
   requests: readonly string[],
   pathname: string,

@@ -1,3 +1,8 @@
+/**
+ * Shared source-mode helpers for generated projects that can run against local
+ * elizaOS workspaces or published package dependencies.
+ */
+
 import fs from "node:fs";
 import path from "node:path";
 

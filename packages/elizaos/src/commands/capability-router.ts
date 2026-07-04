@@ -1,3 +1,8 @@
+/**
+ * Capability-router connection command for registering local or cloud-hosted
+ * remote capability endpoints with a running agent API.
+ */
+
 import pc from "picocolors";
 
 export interface CapabilityRouterConnectOptions {

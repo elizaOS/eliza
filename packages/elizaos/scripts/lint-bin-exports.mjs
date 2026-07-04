@@ -1,20 +1,15 @@
 #!/usr/bin/env node
-// Static guard for elizaOS/eliza#8000 (ERR_PACKAGE_PATH_NOT_EXPORTED).
-//
-// A package's `bin` entry is the strictest ESM resolution context there is: a
-// globally installed bin imports its dependencies through their published
-// "exports" maps with no node_modules-hoisting forgiveness. If a bin file does
-// `import "foo/sub/path.js"` and `foo`'s exports map does not whitelist that
-// subpath, the CLI crashes on launch under node (and differently under bun).
-//
-// This linter walks every workspace package.json, resolves each bin file, scans
-// its (transitively dist-built) source for bare-specifier subpath imports, and
-// asserts the target package's exports map permits the subpath. It is a lead,
-// not a proof — it only inspects the bin entry files themselves, which is where
-// the #8000 regression lived.
-//
-// Usage: node scripts/lint-bin-exports.mjs [repoRoot]
-// Exit 0 = clean, exit 1 = at least one disallowed bin subpath import.
+/**
+ * Static guard for CLI package `bin` entries that import dependency subpaths
+ * blocked by published `exports` maps.
+ *
+ * Globally installed bins run in strict Node ESM resolution, so this scans each
+ * workspace package's bin source and checks bare dependency subpath imports
+ * against the resolved dependency package metadata. It is a focused lead for
+ * launch-time regressions, not a full bundler proof.
+ *
+ * Usage: node scripts/lint-bin-exports.mjs [repoRoot]
+ */
 
 import * as fs from "node:fs";
 import * as path from "node:path";

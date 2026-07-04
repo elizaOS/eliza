@@ -1,3 +1,11 @@
+/**
+ * Loopback TCP port helper for generated app test runners that need a free
+ * server port.
+ */
+
+/**
+ * Loopback port allocator for JavaScript test utilities in generated projects.
+ */
 import { createServer } from "node:net";
 
 export async function getFreePort() {

@@ -1,3 +1,8 @@
+/**
+ * Runs Playwright UI smoke tests for a scaffolded app, selecting available
+ * ports and forwarding the matching app/API environment to the child process.
+ */
+
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import net from "node:net";

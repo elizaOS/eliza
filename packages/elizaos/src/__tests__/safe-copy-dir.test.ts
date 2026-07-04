@@ -1,3 +1,8 @@
+/**
+ * safe-copy-dir tests use real temporary directories to verify recursive copy
+ * behavior, skip lists, and path-containment guards.
+ */
+
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";

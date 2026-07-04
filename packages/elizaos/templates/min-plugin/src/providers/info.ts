@@ -1,3 +1,8 @@
+/**
+ * Static provider that confirms the scaffolded plugin is loaded in the runtime
+ * context.
+ */
+
 import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
 
 const PLUGIN_NAME = "__PLUGIN_NAME__";

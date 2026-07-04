@@ -1,3 +1,8 @@
+/**
+ * Runtime template guard that keeps removed sample actions from reappearing in
+ * generated minimal app projects.
+ */
+
 import { describe, expect, it } from "vitest";
 import plugin from "../src/plugin.js";
 

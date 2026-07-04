@@ -1,3 +1,8 @@
+/**
+ * Template upgrade command that rerenders a project into a temporary tree and
+ * applies managed-file diffs while preserving local edits as conflicts.
+ */
+
 import * as clack from "@clack/prompts";
 import pc from "picocolors";
 import { getTemplateById, getTemplatesDir } from "../manifest.js";

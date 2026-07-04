@@ -1,3 +1,8 @@
+/**
+ * Recursive removal tests use real temporary directories to verify retry-safe
+ * cleanup of nested files and missing paths.
+ */
+
 import {
   existsSync,
   mkdirSync,

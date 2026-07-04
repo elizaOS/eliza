@@ -1,3 +1,9 @@
+/**
+ * Template rendering engine for the CLI: builds token values, copies template
+ * trees, hydrates upstream submodules, and computes managed-file diffs for
+ * create and upgrade.
+ */
+
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import * as fs from "node:fs";

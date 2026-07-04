@@ -1,3 +1,8 @@
+/**
+ * Shared DTOs for CLI templates, create/upgrade options, and persisted
+ * managed-file metadata.
+ */
+
 export type TemplateId = "plugin" | "project";
 
 export interface TemplateUpstream {

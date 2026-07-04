@@ -1,3 +1,8 @@
+/**
+ * Command barrel for the CLI entrypoint and library consumers that import
+ * individual elizaOS command functions.
+ */
+
 export {
   capabilityRouterConnect,
   runCapabilityRouterConnect,

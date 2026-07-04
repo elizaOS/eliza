@@ -1,3 +1,7 @@
+/**
+ * Playwright configuration for packaged Electrobun desktop smoke tests.
+ */
+
 import { defineConfig } from "@playwright/test";
 
 export default defineConfig({

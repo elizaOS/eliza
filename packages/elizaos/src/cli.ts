@@ -1,4 +1,9 @@
 #!/usr/bin/env node
+/**
+ * Commander entrypoint for the `elizaos` binary and its interactive default
+ * menu. Command implementations stay in `src/commands` so tests can invoke the
+ * same logic without booting the CLI parser.
+ */
 
 import * as clack from "@clack/prompts";
 import { Command } from "commander";

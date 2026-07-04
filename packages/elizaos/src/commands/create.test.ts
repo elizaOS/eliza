@@ -1,3 +1,8 @@
+/**
+ * Create command tests drive template rendering through the command surface
+ * while stubbing only interactive prompt responses.
+ */
+
 import * as clack from "@clack/prompts";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { renderTemplateTree } from "../scaffold.js";

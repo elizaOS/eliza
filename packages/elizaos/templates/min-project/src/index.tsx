@@ -1,3 +1,7 @@
+/**
+ * Minimal React entrypoint for the scaffolded app shell.
+ */
+
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 

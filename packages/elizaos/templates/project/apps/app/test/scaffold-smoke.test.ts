@@ -1,3 +1,14 @@
+/**
+ * Scaffold smoke test that verifies generated app identity placeholders were
+ * replaced with concrete values.
+ */
+
+/**
+ * Basic scaffold integrity checks for a generated project app.
+ *
+ * The test is deterministic and verifies template tokens resolved into a usable
+ * application identity without booting the renderer.
+ */
 import { describe, expect, it } from "vitest";
 import appConfig from "../app.config";
 

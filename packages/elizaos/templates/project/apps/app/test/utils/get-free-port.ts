@@ -1,3 +1,11 @@
+/**
+ * Loopback TCP port helper for generated app tests that need an available
+ * server port.
+ */
+
+/**
+ * Loopback port allocator for TypeScript test utilities in generated projects.
+ */
 import { createServer } from "node:net";
 
 /**

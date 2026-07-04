@@ -1,3 +1,14 @@
+/**
+ * Mock app-core API server for packaged desktop smoke tests in generated apps.
+ */
+
+/**
+ * Deterministic mock API for packaged desktop smoke tests.
+ *
+ * It implements the small app-core surface the renderer needs during launch,
+ * records requests for assertions, and exposes WebSocket channels without
+ * starting a real agent runtime.
+ */
 import { randomUUID } from "node:crypto";
 import http from "node:http";
 import type { AddressInfo } from "node:net";

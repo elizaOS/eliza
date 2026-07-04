@@ -1,3 +1,8 @@
+/**
+ * Minimal plugin scaffold contract test that reads SCAFFOLD.md directly and
+ * verifies the view-kind guidance copied into generated plugin repos.
+ */
+
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";

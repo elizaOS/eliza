@@ -1,3 +1,8 @@
+/**
+ * Package metadata helpers for locating the installed CLI root and reading its
+ * package.json version information.
+ */
+
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";

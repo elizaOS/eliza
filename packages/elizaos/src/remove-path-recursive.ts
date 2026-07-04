@@ -1,3 +1,8 @@
+/**
+ * Cross-platform recursive removal helper with retry handling for transient
+ * filesystem locks on generated template and smoke-test directories.
+ */
+
 import { rmSync } from "node:fs";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";

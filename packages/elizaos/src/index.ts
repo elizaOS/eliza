@@ -1,3 +1,8 @@
+/**
+ * Library surface for tooling that wants to call CLI commands and manifest
+ * helpers without invoking the Commander binary.
+ */
+
 export {
   create,
   info,

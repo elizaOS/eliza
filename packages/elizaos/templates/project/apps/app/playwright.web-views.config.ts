@@ -1,3 +1,7 @@
+/**
+ * Playwright configuration for visual web-view coverage in the scaffolded app.
+ */
+
 import { defineConfig, devices } from "@playwright/test";
 
 export default defineConfig({

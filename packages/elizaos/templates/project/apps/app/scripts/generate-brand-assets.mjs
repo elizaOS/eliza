@@ -1,3 +1,8 @@
+/**
+ * Generates platform icon assets for the scaffolded app from its public SVG
+ * favicon when image conversion tools are available.
+ */
+
 import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";

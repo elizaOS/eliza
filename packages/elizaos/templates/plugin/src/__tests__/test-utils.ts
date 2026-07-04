@@ -1,3 +1,8 @@
+/**
+ * Test runtime utilities for scaffolded plugin suites, including an in-memory
+ * database adapter and logger spies.
+ */
+
 import { randomUUID } from "node:crypto";
 import {
   AgentRuntime,

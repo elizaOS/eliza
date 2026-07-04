@@ -1,3 +1,14 @@
+/**
+ * UI smoke coverage for generated app browser workspace tab creation and
+ * selection.
+ */
+
+/**
+ * Playwright smoke coverage for the generated browser workspace surface.
+ *
+ * The test drives the real renderer shell against seeded browser state and
+ * verifies tab creation plus selection state.
+ */
 import { expect, test } from "@playwright/test";
 import { openAppPath, seedAppStorage } from "./helpers";
 

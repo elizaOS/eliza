@@ -1,3 +1,15 @@
+/**
+ * Design-review runner for scaffolded app shells, booting Vite with a mock API
+ * and capturing core views through Playwright.
+ */
+
+/**
+ * Visual review capture runner for the scaffolded app shell.
+ *
+ * It boots the app against a mock API, walks representative native-shell views
+ * across desktop and mobile viewports, and writes screenshots plus manual
+ * review prompts for design evidence.
+ */
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import net from "node:net";
 import path from "node:path";

@@ -1,3 +1,15 @@
+/**
+ * Vite configuration for the generated app renderer, including app-core
+ * aliases, native bridge stubs, desktop dev ports, and production build tweaks.
+ */
+
+/**
+ * Vite configuration for the generated app renderer.
+ *
+ * It switches between published packages and a local elizaOS checkout, aliases
+ * browser-safe app-core/UI entries, and keeps desktop/mobile/web builds on one
+ * renderer source graph.
+ */
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";

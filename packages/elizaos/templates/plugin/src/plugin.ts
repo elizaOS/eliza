@@ -1,3 +1,8 @@
+/**
+ * Starter runtime plugin showing action, provider, service, route, model, event,
+ * and test-suite registrations for generated plugin projects.
+ */
+
 import type {
   Action,
   ActionResult,

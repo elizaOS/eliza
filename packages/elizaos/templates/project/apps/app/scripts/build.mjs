@@ -1,6 +1,11 @@
 #!/usr/bin/env node
-// UI build: Capacitor plugins then Vite. Requires prior `bun install` (postinstall).
-// ELIZA_BUILD_FULL_SETUP=1 prepends install --ignore-scripts + run-repo-setup (CI-style).
+/**
+ * Generated app build pipeline: optionally prepares dependencies, builds local
+ * Capacitor plugins, then runs the Vite renderer build.
+ *
+ * Set ELIZA_BUILD_FULL_SETUP=1 to prepend install --ignore-scripts plus the
+ * repository setup step used by CI-style fresh checkouts.
+ */
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import { createRequire } from "node:module";

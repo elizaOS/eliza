@@ -1,3 +1,7 @@
+/**
+ * Playwright configuration for packaged app UI smoke tests in Chromium.
+ */
+
 import { defineConfig, devices } from "@playwright/test";
 
 export default defineConfig({

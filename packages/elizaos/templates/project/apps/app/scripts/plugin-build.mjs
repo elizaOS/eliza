@@ -1,4 +1,9 @@
 #!/usr/bin/env node
+/**
+ * Builds local native Capacitor plugins before the scaffolded app renderer
+ * bundle, when source-mode native plugin workspaces are present.
+ */
+
 import { spawn } from "node:child_process";
 import path from "node:path";
 import process from "node:process";

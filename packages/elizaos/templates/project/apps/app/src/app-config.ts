@@ -1,3 +1,8 @@
+/**
+ * Normalized app configuration and branding exports consumed by the scaffolded
+ * renderer boot sequence.
+ */
+
 import { resolveAppBranding } from "@elizaos/app-core";
 import appConfig from "../app.config";
 

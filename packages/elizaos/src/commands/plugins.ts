@@ -1,3 +1,8 @@
+/**
+ * Plugin registry submission command that derives package metadata, validates
+ * reserved names, writes registry entries, and optionally opens an explicit PR.
+ */
+
 import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";

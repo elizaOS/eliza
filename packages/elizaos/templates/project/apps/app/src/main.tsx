@@ -1,3 +1,8 @@
+/**
+ * Renderer entrypoint for the scaffolded app, wiring Capacitor, desktop shell,
+ * branding, theme, and app-core runtime boot options.
+ */
+
 import { App as CapacitorApp } from "@capacitor/app";
 import { Capacitor } from "@capacitor/core";
 import { Keyboard, KeyboardResize } from "@capacitor/keyboard";

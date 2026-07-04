@@ -1,3 +1,8 @@
+/**
+ * Playwright configuration that boots the scaffolded app against a live
+ * app-core stack for browser UI smoke tests.
+ */
+
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig, devices } from "@playwright/test";
@@ -16,8 +21,7 @@ const uiSmokeApiPort = Number(process.env.ELIZA_UI_SMOKE_API_PORT || "31337");
 const uiSmokePort = Number(process.env.ELIZA_UI_SMOKE_PORT || "2138");
 const reuseExistingServer = process.env.ELIZA_UI_SMOKE_REUSE_SERVER === "1";
 
-// Keep the app's API port env aligned with the live stack when the suite runs
-// on non-default ports.
+// Keep the app API port aligned when the live stack runs on non-default ports.
 if (!process.env.ELIZA_API_PORT) {
   process.env.ELIZA_API_PORT = String(uiSmokeApiPort);
 }

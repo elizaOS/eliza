@@ -1,3 +1,8 @@
+/**
+ * Scaffolded plugin TestSuite that verifies the starter service, action,
+ * provider, and model handler registrations.
+ */
+
 import type {
   Content,
   HandlerCallback,

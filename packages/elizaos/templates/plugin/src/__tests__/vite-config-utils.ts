@@ -1,3 +1,8 @@
+/**
+ * Vite config helper used by scaffolded plugin tests to resolve the effective
+ * build output directory.
+ */
+
 import fs from "node:fs";
 import path from "node:path";
 

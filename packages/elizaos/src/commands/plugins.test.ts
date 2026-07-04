@@ -1,3 +1,8 @@
+/**
+ * Plugin submission tests build temporary package.json fixtures and verify the
+ * registry metadata flow without opening real git or GitHub side effects.
+ */
+
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";

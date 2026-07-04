@@ -1,3 +1,9 @@
+/**
+ * Template manifest loader and lookup helpers for the packaged CLI templates.
+ * Paths resolve relative to the built package root so installed `dist` builds
+ * can find the shipped manifest and template tree.
+ */
+
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { getPackageRoot } from "./package-info.js";
