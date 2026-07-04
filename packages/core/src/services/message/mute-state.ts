@@ -13,7 +13,8 @@
  * mention path — a muted room drops even a direct @mention, because on
  * mention-gated deployments every planner-reaching turn IS a mention),
  * connector inbound paths (plugin-discord drops before ingestion), and the
- * MESSAGE list ops (muted flags in list_channels / list_connections).
+ * MESSAGE list ops (muted flags in list_channels / list_servers /
+ * list_connections).
  */
 import { createUniqueUuid } from "../../entities.ts";
 import type { Room, World } from "../../types/environment.ts";
@@ -198,6 +199,29 @@ export async function setRoomMuteUntil(
 		...room,
 		metadata: { ...(room.metadata ?? {}), agentMuteUntilIso: untilIso },
 	});
+}
+
+/**
+ * Per-world muted flags for connector server listings (list_servers). A world
+ * that already carries mute metadata is answered directly (a connector
+ * returning the persisted record needs no refetch); one listed without it
+ * falls back to the persisted world under the same id, so server-level mute
+ * visibility does not depend on a connector's listServers fidelity. Read-only
+ * — the inbound due-check owns expiry writes.
+ */
+export async function resolveMutedWorldFlags(
+	runtime: IAgentRuntime,
+	worlds: readonly World[],
+	now: number = Date.now(),
+): Promise<boolean[]> {
+	return Promise.all(
+		worlds.map(async (world) => {
+			if (world.metadata?.agentMuteState !== undefined) {
+				return worldMuteActive(world, now);
+			}
+			return worldMuteActive(await runtime.getWorld(world.id), now);
+		}),
+	);
 }
 
 /**

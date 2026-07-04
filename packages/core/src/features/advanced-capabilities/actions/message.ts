@@ -17,7 +17,10 @@ import { getActionSpec } from "../../../generated/spec-helpers.ts";
 import { logger } from "../../../logger.ts";
 import { resolveCanonicalOwnerIdForMessage } from "../../../roles.ts";
 import { runWithActionRoutingContext } from "../../../runtime/action-routing-context.ts";
-import { resolveMutedTargetFlags } from "../../../services/message/mute-state.ts";
+import {
+	resolveMutedTargetFlags,
+	resolveMutedWorldFlags,
+} from "../../../services/message/mute-state.ts";
 import type {
 	Action,
 	ActionExample,
@@ -2874,12 +2877,23 @@ async function handleListServers(
 			);
 		}
 		const servers = await listServers(context);
+		// Server-level muted visibility: the world-wide mute (ROOM scope=server)
+		// lives on the persisted world's metadata, which a connector listing may
+		// not carry — resolve it here so "which servers are you muted in" is
+		// answerable, mirroring list_channels' per-channel flag.
+		const mutedFlags = await resolveMutedWorldFlags(runtime, servers);
+		const mutedCount = mutedFlags.filter(Boolean).length;
 		return opSuccess(
 			"list_servers",
-			`Listed ${servers.length} servers from ${connector.label}.`,
+			`Listed ${servers.length} servers from ${connector.label}${
+				mutedCount > 0 ? ` (${mutedCount} muted)` : ""
+			}.`,
 			{
 				source: connector.source,
-				servers,
+				servers: servers.map((world, index) => ({
+					...world,
+					muted: mutedFlags[index] === true,
+				})),
 			},
 		);
 	} catch (error) {

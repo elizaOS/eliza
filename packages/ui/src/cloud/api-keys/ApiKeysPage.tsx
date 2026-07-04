@@ -9,7 +9,7 @@
  * Default export for `React.lazy` code-splitting from the route registration.
  */
 
-import { PageHeaderProvider } from "../../cloud-ui";
+import { PageHeaderProvider } from "../../cloud-ui/components/layout";
 import { useDocumentTitle } from "../lib/use-document-title";
 import { useCloudT } from "../shell/CloudI18nProvider";
 import { ApiKeysSurface } from "./ApiKeysSurface";

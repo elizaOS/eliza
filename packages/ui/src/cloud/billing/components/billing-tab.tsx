@@ -66,6 +66,7 @@ export function BillingTab({ user }: BillingTabProps) {
   const navigate = useNavigate();
   const [invoices, setInvoices] = useState<InvoiceDisplay[]>([]);
   const [loadingInvoices, setLoadingInvoices] = useState(true);
+  const [invoicesError, setInvoicesError] = useState<string | null>(null);
   const [purchaseAmount, setPurchaseAmount] = useState("");
   const [isProcessingCheckout, setIsProcessingCheckout] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("card");
@@ -90,13 +91,18 @@ export function BillingTab({ user }: BillingTabProps) {
 
   const fetchInvoices = useCallback(async () => {
     setLoadingInvoices(true);
+    setInvoicesError(null);
     try {
       const data = await api<{ invoices?: InvoiceDisplay[] }>(
         "/api/invoices/list",
       );
       setInvoices(data.invoices ?? []);
-    } catch {
-      setInvoices([]);
+    } catch (error) {
+      setInvoicesError(
+        error instanceof Error
+          ? error.message
+          : "Invoice history could not be loaded.",
+      );
     } finally {
       setLoadingInvoices(false);
     }
@@ -284,6 +290,7 @@ export function BillingTab({ user }: BillingTabProps) {
                       variant="ghost"
                       type="button"
                       onClick={() => setPaymentMethod("card")}
+                      aria-pressed={paymentMethod === "card"}
                       className={`flex items-center gap-2 px-4 py-2 font-mono text-sm border transition-colors ${
                         paymentMethod === "card"
                           ? "bg-accent border-accent text-accent-foreground"
@@ -297,6 +304,7 @@ export function BillingTab({ user }: BillingTabProps) {
                       variant="ghost"
                       type="button"
                       onClick={() => setPaymentMethod("crypto")}
+                      aria-pressed={paymentMethod === "crypto"}
                       className={`flex items-center gap-2 px-4 py-2 font-mono text-sm border transition-colors ${
                         paymentMethod === "crypto"
                           ? "bg-accent border-accent text-accent-foreground"
@@ -345,7 +353,7 @@ export function BillingTab({ user }: BillingTabProps) {
                       variant="primary"
                       onClick={handleBuyCredits}
                       disabled={!isValidAmount || isProcessingCheckout}
-                      className="h-11 px-6 w-full sm:w-auto flex-shrink-0 font-mono text-base whitespace-nowrap"
+                      className="h-11 px-6 w-full sm:w-auto flex-shrink-0 font-mono text-base whitespace-nowrap disabled:border disabled:border-white/10 disabled:bg-white/[0.06] disabled:text-white/35 disabled:opacity-100"
                     >
                       {isProcessingCheckout ? (
                         <>
@@ -477,6 +485,20 @@ export function BillingTab({ user }: BillingTabProps) {
               {loadingInvoices ? (
                 <div className="flex items-center justify-center p-8 border-l border-r border-b border-brand-surface">
                   <Loader2 className="h-6 w-6 animate-spin text-[var(--accent)]" />
+                </div>
+              ) : invoicesError ? (
+                <div className="flex items-start gap-3 p-8 border-l border-r border-b border-brand-surface bg-red-500/5">
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-400" />
+                  <div className="space-y-1">
+                    <p className="text-xs md:text-sm text-red-300 font-mono">
+                      {t("cloud.billingTab.invoiceLoadFailed", {
+                        defaultValue: "Invoice history could not be loaded",
+                      })}
+                    </p>
+                    <p className="text-xs text-white/45 font-mono">
+                      {invoicesError}
+                    </p>
+                  </div>
                 </div>
               ) : invoices.length === 0 ? (
                 <div className="flex items-center justify-center p-8 border-l border-r border-b border-brand-surface">

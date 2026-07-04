@@ -584,6 +584,10 @@ function describeEvent(event: string, data: unknown): string {
       return "Sub-agent reconnected";
     case "usage_update":
       return "Token usage update";
+    case "account_switched":
+      return `Switched coding account to ${
+        str(record.label) ?? str(record.accountId) ?? "unknown"
+      }`;
     default:
       return event;
   }
@@ -919,6 +923,22 @@ export class OrchestratorTaskService extends Service {
       case "usage_update": {
         const usage = parseUsage(data);
         if (usage) await this.recordUsage(taskId, sessionId, usage);
+        break;
+      }
+      case "account_switched": {
+        // A follow-up prompt failed over to a different pooled account (the
+        // spawn-time account went unhealthy). Re-key the durable session
+        // record so recordUsage bills the account actually serving and the
+        // rate-limit/reauth marks land on it — not the spawn-time account.
+        const providerId = str(record.providerId);
+        const accountId = str(record.accountId);
+        if (providerId && accountId) {
+          await this.store.updateSession(sessionId, {
+            accountProviderId: providerId,
+            accountId,
+            accountLabel: str(record.label) ?? accountId,
+          });
+        }
         break;
       }
       default:

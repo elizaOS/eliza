@@ -97,6 +97,8 @@ export async function selectCodingAccount(
     sessionKey?: string;
     strategy?: CodingAccountStrategy;
     exclude?: string[];
+    /** Pin selection to these account ids (see the bridge contract in core). */
+    accountIds?: string[];
   } = {},
 ): Promise<ResolvedCodingAccount | null> {
   if (!isMultiAccountAgentType(agentType)) return null;
