@@ -1,7 +1,7 @@
 // Handles v1 cloud API v1 eliza agents agentid stream route traffic with route-local auth expectations.
 import { Hono } from "hono";
 import { z } from "zod";
-import { errorToResponse } from "@/lib/api/errors";
+import { errorToResponse, ValidationError } from "@/lib/api/errors";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import type { BridgeRequest } from "@/lib/services/eliza-sandbox";
 import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
@@ -104,7 +104,12 @@ async function __hono_POST(
   try {
     const { user } = await requireAuthOrApiKeyWithOrg(request);
     const { agentId } = await params;
-    const body = await request.json();
+    // A missing/malformed JSON body is caller error: a typed 400, not the
+    // unguarded SyntaxError that errorToResponse maps to a 500.
+    const body = await request.json().catch(() => {
+      // error-policy:J3 untrusted request body — malformed JSON becomes a typed 400 "invalid" result
+      throw new ValidationError("Invalid JSON body");
+    });
 
     const parsed = streamRequestSchema.safeParse(body);
     if (!parsed.success) {
