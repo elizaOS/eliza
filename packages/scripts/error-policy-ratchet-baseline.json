@@ -1,7 +1,7 @@
 {
   "schema": "eliza_error_policy_ratchet_v1",
   "parent": "#12182",
-  "updatedAt": "2026-07-04T01:00:02.085Z",
+  "updatedAt": "2026-07-04T01:23:24.379Z",
   "scope": {
     "enumeration": "git ls-files",
     "productionSourceOnly": true,
@@ -14,8 +14,8 @@
     ]
   },
   "limits": {
-    "emptyCatch": 1177,
+    "emptyCatch": 1180,
     "serverConsole": 295
   },
-  "filesScanned": 10198
+  "filesScanned": 10203
 }
