@@ -1399,268 +1399,284 @@ export class LocalInferenceEngine {
 					});
 		const semanticEotActive = fusedEot !== null;
 
-		const vad =
-			opts.vad ??
-			(await vadMod.createSileroVadDetector({
-				bundleRoot: bridge.bundlePath(),
-				ffi: bridge.ffi,
-				ctx: bridge.ffi
-					? () => {
-							const ctx = bridge.ffiCtx;
-							if (ctx === null) {
-								throw new VoiceStartupError(
-									"missing-ffi",
-									"[voice] Cannot initialize native VAD: fused FFI context is not loaded.",
-								);
+		// The fused-EOT reservation (8 MB voice-budget) is only released via the
+		// `controller.stop` teardown wired at the end of this method. Any await
+		// between the build above and that wiring can throw (ASR-unavailable,
+		// turn-detector warm failure, wake-word/mic startup) — without this guard
+		// the reservation would leak against the process-wide budget on a failed
+		// arm (#12895). Dispose is idempotent, so the success path still owns it
+		// through `controller.stop`.
+		try {
+			const vad =
+				opts.vad ??
+				(await vadMod.createSileroVadDetector({
+					bundleRoot: bridge.bundlePath(),
+					ffi: bridge.ffi,
+					ctx: bridge.ffi
+						? () => {
+								const ctx = bridge.ffiCtx;
+								if (ctx === null) {
+									throw new VoiceStartupError(
+										"missing-ffi",
+										"[voice] Cannot initialize native VAD: fused FFI context is not loaded.",
+									);
+								}
+								return ctx;
 							}
-							return ctx;
-						}
-					: undefined,
-				config: { semanticEotActive },
-			}));
-		logger.info(
-			`[LocalInferenceEngine] voice endpoint: endHangoverMs=${vad.endHangoverMs} (${
-				semanticEotActive
-					? "fused semantic EOT active"
-					: "fixed-VAD floor — fused semantic EOT unavailable"
-			})`,
-		);
-
-		// ASR — throws `AsrUnavailableError` when the fused decoder is
-		// unavailable (the fused build is the sole on-device ASR runtime). Gated
-		// on the VAD so silent frames aren't decoded.
-		const transcriber = bridge.createStreamingTranscriber({ vad });
-		// Voice Wave 2 (2026-05-14): tier-aware turn-detector revision selection.
-		// `2b` (the entry tier) ships the ~66 MB EN-only SmolLM2-135M distill
-		// (`v1.2.2-en`); `4b`+ ship the ~396 MB multilingual pruned
-		// semantic detector (`v0.4.1-intl`). The on-disk layout is per-tier so the
-		// bundle dir already contains the matching ONNX — `revision` here is a
-		// telemetry label (the upstream tag the bundle was staged from). When no
-		// active bundle is resolvable we omit the hint and the resolver falls
-		// back to the upstream-default filename order.
-		const activeTier = this.activeEliza1Bundle?.tierId;
-		const tierRevision = activeTier
-			? eotMod.turnDetectorRevisionForTier(activeTier)
-			: undefined;
-		const eliza1EotSelected = resolveEliza1EotSelection(
-			opts.useEliza1Eot,
-			opts.eliza1EotLoraPath,
-		);
-		const eliza1EotClassifier =
-			eliza1EotSelected !== "off" && opts.turnDetector !== false
-				? this.tryBuildEliza1EotClassifier(
-						eliza1EotSelected,
-						opts.eliza1EotLoraPath,
-					)
-				: null;
-		if (eliza1EotSelected === "force" && !eliza1EotClassifier) {
-			throw new VoiceStartupError(
-				"missing-turn-detector",
-				"[voice] useEliza1Eot:true requested but the in-process Eliza-1 EOT scorer is unavailable on the FFI runtime — use the GGUF turn detector by setting useEliza1Eot:false.",
+						: undefined,
+					config: { semanticEotActive },
+				}));
+			logger.info(
+				`[LocalInferenceEngine] voice endpoint: endHangoverMs=${vad.endHangoverMs} (${
+					semanticEotActive
+						? "fused semantic EOT active"
+						: "fixed-VAD floor — fused semantic EOT unavailable"
+				})`,
 			);
-		}
-		// Resolver order: prefer the fused composite EOT (v11), then the legacy
-		// in-process Eliza-1 scorer + GGUF turn detector (both null on the FFI
-		// runtime — they needed node-llama controlledEvaluate), then the
-		// heuristic. The ONNX path was removed.
-		const ggmlTurnDetector =
-			opts.turnDetector === false || fusedEot
-				? undefined
-				: await eotGgmlMod
-						.createBundledLiveKitGgmlTurnDetector({
-							...(opts.turnDetectorModelDir
-								? { modelDir: opts.turnDetectorModelDir }
-								: {}),
-							...(tierRevision ? { revision: tierRevision } : {}),
-						})
-						.catch(() => null);
-		const turnDetector =
-			opts.turnDetector === false
-				? undefined
-				: (opts.turnDetector ??
-					fusedEot ??
-					eliza1EotClassifier ??
-					ggmlTurnDetector ??
-					new eotMod.HeuristicEotClassifier());
-		if (turnDetector) {
-			try {
-				// Warm one short pass while the session is arming, so the first
-				// real user pause does not pay model-load latency.
-				await turnDetector.score("yes");
-			} catch (err) {
+
+			// ASR — throws `AsrUnavailableError` when the fused decoder is
+			// unavailable (the fused build is the sole on-device ASR runtime). Gated
+			// on the VAD so silent frames aren't decoded.
+			const transcriber = bridge.createStreamingTranscriber({ vad });
+			// Voice Wave 2 (2026-05-14): tier-aware turn-detector revision selection.
+			// `2b` (the entry tier) ships the ~66 MB EN-only SmolLM2-135M distill
+			// (`v1.2.2-en`); `4b`+ ship the ~396 MB multilingual pruned
+			// semantic detector (`v0.4.1-intl`). The on-disk layout is per-tier so the
+			// bundle dir already contains the matching ONNX — `revision` here is a
+			// telemetry label (the upstream tag the bundle was staged from). When no
+			// active bundle is resolvable we omit the hint and the resolver falls
+			// back to the upstream-default filename order.
+			const activeTier = this.activeEliza1Bundle?.tierId;
+			const tierRevision = activeTier
+				? eotMod.turnDetectorRevisionForTier(activeTier)
+				: undefined;
+			const eliza1EotSelected = resolveEliza1EotSelection(
+				opts.useEliza1Eot,
+				opts.eliza1EotLoraPath,
+			);
+			const eliza1EotClassifier =
+				eliza1EotSelected !== "off" && opts.turnDetector !== false
+					? this.tryBuildEliza1EotClassifier(
+							eliza1EotSelected,
+							opts.eliza1EotLoraPath,
+						)
+					: null;
+			if (eliza1EotSelected === "force" && !eliza1EotClassifier) {
 				throw new VoiceStartupError(
 					"missing-turn-detector",
-					`[voice] Cannot initialize semantic turn detector: ${err instanceof Error ? err.message : String(err)}`,
+					"[voice] useEliza1Eot:true requested but the in-process Eliza-1 EOT scorer is unavailable on the FFI runtime — use the GGUF turn detector by setting useEliza1Eot:false.",
 				);
 			}
-		}
-
-		// G5.d (Gauntlet cleanup): delegate to the bridge's canonical
-		// VoiceCancellationCoordinator. The bridge is the single owner — it
-		// constructs the coordinator + policy at `EngineVoiceBridge.start()`
-		// when `runtime` is passed in `EngineVoiceBridgeOptions` (see
-		// `engine-bridge.ts buildCancellationWiring`). Earlier C0-F wiring
-		// built a separate coordinator here; that path is removed.
-		//
-		// Back-compat: when callers still pass `opts.runtime` to
-		// `startVoiceSession()` but did not pass `runtime` to `startVoice()`,
-		// the bridge has no coordinator. We log once and proceed — the
-		// caller-supplied runtime is ignored because the bridge owns the
-		// FFI context that the coordinator targets.
-		if (opts.runtime && !bridge.cancellationCoordinatorOrNull()) {
-			console.warn(
-				"[voice] startVoiceSession({ runtime }) supplied but the bridge has no canonical cancellation coordinator — pass `runtime` to startVoice() instead. Ignoring the session-level runtime.",
-			);
-		}
-
-		const controller = new VoiceTurnController(
-			{
-				vad,
-				transcriber,
-				scheduler: bridge.scheduler,
-				...(turnDetector ? { turnDetector } : {}),
-				prewarm:
-					opts.prewarm ??
-					((roomId: string) => {
-						void this.prewarmConversation(roomId, "");
-					}),
-				playFirstAudioFiller: () => this.playFirstAudioFiller(),
-				generate: opts.generate,
-			},
-			{
-				roomId: opts.roomId,
-				...(opts.speculatePauseMs !== undefined
-					? { speculatePauseMs: opts.speculatePauseMs }
-					: {}),
-			},
-			opts.events ?? {},
-		);
-
-		// Bind the bridge's BargeInController into the bridge's canonical
-		// coordinator (G5.d). No-op when the bridge was constructed without a
-		// runtime — returns a no-op unsubscribe so the teardown path stays
-		// branchless.
-		const unsubCoordinator = bridge.bindBargeInControllerForRoom(opts.roomId);
-
-		// Mic → ring buffer (the buffer the ASR / instrumentation can read from)
-		// + per-frame fan-out to the VAD and the streaming transcriber.
-		const { unsubscribe: stopMicRing } = pipeMicToRingBuffer(
-			micSource,
-			new InMemoryAudioSink(),
-		);
-		// Optional openWakeWord hotword gate (opt-in, local mode). Resolved
-		// against the active bundle; absent graphs → silently no wake word.
-		let wakeWord: import("./voice/wake-word").OpenWakeWordDetector | null =
-			null;
-		let feedWakeFrame: ((pcm: Float32Array) => void) | null = null;
-		if (opts.wakeWord?.enabled) {
-			const {
-				isPlaceholderWakeWordHead,
-				loadBundledWakeWordModel,
-				OPENWAKEWORD_DEFAULT_HEAD,
-				OpenWakeWordDetector,
-			} = await import("./voice/wake-word");
-			const { bridgeDetectorToFusedWake } = await import(
-				"./voice/fused-wake-bridge"
-			);
-			const headName = opts.wakeWord.head?.trim() || OPENWAKEWORD_DEFAULT_HEAD;
-			if (isPlaceholderWakeWordHead(headName)) {
-				console.warn(
-					`[voice] wake word head '${headName}' is a PLACEHOLDER (the upstream openWakeWord "hey jarvis" head, renamed) — it fires on "hey jarvis", not the Eliza-1 wake phrase. Experimental, opt-in only; see packages/inference/reports/porting/2026-05-11/wakeword-head-plan.md.`,
-				);
-			}
-			if (!bridge.ffi) {
-				throw new VoiceStartupError(
-					"missing-ffi",
-					"[voice] Cannot initialize wake-word detector: fused libelizainference FFI is not loaded. Wake-word detection requires the native GGUF runtime (eliza_inference_wakeword_* symbols).",
-				);
-			}
-			const ffiCtxResolver = () => {
-				const ctx = bridge.ffiCtx;
-				if (ctx === null) {
+			// Resolver order: prefer the fused composite EOT (v11), then the legacy
+			// in-process Eliza-1 scorer + GGUF turn detector (both null on the FFI
+			// runtime — they needed node-llama controlledEvaluate), then the
+			// heuristic. The ONNX path was removed.
+			const ggmlTurnDetector =
+				opts.turnDetector === false || fusedEot
+					? undefined
+					: await eotGgmlMod
+							.createBundledLiveKitGgmlTurnDetector({
+								...(opts.turnDetectorModelDir
+									? { modelDir: opts.turnDetectorModelDir }
+									: {}),
+								...(tierRevision ? { revision: tierRevision } : {}),
+							})
+							.catch(() => null);
+			const turnDetector =
+				opts.turnDetector === false
+					? undefined
+					: (opts.turnDetector ??
+						fusedEot ??
+						eliza1EotClassifier ??
+						ggmlTurnDetector ??
+						new eotMod.HeuristicEotClassifier());
+			if (turnDetector) {
+				try {
+					// Warm one short pass while the session is arming, so the first
+					// real user pause does not pay model-load latency.
+					await turnDetector.score("yes");
+				} catch (err) {
 					throw new VoiceStartupError(
-						"missing-ffi",
-						"[voice] Cannot initialize wake-word detector: fused FFI context is not loaded.",
+						"missing-turn-detector",
+						`[voice] Cannot initialize semantic turn detector: ${err instanceof Error ? err.message : String(err)}`,
 					);
 				}
-				return ctx;
-			};
-			const model = await loadBundledWakeWordModel({
-				ffi: bridge.ffi,
-				ctx: ffiCtxResolver,
-				bundleRoot: bridge.bundlePath(),
-				...(opts.wakeWord.head ? { head: opts.wakeWord.head } : {}),
-			});
-			if (model) {
-				const forwardFusedWake = opts.wakeWord.onFusedWake
-					? bridgeDetectorToFusedWake(opts.wakeWord.onFusedWake)
-					: null;
-				const detector = new OpenWakeWordDetector({
-					model,
-					...(opts.wakeWord.threshold !== undefined
-						? { config: { threshold: opts.wakeWord.threshold } }
-						: {}),
-					onWake: (info) => {
-						void this.prewarmConversation(opts.roomId, "");
-						opts.wakeWord?.onWake?.();
-						// Bridge the real native firing to the renderer (#10351):
-						// the bar activates and a turn starts via useWakeController.
-						forwardFusedWake?.(info);
-					},
-				});
-				wakeWord = detector;
-				// The mic frame size need not match the openWakeWord frame size
-				// (1280 samples = 80 ms @ 16 kHz); re-buffer into exact frames.
-				const need = model.frameSamples;
-				let acc = new Float32Array(0);
-				feedWakeFrame = (pcm: Float32Array) => {
-					const merged = new Float32Array(acc.length + pcm.length);
-					merged.set(acc);
-					merged.set(pcm, acc.length);
-					let off = 0;
-					while (merged.length - off >= need) {
-						const slice = merged.slice(off, off + need);
-						off += need;
-						void detector.pushFrame(slice);
-					}
-					acc = merged.slice(off);
-				};
-			} else {
-				console.info(
-					"[voice] wake word requested but no openWakeWord model in this bundle — running VAD-gated only",
+			}
+
+			// G5.d (Gauntlet cleanup): delegate to the bridge's canonical
+			// VoiceCancellationCoordinator. The bridge is the single owner — it
+			// constructs the coordinator + policy at `EngineVoiceBridge.start()`
+			// when `runtime` is passed in `EngineVoiceBridgeOptions` (see
+			// `engine-bridge.ts buildCancellationWiring`). Earlier C0-F wiring
+			// built a separate coordinator here; that path is removed.
+			//
+			// Back-compat: when callers still pass `opts.runtime` to
+			// `startVoiceSession()` but did not pass `runtime` to `startVoice()`,
+			// the bridge has no coordinator. We log once and proceed — the
+			// caller-supplied runtime is ignored because the bridge owns the
+			// FFI context that the coordinator targets.
+			if (opts.runtime && !bridge.cancellationCoordinatorOrNull()) {
+				console.warn(
+					"[voice] startVoiceSession({ runtime }) supplied but the bridge has no canonical cancellation coordinator — pass `runtime` to startVoice() instead. Ignoring the session-level runtime.",
 				);
 			}
-		}
 
-		const unsubFrame = micSource.onFrame((frame) => {
-			// The VAD forward pass is serialized internally; fire-and-forget so a
-			// slow frame doesn't backpressure the mic (the VAD records overruns).
-			void vad.pushFrame(frame);
-			transcriber.feed(frame);
-			feedWakeFrame?.(frame.pcm);
-		});
+			const controller = new VoiceTurnController(
+				{
+					vad,
+					transcriber,
+					scheduler: bridge.scheduler,
+					...(turnDetector ? { turnDetector } : {}),
+					prewarm:
+						opts.prewarm ??
+						((roomId: string) => {
+							void this.prewarmConversation(roomId, "");
+						}),
+					playFirstAudioFiller: () => this.playFirstAudioFiller(),
+					generate: opts.generate,
+				},
+				{
+					roomId: opts.roomId,
+					...(opts.speculatePauseMs !== undefined
+						? { speculatePauseMs: opts.speculatePauseMs }
+						: {}),
+				},
+				opts.events ?? {},
+			);
 
-		controller.start();
-		await micSource.start();
+			// Bind the bridge's BargeInController into the bridge's canonical
+			// coordinator (G5.d). No-op when the bridge was constructed without a
+			// runtime — returns a no-op unsubscribe so the teardown path stays
+			// branchless.
+			const unsubCoordinator = bridge.bindBargeInControllerForRoom(opts.roomId);
 
-		// Single teardown knob: stopping the controller stops the mic chain too.
-		const origStop = controller.stop.bind(controller);
-		controller.stop = () => {
-			origStop();
-			unsubFrame();
-			stopMicRing();
-			void micSource.stop();
-			transcriber.dispose();
-			// Release the fused EOT scorer's voice-budget reservation.
+			// Mic → ring buffer (the buffer the ASR / instrumentation can read from)
+			// + per-frame fan-out to the VAD and the streaming transcriber.
+			const { unsubscribe: stopMicRing } = pipeMicToRingBuffer(
+				micSource,
+				new InMemoryAudioSink(),
+			);
+			// Optional openWakeWord hotword gate (opt-in, local mode). Resolved
+			// against the active bundle; absent graphs → silently no wake word.
+			let wakeWord: import("./voice/wake-word").OpenWakeWordDetector | null =
+				null;
+			let feedWakeFrame: ((pcm: Float32Array) => void) | null = null;
+			if (opts.wakeWord?.enabled) {
+				const {
+					isPlaceholderWakeWordHead,
+					loadBundledWakeWordModel,
+					OPENWAKEWORD_DEFAULT_HEAD,
+					OpenWakeWordDetector,
+				} = await import("./voice/wake-word");
+				const { bridgeDetectorToFusedWake } = await import(
+					"./voice/fused-wake-bridge"
+				);
+				const headName =
+					opts.wakeWord.head?.trim() || OPENWAKEWORD_DEFAULT_HEAD;
+				if (isPlaceholderWakeWordHead(headName)) {
+					console.warn(
+						`[voice] wake word head '${headName}' is a PLACEHOLDER (the upstream openWakeWord "hey jarvis" head, renamed) — it fires on "hey jarvis", not the Eliza-1 wake phrase. Experimental, opt-in only; see packages/inference/reports/porting/2026-05-11/wakeword-head-plan.md.`,
+					);
+				}
+				if (!bridge.ffi) {
+					throw new VoiceStartupError(
+						"missing-ffi",
+						"[voice] Cannot initialize wake-word detector: fused libelizainference FFI is not loaded. Wake-word detection requires the native GGUF runtime (eliza_inference_wakeword_* symbols).",
+					);
+				}
+				const ffiCtxResolver = () => {
+					const ctx = bridge.ffiCtx;
+					if (ctx === null) {
+						throw new VoiceStartupError(
+							"missing-ffi",
+							"[voice] Cannot initialize wake-word detector: fused FFI context is not loaded.",
+						);
+					}
+					return ctx;
+				};
+				const model = await loadBundledWakeWordModel({
+					ffi: bridge.ffi,
+					ctx: ffiCtxResolver,
+					bundleRoot: bridge.bundlePath(),
+					...(opts.wakeWord.head ? { head: opts.wakeWord.head } : {}),
+				});
+				if (model) {
+					const forwardFusedWake = opts.wakeWord.onFusedWake
+						? bridgeDetectorToFusedWake(opts.wakeWord.onFusedWake)
+						: null;
+					const detector = new OpenWakeWordDetector({
+						model,
+						...(opts.wakeWord.threshold !== undefined
+							? { config: { threshold: opts.wakeWord.threshold } }
+							: {}),
+						onWake: (info) => {
+							void this.prewarmConversation(opts.roomId, "");
+							opts.wakeWord?.onWake?.();
+							// Bridge the real native firing to the renderer (#10351):
+							// the bar activates and a turn starts via useWakeController.
+							forwardFusedWake?.(info);
+						},
+					});
+					wakeWord = detector;
+					// The mic frame size need not match the openWakeWord frame size
+					// (1280 samples = 80 ms @ 16 kHz); re-buffer into exact frames.
+					const need = model.frameSamples;
+					let acc = new Float32Array(0);
+					feedWakeFrame = (pcm: Float32Array) => {
+						const merged = new Float32Array(acc.length + pcm.length);
+						merged.set(acc);
+						merged.set(pcm, acc.length);
+						let off = 0;
+						while (merged.length - off >= need) {
+							const slice = merged.slice(off, off + need);
+							off += need;
+							void detector.pushFrame(slice);
+						}
+						acc = merged.slice(off);
+					};
+				} else {
+					console.info(
+						"[voice] wake word requested but no openWakeWord model in this bundle — running VAD-gated only",
+					);
+				}
+			}
+
+			const unsubFrame = micSource.onFrame((frame) => {
+				// The VAD forward pass is serialized internally; fire-and-forget so a
+				// slow frame doesn't backpressure the mic (the VAD records overruns).
+				void vad.pushFrame(frame);
+				transcriber.feed(frame);
+				feedWakeFrame?.(frame.pcm);
+			});
+
+			controller.start();
+			await micSource.start();
+
+			// Single teardown knob: stopping the controller stops the mic chain too.
+			const origStop = controller.stop.bind(controller);
+			controller.stop = () => {
+				origStop();
+				unsubFrame();
+				stopMicRing();
+				void micSource.stop();
+				transcriber.dispose();
+				// Release the fused EOT scorer's voice-budget reservation.
+				fusedEot?.dispose();
+				wakeWord?.reset();
+				// G5.d: tear down only the per-room barge-in binding. The bridge
+				// owns the coordinator lifecycle and disposes it in
+				// `EngineVoiceBridge.dispose()` — we must not dispose it here or
+				// we would cancel armed tokens for other concurrent rooms.
+				unsubCoordinator();
+			};
+			return controller;
+		} catch (err) {
+			// error-policy:J6 best-effort teardown — release the fused-EOT
+			// reservation before rethrowing so a failed arm does not leak its 8 MB
+			// voice-budget slot (#12895). The original error propagates unchanged.
 			fusedEot?.dispose();
-			wakeWord?.reset();
-			// G5.d: tear down only the per-room barge-in binding. The bridge
-			// owns the coordinator lifecycle and disposes it in
-			// `EngineVoiceBridge.dispose()` — we must not dispose it here or
-			// we would cancel armed tokens for other concurrent rooms.
-			unsubCoordinator();
-		};
-		return controller;
+			throw err;
+		}
 	}
 
 	/**
