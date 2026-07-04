@@ -163,16 +163,16 @@ describe("native assistant entry contracts", () => {
     // Brand rewrite: bundle-id suffix, app-group entitlements, fastlane ids,
     // and the personal-team strip list all cover the widget extension.
     expect(mobileBuildScript).toContain('"ElizaWidgets",');
-    expect(mobileBuildScript).toContain("`${appId}.ElizaWidgets`");
+    expect(mobileBuildScript).toMatch(/\$\{appId\}\.ElizaWidgets/);
     expect(mobileBuildScript).toContain('"ElizaWidgets.entitlements"');
     expect(mobileBuildScript).toContain('"EWDG00010000000000000401"');
     // D11: ELIZAOS_VERSION_NAME/ELIZAOS_VERSION_CODE → MARKETING_VERSION /
     // CURRENT_PROJECT_VERSION so the running iOS build is identifiable.
     expect(mobileBuildScript).toContain("ELIZAOS_VERSION_NAME");
     expect(mobileBuildScript).toContain("ELIZAOS_VERSION_CODE");
-    expect(mobileBuildScript).toContain("MARKETING_VERSION = ${versionName};");
-    expect(mobileBuildScript).toContain(
-      "CURRENT_PROJECT_VERSION = ${versionCode};",
+    expect(mobileBuildScript).toMatch(/MARKETING_VERSION = \$\{versionName\};/);
+    expect(mobileBuildScript).toMatch(
+      /CURRENT_PROJECT_VERSION = \$\{versionCode\};/,
     );
   });
 
