@@ -9,7 +9,7 @@ mocked `/api` (that is `playwright.ui-smoke.config.ts`). Two layers:
 | `mobile-local-chat-smoke.mjs` | On-device agent boots, smallest model loads, a real chat round-trips | adb + on-device agent API (`:31337`) |
 | `onboarding-to-home.android.spec.ts` | Fresh Capacitor first-run onboarding selects a real remote host agent over `adb reverse`, completes first-run, and lands on the home/chat surface with screenshot + screenrecord artifacts | Playwright Android driver + deterministic host `startApiServer` |
 | `native-plugin-view-smoke.android.spec.ts` | The installed app's WebView calls `ElizaSystem` through Capacitor and receives Android/Kotlin-only status + settings values, with JSON, screenshot, screenrecord, console, and logcat artifacts | Playwright Android driver + real Capacitor bridge |
-| `touch-gesture.android.spec.ts` | The installed Android WebView receives a real OS touch swipe on the chat grabber and opens the launcher rail without falling back to mouse input, with JSON, screenshot, screenrecord, console, and logcat artifacts | Playwright Android driver + `adb shell input swipe` |
+| `touch-gesture.android.spec.ts` | The installed Android WebView runs the full chat gesture matrix — sheet detents, home↔launcher rail + back, push-to-talk hold, keyboard avoidance, media attachment, long-press — via real OS touch (`adb input`), asserting real touch delivery (never mouse) plus each gesture's semantics, recorded as one chunked screenrecord | Playwright Android driver + `adb shell input swipe` |
 | `sleep-wake.android.spec.ts` | The installed app emits pause/resume lifecycle events across a real Android sleep/wake cycle, returns to the home shell, and remains interactive, with JSON, screenshot, screenrecord, and logcat artifacts | Playwright Android driver + adb power events |
 | `ios-onboarding-smoke.mjs` | Fresh iOS Capacitor first-run onboarding selects the same real remote host agent, completes first-run, and lands on the home/chat surface with screenshot + video artifacts | `xcrun simctl` + in-WebView smoke request/result via Capacitor Preferences |
 | `playwright.android.config.ts` (`test/android/*.android.spec.ts`) | Every route/feature renders on the real WebView against the live backend | Playwright Android driver (`_android`) over the WebView CDP socket |
@@ -163,19 +163,33 @@ Artifacts are written under
 `native-plugin-result.json`, `native-plugin-device.png`,
 `native-plugin-view-smoke.mp4`, `webview-console.log`, and `logcat.txt`.
 
-## Touch gesture WebView smoke
+## Chat gesture matrix (WebView)
 
-`touch-gesture.android.spec.ts` closes the remaining #9943 gap where the chat
-grabber swipe was only covered by desktop Chromium. It attaches to the installed
-Android WebView, records DOM touch/pointer events, dispatches an OS-level
-`adb shell input swipe` on `chat-sheet-grabber`, and asserts
-`home-launcher-surface[data-page="launcher"]` while `pointerType=mouse` remains
-absent.
+`touch-gesture.android.spec.ts` is the full on-device chat gesture matrix
+(#12344, parent #12188) — the successor to the single #9943 grabber-swipe smoke.
+It attaches to the installed Android WebView, records DOM touch/pointer events,
+and for each gesture dispatches OS-level `adb input` touch, asserting both that
+the WebView saw real touch (`pointerType=mouse` stays absent) and the gesture's
+own semantics:
 
-Artifacts are written under
-`.github/issue-evidence/9943-android-touch-gesture/`:
-`android-touch-gesture.json`, `android-touch-launcher.png`,
-`android-touch-gesture.mp4`, `webview-console.log`, and `logcat.txt`.
+- **Sheet detents** — grabber drag opens (`continuous-chat-overlay[data-open]`,
+  `chat-sheet[data-detent]`) then collapses.
+- **Rail pager** — home→launcher and launcher→home (`home-launcher-surface[data-page]`).
+- **Push-to-talk** — a >200ms hold on `chat-composer-mic` arms dictation without
+  latching the hands-free loop (mic aria-label never becomes "end conversation").
+- **Keyboard avoidance** — tapping the composer raises the IME (`dumpsys
+  input_method mInputShown=true`) and the composer stays within the visual
+  viewport.
+- **Media attachment** — the attach tap plus real `addImageFiles` intake shows a
+  pending-image preview.
+- **Long-press** — a held press on a sent message copies it / reveals its action
+  row (skips honestly when no agent-backed bubble exists).
+
+The whole run records through `startChunkedAndroidScreenRecord` (segments concat
+with ffmpeg) so a >180s walkthrough is one file. Artifacts land under
+`.github/issue-evidence/12344-android-gesture-matrix/`:
+`android-gesture-matrix.mp4`, `gesture-*.png`, `android-gesture-matrix.json`,
+and `logcat.txt`.
 
 ## iOS
 
