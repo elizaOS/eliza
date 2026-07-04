@@ -28,17 +28,19 @@ import type {
 import {
 	CANONICAL_SUBACTION_KEY,
 	LEGACY_SUBACTION_KEYS,
+	normalizeSubaction,
 } from "./subaction-dispatch";
 
 export interface SubactionPromotionOverrides {
 	/** Override the virtual action's description. */
 	description?: string;
 	/**
-	 * Override the virtual action's compressed description — the short
-	 * one-line blurb the planner sees in tier-A / tier-B summaries. When
-	 * unset, the virtual inherits the parent's `descriptionCompressed`,
-	 * which can be too generic for sub-actions that need a sharper signal
-	 * (e.g. `TASKS_SPAWN_AGENT` competing with inline `FILE.write`).
+	 * Set the virtual action's compressed description — the short one-line
+	 * blurb the planner sees in tier-A / tier-B summaries. When unset, the
+	 * virtual has none and consumers fall back to its composed per-subaction
+	 * `description`; the parent's keyword-stuffed `descriptionCompressed` is
+	 * never inherited (duplicating it across every virtual floods the
+	 * planner's tool payload).
 	 */
 	descriptionCompressed?: string;
 	/** Add similes specific to this virtual subaction. */
@@ -115,12 +117,41 @@ function findDiscriminatorParameter(
 }
 
 /**
- * Build the virtual's exposed parameter schema. Replaces the parent's
- * discriminator parameter (e.g. `action` with enum=[create, spawn_agent,
- * send, ...]) with one whose enum is pinned to the single subaction value
- * this virtual represents.
+ * True when `parameter` applies to the pinned `subaction`. Parameters
+ * without an applicability list are shared across every subaction; an
+ * explicit empty list marks a parent-only parameter. Matching goes through
+ * `normalizeSubaction` so case / separator variants in hand-written lists
+ * still hit the canonical enum value.
+ */
+function parameterAppliesToSubaction(
+	parameter: ActionParameter,
+	subaction: string,
+): boolean {
+	if (!parameter.subactions) return true;
+	const pinned = normalizeSubaction(subaction);
+	return parameter.subactions.some(
+		(entry) => normalizeSubaction(entry) === pinned,
+	);
+}
+
+/**
+ * Build the virtual's exposed parameter schema:
  *
- * Why this matters: without this transform, every virtual exposes the
+ * 1. Drop parameters whose `subactions` applicability list excludes the
+ *    pinned value. Without this, every virtual duplicates the parent's FULL
+ *    schema — a wide umbrella (MESSAGE: 58 parameters, 23 subactions)
+ *    multiplies into hundreds of kilobytes of near-identical JSON Schema on
+ *    every planner turn even though each virtual's handler reads only a
+ *    handful of them. The parent keeps the full surface, so nothing is lost
+ *    when the planner picks the umbrella directly. The `subactions` marker
+ *    itself is stripped from the virtual's copy — once the discriminator is
+ *    pinned the list carries no information.
+ *
+ * 2. Replace the parent's discriminator parameter (e.g. `action` with
+ *    enum=[create, spawn_agent, send, ...]) with one whose enum is pinned to
+ *    the single subaction value this virtual represents.
+ *
+ * Why the pinning matters: without it, every virtual exposes the
  * FULL discriminator enum to the LLM's tool schema, even though its name
  * already implies which subaction it dispatches. The model sees
  * `TASKS_SPAWN_AGENT(action: enum[14 values], task, agentType, ...)` and
@@ -146,24 +177,32 @@ function pinDiscriminatorForVirtual(
 	if (!parameters) return undefined;
 	const discriminator = findDiscriminatorParameter(parameters);
 	if (!discriminator) return [...parameters];
-	return parameters.map((parameter) => {
-		if (parameter.name !== discriminator.name) return parameter;
-		const baseSchema =
-			parameter.schema && typeof parameter.schema === "object"
-				? parameter.schema
-				: { type: "string" as const };
-		return {
-			...parameter,
-			description: `Subaction discriminator (auto-set to "${subaction}" for this virtual; do not change).`,
-			required: false,
-			schema: {
-				...baseSchema,
-				type: baseSchema.type,
-				enum: [subaction],
-				default: subaction,
-			},
-		};
-	});
+	const sliced: ActionParameter[] = [];
+	for (const parameter of parameters) {
+		if (parameter.name === discriminator.name) {
+			const baseSchema =
+				parameter.schema && typeof parameter.schema === "object"
+					? parameter.schema
+					: { type: "string" as const };
+			const { subactions: _stray, ...discriminatorRest } = parameter;
+			sliced.push({
+				...discriminatorRest,
+				description: `Subaction discriminator (auto-set to "${subaction}" for this virtual; do not change).`,
+				required: false,
+				schema: {
+					...baseSchema,
+					type: baseSchema.type,
+					enum: [subaction],
+					default: subaction,
+				},
+			});
+			continue;
+		}
+		if (!parameterAppliesToSubaction(parameter, subaction)) continue;
+		const { subactions: _applicability, ...rest } = parameter;
+		sliced.push(rest);
+	}
+	return sliced;
 }
 
 function toUpperSnake(value: string): string {
@@ -272,11 +311,18 @@ export function promoteSubactionsToActions(
 			override.examples ??
 			(options.shareParentExamples ? parent.examples : undefined);
 
+		// The parent's `descriptionCompressed` (a keyword-stuffed retrieval
+		// blurb) and `routingHint` are deliberately NOT inherited: duplicated
+		// verbatim across every virtual they multiply into tens of kilobytes
+		// of identical tool-description text per planner turn. Retrieval still
+		// finds virtuals through their similes (parent name + subaction) and
+		// through the parent's own search text, and tool rendering falls back
+		// to the short composed `description` when no per-subaction
+		// `descriptionCompressed` override is provided.
 		const virtual: PromotedAction = {
 			name: virtualName,
 			description,
-			descriptionCompressed:
-				override.descriptionCompressed ?? parent.descriptionCompressed,
+			descriptionCompressed: override.descriptionCompressed,
 			similes,
 			examples,
 			handler: buildVirtualHandler(parent, subKey),
@@ -292,7 +338,6 @@ export function promoteSubactionsToActions(
 			suppressEarlyReply: parent.suppressEarlyReply,
 			tags: parent.tags,
 			priority: parent.priority,
-			routingHint: parent.routingHint,
 			connectorAccountPolicy: parent.connectorAccountPolicy,
 			accountPolicy: parent.accountPolicy,
 		};

@@ -3290,6 +3290,14 @@ async function delegateToTriage(
 
 // ---------------------------------------------------------------------------
 // Parameters (single declarative schema)
+//
+// Each parameter's `subactions` list names the ops whose handler actually
+// reads it (including alias fallbacks in the triage parsers). Subaction
+// promotion slices on these lists so each MESSAGE_<OP> virtual exposes only
+// its own parameters instead of duplicating this whole schema 23 times in the
+// planner's tool payload; the MESSAGE parent always keeps the full surface.
+// When adding a parameter or teaching an op a new one, keep the list in sync
+// with the handler's reads.
 // ---------------------------------------------------------------------------
 
 export const MESSAGE_PARAMETERS: ActionParameter[] = [
@@ -3306,24 +3314,41 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
 		description:
 			"Connector source: discord, slack, signal, whatsapp, telegram, x, imessage, matrix, line, google-chat, feishu, instagram, wechat, gmail.",
 		required: false,
+		subactions: [
+			"send", "read_channel", "search", "list_channels", "list_servers",
+			"join", "leave", "react", "edit", "delete", "pin", "get_user", "triage",
+			"list_inbox", "search_inbox", "draft_reply", "draft_followup",
+			"respond", "send_draft", "manage",
+		],
 		schema: { type: "string" },
 	},
 	{
 		name: "accountId",
 		description: "Connector account id for multi-account messages.",
 		required: false,
+		subactions: [
+			"send", "read_channel", "search", "list_channels", "list_servers",
+			"join", "leave", "react", "edit", "delete", "pin", "get_user",
+		],
 		schema: { type: "string" },
 	},
 	{
 		name: "sources",
 		description: "Inbox sources for triage, list_inbox, search_inbox.",
 		required: false,
+		subactions: [
+			"triage", "list_inbox", "search_inbox", "draft_reply", "respond",
+			"manage",
+		],
 		schema: { type: "array", items: { type: "string" } },
 	},
 	{
 		name: "folder",
 		description: "Inbox folder hint for triage/list/search/draft/respond.",
 		required: false,
+		subactions: [
+			"triage", "list_inbox", "search_inbox", "draft_reply", "respond",
+		],
 		schema: { type: "string" },
 	},
 	{
@@ -3331,6 +3356,10 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
 		description:
 			"Loose target: user, handle, channel, room, group, server, contact, phone, email, platform ID.",
 		required: false,
+		subactions: [
+			"send", "read_channel", "search", "join", "leave", "react", "edit",
+			"delete", "pin", "get_user", "send_draft",
+		],
 		schema: { type: "string" },
 	},
 	{
@@ -3338,6 +3367,7 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
 		description:
 			"Target kind for op=send: user, contact, channel, room, thread, group, server, email, phone.",
 		required: false,
+		subactions: ["send"],
 		schema: {
 			type: "string",
 			enum: [...CANONICAL_MESSAGE_TARGET_KINDS],
@@ -3348,54 +3378,87 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
 		description:
 			"Channel/room/group for read_channel, list_channels, join, leave.",
 		required: false,
+		subactions: [
+			"read_channel", "search", "join", "leave", "react", "edit", "delete",
+			"pin", "send_draft",
+		],
 		schema: { type: "string" },
 	},
 	{
 		name: "roomId",
 		description: "Platform room or stored room ID.",
 		required: false,
+		subactions: [
+			"read_channel", "search", "join", "leave", "react", "edit", "delete",
+			"pin",
+		],
 		schema: { type: "string" },
 	},
 	{
 		name: "channelId",
 		description: "Platform channel ID.",
 		required: false,
+		subactions: [
+			"read_channel", "search", "join", "leave", "react", "edit", "delete",
+			"pin", "draft_followup",
+		],
 		schema: { type: "string" },
 	},
 	{
 		name: "server",
 		description: "Loose server/guild/workspace/team name/ref.",
 		required: false,
+		subactions: [
+			"read_channel", "search", "join", "leave", "react", "edit", "delete",
+			"pin",
+		],
 		schema: { type: "string" },
 	},
 	{
 		name: "serverId",
 		description: "Platform server/guild/workspace/team ID.",
 		required: false,
+		subactions: [
+			"read_channel", "search", "join", "leave", "react", "edit", "delete",
+			"pin",
+		],
 		schema: { type: "string" },
 	},
 	{
 		name: "userId",
 		description: "Platform user ID or stored entity ID.",
 		required: false,
+		subactions: [
+			"read_channel", "search", "join", "leave", "react", "edit", "delete",
+			"pin", "get_user",
+		],
 		schema: { type: "string" },
 	},
 	{
 		name: "username",
 		description: "Loose username for get_user.",
 		required: false,
+		subactions: [
+			"read_channel", "search", "join", "leave", "react", "edit", "delete",
+			"pin", "get_user",
+		],
 		schema: { type: "string" },
 	},
 	{
 		name: "handle",
 		description: "Loose platform handle for get_user.",
 		required: false,
+		subactions: [
+			"read_channel", "search", "join", "leave", "react", "edit", "delete",
+			"pin", "get_user",
+		],
 		schema: { type: "string" },
 	},
 	{
 		name: "contact",
 		description: "Person name for op=read_with_contact.",
 		required: false,
+		subactions: ["read_with_contact"],
 		schema: { type: "string" },
 	},
 	{
@@ -3403,66 +3466,99 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
 		description:
 			"Person/entity ID for read_with_contact, get_user, scoped search.",
 		required: false,
+		subactions: [
+			"read_channel", "search", "join", "leave", "react", "edit", "delete",
+			"pin", "read_with_contact", "get_user",
+		],
 		schema: { type: "string" },
 	},
 	{
 		name: "platform",
 		description: "Platform filter for read_with_contact/search.",
 		required: false,
+		subactions: [
+			"send", "read_channel", "search", "list_channels", "list_servers",
+			"join", "leave", "react", "edit", "delete", "pin", "get_user",
+			"read_with_contact", "send_draft",
+		],
 		schema: { type: "string" },
 	},
 	{
 		name: "threadId",
 		description: "Thread ID for threaded ops.",
 		required: false,
+		subactions: [
+			"read_channel", "search", "join", "leave", "react", "edit", "delete",
+			"pin", "draft_followup", "send_draft",
+		],
 		schema: { type: "string" },
 	},
 	{
 		name: "thread",
 		description: "Thread parent ref for op=send.",
 		required: false,
+		subactions: [
+			"send", "read_channel", "search", "join", "leave", "react", "edit",
+			"delete", "pin",
+		],
 		schema: { type: "string" },
 	},
 	{
 		name: "alias",
 		description: "Channel/room alias for op=join or op=leave.",
 		required: false,
+		subactions: ["join", "leave"],
 		schema: { type: "string" },
 	},
 	{
 		name: "invite",
 		description: "Invite URL or token for op=join.",
 		required: false,
+		subactions: ["join"],
 		schema: { type: "string" },
 	},
 	{
 		name: "message",
 		description: "Message text for op=send; replacement for op=edit.",
 		required: false,
+		subactions: [
+			"send", "edit", "draft_reply", "respond", "draft_followup",
+			"send_draft",
+		],
 		schema: { type: "string" },
 	},
 	{
 		name: "text",
 		description: "Replacement text for op=edit (alias of message).",
 		required: false,
+		subactions: [
+			"send", "edit", "draft_reply", "respond", "draft_followup",
+			"send_draft",
+		],
 		schema: { type: "string" },
 	},
 	{
 		name: "query",
 		description: "Search term for op=search or op=search_inbox.",
 		required: false,
+		subactions: ["search", "search_inbox", "draft_reply", "respond", "manage"],
 		schema: { type: "string" },
 	},
 	{
 		name: "content",
 		description: "Inbox search text or lookup hint for triage/draft/respond.",
 		required: false,
+		subactions: [
+			"search", "search_inbox", "draft_reply", "respond", "manage",
+			"send_draft",
+		],
 		schema: { type: "string" },
 	},
 	{
 		name: "sender",
 		description: "Sender identifier for inbox search or reply lookup.",
 		required: false,
+		subactions: ["search_inbox", "draft_reply", "respond", "manage"],
 		schema: { type: "string" },
 	},
 	{
@@ -3470,54 +3566,63 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
 		description:
 			"Draft/response body for draft_reply, draft_followup, respond.",
 		required: false,
+		subactions: ["draft_reply", "draft_followup", "respond", "send_draft"],
 		schema: { type: "string" },
 	},
 	{
 		name: "reply",
 		description: "Alias for body for draft/respond.",
 		required: false,
+		subactions: ["draft_reply", "respond"],
 		schema: { type: "string" },
 	},
 	{
 		name: "replyText",
 		description: "Alias for body for draft/respond.",
 		required: false,
+		subactions: ["draft_reply", "respond"],
 		schema: { type: "string" },
 	},
 	{
 		name: "messageBody",
 		description: "Alias for body for draft/respond.",
 		required: false,
+		subactions: ["draft_reply", "respond"],
 		schema: { type: "string" },
 	},
 	{
 		name: "to",
 		description: "Recipient identifiers for op=draft_followup.",
 		required: false,
+		subactions: ["draft_followup", "send_draft"],
 		schema: { type: "array", items: { type: "string" } },
 	},
 	{
 		name: "subject",
 		description: "Subject for email-like draft operations.",
 		required: false,
+		subactions: ["draft_followup", "send_draft"],
 		schema: { type: "string" },
 	},
 	{
 		name: "draftId",
 		description: "Draft ID for send_draft or schedule_draft_send.",
 		required: false,
+		subactions: ["send_draft", "schedule_draft_send"],
 		schema: { type: "string" },
 	},
 	{
 		name: "confirmed",
 		description: "Explicit send confirmation for op=send_draft.",
 		required: false,
+		subactions: ["send_draft"],
 		schema: { type: "boolean" },
 	},
 	{
 		name: "sendAt",
 		description: "Scheduled send time for op=schedule_draft_send.",
 		required: false,
+		subactions: ["schedule_draft_send"],
 		schema: { type: "string" },
 	},
 	{
@@ -3525,30 +3630,40 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
 		description:
 			"Platform/full message ID or stored memory ID for react/edit/delete/pin/respond.",
 		required: false,
+		subactions: [
+			"react", "edit", "delete", "pin", "draft_reply", "respond", "manage",
+		],
 		schema: { type: "string" },
 	},
 	{
 		name: "inReplyToId",
 		description: "Alias for messageId for draft/respond.",
 		required: false,
+		subactions: ["draft_reply", "respond"],
 		schema: { type: "string" },
 	},
 	{
 		name: "id",
 		description: "Alias for messageId.",
 		required: false,
+		subactions: [
+			"react", "edit", "delete", "pin", "draft_reply", "respond", "manage",
+			"send_draft", "schedule_draft_send",
+		],
 		schema: { type: "string" },
 	},
 	{
 		name: "emoji",
 		description: "Reaction value for op=react.",
 		required: false,
+		subactions: ["react"],
 		schema: { type: "string" },
 	},
 	{
 		name: "pin",
 		description: "Pin state for op=pin (false to unpin when supported).",
 		required: false,
+		subactions: ["pin"],
 		schema: { type: "boolean" },
 	},
 	{
@@ -3556,24 +3671,28 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
 		description:
 			"op=manage operation: archive, trash, spam, mark_read, label_add, label_remove, tag_add, tag_remove, mute_thread, unsubscribe.",
 		required: false,
+		subactions: ["manage"],
 		schema: { type: "string", enum: [...MANAGE_OPERATION_KINDS] },
 	},
 	{
 		name: "label",
 		description: "Label for op=manage label_add/label_remove.",
 		required: false,
+		subactions: ["manage"],
 		schema: { type: "string" },
 	},
 	{
 		name: "tag",
 		description: "Tag for op=manage tag_add/tag_remove.",
 		required: false,
+		subactions: ["manage"],
 		schema: { type: "string" },
 	},
 	{
 		name: "attachments",
 		description: "Attachments for op=send.",
 		required: false,
+		subactions: ["send"],
 		schema: {
 			type: "array",
 			items: {
@@ -3593,6 +3712,7 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
 		name: "urgency",
 		description: "Urgency for op=send: normal, important, urgent.",
 		required: false,
+		subactions: ["send"],
 		schema: { type: "string", enum: ["normal", "important", "urgent"] },
 	},
 	{
@@ -3600,48 +3720,59 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
 		description:
 			"op=send persists outbound content to room memory. Default true.",
 		required: false,
+		subactions: ["send"],
 		schema: { type: "boolean" },
 	},
 	{
 		name: "limit",
 		description: "Max items.",
 		required: false,
+		subactions: [
+			"read_channel", "read_with_contact", "search", "triage", "list_inbox",
+			"search_inbox",
+		],
 		schema: { type: "number" },
 	},
 	{
 		name: "range",
 		description: 'For op=read_channel: "recent" (default) or "dates".',
 		required: false,
+		subactions: ["read_channel"],
 		schema: { type: "string", enum: ["recent", "dates"] },
 	},
 	{
 		name: "from",
 		description: "Start date/timestamp for op=read_channel range=dates.",
 		required: false,
+		subactions: ["read_channel", "draft_reply", "respond", "manage"],
 		schema: { type: "string" },
 	},
 	{
 		name: "worldIds",
 		description: "Account/server scopes for inbox ops.",
 		required: false,
+		subactions: ["triage", "list_inbox", "search_inbox"],
 		schema: { type: "array", items: { type: "string" } },
 	},
 	{
 		name: "channelIds",
 		description: "Channel/conversation scopes for inbox ops.",
 		required: false,
+		subactions: ["triage", "list_inbox", "search_inbox"],
 		schema: { type: "array", items: { type: "string" } },
 	},
 	{
 		name: "sinceMs",
 		description: "Start timestamp (ms) for inbox list/search/triage.",
 		required: false,
+		subactions: ["triage", "list_inbox", "search_inbox"],
 		schema: { type: "number" },
 	},
 	{
 		name: "since",
 		description: "Start date for op=search_inbox.",
 		required: false,
+		subactions: ["search_inbox"],
 		schema: { type: "string" },
 	},
 	{
@@ -3649,24 +3780,28 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
 		description:
 			"End date/timestamp for read_channel range=dates or search_inbox.",
 		required: false,
+		subactions: ["read_channel", "search_inbox"],
 		schema: { type: "string" },
 	},
 	{
 		name: "cursor",
 		description: "Opaque pagination cursor.",
 		required: false,
+		subactions: ["read_channel", "search"],
 		schema: { type: "string" },
 	},
 	{
 		name: "before",
 		description: "Older boundary for read/search results.",
 		required: false,
+		subactions: ["read_channel", "search"],
 		schema: { type: "string" },
 	},
 	{
 		name: "after",
 		description: "Newer boundary for read/search results.",
 		required: false,
+		subactions: ["read_channel", "search"],
 		schema: { type: "string" },
 	},
 ];

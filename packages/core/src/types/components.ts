@@ -76,6 +76,16 @@ export interface ActionParameter {
 	compressedDescription?: string;
 	/** Whether this parameter is required (default: false) */
 	required?: boolean;
+	/**
+	 * Subaction applicability list for umbrella actions. Names the
+	 * discriminator values (matched case/separator-insensitively) this
+	 * parameter belongs to, so subaction promotion can expose each virtual
+	 * with only the parameters its handler actually reads instead of
+	 * duplicating the parent's full schema per virtual. Omitted = applies to
+	 * every subaction; an explicit empty list = parent-only. Ignored on
+	 * non-umbrella actions and on the discriminator parameter itself.
+	 */
+	subactions?: readonly string[];
 	/** JSON Schema for parameter validation */
 	schema: ActionParameterSchema;
 	/**
