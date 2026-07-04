@@ -10,7 +10,9 @@ import type { IAgentRuntime, RouteHandlerResult } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import type { StdioBridgeStreamSink } from "../shared/stdio-bridge.ts";
 import {
+	type AndroidCoreRouteDeps,
 	type AndroidDispatchRoute,
+	type AndroidElizaConfigLike,
 	dispatchBufferedRequest,
 	dispatchStreamingRequest,
 } from "./dispatch.ts";
@@ -44,13 +46,39 @@ function collectSink(): {
 	return { sink, events };
 }
 
+function coreDeps(overrides: Partial<AndroidCoreRouteDeps> = {}): {
+	deps: AndroidCoreRouteDeps;
+	saved: AndroidElizaConfigLike[];
+} {
+	const saved: AndroidElizaConfigLike[] = [];
+	const deps: AndroidCoreRouteDeps = {
+		configFileExists: () => true,
+		loadElizaConfig: () => ({}),
+		saveElizaConfig: (config) => {
+			saved.push(config);
+		},
+		hasPersistedFirstRunState: (config) =>
+			(config as AndroidElizaConfigLike).meta?.firstRunComplete === true,
+		...overrides,
+	};
+	return { deps, saved };
+}
+
 describe("dispatchBufferedRequest", () => {
 	it("serves Android local startup app-core routes before dispatchRoute", async () => {
 		const { route, calls } = fixedRoute(null);
-		const status = await dispatchBufferedRequest(runtime, route, {
-			method: "GET",
-			path: "/api/first-run/status",
+		const { deps } = coreDeps({
+			loadElizaConfig: () => ({ meta: { firstRunComplete: true } }),
 		});
+		const status = await dispatchBufferedRequest(
+			runtime,
+			route,
+			{
+				method: "GET",
+				path: "/api/first-run/status",
+			},
+			deps,
+		);
 		expect(status.status).toBe(200);
 		expect(JSON.parse(status.body)).toEqual({
 			complete: true,
@@ -70,6 +98,61 @@ describe("dispatchBufferedRequest", () => {
 		});
 
 		expect(calls).toHaveLength(0);
+	});
+
+	it("reports first-run incomplete on a fresh Android install", async () => {
+		const { route, calls } = fixedRoute(null);
+		const { deps } = coreDeps({ configFileExists: () => false });
+		const status = await dispatchBufferedRequest(
+			runtime,
+			route,
+			{
+				method: "GET",
+				path: "/api/first-run/status",
+			},
+			deps,
+		);
+		expect(status.status).toBe(200);
+		expect(JSON.parse(status.body)).toEqual({
+			complete: false,
+			cloudProvisioned: false,
+			deploymentTarget: "local",
+		});
+		expect(calls).toHaveLength(0);
+	});
+
+	it("persists first-run completion and fails closed on write errors", async () => {
+		const { route } = fixedRoute(null);
+		const { deps, saved } = coreDeps({ configFileExists: () => false });
+		const ok = await dispatchBufferedRequest(
+			runtime,
+			route,
+			{
+				method: "POST",
+				path: "/api/first-run",
+			},
+			deps,
+		);
+		expect(ok.status).toBe(200);
+		expect(JSON.parse(ok.body)).toMatchObject({ ok: true, complete: true });
+		expect(saved[0]?.meta?.firstRunComplete).toBe(true);
+
+		const failing = coreDeps({
+			saveElizaConfig: () => {
+				throw new Error("disk full");
+			},
+		}).deps;
+		const failed = await dispatchBufferedRequest(
+			runtime,
+			route,
+			{
+				method: "POST",
+				path: "/api/first-run",
+			},
+			failing,
+		);
+		expect(failed.status).toBe(500);
+		expect(JSON.parse(failed.body).error).toContain("disk full");
 	});
 
 	it("returns a non-404 response for Android local auth-bootstrap exchange", async () => {
@@ -161,19 +244,21 @@ describe("dispatchBufferedRequest", () => {
 describe("dispatchStreamingRequest", () => {
 	it("streams Android direct startup route responses without dispatchRoute", async () => {
 		const { route, calls } = fixedRoute(null);
+		const { deps } = coreDeps({ configFileExists: () => false });
 		const { sink, events } = collectSink();
 		await dispatchStreamingRequest(
 			runtime,
 			route,
 			{ method: "GET", path: "/api/first-run/status" },
 			sink,
+			deps,
 		);
 		expect(events[0]).toMatchObject({ kind: "response", status: 200 });
 		const body = JSON.parse(
 			Buffer.from(events[1]?.dataBase64 as string, "base64").toString("utf8"),
 		);
 		expect(body).toMatchObject({
-			complete: true,
+			complete: false,
 			deploymentTarget: "local",
 		});
 		expect(calls).toHaveLength(0);

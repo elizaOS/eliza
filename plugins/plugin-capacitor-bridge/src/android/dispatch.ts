@@ -151,10 +151,24 @@ function runtimeAgentName(runtime: IAgentRuntime): string {
 		: "Eliza";
 }
 
+/** The persisted-config seams the first-run routes read/write (from @elizaos/agent). */
+export interface AndroidCoreRouteDeps {
+	configFileExists: () => boolean;
+	loadElizaConfig: () => AndroidElizaConfigLike;
+	saveElizaConfig: (config: AndroidElizaConfigLike) => void;
+	hasPersistedFirstRunState: (config: AndroidElizaConfigLike) => boolean;
+}
+
+/** Structural stand-in for ElizaConfig — the bridge only touches `meta`. */
+export type AndroidElizaConfigLike = Record<string, unknown> & {
+	meta?: Record<string, unknown>;
+};
+
 function directAndroidCoreRoute(
 	runtime: IAgentRuntime,
 	method: string,
 	pathname: string,
+	coreRoutes?: AndroidCoreRouteDeps,
 ): AndroidBufferedResponse | null {
 	if (method === "GET" && pathname === "/api/health") {
 		return jsonResponse(200, {
@@ -202,14 +216,43 @@ function directAndroidCoreRoute(
 	}
 
 	if (method === "GET" && pathname === "/api/first-run/status") {
+		let complete = false;
+		try {
+			complete = Boolean(
+				coreRoutes?.configFileExists() &&
+					coreRoutes.hasPersistedFirstRunState(coreRoutes.loadElizaConfig()),
+			);
+		} catch {
+			// An unreadable config cannot prove onboarding completion. Fail closed
+			// to "onboarding required" instead of skipping first-run on Android.
+			complete = false;
+		}
 		return jsonResponse(200, {
-			complete: true,
+			complete,
 			cloudProvisioned: false,
 			deploymentTarget: "local",
 		});
 	}
 
 	if (method === "POST" && pathname === "/api/first-run") {
+		if (!coreRoutes) {
+			return jsonResponse(503, {
+				error: "config_unavailable",
+				reason: "config_unavailable",
+			});
+		}
+		try {
+			const config: AndroidElizaConfigLike = coreRoutes.configFileExists()
+				? coreRoutes.loadElizaConfig()
+				: {};
+			config.meta = { ...(config.meta ?? {}), firstRunComplete: true };
+			coreRoutes.saveElizaConfig(config);
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			return jsonResponse(500, {
+				error: `Failed to persist first-run completion: ${message}`,
+			});
+		}
 		return jsonResponse(200, {
 			ok: true,
 			complete: true,
@@ -229,6 +272,7 @@ function directAndroidCoreRoute(
 				mode: "local",
 				passwordConfigured: false,
 				ownerConfigured: false,
+				role: "OWNER",
 			},
 		});
 	}
@@ -237,6 +281,10 @@ function directAndroidCoreRoute(
 		return jsonResponse(200, {
 			required: false,
 			authenticated: true,
+			loginRequired: false,
+			bootstrapRequired: false,
+			pairingEnabled: false,
+			expiresAt: null,
 			enabled: false,
 			cloudProvisioned: false,
 			passwordConfigured: false,
@@ -305,6 +353,7 @@ export async function dispatchBufferedRequest(
 	runtime: IAgentRuntime,
 	dispatchRoute: AndroidDispatchRoute,
 	payload: AndroidRequestPayload,
+	coreRoutes?: AndroidCoreRouteDeps,
 ): Promise<AndroidBufferedResponse> {
 	const rawPath = typeof payload.path === "string" ? payload.path.trim() : "";
 	if (!rawPath || !isSafeLocalPath(rawPath)) {
@@ -316,7 +365,7 @@ export async function dispatchBufferedRequest(
 	const headers = normalizeHeaderRecord(payload.headers);
 	const { pathname, query } = splitPathAndQuery(rawPath);
 
-	const direct = directAndroidCoreRoute(runtime, method, pathname);
+	const direct = directAndroidCoreRoute(runtime, method, pathname, coreRoutes);
 	if (direct) return direct;
 
 	const result = await dispatchRoute({
@@ -356,6 +405,7 @@ export async function dispatchStreamingRequest(
 	dispatchRoute: AndroidDispatchRoute,
 	payload: AndroidRequestPayload,
 	sink: StdioBridgeStreamSink,
+	coreRoutes?: AndroidCoreRouteDeps,
 ): Promise<void> {
 	const rawPath = typeof payload.path === "string" ? payload.path.trim() : "";
 	if (!rawPath || !isSafeLocalPath(rawPath)) {
@@ -367,7 +417,7 @@ export async function dispatchStreamingRequest(
 	const headers = normalizeHeaderRecord(payload.headers);
 	const { pathname, query } = splitPathAndQuery(rawPath);
 
-	const direct = directAndroidCoreRoute(runtime, method, pathname);
+	const direct = directAndroidCoreRoute(runtime, method, pathname, coreRoutes);
 	if (direct) {
 		sink.emitResponse({
 			status: direct.status,
