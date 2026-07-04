@@ -107,12 +107,14 @@ import {
 } from "../contact-route-policy.js";
 import {
   computeAdaptiveWindowPolicy,
+  isValidTimeZone,
   resolveDefaultTimeZone,
   windowPolicyMatchesDefaults,
 } from "../defaults.js";
 import { materializeDefinitionOccurrences } from "../engine.js";
 import type { LifeOpsContext } from "../lifeops-context.js";
 import { REMINDER_DISPATCH_INSTRUCTIONS } from "../optimized-prompt-instructions.js";
+import { resolveOwnerFactStore } from "../owner/fact-store.js";
 import { refreshLifeOpsRelativeTime } from "../relative-time.js";
 import {
   createLifeOpsActivitySignal,
@@ -240,6 +242,18 @@ const LIFEOPS_SCHEDULE_DEVICE_KINDS = [
 ] as const;
 
 const DEFAULT_SCHEDULED_TASK_PROCESS_LIMIT = 25;
+
+// Upper bound on a device-timezone-inferred travel window. A device-zone shift
+// is a weak signal (a laptop crossing a border, a VPN, a mislabeled home zone),
+// so the provisional record it opens is always bounded — never open-ended — and
+// clears the moment the device returns to the home zone or the window lapses.
+const MAX_TRAVEL_HORIZON_MS = 30 * 24 * 60 * 60 * 1000;
+
+// Provenance note tagging a travel record the reconciler opened from a device-
+// timezone divergence. The reconciler only clears/refreshes records it owns —
+// it never touches a booking (`connector_inferred`) or a spoken statement
+// (`agent_inferred` with a different note) on a coincidental home-zone match.
+const TZ_PROVISIONAL_TRAVEL_NOTE = "device-timezone divergence";
 
 type AdaptiveWindowProfile = Pick<
   ActivityProfile,
@@ -5318,6 +5332,14 @@ export class RemindersDomain {
           lifeOpsEvents,
         }),
     );
+    // Reconcile the active-travel fact BEFORE the scheduled-tasks pass so the
+    // `during_travel` gate reads an up-to-date `travelActive` this same tick:
+    // an expired window is cleared, so tasks resume, and a returned-home device
+    // zone clears a stale record.
+    await runSubsystem("travel_reconcile", undefined, () =>
+      this.reconcileTravelActive(now),
+    );
+
     const scheduledTaskFallback: ProcessDueScheduledTasksResult = {
       completions: [],
       fires: [],
@@ -5356,6 +5378,95 @@ export class RemindersDomain {
         })),
       subsystemFailures,
     };
+  }
+
+  /**
+   * Keeps the owner's `activeTravel` fact honest each tick so the derived
+   * `travelActive` gate cannot get stuck. Two clear signals:
+   *
+   *  1. A lapsed window — `endIso` is in the past — is cleared, so tasks the
+   *     `during_travel` gate suppressed resume without waiting for a booking or
+   *     an "I'm back" message.
+   *  2. Device-timezone divergence: when the owner's home-zone fact is known and
+   *     the device reports a different valid zone, we open a bounded provisional
+   *     travel record (destination = device zone); when the device returns to
+   *     the home zone we clear the record WE opened. We only ever clear our own
+   *     provisional record (tagged via `TZ_PROVISIONAL_TRAVEL_NOTE`) so a real
+   *     booking or spoken statement is never dropped on a coincidental match.
+   *
+   * On shared-server topology `resolveDefaultTimeZone()` returns the SERVER's
+   * zone, not the owner's device — so leg (2) is effectively a no-op there
+   * (device zone == home zone, or the home-zone fact is absent). That is the
+   * intended graceful degradation: we never fabricate a home zone or infer
+   * travel from the server's own zone.
+   */
+  private async reconcileTravelActive(now: Date): Promise<void> {
+    const store = resolveOwnerFactStore(this.ctx.runtime);
+    const facts = await store.read();
+    const active = facts.activeTravel;
+    const nowMs = now.getTime();
+
+    if (active?.value.endIso !== undefined) {
+      const endMs = Date.parse(active.value.endIso);
+      if (!Number.isNaN(endMs) && nowMs > endMs) {
+        await store.setActiveTravel(null, {
+          source: "policy_action",
+          recordedAt: now.toISOString(),
+          note: "travel window lapsed",
+        });
+        logger.info(
+          { endedAt: active.value.endIso },
+          "[RemindersDomain] cleared lapsed active-travel window",
+        );
+        return;
+      }
+    }
+
+    const homeTz = facts.timezone?.value;
+    const deviceTz = resolveDefaultTimeZone();
+    if (!homeTz || !isValidTimeZone(deviceTz)) {
+      return;
+    }
+
+    const isTzProvisional =
+      active?.provenance.note === TZ_PROVISIONAL_TRAVEL_NOTE;
+
+    if (deviceTz !== homeTz) {
+      // Only open a provisional record when nothing else already asserts
+      // travel — a booking or statement is a stronger signal we defer to.
+      if (!active) {
+        await store.setActiveTravel(
+          {
+            startIso: now.toISOString(),
+            endIso: new Date(nowMs + MAX_TRAVEL_HORIZON_MS).toISOString(),
+            destinationTimezone: deviceTz,
+          },
+          {
+            source: "connector_inferred",
+            recordedAt: now.toISOString(),
+            note: TZ_PROVISIONAL_TRAVEL_NOTE,
+          },
+        );
+        logger.info(
+          { homeTz, deviceTz },
+          "[RemindersDomain] opened provisional travel from device-timezone divergence",
+        );
+      }
+      return;
+    }
+
+    // Device is back on the home zone: clear only the record we opened.
+    if (isTzProvisional) {
+      await store.setActiveTravel(null, {
+        source: "policy_action",
+        recordedAt: now.toISOString(),
+        note: "device returned to home timezone",
+      });
+      logger.info(
+        { homeTz },
+        "[RemindersDomain] cleared provisional travel on return to home timezone",
+      );
+    }
   }
 
   private async processSleepCycleCheckins(args: {

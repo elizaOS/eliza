@@ -18,6 +18,16 @@ import {
   type ExtractedEdge,
 } from "../relationships/extraction.js";
 
+/**
+ * Upper bound on a declared travel window with no parsed return date. A person
+ * saying "I'm traveling" without an end date is away for a trip, not relocating
+ * permanently — so we cap the derived `travelActive` window rather than leave it
+ * open-ended, which would let a one-off statement silence scheduled tasks
+ * forever. 30 days comfortably covers any normal trip; the reconciler and any
+ * later "I'm back" clear it sooner.
+ */
+const MAX_TRAVEL_HORIZON_MS = 30 * 24 * 60 * 60 * 1000;
+
 type IdentityHint = {
   name: string;
   platform: string;
@@ -29,10 +39,18 @@ type RelationshipHint = {
   type: string;
 };
 
+/**
+ * A detected travel-state transition. `set` opens a window (with an optional
+ * parsed return date); `clear` closes it. Absent when the text carries no
+ * travel signal — distinct from a signal that yields no state change.
+ */
+type TravelSignal = { kind: "set"; endIso?: string } | { kind: "clear" };
+
 type ProfileExtraction = {
   facts: OwnerFactsPatch;
   identities: IdentityHint[];
   relationships: RelationshipHint[];
+  travel: TravelSignal | null;
 };
 
 const FACT_PATTERNS = [
@@ -207,7 +225,57 @@ function collectRelationshipHints(text: string): RelationshipHint[] {
   return hints;
 }
 
-function extractProfileDetails(text: string): ProfileExtraction {
+// "I'm back" / "back home" / "home now" — the owner has returned. Checked
+// first so "I'm back home" clears rather than being read as a trip statement.
+const TRAVEL_CLEAR_PATTERN =
+  /\b(?:i'?m\s+back|i\s+am\s+back|back\s+home|(?:i'?m|i\s+am)\s+home\s+now|got\s+(?:back|home)|(?:i'?m|i\s+am)\s+(?:back\s+)?in\s+(?:town|the\s+office))\b/iu;
+
+// "I'm traveling / away / on a trip / out of town", optionally "until <date>".
+const TRAVEL_SET_PATTERN =
+  /\b(?:i'?m|i\s+am)\s+(?:traveling|travelling|away|on\s+(?:a\s+)?(?:trip|vacation|holiday)|out\s+of\s+(?:town|(?:the\s+)?office))\b/iu;
+
+// Captures the return-date phrase after "until"/"till"/"through"/"back on".
+const TRAVEL_UNTIL_PATTERN =
+  /\b(?:until|till|til|through|thru|back\s+(?:on|by))\s+([A-Za-z0-9 ,/.'-]{3,40})/iu;
+
+/**
+ * Parses a free-text return-date phrase to a bounded ISO end. Returns null when
+ * it cannot resolve a real future date within `MAX_TRAVEL_HORIZON_MS`; the
+ * caller then falls back to the horizon cap. `Date.parse` handles common forms
+ * ("July 20", "2026-07-20", "Aug 3"); the current year is assumed when the
+ * parsed date lands in the past (a bare month/day for a future trip).
+ */
+function parseTravelReturnIso(phrase: string, now: Date): string | null {
+  const trimmed = phrase.trim().replace(/[.,]+$/u, "");
+  if (trimmed.length === 0) return null;
+  let parsed = Date.parse(trimmed);
+  if (Number.isNaN(parsed)) {
+    parsed = Date.parse(`${trimmed} ${now.getFullYear()}`);
+  }
+  if (Number.isNaN(parsed)) return null;
+  // A month/day that resolves to the past almost always means next year.
+  if (parsed < now.getTime()) {
+    const nextYear = Date.parse(`${trimmed} ${now.getFullYear() + 1}`);
+    if (Number.isNaN(nextYear) || nextYear < now.getTime()) return null;
+    parsed = nextYear;
+  }
+  if (parsed - now.getTime() > MAX_TRAVEL_HORIZON_MS) return null;
+  return new Date(parsed).toISOString();
+}
+
+function detectTravelSignal(text: string, now: Date): TravelSignal | null {
+  if (TRAVEL_CLEAR_PATTERN.test(text)) {
+    return { kind: "clear" };
+  }
+  if (TRAVEL_SET_PATTERN.test(text)) {
+    const until = TRAVEL_UNTIL_PATTERN.exec(text)?.[1];
+    const endIso = until ? parseTravelReturnIso(until, now) : null;
+    return endIso ? { kind: "set", endIso } : { kind: "set" };
+  }
+  return null;
+}
+
+function extractProfileDetails(text: string, now: Date): ProfileExtraction {
   const facts: OwnerFactsPatch = {};
   collectFactHints(text, facts);
   collectTravelPreferenceHints(text, facts);
@@ -215,6 +283,7 @@ function extractProfileDetails(text: string): ProfileExtraction {
     facts,
     identities: collectIdentityHints(text),
     relationships: collectRelationshipHints(text),
+    travel: detectTravelSignal(text, now),
   };
 }
 
@@ -222,7 +291,8 @@ function hasExtraction(extraction: ProfileExtraction): boolean {
   return (
     Object.keys(extraction.facts).length > 0 ||
     extraction.identities.length > 0 ||
-    extraction.relationships.length > 0
+    extraction.relationships.length > 0 ||
+    extraction.travel !== null
   );
 }
 
@@ -235,20 +305,23 @@ export const ownerProfileExtractionEvaluator: ResponseHandlerEvaluator = {
     if (!(await hasOwnerAccess(runtime, message))) {
       return false;
     }
-    return hasExtraction(extractProfileDetails(messageText(message)));
+    return hasExtraction(
+      extractProfileDetails(messageText(message), new Date()),
+    );
   },
   async evaluate({
     runtime,
     message,
   }): Promise<ResponseHandlerPatch | undefined> {
     const text = messageText(message);
-    const extraction = extractProfileDetails(text);
+    const now = new Date();
+    const extraction = extractProfileDetails(text, now);
     if (!hasExtraction(extraction)) {
       return undefined;
     }
 
     const evidenceId = `message:${String(message.id ?? Date.now())}`;
-    const recordedAt = new Date().toISOString();
+    const recordedAt = now.toISOString();
     const debug: string[] = [];
 
     if (Object.keys(extraction.facts).length > 0) {
@@ -258,6 +331,30 @@ export const ownerProfileExtractionEvaluator: ResponseHandlerEvaluator = {
         note: `response-handler extraction from ${evidenceId}`,
       });
       debug.push(`facts=${Object.keys(extraction.facts).length}`);
+    }
+
+    if (extraction.travel !== null) {
+      const store = createOwnerFactStore(runtime);
+      const provenance = {
+        source: "agent_inferred" as const,
+        recordedAt,
+        note: `travel-state extraction from ${evidenceId}`,
+      };
+      if (extraction.travel.kind === "clear") {
+        await store.setActiveTravel(null, provenance);
+        debug.push("travel=clear");
+      } else {
+        // Bound every declared window: a parsed return date when present, else
+        // the horizon cap. Never open-ended — see MAX_TRAVEL_HORIZON_MS.
+        const endIso =
+          extraction.travel.endIso ??
+          new Date(now.getTime() + MAX_TRAVEL_HORIZON_MS).toISOString();
+        await store.setActiveTravel(
+          { startIso: recordedAt, endIso },
+          provenance,
+        );
+        debug.push("travel=set");
+      }
     }
 
     if (

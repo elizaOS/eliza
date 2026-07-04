@@ -355,7 +355,7 @@ export async function processDueScheduledTasks(
     now: () => request.now,
   });
   const ownerFactsRaw = await resolveOwnerFactStore(request.runtime).read();
-  const ownerFacts = ownerFactsToView(ownerFactsRaw);
+  const ownerFacts = ownerFactsToView(ownerFactsRaw, request.now);
   // Owner-wide reminder intensity shapes how persistently the no-reply loop
   // re-nudges (see `applyReminderIntensityToNoReplyPolicy`).
   const reminderIntensity = ownerFactsRaw.reminderIntensity?.value;

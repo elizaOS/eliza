@@ -212,6 +212,7 @@ import {
 import { WorkflowsDomain } from "./domains/workflows-service.js";
 import { XReadDomain } from "./domains/x-read-service.js";
 import { XDomain } from "./domains/x-service.js";
+import { resolveOwnerFactStore } from "./owner/fact-store.js";
 import type {
   LifeOpsScheduleInspection,
   LifeOpsScheduleSummary,
@@ -2248,7 +2249,7 @@ export class LifeOpsService extends LifeOpsServiceBase {
     return this.travelDomain.payTravelOrder(args);
   }
 
-  bookFlightItinerary(
+  async bookFlightItinerary(
     requestUrl: URL,
     args: {
       offerId?: string | null;
@@ -2257,7 +2258,34 @@ export class LifeOpsService extends LifeOpsServiceBase {
       calendarSync?: TravelCalendarSyncPlan | null;
     },
   ): Promise<FlightBookingExecutionResult> {
-    return this.travelDomain.bookFlightItinerary(requestUrl, args);
+    const result = await this.travelDomain.bookFlightItinerary(
+      requestUrl,
+      args,
+    );
+    // A confirmed itinerary is the strongest travel signal we have: the owner
+    // will be away for the booked window. Record it as a first-class travel
+    // fact so the `during_travel` scheduling gate can derive `travelActive`.
+    // The window comes from the booked order's own departure/arrival segments;
+    // `calendarSync.timeZone` (when the caller supplied one) is the only
+    // destination-zone signal Duffel exposes — orders carry IATA codes, not
+    // zones. A store-write failure is not swallowed: a silently-dropped travel
+    // fact would leave the gate blind, so we let it surface.
+    const departingAt = result.order.slices[0]?.segments[0]?.departingAt;
+    const lastSlice = result.order.slices[result.order.slices.length - 1];
+    const arrivingAt =
+      lastSlice?.segments[lastSlice.segments.length - 1]?.arrivingAt;
+    if (departingAt) {
+      const destinationTimezone = args.calendarSync?.timeZone ?? undefined;
+      await resolveOwnerFactStore(this.runtime).setActiveTravel(
+        {
+          startIso: departingAt,
+          ...(arrivingAt ? { endIso: arrivingAt } : {}),
+          ...(destinationTimezone ? { destinationTimezone } : {}),
+        },
+        { source: "connector_inferred", recordedAt: new Date().toISOString() },
+      );
+    }
+    return result;
   }
 
   // `this` (a LifeOpsServiceBase subclass) satisfies LifeOpsContext.

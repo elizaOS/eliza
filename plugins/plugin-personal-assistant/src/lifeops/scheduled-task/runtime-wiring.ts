@@ -186,7 +186,10 @@ function defaultOwnerFactsProvider(
 ): () => Promise<OwnerFactsView> {
   return async () => {
     const store = resolveOwnerFactStore(runtime);
-    const view = ownerFactsToView(await store.read());
+    // `new Date()` drives the derived `travelActive` — the view reflects
+    // whether the owner is inside a booked/declared travel window at this
+    // instant, which is exactly what the `during_travel` gate needs each tick.
+    const view = ownerFactsToView(await store.read(), new Date());
     const timezone = view.timezone ?? resolveDefaultTimeZone();
     try {
       const repo = new LifeOpsRepository(runtime);

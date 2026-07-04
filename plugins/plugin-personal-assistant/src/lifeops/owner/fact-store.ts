@@ -47,6 +47,25 @@ export interface OwnerQuietHours {
 }
 
 /**
+ * A booked or declared travel window. The record is first-class — the
+ * `travelActive` boolean the `during_travel` gate reads is DERIVED from it
+ * against the current instant (see `ownerFactsToView`), never persisted on its
+ * own. A bare boolean has no natural clear point and drifts to a permanent-true
+ * state once set; a window with a start/end self-clears the moment `now` leaves
+ * `[startIso, endIso]`. `endIso` is optimistically bounded by every writer (a
+ * booking's arrival, a parsed return date, or a `MAX_TRAVEL_HORIZON` cap) so an
+ * open-ended relocation can never read as perpetual travel.
+ */
+export interface OwnerActiveTravel {
+  /** ISO-8601 instant the travel window opens. */
+  startIso: string;
+  /** ISO-8601 instant the window closes. Absent = still open (bounded by writers). */
+  endIso?: string;
+  /** IANA timezone of the destination; overrides the owner's home zone while active. */
+  destinationTimezone?: string;
+}
+
+/**
  * Source of truth for a stored fact. `first_run` distinguishes answers
  * captured by the first-run capability from answers captured by the
  * owner-profile extraction evaluator. `connector_inferred` covers values an
@@ -106,6 +125,7 @@ export interface OwnerFacts {
 
   // Preferences
   travelBookingPreferences?: OwnerFactEntry<string>;
+  activeTravel?: OwnerFactEntry<OwnerActiveTravel>;
   morningWindow?: OwnerFactEntry<OwnerFactWindow>;
   eveningWindow?: OwnerFactEntry<OwnerFactWindow>;
   quietHours?: OwnerFactEntry<OwnerQuietHours>;
@@ -160,6 +180,15 @@ export interface OwnerFactStore {
     provenance: OwnerFactProvenance,
   ): Promise<OwnerFacts>;
   /**
+   * Set (non-null value) or clear (null) the owner's active-travel record. A
+   * dedicated setter — not routed through the string-only patch path — because
+   * the value is a structured window whose clear must actually remove the fact.
+   */
+  setActiveTravel(
+    value: OwnerActiveTravel | null,
+    provenance: OwnerFactProvenance,
+  ): Promise<OwnerFacts>;
+  /**
    * Upsert an escalation rule. Rules are matched by `definitionId`
    * (`null` = global). Calling with an existing key replaces it.
    */
@@ -208,6 +237,30 @@ function isQuietHours(value: unknown): value is OwnerQuietHours {
     typeof value.timezone === "string" &&
     value.timezone.length > 0
   );
+}
+
+function isActiveTravel(value: unknown): value is OwnerActiveTravel {
+  if (!isPlainRecord(value)) return false;
+  if (
+    typeof value.startIso !== "string" ||
+    Number.isNaN(Date.parse(value.startIso))
+  ) {
+    return false;
+  }
+  if (
+    value.endIso !== undefined &&
+    (typeof value.endIso !== "string" || Number.isNaN(Date.parse(value.endIso)))
+  ) {
+    return false;
+  }
+  if (
+    value.destinationTimezone !== undefined &&
+    (typeof value.destinationTimezone !== "string" ||
+      value.destinationTimezone.length === 0)
+  ) {
+    return false;
+  }
+  return true;
 }
 
 function isReminderIntensity(value: unknown): value is ReminderIntensity {
@@ -290,6 +343,21 @@ function normalizeQuietHoursEntry(
   };
 }
 
+function normalizeActiveTravelEntry(
+  value: unknown,
+): OwnerFactEntry<OwnerActiveTravel> | undefined {
+  if (!isPlainRecord(value)) return undefined;
+  if (!isActiveTravel(value.value)) return undefined;
+  const provenance = normalizeProvenance(value.provenance);
+  if (!provenance) return undefined;
+  const travel: OwnerActiveTravel = { startIso: value.value.startIso };
+  if (value.value.endIso !== undefined) travel.endIso = value.value.endIso;
+  if (value.value.destinationTimezone !== undefined) {
+    travel.destinationTimezone = value.value.destinationTimezone;
+  }
+  return { value: travel, provenance };
+}
+
 function normalizeReminderIntensityEntry(
   value: unknown,
 ): OwnerFactEntry<ReminderIntensity> | undefined {
@@ -366,6 +434,8 @@ function normalizeRecord(value: unknown): PersistedRecord {
   if (evening) facts.eveningWindow = evening;
   const quiet = normalizeQuietHoursEntry(stored.quietHours);
   if (quiet) facts.quietHours = quiet;
+  const activeTravel = normalizeActiveTravelEntry(stored.activeTravel);
+  if (activeTravel) facts.activeTravel = activeTravel;
   const intensity = normalizeReminderIntensityEntry(stored.reminderIntensity);
   if (intensity) facts.reminderIntensity = intensity;
   const escalation = normalizeEscalationRulesEntry(stored.escalationRules);
@@ -596,6 +666,29 @@ class CacheBackedOwnerFactStore implements OwnerFactStore {
     return cloneFacts(next);
   }
 
+  async setActiveTravel(
+    value: OwnerActiveTravel | null,
+    provenance: OwnerFactProvenance,
+  ): Promise<OwnerFacts> {
+    const record = await this.readRecord();
+    const next = cloneFacts(record.facts);
+    if (value === null) {
+      delete next.activeTravel;
+    } else {
+      if (!isActiveTravel(value)) {
+        throw new Error("Active-travel record requires a valid startIso");
+      }
+      const travel: OwnerActiveTravel = { startIso: value.startIso };
+      if (value.endIso !== undefined) travel.endIso = value.endIso;
+      if (value.destinationTimezone !== undefined) {
+        travel.destinationTimezone = value.destinationTimezone;
+      }
+      next.activeTravel = { value: travel, provenance: { ...provenance } };
+    }
+    await this.writeRecord({ schemaVersion: 1, facts: next });
+    return cloneFacts(next);
+  }
+
   async upsertEscalationRule(
     patch: PolicyPatchEscalationRule,
     provenance: OwnerFactProvenance,
@@ -657,6 +750,12 @@ function cloneFacts(facts: OwnerFacts): OwnerFacts {
     next.travelBookingPreferences = cloneStringEntry(
       facts.travelBookingPreferences,
     );
+  }
+  if (facts.activeTravel) {
+    next.activeTravel = {
+      value: { ...facts.activeTravel.value },
+      provenance: { ...facts.activeTravel.provenance },
+    };
   }
   if (facts.morningWindow) {
     next.morningWindow = cloneWindowEntry(facts.morningWindow);
@@ -758,14 +857,33 @@ export function resolveOwnerFactStore(runtime: IAgentRuntime): OwnerFactStore {
  * Reduces a typed `OwnerFacts` record to the minimal `OwnerFactsView`
  * surface consumed by the `ScheduledTask` runner (gates and completion
  * checks). Provenance is intentionally dropped — readers want the value.
+ *
+ * `now` is required because `travelActive` is DERIVED, not stored: it is true
+ * only when `now` falls inside the `activeTravel` window. Absence of an
+ * `activeTravel` record leaves `travelActive` undefined — "not traveling" is
+ * distinguishable from "no data", so the `during_travel` gate correctly denies
+ * (its allow branch tests `=== true`). While travel is active the destination
+ * timezone, when known, overrides the owner's home zone for the view.
  */
 export function ownerFactsToView(
   facts: OwnerFacts,
+  now: Date,
 ): import("@elizaos/plugin-scheduling").OwnerFactsView {
   const view: import("@elizaos/plugin-scheduling").OwnerFactsView = {};
   if (facts.preferredName) view.preferredName = facts.preferredName.value;
   if (facts.timezone) view.timezone = facts.timezone.value;
   if (facts.locale) view.locale = facts.locale.value;
+  if (facts.activeTravel) {
+    const travel = facts.activeTravel.value;
+    const nowMs = now.getTime();
+    const started = nowMs >= Date.parse(travel.startIso);
+    const notEnded =
+      travel.endIso === undefined || nowMs <= Date.parse(travel.endIso);
+    view.travelActive = started && notEnded;
+    if (view.travelActive && travel.destinationTimezone) {
+      view.timezone = travel.destinationTimezone;
+    }
+  }
   if (facts.morningWindow) {
     view.morningWindow = {
       start: facts.morningWindow.value.startLocal,
