@@ -116,25 +116,31 @@ interface ResolveTargetsArgs {
 }
 
 /**
- * Detects bot-to-bot crosstalk: the inbound message is directed at another
- * participant that is NOT this agent, in a context where the agent is merely
- * overhearing. Used to suppress the simple→requiresTool promotion so the agent
- * does not fabricate a tool task from crosstalk it was not asked to act on
- * (#9874 item 1).
+ * Detects that the inbound message is explicitly directed at ANOTHER known
+ * participant — not this agent — so the agent is merely overhearing. Used to
+ * skip the simple→requiresTool promotion so the agent does not fabricate a tool
+ * task from a turn it was not asked to act on (#9874 item 1).
+ *
+ * Uniform, NOT bot-specific: it fires identically whether the other participant
+ * is a human or a bot. Bot-ness is surfaced to the model as CONTEXT instead (the
+ * conversation transcript tags `fromBot` senders as "Name (bot)"), so how to
+ * treat overheard bot crosstalk is the model's call with full context — there is
+ * no runtime type-branch on bot-ness here.
  *
  * Returns true only when ALL hold:
  *  - the message carries explicit `addressedTo` targets,
- *  - none of them is this agent (by name or id) — i.e. it is not addressed to us,
- *  - it is bot crosstalk: the SENDER is a bot (`fromBot` on either supported
- *    message metadata shape), OR a resolved addressee is itself a registered
- *    agent (`getAgent`).
+ *  - this agent is NOT among them (by literal name/id/username OR a resolved room
+ *    alias),
+ *  - at least one addressee RESOLVES to a real room participant other than us.
  *
- * A human owner addressed by name is never a registered agent and never carries
- * `fromBot`, so owner-directed talk does not trip this. Fails SAFE (returns
- * false) whenever it cannot positively confirm crosstalk — suppression is the
- * conservative action and is only taken on a clear signal.
+ * Fails SAFE (returns false) whenever it cannot positively confirm that a
+ * different real participant was addressed: empty `addressedTo`, a turn
+ * addressed to us, or an addressee that resolves to no real room entity (a bare
+ * unrecognized name) all return false — the agent keeps acting on requests meant
+ * for it, and DMs / undirected asks (which carry no other-participant addressee)
+ * are never gated.
  */
-export async function addresseeIsNonOwnerBot(
+export async function messageAddressedToOtherParticipant(
 	args: ApplyAddressedToArgs,
 ): Promise<boolean> {
 	const { runtime, message, addressedTo } = args;
@@ -149,6 +155,8 @@ export async function addresseeIsNonOwnerBot(
 	if (selfId) self.add(selfId.toLowerCase());
 	const selfName = runtime.character?.name;
 	if (selfName) self.add(normalize(selfName));
+	const selfUsername = runtime.character?.username;
+	if (selfUsername) self.add(normalize(selfUsername));
 
 	const cleaned = addressedTo
 		.map((entry) => (typeof entry === "string" ? entry.trim() : ""))
@@ -163,11 +171,9 @@ export async function addresseeIsNonOwnerBot(
 	}
 
 	// Resolve names→ids against the room. This also maps the agent's OWN entity
-	// aliases (platform handles like @samantha_ai_bot that connectors store on the
-	// agent's entity) to selfId, so a turn addressed to us by an alias is NOT
-	// mistaken for crosstalk — even when the sender is a bot. We must do this
-	// BEFORE the fromBot short-circuit, otherwise an owner-run relay bot
-	// addressing us by our handle would have its legitimate request suppressed.
+	// aliases (platform handles like @samantha_ai_bot that connectors store on
+	// the agent's entity) to selfId, so a turn addressed to us by an alias is NOT
+	// mistaken for an other-participant address.
 	const targets = await resolveAddressedTargets({
 		runtime,
 		message,
@@ -177,35 +183,11 @@ export async function addresseeIsNonOwnerBot(
 		return false;
 	}
 
-	// A bot talking to someone other than us is crosstalk we are overhearing.
-	const contentMetadata =
-		message.content?.metadata &&
-		typeof message.content.metadata === "object" &&
-		!Array.isArray(message.content.metadata)
-			? (message.content.metadata as Record<string, unknown>)
-			: undefined;
-	const topLevelMetadata =
-		message.metadata &&
-		typeof message.metadata === "object" &&
-		!Array.isArray(message.metadata)
-			? (message.metadata as Record<string, unknown>)
-			: undefined;
-	const senderIsBot =
-		contentMetadata?.fromBot === true || topLevelMetadata?.fromBot === true;
-	if (senderIsBot) {
-		return true;
-	}
-
-	// Otherwise confirm at least one addressee resolves to a registered agent.
-	for (const targetId of targets) {
-		if (targetId === selfId) {
-			continue;
-		}
-		if (await runtime.getAgent(targetId)) {
-			return true;
-		}
-	}
-	return false;
+	// Suppress only on a positively-resolved OTHER participant (every remaining
+	// target is non-self here). An addressee that resolves to no real entity (a
+	// bare unrecognized name) does not gate — the agent keeps acting, and the
+	// (bot) transcript tag lets the model handle any residual overheard crosstalk.
+	return targets.length > 0;
 }
 
 export async function resolveAddressedTargets(

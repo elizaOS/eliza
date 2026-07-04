@@ -100,6 +100,16 @@ export function isTriagableBotNoiseMessage(
 	const topLevelMetadata = metadataRecord(message.metadata);
 
 	// Positively bot/webhook-authored only (connector-stamped `fromBot`).
+	// NOTE: `fromBot` here is a COST proxy, not behavioral special-handling. This
+	// gate never suppresses a response — it only ROUTES high-volume automated
+	// relay traffic (the ~1000 IGNOREs/day webhook floods of #11944) to the cheap
+	// TEXT_SMALL tier, and fails OPEN on every uncertain path. The precondition
+	// SCOPES that cost route to where the volume problem actually is; dropping it
+	// to gate on addressing alone would widen triage to all unaddressed human
+	// group chatter — a strictly worse cost/quality trade #11944 does not justify.
+	// So a future "handle all messages uniformly" pass must NOT uniformize this
+	// away: behavior (respond vs not) still branches only on the model verdict +
+	// addressing, never on bot-ness.
 	const fromBot =
 		contentMetadata?.fromBot === true || topLevelMetadata?.fromBot === true;
 	if (!fromBot) return false;

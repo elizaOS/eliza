@@ -279,11 +279,13 @@ export function routeMessageHandlerOutput(
 	// routing layer.
 	const candidateActionsRequestPlanning =
 		hasCandidateActions && output.plan.requiresTool !== false;
-	// #9874 item 1: when the caller has identified this turn as bot-to-bot
-	// crosstalk addressed to a non-owner bot, do NOT promote a simple-path turn
-	// into forced tool planning. The agent is overhearing talk it was not asked
-	// to act on; forcing a tool fabricates a phantom task (the false-ack seed).
-	// The Stage-1 simple reply still ships via the final_reply branch below.
+	// #9874 item 1: when the caller has identified this turn as explicitly
+	// addressed to another participant (not us), do NOT promote a simple-path turn
+	// into forced tool planning. The agent is overhearing talk it was not asked to
+	// act on; forcing a tool fabricates a phantom task (the false-ack seed). The
+	// flag is a uniform addressing signal — it does not depend on whether the other
+	// participant is a bot. The Stage-1 simple reply still ships via the
+	// final_reply branch below.
 	const promotionRequested =
 		(requiresTool || candidateActionsRequestPlanning) &&
 		nonSimpleContexts.length === 0;

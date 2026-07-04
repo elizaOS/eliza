@@ -42,8 +42,8 @@ import { actionGateFailure, canActionRun } from "../runtime/action-gate";
 import { retrieveActions } from "../runtime/action-retrieval";
 import { tierActionResults } from "../runtime/action-tiering";
 import {
-	addresseeIsNonOwnerBot,
 	applyAddressedTo,
+	messageAddressedToOtherParticipant,
 } from "../runtime/addressed-to";
 import { normalizeTopics } from "../runtime/builtin-field-evaluators";
 import { filterByContextGate } from "../runtime/context-gates";
@@ -6278,22 +6278,24 @@ export async function runV5MessageRuntimeStage1(args: {
 			messageHandler.plan.contexts,
 			availableContexts,
 		);
-		// #9874 item 1: suppress the simple→requiresTool promotion when this turn
-		// is bot-to-bot crosstalk addressed to a non-owner bot — the agent is
+		// #9874 item 1: skip the simple→requiresTool promotion when this turn is
+		// explicitly addressed to another participant (not us) — the agent is
 		// overhearing, not being asked to act, so forcing a tool fabricates a
-		// phantom task. Cheap-gated: only resolve addressees when a promotion could
-		// actually fire (requiresTool / candidateActions) and the message carries
-		// explicit addressees.
+		// phantom task. Uniform addressing gate, NOT bot-specific: it fires the
+		// same for human and bot addressees (bot-ness is surfaced to the model as
+		// transcript context, not handled here). Cheap-gated: only resolve
+		// addressees when a promotion could actually fire (requiresTool /
+		// candidateActions) and the message carries explicit addressees.
 		const mayPromoteToTool =
 			messageHandler.plan.requiresTool === true ||
 			(messageHandler.plan.candidateActions?.length ?? 0) > 0;
-		// Fail SAFE on any resolution error (DB hiccup in getEntitiesForRoom /
-		// getAgent): a transient failure must NOT convert a normal turn into the
-		// generic failure reply — it just means "don't suppress", matching the
+		// Fail SAFE on any resolution error (DB hiccup in getEntitiesForRoom): a
+		// transient failure must NOT convert a normal turn into the generic
+		// failure reply — it just means "don't suppress", matching the
 		// conservative contract and the fire-and-forget addressee handling above.
 		const suppressToolPromotion =
 			mayPromoteToTool && addressedTo.length > 0
-				? await addresseeIsNonOwnerBot({
+				? await messageAddressedToOtherParticipant({
 						runtime: args.runtime,
 						message: args.message,
 						addressedTo,
