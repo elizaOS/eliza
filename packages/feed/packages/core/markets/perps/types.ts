@@ -1,3 +1,9 @@
+/**
+ * Domain records, ports, and I/O shapes for the perpetuals market: market snapshots,
+ * positions, open/close trade inputs and results, and the `PerpDbPort` persistence and
+ * `PerpServiceDeps` dependency contracts. The DB-facing records mirror stored rows; the
+ * ports keep `PerpMarketService` decoupled from Drizzle and wallet/fee implementations.
+ */
 import type {
   BroadcastPort,
   CachePort,

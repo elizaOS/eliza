@@ -1,3 +1,9 @@
+/**
+ * Primitives shared by both market domains (prediction and perp): the `MarketKind`
+ * discriminator, fee configuration and processing contracts, and the hexagonal ports
+ * (wallet, cache, clock, broadcast, fee outbox) that the market services depend on so
+ * the core domain stays free of any concrete DB, wallet, or transport implementation.
+ */
 export type MarketKind = "prediction" | "perp";
 
 export interface FeeConfig {

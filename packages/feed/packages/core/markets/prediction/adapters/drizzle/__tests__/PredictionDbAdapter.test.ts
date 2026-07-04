@@ -1,3 +1,7 @@
+/**
+ * Unit test guarding `PredictionDbAdapter.getQuestion` against reinterpreting large
+ * snowflake-like ids as small question numbers, using a mocked Drizzle client.
+ */
 import { describe, expect, mock, test } from "bun:test";
 import { PredictionDbAdapter } from "../PredictionDbAdapter";
 

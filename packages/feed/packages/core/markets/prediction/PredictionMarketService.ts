@@ -1,3 +1,10 @@
+/**
+ * Core service for YES/NO prediction markets: buying and selling shares against the CPMM
+ * pricing model, cancelling positions, and resolving markets to an outcome. Depends only
+ * on the injected `PredictionServiceDeps` ports (DB, wallet, fees, cache, clock, broadcast)
+ * so the domain stays infrastructure-free. Enforces trade minimums and caps single-trade
+ * odds movement at `MAX_ODDS_MOVE_PER_TRADE` unless a caller overrides it per trade.
+ */
 import { BadRequestError, NotFoundError } from "@feed/shared";
 import { PredictionPricing } from "./pricing";
 import type {

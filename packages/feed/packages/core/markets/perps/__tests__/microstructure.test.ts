@@ -1,3 +1,7 @@
+/**
+ * Unit tests for the synthetic perp microstructure math — quote-state derivation,
+ * execution pricing, and mid drift — over pure in-memory market records.
+ */
 import { describe, expect, it } from "bun:test";
 import {
   evolveSyntheticPerpQuoteState,

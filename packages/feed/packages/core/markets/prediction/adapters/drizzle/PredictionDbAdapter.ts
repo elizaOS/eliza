@@ -1,3 +1,10 @@
+/**
+ * Drizzle-backed implementation of `PredictionDbPort` — persistence adapter mapping
+ * markets, positions, questions, and price-history rows to/from domain records for
+ * `PredictionMarketService`. Encodes YES/NO as a boolean column, mints snowflake IDs, and
+ * distinguishes small human question numbers from large snowflake-like ids so lookups do
+ * not misinterpret one as the other. Accepts a transaction client for atomic composition.
+ */
 import {
   db,
   markets,

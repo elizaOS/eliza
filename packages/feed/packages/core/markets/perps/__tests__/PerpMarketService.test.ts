@@ -1,3 +1,7 @@
+/**
+ * Unit tests for `PerpMarketService` open/close/liquidation flows, driven by in-memory
+ * fakes for the wallet and DB ports (no real database).
+ */
 import { beforeEach, describe, expect, it } from "bun:test";
 import type { WalletPort } from "../../shared/common";
 import { PerpMarketService } from "../PerpMarketService";

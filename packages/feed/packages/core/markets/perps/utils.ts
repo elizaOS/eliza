@@ -1,3 +1,8 @@
+/**
+ * Pure, browser-safe helpers for perp positions: liquidation checks, effective leverage
+ * coercion, exposure sizing, and open-position integrity validation. No DB or wallet
+ * dependencies, so these are re-exported from `./client` for client components.
+ */
 import type { PerpSide } from "./types";
 
 export const MAX_PERP_USER_EXPOSURE = 1_000_000;
