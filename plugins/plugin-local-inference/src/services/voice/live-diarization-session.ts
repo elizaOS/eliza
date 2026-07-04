@@ -50,10 +50,10 @@ import type {
 	ElizaInferenceFfi,
 } from "./ffi-bindings.js";
 import { loadElizaInferenceFfi } from "./ffi-bindings.js";
-import { VoiceProfileStore } from "./profile-store.js";
 import { VoiceAttributionPipeline } from "./speaker/attribution-pipeline.js";
 import { FusedDiarizer } from "./speaker/diarizer-fused.js";
 import { FusedSpeakerEncoder } from "./speaker/encoder-fused.js";
+import { getSharedVoiceProfileStore } from "./speaker/profile-store-factory.js";
 import { GgmlSileroVad, VadDetector } from "./vad.js";
 
 export type { RuntimeEventSink } from "./audio-frame-consumer.js";
@@ -450,10 +450,9 @@ export class LiveDiarizationSession {
 		this.encoder = encoder;
 		const diarizer = await FusedDiarizer.load({ ffi, ctx });
 		this.diarizer = diarizer;
-		const store = new VoiceProfileStore({
-			rootDir: path.join(resolveStateDir(process.env), "voice-profiles"),
-		});
-		await store.init();
+		// One shared store per state dir so Pipeline A (here) and Pipeline B
+		// (the speak-back loop) resolve the same identities (#12257).
+		const store = await getSharedVoiceProfileStore();
 
 		const pipeline = new VoiceAttributionPipeline({
 			encoder,
