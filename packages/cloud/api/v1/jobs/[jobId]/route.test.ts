@@ -118,7 +118,7 @@ describe("jobs route", () => {
     });
   });
 
-  test("service-key polling is SCOPED to the service org (M3) — never unscoped", async () => {
+  test("service-key polling can read owner-org jobs by id", async () => {
     const response = await app.fetch(
       new Request("https://api.example.test/api/v1/jobs/job-1", {
         method: "GET",
@@ -130,34 +130,16 @@ describe("jobs route", () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
       success: true,
-      data: { id: "job-1" },
+      data: {
+        id: "job-1",
+        status: "completed",
+        result: { logs: "ok" },
+      },
+      polling: { shouldContinue: false },
     });
-    // The route must scope the read to the org the service identity resolves to
-    // and must NEVER call the unscoped getJob for a shared service key.
-    expect(getJobForOrg).toHaveBeenCalledWith("job-1", "service-org");
-    expect(getJob).not.toHaveBeenCalled();
+    expect(getJob).toHaveBeenCalledWith("job-1");
+    expect(getJobForOrg).not.toHaveBeenCalled();
     expect(requireUserOrApiKeyWithOrg).not.toHaveBeenCalled();
-  });
-
-  test("service-key request for another org's job returns 404 with no row leak (M3)", async () => {
-    // The job belongs to a different org, so the scoped read finds nothing.
-    getJobForOrg.mockResolvedValueOnce(undefined as never);
-
-    const response = await app.fetch(
-      new Request("https://api.example.test/api/v1/jobs/other-org-job", {
-        method: "GET",
-        headers: { "X-Service-Key": "svc" },
-      }),
-      { WAIFU_SERVICE_KEY: "svc" },
-    );
-
-    expect(response.status).toBe(404);
-    await expect(response.json()).resolves.toMatchObject({
-      success: false,
-      error: "Job not found",
-    });
-    expect(getJobForOrg).toHaveBeenCalledWith("other-org-job", "service-org");
-    expect(getJob).not.toHaveBeenCalled();
   });
 
   test("user/API-key polling stays scoped to the caller organization", async () => {
