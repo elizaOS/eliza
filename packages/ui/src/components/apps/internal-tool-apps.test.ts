@@ -1,3 +1,9 @@
+/**
+ * Covers `internal-tool-apps.ts`: how ViewDeclaration-derived internal apps map
+ * to catalog descriptors, target tabs, window paths, and pinnable names, and how
+ * routes bridge to tool tabs. Pure functions over in-memory view fixtures.
+ */
+
 import { describe, expect, it } from "vitest";
 import type { ViewRegistryEntry } from "../../hooks/useAvailableViews";
 import { pathForTab, tabFromPath } from "../../navigation";

@@ -1,3 +1,8 @@
+/**
+ * Storybook stories for `AppsCatalogGrid`, wrapped in a stub `AppContext`, across
+ * populated, loading, error, and search-filtered states.
+ */
+
 import type { Meta, StoryObj } from "@storybook/react";
 import type { ReactNode } from "react";
 import type { RegistryAppInfo } from "../../api";

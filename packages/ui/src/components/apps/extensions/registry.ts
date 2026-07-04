@@ -1,6 +1,8 @@
-// Re-export shim: the detail-extension registry now lives in `@elizaos/shared`
-// so Node app-registration code shares one canonical registry without importing
-// the React package.
+/**
+ * Re-export of the app detail-extension registry. The canonical registry lives
+ * in `@elizaos/shared` so Node app-registration code shares it without importing
+ * this React package.
+ */
 export {
   getAppDetailExtension,
   registerDetailExtension,

@@ -1,3 +1,8 @@
+/**
+ * Storybook stories for `AppIdentityTile` variants — apps with an icon, a hero
+ * image, and no art — exercising the tile's asset-fallback rendering.
+ */
+
 import type { Meta, StoryObj } from "@storybook/react";
 import {
   AppHero,

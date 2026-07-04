@@ -1,3 +1,9 @@
+/**
+ * Builds the homescreen launcher grid: the four default-pinned tiles plus any
+ * user-pinned internal-tool apps, each resolved to the navigation `Tab` that
+ * tapping it opens.
+ */
+
 import type { ViewRegistryEntry } from "../../hooks/useAvailableViews";
 import type { Tab } from "../../navigation";
 import type { AppIdentitySource } from "./app-identity";

@@ -1,3 +1,11 @@
+/**
+ * Horizontal strip of currently-running app runs: each entry shows the app's
+ * hero, a health-tone status dot, any attention reasons from
+ * `getRunAttentionReasons`, and a stop button. Opening or stopping a run is
+ * delegated to `onOpenRun`/`onStopRun`; `busyRunId`/`stoppingRunId` disable the
+ * affected entry while an action is in flight.
+ */
+
 import { Square } from "lucide-react";
 import { type MouseEvent, memo, useMemo } from "react";
 import type { AppRunSummary, RegistryAppInfo } from "../../api";

@@ -1,6 +1,8 @@
-// Re-export shim: the overlay-app registry now lives in `@elizaos/shared` so
-// Node app-registration code shares one canonical registry without importing
-// the React package. See `@elizaos/shared/src/apps/overlay-app-registry.ts`.
+/**
+ * Re-export of the overlay-app registry. The single canonical registry lives in
+ * `@elizaos/shared/src/apps/overlay-app-registry.ts` so Node app-registration
+ * code shares it without importing this React package.
+ */
 export {
   getAllOverlayApps,
   getAvailableOverlayApps,

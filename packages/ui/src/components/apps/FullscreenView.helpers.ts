@@ -1,3 +1,9 @@
+/**
+ * Static audit manifest of the desktop-only click targets in the game view
+ * (native window refresh, focus, ...), consumed by the desktop-workspace click
+ * audit to assert each expected native action has coverage.
+ */
+
 import type { DesktopClickAuditItem } from "../../utils/desktop-workspace";
 
 export const DESKTOP_GAME_CLICK_AUDIT: readonly DesktopClickAuditItem[] = [

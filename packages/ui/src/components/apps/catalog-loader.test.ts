@@ -1,3 +1,9 @@
+/**
+ * Covers `loadMergedCatalogApps`, focusing on the AOSP overlay-app filter: the
+ * api client, Capacitor platform, and navigator user-agent are mocked so the
+ * androidOnly-tile gating is asserted across Eliza-AOSP vs stock-Android hosts.
+ */
+
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const ELIZAOS_AOSP_UA =

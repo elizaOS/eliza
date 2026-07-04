@@ -1,3 +1,10 @@
+/**
+ * Renders the apps catalog as favorited/section-grouped hero cards, packing
+ * sections into responsive rows sized to the measured container width (1–5
+ * cards per row). Shows skeletons while loading, an error state with retry, and
+ * a per-card favorite toggle; launching a card is delegated to `onLaunch`.
+ */
+
 import { Star } from "lucide-react";
 import {
   type MouseEvent,

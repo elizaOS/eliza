@@ -1,3 +1,11 @@
+/**
+ * Resolves an overlay app by slug and mounts its lazily-loaded component in a
+ * Suspense boundary — the render path behind an `/apps/<slug>` window route.
+ * Because overlay apps register asynchronously off the first-paint critical
+ * path, a deep-linked window can mount before its app registers, so this
+ * re-resolves on a short bounded poll before settling on "App not found".
+ */
+
 import {
   type ComponentType,
   Suspense,

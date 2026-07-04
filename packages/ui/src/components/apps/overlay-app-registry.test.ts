@@ -1,3 +1,10 @@
+/**
+ * Covers overlay-app registration and the `isAospAndroid` / androidOnly
+ * availability gating across user agents (Eliza-AOSP, white-label AOSP, stock
+ * Android, desktop Linux). Registry host state is reset between cases; UAs are
+ * in-memory fixtures.
+ */
+
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { resetUiRegistryHostForTests } from "../../registry-host";
 import type { OverlayApp } from "./overlay-app-api";

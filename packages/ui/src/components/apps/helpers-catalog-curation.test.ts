@@ -1,3 +1,9 @@
+/**
+ * Covers the manifest-driven catalog curation in `helpers.ts`
+ * (`shouldShowAppInAppsView`, `getAppCatalogSectionKey`, `groupAppsForCatalog`)
+ * over in-memory `RegistryAppInfo` fixtures — pure functions, no I/O.
+ */
+
 import { describe, expect, it } from "vitest";
 import type { RegistryAppInfo } from "../../api";
 import {
@@ -9,7 +15,7 @@ import {
 // Curation is driven entirely by manifest-declared fields
 // (`package.json` → `elizaos.app.{catalogSection,featured,defaultHidden,scope}`),
 // not by hardcoded package-name sets. These cases assert the declared metadata
-// reproduces the classifications that were previously hardcoded in helpers.ts.
+// yields the expected section/visibility classifications.
 
 function app(overrides: Partial<RegistryAppInfo>): RegistryAppInfo {
   return {

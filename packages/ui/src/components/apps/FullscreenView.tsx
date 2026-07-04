@@ -1,11 +1,9 @@
 /**
- * Game View — embeds a running app's game client in an iframe.
- *
- * Features:
- * - Full-screen iframe for game client
- * - PostMessage auth for embedded app viewers
- * - Split-screen mode with agent logs panel
- * - Connection status indicator
+ * Full-screen game/app view mounted by AppsPageView: hosts the active run's
+ * client in a full-window iframe, runs the postMessage auth handshake for
+ * embedded viewers, and offers a split-screen mode with an agent-logs panel and
+ * a connection-status indicator. Auth-payload delivery is delegated to
+ * `EmbeddedAppViewer` when `shouldUseEmbeddedAppViewer` selects it.
  */
 
 import { packageNameToAppRouteSlug } from "@elizaos/shared";

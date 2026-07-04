@@ -1,3 +1,9 @@
+/**
+ * Storybook stories for `AppsSidebar`, wrapped in a stub translation context,
+ * across populated, starred/active, empty, and selected-item states with
+ * controlled collapse/width wired through local state.
+ */
+
 import type { Meta, StoryObj } from "@storybook/react";
 import type { ReactNode } from "react";
 import { useState } from "react";

@@ -1,4 +1,4 @@
-// Re-export shim: detail-extension types now live in `@elizaos/shared`.
+/** Re-export of the app detail-extension contract types from `@elizaos/shared`. */
 export type {
   AppDetailExtensionComponent,
   AppDetailExtensionProps,

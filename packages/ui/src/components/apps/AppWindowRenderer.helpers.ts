@@ -1,3 +1,10 @@
+/**
+ * Builds and memoizes the lazily-loaded component for an overlay app, wrapping
+ * its loader in a `RetainedLazyComponent` (so the module stays warm across
+ * remounts) with shared loading/error fallbacks. Results are cached per loader
+ * in a `WeakMap` so repeated renders of the same app reuse one lazy component.
+ */
+
 import { type ComponentType, createElement } from "react";
 import { RetainedLazyComponent } from "../../retained-lazy";
 import {

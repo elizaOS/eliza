@@ -1,3 +1,9 @@
+/**
+ * Covers `getHomeGridApps` / `getPinnableInternalApps`: the four default tiles,
+ * their order, and how user-pinned internal-tool apps append and resolve to
+ * navigation tabs. Pure functions over in-memory view fixtures.
+ */
+
 import { describe, expect, it } from "vitest";
 import type { ViewRegistryEntry } from "../../hooks/useAvailableViews";
 import { getHomeGridApps, getPinnableInternalApps } from "./home-grid-apps";

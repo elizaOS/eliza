@@ -1,3 +1,10 @@
+/**
+ * Pure selectors and tone mappers backing the detail-extension surfaces: picks
+ * the latest run for an app (newest of `updatedAt`/`startedAt`), formats detail
+ * timestamps, and maps run health, viewer attachment, and free-form status text
+ * to a `SurfaceTone`. Kept free of JSX so extension logic stays unit-testable.
+ */
+
 import type {
   AppRunHealthState,
   AppRunSummary,

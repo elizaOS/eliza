@@ -1,3 +1,11 @@
+/**
+ * Pure catalog helpers shared across the apps surfaces: category/section
+ * labels, visibility and curation filters, catalog grouping/ordering, slug and
+ * short-name derivation, and session-mode/feature label formatting. Curation is
+ * driven by manifest-declared fields (`elizaos.app.*`) plus the Eliza-curated
+ * order and internal-tool ordering — never by ad-hoc package-name sets here.
+ */
+
 import { type EnabledViewKinds, isViewVisible } from "@elizaos/core";
 import {
   getElizaCuratedAppCatalogOrder,

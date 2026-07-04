@@ -1,3 +1,11 @@
+/**
+ * Presentational app-branding primitives shared by every apps surface (catalog
+ * grid, sidebar, running-apps row, home tiles): `AppIdentityTile` renders an
+ * app's icon and `AppHero` renders its hero image. Both fall back through
+ * category-icon → generated hero data URL → monogram when no real asset is
+ * available, so an app without art still gets a stable, themed placeholder.
+ */
+
 import {
   createGeneratedAppHeroDataUrl,
   getAppHeroMonogram,

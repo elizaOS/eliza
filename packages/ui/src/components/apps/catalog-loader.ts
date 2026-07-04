@@ -1,3 +1,12 @@
+/**
+ * Merges the four app sources — registry catalog, installed apps, view-derived
+ * internal tools, and available overlay apps — into one deduped `RegistryAppInfo`
+ * list for the chat surfaces (AppsSection, agent-orchestrator widget). Each
+ * source is fetched with `allSettled` so a single failing endpoint degrades to
+ * an empty slice rather than failing the whole load. `AppsView` uses the sibling
+ * `load-apps-catalog.ts` instead.
+ */
+
 import { client, type RegistryAppInfo } from "../../api";
 import { fetchAvailableViews } from "../../hooks/useAvailableViews";
 import { isHiddenFromAppsView } from "./helpers";

@@ -1,3 +1,11 @@
+/**
+ * Collapsible, resizable sidebar for the apps surface: lists running runs,
+ * favorites, and genre-grouped catalog apps, with launch and open-run actions.
+ * Collapsed/expanded state and width are controlled by the parent; genre
+ * ordering follows the fixed `GENRE_ORDER`. Built on the shared sidebar
+ * composites (`SidebarPanel`/`SidebarContent`/`SidebarScrollRegion`).
+ */
+
 import { Play, Star } from "lucide-react";
 import { memo, type ReactNode, useCallback, useMemo } from "react";
 import type { AppRunSummary, RegistryAppInfo } from "../../api";

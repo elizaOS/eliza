@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
 
+/**
+ * Covers `getOverlayAppLazyComponent` — the per-loader lazy-component cache and
+ * its retained-lazy warm-up — in jsdom with a stubbed `requestIdleCallback`.
+ * Overlay apps are in-memory fixtures; no real plugin modules are loaded.
+ */
+
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import type { ComponentType } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

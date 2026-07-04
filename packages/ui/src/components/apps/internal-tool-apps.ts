@@ -3,12 +3,11 @@
  * derived from the `GET /api/views` ViewDeclaration feed.
  *
  * The catalog and pinnable list are built from a single declarative source of
- * `ViewDeclaration` records — the same shape plugins register — instead of the
- * old hardcoded `INTERNAL_TOOL_APPS` / `PINNABLE_INTERNAL_APPS` package-name
- * tables. `pinnable` is a declared flag on each declaration. When a plugin owns
- * the view (fine-tuning, automations), its live network `ViewRegistryEntry`
- * overlays label/description/hero at read time, so renaming a plugin app's
- * `displayName` in its ViewDeclaration updates the catalog with no edit here.
+ * `ViewDeclaration` records — the same shape plugins register — with `pinnable`
+ * a declared flag on each declaration. When a plugin owns the view (fine-tuning,
+ * automations), its live network `ViewRegistryEntry` overlays
+ * label/description/hero at read time, so renaming a plugin app's `displayName`
+ * in its ViewDeclaration updates the catalog with no edit here.
  */
 
 import type { RegistryAppInfo } from "../../api";

@@ -1,3 +1,12 @@
+/**
+ * Draggable floating "kiosk" overlay that keeps the active game run's iframe
+ * visible across non-Views tabs — mounted once at the App shell root and driven
+ * by the active-game fields on the app store. Delegates the authenticated
+ * viewer path to `EmbeddedAppViewer` via `shouldUseEmbeddedAppViewer`, and tears
+ * the iframe down when the document is backgrounded so the game loop and its
+ * postMessage auth listener stop running even if the overlay stays mounted.
+ */
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useDocumentVisibility } from "../../hooks/useDocumentVisibility";
 import { useAppSelectorShallow } from "../../state";
