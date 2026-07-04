@@ -115,6 +115,10 @@ import {
   useAppSelector,
   useAppSelectorShallow,
 } from "./state";
+import {
+  useChatComposer,
+  useChatInputRef,
+} from "./state/ChatComposerContext.hooks";
 import { isShellPaintable } from "./state/startup-coordinator";
 import { firstRunOwnsLoginSurface } from "./state/top-level-auth-gate";
 import { isLoopbackGatewayHost } from "./state/use-startup-shell-controller";
@@ -1626,6 +1630,21 @@ function SecretsManagerModalMount(): ReactNode {
 
 function ShellFoundationMount() {
   const controller = useShellControllerContext();
+  const { setChatInput } = useChatComposer();
+  const chatInputRef = useChatInputRef();
+  // Push-to-talk dictation on the ChatSurface mic drops its transcript into
+  // the SHARED composer draft (never auto-sends) — the same sink contract the
+  // continuous overlay registers on its surface. This shell and the overlay
+  // are mutually exclusive App surfaces, so the controller's single sink slot
+  // is never contended.
+  useEffect(() => {
+    if (!controller) return undefined;
+    controller.setDictationSink((text) => {
+      const current = chatInputRef?.current ?? "";
+      setChatInput(current ? `${current} ${text}` : text);
+    });
+    return () => controller.setDictationSink(null);
+  }, [controller, setChatInput, chatInputRef]);
   if (!controller) return null;
 
   return (
@@ -1643,6 +1662,8 @@ function ShellFoundationMount() {
           greeting={greetingForTimeOfDay()}
           recording={controller.recording}
           onToggleRecording={controller.toggleRecording}
+          onDictateStart={() => controller.startRecording("dictate")}
+          onDictateEnd={controller.stopRecording}
           onVision={controller.captureVision}
           visionActive={controller.visionCapturing}
         />

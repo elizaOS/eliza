@@ -47,6 +47,7 @@ export function GlassIconButton({
   onPointerDown,
   onPointerUp,
   onPointerCancel,
+  onPointerLeave,
 }: {
   icon: "mic" | "send" | "vision";
   label: string;
@@ -58,6 +59,7 @@ export function GlassIconButton({
   onPointerDown?: (event: React.PointerEvent<HTMLButtonElement>) => void;
   onPointerUp?: (event: React.PointerEvent<HTMLButtonElement>) => void;
   onPointerCancel?: (event: React.PointerEvent<HTMLButtonElement>) => void;
+  onPointerLeave?: (event: React.PointerEvent<HTMLButtonElement>) => void;
 }): React.JSX.Element {
   const pointerActivatedRef = React.useRef(false);
   const handleClick = React.useCallback(
@@ -93,6 +95,7 @@ export function GlassIconButton({
       onPointerDown={onPointerDown}
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerCancel}
+      onPointerLeave={onPointerLeave}
       onMouseDown={handleMouseDown}
       className={cn(
         "grid h-9 w-9 shrink-0 place-items-center p-0 transition-transform hover:bg-transparent",

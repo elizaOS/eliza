@@ -3,16 +3,21 @@
  *
  * Renders a scrollable list of `ShellMessage`s (via the shared ChatBubble /
  * TypingIndicator composites) plus an input row with optional mic and VISION
- * buttons. It owns only local draft + scroll state; message data, send, and
- * capabilities arrive as props (driven by useShellController). Tail-following
- * and the jump-to-latest control come from the one shared `useThreadAutoScroll`
- * engine, not a local scroll handler.
+ * buttons. Message data, send, and capabilities arrive as props (driven by
+ * useShellController); the composer itself is the shared composer core: the
+ * ChatComposerContext draft slot (context-or-local), the IME-safe
+ * Enter-to-send keydown, and the usePushToTalk mic hold machine (#12188
+ * Phase 3). Tail-following and the jump-to-latest control come from the one
+ * shared `useThreadAutoScroll` engine, not a local scroll handler.
  */
 import { ArrowDown } from "lucide-react";
 import * as React from "react";
 
+import { useComposerKeydown } from "../../chat/composer-core";
+import { usePushToTalk } from "../../hooks/usePushToTalk";
 import { useThreadAutoScroll } from "../../hooks/useThreadAutoScroll";
 import { cn } from "../../lib/utils";
+import { useChatComposerOrLocal } from "../../state/ChatComposerContext.hooks";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import { ChatBubble } from "../composites/chat/chat-bubble";
 import { TypingIndicator } from "../composites/chat/chat-typing-indicator";
@@ -28,6 +33,14 @@ export interface ChatSurfaceProps {
   greeting?: string;
   recording?: boolean;
   onToggleRecording?: () => void;
+  /**
+   * Press-and-hold push-to-talk (the shared usePushToTalk machine): the hold
+   * starts a dictation capture and the release/cancel stops it, exactly like
+   * the overlay mic; a quick tap still fires onToggleRecording. Omit both to
+   * keep the mic a plain toggle.
+   */
+  onDictateStart?: () => void;
+  onDictateEnd?: () => void;
   /** Capture the screen and show it to the agent (plugin-vision). Omit to hide
    * the VISION button on surfaces without a screen-capture capability. */
   onVision?: () => void;
@@ -42,11 +55,16 @@ export function ChatSurface({
   greeting,
   recording = false,
   onToggleRecording,
+  onDictateStart,
+  onDictateEnd,
   onVision,
   visionActive = false,
 }: ChatSurfaceProps): React.JSX.Element {
   const { t } = useTranslation();
-  const [draft, setDraft] = React.useState("");
+  // The shared composer draft slot — under the app provider this is the SAME
+  // draft the overlay edits (one draft per active conversation, persistence
+  // and dictation included); standalone mounts fall back to local state.
+  const { chatInput: draft, setChatInput: setDraft } = useChatComposerOrLocal();
   const messageCount = messages.length;
   const trimmed = draft.trim();
   const canSendNow = canSend && trimmed.length > 0;
@@ -62,7 +80,27 @@ export function ChatSurface({
     if (!canSendNow) return;
     onSend(trimmed);
     setDraft("");
-  }, [canSendNow, onSend, trimmed]);
+  }, [canSendNow, onSend, setDraft, trimmed]);
+
+  // Shared composer-core keydown: Enter sends, the Enter that commits an IME
+  // composition never does (#9148).
+  const handleKeyDown = useComposerKeydown<HTMLInputElement>({
+    onSend: handleSend,
+  });
+
+  // Press-and-hold dictation on the mic — the same shared hold machine as the
+  // overlay and ChatComposer mics. Armed only when the surface wires the
+  // dictation callbacks; a quick tap falls through to the recording toggle.
+  const { handlers: micHoldHandlers, shouldSuppressClick } = usePushToTalk({
+    canBegin: () => Boolean(onDictateStart) && !recording,
+    onHoldStart: () => onDictateStart?.(),
+    onHoldEnd: () => onDictateEnd?.(),
+  });
+  const handleMicClick = React.useCallback(() => {
+    // Swallow exactly the one click that follows a held dictation release.
+    if (shouldSuppressClick()) return;
+    onToggleRecording?.();
+  }, [shouldSuppressClick, onToggleRecording]);
 
   return (
     <div className="flex h-full flex-col" data-testid="shell-chat-surface">
@@ -141,12 +179,7 @@ export function ChatSurface({
           type="text"
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" && !event.shiftKey) {
-              event.preventDefault();
-              handleSend();
-            }
-          }}
+          onKeyDown={handleKeyDown}
           placeholder={t("chatsurface.inputPlaceholder", {
             defaultValue: "Ask {{appName}}…",
           })}
@@ -168,8 +201,9 @@ export function ChatSurface({
                 })
           }
           active={recording}
-          disabled={!onToggleRecording}
-          onClick={onToggleRecording}
+          disabled={!onToggleRecording && !onDictateStart}
+          onClick={handleMicClick}
+          {...micHoldHandlers}
         />
         {onVision ? (
           <GlassIconButton
