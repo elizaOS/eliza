@@ -1353,7 +1353,7 @@ describe("ContinuousChatOverlay", () => {
     expect(screen.getByLabelText(/send/)).toBeTruthy();
   });
 
-  it("renders the no_provider failure as a recovery gate with a Settings jump", () => {
+  it("renders the no_provider failure as a recovery gate with a Settings jump, while a normal turn still renders its content", () => {
     const openSettings = vi.fn();
     render(
       <ContinuousChatOverlay
@@ -1361,10 +1361,16 @@ describe("ContinuousChatOverlay", () => {
           openSettings,
           messages: [
             {
+              id: "ok",
+              role: "assistant",
+              content: "here is a normal answer",
+              createdAt: 1,
+            },
+            {
               id: "np",
               role: "assistant",
               content: "No model provider is configured.",
-              createdAt: 1,
+              createdAt: 2,
               failureKind: "no_provider",
             },
           ],
@@ -1372,10 +1378,28 @@ describe("ContinuousChatOverlay", () => {
       />,
     );
     fireEvent.focus(screen.getByLabelText("message"));
+
+    // The no_provider turn renders the STRUCTURED gate (heading + Settings CTA),
+    // not an empty/near-empty bubble — this is the actionable recovery the user
+    // needs on a first-message provider failure.
     expect(screen.getByText("Connect a provider to chat")).toBeTruthy();
-    const cta = screen.getByTestId("chat-no-provider-settings");
-    fireEvent.click(cta);
+    const gate = screen
+      .getByTestId("chat-no-provider-settings")
+      .closest('[data-failure="no_provider"]') as HTMLElement;
+    expect(gate).toBeTruthy();
+    // The server's fallback text rides inside the gate body (not dropped).
+    expect(gate.textContent).toContain("No model provider is configured.");
+
+    // The Settings CTA jumps to settings nav (setTab("settings") via the
+    // controller's openSettings).
+    fireEvent.click(screen.getByTestId("chat-no-provider-settings"));
     expect(openSettings).toHaveBeenCalledTimes(1);
+
+    // A normal assistant turn in the same thread is UNAFFECTED — it still
+    // renders its plain content as a thread bubble, not the gate.
+    const normal = screen.getByText("here is a normal answer");
+    expect(normal).toBeTruthy();
+    expect(normal.closest('[data-failure="no_provider"]')).toBeNull();
   });
 
   it("press-and-hold copies an assistant message and flashes confirmation", () => {
