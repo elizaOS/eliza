@@ -159,9 +159,6 @@
       "@elizaos/plugin-agent-skills": [
         "./plugins/plugin-agent-skills/dist/index.d.ts"
       ],
-      "@elizaos/plugin-ainex": [
-        "./plugins/plugin-ainex/dist/index.d.ts"
-      ],
       "@elizaos/plugin-anthropic": [
         "./plugins/plugin-anthropic/dist/index.d.ts"
       ],
@@ -542,9 +539,6 @@
       ],
       "@elizaos/registry": [
         "./packages/registry/src/index.ts"
-      ],
-      "@elizaos/robot": [
-        "./packages/research/robot/dist/index.d.ts"
       ],
       "@elizaos/scenario-runner": [
         "./packages/scenario-runner/dist/index.d.ts"

@@ -2,7 +2,7 @@
   "schema": "gpt55_harvest_manifest",
   "schemaVersion": 1,
   "generatedAt": "2026-07-02T22:59:34.130Z",
-  "repoRoot": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline",
+  "repoRoot": "/workspace/eliza/.claude/worktrees/gpt55-training-pipeline",
   "goal": "Run every elizaOS scenario+benchmark+e2e through gpt-5.5 (Codex subscription), harvest correct eliza_native_v1 trajectories, GEPA-repair failures, fine-tune on Nebius.",
   "provider": {
     "mechanism": "ELIZA_CHAT_VIA_CLI CLI-subscription backend (packages/core/src/testing/live-provider.ts selectCliProvider)",
@@ -215,267 +215,267 @@
         {
           "id": "abliteration-robustness",
           "dir": "abliteration-robustness",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages"
+          "cwd": "/workspace/eliza/.claude/worktrees/gpt55-training-pipeline/packages"
         },
         {
           "id": "action-calling",
           "dir": "action-calling",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages"
+          "cwd": "/workspace/eliza/.claude/worktrees/gpt55-training-pipeline/packages"
         },
         {
           "id": "adhdbench",
           "dir": "adhdbench",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/adhdbench"
+          "cwd": "/workspace/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/adhdbench"
         },
         {
           "id": "agentbench",
           "dir": "agentbench",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/agentbench"
+          "cwd": "/workspace/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/agentbench"
         },
         {
           "id": "app-eval",
           "dir": "app-eval",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/app-eval"
+          "cwd": "/workspace/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/app-eval"
         },
         {
           "id": "bfcl",
           "dir": "bfcl",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages"
+          "cwd": "/workspace/eliza/.claude/worktrees/gpt55-training-pipeline/packages"
         },
         {
           "id": "clawbench",
           "dir": "clawbench",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/clawbench"
+          "cwd": "/workspace/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/clawbench"
         },
         {
           "id": "configbench",
           "dir": "configbench",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/configbench"
+          "cwd": "/workspace/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/configbench"
         },
         {
           "id": "context_bench",
           "dir": "context-bench",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages"
+          "cwd": "/workspace/eliza/.claude/worktrees/gpt55-training-pipeline/packages"
         },
         {
           "id": "eliza_1",
           "dir": "eliza-1",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/eliza-1"
+          "cwd": "/workspace/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/eliza-1"
         },
         {
           "id": "eliza_replay",
           "dir": "eliza-adapter",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/eliza-adapter"
+          "cwd": "/workspace/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/eliza-adapter"
         },
         {
           "id": "experience",
           "dir": "experience",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/experience"
+          "cwd": "/workspace/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/experience"
         },
         {
           "id": "framework",
           "dir": "framework",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages"
+          "cwd": "/workspace/eliza/.claude/worktrees/gpt55-training-pipeline/packages"
         },
         {
           "id": "gauntlet",
           "dir": "gauntlet",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/gauntlet"
+          "cwd": "/workspace/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/gauntlet"
         },
         {
           "id": "gsm8k",
           "dir": "standard",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages"
+          "cwd": "/workspace/eliza/.claude/worktrees/gpt55-training-pipeline/packages"
         },
         {
           "id": "hermes_swe_env",
           "dir": "hermes-adapter",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/hermes-adapter"
+          "cwd": "/workspace/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/hermes-adapter"
         },
         {
           "id": "hermes_tblite",
           "dir": "hermes-adapter",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/hermes-adapter"
+          "cwd": "/workspace/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/hermes-adapter"
         },
         {
           "id": "hermes_terminalbench_2",
           "dir": "hermes-adapter",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/hermes-adapter"
+          "cwd": "/workspace/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/hermes-adapter"
         },
         {
           "id": "hermes_yc_bench",
           "dir": "hermes-adapter",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/hermes-adapter"
+          "cwd": "/workspace/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/hermes-adapter"
         },
         {
           "id": "humaneval",
           "dir": "standard",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages"
+          "cwd": "/workspace/eliza/.claude/worktrees/gpt55-training-pipeline/packages"
         },
         {
           "id": "hyperliquid_bench",
           "dir": "HyperliquidBench",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages"
+          "cwd": "/workspace/eliza/.claude/worktrees/gpt55-training-pipeline/packages"
         },
         {
           "id": "interrupt_bench",
           "dir": "interrupt-bench",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/interrupt-bench"
+          "cwd": "/workspace/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/interrupt-bench"
         },
         {
           "id": "lifeops_bench",
           "dir": "lifeops-bench",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/lifeops-bench"
+          "cwd": "/workspace/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/lifeops-bench"
         },
         {
           "id": "mind2web",
           "dir": "mind2web",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages"
+          "cwd": "/workspace/eliza/.claude/worktrees/gpt55-training-pipeline/packages"
         },
         {
           "id": "mint",
           "dir": "mint",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages"
+          "cwd": "/workspace/eliza/.claude/worktrees/gpt55-training-pipeline/packages"
         },
         {
           "id": "mmau",
           "dir": "mmau-audio",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/mmau-audio"
+          "cwd": "/workspace/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/mmau-audio"
         },
         {
           "id": "mmlu",
           "dir": "standard",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages"
+          "cwd": "/workspace/eliza/.claude/worktrees/gpt55-training-pipeline/packages"
         },
         {
           "id": "mt_bench",
           "dir": "standard",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages"
+          "cwd": "/workspace/eliza/.claude/worktrees/gpt55-training-pipeline/packages"
         },
         {
           "id": "openclaw_bench",
           "dir": "openclaw-benchmark",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/openclaw-benchmark"
+          "cwd": "/workspace/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/openclaw-benchmark"
         },
         {
           "id": "orchestrator_lifecycle",
           "dir": "orchestrator_lifecycle",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages"
+          "cwd": "/workspace/eliza/.claude/worktrees/gpt55-training-pipeline/packages"
         },
         {
           "id": "osworld",
           "dir": "OSWorld",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/OSWorld"
+          "cwd": "/workspace/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/OSWorld"
         },
         {
           "id": "personality_bench",
           "dir": "personality-bench",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/personality-bench"
+          "cwd": "/workspace/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/personality-bench"
         },
         {
           "id": "realm",
           "dir": "realm",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages"
+          "cwd": "/workspace/eliza/.claude/worktrees/gpt55-training-pipeline/packages"
         },
         {
           "id": "recall_bench",
           "dir": "recall-bench",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/recall-bench"
+          "cwd": "/workspace/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/recall-bench"
         },
         {
           "id": "rlm_bench",
           "dir": "rlm-bench",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/rlm-bench"
+          "cwd": "/workspace/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/rlm-bench"
         },
         {
           "id": "scambench",
           "dir": "scambench",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages"
+          "cwd": "/workspace/eliza/.claude/worktrees/gpt55-training-pipeline/packages"
         },
         {
           "id": "social_alpha",
           "dir": "social-alpha",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/social-alpha"
+          "cwd": "/workspace/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/social-alpha"
         },
         {
           "id": "solana",
           "dir": "solana",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages"
+          "cwd": "/workspace/eliza/.claude/worktrees/gpt55-training-pipeline/packages"
         },
         {
           "id": "swe_bench",
           "dir": "swe_bench",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages"
+          "cwd": "/workspace/eliza/.claude/worktrees/gpt55-training-pipeline/packages"
         },
         {
           "id": "swe_bench_orchestrated",
           "dir": "swe_bench",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages"
+          "cwd": "/workspace/eliza/.claude/worktrees/gpt55-training-pipeline/packages"
         },
         {
           "id": "tau_bench",
           "dir": "tau-bench",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/tau-bench"
+          "cwd": "/workspace/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/tau-bench"
         },
         {
           "id": "terminal_bench",
           "dir": "terminal-bench",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/terminal-bench"
+          "cwd": "/workspace/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/terminal-bench"
         },
         {
           "id": "three_agent_dialogue",
           "dir": "three-agent-dialogue",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/three-agent-dialogue"
+          "cwd": "/workspace/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/three-agent-dialogue"
         },
         {
           "id": "trajectory_replay",
           "dir": "standard",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages"
+          "cwd": "/workspace/eliza/.claude/worktrees/gpt55-training-pipeline/packages"
         },
         {
           "id": "trust",
           "dir": "trust",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/trust"
+          "cwd": "/workspace/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/trust"
         },
         {
           "id": "vending_bench",
           "dir": "vending-bench",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/vending-bench"
+          "cwd": "/workspace/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/vending-bench"
         },
         {
           "id": "vision_language",
           "dir": "vision-language",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/vision-language"
+          "cwd": "/workspace/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/vision-language"
         },
         {
           "id": "visualwebbench",
           "dir": "visualwebbench",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages"
+          "cwd": "/workspace/eliza/.claude/worktrees/gpt55-training-pipeline/packages"
         },
         {
           "id": "voiceagentbench",
           "dir": "voiceagentbench",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/voiceagentbench"
+          "cwd": "/workspace/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/voiceagentbench"
         },
         {
           "id": "voicebench",
           "dir": "voicebench",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/voicebench"
+          "cwd": "/workspace/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/voicebench"
         },
         {
           "id": "voicebench_quality",
           "dir": "voicebench-quality",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/voicebench-quality"
+          "cwd": "/workspace/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/voicebench-quality"
         },
         {
           "id": "webshop",
           "dir": "webshop",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/webshop"
+          "cwd": "/workspace/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/webshop"
         },
         {
           "id": "woobench",
           "dir": "woobench",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages"
+          "cwd": "/workspace/eliza/.claude/worktrees/gpt55-training-pipeline/packages"
         }
       ]
     },

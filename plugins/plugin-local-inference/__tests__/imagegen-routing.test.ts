@@ -13,7 +13,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import {
@@ -22,6 +22,9 @@ import {
 } from "../src/services/imagegen/backend-selector";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+// The chip bundle config lives in the elizaOS/research submodule (mounted at
+// packages/research). This cross-repo drift guard runs only when that submodule
+// is initialized; it is skipped in the default plugin CI lane where it is not.
 const EXTRAS_PATH = resolve(
 	__dirname,
 	"../../../packages/research/chip/ELIZA_1_BUNDLE_EXTRAS.json",
@@ -75,7 +78,7 @@ describe("WS3 routing — tier → default image-gen model", () => {
 		expect(resolveDefaultImageGenModel("imagegen-not-real")).toBeNull();
 	});
 
-	it("agrees with ELIZA_1_BUNDLE_EXTRAS.json#imagegen.perTier", () => {
+	it.skipIf(!existsSync(EXTRAS_PATH))("agrees with ELIZA_1_BUNDLE_EXTRAS.json#imagegen.perTier", () => {
 		const extras = JSON.parse(readFileSync(EXTRAS_PATH, "utf8")) as ExtrasShape;
 		const perTier = extras.imagegen?.perTier ?? {};
 		for (const [tier, entry] of Object.entries(TIER_TO_DEFAULT_IMAGE_MODEL)) {

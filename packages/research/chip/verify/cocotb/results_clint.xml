@@ -1,9 +1,0 @@
-<testsuites name="results">
-  <testsuite name="all" package="all">
-    <property name="random_seed" value="1779482578" />
-    <testcase name="clint_mtime_monotonic" classname="test_clint_timer_irq" file="/home/shaw/eliza/eliza/packages/research/chip/verify/cocotb/test_clint_timer_irq.py" lineno="111" time="0.005265474319458008" sim_time_ns="240.001" ratio_time="45580.129241747796" />
-    <testcase name="clint_timer_irq_fires_when_mtime_ge_mtimecmp" classname="test_clint_timer_irq" file="/home/shaw/eliza/eliza/packages/research/chip/verify/cocotb/test_clint_timer_irq.py" lineno="123" time="0.007455587387084961" sim_time_ns="610.001" ratio_time="81817.96662415656" />
-    <testcase name="clint_msip_software_interrupt" classname="test_clint_timer_irq" file="/home/shaw/eliza/eliza/packages/research/chip/verify/cocotb/test_clint_timer_irq.py" lineno="159" time="0.004485368728637695" sim_time_ns="180.00099999999998" ratio_time="40130.702934353896" />
-    <testcase name="clint_per_hart_isolation" classname="test_clint_timer_irq" file="/home/shaw/eliza/eliza/packages/research/chip/verify/cocotb/test_clint_timer_irq.py" lineno="178" time="0.0013546943664550781" sim_time_ns="180.00099999999998" ratio_time="132872.03701231958" />
-  </testsuite>
-</testsuites>

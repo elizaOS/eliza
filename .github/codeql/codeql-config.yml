@@ -68,9 +68,6 @@ paths-ignore:
   # WHY: vendored Bun-from-source toolchain build cache (~88k generated .js); the
   # single largest OOM contributor. Lives under scripts/, not src/.
   - packages/app-core/scripts/bun-riscv64/**
-  # WHY: ML research code + datasets + vendored .venv JS; not shipped product and
-  # not a JS/TS attack surface (Python pipelines).
-  - packages/research/**
   # WHY: eval/benchmark harnesses, fixtures, and datasets; not deployed product,
   # no live untrusted-input surface.
   - packages/benchmarks/**

@@ -1,6 +1,0 @@
-read_verilog -sv -formal rtl/npu/e1_npu.sv verify/formal/e1_npu_formal.sv
-prep -top e1_npu_formal
-async2sync
-dffunmap
-flatten
-sat -prove-asserts -seq 12 -verify

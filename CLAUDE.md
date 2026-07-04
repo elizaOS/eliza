@@ -16,6 +16,10 @@ Write **elizaOS** (not `ElizaOS`). npm scope is `@elizaos/*`. In plain language,
 say **Eliza agents**. Exception: the **Eliza Classic** plugin keeps `Eliza`
 (the 1966 chatbot it reimplements).
 
+**Never reference "Milady" or any other downstream white-label distribution
+anywhere in this repository.** This is the upstream elizaOS project; downstream
+product names do not belong in its code, docs, comments, or config.
+
 ## Toolchain
 
 - **Runtime:** [Bun](https://bun.sh) (`packageManager` is pinned in
@@ -75,12 +79,14 @@ packages/        framework, shared libraries, and product surfaces
   cloud/sdk/ cloud/routing/ cloud/infra/  cloud client SDK, model routing, IaC
   contracts/     on-chain contracts + ABIs
   security/ vault/ soc2-verify/  secrets, key management, compliance tooling
-  os/ robot/                     device/OS images, OS landing, robotics
+  os/                            device/OS images, OS landing, bootable distribution
   plugin-remote-manifest/ plugin-worker-runtime/
                  remote plugin manifests, host shims, and worker runtime support
   homepage/ docs/ docs-elizacloud-redirect/  marketing site, docs site, redirects
   examples/      30+ standalone runnable examples (each has its own README)
   benchmarks/    30+ evaluation suites (each has its own README + harness)
+  research/      git submodule → github.com/elizaOS/research (E1 chip, robot,
+                 alberta RL framework, plugin-ainex) — hardware & embodiment research
 
 plugins/         runtime plugins and app plugins
   plugin-<model>/      openai, anthropic, google-genai, groq, openrouter, xai, ollama, …

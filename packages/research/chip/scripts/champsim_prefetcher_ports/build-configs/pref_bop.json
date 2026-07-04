@@ -1,6 +1,0 @@
-{
-  "executable_name": "champsim_pref_bop",
-  "LLC": { "prefetcher": "no", "replacement": "lru" },
-  "L2C": { "prefetcher": "bop" },
-  "L1D": { "prefetcher": "no" }
-}

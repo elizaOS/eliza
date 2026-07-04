@@ -1,5 +1,0 @@
-{
-  "board": {"design_settings": {"defaults": {}}},
-  "meta": {"filename": "e1-phone.kicad_pro", "version": 1},
-  "text_variables": {"claim_boundary": "non_release_phone_schematic_scaffold"}
-}

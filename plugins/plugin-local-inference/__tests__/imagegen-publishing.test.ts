@@ -76,7 +76,10 @@ function isHexSha256(value: unknown): boolean {
 	return typeof value === "string" && /^[0-9a-f]{64}$/i.test(value.trim());
 }
 
-describe("WS3 imagegen publishing pipeline", () => {
+// EXTRAS_PATH lives in the elizaOS/research submodule (mounted at
+// packages/research). This publishing-contract suite runs only when that
+// submodule is initialized; the default plugin CI lane skips it.
+describe.skipIf(!fs.existsSync(EXTRAS_PATH))("WS3 imagegen publishing pipeline", () => {
 	it("every per-tier default has a url OR a staged buildPlan", () => {
 		const extras = loadExtras();
 		const failures: string[] = [];

@@ -80,6 +80,18 @@ elizaOS runs **apps**, not just an agent. An app is a plugin that adds a surface
 
 The OS is bootable today; full device certification and production update channels are in progress — see the per-target READMEs for status.
 
+## Research — silicon, robotics & embodiment
+
+Hardware and embodiment research lives in its own repo,
+**[elizaOS/research](https://github.com/elizaOS/research)**, mounted here as a git
+submodule at [`packages/research`](packages/research):
+
+- **Eliza E1 SoC** — an open RISC-V AI phone chip (RTL, verification, physical design).
+- **Robot** — `@elizaos/robot`: a MuJoCo/Brax humanoid stack plus the AiNex plugin.
+- **Alberta** — a JAX continual-RL framework that trains the robot policies.
+
+Fetch it with `git submodule update --init packages/research`.
+
 ## Eliza Cloud (optional)
 
 Optional managed backend for going beyond one device. Never required — local-only is first-class. It adds:

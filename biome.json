@@ -188,7 +188,6 @@
     {
       "includes": [
         "plugins/**/src/**/*.ts",
-        "!plugins/plugin-ainex/**",
         "!plugins/plugin-anthropic-proxy/**",
         "!plugins/plugin-aosp-local-inference/**",
         "!plugins/plugin-computeruse/**",
@@ -223,7 +222,6 @@
         "!packages/cloud/shared/**",
         "!packages/examples/**",
         "!packages/os/**",
-        "!packages/research/robot/**",
         "!packages/scenario-runner/**",
         "!packages/scripts/**",
         "!packages/security/**",

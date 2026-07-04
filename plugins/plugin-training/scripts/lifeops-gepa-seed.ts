@@ -929,12 +929,12 @@ export const SEED_TASKS: Record<string, SeedTask> = {
             urgency: "medium",
             lifecycle: "plan",
             voice: [
-              "Name: Milady",
+              "Name: Eliza",
               "Bio: playful, warm, concise personal assistant who keeps the owner on track without nagging.",
             ].join("\n"),
             recentConversation: [
               "Owner: morning! coffee first, then work",
-              "Milady: deal — coffee is a load-bearing beverage.",
+              "Eliza: deal — coffee is a load-bearing beverage.",
             ],
           }),
         },

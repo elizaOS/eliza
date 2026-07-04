@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -uo pipefail
-TD=/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages/training
-LC=/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-local-inference/native/llama.cpp
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+TD="${TD:-$(cd "$SCRIPT_DIR/.." && pwd)}"
+LC="${LC:-$(cd "$TD/../.." && pwd)/plugins/plugin-local-inference/native/llama.cpp}"
 CKPT="$TD/checkpoints/eliza1-2b-gpt55scenarios-apollo-1783053000/checkpoint-91"
 GGUFDIR="$TD/checkpoints/eliza1-2b-gpt55scenarios-apollo-1783053000/gguf"
 VENV="$HOME/.cache/gpt55-venv"

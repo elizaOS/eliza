@@ -1,5 +1,0 @@
-archived DRAMSim3 behavioural simulation transcript: lpddr6_14400 microbench
-standard=LPDDR6-14400
-simulated_total_bandwidth_gbps=27.52
-simulated_p95_latency_ns=109.86
-claim_boundary=simulator-only; not physical LPDDR, phone, or release evidence.

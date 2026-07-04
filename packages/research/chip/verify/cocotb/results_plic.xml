@@ -1,9 +1,0 @@
-<testsuites name="results">
-  <testsuite name="all" package="all">
-    <property name="random_seed" value="1779482583" />
-    <testcase name="plic_claim_returns_highest_priority" classname="test_plic_claim_threshold" file="/home/shaw/eliza/eliza/packages/research/chip/verify/cocotb/test_plic_claim_threshold.py" lineno="129" time="0.0052869319915771484" sim_time_ns="430.001" ratio_time="81332.80335080044" />
-    <testcase name="plic_threshold_masks_below" classname="test_plic_claim_threshold" file="/home/shaw/eliza/eliza/packages/research/chip/verify/cocotb/test_plic_claim_threshold.py" lineno="167" time="0.005967378616333008" sim_time_ns="470.001" ratio_time="78761.71937768189" />
-    <testcase name="plic_disabled_source_never_fires" classname="test_plic_claim_threshold" file="/home/shaw/eliza/eliza/packages/research/chip/verify/cocotb/test_plic_claim_threshold.py" lineno="206" time="0.005741119384765625" sim_time_ns="260.001" ratio_time="45287.50973023255" />
-    <testcase name="plic_two_context_isolation" classname="test_plic_claim_threshold" file="/home/shaw/eliza/eliza/packages/research/chip/verify/cocotb/test_plic_claim_threshold.py" lineno="229" time="0.003985166549682617" sim_time_ns="580.001" ratio_time="145539.9649598564" />
-  </testsuite>
-</testsuites>

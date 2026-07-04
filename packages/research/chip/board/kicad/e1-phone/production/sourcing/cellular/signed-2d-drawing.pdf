@@ -1,7 +1,0 @@
-E1 phone supplier-return placeholder
-lane: cellular
-function: cellular
-evidence_class: signed_2d_drawing
-expected_intake_path: board/kicad/e1-phone/production/sourcing/cellular/signed-2d-drawing.pdf
-release_credit: false
-This is not supplier evidence. Replace with signed supplier artifact.
