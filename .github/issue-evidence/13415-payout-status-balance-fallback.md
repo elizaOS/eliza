@@ -37,7 +37,8 @@ confirms "operational" is a real availability gate, not cosmetic).
 
 New pure, exported `classifyPayoutNetworkBalance(rawAmount, decimals)` computes
 `balance` and returns the balance-derived `{ balance, hasBalance, status,
-message }` subset. Fail-closed boundary: **`!Number.isFinite(balance)` →
+message }` subset. Fail-closed boundary: **`!Number.isFinite(balance) ||
+balance < 0` →
 `status: "not_configured"`, `hasBalance: false`, `balance: 0`** with an
 explicit "Unable to verify payout wallet balance (unreadable on-chain value)"
 message and an observable `logger.warn` at the call site — never `operational`.
@@ -49,11 +50,12 @@ existing fail-closed `not_configured` returns.
 
 ## Tests
 
-`payout-status-balance.test.ts` — 8/8 green (`bun test`, 28 expect calls):
+`payout-status-balance.test.ts` — 9/9 green (`bun test`, 31 expect calls):
 
 - **fail-closed:** NaN raw balance → `not_configured` (regression: asserts the
   old fabricated `operational`/`low_balance` verdict + `NaN` message are gone),
-  `Infinity` → `not_configured`, unparseable string → `not_configured`.
+  `Infinity` → `not_configured`, unparseable string → `not_configured`,
+  impossible negative amount → `not_configured`.
 - **preserved:** `0n` → `no_balance`; 50 tokens → `low_balance`; exactly 100
   (threshold) → `operational` (>= boundary); 12,345 tokens → `operational` with
   token count; a `bigint` on-chain amount (viem/spl-token read shape) classifies
@@ -64,7 +66,7 @@ the per-network degrade-on-throw contract).
 
 ## Verification
 
-- `bun test src/lib/services/payout-status-balance.test.ts` → 8 pass / 0 fail.
+- `bun test src/lib/services/payout-status-balance.test.ts` → 9 pass / 0 fail.
 - `bun test src/lib/services/__tests__/payout-status-resilience.test.ts` → 4 pass / 0 fail.
 - `bunx @biomejs/biome check <touched files>` → clean, no fixes applied.
 - `bun run audit:error-policy-ratchet` → "no new fallback-slop in touched files".

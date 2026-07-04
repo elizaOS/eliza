@@ -57,12 +57,13 @@ type PayoutBalanceClassification = Pick<
  * an RPC round-trip.
  *
  * FAIL-CLOSED (money-availability gate): a raw balance that does not resolve to
- * a finite number (`Number(rawAmount) / 10**decimals` yielding NaN/±Infinity —
- * e.g. an unparseable/undefined/corrupt on-chain read that did NOT throw) must
- * NOT be advertised as `operational`. Before this guard, `NaN === 0` is false
- * and `NaN < LOW_BALANCE_THRESHOLD` is false, so a network we could not verify
- * fell through to `status: "operational", hasBalance: true` ("Operational with
- * NaN tokens available"). That made `operationalNetworks > 0`, reported the whole
+ * a finite, non-negative number (`Number(rawAmount) / 10**decimals` yielding
+ * NaN/±Infinity or an impossible negative token balance — e.g. an
+ * unparseable/undefined/corrupt on-chain read that did NOT throw) must NOT be
+ * advertised as `operational`. Before this guard, `NaN === 0` is false and
+ * `NaN < LOW_BALANCE_THRESHOLD` is false, so a network we could not verify fell
+ * through to `status: "operational", hasBalance: true` ("Operational with NaN
+ * tokens available"). That made `operationalNetworks > 0`, reported the whole
  * payout system available, and enabled token redemption against a wallet whose
  * funds were never confirmed. A non-throwing corrupt read now degrades that
  * single network to `not_configured` instead of fabricating availability.
@@ -74,7 +75,7 @@ export function classifyPayoutNetworkBalance(
 ): PayoutBalanceClassification {
   const balance = Number(rawAmount) / 10 ** decimals;
 
-  if (!Number.isFinite(balance)) {
+  if (!Number.isFinite(balance) || balance < 0) {
     return {
       balance: 0,
       hasBalance: false,

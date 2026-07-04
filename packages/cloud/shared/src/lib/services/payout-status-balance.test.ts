@@ -47,6 +47,16 @@ describe("classifyPayoutNetworkBalance — fail-closed on unreadable balances", 
     expect(result.status).toBe("not_configured");
     expect(result.hasBalance).toBe(false);
   });
+
+  test("negative raw balance fails closed instead of advertising low-balance availability", () => {
+    // Token account balances are unsigned. A negative value is a corrupt read;
+    // low_balance has hasBalance:true and is considered available by
+    // isNetworkAvailable(), so it must not be used for impossible negatives.
+    const result = classifyPayoutNetworkBalance("-1", DECIMALS);
+    expect(result.status).toBe("not_configured");
+    expect(result.hasBalance).toBe(false);
+    expect(result.balance).toBe(0);
+  });
 });
 
 describe("classifyPayoutNetworkBalance — healthy classifications preserved", () => {
