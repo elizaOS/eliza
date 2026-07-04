@@ -1,4 +1,11 @@
 #!/usr/bin/env node
+/**
+ * Builds the vendored ElizaBunEngine xcframework from an iOS-capable Bun fork.
+ *
+ * The harness stages the fork output, links the Eliza C ABI shim, enforces the
+ * no-JIT App Store runtime profile, and writes the framework artifact consumed
+ * by the iOS app build when full-Bun mode is enabled.
+ */
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";

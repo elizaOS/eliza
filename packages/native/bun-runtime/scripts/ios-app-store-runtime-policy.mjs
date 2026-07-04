@@ -1,3 +1,11 @@
+/**
+ * Shared App Store execution policy for the iOS full-Bun engine.
+ *
+ * Build scripts and verifiers import these constants so device slices are
+ * checked against one no-JIT, no-loader, no-subprocess policy instead of
+ * duplicating symbol and build-setting lists.
+ */
+
 export const appStoreExecutionProfile = "ios-app-store-nojit";
 
 export const appStoreRuntimeEnv = {
