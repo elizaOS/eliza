@@ -68,6 +68,11 @@ describe("X client read paths fail fast (do not fabricate defaults)", () => {
     await expect(getTweetsV2(["1", "2"], auth)).resolves.toEqual([]);
   });
 
+  it("getTweetsV2 preserves an all-missing response as []", async () => {
+    const auth = authWith({ tweets: async () => ({ data: undefined }) });
+    await expect(getTweetsV2(["1", "2"], auth)).resolves.toEqual([]);
+  });
+
   it("getTweetsV2 throws when the v2 client is uninitialized (not [])", async () => {
     const auth = { getV2Client: async () => null } as unknown as TwitterAuth;
     await expect(getTweetsV2(["1"], auth)).rejects.toThrow(

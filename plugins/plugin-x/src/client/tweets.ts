@@ -1059,7 +1059,7 @@ export async function getTweetsV2(
       "user.fields": options?.userFields,
       "place.fields": options?.placeFields,
     });
-    const tweetsV2 = tweetData.data;
+    const tweetsV2 = tweetData.data ?? [];
     // No matching tweets is a real empty result, distinct from the throw below.
     if (tweetsV2.length === 0) {
       return [];
