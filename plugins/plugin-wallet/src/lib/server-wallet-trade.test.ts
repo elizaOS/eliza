@@ -127,17 +127,23 @@ describe("canUseLocalTradeExecution (local-key authorization)", () => {
 describe("resolveTradePermissionMode", () => {
   it("returns configured valid modes and defaults to user-sign-only", () => {
     expect(
-      resolveTradePermissionMode({ features: { tradePermissionMode: "agent-auto" } }),
+      resolveTradePermissionMode({
+        features: { tradePermissionMode: "agent-auto" },
+      }),
     ).toBe("agent-auto");
     expect(
       resolveTradePermissionMode({
         features: { tradePermissionMode: "manual-local-key" },
       }),
     ).toBe("manual-local-key");
-    expect(resolveTradePermissionMode({ features: { tradePermissionMode: "bogus" } })).toBe(
+    expect(
+      resolveTradePermissionMode({
+        features: { tradePermissionMode: "bogus" },
+      }),
+    ).toBe("user-sign-only");
+    expect(resolveTradePermissionMode({ features: null })).toBe(
       "user-sign-only",
     );
-    expect(resolveTradePermissionMode({ features: null })).toBe("user-sign-only");
   });
 });
 

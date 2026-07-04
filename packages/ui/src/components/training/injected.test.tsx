@@ -20,7 +20,10 @@ describe("trunk FineTuningView wrapper", () => {
     }
     render(
       <AppBootContext.Provider
-        value={{ ...DEFAULT_BOOT_CONFIG, fineTuningView: PluginFineTuningDashboard }}
+        value={{
+          ...DEFAULT_BOOT_CONFIG,
+          fineTuningView: PluginFineTuningDashboard,
+        }}
       >
         <FineTuningView />
       </AppBootContext.Provider>,

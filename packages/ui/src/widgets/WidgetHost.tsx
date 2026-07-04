@@ -241,6 +241,7 @@ export function WidgetHost({
   }, [plugins]);
 
   const resolved = useMemo(() => {
+    void registryVersion;
     const all = resolveWidgetsForSlot(slot, plugins ?? [], serverDeclarations);
     const fullAppShellRoutesEnabled =
       supportsFullAppShellRoutes(currentBaseUrl);
