@@ -951,6 +951,19 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 		event: string,
 	): ((params: EventPayload) => Promise<void>)[] | undefined;
 
+	/**
+	 * Report a runtime failure that occurs outside a single action result.
+	 *
+	 * Implementations log the failure and emit {@link EventType.ERROR_REPORTED}
+	 * for agent-visible diagnostics. This method is a diagnostic boundary and
+	 * must not throw.
+	 */
+	reportError(
+		scope: string,
+		error: unknown,
+		context?: Record<string, unknown>,
+	): Promise<void>;
+
 	emitEvent<T extends keyof EventPayloadMap>(
 		event: T | T[],
 		params: EventPayloadMap[T],

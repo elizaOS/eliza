@@ -37,6 +37,7 @@ export {
 export * from "./database";
 export * from "./database/inMemoryAdapter";
 export * from "./entities";
+export * from "./errors";
 export * from "./features/basic-capabilities/index";
 export * from "./generated/action-docs";
 export * from "./generated/spec-helpers";

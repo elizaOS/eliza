@@ -133,6 +133,55 @@ To build on the runtime from your own TypeScript with no CLI/UI, import
 - Keep weak types (`any` / `unknown` / unsafe casts) out; validate at runtime
   boundaries and type the validated result.
 
+## Error-Handling Simplification
+
+elizaOS follows fail-fast-inside / handle-at-boundary error handling: inner
+code throws typed errors, while the nearest designated boundary translates them
+into structured HTTP responses, CLI exits, visible UI error states, or owner /
+developer escalation. Silent fallback paths are not recovery; they make broken
+pipelines look healthy. This policy implements the #12182 cleanup and follows
+the repo precedent from #9324 and `plugins/plugin-embeddings/AGENTS.md`:
+THROW, never fabricate.
+
+Justified categories may be kept only when annotated with a grep-able
+`// error-policy:J<N> <reason>` comment:
+
+- **J1 boundary translation** — one outermost handler per process/transport
+  boundary producing a structured failure.
+- **J2 context-adding rethrow** — must use `cause`.
+- **J3 untrusted-input sanitizing** — parse failures produce an explicit typed
+  "invalid" result, never a fake-valid default.
+- **J4 explicit user-facing degrade** — designed, visually-distinguishable
+  unavailable/error states; only expected error shapes degrade.
+- **J5 unhandled-rejection suppression** — with a comment naming where the
+  rejection IS observed.
+- **J6 best-effort teardown** — debug/warn, teardown paths only.
+- **J7 diagnostics-must-not-kill-the-loop** — trajectory/telemetry writes may
+  catch but must warn + `runtime.reportError`.
+
+Everything else is slop: empty catches, log-and-continue that fabricates the
+function's result, `return <default>` from catch, `.catch(() => {})` on writes
+that matter, `?? <literal>` substituting for failed/missing data,
+optional-chaining-as-guard on required collaborators, and fallback paths whose
+only purpose is masking a primary failure. A justified handler still may not
+fabricate a success value: J1 returns a failure, J3 returns an explicit invalid
+signal, and J4 renders an unavailable/error state.
+
+Code that cannot proceed should throw `ElizaError` from `@elizaos/core` with a
+stable `code`, human-readable message, structured `context`, and `cause` where
+available. Failures with no caller to throw to should call
+`runtime.reportError(scope, error, context)` so the logger, event bus, agent
+prompt surface, and escalation wiring can observe the same failure. Do not
+conflate "not loaded" with zero, empty, false, or a healthy empty DTO.
+
+UI code follows the three-state rule: loading, designed-empty, and error are
+three distinguishable renders. A 404 from an unloaded plugin may degrade to a
+designed "unavailable" state, as in
+`packages/ui/src/components/pages/StreamView.tsx`; 5xx, transport, and parse
+failures render an error state. The view-audit findings in
+`scripts/view-audit/output/MASTER-REPORT.md` are the standing reference for why
+healthy-empty-from-catch is banned.
+
 ## Slop and Comment Cleanup
 
 Every file is legible on its own: a purpose-explaining prose header at the top,

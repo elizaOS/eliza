@@ -8,6 +8,7 @@ import { ensureConnection as ensureConnectionStandalone } from "./connection";
 import { registerConnectorSourceDefinitions } from "./connectors";
 import { deriveKnownSecrets } from "./constants/secrets";
 import { InMemoryDatabaseAdapter } from "./database/inMemoryAdapter";
+import { isElizaError } from "./errors";
 import {
 	type CapabilityConfig,
 	createBasicCapabilitiesPlugin,
@@ -8194,6 +8195,53 @@ ${section_end}`;
 					params: EventPayloadMap[keyof EventPayloadMap] | EventPayload,
 			  ) => Promise<void>)[]
 			| undefined;
+	}
+
+	async reportError(
+		scope: string,
+		error: unknown,
+		context: Record<string, unknown> = {},
+	): Promise<void> {
+		const code = isElizaError(error) ? error.code : "UNCLASSIFIED";
+		const message =
+			error instanceof Error
+				? error.message
+				: typeof error === "string"
+					? error
+					: "Unknown runtime error";
+		const payloadContext = isElizaError(error)
+			? { ...error.context, ...context }
+			: context;
+		const severity = isElizaError(error) ? error.severity : undefined;
+
+		try {
+			this.logger.error(
+				{ error, code, context: payloadContext, severity },
+				`[${scope}] ${message}`,
+			);
+		} catch {
+			// error-policy:J7 diagnostic boundary; reportError must never throw.
+		}
+
+		try {
+			await this.emitEvent(EventType.ERROR_REPORTED, {
+				scope,
+				code,
+				message,
+				context: payloadContext,
+				severity,
+			});
+		} catch (emitError) {
+			// error-policy:J7 diagnostic boundary; event-bus failures cannot recurse.
+			try {
+				this.logger.error(
+					{ error: emitError, code, scope },
+					"[AgentRuntime] failed to emit ERROR_REPORTED",
+				);
+			} catch {
+				// error-policy:J7 final diagnostic sink.
+			}
+		}
 	}
 
 	async emitEvent(event: string | string[], params: JsonValue | object) {

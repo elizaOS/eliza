@@ -74,6 +74,9 @@ export enum EventType {
 	EMBEDDING_GENERATION_COMPLETED = "EMBEDDING_GENERATION_COMPLETED",
 	EMBEDDING_GENERATION_FAILED = "EMBEDDING_GENERATION_FAILED",
 
+	// Runtime diagnostics
+	ERROR_REPORTED = "ERROR_REPORTED",
+
 	// Control events
 	CONTROL_MESSAGE = "CONTROL_MESSAGE",
 
@@ -270,6 +273,19 @@ export interface EmbeddingGenerationPayload extends EventPayload {
 	runId?: UUID;
 	retryCount?: number;
 	maxRetries?: number;
+}
+
+/**
+ * Payload for runtime failures reported outside a single action result.
+ */
+export interface ErrorReportedPayload extends EventPayload {
+	scope: string;
+	code: string;
+	message: string;
+	context?: Record<string, unknown>;
+	runId?: UUID;
+	roomId?: UUID;
+	severity?: "ephemeral" | "fatal";
 }
 
 /**
@@ -585,6 +601,7 @@ export interface EventPayloadMap {
 	[EventType.EMBEDDING_GENERATION_REQUESTED]: EmbeddingGenerationPayload;
 	[EventType.EMBEDDING_GENERATION_COMPLETED]: EmbeddingGenerationPayload;
 	[EventType.EMBEDDING_GENERATION_FAILED]: EmbeddingGenerationPayload;
+	[EventType.ERROR_REPORTED]: ErrorReportedPayload;
 	[EventType.CONTROL_MESSAGE]: ControlMessagePayload;
 	[EventType.FORM_FIELD_CONFIRMED]: FormFieldEventPayload;
 	[EventType.FORM_FIELD_CANCELLED]: FormFieldEventPayload;
