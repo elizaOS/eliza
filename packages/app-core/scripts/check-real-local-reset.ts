@@ -151,6 +151,8 @@ async function main(): Promise<void> {
     // ── Phase 2: drive the real reset DB wipe ───────────────────────────────
     // Stop the API server first so it isn't holding the runtime we're about to
     // tear down; the wipe stops the runtime and removes the real data dir.
+    // error-policy:J6 best-effort server close before the wipe; a close failure
+    // does not change what the wipe assertions below verify.
     await server.close().catch(() => undefined);
     const config = loadElizaConfig();
     await _clearCompatPgliteDataDirForTests(first.runtime, config);
@@ -172,6 +174,7 @@ async function main(): Promise<void> {
     // an API-process restart, which gets a fresh process + singleton; this
     // in-process re-boot must release the stale manager first or it would
     // reattach to the now-deleted data dir and fail migrations.
+    // error-policy:J6 best-effort runtime teardown to release the SQL manager.
     await first.cleanup().catch(() => undefined);
 
     // ── Phase 3: re-boot a fresh runtime on the SAME dir + assert clean ─────
@@ -226,10 +229,12 @@ async function main(): Promise<void> {
       );
       console.log("[local-reset] PASS post-reset: conversation list is empty");
     } finally {
+      // error-policy:J6 best-effort teardown of the re-booted runtime.
       await server.close().catch(() => undefined);
       await second.cleanup().catch(() => undefined);
     }
   } finally {
+    // error-policy:J6 best-effort restore of the mutated process env.
     await configEnv.restore().catch(() => undefined);
     try {
       execFileSync(process.execPath, [CLEANUP_HELPER_SCRIPT, dataRoot], {

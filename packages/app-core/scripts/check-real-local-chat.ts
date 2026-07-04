@@ -122,6 +122,8 @@ async function main(): Promise<void> {
       `[local-chat] PASS history persisted ${messages.length} real messages`,
     );
   } finally {
+    // error-policy:J6 best-effort teardown; a cleanup failure must not mask the
+    // assertion outcome that already decided this smoke's pass/fail.
     await server.close().catch(() => undefined);
     await runtimeResult.cleanup().catch(() => undefined);
     await configEnv.restore().catch(() => undefined);

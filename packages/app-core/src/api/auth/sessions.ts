@@ -16,6 +16,7 @@
 
 import crypto from "node:crypto";
 import type http from "node:http";
+import { logger } from "@elizaos/core";
 import {
   isLoopbackBindHost,
   type RuntimeEnvRecord,
@@ -153,6 +154,31 @@ export async function createMachineSession(
 }
 
 // ── Lookup with sliding refresh ──────────────────────────────────────────────
+
+/**
+ * Route-layer wrapper for the fail-closed handling of an auth-store read
+ * rejection. `findActiveSession` / `findIdentity` resolve `null` for a genuine
+ * miss and reject only on real infrastructure failure, so a rejection must not
+ * be silently collapsed into "unauthenticated": that hides a broken auth DB
+ * behind a stream of 401s. Deny (return `null`, fail closed) but surface the
+ * failure through the structured logger so the outage is observable.
+ *
+ * @param scope the auth-store operation, used in the `[Auth]` log prefix.
+ */
+// error-policy:J4 auth-store read failed → fail-closed deny; failure surfaced via logger
+export function denyOnAuthStoreError(scope: string): (error: unknown) => null {
+  return (error) => {
+    logger.error(
+      {
+        scope,
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      },
+      `[Auth] ${scope} failed; failing closed (deny)`,
+    );
+    return null;
+  };
+}
 
 /**
  * Look up an active session by id and slide its expiry forward when it is a

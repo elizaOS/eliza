@@ -20,6 +20,7 @@ import {
 } from "./auth/embed-session-token.js";
 import {
   CSRF_HEADER_NAME,
+  denyOnAuthStoreError,
   findActiveSession,
   verifyCsrfToken,
 } from "./auth/sessions.js";
@@ -451,7 +452,9 @@ async function resolveSessionRole(
   store: AuthStore,
   identityId: string,
 ): Promise<RoleGateRole> {
-  const identity = await store.findIdentity(identityId).catch(() => null);
+  const identity = await store
+    .findIdentity(identityId)
+    .catch(denyOnAuthStoreError("resolveSessionRole/findIdentity"));
   return roleForIdentityKind(identity?.kind);
 }
 
@@ -504,7 +507,7 @@ async function resolveAuthorizedRouteRole(
       store,
       sessionCookie,
       options.now,
-    ).catch(() => null);
+    ).catch(denyOnAuthStoreError("resolveAuthorizedRouteRole/cookieSession"));
     if (session) {
       if (csrfRequired) {
         const csrfHeader = extractHeaderValue(
@@ -527,7 +530,7 @@ async function resolveAuthorizedRouteRole(
       store,
       provided,
       options.now,
-    ).catch(() => null);
+    ).catch(denyOnAuthStoreError("resolveAuthorizedRouteRole/bearerSession"));
     if (sessionFromBearer) {
       return {
         ok: true,

@@ -539,7 +539,12 @@ function loadWindowState(statePath: string): PersistedWindowState {
         return state;
       }
     }
-  } catch {}
+  } catch (err) {
+    // The existsSync guard above means we only reach here when the file exists
+    // but is unreadable or corrupt JSON — worth surfacing before we discard it.
+    // error-policy:J4 corrupt/unreadable window-state → default bounds (degrade)
+    logger.warn(`[Main][window-state] load failed for ${statePath}`, err);
+  }
   // No saved state → first launch. Open at the default 1440×900 window
   // size (centered-ish near top-left) instead of maximizing. Maximizing on
   // first launch buries the welcome content in a vast empty workspace and
@@ -567,7 +572,12 @@ function scheduleStateSave(statePath: string, win: BrowserWindow): void {
         JSON.stringify({ x, y, width, height }),
         "utf8",
       );
-    } catch {}
+    } catch (err) {
+      // error-policy:J6 best-effort window-bounds persistence; a failed write
+      // only costs default bounds next launch, but surface it so a broken
+      // state dir is not perpetually silent.
+      logger.warn(`[Main][window-state] save failed for ${statePath}`, err);
+    }
   }, 500);
 }
 
@@ -1272,13 +1282,16 @@ function attachMainWindow(
             try {
               Utils.openExternal(url);
             } catch {
-              // Ignore external open failures during navigation blocking.
+              // error-policy:J6 best-effort hand-off of a blocked URL to the OS
+              // browser; the in-app navigation is already blocked either way.
             }
           })
+          // error-policy:J6 dynamic import of the electrobun host shim failing
+          // is non-actionable here — navigation stays blocked.
           .catch(() => {});
       }
     } catch {
-      // Unparseable URL — block it.
+      // error-policy:J3 unparseable URL → block the navigation (fail closed).
       e.preventDefault?.();
     }
   });
@@ -2912,7 +2925,11 @@ function wasStartupCrashAlreadyPrompted(updatedAt: string): boolean {
 function markStartupCrashPrompted(updatedAt: string): void {
   try {
     fs.writeFileSync(resolveStartupCrashPromptMarkerPath(), updatedAt, "utf8");
-  } catch {}
+  } catch (err) {
+    // error-policy:J6 best-effort dedupe marker; a failed write at worst
+    // re-prompts the crash report once more, but surface the write failure.
+    logger.warn("[Main][startup-crash] failed to persist prompt marker", err);
+  }
 }
 
 async function maybePromptStartupCrashReport(): Promise<void> {
@@ -3024,7 +3041,11 @@ main().catch((err) => {
       )}\n`,
       "utf8",
     );
-  } catch {}
+  } catch (writeErr) {
+    // error-policy:J7 already inside the fatal-startup handler; a failed
+    // diagnostic write must not preempt the shutdown below, but log it.
+    logger.warn("[Main] failed to persist fatal-startup diagnostics", writeErr);
+  }
   void runShutdownCleanup("fatal-startup").finally(shutdownAfterFatalError);
 });
 

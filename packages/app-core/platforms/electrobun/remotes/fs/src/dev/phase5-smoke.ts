@@ -49,7 +49,11 @@ try {
       path.join(outsideRoot, "secret.txt"),
       path.join(tempRoot, "escape-link"),
     );
-  } catch {}
+  } catch {
+    // error-policy:J6 symlink creation may be unprivileged on some dev
+    // platforms (e.g. Windows); the escape-link fixture is optional and the
+    // parent-traversal escape fixture above still exercises the SSRF guard.
+  }
   // A dangling symlink to a missing in-root target: lstat succeeds but realpath
   // fails (FS_PATH_NOT_FOUND). Unlike escape-link/.env/node_modules (designed
   // exclusions), this is a genuine per-entry failure that must be surfaced.

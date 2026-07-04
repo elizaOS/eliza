@@ -16,6 +16,7 @@ import { logger } from "@elizaos/core";
 import { AuthStore } from "../services/auth-store";
 import {
   createMachineSession,
+  denyOnAuthStoreError,
   findActiveSession,
   parseSessionCookie,
 } from "./auth/sessions";
@@ -123,14 +124,16 @@ async function requestHasActiveSession(
   const cookieSessionId = parseSessionCookie(req);
   if (cookieSessionId) {
     const session = await findActiveSession(store, cookieSessionId).catch(
-      () => null,
+      denyOnAuthStoreError("authenticatePairingRequest/cookieSession"),
     );
     if (session) return true;
   }
 
   const bearer = getProvidedApiToken(req);
   if (bearer) {
-    const session = await findActiveSession(store, bearer).catch(() => null);
+    const session = await findActiveSession(store, bearer).catch(
+      denyOnAuthStoreError("authenticatePairingRequest/bearerSession"),
+    );
     if (session) return true;
   }
 

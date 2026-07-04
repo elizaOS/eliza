@@ -37,6 +37,22 @@ const logger = {
   },
 };
 
+/**
+ * `.catch` handler for an optional plugin dynamic import: keeps the degrade
+ * (agent boots without the plugin) but surfaces the import failure so a broken
+ * build is distinguishable from a plugin that is deliberately absent in this
+ * deploy shape.
+ */
+// error-policy:J4 optional plugin unavailable → degrade; failure surfaced via logger
+function logPluginLoadFailure(id: string): (error: unknown) => null {
+  return (error) => {
+    logger.error(`failed to load ${id}; continuing without it`, {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  };
+}
+
 // ─── Types ──────────────────────────────────────────────────────────────
 
 export interface BridgeRpcParams {
@@ -249,17 +265,17 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
 
       const cloudPlugin = await import("@elizaos/plugin-elizacloud")
         .then((m) => m.default)
-        .catch(() => null);
+        .catch(logPluginLoadFailure("@elizaos/plugin-elizacloud"));
       if (cloudPlugin) plugins.push(cloudPlugin);
 
       const sqlPlugin = await import("@elizaos/plugin-sql")
         .then((m) => m.default)
-        .catch(() => null);
+        .catch(logPluginLoadFailure("@elizaos/plugin-sql"));
       if (sqlPlugin) plugins.push(sqlPlugin);
 
       const workflowPlugin = await import("@elizaos/plugin-workflow")
         .then((m) => m.default)
-        .catch(() => null);
+        .catch(logPluginLoadFailure("@elizaos/plugin-workflow"));
       if (workflowPlugin) plugins.push(workflowPlugin);
 
       const runtime = new AgentRuntimeCtor({ character, plugins });

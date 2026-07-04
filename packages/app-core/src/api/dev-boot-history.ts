@@ -42,6 +42,8 @@ export interface BootHistoryPayload {
 
 /** ENOENT and parse errors collapse to null — the caller reads the null. */
 async function readJson(filePath: string): Promise<unknown> {
+  // error-policy:J4 dev boot-history diagnostics: the file is absent until the
+  // supervisor first writes it, so an unreadable file degrades to "no history".
   const raw = await fs.readFile(filePath, "utf8").catch(() => null);
   if (raw === null) {
     return null;
@@ -49,6 +51,7 @@ async function readJson(filePath: string): Promise<unknown> {
   try {
     return JSON.parse(raw);
   } catch {
+    // error-policy:J3 corrupt history JSON → null; rendered as "no history".
     return null;
   }
 }

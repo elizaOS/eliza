@@ -62,6 +62,8 @@ async function main(): Promise<void> {
     if (stopping) return;
     stopping = true;
     console.log(`[device-e2e-host-agent] stopping (${signal})`);
+    // error-policy:J6 best-effort teardown on shutdown signal; nothing consumes
+    // a teardown rejection once the process is stopping.
     await server.close().catch(() => undefined);
     await runtimeResult.cleanup().catch(() => undefined);
     await configEnv.restore().catch(() => undefined);

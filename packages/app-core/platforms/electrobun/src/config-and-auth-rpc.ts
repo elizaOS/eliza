@@ -74,9 +74,14 @@ async function fetchJsonRaw(
       method: "GET",
       signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
     });
+    // error-policy:J3 non-JSON body → null body; the caller inspects `status`
+    // and treats a null body as an unusable response, never as valid data.
     const body = await response.json().catch(() => null);
     return { status: response.status, body };
   } catch {
+    // error-policy:J4 local API probe: the dashboard may not be listening yet
+    // during boot; a null result is the designed "not-yet-available" signal
+    // the ConfigReader callers below branch on.
     return null;
   }
 }
