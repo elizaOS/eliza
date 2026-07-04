@@ -186,6 +186,8 @@ export const plugin: Plugin = {
       typeof runtimeWithAdapter.hasDatabaseAdapter === "function"
         ? runtimeWithAdapter.hasDatabaseAdapter()
         : (() => {
+            // error-policy:J4 capability probe — a throwing/absent accessor means
+            // "no adapter registered yet"; the init below then creates one.
             try {
               const existing =
                 runtimeWithAdapter.getDatabaseAdapter?.() ??

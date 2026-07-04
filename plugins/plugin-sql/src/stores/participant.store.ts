@@ -3,7 +3,7 @@
  * scoped to the current agent, plus a per-(room, entity) follow/mute state
  * (`roomState`).
  */
-import { logger, type UUID } from "@elizaos/core";
+import { ElizaError, type UUID } from "@elizaos/core";
 import { and, eq, inArray } from "drizzle-orm";
 import { participantTable, roomTable } from "../schema/index";
 import type { DrizzleDatabase } from "../types";
@@ -70,17 +70,13 @@ export class ParticipantStore implements Store {
         }
         return true;
       } catch (error) {
-        logger.error(
-          {
-            src: "plugin:sql",
-            entityId,
-            roomId,
-            agentId: this.ctx.agentId,
-            error: error instanceof Error ? error.message : String(error),
-          },
-          "Failed to add participant to room"
-        );
-        return false;
+        // error-policy:J2 context-adding rethrow — insert-if-absent only returns
+        // true on success, so false here masked a real write failure.
+        throw new ElizaError("ParticipantStore.add failed", {
+          code: "DB_INSERT_FAILED",
+          cause: error,
+          context: { table: "participants", entityId, roomId, agentId: this.ctx.agentId },
+        });
       }
     }, "ParticipantStore.add");
   }
@@ -110,16 +106,18 @@ export class ParticipantStore implements Store {
         }
         return true;
       } catch (error) {
-        logger.error(
-          {
-            src: "plugin:sql",
+        // error-policy:J2 context-adding rethrow — insert-if-absent only returns
+        // true on success, so false here masked a real write failure.
+        throw new ElizaError("ParticipantStore.addMany failed", {
+          code: "DB_INSERT_FAILED",
+          cause: error,
+          context: {
+            table: "participants",
             roomId,
             agentId: this.ctx.agentId,
-            error: error instanceof Error ? error.message : String(error),
+            count: entityIds.length,
           },
-          "Failed to add participants to room"
-        );
-        return false;
+        });
       }
     }, "ParticipantStore.addMany");
   }
@@ -137,16 +135,13 @@ export class ParticipantStore implements Store {
         });
         return result.length > 0;
       } catch (error) {
-        logger.error(
-          {
-            src: "plugin:sql",
-            entityId,
-            roomId,
-            error: error instanceof Error ? error.message : String(error),
-          },
-          "Failed to remove participant from room"
-        );
-        return false;
+        // error-policy:J2 context-adding rethrow — false is the typed "no row
+        // matched" signal; a delete failure must not collapse into it.
+        throw new ElizaError("ParticipantStore.remove failed", {
+          code: "DB_DELETE_FAILED",
+          cause: error,
+          context: { table: "participants", entityId, roomId },
+        });
       }
     }, "ParticipantStore.remove");
   }
@@ -212,17 +207,13 @@ export class ParticipantStore implements Store {
             );
         });
       } catch (error) {
-        logger.error(
-          {
-            src: "plugin:sql",
-            roomId,
-            entityId,
-            state,
-            error: error instanceof Error ? error.message : String(error),
-          },
-          "Failed to set participant follow state"
-        );
-        throw error;
+        // error-policy:J2 context-adding rethrow — attach the participant/state
+        // context to the surfaced failure.
+        throw new ElizaError("ParticipantStore.setUserState failed", {
+          code: "DB_UPDATE_FAILED",
+          cause: error,
+          context: { table: "participants", roomId, entityId, state },
+        });
       }
     }, "ParticipantStore.setUserState");
   }

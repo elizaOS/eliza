@@ -4,7 +4,7 @@
  * examples) and the runtime's `Agent` domain type. `update` deep-merges
  * `settings` with the existing row rather than overwriting it wholesale.
  */
-import { type Agent, logger, type UUID } from "@elizaos/core";
+import { type Agent, ElizaError, logger, type UUID } from "@elizaos/core";
 import { count, eq } from "drizzle-orm";
 import {
   documentsFromDb,
@@ -75,15 +75,18 @@ export class AgentStore implements Store {
         bio: normalizeAgentBio(row.bio),
       }));
     }, "AgentStore.getAll");
-    return result || [];
+    return result;
   }
 
   async create(agent: Agent): Promise<boolean> {
+    if (!agent.name) {
+      throw new ElizaError("Cannot create agent without a name", {
+        code: "DB_INVALID_ARGUMENT",
+        context: { table: "agents", agentId: agent.id },
+      });
+    }
     return this.ctx.withRetry(async () => {
       try {
-        if (!agent.name) {
-          throw new Error("Cannot create agent without a name");
-        }
         if (agent.id) {
           const existing = await this.db
             .select({ id: agentTable.id })
@@ -114,26 +117,26 @@ export class AgentStore implements Store {
 
         return true;
       } catch (error) {
-        logger.error(
-          {
-            src: "plugin:sql",
-            agentId: agent.id,
-            error: error instanceof Error ? error.message : String(error),
-          },
-          "Failed to create agent"
-        );
-        return false;
+        // error-policy:J2 context-adding rethrow — false is the typed "duplicate
+        // id" outcome above; a write failure must not collapse into it.
+        throw new ElizaError("AgentStore.create failed", {
+          code: "DB_INSERT_FAILED",
+          cause: error,
+          context: { table: "agents", agentId: agent.id },
+        });
       }
     }, "AgentStore.create");
   }
 
   async update(agentId: UUID, agent: Partial<Agent>): Promise<boolean> {
+    if (!agentId) {
+      throw new ElizaError("Agent ID is required for update", {
+        code: "DB_INVALID_ARGUMENT",
+        context: { table: "agents" },
+      });
+    }
     return this.ctx.withRetry(async () => {
       try {
-        if (!agentId) {
-          throw new Error("Agent ID is required for update");
-        }
-
         await this.db.transaction(async (tx) => {
           if (agent.settings) {
             agent.settings = await this.mergeSettings(tx, agentId, agent.settings);
@@ -177,15 +180,13 @@ export class AgentStore implements Store {
 
         return true;
       } catch (error) {
-        logger.error(
-          {
-            src: "plugin:sql",
-            agentId,
-            error: error instanceof Error ? error.message : String(error),
-          },
-          "Failed to update agent"
-        );
-        return false;
+        // error-policy:J2 context-adding rethrow — a failed update must not read
+        // as a benign false.
+        throw new ElizaError("AgentStore.update failed", {
+          code: "DB_UPDATE_FAILED",
+          cause: error,
+          context: { table: "agents", agentId },
+        });
       }
     }, "AgentStore.update");
   }
@@ -198,6 +199,7 @@ export class AgentStore implements Store {
           .where(eq(agentTable.id, agentId))
           .returning();
 
+        // false is the typed "no agent matched" outcome, distinct from failure.
         if (result.length === 0) {
           logger.warn({ src: "plugin:sql", agentId }, "Agent not found for deletion");
           return false;
@@ -205,51 +207,38 @@ export class AgentStore implements Store {
 
         return true;
       } catch (error) {
-        logger.error(
-          {
-            src: "plugin:sql",
-            agentId,
-            error: error instanceof Error ? error.message : String(error),
-          },
-          "Failed to delete agent"
-        );
-        throw error;
+        // error-policy:J2 context-adding rethrow — surface a real delete failure
+        // (the not-found case already returned false above).
+        throw new ElizaError("AgentStore.delete failed", {
+          code: "DB_DELETE_FAILED",
+          cause: error,
+          context: { table: "agents", agentId },
+        });
       }
     }, "AgentStore.delete");
   }
 
   async count(): Promise<number> {
     return this.ctx.withRetry(async () => {
-      try {
-        const result = await this.db.select({ count: count() }).from(agentTable);
-        return result[0]?.count || 0;
-      } catch (error) {
-        logger.error(
-          {
-            src: "plugin:sql",
-            error: error instanceof Error ? error.message : String(error),
-          },
-          "Failed to count agents"
-        );
-        return 0;
+      // No catch: "DB broken" must never read as "0 agents". The aggregate
+      // always returns one row, so a missing count is a broken pipeline.
+      const result = await this.db.select({ count: count() }).from(agentTable);
+      const total = result[0]?.count;
+      if (typeof total !== "number") {
+        throw new ElizaError("AgentStore.count returned no count row", {
+          code: "DB_COUNT_FAILED",
+          context: { table: "agents" },
+        });
       }
+      return total;
     }, "AgentStore.count");
   }
 
   async deleteAll(): Promise<void> {
+    // No catch: a delete failure propagates via withRetry; the previous
+    // log-then-rethrow added no context the retry layer doesn't log.
     return this.ctx.withRetry(async () => {
-      try {
-        await this.db.delete(agentTable);
-      } catch (error) {
-        logger.error(
-          {
-            src: "plugin:sql",
-            error: error instanceof Error ? error.message : String(error),
-          },
-          "Failed to clean up agent table"
-        );
-        throw error;
-      }
+      await this.db.delete(agentTable);
     }, "AgentStore.deleteAll");
   }
 

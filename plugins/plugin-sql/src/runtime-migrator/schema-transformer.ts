@@ -155,8 +155,9 @@ function isPgTable(value: unknown): value is PgTable {
     return false;
   }
 
-  // instanceof doesn't work across module boundaries, so probe for the
-  // table config shape instead.
+  // error-policy:J3 type probe — instanceof doesn't work across module
+  // boundaries, so probe the table-config shape; getTableConfig throwing on a
+  // non-table value is the typed "not a PgTable" answer (false), not a fault.
   try {
     const config = getTableConfig(value as PgTable);
     return config && typeof config.name === "string";

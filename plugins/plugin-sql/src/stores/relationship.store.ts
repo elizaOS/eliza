@@ -5,7 +5,7 @@
  * cover the `&&` array-overlap operator used here.
  */
 import { randomUUID } from "node:crypto";
-import { logger, type Metadata, type Relationship, type UUID } from "@elizaos/core";
+import { ElizaError, type Metadata, type Relationship, type UUID } from "@elizaos/core";
 import { and, eq, type SQL, sql } from "drizzle-orm";
 import { relationshipTable } from "../schema/index";
 import type { DrizzleDatabase } from "../types";
@@ -42,16 +42,19 @@ export class RelationshipStore implements Store {
           .returning();
         return inserted.length > 0;
       } catch (error) {
-        logger.error(
-          {
-            src: "plugin:sql",
+        // error-policy:J2 context-adding rethrow — false is the typed "already
+        // existed (onConflictDoNothing)" signal; an insert failure must not
+        // collapse into it.
+        throw new ElizaError("RelationshipStore.create failed", {
+          code: "DB_INSERT_FAILED",
+          cause: error,
+          context: {
+            table: "relationships",
             agentId: this.ctx.agentId,
-            error: error instanceof Error ? error.message : String(error),
-            saveParams,
+            sourceEntityId: params.sourceEntityId,
+            targetEntityId: params.targetEntityId,
           },
-          "Error creating relationship"
-        );
-        return false;
+        });
       }
     }, "RelationshipStore.create");
   }
@@ -67,16 +70,16 @@ export class RelationshipStore implements Store {
           })
           .where(eq(relationshipTable.id, relationship.id));
       } catch (error) {
-        logger.error(
-          {
-            src: "plugin:sql",
+        // error-policy:J2 context-adding rethrow — attach relationship context.
+        throw new ElizaError("RelationshipStore.update failed", {
+          code: "DB_UPDATE_FAILED",
+          cause: error,
+          context: {
+            table: "relationships",
             agentId: this.ctx.agentId,
-            error: error instanceof Error ? error.message : String(error),
             relationshipId: relationship.id,
           },
-          "Error updating relationship"
-        );
-        throw error;
+        });
       }
     }, "RelationshipStore.update");
   }

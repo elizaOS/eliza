@@ -6,7 +6,7 @@
  * messages, long-term memories, etc.) within the same physical table.
  */
 import { randomUUID } from "node:crypto";
-import { logger, type Memory, type MemoryMetadata, type UUID } from "@elizaos/core";
+import { ElizaError, type Memory, type MemoryMetadata, type UUID } from "@elizaos/core";
 import { and, cosineDistance, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import { embeddingTable, memoryTable } from "../schema/index";
 import type { DrizzleDatabase } from "../types";
@@ -164,20 +164,17 @@ export class MemoryStore implements Store {
 
       const memory = memoryResult[0];
 
-      // Fetch embedding separately
-      let embedding: number[] | undefined;
-      try {
-        const embeddingCol = this.ctx.getEmbeddingDimension();
-        const embeddingResult = await this.db
-          .select({ embedding: embeddingTable[embeddingCol] })
-          .from(embeddingTable)
-          .where(eq(embeddingTable.memoryId, id))
-          .limit(1);
+      // Fetch embedding separately. No catch: `?? undefined` already handles the
+      // "no embedding row" case; a query failure propagates via withRetry rather
+      // than masquerading as a memory with no embedding.
+      const embeddingCol = this.ctx.getEmbeddingDimension();
+      const embeddingResult = await this.db
+        .select({ embedding: embeddingTable[embeddingCol] })
+        .from(embeddingTable)
+        .where(eq(embeddingTable.memoryId, id))
+        .limit(1);
 
-        embedding = embeddingResult[0]?.embedding ?? undefined;
-      } catch {
-        embedding = undefined;
-      }
+      const embedding: number[] | undefined = embeddingResult[0]?.embedding ?? undefined;
 
       return {
         id: memory.id as UUID,
@@ -386,15 +383,13 @@ export class MemoryStore implements Store {
 
         return true;
       } catch (error) {
-        logger.error(
-          {
-            src: "plugin:sql",
-            memoryId: memory.id,
-            error: error instanceof Error ? error.message : String(error),
-          },
-          "Failed to update memory"
-        );
-        return false;
+        // error-policy:J2 context-adding rethrow — a failed memory update must
+        // not read as a benign false.
+        throw new ElizaError("MemoryStore.update failed", {
+          code: "DB_UPDATE_FAILED",
+          cause: error,
+          context: { table: "memories", memoryId: memory.id },
+        });
       }
     }, "MemoryStore.update");
   }
@@ -463,7 +458,16 @@ export class MemoryStore implements Store {
         .from(memoryTable)
         .where(and(...conditions));
 
-      return Number(result[0]?.count ?? 0);
+      // count(*) always returns one row; a missing count is a broken pipeline,
+      // not "0 memories" — throw rather than fabricate zero.
+      const total = result[0]?.count;
+      if (total == null) {
+        throw new ElizaError("MemoryStore.count returned no count row", {
+          code: "DB_COUNT_FAILED",
+          context: { table: "memories", roomId, tableName: resolvedTableName },
+        });
+      }
+      return Number(total);
     }, "MemoryStore.count");
   }
 

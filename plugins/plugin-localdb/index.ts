@@ -48,6 +48,9 @@ class FileStorage implements IStorage {
         this.collections.set(collection, new Map(Object.entries(entries)));
       }
     } catch (error) {
+      // error-policy:J3 expected-shape degrade — ENOENT means the store file
+      // doesn't exist yet (fresh install): start empty. Every other error
+      // (corrupt JSON, permission, I/O) is a real fault → rethrow.
       if ((error as { code?: string }).code !== "ENOENT") throw error;
     }
     this.ready = true;
@@ -83,8 +86,9 @@ class FileStorage implements IStorage {
     const payload = JSON.stringify(out, null, 2);
 
     const run = this.writeChain.then(() => this.writeAtomic(payload));
-    // Keep the chain alive even if a write rejects, so a single failure does
-    // not permanently break serialization for subsequent flushes.
+    // error-policy:J5 unhandled-rejection suppression — the swallow only guards
+    // the *chain link* so one failed write can't poison later flushes; the real
+    // rejection IS observed by this flush's caller via `await run` below.
     this.writeChain = run.catch(() => {});
     await run;
   }

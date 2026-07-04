@@ -262,10 +262,10 @@ export class LocalFileStorageService extends Service {
     try {
       return await storage.exists(normalizeStorageKey(key));
     } catch (err: unknown) {
-      // `@brighter/storage-adapter-local`'s `exists()` calls `fs.access`,
-      // which throws ENOENT on Windows when the file is missing instead
-      // of returning false. Coerce the absence case to `false` so the
-      // public method behaves identically on every platform.
+      // error-policy:J3 platform normalization — `@brighter/storage-adapter-local`'s
+      // `exists()` calls `fs.access`, which throws ENOENT on Windows when the
+      // file is missing instead of returning false. ENOENT is the typed "does
+      // not exist" answer (false); every other error is a real fault → rethrow.
       const e = err as NodeJS.ErrnoException;
       if (e?.code === "ENOENT") return false;
       throw err;

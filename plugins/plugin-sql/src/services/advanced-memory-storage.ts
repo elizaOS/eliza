@@ -275,6 +275,9 @@ export class AdvancedMemoryStorageService extends Service implements MemoryStora
     if (!this.runtime.hasService(ENTITY_RESOLUTION_SERVICE)) {
       return null;
     }
+    // error-policy:J4 optional-collaborator probe — null is the designed
+    // "resolution service unavailable" signal; getIdentityGroup then degrades to
+    // a single-entity group. This is an optional enhancement, not a required dep.
     try {
       const loaded = await this.runtime.getServiceLoadPromise(ENTITY_RESOLUTION_SERVICE);
       return isEntityResolutionService(loaded) ? loaded : null;

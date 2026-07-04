@@ -6,7 +6,7 @@
  * builder.
  */
 import { randomUUID } from "node:crypto";
-import { type Component, type Entity, logger, type UUID } from "@elizaos/core";
+import { type Component, ElizaError, type Entity, type UUID } from "@elizaos/core";
 import { and, eq, inArray, or, sql } from "drizzle-orm";
 import { componentTable, entityTable, participantTable } from "../schema/index";
 import type { DrizzleDatabase } from "../types";
@@ -122,46 +122,41 @@ export class EntityStore implements Store {
           return true;
         });
       } catch (error) {
-        logger.error(
-          {
-            src: "plugin:sql",
-            entityId: entities[0]?.id,
-            error: error instanceof Error ? error.message : String(error),
-          },
-          "Failed to create entities"
-        );
-        return false;
+        // error-policy:J2 context-adding rethrow — a failed insert must not read
+        // as a benign false.
+        throw new ElizaError("EntityStore.create failed", {
+          code: "DB_INSERT_FAILED",
+          cause: error,
+          context: { table: "entities", count: entities.length },
+        });
       }
     }, "EntityStore.create");
   }
 
   async ensureExists(entity: Entity): Promise<boolean> {
     if (!entity.id) {
-      logger.error({ src: "plugin:sql" }, "Entity ID is required for ensureExists");
-      return false;
+      throw new ElizaError("Entity ID is required for ensureExists", {
+        code: "DB_INVALID_ARGUMENT",
+        context: { table: "entities" },
+      });
     }
 
-    try {
-      const existingEntities = await this.getByIds([entity.id]);
-      if (!existingEntities?.length) {
-        return await this.create([entity]);
-      }
-      return true;
-    } catch (error) {
-      logger.error(
-        {
-          src: "plugin:sql",
-          entityId: entity.id,
-          error: error instanceof Error ? error.message : String(error),
-        },
-        "Failed to ensure entity exists"
-      );
-      return false;
+    // No catch: a lookup/insert failure propagates so callers see a broken
+    // pipeline instead of a fabricated "could not ensure" (false).
+    const existingEntities = await this.getByIds([entity.id]);
+    if (!existingEntities?.length) {
+      return await this.create([entity]);
     }
+    return true;
   }
 
   async update(entity: Entity): Promise<void> {
-    if (!entity.id) throw new Error("Entity ID is required for update");
+    if (!entity.id) {
+      throw new ElizaError("Entity ID is required for update", {
+        code: "DB_INVALID_ARGUMENT",
+        context: { table: "entities" },
+      });
+    }
 
     return this.ctx.withRetry(async () => {
       const normalizedEntity = {

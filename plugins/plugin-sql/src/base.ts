@@ -473,6 +473,8 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     let lastError: Error = new Error("Unknown error");
 
     for (let attempt = 1; attempt <= this.maxRetries; attempt++) {
+      // error-policy:J2 context-adding rethrow — retries transient DB errors,
+      // then rethrows the last error once attempts are exhausted (never swallows).
       try {
         return await operation();
       } catch (error) {
@@ -629,21 +631,16 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   async deleteAgents(agentIds: UUID[]): Promise<boolean> {
     if (agentIds.length === 0) return true;
     return this.withDatabase(async () => {
+      // error-policy:J2 context-adding rethrow — a failed delete must not read
+      // as "nothing matched" (both would return false); surface it as a typed error.
       try {
         await this.db.delete(agentTable).where(inArray(agentTable.id, agentIds));
         return true;
       } catch (error) {
-        logger.error(
-          {
-            src: "plugin:sql",
-            error: error instanceof Error ? error.message : String(error),
-          },
-          "Failed to delete agents"
-        );
         throw new ElizaError("deleteAgents failed", {
-          code: "DB_DELETE_AGENTS_FAILED",
+          code: "DB_DELETE_FAILED",
           cause: error,
-          context: { agentIds },
+          context: { table: "agents", agentIds },
         });
       }
     });
@@ -698,6 +695,8 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
 
         return true;
       } catch (error) {
+        // error-policy:J3 untrusted-input sanitizing — a duplicate id is the
+        // typed "already exists" outcome (false), distinct from a write failure.
         if (isDuplicateKeyError(error)) {
           logger.warn(
             { src: "plugin:sql", agentId: agent.id },
@@ -705,16 +704,13 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           );
           return false;
         }
-
-        logger.error(
-          {
-            src: "plugin:sql",
-            agentId: agent.id,
-            error: error instanceof Error ? error.message : String(error),
-          },
-          "Failed to create agent"
-        );
-        throw error;
+        // error-policy:J2 context-adding rethrow — any other error is a real
+        // write failure; surface it with context.
+        throw new ElizaError("createAgent failed", {
+          code: "DB_INSERT_FAILED",
+          cause: error,
+          context: { table: "agents", agentId: agent.id },
+        });
       }
     });
   }
@@ -764,15 +760,13 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
 
         return true;
       } catch (error) {
-        logger.error(
-          {
-            src: "plugin:sql",
-            agentId,
-            error: error instanceof Error ? error.message : String(error),
-          },
-          "Failed to update agent"
-        );
-        return false;
+        // error-policy:J2 context-adding rethrow — a failed update must not be
+        // indistinguishable from a legitimate no-op; surface the failure.
+        throw new ElizaError("updateAgent failed", {
+          code: "DB_UPDATE_FAILED",
+          cause: error,
+          context: { table: "agents", agentId },
+        });
       }
     });
   }
@@ -882,6 +876,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           .where(eq(agentTable.id, agentId))
           .returning();
 
+        // false is the typed "no agent matched" outcome, distinct from failure.
         if (result.length === 0) {
           logger.warn({ src: "plugin:sql", agentId }, "Agent not found for deletion");
           return false;
@@ -889,15 +884,13 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
 
         return true;
       } catch (error) {
-        logger.error(
-          {
-            src: "plugin:sql",
-            agentId,
-            error: error instanceof Error ? error.message : String(error),
-          },
-          "Failed to delete agent"
-        );
-        throw error;
+        // error-policy:J2 context-adding rethrow — surface a real delete failure
+        // with context (the not-found case already returned false above).
+        throw new ElizaError("deleteAgent failed", {
+          code: "DB_DELETE_FAILED",
+          cause: error,
+          context: { table: "agents", agentId },
+        });
       }
     });
   }
@@ -912,27 +905,25 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
    */
   async countAgents(): Promise<number> {
     return this.withDatabase(async () => {
-      let result: Array<{ count: number }>;
+      // "DB broken" must never read as "0 agents": both a query failure and a
+      // missing count row surface as a typed DB_COUNT_FAILED. The aggregate
+      // always returns exactly one row, so a missing count is a broken pipeline.
+      let total: number | undefined;
       try {
-        result = await this.db.select({ count: count() }).from(agentTable);
+        const result = await this.db.select({ count: count() }).from(agentTable);
+        total = result[0]?.count;
       } catch (error) {
-        logger.error(
-          {
-            src: "plugin:sql",
-            error: error instanceof Error ? error.message : String(error),
-          },
-          "Failed to count agents"
-        );
-        throw new ElizaError("countAgents failed", {
-          code: "DB_COUNT_AGENTS_FAILED",
+        // error-policy:J2 context-adding rethrow — surface a query failure as a
+        // typed count error rather than letting a bare driver error escape.
+        throw new ElizaError("countAgents query failed", {
+          code: "DB_COUNT_FAILED",
           cause: error,
           context: { table: "agents" },
         });
       }
-      const total = result[0]?.count;
       if (typeof total !== "number") {
         throw new ElizaError("countAgents returned no count row", {
-          code: "DB_COUNT_AGENTS_FAILED",
+          code: "DB_COUNT_FAILED",
           context: { table: "agents" },
         });
       }
@@ -946,19 +937,10 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
    * from previous crashes or improper shutdowns
    */
   async cleanupAgents(): Promise<void> {
+    // No catch: a delete failure propagates via withDatabase's retry layer; the
+    // previous log-then-rethrow added no context the retry layer doesn't log.
     return this.withDatabase(async () => {
-      try {
-        await this.db.delete(agentTable);
-      } catch (error) {
-        logger.error(
-          {
-            src: "plugin:sql",
-            error: error instanceof Error ? error.message : String(error),
-          },
-          "Failed to clean up agent table"
-        );
-        throw error;
-      }
+      await this.db.delete(agentTable);
     });
   }
 
@@ -1108,18 +1090,13 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         }
         return normalizedEntities.map((entity) => entity.id as UUID);
       } catch (error) {
-        logger.error(
-          {
-            src: "plugin:sql",
-            entityId: entities[0]?.id,
-            error: error instanceof Error ? error.message : String(error),
-          },
-          "Failed to create entities"
-        );
+        // error-policy:J2 context-adding rethrow — a failed batch insert must
+        // not read as "created zero entities" (an empty return is a valid
+        // success for an empty input); surface the write failure.
         throw new ElizaError("createEntities failed", {
-          code: "DB_CREATE_ENTITIES_FAILED",
+          code: "DB_INSERT_FAILED",
           cause: error,
-          context: { entityIds: entities.map((entity) => entity.id).filter(Boolean) },
+          context: { table: "entities", count: normalizedEntities.length },
         });
       }
     });
@@ -1132,33 +1109,19 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
    */
   protected async ensureEntityExists(entity: Entity): Promise<boolean> {
     if (!entity.id) {
-      logger.error({ src: "plugin:sql" }, "Entity ID is required for ensureEntityExists");
-      return false;
-    }
-
-    try {
-      const existingEntities = await this.getEntitiesByIds([entity.id]);
-
-      if (!existingEntities.length) {
-        return (await this.createEntities([entity])).length > 0;
-      }
-
-      return true;
-    } catch (error) {
-      logger.error(
-        {
-          src: "plugin:sql",
-          entityId: entity.id,
-          error: error instanceof Error ? error.message : String(error),
-        },
-        "Failed to ensure entity exists"
-      );
-      throw new ElizaError("ensureEntityExists failed", {
-        code: "DB_ENSURE_ENTITY_FAILED",
-        cause: error,
-        context: { entityId: entity.id },
+      throw new ElizaError("Entity ID is required for ensureEntityExists", {
+        code: "DB_INVALID_ARGUMENT",
+        context: { table: "entities" },
       });
     }
+
+    // No catch: a lookup/insert failure propagates so callers see a broken
+    // pipeline instead of a fabricated "could not ensure" (false).
+    const existingEntities = await this.getEntitiesByIds([entity.id]);
+    if (!existingEntities.length) {
+      return (await this.createEntities([entity])).length > 0;
+    }
+    return true;
   }
 
   /**
@@ -1416,19 +1379,13 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
             createdAt: new Date(createdAt),
           })
           .where(eq(componentTable.id, component.id));
-      } catch (e) {
-        logger.error(
-          {
-            src: "plugin:sql",
-            componentId: component.id,
-            error: e instanceof Error ? e.message : String(e),
-          },
-          "Failed to update component"
-        );
+      } catch (error) {
+        // error-policy:J2 context-adding rethrow — a swallowed update left the
+        // component silently stale; surface the write failure instead.
         throw new ElizaError("updateComponent failed", {
-          code: "DB_UPDATE_COMPONENT_FAILED",
-          cause: e,
-          context: { componentId: component.id },
+          code: "DB_UPDATE_FAILED",
+          cause: error,
+          context: { table: "components", componentId: component.id },
         });
       }
     });
@@ -1875,22 +1832,24 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           }))
           .filter((row) => Array.isArray(row.embedding));
       } catch (error) {
-        logger.error(
-          {
-            src: "plugin:sql",
-            tableName: opts.query_table_name,
-            fieldName: opts.query_field_name,
-            error: error instanceof Error ? error.message : String(error),
-          },
-          "Failed to get cached embeddings"
-        );
+        // error-policy:J3 untrusted-input sanitizing — an over-long query
+        // string exceeds levenshtein's 255-char ceiling, so no fuzzy cache
+        // match can exist for it: an empty result is the correct typed answer,
+        // not a masked failure. Every other error is a real fault → rethrow.
         if (
           error instanceof Error &&
           error.message === "levenshtein argument exceeds maximum length of 255 characters"
         ) {
           return [];
         }
-        throw error;
+        throw new ElizaError("getCachedEmbeddings failed", {
+          code: "DB_QUERY_FAILED",
+          cause: error,
+          context: {
+            table: opts.query_table_name,
+            field: opts.query_field_name,
+          },
+        });
       }
     });
   }
@@ -1925,17 +1884,19 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           });
         });
       } catch (error) {
-        logger.error(
-          {
-            src: "plugin:sql",
+        // error-policy:J2 context-adding rethrow — a swallowed insert dropped
+        // the log entry silently; the caller decides whether a failed diagnostic
+        // write should be tolerated (J7), not this deep adapter method.
+        throw new ElizaError("log insert failed", {
+          code: "DB_INSERT_FAILED",
+          cause: error,
+          context: {
+            table: "logs",
             type: params.type,
             roomId: params.roomId,
             entityId: params.entityId,
-            error: error instanceof Error ? error.message : String(error),
           },
-          "Failed to create log entry"
-        );
-        return;
+        });
       }
     });
   }
@@ -2649,15 +2610,13 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
 
         return true;
       } catch (error) {
-        logger.error(
-          {
-            src: "plugin:sql",
-            memoryId: memory.id,
-            error: error instanceof Error ? error.message : String(error),
-          },
-          "Failed to update memory"
-        );
-        return false;
+        // error-policy:J2 context-adding rethrow — a failed memory update must
+        // not read as a benign false; surface the write failure.
+        throw new ElizaError("updateMemory failed", {
+          code: "DB_UPDATE_FAILED",
+          cause: error,
+          context: { table: "memories", memoryId: memory.id },
+        });
       }
     });
   }
@@ -3050,17 +3009,13 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         }
         return true;
       } catch (error) {
-        logger.error(
-          {
-            src: "plugin:sql",
-            entityId,
-            roomId,
-            agentId: this.agentId,
-            error: error instanceof Error ? error.message : String(error),
-          },
-          "Failed to add participant to room"
-        );
-        return false;
+        // error-policy:J2 context-adding rethrow — insert-if-absent only ever
+        // returns true on success, so false here masked a real write failure.
+        throw new ElizaError("addParticipant failed", {
+          code: "DB_INSERT_FAILED",
+          cause: error,
+          context: { table: "participants", entityId, roomId, agentId: this.agentId },
+        });
       }
     });
   }
@@ -3090,16 +3045,18 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         }
         return true;
       } catch (error) {
-        logger.error(
-          {
-            src: "plugin:sql",
+        // error-policy:J2 context-adding rethrow — insert-if-absent only ever
+        // returns true on success, so false here masked a real write failure.
+        throw new ElizaError("addParticipantsRoom failed", {
+          code: "DB_INSERT_FAILED",
+          cause: error,
+          context: {
+            table: "participants",
             roomId,
             agentId: this.agentId,
-            error: error instanceof Error ? error.message : String(error),
+            count: entityIds.length,
           },
-          "Failed to add participants to room"
-        );
-        return false;
+        });
       }
     });
   }
@@ -3125,16 +3082,13 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         const removed = result.length > 0;
         return removed;
       } catch (error) {
-        logger.error(
-          {
-            src: "plugin:sql",
-            entityId,
-            roomId,
-            error: error instanceof Error ? error.message : String(error),
-          },
-          "Failed to remove participant from room"
-        );
-        return false;
+        // error-policy:J2 context-adding rethrow — false is the typed "no row
+        // matched" signal; a delete failure must not collapse into it.
+        throw new ElizaError("removeParticipant failed", {
+          code: "DB_DELETE_FAILED",
+          cause: error,
+          context: { table: "participants", entityId, roomId },
+        });
       }
     });
   }
@@ -3258,17 +3212,13 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
             );
         });
       } catch (error) {
-        logger.error(
-          {
-            src: "plugin:sql",
-            roomId,
-            entityId,
-            state,
-            error: error instanceof Error ? error.message : String(error),
-          },
-          "Failed to set participant follow state"
-        );
-        throw error;
+        // error-policy:J2 context-adding rethrow — attach the participant/state
+        // context to the surfaced failure.
+        throw new ElizaError("setParticipantUserState failed", {
+          code: "DB_UPDATE_FAILED",
+          cause: error,
+          context: { table: "participants", roomId, entityId, state },
+        });
       }
     });
   }
@@ -3306,16 +3256,19 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           .returning();
         return inserted.length > 0;
       } catch (error) {
-        logger.error(
-          {
-            src: "plugin:sql",
+        // error-policy:J2 context-adding rethrow — false is the typed "already
+        // existed (onConflictDoNothing)" signal; an insert failure must not
+        // collapse into it.
+        throw new ElizaError("createRelationship failed", {
+          code: "DB_INSERT_FAILED",
+          cause: error,
+          context: {
+            table: "relationships",
             agentId: this.agentId,
-            error: error instanceof Error ? error.message : String(error),
-            saveParams,
+            sourceEntityId: params.sourceEntityId,
+            targetEntityId: params.targetEntityId,
           },
-          "Error creating relationship"
-        );
-        return false;
+        });
       }
     });
   }
@@ -3336,16 +3289,16 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           })
           .where(eq(relationshipTable.id, relationship.id));
       } catch (error) {
-        logger.error(
-          {
-            src: "plugin:sql",
+        // error-policy:J2 context-adding rethrow — attach relationship context.
+        throw new ElizaError("updateRelationship failed", {
+          code: "DB_UPDATE_FAILED",
+          cause: error,
+          context: {
+            table: "relationships",
             agentId: this.agentId,
-            error: error instanceof Error ? error.message : String(error),
             relationshipId: relationship.id,
           },
-          "Error updating relationship"
-        );
-        throw error;
+        });
       }
     });
   }
@@ -3481,16 +3434,13 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
 
         return undefined;
       } catch (error) {
-        logger.error(
-          {
-            src: "plugin:sql",
-            agentId: this.agentId,
-            error: error instanceof Error ? error.message : String(error),
-            key,
-          },
-          "Error fetching cache"
-        );
-        return undefined;
+        // error-policy:J2 context-adding rethrow — undefined is the typed cache
+        // miss; a query failure must not read as "not cached".
+        throw new ElizaError("getCache failed", {
+          code: "DB_QUERY_FAILED",
+          cause: error,
+          context: { table: "cache", agentId: this.agentId, key },
+        });
       }
     });
   }
@@ -3520,16 +3470,13 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
 
         return true;
       } catch (error) {
-        logger.error(
-          {
-            src: "plugin:sql",
-            agentId: this.agentId,
-            error: error instanceof Error ? error.message : String(error),
-            key,
-          },
-          "Error setting cache"
-        );
-        return false;
+        // error-policy:J2 context-adding rethrow — setCache only returns true on
+        // success, so false here masked a real write failure.
+        throw new ElizaError("setCache failed", {
+          code: "DB_UPSERT_FAILED",
+          cause: error,
+          context: { table: "cache", agentId: this.agentId, key },
+        });
       }
     });
   }
@@ -3549,16 +3496,13 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         });
         return true;
       } catch (error) {
-        logger.error(
-          {
-            src: "plugin:sql",
-            agentId: this.agentId,
-            error: error instanceof Error ? error.message : String(error),
-            key,
-          },
-          "Error deleting cache"
-        );
-        return false;
+        // error-policy:J2 context-adding rethrow — deleteCache only returns true
+        // on success, so false here masked a real delete failure.
+        throw new ElizaError("deleteCache failed", {
+          code: "DB_DELETE_FAILED",
+          cause: error,
+          context: { table: "cache", agentId: this.agentId, key },
+        });
       }
     });
   }
@@ -4823,6 +4767,8 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   // ── Lifecycle methods ─────────────────────────────────────────────────
 
   async isReady(): Promise<boolean> {
+    // error-policy:J4 explicit availability probe — false IS the designed answer
+    // to "can the DB serve a query?"; a failing SELECT 1 means not-ready.
     try {
       await this.db.execute(sql`SELECT 1`);
       return true;
