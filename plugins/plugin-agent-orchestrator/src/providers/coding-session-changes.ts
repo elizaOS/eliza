@@ -12,7 +12,10 @@
  */
 
 import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
-import { getAcpService, logger } from "../actions/common.js";
+import {
+  getAcpService,
+  reportProviderFetchFailure,
+} from "../actions/common.js";
 import type { SessionInfo } from "../services/types.js";
 import type { WorkspaceChangeSet } from "../services/workspace-diff.js";
 
@@ -60,14 +63,27 @@ export const codingSessionChangesProvider: Provider = {
     try {
       sessions = await Promise.race([
         Promise.resolve(acp.listSessions()),
+        // error-policy:J4 the 2s cap prevents a hung ACP backend from stalling
+        // every Stage-1 turn; resolving [] here is a bounded degrade, not a
+        // fabricated "no sessions" — the diff-grounding block is purely additive
+        // (it only ever ADDS a real recent change set), so an empty read drops
+        // the block rather than asserting anything false to the model.
         new Promise<SessionInfo[]>((resolve) =>
           setTimeout(() => resolve([]), 2000),
         ),
       ]);
     } catch (err) {
-      logger(runtime).debug?.(
-        { error: err },
-        "[codingSessionChanges] listSessions failed",
+      // error-policy:J7 listSessions threw — the ACP backend is broken, not
+      // "no coding changes." Surface it (warn + reportError) instead of the
+      // old invisible debug so a down backend is developer/owner-visible, then
+      // drop the additive diff block for this turn (crash-free provider
+      // contract). The block is purely additive, so omitting it never asserts
+      // a false "nothing changed" — it just declines to ground.
+      reportProviderFetchFailure(
+        runtime,
+        "CODING_SESSION_CHANGES",
+        "listSessions",
+        err,
       );
       return { text: "", values: {}, data: {} };
     }

@@ -165,3 +165,40 @@ describe("codingSessionChangesProvider — staleness guard", () => {
     expect(r.text).toBe("");
   });
 });
+
+describe("codingSessionChangesProvider — listSessions failure visibility", () => {
+  it("surfaces an ACP listSessions failure via warn + reportError instead of silent debug", async () => {
+    const boom = new Error("ACP backend unreachable");
+    const reported: Array<{ scope: string; error: unknown }> = [];
+    const warns: unknown[] = [];
+    const acp = {
+      listSessions: () => {
+        throw boom;
+      },
+    };
+    const runtime = {
+      getService: (t: string) =>
+        t === "ACP_SERVICE" || t === "ACP_SUBPROCESS_SERVICE" ? acp : undefined,
+      hasService: () => true,
+      getSetting: () => undefined,
+      logger: {
+        debug() {},
+        info() {},
+        warn(...a: unknown[]) {
+          warns.push(a);
+        },
+        error() {},
+      },
+      reportError(scope: string, error: unknown) {
+        reported.push({ scope, error });
+      },
+    } as never;
+    const r = await codingSessionChangesProvider.get(runtime, memory(), state);
+    // Still crash-free: the additive diff block is simply dropped.
+    expect(r.text).toBe("");
+    // But the failure is now observable (was an invisible debug log).
+    expect(warns.length).toBeGreaterThan(0);
+    expect(reported.some((x) => x.error === boom)).toBe(true);
+    expect(reported[0]?.scope).toContain("CODING_SESSION_CHANGES");
+  });
+});

@@ -93,6 +93,40 @@ export function logger(runtime: IAgentRuntime): IAgentRuntime["logger"] {
   return runtime.logger;
 }
 
+/**
+ * Surface a live-state fetch failure from a coding/task-agent context provider.
+ *
+ * Provider `get()` bodies must never crash the turn, so a failed backend call
+ * (ACP `listSessions()`, workspace listing, framework-state probe) is caught
+ * and the provider degrades. But degrading to a healthy-looking EMPTY context
+ * is fallback slop (#12273): the planner then reads `sessionCount: 0` as a
+ * clean slate and can spawn DUPLICATE work while a broken ACP backend is
+ * hiding the sessions that actually exist. This helper makes every such
+ * failure observable — a `warn` (was `debug`, invisible at default level) plus
+ * a structured `runtime.reportError` so the RECENT_ERRORS provider and the
+ * developer/owner see the backend is down — without rethrowing.
+ *
+ * `reportError` is the diagnostic boundary (#12263): it never throws, so this
+ * helper is safe to call inside a provider catch.
+ */
+export function reportProviderFetchFailure(
+  runtime: IAgentRuntime,
+  provider: string,
+  operation: string,
+  error: unknown,
+): void {
+  const message = error instanceof Error ? error.message : String(error);
+  logger(runtime).warn?.(
+    { error, provider, operation },
+    `[${provider}] ${operation} failed — context degraded (backend unavailable): ${message}`,
+  );
+  runtime.reportError?.(`AgentOrchestrator.${provider}`, error, {
+    provider,
+    operation,
+    reason: "provider_backend_unavailable",
+  });
+}
+
 export function contentRecord(message: Memory): Record<string, unknown> {
   return message.content && typeof message.content === "object"
     ? (message.content as Record<string, unknown>)

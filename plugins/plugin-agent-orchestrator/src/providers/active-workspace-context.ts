@@ -8,7 +8,10 @@
  */
 
 import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
-import { getAcpService, logger } from "../actions/common.js";
+import {
+  getAcpService,
+  reportProviderFetchFailure,
+} from "../actions/common.js";
 import {
   formatTaskAgentStatus,
   getTaskAgentFrameworkState,
@@ -19,6 +22,10 @@ import type { WorkspaceResult } from "../services/workspace-service.js";
 import { getCodingWorkspaceService } from "../services/workspace-service.js";
 
 type FrameworkState = Awaited<ReturnType<typeof getTaskAgentFrameworkState>>;
+
+// Unique sentinel so a genuine empty session list is distinguishable from the
+// 2s timeout branch of the Promise.race (a hung backend, not "no sessions").
+const SESSIONS_TIMEOUT_SENTINEL: SessionInfo[] = [];
 
 const FALLBACK_FRAMEWORK_STATE: FrameworkState = {
   configuredSubscriptionProvider: undefined,
@@ -46,15 +53,25 @@ export const activeWorkspaceContextProvider: Provider = {
   get: async (runtime: IAgentRuntime, _message: Memory, _state: State) => {
     const acpService = getAcpService(runtime);
     const wsService = getCodingWorkspaceService(runtime);
+    // Tracks whether a live-state read FAILED (backend threw) vs. was genuinely
+    // empty. A failed read must not read to the planner as a clean slate: the
+    // ACP/workspace backend could be hiding running sessions, and "clean slate"
+    // guidance would prompt DUPLICATE spawns (#12273 exemplar 2).
+    let degraded = false;
     let frameworkState = FALLBACK_FRAMEWORK_STATE;
     try {
       frameworkState = await getTaskAgentFrameworkState(runtime, acpService);
     } catch (err) {
-      logger(runtime).debug?.(
-        { error: err },
-        "[activeWorkspaceContext] getTaskAgentFrameworkState failed",
+      // error-policy:J7 framework probe failed — surface it (was invisible
+      // debug) and fall back, but flag the whole context as degraded.
+      reportProviderFetchFailure(
+        runtime,
+        "ACTIVE_WORKSPACE_CONTEXT",
+        "getTaskAgentFrameworkState",
+        err,
       );
       frameworkState = FALLBACK_FRAMEWORK_STATE;
+      degraded = true;
     }
 
     let sessions: SessionInfo[] = [];
@@ -62,16 +79,35 @@ export const activeWorkspaceContextProvider: Provider = {
       try {
         sessions = await Promise.race([
           Promise.resolve(acpService.listSessions()),
+          // error-policy:J4 2s cap keeps a hung ACP backend from stalling every
+          // turn; the timeout branch is treated as a degraded read below, not a
+          // fabricated "no sessions" — see the sentinel wrap.
           new Promise<SessionInfo[]>((resolve) =>
-            setTimeout(() => resolve([]), 2000),
+            setTimeout(() => resolve(SESSIONS_TIMEOUT_SENTINEL), 2000),
           ),
         ]);
+        if (sessions === SESSIONS_TIMEOUT_SENTINEL) {
+          // Hung backend past the 2s cap — unknown, not empty. Flag degraded so
+          // the planner doesn't read the empty session set as authoritative.
+          reportProviderFetchFailure(
+            runtime,
+            "ACTIVE_WORKSPACE_CONTEXT",
+            "listSessions:timeout",
+            new Error("ACP listSessions exceeded 2000ms"),
+          );
+          sessions = [];
+          degraded = true;
+        }
       } catch (err) {
-        logger(runtime).debug?.(
-          { error: err },
-          "[activeWorkspaceContext] listSessions failed",
+        // error-policy:J7 listSessions threw — backend down, not zero sessions.
+        reportProviderFetchFailure(
+          runtime,
+          "ACTIVE_WORKSPACE_CONTEXT",
+          "listSessions",
+          err,
         );
         sessions = [];
+        degraded = true;
       }
     }
 
@@ -79,11 +115,15 @@ export const activeWorkspaceContextProvider: Provider = {
     try {
       workspaces = wsService?.listWorkspaces() ?? [];
     } catch (err) {
-      logger(runtime).debug?.(
-        { error: err },
-        "[activeWorkspaceContext] listWorkspaces failed",
+      // error-policy:J7 workspace listing threw — surface + flag degraded.
+      reportProviderFetchFailure(
+        runtime,
+        "ACTIVE_WORKSPACE_CONTEXT",
+        "listWorkspaces",
+        err,
       );
       workspaces = [];
+      degraded = true;
     }
     // A session is reusable (safe to re-task via SEND_TO_AGENT) only when it is
     // idle — "ready" — not mid-turn (busy/running/tool_running) or terminal.
@@ -101,7 +141,18 @@ export const activeWorkspaceContextProvider: Provider = {
       `  sessionCount: ${sessions.length}`,
     ];
 
-    if (workspaces.length === 0 && sessions.length === 0) {
+    // A degraded read means one or more live-state backends failed, so the
+    // counts above are a floor, not the truth. Tell the planner explicitly so
+    // it doesn't treat an empty/partial context as a clean slate and spawn
+    // duplicate work over sessions it simply can't see.
+    if (degraded) {
+      lines.push("  status: degraded");
+      lines.push(
+        "  degradedNote: A live-state backend (task-agent/workspace service) failed to respond, so the counts above may be INCOMPLETE. Do NOT assume there are no running sessions or workspaces. Before spawning a new task, verify with the user or retry; treat this as 'unknown', not 'clean slate'.",
+      );
+    }
+
+    if (!degraded && workspaces.length === 0 && sessions.length === 0) {
       lines.push("guidance:");
       lines.push(
         "  createTask: Use ACPX CREATE_AGENT_TASK when the user needs anything more involved than a simple direct reply.",
@@ -201,6 +252,9 @@ export const activeWorkspaceContextProvider: Provider = {
         currentTasks: [],
         preferredTaskAgent: frameworkState.preferred,
         frameworks: frameworkState.frameworks,
+        // True when a live-state read failed; the counts above are then a
+        // floor, not authoritative ground truth.
+        degraded,
       },
       values: { activeWorkspaceContext: text },
       text,

@@ -82,3 +82,81 @@ describe("activeWorkspaceContextProvider reusable sessions", () => {
     expect(res.text ?? "").not.toContain("reusableAgents[");
   });
 });
+
+describe("activeWorkspaceContextProvider degraded backend visibility", () => {
+  function runtimeThrowingSessions(err: Error) {
+    const reported: Array<{ scope: string; error: unknown }> = [];
+    const warns: unknown[] = [];
+    const acp = {
+      listSessions: () => {
+        throw err;
+      },
+    };
+    const runtime = {
+      getService: (t: string) =>
+        t === "ACP_SERVICE" || t === "ACP_SUBPROCESS_SERVICE" ? acp : undefined,
+      getSetting: () => undefined,
+      logger: {
+        debug() {},
+        info() {},
+        warn(...a: unknown[]) {
+          warns.push(a);
+        },
+        error() {},
+      },
+      reportError(scope: string, error: unknown) {
+        reported.push({ scope, error });
+      },
+    } as never;
+    return { runtime, reported, warns };
+  }
+
+  it("surfaces a listSessions failure via warn + reportError and does NOT read as a clean slate", async () => {
+    const boom = new Error("ACP socket closed");
+    const { runtime, reported, warns } = runtimeThrowingSessions(boom);
+    const res = await activeWorkspaceContextProvider.get(
+      runtime,
+      {} as Memory,
+      {} as State,
+    );
+    // The failure is observable, not swallowed to invisible debug.
+    expect(warns.length).toBeGreaterThan(0);
+    expect(reported.some((r) => r.error === boom)).toBe(true);
+    expect(reported[0]?.scope).toContain("ACTIVE_WORKSPACE_CONTEXT");
+    // The emitted context is flagged degraded, not a fabricated empty slate.
+    const text = res.text ?? "";
+    expect(text).toContain("status: degraded");
+    expect(text).toContain("degradedNote:");
+    // Crucially, the "clean slate -> spawn new task" guidance is suppressed so
+    // the planner can't be tricked into duplicate spawns over hidden sessions.
+    expect(text).not.toContain("createTask:");
+    const data = res.data as { degraded?: boolean } | undefined;
+    expect(data?.degraded).toBe(true);
+  });
+
+  it("a genuinely empty (healthy) read stays a clean slate with createTask guidance", async () => {
+    const reported: unknown[] = [];
+    const acp = { listSessions: () => [] as unknown[] };
+    const runtime = {
+      getService: (t: string) =>
+        t === "ACP_SERVICE" || t === "ACP_SUBPROCESS_SERVICE" ? acp : undefined,
+      getSetting: () => undefined,
+      logger: { debug() {}, info() {}, warn() {}, error() {} },
+      reportError() {
+        reported.push(1);
+      },
+    } as never;
+    const res = await activeWorkspaceContextProvider.get(
+      runtime,
+      {} as Memory,
+      {} as State,
+    );
+    const text = res.text ?? "";
+    // Healthy empty is NOT degraded and DOES offer clean-slate guidance.
+    expect(text).not.toContain("status: degraded");
+    expect(text).toContain("createTask:");
+    expect(reported.length).toBe(0);
+    const data = res.data as { degraded?: boolean } | undefined;
+    expect(data?.degraded).toBe(false);
+  });
+});
