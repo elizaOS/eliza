@@ -37,6 +37,7 @@
 		EKBD00010000000000000002 /* ElizaKeyboard.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = EKBD00010000000000000101 /* ElizaKeyboard.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		EKBD00010000000000000003 /* ElizaKeyboardDictationState.swift in Sources */ = {isa = PBXBuildFile; fileRef = EKBD00010000000000000106 /* ElizaKeyboardDictationState.swift */; };
 		EKBD00010000000000000004 /* ElizaKeyboardDictationState.swift in Sources */ = {isa = PBXBuildFile; fileRef = EKBD00010000000000000106 /* ElizaKeyboardDictationState.swift */; };
+		EKBD00010000000000000005 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = EKBD00010000000000000107 /* PrivacyInfo.xcprivacy */; };
 		ELIZAKBDBRIDGE0000000001 /* ElizaKeyboardBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = ELIZAKBDBRIDGE0000000002 /* ElizaKeyboardBridge.swift */; };
 		WBCB00010000000000000001 /* ActionRequestHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = WBCB00010000000000000102 /* ActionRequestHandler.swift */; };
 		WBCB00010000000000000002 /* WebsiteBlockerContentExtension.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = WBCB00010000000000000101 /* WebsiteBlockerContentExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -153,6 +154,7 @@
 		EKBD00010000000000000103 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		EKBD00010000000000000104 /* ElizaKeyboard.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ElizaKeyboard.entitlements; sourceTree = "<group>"; };
 		EKBD00010000000000000106 /* ElizaKeyboardDictationState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ElizaKeyboardDictationState.swift; sourceTree = "<group>"; };
+		EKBD00010000000000000107 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		WBCB00010000000000000101 /* WebsiteBlockerContentExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = WebsiteBlockerContentExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		WBCB00010000000000000102 /* ActionRequestHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActionRequestHandler.swift; sourceTree = "<group>"; };
 		WBCB00010000000000000103 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
@@ -341,6 +343,7 @@
 				EKBD00010000000000000106 /* ElizaKeyboardDictationState.swift */,
 				EKBD00010000000000000103 /* Info.plist */,
 				EKBD00010000000000000104 /* ElizaKeyboard.entitlements */,
+				EKBD00010000000000000107 /* PrivacyInfo.xcprivacy */,
 			);
 			path = ElizaKeyboard;
 			sourceTree = "<group>";
@@ -608,6 +611,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				EKBD00010000000000000005 /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
