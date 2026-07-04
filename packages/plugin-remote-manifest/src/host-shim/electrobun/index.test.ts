@@ -1,3 +1,7 @@
+/**
+ * Electrobun host shim tests verify desktop bridge request forwarding,
+ * response correlation, event delivery, and listener cleanup.
+ */
 import { afterEach, describe, expect, it, mock } from "bun:test";
 import { getHostShim, resetHostShim } from "../index.js";
 import { installElectrobunShim, resetElectrobunShimForTests } from "./index.js";

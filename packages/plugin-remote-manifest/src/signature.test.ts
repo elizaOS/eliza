@@ -1,3 +1,7 @@
+/**
+ * Artifact signature tests verify local Ed25519 signing and validation paths
+ * against temporary plugin tarballs and in-memory KMS keys.
+ */
 import { describe, expect, it } from "bun:test";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";

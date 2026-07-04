@@ -1,3 +1,7 @@
+/**
+ * Host shim registry tests verify install, lookup, overwrite, and reset
+ * behavior shared by platform-specific remote plugin bridges.
+ */
 import { describe, expect, it } from "bun:test";
 import {
   getHostShim,

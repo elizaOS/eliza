@@ -1,3 +1,7 @@
+/**
+ * Barrel tests lock the default package export surface used by remote plugin
+ * hosts, workers, and compatibility wrapper packages.
+ */
 import { describe, expect, it } from "bun:test";
 import * as manifestBarrel from "./index.js";
 

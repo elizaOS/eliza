@@ -1,3 +1,7 @@
+/**
+ * Worker dispatch tests verify handler registration, MAC enforcement, and
+ * audited surface invocation for remote plugin RPC messages.
+ */
 import { describe, expect, it } from "bun:test";
 import {
   AuditDispatcher,
