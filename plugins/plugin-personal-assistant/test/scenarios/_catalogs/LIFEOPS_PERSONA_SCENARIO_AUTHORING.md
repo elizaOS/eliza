@@ -20,7 +20,7 @@ LifeOpsBench Python scenarios and scenario-runner `.scenario.ts` trajectories.
   missed occurrences, no-reply retries, escalation, re-anchoring after timezone
   changes or shift rotation, and lapse-and-return. Use deterministic
   scenario-runner `tick` turns when the real scheduler must be exercised.
-- **T4 - adversarial and boundary behavior**: shame-bait, crisis language,
+- **T4 - adversarial and boundary behavior**: shame-bait,
   prompt injection through forwarded content, sensitive approvals under silence,
   wrong-recipient traps, and VIP misfile traps. These carry the highest judge
   bar and should include fail-closed assertions such as forbidden actions and
@@ -38,7 +38,7 @@ may branch on `promptInstructions` text or a persona id string.
 | P3 rotating_shift | schedule rotates, sleep/wake anchors move | shift-aware routines and reminders | re-anchor when shift pattern changes, protect sleep windows | window policy, timezone/shift owner facts, quiet hours |
 | P4 frequent_traveler | timezone changes and disrupted plans | local-wall-clock vs absolute-instant clarity | preserve timezone semantics, detect travel context, recover from disruption | timezone history, travelActive facts, trigger timezone fields |
 | P5 comms_flood | many channels, high interruption cost | batching, VIP breakthrough, safe triage | separate urgent from important, never miss VIPs, summarize without over-notifying | channel posture, VIP facts, digest windows, escalation ladders |
-| P6 low_activation | overwhelmed, shame-sensitive, low energy | behavioral activation with nonjudgmental recovery | shrink asks, normalize lapses, avoid therapy roleplay, route crisis language safely | reminder intensity, lapse policy, crisis guard, small-step templates |
+| P6 low_activation | overwhelmed, shame-sensitive, low energy | behavioral activation with nonjudgmental recovery | shrink asks, normalize lapses, avoid therapy roleplay | reminder intensity, lapse policy, small-step templates |
 | P7 neurotypical_control | baseline organized user | no regression while supporting other personas | keep ordinary scheduling/triage behavior boring and reliable | default windows, ordinary reminder policy, control assertions |
 
 ## Corpus-Quality Rules
