@@ -241,6 +241,55 @@ describe("android core routes (first-run)", () => {
 		expect(calls).toHaveLength(0);
 	});
 
+	it("GET /api/auth/status reports the sealed Android pipe as local trusted access", async () => {
+		const { route, calls } = fixedRoute(null);
+		const { deps } = coreDeps();
+		const res = await dispatchBufferedRequest(
+			runtime,
+			route,
+			{ method: "GET", path: "/api/auth/status" },
+			deps,
+		);
+		expect(res.status).toBe(200);
+		expect(JSON.parse(res.body)).toEqual({
+			required: false,
+			authenticated: true,
+			loginRequired: false,
+			bootstrapRequired: false,
+			localAccess: true,
+			passwordConfigured: false,
+			pairingEnabled: false,
+			expiresAt: null,
+		});
+		expect(calls).toHaveLength(0);
+	});
+
+	it("GET /api/auth/me returns the local machine identity over the sealed Android pipe", async () => {
+		const { route, calls } = fixedRoute(null);
+		const { deps } = coreDeps();
+		const res = await dispatchBufferedRequest(
+			runtime,
+			route,
+			{ method: "GET", path: "/api/auth/me" },
+			deps,
+		);
+		expect(res.status).toBe(200);
+		expect(JSON.parse(res.body)).toEqual({
+			identity: {
+				id: "local-agent",
+				displayName: "Local Agent",
+				kind: "machine",
+			},
+			session: { id: "local", kind: "local", expiresAt: null },
+			access: {
+				mode: "local",
+				passwordConfigured: false,
+				ownerConfigured: false,
+			},
+		});
+		expect(calls).toHaveLength(0);
+	});
+
 	it("GET /api/first-run/status reports complete from the persisted config", async () => {
 		const { route } = fixedRoute(null);
 		const { deps } = coreDeps({

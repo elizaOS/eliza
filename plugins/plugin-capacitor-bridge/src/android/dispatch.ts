@@ -186,18 +186,18 @@ function jsonBuffered(status: number, value: unknown): AndroidBufferedResponse {
 
 // ── Server-level core routes ─────────────────────────────────────────────────
 //
-// /api/first-run/* is served at the HTTP SERVER layer on desktop
-// (handleFirstRunRoutes in @elizaos/agent api/server.ts), not through the
-// plugin-route kernel — so the in-process stdio dispatch never sees it. On
-// Android the WebView talks to the bridge from the very first boot (the local
-// agent is pre-seeded as the active server on sideload builds), which made the
-// startup poll's GET /api/first-run/status 404 and hard-fail a FRESH install
-// with "Startup failed: Backend Unreachable" before onboarding could start.
-// These two routes answer from the SAME durable truth the server uses: the
-// persisted ElizaConfig. Unlike the iOS full-Bun shim (which hardcodes
-// complete:true because iOS only reaches its bridge after a local runtime was
-// chosen), Android must report honestly in both phases or a fresh install
-// would skip onboarding entirely.
+// /api/first-run/* and the auth bootstrap probes are served at the HTTP SERVER
+// layer on desktop (handleFirstRunRoutes / app-core auth routes), not through
+// the plugin-route kernel — so the in-process stdio dispatch never sees them.
+// On Android the WebView talks to the bridge from the very first boot (the
+// local agent is pre-seeded as the active server on sideload builds), which made
+// startup polls 404 and hard-fail a FRESH install with "Startup failed: Backend
+// Unreachable" before onboarding could start. These routes answer from the SAME
+// durable truth the server uses where there is durable state: the persisted
+// ElizaConfig. Unlike the iOS full-Bun shim (which hardcodes complete:true
+// because iOS only reaches its bridge after a local runtime was chosen), Android
+// must report honestly in both phases or a fresh install would skip onboarding
+// entirely.
 
 /** The persisted-config seams the core routes read/write (from @elizaos/agent). */
 export interface AndroidCoreRouteDeps {
@@ -224,6 +224,33 @@ export function handleAndroidCoreRoute(
 	pathname: string,
 	deps: AndroidCoreRouteDeps,
 ): AndroidBufferedResponse | null {
+	if (method === "GET" && pathname === "/api/auth/status") {
+		return jsonBuffered(200, {
+			required: false,
+			authenticated: true,
+			loginRequired: false,
+			bootstrapRequired: false,
+			localAccess: true,
+			passwordConfigured: false,
+			pairingEnabled: false,
+			expiresAt: null,
+		});
+	}
+	if (method === "GET" && pathname === "/api/auth/me") {
+		return jsonBuffered(200, {
+			identity: {
+				id: "local-agent",
+				displayName: "Local Agent",
+				kind: "machine",
+			},
+			session: { id: "local", kind: "local", expiresAt: null },
+			access: {
+				mode: "local",
+				passwordConfigured: false,
+				ownerConfigured: false,
+			},
+		});
+	}
 	if (method === "GET" && pathname === "/api/first-run/status") {
 		let complete = false;
 		try {
