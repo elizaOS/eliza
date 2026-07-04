@@ -31,20 +31,8 @@
  * to "all four available").
  */
 
+import type { TaskExecutionProfile } from "@elizaos/contracts";
 import type { IAgentRuntime } from "@elizaos/core";
-
-/**
- * Mirrors `TaskExecutionProfile` from `plugins/plugin-personal-assistant/src/lifeops/
- * scheduled-task/types.ts`. Re-declared here to avoid an import inversion
- * (app-core must not depend on app-lifeops). Kept in sync via the test at
- * `plugins/plugin-personal-assistant/src/lifeops/scheduled-task/runner.test.ts` which
- * imports both and asserts structural compatibility.
- */
-export type TaskExecutionProfileForHost =
-  | "foreground"
-  | "bg-light-30s"
-  | "bg-heavy-fgs"
-  | "notify-only";
 
 interface CapacitorPluginsLike {
   BackgroundRunner?: unknown;
@@ -63,8 +51,8 @@ interface CapacitorGlobalLike {
  */
 export function getHostExecutionCapabilities(
   runtime: IAgentRuntime,
-): ReadonlySet<TaskExecutionProfileForHost> {
-  const profiles = new Set<TaskExecutionProfileForHost>();
+): ReadonlySet<TaskExecutionProfile> {
+  const profiles = new Set<TaskExecutionProfile>();
   // Foreground + notify-only are always available.
   profiles.add("foreground");
   profiles.add("notify-only");
@@ -131,7 +119,7 @@ export function getHostExecutionCapabilities(
  * easier to serialize into `/api/health` extensions.
  */
 export function describeHostExecutionCapabilities(runtime: IAgentRuntime): {
-  profiles: TaskExecutionProfileForHost[];
+  profiles: TaskExecutionProfile[];
   isCapacitor: boolean;
   hasBackgroundRunner: boolean;
   hasElizaTasksPlugin: boolean;

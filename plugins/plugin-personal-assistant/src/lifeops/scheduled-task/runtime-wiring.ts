@@ -587,10 +587,7 @@ function buildLifeOpsRunnerDeps(
     },
     hostCapabilities:
       opts.hostCapabilities ??
-      (() =>
-        getHostExecutionCapabilities(
-          opts.runtime,
-        ) as ReadonlySet<TaskExecutionProfile>),
+      (() => getHostExecutionCapabilities(opts.runtime)),
     dispatcher: createProductionScheduledTaskDispatcher({
       runtime: opts.runtime,
     }),

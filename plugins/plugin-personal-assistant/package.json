@@ -67,6 +67,7 @@
     "@elizaos/app-core": "workspace:*",
     "@elizaos/capacitor-calendar": "workspace:*",
     "@elizaos/capacitor-mobile-signals": "workspace:*",
+    "@elizaos/contracts": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/macosreminders": "workspace:*",
     "@elizaos/native-activity-tracker": "workspace:*",

@@ -132,6 +132,8 @@
         "../../plugins/plugin-native-canvas/src/index.ts"
       ],
       "@elizaos/core": ["../core/src/index.node.ts"],
+      "@elizaos/contracts": ["../contracts/src/index.ts"],
+      "@elizaos/contracts/*": ["../contracts/src/*"],
       "@elizaos/capacitor-location": [
         "../../plugins/plugin-native-location/src/index.ts"
       ],

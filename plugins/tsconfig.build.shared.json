@@ -19,6 +19,8 @@
     "paths": {
       "@elizaos/core": ["../packages/core/dist/index.d.ts"],
       "@elizaos/core/*": ["../packages/core/dist/*"],
+      "@elizaos/contracts": ["../packages/contracts/dist/index.d.ts"],
+      "@elizaos/contracts/*": ["../packages/contracts/dist/*"],
       "@elizaos/shared": ["../packages/shared/dist/index.d.ts"],
       "@elizaos/shared/*": ["../packages/shared/dist/*"],
       "@elizaos/ui": ["../packages/ui/dist/index.d.ts"],

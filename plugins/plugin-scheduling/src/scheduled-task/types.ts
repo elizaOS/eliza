@@ -17,6 +17,8 @@
  *    `failed` so observers see one consistent terminal state per branch.
  */
 
+import type { TaskExecutionProfile } from "@elizaos/contracts";
+
 // ---------------------------------------------------------------------------
 // ScheduledTask schema (frozen)
 // ---------------------------------------------------------------------------
@@ -45,42 +47,16 @@ export type ScheduledTaskKind =
   | "custom";
 
 /**
- * What kind of host execution environment a scheduled task needs at fire
- * time. The runner consults this against `getHostExecutionCapabilities`
- * (in `@elizaos/app-core/services/local-inference/host-capabilities`) and
- * substitutes `notify-only` semantics when the host can't satisfy the
- * requested profile (e.g. mobile background without an FGS / BGProcessingTask).
- *
- * - `"foreground"`: requires the app to be foregrounded. Anything that
- *   would block the UI thread or needs the user present.
- * - `"bg-light-30s"`: bookkeeping that fits in ~30 s. Safe in iOS
- *   BGAppRefreshTask windows; no LLM action.
- * - `"bg-heavy-fgs"`: needs an Android foreground service OR an iOS
- *   BGProcessingTask. Can run LLM inference. Long-running but bounded.
- * - `"notify-only"`: just deliver a local notification; the user's tap
- *   opens the app in foreground where the real work runs.
+ * Host execution profiles ({@link TaskExecutionProfile}) are the canonical
+ * contract shared with the host-capability probe in `@elizaos/app-core`, so
+ * they live in `@elizaos/contracts` (a leaf) and are re-exported here for the
+ * runner and existing `@elizaos/plugin-scheduling` consumers.
  */
-export type TaskExecutionProfile =
-  | "foreground"
-  | "bg-light-30s"
-  | "bg-heavy-fgs"
-  | "notify-only";
-
-export const TASK_EXECUTION_PROFILES = [
-  "foreground",
-  "bg-light-30s",
-  "bg-heavy-fgs",
-  "notify-only",
-] as const satisfies readonly TaskExecutionProfile[];
-
-/**
- * Default profile assumed when a persisted task has no `executionProfile`
- * column (back-compat for tasks written before this field landed).
- * Foreground is the safest default — the runner downgrades to notify-only
- * if even that isn't available.
- */
-export const DEFAULT_TASK_EXECUTION_PROFILE: TaskExecutionProfile =
-  "foreground";
+export type { TaskExecutionProfile } from "@elizaos/contracts";
+export {
+  DEFAULT_TASK_EXECUTION_PROFILE,
+  TASK_EXECUTION_PROFILES,
+} from "@elizaos/contracts";
 
 export type ScheduledTaskPriority = "low" | "medium" | "high";
 
