@@ -9,7 +9,12 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "typecheck": "cd ../.. && bun run tsc -b packages/pack-default --force --emitDeclarationOnly && bun run tsc -p packages/pack-default --noEmit"
+    "typecheck": "cd ../.. && bun run tsc -p packages/pack-default --noEmit",
+    "lint": "cd ../.. && bunx @biomejs/biome check --write --unsafe --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched packages/pack-default/package.json packages/pack-default/tsconfig.json",
+    "lint:check": "cd ../.. && bunx @biomejs/biome check --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched packages/pack-default/package.json packages/pack-default/tsconfig.json",
+    "lint:fix": "cd ../.. && bunx @biomejs/biome check --write --unsafe --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched packages/pack-default/package.json packages/pack-default/tsconfig.json",
+    "format": "cd ../.. && bunx @biomejs/biome format --write --config-path ../../biome.json --files-ignore-unknown=true packages/pack-default/package.json packages/pack-default/tsconfig.json",
+    "format:check": "cd ../.. && bunx @biomejs/biome format --config-path ../../biome.json --files-ignore-unknown=true packages/pack-default/package.json packages/pack-default/tsconfig.json"
   },
   "dependencies": {
     "@feed/shared": "workspace:*"

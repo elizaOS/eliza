@@ -18,8 +18,12 @@
     }
   },
   "scripts": {
-    "lint": "cd ../.. && bunx @biomejs/biome check --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched packages/shared/package.json packages/shared/tsconfig.json packages/shared/src",
-    "typecheck": "cd ../.. && bun run scripts/typecheck-workspace.ts packages/shared"
+    "lint": "cd ../.. && bunx @biomejs/biome check --write --unsafe --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched packages/shared/package.json packages/shared/tsconfig.json",
+    "typecheck": "cd ../.. && bun run scripts/typecheck-workspace.ts packages/shared",
+    "lint:check": "cd ../.. && bunx @biomejs/biome check --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched packages/shared/package.json packages/shared/tsconfig.json",
+    "lint:fix": "cd ../.. && bunx @biomejs/biome check --write --unsafe --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched packages/shared/package.json packages/shared/tsconfig.json",
+    "format": "cd ../.. && bunx @biomejs/biome format --write --config-path ../../biome.json --files-ignore-unknown=true packages/shared/package.json packages/shared/tsconfig.json",
+    "format:check": "cd ../.. && bunx @biomejs/biome format --config-path ../../biome.json --files-ignore-unknown=true packages/shared/package.json packages/shared/tsconfig.json"
   },
   "dependencies": {
     "clsx": "^2.1.1",

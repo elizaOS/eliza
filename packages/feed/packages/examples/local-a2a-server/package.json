@@ -8,8 +8,14 @@
     "dev": "bun run --watch src/server.ts",
     "build": "bun build --target=bun --outfile dist/index.js src/server.ts",
     "start": "bun run src/server.ts",
-    "test": "echo \"skip (feed): no unit tests; server is exercised by @feed/typescript-agent-example local-e2e\" >&2",
-    "typecheck": "bun run tsc -p . --noEmit"
+    "test": "bun test tests",
+    "typecheck": "bun run tsc -p . --noEmit",
+    "lint": "cd ../../.. && bunx @biomejs/biome check --write --unsafe --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched packages/examples/local-a2a-server/package.json packages/examples/local-a2a-server/tsconfig.json",
+    "lint:check": "cd ../../.. && bunx @biomejs/biome check --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched packages/examples/local-a2a-server/package.json packages/examples/local-a2a-server/tsconfig.json",
+    "lint:fix": "cd ../../.. && bunx @biomejs/biome check --write --unsafe --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched packages/examples/local-a2a-server/package.json packages/examples/local-a2a-server/tsconfig.json",
+    "format": "cd ../../.. && bunx @biomejs/biome format --write --config-path ../../biome.json --files-ignore-unknown=true packages/examples/local-a2a-server/package.json packages/examples/local-a2a-server/tsconfig.json",
+    "format:check": "cd ../../.. && bunx @biomejs/biome format --config-path ../../biome.json --files-ignore-unknown=true packages/examples/local-a2a-server/package.json packages/examples/local-a2a-server/tsconfig.json",
+    "clean": "node ../../../../../packages/scripts/rm-path-recursive.mjs dist"
   },
   "dependencies": {
     "cors": "^2.8.5",

@@ -70,6 +70,7 @@ export interface NPCTrajectory {
     ticker?: string;
     amount: number;
     success: boolean;
+    error?: string;
   }>;
   posts: Array<{ postId: string; content: string; type: string }>;
   groupMessages: Array<{ groupId: string; groupName: string; content: string }>;

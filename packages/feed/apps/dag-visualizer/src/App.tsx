@@ -294,6 +294,7 @@ export function App() {
         {traces.length > 1 && (
           <>
             <button
+              type="button"
               onClick={() => {
                 const i = traces.findIndex((t) => t.dirName === selected);
                 if (i < traces.length - 1) {
@@ -306,6 +307,7 @@ export function App() {
               &larr;
             </button>
             <button
+              type="button"
               onClick={() => {
                 const i = traces.findIndex((t) => t.dirName === selected);
                 if (i > 0) {
@@ -322,6 +324,7 @@ export function App() {
 
         {/* Live toggle */}
         <button
+          type="button"
           onClick={() =>
             setLive((p) => {
               if (!p) userPicked.current = false;
@@ -456,9 +459,9 @@ export function App() {
               </span>
             </>
           )}
-          {selectedNPC.trades?.map((t, i) => (
+          {selectedNPC.trades?.map((t) => (
             <span
-              key={i}
+              key={`${t.ticker ?? "trade"}-${t.success ? "filled" : "failed"}-${t.error ?? "ok"}`}
               style={{
                 color: t.success ? "#4ade80" : "#ef4444",
                 fontWeight: 600,
@@ -491,6 +494,7 @@ export function App() {
                 selectedNPC != null && NPC_RELEVANT_NODES.has(n.nodeId);
               return (
                 <button
+                  type="button"
                   key={n.nodeId}
                   onClick={() => setSelNodeId(n.nodeId)}
                   title={`${n.name}: ${n.durationMs}ms`}
@@ -570,7 +574,7 @@ export function App() {
                 />
                 <MiniMap
                   style={{ background: "#1e293b" }}
-                  nodeColor={(n) =>
+                  nodeColor={(n: Node) =>
                     (n.data as Record<string, string>).phaseColor ?? "#6b7280"
                   }
                   maskColor="rgba(0,0,0,.6)"

@@ -10,5 +10,13 @@
   },
   "dependencies": {
     "@feed/shared": "workspace:*"
+  },
+  "scripts": {
+    "lint": "cd ../.. && bunx @biomejs/biome check --write --unsafe --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched packages/pack-corporate-30-under-30/package.json packages/pack-corporate-30-under-30/tsconfig.json",
+    "lint:check": "cd ../.. && bunx @biomejs/biome check --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched packages/pack-corporate-30-under-30/package.json packages/pack-corporate-30-under-30/tsconfig.json",
+    "lint:fix": "cd ../.. && bunx @biomejs/biome check --write --unsafe --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched packages/pack-corporate-30-under-30/package.json packages/pack-corporate-30-under-30/tsconfig.json",
+    "format": "cd ../.. && bunx @biomejs/biome format --write --config-path ../../biome.json --files-ignore-unknown=true packages/pack-corporate-30-under-30/package.json packages/pack-corporate-30-under-30/tsconfig.json",
+    "format:check": "cd ../.. && bunx @biomejs/biome format --config-path ../../biome.json --files-ignore-unknown=true packages/pack-corporate-30-under-30/package.json packages/pack-corporate-30-under-30/tsconfig.json",
+    "typecheck": "cd ../.. && bun run tsc -p packages/pack-corporate-30-under-30 --noEmit"
   }
 }

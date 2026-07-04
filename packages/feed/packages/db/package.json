@@ -20,7 +20,7 @@
     }
   },
   "scripts": {
-    "lint": "cd ../.. && bunx @biomejs/biome check --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched packages/db/package.json packages/db/tsconfig.json packages/db/src",
+    "lint": "cd ../.. && bunx @biomejs/biome check --write --unsafe --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched packages/db/package.json packages/db/tsconfig.json",
     "typecheck": "cd ../.. && bun run tsc -p packages/db --noEmit",
     "db:generate": "drizzle-kit generate --config=drizzle.config.cjs",
     "db:migrate": "drizzle-kit migrate --config=drizzle.config.cjs",
@@ -28,7 +28,11 @@
     "db:pull": "drizzle-kit pull --config=drizzle.config.cjs",
     "db:studio": "drizzle-kit studio --config=drizzle.config.cjs",
     "db:check": "drizzle-kit check --config=drizzle.config.cjs",
-    "db:sync-migrations": "tsx scripts/sync-migrations.ts"
+    "db:sync-migrations": "tsx scripts/sync-migrations.ts",
+    "lint:check": "cd ../.. && bunx @biomejs/biome check --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched packages/db/package.json packages/db/tsconfig.json",
+    "lint:fix": "cd ../.. && bunx @biomejs/biome check --write --unsafe --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched packages/db/package.json packages/db/tsconfig.json",
+    "format": "cd ../.. && bunx @biomejs/biome format --write --config-path ../../biome.json --files-ignore-unknown=true packages/db/package.json packages/db/tsconfig.json",
+    "format:check": "cd ../.. && bunx @biomejs/biome format --config-path ../../biome.json --files-ignore-unknown=true packages/db/package.json packages/db/tsconfig.json"
   },
   "dependencies": {
     "@feed/shared": "workspace:*",

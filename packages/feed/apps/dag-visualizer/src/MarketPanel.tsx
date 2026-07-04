@@ -115,9 +115,9 @@ export function MarketPanel({ trace, selectedNPC }: Props) {
           >
             PREDICTION MARKETS
           </div>
-          {questions.map((q, i) => (
+          {questions.map((q) => (
             <div
-              key={i}
+              key={q.text}
               style={{
                 padding: "5px 0",
                 borderBottom: "1px solid #1e293b22",
@@ -242,9 +242,9 @@ export function MarketPanel({ trace, selectedNPC }: Props) {
                 {m.agents
                   .sort((a, b) => b.amount - a.amount)
                   .slice(0, 5)
-                  .map((a, i) => (
+                  .map((a) => (
                     <div
-                      key={i}
+                      key={`${a.name}-${a.action}-${a.amount}`}
                       style={{
                         fontSize: 9,
                         color:

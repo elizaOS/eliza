@@ -5,7 +5,13 @@
     "test": "node ../e2e-gate.mjs --suite @feed/e2e --requires 'MetaMask extension (bun run download-extensions) + app on :3000 (auto-started via the keyless localnet harness when nothing is listening)' -- npx playwright test --config playwright.config.mjs",
     "test:unit": "bun test tests/helpers/page-helpers.health.test.ts",
     "test:headed": "npx playwright test --config playwright.config.mjs --headed",
-    "download-extensions": "npx chroma download-extensions --wallets metamask"
+    "download-extensions": "npx chroma download-extensions --wallets metamask",
+    "lint": "cd ../.. && bunx @biomejs/biome check --write --unsafe --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched tools/e2e/package.json tools/e2e/tsconfig.json tools/e2e/playwright.config.mjs",
+    "lint:check": "cd ../.. && bunx @biomejs/biome check --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched tools/e2e/package.json tools/e2e/tsconfig.json tools/e2e/playwright.config.mjs",
+    "lint:fix": "cd ../.. && bunx @biomejs/biome check --write --unsafe --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched tools/e2e/package.json tools/e2e/tsconfig.json tools/e2e/playwright.config.mjs",
+    "format": "cd ../.. && bunx @biomejs/biome format --write --config-path ../../biome.json --files-ignore-unknown=true tools/e2e/package.json tools/e2e/tsconfig.json tools/e2e/playwright.config.mjs",
+    "format:check": "cd ../.. && bunx @biomejs/biome format --config-path ../../biome.json --files-ignore-unknown=true tools/e2e/package.json tools/e2e/tsconfig.json tools/e2e/playwright.config.mjs",
+    "typecheck": "bun run tsc -p . --noEmit"
   },
   "devDependencies": {
     "@avalix/chroma": "^1.0.1",

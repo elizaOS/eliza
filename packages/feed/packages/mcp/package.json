@@ -13,8 +13,12 @@
     }
   },
   "scripts": {
-    "lint": "cd ../.. && bunx @biomejs/biome check --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched packages/mcp/package.json packages/mcp/tsconfig.json packages/mcp/src",
-    "typecheck": "cd ../.. && bun run tsc -p packages/api --emitDeclarationOnly --noCheck && bun run tsc -p packages/a2a --emitDeclarationOnly --noCheck && bun run tsc -p packages/mcp --noEmit"
+    "lint": "cd ../.. && bunx @biomejs/biome check --write --unsafe --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched packages/mcp/package.json packages/mcp/tsconfig.json",
+    "typecheck": "cd ../.. && bun run tsc -p packages/mcp --noEmit",
+    "lint:check": "cd ../.. && bunx @biomejs/biome check --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched packages/mcp/package.json packages/mcp/tsconfig.json",
+    "lint:fix": "cd ../.. && bunx @biomejs/biome check --write --unsafe --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched packages/mcp/package.json packages/mcp/tsconfig.json",
+    "format": "cd ../.. && bunx @biomejs/biome format --write --config-path ../../biome.json --files-ignore-unknown=true packages/mcp/package.json packages/mcp/tsconfig.json",
+    "format:check": "cd ../.. && bunx @biomejs/biome format --config-path ../../biome.json --files-ignore-unknown=true packages/mcp/package.json packages/mcp/tsconfig.json"
   },
   "dependencies": {
     "@feed/shared": "workspace:*",

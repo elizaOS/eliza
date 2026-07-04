@@ -6,7 +6,12 @@
     "test": "node ../e2e-gate.mjs --suite @feed/chroma-e2e --requires 'MetaMask extension (auto-downloaded) + keyless localnet stack on :3100 (anvil + contracts + app, auto-started by the playwright webServer harness)' -- playwright test --config=playwright.config.ts",
     "test:unit": "bun test specs/helpers/page-helpers.health.test.ts",
     "test:headed": "playwright test --config=playwright.config.ts --headed",
-    "typecheck": "bun run tsc -p . --noEmit"
+    "typecheck": "bun run tsc -p . --noEmit",
+    "lint": "cd ../.. && bunx @biomejs/biome check --write --unsafe --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched tools/chroma/package.json tools/chroma/tsconfig.json tools/chroma/playwright.config.ts",
+    "lint:check": "cd ../.. && bunx @biomejs/biome check --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched tools/chroma/package.json tools/chroma/tsconfig.json tools/chroma/playwright.config.ts",
+    "lint:fix": "cd ../.. && bunx @biomejs/biome check --write --unsafe --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched tools/chroma/package.json tools/chroma/tsconfig.json tools/chroma/playwright.config.ts",
+    "format": "cd ../.. && bunx @biomejs/biome format --write --config-path ../../biome.json --files-ignore-unknown=true tools/chroma/package.json tools/chroma/tsconfig.json tools/chroma/playwright.config.ts",
+    "format:check": "cd ../.. && bunx @biomejs/biome format --config-path ../../biome.json --files-ignore-unknown=true tools/chroma/package.json tools/chroma/tsconfig.json tools/chroma/playwright.config.ts"
   },
   "devDependencies": {
     "@playwright/test": "1.61.1",

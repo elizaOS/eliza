@@ -10,7 +10,7 @@
   "scripts": {
     "build": "bun build src/index.ts --outdir dist --target bun",
     "cli": "bun run src/index.ts",
-    "lint": "cd ../.. && bunx @biomejs/biome check --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched apps/cli/package.json apps/cli/tsconfig.json apps/cli/src",
+    "lint": "cd ../.. && bunx @biomejs/biome check --write --unsafe --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched apps/cli/package.json apps/cli/tsconfig.json",
     "typecheck": "cd ../.. && bun run scripts/typecheck-workspace.ts apps/cli",
     "db": "bun run src/index.ts db",
     "admin": "bun run src/index.ts admin",
@@ -25,7 +25,12 @@
     "world:verbose": "bun run src/generate-world.ts --verbose",
     "validate": "bun run src/index.ts game validate",
     "images": "bun run src/generate-actor-images.ts",
-    "images:migrate": "bun run src/migrate-images-to-blob.ts"
+    "images:migrate": "bun run src/migrate-images-to-blob.ts",
+    "lint:check": "cd ../.. && bunx @biomejs/biome check --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched apps/cli/package.json apps/cli/tsconfig.json",
+    "lint:fix": "cd ../.. && bunx @biomejs/biome check --write --unsafe --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched apps/cli/package.json apps/cli/tsconfig.json",
+    "format": "cd ../.. && bunx @biomejs/biome format --write --config-path ../../biome.json --files-ignore-unknown=true apps/cli/package.json apps/cli/tsconfig.json",
+    "format:check": "cd ../.. && bunx @biomejs/biome format --config-path ../../biome.json --files-ignore-unknown=true apps/cli/package.json apps/cli/tsconfig.json",
+    "clean": "node ../../../../packages/scripts/rm-path-recursive.mjs dist"
   },
   "dependencies": {
     "@feed/agents": "workspace:*",

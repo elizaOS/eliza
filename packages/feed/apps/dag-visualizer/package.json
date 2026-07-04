@@ -4,7 +4,14 @@
   "type": "module",
   "scripts": {
     "dev": "vite --port 4000",
-    "build": "vite build"
+    "build": "vite build",
+    "lint": "cd ../.. && bunx @biomejs/biome check --write --unsafe --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched apps/dag-visualizer/package.json apps/dag-visualizer/tsconfig.json apps/dag-visualizer/vite.config.ts",
+    "lint:check": "cd ../.. && bunx @biomejs/biome check --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched apps/dag-visualizer/package.json apps/dag-visualizer/tsconfig.json apps/dag-visualizer/vite.config.ts",
+    "lint:fix": "cd ../.. && bunx @biomejs/biome check --write --unsafe --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched apps/dag-visualizer/package.json apps/dag-visualizer/tsconfig.json apps/dag-visualizer/vite.config.ts",
+    "format": "cd ../.. && bunx @biomejs/biome format --write --config-path ../../biome.json --files-ignore-unknown=true apps/dag-visualizer/package.json apps/dag-visualizer/tsconfig.json apps/dag-visualizer/vite.config.ts",
+    "format:check": "cd ../.. && bunx @biomejs/biome format --config-path ../../biome.json --files-ignore-unknown=true apps/dag-visualizer/package.json apps/dag-visualizer/tsconfig.json apps/dag-visualizer/vite.config.ts",
+    "clean": "node ../../../../packages/scripts/rm-path-recursive.mjs dist",
+    "typecheck": "bun run tsc -p . --noEmit"
   },
   "dependencies": {
     "@dagrejs/dagre": "^3.0.0",

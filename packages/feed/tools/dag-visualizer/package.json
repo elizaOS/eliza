@@ -5,7 +5,12 @@
   "main": "index.js",
   "scripts": {
     "test": "npx playwright test --config playwright.config.mjs",
-    "test:headed": "npx playwright test --config playwright.config.mjs --headed"
+    "test:headed": "npx playwright test --config playwright.config.mjs --headed",
+    "lint": "cd ../.. && bunx @biomejs/biome check --write --unsafe --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched tools/dag-visualizer/package.json tools/dag-visualizer/playwright.config.mjs tools/dag-visualizer/README.md",
+    "lint:check": "cd ../.. && bunx @biomejs/biome check --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched tools/dag-visualizer/package.json tools/dag-visualizer/playwright.config.mjs tools/dag-visualizer/README.md",
+    "lint:fix": "cd ../.. && bunx @biomejs/biome check --write --unsafe --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched tools/dag-visualizer/package.json tools/dag-visualizer/playwright.config.mjs tools/dag-visualizer/README.md",
+    "format": "cd ../.. && bunx @biomejs/biome format --write --config-path ../../biome.json --files-ignore-unknown=true tools/dag-visualizer/package.json tools/dag-visualizer/playwright.config.mjs tools/dag-visualizer/README.md",
+    "format:check": "cd ../.. && bunx @biomejs/biome format --config-path ../../biome.json --files-ignore-unknown=true tools/dag-visualizer/package.json tools/dag-visualizer/playwright.config.mjs tools/dag-visualizer/README.md"
   },
   "keywords": [],
   "author": "",

@@ -14,7 +14,13 @@
     "mobile:ios": "bun run mobile:build && bun run cap:ios",
     "mobile:android": "bun run mobile:build && bun run cap:android",
     "generate:assets": "npx @capacitor/assets generate --iconBackgroundColor '#0a0a0a' --splashBackgroundColor '#0a0a0a' --iconBackgroundColorDark '#0a0a0a' --splashBackgroundColorDark '#0a0a0a'",
-    "typecheck": "cd ../.. && bun run scripts/typecheck-workspace.ts apps/mobile"
+    "typecheck": "cd ../.. && bun run scripts/typecheck-workspace.ts apps/mobile",
+    "lint": "cd ../.. && bunx @biomejs/biome check --write --unsafe --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched apps/mobile/package.json apps/mobile/tsconfig.json apps/mobile/tsconfig.typecheck.json apps/mobile/next.config.ts",
+    "lint:check": "cd ../.. && bunx @biomejs/biome check --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched apps/mobile/package.json apps/mobile/tsconfig.json apps/mobile/tsconfig.typecheck.json apps/mobile/next.config.ts",
+    "lint:fix": "cd ../.. && bunx @biomejs/biome check --write --unsafe --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched apps/mobile/package.json apps/mobile/tsconfig.json apps/mobile/tsconfig.typecheck.json apps/mobile/next.config.ts",
+    "format": "cd ../.. && bunx @biomejs/biome format --write --config-path ../../biome.json --files-ignore-unknown=true apps/mobile/package.json apps/mobile/tsconfig.json apps/mobile/tsconfig.typecheck.json apps/mobile/next.config.ts",
+    "format:check": "cd ../.. && bunx @biomejs/biome format --config-path ../../biome.json --files-ignore-unknown=true apps/mobile/package.json apps/mobile/tsconfig.json apps/mobile/tsconfig.typecheck.json apps/mobile/next.config.ts",
+    "clean": "node ../../../../packages/scripts/rm-path-recursive.mjs .next .turbo node_modules/.cache"
   },
   "dependencies": {
     "@capacitor/app": "^8.0.0",

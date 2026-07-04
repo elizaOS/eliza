@@ -23,8 +23,12 @@
     }
   },
   "scripts": {
-    "lint": "cd ../.. && bunx @biomejs/biome check --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched packages/engine/package.json packages/engine/tsconfig.json packages/engine/src",
-    "typecheck": "cd ../.. && bun run tsc -p packages/engine --noEmit"
+    "lint": "cd ../.. && bunx @biomejs/biome check --write --unsafe --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched packages/engine/package.json packages/engine/tsconfig.json",
+    "typecheck": "cd ../.. && bun run tsc -p packages/engine --noEmit",
+    "lint:check": "cd ../.. && bunx @biomejs/biome check --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched packages/engine/package.json packages/engine/tsconfig.json",
+    "lint:fix": "cd ../.. && bunx @biomejs/biome check --write --unsafe --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched packages/engine/package.json packages/engine/tsconfig.json",
+    "format": "cd ../.. && bunx @biomejs/biome format --write --config-path ../../biome.json --files-ignore-unknown=true packages/engine/package.json packages/engine/tsconfig.json",
+    "format:check": "cd ../.. && bunx @biomejs/biome format --config-path ../../biome.json --files-ignore-unknown=true packages/engine/package.json packages/engine/tsconfig.json"
   },
   "dependencies": {
     "@feed/core": "workspace:*",

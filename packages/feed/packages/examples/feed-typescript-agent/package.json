@@ -6,7 +6,7 @@
   "scripts": {
     "agent": "bun run src/index.ts",
     "agent:local": "bun run src/local-agent.ts",
-    "lint": "cd ../../.. && bunx @biomejs/biome check --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched packages/examples/feed-typescript-agent/package.json packages/examples/feed-typescript-agent/tsconfig.json packages/examples/feed-typescript-agent/src packages/examples/feed-typescript-agent/tests",
+    "lint": "cd ../../.. && bunx @biomejs/biome check --write --unsafe --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched packages/examples/feed-typescript-agent/package.json packages/examples/feed-typescript-agent/tsconfig.json packages/examples/feed-typescript-agent/README.md",
     "typecheck": "bun run tsc -p . --noEmit",
     "test": "bun test tests/",
     "test:integration": "bun test tests/integration.test.ts",
@@ -14,7 +14,11 @@
     "test:actions": "bun test tests/actions-comprehensive.test.ts",
     "test:local": "bun test tests/local-e2e.test.ts",
     "register": "bun run src/registration.ts",
-    "benchmark": "bun run src/benchmark-runner.ts"
+    "benchmark": "bun run src/benchmark-runner.ts",
+    "lint:check": "cd ../../.. && bunx @biomejs/biome check --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched packages/examples/feed-typescript-agent/package.json packages/examples/feed-typescript-agent/tsconfig.json packages/examples/feed-typescript-agent/README.md",
+    "lint:fix": "cd ../../.. && bunx @biomejs/biome check --write --unsafe --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched packages/examples/feed-typescript-agent/package.json packages/examples/feed-typescript-agent/tsconfig.json packages/examples/feed-typescript-agent/README.md",
+    "format": "cd ../../.. && bunx @biomejs/biome format --write --config-path ../../biome.json --files-ignore-unknown=true packages/examples/feed-typescript-agent/package.json packages/examples/feed-typescript-agent/tsconfig.json packages/examples/feed-typescript-agent/README.md",
+    "format:check": "cd ../../.. && bunx @biomejs/biome format --config-path ../../biome.json --files-ignore-unknown=true packages/examples/feed-typescript-agent/package.json packages/examples/feed-typescript-agent/tsconfig.json packages/examples/feed-typescript-agent/README.md"
   },
   "dependencies": {
     "@a2a-js/sdk": "^0.3.5",

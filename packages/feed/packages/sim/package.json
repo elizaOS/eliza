@@ -18,17 +18,22 @@
   },
   "scripts": {
     "build": "bun run cli/index.ts build",
+    "clean": "node ../../../../packages/scripts/rm-path-recursive.mjs .output",
     "dev": "bun run cli/index.ts dev",
     "document": "bun run cli/index.ts document",
     "info": "bun run cli/index.ts info",
     "tick": "bun run cli/index.ts tick",
     "test": "bun test tests/*.test.ts",
-    "lint": "cd ../.. && bunx @biomejs/biome check --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched packages/sim/package.json packages/sim/tsconfig.json packages/sim/core packages/sim/cli packages/sim/tests",
+    "lint": "cd ../.. && bunx @biomejs/biome check --write --unsafe --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched packages/sim/package.json packages/sim/tsconfig.json packages/sim/README.md",
     "typecheck": "cd ../.. && bun run tsc -p packages/sim --noEmit",
     "bridge-server": "bun run core/bridge/simulation-bridge-server.ts",
     "docker:build": "docker build -f Dockerfile -t feed-sim ../..",
     "docker:run": "docker run --rm feed-sim",
-    "docker:once": "docker run --rm -e SIM_ONCE=1 feed-sim"
+    "docker:once": "docker run --rm -e SIM_ONCE=1 feed-sim",
+    "lint:check": "cd ../.. && bunx @biomejs/biome check --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched packages/sim/package.json packages/sim/tsconfig.json packages/sim/README.md",
+    "lint:fix": "cd ../.. && bunx @biomejs/biome check --write --unsafe --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched packages/sim/package.json packages/sim/tsconfig.json packages/sim/README.md",
+    "format": "cd ../.. && bunx @biomejs/biome format --write --config-path ../../biome.json --files-ignore-unknown=true packages/sim/package.json packages/sim/tsconfig.json packages/sim/README.md",
+    "format:check": "cd ../.. && bunx @biomejs/biome format --config-path ../../biome.json --files-ignore-unknown=true packages/sim/package.json packages/sim/tsconfig.json packages/sim/README.md"
   },
   "engines": {
     "bun": ">=1.3.0"

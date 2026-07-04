@@ -65,6 +65,7 @@ export function NodeDetailPanel({ node, llmCalls, npcs, onClose }: Props) {
           </div>
         </div>
         <button
+          type="button"
           onClick={onClose}
           style={{
             background: "none",
@@ -88,6 +89,7 @@ export function NodeDetailPanel({ node, llmCalls, npcs, onClose }: Props) {
       >
         {tabs.map((t) => (
           <button
+            type="button"
             key={t.id}
             onClick={() => setTab(t.id)}
             style={{
@@ -166,7 +168,7 @@ export function NodeDetailPanel({ node, llmCalls, npcs, onClose }: Props) {
           (npcs.length === 0 ? (
             <div style={{ color: "#64748b" }}>No NPC data</div>
           ) : (
-            npcs.map((n, i) => <NPCCard key={i} npc={n} />)
+            npcs.map((n) => <NPCCard key={n.npcId} npc={n} />)
           ))}
       </div>
     </div>
@@ -229,6 +231,7 @@ function LLMCard({
       }}
     >
       <button
+        type="button"
         onClick={toggle}
         style={{
           background: "none",
@@ -290,6 +293,7 @@ function PromptBlock({ title, text }: { title: string; text?: string }) {
   return (
     <div style={{ marginTop: 6 }}>
       <button
+        type="button"
         onClick={() => setOpen(!open)}
         style={{
           background: "none",
@@ -329,6 +333,7 @@ function NPCCard({ npc }: { npc: NPCTrajectory }) {
   return (
     <div style={{ background: "#1e293b", borderRadius: 5, marginBottom: 6 }}>
       <button
+        type="button"
         onClick={() => setOpen(!open)}
         style={{
           background: "none",

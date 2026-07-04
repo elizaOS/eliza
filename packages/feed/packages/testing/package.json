@@ -13,12 +13,16 @@
     }
   },
   "scripts": {
-    "lint": "cd ../.. && bunx @biomejs/biome check --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched packages/testing/package.json packages/testing/tsconfig.json packages/testing/tsconfig.typecheck.json packages/testing/src packages/testing/unit packages/testing/e2e",
+    "lint": "cd ../.. && bunx @biomejs/biome check --write --unsafe --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched packages/testing/package.json packages/testing/tsconfig.json packages/testing/tsconfig.typecheck.json packages/testing/playwright.config.ts",
     "typecheck": "cd ../.. && bun run scripts/typecheck-workspace.ts packages/testing",
     "test:unit": "bun test unit/ --preload ./unit/preload.ts",
     "test:integration": "bun test integration/ --preload ./integration/preload.ts",
     "test:e2e": "cd ../.. && node ../../packages/scripts/rm-path-recursive.mjs packages/testing/node_modules/@playwright packages/testing/node_modules/playwright && bunx playwright test --config packages/testing/playwright.config.ts",
-    "test:chroma": "cd ../../tools/chroma && bun run test"
+    "test:chroma": "cd ../../tools/chroma && bun run test",
+    "lint:check": "cd ../.. && bunx @biomejs/biome check --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched packages/testing/package.json packages/testing/tsconfig.json packages/testing/tsconfig.typecheck.json packages/testing/playwright.config.ts",
+    "lint:fix": "cd ../.. && bunx @biomejs/biome check --write --unsafe --config-path ../../biome.json --files-ignore-unknown=true --no-errors-on-unmatched packages/testing/package.json packages/testing/tsconfig.json packages/testing/tsconfig.typecheck.json packages/testing/playwright.config.ts",
+    "format": "cd ../.. && bunx @biomejs/biome format --write --config-path ../../biome.json --files-ignore-unknown=true packages/testing/package.json packages/testing/tsconfig.json packages/testing/tsconfig.typecheck.json packages/testing/playwright.config.ts",
+    "format:check": "cd ../.. && bunx @biomejs/biome format --config-path ../../biome.json --files-ignore-unknown=true packages/testing/package.json packages/testing/tsconfig.json packages/testing/tsconfig.typecheck.json packages/testing/playwright.config.ts"
   },
   "dependencies": {
     "@feed/a2a": "workspace:*",
