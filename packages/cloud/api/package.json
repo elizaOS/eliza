@@ -15,6 +15,7 @@
     "agent:build": "node ../../scripts/cloud/admin/dev/build-cloud-agent-image.mjs",
     "deploy": "wrangler deploy --env production",
     "codegen": "node src/_generate-router.mjs",
+    "build": "tsc --noEmit",
     "typecheck": "tsgo --noEmit",
     "test": "node test/run-unit-isolated.mjs",
     "test:batch": "bun test __tests__",
