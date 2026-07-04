@@ -172,6 +172,18 @@ describe("ci-full-matrix-proof", () => {
     expect(result.stderr).toContain("client-tests");
   });
 
+  test("fails when the aggregate status job drops a lane dependency", () => {
+    const workflow = HEALTHY_WORKFLOW.replace("      - client-tests\n", "");
+    const result = runProof({
+      workflow,
+      manifest: HEALTHY_MANIFEST,
+      plan: HEALTHY_PLAN,
+    });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("aggregate drift");
+    expect(result.stderr).toContain("client-tests");
+  });
+
   test("fails when the plan collected fewer tasks than the floor", () => {
     const plan = {
       ...HEALTHY_PLAN,

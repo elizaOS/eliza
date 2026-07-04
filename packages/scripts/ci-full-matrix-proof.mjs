@@ -141,6 +141,69 @@ function extractJobBlock(workflowText, jobKey) {
   return body.join("\n");
 }
 
+function extractWorkflowJobKeys(workflowText) {
+  const keys = [];
+  for (const line of workflowText.split(/\r?\n/)) {
+    const match = line.match(/^ {2}([A-Za-z0-9_-]+):\s*$/);
+    if (match) keys.push(match[1]);
+  }
+  return keys;
+}
+
+function parseNeeds(jobBlock) {
+  const lines = jobBlock.split(/\r?\n/);
+  const needs = new Set();
+  const needsLineIndex = lines.findIndex((line) => /^ {4}needs:\s*/.test(line));
+  if (needsLineIndex < 0) return needs;
+
+  const inline = lines[needsLineIndex].replace(/^ {4}needs:\s*/, "").trim();
+  if (inline.startsWith("[") && inline.endsWith("]")) {
+    for (const value of inline
+      .slice(1, -1)
+      .split(",")
+      .map((item) => item.trim().replace(/^['"]|['"]$/g, ""))
+      .filter(Boolean)) {
+      needs.add(value);
+    }
+    return needs;
+  }
+  if (inline) {
+    needs.add(inline.replace(/^['"]|['"]$/g, ""));
+    return needs;
+  }
+
+  for (let i = needsLineIndex + 1; i < lines.length; i += 1) {
+    const line = lines[i];
+    if (/^ {4}\S/.test(line)) break;
+    const match = line.match(/^ {6}-\s*([A-Za-z0-9_-]+)\s*$/);
+    if (match) needs.add(match[1]);
+  }
+  return needs;
+}
+
+function buildNeedsGraph(workflowText) {
+  const graph = new Map();
+  for (const jobKey of extractWorkflowJobKeys(workflowText)) {
+    const block = extractJobBlock(workflowText, jobKey);
+    if (block) graph.set(jobKey, parseNeeds(block));
+  }
+  return graph;
+}
+
+function collectTransitiveNeeds(graph, root) {
+  const visited = new Set();
+  const stack = [...(graph.get(root) ?? [])];
+  while (stack.length > 0) {
+    const job = stack.pop();
+    if (!job || visited.has(job)) continue;
+    visited.add(job);
+    for (const next of graph.get(job) ?? []) {
+      if (!visited.has(next)) stack.push(next);
+    }
+  }
+  return visited;
+}
+
 // A lane job is "exhaustively runnable" when its `if:` does not force a skip on
 // non-PR events. The repo convention gates PR runs with
 // `github.event_name != 'pull_request' || needs.changes.outputs.<x> == 'true'`,
@@ -195,6 +258,19 @@ function checkWorkflowLanes(manifest, violations, laneReport) {
       violations.push(
         `missing aggregate: job "${manifest.aggregateStatusJob}" not found in ${manifest.workflow}`,
       );
+    } else {
+      const graph = buildNeedsGraph(workflowText);
+      const reachable = collectTransitiveNeeds(
+        graph,
+        manifest.aggregateStatusJob,
+      );
+      for (const lane of manifest.workflowLanes) {
+        if (!reachable.has(lane.job)) {
+          violations.push(
+            `aggregate drift: job "${manifest.aggregateStatusJob}" does not need lane "${lane.job}" (${lane.name}) directly or through an aggregate dependency`,
+          );
+        }
+      }
     }
   }
 }
